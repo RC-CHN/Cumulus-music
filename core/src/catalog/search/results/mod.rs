@@ -50,6 +50,12 @@ impl SearchCategory {
             .find(|kind| kind.title() == title || (*kind == Self::Mvs && title == "视频"))
     }
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchChannel {
+    Hotquery,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SearchResultQuery {
@@ -58,6 +64,8 @@ pub struct SearchResultQuery {
     pub offset: usize,
     pub limit: usize,
     pub correct: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<SearchChannel>,
 }
 pub const READ_PATHS: &[&str] = &[
     "/api/search/pc/result/tab",
@@ -99,14 +107,18 @@ pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
     };
     args["limit"] = json!(q.limit);
     args["offset"] = json!(q.offset);
+    let channel = match q.channel {
+        Some(SearchChannel::Hotquery) => "hotquery",
+        None => "suggest",
+    };
     let path = match q.category {
         All => {
-            args = json!({"keyword":keyword,"scene":"normal","needCorrect":q.correct,"channel":"suggest","cursor":"{\"page\":0,\"ignoreBlocks\":[],\"traceId\":\"\"}","bizQueryInfo":""});
+            args = json!({"keyword":keyword,"scene":"normal","needCorrect":q.correct,"channel":channel,"cursor":"{\"page\":0,\"ignoreBlocks\":[],\"traceId\":\"\"}","bizQueryInfo":""});
             READ_PATHS[1]
         }
         Songs => {
             args["needCorrect"] = json!(q.correct);
-            args["channel"] = json!("suggest");
+            args["channel"] = json!(channel);
             READ_PATHS[2]
         }
         Playlists => READ_PATHS[3],
@@ -117,7 +129,7 @@ pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
         Podcasts => READ_PATHS[8],
         Lyrics => READ_PATHS[9],
         Mvs => {
-            args["channel"] = json!("suggest");
+            args["channel"] = json!(channel);
             args["os"] = json!("pc");
             args["tag"] = json!("MV");
             READ_PATHS[10]

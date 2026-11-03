@@ -17,6 +17,7 @@ pub fn control(value: &Value) {
             "good",
             "home_error",
             "chart_play",
+            "hot_source",
             "suggest_error",
             "result_error",
             "unavailable",
@@ -128,6 +129,11 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             };
             json!({"tabInfo":{"list":tabs},"items":{}})
         }
+        "/api/search/pc/chart/detail" if mode == "hot_source" => {
+            let hot = args["id"] == "HOT_SEARCH_SONG#@#";
+            json!({"itemList":[{"searchWord":if hot {"合成热搜来源"} else {"合成普通来源"},
+                "toUserWord":"合成榜单条目","tabId":args["id"]}]})
+        }
         "/api/search/pc/chart/detail" => {
             json!({"itemList":if empty{vec![]}else{(1..=20).map(|n|json!({"searchWord":format!("热搜关键词{n}"),"toUserWord":format!("{n} · SyntheticLongSongTitleWithoutSpacesAndWithExtraText"),"iconType":if n==1{1}else if n==2{2}else{0}})).collect::<Vec<_>>()}})
         }
@@ -206,6 +212,21 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if mode == "hot_source" {
+        let keyword = args["keyword"].as_str().or_else(|| args["s"].as_str());
+        let expected = match keyword {
+            Some("合成热搜来源") => "hotquery",
+            Some("合成普通来源") => "suggest",
+            _ => return Some(Err(Error::InvalidInput("wrong synthetic chart keyword"))),
+        };
+        if (matches!(category, "all" | "songs" | "mvs") && args["channel"] != expected)
+            || (!matches!(category, "all" | "songs" | "mvs") && !args["channel"].is_null())
+        {
+            return Some(Err(Error::InvalidInput(
+                "wrong synthetic chart search channel",
+            )));
+        }
+    }
     if mode == "correction" {
         let valid = match category {
             "all" => args["keyword"] == "合成错词",

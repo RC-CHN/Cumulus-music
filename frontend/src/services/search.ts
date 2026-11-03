@@ -16,12 +16,14 @@ export const searchCategories = [
   { key: 'users', title: '用户', unit: '位用户' },
 ] as const;
 export type SearchCategory = (typeof searchCategories)[number]['key'];
+export type SearchChannel = 'hotquery';
 export interface SearchResultQuery {
   keyword: string;
   category: SearchCategory;
   offset: number;
   limit: number;
   correct: boolean;
+  channel?: SearchChannel;
 }
 export type SearchItem =
   | { kind: 'song'; track: TrackView; excerpt: string[]; excerptTruncated?: boolean }
@@ -56,6 +58,7 @@ export interface SearchWord {
   keyword: string;
   label: string;
   tag: string | null;
+  channel?: SearchChannel;
 }
 export interface SearchChart {
   id: string;

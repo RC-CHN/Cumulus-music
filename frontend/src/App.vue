@@ -1435,7 +1435,7 @@ onUnmounted(() => {
         :keyword="page.kind === 'search' ? page.keyword : undefined"
         :playable="player.ready.value && !player.busy.value"
         @play-chart="playSearchChart"
-        @search="(word) => music.navigate({ kind: 'search', keyword: word })"
+        @search="(word, channel) => music.navigate({ kind: 'search', keyword: word, channel })"
         @expired="music.bootstrap(false)"
       />
       <div class="header-spacer" data-tauri-drag-region />
@@ -1631,6 +1631,7 @@ onUnmounted(() => {
                 :account="account"
                 :keyword="page.keyword"
                 :category="page.category"
+                :channel="page.channel"
                 :pagination="page.pagination"
                 :correct="page.correct"
                 :rewritten-keyword="page.rewrittenKeyword"
@@ -1644,7 +1645,14 @@ onUnmounted(() => {
                 @navigate="
                   (category, pagination, correct, rewrittenKeyword) =>
                     page.kind === 'search' &&
-                    music.navigate({ ...page, category, pagination, correct, rewrittenKeyword })
+                    music.navigate({
+                      ...page,
+                      category,
+                      pagination,
+                      correct,
+                      rewrittenKeyword,
+                      channel: correct ? page.channel : undefined,
+                    })
                 "
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @open="openSearchItem"

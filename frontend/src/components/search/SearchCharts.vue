@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Icon from '../Icon.vue';
-import type { SearchChart } from '../../services/search';
+import type { SearchChart, SearchChannel } from '../../services/search';
 defineProps<{
   charts: SearchChart[];
   playable: boolean;
@@ -8,7 +8,7 @@ defineProps<{
   errors: Record<string, string>;
 }>();
 const emit = defineEmits<{
-  select: [keyword: string];
+  select: [keyword: string, channel?: SearchChannel];
   play: [keywords: string[]];
   retry: [id: string];
 }>();
@@ -44,7 +44,7 @@ const emit = defineEmits<{
         :key="i"
         data-search-choice
         :title="word.label"
-        @click="emit('select', word.keyword)"
+        @click="emit('select', word.keyword, word.channel)"
       >
         <span class="search-rank" :class="{ leading: i < 3 }">{{ i + 1 }}</span
         ><span class="search-word-label">{{ word.label }}</span

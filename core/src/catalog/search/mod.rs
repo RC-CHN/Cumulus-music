@@ -26,6 +26,8 @@ pub struct SearchWord {
     pub keyword: String,
     pub label: String,
     pub tag: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<results::SearchChannel>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

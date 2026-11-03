@@ -78,6 +78,13 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
 /api/search/pc/result/tab 已提供低层读取与只读验证；本次界面固定官方默认次序，
   不声称算法排序、缓存回退和新分类动态注册已实现。
 
+热搜词来源：SearchBox/view/searchRankCard.tsx 和恢复 M/623 按条目的 tabId
+  （不是榜单本身的 ID）给 HOT_SEARCH_SONG#@# 设置 hotquery。M/2245 将来源传给
+  综合、单曲和 MV 请求。当前沿分类、分页及返回保留该来源，其他入口维持 suggest；
+  旧端点不添加该参数。纠正提示的服务端来源、其他搜索入口来源及长音频 More
+  不在此专项。恢复 /audio 及有声书类目是公开发现页，本应用的“我的播客”
+  是个人库，因此不能用它替代这些目的地。
+
 必须继续的对齐项
 - 卡片悬停播放/暂停、详情和部分菜单已接通并独立检查，详见卡片专项；完整菜单、
   用户主页、缺radioId声音的直接播放仍待补齐；播放场景search的完整

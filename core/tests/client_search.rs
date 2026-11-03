@@ -42,7 +42,7 @@ impl Api for Backend {
                     json!({"operateWords":{"first":{"keyword":"运营词"}},"algWords":[{"keyword":"推荐词","toUserWord":"推荐显示","url":"https://private.invalid"}]})
                 }
                 "/api/search/pc/chart/list" => {
-                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","realkeyword":"备用词","toUserWord":"长标题","iconType":1,"url":"PRIVATE"}]}})
+                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","realkeyword":"备用词","toUserWord":"长标题","iconType":1,"tabId":"HOT_SEARCH_SONG#@#","url":"PRIVATE"},{"searchWord":"普通榜词","tabId":"HOT_SEARCH_STYLE_ROCK#@#"}]}})
                 }
                 "/api/search/pc/chart/detail" => {
                     json!({"itemList":[{"searchWord":"榜单补读","toUserWord":"榜单补读"}]})
@@ -221,7 +221,14 @@ async fn hot_chart_play_resolves_only_ordered_song_ids_for_exact_keywords() {
     let chart =
         serde_json::to_value(client.search_discovery(&epoch, Q::Charts).await.unwrap()).unwrap();
     assert_eq!(chart["value"]["charts"][0]["needPlay"], true);
-    assert_eq!(chart["value"]["charts"][0]["playKeywords"], json!(["热词"]));
+    assert_eq!(
+        chart["value"]["charts"][0]["playKeywords"],
+        json!(["热词", "普通榜词"])
+    );
+    let items = &chart["value"]["charts"][0]["items"];
+    assert_eq!(items[0]["keyword"], "热词");
+    assert_eq!(items[0]["channel"], "hotquery");
+    assert_eq!(items[1]["channel"], Value::Null);
     let value = serde_json::to_value(
         client
             .search_discovery(

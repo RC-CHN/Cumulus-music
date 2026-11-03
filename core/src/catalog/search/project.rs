@@ -22,6 +22,17 @@ fn array(value: &Value) -> Result<&[Value]> {
 fn text(value: &Value) -> Option<String> {
     value.as_str().and_then(|s| keyword(s).ok())
 }
+fn word_tag(row: &Value) -> Option<String> {
+    match row["iconType"].as_u64() {
+        Some(1) => Some("热"),
+        Some(2) => Some("新"),
+        Some(3) => Some("荐"),
+        Some(4) => Some("爆"),
+        Some(5) => Some("升"),
+        _ => None,
+    }
+    .map(str::to_owned)
+}
 fn word(row: &Value) -> Option<SearchWord> {
     let keyword = ["realkeyword", "searchWord", "keyword", "name"]
         .iter()
@@ -30,24 +41,35 @@ fn word(row: &Value) -> Option<SearchWord> {
         .iter()
         .find_map(|k| text(&row[k]))
         .unwrap_or_else(|| keyword.clone());
-    let tag = match row["iconType"].as_u64() {
-        Some(1) => Some("热"),
-        Some(2) => Some("新"),
-        Some(3) => Some("荐"),
-        Some(4) => Some("爆"),
-        Some(5) => Some("升"),
-        _ => None,
-    }
-    .map(str::to_owned);
     Some(SearchWord {
         keyword,
         label,
-        tag,
+        tag: word_tag(row),
+        channel: None,
     })
 }
 fn words(rows: &[Value], limit: usize) -> Vec<SearchWord> {
     rows.iter().filter_map(word).take(limit).collect()
 }
+fn chart_words(rows: &[Value]) -> Vec<SearchWord> {
+    rows.iter()
+        .filter_map(|row| {
+            let keyword = ["searchWord", "keyword", "toUserWord", "name"]
+                .into_iter()
+                .find_map(|key| text(&row[key]))?;
+            let label = text(&row["toUserWord"]).unwrap_or_else(|| keyword.clone());
+            Some(SearchWord {
+                keyword,
+                label,
+                tag: word_tag(row),
+                channel: (row["tabId"] == "HOT_SEARCH_SONG#@#")
+                    .then_some(results::SearchChannel::Hotquery),
+            })
+        })
+        .take(CHART_ITEM_LIMIT)
+        .collect()
+}
+
 fn chart_keywords(rows: &[Value]) -> Option<Vec<String>> {
     if rows.is_empty() || rows.len() > CHART_ITEM_LIMIT {
         return None;
@@ -89,7 +111,7 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
                     array(&d["items"][id])?
                 };
                 let need_play = row["needPlay"] == true;
-                let items = words(rows, CHART_ITEM_LIMIT);
+                let items = chart_words(rows);
                 if !charts.iter().any(|c: &SearchChart| c.id == id) {
                     charts.push(SearchChart {
                         id: id.into(),
@@ -110,7 +132,7 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
             let rows = array(&d["itemList"])?;
             SearchDiscovery::Chart {
                 id,
-                items: words(rows, CHART_ITEM_LIMIT),
+                items: chart_words(rows),
                 play_keywords: chart_keywords(rows),
             }
         }

@@ -31,6 +31,7 @@ export function createSearchViewportMemory(capacity = 16) {
         query.offset,
         query.limit,
         query.correct,
+        query.channel,
       ]);
     },
     get(key: string, epoch: string) {

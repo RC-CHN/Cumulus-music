@@ -42,6 +42,7 @@ export type Page =
       kind: 'search';
       keyword: string;
       category?: import('../services/search').SearchCategory;
+      channel?: import('../services/search').SearchChannel;
       pagination?: import('../services/searchPagination').SearchPageStep;
       correct?: boolean;
       rewrittenKeyword?: string;

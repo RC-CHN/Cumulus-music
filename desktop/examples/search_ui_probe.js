@@ -362,6 +362,26 @@
       "late closed reply does not reopen",
     );
     await capture("closed_late_reply");
+    await fixture("hot_source");
+    await home();
+    await wait(() => one(".search-chart-items button"), "hot source chart row");
+    click(one(".search-chart-items button"));
+    const ready = (word, category, item) =>
+      one(".search-results-page h1")?.textContent === word &&
+      one('[data-category="' + category + '"]')?.getAttribute("aria-selected") === "true" &&
+      one("#search-result-panel")?.getAttribute("aria-busy") === "false" &&
+      !one(".search-results-leave-active") && one(item);
+    await wait(() => ready("合成热搜来源", "all", ".search-track-card"), "hot comprehensive source");
+    click(one('[data-category="songs"]'));
+    await wait(() => ready("合成热搜来源", "songs", ".track-row"), "hot songs source");
+    click(one('[data-category="mvs"]'));
+    await wait(() => ready("合成热搜来源", "mvs", ".search-result-card"), "hot MV source");
+    click(button("返回上一页"));
+    await wait(() => ready("合成热搜来源", "songs", ".track-row"), "hot search Back");
+    await home();
+    await wait(() => all(".search-chart-items button").length >= 2, "unmarked source chart row");
+    click(all(".search-chart-items button")[1]);
+    await wait(() => ready("合成普通来源", "all", ".search-track-card"), "unmarked source defaults");
     await fixture("chart_play");
     await home();
     await wait(() => button("播放热搜榜") && !button("播放热搜榜").disabled, "conditional hot chart play");
@@ -388,6 +408,7 @@
       checks,
       responseTimingInjected: true,
       conditionalChartPlayVerified: true,
+      hotqueryChannelVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

@@ -194,6 +194,7 @@ async fn verify(client: &MusicClient) -> std::result::Result<Facts, &'static str
         offset: 0,
         limit: 6,
         correct: true,
+        channel: None,
     };
     let all = client
         .search_results(&epoch, query(SearchCategory::All))

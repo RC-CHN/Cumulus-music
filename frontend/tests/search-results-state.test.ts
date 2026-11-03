@@ -271,3 +271,34 @@ test('unmounting an old account page cannot repopulate the replacement account m
   old.savePosition({ top: 100, tracks: 0 });
   assert.equal(memory.get(memory.key(artistQuery, 1), '2'), undefined);
 });
+
+test('hot search channel survives continuation and does not share an ordinary result cache', async () => {
+  const reads: SearchResultQuery[] = [];
+  const model = useSearchResults(
+    {
+      searchResults: async (_epoch, q) => {
+        reads.push(q);
+        const reply = view(q);
+        reply.value.more = q.offset === 0;
+        reply.value.nextOffset = 7;
+        return reply;
+      },
+    },
+    () => assert.fail('no expiry'),
+  );
+  const ordinary = { ...query, category: 'mvs' as const };
+  const hot = { ...ordinary, channel: 'hotquery' as const };
+  model.connect(account);
+  await model.open(hot, true, 11);
+  await model.more();
+  await model.open(ordinary, true, 11);
+  assert.deepEqual(
+    reads.map((q) => [q.offset, q.channel]),
+    [
+      [0, 'hotquery'],
+      [7, 'hotquery'],
+      [0, undefined],
+    ],
+  );
+  assert.equal(model.view.value?.query.channel, undefined);
+});

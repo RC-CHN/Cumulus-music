@@ -9,6 +9,7 @@ import type { AccountView, TrackView } from '../../services/contracts';
 import {
   searchCategories,
   type SearchCategory,
+  type SearchChannel,
   type SearchItem,
   type SearchSection,
 } from '../../services/search';
@@ -26,6 +27,7 @@ const props = defineProps<{
   account: AccountView;
   keyword: string;
   category?: SearchCategory;
+  channel?: SearchChannel;
   pagination?: SearchPageStep;
   correct?: boolean;
   rewrittenKeyword?: string;
@@ -266,6 +268,7 @@ async function load(reuse = false) {
       offset: offset.value,
       limit: limit.value,
       correct: props.correct ?? true,
+      channel: props.channel,
     },
     reuse,
     props.searchId ?? 0,
@@ -304,6 +307,7 @@ watch(
     category.value,
     offset.value,
     props.correct,
+    props.channel,
     props.searchId,
   ],
   () => {

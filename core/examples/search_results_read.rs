@@ -59,6 +59,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             offset: 0,
             limit: 6,
             correct: true,
+            channel: None,
         };
         let reply = client
             .search_results(&epoch, q)

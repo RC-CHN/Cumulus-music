@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MenuTransition from '../MenuTransition.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import type { SearchChannel } from '../../services/search';
 import type { AccountView } from '../../services/contracts';
 import { useSearchBox } from '../../composables/useSearchBox';
 import Icon from '../Icon.vue';
@@ -16,7 +17,7 @@ const props = defineProps<{
   playable: boolean;
 }>();
 const emit = defineEmits<{
-  search: [keyword: string];
+  search: [keyword: string, channel?: SearchChannel];
   playChart: [keywords: string[]];
   expired: [];
 }>();
@@ -77,12 +78,12 @@ function focusInput() {
 function onFocus() {
   if (!suppressFocus) void show();
 }
-function submit(word?: string) {
+function submit(word?: string, channel?: SearchChannel) {
   if (composing.value || performance.now() - compositionEnded < 60) return;
   const value = model.submit(word);
   if (value) {
     focusInput();
-    emit('search', value);
+    emit('search', value, channel);
   }
 }
 function playChart(keywords: string[]) {
