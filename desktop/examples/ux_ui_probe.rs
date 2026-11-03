@@ -11,6 +11,8 @@ mod daily_history_fixture;
 mod download_page_fixture;
 #[path = "support/effect_directory_fixture.rs"]
 mod effect_directory_fixture;
+#[path = "support/effect_peq_fixture.rs"]
+mod effect_peq_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
@@ -132,6 +134,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = style_recommendations_fixture::response(path, &args) {
+                return response;
+            }
+            if let Some(response) = effect_peq_fixture::response(path, &args) {
                 return response;
             }
             if let Some(response) = effect_directory_fixture::response(path, &args) {
@@ -364,6 +369,11 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    let peq_proof = effect_peq_fixture::enabled();
+    assert!(
+        !peq_proof || motion_proof,
+        "native PEQ proof needs the closed audio fixture"
+    );
     let recovery_proof = std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some();
     let media_proof = std::env::var_os("CUMULUS_SYSTEM_MEDIA_PROOF").is_some();
     let shortcut_proof = std::env::var_os("CUMULUS_SHORTCUT_UI_PROOF").is_some();
@@ -417,7 +427,14 @@ fn main() {
         let factory_elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let factory_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let card_audio = Arc::new(card_source_fixture::Control::default());
-        if motion_proof {
+        if peq_proof {
+            let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER")
+                .expect("trusted synthetic PEQ adapter"));
+            let wave = relay_fixture::wave(&root)?;
+            client = client
+                .with_effect_material_backend(Arc::new(effect_peq_fixture::Material))
+                .with_audio_factory(move || Ok(Box::new(effect_peq_fixture::Audio::open(wave.clone(), path.clone())?)));
+        } else if motion_proof {
             let elapsed = factory_elapsed.clone();
             let count=factory_count.clone();
             let card_control=card_audio.clone();
@@ -435,6 +452,7 @@ fn main() {
                 Ok(audio)
             });
         }
+        app.manage(cumulus_desktop::effect_activation::Host::new(&app.path().resource_dir()?));
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
@@ -443,6 +461,7 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if effect_directory_fixture::enabled() {value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());}
+            if peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}

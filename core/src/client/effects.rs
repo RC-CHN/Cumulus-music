@@ -1,7 +1,7 @@
 use super::MusicClient;
 use crate::{
     Error, Result,
-    download::transfer::RunOptions,
+    download::transfer::{MediaBackend, RunOptions},
     effects::{
         authorization::{
             ActiveParametricObservation, BoundParametric, BoundParametricTarget,
@@ -17,6 +17,7 @@ use crate::{
     },
     playback::controller::{ParametricApplication, ParametricBindingStatus},
 };
+use std::sync::Arc;
 
 /// Host-owned one-shot request. Keep it across the await: once the actor
 /// dispatch begins, its exact target is available even after cancellation.
@@ -54,6 +55,20 @@ pub enum NativeParametricActivation {
 }
 
 impl MusicClient {
+    /// Native host dependency injection for effects material transport.
+    /// Catalogue/authorization APIs and production URL validation are unchanged.
+    pub fn with_effect_material_backend(mut self, backend: Arc<dyn MediaBackend>) -> Self {
+        self.effect_material_backend = Some(backend);
+        self
+    }
+
+    fn effect_material_library(&self) -> Result<EffectsLibrary> {
+        match &self.effect_material_backend {
+            Some(backend) => EffectsLibrary::with_backend(self.session.clone(), backend.clone()),
+            None => EffectsLibrary::new(self.session.clone()),
+        }
+    }
+
     /// Native-only preparation of one verified PEQ component. This does not
     /// register an effect, acquire a trial, or apply anything to playback.
     pub async fn prepare_native_effect_parametric(
@@ -63,7 +78,7 @@ impl MusicClient {
         options: RunOptions,
     ) -> Result<ParametricPreparation> {
         let token = self.player_token(epoch)?;
-        EffectsLibrary::new(self.session.clone())?
+        self.effect_material_library()?
             .prepare_parametric_for(&token, id, options)
             .await
     }
@@ -77,7 +92,7 @@ impl MusicClient {
         options: RunOptions,
     ) -> Result<StandaloneParametricPreflight> {
         let token = self.player_token(epoch)?;
-        EffectsLibrary::new(self.session.clone())?
+        self.effect_material_library()?
             .preflight_parametric_activation_for(&token, id, options)
             .await
     }

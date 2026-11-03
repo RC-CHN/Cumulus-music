@@ -85,6 +85,7 @@ pub struct MusicClient {
     scene_fm: scene_fm::SceneFmHost,
     playlist_cover: playlist_cover::CoverHost,
     account_avatar: account_avatar::AvatarHost,
+    effect_material_backend: Option<Arc<dyn crate::download::transfer::MediaBackend>>,
     login_device_rows: login_devices::DeviceRows,
     search: search::experiment::SearchHost,
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
@@ -213,6 +214,7 @@ impl MusicClient {
         Self {
             playlist_cover: playlist_cover::CoverHost::default(),
             account_avatar: account_avatar::AvatarHost::default(),
+            effect_material_backend: None,
             login_device_rows: login_devices::DeviceRows::default(),
             search: search::experiment::SearchHost::default(),
             daily_recommendations: Default::default(),
