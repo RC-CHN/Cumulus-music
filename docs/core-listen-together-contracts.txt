@@ -48,7 +48,8 @@ Rust 保留原响应，但仅在 RANDOM 模式检查非空随机列表与显示�
   原生适配已写，拒绝返回不同房间；服务层要求先明确离开已有房间。
   本批没有调用，没有接受他人邀请的实测或界面验收。
 /api/listen/together/end/v2 {roomId[,shareInfo]}
-  shareInfo=JSON.stringify({thisListenCount})；不传count则省略。
+  shareInfo=JSON.stringify({thisListenCount})；普通离开使用恢复代码中的缺省值1。
+  官方启动恢复的独立清理形式仅roomId；底层不传count时保持此请求形状。
   检查 code=200,data.success=true，再连续两次状态读取确认不再处于旧房间。
   退出预读必须仍是指定房间；不会把新观察到的另一个房间代入退出请求。
 

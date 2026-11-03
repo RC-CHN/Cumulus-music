@@ -61,7 +61,7 @@ impl TogetherService {
         }
         let state = self.refresh_for(token, now).await?;
         if state.room.as_ref().is_some_and(|r| r.room_id == room)
-            && self.end_for(token, room, None, now).await?.phase != TogetherPhase::Confirmed
+            && self.leave_for(token, room, now).await?.phase != TogetherPhase::Confirmed
         {
             return Err(Error::MutationUncertain);
         }

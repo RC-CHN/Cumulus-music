@@ -49,6 +49,7 @@ def main():
     assert complete['ok'] and complete['queueRoomUi'] and complete['stageCount'] == len(labels)
     assert complete['virtualQueueShrinkVerified']
     assert final['clean'] and complete['endRequests'] == 2 and complete['imClosed'] == 2
+    assert complete['endShareCounts'] == [1, 1]
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert complete['fixtureApi'] and complete['fixtureIm'] and complete['fixtureAudio']
     assert not complete['realPeerVerified'] and not complete['physicalAudioOutputVerified']
@@ -82,7 +83,8 @@ def main():
             assert path.with_suffix('.png').is_file()
     report = dict(ok=True, states=len(labels), actualWebView=True,
                   screenshots=len(labels) if args.screenshots else 0,
-                  syntheticEndRequests=2, realMusicRequests=0, realAccountWrites=0,
+                  syntheticEndRequests=2, endShareCounts=complete['endShareCounts'],
+                  realMusicRequests=0, realAccountWrites=0,
                   fixtureApi=True, fixtureIm=True, fixtureAudio=True, realPeerVerified=False,
                   physicalDisplayVerified=False, physicalAudioOutputVerified=False)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

@@ -76,7 +76,13 @@ fn main() {
                 value["nativePlayer"]=serde_json::to_value(client.subscribe_playback(&epoch).await.unwrap().current().unwrap()).unwrap();
                 value["nativeQueue"]=serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                 value["together"]=serde_json::to_value(client.together_view(&epoch,false).await.unwrap().value).unwrap();
-                value["endRequests"]=json!(api.calls.lock().unwrap().iter().filter(|(p,_)|p.ends_with("end/v2")).count());
+                let end_counts=api.calls.lock().unwrap().iter().filter(|(path,_)|path.ends_with("end/v2"))
+                    .map(|(_,payload)|payload["shareInfo"].as_str()
+                        .and_then(|share|serde_json::from_str::<serde_json::Value>(share).ok())
+                        .and_then(|share|share["thisListenCount"].as_u64()))
+                    .collect::<Vec<_>>();
+                value["endRequests"]=json!(end_counts.len());
+                value["endShareCounts"]=json!(end_counts);
                 value["endStarted"]=json!(api.end_started.load(Ordering::SeqCst));
                 value["imClosed"]=json!(im.closed.load(Ordering::SeqCst));
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();

@@ -658,6 +658,11 @@ async fn room_queue_pause_heartbeat_and_exit_complete_with_readback() {
         2
     );
     assert_eq!(calls[15].payload["progress"], 1);
+    let cleanup = calls
+        .iter()
+        .find(|call| call.path.ends_with("end/v2"))
+        .unwrap();
+    assert_eq!(cleanup.payload, json!({"roomId":"isolated-room"}));
     assert!(
         service
             .operations_for(&token)

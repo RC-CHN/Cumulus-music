@@ -356,9 +356,7 @@ impl Context {
                 .is_some_and(|p| !p.display.is_empty())
                 && queue.items.is_empty()
             {
-                let ended = service
-                    .end_for(&self.token, &self.room_id, None, now())
-                    .await?;
+                let ended = service.leave_for(&self.token, &self.room_id, now()).await?;
                 if ended.phase != TogetherPhase::Confirmed {
                     return Err(Error::MutationUncertain);
                 }

@@ -49,6 +49,26 @@
       "evidence": "8 host cases, lost ACK regression, room replacement, pending-play reconciliation, local stop, cleanup failure, account switch, waiting timeout/empty queue"
     },
     {
+      "id": "normal_exit_share_info",
+      "source": "M/75:473 (startup cleanup), 926–938 (normal exit)",
+      "interface": "/api/listen/together/end/v2",
+      "implementation": [
+        "core/src/listen_together/service/commands.rs",
+        "core/src/listen_together/service/lifecycle.rs",
+        "core/src/listen_together/service/timer.rs",
+        "core/src/client/together/mod.rs",
+        "core/src/client/together/runtime.rs"
+      ],
+      "tests": [
+        "core/tests/client_together.rs",
+        "core/tests/together_service.rs",
+        "core/tests/together_protocol.rs",
+        "scripts/ci/queue_room_smoke.py"
+      ],
+      "evidence": "normal and automatic departures send JSON shareInfo with the recovered default count; low-level cleanup omits it, explicit counts remain supported",
+      "boundary": "no recovered per-track count or listening-history screen; no live room was used"
+    },
+    {
       "id": "desktop_end_recovery",
       "implementation": [
         "core/src/client/together/dto.rs",

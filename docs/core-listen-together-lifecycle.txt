@@ -24,8 +24,9 @@ SDK清理失败仍尝试结束同一远端房间，但保留本机恢复责任�
 resolve先对已经发出的未决End只读核对，再/api/listen/together/status/get；
 仍是同一房间时读/api/listen/together/sync/playlist/get（现有refresh契约），
 然后end_for再次核验当前房间，调用/api/listen/together/end/v2，参数roomId；
-既有API在调用方显式提供count时才发送shareInfo JSON及thisListenCount，
-当前自动退出未提供count。这与官方默认1的统计参数有差异，完整计数/记录仍待补。
+普通离开及已接入的自动离开统一走leave_for。未恢复逐首计数，因此按官方缺省值发送
+shareInfo="{\"thisListenCount\":1}"；队列长度不是听歌数。保留底层仅roomId的
+清理请求形式，对应官方启动恢复的独立分支。完整计数和听歌记录仍待补。
 成功后连续状态回读确认。
 已经无房间或变成其他房间时不发end；不得结束另一个设备/后续加入的新房间。
 结束请求回包丢失留Uncertain，页面要求核对；不会用重复结束消息或心跳重发。

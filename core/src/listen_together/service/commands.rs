@@ -51,6 +51,17 @@ impl TogetherService {
         )
         .await
     }
+    /// M/75's normal exit sends shareInfo, with a default listen count of
+    /// one when the model has no count. Do not infer the count from the queue.
+    pub async fn leave_for(
+        &self,
+        token: &SessionToken,
+        room: &str,
+        now: u64,
+    ) -> Result<TogetherOperation> {
+        self.end_for(token, room, Some(1), now).await
+    }
+
     /// Explicit exit may supersede an unresolved queue/play write, but first
     /// verifies the current room. It never exits a different observed room.
     pub async fn end_for(

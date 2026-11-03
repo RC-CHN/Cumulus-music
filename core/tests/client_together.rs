@@ -141,6 +141,7 @@ impl Api for Backend {
                     json!({"code":200,"data":{"result":true}})
                 }
                 "/api/listen/together/end/v2" => {
+                    assert_eq!(p["shareInfo"], r#"{"thisListenCount":1}"#);
                     state.inside = false;
                     state.peer = false;
                     state.playlist = None;

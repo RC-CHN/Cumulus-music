@@ -324,7 +324,7 @@ impl MusicClient {
                 self.player_action(epoch, action).await?;
             }
             TogetherCommand::End { room_id } => {
-                let op = service.end_for(&token, &room_id, None, now()).await?;
+                let op = service.leave_for(&token, &room_id, now()).await?;
                 if op.phase != TogetherPhase::Confirmed {
                     return Err(Error::MutationUncertain);
                 }
@@ -525,9 +525,7 @@ impl MusicClient {
             .as_ref()
             .is_some_and(|r| r.room_id == binding.room_id)
         {
-            let result = service
-                .end_for(&token, &binding.room_id, None, now())
-                .await?;
+            let result = service.leave_for(&token, &binding.room_id, now()).await?;
             if result.phase != TogetherPhase::Confirmed {
                 return Err(Error::MutationUncertain);
             }

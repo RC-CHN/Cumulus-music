@@ -28,7 +28,7 @@ impl TogetherService {
                 if refreshed.room.as_ref().map(|r| &r.room_id) == Some(&room.room_id)
                     && refreshed.role == Some(RoomRole::Waiting)
                 {
-                    self.end_for(token, &room.room_id, None, now).await?;
+                    self.leave_for(token, &room.room_id, now).await?;
                     return Ok(true);
                 }
                 return Ok(false);
@@ -61,7 +61,7 @@ impl TogetherService {
                         if matches!(error.root(), Error::Service { .. }) {
                             let refreshed = self.refresh_for(token, now).await?;
                             if refreshed.room.as_ref().map(|r| &r.room_id) == Some(&room.room_id) {
-                                self.end_for(token, &room.room_id, None, now).await?;
+                                self.leave_for(token, &room.room_id, now).await?;
                             }
                         }
                         return Err(error);
