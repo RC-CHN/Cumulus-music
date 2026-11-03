@@ -15,7 +15,7 @@ use crate::{
 };
 use sha2::{Digest, Sha256};
 use std::{path::Path, sync::Arc};
-const KIND: &str = "offline_music_v1";
+pub(super) const KIND: &str = "offline_music_v1";
 
 pub struct OfflineLibrary {
     pub(super) session: Arc<AccountSession>,
@@ -206,7 +206,7 @@ impl OfflineLibrary {
         Ok(())
     }
 }
-fn path_id(path: &Path) -> Result<String> {
+pub(super) fn path_id(path: &Path) -> Result<String> {
     Ok(hex::encode(Sha256::digest(
         path.to_str()
             .ok_or(Error::InvalidInput("offline path requires lossless UTF-8"))?

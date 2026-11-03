@@ -496,6 +496,13 @@ impl AccountSession {
         }
         if error.is_service_code(301) {
             state.invalidate(SessionStatus::Expired)?;
+            let native: Arc<dyn std::any::Any + Send + Sync> = state.api.clone();
+            if let (Some(store), Ok(client)) = (
+                self.store.as_deref(),
+                native.downcast::<crate::protocol::http::MusicHttpClient>(),
+            ) {
+                super::profiles::clear_binding_for(store, &client.credentials())?;
+            }
         }
         Ok(error)
     }

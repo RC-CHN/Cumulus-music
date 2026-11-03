@@ -176,6 +176,11 @@ impl MusicClient {
         Ok(client)
     }
 
+    /// Explicit native-only cold offline capability; no desktop IPC exposes it.
+    pub fn grant_cold_offline(&self) -> Result<crate::account::profiles::ColdOfflineGrant> {
+        self.registry.grant_cold_offline(self.session.clone())
+    }
+
     /// Native dependency injection for non-Tauri hosts and contract tests.
     pub fn with_session(session: Arc<AccountSession>, registry: Arc<ProfileRegistry>) -> Self {
         let focus = Arc::new(focus::MediaFocus::default());

@@ -398,6 +398,24 @@ impl Credentials {
         })
     }
 
+    /// Native revision only; never returns credential values to the offline grant.
+    pub(super) fn offline_credential_revision(&self) -> Result<Option<String>> {
+        let state = self.lock()?;
+        self.require_current(&state)?;
+        if state.record.login_notice.is_some() || state.record.queue_reset.is_some() {
+            return Ok(None);
+        }
+        let target = self.origin.request_url(
+            crate::protocol::http::WireRoute::Eapi,
+            "/api/w/nuser/account/get",
+        )?;
+        let mut matching = request_cookies(&jar(&state.record)?, &target)
+            .into_iter()
+            .filter(|(name, value)| name == "MUSIC_U" && !value.is_empty());
+        Ok((matching.next().is_some() && matching.next().is_none())
+            .then(|| state.record.revision.clone()))
+    }
+
     pub(crate) fn invalid_login_notice(&self) -> Result<Option<super::login_policy::LoginNotice>> {
         let state = self.lock()?;
         self.require_current(&state)?;

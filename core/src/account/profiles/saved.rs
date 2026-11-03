@@ -131,6 +131,7 @@ impl ProfileRegistry {
                     profile,
                     selection.auto_login,
                 )?)?;
+                let offline_revision = client.credentials().offline_credential_revision()?;
                 self.store.transaction(|tx| {
                     removal::available(tx, &selection.session_id)?;
                     if tx.get(OWNER, super::KIND, "active")?
@@ -138,10 +139,16 @@ impl ProfileRegistry {
                     {
                         return Err(Error::StaleResponse);
                     }
-                    if tx.get(OWNER, KIND, uid)?.as_ref() == Some(&record) {
-                        return Ok(());
+                    super::offline::store_verified(
+                        tx,
+                        &selection,
+                        uid,
+                        offline_revision.as_deref(),
+                    )?;
+                    if tx.get(OWNER, KIND, uid)?.as_ref() != Some(&record) {
+                        tx.put(OWNER, KIND, uid, &record)?;
                     }
-                    tx.put(OWNER, KIND, uid, &record)
+                    Ok(())
                 })
             },
         )

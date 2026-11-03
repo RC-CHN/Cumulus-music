@@ -1,6 +1,9 @@
 //! Same-origin account selection and isolated candidate credential stores.
 //! SQLite commits the selected profile and identity together before publishing
 //! the in-memory account. Old candidates cannot replace a newer selection.
+mod offline;
+pub use offline::ColdOfflineGrant;
+pub(crate) use offline::clear_binding_for;
 mod quick;
 mod registration;
 mod removal;
@@ -271,6 +274,7 @@ impl LoginCandidate {
             auto_login: self.auto_login.load(Ordering::Acquire),
         };
         let saved = SavedProfile::from_verified(&self.id, &profile, selection.auto_login)?;
+        let offline_revision = self.credentials.offline_credential_revision()?;
         let registration_phone = self
             .registration_phone
             .lock()
@@ -313,6 +317,7 @@ impl LoginCandidate {
                 // together. A failed write cannot publish a selectable account.
                 registration::settle(tx, registration_phone.as_ref(), &self.id)?;
                 tx.put(OWNER, saved::KIND, &uid, &serde_json::to_value(&saved)?)?;
+                offline::store_verified(tx, &selection, &uid, offline_revision.as_deref())?;
                 tx.put(OWNER, KIND, "active", &serde_json::to_value(selection)?)
             },
         )
