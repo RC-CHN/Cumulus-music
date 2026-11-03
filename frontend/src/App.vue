@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import SearchBox from './components/search/SearchBox.vue';
+import { useMotion } from './composables/useMotion';
+import { createPageTransition } from './services/pageTransition';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
@@ -1014,6 +1016,9 @@ const navigationKey = computed(() => {
   const { pagination, ...route } = current;
   return JSON.stringify({ ...route, offset: pagination?.offset, number: pagination?.number });
 });
+const pageMotion = useMotion();
+const pageTransition = createPageTransition(() => pageMotion.reduced.value);
+onUnmounted(pageTransition.dispose);
 const pageKey = computed(() =>
   JSON.stringify({
     account: page.value.kind === 'local' ? undefined : [account.value.epoch, account.value.status],
@@ -1568,7 +1573,15 @@ onUnmounted(() => {
           v-show="!playlistEditor && !batchTarget && !downloadBatch && !cloudBatchTarget"
           class="content-page-previous"
         >
-          <Transition name="page" mode="out-in" @after-enter="miniFmFocus.complete">
+          <Transition
+            :css="false"
+            mode="out-in"
+            @enter="pageTransition.enter"
+            @leave="pageTransition.leave"
+            @enter-cancelled="pageTransition.cancel"
+            @leave-cancelled="pageTransition.cancel"
+            @after-enter="miniFmFocus.complete"
+          >
             <div class="page-view" :key="pageKey">
               <LocalPage
                 ref="localPageRef"
