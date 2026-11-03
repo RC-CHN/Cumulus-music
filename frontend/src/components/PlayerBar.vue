@@ -16,6 +16,7 @@ import { artistLabel } from '../services/artistLabel';
 import { effectLauncher, equalizerLauncher } from '../services/equalizer';
 import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
 const equalizerOpen = ref(false);
+const effectManagementOnOpen = ref(false);
 const props = withDefaults(
   defineProps<{
     player: PlayerModel;
@@ -43,6 +44,10 @@ const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
 const effectEntry = computed(() =>
   effectLauncher(view.value?.equalizer, view.value?.boundParametric),
 );
+function openEqualizer() {
+  effectManagementOnOpen.value = !!view.value?.boundParametric;
+  equalizerOpen.value = true;
+}
 function loginFromEffects() {
   equalizerOpen.value = false;
   emit('login');
@@ -397,7 +402,7 @@ async function seek(event: Event) {
       </button>
       <button
         class="icon-button equalizer-toggle"
-        aria-label="均衡器"
+        :aria-label="view?.boundParametric ? '管理独立参数均衡' : '均衡器'"
         aria-haspopup="dialog"
         :aria-describedby="equalizerDescription"
         :data-equalizer-state="equalizerEntry.state"
@@ -405,7 +410,7 @@ async function seek(event: Event) {
         :data-parametric-state="view?.boundParametric"
         :title="effectEntry.label"
         :disabled="!ready"
-        @click="equalizerOpen = true"
+        @click="openEqualizer"
       >
         {{ view?.boundParametric === 'configured' ? 'PEQ' : 'EQ'
         }}<span v-if="effectEntry.state === 'problem'" class="equalizer-marker" aria-hidden="true"
@@ -504,6 +509,7 @@ async function seek(event: Event) {
       v-if="equalizerOpen"
       :account="account"
       :player="player"
+      :initial-effect-management="effectManagementOnOpen"
       @close="equalizerOpen = false"
       @login="loginFromEffects"
     />

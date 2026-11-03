@@ -69,6 +69,20 @@
     }, 'same native playback advances through PEQ');
     await capture('02_configured');
 
+    stage = 'direct-management';
+    click(button(one('.effect-directory[open]'), '关闭音效目录'));
+    await wait(() => !one('.effect-directory[open]'), 'initial directory closes');
+    click(button(one('.equalizer-dialog[open]'), '关闭均衡器'));
+    await wait(() => !one('.equalizer-dialog[open]'), 'initial equalizer closes');
+    click(await wait(() => enabled(one('.equalizer-toggle[aria-label="管理独立参数均衡"]')),
+      'bound footer management shortcut'));
+    const local = await wait(() => one('.effect-directory[open]'), 'footer opens management directly');
+    assert(button(local, '浏览音效目录') && !local.querySelector('[aria-label="音效分类"]'),
+      'management opens without starting catalogue navigation');
+    click(await wait(() => enabled(local.querySelector('[data-effect-registration="300"]')),
+      'bound registration appears in local management'));
+    await wait(() => phase('configured') && enabled(action('stop')), 'reopened local controls retain native binding');
+
     stage = 'stop';
     click(action('stop'));
     await wait(() => phase('recovery_required') && enabled(action('stop')) && enabled(action('status')),
@@ -114,7 +128,7 @@
     const final = await player();
     assert(final.playId === baseline.playId && final.position > baseline.position, 'binding does not replace the ordinary queue');
     await capture('05_released');
-    await emit('complete', { ok: true, stageCount: 5, sameNativePlayback: true });
+    await emit('complete', { ok: true, stageCount: 5, sameNativePlayback: true, directManagementVerified: true });
   } catch (error) {
     await emit('failed', { step: stage, message: String(error), stack: error?.stack,
       phase: controls()?.getAttribute('data-peq-phase') });

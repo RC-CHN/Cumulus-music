@@ -13,7 +13,7 @@ import Icon from './Icon.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
 import EffectParametricControls from './EffectParametricControls.vue';
 
-const props = defineProps<{ account: AccountView }>();
+const props = defineProps<{ account: AccountView; initialManagementOnly?: boolean }>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const core = useCore();
 const { effective: appearance } = useAppearance();
@@ -36,6 +36,7 @@ const kind = ref<Category>('highly_recommended');
 const items = ref<EffectCatalogueItem[]>([]);
 const selected = ref<EffectCatalogueItem>();
 const access = ref<EffectAccess>();
+const browsing = ref(!props.initialManagementOnly);
 const pending = ref<PendingEffectRegistration[]>([]);
 const pendingError = ref('');
 const pendingLoading = ref(false);
@@ -131,6 +132,11 @@ async function refreshPending() {
   }
 }
 
+function browseCatalogue() {
+  browsing.value = true;
+  void load(kind.value);
+}
+
 async function openRegistration(id: number) {
   detailRequest++;
   selected.value = items.value.find((item) => item.id === id) ?? {
@@ -162,7 +168,7 @@ watch(
 onMounted(() => {
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   dialog.value?.showModal();
-  void load(kind.value);
+  if (browsing.value) void load(kind.value);
   void refreshPending();
 });
 onUnmounted(() => {
@@ -196,11 +202,14 @@ onUnmounted(() => {
       </div>
       <template v-else>
         <section
-          v-if="pending.length || pendingError"
+          v-if="pending.length || pendingError || !browsing"
           class="effect-registration"
           aria-label="本机音效登记"
         >
           <p v-if="pendingError" role="status">{{ pendingError }}</p>
+          <p v-else-if="!browsing && !pending.length" role="status">
+            {{ pendingLoading ? '正在读取本机音效登记…' : '没有待处理的本机音效登记。' }}
+          </p>
           <button
             v-if="pendingError"
             type="button"
@@ -230,58 +239,61 @@ onUnmounted(() => {
             </button>
           </template>
         </section>
-        <nav aria-label="音效分类">
-          <button
-            v-for="[key, label] in categories"
-            :key="key"
-            type="button"
-            :aria-pressed="kind === key"
-            @click="kind !== key && load(key)"
-          >
-            {{ label }}
-          </button>
-        </nav>
-        <EffectDeviceDirectory v-if="kind === 'devices'" :account="account" />
-        <div v-else-if="loading" role="status" class="effect-directory-message">
-          正在读取音效目录…
-        </div>
-        <div v-else-if="listError" class="effect-directory-message">
-          <p role="alert">{{ listError }}</p>
-          <button type="button" @click="load(kind)">重试目录</button>
-        </div>
-        <p v-else-if="!items.length" class="effect-directory-message">此分类暂无音效。</p>
-        <ul v-else class="effect-directory-grid">
-          <li v-for="item in items" :key="item.id">
+        <button v-if="!browsing" type="button" @click="browseCatalogue">浏览音效目录</button>
+        <template v-else>
+          <nav aria-label="音效分类">
             <button
-              class="effect-directory-card"
-              :class="{ 'with-artwork': artworkFor(item) }"
-              :aria-pressed="selected?.id === item.id"
+              v-for="[key, label] in categories"
+              :key="key"
               type="button"
-              @click="inspect(item)"
+              :aria-pressed="kind === key"
+              @click="kind !== key && load(key)"
             >
-              <img
-                v-if="artworkFor(item)"
-                :key="artworkFor(item)"
-                :src="artworkFor(item)"
-                loading="lazy"
-                referrerpolicy="no-referrer"
-                alt=""
-                @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
-              />
-              <Icon v-else name="music" />
-              <strong>
-                {{ item.name || '未命名音效' }}
-                <span
-                  v-if="item.membership"
-                  class="effect-card-membership"
-                  :data-effect-membership="item.membership"
-                  >{{ item.membership === 'svip' ? 'SVIP' : 'VIP' }}</span
-                >
-              </strong>
-              <span v-if="item.subtitle">{{ item.subtitle }}</span>
+              {{ label }}
             </button>
-          </li>
-        </ul>
+          </nav>
+          <EffectDeviceDirectory v-if="kind === 'devices'" :account="account" />
+          <div v-else-if="loading" role="status" class="effect-directory-message">
+            正在读取音效目录…
+          </div>
+          <div v-else-if="listError" class="effect-directory-message">
+            <p role="alert">{{ listError }}</p>
+            <button type="button" @click="load(kind)">重试目录</button>
+          </div>
+          <p v-else-if="!items.length" class="effect-directory-message">此分类暂无音效。</p>
+          <ul v-else class="effect-directory-grid">
+            <li v-for="item in items" :key="item.id">
+              <button
+                class="effect-directory-card"
+                :class="{ 'with-artwork': artworkFor(item) }"
+                :aria-pressed="selected?.id === item.id"
+                type="button"
+                @click="inspect(item)"
+              >
+                <img
+                  v-if="artworkFor(item)"
+                  :key="artworkFor(item)"
+                  :src="artworkFor(item)"
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  alt=""
+                  @error="failedArtwork.add(($event.currentTarget as HTMLImageElement).src)"
+                />
+                <Icon v-else name="music" />
+                <strong>
+                  {{ item.name || '未命名音效' }}
+                  <span
+                    v-if="item.membership"
+                    class="effect-card-membership"
+                    :data-effect-membership="item.membership"
+                    >{{ item.membership === 'svip' ? 'SVIP' : 'VIP' }}</span
+                  >
+                </strong>
+                <span v-if="item.subtitle">{{ item.subtitle }}</span>
+              </button>
+            </li>
+          </ul>
+        </template>
       </template>
     </div>
     <section

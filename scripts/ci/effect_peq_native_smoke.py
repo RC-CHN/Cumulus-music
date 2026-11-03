@@ -44,6 +44,7 @@ def main():
 
     complete = read('complete')
     assert complete['ok'] and complete['stageCount'] == 5 and complete['sameNativePlayback']
+    assert complete['directManagementVerified']
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
     uncertain = read('ux_03_stop_uncertain')['nativePeq']
@@ -53,6 +54,9 @@ def main():
     assert configured['starts'] == configured['attaches'] == 1 and configured['nativeAttached']
     assert configured['processedSamples'] > 0 and configured['failedBlocks'] == 0
     assert uncertain['stops'] == uncertain['detaches'] == 1 and not uncertain['nativeAttached']
+    assert uncertain['calls'] == configured['calls'] + [
+        {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
+    ]
     assert {k: v for k, v in reconciled.items() if k != 'calls'} == {
         k: v for k, v in uncertain.items() if k != 'calls'
     }
@@ -69,6 +73,13 @@ def main():
         {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'ack'},
     ]
     assert all(call['result'] != 'unexpected' for call in released['calls'])
+    assert [call['path'] for call in released['calls'] if not call['path'].endswith(('/set', '/stop'))] == [
+        '/api/usertool/sound/queryAllSound',
+        '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
+        '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
+        '/api/vipauth/app/interests/auth/query', '/api/vipauth/app/interests/auth/query',
+        '/api/vipauth/app/interests/recyclequery', '/api/usertool/sound/queryAllSound',
+    ]
 
     # Audit the completed synthetic profile independently of the renderer and
     # Rust trace; do not export the opaque registration record.

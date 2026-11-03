@@ -16,7 +16,11 @@ import { failure } from '../services/contracts';
 import type { AccountView } from '../services/contracts';
 import EffectDirectory from './EffectDirectory.vue';
 import Icon from './Icon.vue';
-const props = defineProps<{ player: PlayerModel; account: AccountView }>();
+const props = defineProps<{
+  player: PlayerModel;
+  account: AccountView;
+  initialEffectManagement?: boolean;
+}>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const { view, ready, equalizerDraft } = props.player;
 const { settings, preset, draft, pending, blocked, error, stage, applyDraft, discard } =
@@ -24,6 +28,8 @@ const { settings, preset, draft, pending, blocked, error, stage, applyDraft, dis
 const current = computed(() => view.value?.equalizer);
 const dialog = ref<HTMLDialogElement>();
 const directoryOpen = ref(false);
+const directoryOpener = ref<HTMLButtonElement>();
+const managementOnly = ref(false);
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
 const tone = computed(() => equalizerTone(settings.value));
 const storedToneBypassed = computed(
@@ -59,8 +65,16 @@ watch(
 onMounted(() => {
   focused = document.activeElement as HTMLElement;
   dialog.value?.showModal();
+  if (props.initialEffectManagement) {
+    directoryOpener.value?.focus({ preventScroll: true });
+    openDirectory(true);
+  }
 });
 onUnmounted(() => focused?.focus());
+function openDirectory(localOnly = false) {
+  managementOnly.value = localOnly;
+  directoryOpen.value = true;
+}
 function change(
   enabled: boolean,
   values = gains.value,
@@ -185,7 +199,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           <span></span>{{ settings?.master_bypassed ? '音效已暂停' : '音效总开关' }}
         </button>
         <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
-        <button type="button" @click="directoryOpen = true">音效目录</button>
+        <button ref="directoryOpener" type="button" @click="openDirectory()">音效目录</button>
       </div>
       <div class="equalizer-controls">
         <label
@@ -321,6 +335,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   <EffectDirectory
     v-if="directoryOpen"
     :account="account"
+    :initial-management-only="managementOnly"
     @close="directoryOpen = false"
     @login="emit('login')"
   />
