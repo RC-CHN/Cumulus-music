@@ -10,6 +10,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path, help='directory containing packaged native media libraries')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--download', action='store_true', help='verify one synthetic download and local playback')
     mode.add_argument('--search-experiment', choices=('v3', 'control'),
@@ -18,6 +19,10 @@ def main():
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
+    if args.runtime:
+        runtime = args.runtime.resolve(strict=True)
+        assert runtime.is_dir(), runtime
+        env['PATH'] = str(runtime) + os.pathsep + env.get('PATH', '')
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
