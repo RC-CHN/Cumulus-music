@@ -195,3 +195,16 @@ PipeWire 输出。原生时钟推进、暂停、定位后继续、倍速、CUE �
   --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm；
   便携包另加 --portable。未使用实体声卡、真实账号、外网或测试 IPC。
   快照不包含后续主线改动，不构成目标提交的 CI 或发布证据。
+
+均衡器 PCM 采样时序回归
+  Linux CI 41732716315 的 dc537f3 .deb 通过、同提交便携包在恢复均衡器
+  的振幅检查失败；41734411223 的 7cb1a98 .deb 同处失败。两份失败的
+  SQLite 快照均显示预设已重新启用、原条目仍在播放；旧探针未保留失败
+  振幅，不能由这些产物判断当时的声样成分。旧探针用上一阶段采样之前的
+  播放位置等待，等到下一次切换时条件可能早已满足。
+  现在各次切换均在偏好落盘后读取当前原生位置，等同条目推进至少一秒，
+  再采集私有 PipeWire PCM；原振幅容差、暂停静音检查和失败条件保留。
+  monitor-pcm-observations.json 在振幅断言前写入测量值和原生时间，不保存
+  原始 PCM。用实际 dc537f3 .deb 与便携包复验，两者的普通、均衡、旁路、
+  恢复和暂停振幅依次约为 2896、4862、2896、4862、0；证据分别在
+  .build/eq-fresh-position-deb/ 和 .build/eq-fresh-position-portable/。

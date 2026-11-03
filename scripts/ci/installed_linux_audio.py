@@ -235,6 +235,31 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                     and value['settings'].get('master_bypassed', False) is bypassed)
         return False
 
+    def committed_progress(label):
+        # A previous stage's position may already be stale by a full PCM
+        # capture. Anchor to this commit, then let queued audio drain before
+        # recording the next stage. The position check still proves the same
+        # native selection is advancing rather than hiding a stalled output.
+        anchor = wait_for(f'{label}: position at commit', lambda: position('playing', 0))
+        assert anchor['entry_id'] == first['entry_id']
+        settled = wait_for(f'{label}: post-commit advancement',
+                           lambda: position('playing', anchor['seconds'] + 1))
+        assert settled['entry_id'] == first['entry_id']
+        return {'atCommit': anchor['seconds'], 'beforeCapture': settled['seconds']}
+
+    monitor = {}
+    observations = {}
+
+    def capture_tone(stage, timing=None):
+        result = sink_tone(env)
+        monitor[stage] = result
+        observations[stage] = {'tone': result, 'nativePosition': timing}
+        # Preserve the last actual measurement even when an assertion fails,
+        # without retaining PCM or recording anything outside the private sink.
+        (root/'monitor-pcm-observations.json').write_text(
+            json.dumps(observations, indent=2) + '\n', encoding='utf-8')
+        return result
+
     with closing(Input(x, y)) as inputs:
         wait_for('installed main window focus', lambda: active_window() == window)
         inputs.click(62, 520)  # Local Music
@@ -261,10 +286,8 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert next_position['entry_id'] == first['entry_id']
         wait_for('installed app linked to private PipeWire sink', lambda: private_pipewire_stream(app.pid, env), 6)
         screenshot('installed-local-playing.png')
-        monitor = {}
         if verify_monitor_pcm:
-            monitor['playing'] = sink_tone(env)
-            baseline = monitor['playing']
+            baseline = capture_tone('playing')
             assert baseline['rms'] > 50
             assert baseline['amplitude440Hz'] > baseline['rms'] * 1.3, 'private sink did not receive the 440 Hz fixture'
         if packaged_filter:
@@ -277,12 +300,10 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             wait_for('installed equalizer preset committed', preset_saved)
             wait_for('installed audio filter mapped by the player',
                      lambda: str(packaged_filter) in Path(f'/proc/{app.pid}/maps').read_text())
-            effected = wait_for('same track progresses with the installed preset',
-                                lambda: position('playing', next_position['seconds'] + .4))
-            assert effected['entry_id'] == first['entry_id']
+            equalized_progress = committed_progress('installed equalizer preset')
             screenshot('installed-local-equalizer.png')
             if verify_monitor_pcm:
-                monitor['equalized'] = sink_tone(env)
+                capture_tone('equalized', equalized_progress)
                 assert monitor['equalized']['amplitude440Hz'] > baseline['amplitude440Hz'] * 1.05, (
                     'installed preset did not increase the 440 Hz tone')
                 for _ in range(2):  # Preset -> directory -> master switch.
@@ -290,19 +311,15 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                     time.sleep(.12)
                 inputs.key('space')
                 wait_for('installed master bypass committed', lambda: preset_saved(True))
-                bypassed = wait_for('same track progresses while effects are bypassed',
-                                    lambda: position('playing', effected['seconds'] + .4))
-                assert bypassed['entry_id'] == first['entry_id']
-                monitor['bypassed'] = sink_tone(env)
+                bypassed_progress = committed_progress('installed master bypass')
+                capture_tone('bypassed', bypassed_progress)
                 assert math.isclose(monitor['bypassed']['amplitude440Hz'],
                                     baseline['amplitude440Hz'], rel_tol=.03), (
                     'installed master bypass did not restore the original 440 Hz tone')
                 inputs.key('space')
                 wait_for('installed master reactivation committed', preset_saved)
-                restored = wait_for('same track progresses with the restored preset',
-                                    lambda: position('playing', bypassed['seconds'] + .4))
-                assert restored['entry_id'] == first['entry_id']
-                monitor['restored'] = sink_tone(env)
+                restored_progress = committed_progress('installed master reactivation')
+                capture_tone('restored', restored_progress)
                 assert math.isclose(monitor['restored']['amplitude440Hz'],
                                     monitor['equalized']['amplitude440Hz'], rel_tol=.03), (
                     'reactivating the installed preset did not restore the equalized 440 Hz tone')
@@ -322,7 +339,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert abs(held['seconds'] - settled['seconds']) < .05, 'clock changed after pause'
         screenshot('installed-local-paused.png')
         if verify_monitor_pcm:
-            monitor['paused'] = sink_tone(env)
+            capture_tone('paused')
             assert monitor['paused']['rms'] < baseline['rms'] * .01, 'private sink was not silent after pause'
     report = {'nativePositionAdvanced': True, 'pauseHeld': True, 'syntheticLocalSource': True,
             'privatePipeWireNullSink': True, 'physicalAudioOutputVerified': False,
