@@ -55,6 +55,8 @@ def main():
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         flag = 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified'
         assert complete['ok'] and complete[flag] and complete['stageCount'] == 2
+        if args.voice_direct:
+            assert complete['preparedTicketFenceVerified']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (2 if args.screenshots else 0)
         print(json.dumps(dict(complete, actualWebView=True)))

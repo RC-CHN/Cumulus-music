@@ -90,12 +90,23 @@
       }
       assert(first,'standalone episode reached actual native playback');
       await capture('voice_without_radio_playing');
+      const oldTicket=await invoke('prepare_play_selection',{
+        epoch,expectedQueueRevision:first.queueRevision,expectedPlayId:first.playId,
+      });
       click(card.querySelector('.search-card-play'));
       await wait(()=>one('.playerbar').dataset.state==='paused','same episode pauses from the search card');
       const paused=await invoke('player_snapshot',{epoch});
       assert(paused.playId===first.playId&&paused.queueLen===1,'same episode and single-entry native queue');
+      assert(paused.queueRevision===first.queueRevision,'pause leaves queue identity unchanged');
+      const stale=await invoke('commit_prepared_selection',{
+        epoch,ticket:oldTicket,selection:{kind:'songs',ids:['2'],index:0,quality:'standard'},
+      }).then(()=>null,error=>error);
+      assert(stale?.code==='stale','native pause invalidates the old ticket even without a queue or play ID change');
+      const retained=await invoke('player_snapshot',{epoch});
+      assert(retained.playId===paused.playId&&retained.queueRevision===paused.queueRevision&&retained.state==='paused',
+        'stale commit does not replace the paused episode');
       await capture('voice_without_radio_paused');
-      await emit('complete',{ok:true,voiceDirectVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,voiceDirectVerified:true,preparedTicketFenceVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchV3Proof){
