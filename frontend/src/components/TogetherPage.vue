@@ -28,6 +28,13 @@ function companionDuration(seconds: number) {
 const scroll = ref(0),
   leave = ref<string>();
 const trackList = ref<HTMLElement>();
+const statisticsStatus = ref<HTMLElement>();
+function retryStatistics(event: MouseEvent) {
+  if (document.activeElement === event.currentTarget) {
+    statisticsStatus.value?.focus({ preventScroll: true });
+  }
+  void props.model.retryStatistics();
+}
 const failedAvatars = ref(new Set<string>());
 const rowHeight = 58;
 const maxViewport = rowHeight * 8;
@@ -187,7 +194,9 @@ async function exit() {
         </p>
         <div
           v-if="view.room?.relationKey && !ending"
+          ref="statisticsStatus"
           class="together-statistics"
+          tabindex="-1"
           aria-live="polite"
         >
           <p v-if="statistics">
@@ -197,7 +206,7 @@ async function exit() {
           <p v-if="statisticsLoading">正在读取共同收听记录…</p>
           <p v-if="statisticsError">
             {{ statistics ? '共同收听记录未能更新。' : '暂时无法读取共同收听记录。' }}
-            <button class="text-button" @click="model.retryStatistics()">重试</button>
+            <button class="text-button" @click="retryStatistics">重试</button>
           </p>
         </div>
         <div class="together-actions">

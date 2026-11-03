@@ -82,8 +82,12 @@ export function useTogether(
     try {
       const result = await core.togetherStatistics(e, key);
       if (current() && result.epoch === e) statistics.value = result.value;
-    } catch {
-      if (current()) statisticsError.value = true;
+    } catch (error) {
+      if (current()) {
+        const code = failure(error).code;
+        if (code === 'session_expired' || code === 'profile_changed') issue(error);
+        else statisticsError.value = true;
+      }
     } finally {
       if (current()) statisticsLoading.value = false;
     }
