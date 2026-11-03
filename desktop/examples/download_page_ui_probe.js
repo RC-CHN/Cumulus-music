@@ -31,6 +31,15 @@
   async function closeDialog(){click(button('关闭下载对话框'));await wait(()=>!one('dialog'),'dialog closes');}
   try {
     await wait(()=>one('.track-row'),'initial page');await fixture('seed');click(button('下载管理'));await wait(()=>first()&&ready(),'download records');
+    await select('song');
+    const lyricTaskId=first().dataset.downloadTask;
+    await fixture('prepare_lyric_repair',{id:lyricTaskId});
+    click(button('刷新状态'));
+    const lyricRow=()=>all('[data-download-task]').find(n=>n.dataset.downloadTask===lyricTaskId);
+    await wait(()=>button('重试歌词',lyricRow()??document)&&ready(),'completed audio exposes lyric-only recovery');
+    click(button('重试歌词',lyricRow()));
+    await wait(()=>lyricRow()&&!button('重试歌词',lyricRow())&&ready(),'lyric recovery settles on the completed row');
+    await fixture('verify_lyric_repair',{id:lyricTaskId});
     for(const [w,h,theme] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'light'],[760,540,'dark']]) {
       await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'window resize');click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(theme==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu'),'theme applied');
       const suffix=`${w}_${theme}`;
@@ -184,6 +193,6 @@
     const videoAfter=await client.videoSnapshot(epoch);
     assert(videoAfter.playId===videoBefore.playId&&videoAfter.id==='133'&&videoAfter.local,'detail retry does not restart local video');
     await capture('mv_offline_playback',{exactMenu:true,routeOpened:true,nonBlackPixels:nonBlack,frames:Number(canvas.dataset.renderedFrames),local:videoAfter.local,id:videoAfter.id,retryKeptPlayId:true});
-    await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false,tabWithoutFramesVerified:true,virtualKeyboardWithoutFramesVerified:true});
+    await emit('complete',{ok:true,downloadPageUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0,syntheticNativeRecords:146,physicalPointerVerified:false,tabWithoutFramesVerified:true,virtualKeyboardWithoutFramesVerified:true,completedLyricsRepairVerified:true});
   }catch(error){const failedAt=stage;await capture('failure_state').catch(()=>{});await emit('failed',{stageCount:count,step:failedAt,message:String(error),stack:error.stack,coverage:window.__downloadCoverage});}
 })();

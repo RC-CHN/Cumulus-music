@@ -93,10 +93,10 @@ const quality = computed(() =>
         ><button
           v-if="task.cleanupPending"
           class="text-button download-repair"
-          :disabled="locked || repairing"
+          :disabled="locked || repairing || !!task.fileOperation"
           @click="emit('control', 'repair')"
         >
-          修复
+          {{ task.lyricsStatus === 'error' ? '重试歌词' : '修复' }}
         </button>
         <button
           class="icon-button"

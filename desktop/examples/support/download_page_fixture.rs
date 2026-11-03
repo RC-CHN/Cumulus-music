@@ -278,6 +278,52 @@ impl Fixture {
                 }
                 *self.records.lock().unwrap() = saved;
             }
+            "prepare_lyric_repair" | "verify_lyric_repair" => {
+                let id = value["id"]
+                    .as_str()
+                    .ok_or(Error::InvalidInput("missing fixture task"))?;
+                let seed = self
+                    .records
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .find(|(key, _)| key == id)
+                    .map(|(_, record)| record.clone())
+                    .ok_or(Error::InvalidInput("not a seeded fixture task"))?;
+                let mut row = self
+                    .store
+                    .get("2", "download_tasks_v1", id)?
+                    .ok_or(Error::InvalidInput("missing seeded fixture task"))?;
+                if row["origin"] != seed["origin"] || row["status"] != "complete" {
+                    return Err(Error::State("not a completed fixture task"));
+                }
+                let target = PathBuf::from(
+                    seed["target"]
+                        .as_str()
+                        .ok_or(Error::State("missing seeded audio target"))?,
+                );
+                assert!(target.starts_with(self.root.join("media").canonicalize()?));
+                if mode == "prepare_lyric_repair" {
+                    assert!(!target.with_extension("lrc").exists());
+                    row["options"]["lyrics"] = json!(true);
+                    row["lyrics_status"] = json!("error");
+                    row["cleanup_pending"] = json!(true);
+                    self.store.put("2", "download_tasks_v1", id, &row)?;
+                } else {
+                    assert_eq!(row["lyrics_status"], "complete");
+                    assert_eq!(row["cleanup_pending"], false);
+                    assert_eq!(row["output_integrity"], seed["output_integrity"]);
+                    assert_eq!(
+                        serde_json::to_value(cumulus_core::media::integrity::inspect_file(
+                            &target
+                        )?)?,
+                        seed["output_integrity"]
+                    );
+                    assert!(
+                        std::fs::read_to_string(target.with_extension("lrc"))?.contains("合成歌词")
+                    );
+                }
+            }
             "read_error" => {
                 self.store
                     .put("2", "download_tasks_v1", "broken-ui-fixture", &json!({}))?
