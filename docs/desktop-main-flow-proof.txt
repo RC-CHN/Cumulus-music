@@ -181,3 +181,14 @@ Cumulus 桌面主流程验收
   合成账号无需重新扫码即可经身份回读自动恢复，「我的歌单」只显示
   原基线歌单。Linux 合计 18 个检查点、17 张截图，见
   .build/main-flow-reopen-current 指向的 run/report.json。
+
+主线 2ae26ae 回归（Linux，2026-11-03）
+  使用锁文件和生产前端构建，编译该提交的 main_flow_ui_probe，在
+  en_US.UTF-8、独立 Openbox/Xvfb 与 D-Bus 下运行 main_flow_smoke.py --screenshots。
+  18 个阶段、17 张截图。合成二维码采用并持久保存，第二进程恢复同一合成账号；
+  推荐、搜索、libmpv 实际播放和暂停、私密测试歌单的建改/增删歌曲回读/清理通过。
+  下载暂停时核对已写前缀，按精确 Range 恢复后核对完整成品；封闭替身传输后
+  播放本地文件并清理，核对 SQLite 和离线账本。真实音乐请求与真实账号写入均为 0。
+  报告：.build/main-flow-2ae26ae/report.json；截图：同目录 run/first/。
+  此次使用封闭合成后端和 libmpv 空输出，没有用本次运行证明真实服务、
+  系统级断网或物理声卡。
