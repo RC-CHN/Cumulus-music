@@ -109,6 +109,52 @@ async fn eof_is_bound_to_native_entry_and_single_loop_differs_from_manual_next()
 }
 
 #[tokio::test]
+async fn fatal_native_event_in_eof_batch_cannot_advance_or_reload_playback() {
+    use cumulus_core::playback::failure::PlaybackFailure;
+
+    for (first, second) in [
+        (EngineEvent::Shutdown, EndReason::Eof),
+        (EngineEvent::OutputReload { entry_id: 1 }, EndReason::Error),
+    ] {
+        for reverse in [false, true] {
+            let f = Fixture::new();
+            let before = f.command(replace(&[1, 2])).await.unwrap();
+            let queue = f.player.queue(&f.token()).await.unwrap();
+            until(&f.player, |s| s.prefetch.state == "ready").await;
+            let prefetched = f.api.count(2);
+            {
+                let mut native = f.device.state.lock().unwrap();
+                let entry_id = native.view.entry_id.unwrap();
+                let output_failure = matches!(first, EngineEvent::OutputReload { .. });
+                let event = EngineEvent::Ended {
+                    entry_id,
+                    reason: second,
+                    error: if output_failure { -14 } else { 0 },
+                };
+                native.view.position = Some(12.0);
+                native.view.events = if reverse {
+                    vec![event, first.clone()]
+                } else {
+                    vec![first.clone(), event]
+                };
+            }
+            let failed = until(&f.player, |s| s.state == Status::Error).await;
+            assert_eq!(failed.play_id, before.play_id);
+            assert_eq!(failed.position, Some(12.0));
+            assert_eq!(song(&failed), Some(1));
+            if matches!(first, EngineEvent::Shutdown) {
+                assert!(matches!(failed.error, Some(PlaybackFailure::Engine)));
+            } else {
+                assert!(matches!(failed.error, Some(PlaybackFailure::Output)));
+            }
+            assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+            assert_eq!(f.device.state.lock().unwrap().loads, 1);
+            assert_eq!(f.api.count(2), prefetched);
+        }
+    }
+}
+
+#[tokio::test]
 async fn pause_at_native_eof_advances_without_resuming_playback() {
     let f = Fixture::new();
     f.command(replace(&[1, 2])).await.unwrap();

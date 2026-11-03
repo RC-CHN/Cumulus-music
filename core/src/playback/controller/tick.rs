@@ -129,9 +129,34 @@ impl Actor {
         let current_entry = view.entry_id == Some(loaded.media.entry_id);
         let current_position = view.position.filter(|_| current_entry);
         let was_paused = self.state == PlaybackStatus::Paused;
-        if events.iter().any(|event| {
-            matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
-        }) {
+        // Native events can share a poll (including ones drained by a
+        // transport command). A dead engine or current-entry failure cannot
+        // be converted into successful EOF or a fresh load by another event.
+        let failure = if events
+            .iter()
+            .any(|event| matches!(event, EngineEvent::Shutdown))
+        {
+            Some(PlaybackFailure::Engine)
+        } else {
+            events.iter().rev().find_map(|event| match event {
+                EngineEvent::Ended {
+                    entry_id,
+                    reason: EndReason::Error | EndReason::Redirect | EndReason::Unknown(_),
+                    error,
+                } if *entry_id == loaded.media.entry_id => {
+                    Some(PlaybackFailure::from_error(&Error::Playback {
+                        operation: "stream ended",
+                        code: *error,
+                    }))
+                }
+                _ => None,
+            })
+        };
+        if failure.is_none()
+            && events.iter().any(|event| {
+                matches!(event, EngineEvent::OutputReload { entry_id } if *entry_id == loaded.media.entry_id)
+            })
+        {
             let observed = current_position
                 .map(|p| loaded.timeline.from_media(p))
                 .transpose()?;
@@ -148,33 +173,16 @@ impl Actor {
             };
             return self.begin(options, uuid::Uuid::new_v4().simple().to_string(), None).await;
         }
-        let mut ended = false;
-        for event in events {
-            match event {
-                EngineEvent::Ended {
-                    entry_id,
-                    reason,
-                    error,
-                } if entry_id == loaded.media.entry_id => match reason {
-                    EndReason::Eof => {
-                        self.state = PlaybackStatus::Ended;
-                        ended = true;
-                    }
-                    EndReason::Error | EndReason::Redirect | EndReason::Unknown(_) => {
-                        self.state = PlaybackStatus::Error;
-                        self.error = Some(PlaybackFailure::from_error(&Error::Playback {
-                            operation: "stream ended",
-                            code: error,
-                        }));
-                    }
-                    _ => (),
-                },
-                EngineEvent::Shutdown => {
-                    self.state = PlaybackStatus::Error;
-                    self.error = Some(PlaybackFailure::Engine);
-                }
-                _ => (),
-            }
+        let ended = failure.is_none()
+            && events.iter().any(|event| {
+                matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, .. }
+                if *entry_id == loaded.media.entry_id)
+            });
+        if let Some(failure) = failure {
+            self.state = PlaybackStatus::Error;
+            self.error = Some(failure);
+        } else if ended {
+            self.state = PlaybackStatus::Ended;
         }
         if current_entry
             && matches!(
