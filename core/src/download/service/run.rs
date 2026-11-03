@@ -44,6 +44,13 @@ impl DownloadService {
         let lock = Arc::new(self.lock(id)?);
         crate::download::directory::gate::require(&self.store, &self.owner, None)?;
         let task = self.read(id)?;
+        // A direct run must honor the same integrity recovery contract as
+        // enqueue, before requesting a URL that could replace the raw job.
+        if task.needs_transfer_restart() {
+            return Err(Error::State(
+                "download integrity failure requires an explicit restart",
+            ));
+        }
         if task.file_operation.is_some() {
             return Err(Error::State("resume the pending file operation first"));
         }

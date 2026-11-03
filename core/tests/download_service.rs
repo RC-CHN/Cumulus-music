@@ -198,6 +198,41 @@ async fn cdn_denial_has_exactly_one_renewal_and_no_play_url_fallback() {
 }
 
 #[tokio::test]
+async fn direct_run_and_pause_cannot_replace_a_corrupt_partial_before_restart() {
+    let root = tempfile::tempdir().unwrap();
+    let (s, _, _, api, b) = setup(root.path(), FLAC.into(), "flac");
+    let task = s
+        .create(&json!(123), target(root.path(), "result.flac"), raw())
+        .unwrap();
+    b.audio.settings.lock().unwrap().data[0] ^= 0x20;
+    assert!(matches!(
+        s.run(&task.id, Run::default()).await,
+        Err(Error::Media("final transfer integrity mismatch"))
+    ));
+    let failed = s.get(&task.id).unwrap();
+    assert_eq!(failed.status, Status::Error);
+    assert!(s.request(&task.id, Action::Pause).is_err());
+    assert!(matches!(
+        s.run(&task.id, Run::default()).await,
+        Err(Error::State(
+            "download integrity failure requires an explicit restart"
+        ))
+    ));
+    let stopped = s.get(&task.id).unwrap();
+    assert_eq!(stopped.last_error, failed.last_error);
+    assert_eq!(stopped.status, Status::Error);
+    assert_eq!(api.count("download/url"), 1);
+    assert_eq!(b.audio.calls().len(), 1);
+
+    b.audio.settings.lock().unwrap().data = FLAC.to_vec();
+    s.restart_transfer(&task.id).unwrap();
+    let done = s.run(&task.id, Run::default()).await.unwrap();
+    assert_eq!(done.status, Status::Complete);
+    assert_eq!(b.audio.calls()[1].offset, 0);
+    assert_eq!(fs::read(done.target.unwrap()).unwrap(), FLAC);
+}
+
+#[tokio::test]
 async fn cover_failure_reuses_verified_raw_media_and_raw_mode_skips_postprocessing() {
     let root = tempfile::tempdir().unwrap();
     let (s, _, _, api, b) = setup(root.path(), FLAC.into(), "flac");

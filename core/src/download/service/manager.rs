@@ -311,6 +311,9 @@ impl DownloadService {
                         "published or terminal download cannot be paused/cancelled",
                     ));
                 }
+                if action == DownloadAction::Pause && task.needs_transfer_restart() {
+                    return Err(Error::State("corrupt download is already stopped"));
+                }
                 let old = Control::read_tx(tx, &self.owner, id)?;
                 if old != Some(DownloadAction::Cancel) {
                     tx.put(&self.owner, CONTROL, id, &serde_json::to_value(action)?)?;
@@ -338,7 +341,7 @@ impl DownloadService {
                     .transpose()?;
                 if pending == Some(DownloadAction::Cancel) {
                     self.cancel_task(&token, &mut task)?;
-                } else {
+                } else if !task.needs_transfer_restart() {
                     task.status = DownloadStatus::Paused;
                     self.save_current(&token, &task)?;
                 }
