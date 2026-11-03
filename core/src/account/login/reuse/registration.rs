@@ -19,9 +19,9 @@ impl CredentialLogin {
             .or_else(|| p.payload.get("countrycode"))
             .and_then(Value::as_str)
             .ok_or(Error::State("missing original country"))?;
-        Ok(
-            json!({"phone":phone,"countrycode":country,"captcha":captcha,"password":"","force":"true"}),
-        )
+        Ok(super::super::registration::payload(
+            phone, country, captcha, true,
+        ))
     }
     pub(super) fn has_registration_sms(&self, operation: &Operation<'_>) -> Result<bool> {
         Ok(self.registration_sms(operation).is_ok())
@@ -49,20 +49,11 @@ impl CredentialLogin {
             }
             // The actual PC nickname page uses M3138 -> M15 legacy helpers,
             // including when the preceding phone challenge used JSK.
-            let response = self
-                .candidate
-                .api()
-                .request("/api/nickname/hint/get", json!({"isAlter":false}), false)
-                .await;
+            let hint = super::super::registration::hint(self.candidate.api().as_ref()).await;
             let mut s = operation.lock()?;
             let a = s.reuse.as_mut().ok_or(Error::StaleResponse)?;
             a.view.phase = ReusePhase::Nickname;
-            a.view.suggested_nickname = response.ok().filter(accepted).and_then(|r| {
-                r["hintNickname"]
-                    .as_str()
-                    .and_then(|v| model::nickname(v).ok())
-                    .map(str::to_owned)
-            });
+            a.view.suggested_nickname = hint;
             a.view.nickname_error = None;
             Ok(())
         })
@@ -100,16 +91,8 @@ impl CredentialLogin {
                         return Ok(());
                     }
                 };
-                let response = self
-                    .candidate
-                    .api()
-                    .request("/api/nickname/duplicated", json!({"nickname":name}), false)
-                    .await;
-                let error = match response {
-                    Ok(r) if accepted(&r) && r["duplicated"] == false => None,
-                    Ok(r) if accepted(&r) && r["duplicated"] == true => Some(NicknameError::Taken),
-                    _ => Some(NicknameError::CheckFailed),
-                };
+                let error =
+                    super::super::registration::check(self.candidate.api().as_ref(), name).await;
                 if let Some(error) = error {
                     let mut s = operation.lock()?;
                     let a = s.reuse.as_mut().ok_or(Error::StaleResponse)?;
@@ -151,7 +134,11 @@ impl CredentialLogin {
                 )
                 .await?;
             if !accepted(&response) {
-                if new_challenge(&response) {
+                let rejected = super::super::registration::rejection(&response);
+                if new_challenge(&response)
+                    || rejected.is_none()
+                    || self.candidate.client().registration_authorized()?
+                {
                     let mut s = operation.lock()?;
                     s.status = LoginStatus::Error;
                     if let Some(a) = &mut s.reuse {
@@ -178,13 +165,7 @@ impl CredentialLogin {
                 let a = s.reuse.as_mut().ok_or(Error::StaleResponse)?;
                 a.view.phase = ReusePhase::Nickname;
                 a.view.code = response["code"].as_i64();
-                a.view.nickname_error = Some(match response["code"].as_i64() {
-                    Some(503) => NicknameError::SmsInvalid,
-                    Some(504) => NicknameError::PhoneRegistered,
-                    Some(250) => NicknameError::AntiAbuse,
-                    Some(509) => NicknameError::RateLimited,
-                    _ => NicknameError::Rejected,
-                });
+                a.view.nickname_error = rejected;
                 return Ok(());
             }
             self.reuse_phase(&operation, ReusePhase::RecoveryRequired)?;

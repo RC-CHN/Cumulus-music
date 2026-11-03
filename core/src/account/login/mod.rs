@@ -6,10 +6,13 @@ mod cooldown;
 mod device;
 mod email;
 mod flow;
+mod nickname;
+mod phone_entry;
 pub mod presentation;
 mod protocol;
 mod qr;
 mod question;
+mod registration;
 mod request;
 mod reuse;
 mod sms;
@@ -20,11 +23,11 @@ pub(crate) use device::DeviceCancellation;
 pub use device::{DeviceVerificationKind, DeviceVerificationPhase, DeviceVerificationView};
 pub use email::{EmailPhase, EmailVerificationView};
 pub use flow::{CredentialLogin, LoginGuardian, LoginSnapshot};
+pub use nickname::NicknameError;
+pub use phone_entry::{PhoneEntryIssue, PhoneEntryPhase, PhoneEntryView};
 pub use protocol::LoginProtocol;
 pub use qr::QrAuthentication;
 pub use question::{QuestionPhase, QuestionVerificationView};
 pub use request::{PhoneCredential, PhoneLogin};
-pub use reuse::{
-    NicknameError, RegistrationBlocked, ReuseChoice, ReusePhase, ReuseVerificationView,
-};
+pub use reuse::{RegistrationBlocked, ReuseChoice, ReusePhase, ReuseVerificationView};
 pub use sms::{SmsDirection, SmsPhase, SmsVerificationView};

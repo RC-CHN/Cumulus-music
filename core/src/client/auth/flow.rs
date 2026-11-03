@@ -123,6 +123,21 @@ impl MusicClient {
             ));
         }
         let initial = matches!(state.status, LoginStatus::Ready | LoginStatus::CodeSent);
+        if flow.phone_entry_snapshot()?.is_some()
+            && !matches!(
+                &command,
+                LoginCommand::PhoneRetry { .. }
+                    | LoginCommand::PhoneResend { .. }
+                    | LoginCommand::PhoneCode { .. }
+                    | LoginCommand::PhoneNicknameHint { .. }
+                    | LoginCommand::PhoneRegister { .. }
+                    | LoginCommand::Reconcile
+            )
+        {
+            return Err(Error::State(
+                "finish or cancel the current phone entry before changing credentials",
+            ));
+        }
         if flow.reuse_snapshot()?.is_some()
             && !matches!(
                 &command,
@@ -193,6 +208,33 @@ impl MusicClient {
         let mut projection = None;
         let mut completed_device = false;
         match command {
+            LoginCommand::PhoneStart {
+                phone,
+                country_code,
+            } => {
+                initial_mode(LoginMode::PhoneSms)?;
+                flow.phone_entry_start(&phone, &country_code).await?;
+            }
+            LoginCommand::PhoneRetry { entry_id } => {
+                flow.phone_entry_retry(&entry_id).await?;
+            }
+            LoginCommand::PhoneResend { entry_id } => {
+                flow.phone_entry_resend(&entry_id).await?;
+            }
+            LoginCommand::PhoneCode {
+                entry_id,
+                code,
+                remember,
+            } => {
+                flow.phone_entry_submit(&entry_id, &code, remember).await?;
+            }
+            LoginCommand::PhoneNicknameHint { entry_id } => {
+                flow.phone_entry_nickname_hint(&entry_id).await?;
+            }
+            LoginCommand::PhoneRegister { entry_id, nickname } => {
+                flow.phone_entry_register(&entry_id, nickname.as_deref())
+                    .await?;
+            }
             LoginCommand::PhonePassword {
                 phone,
                 country_code,
@@ -418,7 +460,9 @@ impl MusicClient {
                     .await?;
             }
             LoginCommand::Reconcile => {
-                if flow.reuse_snapshot()?.is_some() {
+                if flow.phone_entry_snapshot()?.is_some() {
+                    flow.phone_entry_reconcile().await?;
+                } else if flow.reuse_snapshot()?.is_some() {
                     flow.reuse_reconcile().await?;
                 } else if flow.question_snapshot()?.is_some() {
                     flow.question_reconcile().await?;

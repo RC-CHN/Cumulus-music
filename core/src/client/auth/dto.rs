@@ -1,6 +1,6 @@
 use crate::account::login::{
     DeviceVerificationKind, DeviceVerificationView, EmailVerificationView, LoginStatus,
-    QuestionVerificationView, ReuseChoice, ReuseVerificationView, SmsDirection,
+    PhoneEntryView, QuestionVerificationView, ReuseChoice, ReuseVerificationView, SmsDirection,
     SmsVerificationView,
 };
 use serde::{Deserialize, Serialize};
@@ -26,6 +26,28 @@ pub enum LoginMode {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum LoginCommand {
+    PhoneStart {
+        phone: String,
+        country_code: String,
+    },
+    PhoneRetry {
+        entry_id: String,
+    },
+    PhoneResend {
+        entry_id: String,
+    },
+    PhoneCode {
+        entry_id: String,
+        code: String,
+        remember: bool,
+    },
+    PhoneNicknameHint {
+        entry_id: String,
+    },
+    PhoneRegister {
+        entry_id: String,
+        nickname: Option<String>,
+    },
     PhonePassword {
         phone: String,
         country_code: String,
@@ -172,6 +194,7 @@ pub struct LoginView {
     pub email: Option<EmailVerificationView>,
     pub question: Option<QuestionVerificationView>,
     pub reuse: Option<ReuseVerificationView>,
+    pub phone_entry: Option<PhoneEntryView>,
 }
 
 #[derive(Serialize)]

@@ -76,6 +76,12 @@ impl CredentialLogin {
     pub(super) fn lock(&self) -> Result<MutexGuard<'_, State>> {
         self.state.lock().map_err(|_| Error::LockPoisoned)
     }
+    pub(super) fn check_login_base(&self) -> Result<()> {
+        self.session.check_generation(&self.base)
+    }
+    pub(super) async fn phone_sms_middle(&self) -> Result<bool> {
+        self.session.login_sms_middle(&self.base).await
+    }
     pub fn snapshot(&self) -> Result<LoginSnapshot> {
         let state = self.lock()?;
         Ok(LoginSnapshot {
@@ -111,6 +117,9 @@ impl CredentialLogin {
         if let Some(reuse) = &state.reuse {
             reuse.cancel.send_replace(true);
         }
+        if let Some(entry) = &state.phone_entry {
+            entry.cancel.send_replace(true);
+        }
         state.status = LoginStatus::Cancelled;
         state.pending = None;
         state.challenge = None;
@@ -122,6 +131,7 @@ impl CredentialLogin {
         state.email_allowed = false;
         state.question = None;
         state.reuse = None;
+        state.phone_entry = None;
         state.busy = false;
         Ok(())
     }
@@ -160,6 +170,8 @@ impl CredentialLogin {
                 | "/api/w/register/cellphone"
                 | "/api/nickname/hint/get"
                 | "/api/nickname/duplicated"
+                | "/api/cellphone/existence/check"
+                | "/api/sms/captcha/verify"
         ) {
             self.candidate.api()
         } else {
@@ -205,6 +217,12 @@ impl CredentialLogin {
                     state.email_allowed = false;
                     state.question = None;
                     state.reuse = None;
+                    if !matches!(
+                        state.status,
+                        LoginStatus::Rejected | LoginStatus::RateLimited
+                    ) {
+                        state.phone_entry = None;
+                    }
                 }
                 if matches!(code, Some(8830 | 8860))
                     && let Some(ticket) = response["MUSIC_TU"].as_str().filter(|s| !s.is_empty())
@@ -238,6 +256,7 @@ impl CredentialLogin {
         state.email_allowed = false;
         state.question = None;
         state.reuse = None;
+        state.phone_entry = None;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }

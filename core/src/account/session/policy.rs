@@ -54,6 +54,7 @@ struct Cache {
 struct Scope {
     gate: tokio::sync::Mutex<()>,
     cache: Mutex<Cache>,
+    sms: crate::account::login_policy::sms::SmsLoginPolicy,
     invalid: InvalidLoginController,
     legacy: LegacyLoginController,
 }
@@ -128,6 +129,25 @@ impl Scope {
     }
 }
 impl AccountSession {
+    pub(crate) async fn login_sms_middle(&self, token: &SessionToken) -> Result<bool> {
+        let api = self.native_api(token)?;
+        let scope = self.policy.scope(token)?;
+        let native: Arc<dyn std::any::Any + Send + Sync> = api.clone();
+        let store = native
+            .downcast::<MusicHttpClient>()
+            .ok()
+            .map(|client| client.credentials().store());
+        let middle = scope
+            .sms
+            .resolve(
+                api.as_ref(),
+                token.uid.as_deref().unwrap_or("unresolved"),
+                store.as_deref(),
+            )
+            .await?;
+        self.require_api(token, &api)?;
+        Ok(middle)
+    }
     pub(crate) async fn new_login_protocol(
         &self,
         token: &SessionToken,

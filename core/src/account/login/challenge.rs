@@ -9,6 +9,7 @@ pub enum LoginStatus {
     Submitting,
     SendingSms,
     CodeSent,
+    PhoneEntry,
     LoadingVerification,
     Verifying,
     CheckingIdentity,

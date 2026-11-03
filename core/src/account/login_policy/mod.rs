@@ -3,6 +3,7 @@
 mod invalid;
 mod legacy;
 mod policy;
+pub(crate) mod sms;
 pub use invalid::{
     InvalidLoginController, InvalidLoginOutcome, InvalidLoginSkip, LoginNotice, LoginNoticeKind,
     REFRESH_PATH, TokenPresence,
