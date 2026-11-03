@@ -260,3 +260,11 @@ Cumulus 桌面主流程验收
 验证同一条目暂停与继续；重试路径故意让首次 GET 返回 503，确认错误后
 由用户点击重试，只发出一次成功 GET 并恢复进度。使用隔离回环服务和
 合成 AAC/M4A，无线上账号写入；不替代真实 CDN、Windows 或声卡验证。
+
+2026-11-04 Linux 当前主线复跑（b566855）
+  生产 Vue、Tauri IPC、SQLite 和原生 libmpv 的回环 HTTPS 主流程通过 19 个
+  检查点并保存 18 张截图。使用隔离合成账号：扫码采用及新进程恢复、日推/搜索、
+  两首 AAC/M4A 按顺序播放及自然切歌、暂停续播、歌单编辑和成员回读、断点续传、
+  断网播放下载文件及清理均有独立断言。报告 .build/goal-current-main-flow-eof/report.json；
+  复跑用 scripts/ci/main_flow_https_smoke.py --eof-next。零真实账号写入；此结果不
+  证明真实 CDN、安装包、物理声卡或 Windows 实机。
