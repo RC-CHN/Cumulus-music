@@ -137,10 +137,12 @@ def main():
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     if args.artist_batch:
         assert complete['ok'] and complete['artistBatchVerified'] and complete['selectedPlayback'] and not complete['writesSubmitted']
+        assert complete['loadedQueueInsertion']
+        assert json.loads((output / 'ux_artist_queue_menu.json').read_text(encoding='utf-8'))['available']
         for name in ('ux_artist_batch_selected', 'ux_artist_batch_download'):
             assert json.loads((output / f'{name}.json').read_text(encoding='utf-8'))['count'] == 2
-        assert not args.screenshots or captures == 2
-        print(json.dumps(dict(ok=True, actualWebView=True, artistBatchVerified=True)))
+        assert not args.screenshots or captures == 3
+        print(json.dumps(dict(ok=True, actualWebView=True, artistBatchVerified=True, loadedQueueInsertion=True)))
         return
     if args.playback_credit:
         assert complete['ok'] and complete['samePlayback'] and complete['syntheticCatalog']

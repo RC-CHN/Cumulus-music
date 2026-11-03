@@ -285,6 +285,11 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    QueueArtistSongs {
+        pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     QueueAlbum {
         id: String,
         quality: Quality,

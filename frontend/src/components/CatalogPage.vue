@@ -7,7 +7,7 @@ import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../servic
 import type { AlbumCard, ArtistCard } from '../services/catalog';
 import type { AlbumCardRequest } from '../services/catalogCards';
 import type { ArtistCardRequest } from '../services/artistCards';
-import type { PlayerOrigin } from '../services/player';
+import type { PlayerOrigin, PlayerView } from '../services/player';
 import type { AlbumTab, CatalogPanelKey } from '../services/catalogNavigation';
 import type { CatalogSession } from '../composables/useCatalogSession';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
@@ -34,6 +34,7 @@ const props = defineProps<{
   origin?: PlayerOrigin | null;
   playing: boolean;
   queueable: boolean;
+  queueArtistSongs: (pages: CatalogSelectionPage[]) => Promise<PlayerView | undefined>;
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
@@ -97,6 +98,23 @@ function openArtistBatch() {
   );
   if (usable.size) artistBatch.value = [...usable.values()];
 }
+const artistQueueNotice = ref('');
+async function artistSongsAction(key: string) {
+  if (key === 'batch') {
+    openArtistBatch();
+    return;
+  }
+  if (key !== 'queue' || !props.queueable || tab.value !== 'all' || !props.model.valid()) return;
+  const epoch = props.account.epoch;
+  const current = () => props.account.epoch === epoch && tab.value === 'all' && props.model.valid();
+  artistQueueNotice.value = '';
+  try {
+    const result = await props.queueArtistSongs(selections.value);
+    if (result && current()) artistQueueNotice.value = '已添加到播放列表';
+  } catch {
+    if (current()) artistQueueNotice.value = '暂时无法添加，请确认当前歌曲列表和播放状态后重试。';
+  }
+}
 function artistBatchChoose(kind: 'play' | 'collect' | 'download', selected: TrackView[]) {
   if (!artistBatch.value || !props.model.valid() || tab.value !== 'all') return;
   batchHandoff = { epoch: props.account.epoch, kind, tracks: selected };
@@ -121,6 +139,7 @@ watch(
   () => {
     batchHandoff = undefined;
     artistBatch.value = undefined;
+    artistQueueNotice.value = '';
   },
   { flush: 'sync' },
 );
@@ -424,9 +443,17 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
               <span v-if="tab === 'all'" ref="artistBatchAnchor">
                 <ActionMenu
                   label="更多歌手歌曲操作"
-                  :items="[{ key: 'batch', label: '批量操作', icon: 'list' }]"
+                  :items="[
+                    { key: 'batch', label: '批量操作', icon: 'list' },
+                    {
+                      key: 'queue',
+                      label: '添加已加载歌曲至播放列表',
+                      icon: 'plus',
+                      disabled: !queueable || !selections.length,
+                    },
+                  ]"
                   :disabled="!tracks.some((track) => !track.missing && !track.local)"
-                  @select="openArtistBatch"
+                  @select="artistSongsAction"
                 />
               </span>
               <span class="muted"
@@ -435,6 +462,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
                 ></span
               >
             </div>
+            <p v-if="artistQueueNotice" class="notice" role="status">{{ artistQueueNotice }}</p>
             <TrackTable
               v-if="tracks.length"
               navigable

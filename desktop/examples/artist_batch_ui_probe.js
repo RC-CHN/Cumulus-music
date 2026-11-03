@@ -82,8 +82,53 @@
       return queue.tracks.map((entry) => entry.track.id).join(',') === '1,3' &&
         queue.current === queue.tracks[0].entryId;
     }, 'native playback starts at the first of exactly two selected songs');
+    await invoke('play_selection', {
+      epoch, selection: { kind: 'songs', ids: ['91', '3', '1', '92'], index: 1, quality: 'standard' },
+    });
+    await wait(async () => {
+      const snapshot = await invoke('player_snapshot', { epoch });
+      return snapshot.state === 'playing' && snapshot.track?.id === '3';
+    }, 'loaded queue baseline');
+    const paused = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+    if (paused.state !== 'paused') throw Error('queue baseline must be paused');
+    const queueBefore = await invoke('player_queue', { epoch });
+    let staleAccepted = true;
+    try {
+      await invoke('player_action', { epoch, action: {
+        kind: 'queue_artist_songs', quality: 'standard', expected_queue_revision: paused.queueRevision,
+        pages: [{ query: { kind: 'artist_songs', id: '12', offset: 0, limit: 20 }, revision: 'stale' }],
+      } });
+    } catch {
+      staleAccepted = false;
+    }
+    if (staleAccepted || (await invoke('player_queue', { epoch })).revision !== queueBefore.revision)
+      throw Error('stale catalog page changed the queue');
+    more.focus();
+    more.click();
+    const add = await wait(() => {
+      const action = button('添加已加载歌曲至播放列表');
+      return action && !action.disabled && action;
+    }, 'add loaded artist songs');
+    await sleep(450);
+    await emit('ux_artist_queue_menu', { available: true });
+    await sleep(400);
+    add.click();
+    const expected = ['91', '3', ...Array.from({ length: 20 }, (_, i) => String(i + 1))
+      .filter((id) => id !== '3'), '92'];
+    const queueAfter = await wait(async () => {
+      const queue = await invoke('player_queue', { epoch });
+      return queue.tracks.map((entry) => entry.track.id).join(',') === expected.join(',') && queue;
+    }, 'insert exactly the loaded artist page after the current song');
+    await wait(() => [...document.querySelectorAll('[role="status"]')]
+      .some((node) => node.textContent.includes('已添加到播放列表')), 'queue update feedback');
+    const unchanged = await invoke('player_snapshot', { epoch });
+    if (unchanged.state !== 'paused' || unchanged.playId !== paused.playId ||
+        unchanged.position !== paused.position || queueAfter.current !== queueBefore.current ||
+        queueAfter.tracks[2].entryId !== queueBefore.tracks[2].entryId)
+      throw Error('artist insertion changed transport or duplicated an existing song');
     await emit('complete', {
-      ok: true, artistBatchVerified: true, selectedPlayback: true, writesSubmitted: false,
+      ok: true, artistBatchVerified: true, selectedPlayback: true, loadedQueueInsertion: true,
+      writesSubmitted: false,
     });
   } catch (error) {
     await emit('failed', { error: String(error?.message ?? error) });

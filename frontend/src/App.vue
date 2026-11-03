@@ -1980,6 +1980,7 @@ onUnmounted(() => {
                 @back="backFromPage"
                 @play="playCatalog"
                 @play-tracks="playOnlineSongs"
+                :queue-artist-songs="player.queueArtistSongs"
                 @collect-tracks="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
                 @like="music.like"
                 @more="(request) => trackActions?.show(request)"

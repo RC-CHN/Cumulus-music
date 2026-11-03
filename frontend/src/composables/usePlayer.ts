@@ -17,6 +17,7 @@ import type {
   IntelligenceCommand,
 } from '../services/player.ts';
 import { useCore } from '../services/core.ts';
+import type { CatalogSelectionPage } from '../services/catalog.ts';
 import type { CloudQuery } from '../services/cloud.ts';
 import type { LocalQuery } from '../services/local.ts';
 import { useEqualizerDraft } from './useEqualizerDraft.ts';
@@ -237,6 +238,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       quality: view.value?.qualityPreferences.quality ?? 'standard',
     });
   }
+  function queueArtistSongs(pages: CatalogSelectionPage[]) {
+    return queueAction({
+      kind: 'queue_artist_songs',
+      pages,
+      quality: view.value?.qualityPreferences.quality ?? 'standard',
+    });
+  }
   function queueAlbum(id: string) {
     return queueAction({
       kind: 'queue_album',
@@ -287,7 +295,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_playlist'
             | 'queue_playlist_batch'
             | 'queue_cloud_batch'
-            | 'queue_album';
+            | 'queue_album'
+            | 'queue_artist_songs';
         }
       >
     >,
@@ -658,6 +667,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queuePlaylist,
     queueLocal,
     queueAlbum,
+    queueArtistSongs,
     queueDownloads,
     queueCloud,
     prepareCloudQueue,

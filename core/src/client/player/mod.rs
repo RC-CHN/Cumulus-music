@@ -420,6 +420,25 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueArtistSongs {
+            pages,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "artist queue used as native media command",
+                ));
+            }
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::ArtistSongs { pages, quality },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueAlbum {
             id,
             quality,
@@ -809,6 +828,7 @@ impl MusicClient {
             PlayerAction::NextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueAlbum { .. }
+            | PlayerAction::QueueArtistSongs { .. }
             | PlayerAction::QueueDownloads { .. }
             | PlayerAction::QueueLocal { .. }
             | PlayerAction::QueuePlaylistBatch { .. }

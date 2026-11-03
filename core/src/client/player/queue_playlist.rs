@@ -2,7 +2,7 @@
 //! point (308.js playing/play); an empty queue starts playback (3085.js).
 use super::*;
 use crate::{
-    catalog::CatalogApi,
+    catalog::{CatalogApi, details::CatalogQuery},
     membership::Quality,
     playback::{
         QueueEntry, QueueSnapshot,
@@ -21,6 +21,10 @@ use std::{
 const QUEUE_LIMIT: usize = 10_000;
 
 pub(super) enum QueueCollection {
+    ArtistSongs {
+        pages: Vec<super::super::catalog::CatalogSelectionPage>,
+        quality: Quality,
+    },
     Album {
         id: String,
         quality: Quality,
@@ -131,8 +135,15 @@ impl MusicClient {
             return Err(Error::State("FM queue requires its coordinator"));
         }
         let local = matches!(collection, QueueCollection::Local { .. });
-        if local && (queue.intelligence.is_some() || self.together_attached(&token, None)?) {
-            return Err(Error::State("local queue requires ordinary playback"));
+        let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
+        let ordinary = local || artist;
+        let special_queue = if artist {
+            "artist songs require ordinary playback"
+        } else {
+            "local queue requires ordinary playback"
+        };
+        if ordinary && (queue.intelligence.is_some() || self.together_attached(&token, None)?) {
+            return Err(Error::State(special_queue));
         }
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
@@ -166,6 +177,28 @@ impl MusicClient {
                     json!({"kind":"local","revision":revision}),
                     false,
                 )
+            }
+            QueueCollection::ArtistSongs { pages, quality } => {
+                if pages.is_empty()
+                    || pages
+                        .iter()
+                        .any(|page| !matches!(page.query, CatalogQuery::ArtistSongs { .. }))
+                {
+                    return Err(Error::InvalidInput("expected artist song pages"));
+                }
+                let (mut ids, _, source) = self.catalog_song_selection(&token, &pages, 0).await?;
+                let mut seen = HashSet::new();
+                ids.retain(|id| seen.insert(id.clone()));
+                let mut resources = self
+                    .online_queue_resources(&token, &ids, quality, attempt)
+                    .await?;
+                if resources.is_empty() {
+                    return Err(Error::State("artist has no online tracks"));
+                }
+                for resource in &mut resources {
+                    resource["trial_mode"] = json!(-1);
+                }
+                (resources, source, false)
             }
             QueueCollection::Album { id, quality } => {
                 self.session.with_token(&token, |_| Ok(()))?;
@@ -241,14 +274,14 @@ impl MusicClient {
         if self.player.selection.load(Ordering::Acquire) != attempt {
             return Err(Error::StaleResponse);
         }
-        let _local_room = if local {
+        let _ordinary_room = if ordinary {
             let gate = self
                 .together
                 .gate
                 .try_lock()
                 .map_err(|_| Error::MutationBusy)?;
             if self.together_attached(&token, None)? {
-                return Err(Error::State("local queue requires ordinary playback"));
+                return Err(Error::State(special_queue));
             }
             Some(gate)
         } else {
@@ -270,7 +303,7 @@ impl MusicClient {
                 paused: false,
             }),
         });
-        let value = if local {
+        let value = if ordinary {
             let selection = self.player.selection.clone();
             controller
                 .command_guarded(
