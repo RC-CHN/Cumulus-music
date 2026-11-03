@@ -131,3 +131,25 @@ test('new query prevents an earlier success or failure from replacing current su
   assert.equal(m.suggestions.value[0]?.keyword, 'new');
   m.dispose();
 });
+
+test('a chosen label stays visible but history records only the real search term', async () => {
+  const remembered: string[] = [];
+  const m = fixture({
+    searchHistory: async (_epoch, command) => {
+      if (command.kind === 'remember') remembered.push(command.keyword);
+      return data(remembered.slice());
+    },
+  });
+  await m.connect(account());
+  try {
+    assert.equal(m.submit('实际关键词', ' 展示标签 '), '实际关键词');
+    assert.equal(m.query.value, '展示标签');
+    await m.historyCommand({ kind: 'read' });
+    assert.deepEqual(remembered, ['实际关键词']);
+    m.input('手动编辑');
+    assert.equal(m.submit(), '手动编辑');
+    assert.equal(m.query.value, '手动编辑');
+  } finally {
+    m.dispose();
+  }
+});

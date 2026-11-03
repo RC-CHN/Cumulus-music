@@ -14,10 +14,11 @@ const props = defineProps<{
   account: AccountView;
   pageKey: string;
   keyword?: string;
+  displayKeyword?: string;
   playable: boolean;
 }>();
 const emit = defineEmits<{
-  search: [keyword: string, channel?: SearchChannel];
+  search: [keyword: string, channel?: SearchChannel, displayKeyword?: string];
   playChart: [keywords: string[]];
   expired: [];
 }>();
@@ -78,12 +79,12 @@ function focusInput() {
 function onFocus() {
   if (!suppressFocus) void show();
 }
-function submit(word?: string, channel?: SearchChannel) {
+function submit(word?: string, channel?: SearchChannel, display?: string) {
   if (composing.value || performance.now() - compositionEnded < 60) return;
-  const value = model.submit(word);
+  const value = model.submit(word, display);
   if (value) {
     focusInput();
-    emit('search', value, channel);
+    emit('search', value, channel, query.value !== value ? query.value : undefined);
   }
 }
 function playChart(keywords: string[]) {
@@ -187,7 +188,7 @@ watch(
   () => props.pageKey,
   () => {
     model.close();
-    if (props.keyword !== undefined) query.value = props.keyword;
+    if (props.keyword !== undefined) query.value = props.displayKeyword ?? props.keyword;
   },
 );
 watch(open, (value) => {
@@ -265,7 +266,7 @@ onUnmounted(() => {
             :pending="!!pending.suggestions"
             :composing="composing"
             :error="errors.suggestions"
-            @select="submit"
+            @select="(word, display) => submit(word, undefined, display)"
             @retry="model.load({ kind: 'suggestions', keyword: query.trim() })"
           />
           <template v-else>
@@ -275,7 +276,7 @@ onUnmounted(() => {
               history
               :busy="pending.history"
               :empty-label="pending.history || errors.history ? '' : '暂无搜索历史'"
-              @select="submit"
+              @select="(word, display) => submit(word, undefined, display)"
               @remove="removeHistory"
               @clear="confirm = true"
             />
@@ -289,7 +290,7 @@ onUnmounted(() => {
               v-if="recommendations.length"
               title="猜你喜欢"
               :words="recommendations"
-              @select="submit"
+              @select="(word, display) => submit(word, undefined, display)"
             />
             <p v-if="pending.recommendations" role="status" class="search-muted">正在加载推荐词…</p>
             <div v-if="errors.recommendations" class="search-section-error" role="alert">

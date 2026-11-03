@@ -9,7 +9,7 @@ defineProps<{
   composing: boolean;
   error?: string;
 }>();
-const emit = defineEmits<{ select: [keyword: string]; retry: [] }>();
+const emit = defineEmits<{ select: [keyword: string, display?: string]; retry: [] }>();
 function parts(label: string, query: string) {
   const at = label.toLocaleLowerCase().indexOf(query.toLocaleLowerCase());
   return at < 0
@@ -48,7 +48,7 @@ function parts(label: string, query: string) {
         data-search-choice
         class="search-suggestion"
         :title="word.label"
-        @click="emit('select', word.keyword)"
+        @click="emit('select', word.keyword, word.label)"
       >
         <span
           >{{ parts(word.label, query)[0] }}<mark>{{ parts(word.label, query)[1] }}</mark

@@ -193,11 +193,11 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     // Old account work retains its own generation and cannot block the new account.
     historyQueue = Promise.resolve();
   }
-  function submit(word?: string) {
+  function submit(word?: string, display?: string) {
     if (!connected || composing.value) return;
     const value = (word ?? (query.value.trim() || defaultWord.value?.keyword || '')).trim();
     if (!value) return;
-    query.value = value;
+    query.value = display?.trim() || value;
     close();
     void historyCommand({ kind: 'remember', keyword: value });
     return value;

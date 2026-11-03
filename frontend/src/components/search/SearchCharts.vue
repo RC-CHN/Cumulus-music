@@ -8,7 +8,7 @@ defineProps<{
   errors: Record<string, string>;
 }>();
 const emit = defineEmits<{
-  select: [keyword: string, channel?: SearchChannel];
+  select: [keyword: string, channel: SearchChannel | undefined, display: string];
   play: [keywords: string[]];
   retry: [id: string];
 }>();
@@ -44,7 +44,7 @@ const emit = defineEmits<{
         :key="i"
         data-search-choice
         :title="word.label"
-        @click="emit('select', word.keyword, word.channel)"
+        @click="emit('select', word.keyword, word.channel, word.label)"
       >
         <span class="search-rank" :class="{ leading: i < 3 }">{{ i + 1 }}</span
         ><span class="search-word-label">{{ word.label }}</span

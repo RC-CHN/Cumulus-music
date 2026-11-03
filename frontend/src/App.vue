@@ -1443,9 +1443,13 @@ onUnmounted(() => {
         :account="account"
         :page-key="navigationKey"
         :keyword="page.kind === 'search' ? page.keyword : undefined"
+        :display-keyword="page.kind === 'search' ? page.displayKeyword : undefined"
         :playable="player.ready.value && !player.busy.value"
         @play-chart="playSearchChart"
-        @search="(word, channel) => music.navigate({ kind: 'search', keyword: word, channel })"
+        @search="
+          (word, channel, displayKeyword) =>
+            music.navigate({ kind: 'search', keyword: word, channel, displayKeyword })
+        "
         @expired="music.bootstrap(false)"
       />
       <div class="header-spacer" data-tauri-drag-region />

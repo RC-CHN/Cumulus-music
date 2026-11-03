@@ -9,7 +9,11 @@ const props = defineProps<{
   busy?: boolean;
   emptyLabel?: string;
 }>();
-const emit = defineEmits<{ select: [word: string]; remove: [word: string]; clear: [] }>();
+const emit = defineEmits<{
+  select: [word: string, display: string];
+  remove: [word: string];
+  clear: [];
+}>();
 const expanded = ref(false),
   foldable = ref(false),
   visibleCount = ref(0),
@@ -85,7 +89,11 @@ onUnmounted(() => observer.disconnect());
         :inert="!expanded && i >= visibleCount"
         :aria-hidden="!expanded && i >= visibleCount"
       >
-        <button data-search-choice :title="word.label" @click="emit('select', word.keyword)">
+        <button
+          data-search-choice
+          :title="word.label"
+          @click="emit('select', word.keyword, word.label)"
+        >
           {{ word.label }}
         </button>
         <button

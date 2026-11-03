@@ -252,6 +252,7 @@
           one(".search-heading-copy h1")?.textContent === "合成推荐",
         "search navigation",
       );
+      assert(input().value.includes("推荐结果"), "suggestion label stays in input, not the search term");
       await capture(`results_${w}_${t}`);
       await home();
       click(button("清空搜索历史"));
@@ -372,16 +373,26 @@
       one("#search-result-panel")?.getAttribute("aria-busy") === "false" &&
       !one(".search-results-leave-active") && one(item);
     await wait(() => ready("合成热搜来源", "all", ".search-track-card"), "hot comprehensive source");
+    assert(input().value === "合成榜单条目", "chart label stays in input");
     click(one('[data-category="songs"]'));
     await wait(() => ready("合成热搜来源", "songs", ".track-row"), "hot songs source");
     click(one('[data-category="mvs"]'));
     await wait(() => ready("合成热搜来源", "mvs", ".search-result-card"), "hot MV source");
     click(button("返回上一页"));
     await wait(() => ready("合成热搜来源", "songs", ".track-row"), "hot search Back");
+    assert(input().value === "合成榜单条目", "chart label stays after category changes and Back");
     await home();
     await wait(() => all(".search-chart-items button").length >= 2, "unmarked source chart row");
     click(all(".search-chart-items button")[1]);
     await wait(() => ready("合成普通来源", "all", ".search-track-card"), "unmarked source defaults");
+    await fixture("good");
+    await home();
+    const homeRecommendation = one(".search-tags-section:not(.search-history-tags) button[data-search-choice]");
+    assert(homeRecommendation, "home recommendation is available");
+    const recommendedLabel = homeRecommendation.getAttribute("title");
+    click(homeRecommendation);
+    await wait(() => ready("合成推荐词1", "all", ".search-track-card"), "home recommendation uses actual term");
+    assert(input().value === recommendedLabel, "home recommendation keeps its label");
     await fixture("chart_play");
     await home();
     await wait(() => button("播放热搜榜") && !button("播放热搜榜").disabled, "conditional hot chart play");
@@ -409,6 +420,7 @@
       responseTimingInjected: true,
       conditionalChartPlayVerified: true,
       hotqueryChannelVerified: true,
+      searchDisplayLabelVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,
