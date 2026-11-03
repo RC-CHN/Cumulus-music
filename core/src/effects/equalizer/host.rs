@@ -29,6 +29,7 @@ fn status(code: i32) -> Result<()> {
 }
 impl EqualizerHost {
     pub fn open(path: &Path, settings: EqualizerSettings) -> Result<Self> {
+        let settings = settings.effective();
         let path = path.canonicalize()?;
         if !path.is_file() || path.to_str().is_none() {
             return Err(Error::InvalidInput(
@@ -98,6 +99,7 @@ impl EqualizerHost {
         }
     }
     pub fn update(&mut self, settings: EqualizerSettings) -> Result<()> {
+        let settings = settings.effective();
         // SAFETY: the owned ID is live, input is exactly ten readable floats.
         status(unsafe {
             match self.update {

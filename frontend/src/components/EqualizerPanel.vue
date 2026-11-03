@@ -7,6 +7,7 @@ import {
   equalizerPresetOption,
   equalizerPresets,
   equalizerTone,
+  equalizerToneEnabled,
 } from '../services/equalizer';
 import type { EqualizerPreset } from '../services/player';
 import { failure } from '../services/contracts';
@@ -20,6 +21,11 @@ const current = computed(() => view.value?.equalizer);
 const dialog = ref<HTMLDialogElement>();
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
 const tone = computed(() => equalizerTone(settings.value));
+const storedToneBypassed = computed(
+  () =>
+    !equalizerToneEnabled(settings.value) &&
+    (tone.value.bass_db !== 0 || tone.value.treble_db !== 0),
+);
 const toneBands = [
   { key: 'bass_db', label: '低音' },
   { key: 'treble_db', label: '高音' },
@@ -55,11 +61,12 @@ function change(
   values = gains.value,
   enhancement = tone.value,
   selected?: EqualizerPreset,
+  toneEnabled = equalizerToneEnabled(settings.value),
 ) {
   if (disabled.value) return;
   commandError.value = '';
   savedMessage.value = '';
-  stage({ enabled, gains: values, ...enhancement }, selected);
+  stage({ enabled, gains: values, ...enhancement, tone_enabled: toneEnabled }, selected);
 }
 function choose(event: Event) {
   const selected = Number((event.target as HTMLSelectElement).value);
@@ -77,8 +84,15 @@ function slide(index: number, event: Event) {
 }
 function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
   const value = Number((event.target as HTMLInputElement).value);
-  if (Number.isInteger(value) && Math.abs(value) <= 10)
-    change(true, gains.value, { ...tone.value, [key]: value });
+  if (!Number.isInteger(value) || Math.abs(value) > 10) return;
+  const next = { ...tone.value, [key]: value };
+  change(
+    settings.value?.enabled ?? false,
+    gains.value,
+    next,
+    undefined,
+    next.bass_db !== 0 || next.treble_db !== 0,
+  );
 }
 async function saveCustom() {
   const expected = current.value;
@@ -178,6 +192,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     </div>
     <fieldset class="equalizer-tone" :disabled="disabled">
       <legend>增强音效</legend>
+      <small v-if="storedToneBypassed" class="equalizer-tone-note">低音和高音增强已旁路</small>
       <label v-for="{ key, label } in toneBands" :key="key">
         <span>{{ label }}</span>
         <input
@@ -196,7 +211,9 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
       <button
         type="button"
         :disabled="!tone.bass_db && !tone.treble_db"
-        @click="change(settings?.enabled ?? false, gains, { bass_db: 0, treble_db: 0 })"
+        @click="
+          change(settings?.enabled ?? false, gains, { bass_db: 0, treble_db: 0 }, undefined, false)
+        "
       >
         重置低音和高音
       </button>
@@ -270,6 +287,10 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   padding: 8px 0 0;
   border: 0;
   min-width: 0;
+}
+.equalizer-tone-note {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
 }
 .equalizer-tone label {
   display: grid;

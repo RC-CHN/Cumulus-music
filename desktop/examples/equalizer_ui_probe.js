@@ -15,7 +15,7 @@
  const settled=()=>el('.equalizer-dialog')&&!el('[aria-label="均衡器预设"]')?.disabled&&el('.equalizer-status')?.dataset.status!=='pending'&&el('.equalizer-dialog').dataset.draftState==='settled';
  const pop=[-1.5,-1,0,1.79,4,3.79,1.79,.5,-1,1],custom=[...pop];custom[4]=-3.5;
  let epoch='',step='bootstrap';
- async function stage(name,expect){await wait(settled,'settle');await sleep(450);checkLauncher(({eq_initial:'off',eq_enabled:'processing',eq_off:'off',eq_flat:'flat',eq_missing:'problem'})[name]);const dialog=el('.equalizer-dialog'),r=dialog.getBoundingClientRect();const overflow=document.documentElement.scrollWidth>innerWidth||dialog.scrollWidth>dialog.clientWidth+1||r.top<0||r.bottom>innerHeight+1;if(overflow)throw Error('equalizer_layout_overflow');window.__eqAck='';await report(name,{epoch,expect,gains:gains(),enabled:enabled(),tone:tone(),status:el('.equalizer-status').dataset.status,width:innerWidth,height:innerHeight,overflow});await wait(()=>window.__eqAck===name,'native_ack');await sleep(1000);}
+ async function stage(name,expect){await wait(settled,'settle');await sleep(450);checkLauncher(({eq_initial:'off',eq_enabled:'processing',eq_off:'off',eq_independent_tone:'processing',eq_flat:'flat',eq_missing:'problem'})[name]);const dialog=el('.equalizer-dialog'),r=dialog.getBoundingClientRect();const overflow=document.documentElement.scrollWidth>innerWidth||dialog.scrollWidth>dialog.clientWidth+1||r.top<0||r.bottom>innerHeight+1;if(overflow)throw Error('equalizer_layout_overflow');window.__eqAck='';await report(name,{epoch,expect,gains:gains(),enabled:enabled(),tone:tone(),status:el('.equalizer-status').dataset.status,width:innerWidth,height:innerHeight,overflow});await wait(()=>window.__eqAck===name,'native_ack');await sleep(1000);}
  async function preset(index){const revision=el('.equalizer-dialog').dataset.revision;const n=el('[aria-label="均衡器预设"]');await wait(()=>!n.disabled,'preset_ready');n.value=String(index);n.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision,'preset_commit');}
  async function toggle(){const revision=el('.equalizer-dialog').dataset.revision;await click(el('[aria-label="启用均衡器"]'));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==revision,'toggle_commit');}
  const launcher=()=>el('button[aria-label="均衡器"]');
@@ -73,6 +73,14 @@
     step='recall_custom';await preset(-2);await wait(()=>el('.equalizer-status').dataset.status==='processing','recalled custom reaches DSP');
     await stage('eq_custom_recalled',{enabled:true,gains:custom});
     step='off';await toggle();await stage('eq_off',{enabled:false,gains:custom});
+    step='independent_tone';const beforeIndependent=el('.equalizer-dialog').dataset.revision;
+    toneInput('低音增益',6);
+    await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==beforeIndependent&&
+      el('.equalizer-status').dataset.status==='processing','bass-only processing');
+    await stage('eq_independent_tone',{enabled:false,gains:custom});
+    await click(byText('重置低音和高音'));
+    await wait(()=>settled()&&tone().every(value=>value===0),'reset independent tone');
+    checkLauncher('off');
     step='reenable';await toggle();await wait(()=>el('.equalizer-status').dataset.status==='processing','reenabled_dsp');await stage('eq_reenabled',{enabled:true,gains:custom});
     step='reset';const beforeReset=el('.equalizer-dialog').dataset.revision;await click(byText('恢复平直'));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==beforeReset&&gains().every(n=>n===0),'flat_reset');await stage('eq_flat',{enabled:true,gains:Array(10).fill(0)});await preset(1);
     step='adjust_tone';const beforeTone=el('.equalizer-dialog').dataset.revision;

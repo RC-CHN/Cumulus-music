@@ -388,7 +388,14 @@ async fn manual_flat_can_be_saved_and_identical_builtin_selected_without_touchin
     );
     assert_eq!(saved.equalizer.preferences.revision, 3);
     assert_eq!(saved.equalizer.preferences.saved_custom, Some(flat));
-    let builtin = f.command(select(3, none)).await.unwrap();
+    let builtin = f
+        .command(Cmd::Equalizer {
+            expected_revision: 3,
+            settings: flat.with_tone_enabled(true),
+            preset: Some(none),
+        })
+        .await
+        .unwrap();
     assert_eq!(builtin.equalizer.status, EqualizerStatus::Configured);
     assert_eq!(builtin.equalizer.preferences.preset, Some(none));
     assert_eq!(builtin.equalizer.preferences.saved_custom, Some(flat));
@@ -402,4 +409,69 @@ async fn manual_flat_can_be_saved_and_identical_builtin_selected_without_touchin
         EqualizerPreferences::read(&f.store, "other").unwrap(),
         EqualizerPreferences::default()
     );
+}
+
+#[tokio::test]
+async fn migrated_bypass_and_independent_tone_reach_only_the_requested_dsp_stage() {
+    let fixture = Fixture::new();
+    fixture
+        .device
+        .equalizer_supported
+        .store(true, Ordering::SeqCst);
+    let gains = *curve(4.0).gains();
+    let legacy: EqualizerSettings =
+        serde_json::from_value(json!({"enabled":false,"gains":gains,"bass_db":6})).unwrap();
+    let write = |revision, settings| Cmd::Equalizer {
+        expected_revision: revision,
+        settings,
+        preset: Some(EqualizerPreset::Manual),
+    };
+    assert!(!legacy.tone_enabled());
+    fixture.command(write(0, legacy)).await.unwrap();
+    assert_eq!(
+        *fixture.device.equalizer.lock().unwrap(),
+        Some(EqualizerSettings::default())
+    );
+
+    let independent = legacy.with_tone_enabled(true);
+    let view = fixture.command(write(1, independent)).await.unwrap();
+    assert_eq!(view.equalizer.status, EqualizerStatus::Configured);
+    assert_eq!(view.equalizer.preferences.settings, independent);
+    assert_eq!(view.equalizer.preferences.settings.gains(), &gains);
+    let tone_only = EqualizerSettings::new(true, [0.0; 10])
+        .unwrap()
+        .with_tone(6, 0)
+        .unwrap();
+    assert_eq!(*fixture.device.equalizer.lock().unwrap(), Some(tone_only));
+
+    let device = std::sync::Arc::new(Device::default());
+    device.equalizer_supported.store(true, Ordering::SeqCst);
+    let reopened = cumulus_core::playback::controller::PlaybackController::start(
+        fixture.session.clone(),
+        fixture.store.clone(),
+        fixture.resolver.clone(),
+        audio_engine(device.clone()),
+    )
+    .unwrap();
+    let restored = reopened
+        .command(&fixture.token(), Cmd::Snapshot)
+        .await
+        .unwrap();
+    assert_eq!(restored.equalizer.preferences.settings, independent);
+    assert_eq!(*device.equalizer.lock().unwrap(), Some(tone_only));
+
+    // Explicit flat GEQ reset retains the enhancement, while resetting the
+    // enhancement with a nonflat GEQ curve leaves that curve processing.
+    let flat = tone_only.with_tone_enabled(true);
+    reopened
+        .command(&fixture.token(), write(2, flat))
+        .await
+        .unwrap();
+    assert_eq!(*device.equalizer.lock().unwrap(), Some(tone_only));
+    let restored_geq = curve(4.0).with_tone_enabled(false);
+    reopened
+        .command(&fixture.token(), write(3, restored_geq))
+        .await
+        .unwrap();
+    assert_eq!(*device.equalizer.lock().unwrap(), Some(curve(4.0)));
 }

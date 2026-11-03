@@ -499,6 +499,7 @@ impl AudioEngine for MpvEngine {
         &mut self,
         settings: crate::effects::equalizer::EqualizerSettings,
     ) -> Result<bool> {
+        let settings = settings.effective();
         let Some(path) = self.equalizer_library.clone() else {
             return Ok(false);
         };

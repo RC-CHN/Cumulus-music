@@ -22,6 +22,14 @@ export function equalizerPresetOption(
 export function equalizerTone(settings?: EqualizerSettings) {
   return { bass_db: settings?.bass_db ?? 0, treble_db: settings?.treble_db ?? 0 };
 }
+export function equalizerToneEnabled(settings?: EqualizerSettings) {
+  return settings?.tone_enabled ?? settings?.enabled ?? false;
+}
+function activeTone(settings: EqualizerSettings) {
+  return (
+    equalizerToneEnabled(settings) && Object.values(equalizerTone(settings)).some((g) => g !== 0)
+  );
+}
 export function equalizerChange(
   view: EqualizerView,
   settings: EqualizerSettings,
@@ -42,6 +50,7 @@ export function equalizerChange(
     settings: {
       enabled: settings.enabled,
       gains: [...settings.gains],
+      ...(settings.tone_enabled !== undefined ? { tone_enabled: settings.tone_enabled } : {}),
       ...(tone.bass_db !== 0 ? { bass_db: tone.bass_db } : {}),
       ...(tone.treble_db !== 0 ? { treble_db: tone.treble_db } : {}),
     },
@@ -50,30 +59,31 @@ export function equalizerChange(
 export function equalizerMessage(view: EqualizerView): string {
   if (view.damaged) return '本地均衡器设置损坏，请修复后重试。';
   if (view.status === 'failed')
-    return '设置已保存，但均衡器未能应用。可重新应用，或关闭后继续播放。';
+    return activeTone(view.settings)
+      ? '设置已保存，但音效未能应用。可重新应用或重置低音和高音。'
+      : '设置已保存，但均衡器未能应用。可重新应用，或关闭后继续播放。';
   if (view.status === 'unavailable') return '均衡器组件未就绪，设置已保存。';
   if (view.status === 'pending') return '设置已保存，正在等待播放器应用…';
-  if (!view.settings.enabled) return '均衡器已关闭';
-  if (
-    view.settings.gains.every((g) => g === 0) &&
-    Object.values(equalizerTone(view.settings)).every((g) => g === 0)
-  )
-    return '当前为平直曲线';
-  return view.status === 'configured' ? '均衡器已配置，等待音频处理' : '均衡器已启用';
+  const tone = activeTone(view.settings);
+  if (!view.settings.enabled && !tone) return '均衡器已关闭';
+  if (!tone && view.settings.gains.every((g) => g === 0)) return '当前为平直曲线';
+  if (view.status === 'configured') return '均衡器已配置，等待音频处理';
+  return view.settings.enabled ? '均衡器已启用' : '低音和高音增强已启用';
 }
 
 export function equalizerLauncher(view?: EqualizerView) {
   if (!view) return { state: 'loading', label: '正在读取均衡器设置' };
   if (view.damaged) return { state: 'problem', label: equalizerMessage(view) };
-  if (!view.settings.enabled) return { state: 'off', label: '均衡器已关闭' };
+  const tone = activeTone(view.settings);
+  if (!view.settings.enabled && !tone) return { state: 'off', label: '均衡器已关闭' };
   if (view.status === 'failed' || view.status === 'unavailable')
     return { state: 'problem', label: equalizerMessage(view) };
   if (view.status === 'pending') return { state: 'pending', label: equalizerMessage(view) };
-  if (
-    view.settings.gains.every((gain) => gain === 0) &&
-    Object.values(equalizerTone(view.settings)).every((gain) => gain === 0)
-  )
+  if (!tone && view.settings.gains.every((gain) => gain === 0))
     return { state: 'flat', label: '均衡器已开启，当前为平直曲线' };
   if (view.status === 'configured') return { state: 'configured', label: equalizerMessage(view) };
-  return { state: 'processing', label: '均衡器已应用' };
+  return {
+    state: 'processing',
+    label: view.settings.enabled ? '均衡器已应用' : '低音和高音增强已应用',
+  };
 }

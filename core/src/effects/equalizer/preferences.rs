@@ -62,8 +62,9 @@ impl EqualizerPreferences {
             {
                 return Err(Error::InvalidInput("invalid equalizer preset selection"));
             }
-            let identity_only =
-                preset.is_some() && preset != current.preset && settings == current.settings;
+            let identity_only = preset.is_some()
+                && preset != current.preset
+                && settings.same_parameters(current.settings);
             let next = Self {
                 revision: current
                     .revision

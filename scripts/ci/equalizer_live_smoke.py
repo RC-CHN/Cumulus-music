@@ -83,14 +83,20 @@ def main():
         assert stage['equalizer']['saved_custom'] == custom_gains
         assert stage['entryId'] == before['entryId'] and stage['state'] == 'playing'
     off = read('eq_off')['native']
+    independent = read('eq_independent_tone')
+    assert independent['tone'] == [6, 0]
+    assert independent['status'] == independent['native']['equalizer']['status'] == 'processing'
+    assert independent['native']['equalizer']['settings'] == {
+        **off['equalizer']['settings'], 'tone_enabled': True, 'bass_db': 6,
+    }
     reenabled = read('eq_reenabled')['native']
     flat = read('eq_flat')['native']
     assert off['equalizer']['settings'] == {**native['settings'], 'enabled': False}
     assert reenabled['equalizer']['settings'] == native['settings']
     assert reenabled['equalizer']['status'] == 'processing'
-    assert flat['equalizer']['settings'] == {'enabled': True, 'gains': [0] * 10}
+    assert flat['equalizer']['settings'] == {'enabled': True, 'gains': [0] * 10, 'tone_enabled': False}
     assert flat['equalizer']['status'] in ('configured', 'processing')
-    progression = [before, after, off, reenabled, flat]
+    progression = [before, after, off, independent['native'], reenabled, flat]
     assert all(stage['state'] == 'playing' and stage['entryId'] == before['entryId']
                for stage in progression)
     assert all(b['position'] > a['position'] and
@@ -98,7 +104,7 @@ def main():
                for a, b in zip(progression, progression[1:]))
     tone = read('eq_tone')
     tone_settings = tone['native']['equalizer']['settings']
-    assert tone['tone'] == [6, -3]
+    assert tone['tone'] == [6, -3] and tone_settings['tone_enabled'] is True
     assert (tone_settings['bass_db'], tone_settings['treble_db']) == (6, -3)
     assert tone['native']['equalizer']['status'] == 'processing'
     assert tone['native']['entryId'] == before['entryId'] and tone['native']['state'] == 'playing'
@@ -108,10 +114,11 @@ def main():
     assert saved['state'] == 'paused' and saved['position'] >= 11
     assert read('complete')['ok']
     record = persisted(root)
+    saved_custom_record = {'enabled': True, 'gains': custom_gains}
     assert record == {'revision': int(saved['equalizer']['revision']),
                       'settings': saved['equalizer']['settings'],
                       'preset': {'kind': 'built_in', 'index': 1},
-                      'saved_custom': native['settings']}
+                      'saved_custom': saved_custom_record}
 
     reopened = run(binary, env, root, reopen=True)
     restored = reopened('eq_reopened')['native']
@@ -129,22 +136,24 @@ def main():
     assert recalled_reopen['equalizer']['status'] == 'processing'
     assert recalled_reopen['equalizer']['saved_custom'] == custom_gains
     assert recalled_reopen['equalizer']['settings'] == {
-        **record['saved_custom'], 'bass_db': 6, 'treble_db': -3,
+        **record['saved_custom'], 'bass_db': 6, 'treble_db': -3, 'tone_enabled': True,
     }
     assert int(recalled_reopen['equalizer']['revision']) == record['revision'] + 1
     reset = reopened('eq_reopened_tone_reset')
     assert reset['tone'] == [0, 0]
     assert reset['native']['entryId'] == resumed['entryId'] and reset['native']['state'] == 'playing'
-    assert reset['native']['equalizer']['settings'] == record['saved_custom']
+    reset_settings = {**record['saved_custom'], 'tone_enabled': False}
+    assert reset['native']['equalizer']['settings'] == reset_settings
     assert persisted(root) == {**record, 'revision': record['revision'] + 2,
-                               'settings': record['saved_custom'], 'preset': {'kind': 'saved'}}
+                               'settings': reset_settings, 'preset': {'kind': 'saved'}}
     assert reopened('complete')['ok']
     report = {'ok': True, 'actualWebView': True, 'inputOnly': True, 'confirmedGain': -3.5,
               'samePlayingEntryAdvanced': True, 'nativeFlatReset': True,
               'persistedRevisionVerified': True, 'freshProcessResumedProcessing': True,
               'savedCustomPresetRecalledAfterRestart': True,
               'sameCurvePresetIdentityPreserved': True,
-              'toneProcessedPersistedAndReset': True}
+              'toneProcessedPersistedAndReset': True,
+              'toneProcessedWithGeqDisabled': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

@@ -16,7 +16,9 @@ impl Actor {
                 if !self.equalizer_initialized
                     || self.equalizer.damaged
                     || preferences.dsp_revision() != self.equalizer.preferences.dsp_revision()
-                    || preferences.settings != self.equalizer.preferences.settings
+                    || !preferences
+                        .settings
+                        .same_parameters(self.equalizer.preferences.settings)
                 {
                     self.equalizer.status = EqualizerStatus::Pending;
                 }
@@ -53,7 +55,9 @@ impl Actor {
         let changed = !self.equalizer_initialized
             || self.equalizer.damaged
             || preferences.dsp_revision() != self.equalizer.preferences.dsp_revision()
-            || preferences.settings != self.equalizer.preferences.settings;
+            || !preferences
+                .settings
+                .same_parameters(self.equalizer.preferences.settings);
         self.equalizer.preferences = preferences;
         self.equalizer_initialized = true;
         self.equalizer.damaged = false;
@@ -74,7 +78,9 @@ impl Actor {
         // the active settings, normal preference sync owns applying that change.
         self.equalizer.preferences.saved_custom = preferences.saved_custom;
         if preferences.dsp_revision() == self.equalizer.preferences.dsp_revision()
-            && preferences.settings == self.equalizer.preferences.settings
+            && preferences
+                .settings
+                .same_parameters(self.equalizer.preferences.settings)
         {
             self.equalizer.preferences = preferences;
         }

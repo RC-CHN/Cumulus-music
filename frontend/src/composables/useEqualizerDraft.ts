@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef, watch } from 'vue';
 import { failure } from '../services/contracts.ts';
-import { equalizerChange } from '../services/equalizer.ts';
+import { equalizerChange, equalizerToneEnabled } from '../services/equalizer.ts';
 import type {
   EqualizerPreset,
   EqualizerSettings,
@@ -21,6 +21,7 @@ function samePreset(a?: EqualizerPreset | null, b?: EqualizerPreset | null) {
 function same(a: EqualizerSettings, b: EqualizerSettings) {
   return (
     a.enabled === b.enabled &&
+    equalizerToneEnabled(a) === equalizerToneEnabled(b) &&
     (a.bass_db ?? 0) === (b.bass_db ?? 0) &&
     (a.treble_db ?? 0) === (b.treble_db ?? 0) &&
     a.gains.length === b.gains.length &&

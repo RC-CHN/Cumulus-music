@@ -86,3 +86,25 @@ test('launcher never marks unavailable, damaged, flat or disabled processing as 
     'processing',
   );
 });
+
+test('a tone-only setting does not enable a saved curve and reports native DSP status', () => {
+  const base = view();
+  const gains = [4, ...Array(9).fill(0)];
+  const toneOnly = { enabled: false, gains, bass_db: 6, tone_enabled: true };
+  assert.deepEqual(equalizerChange(base, toneOnly).settings, toneOnly);
+  assert.equal(
+    equalizerLauncher({ ...base, settings: { enabled: false, gains, bass_db: 6 } }).state,
+    'off',
+  );
+  assert.equal(
+    equalizerLauncher({ ...base, settings: toneOnly, status: 'processing' }).state,
+    'processing',
+  );
+  assert.equal(
+    equalizerLauncher({ ...base, settings: toneOnly, status: 'unavailable' }).state,
+    'problem',
+  );
+  const flat = { enabled: true, gains: Array(10).fill(0), bass_db: 6, tone_enabled: false };
+  assert.deepEqual(equalizerChange(base, flat).settings, flat);
+  assert.equal(equalizerLauncher({ ...base, settings: flat, status: 'processing' }).state, 'flat');
+});

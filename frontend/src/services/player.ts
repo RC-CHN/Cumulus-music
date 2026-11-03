@@ -121,6 +121,7 @@ export interface EqualizerSettings {
   gains: number[];
   bass_db?: number;
   treble_db?: number;
+  tone_enabled?: boolean;
 }
 export type EqualizerPreset =
   | { kind: 'built_in'; index: number }
