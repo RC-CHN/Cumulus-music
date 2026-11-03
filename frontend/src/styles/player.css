@@ -671,6 +671,12 @@ input[type='range'] {
   display: flex;
   padding: 2px;
 }
+.vinyl-source {
+  align-items: center;
+}
+.vinyl-source .vinyl-credit:focus-visible {
+  outline-offset: -2px;
+}
 .vinyl-source > span:first-child {
   flex: none;
 }
