@@ -158,6 +158,41 @@ pub async fn play_selection(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub fn prepare_play_selection<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    expected_queue_revision: String,
+    expected_play_id: Option<String>,
+) -> Result<String, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("prepared playback requires the main window").into());
+    }
+    client
+        .prepare_play_selection(
+            &epoch,
+            &expected_queue_revision,
+            expected_play_id.as_deref(),
+        )
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn commit_prepared_selection<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    ticket: String,
+    selection: PlaySelection,
+) -> Result<PlayerView, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("prepared playback requires the main window").into());
+    }
+    client
+        .commit_prepared_selection(&epoch, &ticket, selection)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_queue(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

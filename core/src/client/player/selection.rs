@@ -1,4 +1,4 @@
-use super::*;
+use super::{prepared_selection::PreparedSelection, *};
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -39,6 +39,15 @@ impl MusicClient {
         project(&value, &token)
     }
     pub async fn play_selection(&self, epoch: &str, input: PlaySelection) -> Result<PlayerView> {
+        self.play_selection_inner(epoch, input, None).await
+    }
+
+    pub(super) async fn play_selection_inner(
+        &self,
+        epoch: &str,
+        input: PlaySelection,
+        prepared: Option<PreparedSelection>,
+    ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
         let (input, keep_queue) = match input {
             PlaySelection::SongRowDoubleClick { selection } => {
@@ -83,34 +92,34 @@ impl MusicClient {
             None
         };
         use super::super::focus::Owner;
-        let (lease, attempt) = if let Some(snapshot) = &preserve {
+        let (lease, attempt) = if let Some(prepared) = &prepared {
+            (None, prepared.observed)
+        } else if let Some(snapshot) = &preserve {
             let lease = self
                 .claim_native_media(&token, Owner::Audio, snapshot.focus)
                 .await?;
-            (lease, snapshot.attempt)
+            (Some(lease), snapshot.attempt)
         } else {
             let lease = self.claim_media(&token, Owner::Audio).await?;
             (
-                lease,
+                Some(lease),
                 self.player.selection.fetch_add(1, Ordering::AcqRel) + 1,
             )
         };
         let input = match input {
             PlaySelection::Downloads { query, start_id } => {
                 let (resources, index) = self.download_selection(epoch, query, start_id).await?;
-                let controller = self.player.controller().await?;
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
-                }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
-                let state = controller
-                    .command(
+                let state = self
+                    .submit_selection(
                         &token,
                         PlaybackCommand::Replace {
                             resources,
                             index,
                             source: json!({"kind":"downloads"}),
                         },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
                     )
                     .await?;
                 self.session.check_generation(&token)?;
@@ -136,19 +145,17 @@ impl MusicClient {
                         attempt,
                     )
                     .await?;
-                let controller = self.player.controller().await?;
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
-                }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
-                let state = controller
-                    .command(
+                let state = self
+                    .submit_selection(
                         &token,
                         PlaybackCommand::Replace {
                             resources,
                             index,
                             source,
                         },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
                     )
                     .await?;
                 self.session.check_generation(&token)?;
@@ -168,19 +175,17 @@ impl MusicClient {
                         Ok(resource)
                     })
                     .await?;
-                let controller = self.player.controller().await?;
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
-                }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
-                let state = controller
-                    .command(
+                let state = self
+                    .submit_selection(
                         &token,
                         PlaybackCommand::Replace {
                             resources: vec![resource],
                             index: 0,
                             source: json!({"kind":"voice","id":id,"scene":"comment"}),
                         },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
                     )
                     .await?;
                 self.session.with_token(&token, |_| Ok(()))?;
@@ -194,19 +199,17 @@ impl MusicClient {
                 let (resources, index) = self
                     .podcast_resources(epoch, &scope, &revision, start_id.as_deref())
                     .await?;
-                let controller = self.player.controller().await?;
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
-                }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
-                let state = controller
-                    .command(
+                let state = self
+                    .submit_selection(
                         &token,
                         PlaybackCommand::Replace {
                             resources,
                             index,
                             source: json!({"kind":"podcast","scope":scope,"revision":revision}),
                         },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
                     )
                     .await?;
                 self.session.with_token(&token, |_| Ok(()))?;
@@ -224,19 +227,17 @@ impl MusicClient {
                 })
                 .await
                 .map_err(|_| Error::State("local selection worker stopped"))??;
-                let controller = self.player.controller().await?;
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
-                }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
-                let state = controller
-                    .command(
+                let state = self
+                    .submit_selection(
                         &token,
                         PlaybackCommand::Replace {
                             resources,
                             index,
                             source: json!({"kind":"local","revision":revision}),
                         },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
                     )
                     .await?;
                 self.session.check_generation(&token)?;
@@ -262,7 +263,10 @@ impl MusicClient {
                 if self.player.selection.load(Ordering::Acquire) != attempt {
                     return Err(Error::StaleResponse);
                 }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
+                self.focus.check(
+                    lease.ok_or(Error::StaleResponse)?,
+                    super::super::focus::Owner::Audio,
+                )?;
                 let current = controller.snapshot();
                 if current.account == token
                     && current
@@ -289,19 +293,17 @@ impl MusicClient {
                 let (resources, index) = self
                     .cloud_resources(epoch, query, &revision, start_id, quality)
                     .await?;
-                let controller = self.player.controller().await?;
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
-                }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
-                let state = controller
-                    .command(
+                let state = self
+                    .submit_selection(
                         &token,
                         PlaybackCommand::Replace {
                             resources,
                             index,
                             source: json!({"kind":"cloud","revision":revision}),
                         },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
                     )
                     .await?;
                 self.session.with_token(&token, |_| Ok(()))?;
@@ -316,19 +318,17 @@ impl MusicClient {
                 let resources = self
                     .cloud_selected_resources(epoch, ids, &revision, quality, query.clone())
                     .await?;
-                let controller = self.player.controller().await?;
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
-                }
-                self.focus.check(lease, super::super::focus::Owner::Audio)?;
-                let state = controller
-                    .command(
+                let state = self
+                    .submit_selection(
                         &token,
                         PlaybackCommand::Replace {
                             resources,
                             index: 0,
                             source: json!({"kind":"cloud","revision":revision,"query":query}),
                         },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
                     )
                     .await?;
                 self.session.with_token(&token, |_| Ok(()))?;
@@ -562,28 +562,30 @@ impl MusicClient {
         if resources.get(index).is_none_or(|v| v["missing"] == true) {
             return Err(Error::State("selected song is unavailable"));
         }
-        let controller = self.player.controller().await?;
-        if self.player.selection.load(Ordering::Acquire) != attempt {
-            return Err(Error::StaleResponse);
-        }
-        self.focus.check(lease, super::super::focus::Owner::Audio)?;
         let state = if let Some(snapshot) = preserve {
+            let lease = lease.ok_or(Error::StaleResponse)?;
+            if self.player.selection.load(Ordering::Acquire) != attempt {
+                return Err(Error::StaleResponse);
+            }
+            self.focus.check(lease, Owner::Audio)?;
             let resource = resources
                 .pop()
                 .ok_or(Error::State("selected song is unavailable"))?;
             self.play_retained_queue_row(&token, snapshot, (resource, source), lease)
                 .await?
         } else {
-            controller
-                .command(
-                    &token,
-                    PlaybackCommand::Replace {
-                        resources,
-                        index,
-                        source,
-                    },
-                )
-                .await?
+            self.submit_selection(
+                &token,
+                PlaybackCommand::Replace {
+                    resources,
+                    index,
+                    source,
+                },
+                attempt,
+                lease,
+                prepared.as_ref(),
+            )
+            .await?
         };
         self.session.with_token(&token, |_| Ok(()))?;
         project(&state, &token)

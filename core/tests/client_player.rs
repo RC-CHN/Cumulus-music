@@ -185,6 +185,9 @@ fn songs(id: &str) -> PlaySelection {
     }
 }
 
+#[path = "client_player/prepared_selection.rs"]
+mod prepared_selection;
+
 #[path = "client_player/voice_selection.rs"]
 mod voice_selection;
 

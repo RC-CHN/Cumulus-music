@@ -289,6 +289,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::quality::player_quality_details,
                 player::quality::player_quality_trial,
                 player::play_selection,
+                player::prepare_play_selection,
+                player::commit_prepared_selection,
                 player::player_queue,
                 player::player_snapshot,
                 player::intelligence::player_intelligence,

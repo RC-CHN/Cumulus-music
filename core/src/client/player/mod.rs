@@ -8,6 +8,7 @@ mod origin;
 mod output;
 mod playlist_batch;
 mod preferences;
+mod prepared_selection;
 mod quality;
 mod queue_click;
 mod queue_collection;
@@ -76,6 +77,8 @@ pub(super) struct PlayerHost {
     pub(super) controller: OnceCell<Arc<PlaybackController>>,
     fm: OnceCell<Arc<crate::fm::player::FmPlayer>>,
     pub(super) selection: Arc<AtomicU64>,
+    prepared_selection: Mutex<Option<prepared_selection::PreparedSelection>>,
+    prepared_generation: Arc<AtomicU64>,
     focus: Arc<super::focus::MediaFocus>,
     lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
 }
@@ -95,6 +98,8 @@ impl PlayerHost {
             controller: OnceCell::new(),
             fm: OnceCell::new(),
             selection: Arc::new(AtomicU64::new(0)),
+            prepared_selection: Mutex::new(None),
+            prepared_generation: Arc::new(AtomicU64::new(0)),
             lyrics: Mutex::new(None),
             focus,
             output,

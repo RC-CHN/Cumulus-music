@@ -136,27 +136,56 @@ impl MusicClient {
         owner: Owner,
         expected: Option<ExpectedFocus>,
     ) -> Result<u64> {
+        let (lease, ()) = self.reserve_media_claim(token, expected, || Ok(()))?;
+        self.finish_media_claim(token, owner, lease).await
+    }
+
+    /// Reserve a prepared selection's intent at the same point as its focus
+    /// handoff. The supplied closure is synchronous and must not lock focus.
+    pub(super) fn reserve_prepared_audio<T>(
+        &self,
+        token: &SessionToken,
+        expected: FocusSnapshot,
+        reserve: impl FnOnce() -> Result<T>,
+    ) -> Result<(u64, T)> {
+        self.reserve_media_claim(token, Some(ExpectedFocus::Native(expected)), reserve)
+    }
+
+    fn reserve_media_claim<T>(
+        &self,
+        token: &SessionToken,
+        expected: Option<ExpectedFocus>,
+        reserve: impl FnOnce() -> Result<T>,
+    ) -> Result<(u64, T)> {
         self.session.check_generation(token)?;
-        let lease = {
-            let mut state = self.focus.state.lock().map_err(|_| Error::LockPoisoned)?;
-            if expected.is_some_and(|expected| match expected {
-                ExpectedFocus::Automatic(g) => {
-                    g != state.generation || !matches!(state.allowed, None | Some(Owner::Audio))
-                }
-                ExpectedFocus::Native(value) => {
-                    value.generation != state.generation || value.owner != state.allowed
-                }
-            }) {
-                return Err(Error::StaleResponse);
+        let mut state = self.focus.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if expected.is_some_and(|expected| match expected {
+            ExpectedFocus::Automatic(g) => {
+                g != state.generation || !matches!(state.allowed, None | Some(Owner::Audio))
             }
-            state.generation = state
-                .generation
-                .checked_add(1)
-                .ok_or(Error::State("media focus generation exhausted"))?;
-            self.focus.cold_allowed.store(0, Ordering::Release);
-            state.allowed = None;
-            state.generation
-        };
+            ExpectedFocus::Native(value) => {
+                value.generation != state.generation || value.owner != state.allowed
+            }
+        }) {
+            return Err(Error::StaleResponse);
+        }
+        let lease = state
+            .generation
+            .checked_add(1)
+            .ok_or(Error::State("media focus generation exhausted"))?;
+        let reservation = reserve()?;
+        state.generation = lease;
+        self.focus.cold_allowed.store(0, Ordering::Release);
+        state.allowed = None;
+        Ok((lease, reservation))
+    }
+
+    pub(super) async fn finish_media_claim(
+        &self,
+        token: &SessionToken,
+        owner: Owner,
+        lease: u64,
+    ) -> Result<u64> {
         let _handoff = self.focus.handoff.lock().await;
         if self
             .focus
