@@ -11,7 +11,7 @@ from window_manager import launch
 
 STAGES = (
     'recovered', 'daily', 'search', 'playback', 'playlist_created', 'playlist_edited',
-    'playlist_cleaned', 'download_paused', 'download_complete', 'local_offline_playback', 'download_disposed', 'complete',
+    'playlist_song_added', 'playlist_song_removed', 'playlist_cleaned', 'download_paused', 'download_complete', 'local_offline_playback', 'download_disposed', 'complete',
 )
 
 
@@ -51,6 +51,11 @@ def main():
     assert stages['playback']['fixture']['calls']['/api/song/enhance/player/url/v1'] >= 1
     assert stages['playlist_created']['fixture']['disposablePresent']
     assert stages['playlist_edited']['fixture']['calls']['/api/batch'] == 1
+    added, removed = stages['playlist_song_added'], stages['playlist_song_removed']
+    assert added['playlistId'] == removed['playlistId'] == '42'
+    assert added['trackIds'] == ['1'] and removed['trackIds'] == []
+    assert added['fixture']['calls']['/api/v1/playlist/manipulate/tracks'] == 1
+    assert removed['fixture']['calls']['/api/v1/playlist/manipulate/tracks'] == 2
     cleaned = stages['playlist_cleaned']
     assert cleaned['fullBaselineRestored'] and not cleaned['fixture']['disposablePresent']
     assert cleaned['fixture']['calls']['/api/playlist/create'] == 1
@@ -104,14 +109,15 @@ def main():
             "json_extract(value,'$.phase') FROM state WHERE kind='download_file_operations_v1'"
         ).fetchall()
         assert state.execute("SELECT 1 FROM state WHERE owner='device' AND kind='identity'").fetchone() is None
-    assert sorted(playlist) == [('2', kind, 'confirmed') for kind in ('create', 'delete', 'metadata')]
+    assert sorted(row for row in playlist if row[1] == 'tracks') == [('2', 'tracks', 'confirmed')] * 2
+    assert sorted(row for row in playlist if row[1] != 'tracks') == [('2', kind, 'confirmed') for kind in ('create', 'delete', 'metadata')]
     assert not leftovers
     assert disposal_journal == [('2', proof['id'], 'delete', 'complete')]
     screenshots = len(list(output.glob('ux_*.png')))
     assert screenshots == (len(STAGES) - 1 if args.screenshots else 0)
     report = dict(ok=True, actualWebView=True, actualLibmpv=True, stages=len(STAGES), screenshots=screenshots, sqliteVerified=True,
                   realMusicRequests=0, realAccountWrites=0, syntheticOfflinePlayback=True, nativeDownloadDisposal=True, downloadIntegrityCheckpoint=True,
-                  pausedPartialAndVerifiedRangeResume=True)
+                  pausedPartialAndVerifiedRangeResume=True, playlistMembershipReadback=True)
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

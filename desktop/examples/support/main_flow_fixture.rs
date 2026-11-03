@@ -166,12 +166,48 @@ impl Api for Service {
                     }
                     result
                 }
-                "/api/playlist/delete" => {
+                "/api/v1/playlist/manipulate/tracks" => {
                     if identifier(&p["pid"]) != Some(CREATED)
-                        || self.playlist.lock().unwrap().take().is_none()
+                        || p["trackIds"] != r#"["1"]"#
+                        || p["imme"] != true
                     {
-                        return Err(Error::InvalidInput("cannot delete baseline playlist"));
+                        return Err(Error::InvalidInput(
+                            "only the synthetic song and disposable playlist may be changed",
+                        ));
                     }
+                    let mut state = self.playlist.lock().unwrap();
+                    let list = state
+                        .as_mut()
+                        .ok_or(Error::State("missing disposable playlist"))?;
+                    match p["op"].as_str() {
+                        Some("add") if list["trackIds"] == json!([]) => {
+                            list["trackIds"] = json!([{"id":1}]);
+                            list["trackCount"] = json!(1);
+                        }
+                        Some("del") if list["trackIds"] == json!([{"id":1}]) => {
+                            list["trackIds"] = json!([]);
+                            list["trackCount"] = json!(0);
+                        }
+                        _ => {
+                            return Err(Error::State(
+                                "unexpected synthetic playlist membership transition",
+                            ));
+                        }
+                    }
+                    json!({"code":200})
+                }
+                "/api/playlist/delete" => {
+                    let mut state = self.playlist.lock().unwrap();
+                    if identifier(&p["pid"]) != Some(CREATED)
+                        || !state
+                            .as_ref()
+                            .is_some_and(|list| list["trackIds"] == json!([]))
+                    {
+                        return Err(Error::InvalidInput(
+                            "only the empty disposable playlist may be deleted",
+                        ));
+                    }
+                    *state = None;
                     json!({"code":200})
                 }
                 _ => return Err(Error::Response("endpoint not in closed main-flow fixture")),

@@ -108,6 +108,27 @@
     const edited = (await invoke("playlist_editor", { epoch, id: created.id })).value;
     check(edited.name === renamed && edited.description === description, "playlist edit readback");
     await stage("playlist_edited");
+    await search();
+    await click(() => one(`${songPanel} ${songRow} .track-more`), "open exact search result menu");
+    await click(() => button("收藏", one(".song-action-menu")), "choose playlist destination");
+    await click(() => one(`.playlist-collect-dialog[open] [data-playlist-id="${created.id}"]`), "add search song to exact private playlist");
+    await wait(() => !one(".playlist-dialog"), "confirmed add closes picker");
+    const privateSongs = async () => {
+      const reply = await invoke("playlist_page", { id: created.id, page: { offset: 0, limit: 10 } });
+      check(reply.epoch === epoch, "playlist readback changed account");
+      return reply.value.tracks.map(track => track.id);
+    };
+    check(JSON.stringify(await privateSongs()) === JSON.stringify(["1"]), "private playlist add readback");
+    await click(() => button("我的歌单"), "open playlist library after add");
+    await click(() => one(`.playlist-card[data-library-open="${created.id}"]`), "open exact private playlist");
+    await wait(() => one(".playlist-hero h1")?.textContent === renamed && one(`.track-row${songRow}`), "added track displayed");
+    await stage("playlist_song_added", { playlistId: created.id, trackIds: await privateSongs() });
+    await click(() => one(`.track-row${songRow} .track-more`), "private playlist song menu");
+    await click(() => button("从歌单中删除", one(".song-action-menu")), "remove only the added song");
+    await click(() => button("删除", one(".playlist-dialog")), "confirm track removal");
+    await wait(() => !one(".playlist-dialog") && !one(`.track-row${songRow}`), "removed track no longer displayed");
+    check((await privateSongs()).length === 0, "private playlist remove readback");
+    await stage("playlist_song_removed", { playlistId: created.id, trackIds: await privateSongs() });
     await click(() => button("编辑歌单"), "return to editor");
     await click(() => button("其他歌单操作"), "playlist options");
     await click(() => button("删除歌单", one(".action-menu")), "delete disposable playlist");
