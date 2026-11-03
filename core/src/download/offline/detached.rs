@@ -15,6 +15,49 @@ pub(crate) fn detach_download_queue(
     owner: &str,
     record: &OfflineRecord,
 ) -> Result<()> {
+    edit_queue_records(tx, owner, false, |queue| {
+        detach_queue_entries(queue, owner, record)
+    })
+}
+
+/// Rebind native inline authorization snapshots only to the exact new
+/// publication derived from their previously published record.
+pub(crate) fn move_inline_download_queue(
+    tx: &mut StateTransaction<'_>,
+    owner: &str,
+    old: &OfflineRecord,
+    new: &OfflineRecord,
+) -> Result<()> {
+    let old_value = serde_json::to_value(old)?;
+    let new_value = serde_json::to_value(new)?;
+    let new_path = json!(new.path);
+    edit_queue_records(tx, owner, true, |queue| {
+        let mut changed = false;
+        for entry in &mut queue.items {
+            let resource = &mut entry.resource;
+            if resource.get("download_task_id").is_none()
+                && resource["download_ledger_owner"].as_str() == Some(owner)
+                && resource.get("download_ledger") == Some(&old_value)
+                && resource["path"]
+                    .as_str()
+                    .map(std::path::Path::new)
+                    .is_some_and(|path| path == old.path || path == new.path)
+            {
+                resource["path"] = new_path.clone();
+                resource["download_ledger"] = new_value.clone();
+                changed = true;
+            }
+        }
+        Ok(changed)
+    })
+}
+
+fn edit_queue_records(
+    tx: &mut StateTransaction<'_>,
+    owner: &str,
+    include_liked_fallback: bool,
+    mut edit: impl FnMut(&mut QueueSnapshot) -> Result<bool>,
+) -> Result<()> {
     for key in ["queue", FM_BACKUP_QUEUE] {
         let Some(value) = tx.get(owner, "playback", key)? else {
             continue;
@@ -26,7 +69,9 @@ pub(crate) fn detach_download_queue(
                     .ok_or(Error::State("missing intelligence session"))?,
             )?;
             session.validate(&queue)?;
-            if detach_queue_entries(&mut session.backup, owner, record)? {
+            let backup_changed = edit(&mut session.backup)?;
+            let fallback_changed = include_liked_fallback && edit(&mut session.fallback)?;
+            if backup_changed || fallback_changed {
                 session.revision = uuid::Uuid::new_v4().to_string();
                 session.validate(&queue)?;
                 tx.put(
@@ -37,7 +82,7 @@ pub(crate) fn detach_download_queue(
                 )?;
             }
         }
-        if detach_queue_entries(&mut queue, owner, record)? {
+        if edit(&mut queue)? {
             tx.put(owner, "playback", key, &serde_json::to_value(queue)?)?;
         }
     }

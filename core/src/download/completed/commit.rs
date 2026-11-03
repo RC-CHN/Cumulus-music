@@ -98,6 +98,9 @@ impl CompletedDownloads {
                         )?;
                     }
                 }
+                let moved_audio = (op.action == FileAction::Move)
+                    .then(|| op.files.iter().find(|file| file.role == "audio"))
+                    .flatten();
                 for row in tx.rows("offline_music_v1")? {
                     if row.owner != self.owner {
                         continue;
@@ -110,6 +113,13 @@ impl CompletedDownloads {
                         crate::download::offline::detach_download_queue(tx, &self.owner, &record)?;
                     }
                     if let Some(target) = &op.target {
+                        let inline_source = moved_audio
+                            .filter(|audio| {
+                                row.key == record.id
+                                    && record.path == audio.source
+                                    && record.integrity == audio.expected.integrity
+                            })
+                            .map(|_| record.clone());
                         record.path = target.clone();
                         record.id = fs::path_key(target)?;
                         record.revision = uuid::Uuid::new_v4().to_string();
@@ -125,6 +135,14 @@ impl CompletedDownloads {
                             &record.id,
                             &serde_json::to_value(&record)?,
                         )?;
+                        if let Some(previous) = inline_source {
+                            crate::download::offline::move_inline_download_queue(
+                                tx,
+                                &self.owner,
+                                &previous,
+                                &record,
+                            )?;
+                        }
                     }
                     tx.delete(&self.owner, "offline_music_v1", &row.key)?;
                 }

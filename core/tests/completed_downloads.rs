@@ -427,6 +427,127 @@ async fn move_and_delete_reconcile_the_suspended_intelligence_ordinary_queue() {
 }
 
 #[tokio::test]
+async fn moved_inline_intelligence_downloads_resolve_from_the_new_publication() {
+    use cumulus_core::{
+        catalog::intelligence::{IntelligenceRequest, IntelligenceStart},
+        playback::{
+            intelligence::{IntelligenceContext, IntelligencePhase},
+            source::SourceResolver,
+        },
+    };
+
+    let f = Fixture::new(false).await;
+    let token = f.session.token().unwrap();
+    let offline = OfflineLibrary::new(f.session.clone()).unwrap();
+    let published = offline.records(&token).unwrap().pop().unwrap();
+    assert_eq!(published.path, f.source);
+    let resource = json!({
+        "id":"123","path":published.path,"download_ledger_owner":"1","download_ledger":published,
+    });
+    let mut stale = resource.clone();
+    stale["download_ledger"]["revision"] = json!(uuid::Uuid::new_v4().to_string());
+    let mut foreign = resource.clone();
+    foreign["download_ledger_owner"] = json!("2");
+
+    let mut queue = PlaybackQueue::new(Some(f.store.clone()), "1").unwrap();
+    queue
+        .replace(
+            vec![resource.clone()],
+            0,
+            json!({"kind":"playlist","id":"31"}),
+        )
+        .unwrap();
+    let fallback = queue.snapshot();
+    queue
+        .replace(
+            vec![resource, stale.clone(), foreign.clone()],
+            0,
+            json!(null),
+        )
+        .unwrap();
+    let backup = queue.snapshot();
+    let context = IntelligenceContext {
+        id: uuid::Uuid::new_v4().to_string(),
+        phase: IntelligencePhase::Seeded,
+    };
+    let mut active = fallback.clone();
+    active.intelligence = Some(context.clone());
+    let request = IntelligenceRequest {
+        playlist_id: "31".into(),
+        song_id: "123".into(),
+        start_music_id: "123".into(),
+        count: 1,
+        start: IntelligenceStart::PlayOne,
+    };
+    f.store
+        .put(
+            "1",
+            "playback",
+            "queue",
+            &serde_json::to_value(&active).unwrap(),
+        )
+        .unwrap();
+    f.store
+        .put(
+            "1",
+            "playback-intelligence-v1",
+            "session",
+            &json!({
+                "schema":1,"revision":uuid::Uuid::new_v4().to_string(),"context":context,"request":request,
+                "seed_entry_id":active.current,"last_mode":backup.mode,
+                "backup":backup,"fallback":fallback,"recommendations":{},"failure":null,
+            }),
+        )
+        .unwrap();
+    queue.reload().unwrap();
+
+    let calls = f.api.calls.lock().unwrap().len();
+    let files = f.files();
+    assert_eq!(
+        files.resume(&f.start(&files).id).unwrap().phase,
+        FilePhase::Complete
+    );
+    queue.reload().unwrap();
+    let session = queue.intelligence_session().unwrap();
+    let new_publication = offline.records(&token).unwrap().pop().unwrap();
+    assert_eq!(new_publication.path, f.target());
+    assert_ne!(new_publication.revision, published.revision);
+    let new_ledger = serde_json::to_value(&new_publication).unwrap();
+
+    let resolver = SourceResolver::new(f.session.clone(), Some(Arc::new(f.library())));
+    let selected = queue.selected().unwrap();
+    for entry in [
+        &selected,
+        &session.backup.items[0],
+        &session.fallback.items[0],
+    ] {
+        assert_eq!(entry.resource["path"], json!(f.target()));
+        assert_eq!(entry.resource["download_ledger"], new_ledger);
+        assert_eq!(
+            resolver
+                .resolve(&entry.resource, &token)
+                .await
+                .unwrap()
+                .actual_quality(),
+            Some("lossless")
+        );
+    }
+    assert_eq!(selected.entry_id, active.current.unwrap());
+    assert_eq!(
+        session.backup.items[1].resource["download_ledger"],
+        stale["download_ledger"]
+    );
+    assert_eq!(
+        session.backup.items[2].resource["download_ledger"],
+        foreign["download_ledger"]
+    );
+    for entry in &session.backup.items[1..] {
+        assert!(resolver.resolve(&entry.resource, &token).await.is_err());
+    }
+    assert_eq!(f.api.calls.lock().unwrap().len(), calls);
+}
+
+#[tokio::test]
 async fn physical_delete_removes_only_owned_audio_and_lyric_and_advances_current() {
     let f = Fixture::new(true).await;
     let library = f.library();
