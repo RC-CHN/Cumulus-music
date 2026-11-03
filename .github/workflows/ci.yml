@@ -77,8 +77,12 @@ jobs:
         include:
           - os: ubuntu-24.04
             platform: linux-x64
+            rust-cache-scheme: downloads-v2
+            rust-target-cache: ''
           - os: windows-2022
             platform: windows-x64
+            rust-cache-scheme: v1
+            rust-target-cache: .build/target
     runs-on: ${{ matrix.os }}
     # Windows' observed full run took ~120 minutes before the cache save;
     # individual WebView probes retain their own bounded timeouts.
@@ -128,11 +132,13 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .build/target
-          key: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+            ${{ matrix.rust-target-cache }}
+          # Linux runners have exhausted disk while restoring a whole target
+          # cache. Keep only downloaded dependencies there.
+          key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}${{ runner.os == 'Windows' && format('-{0}', github.sha) || '' }}
           restore-keys: |
-            rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
-            rust-${{ runner.os }}-v1-
+            rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-
       - name: Build and verify Windows media runtime
         if: runner.os == 'Windows'
         uses: ./.github/actions/windows-media
@@ -496,7 +502,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - name: Preserve compiled dependencies for the next attempt
+      - name: Preserve Rust caches for the next attempt
         if: >-
           always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
           steps.rust-cache.outputs.cache-hit != 'true' &&
@@ -507,8 +513,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            .build/target
-          key: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+            ${{ matrix.rust-target-cache }}
+          key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}${{ runner.os == 'Windows' && format('-{0}', github.sha) || '' }}
 
   gate:
     name: CI gate
