@@ -289,6 +289,58 @@ async fn refreshing_a_pending_source_does_not_discard_an_accepted_pause() {
 }
 
 #[tokio::test]
+async fn play_during_source_resolution_or_decoder_load_resumes_existing_position() {
+    use std::time::Duration;
+
+    for hold_source in [true, false] {
+        let f = Fixture::new();
+        f.command(replace(&[1])).await.unwrap();
+        // The initial decoder announced its start before acknowledging play.
+        f.device.started.notified().await;
+        f.command(Cmd::Seek(42.5)).await.unwrap();
+        f.command(Cmd::Pause(true)).await.unwrap();
+        if hold_source {
+            f.api.hold.store(1, Ordering::SeqCst);
+        } else {
+            f.device.hold_load.store(true, Ordering::SeqCst);
+        }
+        let refresh = f.start(Cmd::RefreshSource);
+        let started = if hold_source {
+            &f.api.started
+        } else {
+            &f.device.started
+        };
+        tokio::time::timeout(Duration::from_secs(5), started.notified())
+            .await
+            .unwrap();
+        let pending = f.command(Cmd::Snapshot).await.unwrap();
+        assert!(matches!(pending.state, Status::Preparing | Status::Loading));
+        assert!(pending.paused);
+        let accepted = f.command(Cmd::Play).await.unwrap();
+        assert_eq!(accepted.play_id, pending.play_id);
+        assert_eq!(accepted.selected, pending.selected);
+        assert!(!accepted.paused);
+
+        if hold_source {
+            f.api.hold.store(0, Ordering::SeqCst);
+            f.api.release.notify_one();
+        } else {
+            f.device.hold_load.store(false, Ordering::SeqCst);
+        }
+        let resumed = tokio::time::timeout(Duration::from_secs(5), refresh)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(resumed.state, Status::Playing);
+        assert_eq!(resumed.play_id, pending.play_id);
+        assert_eq!(resumed.position, Some(42.5));
+        assert_eq!(f.api.count(1), 2, "Play must not start another source read");
+        assert_eq!(f.device.state.lock().unwrap().loads, 2);
+    }
+}
+
+#[tokio::test]
 async fn clearing_a_queue_during_decode_cancels_before_unpause() {
     let f = Fixture::new();
     f.device.hold_load.store(true, Ordering::SeqCst);

@@ -252,7 +252,7 @@ impl Actor {
                 }
             }
             PlaybackCommand::Play => {
-                if self.state == PlaybackStatus::Paused {
+                if self.state == PlaybackStatus::Paused || self.pending.is_some() {
                     self.pause(false).await
                 } else if self.state.active() {
                     Ok(())
