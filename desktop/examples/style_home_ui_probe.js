@@ -18,6 +18,14 @@
     await wait(() => innerWidth === 760 && innerHeight === 540, 'compact window');
     one('.daily-style-entry').click();
     await wait(() => one('.style-home-entry') && one('.track-row'), 'default style ready');
+    const { epoch } = await invoke('account_snapshot');
+    const player = () => invoke('player_snapshot', { epoch });
+    one('.track-row[data-track-id="71"] .track-play').click();
+    await wait(async () => {
+      const snapshot = await player();
+      return snapshot.track?.id === '71' && snapshot.state === 'playing';
+    }, 'default style starts a queue');
+    const original = await player();
     one('.style-home-entry').focus();
     one('.style-home-entry').click();
     await wait(() => one('.style-home-card')?.textContent.includes('合成首页风格'), 'homepage card ready');
@@ -29,17 +37,28 @@
     'seeded recommendation and focus ready');
     if (one('.style-tags-entry,.style-home-entry')) throw new Error('seeded page exposes default editor');
     await emit('ux_02_style_home_seeded');
-    const { epoch } = await invoke('account_snapshot');
+    one('.track-row[data-track-id="81"] .track-more').click();
+    await wait(() => one('.song-action-menu'), 'seeded song menu');
+    const next = [...one('.song-action-menu').querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === '下一首播放');
+    if (!next || next.disabled) throw new Error('seeded next playback unavailable');
+    next.click();
+    await wait(async () => {
+      const queue = await invoke('player_queue', { epoch });
+      return queue.tracks[0]?.track.id === '71' && queue.tracks[1]?.track.id === '81';
+    }, 'seeded song inserted after the active entry');
+    if ((await player()).playId !== original.playId) throw new Error('insertion interrupted playback');
+    await emit('ux_03_style_home_queued');
     one('.track-row[data-track-id="81"] .track-play').click();
     await wait(async () => {
-      const snapshot = await invoke('player_snapshot', { epoch });
+      const snapshot = await player();
       return snapshot.track?.id === '81' && snapshot.state === 'playing';
     }, 'seeded style reaches native playback');
-    await emit('ux_03_style_home_playing');
+    await emit('ux_04_style_home_playing');
     one('[aria-label="返回上一页"]').click();
     await wait(() => one('.style-tags-entry') && one('.track-row[data-track-id="71"]') &&
       document.activeElement === one('.style-home-entry'), 'restored default style and launcher focus');
-    await emit('complete', { ok: true, stageCount: 3 });
+    await emit('complete', { ok: true, stageCount: 4 });
   } catch (error) {
     await emit('failed', { message: String(error), stack: error?.stack });
   }

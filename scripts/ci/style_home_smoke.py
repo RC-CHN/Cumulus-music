@@ -37,7 +37,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 3
+    assert complete['ok'] and complete['stageCount'] == 4
     home = complete['styleHomeCalls']
     assert len(home) == 2 and home[0]['path'] == '/api/pc/daily/rcmd/block'
     assert set(home[0]['args']) == {'clientTime'}
@@ -49,8 +49,8 @@ def main():
         {'path': '/api/homepage/category/daily/song/list',
          'args': {'source': '', 'categoryId': '', 'tagId': '', 'songId': ''}},
     ] * 2
-    assert len(list(output.glob('ux_*.png'))) == (3 if args.screenshots else 0)
-    print(json.dumps({'ok': True, 'actualWebView': True, 'stageCount': 3,
+    assert len(list(output.glob('ux_*.png'))) == (4 if args.screenshots else 0)
+    print(json.dumps({'ok': True, 'actualWebView': True, 'stageCount': 4,
                       'styleReads': 4, 'styleSaves': 0}))
 
 
