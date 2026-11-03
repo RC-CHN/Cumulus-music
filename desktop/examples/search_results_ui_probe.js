@@ -50,6 +50,46 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchCollectionNextProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('good');await fresh('合成下一首合集');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      for(const [kind,category,id,total,feedback,done] of [
+        ['playlist','all',3,40,'.playlist-action-feedback','已添加至播放列表'],
+        ['album','albums',201,11,'.album-action-feedback','已设为下一首播放'],
+      ]){
+        if(category!=='all')await choose(category);
+        await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['91','92'],index:0,quality:'standard'}});
+        await wait(()=>one('.playerbar')?.dataset.state==='playing','ordinary audio loaded');
+        const paused=await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+        const before=await invoke('player_queue',{epoch});
+        assert(paused.track?.id==='91'&&paused.state==='paused','ordinary selection paused');
+        const card=one(`[data-result-key="${kind}:${id}"]`);
+        const anchor=card?.querySelector('.search-card-open');
+        assert(anchor&&!anchor.disabled,'collection opens from search');
+        anchor.scrollIntoView({block:'nearest'});
+        anchor.focus({preventScroll:true});
+        anchor.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+        await wait(()=>one('.action-menu [data-menu-key="next"]'),'collection next action');
+        const next=one('.action-menu [data-menu-key="next"]');
+        assert(next.textContent.trim()==='下一首播放'&&!next.disabled,'enabled next action');
+        click(next);
+        await wait(()=>one(feedback)?.textContent.includes(done),'collection queue feedback');
+        const after=await invoke('player_snapshot',{epoch});
+        const queue=await invoke('player_queue',{epoch});
+        assert(after.playId===paused.playId&&after.state==='paused'&&Math.abs(after.position-paused.position)<.05,
+          'collection next preserves the paused decoder');
+        assert(queue.tracks[0].entryId===before.tracks[0].entryId&&queue.tracks.at(-1).entryId===before.tracks[1].entryId,
+          'original queue entries remain at both ends');
+        assert(queue.tracks.slice(1,-1).map(row=>row.track.id).join(',')===Array.from({length:total},(_,i)=>i+1).join(','),
+          'collection tracks insert in authoritative order');
+        assert(document.activeElement===anchor,'menu returns focus to the initiating result');
+        await capture(kind+'_search_next_retains_decoder');
+      }
+      await emit('complete',{ok:true,searchCollectionNextVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchPlaylistCreatorProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('playlist_creator_search');await fresh('合成作者入口');

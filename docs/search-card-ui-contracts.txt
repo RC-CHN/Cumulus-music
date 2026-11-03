@@ -123,3 +123,6 @@ PC recommend.jsx 的综合卡片复用 PlaylistCard 与 AlbumCard；恢复 M/622
 交由原生 QueuePlaylist / QueueAlbum 解析歌曲并检查队列版本；已有当前曲目时
 保留其播放状态及位置，空队列沿用原生启动逻辑。FM 禁用普通队列入口。
 播放和查看详情仍独立；不把相同行为扩展到歌手、播客或通用视频。
+`search_results_smoke.py --collection-next` 从搜索综合页歌单及专辑分类页
+用键盘打开菜单，实际向已暂停的原生队列分别插入 40、11 首。核对服务顺序、
+原队列条目 ID、暂停状态与位置以及菜单焦点返回；保留两张合成 WebView 截图。
