@@ -98,7 +98,10 @@ Linux 实际 WebView 的四个 V3 检查点及截图通过；760×540 深色窗�
     不打开或返回该 URL；重复或越界参数降为不可点击标签。
 - 前端进入独立详情页，可筛选、播放和调用现有歌曲动作。只读接口采用当前账号代次，
   切页与换号不提交过期结果。播放仍走既有歌曲授权和原生队列；不会把算法资源 ID
-  当成普通歌单 ID。未声明分类歌曲表、官方分享、下载/收藏全部或精确像素对齐。
+  当成普通歌单 ID。每次普通歌曲队列最多 500 首，超过时按钮明确显示播放前 500 首，
+  点击后面的歌曲从该曲所在区段开始。未声明分类歌曲表、官方分享、下载/收藏全部或精确像素对齐。
 - 合成验证：`core/tests/client_search_results.rs` 核对参数、覆盖优先级和脱敏；
-  `scripts/ci/search_results_smoke.py --v3` 检查两条实际 Tauri 路由、返回和筛选。
+  `scripts/ci/search_results_smoke.py --v3` 的 6 个 Linux WebView 检查点和截图
+  验证两条实际 Tauri 路由、窄窗标签命中、返回焦点、筛选及原生播放（队列仅含
+  返回的城市歌曲）。报告：.build/goal-search-reasons-playback-ui/audit.json。
   不使用真实账号，未验证上游个性化分桶和 Windows 实机。

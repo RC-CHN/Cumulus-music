@@ -658,12 +658,21 @@
       await capture('v3_back');
       const tags=()=>one('.search-track-reasons');
       assert(tags()?.querySelectorAll('button').length===2&&tags()?.querySelector('span')?.textContent==='不可跳转','only supported tags navigate');
-      click(button('合成推荐 ›',tags()));
+      const clickReason=async (label)=>{
+        const target=button(label,tags());
+        target.scrollIntoView({block:'nearest'});
+        target.focus({preventScroll:true});
+        await sleep(160);
+        const rect=target.getBoundingClientRect();
+        assert(rect.width>0&&target.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),'visible reason chip hit '+label);
+        click(target);
+      };
+      await clickReason('合成推荐 ›');
       await wait(()=>one('.search-reason-page h1')?.textContent==='合成推荐详情'&&one('.search-reason-page .track-row')?.textContent.includes('合成推荐曲目'),'recommendation tag uses native song detail');
       await capture('v3_recommendation_tag');
       click(button('返回上一页'));
-      await wait(()=>ready()&&tags(),'back restores tag row');
-      click(button('合成城市 ›',tags()));
+      await wait(()=>ready()&&tags()&&document.activeElement?.dataset.resultAction==='reason:0','back restores exact reason focus');
+      await clickReason('合成城市 ›');
       await wait(()=>one('.search-reason-page h1')?.textContent==='合成城市详情'&&one('.search-reason-page .track-row')?.textContent.includes('合成城市曲目'),'city tag uses chart and song routes');
       const filter=one('[aria-label="搜索推荐歌曲"]');
       filter.value='不匹配';
@@ -672,8 +681,15 @@
       filter.value='';
       filter.dispatchEvent(new Event('input',{bubbles:true}));
       await wait(()=>one('.search-reason-page .track-row'),'reason rows return');
+      click(button('播放全部',one('.search-reason-page')));
+      await wait(()=>one('.playerbar').dataset.state==='playing','reason selection starts native playback');
+      const invoke=(name,args)=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const player=await invoke('player_snapshot',{epoch});
+      const queue=await invoke('player_queue',{epoch});
+      assert(player.track?.id==='19'&&queue.tracks.length===1&&queue.tracks[0]?.track.id==='19','reason plays the displayed chart song, not a playlist ID');
       await capture('v3_city_tag');
-      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');

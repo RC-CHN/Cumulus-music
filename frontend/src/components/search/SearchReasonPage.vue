@@ -143,7 +143,7 @@ watch(
   margin-inline-start: auto;
   min-width: 0;
   padding: 5px 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--line);
   border-radius: 6px;
 }
 </style>
