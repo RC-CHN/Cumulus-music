@@ -44,6 +44,7 @@ mod scene_fm;
 mod search;
 mod settings;
 mod shortcut_preferences;
+pub mod style_tags;
 mod together;
 mod window;
 pub use player::PlaybackSubscription;

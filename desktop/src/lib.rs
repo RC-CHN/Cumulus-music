@@ -38,6 +38,7 @@ pub mod renewal;
 mod search;
 mod settings;
 pub mod shortcuts;
+mod style_tags;
 pub mod system_media;
 mod together;
 pub mod watchman;
@@ -241,6 +242,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 search::search_history,
                 commands::daily_songs,
                 commands::style_recommendations,
+                style_tags::style_recommendation_categories,
                 rankings::ranking_page,
                 catalog::catalog_page,
                 collections::collection_page,
