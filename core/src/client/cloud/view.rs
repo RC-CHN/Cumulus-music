@@ -135,7 +135,7 @@ fn upload(task: CloudView, entries: &HashMap<String, UploadSchedule>) -> CloudUp
         .or_else(|| state.and_then(|s| s.error.clone()))
         .or_else(|| task.error.as_ref().map(|e| e.kind.clone()))
         .or(child_error)
-        .filter(|error| !terminal && !(running && error == "write_outcome_unknown"));
+        .filter(|error| !(terminal || running && error == "write_outcome_unknown"));
     let encoding_failed =
         task.phase == CloudPhase::Failed && error.as_deref() == Some("encoding_failed");
     let label = if terminal {
