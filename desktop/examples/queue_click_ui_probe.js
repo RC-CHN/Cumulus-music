@@ -23,9 +23,9 @@
     node.focus({ preventScroll: true });
     node.click();
   };
-  const row = (id) => one('.track-row[data-track-id="' + id + '"]');
-  const doubleClick = (id) => {
-    const title = row(id)?.querySelector('.track-title');
+  const row = (id, root = document) => one('.track-row[data-track-id="' + id + '"]', root);
+  const doubleClick = (id, root = document) => {
+    const title = row(id, root)?.querySelector('.track-title');
     assert(title, 'rendered song row ' + id);
     title.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 }));
   };
@@ -127,6 +127,7 @@
       'reuse original queue entry');
     await stage('duplicate_selected');
 
+    step = 'open the exact album search result';
     const input = one('[aria-label="搜索音乐"]');
     input.focus();
     input.value = '合成专辑';
@@ -134,17 +135,26 @@
     input.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await wait(() => one('[data-category="albums"]'), 'search category');
     click(one('[data-category="albums"]'));
-    await wait(() => one('.search-result-card .search-card-open'), 'synthetic album result');
-    click(one('.search-result-card .search-card-open'));
-    await wait(() => settled() && one('.catalog-page [data-album-panel="songs"]') && row('4'), 'album tracks');
+    const albumAction = () => one(
+      '#search-result-panel[aria-labelledby="search-tab-albums"][aria-busy="false"]:not([inert]) ' +
+      '[data-result-key="album:201"] .search-card-open:not(:disabled)',
+    );
+    await wait(() => one('[data-category="albums"][aria-selected="true"]') && albumAction(),
+      'loaded Albums tab contains synthetic album 201');
+    click(albumAction());
+    step = 'open the selected album tracks';
+    const albumPage = () => one('.catalog-page[aria-label="专辑详情"]');
+    const albumSongs = () => albumPage()?.querySelector('[data-album-panel="songs"]:not([inert])');
+    await wait(() => settled() && albumPage()?.querySelector('h1')?.textContent.trim() === '合成专辑 201' &&
+      albumSongs() && row('4', albumSongs()), 'selected album 201 shows song 4');
     step = 'catalog double click adds just selected song';
-    doubleClick('4');
+    doubleClick('4', albumSongs());
     const catalog = await waitPlayback('4', 4);
     retained(duplicate, catalog);
     await stage('catalog_added');
 
     step = 'explicit album Play All replaces independent of add preference';
-    click(button('播放全部', one('.catalog-page')));
+    click(button('播放全部', albumPage()));
     const all = await waitPlayback('1', 11);
     assert(!ids(all).includes('51') && (await settings()).value.replaceQueue === false,
       'explicit Play All replaces; preference remains enabled');

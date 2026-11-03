@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -32,6 +33,8 @@ def main():
         directory = root / 'os-profile' / name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/queue_click_ui_probe.js'
