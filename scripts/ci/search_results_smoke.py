@@ -21,6 +21,7 @@ def main():
     mode.add_argument('--song-waterfall', action='store_true')
     mode.add_argument('--voice-queue', action='store_true')
     mode.add_argument('--mv-play', action='store_true')
+    mode.add_argument('--playlist-creator', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -53,6 +54,8 @@ def main():
     if args.mv_play:
         prefix = 'window.__cumulusSearchMvProof = true;\n'
         env['CUMULUS_SEARCH_MV_PROOF'] = '1'
+    if args.playlist_creator:
+        prefix = 'window.__cumulusSearchPlaylistCreatorProof = true;\n'
     if args.correction_original:
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
     if args.card_matches:
@@ -70,6 +73,17 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.playlist_creator:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['searchPlaylistCreatorVerified'] and complete['stageCount'] == 2
+        calls = complete['searchProfileCalls']
+        profile_reads = [{'all': True, 'userId': '501'}, {'uid': '501', 'offset': 0, 'limit': 1000}]
+        assert calls in (profile_reads, profile_reads * 2)
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list(first.glob('ux_*.png'))) == (2 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, searchPlaylistCreatorVerified=True, stageCount=2)))
+        return
     if args.mv_play:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))

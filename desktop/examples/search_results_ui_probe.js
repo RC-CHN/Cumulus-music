@@ -50,6 +50,31 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchPlaylistCreatorProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await fixture('playlist_creator_search');await fresh('合成作者入口');
+      const card=id=>one(`[data-result-key="playlist:${id}"]`);
+      const creator=()=>card(3)?.querySelector('.search-playlist-creator');
+      for(const category of ['all','playlists']){
+        if(category!=='all')await choose(category);
+        const action=creator(), bad=card(4);
+        assert(action?.getAttribute('aria-label')==='查看创建者 合成匹配作者 的主页','typed creator action');
+        assert(card(3).querySelector('.search-card-open')&&card(3).querySelector('.search-card-play'),'playlist open and playback remain separate');
+        assert(bad?.textContent.includes('合成不匹配作者')&&!bad.querySelector('.search-playlist-creator'),
+          'mismatched creator remains plain text');
+        click(action);
+        await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成用户主页 501'&&
+          one('.playlist-creator-page [data-library-open="30"]'),'creator profile and public playlists');
+        click(button('返回上一页'));
+        await wait(()=>ready()&&one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&
+          document.activeElement===creator(),'Back restores creator button, not the card opener');
+        await capture('playlist_creator_'+category);
+      }
+      click(card(3).querySelector('.search-card-open'));
+      await wait(()=>!one('.playlist-creator-page')&&one('.playlist-hero h1')?.textContent.trim()==='合成歌单 3'&&one('.track-row'),'playlist card still opens playlist');
+      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchMvProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('good');await fresh('合成 MV');

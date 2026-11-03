@@ -47,6 +47,7 @@ pub fn control(value: &Value) {
             "song_waterfall",
             "song_waterfall_error",
             "voice_queue",
+            "playlist_creator_search",
             "preview",
             "lyrics",
             "empty",
@@ -321,6 +322,37 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if mode == "playlist_creator_search" && matches!(category, "all" | "playlists") {
+        fn creators(rows: &mut [Value]) {
+            for row in rows {
+                let entry = if row["type"] == "playlist" {
+                    &mut row["baseInfo"]
+                } else {
+                    row
+                };
+                match entry["id"].as_u64() {
+                    Some(3) => {
+                        entry["userId"] = json!(501);
+                        entry["creator"] = json!({"userId":501,"nickname":"合成匹配作者"});
+                    }
+                    Some(4) => {
+                        entry["userId"] = json!(501);
+                        entry["creator"] = json!({"userId":502,"nickname":"合成不匹配作者"});
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if category == "all" {
+            for block in response["data"]["blocks"].as_array_mut().unwrap() {
+                if block["blockCode"] == "search_block_playlist" {
+                    creators(block["resources"].as_array_mut().unwrap());
+                }
+            }
+        } else {
+            creators(response["result"]["playlists"].as_array_mut().unwrap());
+        }
+    }
     if mode == "hot_source" {
         let keyword = args["keyword"].as_str().or_else(|| args["s"].as_str());
         let expected = match keyword {
