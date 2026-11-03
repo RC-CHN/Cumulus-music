@@ -980,6 +980,12 @@ const currentOrigin = computed(() => {
   return id ? { kind: kind as import('./services/player').PlayerOrigin['kind'], id } : null;
 });
 const playbackState = computed(() => player.view.value?.state);
+const navigationKey = computed(() => {
+  const current = page.value;
+  if (current.kind !== 'search') return JSON.stringify(current);
+  const { pagination, ...route } = current;
+  return JSON.stringify({ ...route, offset: pagination?.offset, number: pagination?.number });
+});
 const pageKey = computed(() =>
   JSON.stringify({
     account: page.value.kind === 'local' ? undefined : [account.value.epoch, account.value.status],
@@ -1415,7 +1421,7 @@ onUnmounted(() => {
       </button>
       <SearchBox
         :account="account"
-        :page-key="JSON.stringify(page)"
+        :page-key="navigationKey"
         :keyword="page.kind === 'search' ? page.keyword : undefined"
         @search="(word) => music.navigate({ kind: 'search', keyword: word })"
         @expired="music.bootstrap(false)"
@@ -2226,5 +2232,5 @@ onUnmounted(() => {
       />
     </ModalTransition>
   </div>
-  <ContentTooltip :reset-key="account.epoch + JSON.stringify(page)" />
+  <ContentTooltip :reset-key="account.epoch + navigationKey" />
 </template>
