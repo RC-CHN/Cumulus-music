@@ -92,3 +92,15 @@ beforeDevCommand/beforeBuildCommand 在工作区根运行，已改为 npm --pref
   PipeWire 空输出。报告、播放和暂停截图在 .build/local-package-f9847ac-playback/。
   该包含音效总开关及 NCM/AAC 冷启动修复，不含后续缓冲进度和云盘附件恢复；
   本机产物不代替 CI 或新的 GitHub Release。
+
+2026-11-04 普通 Linux 构建复验（38e6b2d）
+  前端生产资产及 Rust 锁定构建完成后，直接启动
+  .build/target-main-integration/debug/cumulus（未打包）。
+  SHA-256 3325a4f669f4d9c2a92f267a465f702b2b81e913552c144ae97b2736aed2a308。
+  在无外部网络路由、私有 X11/D-Bus 和 PipeWire 空输出中，经过实际
+  GTK 文件选择器导入合成 FLAC。1120×760 普通窗口首帧已截图；
+  原生时钟 1.142→2.341 秒，暂停稳定在 2.645 秒。无测试 IPC 注入。
+  截图与报告位于 .build/ordinary-activation-current/。复跑可按
+  scripts/ci/installed_linux_smoke.py 文件头的隔离命令，将包参数换成
+  --binary <构建产物> --commit <源提交> --root <新目录> --verify-local-playback。
+  本证据不覆盖实体声卡、线上账号、桌面 PEQ 启停或安装包。
