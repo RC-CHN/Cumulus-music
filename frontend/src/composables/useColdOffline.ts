@@ -15,6 +15,7 @@ export function useColdOffline(core: ColdOfflineClient, pollAfter = 750) {
   let eligible = false;
   let generation = 0;
   let hasLease = false;
+  let opening = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let command: Promise<void> | undefined;
   let closing: Promise<void> | undefined;
@@ -31,7 +32,9 @@ export function useColdOffline(core: ColdOfflineClient, pollAfter = 750) {
     error.value = '';
     if (closing || !hasLease) return;
     busy.value = true;
-    const pending = command;
+    // Open may still create a lease; wait for its uncertain receipt.
+    // Playback already has a lease and native Close must cancel it now.
+    const pending = opening ? command : undefined;
     closing = (async () => {
       await pending;
       try {
@@ -112,7 +115,8 @@ export function useColdOffline(core: ColdOfflineClient, pollAfter = 750) {
   function open() {
     if (page.value || hasLease || command || !eligible) return;
     hasLease = true; // Also close after an uncertain open reply.
-    return run(async (current) => {
+    opening = true;
+    const pending = run(async (current) => {
       try {
         const next = await core.coldOfflineOpen();
         if (current()) {
@@ -125,6 +129,14 @@ export function useColdOffline(core: ColdOfflineClient, pollAfter = 750) {
           error.value = '当前无法打开离线下载。请重新连接后再试。';
         }
       }
+    });
+    if (!pending) {
+      opening = false;
+      hasLease = false;
+      return;
+    }
+    return pending.finally(() => {
+      opening = false;
     });
   }
   function next() {

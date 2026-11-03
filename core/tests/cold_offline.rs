@@ -236,6 +236,7 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
             "id":id,"title":"Title","artist":"Artist","actualQuality":"lossless"
         }])
     );
+    verify_exit_during_native_load(dir.path(), service.clone(), &id).await;
     let audio = grant.open_plain_audio(&id).unwrap();
     assert_eq!(audio.quality(), Quality::Lossless);
     let mut bytes = Vec::new();
@@ -340,4 +341,95 @@ async fn native_plain_selection_opens_owned_published_bytes_and_rechecks_integri
     ));
     assert!(matches!(audio.file(), Err(Error::StaleResponse)));
     assert_eq!(service.calls.load(Ordering::SeqCst), 1);
+}
+
+async fn verify_exit_during_native_load(root: &std::path::Path, service: Arc<Synthetic>, id: &str) {
+    use cumulus_core::{
+        Result,
+        playback::engine::{AudioEngine, Cancellation, EngineSnapshot, LoadRequest, LoadedMedia},
+    };
+    use std::{
+        fs::File,
+        thread,
+        time::{Duration, Instant},
+    };
+    #[derive(Default)]
+    struct Control {
+        started: tokio::sync::Notify,
+        saw_cancel: std::sync::atomic::AtomicBool,
+        unpauses: AtomicUsize,
+    }
+    struct HeldEngine(Arc<Control>);
+    impl AudioEngine for HeldEngine {
+        fn load(&mut self, _: LoadRequest, _: &Cancellation) -> Result<LoadedMedia> {
+            panic!("cold playback cannot open a path/URL")
+        }
+        fn load_pinned_audio(
+            &mut self,
+            _: File,
+            authority: Cancellation,
+            _: &Cancellation,
+        ) -> Result<LoadedMedia> {
+            self.0.started.notify_one();
+            let deadline = Instant::now() + Duration::from_secs(4);
+            while !authority.is_cancelled() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(5));
+            }
+            self.0
+                .saw_cancel
+                .store(authority.is_cancelled(), Ordering::Release);
+            // Model a decoder which races cancellation with a ready reply.
+            Ok(LoadedMedia {
+                entry_id: 1,
+                duration: Some(1.0),
+                codec: Some("fixture".into()),
+            })
+        }
+        fn pause(&mut self, paused: bool) -> Result<()> {
+            if !paused {
+                self.0.unpauses.fetch_add(1, Ordering::AcqRel);
+            }
+            Ok(())
+        }
+        fn seek(&mut self, _: f64) -> Result<()> {
+            Ok(())
+        }
+        fn volume(&mut self, _: f64) -> Result<()> {
+            Ok(())
+        }
+        fn speed(&mut self, _: f64) -> Result<()> {
+            Ok(())
+        }
+        fn stop(&mut self) -> Result<()> {
+            Ok(())
+        }
+        fn poll(&mut self) -> Result<EngineSnapshot> {
+            Err(Error::State("unexpected engine poll"))
+        }
+    }
+
+    let control = Arc::new(Control::default());
+    let engine = control.clone();
+    let client = Arc::new(
+        MusicClient::open_with_http_backend(root, None, service)
+            .unwrap()
+            .with_audio_factory(move || Ok(Box::new(HeldEngine(engine.clone())))),
+    );
+    client.cold_offline_open().await.unwrap();
+    let player = client.clone();
+    let id = id.to_owned();
+    let pending = tokio::spawn(async move { player.cold_offline_play(id).await });
+    tokio::time::timeout(Duration::from_secs(2), control.started.notified())
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), client.cold_offline_close())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(pending.await.unwrap(), Err(Error::Cancelled)));
+    assert!(control.saw_cancel.load(Ordering::Acquire));
+    assert_eq!(control.unpauses.load(Ordering::Acquire), 0);
+    assert!(client.cold_offline_status().await.is_err());
+    client.cold_offline_open().await.unwrap();
+    client.cold_offline_close().await.unwrap();
 }

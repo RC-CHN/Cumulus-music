@@ -124,3 +124,27 @@ test('a revoked grant removes private rows and never repeats playback', async ()
   assert.equal(model.playback.value, undefined);
   assert.equal(plays, 1);
 });
+
+test('exit sends native Close while Play is pending and discards its late response', async () => {
+  const playback = deferred<{ phase: 'playing'; playingId: string }>();
+  let closes = 0;
+  const model = useColdOffline(
+    client({
+      coldOfflinePlay: () => playback.promise,
+      coldOfflineClose: async () => {
+        closes++;
+      },
+    }),
+  );
+  model.setEligible(true);
+  await model.open();
+  const pending = model.play(song.id);
+  await turn();
+  model.leave();
+  await turn();
+  assert.equal(closes, 1);
+  assert.equal(model.page.value, undefined);
+  playback.resolve({ phase: 'playing', playingId: song.id });
+  await pending;
+  assert.equal(model.playback.value, undefined);
+});

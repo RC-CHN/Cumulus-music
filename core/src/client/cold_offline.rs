@@ -11,7 +11,10 @@ use crate::{
 };
 use serde::Serialize;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
@@ -56,6 +59,7 @@ impl Drop for Playing {
     }
 }
 struct Mode {
+    generation: u64,
     grant: Arc<ColdOfflineGrant>,
     life: Cancellation,
     next: Option<ColdOfflineCursor>,
@@ -132,6 +136,7 @@ impl Mode {
 }
 #[derive(Default)]
 pub(super) struct Host {
+    close_generation: Arc<AtomicU64>,
     mode: Mutex<Option<Mode>>,
 }
 impl Host {
@@ -146,6 +151,23 @@ impl Host {
         .await
         .map_err(|_| Error::State("offline playback worker stopped"))?
     }
+    async fn run_current<T: Send + 'static>(
+        self: &Arc<Self>,
+        operation: impl FnOnce(&mut Mode) -> Result<T> + Send + 'static,
+    ) -> Result<T> {
+        let generation = self.close_generation.load(Ordering::Acquire);
+        let closes = self.close_generation.clone();
+        self.run(move |state| {
+            // An older queued status/next/stop/play must never apply to a
+            // grant opened after its caller left the previous mode.
+            if closes.load(Ordering::Acquire) != generation {
+                return Err(Error::StaleResponse);
+            }
+            operation(valid_mode(state)?)
+        })
+        .await
+    }
+
     pub(super) async fn stop_engine(self: &Arc<Self>) -> Result<()> {
         if self
             .mode
@@ -168,6 +190,9 @@ impl Host {
             while !life.is_cancelled() {
                 tokio::time::sleep(Duration::from_millis(250)).await;
                 let Some(host) = host.upgrade() else { break };
+                if life.is_cancelled() {
+                    break;
+                }
                 let check = grant.clone();
                 let valid = tokio::task::spawn_blocking(move || check.validate().is_ok())
                     .await
@@ -196,7 +221,7 @@ impl Host {
 }
 fn valid_mode(mode: &mut Option<Mode>) -> Result<&mut Mode> {
     if let Some(state) = mode
-        && let Err(error) = state.grant.validate()
+        && let Err(error) = state.life.check().and_then(|()| state.grant.validate())
     {
         *mode = None;
         return Err(error);
@@ -209,14 +234,20 @@ impl MusicClient {
         let registry = self.registry.clone();
         let session = self.session.clone();
         let monitor = self.cold_offline.clone();
+        let generation = monitor.close_generation.load(Ordering::Acquire);
         self.cold_offline
             .run(move |state| {
+                if monitor.close_generation.load(Ordering::Acquire) != generation {
+                    return Err(Error::StaleResponse);
+                }
                 if state.is_some() {
                     return Err(Error::MutationBusy);
                 }
                 let grant = Arc::new(registry.grant_cold_offline(session)?);
-                let life = Cancellation::default();
+                let closes = monitor.close_generation.clone();
+                let life = Cancellation::new(move || closes.load(Ordering::Acquire) == generation);
                 let mut mode = Mode {
+                    generation,
                     grant: grant.clone(),
                     life: life.clone(),
                     next: None,
@@ -224,6 +255,7 @@ impl MusicClient {
                     failed: false,
                 };
                 let page = mode.page(false)?;
+                life.check()?;
                 *state = Some(mode);
                 monitor.monitor(grant, life);
                 Ok(page)
@@ -231,19 +263,14 @@ impl MusicClient {
             .await
     }
     pub async fn cold_offline_next(&self) -> Result<ColdOfflinePageView> {
-        self.cold_offline
-            .run(|state| valid_mode(state)?.page(true))
-            .await
+        self.cold_offline.run_current(|mode| mode.page(true)).await
     }
     pub async fn cold_offline_status(&self) -> Result<ColdOfflinePlayerView> {
-        self.cold_offline
-            .run(|state| valid_mode(state)?.poll())
-            .await
+        self.cold_offline.run_current(Mode::poll).await
     }
     pub async fn cold_offline_stop(&self) -> Result<ColdOfflinePlayerView> {
         self.cold_offline
-            .run(|state| {
-                let mode = valid_mode(state)?;
+            .run_current(|mode| {
                 mode.playing = None;
                 mode.failed = false;
                 Ok(ColdOfflinePlayerView::default())
@@ -251,17 +278,24 @@ impl MusicClient {
             .await
     }
     pub async fn cold_offline_close(&self) -> Result<()> {
-        if self
+        // Revoke the mode immediately, even while a decoder owns the worker
+        // mutex. The decoder may still be preparing its first audio frame.
+        let generation = self
             .cold_offline
-            .mode
-            .try_lock()
-            .is_ok_and(|mode| mode.is_none())
-        {
-            return Ok(());
-        }
+            .close_generation
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+                value.checked_add(1)
+            })
+            .map_err(|_| Error::State("offline playback generation exhausted"))?
+            + 1;
         self.cold_offline
-            .run(|state| {
-                *state = None;
+            .run(move |state| {
+                if state
+                    .as_ref()
+                    .is_some_and(|mode| mode.generation < generation)
+                {
+                    *state = None;
+                }
                 Ok(())
             })
             .await
@@ -269,15 +303,25 @@ impl MusicClient {
     pub async fn cold_offline_play(&self, id: String) -> Result<ColdOfflinePlayerView> {
         let token = self.session.token()?;
         let task_id = id.clone();
-        let (grant, file) = self
+        let (grant, life, file) = self
             .cold_offline
-            .run(move |state| {
-                let mode = valid_mode(state)?;
+            .run_current(move |mode| {
                 let audio = mode.grant.open_plain_audio(&task_id)?;
-                Ok((mode.grant.clone(), audio.file()?.try_clone()?))
+                mode.life.check()?;
+                Ok((
+                    mode.grant.clone(),
+                    mode.life.clone(),
+                    audio.file()?.try_clone()?,
+                ))
             })
             .await?;
-        let revision = self.claim_media(&token, Owner::ColdOffline).await?;
+        // Snapshot before checking the mode so a newer focus claim cannot be
+        // overwritten if this play is delayed after its file was verified.
+        let expected = self.focus.snapshot()?;
+        life.check()?;
+        let revision = self
+            .claim_native_media(&token, Owner::ColdOffline, expected)
+            .await?;
         let lease = Lease {
             focus: self.focus.clone(),
             revision,
@@ -308,7 +352,10 @@ impl MusicClient {
                 }
                 let media = engine.load_pinned_audio(file, authority.clone(), &authority)?;
                 mode.grant.validate()?;
-                lease.focus.start_cold(revision, || engine.pause(false))?;
+                lease.focus.start_cold(revision, || {
+                    authority.check()?;
+                    engine.pause(false)
+                })?;
                 mode.playing = Some(Playing {
                     engine,
                     lease,
