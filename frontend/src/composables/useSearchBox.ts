@@ -27,7 +27,8 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
   let epoch = '',
     connected = false,
     generation = 0,
-    suggestionRequest = 0;
+    suggestionRequest = 0,
+    homeRequest = 0;
   let debounce: ReturnType<typeof setTimeout> | undefined,
     rotate: ReturnType<typeof setInterval> | undefined;
   let historyQueue: Promise<void> = Promise.resolve();
@@ -131,8 +132,19 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     recommended.value = [];
     suggestions.value = [];
   }
+  async function recommendFromHistory() {
+    const e = epoch,
+      g = generation,
+      n = ++homeRequest;
+    // The local history may still be loading or have a newer remembered word
+    // queued; neither warrants sending an unrelated or empty context early.
+    await historyQueue;
+    if (!live(e, g) || n !== homeRequest || !open.value || composing.value || query.value.trim())
+      return;
+    await load({ kind: 'recommendations', lastQuery: history.value[0] ?? '' });
+  }
   function home() {
-    void load({ kind: 'recommendations', lastQuery: history.value[0] ?? '' });
+    void recommendFromHistory();
     void load({ kind: 'charts' });
   }
   function input(value: string) {
@@ -158,6 +170,7 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     else home();
   }
   function close() {
+    homeRequest++;
     open.value = false;
     invalidateSuggestions();
   }
@@ -230,6 +243,7 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     submitInput,
     load,
     historyCommand,
+    recommendFromHistory,
     dispose,
   };
 }

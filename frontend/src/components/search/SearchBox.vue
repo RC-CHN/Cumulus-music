@@ -350,11 +350,7 @@ onUnmounted(() => {
             <p v-if="pending.recommendations" role="status" class="search-muted">正在加载推荐词…</p>
             <div v-if="errors.recommendations" class="search-section-error" role="alert">
               <span>{{ errors.recommendations }}</span
-              ><button
-                @click="model.load({ kind: 'recommendations', lastQuery: history[0] ?? '' })"
-              >
-                重试推荐词
-              </button>
+              ><button @click="model.recommendFromHistory()">重试推荐词</button>
             </div>
             <p v-if="pending.charts" role="status" class="search-muted">正在加载热搜榜…</p>
             <div v-else-if="errors.charts" class="search-section-error" role="alert">

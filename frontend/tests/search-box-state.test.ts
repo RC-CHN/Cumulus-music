@@ -166,3 +166,57 @@ test('the search field distinguishes its rotating default from a typed keyword',
   assert.equal(m.submitInput(), undefined);
   m.dispose();
 });
+
+test('discovery recommendations wait for latest local history without delaying charts', async () => {
+  const initial = deferred<AccountData<string[]>>();
+  const saving = deferred<AccountData<string[]>>();
+  const contexts: string[] = [];
+  let charts = 0;
+  const m = fixture({
+    searchHistory: (_epoch, command) =>
+      command.kind === 'read' ? initial.promise : saving.promise,
+    searchDiscovery: async (_epoch, query) => {
+      if (query.kind === 'recommendations') contexts.push(query.lastQuery);
+      if (query.kind === 'charts') charts++;
+      return data({ kind: 'recommendations', words: [] });
+    },
+  });
+  const connecting = m.connect(account());
+  m.show();
+  assert.deepEqual(contexts, []);
+  assert.equal(charts, 1);
+  initial.resolve(data(['初始历史']));
+  await connecting;
+  assert.deepEqual(contexts, ['初始历史']);
+
+  m.submit('刚提交');
+  m.show();
+  m.input('');
+  assert.deepEqual(contexts, ['初始历史']);
+  saving.resolve(data(['刚提交', '初始历史']));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(contexts, ['初始历史', '刚提交']);
+  m.dispose();
+});
+
+test('a closed discovery panel does not send a late recommendation after history arrives', async () => {
+  const initial = deferred<AccountData<string[]>>();
+  const contexts: string[] = [];
+  const m = fixture({
+    searchHistory: () => initial.promise,
+    searchDiscovery: async (_epoch, query) => {
+      if (query.kind === 'recommendations') contexts.push(query.lastQuery);
+      return data({ kind: 'recommendations', words: [] });
+    },
+  });
+  const connecting = m.connect(account());
+  m.show();
+  m.close();
+  initial.resolve(data(['未开启浮层']));
+  await connecting;
+  assert.deepEqual(contexts, []);
+  m.show();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(contexts, ['未开启浮层']);
+  m.dispose();
+});
