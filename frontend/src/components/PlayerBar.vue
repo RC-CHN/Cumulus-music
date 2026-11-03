@@ -13,7 +13,7 @@ import PlaybackQuality from './PlaybackQuality.vue';
 import PlaybackVolume from './PlaybackVolume.vue';
 import PlaybackMode from './PlaybackMode.vue';
 import { artistLabel } from '../services/artistLabel';
-import { equalizerLauncher } from '../services/equalizer';
+import { effectLauncher, equalizerLauncher } from '../services/equalizer';
 import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
 const equalizerOpen = ref(false);
 const props = withDefaults(
@@ -40,6 +40,9 @@ const emit = defineEmits<{
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
 const equalizerDescription = useId();
 const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
+const effectEntry = computed(() =>
+  effectLauncher(view.value?.equalizer, view.value?.boundParametric),
+);
 function loginFromEffects() {
   equalizerOpen.value = false;
   emit('login');
@@ -398,24 +401,23 @@ async function seek(event: Event) {
         aria-haspopup="dialog"
         :aria-describedby="equalizerDescription"
         :data-equalizer-state="equalizerEntry.state"
-        :title="equalizerEntry.label"
+        :data-parametric-state="view?.boundParametric"
+        :title="effectEntry.label"
         :disabled="!ready"
         @click="equalizerOpen = true"
       >
-        EQ<span
-          v-if="equalizerEntry.state === 'problem'"
-          class="equalizer-marker"
-          aria-hidden="true"
+        {{ view?.boundParametric === 'configured' ? 'PEQ' : 'EQ'
+        }}<span v-if="effectEntry.state === 'problem'" class="equalizer-marker" aria-hidden="true"
           >!</span
         >
         <span
-          v-else-if="equalizerEntry.state === 'processing'"
+          v-else-if="effectEntry.state === 'processing' || view?.boundParametric === 'configured'"
           class="equalizer-marker"
           aria-hidden="true"
           >•</span
         >
       </button>
-      <span :id="equalizerDescription" class="sr-only">{{ equalizerEntry.label }}</span>
+      <span :id="equalizerDescription" class="sr-only">{{ effectEntry.label }}</span>
       <button
         class="queue-toggle icon-button"
         aria-label="播放队列"

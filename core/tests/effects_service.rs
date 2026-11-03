@@ -1517,6 +1517,14 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
     assert!(device.parametric_attached.load(Ordering::SeqCst));
     assert_eq!(
         client
+            .player_snapshot(&epoch)
+            .await
+            .unwrap()
+            .bound_parametric,
+        Some(ParametricBindingStatus::Configured)
+    );
+    assert_eq!(
+        client
             .native_effect_registration_phase(&epoch, id())
             .unwrap(),
         Some(LeasePhase::Registered)
@@ -1541,6 +1549,14 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
             .await
             .unwrap(),
         ParametricBindingStatus::Absent
+    );
+    assert!(
+        client
+            .player_snapshot(&epoch)
+            .await
+            .unwrap()
+            .bound_parametric
+            .is_none()
     );
     assert_eq!(api.calls().len(), 6);
 }

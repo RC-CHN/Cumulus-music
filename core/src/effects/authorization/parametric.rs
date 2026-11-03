@@ -56,6 +56,10 @@ impl BoundParametric {
         self.prepared.effect()
     }
 
+    pub(crate) fn requires_detach(&self) -> bool {
+        self.revoked.load(Ordering::Acquire) || self.retired.load(Ordering::Acquire)
+    }
+
     pub(crate) fn retire(&self) {
         self.retired.store(true, Ordering::Release);
     }

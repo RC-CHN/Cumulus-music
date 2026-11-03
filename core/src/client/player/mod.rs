@@ -208,6 +208,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             status: value.equalizer.status,
             damaged: value.equalizer.damaged,
         },
+        bound_parametric: value.bound_parametric,
         epoch: token.generation.to_string(),
         revision: value.revision.to_string(),
         queue_revision: value.queue_revision.to_string(),

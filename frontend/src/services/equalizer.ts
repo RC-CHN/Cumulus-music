@@ -1,5 +1,11 @@
 import { equalizerPresets } from '../data/equalizer-presets.ts';
-import type { EqualizerView, EqualizerSettings, EqualizerPreset, PlayerAction } from './player.ts';
+import type {
+  EqualizerView,
+  EqualizerSettings,
+  EqualizerPreset,
+  PlayerAction,
+  BoundParametricStatus,
+} from './player.ts';
 export { equalizerPresets };
 export const equalizerLabels = ['31', '63', '125', '250', '500', '1k', '2k', '4k', '8k', '16k'];
 /** Show the same hundredth of a dB as the native range, without float32 tails. */
@@ -115,5 +121,29 @@ export function equalizerLauncher(view?: EqualizerView) {
   return {
     state: 'processing',
     label: activeGeq(view.settings) ? '均衡器已应用' : equalizerMessage(view),
+  };
+}
+
+export function effectLauncher(view?: EqualizerView, parametric?: BoundParametricStatus) {
+  const equalizer = equalizerLauncher(view);
+  if (!parametric) return equalizer;
+  const label = {
+    configured: '独立参数均衡已配置',
+    deferred: '独立参数均衡等待音频加载',
+    detach_required: '独立参数均衡需要清理',
+  }[parametric];
+  return {
+    state:
+      parametric === 'detach_required' || equalizer.state === 'problem'
+        ? 'problem'
+        : equalizer.state === 'processing'
+          ? 'processing'
+          : parametric === 'deferred'
+            ? 'pending'
+            : 'configured',
+    label:
+      equalizer.state === 'off' || equalizer.state === 'loading'
+        ? label
+        : label + '；' + equalizer.label,
   };
 }

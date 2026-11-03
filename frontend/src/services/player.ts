@@ -43,6 +43,8 @@ export interface Timeline {
   total: number | null;
   media_start: number;
 }
+export type BoundParametricStatus = 'deferred' | 'configured' | 'detach_required';
+
 export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   origin?: PlayerOrigin | null;
@@ -50,6 +52,7 @@ export interface PlayerView {
   intelligence?: 'seeded' | 'active' | 'fallback' | null;
   intelligenceOperation?: string | null;
   equalizer: EqualizerView;
+  boundParametric?: BoundParametricStatus;
   loudness: LoudnessView;
   epoch: string;
   revision: string;

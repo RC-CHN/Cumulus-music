@@ -192,6 +192,7 @@ impl Actor {
                 .intelligence_session()
                 .and_then(|s| s.operation_id.clone()),
             equalizer: self.equalizer,
+            bound_parametric: self.parametric.bound_status(),
             loudness: self.loudness.clone(),
             revision: self.revision,
             control_revision: self.control_revision,

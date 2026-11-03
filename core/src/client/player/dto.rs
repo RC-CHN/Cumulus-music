@@ -16,6 +16,8 @@ pub struct PlayerView {
     /// The host-supplied operation UUID, never the private native session id.
     pub intelligence_operation: Option<String>,
     pub equalizer: EqualizerView,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bound_parametric: Option<crate::playback::controller::ParametricBindingStatus>,
     pub loudness: LoudnessView,
     pub epoch: String,
     pub revision: String,

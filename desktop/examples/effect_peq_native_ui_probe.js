@@ -60,6 +60,8 @@
     stage = 'activate';
     click(action('activate'));
     await wait(() => phase('configured') && enabled(action('stop')), 'native configured receipt');
+    await wait(() => one('.equalizer-toggle')?.dataset.parametricState === 'configured' &&
+      one('.equalizer-toggle').textContent.includes('PEQ'), 'footer shows the native bound component');
     const started = await player();
     await wait(async () => {
       const state = await player();
@@ -71,6 +73,8 @@
     click(action('stop'));
     await wait(() => phase('recovery_required') && enabled(action('stop')) && enabled(action('status')),
       'lost stop acknowledgement remains unresolved');
+    await wait(() => !one('.equalizer-toggle')?.dataset.parametricState &&
+      !one('.equalizer-toggle').textContent.includes('PEQ'), 'footer clears the detached native component');
     await capture('03_stop_uncertain');
     const detached = await player();
     await wait(async () => {

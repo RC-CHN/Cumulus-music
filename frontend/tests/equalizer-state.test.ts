@@ -9,6 +9,7 @@ import {
   equalizerMessage,
   equalizerCanRetry,
   equalizerLauncher,
+  effectLauncher,
 } from '../src/services/equalizer.ts';
 import type { EqualizerView } from '../src/services/player.ts';
 const view = (): EqualizerView => ({
@@ -177,4 +178,21 @@ test('a requested EQ disable is not reported as applied while pending or failed'
   assert.deepEqual(equalizerLauncher(unavailable), { state: 'off', label: '均衡器已关闭' });
   assert.equal(equalizerMessage(unavailable), '均衡器已关闭');
   assert.equal(equalizerCanRetry(unavailable), false);
+});
+
+test('footer reports bound PEQ even while the ordinary equalizer is off', () => {
+  assert.equal(effectLauncher(view()).state, 'off');
+  assert.deepEqual(effectLauncher(view(), 'configured'), {
+    state: 'configured',
+    label: '独立参数均衡已配置',
+  });
+  assert.deepEqual(effectLauncher(view(), 'deferred'), {
+    state: 'pending',
+    label: '独立参数均衡等待音频加载',
+  });
+  assert.deepEqual(effectLauncher(view(), 'detach_required'), {
+    state: 'problem',
+    label: '独立参数均衡需要清理',
+  });
+  assert.match(effectLauncher({ ...view(), damaged: true }, 'configured').label, /已配置.*损坏/);
 });

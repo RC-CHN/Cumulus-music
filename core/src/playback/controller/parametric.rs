@@ -25,7 +25,8 @@ pub enum ParametricApplication {
 }
 
 /// Actor-local status of a specific registration binding; not a PCM receipt.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ParametricBindingStatus {
     Absent,
     Deferred,
@@ -69,6 +70,25 @@ pub(super) struct State {
 }
 
 impl State {
+    pub(super) fn bound_status(&self) -> Option<ParametricBindingStatus> {
+        use ParametricBindingStatus as Status;
+        if self.installing.is_some()
+            || (self.detach_required && self.applied.is_some())
+            || self
+                .applied
+                .as_ref()
+                .is_some_and(|binding| binding.requires_detach())
+        {
+            Some(Status::DetachRequired)
+        } else if self.applied.is_some() {
+            Some(Status::Configured)
+        } else if matches!(self.deferred, Some(Selection::Bound(_))) {
+            Some(Status::Deferred)
+        } else {
+            None
+        }
+    }
+
     fn record_clear(&mut self, token: &SessionToken, binding: &BoundParametric) {
         const MAX_RECENT_DETACHES: usize = 8;
         binding.retire();
