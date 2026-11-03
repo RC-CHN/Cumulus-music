@@ -53,6 +53,8 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--auto', action='store_true', help='use the system audio output at zero volume')
     mode.add_argument('--filter-library', type=Path, help='verify recovered loudness PCM after GUI initialization')
+    mode.add_argument('--bound-peq-library', type=Path,
+                      help='verify supervised PEQ and real PCM after GUI initialization')
     args = parser.parse_args()
     report = args.report.resolve()
     assert not report.exists(), 'proof report must be new'
@@ -71,11 +73,24 @@ def main():
         env['CUMULUS_PROOF_AUTO'] = '1'
     if args.filter_library:
         env['CUMULUS_LOUDNESS_LIBRARY'] = str(args.filter_library.resolve(strict=True))
+    if args.bound_peq_library:
+        env['CUMULUS_BOUND_PEQ_LIBRARY'] = str(args.bound_peq_library.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     run_native([str(args.binary.resolve())], env, report)
     proof = read_native_report(report)
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
+    if args.bound_peq_library:
+        assert proof['boundParametric'] and proof['actualDecoder']
+        assert not proof['physicalAudioOutputVerified'] and proof['realMusicRequests'] == 0
+        assert proof['syntheticRegistrationSetup'] == 1 and proof['materialReads'] == 1
+        stats = proof['processed']
+        assert stats['processed_samples'] > 1024 and stats['active_instances'] > 0
+        assert stats['failed_blocks'] == 0 and stats['observed_revision'] == stats['revision']
+        assert proof['confirmedWithoutClearing'] and proof['revocationDetached']
+        assert proof['samePlay'] and proof['positionAfter'] > proof['positionBefore'] > 0.15
+        print(json.dumps({'ok': True, 'desktopBoundParametric': True, 'processedSamples': stats['processed_samples']}))
+        return
     if args.filter_library:
         assert proof['actualDecoder'] and proof['realMusicRequests'] == 0
         assert not proof['physicalAudioOutputVerified'] and not proof['businessPreferenceTested']

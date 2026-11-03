@@ -12,7 +12,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn wav(path: &std::path::Path) -> Result<()> {
+pub fn wav(path: &std::path::Path) -> Result<()> {
     let rate = 48000_u32;
     let samples = rate * 4;
     let bytes = samples * 2;

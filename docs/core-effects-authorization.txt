@@ -135,3 +135,14 @@ MusicClient::observe_native_bound_parametric 只捕获当前节点，无任意�
 明确拒绝、缺字段、读取失败或超时使原绑定失效，只在登记 operation/revision 仍匹配
 时更新本地观察记录。切换/卸载后的旧观察不能授权新绑定。未启用定时轮询、自动
 重新启用、auth/set、auth/stop 或 UI；5 秒是读请求预算，不是官方权益期限。
+
+桌面合成接线验证
+可选 native_audio_probe 模式在生产 Tauri 窗口初始化之后，使用新 SQLite 状态、合成
+NCAE 和本地 WAV 驱动 MusicClient 的准备、绑定、挂载与显式观察。只有夹具初始化
+允许一次合成 auth/set；播放器无注册/释放调用。观察正面结果时节点仍挂载，模拟服务
+撤权后节点卸载且同一段普通音乐时钟继续前进。测试包装器只转发实际 libmpv 并记录
+PCM 计数，且拒绝打开合成 WAV 以外的任何媒体。执行：
+  scripts/ci/native_smoke.py --binary PATH/native_audio_probe --report NEW.json --bound-peq-library PATH/libcumulus_audio_filter.so
+Linux 从 Xvfb/私有 D-Bus 在非 C locale 下执行。它不验证物理声卡、真实权益或 UI 切换。
+本轮 Linux 实测窗口与非 C locale 通过；libmpv 处理 28,672 个样本且失败块为零，
+模拟撤权后同一 play ID 的位置从约 0.15 秒继续到 0.35 秒。无网络命名空间内运行。
