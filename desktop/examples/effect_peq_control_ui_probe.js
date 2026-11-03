@@ -37,6 +37,7 @@
   const configured = makeView('configured', {
     release: 'synthetic-release-A', registration: 'registered', canStop: true, activeId: effect.id,
   });
+  const deferred = { ...configured, phase: 'deferred' };
   const uncertain = makeView('recovery_required', {
     release: 'synthetic-release-B', registration: 'stop_uncertain', canStop: true, stopNeedsRetry: true,
     issue: '停止结果待核对',
@@ -70,6 +71,8 @@
     core.effectPeqStatus = async (epoch, id) => {
       scope(epoch, id);
       reads.push(['status', current.phase]);
+      if (current === deferred && reads.filter(([, phase]) => phase === 'deferred').length === 2)
+        current = configured;
       return { ...current };
     };
     core.effectPeqReconcile = async (epoch, id) => {
@@ -89,7 +92,7 @@
       scope(epoch, id);
       assert(current === prepared && attempt === prepared.attempt, 'activation must consume the exact prepared attempt');
       mutations.push('activate');
-      current = configured;
+      current = deferred;
       return { ...current };
     };
     core.effectPeqStop = async (epoch, id, release, retryUnknown) => {
@@ -127,8 +130,11 @@
 
     stage = 'activate';
     click(action('activate'));
-    await wait(() => phase('configured') && enabled(action('stop')), 'configured acknowledgement');
-    assert(mutations.join(',') === 'prepare,activate', 'configured state must not stop automatically');
+    await wait(() => phase('deferred') && enabled(action('stop')), 'deferred application is not yet configured');
+    await wait(() => phase('configured') && enabled(action('stop')), 'configured observed without a manual action');
+    assert(reads.filter(([kind, state]) => kind === 'status' && state === 'deferred').length === 2,
+      'deferred application advances by read-only status');
+    assert(mutations.join(',') === 'prepare,activate', 'observing deferred state makes no writes');
 
     stage = 'stop';
     click(action('stop'));
@@ -155,6 +161,7 @@
     assert(!/synthetic-(attempt|release)/.test(catalogue.innerHTML), 'opaque tickets never render into the directory');
     await emit('complete', {
       ok: true, effectPeqControlVerified: true, injectedCoreClient: true, mutationOrder: mutations,
+      deferredStatusObserved: reads.filter(([kind, state]) => kind === 'status' && state === 'deferred').length === 2,
       readWhileStopUncertain: reads.some(([, state]) => state === 'recovery_required'),
     });
   } catch (error) {

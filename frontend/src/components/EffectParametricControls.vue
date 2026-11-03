@@ -13,6 +13,9 @@ const busy = ref(false);
 const error = ref('');
 const confirmation = ref<string>();
 let alive = true;
+let observation = 0;
+let observationTimer: ReturnType<typeof setTimeout> | undefined;
+let observationRead: Promise<EffectPeqView> | undefined;
 
 const labels: Record<EffectPeqPhase, string> = {
   idle: '可检查是否支持独立参数均衡',
@@ -35,13 +38,64 @@ const mayActivate = computed(
   () => props.allowed && !another.value && view.value?.phase === 'prepared' && !!view.value.attempt,
 );
 
+function stopDeferredObservation() {
+  observation++;
+  clearTimeout(observationTimer);
+  observationTimer = undefined;
+}
+
+function observeDeferred() {
+  if (view.value?.phase !== 'deferred') return;
+  const generation = observation;
+  const { epoch, effectId } = props;
+  const deadline = performance.now() + 5000;
+  let remaining = 8;
+  const current = () =>
+    alive &&
+    !busy.value &&
+    generation === observation &&
+    props.epoch === epoch &&
+    props.effectId === effectId &&
+    view.value?.phase === 'deferred';
+
+  function schedule() {
+    if (!current() || remaining === 0 || performance.now() >= deadline) return;
+    observationTimer = setTimeout(() => void read(), 400);
+  }
+
+  async function read() {
+    observationTimer = undefined;
+    if (!current() || performance.now() >= deadline) return;
+    remaining--;
+    const request = core.effectPeqStatus(epoch, effectId);
+    observationRead = request;
+    try {
+      const next = await request;
+      if (current() && next.id === effectId) {
+        view.value = next;
+        schedule();
+      }
+    } catch {
+      // The displayed receipt remains available for explicit reconciliation.
+    } finally {
+      if (observationRead === request) observationRead = undefined;
+    }
+  }
+  schedule();
+}
+
 async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration = false) {
   if (busy.value || !alive) return;
   const focused = group.value?.contains(document.activeElement);
+  stopDeferredObservation();
   confirmation.value = undefined;
   busy.value = true;
   error.value = '';
   try {
+    // Status and explicit commands share the native host lock. If a status
+    // read already started, let it finish but discard its view.
+    if (observationRead) await observationRead.catch(() => undefined);
+    if (!alive) return;
     const result = await action();
     if (alive && result.id === props.effectId) view.value = result;
   } catch (issue) {
@@ -54,6 +108,7 @@ async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration =
     if (alive) {
       busy.value = false;
       if (mayChangeRegistration) emit('changed');
+      observeDeferred();
       await nextTick();
       if (alive && focused && document.activeElement === document.body)
         group.value?.focus({ preventScroll: true });
@@ -95,6 +150,7 @@ async function cancelStop() {
 onMounted(() => void run(() => core.effectPeqStatus(props.epoch, props.effectId)));
 onBeforeUnmount(() => {
   alive = false;
+  stopDeferredObservation();
 });
 </script>
 

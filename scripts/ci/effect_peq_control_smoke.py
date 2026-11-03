@@ -37,7 +37,7 @@ def main():
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['effectPeqControlVerified'] and complete['injectedCoreClient']
     assert complete['mutationOrder'] == ['prepare', 'activate', 'stop', 'retry-stop']
-    assert complete['readWhileStopUncertain']
+    assert complete['readWhileStopUncertain'] and complete['deferredStatusObserved']
     print(json.dumps(dict(ok=True, actualWebView=True, injectedCoreClient=True,
                           mutationOrder=complete['mutationOrder'])))
 
