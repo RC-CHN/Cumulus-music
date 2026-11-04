@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `7f937185`；总体流程及验证层级见
+本表基线为产品树 `352cfde9`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -62,7 +62,7 @@
 | `page:dailyRecommend` (5) | `models/page_dailyRecommend.txt` | [已接入口](desktop-rankings-contracts.txt) | 日推和播放；生日及系统推送为独立分支。 |
 | `page:decorationSkin` (0) | `models/page_decorationSkin.txt` | [部分](desktop-decoration-contracts.txt) | 随包主题、在线目录和预览；远程安装和挂件未接。 |
 | `page:download` (9) | `models/page_download.txt` | [已接入口](desktop-download-contracts.txt) | 下载页与任务管理；不同资源授权单独验收。 |
-| `page:essential` (6) | `models/page_essential.txt` | [已接入口](ordinary-essential-contracts.txt) | 普通精选四个正文分区；匿名注册、横幅和实验变体另列。 |
+| `page:essential` (6) | `models/page_essential.txt` | [已接入口](ordinary-essential-contracts.txt) | 普通精选四个正文分区及官方歌单卡片菜单；匿名、横幅、实验变体和其他卡片动作另列。 |
 | `page:essentialPlaylist` (4) | `models/page_essentialPlaylist.txt` | [已接入口](playlist-detail-ui-contracts.txt) | 精品歌单分类、续页和详情；与普通精选区分。 |
 | `page:event` (20) | `models/page_event.txt` | [已接入口](community-read-contracts.txt) | 动态详情/评论；嵌入卡和深链还有边界。 |
 | `page:eventPublish` (12) | `models/page_eventPublish.txt` | [部分](community-composer-contracts.txt) | 草稿与经确认的纯文本/已核对附件，合成写入；图片/转发待做。 |
@@ -114,7 +114,7 @@
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
 | `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、列表与移除；未对真实用户设备执行删除。 |
 | `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；不同媒体/实验按各自证据。 |
-| `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作与本地单行拖入；同步、特殊队列和其他来源另验。 |
+| `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作及本地/普通在线歌单单行拖入；同步、特殊队列和其他来源另验。 |
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | 设置逐项证据，系统相关和音效部分未完成。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |
 | `window:moveDownload` (3) | `models/window_moveDownload.txt` | [已接入口](core-download-directory-contracts.txt) | 任务锁定、搬移及恢复；平台文件系统故障另验。 |
