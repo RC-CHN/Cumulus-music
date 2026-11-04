@@ -1,0 +1,115 @@
+Recovered limiter: in-process decoder and package audit
+
+An opt-in Rust probe now obtains lossless FLAC PCM without launching FFmpeg
+or any child process. It uses the repository's existing libloading crate and
+the pinned public libFLAC 1.5.0 decoder ABI over a Rust-owned, seekable file
+handle. The same SDK creates the synthetic fixture in-process. The proof is
+compiled only into core tests, adds no Cargo dependency or release asset,
+and does not change normal playback or turn on the limiter.
+
+    cargo test --locked -p cumulus-core --lib limiter_inprocess_flac -- --ignored --nocapture
+
+Use CUMULUS_FLAC_PROBE_LIBRARY to specify an absolute path to a trusted
+libFLAC 1.5.0 file. The Linux x86_64 fallback is Ubuntu's system
+/usr/lib/x86_64-linux-gnu/libFLAC.so.14 on the reference machine. On Windows,
+the probe needs an explicit absolute path; its loader resolves dependent
+DLLs only in that file's directory and System32. It rejects a different
+library version before opening a source.
+
+The file has 1048633 stereo frames at 44.1 kHz, 16-bit, and 1024-frame FLAC
+blocks, with frame-specific sample values. The Linux fixture encoded to
+3421627 bytes. Native random access to frames 1040610 and 12409 used one
+source byte seek and read 8192 bytes each. Their first decoded partial
+blocks contained exactly 798 and 903 frames respectively, and each sample
+matched the requested source coordinate. This is actual byte repositioning,
+not decoding and discarding the entire prefix. The test then fed the last
+2301 frames through the existing generation-tagged limiter, checked all
+decoded stereo PCM and the source-frame cursor, observed clean drain/EOF,
+and rejected more work after authority revocation.
+
+The write callback reads the public FLAC__FrameHeader (first member of
+FLAC__Frame), checks the frame's sample number, and takes exactly that
+block's size from the decoded planar pointers. libFLAC may advance these
+pointers during seek and shorten the callback header without changing the
+decoder-wide get_blocksize value. Using that getter to size a Rust slice
+could overread. C compilation against the candidate package headers and
+Rust assertions verify the 40-byte header, 8-byte alignment and required
+offsets for Linux and Windows x86_64. Callbacks own only initialized scratch
+and one bounded PCM packet. The probe caps input size and per-operation
+reads/seeks, rejects wrong channel/rate/depth or gaps, distinguishes decode
+error from EOF, and owns the native handle and Rust callback data until
+deletion. This does not prove bounds against arbitrary malformed streams,
+remote I/O or non-fixture formats.
+
+Primary ABI and seek implementation:
+https://github.com/xiph/flac/blob/1.5.0/include/FLAC/stream_decoder.h
+https://github.com/xiph/flac/blob/1.5.0/include/FLAC/format.h#L384-L445
+https://github.com/xiph/flac/blob/1.5.0/src/libFLAC/stream_decoder.c#L3338-L3369
+
+Installed runtime and package evidence:
+
+* The Linux x86_64 reference machine has libFLAC.so.14 (1.5.0+ds-5),
+  libmpv.so.2 (0.41.0), and FFmpeg 8.0.1 with libavformat.so.62,
+  libavcodec.so.62, libavutil.so.60 and libswresample.so.6. The FFmpeg
+  binaries export avio_alloc_context, avformat_open_input/seek_file, and
+  avcodec_send_packet/receive_frame. This machine has the runtime packages
+  without the FFmpeg development headers. Cumulus' Debian dependency list
+  does not declare a libFLAC SONAME; the proof's .14 fallback is not a
+  claim that every supported Linux package has 1.5.0.
+* The published v0.1.0 x86_64 Windows portable archive was verified against
+  its published SHA256SUMS (SHA-256 e809da2c47d92d12380aba8f27b2a561555d6feed6778afa10a33ad11c832b37;
+  manifest commit 0c5693369b805c7b29962f254e10668e84ac565d). PE inspection
+  confirmed avformat-63.dll, avcodec-63.dll, avutil-61.dll and
+  swresample-7.dll and the same public FFmpeg entry points. libmpv-2.dll
+  exposes its custom input and video rendering APIs. The archive includes
+  ffprobe.exe, libogg-0.dll and libwinpthread-1.dll, but neither ffmpeg.exe
+  nor libFLAC.dll. A FLAC license file in the archive is not a decoder DLL.
+  This is the actual v0.1.0 asset, not a native execution of the current
+  source recipe. Current scripts pin custom FFmpeg 9.0.2-2.2 and collect
+  the import closure of libmpv-2.dll and ffprobe.exe; the candidate FLAC
+  library would need its own explicit root if selected.
+* The official MSYS2 UCRT64 FLAC 1.5.0-2 archive and SHA-256
+  28e8637795bd7d80289ddbb582d6ad350b73eac64390b877149717dd3757ad79
+  were checked. The PE x86_64 libFLAC.dll SHA-256 is
+  c01d2adbb5f3a09c27bb6a857553d2f2143293b6e07aab0ac0b2a203337e54eb.
+  It exports the required decoder, encoder and version symbols. Its
+  non-system PE imports are libogg-0.dll and libwinpthread-1.dll; system
+  imports are Kernel32 and Universal CRT API sets. The published package
+  is only evidence for a viable distribution; it was not run on Windows.
+
+https://github.com/RC-CHN/Cumulus-music/releases/tag/v0.1.0
+https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-flac
+
+If a FLAC-only path advances, pin the signed UCRT64 package and its hashes
+in the native runtime recipe, stage libFLAC.dll plus its recalculated PE
+import closure, and include the package's COPYING.Xiph notice. Do not copy
+its CLI programs or search the Windows PATH. A native Windows runner must
+run the proof against the exact staged DLL and then in the installed package
+with a controlled loader path; verify normal fallback when it is absent.
+On Linux, either ship an audited compatible libFLAC or declare and test the
+actual supported SONAME and ABI on the distro runner. Do not rely on an
+incidental transitive library. Record hashes, version and provenance in
+both release manifests. These are proposals, not package changes here.
+
+For more than native FLAC, a matched FFmpeg shim could reuse the FFmpeg
+libraries already shipped, but would have to compile against the exact
+headers for each supported library major and verify them at load time;
+exported function names alone are not sufficient for AVFrame/AVPacket,
+channel layout or custom AVIO layout and ownership. Alternatively the
+published Symphonia 0.5.5 source documents a pure Rust option for FLAC,
+MP3, ALAC and AAC-LC with feature-specific containers and gapless behavior.
+An accurate demuxer seek lands at or before a packet; the decoder must
+reset, decode and discard only the remaining in-packet/preroll samples.
+It would avoid a new platform DLL, but needs its own locked dependency,
+per-format correctness and malicious input checks. Neither alternate
+decoder was implemented or adopted here.
+
+https://docs.rs/symphonia/0.5.5/symphonia/
+
+The existing combined libmpv experiment used a child decoder to exercise
+the native sink and logical entry restart. This experiment instead proves
+an in-process indexed producer on one pinned local format. It does not
+replace that end-to-end test, connect libFLAC to libmpv in a shipping
+session, or establish parity for additional codecs, unknown lengths,
+account-authorized streams, Windows execution, hardware, or the full
+proprietary effect graph.

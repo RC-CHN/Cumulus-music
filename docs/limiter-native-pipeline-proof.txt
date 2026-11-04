@@ -62,3 +62,7 @@ indexed decode with format/rate/priming handling, a source protocol that
 accounts for unknown lengths or bounded seek replay, correct account/source
 authority and output recovery, full material graph placement, an approved
 cross-platform decoder distribution, and native Windows/device tests.
+
+The separate limiter-inprocess-decoder.txt probe demonstrates indexed,
+sample-accurate local FLAC with no child. It does not replace this combined
+native sink test or add a decoder to the installed package.

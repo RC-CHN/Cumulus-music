@@ -6,6 +6,7 @@ use crate::{
     effects::{dsp::LimiterStream, material::MaterialLimiterPlan},
 };
 
+mod inprocess_flac;
 mod native_decoder;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
