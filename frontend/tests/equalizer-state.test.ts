@@ -90,6 +90,10 @@ test('launcher never marks unavailable, damaged, flat or disabled processing as 
     settings: { ...base.settings, enabled: true },
   } as const;
   assert.equal(equalizerLauncher(flat).state, 'flat');
+  const flatWithoutAdapter = { ...flat, status: 'unavailable' } as const;
+  assert.equal(equalizerLauncher(flatWithoutAdapter).state, 'flat');
+  assert.equal(equalizerCanRetry(flatWithoutAdapter), false);
+  assert.equal(equalizerMessage(flatWithoutAdapter), '当前为平直曲线');
   assert.equal(
     equalizerLauncher({ ...flat, settings: { ...flat.settings, bass_db: 6 } }).state,
     'processing',

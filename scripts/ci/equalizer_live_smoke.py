@@ -93,6 +93,12 @@ def main():
     after = custom['native']
     assert before['state'] == after['state'] == 'playing'
     assert before['entryId'] == after['entryId'] and after['position'] > before['position']
+    discarded = read('eq_discard_after_loss')['native']
+    assert discarded['state'] == 'playing' and discarded['entryId'] == before['entryId']
+    assert before['position'] < discarded['position'] < after['position']
+    assert discarded['equalizer']['status'] == 'processing'
+    assert discarded['equalizer']['settings']['gains'][4] == -2.25
+    assert int(after['equalizer']['revision']) == int(discarded['equalizer']['revision']) + 1
     same_saved = read('eq_same_curve_saved')['native']['equalizer']
     same_builtin = read('eq_same_curve_builtin')['native']['equalizer']
     assert same_saved['preset'] == {'kind': 'saved'}
@@ -156,7 +162,7 @@ def main():
     assert tone_settings['gains'][4] == 4
     assert saved['state'] == 'paused' and saved['position'] >= 11
     complete = read('complete')
-    assert complete['ok'] and complete['retainedAdjustmentFocus'] == 2
+    assert complete['ok'] and complete['retainedAdjustmentFocus'] == 3
     record = persisted(root)
     saved_custom_record = {'enabled': True, 'gains': custom_gains}
     saved_bypass = read('eq_master_saved')['native']
@@ -205,6 +211,7 @@ def main():
               'toneProcessedPersistedAndReset': True,
               'toneProcessedWithGeqDisabled': True,
               'keyboardAdjustmentFocusVerified': True,
+              'discardedUnconfirmedDraftWithoutRewriting': True,
               'masterBypassRetainedAndRestored': True,
               'missingPluginRecoveredWithoutEq': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')

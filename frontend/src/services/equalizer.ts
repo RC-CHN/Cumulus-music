@@ -79,7 +79,7 @@ export function equalizerCanRetry(view: EqualizerView): boolean {
     view.status === 'failed' ||
     (view.status === 'unavailable' &&
       !view.settings.master_bypassed &&
-      !equalizerOff(view.settings))
+      (activeGeq(view.settings) || activeTone(view.settings)))
   );
 }
 
@@ -113,10 +113,10 @@ export function equalizerLauncher(view?: EqualizerView) {
   if (view.status === 'pending') return { state: 'pending', label: equalizerMessage(view) };
   if (view.settings.master_bypassed || equalizerOff(view.settings))
     return { state: 'off', label: equalizerMessage(view) };
-  if (view.status === 'unavailable') return { state: 'problem', label: equalizerMessage(view) };
   const tone = activeTone(view.settings);
   if (!tone && view.settings.gains.every((gain) => gain === 0))
     return { state: 'flat', label: '均衡器已开启，当前为平直曲线' };
+  if (view.status === 'unavailable') return { state: 'problem', label: equalizerMessage(view) };
   if (view.status === 'configured') return { state: 'configured', label: equalizerMessage(view) };
   return {
     state: 'processing',

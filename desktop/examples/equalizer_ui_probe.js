@@ -129,6 +129,37 @@
         requests[0].gain!==-1||requests[1].gain!==-3.5||gains()[4]!==-3.5)
         throw Error('rapid input must preserve the final gain and native revision order');
     }finally{release();core.playerAction=playerAction;}
+    step='discard_unconfirmed';
+    const readPlayer=core.playerSnapshot, originalRevision=el('.equalizer-dialog').dataset.revision;
+    let failedWrites=0,discardReads=0;
+    core.playerAction=async (owner,command)=>{
+      if(command.kind!=='equalizer')return playerAction(owner,command);
+      failedWrites++;
+      await playerAction(owner,command);
+      throw {code:'connection',message:'Synthetic acknowledgment lost after native commit'};
+    };
+    core.playerSnapshot=(...args)=>{
+      if(++discardReads===1)throw {code:'connection',message:'Synthetic current settings read failed'};
+      return readPlayer(...args);
+    };
+    try{
+      const adjust=value=>{const slider=ranges()[4];slider.value=value;slider.dispatchEvent(new Event('input',{bubbles:true}));};
+      adjust('-2.25');
+      await wait(()=>el('.equalizer-dialog').dataset.draftState==='blocked'&&
+        el('.equalizer-error')?.textContent.includes('acknowledgment lost'),'unconfirmed native adjustment');
+      adjust('-6');
+      await click(byText('舍弃草稿'));
+      await wait(()=>el('.equalizer-error')?.textContent.includes('current settings read failed')&&
+        el('.equalizer-dialog').dataset.draftState==='blocked'&&gains()[4]===-6,'retain draft after failed read');
+      await activateFocused('舍弃草稿');
+      await wait(()=>settled()&&gains()[4]===-2.25&&
+        BigInt(el('.equalizer-dialog').dataset.revision)===BigInt(originalRevision)+1n,'discard reads committed native curve');
+      await expectPresetFocus('preset retains keyboard focus after discarding a draft');
+      if(failedWrites!==1||discardReads!==2)throw Error('discard must only read and never write again');
+      await stage('eq_discard_after_loss',{enabled:true,gains:pop.map((gain,index)=>index===4?-2.25:gain)});
+    }finally{core.playerAction=playerAction;core.playerSnapshot=readPlayer;}
+    const slider=ranges()[4];slider.value='-3.5';slider.dispatchEvent(new Event('input',{bubbles:true}));
+    await wait(()=>settled()&&el('.equalizer-status').dataset.status==='processing','restore custom after discard');
     await stage('eq_custom',{enabled:true,gains:custom});
     step='save_custom';const beforeSave=el('.equalizer-dialog').dataset.revision;await activateFocused('保存自定义预设');
     await wait(()=>{

@@ -24,7 +24,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const { view, ready, equalizerDraft } = props.player;
-const { settings, preset, draft, pending, blocked, error, stage, applyDraft, discard } =
+const { settings, preset, draft, pending, discarding, blocked, error, stage, applyDraft, discard } =
   equalizerDraft;
 const current = computed(() => view.value?.equalizer);
 const parametric = computed(() => view.value?.boundParametric);
@@ -58,7 +58,12 @@ const commandPending = ref(false);
 const commandError = ref('');
 const savedMessage = ref('');
 const disabled = computed(
-  () => !ready.value || !current.value || current.value.damaged || commandPending.value,
+  () =>
+    !ready.value ||
+    !current.value ||
+    current.value.damaged ||
+    commandPending.value ||
+    discarding.value,
 );
 const saved = computed(() => current.value?.saved_custom);
 const displayedPreset = computed(() =>
@@ -327,13 +332,15 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
       </fieldset>
       <div class="equalizer-status" role="status" :data-status="current?.status">
         <span>{{
-          blocked
-            ? '草稿尚未确认保存'
-            : pending || draft
-              ? '正在应用当前调整…'
-              : current
-                ? equalizerMessage(current)
-                : '正在读取设置…'
+          discarding
+            ? '正在读取播放器当前设置…'
+            : blocked
+              ? '草稿尚未确认保存'
+              : pending || draft
+                ? '正在应用当前调整…'
+                : current
+                  ? equalizerMessage(current)
+                  : '正在读取设置…'
         }}</span>
         <button
           v-if="current?.damaged"
@@ -357,7 +364,9 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <button :disabled="!ready || pending" @click="actionFocus.run($event, applyDraft)">
           读取当前设置并应用草稿
         </button>
-        <button :disabled="pending" @click="actionFocus.run($event, discard)">舍弃草稿</button>
+        <button :disabled="!ready || pending" @click="actionFocus.run($event, discard)">
+          舍弃草稿
+        </button>
       </div>
     </div>
     <footer>

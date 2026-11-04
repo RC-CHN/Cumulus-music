@@ -166,8 +166,45 @@ test('a mismatched write acknowledgment does not cause an automatic second write
   assert.equal(writes, 1);
   assert.equal(draft.blocked.value, true);
   assert.equal(draft.settings.value?.gains[0], 4);
-  draft.discard();
+  await draft.discard();
   assert.equal(draft.settings.value?.gains[0], 0);
+});
+
+test('discard waits for the durable curve and preserves an unconfirmed draft when readback fails', async () => {
+  const current = shallowRef(snapshot('A', '10'));
+  const readback = deferred<typeof current.value>();
+  let writes = 0;
+  let reads = 0;
+  const draft = useEqualizerDraft(
+    () => current.value,
+    async () => {
+      writes++;
+      throw new Error('IPC reply lost');
+    },
+    async () => {
+      if (++reads === 1)
+        throw { code: 'connection', message: 'Cannot read current native settings' };
+      return (current.value = await readback.promise);
+    },
+    1,
+  );
+  draft.stage(curve(1));
+  await tick();
+  draft.stage(curve(4));
+  await draft.discard();
+  assert.equal(draft.blocked.value, true);
+  assert.equal(draft.settings.value?.gains[0], 4);
+  assert.match(draft.error.value, /Cannot read/);
+  const discarding = draft.discard();
+  assert.equal(draft.discarding.value, true);
+  draft.stage(curve(6));
+  assert.equal(draft.settings.value?.gains[0], 4);
+  readback.resolve(snapshot('A', '11', curve(1)));
+  await discarding;
+  assert.equal(writes, 1);
+  assert.equal(draft.blocked.value, false);
+  assert.equal(draft.discarding.value, false);
+  assert.equal(draft.settings.value?.gains[0], 1);
 });
 
 test('tone edits coalesce into the same acknowledged curve and reset independently', async () => {

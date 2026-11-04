@@ -40,6 +40,7 @@ export function useEqualizerDraft(
 ) {
   const draft = shallowRef<{ settings: EqualizerSettings; preset?: EqualizerPreset }>();
   const pending = ref(false);
+  const discarding = ref(false);
   const blocked = ref(false);
   const error = ref('');
   const settings = computed(() => draft.value?.settings ?? current()?.equalizer.settings);
@@ -55,6 +56,7 @@ export function useEqualizerDraft(
     draft.value = undefined;
     revision = undefined;
     pending.value = false;
+    discarding.value = false;
     blocked.value = false;
     error.value = '';
   }
@@ -73,6 +75,7 @@ export function useEqualizerDraft(
     const value = current();
     if (
       !value ||
+      discarding.value ||
       value.equalizer.damaged ||
       (settings.value && same(settings.value, next) && samePreset(preset.value, selected))
     )
@@ -132,18 +135,38 @@ export function useEqualizerDraft(
     return same(view.settings, selected.settings) && samePreset(view.preset, selected.preset);
   }
 
+  async function discard() {
+    const base = current();
+    if (!base || !blocked.value || !draft.value || pending.value) return;
+    const owner = generation;
+    const active = () => generation === owner && current()?.epoch === base.epoch;
+    pending.value = discarding.value = true;
+    try {
+      // Discard only the renderer's draft. A lost write response can hide a
+      // successful native commit, so cached settings cannot replace it.
+      const fresh = await read();
+      if (!active()) return;
+      if (fresh.epoch !== base.epoch) throw new Error('无法确认当前账号的均衡器设置。');
+      reset();
+    } catch (issue) {
+      if (active()) {
+        error.value = failure(issue).message;
+        pending.value = discarding.value = false;
+      }
+    }
+  }
+
   return {
     settings,
     preset,
     draft,
     pending,
+    discarding,
     blocked,
     error,
     stage,
     applyDraft: () => send(true),
-    discard: () => {
-      if (!pending.value) reset();
-    },
+    discard,
     reset,
   };
 }
