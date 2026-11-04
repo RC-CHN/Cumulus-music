@@ -141,3 +141,6 @@ Cumulus 链接任务与独立扫码授权
   三次轮询、一次身份核对和两个明确确认的导入，进程重开为零请求。报告在
   `.build/ui-proof/external-import-fd5f2239/verified/report.json`。没有真实扫码、
   真实任务或上游完成证据。Linux 与 Windows CI 注册同一封闭夹具。
+- 缩窗内扫码区域独立显示，链接表单保留但暂时收起。真实 Linux WebView 核对说明
+  位于底部按钮之上，授权后还原原输入及确认动作；见
+  `.build/ui-proof/external-import-fd5f2239/verified-qr/report.json`。
