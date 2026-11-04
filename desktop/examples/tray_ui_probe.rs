@@ -33,6 +33,30 @@ fn write_evidence(
     fs::write(&pending, bytes)?;
     fs::rename(pending, path)
 }
+
+fn report_tray_ready(app: tauri::AppHandle, root: PathBuf) {
+    tauri::async_runtime::spawn(async move {
+        let ready = tokio::time::timeout(std::time::Duration::from_secs(6), async {
+            while app.tray_by_id("cumulus-main").is_none() {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .is_ok();
+        let visible = app
+            .get_webview_window("main")
+            .is_some_and(|window| window.is_visible().unwrap_or(false));
+        write_evidence(
+            root.join("ready.json"),
+            serde_json::to_vec(&json!({"trayBuilt":ready,"visible":visible})).unwrap(),
+        )
+        .unwrap();
+        if !ready {
+            app.exit(1);
+        }
+    });
+}
+
 fn main() {
     // SAFETY: before GUI and worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
@@ -113,7 +137,7 @@ fn main() {
         });
         tauri::WebviewWindowBuilder::from_config(app,&config)?.data_directory(root.join("webview")).build()?;
         cumulus_desktop::lifecycle::install(app.handle())?;
-        write_evidence(root.join("ready.json"),serde_json::to_vec(&json!({"trayBuilt":app.tray_by_id("cumulus-main").is_some(),"visible":true})).unwrap())?;
+        report_tray_ready(app.handle().clone(), root.clone());
         Ok(())
     }).on_page_load(|view,payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {view.eval(include_str!("tray_ui_probe.js")).unwrap();}

@@ -72,10 +72,15 @@ cumulus:window-lifecycle 事件提供同一类型。修订和提示 ID 使用十
 平台可用性与失败恢复
 Linux：先检查固定的 libayatana-appindicator3.so.1 / libappindicator3.so.1，
 避免缺动态库触发依赖的 panic。deb 添加 libayatana-appindicator3-1 运行依赖。
+  在 GTK 主上下文异步等待至多两秒获取 session bus，连接失败或已关闭时保持托盘
+  不可用，不构造托盘、阻塞主窗口或重启应用。退出中的应用不处理迟到的连接结果。
 监听 session bus 的 org.kde.StatusNotifierWatcher owner，owner 丢失即不可用；
 每秒顺序查询该 owner 的 GetAll，检查 host=true 且本连接注册了当前 tray ID。
 只读取本进程对象，最多4个候选，每个 D-Bus 请求500ms上限；校验 Item 的 Id、
 Active 状态和 Menu 路径。owner 代次拒绝旧响应；无信号变化也会被轮询发现。
+  使用保留的 GIO 共享连接，关闭此连接不退出进程。GIO 0.18 的 Rust watcher
+  对 vanished 回调的空连接直接解包；宿主使用遵守 GLib 可空约定的回调，
+  断线时只撤销本次可用状态，已隐藏的主窗口沿用同一恢复逻辑。
 Windows：每秒对当前 tray 调用 rect()，由 Shell_NotifyIconGetRect 确认该项存在；
 不把构造成功或“系统有 explorer”当作可恢复的证据。具体面板交互仍需 Windows
 运行验证，当前本机只提供 Linux 证据。
@@ -112,6 +117,42 @@ LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
   python3 scripts/ci/tray_protocol_smoke.py --lifecycle --screenshots \
   --binary .build/target/debug/examples/tray_ui_probe --root .build/tray-new-evidence
 Python/GI 仅驱动验证与截图，生产客户端不依赖它。CI Linux 用系统 /usr/bin/python3。
+
+无法连接 session bus 时的普通应用启动
+
+  旧版正式二进制在限制 AppArmor 查询的隔离 bwrap 中，session bus 返回
+  EROFS 后于 gio 0.18.4 dbus.rs:44 跨 C 回调中止，未绘制主窗口。该错误是
+  测试隔离条件下的观测，不代表普通 KDE/Linux 会得到相同 AppArmor 错误。
+  用同一二进制将私有 session bus 地址指向不存在的 Unix socket，可确定地
+  复现相同的 GIO 空连接回调与中止，无需修改系统安全策略。
+
+  在无外网路由的独立 Linux 网络命名空间中启动 Xvfb（禁止 TCP），仅使用
+  全新的 HOME/XDG 目录与普通 `cumulus` 二进制；清除全部 CUMULUS_*、代理及
+  原有 D-Bus 地址。启动 `installed_linux_smoke.py --binary <cumulus> --commit
+  <实际构建的提交> --root <全新目录>`，在脚本环境中显式设
+  `DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/cumulus-nonexistent-session.sock`
+  并确认该地址不存在；不要套用 `dbus-run-session` 覆盖该变量。该驱动有 60 秒
+  上限，须看到真实主窗口绘制和本次新建的 SQLite 库。此项不要加本地音频参数，
+  以免私有 PipeWire 本身对 D-Bus 的依赖干扰启动判据。另用正常私有 session
+  bus 运行上述 `tray_protocol_smoke.py --lifecycle`，确认原生托盘仍可注册，
+  无面板时不能隐藏，面板丢失恢复窗口且重启可重新注册。
+
+  使用已知来源的普通二进制，可用以下等价的无外网启动命令：
+    proof=$(mktemp -d "$PWD/.build/tray-no-bus.XXXXXX")
+    mkdir "$proof/home"
+    sudo -n unshare --net --fork --kill-child -- runuser -u "$(id -un)" -- \
+      env -i PATH=/usr/bin:/usr/sbin HOME="$proof/home" GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 \
+      LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+      DBUS_SESSION_BUS_ADDRESS="unix:path=$proof/missing-session.sock" \
+      xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp -extension GLX' \
+      /usr/bin/python3 scripts/ci/installed_linux_smoke.py --binary "$BIN" \
+      --commit "$BUILT_SHA" --root "$proof/run"
+
+  本机复验：缺失地址、受限标准 session bus、正常私有 session bus 三次
+  正式二进制均从空目录绘制 1120×760 主窗口；前两次确认跳过不可用托盘。
+  另在已经绘制后仅终止本次私有 bus，确认同一进程和窗口仍可绘制。
+  健康 bus 的独立托盘回归通过 17 个状态，含真实菜单、后台播放、面板丢失、
+  重新注册及退出。全部为隔离 Linux/Xvfb，未访问音乐服务或实体桌面面板。
 
 2026-10-29 原始JSON恢复补充
 无法解析的current文本也能显式恢复；同事务备份current_raw原文并恢复tray/false。

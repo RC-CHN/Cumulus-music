@@ -86,6 +86,8 @@ struct Host {
     inner: Mutex<Inner>,
     monitor: Mutex<Option<availability::Monitor>>,
     #[cfg(target_os = "linux")]
+    stopped: std::sync::atomic::AtomicBool,
+    #[cfg(target_os = "linux")]
     _library: Option<libloading::Library>,
 }
 fn change<R: tauri::Runtime>(app: &tauri::AppHandle<R>, f: impl FnOnce(&mut Inner)) {
@@ -161,10 +163,13 @@ pub fn show<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     reveal(app);
 }
 pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
-    if let Some(host) = app.try_state::<Host>()
-        && let Ok(mut monitor) = host.monitor.lock()
-    {
-        monitor.take();
+    if let Some(host) = app.try_state::<Host>() {
+        #[cfg(target_os = "linux")]
+        host.stopped
+            .store(true, std::sync::atomic::Ordering::Release);
+        if let Ok(mut monitor) = host.monitor.lock() {
+            monitor.take();
+        }
     }
     likes::stop(app);
     media::stop(app);
@@ -192,19 +197,42 @@ pub fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()
         }),
         monitor: Mutex::new(None),
         #[cfg(target_os = "linux")]
+        stopped: Default::default(),
+        #[cfg(target_os = "linux")]
         _library: library,
     });
     if !native_available {
         return Ok(());
     }
-    // Keep construction failures inside the capability boundary. The window
-    // close prompt remains usable with an explicit Exit choice.
+    #[cfg(target_os = "linux")]
+    {
+        // Do not enter libappindicator or its bus watcher before a session
+        // connection exists, and do not hold up the window while it connects.
+        let app = app.clone();
+        gio::glib::MainContext::default().spawn_local(async move {
+            let Some(connection) = availability::session_bus().await else {
+                eprintln!("native tray unavailable: no usable session bus");
+                return;
+            };
+            if let Some(host) = app.try_state::<Host>()
+                && !host.stopped.load(std::sync::atomic::Ordering::Acquire)
+                && let Err(error) = build(&app, connection)
+            {
+                eprintln!("native tray unavailable: {error}");
+            }
+        });
+    }
+    // The window close prompt stays usable even when construction fails.
+    #[cfg(not(target_os = "linux"))]
     if let Err(error) = build(app) {
         eprintln!("native tray unavailable: {error}");
     }
     Ok(())
 }
-fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
+fn build<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    #[cfg(target_os = "linux")] connection: gio::DBusConnection,
+) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, "cumulus-show", "显示 Cumulus", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "cumulus-quit", "退出 Cumulus", true, None::<&str>)?;
     let unlock_lyrics = MenuItem::with_id(
@@ -272,7 +300,9 @@ fn build<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> tauri::Result<()> {
     likes::install(app, likes);
     let observed = app.clone();
     #[cfg(target_os = "linux")]
-    let monitor = availability::monitor(tray.id().as_ref(), move |ok| availability(&observed, ok));
+    let monitor = availability::monitor(connection, tray.id().as_ref(), move |ok| {
+        availability(&observed, ok)
+    });
     #[cfg(target_os = "windows")]
     let monitor = availability::monitor(tray, move |ok| availability(&observed, ok));
     #[cfg(any(target_os = "linux", target_os = "windows"))]

@@ -3,7 +3,7 @@
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
-pub use linux::{Monitor, library, monitor};
+pub use linux::{Monitor, library, monitor, session_bus};
 
 #[cfg(target_os = "windows")]
 pub struct Monitor(std::sync::Arc<std::sync::atomic::AtomicBool>);

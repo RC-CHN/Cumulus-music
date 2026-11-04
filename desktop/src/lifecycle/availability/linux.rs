@@ -1,6 +1,10 @@
 use gio::{
     DBusCallFlags,
-    glib::{self, variant::ToVariant},
+    glib::{
+        self,
+        translate::{IntoGlib, ToGlibPtr},
+        variant::ToVariant,
+    },
 };
 use std::{
     collections::HashMap,
@@ -8,6 +12,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
+    time::Duration,
 };
 const WATCHER: &str = "org.kde.StatusNotifierWatcher";
 const PATH: &str = "/StatusNotifierWatcher";
@@ -25,20 +30,39 @@ pub fn library() -> Option<libloading::Library> {
             unsafe { libloading::Library::new(name).ok() }
         })
 }
+
+pub async fn session_bus() -> Option<gio::DBusConnection> {
+    let connection = glib::future_with_timeout(
+        Duration::from_secs(2),
+        gio::bus_get_future(gio::BusType::Session),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    if connection.is_closed() {
+        return None;
+    }
+    // Keep a shared GIO/GTK session-bus disconnect from terminating the app.
+    connection.set_exit_on_close(false);
+    Some(connection)
+}
+
 struct Shared {
     stopped: AtomicBool,
     generation: AtomicU64,
     changed: Box<dyn Fn(bool) + Send + Sync>,
 }
 pub struct Monitor {
-    unwatch: Option<Box<dyn FnOnce() + Send + Sync>>,
+    watcher: u32,
     shared: Arc<Shared>,
+    _connection: gio::DBusConnection,
 }
 impl Drop for Monitor {
     fn drop(&mut self) {
         self.shared.stopped.store(true, Ordering::Release);
-        if let Some(unwatch) = self.unwatch.take() {
-            unwatch();
+        if self.watcher != 0 {
+            // SAFETY: this is the ID of the one watch owned by this monitor.
+            unsafe { gio::ffi::g_bus_unwatch_name(self.watcher) };
         }
     }
 }
@@ -47,8 +71,20 @@ impl Shared {
         !self.stopped.load(Ordering::Acquire)
             && self.generation.load(Ordering::Acquire) == generation
     }
+
+    fn unavailable(&self) {
+        self.generation.fetch_add(1, Ordering::AcqRel);
+        if !self.stopped.load(Ordering::Acquire) {
+            (self.changed)(false);
+        }
+    }
 }
-pub fn monitor(id: &str, changed: impl Fn(bool) + Send + Sync + 'static) -> Monitor {
+
+pub fn monitor(
+    connection: gio::DBusConnection,
+    id: &str,
+    changed: impl Fn(bool) + Send + Sync + 'static,
+) -> Monitor {
     let shared = Arc::new(Shared {
         stopped: AtomicBool::new(false),
         generation: AtomicU64::new(0),
@@ -57,15 +93,19 @@ pub fn monitor(id: &str, changed: impl Fn(bool) + Send + Sync + 'static) -> Moni
     let appeared = shared.clone();
     let vanished = shared.clone();
     let expected = format!("tray-icon tray app {id}");
-    let watcher = gio::bus_watch_name(
-        gio::BusType::Session,
-        WATCHER,
-        gio::BusNameWatcherFlags::NONE,
-        move |connection, _, owner| {
+    let appeared = glib::Closure::new(move |args| {
+        let connection = args
+            .first()
+            .and_then(|arg| arg.get::<gio::DBusConnection>().ok());
+        let owner = args.get(2).and_then(|arg| arg.get::<&str>().ok());
+        if let (Some(connection), Some(owner)) = (connection, owner) {
             let generation = appeared.generation.fetch_add(1, Ordering::AcqRel) + 1;
             let shared = appeared.clone();
             let expected = expected.clone();
             let owner = owner.to_owned();
+            if !shared.current(generation) {
+                return None;
+            }
             (shared.changed)(false);
             glib::MainContext::default().spawn_local(async move {
                 // Bounded, sequential reads avoid signal storms and also detect
@@ -76,20 +116,36 @@ pub fn monitor(id: &str, changed: impl Fn(bool) + Send + Sync + 'static) -> Moni
                         break;
                     }
                     (shared.changed)(available);
-                    glib::timeout_future(std::time::Duration::from_secs(1)).await;
+                    glib::timeout_future(Duration::from_secs(1)).await;
                 }
             });
-        },
-        move |_, _| {
-            vanished.generation.fetch_add(1, Ordering::AcqRel);
-            if !vanished.stopped.load(Ordering::Acquire) {
-                (vanished.changed)(false);
-            }
-        },
-    );
+        } else {
+            appeared.unavailable();
+        }
+        None
+    });
+    // GIO supplies a null connection if the bus closes. gio 0.18's watcher
+    // wrapper unwraps it inside the C callback; the vanished case needs no
+    // connection at all.
+    let vanished = glib::Closure::new(move |_| {
+        vanished.unavailable();
+        None
+    });
+    // SAFETY: GIO retains the two closure references for this watch. The
+    // closures accept the documented GValues without assuming non-null data.
+    let watcher = unsafe {
+        gio::ffi::g_bus_watch_name_on_connection_with_closures(
+            connection.to_glib_none().0,
+            WATCHER.to_glib_none().0,
+            gio::BusNameWatcherFlags::NONE.into_glib(),
+            appeared.to_glib_none().0,
+            vanished.to_glib_none().0,
+        )
+    };
     Monitor {
-        unwatch: Some(Box::new(move || gio::bus_unwatch_name(watcher))),
+        watcher,
         shared,
+        _connection: connection,
     }
 }
 async fn properties(
