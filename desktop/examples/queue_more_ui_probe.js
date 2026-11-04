@@ -81,7 +81,14 @@
       'native seek to ' + seconds,
     );
   }
-  async function capture(label, snapshot = {}) {
+  function seekNearEnd() {
+    // The 30-second local PCM reaches real libmpv EOF; no fake engine event.
+    const input = one('[aria-label="播放进度"]');
+    assert(input && !input.disabled && Math.abs(Number(input.max) - 30) < .3, 'known finite media duration');
+    input.value = '29.2';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  async function capture(label) {
     last = label;
     await sleep(250);
     const p = panel();
@@ -104,12 +111,12 @@
     window.__queueSelectionRecorded = null;
     await emit(stage, {
       width: innerWidth, height: innerHeight, ratio: devicePixelRatio, screenX, screenY,
-      visible: document.visibilityState === 'visible', focused: document.hasFocus(),
+      drawerOpen: !!p, visible: document.visibilityState === 'visible', focused: document.hasFocus(),
       playId: bar().dataset.playId ?? null, trackId: bar().dataset.trackId ?? null,
       position: Number(bar().dataset.position), model: q.moreRecommendations,
       rows: allRows.map((n) => ({ entryId: n.dataset.entryId, height: rect(n).height, badge: !!n.querySelector('[data-queue-more-badge]') })),
       toggle: toggle()?.getAttribute('aria-checked') ?? null, anchor: anchor?.dataset.entryId ?? null,
-      actionCalls: actionCalls.slice(), initialPlayId, ...snapshot,
+      actionCalls: actionCalls.slice(), initialPlayId,
       captureHandshake: true,
       paintSamples: p ? [{ x: r.left + 4, y: r.top + 4, color: getComputedStyle(p).backgroundColor }] : [],
     });
@@ -129,7 +136,46 @@
       return count(state, '/rcmd/song') === recommends && count(state, '/enhance/privilege') === privileges;
     }, 'recommendation/privilege calls: ' + recommends + '/' + privileges);
   }
+  async function tail(delayed) {
+    if (delayed) {
+      await client.playerAction(epoch, { kind: 'mode', mode: 'sequential' });
+      await wait(() => bar().dataset.mode === 'sequential', 'native sequential mode');
+    }
+    await fixture('hold');
+    click(button('下一首', bar()));
+    await wait(() => bar().dataset.trackId === '2' && bar().dataset.state === 'playing' &&
+      Number(bar().dataset.position) > .12, 'actual terminal seed audio');
+    const terminal = bar().dataset.playId;
+    assert(terminal !== initialPlayId, 'terminal seed uses its own decoder load');
+    await waitCounts(1, 0);
+    assert(!panel() && ids(await queue()).join(',') === '1,2', 'terminal seed triggers before drawer or EOF');
+    await capture(delayed ? 'late_tail_pending' : 'tail_pending');
+    if (delayed) {
+      seekNearEnd();
+      await wait(() => bar().dataset.trackId === '2' && bar().dataset.state === 'ended',
+        'actual sequential EOF while recommendation is held');
+      await checkCounts(1, 0, 'EOF does not force a new request');
+      await capture('late_tail_ended');
+    }
+    await fixture('release');
+    await waitCounts(1, 1);
+    await wait(async () => ids(await queue()).join(',') === '1,2,51,52,53', 'terminal request appended');
+    assert(!panel() && bar().dataset.playId === terminal, 'append never replaces the terminal decoder');
+    if (delayed) {
+      assert(bar().dataset.state === 'ended', 'late recommendation does not wake the ended player');
+      await capture('late_tail_appended');
+    } else {
+      await capture('tail_appended');
+      seekNearEnd();
+      await wait(() => bar().dataset.trackId === '51' && bar().dataset.state === 'playing' &&
+        Number(bar().dataset.position) > .12, 'native EOF advances into prefetched section');
+      assert(bar().dataset.playId !== terminal, 'prefetched section has a real next decoder');
+      await capture('tail_eof');
+    }
+    await checkCounts(1, 1, 'automatic tail and EOF have one read pair');
+  }
   try {
+    const testCase = window.__queueMoreCase;
     await wait(() => button('列表循环') && !button('列表循环').disabled && one('.track-row'), 'Daily startup');
     const provides = one('#app').__vue_app__._context.provides;
     client = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
@@ -151,7 +197,9 @@
     initialPlayId = bar().dataset.playId;
     assert(ids(await queue()).join(',') === '1,2', 'non-tail Daily entry with two seeds');
     await checkCounts(0, 0, 'no recommendation while drawer is unopened');
-    if (window.__queueMoreControl) {
+    if (testCase === 'tail' || testCase === 'late_tail') {
+      await tail(testCase === 'late_tail');
+    } else if (testCase === 'control') {
       await open();
       assert(!(await more())?.visible && !toggle() && !divider(), 'control assignment suppresses UI');
       await capture('control');
@@ -196,11 +244,7 @@
       await capture('selected');
 
       const recommendationPlayId = bar().dataset.playId;
-      // The 30-second local PCM still reaches a real libmpv EOF; no fake engine event.
-      const seekInput = one('[aria-label="播放进度"]');
-      assert(Math.abs(Number(seekInput.max) - 30) < .3, 'known finite media duration');
-      seekInput.value = '29.2';
-      seekInput.dispatchEvent(new Event('change', { bubbles: true }));
+      seekNearEnd();
       await wait(() => bar().dataset.trackId === '52' && bar().dataset.state === 'playing' &&
         Number(bar().dataset.position) > .12, 'native EOF advances to the next recommended entry');
       assert(bar().dataset.playId !== recommendationPlayId, 'natural EOF loads the next entry');
@@ -240,7 +284,7 @@
       await checkCounts(2, 2, 'late reply does not retry');
     }
     await emit('complete', {
-      ok: true, stageCount, control: !!window.__queueMoreControl, realMusicRequests: 0,
+      ok: true, stageCount, testCase, realMusicRequests: 0,
       accountWrites: 0, initialPlayId, actionCalls,
     });
   } catch (error) {

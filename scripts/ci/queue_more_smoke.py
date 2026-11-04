@@ -1,7 +1,7 @@
 """Observe the official recommendation queue in an actual WebView and libmpv.
 
 The account, two API responses, and PCM are synthetic. No upstream requests or
-real account writes are allowed. Run both the assigned and the control process.
+real account writes are allowed. Cases use independent app profiles.
 """
 import argparse
 import json
@@ -29,13 +29,25 @@ ASSIGNED = {
     'late_discarded': (RETAINED, 3, 4, 0),
 }
 CONTROL = {'control': (SEEDS, 1, 0, 0)}
+TAIL = {
+    'tail_pending': (SEEDS, 2, 1, 0),
+    'tail_appended': (APPENDED, 2, 2, 3),
+    'tail_eof': (APPENDED, 3, 2, 3),
+}
+LATE_TAIL = {
+    'late_tail_pending': (SEEDS, 2, 1, 0),
+    'late_tail_ended': (SEEDS, 2, 1, 0),
+    'late_tail_appended': (APPENDED, 2, 2, 3),
+}
+CASES = {'assigned': ASSIGNED, 'control': CONTROL, 'tail': TAIL, 'late_tail': LATE_TAIL}
 
 
 def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def assert_requests(requests):
+def assert_requests(requests, case):
+    first_current = '2' if case in ['tail', 'late_tail'] else '1'
     assert [item['path'] for item in requests] == [MORE, PRIVILEGE, MORE, PRIVILEGE][:len(requests)]
     for index, request in enumerate(requests):
         payload = request['args']
@@ -44,7 +56,7 @@ def assert_requests(requests):
             assert set(payload) == {'songIds', 'currentPlaySongId', 'source'}, request
             assert payload['source'] == 'curlist_more_rcmd', request
             assert payload['songIds'] == (SEEDS if index == 0 else RETAINED), request
-            assert payload['currentPlaySongId'] == ('1' if index == 0 else '52'), request
+            assert payload['currentPlaySongId'] == (first_current if index == 0 else '52'), request
         else:
             assert set(payload) == {'ids'}, request
             assert json.loads(payload['ids']) == (
@@ -52,9 +64,9 @@ def assert_requests(requests):
             ), request
 
 
-def verify_stages(output, control, screenshots):
-    states = CONTROL if control else ASSIGNED
-    initial, chosen, after_eof = None, None, None
+def verify_stages(output, case, screenshots):
+    states = CASES[case]
+    initial, chosen, after_eof, terminal = None, None, None, None
     for index, (label, (ids, loads, calls, tagged)) in enumerate(states.items(), 1):
         path = output / f'ux_{index:02}_{label}.json'
         row = read(path)
@@ -67,21 +79,38 @@ def verify_stages(output, control, screenshots):
         assert row['model'] == model and row['playId'] == native['playId'] and not native['error'], label
         assert row['sourceAudio']['loads'] == loads, (label, row['sourceAudio'])
         assert len(row['syntheticQueueMore']['requests']) == calls, label
-        assert_requests(row['syntheticQueueMore']['requests'])
+        assert_requests(row['syntheticQueueMore']['requests'], case)
         assert [entry['moreRecommendation'] for entry in tracks] == [
             i >= len(ids) - tagged for i in range(len(ids))
         ], label
         if tagged:
             anchor = tracks[len(ids) - tagged]['entryId']
-            assert row['anchor'] == model['separatorBefore'] == anchor, label
-            expected_badges = {entry['entryId'] for entry in tracks if entry['moreRecommendation']}
-            assert {r['entryId'] for r in row['rows'] if r['badge']} == expected_badges, label
+            assert model['separatorBefore'] == anchor, label
+            if row['drawerOpen']:
+                assert row['anchor'] == anchor, label
+                expected_badges = {entry['entryId'] for entry in tracks if entry['moreRecommendation']}
+                assert {r['entryId'] for r in row['rows'] if r['badge']} == expected_badges, label
         else:
             assert row['anchor'] is None and (model or {}).get('separatorBefore') is None, label
             assert not any(r['badge'] for r in row['rows']), label
-        assert bool(model and model['visible']) == (not control), label
+        assert bool(model and model['visible']) == (case != 'control'), label
         if label == 'control':
             assert row['toggle'] is None and not (model and model['prefetchOnOpen']), label
+        elif case in ['tail', 'late_tail']:
+            assert not row['drawerOpen'] and row['toggle'] is None and row['anchor'] is None, label
+            assert not row['rows'] and not row['actionCalls'], label
+            terminal = terminal or native['playId']
+            if label == 'tail_eof':
+                assert native['track']['id'] == '51' and native['playId'] != terminal, label
+                assert native['state'] == 'playing' and native['position'] > .12, label
+            else:
+                assert native['track']['id'] == '2' and native['playId'] == terminal != row['initialPlayId'], label
+                if label in ['late_tail_ended', 'late_tail_appended']:
+                    assert native['state'] == 'ended' and abs(native['position'] - 30) < .25, label
+                else:
+                    assert native['state'] == 'playing' and .12 < native['position'] < 29, label
+            if case == 'late_tail':
+                assert native['mode'] == 'sequential', label
         elif label in ['unopened', 'held', 'appended', 'reopened']:
             initial = initial or native['playId']
             assert native['playId'] == initial and native['track']['id'] == '1', label
@@ -113,14 +142,22 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
-    parser.add_argument('--screenshots', action='store_true', help='optional Linux GTK captures')
+    parser.add_argument('--screenshots', action='store_true', help='optional Linux GTK captures on X11')
     args = parser.parse_args()
+    if args.screenshots:
+        import gi
+        gi.require_version('Gtk', '3.0')
+        gi.require_version('Gdk', '3.0')
+        from gi.repository import Gdk, Gtk
+        assert Gtk.init_check([])[0], 'GTK could not connect to the capture display'
+        window = Gdk.get_default_root_window()
+        assert window and window.get_width() > 0, 'screenshots require X11; set GDK_BACKEND=x11 under Xvfb'
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     script = (Path(__file__).resolve().parents[2] / 'desktop/examples/queue_more_ui_probe.js').read_text(encoding='utf-8')
     states = 0
     locale_observed = {}
-    for name in ['assigned', 'control']:
+    for name in CASES:
         control = name == 'control'
         case = root / name
         case.mkdir()
@@ -140,7 +177,7 @@ def main():
         if args.frontend_dist:
             env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
         isolated_script = case / 'probe.js'
-        isolated_script.write_text(f'window.__queueMoreControl = {json.dumps(control)};\n' + script, encoding='utf-8')
+        isolated_script.write_text(f'window.__queueMoreCase = {json.dumps(name)};\n' + script, encoding='utf-8')
         env['CUMULUS_UX_SCRIPT'] = str(isolated_script)
         output = case / 'first'
         with (case / 'host.log').open('x', encoding='utf-8') as log:
@@ -149,16 +186,18 @@ def main():
         assert not failure.exists(), failure.read_text(encoding='utf-8') if failure.exists() else ''
         assert status == 0, f'{name} recommendation probe exit {status}'
         complete = read(output / 'complete.json')
-        assert complete['ok'] and complete['control'] == control
+        assert complete['ok'] and complete['testCase'] == name
         assert complete['realMusicRequests'] == complete['accountWrites'] == 0
-        count = verify_stages(output, control, args.screenshots)
+        count = verify_stages(output, name, args.screenshots)
         assert complete['stageCount'] == count
-        assert_requests(complete['syntheticQueueMore']['requests'])
-        assert len(complete['syntheticQueueMore']['requests']) == (0 if control else 4)
+        assert_requests(complete['syntheticQueueMore']['requests'], name)
+        expected_reads = 4 if name == 'assigned' else 0 if control else 2
+        assert len(complete['syntheticQueueMore']['requests']) == expected_reads
         actions = [item['kind'] for item in complete['actionCalls']]
-        assert actions.count('queue_more_toggle') == (0 if control else 3)
-        if not control:
-            assert actions[0] == 'queue_more_opened'
+        if name == 'assigned':
+            assert actions[0] == 'queue_more_opened' and actions.count('queue_more_toggle') == 3
+        else:
+            assert not actions
         states += count
         if sys.platform == 'linux':
             observed = read(output / 'locale.json')
@@ -169,7 +208,7 @@ def main():
                 assert observed[key].casefold().replace('-', '') == expected.casefold().replace('-', ''), observed
             locale_observed[name] = observed
     report = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, nativeEof=True,
-                  controlledExperiment=True, locales=locale_observed, states=states, screenshots=states if args.screenshots else 0,
+                  controlledExperiment=True, automaticTail=True, lateTailStayedEnded=True, locales=locale_observed, states=states, screenshots=states if args.screenshots else 0,
                   syntheticApi=True, realMusicRequests=0, realAccountWrites=0,
                   physicalDisplayVerified=False, physicalAudioOutputVerified=False)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
