@@ -51,10 +51,20 @@ pub struct ZoneTab {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerticalZonePage {
+    pub view_id: String,
+    pub card_size: ZoneCardSize,
     pub layout: ZoneLayout,
     pub tabs: Vec<ZoneTab>,
     pub active_tab: Option<ZoneTab>,
     pub blocks: Vec<ZoneBlock>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ZoneCardSize {
+    Default,
+    Small,
+    Mini,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -78,9 +88,11 @@ pub struct ZoneBlock {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneCard {
+    pub card_key: String,
     pub title: Option<String>,
     pub cover: Option<String>,
     pub target: ZoneTarget,
+    pub can_play: bool,
     pub previews: Vec<ZoneRankPreview>,
 }
 
@@ -115,8 +127,20 @@ pub async fn read(
 ) -> Result<VerticalZonePage> {
     validate_page_code(page_code)?;
     entry.validate()?;
+    let size = match groups.and_then(|groups| groups.group("PH-PC-jingxuanPageEfficiency")) {
+        Some("t1") => ZoneCardSize::Mini,
+        Some("t2") => ZoneCardSize::Small,
+        _ => ZoneCardSize::Default,
+    };
     if groups.and_then(|groups| groups.group("PH-PC-zhuanquTab")) != Some("t1") {
-        return classic(api, page_code, ZoneLayout::Classic, recommendation_enabled).await;
+        return classic(
+            api,
+            page_code,
+            ZoneLayout::Classic,
+            recommendation_enabled,
+            size,
+        )
+        .await;
     }
     let requested = match entry {
         ZoneEntry::Tab("") | ZoneEntry::SearchTabName(_) => DEFAULT_TAB,
@@ -124,7 +148,7 @@ pub async fn read(
         _ => return Err(Error::InvalidInput("invalid vertical zone tab key")),
     };
     let name = match entry {
-        ZoneEntry::SearchTabName(name) if name.is_empty() => None,
+        ZoneEntry::SearchTabName("") => None,
         ZoneEntry::SearchTabName(name) if valid_tab(name) => Some(name),
         ZoneEntry::SearchTabName(_) => {
             return Err(Error::InvalidInput("invalid vertical zone tab name"));
@@ -132,14 +156,26 @@ pub async fn read(
         _ => None,
     };
     match tabs(api, page_code, requested, name, recommendation_enabled).await {
-        Ok(page) => Ok(page),
+        Ok(mut page) => {
+            page.card_size = size;
+            Ok(page)
+        }
         Err(error)
             if error.is_service_code(301)
                 || matches!(error, Error::StaleResponse | Error::CredentialChanged) =>
         {
             Err(error)
         }
-        Err(_) => classic(api, page_code, ZoneLayout::Fallback, recommendation_enabled).await,
+        Err(_) => {
+            classic(
+                api,
+                page_code,
+                ZoneLayout::Fallback,
+                recommendation_enabled,
+                size,
+            )
+            .await
+        }
     }
 }
 
@@ -164,6 +200,7 @@ async fn classic(
     page_code: &str,
     layout: ZoneLayout,
     recommendation_enabled: bool,
+    card_size: ZoneCardSize,
 ) -> Result<VerticalZonePage> {
     let value = api
         .call(CLASSIC_PATH, json!({"pageCode":page_code}), false, &[200])
@@ -173,6 +210,8 @@ async fn classic(
         .ok_or(Error::Response("missing classic vertical zone data"))?;
     let content = rows.first().unwrap_or(&Value::Null);
     Ok(VerticalZonePage {
+        view_id: String::new(),
+        card_size,
         layout,
         tabs: Vec::new(),
         active_tab: projection::tab(content),
@@ -213,6 +252,8 @@ async fn tabs(
             "vertical zone tab did not match the requested entry",
         ))?;
     Ok(VerticalZonePage {
+        view_id: String::new(),
+        card_size: ZoneCardSize::Default,
         layout: ZoneLayout::Tabs,
         tabs: metas,
         active_tab: Some(active_tab),

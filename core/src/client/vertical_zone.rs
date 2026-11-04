@@ -3,7 +3,9 @@ use super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,
     account::{AccountApi, SessionToken},
-    catalog::vertical_zone::{VerticalZonePage, ZoneEntry, ZoneLayout, read, validate_page_code},
+    catalog::vertical_zone::{
+        VerticalZonePage, ZoneEntry, ZoneLayout, ZoneTarget, read, validate_page_code,
+    },
     protocol::api::Api,
 };
 use std::{
@@ -19,6 +21,7 @@ struct ZoneCache {
     owner: Option<(SessionToken, Weak<dyn Api>)>,
     sequence: u64,
     tabs: VecDeque<CacheItem>,
+    published: Option<VerticalZonePage>,
 }
 
 struct CacheItem {
@@ -39,11 +42,61 @@ impl ZoneHost {
             cache.owner = Some((token.clone(), Arc::downgrade(api)));
             cache.tabs.clear();
         }
+        cache.published = None;
         cache.sequence = cache
             .sequence
             .checked_add(1)
             .ok_or(Error::State("vertical zone sequence exhausted"))?;
         Ok(cache.sequence)
+    }
+
+    fn publish(&self, sequence: u64, page: &mut VerticalZonePage) -> Result<()> {
+        let mut cache = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        if cache.sequence != sequence {
+            return Err(Error::StaleResponse);
+        }
+        page.view_id = sequence.to_string();
+        for (block, section) in page.blocks.iter_mut().enumerate() {
+            for (index, card) in section.cards.iter_mut().enumerate() {
+                card.card_key = format!("{block}:{index}");
+            }
+        }
+        cache.published = Some(page.clone());
+        Ok(())
+    }
+
+    fn playlist_trial(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        view: &str,
+        card_key: &str,
+        id: &str,
+    ) -> Result<bool> {
+        let cache = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        let authorized = cache.owner.as_ref().is_some_and(|(owner, native)| {
+            owner == token
+                && native
+                    .upgrade()
+                    .is_some_and(|native| Arc::ptr_eq(&native, api))
+        });
+        let page = cache
+            .published
+            .as_ref()
+            .filter(|page| authorized && page.view_id == view)
+            .ok_or(Error::StaleResponse)?;
+        page.blocks
+            .iter()
+            .flat_map(|block| &block.cards)
+            .filter(|card| card.can_play && card.card_key == card_key)
+            .find_map(|card| match &card.target {
+                ZoneTarget::Playlist {
+                    id: candidate,
+                    personalized,
+                } if candidate == id => Some(*personalized),
+                _ => None,
+            })
+            .ok_or(Error::InvalidInput("playlist is not an active zone card"))
     }
 
     fn load(
@@ -122,6 +175,20 @@ impl ZoneHost {
 }
 
 impl MusicClient {
+    pub(super) fn vertical_zone_playlist_trial(
+        &self,
+        token: &SessionToken,
+        view: &str,
+        card_key: &str,
+        id: &str,
+    ) -> Result<bool> {
+        let api = self.session.native_api(token)?;
+        self.session.with_verified_profile(token, &api, |_, _| {
+            self.vertical_zone
+                .playlist_trial(token, &api, view, card_key, id)
+        })
+    }
+
     /// Called by trusted native navigation. The frontend cannot supply the
     /// experiment assignment, privacy bit or an upstream route.
     pub async fn vertical_zone(
@@ -151,7 +218,7 @@ impl MusicClient {
             == Some("t1");
         let (owner, bound) = (&token, &api);
         let mut changes = self.session.subscribe()?;
-        let value = self
+        let mut value = self
             .session
             .run_for(owner, |current, _| async move {
                 self.session.require_api(owner, &current)?;
@@ -191,7 +258,9 @@ impl MusicClient {
                 Ok(page)
             })
             .await?;
-        self.session.require_api(&token, &api)?;
+        self.session.with_verified_profile(&token, &api, |_, _| {
+            self.vertical_zone.publish(sequence, &mut value)
+        })?;
         Ok(AccountData {
             epoch: epoch.into(),
             value,

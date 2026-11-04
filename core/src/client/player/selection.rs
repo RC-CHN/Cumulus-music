@@ -61,6 +61,24 @@ impl MusicClient {
         prepared: Option<PreparedSelection>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        let (input, zone_playlist) = match input {
+            PlaySelection::VerticalZonePlaylist {
+                id,
+                view_id,
+                card_key,
+                quality,
+            } => {
+                let trial = self.vertical_zone_playlist_trial(&token, &view_id, &card_key, &id)?;
+                let playlist = PlaySelection::Playlist {
+                    id: id.clone(),
+                    start_id: None,
+                    revision: None,
+                    quality,
+                };
+                (playlist, Some((view_id, card_key, id, trial)))
+            }
+            other => (other, None),
+        };
         let (input, retained) = match input {
             PlaySelection::SongRowDoubleClick { selection } => {
                 let keep_queue = !self.replace_queue_on_double_click(&token)?;
@@ -485,6 +503,9 @@ impl MusicClient {
         };
         let selection_token = token.clone();
         let clears_playlist = retained.is_none();
+        let zone_trial = zone_playlist
+            .as_ref()
+            .is_some_and(|(_, _, _, trial)| *trial);
         let (ids, index, quality, source) = self
             .session
             .run_for(&token, |api, uid| async move {
@@ -574,6 +595,7 @@ impl MusicClient {
                     PlaySelection::SongRowDoubleClick { .. }
                     | PlaySelection::FollowLatest { .. }
                     | PlaySelection::ProfileRankPlaylist { .. }
+                    | PlaySelection::VerticalZonePlaylist { .. }
                     | PlaySelection::Cloud { .. }
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }
@@ -707,6 +729,9 @@ impl MusicClient {
                             "coverImgUrl":detail["coverImgUrl"],"creator":detail["creator"],
                             "description":detail["description"],"trackCount":detail["trackCount"]});
                         let mut source = json!({"kind":"playlist","id":id,"history_resource":history});
+                        if zone_trial {
+                            source["trial_mode"] = json!(121);
+                        }
                         if clears_playlist {
                             self.attach_queue_more_playlist(
                                 &selection_token, &uid, &id, &detail, &mut source,
@@ -748,6 +773,9 @@ impl MusicClient {
                 }
                 resources.push(resource);
             }
+        }
+        if let Some((view, card_key, id, _)) = zone_playlist {
+            self.vertical_zone_playlist_trial(&token, &view, &card_key, &id)?;
         }
         if resources.get(index).is_none_or(|v| v["missing"] == true) {
             return Err(Error::State("selected song is unavailable"));

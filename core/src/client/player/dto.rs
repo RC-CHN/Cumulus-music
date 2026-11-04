@@ -187,6 +187,12 @@ pub enum SongRowSelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    VerticalZonePlaylist {
+        id: String,
+        view_id: String,
+        card_key: String,
+        quality: Quality,
+    },
     ProfileRankPlaylist {
         uid: Option<String>,
         quality: Quality,

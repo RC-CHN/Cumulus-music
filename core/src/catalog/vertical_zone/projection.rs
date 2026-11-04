@@ -71,8 +71,10 @@ fn carousel(row: &Value) -> Option<ZoneCard> {
         _ => return None,
     };
     Some(ZoneCard {
+        card_key: String::new(),
         title: text(&row["title"]),
         cover: original(&row["imgUrl"]),
+        can_play: matches!(target, ZoneTarget::Song { .. } | ZoneTarget::Voice { .. }),
         target,
         previews: Vec::new(),
     })
@@ -97,8 +99,10 @@ fn recommendation(row: &Value, horizontal: bool, block_personalized: bool) -> Op
         _ => return None,
     };
     Some(ZoneCard {
+        card_key: String::new(),
         title: text(&row["name"]).or_else(|| text(&row["title"])),
         cover: square(&row["coverImgUrl"]).or_else(|| square(&row["coverUrl"])),
+        can_play: true,
         target,
         previews: Vec::new(),
     })
@@ -127,12 +131,14 @@ fn ranking(row: &Value) -> Option<ZoneCard> {
         })
         .collect();
     Some(ZoneCard {
+        card_key: String::new(),
         title: text(&row["name"]),
         cover: square(&row["coverUrl"]),
         target: ZoneTarget::Playlist {
             id: id(&row["id"])?,
             personalized: false,
         },
+        can_play: marked(&row["canPlay"]),
         previews,
     })
 }
