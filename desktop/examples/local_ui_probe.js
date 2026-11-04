@@ -4,6 +4,7 @@
  const report=(stage,data={})=>invoke('plugin:event|emit',{event:'local-proof',payload:{stage,...data}});
  const wait=async(test,label,ms=60000)=>{const end=Date.now()+ms;while(Date.now()<end){const v=await test();if(v)return v;await sleep(100);}throw Error(label);};
  const button=text=>all('button').find(n=>n.textContent.trim()===text);
+ const localTab=text=>all('.local-tabs button').find(n=>n.textContent.trim()===text);
  const click=async n=>{if(!n)throw Error('control_missing');await sleep(100);await wait(()=>n.isConnected&&!n.disabled,'control_not_ready',15000);n.scrollIntoView({block:'nearest'});n.click();await sleep(100);};
  const rowGeometry=()=>all('.local-tracks tbody tr').map(row=>{
   const cells=[...row.cells],button=cells[0].querySelector('button').getBoundingClientRect(),cell=cells[0].getBoundingClientRect();
@@ -24,7 +25,7 @@
   if(window.__localProof.reopen){
    step='restore';await wait(()=>el('.playerbar [aria-label="播放"]')&&Number(el('[aria-label="播放进度"]')?.value)>=11,'guest_restore');
    const queue=await invoke('player_queue',{epoch});if(queue.tracks.length!==4||!queue.tracks.every(t=>t.track.local))throw Error('persisted_local_queue');
-   await stage('local_reopened',{guest:true,queue:queue.tracks.length,positionPreserved:true,paused:true,rootsRestored:(await invoke('local_page',{query})).roots.length===1});await click(button('歌手'));await wait(()=>el('.local-groups'),'restored_groups');await stage('local_groups',{group:'artist',restored:true});await click(button('歌曲'));
+   await stage('local_reopened',{guest:true,queue:queue.tracks.length,positionPreserved:true,paused:true,rootsRestored:(await invoke('local_page',{query})).roots.length===1});await click(localTab('歌手'));await wait(()=>el('.local-groups'),'restored_groups');await stage('local_groups',{group:'artist',restored:true});await click(localTab('歌曲'));
   } else {
    step='picker';await click(button('选择目录'));await stage('local_picker',{nativeDialog:true});
    await wait(()=>all('.local-tracks tbody tr').length===4,'scan_finished');
@@ -40,9 +41,9 @@
    await wait(()=>el('.lyrics-panel')?.textContent.includes('沿着灯火向前'),'cue_local_lyrics');
    await stage('local_cue',{nativePlayback:true,mediaStart:30,duration:90,sidecarLyrics:true,fullQueue:4});
    await click(el('[aria-label="收起播放详情"]'));
-   step='groups';await click(button('歌手'));await wait(()=>el('.local-groups'),'artist_groups');await click(all('.local-groups button').find(n=>n.querySelector('span')?.textContent==='Cumulus'));
+   step='groups';await click(localTab('歌手'));await wait(()=>el('.local-groups'),'artist_groups');await click(all('.local-groups button').find(n=>n.querySelector('span')?.textContent==='Cumulus'));
    await wait(()=>all('.local-tracks tbody tr').length===3,'artist_filter');await stage('local_groups',{group:'artist',tracks:3});
-   await click(button('歌曲'));await wait(()=>all('.local-tracks tbody tr').length===4,'all_rows');
+   await click(localTab('歌曲'));await wait(()=>all('.local-tracks tbody tr').length===4,'all_rows');
    step='history_replay';await click(button('最近播放'));await wait(()=>{if(el('.history-page .catalog-error'))throw Error('history_read: '+el('.history-page .catalog-error').textContent);return el('.history-page')?.getAttribute('aria-busy')==='false'&&el('.history-actions button');},'guest_history');
    const history=await invoke('history_page',{epoch,kind:'song',refresh:true});
    if(history.value.canSync||history.value.entries.length!==1||!history.value.entries[0].resource.track.local)throw Error('guest_history_scope');
