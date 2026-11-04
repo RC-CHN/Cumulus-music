@@ -168,6 +168,10 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
+        Box::pin(async { search_fixture::audio_toplist_assignment() })
+    }
+
     fn observed_server_time_ms(&self) -> Option<u64> {
         member_sign_fixture::observed_server_time_ms()
     }
@@ -850,6 +854,7 @@ fn main() {
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
+                if let Some(calls) = search_fixture::audio_toplist_calls() { value["audioToplistCalls"] = json!(calls); }
                 if search_fixture::v3_enabled() { value["syntheticV3Calls"] = json!(search_fixture::v3_calls()); }
                 if search_fixture::hot_playback_enabled() { value["hotPlaybackCalls"] = json!(search_fixture::hot_playback_calls()); }
                 if search_fixture::carousel_enabled() { value["searchCarouselCalls"] = json!(search_fixture::carousel_calls()); }

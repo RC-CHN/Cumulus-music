@@ -9,6 +9,7 @@ static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
+static AUDIO_TOPLIST_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
@@ -26,6 +27,69 @@ static ARTIST_GALLERY_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
+fn audio_toplist_case() -> Option<String> {
+    std::env::var("CUMULUS_SEARCH_AUDIO_TOPLIST_PROOF").ok()
+}
+pub fn audio_toplist_calls() -> Option<Vec<Value>> {
+    audio_toplist_case().map(|_| AUDIO_TOPLIST_CALLS.lock().unwrap().clone())
+}
+pub fn audio_toplist_assignment() -> Result<bool> {
+    use cumulus_core::protocol::pc_experiments::PcExperimentGroups;
+    if !enabled() {
+        return Ok(false);
+    }
+    let case = audio_toplist_case();
+    let group = match case.as_deref() {
+        None | Some("assigned") => "t1",
+        Some("control") => "c",
+        _ => return Err(Error::InvalidInput("unknown audio toplist fixture case")),
+    };
+    if case.is_some() {
+        AUDIO_TOPLIST_CALLS
+            .lock()
+            .unwrap()
+            .push(json!({"kind":"assignment"}));
+    }
+    Ok(PcExperimentGroups::refreshed(&json!({"data":[{
+        "expName":"pc-search-audio-toplist","expGroupName":group
+    }]}))?
+    .search_audio_toplist_assigned())
+}
+
+fn audio_toplist_response(path: &str, args: &Value) -> Option<Result<Value>> {
+    audio_toplist_case()?;
+    let data = match path {
+        "/api/search/pc/chart/list" => {
+            assert_eq!(*args, json!({}));
+            AUDIO_TOPLIST_CALLS
+                .lock()
+                .unwrap()
+                .push(json!({"kind":"list"}));
+            json!({"tabInfo":{"list":[
+                {"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},
+                {"id":"HOT_SEARCH_DJ#@#","name":"播客榜","button":{"text":"更多"}},
+                {"id":"HOT_SEARCH_STYLE_ROCK#@#","name":"摇滚榜"},
+                {"id":"HOT_SEARCH_DJ_VOICE_BOOK#@#","name":"听书榜","button":{"text":"更多"}},
+                {"id":"unknown","name":"不认识的榜单"}
+            ]},"items":{
+                "HOT_SEARCH_SONG#@#":[{"searchWord":"实际关键词","toUserWord":"普通热搜条目"}],
+                "HOT_SEARCH_DJ#@#":[{"toUserWord":"合成播客榜条目","url":"orpheus://audio/detail?id=301"}],
+                "HOT_SEARCH_STYLE_ROCK#@#":[{"searchWord":"普通摇滚"}]
+            }})
+        }
+        "/api/search/pc/chart/detail" => {
+            assert_eq!(*args, json!({"id":"HOT_SEARCH_DJ_VOICE_BOOK#@#"}));
+            AUDIO_TOPLIST_CALLS
+                .lock()
+                .unwrap()
+                .push(json!({"kind":"detail","id":args["id"]}));
+            json!({"itemList":[{"toUserWord":"合成听书榜条目","url":"orpheus://audio/detail?id=302"}]})
+        }
+        _ => return None,
+    };
+    Some(Ok(json!({"code":200,"data":data})))
+}
+
 pub fn fallback_config(
     store: Arc<StateStore>,
 ) -> Result<Arc<cumulus_core::protocol::mconfig::PcConfig>> {
@@ -220,6 +284,9 @@ fn subscribable_playlist() -> Value {
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if let Some(response) = audio_toplist_response(path, args) {
+        return Some(response);
+    }
     if hot_playback_enabled()
         && matches!(
             path,

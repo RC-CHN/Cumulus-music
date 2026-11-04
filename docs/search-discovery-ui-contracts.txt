@@ -129,6 +129,10 @@ core/examples/search_discovery_read.rs是显式传入已有PC配置与新私有�
 - 投影在解析被隐藏的条目前过滤；控制组不会因该榜单缺条目而读 chart/detail，
   原生也拒绝直接申请隐藏榜详情。可见榜的空列表补读、关键词/输入法和面板滚动
   仍使用既有流程；不改普通榜的条件播放、建议请求或推荐词顺序。
+- search_audio_toplist_smoke.py 使用两个隔离的合成分组，在原生 IPC 和真实 WebView
+  验证初次打开、输入法与联想、窄窗口重开和滚动。两组均只有一次分配读取；仅 t1
+  两次读取可见的空听书榜详情。Linux 已验证 6 个状态及对应截图，另通过常规搜索
+  76 个状态回归；未读取真实账号的分组，Windows 实际界面以独立 CI 为准。
 
 长音频榜条目
 SearchBox/view/searchRankCard.tsx:235–237、300–398 把播客榜/听书榜的 orpheus 条目
