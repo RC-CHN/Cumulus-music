@@ -206,10 +206,11 @@ fn native_hit_wins_even_when_newer_jobs_are_awaiting_response() {
     assert_eq!(
         result,
         Completed {
+            generation,
             code: Some(0),
             times: 2,
             status: ResultStatus::Matched {
-                song_ids: vec![12, 13]
+                song_ids: vec!["12".into(), "13".into()]
             }
         }
     );
@@ -292,6 +293,7 @@ fn cancellation_restart_and_deadline_revoke_in_flight_jobs() {
     assert_eq!(
         completed(scheduler.tick(current, 31_002).unwrap()),
         Completed {
+            generation: current,
             code: Some(-5),
             times: 0,
             status: ResultStatus::Timeout
@@ -341,6 +343,7 @@ fn encoder_failure_cannot_deliver_a_server_result_or_be_replayed() {
             assert_eq!(
                 completed(outcome),
                 Completed {
+                    generation,
                     code: Some(-6),
                     times: 5,
                     status: ResultStatus::Timeout

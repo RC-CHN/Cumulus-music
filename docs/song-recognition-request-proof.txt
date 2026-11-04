@@ -70,7 +70,9 @@ core/src/song_recognition/request 只做离线调度、封包、合成回调；�
   无效响应、重复回调和异步晚到不携带原始正文到界面。
 - 结果不是播放权限。官方 M3157:337–368 约 500ms 后按曲目 ID
   补读 /api/song/enhance/privilege；未来生产调用仍需经过独立授权，
-  本模块没有补读、播放或反馈。真实回包解析、签名及账号资格未验证。
+  本调度模块不补读、播放或反馈；其内部结果后续如何经过已认证的目录
+  读边界，见 song-recognition-desktop-contracts.txt 第 4 节。真实回包解析、
+  签名及账号资格未验证。
 
 合成验证：
   cargo test --offline --locked -p cumulus-core --lib song_recognition::request

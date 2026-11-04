@@ -58,6 +58,11 @@ mod profile_relations;
 mod profile_report;
 mod quality_experiment;
 mod rankings;
+#[allow(
+    dead_code,
+    reason = "no production recognition capture entry yet; exercised by closed core fixtures"
+)]
+mod recognition_results;
 mod recommendations;
 mod relay;
 mod report_receipt;

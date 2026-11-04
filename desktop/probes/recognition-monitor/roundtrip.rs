@@ -139,10 +139,11 @@ impl RoundTrip {
         };
         if result.times != 2
             || result.code != Some(0)
-            || result.status
-                != (ResultStatus::Matched {
-                    song_ids: vec![7001, 7002],
-                })
+            || !matches!(
+                result.status(),
+                ResultStatus::Matched { song_ids }
+                    if song_ids.iter().map(String::as_str).eq(["7001", "7002"])
+            )
             || !matches!(
                 self.scheduler
                     .receive(self.transport[0].receipt(), self.now(), Some(200), HIT),
@@ -167,7 +168,7 @@ impl RoundTrip {
             return Err(Rejected("fixture scheduler did not cancel"));
         };
         if outcome.times != 1
-            || outcome.status != ResultStatus::Cancelled
+            || outcome.status() != &ResultStatus::Cancelled
             || !matches!(
                 self.scheduler
                     .receive(self.transport[0].receipt(), self.now(), Some(200), HIT),

@@ -18,13 +18,21 @@ use wire::InterpretedResponse;
 pub const PCM_RATE: usize = 8_000;
 pub const MAX_ATTEMPTS: u8 = 5;
 pub const TIMEOUT_MS: u64 = 16_000;
+pub(crate) const MAX_SONG_IDS: usize = 100;
 const PREFIX_SECONDS: u8 = 3;
 const MAX_PCM: usize = MAX_ATTEMPTS as usize * PREFIX_SECONDS as usize * PCM_RATE;
 
-#[derive(Clone, Copy, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Generation {
     sequence: u64,
     nonce: Uuid,
+    scheduler: Uuid,
+}
+
+impl Generation {
+    pub(crate) fn is_after(self, previous: Self) -> bool {
+        self.scheduler == previous.scheduler && self.sequence > previous.sequence
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -65,7 +73,7 @@ impl PrefixJob {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ResultStatus {
-    Matched { song_ids: Vec<u64> },
+    Matched { song_ids: Vec<String> },
     NoTrack,
     Timeout,
     Offline,
@@ -75,10 +83,21 @@ pub enum ResultStatus {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Completed {
+    generation: Generation,
     /// Native callback code when available. The local deadline uses -5.
     pub code: Option<i32>,
     pub times: u8,
-    pub status: ResultStatus,
+    status: ResultStatus,
+}
+
+impl Completed {
+    pub fn status(&self) -> &ResultStatus {
+        &self.status
+    }
+
+    pub(crate) fn generation(&self) -> Generation {
+        self.generation
+    }
 }
 
 /// Every event yields either one value or a terminal transition. Closing a
@@ -123,6 +142,7 @@ impl Active {
 #[derive(Default)]
 pub struct Scheduler {
     sequence: u64,
+    identity: Option<Uuid>,
     active: Option<Active>,
 }
 
@@ -140,6 +160,7 @@ impl Scheduler {
         let generation = Generation {
             sequence,
             nonce: Uuid::new_v4(),
+            scheduler: *self.identity.get_or_insert_with(Uuid::new_v4),
         };
         self.sequence = sequence;
         self.active = Some(Active {
@@ -272,6 +293,7 @@ impl Scheduler {
         };
         self.active = None;
         Ok(Event::Completed(Completed {
+            generation: receipt.generation,
             code: bridge_code,
             times: receipt.times,
             status,
@@ -287,6 +309,7 @@ impl Scheduler {
         let times = active.issued;
         self.active = None;
         Event::Completed(Completed {
+            generation,
             code: None,
             times,
             status: ResultStatus::Cancelled,
@@ -320,6 +343,7 @@ impl Scheduler {
         let times = active.issued;
         self.active = None;
         Ok(Event::Completed(Completed {
+            generation,
             code: Some(-5),
             times,
             status: ResultStatus::Timeout,

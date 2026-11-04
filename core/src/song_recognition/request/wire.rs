@@ -1,4 +1,4 @@
-use super::{Receipt, SealedFingerprint};
+use super::{MAX_SONG_IDS, Receipt, SealedFingerprint};
 use crate::{Error, Result, protocol::wire::eapi::encrypt_json};
 use serde::Serialize;
 use serde_json::Value;
@@ -12,7 +12,7 @@ pub const OS: &str = "pc";
 
 const MAX_FINGERPRINT_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
-const MAX_SONG_IDS: usize = 100;
+const MAX_SONG_ID_BYTES: usize = 64;
 const MAX_JS_SAFE_INTEGER: u64 = (1 << 53) - 1;
 
 /// 62C0C0: host UUID string without braces, case preserved. It is distinct
@@ -143,7 +143,7 @@ impl FixtureRequest {
 
 pub(super) struct InterpretedResponse {
     pub native_hit: bool,
-    pub song_ids: Vec<u64>,
+    pub song_ids: Vec<String>,
 }
 
 impl InterpretedResponse {
@@ -174,15 +174,17 @@ impl InterpretedResponse {
     }
 }
 
-fn song_id(value: &Value) -> Option<u64> {
-    let id = if let Some(number) = value.as_u64() {
-        (number <= MAX_JS_SAFE_INTEGER).then_some(number)
-    } else {
-        value.as_str().and_then(|text| {
-            (text.len() <= 20 && text.bytes().all(|b| b.is_ascii_digit()))
-                .then(|| text.parse::<u64>().ok())
-                .flatten()
-        })
-    }?;
-    (id > 0).then_some(id)
+fn song_id(value: &Value) -> Option<String> {
+    if let Some(number) = value.as_u64() {
+        return (1..=MAX_JS_SAFE_INTEGER)
+            .contains(&number)
+            .then(|| number.to_string());
+    }
+    let text = value.as_str()?;
+    // The official normalizer stringifies IDs; a decimal string is not
+    // rounded or stripped of leading zeroes by a numeric conversion.
+    (text.len() <= MAX_SONG_ID_BYTES
+        && text.bytes().all(|byte| byte.is_ascii_digit())
+        && text.bytes().any(|byte| byte != b'0'))
+    .then(|| text.to_owned())
 }
