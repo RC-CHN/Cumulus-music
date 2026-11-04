@@ -1,15 +1,47 @@
 export const searchPlaylistColumns = [
-  { name: '#', label: '序号', width: 45, grow: 0 },
-  { name: '标题', width: 200, grow: 4, resizer: 0 },
-  { name: '歌曲数', width: 79, grow: 1, resizer: 1 },
-  { name: '创建者', width: 128, grow: 1, resizer: 2 },
-  { name: '播放量', width: 92, grow: 0 },
+  { id: 'num', name: '#', label: '序号', width: 45, grow: 0 },
+  { id: 'title', name: '标题', width: 200, grow: 4, resizer: 0 },
+  { id: 'trackCount', name: '歌曲数', width: 79, grow: 1, resizer: 1 },
+  { id: 'creator', name: '创建者', width: 128, grow: 1, resizer: 2 },
+  { id: 'playCount', name: '播放量', width: 92, grow: 0 },
 ] as const;
 export type PlaylistColumnHandle = 0 | 1 | 2;
 type Shares = readonly [number, number, number, number];
 
 export const playlistBaseWidth = searchPlaylistColumns.reduce((sum, { width }) => sum + width, 0);
 export const initialPlaylistShares: Shares = [4 / 6, 1 / 6, 1 / 6, 0];
+const columnStorageKey = `cumulus.search.column-grow.v1:${searchPlaylistColumns
+  .map(({ id, grow, width }) => `${id}-${grow}-${width}`)
+  .join(':')}`;
+
+function validShares(value: unknown): value is Shares {
+  return (
+    Array.isArray(value) &&
+    value.length === 4 &&
+    value.every((share) => typeof share === 'number' && share >= 0 && share <= 1) &&
+    Math.abs(value.reduce((sum, share) => sum + share, 0) - 1) < 1e-8
+  );
+}
+
+export function readPlaylistColumnShares(storage?: Pick<Storage, 'getItem'>): Shares {
+  try {
+    const value: unknown = JSON.parse(
+      (storage ?? localStorage).getItem(columnStorageKey) ?? 'null',
+    );
+    if (validShares(value)) return value;
+  } catch {
+    // Invalid or unavailable WebView preferences leave the default usable.
+  }
+  return initialPlaylistShares;
+}
+
+export function writePlaylistColumnShares(shares: Shares, storage?: Pick<Storage, 'setItem'>) {
+  try {
+    (storage ?? localStorage).setItem(columnStorageKey, JSON.stringify(shares));
+  } catch {
+    // Keep the live table usable if local storage cannot write.
+  }
+}
 
 export function resizePlaylistColumns(
   shares: Shares,
@@ -32,5 +64,5 @@ export function resizePlaylistColumns(
       change -= transfer;
     }
   }
-  return next;
+  return next.every((share, index) => share === shares[index]) ? shares : next;
 }

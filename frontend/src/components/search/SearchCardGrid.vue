@@ -5,8 +5,10 @@ import { searchCardKey } from '../../services/searchCards';
 import {
   initialPlaylistShares,
   playlistBaseWidth,
+  readPlaylistColumnShares,
   resizePlaylistColumns,
   searchPlaylistColumns,
+  writePlaylistColumnShares,
   type PlaylistColumnHandle,
 } from '../../services/searchPlaylistColumns';
 import { rowWindow } from '../../services/virtualWindow';
@@ -26,6 +28,13 @@ const grid = ref<HTMLElement>();
 const heading = ref<HTMLElement>();
 const playlistWidth = ref(0);
 const playlistShares = shallowRef(initialPlaylistShares);
+watch(
+  () => props.playlistTable,
+  (enabled) => {
+    if (enabled) playlistShares.value = readPlaylistColumnShares();
+  },
+  { immediate: true },
+);
 const playlistSurplus = computed(() => Math.max(0, playlistWidth.value - playlistBaseWidth));
 const playlistTracks = computed(() =>
   searchPlaylistColumns
@@ -37,7 +46,13 @@ const playlistTracks = computed(() =>
     .join(' '),
 );
 let drag:
-  | { index: PlaylistColumnHandle; pointer: number; last: number; pending: number }
+  | {
+      index: PlaylistColumnHandle;
+      pointer: number;
+      last: number;
+      pending: number;
+      before: typeof initialPlaylistShares;
+    }
   | undefined;
 let dragFrame = 0;
 function columnWidth(index: PlaylistColumnHandle, max = false) {
@@ -65,7 +80,13 @@ function beginResize(event: PointerEvent, index: PlaylistColumnHandle) {
   const handle = event.currentTarget as HTMLElement;
   handle.focus({ preventScroll: true });
   handle.setPointerCapture(event.pointerId);
-  drag = { index, pointer: event.pointerId, last: event.clientX, pending: event.clientX };
+  drag = {
+    index,
+    pointer: event.pointerId,
+    last: event.clientX,
+    pending: event.clientX,
+    before: playlistShares.value,
+  };
 }
 function moveResize(event: PointerEvent) {
   if (!drag || event.pointerId !== drag.pointer) return;
@@ -78,10 +99,15 @@ function moveResize(event: PointerEvent) {
 }
 function finishResize(event: PointerEvent) {
   if (!drag || event.pointerId !== drag.pointer) return;
-  if (event.type === 'pointerup') drag.pending = event.clientX;
   cancelAnimationFrame(dragFrame);
   dragFrame = 0;
-  applyDrag();
+  if (event.type === 'pointerup') {
+    drag.pending = event.clientX;
+    applyDrag();
+    if (playlistShares.value !== drag.before) writePlaylistColumnShares(playlistShares.value);
+  } else {
+    playlistShares.value = drag.before;
+  }
   drag = undefined;
 }
 function keyResize(event: KeyboardEvent, index: PlaylistColumnHandle) {
@@ -95,9 +121,11 @@ function keyResize(event: KeyboardEvent, index: PlaylistColumnHandle) {
           : event.key === 'End'
             ? playlistSurplus.value
             : 0;
-  if (!delta) return;
+  if (!delta || drag) return;
   event.preventDefault();
+  const before = playlistShares.value;
   resizePlaylistColumn(index, delta);
+  if (playlistShares.value !== before) writePlaylistColumnShares(playlistShares.value);
 }
 const columns = ref(1),
   pitch = ref(260);

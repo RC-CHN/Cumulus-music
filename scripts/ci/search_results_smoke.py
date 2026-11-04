@@ -238,11 +238,28 @@ def main():
         assert calls in (profile_reads, profile_reads * 2)
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list(first.glob('ux_*.png'))) == (11 if args.screenshots else 0)
+        widths = complete['playlistWidths']
+        assert len(widths) == 5 and widths[1] == 200 and widths[2] > 79
+        reopen = root / 'reopen'
+        script = root / 'search-results-reopen.js'
+        script.write_text(f'window.__cumulusSearchPlaylistReopenWidths = {json.dumps(widths)};\n'
+                          + source.read_text(encoding='utf-8'), encoding='utf-8')
+        with (root / 'reopen.log').open('x', encoding='utf-8') as log:
+            code = launch(args.binary.resolve(), {
+                **env, 'CUMULUS_UX_SCRIPT': str(script), 'CUMULUS_PROOF_REOPEN': '1',
+            }, log, reopen, args.screenshots)
+        failed = reopen / 'failed.json'
+        assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+        assert code == 0, f'reopened probe exited {code}'
+        persisted = json.loads((reopen / 'complete.json').read_text(encoding='utf-8'))
+        assert persisted['ok'] and persisted['searchPlaylistResizeReopened'] and persisted['stageCount'] == 1
+        assert persisted['realMusicRequests'] == persisted['realAccountWrites'] == 0
+        assert len(list(reopen.glob('ux_*.png'))) == (1 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchPlaylistCreatorVerified=True,
                               searchPlaylistLinksVerified=True, searchPlaylistSubscribeVerified=True,
                               searchPlaylistWaterfallVerified=True, searchPlaylistTableVerified=True,
-                              searchPlaylistResizeVerified=True,
-                              trustedPointer=args.trusted_playlist_pointer, stageCount=11)))
+                              searchPlaylistResizeVerified=True, searchPlaylistResizeReopened=True,
+                              trustedPointer=args.trusted_playlist_pointer, stageCount=12)))
         return
     if args.mv_play:
         first = root / 'first'

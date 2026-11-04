@@ -502,6 +502,20 @@
       await emit('complete',{ok:true,searchCollectionNextVerified:true,searchPlaylistDownloadVerified:true,searchPlaylistPlayabilityVerified:true,playlistReads,downloadCommands,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusSearchPlaylistReopenWidths){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
+      await fixture('playlist_creator_search');await fresh('合成作者入口');await choose('playlists');
+      const cells=()=>all('.search-playlist-columns [role="columnheader"]');
+      const row=()=>one('.search-playlist-row');
+      const matches=nodes=>nodes.length===5&&nodes.every((node,index)=>
+        Math.abs(node.getBoundingClientRect().width-window.__cumulusSearchPlaylistReopenWidths[index])<1);
+      await wait(()=>matches(cells())&&row()&&matches([...row().children]),
+        'fresh WebView process loads the saved playlist column proportions');
+      await capture('playlist_columns_reopened');
+      await emit('complete',{ok:true,searchPlaylistResizeReopened:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchPlaylistCreatorProof){
       await wait(()=>one('.track-row'),'daily ready');
       await theme(1120,760,'light');
@@ -528,7 +542,7 @@
       const handles=()=>[...columns().querySelectorAll('.search-playlist-column-resizer')];
       const widths=()=>[...columns().children].map(node=>node.getBoundingClientRect().width);
       const sameWidths=(left,right)=>left.every((value,index)=>Math.abs(value-right[index])<1);
-      let initialWidths, trustedPointer=false;
+      let initialWidths, savedWidths, trustedPointer=false;
       function assertAligned(row,expected){
         assert(sameWidths([...row.children].map(node=>node.getBoundingClientRect().width),expected),
           'header and visible virtual body use the same widths');
@@ -596,7 +610,9 @@
             'separator updates the accessible current width at the right clamp');
           key(title,'Home');
           await wait(()=>Math.abs(widths()[1]-200)<1&&widths()[2]>79,'left clamp restores the minimum title width');
-          assertAligned(row,widths());
+          savedWidths=widths();
+          assert(!sameWidths(savedWidths,initialWidths),'proof has adjusted the default widths');
+          assertAligned(row,savedWidths);
           await capture('playlist_columns_resized');
           const opener=row.querySelector('.search-card-open');
           opener.focus({preventScroll:true});key(opener,'ArrowDown');
@@ -657,8 +673,8 @@
         await wait(()=>ready()&&one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&
           document.activeElement===creator(),'Back restores creator button, not the card opener');
         if(category==='playlists'){
-          await wait(()=>sameWidths(widths(),initialWidths),'a new playlist table restores default column widths');
-          assertAligned(card(3),initialWidths);
+          await wait(()=>sameWidths(widths(),savedWidths),'Back restores the adjusted playlist widths');
+          assertAligned(card(3),savedWidths);
         }
         await capture('playlist_creator_'+category);
       }
@@ -717,7 +733,7 @@
         });
       assert(JSON.stringify(playlistWaterfallReads)==='[[0,10],[18,10],[29,10]]','Back reuses the loaded table, not a new request');
       await capture('playlist_table_late_row_back');
-      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,searchPlaylistTableVerified:true,searchPlaylistResizeVerified:true,searchPlaylistTrustedPointer:trustedPointer,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,searchPlaylistTableVerified:true,searchPlaylistResizeVerified:true,searchPlaylistTrustedPointer:trustedPointer,playlistWidths:savedWidths,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchMvProof){
