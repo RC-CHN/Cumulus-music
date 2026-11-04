@@ -80,6 +80,7 @@ impl QueueSnapshot {
         if value.is_some_and(|v| v.get("order").is_none()) {
             state.order = state.items.iter().map(|i| i.entry_id.clone()).collect();
         }
+        super::queue_more::anchor::normalize(&mut state);
         state.validate()?;
         Ok(state)
     }
@@ -143,7 +144,8 @@ impl PlaybackQueue {
             session: intelligence_raw,
             stamp: store_stamp,
         } = Self::read_owned(store.as_deref(), &owner)?;
-        let state = Self::load_current(store.as_deref(), &owner, persisted.as_ref())?;
+        let mut state = Self::load_current(store.as_deref(), &owner, persisted.as_ref())?;
+        super::queue_more::anchor::restore_cold(&mut state);
         let intelligence = Self::load_intelligence(&state, intelligence_raw.as_deref())?;
         Ok(Self {
             store,
@@ -313,6 +315,7 @@ impl PlaybackQueue {
         if state.current.is_none() {
             state.current = state.order.first().cloned()
         }
+        super::queue_more::anchor::reconcile(&self.state, &mut state, false);
         self.commit(state)?;
         Ok(ids)
     }
@@ -443,10 +446,12 @@ impl PlaybackQueue {
             })
             .collect::<Result<_>>()?;
         if let Some(movement) = movement {
-            let demoted = movement.demote(&self.state, &mut state);
-            if !demoted && state.items == self.state.items {
+            let markers_changed = movement.update_markers(&self.state, &mut state);
+            if !markers_changed && state.items == self.state.items {
                 return Ok(());
             }
+        } else {
+            super::queue_more::anchor::reconcile(&self.state, &mut state, false);
         }
         if state.mode != PlaybackMode::Random {
             state.order = entry_ids.into()
@@ -492,6 +497,7 @@ impl PlaybackQueue {
                 state.mode = session.last_mode;
             }
         }
+        super::queue_more::anchor::reconcile(&self.state, &mut state, false);
         self.commit(state)
     }
 

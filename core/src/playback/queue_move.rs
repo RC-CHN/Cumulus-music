@@ -49,27 +49,41 @@ impl QueueMovement {
         Ok(before)
     }
 
-    fn before_or_on_divider(&self, queue: &QueueSnapshot) -> bool {
-        // M/1384 tests the pre-move index and the original insertion offset.
-        // At index 0 the official model still has a boundary even though the
-        // UI does not render a separator row.
-        queue
-            .items
-            .iter()
-            .filter(|entry| entry.visible_in_queue())
-            .position(|entry| queue_more::active(queue, entry))
-            .is_some_and(|index| self.offset <= index)
+    fn touches_anchor(&self, queue: &QueueSnapshot) -> bool {
+        queue_more::anchor::index_and_id(queue)
+            .is_some_and(|(_, id)| self.entry_ids.iter().any(|selected| selected == id))
     }
 
-    pub(crate) fn can_demote(&self, queue: &QueueSnapshot) -> bool {
-        self.before_or_on_divider(queue)
+    fn can_demote(&self, queue: &QueueSnapshot) -> bool {
+        // M/1384 compares the old numeric index, including index zero.
+        queue_more::anchor::index_and_id(queue).is_some_and(|(index, _)| self.offset <= index)
             && queue
                 .more
                 .as_ref()
                 .is_some_and(|more| self.entry_ids.iter().any(|id| more.active.contains(id)))
     }
 
-    pub(super) fn demote(&self, previous: &QueueSnapshot, next: &mut QueueSnapshot) -> bool {
+    pub(crate) fn can_change_markers(&self, queue: &QueueSnapshot) -> bool {
+        self.touches_anchor(queue)
+            || self.can_demote(queue)
+            || (queue_more::anchor::index_and_id(queue).is_none()
+                && queue
+                    .items
+                    .iter()
+                    .any(|item| item.visible_in_queue() && queue_more::active(queue, item)))
+    }
+
+    pub(super) fn update_markers(
+        &self,
+        previous: &QueueSnapshot,
+        next: &mut QueueSnapshot,
+    ) -> bool {
+        self.demote(previous, next);
+        queue_more::anchor::reconcile(previous, next, self.touches_anchor(previous));
+        previous.more != next.more
+    }
+
+    fn demote(&self, previous: &QueueSnapshot, next: &mut QueueSnapshot) -> bool {
         if !self.can_demote(previous) {
             return false;
         }
@@ -108,11 +122,13 @@ mod tests {
         .collect();
         let mut more = QueueMoreOrigin::new(&json!({"kind":"daily_recommendations"})).unwrap();
         more.active.extend(["r1".into(), "r2".into(), "r3".into()]);
-        QueueSnapshot {
+        let mut sample = QueueSnapshot {
             items,
             more: Some(more),
             ..Default::default()
-        }
+        };
+        queue_more::anchor::restore_cold(&mut sample);
+        sample
     }
 
     fn movement(ids: &[&str], offset: usize) -> QueueMovement {

@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import type { QueueEdit, QueueView } from '../services/player';
+import { queueMoreRecommendations, type QueueEdit, type QueueView } from '../services/player';
 import { rowBoundary, rowTop, type RowExpansion } from '../services/virtualWindow';
 import { displayedQueueMove } from '../services/queueSelection';
 
@@ -140,7 +140,12 @@ export function useQueueDrag(options: {
       if (active) update();
       const next =
         active && valid && boundary.value !== undefined
-          ? displayedQueueMove(displayed.tracks, picked, boundary.value)
+          ? displayedQueueMove(
+              displayed.tracks,
+              picked,
+              boundary.value,
+              queueMoreRecommendations(displayed)?.separatorBefore,
+            )
           : undefined;
       if (
         !active &&

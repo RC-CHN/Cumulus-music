@@ -62,14 +62,17 @@ export function displayedQueueMove(
   rows: readonly { entryId: string; moreRecommendation?: boolean }[],
   selected: ReadonlySet<string>,
   offset: number,
+  separatorBefore?: string | null,
 ) {
   const ids = rows.map((row) => row.entryId);
-  const firstRecommended = rows.findIndex((row) => row.moreRecommendation === true);
-  const possibleDemotion =
-    firstRecommended >= 0 &&
-    offset <= firstRecommended &&
-    rows.some((row) => row.moreRecommendation === true && selected.has(row.entryId));
-  const entry_ids = reorderQueueRows(ids, selected, offset, possibleDemotion);
+  const divider = separatorBefore ? ids.indexOf(separatorBefore) : -1;
+  const possibleMarkerChange =
+    divider >= 0
+      ? selected.has(ids[divider]!) ||
+        (offset <= divider &&
+          rows.some((row) => row.moreRecommendation === true && selected.has(row.entryId)))
+      : rows.some((row) => row.moreRecommendation === true);
+  const entry_ids = reorderQueueRows(ids, selected, offset, possibleMarkerChange);
   if (!entry_ids) return;
   return {
     kind: 'move' as const,

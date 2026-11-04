@@ -6,6 +6,8 @@ use std::collections::{BTreeSet, HashSet};
 
 use super::{QueueEntry, QueueSnapshot};
 
+pub(super) mod anchor;
+
 pub(crate) const KIND: &str = "queue-more-v1";
 pub(crate) const PREFERENCE: &str = "enabled";
 pub(crate) const ROOM_BINDING: &str = "listen-together-player-v1";
@@ -52,6 +54,8 @@ pub struct QueueMoreOrigin {
     pub(crate) prefetch_on_open: bool,
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub(crate) active: BTreeSet<String>,
+    #[serde(default, skip_serializing_if = "anchor::Anchor::is_legacy")]
+    anchor: anchor::Anchor,
 }
 impl QueueMoreOrigin {
     pub(crate) fn new(source: &Value) -> Option<Self> {
@@ -69,6 +73,7 @@ impl QueueMoreOrigin {
             nonce: *uuid::Uuid::new_v4().as_bytes(),
             prefetch_on_open: true,
             active: BTreeSet::new(),
+            anchor: anchor::Anchor::None,
         })
     }
 
@@ -99,24 +104,12 @@ pub(crate) fn active(queue: &QueueSnapshot, entry: &QueueEntry) -> bool {
 }
 
 pub(crate) fn separator(queue: &QueueSnapshot) -> Option<String> {
-    queue
-        .items
-        .iter()
-        .filter(|e| e.visible_in_queue())
-        .position(|entry| active(queue, entry))
-        .filter(|index| *index > 0)
-        .and_then(|index| {
-            queue
-                .items
-                .iter()
-                .filter(|e| e.visible_in_queue())
-                .nth(index)
-        })
-        .map(|entry| entry.entry_id.clone())
+    anchor::index_and_id(queue).map(|(_, id)| id.to_owned())
 }
 
 pub(crate) fn clear_active(queue: &mut QueueSnapshot) {
     let Some(state) = &mut queue.more else { return };
+    state.anchor = anchor::Anchor::None;
     let active = std::mem::take(&mut state.active);
     let current = queue.current.as_ref();
     let mut removed = HashSet::new();
@@ -145,6 +138,7 @@ pub(crate) fn normalize(queue: &mut QueueSnapshot) {
             .map(|entry| entry.entry_id.as_str())
             .collect();
         state.active.retain(|id| ids.contains(id.as_str()));
+        anchor::normalize(queue);
     }
 }
 

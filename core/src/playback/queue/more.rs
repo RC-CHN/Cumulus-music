@@ -1,6 +1,6 @@
 use super::*;
 use crate::playback::queue_more::{
-    QueueMoreView, ROOM_BINDING, active, clear_active, seed, separator,
+    QueueMoreView, ROOM_BINDING, active, anchor, clear_active, seed, separator,
 };
 
 impl PlaybackQueue {
@@ -88,6 +88,7 @@ impl PlaybackQueue {
                 .collect();
         }
         debug_assert!(next.items.iter().any(|entry| active(&next, entry)));
+        anchor::reconcile(&self.state, &mut next, false);
         self.commit_more(next, None)
     }
 }
@@ -239,5 +240,163 @@ mod tests {
                 inserted[1].entry_id.clone(),
             ]
         );
+    }
+
+    fn anchor_fixture() -> (
+        tempfile::TempDir,
+        Arc<StateStore>,
+        PlaybackQueue,
+        [String; 4],
+    ) {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temporary.path()).unwrap());
+        let mut queue = PlaybackQueue::new(Some(store.clone()), "123").unwrap();
+        queue
+            .replace(
+                vec![track(1), track(2)],
+                0,
+                json!({"kind":"daily_recommendations"}),
+            )
+            .unwrap();
+        queue.insert_more(vec![song("51"), song("52")], 1).unwrap();
+        let ids = queue
+            .snapshot()
+            .items
+            .into_iter()
+            .map(|row| row.entry_id)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
+        (temporary, store, queue, ids)
+    }
+
+    fn move_rows(queue: &mut PlaybackQueue, ids: &[&str], offset: usize) {
+        queue
+            .reorder_displayed(&super::super::super::QueueMovement {
+                entry_ids: ids.iter().map(|id| (*id).to_owned()).collect(),
+                offset,
+            })
+            .unwrap();
+    }
+
+    fn active_ids(queue: &PlaybackQueue) -> Vec<&str> {
+        queue
+            .state
+            .items
+            .iter()
+            .filter(|row| active(&queue.state, row))
+            .map(|row| row.entry_id.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn moving_the_anchor_down_uses_old_successors_in_new_suffix_and_cold_reseeds() {
+        let (_temporary, store, mut queue, [a, r1, r2, b]) = anchor_fixture();
+        let mut observer = PlaybackQueue::new(Some(store.clone()), "123").unwrap();
+        assert_eq!(anchor::index_and_id(&queue.state), Some((1, r1.as_str())));
+        move_rows(&mut queue, &[&r1, &r2], 4);
+        assert_eq!(
+            queue
+                .state
+                .items
+                .iter()
+                .map(|row| row.entry_id.as_str())
+                .collect::<Vec<_>>(),
+            [&a, &b, &r1, &r2]
+        );
+        assert_eq!(active_ids(&queue), [&r1, &r2]);
+        assert_eq!(anchor::index_and_id(&queue.state), Some((3, r2.as_str())));
+        let raw = store.get("123", "playback", "queue").unwrap().unwrap();
+        assert_eq!(raw["more"]["anchor"], json!({"entry":r2}));
+        assert!(observer.reload().unwrap());
+        assert_eq!(
+            anchor::index_and_id(&observer.state),
+            Some((3, r2.as_str()))
+        );
+        let cold = PlaybackQueue::new(Some(store), "123").unwrap();
+        assert_eq!(anchor::index_and_id(&cold.state), Some((2, r1.as_str())));
+        assert_eq!(active_ids(&cold), [&r1, &r2]);
+
+        // Same displayed order, but the real boundary is now index 3 rather
+        // than the first active song at index 2.
+        let revision = queue.revision();
+        move_rows(&mut queue, &[&r1], 3);
+        assert_ne!(queue.revision(), revision);
+        assert_eq!(active_ids(&queue), [&r2]);
+        assert_eq!(anchor::index_and_id(&queue.state), Some((3, r2.as_str())));
+        assert_eq!(queue.selected().unwrap().entry_id, a);
+    }
+
+    #[test]
+    fn deleting_anchor_can_transfer_to_ordinary_row_and_reset_clears_index_zero() {
+        let (_temporary, store, mut queue, [a, r1, r2, b]) = anchor_fixture();
+        queue
+            .reorder(&[a.clone(), r1.clone(), b.clone(), r2.clone()])
+            .unwrap();
+        queue.remove(&[r1]).unwrap();
+        assert_eq!(active_ids(&queue), [&r2]);
+        assert_eq!(anchor::index_and_id(&queue.state), Some((1, b.as_str())));
+        queue.reorder(&[b.clone(), a, r2.clone()]).unwrap();
+        assert_eq!(anchor::index_and_id(&queue.state), Some((0, b.as_str())));
+        assert_eq!(
+            queue.more_view(true).unwrap().separator_before,
+            Some(b.clone())
+        );
+
+        move_rows(&mut queue, &[&r2], 0);
+        assert_eq!(anchor::index_and_id(&queue.state), Some((1, b.as_str())));
+        assert!(active_ids(&queue).is_empty());
+
+        queue.insert_more(vec![song("53"), song("54")], 2).unwrap();
+        let current = queue.state.items[2].entry_id.clone();
+        queue.select(&current).unwrap();
+        queue.set_more_preference(false).unwrap();
+        assert!(active_ids(&queue).is_empty());
+        assert!(anchor::index_and_id(&queue.state).is_none());
+        assert!(queue.more_view(false).unwrap().separator_before.is_none());
+        assert_eq!(queue.state.current.as_deref(), Some(current.as_str()));
+        assert_eq!(queue.len(), 4); // keep the demoted row and active current
+        let raw = store.get("123", "playback", "queue").unwrap().unwrap();
+        assert_eq!(raw["more"]["anchor"], "none");
+        assert!(
+            PlaybackQueue::new(Some(store), "123")
+                .unwrap()
+                .more_view(false)
+                .unwrap()
+                .separator_before
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_persisted_no_divider_differs_from_missing_legacy_metadata() {
+        let (_temporary, store, mut queue, [_, r1, r2, _]) = anchor_fixture();
+        move_rows(&mut queue, &[&r1, &r2], 4);
+        let mut observer = PlaybackQueue::new(Some(store.clone()), "123").unwrap();
+        move_rows(&mut queue, &[&r2], 4);
+        assert!(anchor::index_and_id(&queue.state).is_none());
+        assert_eq!(active_ids(&queue), [&r1, &r2]);
+        assert!(observer.reload().unwrap());
+        assert!(anchor::index_and_id(&observer.state).is_none());
+
+        let mut old = store.get("123", "playback", "queue").unwrap().unwrap();
+        assert_eq!(old["more"]["anchor"], "none");
+        old["more"].as_object_mut().unwrap().remove("anchor");
+        let legacy = QueueSnapshot::load(Some(&old)).unwrap();
+        assert_eq!(anchor::index_and_id(&legacy), Some((2, r1.as_str())));
+        store.put("123", "playback", "queue", &old).unwrap();
+        assert!(observer.reload().unwrap());
+        assert_eq!(
+            anchor::index_and_id(&observer.state),
+            Some((2, r1.as_str()))
+        );
+
+        // A new actual list update following a no-anchor result re-arms the
+        // first active recommendation; the no-anchor commit itself did not.
+        let (_temporary, _, mut queue, [a, r1, r2, _]) = anchor_fixture();
+        move_rows(&mut queue, &[&r1, &r2], 4);
+        move_rows(&mut queue, &[&r2], 4);
+        move_rows(&mut queue, &[&a], 0);
+        assert_eq!(anchor::index_and_id(&queue.state), Some((2, r1.as_str())));
     }
 }

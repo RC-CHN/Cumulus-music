@@ -83,7 +83,7 @@ impl MusicClient {
                     "displayed order does not match the queue movement",
                 ));
             }
-            let no_change = !movement.can_demote(&queue)
+            let no_change = !movement.can_change_markers(&queue)
                 && order.into_iter().eq(queue
                     .items
                     .iter()

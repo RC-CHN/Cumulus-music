@@ -78,16 +78,31 @@ test('an explicit drop retains the original offset and may change only a divider
     { entryId: 'rec-a', moreRecommendation: true },
     { entryId: 'rec-b', moreRecommendation: true },
   ];
-  assert.deepEqual(displayedQueueMove(rows, new Set(['normal-b']), 4), {
+  assert.deepEqual(displayedQueueMove(rows, new Set(['normal-b']), 4, 'rec-a'), {
     kind: 'move',
     entry_ids: ['normal-a', 'rec-a', 'rec-b', 'normal-b'],
     movement: { entry_ids: ['normal-b'], offset: 4 },
   });
-  assert.deepEqual(displayedQueueMove(rows, new Set(['rec-a']), 2), {
+  assert.deepEqual(displayedQueueMove(rows, new Set(['rec-a']), 2, 'rec-a'), {
     kind: 'move',
     entry_ids: ['normal-a', 'normal-b', 'rec-a', 'rec-b'],
     movement: { entry_ids: ['rec-a'], offset: 2 },
   });
-  assert.equal(displayedQueueMove(rows, new Set(['rec-a']), 3), undefined);
-  assert.equal(displayedQueueMove(rows, new Set(['normal-a']), 0), undefined);
+  assert.ok(
+    displayedQueueMove(rows, new Set(['rec-a']), 3, 'rec-a'),
+    'move can release anchor without demotion',
+  );
+  assert.ok(
+    displayedQueueMove(rows, new Set(['rec-a']), 3, 'rec-b'),
+    'use later real anchor, not first badge',
+  );
+  assert.ok(
+    displayedQueueMove(rows, new Set(['normal-a']), 0, 'normal-a'),
+    'ordinary index-zero anchor is movable',
+  );
+  assert.ok(
+    displayedQueueMove(rows, new Set(['normal-a']), 0, null),
+    'a real drop can re-arm a missing anchor',
+  );
+  assert.equal(displayedQueueMove(rows, new Set(['normal-a']), 0, 'rec-a'), undefined);
 });

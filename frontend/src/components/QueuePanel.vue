@@ -359,6 +359,7 @@ function move(index: number, direction: number) {
     displayed.tracks,
     new Set([id]),
     direction < 0 ? index - 1 : index + 2,
+    queueMoreRecommendations(displayed)?.separatorBefore,
   );
   if (movement) void edit(movement, index + direction, displayed);
 }
