@@ -67,6 +67,17 @@ pub async fn podcast_home(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn podcast_rankings(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    query: PodcastRankQuery,
+) -> Result<AccountData<PodcastRanks>, ClientError> {
+    client
+        .podcast_rankings(&epoch, query)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn podcast_command(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

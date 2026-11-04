@@ -4,7 +4,7 @@ import type { PodcastCatalogueModel } from '../composables/usePodcastCatalogue';
 import Icon from './Icon.vue';
 
 const props = defineProps<{ model: PodcastCatalogueModel }>();
-const emit = defineEmits<{ open: [id: string] }>();
+const emit = defineEmits<{ open: [id: string]; rankings: [] }>();
 const { categories, categoriesPending, categoriesError } = props.model;
 const strip = ref<HTMLElement>();
 const width = ref(0);
@@ -24,19 +24,17 @@ watch(
 );
 onBeforeUnmount(() => observer?.disconnect());
 const visible = computed(() => {
-  const all = Math.max(1, Math.floor((width.value + 15) / 109));
-  return categories.value.length <= all ? all : Math.max(1, Math.floor((width.value - 78) / 109));
+  const all = Math.max(0, Math.floor((width.value + 15) / 109) - 1);
+  return categories.value.length <= all
+    ? all
+    : Math.max(0, Math.floor((width.value - 78) / 109) - 1);
 });
 const firstHidden = computed(() => categories.value[visible.value]);
 </script>
 
 <template>
-  <nav
-    v-if="categories.length"
-    ref="strip"
-    class="podcast-category-strip"
-    aria-label="浏览播客分类"
-  >
+  <nav ref="strip" class="podcast-category-strip" aria-label="浏览播客分类">
+    <button type="button" @click="emit('rankings')">排行榜</button>
     <button
       v-for="category in categories.slice(0, visible)"
       :key="category.id"
@@ -58,7 +56,7 @@ const firstHidden = computed(() => categories.value[visible.value]);
       更多<Icon name="more" />
     </button>
   </nav>
-  <p v-else-if="categoriesPending" role="status" class="muted">正在读取播客分类…</p>
+  <p v-if="categoriesPending" role="status" class="muted">正在读取播客分类…</p>
   <div v-else-if="categoriesError" role="alert" class="podcast-category-error">
     <span>{{ categoriesError }}</span>
     <button class="text-button" type="button" @click="model.loadCategories()">重试分类</button>

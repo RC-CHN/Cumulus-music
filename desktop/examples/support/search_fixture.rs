@@ -280,6 +280,73 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
     let program = |id, radio_id| json!({"id":id,"name":format!("合成声音 {id}"),"mainSong":{"id":id-400,"name":format!("合成声音 {id}"),"duration":360000},"duration":360000,"radio":radio(radio_id),"dj":{"nickname":"合成主播"}});
     let mode = MODE.lock().unwrap().clone();
     let data = match path {
+        "/api/podcast/ranklist/square/ranklist/get/v2"
+            if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
+        {
+            let rows = match args["ranklistSquareId"].as_u64() {
+                Some(2) => json!([
+                    {"resourceId":"daily","name":"今日最热","chartType":3,"showRankOffset":true},
+                    {"resourceId":"2","name":"音乐声音","chartType":0}]),
+                Some(1) => json!([
+                    {"resourceId":"score","name":"高分必听","chartType":7,"showScore":true},
+                    {"resourceId":"2","name":"音乐播单","chartType":0}]),
+                _ => {
+                    return Some(Err(Error::InvalidInput(
+                        "unexpected synthetic podcast rank menu",
+                    )));
+                }
+            };
+            json!({"code":200,"data":rows})
+        }
+        "/api/charts/voice" if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") => {
+            assert_eq!(*args, json!({"chartType":"3"}));
+            json!({"code":200,"data":[{"voiceMetaVO":program(407,305),"chartMetaVO":{"rank":1,"lastRank":3}}]})
+        }
+        "/api/charts/voice/category" if mode == "podcast_home_disabled" => {
+            assert_eq!(*args, json!({"categoryId":"2"}));
+            json!({"code":200,"data":[{"voiceMetaVO":program(408,305),"chartMetaVO":{"rank":1}}]})
+        }
+        "/api/charts/voicelist" if mode == "podcast_home_disabled" => {
+            assert_eq!(*args, json!({"chartType":"7"}));
+            let mut radio = radio(361);
+            radio["score"] = json!("9.3分");
+            json!({"code":200,"data":[{"voicelistMetaVO":radio,"chartMetaVO":{"rank":2}}]})
+        }
+        "/api/charts/voicelist/category" if mode == "podcast_home_disabled" => {
+            assert_eq!(*args, json!({"categoryId":"2"}));
+            json!({"code":200,"data":[{"voicelistMetaVO":radio(364),"chartMetaVO":{"rank":1}}]})
+        }
+        "/api/dj/toplist/hours" if mode == "podcast_home_disabled" => {
+            assert_eq!(*args, json!({}));
+            json!({"code":200,"data":{"list":[{"id":29,"nickname":"合成主播榜","rank":1,"lastRank":4}]}})
+        }
+        "/api/voice/book/chart/config" if mode == "podcast_home_disabled" => {
+            assert_eq!(*args, json!({}));
+            json!({"code":200,"data":[
+                {"chartNameCode":"FREE_CHARTS","subList":[{"code":"VOICE_BOOK_FREE_CHARTS_ALL","name":"免费总榜"}]},
+                {"chartNameCode":"OVERALL_CHARTS","subList":[{"code":"RECOMMEND_CHARTS","name":"个性听书榜"},{"code":"VOICE_BOOK_OVERALL","name":"听书热门榜"}]}
+            ]})
+        }
+        "/api/voice/book/chart/get" if mode == "podcast_home_disabled" => {
+            let id = match args["subCode"].as_str() {
+                Some("VOICE_BOOK_OVERALL") => {
+                    assert_eq!(args["chartNameCode"], "OVERALL_CHARTS");
+                    362
+                }
+                Some("VOICE_BOOK_FREE_CHARTS_ALL") => {
+                    assert_eq!(args["chartNameCode"], "FREE_CHARTS");
+                    363
+                }
+                Some("RECOMMEND_CHARTS") => 365,
+                _ => {
+                    return Some(Err(Error::InvalidInput(
+                        "unexpected synthetic audiobook ranking",
+                    )));
+                }
+            };
+            assert_eq!(args["type"], "0");
+            json!({"code":200,"data":[{"voicelistMetaVO":radio(id),"chartMetaVO":{"rank":1}}]})
+        }
         "/api/user/setting" if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") => {
             assert_eq!(*args, json!({}));
             json!({"code":200,"setting":{"personalServiceSetting":if mode == "podcast_home_disabled" {2} else {0}}})

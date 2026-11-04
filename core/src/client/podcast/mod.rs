@@ -1,6 +1,7 @@
 mod discovery;
 mod dto;
 mod home;
+mod rankings;
 pub(super) mod view;
 use super::MusicClient;
 use crate::{
@@ -13,6 +14,10 @@ pub(super) use discovery::PodcastDiscoveryHost;
 pub use discovery::{PodcastCatalogue, PodcastCatalogueQuery, PodcastCategory, PodcastSubcategory};
 pub use dto::*;
 pub use home::{PodcastHomeBlock, PodcastHomePage};
+pub use rankings::{
+    PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource, PodcastRankRow,
+    PodcastRankTab, PodcastRanks,
+};
 use serde_json::{Value, json};
 
 impl MusicClient {

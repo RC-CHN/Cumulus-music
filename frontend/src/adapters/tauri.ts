@@ -163,6 +163,7 @@ export function createTauriClient(): CoreClient {
     podcastPage: (epoch, query, refresh) => invoke('podcast_page', { epoch, query, refresh }),
     podcastCatalogue: (epoch, query) => invoke('podcast_catalogue', { epoch, query }),
     podcastHome: (epoch, continuation) => invoke('podcast_home', { epoch, continuation }),
+    podcastRankings: (epoch, query) => invoke('podcast_rankings', { epoch, query }),
     sceneFmView: (epoch, refresh) => invoke('scene_fm_view', { epoch, refresh }),
     sceneFmCommand: (epoch, command) => invoke('scene_fm_command', { epoch, command }),
     podcastState: (epoch, refresh) => invoke('podcast_state', { epoch, refresh }),

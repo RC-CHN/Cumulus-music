@@ -831,6 +831,46 @@
     await capture("podcast_category_overflow");
     click(button("返回上一页"));
     await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭"), "category Back preserves homepage personalization state");
+    click(button("排行榜", categoryStrip()));
+    const rankPage = () => one(".podcast-rankings");
+    const ranked = (kind) => rankPage()?.querySelector(`[data-resource="${kind}"]`);
+    await wait(() => ranked("voice")?.textContent.includes("合成声音 407"), "public ranking defaults to the official voice chart");
+    assert(button("声音榜", rankPage()).getAttribute("aria-current") === "page" &&
+      ranked("voice").querySelector('[aria-label="上升 2 名"]'), "chart advertises the correct movement and group");
+    click(button("播放 合成声音 407", rankPage()));
+    await wait(() => button("暂停 合成声音 407", rankPage()) && one(".playerbar")?.dataset.state === "playing", "ranked voice starts native playback");
+    assert((await snapshot()).track?.voiceId === "407", "rank entry plays the chosen episode, not the radio identity");
+    await capture("podcast_rankings_voice");
+    click(button("音乐声音", rankPage()));
+    await wait(() => ranked("voice")?.textContent.includes("合成声音 408"), "voice category uses categoryId rather than chartType");
+    click(button("播客榜", rankPage()));
+    await wait(() => ranked("radio")?.textContent.includes("合成播客 361"), "podcast rank loads its own chart menu and rows");
+    assert(ranked("radio").querySelector('.rank-score')?.textContent.trim() === "9.3 分", "rank score is displayed once");
+    click(ranked("radio").querySelector("button.rank-resource"));
+    await wait(() => one(".podcast-cover h2")?.textContent === "合成播客 361", "podcast rank entry opens the canonical detail");
+    click(button("返回上一页"));
+    await wait(() => ranked("radio")?.textContent.includes("合成播客 361"), "detail Back preserves the selected chart");
+    await capture("podcast_rankings_podcasts");
+    click(button("音乐播单", rankPage()));
+    await wait(() => ranked("radio")?.textContent.includes("合成播客 364"), "podcast category uses its recovered endpoint");
+    click(button("主播榜", rankPage()));
+    await wait(() => ranked("host")?.textContent.includes("合成主播榜"), "host default uses the fixed hours rank");
+    assert(ranked("host").querySelector('[aria-label="上升 3 名"]'), "host rank movement uses the host payload");
+    await capture("podcast_rankings_hosts");
+    await wait(() => button("听书总榜", rankPage()) && button("免费听书榜", rankPage()), "book chart groups load independently of preference");
+    const groupLabels = [...rankPage().querySelectorAll('.podcast-rank-groups button')].map((node) => node.textContent.trim());
+    assert(groupLabels.slice(0,5).join(",") === "声音榜,播客榜,主播榜,听书总榜,免费听书榜", "book tabs use the recovered order");
+    click(button("听书总榜", rankPage()));
+    await wait(() => ranked("radio")?.textContent.includes("合成播客 362"), "ordinary audiobook chart still loads with opt-out");
+    assert(!button("个性听书榜", rankPage()) && !await invoke("podcast_rankings", {
+      epoch, query: { kind: "entries", group: "overall_charts", id: "RECOMMEND_CHARTS", chartType: "0" },
+    }).then(() => true, () => false), "recommendation tab is absent and native direct access is blocked when disabled");
+    await capture("podcast_rankings_book_optout");
+    click(button("免费听书榜", rankPage()));
+    await wait(() => ranked("radio")?.textContent.includes("合成播客 363"), "free audiobook chart still loads with opt-out");
+    await capture("podcast_rankings_free");
+    click(button("返回上一页"));
+    await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭"), "rank Back returns directly to discovery");
     click(button("返回上一页"));
     await wait(() => ready("合成推荐词1", "all", ".search-track-card"), "public homepage Back restores prior search");
     await fixture("expired");
@@ -862,6 +902,7 @@
       audiobookMoreVerified: true,
       podcastMoreVerified: true,
       podcastCategoryVerified: true,
+      podcastRankingsVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

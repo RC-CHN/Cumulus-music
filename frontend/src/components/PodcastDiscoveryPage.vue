@@ -20,6 +20,7 @@ const emit = defineEmits<{
   play: [voice: EpisodeView];
   settings: [];
   category: [id: string];
+  rankings: [];
 }>();
 const root = ref<HTMLElement>();
 const { blocks, enabled, pending, error, continuation, restart } = props.model;
@@ -63,7 +64,11 @@ function scrolled() {
         <Icon name="refresh" />刷新
       </button>
     </header>
-    <PodcastCategoryStrip :model="catalogue" @open="(id) => emit('category', id)" />
+    <PodcastCategoryStrip
+      :model="catalogue"
+      @open="(id) => emit('category', id)"
+      @rankings="emit('rankings')"
+    />
     <div v-if="enabled === false" class="empty-state">
       <p>个性化推荐已关闭</p>
       <button class="secondary" type="button" @click="emit('settings')">前往设置</button>

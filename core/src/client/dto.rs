@@ -42,7 +42,8 @@ pub use super::playlists::{PlaylistEditor, PlaylistMutationView, PlaylistOrderVi
 pub use super::podcast::{
     EpisodeView, PodcastCard, PodcastCatalogue, PodcastCatalogueQuery, PodcastCategory,
     PodcastCommand, PodcastHomeBlock, PodcastHomePage, PodcastMutationView, PodcastPage,
-    PodcastQuery, PodcastState, PodcastSubcategory,
+    PodcastQuery, PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource,
+    PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastState, PodcastSubcategory,
 };
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
 pub use super::relay::{

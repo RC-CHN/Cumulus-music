@@ -71,8 +71,9 @@ def verify(root, capture):
     assert complete['audioRankPlaybackVerified']
     assert complete['audiobookMoreVerified'] and complete['podcastMoreVerified']
     assert complete['podcastCategoryVerified']
+    assert complete['podcastRankingsVerified']
     assert complete['audioRankDetails'] == [301, 301, 302, 304, 305]
-    assert complete['stageCount'] == 69 and complete['syntheticSearchCalls'] > 30
+    assert complete['stageCount'] == 74 and complete['syntheticSearchCalls'] > 30
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
     if capture:

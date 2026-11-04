@@ -123,3 +123,45 @@ export interface PodcastHomePage {
 export interface PodcastHomeClient {
   podcastHome(epoch: string, continuation?: string): Promise<AccountData<PodcastHomePage>>;
 }
+
+export type PodcastRankGroup =
+  | 'voice'
+  | 'audio'
+  | 'talent'
+  | 'overall_charts'
+  | 'free_charts'
+  | 'new_charts'
+  | 'vip_charts';
+export interface PodcastRankTab {
+  id: string;
+  name: string;
+  chartType: string;
+  showScore: boolean;
+  showRankOffset: boolean;
+}
+export interface PodcastRankMenu {
+  group: PodcastRankGroup;
+  name: string;
+  tabs: PodcastRankTab[];
+}
+export type PodcastRankResource =
+  | { kind: 'radio'; radio: PodcastCard }
+  | { kind: 'voice'; voice: EpisodeView }
+  | { kind: 'host'; id: string; name: string; avatarUrl: string | null };
+export interface PodcastRankRow {
+  rank: number | null;
+  lastRank: number | null;
+  score: string | null;
+  resource: PodcastRankResource;
+}
+export type PodcastRankQuery =
+  | { kind: 'book_groups' }
+  | { kind: 'menu'; group: PodcastRankGroup }
+  | { kind: 'entries'; group: PodcastRankGroup; id: string; chartType: string };
+export type PodcastRanks =
+  | { kind: 'book_groups'; groups: PodcastRankMenu[] }
+  | { kind: 'menu'; tabs: PodcastRankTab[] }
+  | { kind: 'entries'; rows: PodcastRankRow[] };
+export interface PodcastRankingClient {
+  podcastRankings(epoch: string, query: PodcastRankQuery): Promise<AccountData<PodcastRanks>>;
+}

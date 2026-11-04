@@ -113,6 +113,7 @@ import LocalPage from './components/LocalPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
 import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
 import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
+import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
 import RankingsPage from './components/RankingsPage.vue';
 import FmPage from './components/FmPage.vue';
@@ -128,6 +129,7 @@ import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
 import { usePodcastCatalogue } from './composables/usePodcastCatalogue';
 import { usePodcastHome } from './composables/usePodcastHome';
+import { usePodcastRankings } from './composables/usePodcastRankings';
 import { AUDIOBOOK_CATEGORY, type PodcastScope } from './services/podcast';
 import {
   failure,
@@ -598,6 +600,12 @@ const podcasts = usePodcasts(undefined, () => {
   void music.bootstrap(false);
 });
 const podcastCatalogue = usePodcastCatalogue(
+  () => music.account.value,
+  () => {
+    void music.bootstrap(false);
+  },
+);
+const podcastRankings = usePodcastRankings(
   () => music.account.value,
   () => {
     void music.bootstrap(false);
@@ -2667,6 +2675,17 @@ onUnmounted(() => {
                 @play="(voice) => playSearchCard({ kind: 'voice', voice })"
                 @settings="openPodcastPrivacy"
                 @category="(id) => music.navigate({ kind: 'podcast_category', id })"
+                @rankings="music.navigate({ kind: 'podcast_rankings' })"
+              />
+              <PodcastRankingsPage
+                v-else-if="page.kind === 'podcast_rankings'"
+                :model="podcastRankings"
+                :playable="player.ready.value && !player.busy.value"
+                :current-voice="currentVoiceId"
+                :playing="player.playing.value"
+                @radio="openSceneRadio"
+                @host="(id) => music.navigate({ kind: 'playlist_creator', id })"
+                @play="(voice) => playSearchCard({ kind: 'voice', voice })"
               />
               <PlaylistCreatorPage
                 v-else-if="page.kind === 'playlist_creator'"

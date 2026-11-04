@@ -32,6 +32,7 @@ export type Page =
   | { kind: 'podcasts' }
   | { kind: 'podcast_category'; id: string }
   | { kind: 'podcast_discovery' }
+  | { kind: 'podcast_rankings' }
   | { kind: 'local' }
   | { kind: 'daily' }
   | { kind: 'daily_batch' }
@@ -194,6 +195,7 @@ export function useMusic(
         target.kind === 'podcasts' ||
         target.kind === 'podcast_category' ||
         target.kind === 'podcast_discovery' ||
+        target.kind === 'podcast_rankings' ||
         target.kind === 'together' ||
         target.kind === 'rankings' ||
         target.kind === 'fm' ||
