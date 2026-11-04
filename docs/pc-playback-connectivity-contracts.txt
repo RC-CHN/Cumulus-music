@@ -50,8 +50,18 @@ M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求�
     Linux 本机在隔离网络命名空间只执行上述原始 getter 机器码，用固定的本地
     WinSock 替身验证实际调用的参数、顺序和八组返回（含 End 失败），记录于
     .build/ui-proof/official-native-connectivity-source/native-oracle.csv。Rust 冻结
-    分类测试及 Windows 交叉编译通过。Windows 原生运行及四路监听通知未验收，
-    不连接生产计数或播放。
+    分类测试及 Windows 交叉编译通过。
+  - 手动 workflow `Windows NLA runtime proof` 从独立锁定清单编译相同的探针，
+    独立发行配置做全程序链接优化，去掉未使用的 Rust 标准库 socket 导入；检查
+    Win64 可执行文件的 Winsock 导入只有 Startup/Cleanup 和四个查询相关 API。
+    清空子进程继承环境（仅留 Windows 系统目录），从临时目录启动，10 秒超时；
+    不启动桌面、不改网卡、路由、DNS、系统防火墙或账号。只接受固定类别和
+    各次调用的成功/失败/跳过；不会打印异常的原始子进程输出。应用没有创建网络
+    socket 或发出服务请求，探针不观察 Windows NLA 服务自身的系统活动。Runner
+    实际读取必须走完 Begin/Next/End/Cleanup 并得到正常结果类别才记通过。
+    只记录参与结果的调用，省略原版条件日志的错误细节。其他类别和失败清理顺序
+    由同一个 Rust 执行器的本地替身验证，不能当作更改 Windows 网络状态的实测。未派发此 workflow，Windows 原生结果及四路监听通知
+    仍待验收，不连接生产计数或播放。
 * M/12:297–329 在请求返回真值后、格式化数据之前派发 musicFeOnline。catch 除
   responseError、fetchFrontEndEncryptError 外派发 musicFeOffline；同步格式化错误可能
   先后产生两个事件。JSON 非成功业务码在 M/12:174–194 被包装为 responseError。
