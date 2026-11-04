@@ -1,4 +1,7 @@
 //! Real production IPC/WebView plus libmpv, with generated media and no network.
+#[path = "support/assets.rs"]
+mod assets;
+
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::{MusicClient, dto::LocalCommand},
@@ -115,5 +118,5 @@ fn main() {
             webview.eval(format!("window.__eqProof={};",json!({"reopen":reopen,"missing":missing}))).unwrap();
             webview.eval(include_str!("equalizer_ui_probe.js")).unwrap();
         }
-    }).run(tauri::generate_context!()).expect("equalizer UI proof");
+    }).run(assets::context()).expect("equalizer UI proof");
 }

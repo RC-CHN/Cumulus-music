@@ -5,6 +5,19 @@
  const wait=async(fn,label)=>{for(let i=0;i<300;i++){if(await fn())return;await sleep(100);}throw Error(label);};
  const click=async node=>{if(!node)throw Error('missing_control');await wait(()=>node.isConnected&&!node.disabled,'disabled_control');node.click();await sleep(100);};
  const byText=text=>all('button').find(n=>n.textContent.trim()===text);
+ const presetControl=()=>el('[aria-label="均衡器预设"]');
+ let retainedAdjustmentFocus=0;
+ async function activateFocused(text){
+   const button=byText(text);
+   await wait(()=>button?.isConnected&&!button.disabled,'available '+text);
+   button.focus({preventScroll:true});
+   if(document.activeElement!==button)throw Error('could_not_focus_'+text);
+   await click(button);
+ }
+ async function expectPresetFocus(label){
+   await wait(()=>document.activeElement===presetControl(),label);
+   retainedAdjustmentFocus++;
+ }
  const ranges=()=>all('.equalizer-band input');
  const gains=()=>ranges().map(n=>Number(n.value));
  const tone=()=>['低音增益','高音增益'].map(label=>Number(el('[aria-label="'+label+'"]')?.value));
@@ -117,12 +130,13 @@
         throw Error('rapid input must preserve the final gain and native revision order');
     }finally{release();core.playerAction=playerAction;}
     await stage('eq_custom',{enabled:true,gains:custom});
-    step='save_custom';const beforeSave=el('.equalizer-dialog').dataset.revision;await click(byText('保存自定义预设'));
+    step='save_custom';const beforeSave=el('.equalizer-dialog').dataset.revision;await activateFocused('保存自定义预设');
     await wait(()=>{
       const error=el('.equalizer-error');if(error)throw Error(error.textContent.trim());
       return settled()&&el('[aria-label="均衡器预设"] option[value="-2"]')&&byText('保存自定义预设').disabled;
     },'custom slot acknowledged');
     if(el('.equalizer-dialog').dataset.revision===beforeSave)throw Error('custom_save_identity_not_persisted');
+    await expectPresetFocus('preset retains keyboard focus after saving the custom curve');
     await stage('eq_custom_saved',{enabled:true,gains:custom});
     step='builtin_after_custom';await preset(1);await stage('eq_custom_built_in',{enabled:true,gains:pop});
     step='recall_custom';await preset(-2);await wait(()=>el('.equalizer-status').dataset.status==='processing','recalled custom reaches DSP');
@@ -133,8 +147,9 @@
     await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==beforeIndependent&&
       el('.equalizer-status').dataset.status==='processing','bass-only processing');
     await stage('eq_independent_tone',{enabled:false,gains:custom});
-    await click(byText('重置低音和高音'));
+    await activateFocused('重置低音和高音');
     await wait(()=>settled()&&tone().every(value=>value===0),'reset independent tone');
+    await expectPresetFocus('preset retains keyboard focus after resetting bass and treble');
     checkLauncher('off');
     step='reenable';await toggle();await wait(()=>el('.equalizer-status').dataset.status==='processing','reenabled_dsp');await stage('eq_reenabled',{enabled:true,gains:custom});
     step='reset';const beforeReset=el('.equalizer-dialog').dataset.revision;await click(byText('恢复平直'));await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==beforeReset&&gains().every(n=>n===0),'flat_reset');await stage('eq_flat',{enabled:true,gains:Array(10).fill(0)});await preset(1);
@@ -150,7 +165,7 @@
     step='save_bypass';await toggleMaster(false);await stage('eq_master_saved',{enabled:true,gains:pop});
    }
   }
-  await report('complete',{ok:true,epoch,reopened:window.__eqProof.reopen,missing:window.__eqProof.missing,networkRequests:0,remoteMutations:0,audioOutput:'null'});
+  await report('complete',{ok:true,epoch,reopened:window.__eqProof.reopen,missing:window.__eqProof.missing,networkRequests:0,remoteMutations:0,audioOutput:'null',retainedAdjustmentFocus});
  }catch(e){
    const dialog=el('.equalizer-dialog');
    await report('failed',{ok:false,step,...(epoch?{epoch}:{}),

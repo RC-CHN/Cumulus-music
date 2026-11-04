@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
+import { useControlFocus } from '../composables/useControlFocus';
 import {
   equalizerCanRetry,
   equalizerGainLabel,
@@ -27,6 +28,12 @@ const { settings, preset, draft, pending, blocked, error, stage, applyDraft, dis
   equalizerDraft;
 const current = computed(() => view.value?.equalizer);
 const dialog = ref<HTMLDialogElement>();
+const closeButton = ref<HTMLButtonElement>();
+const presetControl = ref<HTMLSelectElement>();
+const actionFocus = useControlFocus(
+  () => view.value?.epoch,
+  () => (presetControl.value?.disabled === false ? presetControl.value : closeButton.value),
+);
 const directoryOpen = ref(false);
 const directoryOpener = ref<HTMLButtonElement>();
 const managementOnly = ref(false);
@@ -156,6 +163,15 @@ function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
     next.bass_db !== 0 || next.treble_db !== 0,
   );
 }
+function resetTone() {
+  change(
+    settings.value?.enabled ?? false,
+    gains.value,
+    { bass_db: 0, treble_db: 0 },
+    undefined,
+    false,
+  );
+}
 async function saveCustom() {
   const expected = current.value;
   if (!canSave.value || !expected) return;
@@ -198,7 +214,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   >
     <header>
       <h2>均衡器</h2>
-      <button class="icon-button" aria-label="关闭均衡器" @click="emit('close')">
+      <button ref="closeButton" class="icon-button" aria-label="关闭均衡器" @click="emit('close')">
         <Icon name="close" />
       </button>
     </header>
@@ -222,6 +238,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <label
           >预设
           <select
+            ref="presetControl"
             aria-label="均衡器预设"
             :value="displayedPreset"
             :disabled="disabled"
@@ -293,15 +310,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <button
           type="button"
           :disabled="!tone.bass_db && !tone.treble_db"
-          @click="
-            change(
-              settings?.enabled ?? false,
-              gains,
-              { bass_db: 0, treble_db: 0 },
-              undefined,
-              false,
-            )
-          "
+          @click="actionFocus.run($event, resetTone)"
         >
           重置低音和高音
         </button>
@@ -319,14 +328,14 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <button
           v-if="current?.damaged"
           :disabled="!ready || pending || commandPending || !!draft"
-          @click="maintain('repair_equalizer')"
+          @click="actionFocus.run($event, () => maintain('repair_equalizer'))"
         >
           修复设置
         </button>
         <button
           v-else-if="current && equalizerCanRetry(current)"
           :disabled="!ready || pending || commandPending || !!draft"
-          @click="maintain('retry_equalizer')"
+          @click="actionFocus.run($event, () => maintain('retry_equalizer'))"
         >
           重新应用
         </button>
@@ -335,13 +344,17 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         {{ error || commandError }}
       </p>
       <div v-if="blocked" class="equalizer-status">
-        <button :disabled="!ready || pending" @click="applyDraft">读取当前设置并应用草稿</button>
-        <button :disabled="pending" @click="discard">舍弃草稿</button>
+        <button :disabled="!ready || pending" @click="actionFocus.run($event, applyDraft)">
+          读取当前设置并应用草稿
+        </button>
+        <button :disabled="pending" @click="actionFocus.run($event, discard)">舍弃草稿</button>
       </div>
     </div>
     <footer>
       <small aria-live="polite">{{ savedMessage || '为当前账号保存，下次打开仍会保留。' }}</small>
-      <button :disabled="!canSave" @click="saveCustom">保存自定义预设</button>
+      <button :disabled="!canSave" @click="actionFocus.run($event, saveCustom)">
+        保存自定义预设
+      </button>
       <button
         :disabled="disabled"
         @click="change(true, [...equalizerPresets[0].gains], tone, { kind: 'built_in', index: 0 })"

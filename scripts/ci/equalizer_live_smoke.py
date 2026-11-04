@@ -67,11 +67,14 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--filter-library', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_AUDIO_FILTER'] = str(args.filter_library.resolve(strict=True))
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     env = fresh_profile(root, env)
@@ -152,7 +155,8 @@ def main():
     assert saved['equalizer']['settings'] == tone_settings
     assert tone_settings['gains'][4] == 4
     assert saved['state'] == 'paused' and saved['position'] >= 11
-    assert read('complete')['ok']
+    complete = read('complete')
+    assert complete['ok'] and complete['retainedAdjustmentFocus'] == 2
     record = persisted(root)
     saved_custom_record = {'enabled': True, 'gains': custom_gains}
     saved_bypass = read('eq_master_saved')['native']
@@ -200,6 +204,7 @@ def main():
               'sameCurvePresetIdentityPreserved': True,
               'toneProcessedPersistedAndReset': True,
               'toneProcessedWithGeqDisabled': True,
+              'keyboardAdjustmentFocusVerified': True,
               'masterBypassRetainedAndRestored': True,
               'missingPluginRecoveredWithoutEq': True}
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
