@@ -10,7 +10,7 @@ use crate::{
     protocol::api::identifier,
 };
 pub(super) use discovery::PodcastDiscoveryHost;
-pub use discovery::{AudiobookDiscovery, AudiobookDiscoveryQuery};
+pub use discovery::{PodcastCatalogue, PodcastCatalogueQuery, PodcastCategory, PodcastSubcategory};
 pub use dto::*;
 pub use home::{PodcastHomeBlock, PodcastHomePage};
 use serde_json::{Value, json};

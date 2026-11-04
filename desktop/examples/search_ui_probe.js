@@ -705,21 +705,22 @@
     await wait(() => button("听书榜：更多"), "official audiobook chart advertises More");
     assert(button("播客榜：更多"), "the two official More destinations are independently available");
     click(button("听书榜：更多"));
-    const bookPane = () => one(".audiobook-discovery");
-    const book = (id) => one(`[data-book-id="${id}"]`);
+    const bookPane = () => one('.podcast-catalogue[data-parent-category="10001"]');
+    const book = (id) => one(`[data-category-radio="${id}"]`);
     await wait(() => book(302) && !panel(), "More opens the public audiobook category");
     assert(button("全部", bookPane())?.getAttribute("aria-pressed") === "true" &&
-      !button("无关分类", bookPane()) && !one(".podcast-open"), "public category uses its own first subcategory, not the personal library");
+      button("有声书", bookPane())?.getAttribute("aria-current") === "page" &&
+      !button("乐评", bookPane()) && !one(".podcast-open"), "public category uses its own first subcategory, not the personal library");
     const bookArt = book(302).querySelector(".search-result-art").getBoundingClientRect();
     assert(bookArt.width === 48 && bookArt.height === 48 &&
       book(302).querySelector(".search-result-name").getBoundingClientRect().bottom < bookPane().getBoundingClientRect().bottom,
       "official 48px title cell keeps the audiobook title visible in a narrow window");
-    const firstBooks = await invoke("audiobook_discovery", { epoch, query: { kind: "books", subId: "000" } });
+    const firstBooks = await invoke("podcast_catalogue", { epoch, query: { kind: "radios", parentId: "10001", subId: "000" } });
     const handle = firstBooks.value.continuation;
     assert(/^[\da-f]{32}$/.test(handle) && !JSON.stringify(firstBooks).includes("internal"), "wire cursor stays in native code");
-    for (const [targetEpoch, targetSub] of [[epoch, "3076096"], ["0", "000"]]) {
-      const accepted = await invoke("audiobook_discovery", { epoch: targetEpoch, query: { kind: "books", subId: targetSub, continuation: handle } }).then(() => true, () => false);
-      assert(!accepted, "continuation cannot cross accounts or subcategories");
+    for (const [targetEpoch, targetParent, targetSub] of [[epoch, "10001", "3076096"], [epoch, "2", "000"], ["0", "10001", "000"]]) {
+      const accepted = await invoke("podcast_catalogue", { epoch: targetEpoch, query: { kind: "radios", parentId: targetParent, subId: targetSub, continuation: handle } }).then(() => true, () => false);
+      assert(!accepted, "continuation cannot cross accounts, parents or subcategories");
     }
     await capture("audiobook_more_category");
     click(button("加载更多有声书", bookPane()));
@@ -728,7 +729,7 @@
     await capture("audiobook_more_retry");
     click(button("重试", bookPane()));
     await wait(() => book(303) && !button("加载更多有声书", bookPane()), "retry appends the next official page");
-    assert(all('[data-book-id="302"]').length === 1, "overlap does not duplicate cards in the directory");
+    assert(all('[data-category-radio="302"]').length === 1, "overlap does not duplicate cards in the directory");
     await capture("audiobook_more_next");
     click(button("文学", bookPane()));
     await wait(() => book(304) && !book(302) && !book(303), "subcategory replaces the previous directory");
@@ -757,7 +758,7 @@
     for (const [command, args] of [
       ["podcast_home", { epoch, continuation: handle }],
       ["podcast_home", { epoch: "0", continuation: homeHandle }],
-      ["audiobook_discovery", { epoch, query: { kind: "books", subId: "000", continuation: homeHandle } }],
+      ["podcast_catalogue", { epoch, query: { kind: "radios", parentId: "10001", subId: "000", continuation: homeHandle } }],
     ]) assert(!await invoke(command, args).then(() => true, () => false), "native handles cannot cross account or discovery route");
     await capture("podcast_more_home");
     click(button("加载更多播客", podcastHome()));
@@ -788,6 +789,39 @@
       "disabled personalization stops the recommendation request and shows Settings");
     assert(!homeRadio(305) && !homeVoice(404) && !button("加载更多播客", podcastHome()), "old personalized content is cleared");
     await capture("podcast_more_disabled");
+    const categoryStrip = () => one(".podcast-category-strip");
+    await wait(() => categoryStrip() && button("音乐播客", categoryStrip()) && button("更多分类", categoryStrip()), "ordinary categories remain when personalized feed is disabled");
+    const taxonomy = await invoke("podcast_catalogue", { epoch, query: { kind: "categories" } });
+    const ordered = taxonomy.value.categories.map((category) => category.id);
+    const stripItems = [...categoryStrip().querySelectorAll("button:not(.category-more)")];
+    const firstHidden = ordered[stripItems.length];
+    assert(stripItems.map((node) => node.dataset.categoryId).join(",") === ordered.slice(0, stripItems.length).join(",") &&
+      stripItems.every((node) => Math.abs(node.getBoundingClientRect().height - 40) < 1) &&
+      categoryStrip().scrollWidth <= categoryStrip().clientWidth &&
+      button("更多分类", categoryStrip()).dataset.categoryId === firstHidden,
+      "category entrance follows service order and sends More to the first hidden parent in a narrow window");
+    click(button("音乐播客", categoryStrip()));
+    const catalogue = () => one(".podcast-catalogue");
+    await wait(() => catalogue()?.dataset.parentCategory === "2" && book(351), "ordinary parent loads without personalization");
+    click(button("加载更多播客", catalogue()));
+    await wait(() => book(351) && book(352), "non-audiobook catalogue appends its native continuation");
+    await capture("podcast_category_more");
+    click(button("乐评", catalogue()));
+    await wait(() => book(353) && !book(351) && !book(352), "category subtab uses its own first page");
+    await capture("podcast_category_child");
+    click(button("精品播客", catalogue()));
+    await wait(() => catalogue()?.dataset.parentCategory === "0020141111" && book(354), "changing parent preserves the official leading-zero ID");
+    await capture("podcast_category_parent");
+    click(button("返回上一页"));
+    await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭") && categoryStrip() &&
+      button("更多分类", categoryStrip())?.dataset.categoryId === firstHidden,
+      "switching parent replaces the catalogue route rather than adding an extra Back step");
+    click(button("更多分类", categoryStrip()));
+    const firstHiddenRecord = { "2": 351, "0020141111": 354, "10001": 302 }[firstHidden] ?? 355;
+    await wait(() => catalogue()?.dataset.parentCategory === firstHidden && book(firstHiddenRecord), "More navigates directly to the first hidden parent category");
+    await capture("podcast_category_overflow");
+    click(button("返回上一页"));
+    await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭"), "category Back preserves homepage personalization state");
     click(button("返回上一页"));
     await wait(() => ready("合成推荐词1", "all", ".search-track-card"), "public homepage Back restores prior search");
     await fixture("expired");
@@ -818,6 +852,7 @@
       audioRankPlaybackVerified: true,
       audiobookMoreVerified: true,
       podcastMoreVerified: true,
+      podcastCategoryVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

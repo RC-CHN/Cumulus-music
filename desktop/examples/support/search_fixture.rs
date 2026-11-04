@@ -325,17 +325,46 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
                 }
             }
         }
-        "/api/dj/radio/category/list" if MODE.lock().unwrap().as_str() == "audio_ranks" => {
+        "/api/dj/radio/category/list"
+            if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
+        {
             assert_eq!(*args, json!({}));
-            json!({"code":200,"data":{"parentCategoryVoList":[
-                {"id":"1","subCategoryVO":[{"id":"100","name":"无关分类"}]},
-                {"id":"10001","subCategoryVO":[{"id":"000","name":"全部"},{"id":"3076096","name":"文学"}]}
-            ]}})
+            let mut categories = vec![
+                json!({"id":"2","name":"音乐播客","subCategoryVO":[{"id":"000","name":"全部"},{"id":"3074096","name":"乐评"}]}),
+                json!({"id":"0020141111","name":"精品播客","subCategoryVO":[{"id":"000","name":"全部"}]}),
+                json!({"id":"3","name":"情感","subCategoryVO":[{"id":"000","name":"全部"}]}),
+                json!({"id":"10001","name":"有声书","subCategoryVO":[{"id":"000","name":"全部"},{"id":"3076096","name":"文学"}]}),
+            ];
+            categories.extend([("8","脱口秀"),("2001","创作翻唱"),("10002","电音"),("11","知识"),("3001","二次元")]
+                .map(|(id,name)| json!({"id":id,"name":name,"subCategoryVO":[{"id":"000","name":"全部"}]})));
+            json!({"code":200,"data":{"parentCategoryVoList":categories}})
         }
-        "/api/dj/radio/category/radio/list" if MODE.lock().unwrap().as_str() == "audio_ranks" => {
-            assert_eq!(args["parentId"], "10001");
+        "/api/dj/radio/category/radio/list"
+            if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
+        {
             assert_eq!(args["limit"], 20);
-            match (args["subId"].as_str(), args["cursor"].as_str()) {
+            let cursor = args["cursor"].as_str();
+            let sub = args["subId"].as_str();
+            let parent = args["parentId"].as_str();
+            if parent != Some("10001") {
+                let (id, next) = match (parent, sub, cursor) {
+                    (Some("2"), Some("000"), Some("")) => (351, Some("music-next")),
+                    (Some("2"), Some("000"), Some("music-next")) => (352, None),
+                    (Some("2"), Some("3074096"), Some("")) => (353, None),
+                    (Some("0020141111"), Some("000"), Some("")) => (354, None),
+                    (Some("3" | "8" | "2001" | "10002" | "11" | "3001"), Some("000"), Some("")) => {
+                        (355, None)
+                    }
+                    _ => {
+                        return Some(Err(Error::InvalidInput(
+                            "unexpected synthetic podcast category",
+                        )));
+                    }
+                };
+                return Some(Ok(json!({"code":200,"data":{"radioList":[radio(id)],
+                    "page":{"cursor":next,"more":next.is_some()}}})));
+            }
+            match (sub, cursor) {
                 (Some("000"), Some("")) => json!({"code":200,"data":{
                     "radioList":[{"id":302,"name":"合成有声书首批","programCount":3}],
                     "page":{"cursor":"{\"internal\":\"next\"}","more":true}}}),

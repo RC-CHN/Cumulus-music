@@ -45,13 +45,13 @@ pub async fn podcast_page(
         .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn audiobook_discovery(
+pub async fn podcast_catalogue(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
-    query: AudiobookDiscoveryQuery,
-) -> Result<AccountData<AudiobookDiscovery>, ClientError> {
+    query: PodcastCatalogueQuery,
+) -> Result<AccountData<PodcastCatalogue>, ClientError> {
     client
-        .audiobook_discovery(&epoch, query)
+        .podcast_catalogue(&epoch, query)
         .await
         .map_err(Into::into)
 }

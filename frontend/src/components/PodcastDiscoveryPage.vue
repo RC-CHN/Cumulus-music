@@ -1,18 +1,26 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import type { PodcastHomeModel } from '../composables/usePodcastHome';
+import type { PodcastCatalogueModel } from '../composables/usePodcastCatalogue';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import type { EpisodeView } from '../services/podcast';
 import { time } from '../services/player';
 import Icon from './Icon.vue';
+import PodcastCategoryStrip from './PodcastCategoryStrip.vue';
 
 const props = defineProps<{
   model: PodcastHomeModel;
+  catalogue: PodcastCatalogueModel;
   playable: boolean;
   currentVoice?: string;
   playing: boolean;
 }>();
-const emit = defineEmits<{ open: [id: string]; play: [voice: EpisodeView]; settings: [] }>();
+const emit = defineEmits<{
+  open: [id: string];
+  play: [voice: EpisodeView];
+  settings: [];
+  category: [id: string];
+}>();
 const root = ref<HTMLElement>();
 const { blocks, enabled, pending, error, continuation, restart } = props.model;
 usePageEntryFocus(
@@ -20,7 +28,10 @@ usePageEntryFocus(
   () => !pending.value,
   () => true,
 );
-onMounted(() => props.model.activate());
+onMounted(() => {
+  props.model.activate();
+  void props.catalogue.loadCategories();
+});
 function scrolled() {
   const pane = root.value;
   if (
@@ -52,6 +63,7 @@ function scrolled() {
         <Icon name="refresh" />刷新
       </button>
     </header>
+    <PodcastCategoryStrip :model="catalogue" @open="(id) => emit('category', id)" />
     <div v-if="enabled === false" class="empty-state">
       <p>个性化推荐已关闭</p>
       <button class="secondary" type="button" @click="emit('settings')">前往设置</button>

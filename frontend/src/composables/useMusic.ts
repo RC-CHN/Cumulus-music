@@ -30,7 +30,7 @@ export type Page =
     }
   | { kind: 'together' }
   | { kind: 'podcasts' }
-  | { kind: 'audiobook_discovery' }
+  | { kind: 'podcast_category'; id: string }
   | { kind: 'podcast_discovery' }
   | { kind: 'local' }
   | { kind: 'daily' }
@@ -192,7 +192,7 @@ export function useMusic(
         target.kind === 'cloud' ||
         target.kind === 'mvs' ||
         target.kind === 'podcasts' ||
-        target.kind === 'audiobook_discovery' ||
+        target.kind === 'podcast_category' ||
         target.kind === 'podcast_discovery' ||
         target.kind === 'together' ||
         target.kind === 'rankings' ||

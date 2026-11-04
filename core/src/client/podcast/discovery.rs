@@ -1,11 +1,10 @@
-//! Public audiobook catalogue and scoped podcast discovery continuations.
+//! Public podcast categories and scoped discovery continuations.
 use super::{MusicClient, PodcastApi, PodcastCard, view};
 use crate::{Error, Result, client::dto::AccountData, podcast::Radio};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::VecDeque, sync::Mutex};
 
-const AUDIOBOOKS: &str = "10001";
 const PAGE_SIZE: usize = 20;
 
 #[derive(Deserialize)]
@@ -14,27 +13,35 @@ const PAGE_SIZE: usize = 20;
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
-pub enum AudiobookDiscoveryQuery {
+pub enum PodcastCatalogueQuery {
     Categories,
-    Books {
+    Radios {
+        parent_id: String,
         sub_id: String,
         continuation: Option<String>,
     },
 }
 
 #[derive(Serialize)]
-pub struct AudiobookCategory {
-    id: String,
-    label: String,
+pub struct PodcastSubcategory {
+    pub id: String,
+    pub label: String,
+}
+
+#[derive(Serialize)]
+pub struct PodcastCategory {
+    pub id: String,
+    pub label: String,
+    pub children: Vec<PodcastSubcategory>,
 }
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum AudiobookDiscovery {
+pub enum PodcastCatalogue {
     Categories {
-        categories: Vec<AudiobookCategory>,
+        categories: Vec<PodcastCategory>,
     },
-    Books {
+    Radios {
         cards: Vec<PodcastCard>,
         continuation: Option<String>,
     },
@@ -52,7 +59,7 @@ pub(in crate::client) struct PodcastDiscoveryHost(Mutex<VecDeque<Cursor>>);
 
 #[derive(PartialEq, Eq)]
 pub(super) enum DiscoveryScope {
-    Audiobooks(String),
+    Category { parent_id: String, sub_id: String },
     PodcastHome,
 }
 
@@ -102,70 +109,84 @@ impl PodcastDiscoveryHost {
     }
 }
 
-fn valid_sub_id(id: &str) -> bool {
+fn valid_category_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_digit())
 }
 
-fn categories(rows: &[Value]) -> Result<Vec<AudiobookCategory>> {
-    let category = rows
-        .iter()
-        .find(|row| row["id"] == AUDIOBOOKS)
-        .ok_or(Error::Response("audiobook category unavailable"))?;
-    let raw = category["subCategoryVO"]
-        .as_array()
-        .ok_or(Error::Response("audiobook subcategories missing"))?;
-    let mut out: Vec<AudiobookCategory> = Vec::new();
-    for row in raw.iter().take(100) {
-        let Some(id) = row["id"].as_str().filter(|id| valid_sub_id(id)) else {
+fn category_name(row: &Value) -> Option<(&str, &str)> {
+    let id = row["id"].as_str().filter(|id| valid_category_id(id))?;
+    let label = row["name"].as_str().map(str::trim).filter(|label| {
+        !label.is_empty() && label.chars().count() <= 100 && !label.chars().any(char::is_control)
+    })?;
+    Some((id, label))
+}
+
+fn categories(rows: &[Value]) -> Result<Vec<PodcastCategory>> {
+    let mut out: Vec<PodcastCategory> = Vec::new();
+    for row in rows.iter().take(100) {
+        let Some((id, label)) = category_name(row) else {
             continue;
         };
-        let Some(label) = row["name"].as_str().map(str::trim).filter(|label| {
-            !label.is_empty()
-                && label.chars().count() <= 100
-                && !label.chars().any(char::is_control)
-        }) else {
+        if out.iter().any(|category| category.id == id) {
+            continue;
+        }
+        let Some(raw) = row["subCategoryVO"].as_array() else {
             continue;
         };
-        if !out.iter().any(|category| category.id == id) {
-            out.push(AudiobookCategory {
+        let mut children: Vec<PodcastSubcategory> = Vec::new();
+        for (id, label) in raw.iter().take(100).filter_map(category_name) {
+            if !children.iter().any(|category| category.id == id) {
+                children.push(PodcastSubcategory {
+                    id: id.into(),
+                    label: label.into(),
+                });
+            }
+        }
+        if !children.is_empty() {
+            out.push(PodcastCategory {
                 id: id.into(),
                 label: label.into(),
+                children,
             });
         }
     }
     if out.is_empty() {
-        return Err(Error::Response("audiobook subcategories unavailable"));
+        return Err(Error::Response("podcast categories unavailable"));
     }
     Ok(out)
 }
 
 impl MusicClient {
-    pub async fn audiobook_discovery(
+    pub async fn podcast_catalogue(
         &self,
         epoch: &str,
-        query: AudiobookDiscoveryQuery,
-    ) -> Result<AccountData<AudiobookDiscovery>> {
+        query: PodcastCatalogueQuery,
+    ) -> Result<AccountData<PodcastCatalogue>> {
         let token = self.podcast_token(epoch)?;
         let value = match query {
-            AudiobookDiscoveryQuery::Categories => {
+            PodcastCatalogueQuery::Categories => {
                 let rows = self
                     .session
                     .run_for(&token, |api, _| async move {
                         PodcastApi::new(api).categories().await
                     })
                     .await?;
-                AudiobookDiscovery::Categories {
+                PodcastCatalogue::Categories {
                     categories: categories(&rows)?,
                 }
             }
-            AudiobookDiscoveryQuery::Books {
+            PodcastCatalogueQuery::Radios {
+                parent_id,
                 sub_id,
                 continuation,
             } => {
-                if !valid_sub_id(&sub_id) {
-                    return Err(Error::InvalidInput("invalid audiobook subcategory"));
+                if !valid_category_id(&parent_id) || !valid_category_id(&sub_id) {
+                    return Err(Error::InvalidInput("invalid podcast category"));
                 }
-                let scope = DiscoveryScope::Audiobooks(sub_id.clone());
+                let scope = DiscoveryScope::Category {
+                    parent_id: parent_id.clone(),
+                    sub_id: sub_id.clone(),
+                };
                 let cursor =
                     self.podcast_discovery
                         .resolve(epoch, &scope, continuation.as_deref())?;
@@ -173,7 +194,7 @@ impl MusicClient {
                     .session
                     .run_for(&token, |api, _| async {
                         PodcastApi::new(api)
-                            .category(AUDIOBOOKS, &sub_id, &cursor, PAGE_SIZE)
+                            .category(&parent_id, &sub_id, &cursor, PAGE_SIZE)
                             .await
                     })
                     .await?;
@@ -189,7 +210,7 @@ impl MusicClient {
                 } else {
                     None
                 };
-                AudiobookDiscovery::Books {
+                PodcastCatalogue::Radios {
                     cards,
                     continuation,
                 }

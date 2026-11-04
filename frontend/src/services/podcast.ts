@@ -91,21 +91,25 @@ export interface PodcastClient {
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }
 
-export type AudiobookDiscoveryQuery =
+export const AUDIOBOOK_CATEGORY = '10001';
+export type PodcastCatalogueQuery =
   | { kind: 'categories' }
-  | { kind: 'books'; subId: string; continuation?: string };
-export interface AudiobookCategory {
+  | { kind: 'radios'; parentId: string; subId: string; continuation?: string };
+export interface PodcastSubcategory {
   id: string;
   label: string;
 }
-export type AudiobookDiscovery =
-  | { kind: 'categories'; categories: AudiobookCategory[] }
-  | { kind: 'books'; cards: PodcastCard[]; continuation: string | null };
-export interface AudiobookDiscoveryClient {
-  audiobookDiscovery(
+export interface PodcastCategory extends PodcastSubcategory {
+  children: PodcastSubcategory[];
+}
+export type PodcastCatalogue =
+  | { kind: 'categories'; categories: PodcastCategory[] }
+  | { kind: 'radios'; cards: PodcastCard[]; continuation: string | null };
+export interface PodcastCatalogueClient {
+  podcastCatalogue(
     epoch: string,
-    query: AudiobookDiscoveryQuery,
-  ): Promise<AccountData<AudiobookDiscovery>>;
+    query: PodcastCatalogueQuery,
+  ): Promise<AccountData<PodcastCatalogue>>;
 }
 
 export type PodcastHomeBlock =

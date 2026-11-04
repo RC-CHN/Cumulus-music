@@ -111,7 +111,7 @@ import {
 } from './services/commentResource';
 import LocalPage from './components/LocalPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
-import AudiobookDiscoveryPage from './components/AudiobookDiscoveryPage.vue';
+import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
 import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
 import RankingsPage from './components/RankingsPage.vue';
@@ -126,9 +126,9 @@ import { useRankings } from './composables/useRankings';
 import { rankingQueryKey, type RankingQuery } from './services/rankings';
 import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
-import { useAudiobookDiscovery } from './composables/useAudiobookDiscovery';
+import { usePodcastCatalogue } from './composables/usePodcastCatalogue';
 import { usePodcastHome } from './composables/usePodcastHome';
-import type { PodcastScope } from './services/podcast';
+import { AUDIOBOOK_CATEGORY, type PodcastScope } from './services/podcast';
 import {
   failure,
   type PlaylistView,
@@ -597,7 +597,7 @@ watch(
 const podcasts = usePodcasts(undefined, () => {
   void music.bootstrap(false);
 });
-const audiobookDiscovery = useAudiobookDiscovery(
+const podcastCatalogue = usePodcastCatalogue(
   () => music.account.value,
   () => {
     void music.bootstrap(false);
@@ -2204,9 +2204,11 @@ onUnmounted(() => {
         @radio="openSearchChartRadio"
         @discover="
           (target) =>
-            music.navigate({
-              kind: target === 'podcasts' ? 'podcast_discovery' : 'audiobook_discovery',
-            })
+            music.navigate(
+              target === 'podcasts'
+                ? { kind: 'podcast_discovery' }
+                : { kind: 'podcast_category', id: AUDIOBOOK_CATEGORY },
+            )
         "
         @search="
           (word, channel, displayKeyword) =>
@@ -2631,20 +2633,24 @@ onUnmounted(() => {
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
               />
-              <AudiobookDiscoveryPage
-                v-else-if="page.kind === 'audiobook_discovery'"
-                :model="audiobookDiscovery"
+              <PodcastCataloguePage
+                v-else-if="page.kind === 'podcast_category'"
+                :model="podcastCatalogue"
+                :parent-id="page.id"
                 @open="openSceneRadio"
+                @parent="(id) => music.replace({ kind: 'podcast_category', id })"
               />
               <PodcastDiscoveryPage
                 v-else-if="page.kind === 'podcast_discovery'"
                 :model="podcastHome"
+                :catalogue="podcastCatalogue"
                 :playable="player.ready.value && !player.busy.value"
                 :current-voice="currentVoiceId"
                 :playing="player.playing.value"
                 @open="openSceneRadio"
                 @play="(voice) => playSearchCard({ kind: 'voice', voice })"
                 @settings="music.navigate({ kind: 'settings' })"
+                @category="(id) => music.navigate({ kind: 'podcast_category', id })"
               />
               <PlaylistCreatorPage
                 v-else-if="page.kind === 'playlist_creator'"
