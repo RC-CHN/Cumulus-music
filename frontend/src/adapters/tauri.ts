@@ -32,6 +32,7 @@ export function createTauriClient(): CoreClient {
       invoke('effect_peq_activate', { epoch, id, attempt }),
     effectPeqResume: (epoch, id, release) =>
       invoke('effect_peq_activate', { epoch, id, attempt: release, resumeExisting: true }),
+    effectPeqPause: (epoch, id, release) => invoke('effect_peq_pause', { epoch, id, release }),
     effectPeqStop: (epoch, id, release, retryUnknown) =>
       invoke('effect_peq_stop', { epoch, id, release, retryUnknown }),
     effectPeqReconcile: (epoch, id) => invoke('effect_peq_reconcile', { epoch, id }),

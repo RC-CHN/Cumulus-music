@@ -29,6 +29,7 @@ export type EffectPeqPhase =
   | 'unsupported'
   | 'configured'
   | 'deferred'
+  | 'paused_locally'
   | 'recovery_required';
 
 export type EffectRegistration =
@@ -54,6 +55,7 @@ export interface EffectPeqView {
   registration: EffectRegistration | null;
   canStop: boolean;
   canResume?: boolean;
+  canPause?: boolean;
   stopNeedsRetry: boolean;
   activeId?: number | null;
   issue?: string | null;
@@ -70,6 +72,7 @@ export interface EffectDirectoryClient {
   effectPeqPrepare(epoch: string, id: number): Promise<EffectPeqView>;
   effectPeqActivate(epoch: string, id: number, attempt: string): Promise<EffectPeqView>;
   effectPeqResume(epoch: string, id: number, release: string): Promise<EffectPeqView>;
+  effectPeqPause(epoch: string, id: number, release: string): Promise<EffectPeqView>;
   effectPeqStop(
     epoch: string,
     id: number,

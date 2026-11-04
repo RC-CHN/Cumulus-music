@@ -51,6 +51,7 @@ enum Phase {
     Unsupported,
     Configured,
     Deferred,
+    PausedLocally,
     RecoveryRequired,
 }
 
@@ -64,6 +65,7 @@ pub struct View {
     release: Option<String>,
     can_stop: bool,
     can_resume: bool,
+    can_pause: bool,
     stop_needs_retry: bool,
     active_id: Option<EffectId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -93,6 +95,7 @@ struct State {
     work: Option<(EffectId, Work)>,
     release: Option<StopTicket>,
     issue: Option<(EffectId, &'static str)>,
+    local_pause: Option<EffectId>,
     next: u64,
 }
 
@@ -103,6 +106,7 @@ impl State {
             self.work = None;
             self.release = None;
             self.issue = None;
+            self.local_pause = None;
         }
     }
 
@@ -161,6 +165,7 @@ impl State {
         };
         let mut attempt_ticket = None;
         let mut can_resume = can_release && registration == Some(LeasePhase::Registered);
+        let mut can_pause = false;
         if let Some((_, work)) = self.work.as_ref().filter(|(owner, _)| *owner == id) {
             match work {
                 Work::Preparing if !can_release => phase = Phase::Preparing,
@@ -175,6 +180,10 @@ impl State {
                             .inspect_native_bound_parametric(epoch, target)
                             .await?;
                         can_resume = status == ParametricBindingStatus::Absent;
+                        can_pause = matches!(
+                            status,
+                            ParametricBindingStatus::Configured | ParametricBindingStatus::Deferred
+                        );
                         phase = match status {
                             ParametricBindingStatus::Configured => Phase::Configured,
                             ParametricBindingStatus::Deferred => Phase::Deferred,
@@ -193,6 +202,11 @@ impl State {
                 .first()
                 .map(|entry| entry.id),
         };
+        if self.local_pause == Some(id) && can_resume && active_id == Some(id) {
+            phase = Phase::PausedLocally;
+        } else if self.local_pause == Some(id) && (can_pause || !can_release) {
+            self.local_pause = None;
+        }
         client.validate_player_epoch(epoch)?;
         Ok(View {
             id,
@@ -201,6 +215,7 @@ impl State {
             registration,
             can_stop: release.is_some(),
             can_resume: can_resume && release.is_some() && active_id == Some(id),
+            can_pause: can_pause && release.is_some() && active_id == Some(id),
             release,
             stop_needs_retry: stop_needs_retry(registration),
             active_id,
@@ -446,6 +461,57 @@ async fn resume_registered(
     state.view(client, epoch, id, true).await
 }
 
+/// Remove the exact local binding while retaining its acknowledged registration.
+/// This does not contact the service or advance the current playback selection.
+#[tauri::command]
+pub async fn effect_peq_pause<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    host: tauri::State<'_, Host>,
+    epoch: String,
+    id: EffectId,
+    release: String,
+) -> std::result::Result<View, ClientError> {
+    authorize(&window, &client, &epoch)?;
+    let mut state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
+    state.select_epoch(&epoch);
+    if !state.release.as_ref().is_some_and(|entry| {
+        entry.ticket == release
+            && entry.receipt.effect() == id
+            && entry.receipt.phase() == LeasePhase::Registered
+    }) {
+        return Err(Error::StaleResponse.into());
+    }
+    let target = state
+        .work
+        .as_ref()
+        .and_then(|(owner, work)| match work {
+            Work::Submitted { attempt } if *owner == id => attempt.submitted_target(),
+            _ => None,
+        })
+        .ok_or(Error::StaleResponse)?;
+    if !matches!(
+        client
+            .inspect_native_bound_parametric(&epoch, target)
+            .await?,
+        ParametricBindingStatus::Configured | ParametricBindingStatus::Deferred
+    ) {
+        return Err(Error::StaleResponse.into());
+    }
+    state.issue = None;
+    let result = client.clear_native_bound_parametric(&epoch, target).await;
+    client.validate_player_epoch(&epoch)?;
+    match result {
+        Ok(ParametricApplication::Cleared) => state.local_pause = Some(id),
+        Ok(_) => state.note(id, Error::State("PEQ detach was not confirmed")),
+        Err(error) => state.note(id, error),
+    }
+    state
+        .view(&client, &epoch, id, true)
+        .await
+        .map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn effect_peq_stop<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
@@ -501,6 +567,9 @@ pub async fn effect_peq_stop<R: tauri::Runtime>(
     }
     if state.work.as_ref().is_some_and(|(owner, _)| *owner == id) {
         state.work = None;
+    }
+    if state.local_pause == Some(id) {
+        state.local_pause = None;
     }
     state.issue = None;
     let policy = if retry {

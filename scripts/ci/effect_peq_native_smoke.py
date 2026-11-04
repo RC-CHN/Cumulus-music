@@ -19,16 +19,19 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--player-stop', action='store_true', help='stop ordinary playback before explicit PEQ cleanup')
     mode.add_argument('--resume-after-stop', action='store_true', help='resume the exact old PEQ registration')
+    mode.add_argument('--pause-local', action='store_true', help='pause and resume PEQ without interrupting playback')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_peq_native_ui_probe.js'
     player_stop = args.player_stop or args.resume_after_stop
-    if player_stop:
-        script = root / 'player-stop.js'
-        script.write_text('window.__cumulusPeqPlayerStop = true;\n' +
+    retained_registration = args.resume_after_stop or args.pause_local
+    if player_stop or args.pause_local:
+        script = root / 'scenario.js'
+        script.write_text(('window.__cumulusPeqPlayerStop = true;\n' if player_stop else '') +
                           ('window.__cumulusPeqResume = true;\n' if args.resume_after_stop else '') +
+                          ('window.__cumulusPeqPauseLocal = true;\n' if args.pause_local else '') +
                           source.read_text(encoding='utf-8'),
                           encoding='utf-8')
         source = script
@@ -54,14 +57,20 @@ def main():
         return json.loads((output / (name + '.json')).read_text(encoding='utf-8'))
 
     complete = read('complete')
-    stages = 4 if player_stop else 5
+    stages = 4 if player_stop or args.pause_local else 5
     assert complete['ok'] and complete['stageCount'] == stages
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
     assert prepared['materialGets'] == 1 and prepared['starts'] == prepared['attaches'] == 0
     assert configured['starts'] == configured['attaches'] == 1 and configured['nativeAttached']
     assert configured['processedSamples'] > 0 and configured['failedBlocks'] == 0
-    if player_stop:
+    if args.pause_local:
+        assert complete['localPauseVerified']
+        paused = read('ux_03_paused_locally')['nativePeq']
+        assert paused['stops'] == 0 and paused['detaches'] == 1
+        assert not paused['nativeAttached'] and paused['calls'] == configured['calls']
+        final = read('ux_04_resumed_locally')['nativePeq']
+    elif player_stop:
         player_stopped = read('ux_03_player_stopped')['nativePeq']
         assert player_stopped['stops'] == 0 and player_stopped['detaches'] == 1
         assert not player_stopped['nativeAttached'] and player_stopped['calls'] == configured['calls']
@@ -83,7 +92,7 @@ def main():
             {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
         ]
         assert reconciled == uncertain
-    if args.resume_after_stop:
+    if retained_registration:
         # A running filter keeps processing between the capture and completion.
         active = complete['nativePeq']
         assert active['processedSamples'] > final['processedSamples']
@@ -97,7 +106,7 @@ def main():
     assert final['failedBlocks'] == 0
     writes = [call for call in final['calls'] if call['path'].endswith(('/set', '/stop'))]
     initial_write = {'path': '/api/vipauth/app/interests/auth/set', 'result': 'ack'}
-    if args.resume_after_stop:
+    if retained_registration:
         assert final['attaches'] == 2 and final['stops'] == 0 and final['nativeAttached']
         assert final['processedSamples'] > 0 and writes == [initial_write]
     else:
@@ -115,7 +124,7 @@ def main():
         '/api/vipauth/app/interests/auth/query', '/api/vipauth/app/interests/auth/query',
         '/api/vipauth/app/interests/recyclequery',
     ]
-    if args.resume_after_stop:
+    if retained_registration:
         reads += [
             '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
             '/api/vipauth/app/interests/auth/query', '/api/vipauth/app/interests/recyclequery',
@@ -134,10 +143,12 @@ def main():
     assert len(rows) == 1 and rows[0][:2] == ('2', '300')
     lease = json.loads(rows[0][2])
     assert lease['start_acknowledged']
-    assert lease['phase'] == ('registered' if args.resume_after_stop else 'released')
-    assert lease['stop_acknowledged'] is not args.resume_after_stop
+    assert lease['phase'] == ('registered' if retained_registration else 'released')
+    assert lease['stop_acknowledged'] is not retained_registration
     assert len(list(output.glob('ux_*.png'))) == (stages if args.screenshots else 0)
-    if args.resume_after_stop:
+    if args.pause_local:
+        checks = {'localPauseVerified': True}
+    elif args.resume_after_stop:
         checks = {'resumedRegistrationVerified': True}
     elif args.player_stop:
         checks = {'playerStopStatusVerified': True}
@@ -145,7 +156,7 @@ def main():
         checks = {'scopedBypassVerified': True, 'lateStopVerified': True}
     print(json.dumps(dict(ok=True, actualWebView=True, actualNativePcm=True, nullOutput=True,
                           processedSamples=final['processedSamples'], syntheticStarts=1,
-                          syntheticStops=final['stops'], durableReleased=not args.resume_after_stop,
+                          syntheticStops=final['stops'], durableReleased=not retained_registration,
                           realAccountWrites=0, **checks)))
 
 

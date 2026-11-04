@@ -31,6 +31,7 @@ const labels: Record<EffectPeqPhase, string> = {
   unsupported: '此音效不支持作为独立参数均衡组件启用',
   configured: '播放器已确认配置独立参数均衡',
   deferred: '等待音频加载后应用',
+  paused_locally: '本机音效已暂停，登记仍保留。',
   recovery_required: '此音效有待处理的登记或本地状态',
 };
 const another = computed(() => !!view.value?.activeId && view.value.activeId !== props.effectId);
@@ -113,7 +114,13 @@ watch(
   () => props.bindingStatus,
   () => {
     const phase = view.value?.phase;
-    if (phase !== 'configured' && phase !== 'deferred' && phase !== 'recovery_required') return;
+    if (
+      phase !== 'configured' &&
+      phase !== 'deferred' &&
+      phase !== 'paused_locally' &&
+      phase !== 'recovery_required'
+    )
+      return;
     // The player projection is not a receipt for this exact effect. Re-read
     // the selected binding locally after its native state changes.
     bindingRefreshPending = true;
@@ -165,10 +172,15 @@ function activate() {
   if (mayActivate.value && attempt)
     void run(() => core.effectPeqActivate(props.epoch, props.effectId, attempt), true);
 }
-function resume() {
+function switchLocal(event: MouseEvent) {
   const state = view.value;
-  if (!another.value && state?.canResume && state.release)
-    void run(() => core.effectPeqResume(props.epoch, props.effectId, state.release!), true);
+  const release = state?.release;
+  if (another.value || !release || !state) return;
+  const displayed = (event.currentTarget as HTMLButtonElement).dataset.peqAction;
+  if (displayed === 'pause' && state.canPause)
+    void run(() => core.effectPeqPause(props.epoch, props.effectId, release));
+  else if (displayed === 'resume' && state.canResume)
+    void run(() => core.effectPeqResume(props.epoch, props.effectId, release), true);
 }
 async function stop() {
   const state = view.value;
@@ -229,13 +241,13 @@ onBeforeUnmount(() => {
         启用独立参数均衡
       </button>
       <button
-        v-if="!another && view?.canResume && !confirmation"
+        v-if="!another && (view?.canPause || view?.canResume) && !confirmation"
         type="button"
-        data-peq-action="resume"
+        :data-peq-action="view?.canPause ? 'pause' : 'resume'"
         :aria-disabled="busy"
-        @click="resume"
+        @click="switchLocal"
       >
-        恢复独立参数均衡
+        {{ view?.canPause ? '暂停本机音效' : '恢复独立参数均衡' }}
       </button>
       <button
         v-if="view?.canStop && !confirmation"

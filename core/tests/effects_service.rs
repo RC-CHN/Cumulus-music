@@ -1450,22 +1450,29 @@ async fn active_peq_observation_keeps_playing_during_reads_and_detaches_on_remot
 
 #[tokio::test]
 async fn bound_parametric_clear_cannot_remove_a_newer_binding_or_release_rights() {
-    exercise_bound_parametric_clear(false).await;
+    exercise_bound_parametric_clear(false, false).await;
 }
 
 #[tokio::test]
 async fn failed_bound_detach_retains_its_target_and_exclusive_use_fence() {
-    exercise_bound_parametric_clear(true).await;
+    exercise_bound_parametric_clear(true, false).await;
 }
 
-async fn exercise_bound_parametric_clear(inject_failure: bool) {
+#[tokio::test]
+async fn deferred_bound_parametric_can_be_paused_before_the_decoder_returns() {
+    exercise_bound_parametric_clear(false, true).await;
+}
+
+async fn exercise_bound_parametric_clear(inject_failure: bool, deferred: bool) {
     use cumulus_core::{
         effects::{
             authorization::{EffectAuthorizations, TrialConsent},
             service::ParametricPreparation,
         },
         playback::{
-            controller::{ParametricApplication, PlaybackController, PlaybackStatus},
+            controller::{
+                ParametricApplication, ParametricBindingStatus, PlaybackController, PlaybackStatus,
+            },
             source::SourceResolver,
         },
     };
@@ -1532,6 +1539,53 @@ async fn exercise_bound_parametric_clear(inject_failure: bool) {
         playback_support::audio_engine(device.clone()),
     )
     .unwrap();
+    if deferred {
+        use std::time::Duration;
+        device.hold_load.store(true, Ordering::SeqCst);
+        let loading = player.command(&token, playback_support::replace(&[1]));
+        let pause = async {
+            tokio::time::timeout(Duration::from_secs(4), device.started.notified())
+                .await
+                .unwrap();
+            assert_eq!(
+                player
+                    .apply_bound_parametric(&token, binding)
+                    .await
+                    .unwrap(),
+                ParametricApplication::DeferredUntilLoaded
+            );
+            assert_eq!(
+                player
+                    .inspect_bound_parametric(&token, target)
+                    .await
+                    .unwrap(),
+                ParametricBindingStatus::Deferred
+            );
+            let calls = api.calls().len();
+            assert_eq!(
+                player.clear_bound_parametric(&token, target).await.unwrap(),
+                ParametricApplication::Cleared
+            );
+            assert_eq!(
+                player
+                    .inspect_bound_parametric(&token, target)
+                    .await
+                    .unwrap(),
+                ParametricBindingStatus::Absent
+            );
+            assert_eq!(api.calls().len(), calls);
+            assert!(authorization.acquire_bound_use_fence_for(&token).is_ok());
+            device.hold_load.store(false, Ordering::SeqCst);
+        };
+        let (playback, ()) = tokio::time::timeout(Duration::from_secs(8), async {
+            tokio::join!(loading, pause)
+        })
+        .await
+        .unwrap();
+        assert_eq!(playback.unwrap().state, PlaybackStatus::Playing);
+        assert_eq!(*device.parametric_at_unpause.lock().unwrap(), [false]);
+        return;
+    }
     let playing = player
         .command(&token, playback_support::replace(&[1]))
         .await

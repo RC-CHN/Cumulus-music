@@ -69,6 +69,44 @@
     }, 'same native playback advances through PEQ');
     await capture('02_configured');
 
+    if (window.__cumulusPeqPauseLocal) {
+      stage = 'pause-local';
+      const selection = { epoch, id: 300 };
+      const active = await invoke('effect_peq_status', selection);
+      assert(active.canPause && active.release && !active.canResume, 'active binding must have a local pause receipt');
+      click(await wait(() => enabled(action('pause')), 'local pause control'));
+      await wait(() => phase('paused_locally') && enabled(action('resume')) &&
+        controls().textContent.includes('登记仍保留'), 'local pause receipt and restore control');
+      const paused = await player();
+      await wait(async () => {
+        const current = await player();
+        return !current.boundParametric && current.state === 'playing' && current.playId === baseline.playId &&
+          current.entryId === baseline.entryId && current.position > paused.position + 0.25;
+      }, 'the same song keeps advancing with the native filter removed');
+      assert(document.activeElement === action('resume'), 'local switch should retain keyboard focus');
+      await capture('03_paused_locally');
+
+      stage = 'resume-local';
+      click(action('resume'));
+      await wait(() => phase('configured') && enabled(action('pause')), 'the same registration is mounted again');
+      let stale;
+      try {
+        await invoke('effect_peq_pause', { ...selection, release: active.release });
+      } catch (error) { stale = error; }
+      assert(stale?.code === 'stale', 'the old receipt must not pause the new binding');
+      const resumed = await player();
+      await wait(async () => {
+        const current = await player();
+        return current.boundParametric === 'configured' && current.state === 'playing' &&
+          current.playId === baseline.playId && current.entryId === baseline.entryId &&
+          current.position > resumed.position + 0.25;
+      }, 'the same song keeps advancing after native PEQ restore');
+      assert(document.activeElement === action('pause'), 'resuming retains keyboard focus');
+      await capture('04_resumed_locally');
+      await emit('complete', { ok: true, stageCount: 4, localPauseVerified: true });
+      return;
+    }
+
     if (window.__cumulusPeqPlayerStop) {
       const selectedEffect = { epoch, id: 300 };
       if (window.__cumulusPeqResume) {

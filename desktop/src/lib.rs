@@ -205,6 +205,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 effect_activation::effect_peq_reconcile,
                 effect_activation::effect_peq_prepare,
                 effect_activation::effect_peq_activate,
+                effect_activation::effect_peq_pause,
                 effect_activation::effect_peq_stop,
                 effects::effect_catalogue,
                 effects::effect_detail,
