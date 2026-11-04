@@ -31,7 +31,8 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::{
     fs,
-    path::PathBuf,
+    io::Write,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
@@ -42,6 +43,13 @@ use tauri::{Listener, Manager, webview::PageLoadEvent};
 const OWNER: &str = "local-device";
 const KIND: &str = "playback-power-v1";
 const KEY: &str = "enabled";
+
+fn save_report(path: &Path, report: &Value) {
+    let mut file = fs::File::create(path).unwrap();
+    file.write_all(&serde_json::to_vec_pretty(report).unwrap())
+        .unwrap();
+    file.sync_all().unwrap();
+}
 
 struct Library {
     media: relay_fixture::Library,
@@ -214,11 +222,22 @@ fn main() {
                     value["powerRequests"] = json!(sink.observations());
                     value["devicePreference"] = json!(store.get(OWNER, KIND, KEY).unwrap());
                     value["experimentReads"] = json!(library.experiment_reads.load(Ordering::Relaxed));
-                    fs::write(output.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                    save_report(&output.join(format!("{stage}.json")), &value);
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" { 0 } else { 1 });
-                    } else {
-                        capture_ack::acknowledge(&handle, &output, &stage, value["captureHandshake"] == true).await;
+                    } else if capture_ack::acknowledge(&handle, &output, &stage, value["captureHandshake"] == true).await {
+                        // The event invocation does not wait for this native
+                        // snapshot. Release the next fixture action only after
+                        // the evidence, and any requested PNG, are saved.
+                        let acknowledged = handle.get_webview_window("main").is_some_and(|window| {
+                            window.eval(format!("window.__powerStageAck={};", json!(stage))).is_ok()
+                        });
+                        if !acknowledged {
+                            save_report(&output.join("failed.json"), &json!({
+                                "ok":false, "stage":stage, "error":"native stage acknowledgement failed"
+                            }));
+                            handle.exit(1);
+                        }
                     }
                 });
             });

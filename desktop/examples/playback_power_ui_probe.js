@@ -60,11 +60,13 @@
     assert(one('.settings-scroll').getBoundingClientRect().bottom <=
       bar().getBoundingClientRect().top + 1, 'settings do not overlap the player');
     const stage = 'ux_' + String(++stageCount).padStart(2, '0') + '_' + label;
+    window.__powerStageAck = null;
     await emit(stage, {
       phase, width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme,
       visible: !!option(), checked: option()?.checked ?? null, status: status(), error: error(),
       focus: document.activeElement?.getAttribute('name') || document.activeElement?.getAttribute('aria-label'),
     });
+    await wait(() => window.__powerStageAck === stage, 'native evidence saved for ' + stage);
   }
   async function toggle(enabled, request, label) {
     const before = await requests();
