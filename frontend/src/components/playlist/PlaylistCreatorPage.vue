@@ -181,8 +181,12 @@ function open(id: string) {
               <Icon name="list" />
             </span>
             <span class="library-card-copy">
-              <span class="card-title">{{ rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}</span>
-              <small v-if="rankEntry.listenSongs !== null">累计听歌{{ rankEntry.listenSongs }}首</small>
+              <span class="card-title">{{
+                rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行'
+              }}</span>
+              <small v-if="rankEntry.listenSongs !== null"
+                >累计听歌{{ rankEntry.listenSongs }}首</small
+              >
             </span>
           </button>
           <button
