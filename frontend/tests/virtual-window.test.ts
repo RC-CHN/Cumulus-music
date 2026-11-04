@@ -1,6 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { centeredRowTop, rowWindow } from '../src/services/virtualWindow.ts';
+import {
+  centeredRowTop,
+  rowBoundary,
+  rowExtent,
+  rowTop,
+  rowWindow,
+} from '../src/services/virtualWindow.ts';
 
 test('large lists stay bounded and cover forward, reverse and jump scrolling', () => {
   let previous;
@@ -41,4 +47,29 @@ test('a centered jump brings an unmounted playing row into the bounded window', 
   assert.equal(centeredRowTop(0, count, height, viewport), 0);
   assert.equal(centeredRowTop(999, count, height, viewport), count * height - viewport);
   assert.equal(centeredRowTop(1000, count, height, viewport), null);
+});
+
+test('one 74px separator row preserves window boundaries, centering and pointer drop slots', () => {
+  const expansion = { index: 50, extra: 10 };
+  const count = 100;
+  const height = 64;
+  const top = 50 * height;
+  assert.equal(rowTop(50, height, expansion), top);
+  assert.equal(rowExtent(50, height, expansion), 74);
+  assert.equal(rowTop(51, height, expansion), top + 74);
+  assert.equal(rowTop(100, height, expansion), 6410);
+  assert.equal(rowBoundary(top + 36, count, height, expansion), 50);
+  assert.equal(rowBoundary(top + 37, count, height, expansion), 51);
+  assert.equal(rowBoundary(top + 74 + 31, count, height, expansion), 51);
+  assert.equal(rowBoundary(top + 74 + 32, count, height, expansion), 52);
+  assert.deepEqual(rowWindow(count, height, 64, top + 73, undefined, 0, expansion), {
+    start: 50,
+    end: 52,
+  });
+  assert.deepEqual(rowWindow(count, height, 64, top + 74, undefined, 0, expansion), {
+    start: 51,
+    end: 52,
+  });
+  assert.equal(centeredRowTop(50, count, height, 200, expansion), top + 37 - 100);
+  assert.equal(centeredRowTop(99, count, height, 200, expansion), 6210);
 });

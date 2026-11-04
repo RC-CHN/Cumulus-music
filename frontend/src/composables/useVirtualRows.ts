@@ -1,15 +1,18 @@
 import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
-import { centeredRowTop, rowWindow } from '../services/virtualWindow';
+import { centeredRowTop, rowTop, rowWindow, type RowExpansion } from '../services/virtualWindow';
 
 /** Native passive scrolling; Vue only receives changes to the buffered row range. */
 export function useVirtualRows(
   count: () => number,
   rowHeight: number | (() => number),
   buffer = 8,
+  expansion: () => RowExpansion | undefined = () => undefined,
 ) {
   const getRowHeight = () => (typeof rowHeight === 'number' ? rowHeight : rowHeight());
   const container = ref<HTMLElement>();
-  const range = shallowRef(rowWindow(count(), getRowHeight(), 500, 0, undefined, buffer));
+  const range = shallowRef(
+    rowWindow(count(), getRowHeight(), 500, 0, undefined, buffer, expansion()),
+  );
   let height = 500;
   let frame: number | undefined;
   let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -29,6 +32,7 @@ export function useVirtualRows(
       container.value?.scrollTop ?? 0,
       range.value,
       buffer,
+      expansion(),
     );
   }
   function onScroll() {
@@ -41,7 +45,7 @@ export function useVirtualRows(
   function reset() {
     cancelUpdate();
     if (container.value) container.value.scrollTop = 0;
-    range.value = rowWindow(count(), getRowHeight(), height, 0, undefined, buffer);
+    range.value = rowWindow(count(), getRowHeight(), height, 0, undefined, buffer, expansion());
   }
   function restore(top: number) {
     const element = container.value;
@@ -53,7 +57,7 @@ export function useVirtualRows(
   function center(index: number) {
     const element = container.value;
     if (!element) return false;
-    const top = centeredRowTop(index, count(), getRowHeight(), element.clientHeight);
+    const top = centeredRowTop(index, count(), getRowHeight(), element.clientHeight, expansion());
     if (top === null) return false;
     element.scrollTop = top;
     height = element.clientHeight;
@@ -76,13 +80,13 @@ export function useVirtualRows(
     { flush: 'post' },
   );
   watch(
-    [count, getRowHeight],
+    [count, getRowHeight, expansion],
     () => {
       const element = container.value;
       if (element)
         element.scrollTop = Math.min(
           element.scrollTop,
-          Math.max(0, count() * getRowHeight() - height),
+          Math.max(0, rowTop(count(), getRowHeight(), expansion()) - height),
         );
       // Shrinking lists must not retain an out-of-bounds buffer.
       range.value = rowWindow(
@@ -92,6 +96,7 @@ export function useVirtualRows(
         element?.scrollTop ?? 0,
         undefined,
         buffer,
+        expansion(),
       );
     },
     { flush: 'post' },
