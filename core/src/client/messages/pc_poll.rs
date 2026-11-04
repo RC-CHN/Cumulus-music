@@ -1,5 +1,5 @@
-//! Native executor for M/236's playlist count poller. M/119 connectivity
-//! remains a separate opt-in mode; desktop production starts counts only.
+//! Native M/236 playlist count poller. M/119 can be attached for the lifetime
+//! of a verified desktop document without replacing the one count schedule.
 use super::{MessageCounts, MusicClient, read_counts};
 use crate::{
     Error, Result,
@@ -49,6 +49,7 @@ pub struct PcMessageConnectivityView {
 
 enum Command {
     Local(Signal),
+    BrowserNotification(u64, bool),
     Request(u64, PcRequestObservation),
     DrawerVisible(u64, bool),
     RefreshCounts(u64),
@@ -58,6 +59,7 @@ enum Command {
 /// There is no IPC operation that feeds arbitrary transport errors into it.
 pub struct PcMessageConnectivity {
     tx: mpsc::Sender<Command>,
+    browser: watch::Sender<(u64, Option<bool>)>,
     view: watch::Receiver<PcMessageConnectivityView>,
     actor: Option<JoinHandle<()>>,
 }
@@ -107,10 +109,12 @@ impl PcMessageConnectivity {
             count_read_in_flight: false,
         };
         let (tx, rx) = mpsc::channel(32);
+        let (browser, browser_lifecycle) = watch::channel((0, initial_navigator_online));
         let (publisher, view) = watch::channel(initial.clone());
         let mut state = State {
             session,
             token,
+            browser_generation: 0,
             navigator: initial_navigator_online.unwrap_or(false),
             connectivity: initial_navigator_online
                 .map(|online| PcConnectivity::new(online, Duration::ZERO)),
@@ -122,10 +126,11 @@ impl PcMessageConnectivity {
         state.rearm(Duration::ZERO);
         let actor = runtime.spawn(async move {
             let _lease = lease;
-            state.run(accounts, rx, publisher).await;
+            state.run(accounts, browser_lifecycle, rx, publisher).await;
         });
         Ok(Self {
             tx,
+            browser,
             view,
             actor: Some(actor),
         })
@@ -143,6 +148,32 @@ impl PcMessageConnectivity {
     pub async fn observe_browser(&self, online: bool) -> Result<()> {
         self.send(Command::Local(Signal::BrowserNotification { online }))
             .await
+    }
+
+    /// Attach an initial browser sample, or detach and discard only its
+    /// connectivity timers. The message-count timer is never replaced here.
+    pub fn try_browser_lifecycle(&self, initial: Option<bool>) -> Result<()> {
+        if self.browser.is_closed() {
+            return Err(Error::Cancelled);
+        }
+        // Lifecycle is independent of the bounded notification mailbox. A
+        // retiring document can always revoke its timers before the next tick.
+        let mut result = Err(Error::State("browser generation exhausted"));
+        self.browser.send_if_modified(|(generation, sample)| {
+            let Some(next) = generation.checked_add(1) else {
+                return false;
+            };
+            *generation = next;
+            *sample = initial;
+            result = Ok(());
+            true
+        });
+        result
+    }
+
+    pub fn try_observe_browser(&self, online: bool) -> Result<()> {
+        let generation = self.browser.borrow().0;
+        self.try_send(Command::BrowserNotification(generation, online))
     }
 
     pub async fn observe_request(
@@ -207,6 +238,7 @@ type InFlight = Pin<Box<dyn Future<Output = ReadResult> + Send>>;
 struct State {
     session: Arc<AccountSession>,
     token: SessionToken,
+    browser_generation: u64,
     navigator: bool,
     connectivity: Option<PcConnectivity>,
     drawer: bool,
@@ -219,6 +251,7 @@ impl State {
     async fn run(
         mut self,
         mut accounts: watch::Receiver<SessionToken>,
+        mut browser: watch::Receiver<(u64, Option<bool>)>,
         mut commands: mpsc::Receiver<Command>,
         publisher: watch::Sender<PcMessageConnectivityView>,
     ) {
@@ -239,10 +272,23 @@ impl State {
                     if changed.is_err() { break; }
                     self.bind(accounts.borrow_and_update().clone(), start.elapsed());
                 }
+                changed = browser.changed() => {
+                    if changed.is_err() { break; }
+                    let (generation, initial) = *browser.borrow_and_update();
+                    self.browser_generation = generation;
+                    self.navigator = initial.unwrap_or(false);
+                    self.view.online = self.navigator;
+                    self.connectivity = initial.map(|online| PcConnectivity::new(online, start.elapsed()));
+                }
                 () = wait_for_timer(wake.map(|offset| start + offset)) => self.timer(start.elapsed()),
                 result = wait_for_read(&mut self.read) => self.finish(result, start.elapsed()),
                 command = commands.recv() => match command {
                     Some(Command::Local(signal)) => self.observe(signal, start.elapsed()),
+                    Some(Command::BrowserNotification(generation, online))
+                        if generation == self.browser_generation && self.connectivity.is_some() =>
+                    {
+                        self.observe(Signal::BrowserNotification { online }, start.elapsed());
+                    }
                     Some(Command::Request(generation, observation))
                         if generation == self.token.generation && self.session.check_generation(&self.token).is_ok() =>
                     {

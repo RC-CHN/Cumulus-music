@@ -350,3 +350,67 @@ async fn production_count_only_mode_ignores_connectivity_and_tracks_read_in_flig
     assert_eq!(f.api.times(), [0, 5001]);
     host.shutdown().await;
 }
+
+#[tokio::test(start_paused = true)]
+async fn browser_document_detach_cancels_only_its_probe_and_new_document_reuses_count_timer() {
+    let f = Fixture::new(true);
+    let host = f.client.start_pc_message_count_polling().unwrap();
+    let view = host.subscribe();
+    settle().await;
+    assert_eq!(f.api.times(), [0]);
+    host.try_browser_lifecycle(Some(false)).unwrap();
+    host.try_observe_browser(true).unwrap();
+    settle().await;
+    assert!(!view.borrow().online);
+    step(500).await;
+    host.try_browser_lifecycle(None).unwrap();
+    settle().await;
+    step(501).await;
+    assert_eq!(f.api.times(), [0], "replaced document's probe was canceled");
+    host.try_browser_lifecycle(Some(false)).unwrap();
+    host.try_observe_browser(true).unwrap();
+    settle().await;
+    step(999).await;
+    assert_eq!(f.api.times(), [0]);
+    step(1).await;
+    assert_eq!(f.api.times(), [0, 2001]);
+    assert!(
+        view.borrow().online,
+        "only the authenticated count confirms recovery"
+    );
+    host.try_browser_lifecycle(None).unwrap();
+    settle().await;
+    step(239_999).await;
+    assert_eq!(f.api.times(), [0, 2001]);
+    step(1).await;
+    assert_eq!(f.api.times(), [0, 2001, 242_001]);
+    host.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn full_browser_event_mailbox_cannot_keep_retired_document_alive() {
+    let f = Fixture::new(true);
+    let host = f.client.start_pc_message_count_polling().unwrap();
+    let view = host.subscribe();
+    settle().await;
+    host.try_browser_lifecycle(Some(false)).unwrap();
+    settle().await;
+    for _ in 0..32 {
+        host.try_observe_browser(true).unwrap();
+    }
+    assert!(matches!(
+        host.try_observe_browser(true),
+        Err(cumulus_core::Error::MutationBusy)
+    ));
+    host.try_browser_lifecycle(None).unwrap();
+    host.try_browser_lifecycle(Some(false)).unwrap();
+    settle().await;
+    step(1001).await;
+    assert!(!view.borrow().online);
+    assert_eq!(
+        f.api.times(),
+        [0],
+        "queued events were from the retired page"
+    );
+    host.shutdown().await;
+}

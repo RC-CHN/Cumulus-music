@@ -1,5 +1,6 @@
 //! One native poller; the main renderer only reports the message sheet's
 //! visibility and consumes count-only snapshots.
+pub(crate) mod browser;
 use cumulus_core::{
     Error, Result,
     account::SessionStatus,
@@ -21,6 +22,7 @@ struct Slot {
     stream: Option<Stream>,
     window_visible: bool,
     closed: bool,
+    browser: Option<browser::Binding>,
 }
 
 struct Stream {
@@ -69,6 +71,7 @@ pub fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         && let Ok(mut state) = host.0.lock()
     {
         state.closed = true;
+        state.browser = None;
         if let Some(stream) = state.stream.take() {
             stream.task.abort();
         }
@@ -140,9 +143,15 @@ fn detach_page<R: tauri::Runtime>(app: &tauri::AppHandle<R>, id: Option<&str>) {
 pub fn lifecycle<R: tauri::Runtime>() -> tauri::plugin::TauriPlugin<R> {
     tauri::plugin::Builder::new("message-count-window")
         .on_page_load(|window, payload| {
-            if window.label() == "main" && payload.event() == tauri::webview::PageLoadEvent::Started
-            {
-                detach_page(window.app_handle(), None);
+            if window.label() != "main" {
+                return;
+            }
+            match payload.event() {
+                tauri::webview::PageLoadEvent::Started => {
+                    detach_page(window.app_handle(), None);
+                    browser::detach(window.app_handle());
+                }
+                tauri::webview::PageLoadEvent::Finished => browser::attach(window, payload.url()),
             }
         })
         .build()

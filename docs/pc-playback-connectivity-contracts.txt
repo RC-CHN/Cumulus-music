@@ -10,10 +10,19 @@ M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求�
 * M/4 Network.subscribe 通过 os.isOnLine、app.onnetstatus、os.onisonline（native-contracts.txt:
   520–526）。M/119:26–28 原文把 native true 和 false 都推给 p，随后与 window.online
   合并为 triggerOnline；window.offline 则进入 triggerOffline。v 未收到这个回调。
+  M/4:13282–13301 注册两个回调后调用异步 os.isOnLine，不用 invoke 的返回值作状态。
+  x64 cloudmusic.dll 0x180ecc2ef 和 0x180f6a5af 分别引用 app.onnetstatus /
+  os.onisonline；两者都从桥接载荷 +0x10 取布尔值。0x180f6be02 注册 isOnLine
+  到 0x180f69560，派发 0x1803d50d0 工作并由 0x180f6a550 回调；工作取
+  0x180688760 的反值。后者比对一个虚表返回的连接类型整数是否为 6。尚未把这个
+  对象及另一 app 回调的观察源完整绑定到公开系统 API；仅有系统 API 导入不足以证明。
 * M/12:297–329 在请求返回真值后、格式化数据之前派发 musicFeOnline。catch 除
   responseError、fetchFrontEndEncryptError 外派发 musicFeOffline；同步格式化错误可能
   先后产生两个事件。JSON 非成功业务码在 M/12:174–194 被包装为 responseError。
-  单次 URL 拒绝、缺资源、解码失败或只看 HTTP 数字都不能替代该观察位置。
+  M/402:495–602 的底层 native fetch 另区分 NativeFetchError / fetchError、
+  fetchStatusError、fetchFrontEndEncryptError 与 responseError，并在部分分支先
+  应用 HTTP 200 缓存。Rust 现有传输合并了多种客户端错误，也有独立重定向和内容
+  校验规则；单次 URL 拒绝、缺资源、解码失败或只看 HTTP 数字不能代替原观察位置。
 * M/119:50 四类信号分别做首个立即生效的 100ms throttleTime；native 和浏览器的
   triggerOnline 共享这一窗口。有效在线值变化会重新订阅并清空四类节流。
 
@@ -41,10 +50,9 @@ Rust 边界与验证
 core/src/pc_connectivity.rs 是无 I/O 的四态模型；宿主提交已区分的通知和请求观察，
 按单调时钟喂给模型，并消费“立即重启消息计数轮询”或“有效联网状态变化”的效果。
 使用单调时间避免宿主系统时钟调校使等待倒退；未声称复刻浏览器墙钟倒跳行为。
-模型不会访问服务、读取账号或切换歌曲；也未接入生产 IPC、播放器或跨平台事件订阅。
-现有网络诊断的默认路由、WebView navigator 初值、已验证的本地下载，均不能独自
-作为跳歌所需的在线授权证据。生产接入还需在实际 native/web/请求宿主串联这些来源，
-令 M/236 探测与既有消息轮询合用，并独立验证 app 状态发布和账号切换。
+模型不会访问服务、读取账号或切换歌曲。下面的生产计数订阅不发布给播放器或全局
+app 状态。现有网络诊断的默认路由、WebView navigator 初值和已验证的本地下载
+均不能单独作为自动跳歌的在线授权证据。
 
 M/236 轮询执行器
 
@@ -64,18 +72,32 @@ M/236 轮询执行器
   只用通过原生接口验证的成功计数回复作为正向观察。现有 Rust API 不提供 M/12
   catch 的准确命名边界，通用请求失败或 60 秒超时只影响计数错误状态，不产出断网
   事件。未引入 IM、遥测、额外路由、消息正文或远端写入。
-* 正式桌面接通的是执行器的只计数模式：main 专用 Channel 只返回四类计数、代数
-  和读取状态，替代原前端直接请求；WebView 只报告抽屉与页面显隐，宿主再核对主窗
-  显示/最小化、托盘隐藏及销毁。旧页面订阅、迟到的显隐序号和旧代数不能变更
-  当前轮询。主窗销毁清理订阅与执行器。账户认证绑定仍是唯一起读条件。
-  Linux/Windows 尚未证实与官方 native 回调同源；不把本机路由、WebView 通知、
-  计数成功或错误接到联网模型。M/119 生产观察与跳歌仍关闭。
+* 正式桌面 main 专用 Channel 只返回四类计数、账号代数和读取状态；抽屉显隐仍由
+  原生核对主窗显示/最小化、托盘隐藏与销毁。M/119 在已加载的本地主文档中读取
+  navigator.onLine 初值及浏览器的可信 window.online/offline，验证事件方向与
+  当前值一致；未使用本机路由诊断。Tauri 宿主检查主窗和当前 origin，在新文档
+  签发只在注入脚本闭包中保存的随机凭据，并检查严格序号。导航时撤销当前凭据，
+  独立于事件队列重置模型计时，拒绝旧文档排队事件；不取消正常消息计数日程。
+  官方到时直接读同一文档的 navigator.onLine；Rust 计时器使用最近一次由该文档
+  验证的样本，不把后台原生诊断替代为浏览器状态。主窗销毁清理订阅与执行器。认证账号及代数仍是唯一起读条件。应用脚本没有指定
+  route、请求类别、权益、替代歌曲或实验分组的 IPC。
+* 正向生产业务观察只接受本来就通过固定 POST /api/pl/count 的当前账号有效响应；
+  403、503、解析/解密失败、取消、超时等都不伪造成 M/12 的失败事件。已证实的
+  浏览器边只用于 M/236 探测，不连接 Linux/Windows 原生桥回调、一般业务请求
+  或播放器。Windows WebView2 实机、完整 M/119 信号和自动跳歌依然未验收。
 * `pc_message_connectivity` 使用 Tokio 暂停时钟和封闭账号传输，核对完整
   定时替换、显隐、重复请求、通用错误、账号切换、失效和销毁；无真实服务或帐号操作。
   `scripts/research/official_message_count_oracle.mjs` 本机执行恢复的 M/236
   （SHA256 850cbc4ca5412fe38bea6ac6063444728dc52ec591752afcc9d40e960f215d99），
   独立确认认证账号 0、6000、246000、246000、256000、276000、276000、516000ms
   的调用顺序，和无 UID 时仍会探测的原行为。公开测试仅用已记录时刻。
+* Linux WebKitGTK 2.52.6 的封闭验证运行
+  `scripts/research/message_connectivity_webview.py`（隔离 user/network namespace
+  仅有回环接口），切换命名空间内无网关回环路由使浏览器产生真实、可信的事件。
+  两对 offline/online、一次伪造通知与猜测凭据、一次完整页面重载中，仅记录
+  初始和首次真实恢复后的两次 POST /api/pl/count {}。隔离环境和假账号均无外联，
+  播放器保持 idle。该脚本需要本机 Linux namespace、iproute2 和图形环境，不在
+  公开 CI 自动运行。
 
 scripts/research/official_connectivity_oracle.mjs 在本机无外联 Node VM 执行解包的
 hybrid_app.chunk.1482700000000.js/119.js 与原始 vendors-rudio.pc-new.production.js，

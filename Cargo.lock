@@ -767,6 +767,7 @@ dependencies = [
  "cumulus-core",
  "dirs",
  "gdkx11",
+ "getrandom 0.4.3",
  "gio",
  "gtk",
  "hex",

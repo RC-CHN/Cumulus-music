@@ -81,7 +81,10 @@ Rust 检查非零数字、游标正整数且不超过 JS 安全整数，拒绝�
 8 次 /api/pl/count {}；只有两次明确打开/刷新私信列表。服务端零值会移除红点和
 分类角标，失败保留上次计数，切账号等新计数期间不会显示旧角标。
 `.build/ui-proof/official-message-poll-4362f9b2/` 保存合成截图及调用日志。
-未测试 Windows 实机和真实账号，消息计数只读模式不启用 M/119 或自动跳歌。
+未测试 Windows 实机和真实账号。独立 Linux WebView 试验还验证了 M/119 的
+浏览器 online/offline 分支可重排同一个只读计数器；旧页面、未验证事件或通用
+请求错误不重排该探测。边界见 `docs/pc-playback-connectivity-contracts.txt`；
+未启用自动跳歌。
 
 
 已确认的消息附件动作

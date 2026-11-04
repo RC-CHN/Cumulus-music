@@ -494,6 +494,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 mv::video_frame,
                 messages::counts::watch_message_counts,
                 messages::counts::message_count_action,
+                messages::counts::browser::observe_message_connectivity,
                 messages::message_page,
                 messages::pending_message_deletions,
                 messages::delete_message,
