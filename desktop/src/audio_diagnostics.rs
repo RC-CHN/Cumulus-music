@@ -80,7 +80,7 @@ pub async fn system_master_volume<R: tauri::Runtime>(
     {
         static NATIVE: std::sync::OnceLock<SystemMasterVolumeProbe> = std::sync::OnceLock::new();
         Ok(NATIVE
-            .get_or_init(|| SystemMasterVolumeProbe::new(windows::read))
+            .get_or_init(|| SystemMasterVolumeProbe::new(|| windows::read().ok()))
             .sample()
             .await)
     }

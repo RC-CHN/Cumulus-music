@@ -61,5 +61,11 @@ Windows CI 与实际端点边界
   默认端点不存在。若已经返回 IMMDevice，后续激活/标量/静音读取失败应报告
   「端点存在但不可读」，保留失败阶段和 HRESULT；若初始化、枚举器创建、音频
   服务或端点查找因其他错误失败，则存在性未证实。纯读取成功只记有效范围已验证，
-  不记录实际音量、静音值或设备名称/ID，不安装驱动或改变默认端点。建议独立
-  有超时的可选探针；Windows runner 不保证音频端点，发行 CI 只依赖合成流程。
+  不记录实际音量、静音值或设备名称/ID，不安装驱动或改变默认端点。
+- 可选 Windows system master volume runtime sample workflow 只接受手动触发。
+  在与 workflow SHA 相同的提交上，编译 desktop/probes/windows-system-master-volume，
+  直接复用生产 COM 读取源码，不启动 Tauri/WebView、播放器或账号。子进程只
+  采样一次，10 秒上限。结果 artifact 保存 commit、固定 eRender/eMultimedia、
+  上述分类、失败阶段和 HRESULT。若超时，单独记录 backend_unknown/probe_timeout
+  和 probeReturned=false；不得推断端点存在与否。无端点、不可读、状态未知
+  都是诊断结果，不是发行门槛。合成 WebView2 检查与此 workflow 独立。

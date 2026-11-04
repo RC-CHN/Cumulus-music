@@ -1,0 +1,56 @@
+name: Windows system master volume runtime sample
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-system-master-volume:
+    name: Read one default Windows audio endpoint
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Check exact revision and build the isolated Win64 sample
+        run: |
+          if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') {
+            throw 'A native Windows x64 runner is required'
+          }
+          $head = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or $head -cne $env:GITHUB_SHA) {
+            throw 'Checkout does not match the exact workflow revision'
+          }
+          $manifest = 'desktop/probes/windows-system-master-volume/Cargo.toml'
+          $target = Join-Path $env:RUNNER_TEMP 'cumulus-system-master-volume-target'
+          cargo fmt --manifest-path $manifest -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Probe formatting failed' }
+          cargo clippy --manifest-path $manifest --target-dir $target --locked --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Probe Clippy failed' }
+          cargo test --manifest-path $manifest --target-dir $target --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Probe classification fixtures failed' }
+          python -B -m unittest discover -s scripts/ci -p test_windows_system_master_volume_runtime.py
+          if ($LASTEXITCODE -ne 0) { throw 'Categorical report fixtures failed' }
+          cargo build --manifest-path $manifest --target-dir $target --locked --release
+          if ($LASTEXITCODE -ne 0) { throw 'Probe build failed' }
+      - name: Run one read-only Core Audio sample
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'cumulus-system-master-volume-target'
+          $binary = Join-Path $target 'release/cumulus-windows-system-master-volume.exe'
+          $proof = Join-Path $env:RUNNER_TEMP 'cumulus-system-master-volume-runtime.json'
+          python -B scripts/ci/windows_system_master_volume_runtime.py --binary $binary --report $proof --commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Native system master volume sample failed' }
+      - name: Preserve categorical evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-system-master-volume-runtime-sample
+          path: ${{ runner.temp }}/cumulus-system-master-volume-runtime.json
+          if-no-files-found: warn
+          retention-days: 7
