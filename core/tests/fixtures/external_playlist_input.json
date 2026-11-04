@@ -1,0 +1,185 @@
+{
+  "source": {
+    "asset": "new/index.8910399d.js",
+    "module": "pCmP",
+    "sha256": "39ecd509b89e4d9dc3dbe866310536c952184e6e23bb65f5697132394d114095"
+  },
+  "vectors": [
+    {
+      "input": "  ",
+      "official": {},
+      "preview": {
+        "kind": "empty"
+      }
+    },
+    {
+      "input": "合成歌单文字",
+      "official": {},
+      "preview": {
+        "kind": "unrecognized"
+      }
+    },
+    {
+      "input": "分享： https://y.qq.com/playlist/synthetic 合成歌单",
+      "official": {
+        "url": "https://y.qq.com/playlist/synthetic",
+        "type": "qq",
+        "typeName": "QQ音乐"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "y.qq.com",
+        "source": "qq"
+      }
+    },
+    {
+      "input": "http://www.kugou.com/playlist/synthetic",
+      "official": {
+        "url": "http://www.kugou.com/playlist/synthetic",
+        "type": "kugou",
+        "typeName": "酷狗音乐"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "www.kugou.com",
+        "source": "kugou"
+      }
+    },
+    {
+      "input": "https://m.kugou.com/songlist/synthetic",
+      "official": {
+        "url": "https://m.kugou.com/songlist/synthetic"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "m.kugou.com",
+        "source": null
+      }
+    },
+    {
+      "input": "https://www.kuwo.cn/playlist/synthetic",
+      "official": {
+        "url": "https://www.kuwo.cn/playlist/synthetic",
+        "type": "kuwo",
+        "typeName": "酷我音乐"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "www.kuwo.cn",
+        "source": "kuwo"
+      }
+    },
+    {
+      "input": "https://h5app.kuwo.cn/m/bodian/collection.html",
+      "official": {
+        "url": "https://h5app.kuwo.cn/m/bodian/collection.html"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "h5app.kuwo.cn",
+        "source": null
+      }
+    },
+    {
+      "input": "https://www.xiami.com/playlist/synthetic",
+      "official": {
+        "url": "https://www.xiami.com/playlist/synthetic",
+        "type": "xiami",
+        "typeName": "小米音乐"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "www.xiami.com",
+        "source": "xiaomi"
+      }
+    },
+    {
+      "input": "https://portal-drcn.music.dbankcloud.cn/synthetic",
+      "official": {
+        "url": "https://portal-drcn.music.dbankcloud.cn/synthetic"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "portal-drcn.music.dbankcloud.cn",
+        "source": null
+      }
+    },
+    {
+      "input": "http://c.migu.cn/synthetic",
+      "official": {
+        "url": "http://c.migu.cn/synthetic"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "c.migu.cn",
+        "source": null
+      }
+    },
+    {
+      "input": "https://other.invalid/list?share=PRIVATE https://y.qq.com/playlist/synthetic",
+      "official": {
+        "url": "https://other.invalid/list?share=PRIVATE"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "other.invalid",
+        "source": null
+      }
+    },
+    {
+      "input": "https://other.invalid/list，https://xhslink.com/synthetic，合成",
+      "official": {
+        "url": "https://xhslink.com/synthetic"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "xhslink.com",
+        "source": null
+      }
+    },
+    {
+      "input": "https://qq.com.example.invalid/synthetic",
+      "official": {
+        "url": "https://qq.com.example.invalid/synthetic",
+        "type": "qq",
+        "typeName": "QQ音乐"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "qq.com.example.invalid",
+        "source": null
+      }
+    },
+    {
+      "input": "https://other.invalid/list?next=qq.com",
+      "official": {
+        "url": "https://other.invalid/list?next=qq.com",
+        "type": "qq",
+        "typeName": "QQ音乐"
+      },
+      "preview": {
+        "kind": "link",
+        "host": "other.invalid",
+        "source": null
+      }
+    },
+    {
+      "input": "file:///synthetic/path",
+      "official": {
+        "url": "file:///synthetic/path"
+      },
+      "preview": {
+        "kind": "unrecognized"
+      }
+    },
+    {
+      "input": "https://synthetic:PRIVATE@other.invalid/list",
+      "official": {
+        "url": "https://synthetic:PRIVATE@other.invalid/list"
+      },
+      "preview": {
+        "kind": "unrecognized"
+      }
+    }
+  ]
+}

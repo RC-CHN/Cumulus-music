@@ -31,7 +31,7 @@ def main():
     script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
     results = {}
-    for phase, count in [('first', 48), ('reopen', 2)]:
+    for phase, count in [('first', 49), ('reopen', 2)]:
         if phase == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         with (root / f'{phase}.log').open('x', encoding='utf-8') as log:
@@ -42,7 +42,7 @@ def main():
         results[phase] = verify(root / phase, count, args.screenshots)
     first = results['first']
     assert first['focusRecovery'] and first['foldingVerified']
-    assert first['reorderVerified']
+    assert first['reorderVerified'] and first['externalPlaylistPreviewVerified']
     assert first['syntheticLibrary']['writes'] == 4
     assert first['syntheticLibrary']['createdOrder'] == [1, 2, 3, 4, 5]
     assert first['syntheticLibrary']['subscribedOrder'] == [1201, 1202, 1203, 1204, 1205]
@@ -53,8 +53,9 @@ def main():
     assert playing['origin'] == paused['origin'] == {'kind': 'playlist', 'id': '2'}
     assert playing['queueLen'] == paused['queueLen'] == 40 and paused['position'] > 0
     assert playing['playId'] == paused['playId']
-    result = {'ok': True, 'actualWebView': True, 'stageCount': 50,
-              'screenshots': 50 if args.screenshots else 0, 'restartVerified': True,
+    result = {'ok': True, 'actualWebView': True, 'stageCount': 51,
+              'screenshots': 51 if args.screenshots else 0, 'restartVerified': True,
+              'externalPlaylistPreviewVerified': True,
               'reorderVerified': True, 'syntheticOrderWrites': 4,
               'physicalDisplayVerified': False, 'windowsVisualVerified': False,
               'realMusicRequests': 0, 'realAccountWrites': 0}

@@ -3450,6 +3450,7 @@ onUnmounted(() => {
               <PlaylistLibraryPage
                 v-else-if="page.kind === 'library'"
                 :playlists="playlists"
+                :account-epoch="account.epoch"
                 :state="playlistLibraryState"
                 :loading="music.resourcesLoading.value"
                 :error="music.playlistError.value"

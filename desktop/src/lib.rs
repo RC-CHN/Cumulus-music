@@ -380,6 +380,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 playlists::playlist_editor,
                 playlists::playlist_tags,
                 playlists::playlist_collect_page,
+                playlists::preview_external_playlist,
                 playlists::playlist_order_view,
                 playlists::mutate_playlist,
                 playlists::reconcile_playlist,

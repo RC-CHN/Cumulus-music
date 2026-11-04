@@ -371,6 +371,43 @@
       "pause removes playing indicator",
     );
     await capture("paused");
+    const importTrigger = button("歌单导入预览");
+    const importDialog = () => one(".external-playlist-preview[open]");
+    const paste = (index, text) => {
+      const input = importDialog().querySelector(`[data-import-input="${index}"]`);
+      input.value = text;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+    const readsBeforePreview = reads;
+    await click(importTrigger);
+    await wait(() => importDialog() && document.activeElement?.dataset.importInput === "0", "preview initial focus");
+    assert(button("预览链接", importDialog()).disabled, "blank preview cannot run");
+    paste(0, "分享歌单 https://y.qq.com/playlist/synthetic?share=PRIVATE");
+    await click(button("添加链接", importDialog()));
+    await wait(() => document.activeElement?.dataset.importInput === "1", "new field focus");
+    paste(1, "file:///synthetic/path");
+    await click(button("预览链接", importDialog()));
+    await wait(() => importDialog()?.textContent.includes("已识别 1 个链接"), "native link preview");
+    assert(importDialog().textContent.includes("QQ音乐 · y.qq.com") &&
+      importDialog().textContent.includes("未识别到网页链接") &&
+      !importDialog().textContent.includes("PRIVATE") && !importDialog().querySelector("a"),
+      "only source and host are displayed, without navigation or raw parameters");
+    await capture("external_playlist_preview");
+    paste(1, "https://xhslink.com/synthetic");
+    await wait(() => !importDialog().querySelector('[role="status"]'), "edit invalidates old preview");
+    await click(button("预览链接", importDialog()));
+    await wait(() => importDialog()?.textContent.includes("已识别 2 个链接"), "edited preview");
+    importDialog().dispatchEvent(new Event("cancel", {cancelable:true}));
+    await wait(() => !importDialog() && document.activeElement === importTrigger, "preview closes to trigger");
+    await click(importTrigger);
+    await wait(() => importDialog()?.querySelector("[data-import-input]"), "reopen preview");
+    assert(importDialog().querySelectorAll("[data-import-input]").length === 1 &&
+      !importDialog().querySelector("[data-import-input]").value && reads === readsBeforePreview,
+      "local draft is discarded and no library read was needed");
+    for (let i = 1; i < 10; i++) await click(button("添加链接", importDialog()));
+    assert(button("添加链接", importDialog()).disabled, "official ten-entry ceiling");
+    await click(button("关闭导入预览", importDialog()));
+    await wait(() => !importDialog() && document.activeElement === importTrigger, "close bounded preview");
     await fixture("fail");
     await click(button("刷新当前页面"));
     await wait(() => one('.sidebar-status[role="alert"]'), "read failure");
@@ -521,6 +558,7 @@
       focusRecovery: true,
       foldingVerified: true,
       reorderVerified: true,
+      externalPlaylistPreviewVerified: true,
     });
   } catch (error) {
     await emit("failed", {

@@ -9,10 +9,12 @@ import {
   type LibraryMode,
 } from '../../services/playlistLibrary';
 import PlaylistLibrarySection from './PlaylistLibrarySection.vue';
+import PlaylistImportPreview from './PlaylistImportPreview.vue';
 import Icon from '../Icon.vue';
 import '../../styles/playlist-library.css';
 const props = defineProps<{
   playlists: PlaylistView[];
+  accountEpoch: string;
   state: LibraryViewState;
   loading: boolean;
   error: string;
@@ -121,6 +123,7 @@ function open(playlist: PlaylistView) {
     <div class="library-toolbar">
       <button class="primary" @click="emit('create')"><Icon name="plus" />新建歌单</button>
       <button class="text-button" @click="emit('link')">打开歌单链接</button>
+      <PlaylistImportPreview :account-epoch="accountEpoch" />
       <button v-if="operationCount" class="text-button" @click="emit('history')">
         歌单操作记录 · {{ operationCount }}
       </button>

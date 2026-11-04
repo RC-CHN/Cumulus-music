@@ -1,0 +1,62 @@
+外部歌单导入：官方桌面入口、公开 H5 与本地预览
+研究对象为官方 PC 3.1.42.205594 及其固定公开 H5 入口。没有用真实账号访问导入服务。
+
+官方触发和宿主
+- hybrid_app/473.js:7026–7085,7125–7203：仅 PH-PC-songlistTransfer 分到 t1 时，
+  「创建的歌单」旁的加号显示「创建歌单／歌单导入」；未登录会唤起登录。已登录且本地
+  未展示过提示时延迟约两秒出现一次提示，持续五秒。默认配置见 147.js:1707–1715。
+- hybrid_app/1384.js:4262–4308 的 open-external 调 128.js:514–527；Windows 的
+  固定地址是 https://mp.music.163.com/6879c89ac689f300cb660959/new/index.html?appBizName=pc_externa_playlist 。
+  AppModal.openMiniProgram 走 31.js:147–164 的 urlWindow，416×576、隐藏普通标题栏。
+  hybrid_90/3142.js:27–74 把入口事件 refer 写到 iframe 的 rqRefer；2036.js:43–67
+  按当前窗口和来源登记桥接。3142.js:203–219,238–327：空文档继续有限检查，显示
+  「失败了！关闭后重新打开试试」并可关闭；离线显示独立网络分支。
+- 下载的公开静态页面（匿名 GET）引用 s7.music.126.net 的 new/index.8910399d.js。
+  SHA256 39ecd509b89e4d9dc3dbe866310536c952184e6e23bb65f5697132394d114095；
+  runtime.10183021.js SHA256 3cf64b1995661a849611975b6323fb6be283e2146035e194fae63b9e99877148；
+  vendors.f2f78b87.js SHA256 4cc2d5c0b6eab8a8137d011438483826075921ffd9dff575c3a456331da5a635。
+  下列 H5 行号按公开入口 JS 经 Prettier babel 格式化定位。只下载静态材料，没有加载页面执行、
+  发业务请求或获取登录 Cookie。
+
+官方输入和请求
+- H5:6323–6400 默认显示链接、文字、图片三种导入。pCmP:6433–6467 是无依赖的分享
+  文字提取器；链接页初始一个输入，最多十个，每个取一个候选，手动输入时不自动去重。
+  通常取第一个 URI，某些平台特殊路径优先，并识别 QQ、酷狗、酷我、小米标签。
+- H5:3473–3517,4467–4517 的 POST /api/playlist/import/url/check {link:encodeURI(url)}
+  仅在非桌面的剪贴板自动填充启用后执行；桌面分支直接跳过。它不构成桌面手动输入的
+  曲目预览或可导入回执，Cumulus 也不调用它或读取剪贴板。
+- H5:3618–3685,7796–7816：用户主动开始后，链接分支向
+  POST /api/playlist/import/name/task/create 发送 playlistName、createBusinessCode、
+  extParam、taskIdForLog、importStarPlaylist、rqRefer 和 songs。songs 是 JSON 数组字符串，
+  每项 {name,type:"",url:encodeURI(提取结果)}；rqRefer 在桌面取 window.rqRefer。
+  文字分支复用接口，把整个输入封成 rpc://playlist/import?text=...（4590–4652）；
+  图片使用 /api/playlist/import/create，带 playlistId 和 picIds JSON 字符串（5359–5407）。
+  H5 的本地音乐隐藏页分支通过 /api/playlist/local/detail 读详情，提交 multiSongs；
+  官方桌面固定入口没有 initPage=3 或对应目标，不能把该页当外部链接的预览。
+- 任务创建回包需有 taskId，后续调用 nm.mine.importPlaylistTask。PC 的
+  hybrid_app/290.js:436–442 无条件回 code 200；这只是桥接确认，不能证明完成。
+  接着 orpheus://nm/base/startExternalPlaylist 让宿主关闭 iframe，并提示「歌单正在导入」、
+  到「创建的歌单」和小秘书通知查看；可显式再导入其他歌单。请求失败或无 taskId 留在
+  表单并提示，H5 无桌面完成轮询。M/15:4866 的 /api/playlist/import/task/status/v2
+  仅创建函数后被逗号表达式丢弃，未发现请求实参、调用方或任务与新歌单的可靠绑定。
+  没有可用于避免重放或恢复未知写入的官方完成回读；没有移植任务创建、图片上传、
+  文字上传、收藏到红心或任务回读，也没有启动远端 H5 或安装通用网页桥。
+
+当前 Cumulus 本地子集
+- 「我的歌单 → 歌单导入预览」是本地入口，明确不同于 t1 的正式侧栏入口。
+  维持一个手动输入、最多十项的原输入规则，原样保留字段顺序和重复项，显式点击预览后才处理。
+  该入口仅展示识别到的域名、平台标签或不能识别提示；不显示曲目、不创建歌单或导入任务。
+- Core Rust 的 preview_external_playlist_inputs 是纯函数；类型化 IPC preview_external_playlist
+  只返回域名、平台和空/未识别状态。输入最多十项、每项最多 16 KiB；HTTP(S) DNS 主机
+  使用 URL 解析、平台按真实域名边界匹配，拒绝本机无域名、IP、凭据和非 HTTP 协议。
+  安全边界与旧网页宽松子串正则不同；路径、查询、原链接不出现在返回 DTO，也不打开或上传。
+  不从平台标签推断链接有效性、资源数量、账号权限或导入资格。
+- 编辑或切换账号使旧结果失效，关闭丢弃草稿并还原焦点；输入与结果不写磁盘。
+- core/tests/fixtures/external_playlist_input.json 的 official 值用 Node VM 直接执行固定
+  哈希公开脚本注册的 pCmP 工厂得到。冻结向量只使用合成 URL，并列 Cumulus 安全差异。
+  可复现：匿名读取上面的固定入口及对应 JS，提供 {window:{}} 给 VM 注册 webpackJsonp，
+  只执行 pCmP 工厂并调用其 a 导出，不执行 H5 页面或其它网络模块。
+- Linux 真 WebView 侧栏回归通过 51 个检查点和 51 张截图，包括实际 IPC 识别、
+  非网页输入、编辑废弃旧结果、重开清空、十项上限和返回焦点。证据
+  `.build/ui-proof/external-playlist-preview-20261104/audit.json`。
+  无真实业务请求或账号写入；既有四次歌单排序变更只在合成夹具中运行。

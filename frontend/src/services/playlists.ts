@@ -64,7 +64,14 @@ export interface PlaylistMutationView {
   message: string;
   observed: PlaylistEditor | null;
 }
+export type ExternalPlaylistSource = 'qq' | 'kugou' | 'kuwo' | 'xiaomi';
+export type ExternalPlaylistInput =
+  | { kind: 'empty' }
+  | { kind: 'unrecognized' }
+  | { kind: 'link'; host: string; source: ExternalPlaylistSource | null };
+
 export interface PlaylistClient {
+  previewExternalPlaylist(inputs: string[]): Promise<ExternalPlaylistInput[]>;
   playlistTags(epoch: string): Promise<AccountData<{ name: string; category: string }[]>>;
   playlistEditor(epoch: string, id: string): Promise<AccountData<PlaylistEditor>>;
   playlistOrderView(epoch: string): Promise<AccountData<PlaylistOrderView>>;

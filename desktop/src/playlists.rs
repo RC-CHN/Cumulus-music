@@ -1,7 +1,14 @@
 use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
-    playlist::PlaylistCommand,
+    playlist::{ExternalPlaylistInput, PlaylistCommand, preview_external_playlist_inputs},
 };
+#[tauri::command]
+pub fn preview_external_playlist(
+    inputs: Vec<String>,
+) -> Result<Vec<ExternalPlaylistInput>, ClientError> {
+    preview_external_playlist_inputs(&inputs).map_err(Into::into)
+}
+
 #[tauri::command]
 pub async fn playlist_collect_page(
     client: tauri::State<'_, MusicClient>,
