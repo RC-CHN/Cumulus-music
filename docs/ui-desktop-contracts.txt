@@ -127,3 +127,14 @@ run_cloud_probe.py默认只读取与播放账号资源，并取消上传/删除�
 固定工具栏与失败重试；实际窗口、原生快照独立审计和边界见collection-library-contracts.txt。
 旧段落中的未接线列表应结合各领域后续契约读取，不得据历史基线抹去已完成增量，
 也不得据一批增量推断尚未验收的用户主页、历史、设置、系统托盘或跨设备接续已完成。
+
+2026-11-05 窄窗顶栏：官方 UserInfoBar/view/nickname.jsx 的单行文字通过
+overflow/ellipsis 收束。Cumulus 账号容器缩窄时，内部按钮也必须缩到容器，
+头像、消息、换肤和窗口按钮保留点击宽度；游客按钮在常见窄窗优先保留短标签，
+更窄的缩放布局仍允许文字缩窄。业务触发、菜单顺序和焦点行为不变。
+真实 Linux WebKitGTK 760×540 的旧游客账号按钮侵入消息按钮 22.14 CSS 像素；
+修复后两者有 6 像素间距，「点击登录」完整，26 像素头像未压缩。登录态较长
+昵称只在窄窗截断，1120×760 恢复全文。两种宽度的搜索、消息、设置和外观
+均有命中检查。隔离前后记录及 6 张截图在
+.build/ui-proof/phase26-header-layout/{before-guest,final-guest,final-account}/first/。
+Windows WebView2 和多档实体 DPI 尚需单独验收。

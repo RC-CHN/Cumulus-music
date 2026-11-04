@@ -77,7 +77,7 @@
     min-width: 16px;
   }
   .topbar .account-button {
-    max-width: 80px;
+    max-inline-size: min(100%, 80px);
     min-width: 26px;
     gap: 4px;
     padding: 0;
@@ -85,9 +85,8 @@
   .topbar .account-control {
     max-width: 90px;
   }
-  .topbar .account-button > img,
-  .topbar .account-button > .avatar {
-    flex-shrink: 0;
+  .topbar .account-guest {
+    flex-shrink: 1;
   }
   .window-controls {
     margin-left: 0;

@@ -17,9 +17,6 @@
     grid-template-columns: 25px minmax(0, 1.8fr) minmax(0, 1fr) 32px 78px;
     gap: 5px;
   }
-  .account-button {
-    max-width: 150px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,

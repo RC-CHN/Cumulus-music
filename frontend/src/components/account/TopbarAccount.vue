@@ -135,7 +135,7 @@ function select(key: string) {
 </script>
 
 <template>
-  <div class="account-control">
+  <div class="account-control" :class="{ 'account-guest': !signedIn }">
     <button
       v-if="profile"
       class="account-avatar-button"

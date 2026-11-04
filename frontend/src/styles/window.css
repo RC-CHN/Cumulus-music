@@ -117,13 +117,18 @@
     gap: 6px;
     padding-right: 8px;
   }
-  .searchbox {
-    width: 210px;
-    min-width: 145px;
-    flex-shrink: 1;
+  .topbar .search-host {
+    flex-basis: 210px;
+    min-width: 112px;
   }
-  .account-button {
-    max-width: 100px;
+  .topbar .searchbox {
+    min-width: 0;
+  }
+  .topbar .account-guest {
+    flex-shrink: 0;
+  }
+  .topbar .account-button {
+    max-inline-size: min(100%, 100px);
   }
   .window-controls {
     margin-left: 4px;
