@@ -966,6 +966,10 @@ scripts/ci/playback_power_smoke.py。
 - [搜索下拉](search-discovery-ui-contracts.txt)保留官方普通榜单顺序；只为
   pc-search-audio-toplist=t1 显示播客与听书榜。对照组既不显示也不请求两榜
   的详情。真实 Linux WebView 核对分组、输入联想、焦点和窄窗滚动。常规搜索
-  回归另外通过 76 态（139 次合成读取），不使用真实搜索会话。
+  回归另外通过 76 态（139 次合成读取），不使用真实搜索会话。合并源码的
+  分组探针通过 6 态/6 图，见 .build/ui-proof/phase40/search_audio_toplist/audit.json。
+- Linux 同树正式程序在无外网、无账号配置的真实 X11 会话中启动。Rust fmt、
+  严格 Clippy 和锁定测试（2169 通过，17 忽略），固定 Node 的 817 项测试、
+  格式及构建全部通过。Windows GNU 严格交叉检查覆盖桌面与搜索测试目标。
 三套夹具均在公开 CI 的 Linux WebView 和 Windows 打包检查中运行。Windows
 夹具使用同次暂存媒体，不直接读写真实端点；不以 GTK 截图代验 Windows。
