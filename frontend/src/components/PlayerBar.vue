@@ -88,7 +88,9 @@ const effectEntry = computed(() => {
         ? 'problem'
         : status === 'deferred'
           ? 'pending'
-          : 'configured',
+          : status === 'paused_locally'
+            ? equalizerEntry.value.state
+            : 'configured',
     label: eqProblem ? label + '；' + equalizerEntry.value.label : label,
   };
 });

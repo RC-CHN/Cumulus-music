@@ -153,6 +153,7 @@ impl Actor {
         self.buffered_through = None;
         self.error = None;
         self.reset = false;
+        self.parametric.discard_paused_device();
         self.play_id = Some(uuid::Uuid::new_v4().simple().to_string());
         self.state = PlaybackStatus::Preparing;
         let generation = self.generation();

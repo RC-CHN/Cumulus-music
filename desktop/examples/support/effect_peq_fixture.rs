@@ -255,6 +255,7 @@ impl AudioEngine for Audio {
         if attached {
             let mut trace = TRACE.lock().unwrap();
             trace.native_attached = true;
+            trace.stats = None;
             trace.attaches += 1;
         }
         Ok(attached)

@@ -29,7 +29,7 @@ const modelError = ref('');
 const material = ref<EffectDeviceMaterialCheck>();
 const materialError = ref('');
 const materialLoading = ref(false);
-const operation = ref<'apply' | 'clear' | 'restore'>();
+const operation = ref<'apply' | 'clear' | 'restore' | 'compare'>();
 const operationError = ref('');
 const remembered = ref<RememberedHeadphone>();
 const rememberedError = ref('');
@@ -244,6 +244,35 @@ async function restoreRemembered(event: MouseEvent) {
     if (current()) operation.value = undefined;
   }
 }
+async function compareTuning(event: MouseEvent) {
+  const applied = props.applied;
+  const comparison = applied?.comparison;
+  if (
+    operation.value ||
+    !applied ||
+    !comparison ||
+    (event.currentTarget as HTMLButtonElement).dataset.comparisonReceipt !== comparison.receipt
+  )
+    return;
+  const epoch = props.account.epoch;
+  const generation = directoryGeneration;
+  const current = () => owns(epoch) && directoryGeneration === generation;
+  operation.value = 'compare';
+  operationError.value = '';
+  try {
+    await core.effectDeviceCompare(epoch, {
+      ...comparison,
+      brand: applied.brand,
+      model: applied.model,
+      activationId: applied.activationId,
+      paused: applied.status !== 'paused_locally',
+    });
+  } catch (issue) {
+    if (current()) operationError.value = failure(issue).message;
+  } finally {
+    if (current()) operation.value = undefined;
+  }
+}
 function resetReads() {
   brandRequest++;
   modelRequest++;
@@ -316,6 +345,15 @@ onUnmounted(resetReads);
         }}
       </p>
       <button
+        v-if="applied.comparison"
+        type="button"
+        :data-comparison-receipt="applied.comparison.receipt"
+        :aria-disabled="!!operation"
+        @click="compareTuning"
+      >
+        {{ applied.status === 'paused_locally' ? '继续当前调音' : '暂时停用调音' }}
+      </button>
+      <button
         ref="clearButton"
         type="button"
         :key="applied.activationId"
@@ -327,7 +365,7 @@ onUnmounted(resetReads);
       </button>
     </div>
     <p v-if="operationError" role="alert">{{ operationError }}</p>
-    <p v-if="applied?.selectionSaveFailed" role="status">本次调音已经启用，但无法记住此型号。</p>
+    <p v-if="applied?.selectionSaveFailed" role="status">本次无法记住此型号。</p>
     <template v-if="managementOnly">
       <p v-if="!applied" role="status">当前没有耳机调音。</p>
       <p v-if="rememberedLoading" role="status">正在读取上次使用的耳机…</p>
@@ -463,7 +501,6 @@ onUnmounted(resetReads);
   gap: 8px;
 }
 .effect-device-active {
-  justify-content: space-between;
   margin-block: 8px 12px;
   padding: 8px 12px;
   border: 1px solid var(--line);
@@ -471,7 +508,10 @@ onUnmounted(resetReads);
   background: var(--surface-alt);
 }
 .effect-device-active p {
+  flex: 1 1 12rem;
+  min-width: 0;
   margin: 0;
+  overflow-wrap: anywhere;
   color: var(--text);
   font-weight: 500;
 }

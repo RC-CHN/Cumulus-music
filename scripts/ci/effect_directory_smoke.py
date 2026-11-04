@@ -83,7 +83,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    stages = 12 if args.library else 7
+    stages = 14 if args.library else 7
     assert complete['ok'] and complete['stageCount'] == stages and complete['artworkVerified'] and complete['devicesVerified']
     assert complete['limitedFreeExpiryVerified'] and complete['deviceCacheVerified']
     assert complete['deviceMaterialVerified'] and complete['effectDirectoryMaterialGets'] == 1
@@ -116,20 +116,31 @@ def main():
         enabled = json.loads((output / 'ux_07_headphones_enabled.json').read_text(encoding='utf-8'))['nativePeq']
         disabled = json.loads((output / 'ux_08_headphones_disabled.json').read_text(encoding='utf-8'))['nativePeq']
         footer = json.loads((output / 'ux_10_headphones_footer.json').read_text(encoding='utf-8'))
+        dry = json.loads((output / 'ux_10a_headphones_comparison_dry.json').read_text(encoding='utf-8'))
+        wet = json.loads((output / 'ux_10b_headphones_comparison_wet.json').read_text(encoding='utf-8'))
         fault = json.loads((output / 'ux_11_headphones_fault.json').read_text(encoding='utf-8'))['nativePeq']
         assert footer['nativePeq']['attaches'] == 2 and footer['nativePeq']['nativeAttached']
         reapplied = json.loads((output / 'ux_12_headphones_restored.json').read_text(encoding='utf-8'))
         assert len(footer['effectDirectoryCalls']) == len(calls) - 1
-        assert reapplied['nativePeq']['attaches'] == 3 and reapplied['nativePeq']['nativeAttached']
+        assert dry['nativePeq']['attaches'] == 2 and dry['nativePeq']['detaches'] == 2 and not dry['nativePeq']['nativeAttached']
+        assert wet['nativePeq']['attaches'] == 3 and wet['nativePeq']['detaches'] == 2 and wet['nativePeq']['nativeAttached']
+        assert wet['nativePeq']['processedSamples'] > 0 and wet['nativePeq']['failedBlocks'] == 0
+        assert all(stage['effectDirectoryCalls'] == footer['effectDirectoryCalls'] for stage in (dry, wet))
+        assert all(stage['nativePeq']['decoderLoads'] == footer['nativePeq']['decoderLoads'] == 1
+                   for stage in (dry, wet))
+        assert all(stage['effectDirectoryMaterialGets'] == footer['effectDirectoryMaterialGets'] for stage in (dry, wet))
+        assert reapplied['nativePeq']['attaches'] == 4 and reapplied['nativePeq']['nativeAttached']
         assert enabled['attaches'] == 1 and enabled['processedSamples'] > 0 and enabled['nativeAttached']
         assert disabled['detaches'] == 1 and not disabled['nativeAttached']
-        assert fault['detaches'] == fault['attaches'] == 2 and fault['injectedFaults'] == 1 and not fault['nativeAttached']
+        assert fault['detaches'] == fault['attaches'] == 3 and fault['injectedFaults'] == 1 and not fault['nativeAttached']
         assert fault['processedSamples'] > 0 and fault['failedBlocks'] == 0
         assert not fault['calls'] and complete['deviceTuningVerified'] and complete['headphoneFooterVerified']
+        assert complete['stoppedComparisonRejected']
         verify_reopened(args, root, env, source, footer['nativePeq']['processId'])
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
                       'realAccountWrites': 0, 'limitedFreeExpiryVerified': True,
                       'deviceMaterialVerified': True, 'deviceTuningVerified': bool(args.library),
+                      'headphoneComparisonVerified': bool(args.library),
                       'rememberedAcrossProcesses': bool(args.library)}))
 
 

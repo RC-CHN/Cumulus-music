@@ -287,6 +287,9 @@ impl Actor {
             });
         }
         if failed || ended || self.last_save.elapsed() >= Duration::from_secs(1) {
+            if failed || ended {
+                self.parametric.discard_paused_device();
+            }
             self.save_position()?;
         }
         if ended && !self.queue.is_fm() && self.queue.advance(Step::Next, true)?.is_some() {

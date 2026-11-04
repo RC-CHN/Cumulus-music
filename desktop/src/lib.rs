@@ -216,6 +216,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 effect_activation::effect_device_remembered,
                 effect_activation::effect_device_restore,
                 effect_activation::effect_device_clear,
+                effect_activation::effect_device_compare,
                 together::together_view,
                 together::together_statistics,
                 together::together_command,

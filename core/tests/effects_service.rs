@@ -112,7 +112,7 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
         account::profiles::ProfileRegistry,
         client::{MusicClient, dto::PlaySelection},
         membership::Quality,
-        playback::controller::{ParametricApplication, ParametricBindingStatus, PlaybackStatus},
+        playback::controller::{DeviceParametricStatus, ParametricApplication, PlaybackStatus},
         protocol::http::ApiOrigin,
     };
     use std::{sync::atomic::Ordering, time::Duration};
@@ -165,7 +165,8 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
                 .unwrap()
                 .device_parametric
                 .unwrap();
-            assert_eq!(pending.status, ParametricBindingStatus::Deferred);
+            assert_eq!(pending.status, DeviceParametricStatus::Deferred);
+            assert!(pending.comparison.is_none());
             assert_eq!(pending.model_name.as_deref(), Some("合成耳机"));
             assert!(
                 client
@@ -240,7 +241,7 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
         assert_eq!(view.state, PlaybackStatus::Playing);
         assert_eq!(
             view.device_parametric.as_ref().map(|view| view.status),
-            (!cancel_before_load).then_some(ParametricBindingStatus::ProcessorFailed)
+            (!cancel_before_load).then_some(DeviceParametricStatus::ProcessorFailed)
         );
         if let Some(failed) = view.device_parametric {
             assert_eq!(failed.activation_id, activation_id);
@@ -266,11 +267,32 @@ async fn remembered_headphone_requires_confirmed_attach_and_an_explicit_current_
             dto::{PlaySelection, PlayerAction},
         },
         membership::Quality,
-        playback::controller::{ParametricApplication, PlaybackStatus},
+        playback::controller::{
+            DeviceParametricStatus, DeviceParametricView, ParametricApplication, PlaybackStatus,
+        },
         protocol::http::ApiOrigin,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Duration;
+
+    async fn compare(
+        client: &MusicClient,
+        epoch: &str,
+        device: &DeviceParametricView,
+        paused: bool,
+    ) -> cumulus_core::Result<ParametricApplication> {
+        let comparison = device.comparison.as_ref().unwrap();
+        client
+            .compare_native_device_parametric(
+                epoch,
+                device.target,
+                &device.activation_id.simple().to_string(),
+                &comparison.play_id,
+                &comparison.receipt.simple().to_string(),
+                paused,
+            )
+            .await
+    }
 
     let temp = tempfile::tempdir().unwrap();
     let brand = EffectId::new(7002).unwrap();
@@ -476,6 +498,40 @@ async fn remembered_headphone_requires_confirmed_attach_and_an_explicit_current_
     let applied = restored.device_parametric.unwrap();
     assert_eq!(applied.model_name.as_deref(), Some("合成恢复耳机"));
     let saved = client.remembered_native_headphone(&epoch).unwrap();
+    assert_eq!(
+        compare(&client, &epoch, &applied, true).await.unwrap(),
+        ParametricApplication::BypassConfigured
+    );
+    let bypassed = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(bypassed.play_id, active.play_id);
+    assert_eq!(bypassed.state, PlaybackStatus::Paused);
+    let bypassed = bypassed.device_parametric.unwrap();
+    assert_eq!(bypassed.status, DeviceParametricStatus::PausedLocally);
+    assert_eq!(bypassed.activation_id, applied.activation_id);
+    assert!(!device.parametric_attached.load(Ordering::SeqCst));
+    assert!(matches!(
+        compare(&client, &epoch, &applied, false).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(
+        client
+            .ensure_no_native_device_parametric(&epoch)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        compare(&client, &epoch, &bypassed, false).await.unwrap(),
+        ParametricApplication::Configured
+    );
+    assert!(device.parametric_attached.load(Ordering::SeqCst));
+    assert!(matches!(
+        compare(&client, &epoch, &applied, true).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(api.calls().len(), 4);
+    assert_eq!(origin.calls().len(), 1);
+    assert_eq!(client.remembered_native_headphone(&epoch).unwrap(), saved);
     client
         .clear_native_device_parametric(
             &epoch,
@@ -513,14 +569,37 @@ async fn remembered_headphone_requires_confirmed_attach_and_an_explicit_current_
     let after_failure = client.player_snapshot(&epoch).await.unwrap();
     assert_eq!(after_failure.play_id, active.play_id);
     assert_eq!(after_failure.state, PlaybackStatus::Paused);
-    assert!(
-        after_failure
-            .device_parametric
-            .unwrap()
-            .selection_save_failed
-    );
+    let active_with_warning = after_failure.device_parametric.unwrap();
+    assert!(active_with_warning.selection_save_failed);
     assert!(device.parametric_attached.load(Ordering::SeqCst));
     assert_eq!(client.remembered_native_headphone(&epoch).unwrap(), saved);
+    compare(&client, &epoch, &active_with_warning, true)
+        .await
+        .unwrap();
+    let pending = client
+        .player_snapshot(&epoch)
+        .await
+        .unwrap()
+        .device_parametric
+        .unwrap();
+    client
+        .player_action(&epoch, PlayerAction::Stop)
+        .await
+        .unwrap();
+    assert!(matches!(
+        compare(&client, &epoch, &pending, false).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(!device.parametric_attached.load(Ordering::SeqCst));
+    assert!(
+        client
+            .player_snapshot(&epoch)
+            .await
+            .unwrap()
+            .device_parametric
+            .is_none()
+    );
+    assert_eq!(device.state.lock().unwrap().loads, 1);
 }
 
 #[test]

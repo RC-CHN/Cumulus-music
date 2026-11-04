@@ -55,7 +55,8 @@ export interface DeviceParametricView {
   model: number;
   activationId: string;
   modelName?: string;
-  status: BoundParametricStatus;
+  status: BoundParametricStatus | 'paused_locally';
+  comparison?: { playId: string; receipt: string };
   selectionSaveFailed?: boolean;
 }
 

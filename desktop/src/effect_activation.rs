@@ -11,7 +11,9 @@ use cumulus_core::{
         parametric::{ParametricHost, ParametricPlan},
         service::StandaloneParametricPreflight,
     },
-    playback::controller::{ParametricApplication, ParametricBindingStatus},
+    playback::controller::{
+        DeviceParametricTarget, ParametricApplication, ParametricBindingStatus,
+    },
 };
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -469,6 +471,43 @@ pub async fn effect_device_clear<R: tauri::Runtime>(
     let _state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
     client
         .clear_native_device_parametric(&epoch, brand, model, &activation_id)
+        .await?;
+    Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DeviceComparison {
+    brand: EffectId,
+    model: EffectId,
+    activation_id: String,
+    play_id: String,
+    receipt: String,
+    paused: bool,
+}
+
+#[tauri::command]
+pub async fn effect_device_compare<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    host: tauri::State<'_, Host>,
+    epoch: String,
+    comparison: DeviceComparison,
+) -> std::result::Result<(), ClientError> {
+    authorize(&window, &client, &epoch)?;
+    let _state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
+    client
+        .compare_native_device_parametric(
+            &epoch,
+            DeviceParametricTarget {
+                brand: comparison.brand,
+                model: comparison.model,
+            },
+            &comparison.activation_id,
+            &comparison.play_id,
+            &comparison.receipt,
+            comparison.paused,
+        )
         .await?;
     Ok(())
 }

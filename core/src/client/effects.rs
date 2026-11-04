@@ -19,8 +19,8 @@ use crate::{
         },
     },
     playback::controller::{
-        DeviceParametricTarget, DeviceRestoreAuthority, ParametricApplication,
-        ParametricBindingStatus, PlaybackController,
+        DeviceParametricComparison, DeviceParametricTarget, DeviceRestoreAuthority,
+        ParametricApplication, ParametricBindingStatus, PlaybackController,
     },
 };
 use std::sync::Arc;
@@ -529,15 +529,43 @@ impl MusicClient {
         activation_id: &str,
     ) -> Result<ParametricApplication> {
         let token = self.player_token(epoch)?;
-        let id = uuid::Uuid::parse_str(activation_id)
-            .ok()
-            .filter(|id| id.simple().to_string() == activation_id)
-            .ok_or(Error::InvalidInput("invalid headphone activation identity"))?;
+        let id = parse_headphone_identity(activation_id)?;
         let result = self
             .player
             .controller()
             .await?
             .clear_device_parametric(&token, DeviceParametricTarget { brand, model }, id)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(result)
+    }
+
+    pub async fn compare_native_device_parametric(
+        &self,
+        epoch: &str,
+        target: DeviceParametricTarget,
+        activation_id: &str,
+        play_id: &str,
+        receipt: &str,
+        paused: bool,
+    ) -> Result<ParametricApplication> {
+        let token = self.player_token(epoch)?;
+        let activation_id = parse_headphone_identity(activation_id)?;
+        let _ = parse_headphone_identity(play_id)?;
+        let comparison = DeviceParametricComparison {
+            play_id: play_id.to_owned(),
+            receipt: parse_headphone_identity(receipt)?,
+        };
+        let authorization = EffectAuthorizations::new(self.session.clone())?;
+        let _activation = authorization.activation_lock_for(&token)?;
+        // Comparison can only address an already loaded player. A stale
+        // command cannot lazily start the player or resolve an online source.
+        let result = self
+            .player
+            .controller
+            .get()
+            .ok_or(Error::StaleResponse)?
+            .compare_device_parametric(&token, target, activation_id, comparison, paused)
             .await?;
         self.session.check_generation(&token)?;
         Ok(result)
@@ -556,4 +584,11 @@ impl MusicClient {
         }
         Ok(())
     }
+}
+
+fn parse_headphone_identity(value: &str) -> Result<uuid::Uuid> {
+    uuid::Uuid::parse_str(value)
+        .ok()
+        .filter(|id| id.simple().to_string() == value)
+        .ok_or(Error::InvalidInput("invalid headphone activation identity"))
 }

@@ -45,6 +45,23 @@ impl ParametricBindingStatus {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceParametricStatus {
+    Deferred,
+    Configured,
+    PausedLocally,
+    DetachRequired,
+    ProcessorFailed,
+}
+
+impl DeviceParametricStatus {
+    pub fn is_detached(self) -> bool {
+        // Paused tuning still reserves the one PEQ slot until it is cleared.
+        self == Self::ProcessorFailed
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct DeviceParametricTarget {
     pub brand: EffectId,
     pub model: EffectId,
@@ -61,9 +78,19 @@ pub struct DeviceParametricView {
     pub activation_id: uuid::Uuid,
     #[serde(rename = "modelName", skip_serializing_if = "Option::is_none")]
     pub model_name: Option<String>,
-    pub status: ParametricBindingStatus,
+    pub status: DeviceParametricStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comparison: Option<DeviceParametricComparison>,
     #[serde(rename = "selectionSaveFailed")]
     pub selection_save_failed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceParametricComparison {
+    pub play_id: String,
+    #[serde(serialize_with = "serialize_device_activation")]
+    pub receipt: uuid::Uuid,
 }
 
 fn serialize_device_activation<S: serde::Serializer>(
@@ -84,6 +111,8 @@ struct DeviceActivation {
     identity: DeviceActivationId,
     model_name: Option<String>,
     remember_selection: bool,
+    plan: Box<ParametricPlan>,
+    comparison_receipt: uuid::Uuid,
 }
 
 pub(crate) struct DeviceRestoreAuthority {
@@ -118,8 +147,9 @@ enum Selection {
         Option<String>,
         Option<DeviceRestoreAuthority>,
     ),
-    Device(DeviceActivation, Box<ParametricPlan>),
+    Device(DeviceActivation),
     ClearDevice(DeviceActivationId),
+    CompareDevice(DeviceActivationId, String, uuid::Uuid, bool),
 }
 
 #[derive(Default)]
@@ -134,25 +164,38 @@ pub(super) struct State {
     detach_required: bool,
     failed_binding: Option<(SessionToken, BoundParametricTarget)>,
     device: Option<DeviceActivation>,
+    device_paused: bool,
     failed_device: Option<DeviceActivation>,
     device_selection_save_failed: bool,
 }
 
 impl State {
+    pub(super) fn discard_paused_device(&mut self) {
+        if self.device_paused {
+            // Pausing confirmed native removal. The plan was retained only
+            // for the previous play instance, and cannot follow a new one.
+            self.device = None;
+            self.device_paused = false;
+            self.device_selection_save_failed = false;
+        }
+    }
+
     fn deferred_device(&self) -> Option<&DeviceActivation> {
         match &self.deferred {
-            Some(Selection::Device(target, _)) => Some(target),
+            Some(Selection::Device(target)) => Some(target),
             _ => None,
         }
     }
 
-    pub(super) fn device_status(&self) -> Option<DeviceParametricView> {
-        use ParametricBindingStatus as Status;
+    pub(super) fn device_status(&self, play_id: Option<&str>) -> Option<DeviceParametricView> {
+        use DeviceParametricStatus as Status;
         let (activation, status) = if let Some(target) = &self.device {
             (
                 target,
                 if self.detach_required {
                     Status::DetachRequired
+                } else if self.device_paused {
+                    Status::PausedLocally
                 } else {
                     Status::Configured
                 },
@@ -167,6 +210,12 @@ impl State {
             activation_id: activation.identity.id,
             model_name: activation.model_name.clone(),
             status,
+            comparison: play_id
+                .filter(|_| matches!(status, Status::Configured | Status::PausedLocally))
+                .map(|play_id| DeviceParametricComparison {
+                    play_id: play_id.to_owned(),
+                    receipt: activation.comparison_receipt,
+                }),
             selection_save_failed: self.device_selection_save_failed,
         })
     }
@@ -257,6 +306,29 @@ impl PlaybackController {
                 target,
                 id: activation_id,
             }),
+        )
+        .await
+    }
+
+    pub(crate) async fn compare_device_parametric(
+        &self,
+        token: &SessionToken,
+        target: DeviceParametricTarget,
+        activation_id: uuid::Uuid,
+        comparison: DeviceParametricComparison,
+        paused: bool,
+    ) -> Result<ParametricApplication> {
+        self.request_parametric(
+            token,
+            Selection::CompareDevice(
+                DeviceActivationId {
+                    target,
+                    id: activation_id,
+                },
+                comparison.play_id,
+                comparison.receipt,
+                paused,
+            ),
         )
         .await
     }
@@ -422,6 +494,11 @@ impl Actor {
         if let Selection::ClearDevice(target) = selection {
             return self.parametric_clear_device(target).await;
         }
+        if let Selection::CompareDevice(target, play_id, receipt, paused) = selection {
+            return self
+                .parametric_compare_device(target, &play_id, receipt, paused)
+                .await;
+        }
         if let Selection::DeviceRequest(_, _, _, Some(expected)) = &selection {
             // A restore should never adopt a replacement queue or start a
             // decoder. Reload only the stored queue to verify its identity.
@@ -462,17 +539,18 @@ impl Actor {
             }
         }
         let selection = match selection {
-            Selection::DeviceRequest(target, plan, model_name, restore) => Selection::Device(
-                DeviceActivation {
+            Selection::DeviceRequest(target, plan, model_name, restore) => {
+                Selection::Device(DeviceActivation {
                     identity: DeviceActivationId {
                         target,
                         id: uuid::Uuid::new_v4(),
                     },
                     model_name,
                     remember_selection: restore.is_none(),
-                },
-                plan,
-            ),
+                    plan,
+                    comparison_receipt: uuid::Uuid::new_v4(),
+                })
+            }
             other => other,
         };
         if self.pending.is_some() {
@@ -509,6 +587,53 @@ impl Actor {
             return Err(Error::StaleResponse);
         }
         Ok(ParametricApplication::Cleared)
+    }
+
+    async fn parametric_compare_device(
+        &mut self,
+        target: DeviceActivationId,
+        play_id: &str,
+        receipt: uuid::Uuid,
+        paused: bool,
+    ) -> Result<ParametricApplication> {
+        if self.comparable_device_play() != Some(play_id)
+            || self.parametric.detach_required
+            || self.parametric.device_paused == paused
+        {
+            return Err(Error::StaleResponse);
+        }
+        let mut activation = self
+            .parametric
+            .device
+            .as_ref()
+            .filter(|device| device.identity == target && device.comparison_receipt == receipt)
+            .cloned()
+            .ok_or(Error::StaleResponse)?;
+        activation.comparison_receipt = uuid::Uuid::new_v4();
+        activation.remember_selection = false;
+        if !paused {
+            // The plan is the exact native-only one from this activation; a
+            // hot resume does not check out another material or save it again.
+            return self
+                .parametric_apply_selection(Selection::Device(activation))
+                .await;
+        }
+        self.parametric.detach_required = true;
+        if let Err(error) = super::engine(self.engine.clone(), self.guard(), |engine| {
+            engine.clear_parametric_component()
+        })
+        .await
+        {
+            // Follow the same fail-closed policy as other exact PEQ removals.
+            let _ = self.stop(false).await;
+            return Err(error);
+        }
+        self.parametric.possibly_attached = false;
+        self.parametric.detach_required = false;
+        self.parametric.device = Some(activation);
+        self.parametric.device_paused = true;
+        self.session.check_generation(&self.token)?;
+        Ok(ParametricApplication::BypassConfigured)
     }
 
     async fn parametric_clear_bound(
@@ -556,7 +681,7 @@ impl Actor {
 
     pub(super) async fn parametric_apply_deferred(&mut self) -> Result<()> {
         if let Some(selection) = self.parametric.deferred.take() {
-            let is_device = matches!(selection, Selection::Device(..));
+            let is_device = matches!(selection, Selection::Device(_));
             if let Err(error) = self.parametric_apply_selection(selection).await
                 && (!is_device || self.parametric.failed_device.is_none())
             {
@@ -572,16 +697,23 @@ impl Actor {
     ) -> Result<ParametricApplication> {
         match selection {
             Selection::Plain(plan) => self.parametric_apply(plan.map(|plan| *plan)).await,
-            Selection::ClearBound(_) | Selection::ClearDevice(_) | Selection::DeviceRequest(..) => {
+            Selection::ClearBound(_)
+            | Selection::ClearDevice(_)
+            | Selection::CompareDevice(..)
+            | Selection::DeviceRequest(..) => {
                 unreachable!("only accepted apply operations enter the deferred queue")
             }
-            Selection::Device(target, plan) => {
+            Selection::Device(target) => {
                 self.parametric.failed_device = None;
-                self.parametric.device_selection_save_failed = false;
+                self.parametric.device_paused = false;
+                if target.remember_selection {
+                    self.parametric.device_selection_save_failed = false;
+                }
+                let plan = *target.plan;
                 self.parametric.device = Some(target.clone());
                 self.parametric.possibly_attached = true;
                 let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
-                    if engine.apply_parametric_component(*plan)? {
+                    if engine.apply_parametric_component(plan)? {
                         Ok(ParametricApplication::Configured)
                     } else {
                         Err(Error::State("parametric audio processing is unavailable"))
@@ -805,6 +937,7 @@ impl Actor {
         }
         self.parametric_record_applied_clear();
         self.parametric.device = None;
+        self.parametric.device_paused = false;
         self.parametric.device_selection_save_failed = false;
         if let Some(binding) = self.parametric.installing.take() {
             self.parametric.record_clear(&self.token, &binding);

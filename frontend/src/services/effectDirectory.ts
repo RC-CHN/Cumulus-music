@@ -1,4 +1,4 @@
-import type { BoundParametricStatus } from './player';
+import type { DeviceParametricView } from './player';
 
 export type EffectCatalogueKind = 'highly_recommended' | 'recommended' | 'more';
 
@@ -25,13 +25,23 @@ export interface RememberedHeadphone {
   revision: string;
 }
 
-export function headphoneTuningLabel(status: BoundParametricStatus) {
+export function headphoneTuningLabel(status: DeviceParametricView['status']) {
   return {
     configured: '耳机调音已启用',
     deferred: '音频加载后启用耳机调音',
+    paused_locally: '耳机调音已暂时停用',
     detach_required: '耳机调音尚未关闭，请重试关闭',
     processor_failed: '耳机调音失败，已停用',
   }[status];
+}
+
+export interface DeviceTuningComparison {
+  brand: number;
+  model: number;
+  activationId: string;
+  playId: string;
+  receipt: string;
+  paused: boolean;
 }
 export type EffectDeviceMaterialCheck =
   | 'no_material'
@@ -108,6 +118,7 @@ export interface EffectDirectoryClient {
   effectDeviceApply(epoch: string, brand: number, model: number): Promise<void>;
   effectDeviceRemembered(epoch: string): Promise<RememberedHeadphone | null>;
   effectDeviceRestore(epoch: string, revision: string): Promise<void>;
+  effectDeviceCompare(epoch: string, comparison: DeviceTuningComparison): Promise<void>;
   effectDeviceClear(
     epoch: string,
     brand: number,

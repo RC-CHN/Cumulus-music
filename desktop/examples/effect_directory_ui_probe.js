@@ -271,6 +271,46 @@
         button(dialog(), '浏览耳机音效') && button(dialog(), '打开均衡器'),
         'current management offers explicit browse and equalizer without loading either');
       await capture('10_headphones_footer');
+      const beforeComparison = await player();
+      const activeDevice = beforeComparison.deviceParametric;
+      const localCommand = (device, paused, fields = {}, epoch = account.epoch) =>
+        invoke('effect_device_compare', { epoch, comparison: {
+          brand: device.brand, model: device.model, activationId: device.activationId,
+          ...device.comparison, paused, ...fields,
+        } });
+      const rejects = (promise) => promise.then(() => false, (error) => error.code === 'stale');
+      assert(await rejects(localCommand(activeDevice, true,
+        { playId: '00000000000000000000000000000000' })), 'another playback cannot bypass this filter');
+      assert(await rejects(localCommand(activeDevice, true, {}, '0')),
+        'another account generation cannot bypass this filter');
+      const dry = button(currentTuning(), '暂时停用调音');
+      const comparisonLeft = dry.getBoundingClientRect().left;
+      click(dry);
+      const bypassed = await wait(async () => {
+        const value = await player();
+        return sameSong(value) && value.position > beforeComparison.position + 0.25 &&
+          value.deviceParametric?.status === 'paused_locally' &&
+          value.deviceParametric.activationId === activeDevice.activationId &&
+          currentTuning()?.dataset.deviceTuning === 'paused_locally' &&
+          launcher()?.dataset.headphoneState === 'paused_locally' && value;
+      }, 'local comparison detaches native tuning without interrupting the same song');
+      const resume = button(currentTuning(), '继续当前调音');
+      assert(document.activeElement === resume, 'comparison preserves keyboard focus');
+      assert(Math.abs(resume.getBoundingClientRect().left - comparisonLeft) < 1,
+        'comparison action stays in place when its status changes');
+      assert(await rejects(localCommand(activeDevice, false)), 'the previous comparison receipt cannot reverse a newer action');
+      await capture('10a_headphones_comparison_dry');
+      click(button(currentTuning(), '继续当前调音'));
+      await wait(async () => {
+        const value = await player();
+        return sameSong(value) && value.position > bypassed.position + 0.25 &&
+          value.deviceParametric?.status === 'configured' &&
+          value.deviceParametric.activationId === activeDevice.activationId &&
+          currentTuning()?.dataset.deviceTuning === 'configured';
+      }, 'local comparison reapplies verified tuning to the same source');
+      assert(await rejects(localCommand(activeDevice, true)), 'the first receipt cannot be replayed after two changes');
+      assert(document.activeElement === button(currentTuning(), '暂时停用调音'), 'resuming keeps focus on the same action');
+      await capture('10b_headphones_comparison_wet');
       click(button(dialog(), '打开均衡器'));
       await wait(() => !dialog() && one('.equalizer-dialog[open]'), 'graphic equalizer opens separately');
       assert((await player()).deviceParametric?.status === 'configured', 'viewing the graphic equalizer preserves tuning');
@@ -308,12 +348,18 @@
           value.position > restoring.position + 0.25;
       }, 'explicit restore revalidates the saved model without starting a new track');
       await capture('12_headphones_restored');
+      click(button(currentTuning(), '暂时停用调音'));
+      const beforeStop = await wait(async () => {
+        const value = await player();
+        return value.deviceParametric?.status === 'paused_locally' && value.deviceParametric;
+      }, 'retain a current comparison for the explicit Stop check');
       click(button(dialog(), '关闭耳机音效管理'));
       await wait(() => !dialog() && document.activeElement === launcher() &&
         launcher()?.getAttribute('aria-label') === '管理耳机音效', 'closing restores the footer focus');
       click(button(one('.playerbar'), '停止播放'));
       await wait(async () => (await player()).state === 'idle' &&
         launcher()?.getAttribute('aria-label') === '均衡器', 'stop does not restore the remembered tuning');
+      assert(await rejects(localCommand(beforeStop, false)), 'stop invalidates a previously paused comparison');
       const idle = await player();
       await invoke('player_action', { epoch: account.epoch, action: {
         kind: 'queue_for', expected_queue_revision: idle.queueRevision, edit: { kind: 'clear' },
@@ -322,9 +368,10 @@
     }
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: native ? 12 : 7, artworkVerified: true,
+    await emit('complete', { ok: true, stageCount: native ? 14 : 7, artworkVerified: true,
       devicesVerified: true, deviceTuningVerified: native, deviceMaterialVerified: true,
-      deviceCacheVerified: true, limitedFreeExpiryVerified: true, headphoneFooterVerified: native });
+      deviceCacheVerified: true, limitedFreeExpiryVerified: true, headphoneFooterVerified: native,
+      stoppedComparisonRejected: native });
   } catch (error) {
     const image = one('.effect-directory-card img');
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),

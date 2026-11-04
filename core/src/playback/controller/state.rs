@@ -191,6 +191,11 @@ impl Actor {
         }
         Ok(value)
     }
+    pub(super) fn comparable_device_play(&self) -> Option<&str> {
+        (self.loaded.is_some() && self.pending.is_none() && self.state.active())
+            .then_some(self.play_id.as_deref())
+            .flatten()
+    }
     pub fn snapshot(&self) -> PlaybackSnapshot {
         let selected = self.queue.selected();
         let speed_scope = PlaybackSpeedScope::for_entry(selected.as_ref());
@@ -205,7 +210,7 @@ impl Actor {
                 .and_then(|s| s.operation_id.clone()),
             equalizer: self.equalizer,
             bound_parametric: self.parametric.bound_status(),
-            device_parametric: self.parametric.device_status(),
+            device_parametric: self.parametric.device_status(self.comparable_device_play()),
             loudness: self.loudness.clone(),
             revision: self.revision,
             control_revision: self.control_revision,

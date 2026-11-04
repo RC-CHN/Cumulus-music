@@ -9,7 +9,8 @@ mod loudness;
 mod parametric;
 pub(crate) use parametric::DeviceRestoreAuthority;
 pub use parametric::{
-    DeviceParametricTarget, DeviceParametricView, ParametricApplication, ParametricBindingStatus,
+    DeviceParametricComparison, DeviceParametricStatus, DeviceParametricTarget,
+    DeviceParametricView, ParametricApplication, ParametricBindingStatus,
 };
 mod quality;
 mod remote;
