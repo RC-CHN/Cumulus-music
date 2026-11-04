@@ -20,6 +20,10 @@
     item.focus({ preventScroll: true });
     item.click();
   }
+  async function capture(stage, value = {}) {
+    await emit(stage, value);
+    if (window.__localProof.capture) await new Promise(done => setTimeout(done, 700));
+  }
   async function filter(word, count) {
     const input = one('[aria-label="搜索本地音乐"]');
     input.value = word;
@@ -165,6 +169,27 @@
     assert(origin.getAttribute('aria-pressed') === 'false' && trackRows().length === 5, 'context action does not select the group');
     assert(document.activeElement === origin, 'next restores menu origin focus');
 
+    const rowTrigger = (name) => button(`更多操作 ${name}`);
+    const rowMenu = () => one('.action-menu[aria-label="本地歌曲操作"]');
+    const rowAction = (label) => [...(rowMenu()?.querySelectorAll('button') ?? [])]
+      .find(item => item.textContent.trim() === label);
+    const upper = rowTrigger('夜行 · 上篇');
+    const rowContext = (trigger) => {
+      trigger.focus();
+      trigger.dispatchEvent(new KeyboardEvent('keydown', {key:'F10', shiftKey:true, bubbles:true, cancelable:true}));
+    };
+    rowContext(upper);
+    await wait(() => document.activeElement === rowAction('播放') && !rowAction('下一首播放').disabled, 'track menu focuses the first action');
+    await capture('ux_01_local_track_menu');
+    click(rowAction('下一首播放'));
+    await wait(async () => (await invoke('player_queue', { epoch })).tracks
+      .map(entry => entry.track.name).join(',') === '夜行 · 下篇,夜行 · 上篇,Bonus Track,雨声', 'next moves exactly the chosen CUE segment');
+    const queuedTrack = await invoke('player_snapshot', { epoch });
+    assert(queuedTrack.playId === before.playId && queuedTrack.entryId === before.entryId &&
+      queuedTrack.state === before.state && Math.abs(queuedTrack.position - before.position) < .05,
+      'track next leaves the paused segment untouched');
+    assert(document.activeElement === upper && trackRows().length === 5, 'track next retains row focus and filter');
+
     const contextKey = () => origin.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'F10', shiftKey: true, bubbles: true, cancelable: true,
     }));
@@ -180,9 +205,20 @@
       const result = await invoke('player_snapshot', { epoch });
       return result.state === 'playing' && result.queueLen === 1 && result.track?.name === 'Bonus Track';
     }, 'play replaces queue with clicked folder only');
+    click(button('歌曲'));
+    await filter('夜行', 2);
+    const filtered = rowTrigger('夜行 · 上篇');
+    click(filtered);
+    await wait(() => rowAction('播放') && !rowAction('播放').disabled, 'track play menu');
+    click(rowAction('播放'));
+    await wait(async () => {
+      const result = await invoke('player_snapshot', { epoch });
+      return result.state === 'playing' && result.queueLen === 2 && result.track?.name === '夜行 · 上篇' && result.timeline?.mode === 'cue';
+    }, 'track play starts chosen segment in the full filter');
+    await capture('ux_02_local_track_playing');
     assert(document.documentElement.scrollWidth <= innerWidth &&
       one('.local-page').scrollWidth <= one('.local-page').clientWidth + 1, 'no horizontal clipping');
-    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, localSort: true, groupPinyinOrder: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
+    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, trackMenu: true, localSort: true, groupPinyinOrder: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
   } catch (error) {
     await emit('failed', { message: String(error), stack: error?.stack });
   }

@@ -436,13 +436,18 @@ impl MusicClient {
         if let PlayerAction::QueueLocal {
             query,
             revision,
+            track_id,
             expected_queue_revision,
         } = action
         {
             return self
                 .queue_collection(
                     epoch,
-                    queue_playlist::QueueCollection::Local { query, revision },
+                    queue_playlist::QueueCollection::Local {
+                        query,
+                        revision,
+                        track_id,
+                    },
                     expected_queue_revision,
                 )
                 .await;

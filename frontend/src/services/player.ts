@@ -306,6 +306,7 @@ export type PlayerAction =
       kind: 'queue_local';
       query: import('./local').LocalQuery;
       revision: string;
+      track_id?: string;
       expected_queue_revision: string;
     }
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }

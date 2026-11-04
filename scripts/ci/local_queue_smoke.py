@@ -3,7 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
-import subprocess
+from motion_smoke import launch
 
 
 def main():
@@ -12,6 +12,7 @@ def main():
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--small', action='store_true')
+    parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -32,21 +33,21 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
-        result = subprocess.run([str(args.binary.resolve())], env=env, stdout=log,
-                                stderr=subprocess.STDOUT, timeout=90, check=False)
+        code = launch(args.binary.resolve(), env, log, run, args.screenshots)
     failed = run / 'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
-    assert result.returncode == 0, f'local queue UI exit {result.returncode}'
+    assert code == 0, f'local queue UI exit {code}'
     started = json.loads((run / 'local_queue_started.json').read_text(encoding='utf-8'))
     assert started == {'stage': 'local_queue_started', 'queue': 1, 'cue': True}
     complete = json.loads((run / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['retainedPlayback'] and complete['realMusicRequests'] == 0
-    assert complete['folderTree'] is True and complete['groupMenu'] is True
+    assert complete['folderTree'] is True and complete['groupMenu'] is True and complete['trackMenu'] is True
     assert complete['localSort'] is True
     assert complete['groupPinyinOrder'] is True
     if args.small:
         assert complete['width'] == 760
     assert complete['audioOutput'] == 'null' and complete['queue'] == ['夜行 · 下篇', '雨声', '夜行 · 上篇']
+    assert len(list(run.glob('ux_*.png'))) == (2 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'queueCount': len(complete['queue'])}))
 
 

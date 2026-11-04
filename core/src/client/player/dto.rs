@@ -306,6 +306,8 @@ pub enum PlayerAction {
     QueueLocal {
         query: crate::library::catalog::LocalQuery,
         revision: String,
+        #[serde(default)]
+        track_id: Option<String>,
         expected_queue_revision: String,
     },
     QueueDownloads {

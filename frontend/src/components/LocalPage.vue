@@ -24,7 +24,7 @@ const props = defineProps<{
   matching: LocalMatchingModel;
   playable: boolean;
   queueable: boolean;
-  queueLocal: (query: LocalQuery, revision: string) => Promise<unknown>;
+  queueLocal: (query: LocalQuery, revision: string, trackId?: string) => Promise<unknown>;
   currentId?: string;
 }>();
 const emit = defineEmits<{
@@ -114,7 +114,12 @@ const canPlay = computed(
   () => props.playable && !busy.value && !readLocked.value && !!view.value?.playable,
 );
 const trackMenu = ref<InstanceType<typeof ActionMenu>>();
-const trackTarget = shallowRef<{ id: string; revision: string; queryKey: string }>();
+const trackTarget = shallowRef<{
+  id: string;
+  revision: string;
+  queryKey: string;
+  listRevision: string;
+}>();
 const openingDirectory = ref(false);
 const directoryError = ref('');
 const trackRow = computed(() => {
@@ -124,7 +129,8 @@ const trackRow = computed(() => {
     readLocked.value ||
     busy.value ||
     keyword.value !== query.value.keyword ||
-    target.queryKey !== localQueryKey(query.value)
+    target.queryKey !== localQueryKey(query.value) ||
+    target.listRevision !== view.value?.revision
   )
     return;
   return view.value?.tracks.find(
@@ -133,6 +139,18 @@ const trackRow = computed(() => {
 });
 const trackCurrent = computed(() => !!trackRow.value);
 const trackMenuItems = computed(() => [
+  {
+    key: 'play',
+    label: '播放',
+    icon: 'play' as const,
+    disabled: !canPlay.value || !trackRow.value || trackRow.value.track.missing,
+  },
+  {
+    key: 'next',
+    label: '下一首播放',
+    icon: 'next' as const,
+    disabled: !props.queueable || adding.value || !trackRow.value || trackRow.value.track.missing,
+  },
   {
     key: 'directory',
     label: '打开文件所在目录',
@@ -168,6 +186,7 @@ function showTrackMenu(event: MouseEvent | KeyboardEvent, row: LocalTrack) {
     readLocked.value ||
     busy.value ||
     openingDirectory.value ||
+    !view.value ||
     keyword.value !== query.value.keyword ||
     !ownsVisit()
   )
@@ -180,6 +199,7 @@ function showTrackMenu(event: MouseEvent | KeyboardEvent, row: LocalTrack) {
     id: row.track.id,
     revision: row.revision,
     queryKey: localQueryKey(query.value),
+    listRevision: view.value.revision,
   };
   directoryError.value = '';
   trigger.focus({ preventScroll: true });
@@ -210,17 +230,27 @@ function handleTrackKey(event: KeyboardEvent, row: LocalTrack) {
     return;
   event.preventDefault();
   event.stopPropagation();
-  if (event.repeat || openingDirectory.value || !ownsVisit()) return;
+  if (event.repeat || openingDirectory.value || !view.value || !ownsVisit()) return;
   trackTarget.value = {
     id: row.track.id,
     revision: row.revision,
     queryKey: localQueryKey(query.value),
+    listRevision: view.value.revision,
   };
   void trackAction('hide_track');
 }
 async function trackAction(action: string) {
   const target = trackTarget.value;
   if (!target || !trackCurrent.value || openingDirectory.value || !ownsVisit()) return;
+  if (action === 'play') {
+    play(target.id);
+    return;
+  }
+  if (action === 'next') {
+    if (props.queueable && !adding.value && !trackRow.value?.track.missing)
+      await queueScope({ ...query.value }, target.listRevision, target.id);
+    return;
+  }
   if (action === 'hide_track') {
     await props.model.command({ kind: 'hide_track', id: target.id, revision: target.revision });
     await nextTick();
@@ -346,11 +376,11 @@ function addAll(key: string) {
   if (key === 'queue_all' && canAdd.value && view.value)
     void queueScope({ ...query.value }, view.value.revision);
 }
-async function queueScope(captured: LocalQuery, revision: string) {
+async function queueScope(captured: LocalQuery, revision: string, trackId?: string) {
   adding.value = true;
   queueNotice.value = queueError.value = '';
   try {
-    if ((await props.queueLocal(captured, revision)) && ownsVisit())
+    if ((await props.queueLocal(captured, revision, trackId)) && ownsVisit())
       queueNotice.value = '已添加至播放列表';
   } catch (issue) {
     if (ownsVisit()) queueError.value = failure(issue).message;

@@ -805,6 +805,7 @@ async fn guest_adds_the_complete_local_filter_after_the_current_song_without_rel
                     ..Default::default()
                 },
                 revision: page.revision.clone(),
+                track_id: None,
                 expected_queue_revision: initial.queue_revision,
             },
         )
@@ -836,6 +837,7 @@ async fn guest_adds_the_complete_local_filter_after_the_current_song_without_rel
             PlayerAction::QueueLocal {
                 query: query.clone(),
                 revision: page.revision.clone(),
+                track_id: None,
                 expected_queue_revision: paused.queue_revision.clone(),
             },
         )
@@ -861,6 +863,7 @@ async fn guest_adds_the_complete_local_filter_after_the_current_song_without_rel
                 PlayerAction::QueueLocal {
                     query: query.clone(),
                     revision: page.revision.clone(),
+                    track_id: None,
                     expected_queue_revision: paused.queue_revision,
                 }
             )
@@ -872,15 +875,60 @@ async fn guest_adds_the_complete_local_filter_after_the_current_song_without_rel
             .player_action(
                 "0",
                 PlayerAction::QueueLocal {
-                    query,
+                    query: query.clone(),
                     revision: "expired-index".into(),
-                    expected_queue_revision: added.queue_revision,
+                    track_id: None,
+                    expected_queue_revision: added.queue_revision.clone(),
                 }
             )
             .await,
         Err(Error::QueueChanged)
     ));
     assert_eq!(client.player_queue("0").await.unwrap().tracks.len(), 4);
+
+    let id = |name| {
+        page.tracks
+            .iter()
+            .find(|entry| entry.track.name == name)
+            .unwrap()
+            .track
+            .id
+            .clone()
+    };
+    let single = |query, id| PlayerAction::QueueLocal {
+        query,
+        revision: page.revision.clone(),
+        track_id: Some(id),
+        expected_queue_revision: added.queue_revision.clone(),
+    };
+    assert!(matches!(
+        client.player_action("0", single(query, id("Other"))).await,
+        Err(Error::InvalidInput(_))
+    ));
+    std::fs::write(media.join("Match C.wav"), b"new file revision").unwrap();
+    assert!(matches!(
+        client
+            .player_action("0", single(LocalQuery::default(), id("Match C")))
+            .await,
+        Err(Error::State("local source changed; rescan before playing"))
+    ));
+    let inserted = client
+        .player_action("0", single(LocalQuery::default(), id("Other")))
+        .await
+        .unwrap();
+    let final_queue = client.player_queue("0").await.unwrap();
+    assert_eq!(
+        final_queue
+            .tracks
+            .iter()
+            .map(|e| e.track.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Current", "Other", "Match A", "Match B", "Match C"]
+    );
+    assert_eq!(inserted.play_id, paused.play_id);
+    assert_eq!(inserted.entry_id, paused.entry_id);
+    assert_eq!(inserted.state, paused.state);
+    assert_eq!(inserted.position, paused.position);
 }
 
 #[tokio::test]

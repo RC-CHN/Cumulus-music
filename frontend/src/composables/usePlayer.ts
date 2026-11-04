@@ -372,8 +372,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
-  function queueLocal(query: LocalQuery, revision: string) {
-    return queueAction({ kind: 'queue_local', query, revision });
+  function queueLocal(query: LocalQuery, revision: string, trackId?: string) {
+    return queueAction({ kind: 'queue_local', query, revision, track_id: trackId });
   }
   function queueCloud(ids: string[], revision: string, query?: CloudQuery) {
     return queueAction({

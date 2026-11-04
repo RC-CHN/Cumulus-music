@@ -180,6 +180,20 @@ impl LocalLibrary {
     }
 }
 impl LocalSnapshot {
+    /// The row must belong to the captured filter and still refer to the
+    /// indexed file. Use the same local/CUE/NCM identity as the full queue.
+    pub(crate) fn queue_track(&self, id: &str) -> Result<serde_json::Value> {
+        let item = self
+            .items
+            .iter()
+            .find(|item| item.id == id && item.available())
+            .ok_or(Error::InvalidInput(
+                "local selection is unavailable or outside query",
+            ))?;
+        LocalLibrary::check_current(item)?;
+        queue_resource(item)
+    }
+
     /// Build every playable row, irrespective of UI pagination. Files are
     /// fingerprint-checked by the resolver on selection, advance and restore.
     pub fn queue(&self, start: Option<&str>) -> Result<(Vec<serde_json::Value>, usize)> {
@@ -202,15 +216,16 @@ impl LocalSnapshot {
         };
         let resources = items
             .into_iter()
-            .map(|i| {
-                serde_json::to_value(LocalResource {
-                    local_id: i.id.clone(),
-                    local_revision: i.revision.clone(),
-                    metadata: i.metadata.clone(),
-                })
-                .map_err(Error::from)
-            })
+            .map(queue_resource)
             .collect::<Result<_>>()?;
         Ok((resources, index))
     }
+}
+
+fn queue_resource(item: &LibraryItem) -> Result<serde_json::Value> {
+    Ok(serde_json::to_value(LocalResource {
+        local_id: item.id.clone(),
+        local_revision: item.revision.clone(),
+        metadata: item.metadata.clone(),
+    })?)
 }

@@ -56,6 +56,7 @@ pub(super) enum QueueCollection {
     Local {
         query: crate::library::catalog::LocalQuery,
         revision: String,
+        track_id: Option<String>,
     },
     Cloud {
         ids: Vec<String>,
@@ -226,11 +227,16 @@ impl MusicClient {
             QueueCollection::Local {
                 mut query,
                 revision,
+                track_id,
             } => {
                 query.revision = Some(revision.clone());
                 let context = self.local.context().await?;
-                let (resources, _) = tokio::task::spawn_blocking(move || {
-                    context.library.catalog(&query)?.queue(None)
+                let resources = tokio::task::spawn_blocking(move || {
+                    let snapshot = context.library.catalog(&query)?;
+                    match track_id {
+                        Some(id) => Ok(vec![snapshot.queue_track(&id)?]),
+                        None => snapshot.queue(None).map(|(resources, _)| resources),
+                    }
                 })
                 .await
                 .map_err(|_| Error::State("local selection worker stopped"))??;
