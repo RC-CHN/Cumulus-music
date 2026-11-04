@@ -83,6 +83,8 @@ mod style_home_fixture;
 mod style_recommendations_fixture;
 #[path = "support/system_master_volume_fixture.rs"]
 mod system_master_volume_fixture;
+#[path = "support/vertical_zone_fixture.rs"]
+mod vertical_zone_fixture;
 #[path = "support/voice_download_fixture.rs"]
 mod voice_download_fixture;
 #[path = "support/volume_fixture.rs"]
@@ -168,6 +170,17 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into()))
+    }
+
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
+        Box::pin(async move { vertical_zone_fixture::groups(revision) })
+    }
+
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
         Box::pin(async { search_fixture::audio_toplist_assignment() })
     }
@@ -200,6 +213,21 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = vertical_zone_fixture::response(path, &args) {
+                return response;
+            }
+            if vertical_zone_fixture::enabled()
+                && matches!(
+                    path,
+                    "/api/album/v3/detail"
+                        | "/api/album/v4/detail"
+                        | "/api/album/privilege"
+                        | "/api/album/detail/dynamic"
+                        | "/api/song/enhance/privilege"
+                )
+            {
+                return fixture::Library::default().request(path, args, false).await;
+            }
             if let Some(reply) = playback_power_guide_fixture::home_response(path, &args) {
                 return Ok(reply);
             }
@@ -609,6 +637,7 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    assert!(!vertical_zone_fixture::enabled() || motion_proof);
     let queue_ui_proof = std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some();
     let queue_click_proof = std::env::var_os("CUMULUS_QUEUE_CLICK_PROOF").is_some();
     assert!(!queue_click_proof || (queue_ui_proof && motion_proof));
@@ -666,7 +695,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() {
+        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -853,6 +882,7 @@ fn main() {
                 value["memberSignSongLikeWrites"]=json!(member_sign_fixture::sign_song_like_writes());
             }
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
+            if vertical_zone_fixture::enabled() {value["verticalZoneCalls"]=json!(vertical_zone_fixture::calls());}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());

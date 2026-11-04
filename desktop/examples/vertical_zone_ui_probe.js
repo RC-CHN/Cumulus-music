@@ -1,0 +1,138 @@
+// Real Vue/WebView, registered Tauri commands and a sealed native catalogue/PCM fixture.
+(async () => {
+  const one = (selector) => document.querySelector(selector);
+  const all = (selector) => [...document.querySelectorAll(selector)];
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
+  const emit = (stage, data = {}) => invoke('plugin:event|emit', {
+    event: 'ux-proof', payload: { stage, ...data },
+  });
+  const assert = (condition, label) => { if (!condition) throw new Error(label); };
+  const wait = async (predicate, label) => {
+    for (let i = 0; i < 150; i++) {
+      if (await predicate()) return;
+      await sleep(65);
+    }
+    throw new Error(label);
+  };
+  const click = (node, label) => {
+    assert(node && !node.disabled, `unavailable: ${label}`);
+    node.focus({ preventScroll: true });
+    node.click();
+  };
+  const zone = () => one('.vertical-zone');
+  const more = () => one('.choice-zone-more');
+  const menu = (code) => one(`[data-choice-zone="${code}"]`);
+  const button = (label) => one(`.vertical-zone button[aria-label="${label}"]`);
+  const tab = (key) => one(`[data-zone-focus="tab:${key}"]`);
+  const rail = () => one('[data-zone-module="horizontal"] [data-zone-rail]');
+  const back = () => click(one('[aria-label="返回上一页"]'), 'Back');
+  let count = 0;
+  async function capture(name, values = {}) {
+    const stage = `ux_${String(++count).padStart(2, '0')}_${name}`;
+    await emit(stage, {
+      ...values, captureHandshake: true,
+      width: innerWidth, height: innerHeight,
+      zoneTitle: zone()?.getAttribute('aria-label'),
+      modules: all('[data-zone-module]').map((node) => node.dataset.zoneModule),
+    });
+  }
+  function viewport() {
+    return { top: zone().scrollTop, left: rail().scrollLeft };
+  }
+  async function remember(opener) {
+    zone().scrollTop = 85;
+    rail().scrollLeft = 125;
+    await sleep(200);
+    const before = viewport();
+    assert(before.top >= 60 && before.left >= 75, 'two nonzero scroll axes');
+    opener.focus({ preventScroll: true });
+    return before;
+  }
+  async function restored(label, before) {
+    await wait(() => button(label) && document.activeElement === button(label) &&
+      Math.abs(viewport().top - before.top) <= 2 &&
+      Math.abs(viewport().left - before.left) <= 2, `Back restores ${label} and both axes`);
+    return { expected: before, actual: viewport(), focus: document.activeElement.getAttribute('aria-label') };
+  }
+  try {
+    const curated = () => all('.sidebar button:not(:disabled)').find((node) => node.textContent.trim() === '精选');
+    await wait(curated, 'enabled sidebar');
+    click(curated(), '精选');
+    await wait(() => menu('ROCK') && more(), 'assigned zone menu');
+    await emit('resize', { width: 920, height: 620 });
+    await sleep(150);
+    if (innerWidth !== 920 || innerHeight !== 620)
+      await emit('resize', { width: 920 * 920 / innerWidth, height: 620 * 620 / innerHeight });
+    await wait(() => innerWidth === 920 && innerHeight === 620, 'bounded viewport');
+    assert(all('.choice-tabs-scroll [data-choice-zone]').map((node) => node.dataset.choiceZone).join() ===
+      'ROCK,FOLK,ELECTRONIC,HIPHOP,CLASSICAL', 'first five dynamic tags only');
+    assert(!menu('STATIC') && !menu('JAZZ') && !one('.choice-tabs').outerHTML.includes('private=synthetic'), 'static duplicate, URL and More hidden');
+
+    if (!window.__verticalZonePrivacy) {
+      click(more(), '更多');
+      await wait(() => menu('JAZZ') && document.activeElement === menu('JAZZ'), 'More entry focus');
+      menu('JAZZ').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(() => more().getAttribute('aria-expanded') === 'false' && document.activeElement === more(), 'More escape restores focus');
+      await capture('menu');
+    }
+    click(menu('ROCK'), '摇滚');
+    await wait(() => zone()?.getAttribute('aria-label') === '摇滚' && tab('default')?.getAttribute('aria-current') === 'page' &&
+      all('[data-zone-module]').length === 4, 'Rock default and four module kinds');
+    assert(zone().textContent.includes('专区榜单歌曲') && !zone().textContent.includes('禁止出现的远程动作'), 'rank preview and unknown target filtering');
+    if (window.__verticalZonePrivacy) {
+      assert(zone().textContent.includes('个性化推荐被关闭了噢！') &&
+        !button('专区合成歌单 204') && !button('仅个性化网格卡片') && button('专区常规歌单'), 'privacy hides personalized data only');
+      await capture('privacy_gate');
+      click(one('.vertical-zone-privacy button'), 'privacy CTA');
+      await wait(() => one('#settings-privacy') && document.activeElement === one('#settings-privacy'), 'privacy settings focus');
+      await capture('privacy_settings', { focus: document.activeElement.id });
+      await emit('complete', { ok: true, stageCount: count });
+      return;
+    }
+    await capture('rock_modules');
+    const album = '专区合成专辑';
+    const playlist = '专区合成歌单 204';
+    const albumScroll = await remember(button(album));
+    click(button(album), 'album detail');
+    await wait(() => one('.catalog-heading h1')?.textContent.trim() === '测试专辑', 'actual album detail');
+    back();
+    await capture('album_back', await restored(album, albumScroll));
+    const playlistScroll = await remember(button(playlist));
+    click(button(playlist), 'playlist detail');
+    await wait(() => one('.playlist-title h1')?.textContent.trim() === '专区打开后的合成歌单' &&
+      one('.track-row[data-track-id="81"]'), 'actual playlist detail');
+    back();
+    await capture('playlist_back', await restored(playlist, playlistScroll));
+    const { epoch } = await invoke('account_snapshot');
+    const player = () => invoke('player_snapshot', { epoch });
+    click(button(`播放${playlist}`), 'scoped playlist play');
+    await wait(async () => {
+      const state = await player();
+      return state.state === 'playing' && state.track?.id === '81' && state.position > 0.15 &&
+        state.origin?.kind === 'playlist' && state.origin.id === '204';
+    }, 'authorized playlist on actual libmpv/null');
+    const tracks = (await invoke('player_queue', { epoch })).tracks.map(({ track }) => track.id);
+    assert(tracks.join() === '81,84', 'playlist queue exact order');
+    await capture('playlist_play', { tracks, playId: (await player()).playId });
+
+    click(tab('1'), '热门');
+    await wait(() => tab('1')?.getAttribute('aria-current') === 'page' &&
+      button('专区热门歌单') && !button(playlist), 'Rock hot tab');
+    await capture('rock_hot');
+    click(more(), '更多');
+    await wait(() => menu('JAZZ'), 'More menu again');
+    click(menu('JAZZ'), '爵士');
+    await wait(() => zone()?.getAttribute('aria-label') === '爵士' && button('专区爵士歌单') &&
+      !one('.vertical-zone-subtabs'), 'classic Jazz fallback');
+    await capture('jazz_fallback');
+    await emit('complete', { ok: true, stageCount: count });
+  } catch (error) {
+    await emit('failed', {
+      message: String(error), stack: error?.stack, states: count,
+      zoneTitle: zone()?.getAttribute('aria-label'), zoneScroll: zone()?.scrollTop,
+      railScroll: rail()?.scrollLeft,
+      focus: document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.id,
+    });
+  }
+})();
