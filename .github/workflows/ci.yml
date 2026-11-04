@@ -116,6 +116,8 @@ jobs:
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
       - name: Verify optional song fingerprint features
         run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
+      - name: Verify standalone WASAPI capture policy
+        run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
       - name: Reclaim Linux test build space before packaging
         run: |
           df -h .
@@ -258,6 +260,8 @@ jobs:
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
       - name: Verify optional song fingerprint features
         run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
+      - name: Verify standalone WASAPI capture policy
+        run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
       - name: Build release packages and verify native media
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
