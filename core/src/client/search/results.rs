@@ -105,6 +105,8 @@ pub struct SearchHotExplanation {
     pub hot_value: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action: Option<SearchHotAction>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_target: Option<SearchHotPlaybackTarget>,
 }
 #[derive(Serialize, Deserialize)]
 pub struct SearchHotAction {
@@ -114,12 +116,21 @@ pub struct SearchHotAction {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SearchHotTarget {
+    Song { id: String },
+    Voice { id: String },
     Album { id: String },
     Artist { id: String },
     Playlist { id: String },
     Podcast { id: String },
     Mv { id: String },
 }
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SearchHotPlaybackTarget {
+    Song { id: String },
+    Voice { id: String },
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SearchPreviewLayout {

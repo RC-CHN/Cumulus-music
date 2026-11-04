@@ -20,6 +20,7 @@ import {
   type SearchCategory,
   type SearchChannel,
   type SearchHotTarget,
+  type SearchHotPlaybackTarget,
   type SearchItem,
   type SearchReasonTarget,
   type SearchSection,
@@ -85,7 +86,8 @@ const emit = defineEmits<{
   search: [keyword: string];
   searchOriginal: [keyword: string];
   open: [item: SearchItem];
-  hotTarget: [target: SearchHotTarget];
+  hotTarget: [target: SearchHotTarget, anchor: HTMLButtonElement];
+  hotPlay: [target: SearchHotPlaybackTarget];
   creator: [id: string];
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   playTrack: [track: TrackView, toggleCurrent: boolean];
@@ -231,6 +233,23 @@ const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
 const explanation = computed(() => searchExplanation(view.value, category.value, count.value > 0));
 const hotspot = computed(() => (category.value === 'all' ? view.value?.hotExplanation : undefined));
+const hotPending = computed(() => {
+  const target = hotspot.value?.playTarget;
+  if (target?.kind === 'song' && props.pendingTrackToggle?.trackId === target.id)
+    return props.pendingTrackToggle;
+  if (target?.kind === 'voice' && props.pendingVoiceToggle?.voiceId === target.id)
+    return props.pendingVoiceToggle;
+});
+function playHotTarget(target: SearchHotPlaybackTarget, anchor: HTMLButtonElement) {
+  const pending = hotPending.value;
+  if (pending) {
+    if ('trackId' in pending) emit('togglePendingTrack', pending, anchor);
+    else emit('togglePendingVoice', pending, anchor);
+    return;
+  }
+  emit('hotPlay', target);
+}
+
 const expandedLyrics = ref(new Set<string>());
 function toggleLyric(key: string) {
   const next = new Set(expandedLyrics.value);
@@ -682,7 +701,18 @@ onBeforeUnmount(() => {
           <SearchHotExplanationCard
             v-if="hotspot"
             :explanation="hotspot"
-            @open="emit('hotTarget', $event)"
+            :playable="hotPending ? !hotPending.disabled : playable"
+            :detail-ready="playable"
+            :playing="
+              hotPending?.pause ??
+              ((playbackState === 'playing' || playbackState === 'buffering') &&
+                !!hotspot.playTarget &&
+                (hotspot.playTarget.kind === 'song'
+                  ? currentId === hotspot.playTarget.id
+                  : currentVoiceId === hotspot.playTarget.id))
+            "
+            @play="playHotTarget"
+            @open="(target, anchor) => emit('hotTarget', target, anchor)"
           />
           <p v-if="view.unavailableCount" class="search-result-notice">
             有 {{ view.unavailableCount }} 项结果暂无法展示。

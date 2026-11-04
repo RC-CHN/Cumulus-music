@@ -253,7 +253,8 @@ onMounted(() => {
 });
 onUnmounted(() => {
   cancelLyricFollowTimer();
-  if (view.value?.epoch === previousEpoch && previous?.isConnected) previous.focus();
+  if (view.value?.epoch === previousEpoch && previous?.isConnected)
+    previous.focus({ preventScroll: true });
 });
 function wordProgress(word: { time: number; duration: number }) {
   const seconds = (view.value?.position ?? 0) + (lyrics.value?.offset ?? 0);

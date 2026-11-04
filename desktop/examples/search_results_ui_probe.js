@@ -50,6 +50,128 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchHotPlaybackProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(920,590,'light');
+      await fresh('合成热点歌曲');
+      const cover=()=>one('.hot-cover-play');
+      const detail=()=>one('.hot-action');
+      const panel=()=>one('.lyrics-panel:not(.lyrics-panel-leave-active)');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const provides=one('#app').__vue_app__._context.provides;
+      const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
+      const nativeSelect=core.playSelection, nativeAction=core.playerAction;
+      const selections=[], actions=[];
+      let holdResponse=false, heldResponse=false, releaseResponse;
+      const responseGate=new Promise(resolve=>{releaseResponse=resolve;});
+      core.playSelection=async(owner,input)=>{
+        selections.push(input);
+        const reply=await nativeSelect(owner,input);
+        if(holdResponse&&input.kind==='search_hot_track'&&input.id==='2'){
+          heldResponse=true;await responseGate;
+        }
+        return reply;
+      };
+      core.playerAction=(owner,input)=>{actions.push(input);return nativeAction(owner,input);};
+      window.__cardSourceAck={};
+      let command=0;
+      async function loader(mode){
+        const id=++command;
+        await emit('card-source-fixture',{id,mode});
+        await wait(()=>window.__cardSourceAck[id],'native decoder fixture');
+        const reply=window.__cardSourceAck[id];
+        assert(!reply.error,'decoder fixture accepted '+mode);
+        return reply;
+      }
+      async function native(test,label){
+        for(let i=0;i<170;i++){
+          const result=await invoke('player_snapshot',{epoch});
+          if(test(result)) return result;
+          await sleep(65);
+        }
+        throw Error(label);
+      }
+      function label(node,expected){return !node?.disabled&&node?.getAttribute('aria-label').startsWith(expected);}
+      async function closeDetails(){
+        click(button('收起播放详情'));
+        await wait(()=>!one('.lyrics-panel')&&document.activeElement===detail(),'close restores the detail button');
+      }
+
+      assert(cover()&&detail()&&!one('.hot-explanation').outerHTML.includes('PRIVATE'),'typed controls without raw URI');
+      await loader('hold-load');
+      click(cover());
+      const pending=await native(v=>v.state==='loading'&&v.track?.id==='1','explicit song wins over related voice');
+      await wait(()=>label(cover(),'暂停'),'pending cover offers pause');
+      assert(detail().disabled&&!panel(),'loading cover remains independent of detail');
+      click(cover());
+      await native(v=>v.playId===pending.playId&&v.pendingPaused===true,'same pending play ID pauses');
+      await wait(()=>label(cover(),'播放'),'pending cover offers resume');
+      await capture('hot_cover_pending');
+      click(cover());
+      await native(v=>v.playId===pending.playId&&v.pendingPaused===false,'pending resume keeps play ID');
+      assert(selections.length===1&&actions.length===2&&actions.every((a,i)=>a.kind==='pause_for'&&
+        a.play_id===pending.playId&&a.expected_queue_revision===pending.queueRevision&&a.paused===(i===0)),
+        'loader controls issue only two bound transport actions');
+      await loader('release-load');
+      const song=await native(v=>v.playId===pending.playId&&v.state==='playing'&&v.position>.2,'cover reached native output');
+      assert(!panel(),'cover starts native playback without opening details');
+      await capture('hot_cover_song');
+
+      const results=one('#search-result-panel');
+      results.scrollTop=25;
+      await wait(()=>results.scrollTop>0,'search result viewport can scroll');
+      const position=results.scrollTop;
+      click(detail());
+      await wait(()=>panel()&&document.activeElement===button('收起播放详情'),'current detail opens without pause');
+      assert(actions.length===2&&selections.length===1,'current detail sends no extra transport or selection');
+      await capture('hot_details_song');
+      await closeDetails();
+      assert(one('[data-category="all"]').getAttribute('aria-selected')==='true'&&
+        Math.abs(results.scrollTop-position)<=1,'detail returns to same search subtype, scroll, and focus');
+
+      click(cover());
+      await native(v=>v.playId===song.playId&&v.state==='paused','cover pauses current song');
+      assert(!panel(),'paused cover stays in search');
+      await capture('hot_cover_pause');
+      click(detail());
+      await wait(()=>panel(),'detail resumes and opens panel');
+      const resumed=await native(v=>v.playId===song.playId&&v.state==='playing','same native song resumes');
+      assert(resumed.queueRevision===song.queueRevision&&selections.length===1&&actions.length===4,
+        'resume keeps queue and playback identity');
+      await capture('hot_details_resume');
+      await closeDetails();
+
+      await fresh('合成热点声音');
+      await wait(()=>label(cover(),'播放'),'same underlying song ID is not the current episode');
+      click(detail());
+      await wait(()=>panel(),'related voice opens playback details');
+      const voice=await native(v=>v.resourceKind==='voice'&&v.track?.voiceId==='401'&&v.position>.2,
+        'single voice reached native output');
+      assert(voice.track.id==='1'&&voice.queueLen===2&&voice.playId!==song.playId,
+        'voice identity retains the catalogue item sharing its backing media ID');
+      await capture('hot_details_voice');
+      await closeDetails();
+
+      await fresh('合成热点仅封面');
+      assert(cover()&&!detail(),'canClick gate does not remove the independent transport');
+      click(cover());
+      await native(v=>v.playId===voice.playId&&v.state==='paused','cover can pause a voice without a CTA');
+      await capture('hot_cover_only_voice');
+
+      await fresh('合成热点延迟');
+      holdResponse=true;
+      click(detail());
+      await wait(()=>heldResponse,'stale detail activation waits for native selection response');
+      await fresh('合成热点禁止外链');
+      releaseResponse();
+      await sleep(400);
+      assert(!panel()&&!cover()&&!detail()&&!one('.hot-explanation a[href]')&&
+        !one('.hot-explanation').outerHTML.includes('PRIVATE'),'late and unsupported actions remain inert');
+      await capture('hot_inert_external');
+      await emit('complete',{ok:true,hotPlaybackVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchHotCardProof){
       await wait(()=>one('.track-row'),'daily ready');
       await theme(1120,760,'light');

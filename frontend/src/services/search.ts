@@ -77,10 +77,16 @@ export interface SearchSection {
   category: SearchCategory | null;
   items: SearchItem[];
 }
-export type SearchHotTarget = {
-  kind: 'album' | 'artist' | 'playlist' | 'podcast' | 'mv';
+export type SearchHotPlaybackTarget = {
+  kind: 'song' | 'voice';
   id: string;
 };
+export type SearchHotTarget =
+  | SearchHotPlaybackTarget
+  | {
+      kind: 'album' | 'artist' | 'playlist' | 'podcast' | 'mv';
+      id: string;
+    };
 export interface SearchHotExplanation {
   title?: string;
   text?: string;
@@ -88,6 +94,7 @@ export interface SearchHotExplanation {
   pictureCornerMarker?: string;
   hotValue?: string;
   action?: { label: string; target: SearchHotTarget };
+  playTarget?: SearchHotPlaybackTarget;
 }
 export interface SearchResultView {
   query: SearchResultQuery;

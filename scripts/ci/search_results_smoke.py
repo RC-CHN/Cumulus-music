@@ -61,6 +61,7 @@ def main():
     mode.add_argument('--v3', action='store_true')
     mode.add_argument('--carousel', action='store_true')
     mode.add_argument('--hot-card', action='store_true')
+    mode.add_argument('--hot-playback', action='store_true')
     mode.add_argument('--voice-direct', action='store_true')
     mode.add_argument('--voice-download-submit', action='store_true')
     mode.add_argument('--card-matches', action='store_true')
@@ -147,6 +148,11 @@ def main():
     if args.carousel:
         env['CUMULUS_SEARCH_CAROUSEL_PROOF'] = '1'
         prefix = 'window.__cumulusSearchCarouselProof = true;\n'
+    if args.hot_playback:
+        env['CUMULUS_SEARCH_V3_PROOF'] = '1'
+        env['CUMULUS_SEARCH_HOT_PLAYBACK_PROOF'] = '1'
+        env['CUMULUS_SEARCH_VOICE_PENDING_PROOF'] = '1'
+        prefix = 'window.__cumulusSearchHotPlaybackProof = true;\n'
     if args.hot_card:
         env['CUMULUS_SEARCH_V3_PROOF'] = '1'
         env['CUMULUS_SEARCH_HOT_CARD_PROOF'] = '1'
@@ -170,6 +176,46 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.hot_playback:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['hotPlaybackVerified'] and complete['stageCount'] == 8
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list(first.glob('ux_*.png'))) == (8 if args.screenshots else 0)
+        states = {p.stem.split('_', 2)[2]: json.loads(p.read_text(encoding='utf-8'))
+                  for p in first.glob('ux_*.json')}
+        cover, details, paused, resumed = [states[name]['nativePlayer'] for name in
+                                          ('hot_cover_song', 'hot_details_song', 'hot_cover_pause', 'hot_details_resume')]
+        assert cover['track']['id'] == '1' and cover['position'] > .2 and cover['queueLen'] == 1
+        pending = states['hot_cover_pending']['nativePlayer']
+        assert pending['state'] == 'loading' and pending['pendingPaused'] is True
+        assert pending['playId'] == cover['playId']
+        assert cover['resourceKind'] == 'catalog'
+        assert details['state'] == resumed['state'] == 'playing' and paused['state'] == 'paused'
+        assert len({entry['playId'] for entry in (cover, details, paused, resumed)}) == 1
+        assert len({entry['queueRevision'] for entry in (cover, details, paused, resumed)}) == 1
+        if (first / 'locale.json').is_file():
+            actual = json.loads((first / 'locale.json').read_text(encoding='utf-8'))
+            assert actual['numeric'] == 'C'
+            if os.environ.get('LC_ALL') == 'en_US.UTF-8':
+                assert actual['messages'] == actual['characters'] == 'en_US.UTF-8'
+        voice = states['hot_details_voice']['nativePlayer']
+        assert voice['state'] == 'playing' and voice['resourceKind'] == 'voice'
+        assert voice['track']['id'] == '1' and voice['track']['voiceId'] == '401'
+        assert voice['queueLen'] == 2 and voice['position'] > .2 and voice['playId'] != cover['playId']
+        calls = complete['hotPlaybackCalls']
+        assert not any(call['path'] in ('/api/v6/dj/program/byradio', '/api/djradio/v3/get') for call in calls)
+        details = [str(call['args']['id']) for call in calls if call['path'] == '/api/dj/program/detail']
+        assert details == ['401', '401'], details  # Native queue metadata, then resolver revalidation.
+        assert [str(call['args']['voiceId']) for call in calls if call['path'] == '/api/dj/play/url/check'] == ['401']
+        urls = [call['args'] for call in calls if call['path'] == '/api/song/enhance/player/url/v1']
+        assert len(urls) == 3 and all(call['trialMode'] == -1 for call in urls), urls
+        report = dict(ok=True, actualWebView=True, nativeNullPlaybackVerified=True,
+                      stageCount=8, screenshots=len(list(first.glob('ux_*.png'))),
+                      realMusicRequests=0, realAccountWrites=0)
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
+        return
     if args.hot_card:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))

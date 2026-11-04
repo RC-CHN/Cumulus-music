@@ -107,6 +107,7 @@ impl MusicClient {
                 (input, (!replace).then_some(RetainedRow::SearchVoice))
             }
             input @ (PlaySelection::SearchResultTrack { .. }
+            | PlaySelection::SearchHotTrack { .. }
             | PlaySelection::MessageTrack { .. }) => (input, Some(RetainedRow::SearchSong)),
             input @ (PlaySelection::SearchResultVoice { .. }
             | PlaySelection::MessageVoice { .. }) => (input, Some(RetainedRow::SearchVoice)),
@@ -589,6 +590,14 @@ impl MusicClient {
                         0,
                         quality,
                         json!({"kind":"songs","scene":"message"}),
+                    )),
+                    PlaySelection::SearchHotTrack { id, quality } => Ok((
+                        vec![json!(identifier(&json!(id))?)],
+                        0,
+                        quality,
+                        // HotExplainCard provides the search scene, but no
+                        // search-row trialMode or playlist context.
+                        json!({"kind":"songs","scene":"search"}),
                     )),
                     PlaySelection::SearchResultTrack { id, quality, .. } => Ok((
                         vec![json!(identifier(&json!(id))?)],

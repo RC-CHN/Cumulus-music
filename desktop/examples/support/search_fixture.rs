@@ -9,6 +9,7 @@ static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
+static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -38,6 +39,12 @@ pub fn carousel_calls() -> Vec<Value> {
 }
 fn hot_card_enabled() -> bool {
     v3_enabled() && std::env::var_os("CUMULUS_SEARCH_HOT_CARD_PROOF").is_some()
+}
+pub fn hot_playback_enabled() -> bool {
+    v3_enabled() && std::env::var_os("CUMULUS_SEARCH_HOT_PLAYBACK_PROOF").is_some()
+}
+pub fn hot_playback_calls() -> Vec<Value> {
+    HOT_PLAYBACK_CALLS.lock().unwrap().clone()
 }
 pub fn control(value: &Value) {
     let mode = value["mode"].as_str().unwrap();
@@ -149,6 +156,22 @@ fn subscribable_playlist() -> Value {
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if hot_playback_enabled()
+        && matches!(
+            path,
+            "/api/v3/song/detail"
+                | "/api/dj/program/detail"
+                | "/api/dj/play/url/check"
+                | "/api/djradio/v3/get"
+                | "/api/v6/dj/program/byradio"
+                | "/api/song/enhance/player/url/v1"
+        )
+    {
+        HOT_PLAYBACK_CALLS
+            .lock()
+            .unwrap()
+            .push(json!({"path":path,"args":args}));
+    }
     if enabled()
         && MODE.lock().unwrap().as_str() == "artist_gallery"
         && path == "/api/v1/artist/list"
@@ -639,6 +662,19 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
     Some(Ok(data))
 }
 
+fn hot_playback_word(args: &Value) -> Option<&str> {
+    args["keyword"].as_str().filter(|word| {
+        matches!(
+            *word,
+            "合成热点歌曲"
+                | "合成热点声音"
+                | "合成热点仅封面"
+                | "合成热点延迟"
+                | "合成热点禁止外链"
+        )
+    })
+}
+
 fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     if carousel_enabled() {
         let response = match path {
@@ -709,6 +745,40 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             "/api/search/pc/result/tab" if args == &json!({"keyword":"合成 V3"}) => Some(
                 json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"视频"},{"title":"单曲"}]}}),
             ),
+            "/api/search/pc/result/tab"
+                if hot_playback_enabled() && hot_playback_word(args).is_some() =>
+            {
+                Some(
+                    json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"单曲"},{"title":"声音"}]}}),
+                )
+            }
+            "/api/search/pc/complex/page/v3"
+                if hot_playback_enabled() && hot_playback_word(args).is_some() =>
+            {
+                let word = hot_playback_word(args).unwrap();
+                assert_eq!(
+                    *args,
+                    json!({"keyword":word,"scene":"normal","needCorrect":true,"channel":"typing","bizQueryInfo":""})
+                );
+                let action = match word {
+                    "合成热点歌曲" => json!("orpheus://song/1?trace=PRIVATE"),
+                    "合成热点延迟" => json!("orpheus://song/2?trace=PRIVATE"),
+                    "合成热点禁止外链" => json!("https://example.invalid/PRIVATE"),
+                    _ => Value::Null,
+                };
+                Some(json!({"code":200,"data":{"blocks":[
+                    {"blockCode":"search_block_hot_result_hot_explain","resources":[{
+                        "baseInfo":{"hotExplainModuleData":{"title":word,"text":"热点播放操作验证。","textAction":action,
+                            "urlText":"查看播放详情","canClick":word!="合成热点仅封面"}},
+                        "relatedResources":[{"resourceType":"voice","baseInfo":{"pubDJProgramData":{
+                            "id":401,"name":"合成热点单集","mainSong":{"id":1},"radio":{"id":301}
+                        }}}]
+                    }]},
+                    {"blockCode":"search_block_song","resources":(10..16).map(|id| json!({
+                        "baseInfo":{"simpleSongData":{"id":id,"name":format!("合成搜索结果 {id}")}}
+                    })).collect::<Vec<_>>()}
+                ]}}))
+            }
             "/api/search/pc/result/tab"
                 if hot_card_enabled()
                     && matches!(

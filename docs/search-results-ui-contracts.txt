@@ -127,14 +127,40 @@ V3 热点说明详情：恢复 M/21:1128–1227、M/32 的 `f` 计数格式和
   components/HotExplainCard/index.tsx。`hotExplainModuleData` 与首个 `relatedResources` 进入
   原生投影。只有 `canClick=true` 且正十进制 ID 合法时，显示站内专辑、歌手、歌单、播客或 MV
   按钮；有效的显式 `orpheus://` 类型和 ID 优先，无显式动作时才能使用首个关联资源。
-  带外链、专区、未知类型及歌曲/声音的播放器分支保留为只读说明，不改跳其他资源；不支持的
-  URI 不下发，已识别 URI 的查询和追踪字段也不下发。封面仅走公开音乐 CDN 图像白名单。
-  没有其他结果的热点照常显示；返回恢复原热点按钮。这里只接详情 CTA，不宣称官方全卡点击、
-  全局背景取色、封面播放/暂停和商城/站外动作已经恢复。
+  带外链、专区及未知类型保留为只读说明，不改跳其他资源；不支持的 URI 不下发，已识别
+  URI 的查询和追踪字段也不下发。封面仅走公开音乐 CDN 图像白名单。没有其他结果的热点照常
+  显示；返回恢复原热点按钮。本段为详情 CTA；歌曲/声音的独立操作见下文。
   `search_results_smoke.py --hot-card` 在 Linux 真实 WebView 五阶段、五图通过，覆盖站内目标优先、
   缺少显式动作时关联回落、外链无动作、宽窗与窄窗深色布局及返回焦点；共 7 次合成 V3/实验读取。
   证据 `.build/ui-proof/search-hot-card-20261104/first/`。既有 V3 九阶段回归及 6 项 Rust V3 测试通过。
   未访问真实线上热点或验证 Windows 实机；没有账号写入。
+
+
+V3 热点说明的歌曲和声音操作（PC 3.1.42.205594）
+  M/21:1144–1155,1183–1227 优先选择显式 orpheus://song/:id 或 program/:id；
+  未给 textAction 才使用首个 relatedResources 的简单歌曲或节目身份。空或无效 ID
+  不作为动作，陌生/外链不会用关联项顶替。仅把类型和正十进制 ID 投影给 WebView。
+  对照 HotExplainCard/index.tsx:291–379,425–456,491–507，封面为独立播放键；
+  它播放、暂停或继续当前项，不打开播放详情。封面不受文本 canClick 限制；
+  文本详情按钮受该门控，开始/继续后打开现有播放详情与歌词，当前项播放中只打开
+  面板；不会暂停或重复选择。返回保持「综合」结果、原滚动和按钮焦点。
+  同一原生项在首载期间的封面用 pause_for 绑定账号、playId 和队列版本；其他项
+  不借用该控制，详情等待播放可确认后才能打开。切换搜索访问、账号或播放器选项
+  后，迟到的播放应答不能打开旧面板。当前声音按节目 ID 区分，即使与歌曲共用音源。
+  M/3085:215–252,380–411 证明热点只提供 Scene.search、没有普通搜索行的 42
+  试听参数，没有 listData 或 needFetchAudio。Rust 保留已有普通队列并使用默认
+  trialMode=-1；歌曲走 /api/v3/song/detail 与 /api/song/enhance/player/url/v1，
+  声音先读 /api/dj/program/detail 建队列，授权解析时再次核对同一节目详情，
+  再请求 /api/dj/play/url/check 和音源；两次详情均限所选单期。
+  不打开未知链接，不接区域/H5、非歌曲或声音的封面播放、全卡点击与背景取色。
+  官方在外链配置下可能仍显示关联项封面播放；社区在此组合中保守保留只读说明。
+  使用真实 WebView 的 search_results_smoke.py --hot-playback 合成验证，包含
+  首载暂停/继续、默认试听、保留队列、返回焦点/滚动、外链和迟到应答保护。
+  2026-11-05 隔离 Linux GTK/WebKitGTK 通过 8 态、8 图；播放器在非 C 界面环境
+  中运行，LC_NUMERIC=C，LC_MESSAGES/LC_CTYPE=en_US.UTF-8。libmpv null
+  解码歌曲 1、声音 401，音频时钟均前进。现有 --hot-card 的 5 态回归通过。
+  .build/ui-proof/search-hot-playback-78c6be65/verified/ 是合成报告，
+  没有真实服务请求、账号写入、Windows 实机或真实声卡证据。
 
 热搜词来源：SearchBox/view/searchRankCard.tsx 和恢复 M/623 按条目的 tabId
   （不是榜单本身的 ID）给 HOT_SEARCH_SONG#@# 设置 hotquery。M/2245 将来源传给

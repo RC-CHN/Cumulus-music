@@ -284,6 +284,10 @@ pub enum PlaySelection {
     SearchResultVoice {
         id: String,
     },
+    SearchHotTrack {
+        id: String,
+        quality: Quality,
+    },
     SearchResultTrack {
         id: String,
         quality: Quality,

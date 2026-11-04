@@ -1,11 +1,12 @@
-//! M/21 hot-explanation normalization. Only fixed internal detail destinations are executable.
+//! M/21 hot-explanation normalization. Only fixed internal detail and song/program targets are executable.
 use super::{image, text};
 use crate::protocol::api::identifier;
 use serde_json::{Value, json};
 
 fn target(kind: &str, id: &Value) -> Option<Value> {
     let kind = match kind {
-        "album" | "artist" | "playlist" | "mv" => kind,
+        "album" | "artist" | "playlist" | "mv" | "song" => kind,
+        "voice" | "program" => "voice",
         "djradio" | "voicelist" => "podcast",
         _ => return None,
     };
@@ -18,6 +19,10 @@ fn explicit(action: &str) -> Option<Value> {
         return None;
     }
     let (kind, id) = action.strip_prefix("orpheus://")?.split_once('/')?;
+    if kind == "voice" {
+        // M/21 names the URL form program; voice is the related-resource type.
+        return None;
+    }
     let id = id.split(['?', '&']).next()?;
     target(kind, &json!(id))
 }
@@ -26,6 +31,8 @@ fn related(resource: &Value) -> Option<(&str, &Value)> {
     let kind = resource["resourceType"].as_str()?;
     let base = &resource["baseInfo"];
     let (kind, data) = match kind {
+        "song" => (kind, &base["simpleSongData"]),
+        "voice" => (kind, &base["pubDJProgramData"]),
         "album" => (kind, &base["albumData"]),
         "artist" => (kind, &base["artistDTO"]),
         "playlist" => (kind, &base["pubPlaylistData"]),
@@ -40,6 +47,7 @@ fn related_target(resource: &Value) -> Option<Value> {
     let (kind, data) = related(resource)?;
     let ids = match kind {
         "album" => ["id", "albumId", "resourceId", ""],
+        "voice" => ["id", "resourceId", "voiceId", "productId"],
         "voicelist" => ["id", "resourceId", "voiceListId", "productId"],
         _ => ["id", "resourceId", "", ""],
     };
@@ -57,6 +65,16 @@ fn related_picture(resource: &Value) -> Option<Value> {
     ["coverImgUrl", "picUrl", "coverUrl", "cover"]
         .into_iter()
         .find_map(|key| image(&data[key]))
+        .or_else(|| {
+            if kind != "song" {
+                return None;
+            }
+            ["album", "al"].into_iter().find_map(|key| {
+                ["picUrl", "cover", "coverUrl"]
+                    .into_iter()
+                    .find_map(|art| image(&data[key][art]))
+            })
+        })
         .or_else(|| {
             (kind == "mv")
                 .then(|| image(&data["resource"]["mlogBaseData"]["coverUrl"]))
@@ -114,14 +132,19 @@ pub(super) fn explanation(block: &Value) -> Option<Value> {
     if let Some(heat) = heat(&data["hotValue"]) {
         result["hotValue"] = json!(heat);
     }
-    if data["canClick"] == true {
-        let action = match &data["textAction"] {
-            Value::Null => related.and_then(related_target),
-            Value::String(value) if value.is_empty() => related.and_then(related_target),
-            Value::String(value) => explicit(value),
-            _ => None,
-        };
-        if let Some(target) = action {
+    let target = match &data["textAction"] {
+        Value::Null => related.and_then(related_target),
+        Value::String(value) if value.is_empty() => related.and_then(related_target),
+        Value::String(value) => explicit(value),
+        _ => None,
+    };
+    if let Some(target) = target {
+        if matches!(target["kind"].as_str(), Some("song" | "voice")) {
+            // The cover is an independent Play/Pause/Resume control in
+            // HotExplainCard. The text action has a separate canClick gate.
+            result["playTarget"] = target.clone();
+        }
+        if data["canClick"] == true {
             result["action"] = json!({"target":target,"label":text(&data["urlText"], 40).unwrap_or_else(|| "查看详情".into())});
         }
     }
@@ -159,7 +182,8 @@ mod tests {
             "orpheus://playlist/29/30",
             "orpheus://playlist/29#x",
             "orpheus://playlist/0",
-            "orpheus://song/29",
+            "orpheus://song/29/30",
+            "orpheus://voice/29",
             "orpheus://playlist/000000000000000000000000000000001",
         ] {
             block["resources"][0]["baseInfo"]["hotExplainModuleData"]["textAction"] =
@@ -177,5 +201,38 @@ mod tests {
         );
         block["resources"][0]["baseInfo"]["hotExplainModuleData"]["canClick"] = json!(false);
         assert!(explanation(&block).unwrap()["action"].is_null());
+    }
+    #[test]
+    fn playable_hotspots_separate_cover_authority_from_the_detail_gate() {
+        let mut block = json!({"resources":[{
+            "baseInfo":{"hotExplainModuleData":{
+                "title":"热点","text":"说明","textAction":"orpheus://song/17?trace=PRIVATE","canClick":true
+            }},
+            "relatedResources":[{"resourceType":"voice","baseInfo":{"pubDJProgramData":{
+                "id":"401","mainSong":{"id":17},"coverUrl":"https://p1.music.126.net/cover?auth=PRIVATE"
+            }}}]
+        }]});
+        let card = explanation(&block).unwrap();
+        assert_eq!(card["playTarget"], json!({"kind":"song","id":"17"}));
+        assert_eq!(card["action"]["target"], card["playTarget"]);
+        assert!(!card.to_string().contains("PRIVATE"));
+
+        block["resources"][0]["baseInfo"]["hotExplainModuleData"]["textAction"] = json!("");
+        block["resources"][0]["baseInfo"]["hotExplainModuleData"]["canClick"] = json!(false);
+        let card = explanation(&block).unwrap();
+        assert_eq!(card["playTarget"], json!({"kind":"voice","id":"401"}));
+        assert!(card["action"].is_null());
+
+        block["resources"][0]["baseInfo"]["hotExplainModuleData"]["textAction"] =
+            json!("https://example.invalid/PRIVATE");
+        let card = explanation(&block).unwrap();
+        assert!(card["playTarget"].is_null());
+        assert!(card["action"].is_null());
+
+        block["resources"][0]["baseInfo"]["hotExplainModuleData"]["textAction"] =
+            json!("orpheus://song/");
+        let card = explanation(&block).unwrap();
+        assert!(card["playTarget"].is_null());
+        assert!(card["action"].is_null());
     }
 }

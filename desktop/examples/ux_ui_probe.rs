@@ -94,6 +94,19 @@ use std::{fs, path::PathBuf, sync::Arc};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
 struct Library;
+#[cfg(target_os = "linux")]
+fn startup_locale(category: libc::c_int) -> String {
+    // SAFETY: read-only startup query after GTK initialization. Copy the
+    // process-owned locale value before querying another category.
+    unsafe {
+        let value = libc::setlocale(category, std::ptr::null());
+        assert!(!value.is_null());
+        std::ffi::CStr::from_ptr(value)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 fn trial_seek_proof() -> bool {
     std::env::var_os("CUMULUS_TRIAL_SEEK_PROOF").is_some()
 }
@@ -605,6 +618,16 @@ fn main() {
     let window_config = context.config().app.windows[0].clone();
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
+        #[cfg(target_os = "linux")]
+        if search_fixture::hot_playback_enabled() {
+            let numeric=startup_locale(libc::LC_NUMERIC);
+            assert_eq!(numeric,"C");
+            fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
+                "numeric":numeric,"messages":startup_locale(libc::LC_MESSAGES),
+                "characters":startup_locale(libc::LC_CTYPE)
+            }))?)?;
+        }
+
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let proof_store=registry.store();
         search_fixture::initialize(&proof_store)?;
@@ -733,6 +756,7 @@ fn main() {
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
                 if search_fixture::v3_enabled() { value["syntheticV3Calls"] = json!(search_fixture::v3_calls()); }
+                if search_fixture::hot_playback_enabled() { value["hotPlaybackCalls"] = json!(search_fixture::hot_playback_calls()); }
                 if search_fixture::carousel_enabled() { value["searchCarouselCalls"] = json!(search_fixture::carousel_calls()); }
                 value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
                 value["audioRankDetails"] = json!(search_fixture::audio_rank_details());

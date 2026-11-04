@@ -18,7 +18,8 @@ import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
-import type { SearchHotTarget, SearchItem } from './services/search';
+import type { PlayerView } from './services/player';
+import type { SearchHotPlaybackTarget, SearchHotTarget, SearchItem } from './services/search';
 import {
   searchCardIsCurrent,
   searchCardSelection,
@@ -680,12 +681,64 @@ function openSearchItem(item: SearchItem) {
     else music.notice.value = '此视频暂不可打开';
   }
 }
-function openSearchHotTarget(target: SearchHotTarget) {
+function openSearchHotTarget(target: SearchHotTarget, anchor: HTMLButtonElement) {
   if (page.value.kind !== 'search' || !signedIn.value) return;
-  if (target.kind === 'playlist') music.navigate({ kind: 'playlist', id: target.id });
+  if (target.kind === 'song' || target.kind === 'voice') void playSearchHotTarget(target, anchor);
+  else if (target.kind === 'playlist') music.navigate({ kind: 'playlist', id: target.id });
   else if (target.kind === 'podcast') openSceneRadio(target.id);
   else if (target.kind === 'mv') openMv(target.id);
-  else openCatalog({ kind: target.kind, id: target.id });
+  else if (target.kind === 'album' || target.kind === 'artist')
+    openCatalog({ kind: target.kind, id: target.id });
+}
+async function playSearchHotTarget(target: SearchHotPlaybackTarget, anchor?: HTMLButtonElement) {
+  const route = page.value;
+  if (route.kind !== 'search' || !signedIn.value || !player.ready.value || player.busy.value)
+    return;
+  const epoch = account.value.epoch;
+  const ownsFocus = anchor && document.activeElement === anchor;
+  const onOrigin = () => page.value === route && account.value.epoch === epoch;
+  const matches = (view?: PlayerView) =>
+    (target.kind === 'song' ? searchCurrentSongId(view) : searchCurrentVoiceId(view)) === target.id;
+  const current = player.view.value;
+  const same = matches(current) && player.loaded.value;
+  let result: PlayerView | undefined;
+  if (same) {
+    // The detail action on a running result only opens the playback panel.
+    // Only the cover is allowed to pause it.
+    result = anchor && player.playing.value ? current : await player.toggleSource();
+  } else {
+    result = await player.select(
+      target.kind === 'voice'
+        ? { kind: 'search_result_voice', id: target.id }
+        : {
+            kind: 'search_hot_track',
+            id: target.id,
+            quality: current?.qualityPreferences.quality ?? 'standard',
+          },
+    );
+  }
+  if (ownsFocus && onOrigin()) {
+    // Native selection temporarily disables the CTA. Browsers may then drop
+    // its focus before the detail panel records its opener.
+    await nextTick();
+    if (
+      onOrigin() &&
+      document.activeElement === document.body &&
+      anchor.isConnected &&
+      !anchor.disabled
+    )
+      anchor.focus({ preventScroll: true });
+  }
+  if (
+    anchor &&
+    onOrigin() &&
+    result?.playId &&
+    player.view.value?.playId === result.playId &&
+    matches(result) &&
+    player.playing.value &&
+    !player.lyricsOpen.value
+  )
+    player.toggleLyrics();
 }
 function playSearchChart(keywords: string[]) {
   if (account.value.status !== 'authenticated' || !player.ready.value || player.busy.value) return;
@@ -3649,6 +3702,7 @@ onUnmounted(() => {
                 "
                 @open="openSearchItem"
                 @hot-target="openSearchHotTarget"
+                @hot-play="playSearchHotTarget($event)"
                 @artist-action="artistAction"
                 @album-action="
                   (request) => page.kind === 'search' && signedIn && albumAction(request)

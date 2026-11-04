@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import type { SearchHotExplanation, SearchHotTarget } from '../../services/search';
+import type {
+  SearchHotExplanation,
+  SearchHotPlaybackTarget,
+  SearchHotTarget,
+} from '../../services/search';
 import Icon from '../Icon.vue';
 import { ref, watch } from 'vue';
 
-const props = defineProps<{ explanation: SearchHotExplanation }>();
-const emit = defineEmits<{ open: [target: SearchHotTarget] }>();
+const props = defineProps<{
+  explanation: SearchHotExplanation;
+  playable: boolean;
+  detailReady: boolean;
+  playing: boolean;
+}>();
+const emit = defineEmits<{
+  open: [target: SearchHotTarget, anchor: HTMLButtonElement];
+  play: [target: SearchHotPlaybackTarget, anchor: HTMLButtonElement];
+}>();
 const imageFailed = ref(false);
 watch(
   () => props.explanation.pictureUrl,
@@ -25,6 +37,20 @@ watch(
         @error="imageFailed = true"
       />
       <Icon v-else name="info" />
+      <button
+        v-if="explanation.playTarget"
+        type="button"
+        class="hot-cover-play"
+        data-result-action="play"
+        :class="{ playing }"
+        :aria-label="`${playing ? '暂停' : '播放'}${explanation.title ?? '热点'}`"
+        :disabled="!playable"
+        @click.stop="
+          emit('play', explanation.playTarget, $event.currentTarget as HTMLButtonElement)
+        "
+      >
+        <Icon :name="playing ? 'pause' : 'play'" />
+      </button>
       <span v-if="explanation.pictureCornerMarker" class="hot-marker">{{
         explanation.pictureCornerMarker
       }}</span>
@@ -52,7 +78,12 @@ watch(
         type="button"
         class="hot-action"
         data-result-action="open"
-        @click="emit('open', explanation.action.target)"
+        :disabled="
+          (explanation.action.target.kind === 'song' ||
+            explanation.action.target.kind === 'voice') &&
+          !detailReady
+        "
+        @click="emit('open', explanation.action.target, $event.currentTarget as HTMLButtonElement)"
       >
         {{ explanation.action.label }}
       </button>
@@ -93,7 +124,35 @@ watch(
   width: 24px;
   height: 24px;
 }
+.hot-cover-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: #0008;
+  color: white;
+  opacity: 0;
+}
+.hot-cover-play:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.hot-cover:hover .hot-cover-play:not(:disabled),
+.hot-cover-play:focus-visible,
+.hot-cover-play.playing {
+  opacity: 1;
+}
+.hot-cover:has(.hot-cover-play:is(:focus-visible, .playing)) > .icon,
+.hot-cover:hover:has(.hot-cover-play:not(:disabled)) > .icon {
+  visibility: hidden;
+}
+.hot-cover-play .icon {
+  width: 28px;
+  height: 28px;
+}
 .hot-marker {
+  pointer-events: none;
   position: absolute;
   left: 4px;
   right: 4px;
