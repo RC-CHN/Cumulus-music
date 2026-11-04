@@ -151,6 +151,7 @@ const core = useCore();
 const searchMemory = createSearchViewportMemory();
 const collectionMemory = createCollectionViewportMemory();
 const collectionRevision = ref(0);
+const observedAlbumMembership = shallowRef(new Map<string, boolean>());
 const albumActions = ref<InstanceType<typeof AlbumActions>>();
 const artistActions = ref<InstanceType<typeof ArtistActions>>();
 const collectionsPageRef = ref<InstanceType<typeof CollectionsPage>>();
@@ -464,8 +465,24 @@ function artistAction(request: ArtistCardRequest) {
   albumActions.value?.close();
   void artistActions.value?.show(request);
 }
-function catalogMembershipChanged(epoch: string, resource: CatalogResource) {
+function rememberAlbumMembership(epoch: string, resource: CatalogResource, observed?: boolean) {
+  if (
+    resource.kind !== 'album' ||
+    account.value.status !== 'authenticated' ||
+    account.value.epoch !== epoch
+  )
+    return;
+  const previous = observedAlbumMembership.value;
+  if (previous.get(resource.id) === observed) return;
+  const next = new Map(previous);
+  next.delete(resource.id);
+  if (observed !== undefined) next.set(resource.id, observed);
+  if (next.size > 512) next.delete(next.keys().next().value!);
+  observedAlbumMembership.value = next;
+}
+function catalogMembershipChanged(epoch: string, resource: CatalogResource, observed?: boolean) {
   if (account.value.status !== 'authenticated' || account.value.epoch !== epoch) return;
+  rememberAlbumMembership(epoch, resource, observed);
   collectionsPageRef.value?.checkpoint();
   collectionMemory.invalidate(
     resource.kind === 'album' ? 'saved_albums' : 'followed_artists',
@@ -1711,6 +1728,7 @@ onUnmounted(() => {
   miniFmListener?.();
 });
 watch([() => account.value.epoch, () => account.value.status], () => {
+  observedAlbumMembership.value = new Map();
   playlistDialog.value = undefined;
   playlistEditor.value = undefined;
   if (
@@ -2254,6 +2272,7 @@ onUnmounted(() => {
                   playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
                 "
                 :known-playlist-ids="searchKnownPlaylistIds"
+                :observed-album-membership="observedAlbumMembership"
                 :current-id="currentSearchSongId"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
@@ -3085,6 +3104,7 @@ onUnmounted(() => {
       :account="account"
       :player="player"
       :changed="catalogMembershipChanged"
+      @observed="rememberAlbumMembership"
       @expired="music.bootstrap(false)"
       @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
     />

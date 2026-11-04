@@ -10,6 +10,7 @@ static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
+static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -111,6 +112,29 @@ fn subscribable_playlist() -> Value {
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if enabled() && MODE.lock().unwrap().as_str() == "album_artist_search" {
+        match path {
+            "/api/album/sub" => {
+                assert_eq!(*args, json!({"id":"201"}));
+                assert_eq!(ALBUM_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst), 0);
+                return Some(Ok(json!({"code":200})));
+            }
+            "/api/album/detail/dynamic" if args["id"] == "201" => {
+                return Some(Ok(json!({
+                    "code":200,"isSub":ALBUM_SUBSCRIPTIONS.load(Ordering::SeqCst) != 0
+                })));
+            }
+            "/api/album/sublist" => {
+                let rows = if ALBUM_SUBSCRIPTIONS.load(Ordering::SeqCst) == 0 {
+                    vec![]
+                } else {
+                    vec![json!({"id":201,"name":"合成专辑"})]
+                };
+                return Some(Ok(json!({"code":200,"data":rows,"more":false})));
+            }
+            _ => {}
+        }
+    }
     if enabled() && MODE.lock().unwrap().as_str() == "playlist_creator_search" {
         match path {
             "/api/playlist/subscribe" => {

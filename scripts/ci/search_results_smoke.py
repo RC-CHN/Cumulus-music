@@ -107,11 +107,13 @@ def main():
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['searchAlbumArtistVerified']
-        assert complete['searchAlbumLinksVerified'] and complete['stageCount'] == 4
+        assert complete['searchAlbumLinksVerified'] and complete['searchAlbumCollectVerified']
+        assert complete['stageCount'] == 6
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (4 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchAlbumArtistVerified=True,
-                              searchAlbumLinksVerified=True, stageCount=4)))
+                              searchAlbumLinksVerified=True, searchAlbumCollectVerified=True,
+                              stageCount=6)))
         return
     if args.collection_next:
         first = root / 'first'

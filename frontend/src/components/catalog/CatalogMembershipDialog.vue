@@ -13,7 +13,11 @@ const props = defineProps<{
   desired: boolean;
   changed: CatalogMembershipListener;
 }>();
-const emit = defineEmits<{ close: []; expired: [] }>();
+const emit = defineEmits<{
+  close: [];
+  expired: [];
+  observed: [epoch: string, resource: CatalogResource, value: boolean];
+}>();
 const core = useCore(),
   model = useCatalogMembership(core, () => emit('expired'));
 const dialog = ref<HTMLDialogElement>(),
@@ -73,6 +77,7 @@ async function load() {
     ]);
     if (!alive) return;
     observed.value = result;
+    if (result !== null) emit('observed', owner, resource, result);
     if (observed.value === null)
       error.value = artist ? '暂时无法确认关注状态，请重试' : '暂时无法确认收藏状态，请重试';
   } catch (issue) {
@@ -99,7 +104,7 @@ async function command(reconcile = false) {
   const value = await model.command(
     reconcile ? { kind: 'reconcile' } : { kind: 'set', desired: props.desired },
   );
-  props.changed(owner, resource);
+  props.changed(owner, resource, value ?? undefined);
   if (!alive) return;
   writing.value = false;
   // A write or uncertain journal invalidates old read-only collection snapshots.

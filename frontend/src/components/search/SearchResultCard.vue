@@ -36,6 +36,7 @@ const props = defineProps<{
   queueable: boolean;
   playlistActionBusy: boolean;
   playlistKnown?: boolean;
+  albumSubscribed?: boolean | null;
   current: boolean;
   playing: boolean;
 }>();
@@ -156,6 +157,9 @@ const items = computed<MenuItem[]>(() => {
       : []),
     ...(props.item.kind === 'album'
       ? [
+          ...((props.albumSubscribed ?? props.item.album.subscribed) === true
+            ? []
+            : [{ key: 'collect-album', label: '收藏', icon: 'star' }]),
           {
             key: 'share',
             label: '分享…',
@@ -209,6 +213,12 @@ function action(key: string) {
     emit('artistAction', { artist: props.item.artist, action: key, anchor: actionAnchor() });
   } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
     emit('queue', { item: props.item, anchor: actionAnchor() });
+  } else if (
+    key === 'collect-album' &&
+    props.item.kind === 'album' &&
+    (props.albumSubscribed ?? props.item.album.subscribed) !== true
+  ) {
+    emit('albumAction', { album: props.item.album, action: 'collect', anchor: actionAnchor() });
   } else if (
     (key === 'share' || key === 'copy') &&
     props.item.kind === 'album' &&

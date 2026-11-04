@@ -150,14 +150,19 @@
       await fixture('album_artist_search');await fresh('合成艺人');
       const card=()=>one('[data-result-key="album:201"]');
       const artist=()=>card()?.querySelector('[data-result-action="artist:101:1"]');
-      const link='https://music.163.com/album?id=201', copies=[];
+      const link='https://music.163.com/album?id=201', copies=[], membershipWrites=[];
       const fetchIPC=window.fetch;
       window.fetch=function(url,options){
         if(String(url).endsWith('/copy_text'))copies.push(JSON.parse(options.body).text);
+        if(String(url).endsWith('/catalog_membership')){
+          const {resource,action}=JSON.parse(options.body);
+          if(action.kind==='set')membershipWrites.push({resource,action});
+        }
         return fetchIPC.call(window,url,options);
       };
       const menu=()=>one('.action-menu[role="menu"]:not([inert])');
       const share=()=>one('.track-share-dialog[open]:not([inert])');
+      const membership=()=>one('.album-membership-dialog[open]:not([inert])');
       async function albumMenu(anchor){
         anchor.scrollIntoView({block:'nearest'});
         anchor.focus({preventScroll:true});
@@ -187,6 +192,25 @@
         await wait(()=>feedback()?.textContent.includes('链接已复制'),'album copies through the native clipboard');
         click(button('关闭',feedback()));
         await wait(()=>document.activeElement===anchor,'copy feedback restores the exact opener');
+        await albumMenu(anchor);
+        click(button('收藏',menu()));
+        const confirm=()=>membership()?.querySelector('footer .primary:not(:disabled)');
+        await wait(()=>confirm()&&membership()?.textContent.includes('合成专辑 1'),'album collection reads current membership');
+        assert(membershipWrites.length===0,'opening confirmation cannot write membership');
+        await capture('album_collect_'+category);
+        click(category==='all'?button('取消',membership()):confirm());
+        await wait(()=>!membership()&&document.activeElement===anchor,'album confirmation restores result focus');
+        if(category==='all'){
+          assert(membershipWrites.length===0,'album cancellation cannot write membership');
+        }else{
+          const write=membershipWrites[0];
+          assert(membershipWrites.length===1&&write.resource.kind==='album'&&write.resource.id==='201'&&
+            write.action.desired===true,'one explicit membership write targets the selected album');
+          await albumMenu(anchor);
+          assert(!button('收藏',menu()),'confirmed native membership removes the duplicate action');
+          key(document.activeElement,'Escape');
+          await wait(()=>!menu()&&document.activeElement===anchor,'updated menu restores focus');
+        }
         click(target);
         await wait(()=>one('.artist-header h1')?.textContent.trim()==='相似歌手 101'&&one('.track-row'),
           'opens native details for the selected artist');
@@ -196,7 +220,7 @@
         await capture('album_artist_'+category);
       }
       assert(copies.length===2&&copies.every(value=>value===link),'clipboard receives only canonical album URLs');
-      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,searchAlbumCollectVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchCollectionNextProof){

@@ -195,3 +195,14 @@ M/622:487–488、565–567 的专辑菜单包含分享，普通卡片也可复�
 `search_results_smoke.py --album-artist` 核对两种分类下的分享窗口、剪贴板实际
 收到的地址及焦点返回，同时回归专辑署名到歌手详情。
 Linux WebView 四个检查点和截图：.build/search-album-links-webview/first/。
+
+搜索专辑菜单的「收藏」
+M/622:473–485、595–609 对普通卡片显示 favorite，并按账号的订阅表隐藏已收藏
+专辑。Cumulus 使用搜索结果提供的明确状态和当前账号内较新的确认结果；若搜索
+响应没给收藏状态，允许打开确认，通过原生专辑详情和动态信息核对，不直接写入。
+确认通过 `catalog_membership` 的 set 操作，原生 `/api/album/sub` 及
+`/api/album/sublist` 回读完成后，同一账号搜索的收藏入口更新。确认结果不跨账号；
+详情页改变收藏状态时同步。未为每张搜索卡片预请求全部收藏专辑或详情。
+`search_results_smoke.py --album-artist` 验证综合页取消不写、专辑分类明确确认
+才执行一次合成写入及回读、菜单更新和焦点恢复；不接触真实账号。
+Linux WebView 六个检查点和截图：.build/search-album-collect-final/first/。

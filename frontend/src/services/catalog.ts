@@ -115,7 +115,11 @@ export interface CatalogClient {
   ): Promise<AccountData<CatalogView | null>>;
 }
 export type CatalogResource = { kind: 'artist' | 'album'; id: string };
-export type CatalogMembershipListener = (epoch: string, resource: CatalogResource) => void;
+export type CatalogMembershipListener = (
+  epoch: string,
+  resource: CatalogResource,
+  observed?: boolean,
+) => void;
 export type CatalogMembershipAction =
   | { kind: 'inspect' | 'reconcile' }
   | { kind: 'set'; desired: boolean };

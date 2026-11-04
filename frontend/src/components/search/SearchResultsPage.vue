@@ -51,6 +51,7 @@ const props = defineProps<{
   queueable: boolean;
   playlistActionBusy: boolean;
   knownPlaylistIds?: ReadonlySet<string>;
+  observedAlbumMembership: ReadonlyMap<string, boolean>;
   currentId?: string;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
@@ -777,6 +778,9 @@ onBeforeUnmount(() => {
                 :playlist-action-busy="playlistActionBusy"
                 :playlist-known="
                   item.kind === 'playlist' ? knownPlaylistIds?.has(item.playlist.id) : undefined
+                "
+                :album-subscribed="
+                  item.kind === 'album' ? observedAlbumMembership.get(item.album.id) : undefined
                 "
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"

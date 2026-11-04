@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
 import { failure, type AccountView, type TrackView } from '../../services/contracts';
-import type { CatalogMembershipListener } from '../../services/catalog';
+import type { CatalogMembershipListener, CatalogResource } from '../../services/catalog';
 import { albumLink, type AlbumCardRequest } from '../../services/catalogCards';
 import type { PlayerModel } from '../../composables/usePlayer';
 import { useCore } from '../../services/core';
@@ -17,6 +17,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   download: [tracks: TrackView[]];
   expired: [];
+  observed: [epoch: string, resource: CatalogResource, value: boolean];
 }>();
 const core = useCore(),
   request = shallowRef<AlbumCardRequest>();
@@ -145,6 +146,7 @@ const fallbackFocus = () =>
       :name="request.album.name"
       :desired="request.action === 'collect'"
       :changed="changed"
+      @observed="(epoch, resource, value) => emit('observed', epoch, resource, value)"
       @close="membership = false"
       @expired="emit('expired')"
   /></ModalTransition>

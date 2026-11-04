@@ -157,15 +157,17 @@ export function useCatalogSession(
   async function collect(reconcile = false) {
     if (disposed || (!reconcile && (subscribed.value === null || stateReading.value))) return;
     membershipChanged(owner, resource);
+    let latest: boolean | undefined;
     try {
       const result = await membership.command(
         reconcile ? { kind: 'reconcile' } : { kind: 'set', desired: !subscribed.value },
       );
       if (!disposed && result !== null) observed.value = result;
+      latest = result ?? undefined;
       return !disposed ? result : null;
     } finally {
       // This epoch-bound listener outlives an unmounted page or evicted model.
-      membershipChanged(owner, resource);
+      membershipChanged(owner, resource, latest);
     }
   }
   function dispose() {
