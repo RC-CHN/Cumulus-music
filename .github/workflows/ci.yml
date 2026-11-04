@@ -116,6 +116,8 @@ jobs:
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
       - name: Verify optional song fingerprint features
         run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
+      - name: Verify Linux recognition device binding
+        run: cargo test --locked -p cumulus-desktop --lib --features custom-protocol,recognition-monitor-lab recognition_capture
       - name: Verify standalone WASAPI capture policy
         run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
       - name: Reclaim Linux test build space before packaging
