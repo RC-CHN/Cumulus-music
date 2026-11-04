@@ -17,6 +17,9 @@ mod profile_playlists_fixture;
 #[path = "support/profile_podcasts_fixture.rs"]
 mod profile_podcasts_fixture;
 
+#[path = "support/community_topic_fixture.rs"]
+mod community_topic_fixture;
+
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,

@@ -1,0 +1,46 @@
+话题与热门笔记：Windows PC 3.1.42.205594
+
+官方入口、字段与请求
+- EventCard.jsx:622–641 用 RichParagraph 显示笔记标题/正文；M/434:16–20、195–219
+  将完整的 #话题# 变成内部 /community/topic/:name? 路由（M/3105:1540–1549）。
+  M/3105:933–945 解码并去掉首尾 #，M/359:85–118 → M/15.b:
+  POST /api/act/detail {actname}。200 取顶层 act，验证 actId 后再读列表。
+  按 TopicSqure.jsx:70–123 使用路由话题标题、coverPCUrl、coverPCLongUrl、
+  participateCount 和 text（数组用首项，否则 JSON 文本）。参与资源的
+  resourceType/resourceJson 只供官方 TopicBanner.jsx:76–104 预填发布器；此处不转发。
+- 热门：M/359:158–164 → M/15.d（2619–2636）POST /api/act/event/hot {actid}。
+  events 用 M/21.p 投影，固定一组无续页，标题为「热门笔记」。
+  这不是全站热门，也不是关注动态的回退。
+- 全部：M/359:136–157 → M/15.c（2637–2663）POST /api/act/event {actid,lasttime}。
+  M/3006:55–63、339–388 首次使用字符串 "-1"；后续回传原始 lasttime 类型及精度，
+  顶层 more 控制是否继续。服务端一批 20 项，前端不向请求增添 limit/offset。
+  M/3006:389–427 明确刷新先以数值 -1 读全部，再读热门；Cumulus 等两组都成功才清提示。
+- 新笔记提示：TopicHeader.jsx:45–62 / M/3105:760–804 在取得 actid 后每 20 秒读
+  M/359:119–134 /api/act/event/new {actid,lasttime:当前毫秒}。仅显示
+  「有新笔记，点击查看」，点击才刷新。Cumulus 仅在当前话题前台且窗口聚焦时排程，
+  单组件不重叠轮询；离开、失焦、切号、撤权时停止排程并丢弃迟到提示。
+- 话题详情和评论复用既有 /api/v1/event/{uid}/{id} 及匹配的评论线程；退出详情恢复
+  具体热门/全部入口和滚动；回到原动态保留 #话题# 按钮焦点、列表及滚动。
+
+安全和失败边界
+- Rust 将活动、续页及动态权限限制在本账号代次与有界话题访问记录；浏览器只拿
+  不透明话题/续页/详情句柄与有界 DTO。已知 actId 不匹配的条目过滤；同一活动热门/
+  全部重复项复用原生记录，矛盾作者/匿名观察撤销详情并遮蔽双方旧投影。不暴露原始
+  actId、事件作者 ID、游标、原始图片 URL 参数、位置或参与资源；无服务原始数据落盘。
+- 初次资料 403/404 显示不可查看，不再请求该话题；列表明确 403/404 撤销该话题的
+  列表及详情权限。M/15 原格式化会把其它失败折叠成空列表；Cumulus 保留已加载内容，
+  给失败分组提供重试，使用原请求动作/续页句柄。防止重复/循环游标；其它话题不能复用。
+- Vue 只把完整、受限的字面话题渲染成按钮，不使用 HTML 注入或打开任意 URL。
+  未证明匿名服务授权；沿用 Cumulus 登录后的社区读取范围。未运行真实请求或写入。
+- M/2052 证明 GET /api/act/all {recentlimit:3,rcmdlimit:5,soaringlimit:0}
+  是发布器内最近参与/推荐选择器，并非全站话题目录；其选择器搜索也独立。
+  不新增参与、分享、发布、关注话题或任何其它写入。
+
+复现
+- cargo test -p cumulus-core --test community_topic --test community_read --test community_publish --test profile_notes --locked
+- cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
+- 断网 Linux Xvfb/DBus 实际 WebView：
+  python3 scripts/ci/community_smoke.py --binary <community_ui_probe> --root <新目录> --screenshots --topic
+  合成证明的 12 个阶段涵盖详情/评论、热榜回位、两种游标、真实 20 秒提示、显式刷新、
+  来源回位及不可用状态；同一二进制通过关注流、发布恢复和个人笔记回归。此次本机证据在
+  .build/ui-proof/community-topic-d39d59d5/（仅合成截图和 JSON）；CI 接入 Linux 检查。

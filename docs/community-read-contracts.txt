@@ -47,7 +47,8 @@
   续页仍用滚动触发，键盘有等价按钮。超大、未推进、坏返回保留明确边界。
 - M15:1206–1222 的 api/event/get/{uid}（offset/limit/getcounts）是用户活动列表，
   形状与按 UID 枚举相符，当前社区入口未见调用；不是关注动态或单条详情。M359:85–164、M15:2619–2663 的话题活动使用 actid、
-  lasttime 和独立热榜 /api/act/event/hot；本批未接话题广场，未把这些路径作回退。
+  lasttime 和独立热榜 /api/act/event/hot；关注流不把这些路径作回退。独立的笔记话题
+  入口和话题页见 community-topic-contracts.txt。
   M359:43–83 的新歌通知另走 /api/user/friend/new/song/notice/web/get，不是假定动态字段。
   广告、通知、发笔记、点赞、回复、转发、删除及举报均未加入此只读批。
   编辑、本机草稿、附件查询及受限公开发布见 community-composer-contracts.txt。

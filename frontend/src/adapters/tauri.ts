@@ -38,6 +38,10 @@ export function createTauriClient(): CoreClient {
       invoke('open_profile_podcast_management', { epoch, uid }),
     profileFollow: (epoch, uid, command) => invoke('profile_follow', { epoch, uid, command }),
     profileNotes: (epoch, uid, action) => invoke('profile_notes', { epoch, uid, action }),
+    communityTopic: (epoch, name) => invoke('community_topic', { epoch, name }),
+    communityTopicNotice: (epoch, topic) => invoke('community_topic_notice', { epoch, topic }),
+    communityTopicSlice: (epoch, topic, action) =>
+      invoke('community_topic_slice', { epoch, topic, action }),
     communityFeed: (epoch, action) => invoke('community_feed', { epoch, action }),
     communityNewSongNotice: (epoch, mode) => invoke('community_new_song_notice', { epoch, mode }),
     communityDetail: (epoch, detail) => invoke('community_detail', { epoch, detail }),

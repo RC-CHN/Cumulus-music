@@ -235,6 +235,7 @@ impl MusicClient {
                 let mut state = self.published_notes.state(token)?;
                 if !state.cards.iter().any(|record| record.key == key) {
                     state.cards.push_back(CardLease {
+                        topic: None,
                         key,
                         event: event.clone(),
                         locator: Some(Locator {

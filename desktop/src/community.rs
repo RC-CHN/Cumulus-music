@@ -103,3 +103,40 @@ pub async fn community_composer_publish(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn community_topic(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    name: String,
+) -> Result<AccountData<Option<cumulus_core::client::dto::CommunityTopic>>, ClientError> {
+    client
+        .community_topic(&epoch, &name)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn community_topic_slice(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    topic: String,
+    action: cumulus_core::client::dto::CommunityTopicAction,
+) -> Result<AccountData<cumulus_core::client::dto::CommunityTopicSlice>, ClientError> {
+    client
+        .community_topic_slice(&epoch, &topic, action)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn community_topic_notice(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    topic: String,
+) -> Result<AccountData<bool>, ClientError> {
+    client
+        .community_topic_notice(&epoch, &topic)
+        .await
+        .map_err(Into::into)
+}

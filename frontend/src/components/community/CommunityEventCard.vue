@@ -1,11 +1,18 @@
 <script setup lang="ts">
 import type { CommunityCard, CommunityResource } from '../../services/community';
 import Icon from '../Icon.vue';
+import CommunityTopicText from './CommunityTopicText.vue';
 
-const props = defineProps<{ card: CommunityCard; nested?: boolean; playable: boolean }>();
+const props = defineProps<{
+  card: CommunityCard;
+  nested?: boolean;
+  playable: boolean;
+  sourceKey?: string;
+}>();
 const emit = defineEmits<{
   open: [id: string];
   resource: [value: CommunityResource];
+  topic: [name: string, opener: string];
 }>();
 const date = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 const labels = {
@@ -51,8 +58,20 @@ const labels = {
     </p>
     <p v-else-if="card.status === 'unavailable'" class="muted">暂时无法显示这条动态。</p>
     <template v-else>
-      <h2 v-if="card.title" class="community-event-title">{{ card.title }}</h2>
-      <p v-if="card.message" class="community-event-text">{{ card.message }}</p>
+      <h2 v-if="card.title" class="community-event-title">
+        <CommunityTopicText
+          :value="card.title"
+          :source="`${sourceKey ?? card.key}:title`"
+          @topic="(name, opener) => emit('topic', name, opener)"
+        />
+      </h2>
+      <p v-if="card.message" class="community-event-text">
+        <CommunityTopicText
+          :value="card.message"
+          :source="`${sourceKey ?? card.key}:message`"
+          @topic="(name, opener) => emit('topic', name, opener)"
+        />
+      </p>
       <div v-if="card.pictures.length" class="community-pictures">
         <img
           v-for="(url, index) in card.pictures"
@@ -88,9 +107,11 @@ const labels = {
         <CommunityEventCard
           v-else-if="card.attachment.type === 'forwarded' && !props.nested"
           :card="card.attachment.card"
+          :source-key="`${sourceKey ?? card.key}:forward`"
           :playable="playable"
           nested
           @resource="(value) => emit('resource', value)"
+          @topic="(name, opener) => emit('topic', name, opener)"
         />
         <p v-else-if="card.attachment.type === 'unavailable'" class="muted">
           {{ card.attachment.label }}

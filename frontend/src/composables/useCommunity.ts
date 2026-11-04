@@ -28,6 +28,12 @@ export function useCommunity(
   const group = ref(0);
   const scrollTop = ref(0);
   const opener = ref<string | null>(null);
+  const detailTopicOpeners = new Map<string, string>();
+  function rememberDetailTopic(detail: string, opener: string) {
+    detailTopicOpeners.set(detail, opener);
+    if (detailTopicOpeners.size > 8)
+      detailTopicOpeners.delete(detailTopicOpeners.keys().next().value!);
+  }
   let retryAction: CommunityFeedAction | null = null;
   const groups = computed(() => Math.max(1, Math.ceil(cards.value.length / GROUP_SIZE)));
   const visible = computed(() =>
@@ -92,6 +98,7 @@ export function useCommunity(
     group.value = 0;
     scrollTop.value = 0;
     opener.value = null;
+    detailTopicOpeners.clear();
     retryAction = null;
   }
 
@@ -221,6 +228,8 @@ export function useCommunity(
     autoMore,
     scrollTop,
     opener,
+    detailTopicOpeners,
+    rememberDetailTopic,
     connect,
     ensure,
     fresh,

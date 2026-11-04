@@ -47,6 +47,8 @@ import AppearanceMenu from './components/AppearanceMenu.vue';
 import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
 import CommunityPage from './components/community/CommunityPage.vue';
+import CommunityTopicPage from './components/community/CommunityTopicPage.vue';
+import { useCommunityTopic } from './composables/useCommunityTopic';
 import { useProfilePodcasts } from './composables/useProfilePodcasts';
 import { useCommunity } from './composables/useCommunity';
 import { useCommunityNotice } from './composables/useCommunityNotice';
@@ -264,12 +266,22 @@ watch(
 );
 const community = useCommunity(core, () => void music.bootstrap(false));
 const communityNotice = useCommunityNotice(core, () => void music.bootstrap(false));
+const communityTopic = useCommunityTopic(core, () => void music.bootstrap(false));
+let topicVisit = 0;
+function openCommunityTopic(name: string) {
+  if (!music.signedIn.value) return;
+  music.navigate({ kind: 'community_topic', name, visit: ++topicVisit });
+}
 const communityPage = ref<InstanceType<typeof CommunityPage>>();
 watch(
   [music.page, () => music.account.value.epoch, () => music.account.value.status],
   ([location, epoch, status]) => {
     community.connect(status === 'authenticated' ? epoch : null);
     communityNotice.connect(status === 'authenticated' ? epoch : null);
+    communityTopic.enter(
+      status === 'authenticated' ? epoch : '',
+      location.kind === 'community_topic' ? location : null,
+    );
     if (status !== 'authenticated') return;
     if (location.kind === 'community_detail') {
       if (community.handle.value !== location.handle) void community.openDetail(location.handle);
@@ -3166,8 +3178,18 @@ onUnmounted(() => {
                 :detail-key="page.kind === 'community_detail' ? page.handle : undefined"
                 @open="(handle) => music.navigate({ kind: 'community_detail', handle })"
                 @resource="openCommunityResource"
+                @topic="openCommunityTopic"
                 @open-new-songs="music.navigate({ kind: 'follow_new_song' })"
                 @back="music.back()"
+              />
+              <CommunityTopicPage
+                v-else-if="page.kind === 'community_topic' && communityTopic.active.value"
+                :model="communityTopic"
+                :state="communityTopic.active.value"
+                :playable="player.ready.value && !player.busy.value"
+                @topic="openCommunityTopic"
+                @detail="(handle) => music.navigate({ kind: 'community_detail', handle })"
+                @resource="openCommunityResource"
               />
               <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
               <ArtistGalleryPage
@@ -3536,6 +3558,7 @@ onUnmounted(() => {
                   :model="profileNotes"
                   :playable="player.ready.value && !player.busy.value"
                   @open="openProfileNote"
+                  @topic="openCommunityTopic"
                   @resource="openCommunityResource"
                 />
                 <ProfilePodcasts

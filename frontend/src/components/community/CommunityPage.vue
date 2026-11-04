@@ -20,6 +20,7 @@ const emit = defineEmits<{
   resource: [value: CommunityResource];
   back: [];
   openNewSongs: [];
+  topic: [name: string];
 }>();
 const model = props.model;
 const {
@@ -51,19 +52,41 @@ const offset = () => offsetHistory.value.at(-1) ?? 0;
 
 onMounted(restore);
 async function restore() {
-  if (props.detailKey) return;
   await nextTick();
   const root = surface.value;
   if (!root) return;
+  if (props.detailKey) {
+    const marker = model.detailTopicOpeners.get(props.detailKey);
+    if (!detail.value || !marker) return;
+    const target = [...root.querySelectorAll<HTMLButtonElement>('[data-topic-opener]')].find(
+      (button) => button.dataset.topicOpener === marker,
+    );
+    if (!target) return;
+    target.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    target.focus({ preventScroll: true });
+    model.detailTopicOpeners.delete(props.detailKey);
+    return;
+  }
   root.scrollTop = model.scrollTop.value;
   if (!model.opener.value) return;
   const key = model.opener.value;
-  const target = [...root.querySelectorAll<HTMLButtonElement>('[data-community-opener]')].find(
-    (button) => button.dataset.communityOpener === key,
-  );
+  const target = [
+    ...root.querySelectorAll<HTMLButtonElement>('[data-community-opener], [data-topic-opener]'),
+  ].find((button) => button.dataset.communityOpener === key || button.dataset.topicOpener === key);
   if (!target) return;
   target.focus({ preventScroll: true });
   model.opener.value = null;
+}
+watch(detail, () => {
+  if (props.detailKey) void restore();
+});
+function openTopic(name: string, opener: string) {
+  if (props.detailKey) model.rememberDetailTopic(props.detailKey, opener);
+  else {
+    rememberScroll();
+    model.opener.value = opener;
+  }
+  emit('topic', name);
 }
 defineExpose({ restore, refresh });
 
@@ -180,6 +203,7 @@ async function commentPage(value: number, prior = false) {
       <template v-else-if="detail">
         <CommunityEventCard
           :card="detail.card"
+          @topic="openTopic"
           :playable="playable"
           @resource="(item) => emit('resource', item)"
         />
@@ -263,6 +287,7 @@ async function commentPage(value: number, prior = false) {
           :card="card"
           :playable="playable"
           @open="open"
+          @topic="openTopic"
           @resource="(item) => emit('resource', item)"
         />
       </div>

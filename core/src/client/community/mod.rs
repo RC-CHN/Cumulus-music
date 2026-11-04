@@ -3,6 +3,7 @@ pub mod new_song_notice;
 mod profile;
 mod project;
 pub mod publish;
+pub(super) mod topic;
 
 use super::{MusicClient, comments, dto::AccountData};
 use crate::{
@@ -138,6 +139,7 @@ impl Locator {
 
 struct CardLease {
     key: Uuid,
+    topic: Option<(Uuid, u8)>,
     event: String,
     locator: Option<Locator>,
     comments_receipt: Option<Uuid>,
@@ -309,6 +311,7 @@ impl ReadLease<'_> {
                 None => {
                     state.cards.push_back(CardLease {
                         key: Uuid::new_v4(),
+                        topic: None,
                         event,
                         locator,
                         comments_receipt: None,
@@ -352,7 +355,12 @@ fn comment(value: Comment) -> CommunityComment {
 
 impl MusicClient {
     fn community_host_for(&self, token: &SessionToken, key: Uuid) -> Result<&CommunityHost> {
-        for host in [&self.community, &self.profile_notes, &self.published_notes] {
+        for host in [
+            &self.community,
+            &self.profile_notes,
+            &self.published_notes,
+            &self.community_topics.cards,
+        ] {
             if host
                 .state(token)?
                 .cards

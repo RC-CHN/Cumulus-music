@@ -104,6 +104,35 @@ def verify_profile_follow(stages, native):
                      detail(2), detail(74), detail(75), detail(76)], calls
 
 
+def verify_topic(stages, native):
+    assert set(stages) == {'source', 'hot_error', 'topic_ready', 'detail', 'hot_back', 'next_error',
+                           'string_next', 'number_next', 'notice', 'refresh', 'source_back',
+                           'unavailable'}
+    assert stages['hot_back']['focused'] and stages['source_back']['focused']
+    assert stages['hot_error']['hot'] == 0 and stages['hot_error']['all'] == 12
+    assert stages['next_error']['hot'] == 2 and stages['next_error']['all'] == 12
+    assert stages['string_next']['all'] == 20 and stages['number_next']['all'] == 1
+    calls = native['topicCalls']
+    act = '90071992547409999'
+
+    def request(path):
+        return [body for target, body in calls if target == path]
+
+    assert request('/api/event/pc/history/feed/get') == [{'cursor': '-1'}]
+    assert request('/api/act/detail') == [{'actname': '听歌 100%'}, {'actname': '不存在'}]
+    assert request('/api/act/event/hot') == [{'actid': act}] * 3
+    assert request('/api/act/event') == [
+        {'actid': act, 'lasttime': cursor} for cursor in (
+            '-1', '90071992547409933331', '90071992547409933331', 9007199254740997, -1)]
+    assert request('/api/v1/event/73/31') == [{}]
+    assert len(request('/api/v1/resource/comments/A_EV_2_31_73')) == 1
+    assert len(request('/api/act/event/new')) == 1
+    notice = request('/api/act/event/new')[0]
+    assert notice['actid'] == act and type(notice['lasttime']) is int and notice['lasttime'] > 1700000000000
+    end = [path for path, _ in calls[-4:]]
+    assert end == ['/api/act/event/new', '/api/act/event', '/api/act/event/hot', '/api/act/detail'], calls
+
+
 def verify_community(stages, native):
     assert set(stages) == {'first_error', 'feed', 'notice_return', 'detail_error', 'comment_error', 'comments',
                            'comment_next', 'back_to_feed', 'unavailable', 'next_error',
@@ -160,13 +189,15 @@ def main():
     mode.add_argument('--profile-podcasts', action='store_true')
     mode.add_argument('--own-profile', action='store_true')
     mode.add_argument('--publication', action='store_true')
+    mode.add_argument('--topic', action='store_true')
     mode.add_argument('--profile-playlists', action='store_true')
     mode.add_argument('--profile-follow', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    script = ('own_profile_navigation_ui_probe.js' if args.own_profile else
+    script = ('community_topic_ui_probe.js' if args.topic else
+              'own_profile_navigation_ui_probe.js' if args.own_profile else
               'profile_notes_ui_probe.js' if args.profile_notes else
               'profile_podcasts_ui_probe.js' if args.profile_podcasts else
               'profile_playlists_ui_probe.js' if args.profile_playlists else
@@ -174,6 +205,8 @@ def main():
               'community_publication_ui_probe.js' if args.publication else 'community_ui_probe.js')
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'),
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
+    if args.topic:
+        env['CUMULUS_COMMUNITY_TOPIC_PROOF'] = '1'
     if args.profile_notes:
         env['CUMULUS_PROFILE_NOTES_PROOF'] = '1'
     if args.own_profile:
@@ -215,7 +248,9 @@ def main():
               for path in output.glob('ux_*.json')}
     assert len(stages) == complete['stageCount']
     assert all(stage['width'] == 760 for stage in stages.values())
-    if args.own_profile:
+    if args.topic:
+        verify_topic(stages, complete['native'])
+    elif args.own_profile:
         assert set(stages) == {'own_profile', 'account_controls', 'own_notes', 'own_following', 'own_followers'}
         calls = complete['native']['profileNotesCalls']
         assert [path for path, _ in calls if path != '/api/w/nuser/account/get'] == [
@@ -241,7 +276,9 @@ def main():
     report = {'ok': True, 'actualWebView': True, 'states': len(stages),
               'screenshots': len(stages) if args.screenshots else 0,
               'realMusicRequests': 0, 'remoteAccountWrites': 0}
-    if args.own_profile:
+    if args.topic:
+        report['topicCalls'] = complete['native']['topicCalls']
+    elif args.own_profile:
         report['ownProfileVerified'] = True
     elif args.publication:
         report['publicationVerified'] = True

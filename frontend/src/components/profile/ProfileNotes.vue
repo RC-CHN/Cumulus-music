@@ -5,7 +5,11 @@ import type { CommunityResource } from '../../services/community';
 import CommunityEventCard from '../community/CommunityEventCard.vue';
 
 const props = defineProps<{ model: ReturnType<typeof useCommunity>; playable: boolean }>();
-const emit = defineEmits<{ open: [id: string]; resource: [value: CommunityResource] }>();
+const emit = defineEmits<{
+  open: [id: string];
+  resource: [value: CommunityResource];
+  topic: [name: string];
+}>();
 const { visible, group, groups, continuation, loaded, pending, feedError, unavailable, autoMore } =
   props.model;
 const section = ref<HTMLElement>();
@@ -17,8 +21,10 @@ onMounted(async () => {
   const saved = props.model.opener.value;
   if (!saved || !section.value) return;
   const opener = [
-    ...section.value.querySelectorAll<HTMLButtonElement>('[data-community-opener]'),
-  ].find((node) => node.dataset.communityOpener === saved);
+    ...section.value.querySelectorAll<HTMLButtonElement>(
+      '[data-community-opener], [data-topic-opener]',
+    ),
+  ].find((node) => node.dataset.communityOpener === saved || node.dataset.topicOpener === saved);
   if (opener) {
     opener.scrollIntoView({ block: 'nearest', behavior: 'instant' });
     opener.focus({ preventScroll: true });
@@ -67,6 +73,12 @@ async function more() {
         :card="item"
         :playable="playable"
         @open="emit('open', $event)"
+        @topic="
+          (name, opener) => {
+            model.opener.value = opener;
+            emit('topic', name);
+          }
+        "
         @resource="emit('resource', $event)"
       />
     </div>

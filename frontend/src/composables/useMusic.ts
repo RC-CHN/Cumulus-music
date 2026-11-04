@@ -30,6 +30,7 @@ export type Page =
     }
   | { kind: 'community' }
   | { kind: 'community_detail'; handle: string }
+  | { kind: 'community_topic'; name: string; visit: number }
   | { kind: 'scene_fm' }
   | { kind: 'member' }
   | { kind: 'fm' }
@@ -240,6 +241,7 @@ export function useMusic(
         target.kind === 'latest_releases' ||
         target.kind === 'community' ||
         target.kind === 'community_detail' ||
+        target.kind === 'community_topic' ||
         target.kind === 'collections' ||
         target.kind === 'mv' ||
         target.kind === 'comments'
@@ -321,6 +323,7 @@ export function useMusic(
             'playlist_essential',
             'playlist_creator',
             'profile_notes',
+            'community_topic',
             'profile_podcasts',
             'profile_play_record',
             'profile_relations',

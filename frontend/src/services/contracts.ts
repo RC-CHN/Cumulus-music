@@ -1,3 +1,4 @@
+import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
 import type { ArtistOnboardingClient } from './artistOnboarding';
 import type { SearchClient, SearchResultsClient } from './search';
@@ -104,6 +105,7 @@ export interface CoreClient
     CommentClient,
     MessageClient,
     CommunityClient,
+    CommunityTopicClient,
     ProfileNotesClient,
     CommunityNoticeClient,
     CommentResourceClient,
