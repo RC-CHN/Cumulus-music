@@ -2,6 +2,8 @@
 #[cfg(windows)]
 mod identity;
 #[cfg(windows)]
+mod stable;
+#[cfg(windows)]
 mod windows;
 #[cfg(any(test, windows))]
 mod wire;

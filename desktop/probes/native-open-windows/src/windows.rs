@@ -1,4 +1,7 @@
 //! Windows API host for an isolated same-logon, same-directory transport.
+#[path = "stable_probe.rs"]
+mod stable_probe;
+
 use crate::{
     identity::{Identity, local_path},
     wire,
@@ -104,6 +107,28 @@ fn create_listener(
     first: bool,
     limit: usize,
 ) -> io::Result<NamedPipeServer> {
+    with_logon_security(identity, |security| {
+        // SAFETY: security storage is live for the duration of this call.
+        unsafe {
+            ServerOptions::new()
+                .first_pipe_instance(first)
+                .reject_remote_clients(true)
+                .max_instances(limit)
+                .pipe_mode(PipeMode::Byte)
+                .in_buffer_size((wire::MAX + 8) as u32)
+                .out_buffer_size(64)
+                .create_with_security_attributes_raw(
+                    address,
+                    (security as *mut SECURITY_ATTRIBUTES).cast(),
+                )
+        }
+    })
+}
+
+fn with_logon_security<T>(
+    identity: &Identity,
+    create: impl FnOnce(&mut SECURITY_ATTRIBUTES) -> io::Result<T>,
+) -> io::Result<T> {
     // Protected DACL with exactly the current Windows logon SID; default
     // named-pipe permissions include Everyone read and are not used.
     let text = wide(&format!("D:P(A;;GA;;;{})", identity.logon_sddl()));
@@ -122,26 +147,11 @@ fn create_listener(
         return Err(io::Error::last_os_error());
     }
     let descriptor = Descriptor(raw);
-    let mut security = SECURITY_ATTRIBUTES {
+    create(&mut SECURITY_ATTRIBUTES {
         nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
         lpSecurityDescriptor: descriptor.0,
         bInheritHandle: 0,
-    };
-    // SAFETY: security/descriptor live until CreateNamedPipeW copies them;
-    // Tokio creates an overlapped handle registered on this I/O runtime.
-    unsafe {
-        ServerOptions::new()
-            .first_pipe_instance(first)
-            .reject_remote_clients(true)
-            .max_instances(limit)
-            .pipe_mode(PipeMode::Byte)
-            .in_buffer_size((wire::MAX + 8) as u32)
-            .out_buffer_size(64)
-            .create_with_security_attributes_raw(
-                address,
-                (&mut security as *mut SECURITY_ATTRIBUTES).cast(),
-            )
-    }
+    })
 }
 
 async fn replace_used_listener(
@@ -196,7 +206,7 @@ fn verify_first_instance_flag(address: &str, identity: &Identity) -> io::Result<
     Ok(())
 }
 
-fn verify_acl(server: &NamedPipeServer, identity: &Identity) -> io::Result<()> {
+fn verify_acl(server: &impl AsRawHandle, identity: &Identity) -> io::Result<()> {
     let mut raw = ptr::null_mut();
     // SAFETY: live pipe handle, only the final writable descriptor is requested.
     let status = unsafe {
@@ -552,6 +562,10 @@ pub fn run() -> io::Result<()> {
         )?;
         let code = runtime.block_on(client(root, &scenario))?;
         std::process::exit(i32::from(code));
+    }
+    if kind.as_deref() == Some(OsStr::new("--stable-listener")) {
+        demand(args.next().is_none(), "unexpected stable lab arguments")?;
+        return runtime.block_on(stable_probe::run());
     }
     demand(kind.is_none(), "unexpected lab arguments")?;
     runtime.block_on(run_lab())

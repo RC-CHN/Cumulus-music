@@ -71,7 +71,15 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
   JSON。没有自动部署/安装，且不参与发行门槛。Linux 只验证帧向量，MinGW
   只证明 x64 代码编译链接；真正的 Windows ACL、握手和错误结果必须以这条
   Windows 命令或 Runner 的报告为准。未用 Wine 或编译结果替代实机。
-- 仍需实际 Windows 报告、独立登录拒绝/受限或提升令牌边界，以及正式 app
+- 837d4b1e 的原生 Runner 41911859366 已通过上述原始隔离实验。后续另加
+  --stable-listener 模式：与原模式共享同登录 DACL/子进程，服务端不经 Mio，
+  持有一个固定 FIRST_PIPE_INSTANCE 句柄，串行提交事件驱动的 Win32 重叠操作。
+  同一地址连续收取三个合法请求，中间拒绝超长头并取消、排空超时读取；
+  另验证真正进入 ERROR_IO_PENDING 后的停止读取和停止接入。只有确认该次
+  内核操作完成才回收缓冲区，最多等 2 秒排空；若无法确认则停止此服务端，
+  不重用句柄，保留一次内核仍可能写入的有界分配。子进程消费回执后才断开；
+  不调用可能无限阻塞的 FlushFileBuffers。新模式仍需单独原生 Windows 实测。
+- 正式接入前还需要独立登录拒绝/受限或提升令牌边界，以及正式 app
   的单资料目录所有权、活跃账号/队列栅栏、原窗口恢复、实际播放和窗口关闭
   取消。安装器和 Windows 产品暖转交目前均保持关闭。
 
@@ -85,6 +93,10 @@ https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-acce
 https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
 https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions
 https://github.com/tokio-rs/mio/blob/v1.2.3/src/sys/windows/named_pipe.rs
+https://learn.microsoft.com/en-us/windows/win32/ipc/synchronous-and-overlapped-input-and-output
+https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex
+https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-getoverlappedresult
+https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-disconnectnamedpipe
 
 2026-11-05 实际 Windows Server x64 runner：
 https://github.com/RC-CHN/Cumulus-music/actions/runs/41911859366
