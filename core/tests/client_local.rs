@@ -469,15 +469,23 @@ async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
             .as_deref()
             .ok_or(Error::State("missing pending CUE play ID"))?;
         let lyrics = client.player_lyrics("0", play_id).await?;
-        Ok::<_, Error>((pending.timeline, lyrics))
+        Ok::<_, Error>((pending.state, pending.timeline, lyrics))
     })
     .await;
     device.hold_load.store(false, Ordering::SeqCst);
-    let (pending_timeline, early_lyrics) = early
+    let (pending_state, pending_timeline, early_lyrics) = early
         .expect("lyrics while decoder is still loading")
         .unwrap();
     let view = loading.await.unwrap().unwrap();
-    assert!(pending_timeline.is_none());
+    use cumulus_core::playback::controller::PlaybackStatus;
+    assert!(matches!(
+        pending_state,
+        PlaybackStatus::Preparing | PlaybackStatus::Loading
+    ));
+    if let Some(timeline) = pending_timeline {
+        // An authorized source may publish its bounds before decoder open.
+        assert_eq!((timeline.media_start, timeline.total), (30.0, Some(90.0)));
+    }
     assert_eq!(early_lyrics.lines[1].time, Some(5.0));
     let play_id = view.play_id.unwrap();
     assert_eq!(early_lyrics.play_id, play_id);
