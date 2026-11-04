@@ -3,6 +3,7 @@ import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import { useAppearance } from '../composables/useAppearance';
+import { useEffectRegistrationChanges } from '../composables/useEffectRegistrationChanges';
 import type {
   EffectCatalogueItem,
   EffectCatalogueKind,
@@ -200,6 +201,10 @@ watch(
   () => [props.account.epoch, props.account.status],
   () => emit('close'),
 );
+useEffectRegistrationChanges(
+  () => props.account.epoch,
+  () => void refreshPending(),
+);
 onMounted(() => {
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   dialog.value?.showModal();
@@ -355,7 +360,6 @@ onUnmounted(() => {
         :epoch="account.epoch"
         :effect-id="selected.id"
         :allowed="!recoveryOnly && access === 'allowed'"
-        @changed="refreshPending"
       />
     </section>
   </dialog>

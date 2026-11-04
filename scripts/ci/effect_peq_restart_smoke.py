@@ -68,7 +68,7 @@ def main():
         return complete
 
     first = run('first', first_script)
-    assert first['leftStopUncertain']
+    assert first['leftStopUncertain'] and first['lateStopVerified']
     initial_trace = first['nativePeq']
     assert initial_trace['starts'] == initial_trace['stops'] == initial_trace['detaches'] == 1
     assert not initial_trace['nativeAttached']

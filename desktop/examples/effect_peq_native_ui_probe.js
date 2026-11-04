@@ -109,10 +109,39 @@
       'bound registration appears in local management'));
     await wait(() => phase('configured') && enabled(action('stop')), 'reopened local controls retain native binding');
 
-    stage = 'stop';
-    click(action('stop'));
+    stage = 'late-stop';
+    const provides = one('#app')?.__vue_app__?._context.provides;
+    const core = provides?.[Reflect.ownKeys(provides).find((key) => key.description === 'core-client')];
+    assert(core, 'production CoreClient is available');
+    const stopNative = core.effectPeqStop;
+    let resumeStop, startedStop = false;
+    const holdStop = new Promise((resolve) => { resumeStop = resolve; });
+    core.effectPeqStop = async (...args) => {
+      startedStop = true;
+      await holdStop;
+      return stopNative(...args);
+    };
+    const registration = () => enabled(one('[data-effect-registration="300"]'));
+    try {
+      click(action('stop'));
+      await wait(() => startedStop, 'stop was initiated before closing management');
+      click(button(one('.effect-directory[open]'), '关闭音效目录'));
+      await wait(() => !one('.effect-directory[open]'), 'starting directory closes');
+      click(button(one('.equalizer-dialog[open]'), '音效目录'));
+      const beforeStop = await wait(registration, 'new directory reads the registered state');
+      await wait(() => one('.effect-directory[open] .effect-directory-card'), 'new catalogue load completes');
+      assert(!beforeStop.textContent.includes('停止待核对'), 'stop has not finished yet');
+      resumeStop();
+      await wait(() => registration()?.textContent.includes('停止待核对'),
+        'already open directory reflects a late uncertain stop');
+    } finally {
+      resumeStop();
+      core.effectPeqStop = stopNative;
+    }
+    click(await wait(registration, 'durable registration shown independently of selection'));
     await wait(() => phase('recovery_required') && enabled(action('stop')) && enabled(action('status')),
-      'lost stop acknowledgement remains unresolved');
+      'open recovery without catalogue detail');
+    assert(!action('prepare') && !action('activate'), 'recovery-only view never prepares or activates');
     await wait(() => !one('.equalizer-toggle')?.dataset.parametricState &&
       !one('.equalizer-toggle').textContent.includes('PEQ') && !one('.equalizer-independent'),
       'footer and EQ panel clear the detached native component');
@@ -123,18 +152,8 @@
       return state.state === 'playing' && state.playId === baseline.playId && state.position > detached.position + 0.25;
     }, 'ordinary native playback continues after detach');
 
-    stage = 'reopen_directory';
-    click(button(one('.effect-directory[open]'), '关闭音效目录'));
-    await wait(() => !one('.effect-directory[open]'), 'effect directory closes');
-    click(button(await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog remains open'), '音效目录'));
-    const recovery = await wait(() => enabled(one('[data-effect-registration="300"]')),
-      'durable registration shown independently of selection');
-    click(recovery);
-    await wait(() => phase('recovery_required') && enabled(action('stop')), 'open recovery without catalogue detail');
-    assert(!action('prepare') && !action('activate'), 'recovery-only view never prepares or activates');
-
     if (window.__cumulusPeqExitUncertain) {
-      await emit('complete', { ok: true, stageCount: 3, leftStopUncertain: true });
+      await emit('complete', { ok: true, stageCount: 3, leftStopUncertain: true, lateStopVerified: true });
       return;
     }
 
@@ -155,7 +174,7 @@
     const final = await player();
     assert(final.playId === baseline.playId && final.position > baseline.position, 'binding does not replace the ordinary queue');
     await capture('05_released');
-    await emit('complete', { ok: true, stageCount: 5, sameNativePlayback: true, directManagementVerified: true, scopedBypassVerified: true });
+    await emit('complete', { ok: true, stageCount: 5, sameNativePlayback: true, directManagementVerified: true, scopedBypassVerified: true, lateStopVerified: true });
   } catch (error) {
     await emit('failed', { step: stage, message: String(error), stack: error?.stack,
       phase: controls()?.getAttribute('data-peq-phase') });

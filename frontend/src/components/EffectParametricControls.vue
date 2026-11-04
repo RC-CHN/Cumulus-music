@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { effectRegistrationChanged } from '../composables/useEffectRegistrationChanges';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
 import type { EffectPeqPhase, EffectPeqView } from '../services/effectDirectory';
 
 const props = defineProps<{ epoch: string; effectId: number; allowed: boolean }>();
-const emit = defineEmits<{ changed: [] }>();
 const core = useCore();
 const group = ref<HTMLElement>();
 const view = shallowRef<EffectPeqView>();
@@ -86,6 +86,8 @@ function observeDeferred() {
 
 async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration = false) {
   if (busy.value || !alive) return;
+  const epoch = props.epoch;
+  let mutationDispatched = false;
   const focused = group.value?.contains(document.activeElement);
   stopDeferredObservation();
   confirmation.value = undefined;
@@ -96,6 +98,7 @@ async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration =
     // read already started, let it finish but discard its view.
     if (observationRead) await observationRead.catch(() => undefined);
     if (!alive) return;
+    mutationDispatched = mayChangeRegistration;
     const result = await action();
     if (alive && result.id === props.effectId) view.value = result;
   } catch (issue) {
@@ -105,9 +108,9 @@ async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration =
       view.value = undefined;
     }
   } finally {
+    if (mutationDispatched) effectRegistrationChanged(epoch);
     if (alive) {
       busy.value = false;
-      if (mayChangeRegistration) emit('changed');
       observeDeferred();
       await nextTick();
       if (alive && focused && document.activeElement === document.body)

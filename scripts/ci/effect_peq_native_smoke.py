@@ -45,6 +45,7 @@ def main():
     complete = read('complete')
     assert complete['ok'] and complete['stageCount'] == 5 and complete['sameNativePlayback']
     assert complete['directManagementVerified'] and complete['scopedBypassVerified']
+    assert complete['lateStopVerified']
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
     uncertain = read('ux_03_stop_uncertain')['nativePeq']
@@ -55,14 +56,10 @@ def main():
     assert configured['processedSamples'] > 0 and configured['failedBlocks'] == 0
     assert uncertain['stops'] == uncertain['detaches'] == 1 and not uncertain['nativeAttached']
     assert uncertain['calls'] == configured['calls'] + [
+        {'path': '/api/usertool/sound/queryAllSound', 'result': 'ack'},
         {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
     ]
-    assert {k: v for k, v in reconciled.items() if k != 'calls'} == {
-        k: v for k, v in uncertain.items() if k != 'calls'
-    }
-    assert reconciled['calls'] == uncertain['calls'] + [
-        {'path': '/api/usertool/sound/queryAllSound', 'result': 'ack'},
-    ]
+    assert reconciled == uncertain
     assert released == complete['nativePeq']
     assert released['stops'] == 2 and released['detaches'] == 1 and not released['nativeAttached']
     assert released['failedBlocks'] == 0
@@ -95,6 +92,7 @@ def main():
     print(json.dumps(dict(ok=True, actualWebView=True, actualNativePcm=True, nullOutput=True,
                           processedSamples=released['processedSamples'], syntheticStarts=1,
                           syntheticStops=2, durableReleased=True, scopedBypassVerified=True,
+                          lateStopVerified=True,
                           realAccountWrites=0)))
 
 
