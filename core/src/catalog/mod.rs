@@ -6,6 +6,7 @@ pub mod details;
 pub mod intelligence;
 pub mod metadata;
 mod privileges;
+pub mod queue_more;
 pub mod rankings;
 pub mod search;
 pub use album::{AlbumDetailSource, AlbumDetails, AlbumReadState};
