@@ -85,8 +85,41 @@ pub struct State {
 pub struct Backend {
     pub state: Mutex<State>,
     pub gate: Mutex<Option<Arc<Gate>>>,
+    offset_gate: Mutex<Option<(u64, Arc<Gate>)>>,
 }
 impl Backend {
+    pub fn hold_chunk_at(&self, offset: u64) -> Arc<Gate> {
+        let gate = Gate::new();
+        assert!(
+            self.offset_gate
+                .lock()
+                .unwrap()
+                .replace((offset, gate.clone()))
+                .is_none()
+        );
+        gate
+    }
+    fn take_gate(&self, request: &NosRequest) -> Option<Arc<Gate>> {
+        if request.method() != NosMethod::Chunk {
+            return None;
+        }
+        if let Some(gate) = self.gate.lock().unwrap().take() {
+            return Some(gate);
+        }
+        let mut slot = self.offset_gate.lock().unwrap();
+        let (wanted, _) = slot.as_ref()?;
+        let offset = url::Url::parse(request.url())
+            .unwrap()
+            .query_pairs()
+            .find(|(name, _)| name == "offset")
+            .and_then(|(_, value)| value.parse::<u64>().ok())
+            .unwrap_or(0);
+        if offset == *wanted {
+            slot.take().map(|(_, gate)| gate)
+        } else {
+            None
+        }
+    }
     pub fn calls(&self) -> Vec<Call> {
         self.state.lock().unwrap().calls.clone()
     }
@@ -167,13 +200,8 @@ impl NosBackend for Backend {
     }
     fn request(&self, request: NosRequest) -> ApiFuture<'_, Value> {
         Box::pin(async move {
-            let is_chunk = request.method() == NosMethod::Chunk;
+            let gate = self.take_gate(&request);
             let result = self.handle(request);
-            let gate = if is_chunk {
-                self.gate.lock().unwrap().take()
-            } else {
-                None
-            };
             if let Some(gate) = gate {
                 gate.entered.notify_one();
                 gate.release.acquire().await.unwrap().forget();

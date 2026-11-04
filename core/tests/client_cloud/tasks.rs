@@ -530,13 +530,18 @@ async fn stopped_upload(client: &MusicClient, error: &str) -> CloudUploadView {
 
 #[tokio::test]
 async fn lost_nos_boundary_is_still_unresolved_after_reopen_and_can_only_stop_locally() {
-    for (key, lost_chunk) in [("audio", 0), ("lyric", 2)] {
+    const LYRIC: &[u8] = b"[00:01]fixture lyric\n";
+    for (key, chunk_size, lost_chunk) in [("audio", 3, 0), ("lyric", 16, 1)] {
         let f = Fixture::new(0);
         let mut input = f.input();
         if key == "lyric" {
+            // Keep the earlier audio upload to one chunk. The lyric needs
+            // one acknowledged chunk before losing its final reply.
+            assert!(support::DATA.len() <= chunk_size);
+            assert!((chunk_size + 1..=chunk_size * 2).contains(&LYRIC.len()));
             f.api.text_attachment_mode.store(1, Ordering::SeqCst);
             let lyric = f.root.path().join("fixture.lrc");
-            std::fs::write(&lyric, b"[00:01]x\n").unwrap();
+            std::fs::write(&lyric, LYRIC).unwrap();
             input.lyric = Some(lyric);
         }
         let object = f.objects.object(key);
@@ -547,9 +552,8 @@ async fn lost_nos_boundary_is_still_unresolved_after_reopen_and_can_only_stop_lo
             .faults
             .extend((0..lost_chunk).map(|_| None));
         object.fault(support::nos::Fault::LostReply);
-        let gate = support::nos::Gate::new();
-        *object.gate.lock().unwrap() = Some(gate.clone());
-        let client = f.client();
+        let gate = object.hold_chunk_at((lost_chunk * chunk_size) as u64);
+        let client = f.client_with_chunk_size(chunk_size);
         let id = client
             .cloud_command("1", CloudCommand::Upload { files: vec![input] })
             .await
@@ -557,9 +561,27 @@ async fn lost_nos_boundary_is_still_unresolved_after_reopen_and_can_only_stop_lo
             .accepted
             .pop()
             .unwrap();
-        tokio::time::timeout(Duration::from_secs(3), gate.entered.notified())
+        if tokio::time::timeout(Duration::from_secs(12), gate.entered.notified())
             .await
-            .unwrap();
+            .is_err()
+        {
+            let page = client
+                .cloud_page("1", query(CloudTab::Uploading), false)
+                .await
+                .unwrap();
+            panic!(
+                "waiting for {key} lost reply at chunk {lost_chunk}: worker={:?}, rows={:?}, calls={}",
+                page.worker_error,
+                page.uploads
+                    .iter()
+                    .map(|row| (row.phase, row.enabled, row.running, row.error.as_deref()))
+                    .collect::<Vec<_>>(),
+                object.calls().len()
+            );
+        }
+        let pending = object.calls();
+        assert_eq!(pending.len(), lost_chunk + 1);
+        assert_eq!(pending.last().unwrap().complete, key == "lyric");
         let page = client
             .cloud_page("1", query(CloudTab::Uploading), false)
             .await
@@ -576,7 +598,7 @@ async fn lost_nos_boundary_is_still_unresolved_after_reopen_and_can_only_stop_lo
         let object_calls = f.objects.calls();
         drop(client);
 
-        let client = f.client();
+        let client = f.client_with_chunk_size(chunk_size);
         let row = stopped_upload(&client, "nos_boundary_unverified").await;
         assert!(!row.can_resume && !row.can_renew && !row.can_reconcile);
         assert!(row.can_cancel);
