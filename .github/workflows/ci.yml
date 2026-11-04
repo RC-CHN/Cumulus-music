@@ -368,6 +368,8 @@ jobs:
           python scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe.exe --root .build/ci-user-blacklist-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
           python scripts/ci/profile_report_smoke.py --binary .build/target/debug/examples/profile_report_ui_probe.exe --root .build/ci-profile-report-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example comment_report_ui_probe --features custom-protocol --locked
+          python scripts/ci/comment_report_smoke.py --binary .build/target/debug/examples/comment_report_ui_probe.exe --root .build/ci-comment-report-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example manual_update_ui_probe --features custom-protocol --locked
           python scripts/ci/manual_update_smoke.py --binary .build/target/debug/examples/manual_update_ui_probe.exe --root .build/ci-manual-update-windows
           cargo build -p cumulus-desktop --example network_diagnostics_ui_probe --features custom-protocol --locked
@@ -706,6 +708,8 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_report_smoke.py --binary .build/target/debug/examples/profile_report_ui_probe --root .build/ci-profile-report-linux
+          cargo build -p cumulus-desktop --example comment_report_ui_probe --features custom-protocol --locked
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_report_smoke.py --binary .build/target/debug/examples/comment_report_ui_probe --root .build/ci-comment-report-linux
           cargo build -p cumulus-desktop --example manual_update_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/manual_update_smoke.py --binary .build/target/debug/examples/manual_update_ui_probe --root .build/ci-manual-update-linux
           cargo build -p cumulus-desktop --example network_diagnostics_ui_probe --features custom-protocol --locked
