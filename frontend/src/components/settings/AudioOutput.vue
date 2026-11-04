@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../../services/contracts';
 import type { OutputEngine } from '../../services/output';
 import { useOutputSettings } from '../../composables/useOutputSettings';
@@ -7,6 +7,13 @@ import { useControlFocus } from '../../composables/useControlFocus';
 const props = defineProps<{ account: AccountView }>();
 const model = useOutputSettings();
 const refresh = ref<HTMLButtonElement>();
+const pendingDevice = shallowRef<{ id: string; epoch: string }>();
+const pendingSelection = computed(() =>
+  pendingDevice.value?.epoch === props.account.epoch ? pendingDevice.value : undefined,
+);
+const selectedDevice = computed(
+  () => pendingSelection.value?.id ?? model.view.value?.selected.id ?? 'auto',
+);
 const focus = useControlFocus(
   () => props.account.epoch,
   () => refresh.value,
@@ -38,10 +45,28 @@ function status(e: OutputEngine) {
 function select(event: Event) {
   const target = event.target as HTMLSelectElement;
   const id = target.value;
+  if (!model.canChange.value || pendingSelection.value) {
+    target.value = selectedDevice.value;
+    return;
+  }
+  if (id === selectedDevice.value) return;
   return focus.run(event, async () => {
-    await model.select(id);
-    if (target.isConnected) target.value = model.view.value?.selected.id ?? 'auto';
+    const pending = { id, epoch: props.account.epoch };
+    // Temporarily disabling a native select can blur it after the IPC reply.
+    // Keep it focusable and block further choices until this save settles.
+    pendingDevice.value = pending;
+    try {
+      await model.select(id);
+    } finally {
+      if (pendingDevice.value === pending) pendingDevice.value = undefined;
+      if (target.isConnected && pending.epoch === props.account.epoch)
+        target.value = selectedDevice.value;
+    }
   });
+}
+function blockPendingSelection(event: PointerEvent | KeyboardEvent) {
+  if (pendingSelection.value && (!('key' in event) || !['Tab', 'Escape'].includes(event.key)))
+    event.preventDefault();
 }
 watch(
   () => props.account.epoch,
@@ -74,8 +99,11 @@ onUnmounted(model.dispose);
         <label for="audio-output-device">输出到</label>
         <select
           id="audio-output-device"
-          :value="model.view.value.selected.id"
-          :disabled="!model.canChange.value"
+          :value="selectedDevice"
+          :disabled="!pendingSelection && !model.canChange.value"
+          :aria-disabled="pendingSelection ? 'true' : undefined"
+          @pointerdown="blockPendingSelection"
+          @keydown="blockPendingSelection"
           @change="select"
         >
           <option v-if="missing" :value="model.view.value.selected.id" disabled>

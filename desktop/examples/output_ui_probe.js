@@ -19,7 +19,18 @@
   }
   async function theme(name){click(one(`input[name="settings-theme"][value="${name}"]`));await wait(()=>document.documentElement.dataset.theme===name,'theme');}
   async function read(){click(refresh());await sleep(120);await wait(ready,'output refreshed');}
-  async function choose(id){const n=select();assert(n&&!n.disabled,'output selector unavailable');n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});n.value=id;n.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>ready()&&!select()?.disabled,'output saved');await sleep(150);assert(document.activeElement===select(),'output selection lost focus');}
+  async function choose(id, moveFocus){
+    const n=select();assert(n&&!n.disabled,'output selector unavailable');n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});n.value=id;n.dispatchEvent(new Event('change',{bubbles:true}));
+    await Promise.resolve(); // Vue has rendered the busy state; IPC cannot have replied in this turn.
+    assert(!ready()&&!n.disabled&&n.getAttribute('aria-disabled')==='true'&&document.activeElement===n,'output selector must remain focused during save');
+    const other=Array.from(n.options).find(option=>option.value!==id).value;
+    n.value=other;n.dispatchEvent(new Event('change',{bubbles:true}));
+    assert(n.value===id,'second selection replaced the pending device');
+    if(moveFocus)moveFocus.focus({preventScroll:true});
+    await wait(()=>ready()&&!select()?.disabled,'output saved');await sleep(150);
+    assert(select().value===id&&select().getAttribute('aria-disabled')!=='true','output selection did not settle');
+    assert(document.activeElement===(moveFocus??select()),'output selection did not respect keyboard focus');
+  }
   try{
     await wait(()=>player()?.dataset.state==='paused'&&one('[aria-label="打开设置"]')&&!one('[aria-label="打开设置"]').disabled,'app ready');
     click(one('[aria-label="打开设置"]'));await wait(()=>ready()&&select()&&!select().disabled,'output settings');
@@ -36,7 +47,7 @@
       click(all('.audio-output button').find(n=>n.textContent.trim()==='恢复默认输出设置'));await wait(()=>ready()&&select()&&!select().disabled&&status().includes('已应用'),'repair and native application');assert(document.activeElement===refresh(),'repair lost focus');await capture('repaired');
       await emit('raw-damage');await read();assert(section().querySelector('.settings-recovery')&&!select(),'invalid JSON exposed as usable output');await capture('raw_json_damaged');
       click(all('.audio-output button').find(n=>n.textContent.trim()==='恢复默认输出设置'));await wait(()=>ready()&&select()&&!select().disabled&&status().includes('已应用'),'invalid JSON repair and native application');assert(document.activeElement===refresh(),'raw repair lost focus');assert(select().value==='auto','raw repair defaults');await capture('raw_json_repaired');
-      await choose('fixture/b');await wait(()=>status().includes('已应用'),'final choice applied');await theme('light');await capture('saved_b');
+      await choose('fixture/b',one('input[name="settings-theme"][value="light"]'));await wait(()=>status().includes('已应用'),'final choice applied');await theme('light');await capture('saved_b');
     }else{assert(select().value==='fixture/b','output selection did not survive process restart');await wait(()=>status().includes('已应用'),'reopened output applied');await capture('reopened_b');}
     await emit('complete',{ok:true,phase,stageCount,realMusicRequests:0,decoder:'libmpv',audioOutput:'null',deviceCatalog:'synthetic',physicalEndpointVerified:false});
   }catch(error){await emit('failed',{ok:false,phase,stageCount,error:String(error),status:status(),width:innerWidth,overflow:all('.settings-scroll, .settings-scroll *').filter(n=>n.scrollWidth>n.clientWidth+1||n.matches('.output-selection *')).map(n=>({tag:n.tagName,class:n.className,scroll:n.scrollWidth,client:n.clientWidth,width:n.getBoundingClientRect().width,left:n.getBoundingClientRect().left,right:n.getBoundingClientRect().right,cssWidth:getComputedStyle(n).width,minWidth:getComputedStyle(n).minWidth,maxWidth:getComputedStyle(n).maxWidth,text:n.textContent.slice(0,100)}))});}
