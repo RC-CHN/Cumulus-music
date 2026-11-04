@@ -242,24 +242,39 @@ function applyPublication(value: ComposerPublication) {
     if (value.status === 'published' && saved.value?.revision === value.revision) resetDraft(null);
   }
 }
-async function checkPublication() {
+async function checkPublication(mode: 'status' | 'check_own_notes' = 'status') {
   if (!opened.value || pending.value || checking.value) return;
   const epoch = props.epoch;
   const ticket = session;
   const live = () => opened.value && props.epoch === epoch && ticket === session;
+  const origin = document.activeElement;
   checking.value = true;
   publicationIssue.value = '';
   try {
-    const response = await core.communityComposerPublish(epoch, { kind: 'status' });
+    const response = await core.communityComposerPublish(epoch, { kind: mode });
     if (live() && response.epoch === epoch) {
       applyPublication(response.value);
       if (uncertainLocalRevision.value)
         publicationIssue.value = '本机还没有这次提交的回执，仍无法确认是否发布。';
       else if (response.value.status === 'uncertain')
-        notice.value = '已核对本机记录，发布结果仍未确认。';
+        notice.value =
+          mode === 'status'
+            ? '已核对本机记录，发布结果仍未确认。'
+            : '最近笔记里没有找到可确认的回执，仍无法确认是否发布。';
+      else if (mode === 'check_own_notes' && response.value.status === 'published') {
+        notice.value = '';
+        await nextTick();
+        if (
+          live() &&
+          (document.activeElement === document.body || document.activeElement === origin)
+        )
+          publishedButton.value?.focus({ preventScroll: true });
+      }
     }
   } catch {
-    if (live()) publicationIssue.value = '暂时无法读取本机发布状态。';
+    if (live())
+      publicationIssue.value =
+        mode === 'status' ? '暂时无法读取本机发布状态。' : '暂时无法读取最近笔记。';
   } finally {
     if (live()) checking.value = false;
   }
@@ -471,9 +486,18 @@ function removeAttachment() {
             class="text-button"
             type="button"
             :disabled="pending || checking"
-            @click="checkPublication"
+            @click="checkPublication()"
           >
             核对本机回执
+          </button>
+          <button
+            v-if="publication?.status === 'uncertain'"
+            class="text-button"
+            type="button"
+            :disabled="pending || checking"
+            @click="checkPublication('check_own_notes')"
+          >
+            核对最近笔记
           </button>
         </div>
         <p v-if="saved === undefined && pending" role="status">正在读取本机草稿…</p>

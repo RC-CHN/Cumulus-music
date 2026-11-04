@@ -81,7 +81,10 @@ export type ComposerDraftAction =
   | { kind: 'read' }
   | { kind: 'save'; revision: string | null; text: string; attachment: ComposerAttachmentEdit }
   | { kind: 'discard'; revision: string };
-export type ComposerPublishAction = { kind: 'status' } | { kind: 'submit'; revision: string };
+export type ComposerPublishAction =
+  | { kind: 'status' }
+  | { kind: 'check_own_notes' }
+  | { kind: 'submit'; revision: string };
 export type ComposerPublication =
   | { status: 'ready' | 'phone_required' | 'preflight_unavailable' }
   | { status: 'uncertain'; revision: string }

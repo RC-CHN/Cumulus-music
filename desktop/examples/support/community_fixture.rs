@@ -8,6 +8,8 @@ use std::sync::Mutex;
 const PUBLISH: &str = "/api/share/friends/resource";
 const BINDINGS: &str = "/api/w/v1/user/bindings/2";
 const PUBLISHED_DETAIL: &str = "/api/v1/event/2/9007199254740997";
+const OWN_NOTES: &str = "/api/event/get/2";
+const RECOVERED_DETAIL: &str = "/api/v1/event/2/9007199254740998";
 
 pub fn publication_enabled() -> bool {
     std::env::var("CUMULUS_COMMUNITY_PUBLICATION_PROOF").as_deref() == Ok("1")
@@ -17,6 +19,12 @@ fn published_event(uuid: &Value) -> Value {
     json!({"id":"9007199254740997","type":19,"eventTime":1700000000000_u64,
         "user":{"userId":2,"nickname":"合成发布者"},"uuid":uuid,
         "json":json!({"msg":"公开发布的合成正文","album":{"id":92,"name":"合成附件专辑"}}).to_string(),
+        "pics":[]})
+}
+fn recovered_event(uuid: &Value) -> Value {
+    json!({"id":"9007199254740998","type":19,"eventTime":1700000000001_u64,
+        "user":{"userId":2,"nickname":"合成发布者"},"uuid":uuid,
+        "json":json!({"msg":"结果未知的合成正文","djRadio":{"id":94,"name":"合成附件播客"}}).to_string(),
         "pics":[]})
 }
 const FEED: &str = "/api/event/pc/history/feed/get";
@@ -103,7 +111,7 @@ impl Library {
                     .iter()
                     .filter(|(path, _)| matches!(
                         path.as_str(),
-                        BINDINGS | PUBLISH | PUBLISHED_DETAIL
+                        BINDINGS | PUBLISH | PUBLISHED_DETAIL | OWN_NOTES | RECOVERED_DETAIL
                     ))
                     .collect::<Vec<_>>()
             );
@@ -149,7 +157,12 @@ impl Api for Library {
             if let Some(result) = self.profile_podcasts.request(path, &payload, cache) {
                 return result;
             }
-            if publication_enabled() && matches!(path, PUBLISH | BINDINGS | PUBLISHED_DETAIL) {
+            if publication_enabled()
+                && matches!(
+                    path,
+                    PUBLISH | BINDINGS | PUBLISHED_DETAIL | OWN_NOTES | RECOVERED_DETAIL
+                )
+            {
                 assert!(!cache);
                 let attempt = {
                     let mut calls = self.calls.lock().unwrap();
@@ -190,6 +203,28 @@ impl Api for Library {
                     }
                     (PUBLISHED_DETAIL, 1) if payload == json!({}) => {
                         Ok(json!({"code":200,"event":published_event(&Value::Null)}))
+                    }
+                    (OWN_NOTES, n @ (1 | 2))
+                        if payload == json!({"offset":0,"limit":20,"getcounts":true,"time":-1}) =>
+                    {
+                        let calls = self.calls.lock().unwrap();
+                        let (_, request) = calls
+                            .iter()
+                            .rev()
+                            .find(|(path, _)| path == PUBLISH)
+                            .unwrap();
+                        let uuid = &request["uuid"];
+                        let events = if n == 1 {
+                            let mut foreign = recovered_event(uuid);
+                            foreign["user"]["userId"] = 3.into();
+                            vec![recovered_event(&Value::Null), foreign]
+                        } else {
+                            vec![recovered_event(uuid)]
+                        };
+                        Ok(json!({"code":200,"events":events,"more":false}))
+                    }
+                    (RECOVERED_DETAIL, 1) if payload == json!({}) => {
+                        Ok(json!({"code":200,"event":recovered_event(&Value::Null)}))
                     }
                     _ => Err(Error::InvalidInput(
                         "unexpected synthetic publication request",

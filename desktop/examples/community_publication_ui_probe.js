@@ -134,6 +134,18 @@
       textarea()?.value === '结果未知的合成正文' && textarea().disabled,
       'unknown durable journal and body are restored independently');
     await capture('publication_reopened');
+    click(control('核对最近笔记'));
+    await wait(() => composer()?.textContent.includes('最近笔记里没有找到可确认的回执') &&
+      textarea().disabled && textarea().value === '结果未知的合成正文', 'no matching UUID stays uncertain');
+    await capture('publication_readback_absent');
+    click(control('核对最近笔记'));
+    await wait(() => notice()?.includes('保存发布成功回执') && textarea().value === '' &&
+      document.activeElement === control('查看已发布笔记'), 'positive UUID readback settles exact draft');
+    await capture('publication_recovered');
+    click(control('查看已发布笔记'));
+    await wait(() => page()?.textContent.includes('结果未知的合成正文') &&
+      one('.community-heading h1')?.textContent === '动态详情', 'canonical recovered detail');
+    await capture('publication_recovered_detail');
     await emit('complete', { ok: true, stageCount: count, publicationVerified: true,
       realMusicRequests: 0, remoteWrites: 0 });
   } catch (error) {

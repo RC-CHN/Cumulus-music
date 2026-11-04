@@ -9,7 +9,7 @@ use crate::{
     Error, Result,
     account::{SessionToken, profile::AccountProfile},
     protocol::wire::serialization::encode_component,
-    storage::{OperationLock, StateTransaction},
+    storage::{OperationLock, StateStore, StateTransaction},
 };
 use md5::{Digest, Md5};
 use rand::Rng;
@@ -32,6 +32,7 @@ const NONCE: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 )]
 pub enum ComposerPublishAction {
     Status,
+    CheckOwnNotes,
     Submit { revision: String },
 }
 
@@ -185,6 +186,24 @@ fn confirmed_event(response: &Value, uid: &str, uuid: &str) -> Option<String> {
     project::id(&event["id"])
 }
 
+fn own_note_receipt(response: &Value, uid: &str, uuid: &str) -> Result<Option<String>> {
+    let events = response["events"]
+        .as_array()
+        .filter(|rows| rows.len() <= 20)
+        .ok_or(Error::Response("invalid own notes receipt page"))?;
+    let mut candidates = events.iter().filter(|event| {
+        event["uuid"].as_str() == Some(uuid)
+            && event["anonymityInfo"].is_null()
+            && project::id(&event["user"]["userId"]).as_deref() == Some(uid)
+    });
+    let event = candidates.next();
+    // An ambiguous or incomplete response must keep the journal pending.
+    if candidates.next().is_some() {
+        return Ok(None);
+    }
+    Ok(event.and_then(|event| project::id(&event["id"])))
+}
+
 fn rejection(error: &Error) -> Option<PublishRejection> {
     if matches!(error.root(), Error::RequestNotSent(_)) {
         return Some(PublishRejection::NotSent);
@@ -238,6 +257,80 @@ impl MusicClient {
         })
     }
 
+    fn settle_publication(
+        &self,
+        token: &SessionToken,
+        store: &StateStore,
+        record: Record,
+    ) -> Result<ComposerPublication> {
+        self.session.with_token(token, |uid| {
+            if !matches!(record.phase, Phase::Pending) {
+                store.transaction(|tx| {
+                    let prior = read_record(tx, uid)?.filter(|prior| {
+                        prior.uuid == record.uuid
+                            && prior.revision == record.revision
+                            && matches!(prior.phase, Phase::Pending)
+                    });
+                    if prior.is_none() {
+                        return Err(Error::StaleResponse);
+                    }
+                    tx.put(uid, JOURNAL, CURRENT, &serde_json::to_value(&record)?)?;
+                    if matches!(record.phase, Phase::Confirmed { .. })
+                        && tx
+                            .get(uid, DRAFT_KIND, DRAFT_KEY)?
+                            .as_ref()
+                            .and_then(|value| value["revision"].as_str())
+                            == Some(record.revision.as_str())
+                    {
+                        tx.delete(uid, DRAFT_KIND, DRAFT_KEY)?;
+                    }
+                    Ok(())
+                })?;
+            }
+            self.publication_view(token, uid, record)
+        })
+    }
+
+    async fn check_own_note_receipt(
+        &self,
+        token: &SessionToken,
+        store: &StateStore,
+        owner: &str,
+    ) -> Result<ComposerPublication> {
+        let _lock = OperationLock::acquire(store.directory(), JOURNAL, owner)?;
+        let record = self
+            .session
+            .with_token(token, |uid| store.read_snapshot(|tx| read_record(tx, uid)))?;
+        let Some(mut record) = record else {
+            return Ok(ComposerPublication::Ready);
+        };
+        if !matches!(record.phase, Phase::Pending) {
+            return self
+                .session
+                .with_token(token, |uid| self.publication_view(token, uid, record));
+        }
+        let path = format!("/api/event/get/{owner}");
+        let response = self
+            .session
+            .run_for(token, |api, _| async move {
+                api.call(
+                    &path,
+                    json!({"offset":0,"limit":20,"getcounts":true,"time":-1}),
+                    false,
+                    &[200],
+                )
+                .await
+            })
+            .await?;
+        if let Some(event) = own_note_receipt(&response, owner, &record.uuid)? {
+            record.phase = Phase::Confirmed {
+                event,
+                detail: Uuid::new_v4().to_string(),
+            };
+        }
+        self.settle_publication(token, store, record)
+    }
+
     pub async fn community_composer_publish(
         &self,
         epoch: &str,
@@ -252,16 +345,22 @@ impl MusicClient {
             epoch: epoch.into(),
             value,
         };
-        let ComposerPublishAction::Submit { revision } = action else {
-            // This is exclusively a local receipt read. No own-profile or
-            // feed request is a proven lookup by this operation's UUID.
-            let value = self.session.with_token(&token, |uid| {
-                match store.read_snapshot(|tx| read_record(tx, uid))? {
-                    None => Ok(ComposerPublication::Ready),
-                    Some(record) => self.publication_view(&token, uid, record),
-                }
-            })?;
-            return Ok(reply(value));
+        let revision = match action {
+            ComposerPublishAction::Submit { revision } => revision,
+            ComposerPublishAction::CheckOwnNotes => {
+                let value = self.check_own_note_receipt(&token, &store, &owner).await?;
+                return Ok(reply(value));
+            }
+            ComposerPublishAction::Status => {
+                // Opening the editor and checking a local receipt never go online.
+                let value = self.session.with_token(&token, |uid| {
+                    match store.read_snapshot(|tx| read_record(tx, uid))? {
+                        None => Ok(ComposerPublication::Ready),
+                        Some(record) => self.publication_view(&token, uid, record),
+                    }
+                })?;
+                return Ok(reply(value));
+            }
         };
         handle(&revision)?;
         let _lock = OperationLock::acquire(store.directory(), JOURNAL, &owner)?;
@@ -359,32 +458,7 @@ impl MusicClient {
                 rejection(&error).map_or(Phase::Pending, |reason| Phase::Rejected { reason })
             }
         };
-        let value = self.session.with_token(&token, |uid| {
-            if !matches!(record.phase, Phase::Pending) {
-                store.transaction(|tx| {
-                    let prior = read_record(tx, uid)?.filter(|prior| {
-                        prior.uuid == record.uuid
-                            && prior.revision == record.revision
-                            && matches!(prior.phase, Phase::Pending)
-                    });
-                    if prior.is_none() {
-                        return Err(Error::StaleResponse);
-                    }
-                    tx.put(uid, JOURNAL, CURRENT, &serde_json::to_value(&record)?)?;
-                    if matches!(record.phase, Phase::Confirmed { .. })
-                        && tx
-                            .get(uid, DRAFT_KIND, DRAFT_KEY)?
-                            .as_ref()
-                            .and_then(|value| value["revision"].as_str())
-                            == Some(record.revision.as_str())
-                    {
-                        tx.delete(uid, DRAFT_KIND, DRAFT_KEY)?;
-                    }
-                    Ok(())
-                })?;
-            }
-            self.publication_view(&token, uid, record)
-        })?;
+        let value = self.settle_publication(&token, &store, record)?;
         Ok(reply(value))
     }
 }

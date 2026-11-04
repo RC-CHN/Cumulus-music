@@ -116,13 +116,18 @@ def verify_community(stages, native):
 def verify_publication(stages, native):
     assert set(stages) == {'publication_confirm', 'publication_cancel', 'publication_phone',
                            'publication_ack', 'publication_detail', 'publication_unknown',
-                           'publication_reopened'}
+                           'publication_reopened', 'publication_readback_absent',
+                           'publication_recovered', 'publication_recovered_detail'}
     calls = native['publication']
     assert [path for path, _ in calls] == [
         '/api/w/v1/user/bindings/2', '/api/w/v1/user/bindings/2',
         '/api/share/friends/resource', '/api/v1/event/2/9007199254740997',
         '/api/w/v1/user/bindings/2', '/api/share/friends/resource',
+        '/api/event/get/2', '/api/event/get/2', '/api/v1/event/2/9007199254740998',
     ], calls
+    assert calls[6][1] == calls[7][1] == {
+        'offset': 0, 'limit': 20, 'getcounts': True, 'time': -1,
+    }
     assert calls[2][1]['type'] == 'album' and calls[5][1]['type'] == 'djradio'
     assert calls[2][1]['uuid'] != calls[5][1]['uuid']
     assert len(native['feed']) == 2, native['feed']
