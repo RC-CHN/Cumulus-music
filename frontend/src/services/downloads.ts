@@ -15,6 +15,7 @@ export const defaultDownloadOptions: DownloadOptions = {
   container: 'audio',
 };
 export type DownloadTab = 'completed' | 'active';
+export type SongDownloadState = 'none' | 'failed' | 'paused' | 'complete' | 'waiting' | 'working';
 export type DownloadCategory = 'all' | 'song' | 'voice' | 'mv';
 export type DownloadSort = 'name' | 'artist' | 'album' | 'size' | 'completed' | 'none';
 export interface DownloadQuery {

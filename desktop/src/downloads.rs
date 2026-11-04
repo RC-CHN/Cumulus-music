@@ -12,6 +12,17 @@ pub async fn downloads(
     client.downloads(&epoch, query).await.map_err(Into::into)
 }
 #[tauri::command]
+pub async fn song_download_state(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+) -> Result<SongDownloadState, ClientError> {
+    client
+        .song_download_state(&epoch, &id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn download_command(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

@@ -17,6 +17,17 @@ use std::{
 const STYLE_TAG_UNRESOLVED: &str = "kind='style-tag-intents-v1' AND
     (CASE WHEN json_valid(value) THEN coalesce(json_extract(value, '$.phase'), '') ELSE '' END)
     NOT IN ('unchanged','confirmed','rejected','accepted_current_state')";
+const DOWNLOAD_SONG_ID: &str =
+    "CASE WHEN json_valid(value) THEN CAST(json_extract(value,'$.song_id') AS TEXT) END";
+const DOWNLOAD_SONG_TASK: &str = "kind='download_tasks_v1' AND
+    CASE WHEN json_valid(value) THEN coalesce(json_extract(value,'$.origin.kind'),'song')='song'
+    ELSE 0 END";
+
+pub(crate) struct SongDownloadRow {
+    pub status: String,
+    pub path: Option<PathBuf>,
+    pub moving: bool,
+}
 
 pub struct StateStore {
     directory: PathBuf,
@@ -65,7 +76,9 @@ impl StateStore {
         )?;
         connection.execute_batch(&format!(
             "CREATE INDEX IF NOT EXISTS style_tag_unresolved_v1 ON state(owner,key)
-             WHERE {STYLE_TAG_UNRESOLVED};"
+             WHERE {STYLE_TAG_UNRESOLVED};
+             CREATE INDEX IF NOT EXISTS download_song_v1 ON state(owner,({DOWNLOAD_SONG_ID}))
+             WHERE {DOWNLOAD_SONG_TASK};"
         ))?;
         Ok(Self {
             directory,
@@ -83,6 +96,25 @@ impl StateStore {
             connection: &connection,
         }
         .get(owner, kind, key)
+    }
+
+    pub(crate) fn song_download_rows(&self, owner: &str, id: &str) -> Result<Vec<SongDownloadRow>> {
+        let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut query = connection.prepare_cached(&format!(
+            "SELECT json_extract(value,'$.status'), json_extract(value,'$.target'),
+                    json_extract(value,'$.file_operation') IS NOT NULL
+             FROM state INDEXED BY download_song_v1
+             WHERE owner=? AND {DOWNLOAD_SONG_TASK} AND ({DOWNLOAD_SONG_ID})=?"
+        ))?;
+        let rows = query.query_map([owner, id], |row| {
+            Ok(SongDownloadRow {
+                status: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                path: row.get::<_, Option<String>>(1)?.map(PathBuf::from),
+                moving: row.get(2)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<_, _>>()
+            .map_err(Into::into)
     }
 
     /// Includes commits from other connections and mutations made through this

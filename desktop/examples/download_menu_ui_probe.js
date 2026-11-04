@@ -551,9 +551,96 @@
     await fixture("verify_single_cancel");
     await capture("cancelled_single");
     client.downloadCommand = originalCommand;
+    step = "player_download_state";
+    click(button("每日推荐"));
+    await wait(
+      () => one(".daily-track-actions") && !one(".downloads-page"),
+      "leave download management before preparing the isolated task states",
+    );
+    const playCatalogSong = async (id) => {
+      const started = await client.playSelection(epoch, {
+        kind: "songs",
+        ids: [id],
+        index: 0,
+        quality: "standard",
+      });
+      await wait(
+        () => one(".playerbar").dataset.playId === started.playId,
+        "native catalogue playback visible",
+      );
+      return started.playId;
+    };
+    const badge = () => one(".player-current-download");
+    await fixture("playback_download_badge", { state: "queued" });
+    const badgePlay = await playCatalogSong("10");
+    await wait(
+      () => badge()?.dataset.downloadState === "waiting",
+      "queued song download",
+    );
+    click(badge());
+    await wait(
+      () => one(".player-download-notice")?.textContent.trim() === "等待下载中",
+      "waiting feedback instead of opening another download",
+    );
+    assert(!one(".download-dialog"), "waiting does not duplicate a task");
+    await capture("player_download_waiting", {
+      playId: badgePlay,
+      status: badge().dataset.downloadState,
+    });
+    await fixture("playback_download_badge", { state: "downloading" });
+    await wait(
+      () =>
+        badge()?.dataset.downloadState === "working" &&
+        badge().disabled &&
+        badge().querySelector(".player-download-spinner"),
+      "active download uses the working indicator",
+    );
+    await capture("player_download_working", {
+      playId: badgePlay,
+      status: badge().dataset.downloadState,
+    });
+    await fixture("playback_download_badge", { state: "complete" });
+    await wait(
+      () => badge()?.dataset.downloadState === "complete",
+      "completed song download",
+    );
+    click(badge());
+    await wait(
+      () =>
+        one(".player-download-notice")?.textContent.trim() === "该歌曲已下载",
+      "completed feedback instead of opening another download",
+    );
+    assert(
+      !one(".download-dialog") &&
+        one(".playerbar").dataset.playId === badgePlay,
+      "status actions keep playing and do not open a new download",
+    );
+    await capture("player_download_complete", {
+      playId: badgePlay,
+      status: badge().dataset.downloadState,
+    });
+    await playCatalogSong("5000");
+    await wait(
+      () =>
+        badge()?.dataset.downloadState === "none" &&
+        !badge().disabled &&
+        !one(".player-download-notice"),
+      "changing songs removes the previous badge and feedback",
+    );
+    click(badge());
+    await wait(
+      () => one(".download-dialog[open]"),
+      "new song still opens download confirmation",
+    );
+    click(button("关闭下载对话框"));
+    await wait(
+      () => !one(".download-dialog"),
+      "cancel ordinary download confirmation",
+    );
     await emit("complete", {
       ok: true,
       downloadMenuUi: true,
+      playerDownloadStateVerified: true,
       stageCount: count,
       realMusicRequests: 0,
       realAccountWrites: 0,

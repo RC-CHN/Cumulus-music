@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, nextTick, useId, watch } from 'vue';
+import { computed, ref, shallowRef, nextTick, useId, watch, onUnmounted } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
 import { currentCatalogTrack, time } from '../services/player';
@@ -19,6 +19,7 @@ import { effectLauncher, equalizerLauncher } from '../services/equalizer';
 import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
 import { usePlaybackCommentCount } from '../composables/usePlaybackCommentCount';
+import { usePlaybackDownloadState } from '../composables/usePlaybackDownloadState';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 import PlayerTrackActions from './PlayerTrackActions.vue';
 const equalizerOpen = ref(false);
@@ -34,6 +35,7 @@ const props = withDefaults(
     intelligence?: IntelligenceModel;
     likedPlaylistId?: string | null;
     downloadsAllowed?: boolean;
+    downloadsChanging?: boolean;
   }>(),
   { togetherActive: false },
 );
@@ -77,10 +79,50 @@ const currentCatalog = computed<CurrentCatalogTrack | undefined>((previous) => {
     return previous;
   return current;
 });
-const currentDownload = computed(() => (props.downloadsAllowed ? currentCatalog.value : undefined));
+const currentDownload = computed(() =>
+  props.downloadsAllowed && currentCatalog.value?.epoch === props.account.epoch
+    ? currentCatalog.value
+    : undefined,
+);
+const downloadState = usePlaybackDownloadState(currentDownload, () => !!props.downloadsChanging);
+const downloadNotice = ref('');
+let downloadNoticeTimer: ReturnType<typeof setTimeout> | undefined;
+function clearDownloadNotice() {
+  clearTimeout(downloadNoticeTimer);
+  downloadNotice.value = '';
+}
+watch([currentDownload, downloadState], clearDownloadNotice);
+onUnmounted(clearDownloadNotice);
+const downloadLabel = computed(
+  () =>
+    ({
+      reading: '正在读取当前歌曲下载状态',
+      none: '下载当前歌曲',
+      waiting: '等待下载当前歌曲',
+      working: '正在下载当前歌曲',
+      complete: '当前歌曲已下载',
+      paused: '当前歌曲下载已暂停',
+      failed: '当前歌曲下载失败',
+    })[downloadState.value ?? 'reading'],
+);
 function downloadCurrent() {
   const selection = currentDownload.value;
-  if (selection) emit('download', selection.epoch, selection.playId, selection.track.id);
+  if (!selection || props.downloadsChanging) return;
+  const state = downloadState.value;
+  if (!state || state === 'working') return;
+  if (state === 'none') emit('download', selection.epoch, selection.playId, selection.track.id);
+  else {
+    clearDownloadNotice();
+    downloadNotice.value =
+      state === 'waiting'
+        ? '等待下载中'
+        : state === 'complete'
+          ? '该歌曲已下载'
+          : state === 'paused'
+            ? '下载已暂停，请到下载管理继续'
+            : '下载失败，请到下载管理重试';
+    downloadNoticeTimer = setTimeout(clearDownloadNotice, 3000);
+  }
 }
 const transportControls = ref<HTMLElement>();
 async function retryPlayback(event: MouseEvent) {
@@ -354,11 +396,18 @@ async function seek(event: Event) {
         v-if="currentDownload"
         type="button"
         class="icon-button player-current-download"
-        aria-label="下载当前歌曲"
-        title="下载当前歌曲"
+        :data-download-state="downloadState ?? 'reading'"
+        :aria-label="downloadLabel"
+        :title="downloadLabel"
+        :disabled="!downloadState || downloadState === 'working' || downloadsChanging"
         @click="downloadCurrent"
       >
-        <Icon name="download" />
+        <span
+          v-if="downloadState === 'working'"
+          class="player-download-spinner"
+          aria-hidden="true"
+        />
+        <Icon v-else :name="downloadState === 'complete' ? 'check' : 'download'" />
       </button>
     </div>
     <div class="player-center">
@@ -551,6 +600,11 @@ async function seek(event: Event) {
       />
     </div>
     <div class="player-feedback-stack">
+      <Transition name="playback-feedback">
+        <div v-if="downloadNotice" class="playback-message player-download-notice" role="status">
+          <span>{{ downloadNotice }}</span>
+        </div>
+      </Transition>
       <div v-if="message" class="playback-message" role="status">
         <span>{{ message }}</span
         ><button

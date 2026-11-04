@@ -39,7 +39,7 @@ def main():
         parser.error('seed delay must be between 0 and 30000 ms')
     if sum([args.table, args.batch, args.navigation, args.menu, args.mv_replay]) > 1:
         parser.error('select a single proof')
-    expected = 33 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
+    expected = 36 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
@@ -79,6 +79,17 @@ def main():
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticNativeRecords'] == 146
     assert len(list((root / 'first').glob('ux_*.json'))) == result['stageCount'] == expected
+    if args.menu:
+        assert result['playerDownloadStateVerified']
+        plays = set()
+        for status in ('waiting', 'working', 'complete'):
+            stage, = (root / 'first').glob(f'ux_*_player_download_{status}.json')
+            evidence = json.loads(stage.read_text(encoding='utf-8'))
+            player = evidence['nativePlayer']
+            assert evidence['status'] == status and evidence['playId'] == player['playId']
+            assert player['resourceKind'] == 'catalog' and player['track']['id'] == '10'
+            plays.add(player['playId'])
+        assert len(plays) == 1 and None not in plays
     if not any([args.table, args.batch, args.navigation, args.menu]):
         assert result['tabWithoutFramesVerified']
         assert result['virtualKeyboardWithoutFramesVerified']

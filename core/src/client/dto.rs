@@ -2,7 +2,8 @@ pub use super::account_binding_qr::AccountBindingQrView;
 pub use super::collections::{CollectionPageView, CollectionView, FollowCard, FollowUser};
 pub use super::downloads::{
     DownloadCategory, DownloadCommand, DownloadFailure, DownloadJobView, DownloadQuery,
-    DownloadResult, DownloadSort, DownloadTab, DownloadTaskView, DownloadsView, TaskControl,
+    DownloadResult, DownloadSort, DownloadTab, DownloadTaskView, DownloadsView, SongDownloadState,
+    TaskControl,
 };
 pub use super::fm::{FmArtistView, FmCommand, FmFeedbackView, FmItemView, FmTrashView, FmView};
 pub use super::history::{

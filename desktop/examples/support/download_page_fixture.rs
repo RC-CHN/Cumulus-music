@@ -312,6 +312,22 @@ impl Fixture {
                 }
                 *self.records.lock().unwrap() = saved;
             }
+            "playback_download_badge" => {
+                let state = value["state"]
+                    .as_str()
+                    .filter(|value| matches!(*value, "queued" | "downloading" | "complete"))
+                    .ok_or(Error::InvalidInput(
+                        "invalid synthetic playback badge state",
+                    ))?;
+                let records = self.records.lock().unwrap();
+                let (id, original) = records
+                    .iter()
+                    .find(|(_, row)| row["song_id"] == "10")
+                    .ok_or(Error::State("missing synthetic playback badge song"))?;
+                let mut row = original.clone();
+                row["status"] = json!(state);
+                self.store.put("2", "download_tasks_v1", id, &row)?;
+            }
             "assert_lyric_repair_pending" | "verify_lyric_repair" => {
                 let id = value["id"]
                     .as_str()

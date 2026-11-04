@@ -223,6 +223,7 @@ export function createTauriClient(): CoreClient {
     pickCloudFiles: (epoch, kind) => invoke('pick_cloud_files', { epoch, kind }),
     downloads: (epoch, query) => invoke('downloads', { epoch, query }),
     downloadCommand: (epoch, command) => invoke('download_command', { epoch, command }),
+    songDownloadState: (epoch, id) => invoke('song_download_state', { epoch, id }),
     playDownloads: (epoch, taskIds, index) => invoke('play_downloads', { epoch, taskIds, index }),
     pickDownloadDirectory: (epoch) => invoke('pick_download_directory', { epoch }),
     openDownloadDirectory: (epoch, taskId) => invoke('open_download_directory', { epoch, taskId }),

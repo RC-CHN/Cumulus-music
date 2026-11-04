@@ -5,7 +5,7 @@ import type { PlayerClient } from './player';
 import type { PlaylistClient } from './playlists';
 import type { PlaylistCoverClient } from './playlistCover';
 import type { ColdOfflineClient } from './coldOffline';
-import type { DownloadClient } from './downloads';
+import type { DownloadClient, SongDownloadState } from './downloads';
 import type { CloudClient } from './cloud';
 import type { MvClient } from './mv';
 import type { CommentClient } from './comments';
@@ -118,6 +118,7 @@ export interface CoreClient
     RelayPublicationClient {
   getAppInfo(): Promise<AppInfo>;
   copyText(text: string): Promise<void>;
+  songDownloadState(epoch: string, id: string): Promise<SongDownloadState>;
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;
   beginQr(): Promise<QrView>;

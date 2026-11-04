@@ -42,6 +42,27 @@
 .playerbar .player-current-download {
   flex: 0 0 30px;
 }
+.player-download-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--muted);
+  border-radius: 50%;
+  animation: player-download-spin 0.9s linear infinite;
+}
+@keyframes player-download-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+:root[data-motion='reduced'] .player-download-spinner {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-download-spinner {
+    animation: none;
+  }
+}
 .player-cover img {
   width: 100%;
   height: 100%;

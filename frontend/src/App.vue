@@ -3193,6 +3193,7 @@ onUnmounted(() => {
       :liked="playingLikes"
       :like-busy="playingLikeBusy"
       :downloads-allowed="signedIn"
+      :downloads-changing="downloads.busy.value"
       :together-active="together.view.value?.attached ?? false"
       @like="likePlaying"
       @retry="player.connect(account)"
