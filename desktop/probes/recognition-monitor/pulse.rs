@@ -36,8 +36,22 @@ const OPERATION_DONE: c_int = 1;
 const NO_AUTOSPAWN: u32 = 0x0001;
 const DONT_MOVE: u32 = 0x0200;
 const INVALID_INDEX: u32 = u32::MAX;
-const MAX_FRAMES: usize = RATE as usize * 4;
 const MAX_FRAGMENT: usize = RATE as usize * 8;
+
+#[derive(Clone, Copy)]
+pub enum CaptureExtent {
+    FourSeconds,
+    SevenSeconds,
+}
+
+impl CaptureExtent {
+    fn seconds(self) -> u64 {
+        match self {
+            Self::FourSeconds => 4,
+            Self::SevenSeconds => 7,
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub enum Format {
@@ -547,6 +561,7 @@ pub struct Fragment<'a> {
 pub fn capture(
     endpoint: &PrivateEndpoint,
     format: Format,
+    extent: CaptureExtent,
     stop: &AtomicBool,
     ready: impl FnOnce(),
     mut consume: impl FnMut(Fragment<'_>) -> Result<()>,
@@ -568,11 +583,12 @@ pub fn capture(
     ready();
     let deadline = Deadline {
         stop,
-        end: Instant::now() + Duration::from_secs(7),
+        end: Instant::now() + Duration::from_secs(extent.seconds() + 3),
     };
     let frame_bytes = format.frame_bytes();
     let mut frames = 0;
-    while frames < MAX_FRAMES {
+    let max_frames = RATE as usize * extent.seconds() as usize;
+    while frames < max_frames {
         deadline.drive(&mainloop)?;
         stream.verify(endpoint, index, format.spec())?;
         let mut data = ptr::null();
@@ -590,7 +606,7 @@ pub fn capture(
                 return Err(Rejected("private monitor fragment exceeds its bound"));
             }
             deadline.check()?;
-            let count = (size / frame_bytes).min(MAX_FRAMES - frames);
+            let count = (size / frame_bytes).min(max_frames - frames);
             // SAFETY: Pulse keeps this packet valid until drop. Null data with
             // nonzero length is a documented hole, represented separately.
             let bytes = (!data.is_null())

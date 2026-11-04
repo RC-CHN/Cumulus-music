@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Rust capture proof against an isolated PipeWire/Pulse null sink."""
+"""Offline Rust capture and recognition round trip on an isolated null sink."""
 
 import argparse
 from contextlib import ExitStack, contextmanager
@@ -150,18 +150,27 @@ def private_audio(root):
         yield runtime, server.pid, env, modules
 
 
-def waveform(decoy=False):
+def waveform(decoy=False, recognition=False):
     # Never touch a microphone or a media file. Both waveforms are synthetic.
     pcm = bytearray()
-    for i in range(48_000 * 6):
-        left = 1760 if decoy else 440
-        right = 1760 if decoy else 880
-        pcm.extend(struct.pack(
-            "<hh", round(8000 * math.sin(math.tau * left * i / 48_000)),
-            round(6000 * math.sin(math.tau * right * i / 48_000)),
-        ))
+    left = 1760 if decoy else 440
+    right = 1760 if decoy else 880
+    # Preserve the 1–3 s tone-identity check. Add short spectral events
+    # outside that region so the recognition test requires nonempty peaks.
+    bursts = [(12_000, 25_200, 580), (28_800, 45_600, 1040),
+              (161_280, 172_800, 1170), (201_600, 212_640, 640),
+              (249_600, 259_200, 1450)] if recognition and not decoy else []
+    for i in range(48_000 * (9 if recognition else 6)):
+        t = i / 48_000
+        l = round(8000 * math.sin(math.tau * left * t))
+        r = round(6000 * math.sin(math.tau * right * t))
+        for start, stop, freq in bursts:
+            if start <= i < stop:
+                envelope = math.sin(math.pi * (i - start) / (stop - start))
+                l += round(4300 * envelope * math.sin(math.tau * freq * t))
+                r += round(3300 * envelope * math.sin(math.tau * freq * t))
+        pcm.extend(struct.pack("<hh", l, r))
     return pcm
-
 
 @contextmanager
 def play(pcm, sink, env):
@@ -183,15 +192,22 @@ def play(pcm, sink, env):
 def run_proof(args):
     root = args.root
     assert not Path("/dev/snd").exists()
-    assert os.readlink("/proc/self/ns/net") != os.environ["CUMULUS_MONITOR_OUTER_NET"]
+    namespace = os.readlink("/proc/self/ns/net")
+    assert namespace != os.environ["CUMULUS_MONITOR_OUTER_NET"]
+    interfaces = {line.split(":", 1)[0].strip()
+                  for line in Path("/proc/net/dev").read_text().splitlines()[2:]}
+    assert interfaces == {"lo"}, "unexpected network interface in private fixture"
     with private_audio(root) as (runtime, pid, env, modules):
+        assert os.readlink(f"/proc/{pid}/ns/net") == namespace
         # Deliberately give the probe a bad inherited server. Only its verified
         # explicit socket may be used. Playback commands keep the true endpoint.
         probe_env = {**env, "PULSE_SERVER": f"unix:{runtime}/missing-environment-socket"}
         prefix = [str(args.binary), str(runtime)]
         captured = []
+        roundtrips = []
         signal = waveform()
-        decoy = waveform(True)
+        enhanced_signal = waveform(recognition=True)
+        decoy = waveform(decoy=True, recognition=True)
 
         def own_streams():
             rows = json.loads(pulse(["--format=json", "list", "source-outputs"], env).stdout)
@@ -217,31 +233,54 @@ def run_proof(args):
                 for row in rows
             ) for sink in (SINK, DECOY))
 
-        for fmt in ("i16", "f32"):
-            with play(decoy, DECOY, env) as other, play(signal, SINK, env) as player:
+        def capture_case(fmt, mode, pcm):
+            with play(decoy, DECOY, env) as other, play(pcm, SINK, env) as player:
                 wait("two test tone streams on their explicit sinks", playing_both, 3)
+                start = time.monotonic()
                 probe = subprocess.Popen(
-                    [*prefix, str(pid), SINK, f"{SINK}.monitor", str(args.stock), fmt, "capture"],
+                    [*prefix, str(pid), SINK, f"{SINK}.monitor", str(args.stock), fmt, mode],
                     env=probe_env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 )
                 try:
+                    assert os.readlink(f"/proc/{probe.pid}/ns/net") == namespace
                     assert select.select([probe.stdout], [], [], 8)[0], "capture never became ready"
                     assert probe.stdout.readline().strip() == "monitor-ready"
                     wait("actual named record stream", lambda: len(own_streams()) == 1, 2)
-                    out, err = probe.communicate(timeout=9)
+                    out, err = probe.communicate(timeout=12)
                     assert probe.returncode == 0, err.strip()
                     assert player.poll() in (None, 0) and other.poll() in (None, 0)
                     result = json.loads(out)
-                    assert result["status"] == "captured" and result["frames"] == 192000
-                    assert result["produced"] >= 24_000
-                    captured.append({"format": fmt, **result})
-                    with (root / "captures.jsonl").open("a") as log:
-                        log.write(json.dumps(captured[-1]) + "\n")
+                    result["elapsedMs"] = round((time.monotonic() - start) * 1000)
                 finally:
                     stop(probe)
                     probe.stdout.close()
                     probe.stderr.close()
                 wait("record stream removal", no_streams, 3)
+                return {"format": fmt, **result}
+
+        for fmt in ("i16", "f32"):
+            result = capture_case(fmt, "capture", signal)
+            assert result["status"] == "captured" and result["frames"] == 192000
+            assert result["produced"] >= 24_000
+            captured.append(result)
+            with (root / "captures.jsonl").open("a") as log:
+                log.write(json.dumps(result) + "\n")
+
+            result = capture_case(fmt, "roundtrip", enhanced_signal)
+            assert result["status"] == "matched" and result["requests"] == 2
+            assert 288_000 <= result["frames"] <= 336_000
+            assert 48_000 <= result["produced"] <= 56_000
+            assert result["lateCallbackIgnored"] is True
+            assert len(result["peakCounts"]) == 2 and min(result["peakCounts"]) > 0
+            roundtrips.append(result)
+
+        cancelled_in_flight = capture_case("i16", "cancel-in-flight", enhanced_signal)
+        assert cancelled_in_flight["status"] == "cancelled-in-flight"
+        assert cancelled_in_flight["requests"] == 1
+        assert 144_000 <= cancelled_in_flight["frames"] < 192_000
+        assert 24_000 <= cancelled_in_flight["produced"] < 32_000
+        assert cancelled_in_flight["lateCallbackIgnored"] is True
+        assert len(cancelled_in_flight["peakCounts"]) == 1 and min(cancelled_in_flight["peakCounts"]) > 0
 
         for selected, peer, reason in [
             (f"{DECOY}.monitor", pid, "not the expected private output monitor"),
@@ -300,7 +339,8 @@ def run_proof(args):
             wait("removed source stream cleanup", no_streams, 3)
 
     report = {
-        "captures": captured, "rejections": 4, "unisolatedRefused": True,
+        "captures": captured, "roundTrips": roundtrips, "cancelledInFlight": cancelled_in_flight,
+        "onlyLoopbackInterface": True, "rejections": 4, "unisolatedRefused": True,
         "cancelled": True, "cancelElapsedMs": round(elapsed * 1000),
         "monitorRemovalRefusedFallback": True, "monitorRemovalResult": removal,
         "monitorRemovalElapsedMs": round(removal_elapsed * 1000),

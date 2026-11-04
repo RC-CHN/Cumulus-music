@@ -6,8 +6,10 @@ desktop/probes/recognition-monitor 是单独编译的 Linux x64 实验程序，
 core 继续只收已验证格式的 PCM。没有麦克风、真实用户播放、凭证、网络
 识曲或指纹提交。官方 Windows 路径见 song-recognition-host-contracts.txt。
 
-探针要求独立网络命名空间并隐藏 /dev/snd。Unix socket 必须在调用者拥有的
-0700 临时目录下，并匹配测试驱动启动的 PipeWire-Pulse 进程 PID 与 UID。
+探针要求独立网络命名空间并隐藏 /dev/snd。测试驱动核对私有服务和采集进程
+都在该命名空间，且 /proc/net/dev 只有 loopback，不能出网。Unix socket
+必须在调用者拥有的 0700 临时目录下，并匹配测试驱动启动的 PipeWire-Pulse
+进程 PID 与 UID。
 先用无命令、非阻塞 Unix peer 连接检查身份，再用指定的单一 socket 地址和
 NOAUTOSPAWN 建 libpulse 上下文。不给空的 server/source，不使用宿主默认
 输出或录音设备，继承的 PULSE_SERVER 可指向无效地址。
@@ -35,16 +37,44 @@ monitor 后不切向仍在播放的默认干扰 sink。PipeWire 1.6.2 / libpulse
 本机合成对照中，两种格式都读入 192,000 帧，输出 31,984 个 i16；
 440/880 Hz 幅值约为 i16 4001/3000、f32 5657/4243，1760 Hz 干扰
 不超过 0.1。取消含启动共 208ms，确认采集流移除；移除 monitor 这次
-由约 7 秒上限结束，未观察即时的断开通知，不声称即时恢复。原型处理
-每轮最多四秒输入；真实用户设备切换、应用授权提示、Linux 不同音频
-服务器版本与 Windows WASAPI 接入均未验证。这个探针不构成上线的识曲
-或采集能力。
+由约 7 秒上限结束，未观察即时的断开通知。普通回采每轮最多四秒输入；
+下面的合成往返模式另有七秒采集上限。真实用户设备切换、应用授权提示、
+Linux 不同音频服务器版本与 Windows WASAPI 接入均未验证。这个探针
+不构成上线的识曲或采集能力。
+
+合成识曲往返（同一私有输出，独立于上述音量/路由检查）：
+
+- 驱动在 440 Hz 左声道和 880 Hz 右声道之外注入短促的合成频段，
+  保持原有 1760 Hz 默认干扰输出。Rust 真正从私有 monitor 读取两种
+  48k 交错格式，用已验证 stock 两阶段转换产生 8k mono i16。采集时
+  把实际转换样本分包喂给 core 调度器，首两次分别得到累计 24,000、
+  48,000 样本。选用显式 SSE 路径，从实际音频生成频谱、峰、二进制包、
+  stock zlib、AES/Base64 指纹，再生成已恢复的 EAPI 正文。
+- 进程内传输解包并校验 EAPI 签名、规范路径、UUID、时长、次数、
+  逐次 tick 和实际编码指纹。首个响应是合成未命中，第二个是合成
+  命中；核对候选 ID、拒绝首个请求的重放，然后停止真实录制。回包
+  不来自网易云或任何 socket；结果不能证明该波形会被线上服务识别。
+- PipeWire 1.6.2 / libpulse 17.0 的一次实测：i16、f32 都收
+  288,960 输入帧、转换出 48,144 个 i16，并在第二个回包后回收
+  实际 record stream；两个前缀的峰数量分别为 48/85、44/78。
+  1760 Hz 干扰幅值分别 0.018、0.050。墙钟约 6.48、6.45 秒。
+  实际音频启动相位与包边界可能改变峰数量；这里验证非空和真实
+  数据流，不把这些测量当逐字节 oracle。
+- 另跑 i16 一次：实际读入 144,960 帧、得到 24,144 个样本，
+  首次编码得到 48 个峰，EAPI 请求留在进程内且未回包。取消令真实
+  Pulse stream 退出，再撤销调度代际；注入其原有回执的迟到成功，
+  必须返回 Ignored。Python 另核对实际录制流已移除。启动即取消、
+  四种设备拒绝、移除选中输出不回退的原检查同时通过。
+- 报告只含合成帧数、幅值、峰数量和状态，不保留 PCM、指纹、
+  加密正文、设备身份或 Cookie。真实服务授权、线上回包、结果播放
+  权限、用户输出、Windows 运行均未验证。
 
 复验（仓库根目录，使用已有的可信本地 stock 库，见重采样对照文档）：
   mkdir -p .build/recognition-monitor-evidence
-  CARGO_TARGET_DIR="$PWD/.build/recognition-monitor-evidence/target" \
+  LIBZ_SYS_STATIC=1 VCPKGRS_DISABLE=1 \
+    CARGO_TARGET_DIR="$PWD/.build/recognition-monitor-evidence/target" \
     cargo build --locked --offline -p cumulus-core \
-      --features song-recognition-resampler --message-format=json \
+      --features song-recognition-resampler,song-recognition-zlib --message-format=json \
       > .build/recognition-monitor-evidence/core-build.jsonl
   python3 scripts/research/recognition_monitor_smoke.py \
     --stock /绝对路径/已校验的stock共享库目录 \
