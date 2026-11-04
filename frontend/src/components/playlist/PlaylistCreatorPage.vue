@@ -4,6 +4,8 @@ import type { ProfileRelationMode } from '../../services/profileRelations';
 import type { usePlaylistCreator } from '../../composables/usePlaylistCreator';
 import Icon from '../Icon.vue';
 import ProfileFollowControl from '../profile/ProfileFollowControl.vue';
+import ProfileBlacklistControl from '../profile/ProfileBlacklistControl.vue';
+import type { ProfileBlacklistResult } from '../../services/profileBlacklist';
 import type { useProfileFollow } from '../../composables/useProfileFollow';
 import PlaylistCard from '../PlaylistCard.vue';
 
@@ -13,6 +15,7 @@ const props = defineProps<{
   model: ReturnType<typeof usePlaylistCreator>;
   profileFollow: ReturnType<typeof useProfileFollow>;
   checkingRelations: boolean;
+  accountEpoch?: string;
   relationNotice: string;
   rankPlayable: boolean;
   rankTransport: 'playing' | 'paused' | null;
@@ -27,6 +30,8 @@ const emit = defineEmits<{
   playRank: [];
   section: [value: 'playlists' | 'notes' | 'podcasts'];
   managePodcasts: [];
+  blacklistUpdated: [uid: string, result: ProfileBlacklistResult];
+  expired: [];
 }>();
 const root = ref<HTMLElement>();
 const rankShell = ref<HTMLElement>();
@@ -152,7 +157,21 @@ function open(id: string) {
             粉丝 {{ count.format(followersCount) }}
           </button>
         </div>
-        <ProfileFollowControl :model="profileFollow" />
+        <div class="creator-guest-actions">
+          <ProfileFollowControl
+            v-if="
+              !model.profile.value?.blacklist?.blocked && !model.profile.value?.blacklist?.pending
+            "
+            :model="profileFollow"
+          />
+          <ProfileBlacklistControl
+            :epoch="accountEpoch"
+            :uid="model.profile.value?.id"
+            :header="model.profile.value?.blacklist"
+            @updated="(id, result) => emit('blacklistUpdated', id, result)"
+            @expired="emit('expired')"
+          />
+        </div>
         <p v-if="checkingRelations" role="status">正在确认查看权限…</p>
         <p v-if="relationNotice" role="alert" data-relation-notice>{{ relationNotice }}</p>
       </div>
@@ -305,6 +324,12 @@ function open(id: string) {
 </template>
 
 <style scoped>
+.creator-guest-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .creator-page-header {
   display: flex;
   gap: 20px;

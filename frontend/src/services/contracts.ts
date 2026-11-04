@@ -32,6 +32,7 @@ import type {
   PodcastRecentClient,
   PodcastSearchClient,
 } from './podcast';
+import type { ProfileBlacklistClient, ProfileBlacklistHeader } from './profileBlacklist';
 import type { ProfileFollowClient, ProfileFollowView } from './profileFollow';
 import type { ProfilePodcastClient } from './profilePodcasts';
 import type { TogetherClient } from './together';
@@ -132,6 +133,7 @@ export interface CoreClient
     PodcastSearchClient,
     ProfilePodcastClient,
     ProfileFollowClient,
+    ProfileBlacklistClient,
     TogetherClient,
     AuthClient,
     RankingClient,
@@ -267,6 +269,7 @@ export interface PlaylistCreatorProfile {
   followersCount?: number | null;
   playlistsVisible?: boolean;
   follow?: ProfileFollowView | null;
+  blacklist?: ProfileBlacklistHeader | null;
   created: PlaylistView[];
   collected: PlaylistView[];
 }

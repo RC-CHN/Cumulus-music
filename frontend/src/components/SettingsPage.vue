@@ -30,6 +30,8 @@ import SystemMedia from './settings/SystemMedia.vue';
 import Shortcuts from './settings/Shortcuts.vue';
 import AccountProfilePage from './account/AccountProfilePage.vue';
 import LoginDevicesPage from './account/LoginDevicesPage.vue';
+import ProfileBlacklistPage from './profile/ProfileBlacklistPage.vue';
+import type { ProfileBlacklistResult } from '../services/profileBlacklist';
 import type { RelayModel } from '../composables/useRelay';
 import type { RelayPublicationModel } from '../composables/useRelayPublication';
 import '../styles/settings.css';
@@ -39,13 +41,15 @@ const props = defineProps<{
   player: PlayerModel;
   relay: RelayModel;
   publication: RelayPublicationModel;
-  accountDetail?: 'profile' | 'devices';
+  accountDetail?: 'profile' | 'devices' | 'blacklist';
 }>();
 const emit = defineEmits<{
   login: [];
   accounts: [];
   downloads: [];
-  accountDetail: [kind: 'profile' | 'devices'];
+  accountDetail: [kind: 'profile' | 'devices' | 'blacklist'];
+  blacklistProfile: [id: string];
+  blacklistUpdated: [id: string, result: ProfileBlacklistResult];
   back: [];
   expired: [];
 }>();
@@ -58,7 +62,7 @@ function requestLeave(commit: () => void) {
 defineExpose({ requestLeave });
 let detailOrigin: HTMLElement | undefined;
 let detailScroll = 0;
-function openDetail(kind: 'profile' | 'devices', event: MouseEvent) {
+function openDetail(kind: 'profile' | 'devices' | 'blacklist', event: MouseEvent) {
   if (props.account.status !== 'authenticated') return;
   detailOrigin = event.currentTarget as HTMLElement;
   detailScroll = settingsScroll.value?.scrollTop ?? 0;
@@ -72,8 +76,15 @@ watch(
     if (props.accountDetail || !settingsScroll.value) return;
     settingsScroll.value.scrollTop = detailScroll;
     const active = document.activeElement;
-    if (active === document.body || !active?.isConnected || !active.getClientRects().length)
-      detailOrigin?.focus({ preventScroll: true });
+    if (active === document.body || !active?.isConnected || !active.getClientRects().length) {
+      const fallback =
+        previous === 'blacklist'
+          ? settingsScroll.value.querySelector<HTMLElement>('[data-open-user-blacklist]')
+          : undefined;
+      const origin = detailOrigin ?? fallback;
+      if (!detailOrigin && fallback) fallback.scrollIntoView({ block: 'nearest' });
+      origin?.focus({ preventScroll: true });
+    }
   },
 );
 const appearance = useAppearance();
@@ -181,6 +192,14 @@ function accept(op: SettingsOperation) {
     v-else-if="accountDetail === 'devices'"
     :account="account"
     @back="emit('back')"
+    @expired="emit('expired')"
+  />
+  <ProfileBlacklistPage
+    v-else-if="accountDetail === 'blacklist'"
+    :account="account"
+    @back="emit('back')"
+    @open="(id) => emit('blacklistProfile', id)"
+    @updated="(id, result) => emit('blacklistUpdated', id, result)"
     @expired="emit('expired')"
   />
   <section
@@ -294,6 +313,18 @@ function accept(op: SettingsOperation) {
             登录后可查看和修改账号的消息与隐私设置。
           </p>
           <template v-else>
+            <div class="settings-read-status">
+              <span>我的黑名单</span>
+              <button
+                class="secondary"
+                type="button"
+                data-open-user-blacklist
+                aria-label="查看我的黑名单"
+                @click="openDetail('blacklist', $event)"
+              >
+                查看
+              </button>
+            </div>
             <div class="settings-read-status">
               <span>{{
                 model.loading.value

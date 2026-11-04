@@ -69,3 +69,27 @@ pub async fn profile_follow(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn profile_blacklist_list(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<cumulus_core::client::dto::ProfileBlacklistList>, ClientError> {
+    client
+        .profile_blacklist_list(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn profile_blacklist(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    uid: String,
+    command: cumulus_core::client::dto::ProfileBlacklistCommand,
+) -> Result<AccountData<cumulus_core::client::dto::ProfileBlacklistResult>, ClientError> {
+    client
+        .profile_blacklist(&epoch, &uid, command)
+        .await
+        .map_err(Into::into)
+}

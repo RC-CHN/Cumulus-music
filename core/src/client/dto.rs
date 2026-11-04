@@ -58,6 +58,10 @@ pub use super::podcast::{
     PodcastRecentQuery, PodcastSearchMembership, PodcastState, PodcastSubcategory,
     PodcastTopLayout,
 };
+pub use super::profile_blacklist::{
+    ProfileBlacklistCommand, ProfileBlacklistEntry, ProfileBlacklistHeader, ProfileBlacklistList,
+    ProfileBlacklistPending, ProfileBlacklistResult,
+};
 pub use super::profile_follow::{
     ProfileFollowCommand, ProfileFollowRelation, ProfileFollowStatus, ProfileFollowView,
 };

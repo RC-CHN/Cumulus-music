@@ -83,7 +83,7 @@ fn view(
     }
 }
 
-fn pending(store: &StateStore, owner: &str, uid: &str) -> Result<Option<bool>> {
+pub(super) fn pending(store: &StateStore, owner: &str, uid: &str) -> Result<Option<bool>> {
     store
         .get(owner, PENDING, uid)?
         .map(|value| {
@@ -192,6 +192,11 @@ impl MusicClient {
         let _lock =
             OperationLock::acquire(store.directory(), &owner, &format!("profile-follow:{uid}"))?;
         let existing = pending(&store, &owner, &uid)?;
+        if matches!(command, ProfileFollowCommand::Change { .. })
+            && super::profile_blacklist::pending_for(&store, &owner, &uid)?
+        {
+            return Err(Error::MutationUncertain);
+        }
         let value = match command {
             ProfileFollowCommand::Change { expected } if existing.is_none() => {
                 let before = self.read_profile_follow(&token, &uid).await?;

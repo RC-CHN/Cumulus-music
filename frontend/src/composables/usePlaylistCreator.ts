@@ -66,6 +66,13 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
     }
     if (active && profile.value === undefined) return load();
   }
+  function invalidate(target: string) {
+    if (uid !== target) return;
+    generation++;
+    profile.value = undefined;
+    busy.value = false;
+    if (active) void load();
+  }
   function select(value: typeof group.value) {
     if (value === group.value) return;
     group.value = value;
@@ -90,6 +97,7 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
     openedRelation,
     rememberRelation,
     enter,
+    invalidate,
     load,
     select,
   };

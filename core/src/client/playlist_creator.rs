@@ -26,6 +26,7 @@ pub struct PlaylistCreatorProfile {
     pub listening_rank: Option<ListeningRankEntry>,
     pub playlists_visible: bool,
     pub follow: Option<super::profile_follow::ProfileFollowView>,
+    pub blacklist: Option<super::profile_blacklist::ProfileBlacklistHeader>,
     pub created: Vec<PlaylistView>,
     pub collected: Vec<PlaylistView>,
 }
@@ -169,6 +170,12 @@ impl MusicClient {
                         }),
                     playlists_visible: visible,
                     follow: self.profile_follow_header(request_token, &viewer, &uid, profile)?,
+                    blacklist: self.profile_blacklist_header(
+                        request_token,
+                        &viewer,
+                        &uid,
+                        profile,
+                    )?,
                     created,
                     collected,
                 }))

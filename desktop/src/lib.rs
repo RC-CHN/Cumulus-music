@@ -281,6 +281,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 profile_relations::profile_play_record,
                 profile_relations::remove_profile_play_record,
                 profile_relations::profile_follow,
+                profile_relations::profile_blacklist_list,
+                profile_relations::profile_blacklist,
                 profile_relations::profile_relation_access,
                 profile_relations::profile_relation_page,
                 commands::search_songs,

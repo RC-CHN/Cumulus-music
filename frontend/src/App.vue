@@ -73,6 +73,7 @@ import ProfilePodcasts from './components/profile/ProfilePodcasts.vue';
 import ProfilePlayRecordPage from './components/profile/ProfilePlayRecordPage.vue';
 import ProfileRelationsPage from './components/profile/ProfileRelationsPage.vue';
 import { useProfileRelations } from './composables/useProfileRelations';
+import type { ProfileBlacklistResult } from './services/profileBlacklist';
 import type { ProfileRelationCard, ProfileRelationMode } from './services/profileRelations';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import { usePlaylistEssential } from './composables/usePlaylistEssential';
@@ -1740,6 +1741,30 @@ const profileFollow = useProfileFollow(
       profileRelations.observeFollow(uid, value.relation.followed, value.relation.mutual);
   },
 );
+function profileBlacklistUpdated(id: string, result: ProfileBlacklistResult) {
+  const current = playlistCreator.profile.value;
+  if (result.pending && current?.id === id && current.blacklist) {
+    playlistCreator.profile.value = {
+      ...current,
+      blacklist: { ...current.blacklist, pending: result.pending.id === id },
+    };
+  }
+  if (
+    result.pending ||
+    result.blocked === null ||
+    !['added', 'already_blocked', 'removed', 'unchanged'].includes(result.status)
+  )
+    return;
+  if (result.blocked) profileRelations.observeFollow(id, false, false);
+  if (current?.id === id && current.blacklist) {
+    playlistCreator.profile.value = {
+      ...current,
+      follow: result.blocked ? null : current.follow,
+      blacklist: { ...current.blacklist, blocked: result.blocked, pending: false },
+    };
+    void playlistCreator.load();
+  } else playlistCreator.invalidate(id);
+}
 const profilePodcasts = useProfilePodcasts(core, () => void music.bootstrap(false));
 const profileUid = computed(() => {
   const current = page.value;
@@ -3304,6 +3329,8 @@ onUnmounted(() => {
                 :account-detail="page.accountDetail"
                 @login="loginOpen = true"
                 @accounts="accountsOpen = true"
+                @blacklist-profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
+                @blacklist-updated="profileBlacklistUpdated"
                 @downloads="music.navigate({ kind: 'downloads' })"
                 @account-detail="
                   (kind) => music.navigate({ kind: 'settings', accountDetail: kind })
@@ -3711,6 +3738,9 @@ onUnmounted(() => {
                 v-else-if="profileUid !== null"
                 :model="playlistCreator"
                 :profile-follow="profileFollow"
+                :account-epoch="signedIn ? account.epoch : undefined"
+                @blacklist-updated="profileBlacklistUpdated"
+                @expired="music.bootstrap(false)"
                 :checking-relations="profileRelations.checking.value"
                 :relation-notice="profileRelations.entryNotice.value"
                 :rank-playable="player.ready.value && !player.busy.value"

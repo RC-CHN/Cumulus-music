@@ -13,7 +13,7 @@ import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
 export type Page =
-  | { kind: 'settings'; accountDetail?: 'profile' | 'devices' }
+  | { kind: 'settings'; accountDetail?: 'profile' | 'devices' | 'blacklist' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
   | {
       kind: 'collections';
