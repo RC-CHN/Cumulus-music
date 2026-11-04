@@ -1,5 +1,6 @@
 """Actual settings WebView and native audio filter, using isolated synthetic files."""
 import argparse
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -43,6 +44,28 @@ def launch(binary, env, log, output, screenshots):
                 process.wait()
 
 
+def read_closed_loudness_backups(path):
+    """Inspect the synthetic database only after its probe has exited."""
+    def read(mode):
+        with closing(sqlite3.connect(path.as_uri() + f'?mode={mode}', uri=True)) as db:
+            db.execute('PRAGMA query_only = ON')
+            return db.execute(
+                "SELECT value FROM state WHERE owner='local-device' AND kind='loudness-recovery-v1'"
+            ).fetchall()
+
+    try:
+        return read('ro')
+    except sqlite3.OperationalError as error:
+        if error.sqlite_errorcode != sqlite3.SQLITE_READONLY_ROLLBACK:
+            raise
+    # A probe can exit with an interrupted background transaction. Let SQLite
+    # recover its hot journal in the existing synthetic file; query_only still
+    # blocks SQL writes. Reopen read-only to verify the original proof database
+    # is now independently readable by the strict diagnostics verifier too.
+    read('rw')
+    return read('ro')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -83,9 +106,8 @@ def main():
         if mode == 'normal':
             assert {(s['width'],s['height'],s['theme']) for s in stages if 'processing_' in s['stage']} == {(1120,760,'light'),(1120,760,'dark'),(760,540,'dark'),(760,540,'light')}
         if mode == 'damaged':
-            with sqlite3.connect((directory / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
-                backups = db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='loudness-recovery-v1'").fetchall()
-                assert len(backups) == 1 and json.loads(backups[0][0])['current']['enabled'] == 'broken'
+            backups = read_closed_loudness_backups(directory / 'run/state/core.sqlite3')
+            assert len(backups) == 1 and json.loads(backups[0][0])['current']['enabled'] == 'broken'
         audit.append({'mode':mode,'states':expected,'screenshots':captures})
     result = {'ok':True,'actualWebView':True,'actualDecoder':True,'audioOutput':'null','physicalDisplayVerified':False,'physicalAudioOutputVerified':False,'realMusicRequests':0,'cases':audit}
     (root / 'audit.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
