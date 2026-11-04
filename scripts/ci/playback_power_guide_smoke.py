@@ -3,8 +3,10 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 
 from motion_smoke import launch
+from playback_power_smoke import windows_runtime
 
 
 def main():
@@ -15,11 +17,20 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
+    windows = sys.platform == 'win32'
+    if windows and (not args.runtime or args.screenshots):
+        parser.error('Windows requires the staged media runtime and no GTK screenshots')
+    if not windows and (sys.platform != 'linux' or args.runtime):
+        parser.error('Linux uses its system libmpv')
+    binary = args.binary.resolve(strict=True)
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    base = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    if args.runtime:
-        base['PATH'] = str(args.runtime.resolve()) + os.pathsep + base.get('PATH', '')
+    base = {key: value for key, value in os.environ.items()
+            if not key.upper().startswith(('CUMULUS_', 'WEBVIEW2_'))
+            and key.upper() != 'MPV_DLL_DIR_CUMULUS'}
+    if windows:
+        runtime, _ = windows_runtime(binary, args.runtime)
+        base['MPV_DLL_DIR_CUMULUS'] = str(runtime)
     if args.frontend_dist:
         base['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     source = (Path(__file__).resolve().parents[2] /
@@ -40,10 +51,12 @@ def main():
                'CUMULUS_PLAYBACK_POWER_GUIDE_PROOF': assignment}
         for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                           ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
-                          ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
+                          ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local'), ('TEMP', 'temp')]:
             directory = state / 'os-profile' / name
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
             env[key] = str(directory)
+        if windows:
+            env['TMP'] = env['TEMP']
         script = state / f'{phase}.js'
         script.write_text(f'window.__cumulusPowerGuidePhase = {json.dumps(phase)};\n' + source,
                           encoding='utf-8')
@@ -52,7 +65,7 @@ def main():
             env['CUMULUS_PROOF_REOPEN'] = '1'
         output = state / ('reopen' if phase == 'reopen' else 'first')
         with (state / f'{phase}.log').open('x', encoding='utf-8') as log:
-            status = launch(args.binary.resolve(), env, log, output, args.screenshots)
+            status = launch(binary, env, log, output, args.screenshots)
         failed = output / 'failed.json'
         assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
         assert status == 0, f'guide phase {phase} exited {status}'
