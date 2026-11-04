@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import MenuTransition from '../MenuTransition.vue';
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { failure, type AccountView, type TrackView } from '../../services/contracts';
 import {
-  failure,
-  type AccountView,
-  type PlaylistView,
-  type TrackView,
-} from '../../services/contracts';
-import { playlistDownloadTracks, playlistLink } from '../../services/playlistMenu';
+  playlistDownloadTracks,
+  playlistLink,
+  type PlaylistActionTarget,
+} from '../../services/playlistMenu';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import type { DownloadModel } from '../../composables/useDownloads';
 import type { PlayerModel } from '../../composables/usePlayer';
@@ -27,16 +26,16 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ expired: []; started: [] }>();
 const client = useCore();
-const shared = shallowRef<PlaylistView>();
-const mutation = shallowRef<{ playlist: PlaylistView; subscribe: boolean }>();
-const download = shallowRef<PlaylistView>();
+const shared = shallowRef<PlaylistActionTarget>();
+const mutation = shallowRef<{ playlist: PlaylistActionTarget; subscribe: boolean }>();
+const download = shallowRef<PlaylistActionTarget>();
 const tracks = shallowRef<TrackView[]>();
 const readDialog = ref<HTMLDialogElement>();
 const reading = ref(false),
   readError = ref(''),
   progress = ref('');
-const copied = shallowRef<PlaylistView>();
-const queued = shallowRef<PlaylistView>();
+const copied = shallowRef<PlaylistActionTarget>();
+const queued = shallowRef<PlaylistActionTarget>();
 const adding = ref(false);
 const copying = ref(false),
   retrying = ref(false),
@@ -73,7 +72,7 @@ function reset() {
   adding.value = false;
   queued.value = undefined;
 }
-function show(list: PlaylistView, action: string) {
+function show(list: PlaylistActionTarget, action: string) {
   reset();
   returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   if (action === 'share' && playlistLink(list)) shared.value = list;
@@ -110,7 +109,7 @@ async function addToQueue() {
     const result = await props.player.queuePlaylist(list.id);
     if (!alive || sequence !== current || props.account.epoch !== epoch) return;
     message.value = result
-      ? `已添加至播放列表${list.trackCount > 10000 ? '（播放列表最多保留 10000 首）' : ''}`
+      ? `已添加至播放列表${(list.trackCount ?? 0) > 10000 ? '（播放列表最多保留 10000 首）' : ''}`
       : '播放操作已更新，本次添加已取消';
     if (retrying.value) restoreFocus();
     timer = setTimeout(() => {

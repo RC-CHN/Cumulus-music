@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
-import type { TrackView, PlaylistView } from '../services/contracts';
+import type { TrackView } from '../services/contracts';
 import type { AlbumCard } from '../services/catalog';
 import { albumLink } from '../services/catalogCards';
 import { songLink } from '../services/trackMenu';
-import { playlistLink } from '../services/playlistMenu';
+import { playlistLink, type PlaylistActionTarget } from '../services/playlistMenu';
 import { useCore } from '../services/core';
 import Icon from './Icon.vue';
-const props = defineProps<{ track?: TrackView; playlist?: PlaylistView; album?: AlbumCard }>();
+const props = defineProps<{
+  track?: TrackView;
+  playlist?: PlaylistActionTarget;
+  album?: AlbumCard;
+}>();
 const kind = computed(() => (props.album ? '专辑' : props.playlist ? '歌单' : '歌曲'));
 const link = computed(() =>
   props.album

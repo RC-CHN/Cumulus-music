@@ -49,6 +49,16 @@ struct EssentialCard {
     cover_url: Option<String>,
     radio_id: Option<String>,
     history: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    playlist_menu: Option<EssentialPlaylistMenu>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EssentialPlaylistMenu {
+    track_count: Option<u64>,
+    has_tracks: Option<bool>,
+    is_public: bool,
 }
 
 fn label(value: &Value) -> Option<String> {
@@ -75,6 +85,7 @@ fn card(identity: &Value, title: &Value) -> Option<EssentialCard> {
         cover_url: None,
         radio_id: None,
         history: false,
+        playlist_menu: None,
     })
 }
 
@@ -105,6 +116,23 @@ fn playlists(value: &Value) -> Result<Vec<EssentialCard>> {
         card.cover_url = ["coverImgUrl", "picUrl", "coverUrl"]
             .into_iter()
             .find_map(|key| square(&raw[key]));
+        let track_count = raw["trackCount"].as_u64().filter(|count| *count < 1 << 53);
+        let tracks = raw["trackIds"].as_array();
+        let has_tracks = if track_count.is_some_and(|count| count > 0)
+            || tracks.is_some_and(|tracks| !tracks.is_empty())
+        {
+            Some(true)
+        } else if track_count == Some(0) || tracks.is_some() {
+            Some(false)
+        } else {
+            None
+        };
+        card.playlist_menu = Some(EssentialPlaylistMenu {
+            track_count,
+            has_tracks,
+            // Unknown visibility cannot authorize sharing.
+            is_public: raw["privacy"].as_u64() == Some(0),
+        });
         Some(card)
     })
 }
@@ -173,6 +201,7 @@ fn books(value: &Value) -> Result<Option<EssentialBooks>> {
                 cover_url: None,
                 radio_id: None,
                 history: true,
+                playlist_menu: None,
             }
         } else {
             let identity = radio_id(radio).or_else(|| {

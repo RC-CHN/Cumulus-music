@@ -2,7 +2,11 @@
 import OrdinaryEssentialPage from './components/OrdinaryEssentialPage.vue';
 import ChoiceTabs from './components/ChoiceTabs.vue';
 import { useOrdinaryEssential } from './composables/useOrdinaryEssential';
-import type { EssentialCard, EssentialRail } from './services/ordinaryEssential';
+import {
+  essentialPlaylistMenu,
+  type EssentialCard,
+  type EssentialRail,
+} from './services/ordinaryEssential';
 import CommunityDeleteDialog from './components/community/CommunityDeleteDialog.vue';
 import CommunityReportDialog from './components/community/CommunityReportDialog.vue';
 import { communityReportKey, useCommunityReport } from './composables/useCommunityReport';
@@ -94,7 +98,11 @@ import TrackScopeSearch from './components/TrackScopeSearch.vue';
 import { usePlaylistSubscribers } from './composables/usePlaylistSubscribers';
 import { usePlaylistCommentTab } from './composables/usePlaylistCommentTab';
 import PlaylistEditorPage from './components/playlist/PlaylistEditorPage.vue';
-import { playlistMenuItems, type PlaylistMenuScene } from './services/playlistMenu';
+import {
+  playlistMenuItems,
+  type PlaylistActionTarget,
+  type PlaylistMenuScene,
+} from './services/playlistMenu';
 import PlaylistActions from './components/playlist/PlaylistActions.vue';
 import PlaylistBatchPage from './components/playlist/PlaylistBatchPage.vue';
 import TrackActions from './components/TrackActions.vue';
@@ -278,6 +286,32 @@ function openEssentialCard(rail: EssentialRail, card: EssentialCard) {
   if (rail === 'playlists') music.navigate({ kind: 'playlist', id: card.id });
   else if (card.history) music.navigate({ kind: 'history', scope: 'audiobook' });
   else if (card.radioId) openSceneRadio(card.radioId);
+}
+function choicePlaylistMenu(card: EssentialCard) {
+  return essentialPlaylistMenu(card, {
+    known: searchKnownPlaylistIds.value?.has(card.id),
+    playable: player.ready.value && !player.busy.value,
+    queueable: searchCollectionQueueable.value,
+    fm: player.view.value?.fm,
+    busy: playlistManager.busy.value || downloads.busy.value || !!playlistActions.value?.busy,
+  });
+}
+function choicePlaylistAction(card: EssentialCard, key: string) {
+  if (music.page.value.kind !== 'ordinary_essential' || !music.signedIn.value) return;
+  const item = choicePlaylistMenu(card).find((item) => item.key === key);
+  if (!item || item.disabled || item.separator) return;
+  if (key === 'view') openEssentialCard('playlists', card);
+  else if (key === 'play') playMemberPlaylist(card.id, null);
+  else {
+    const list: PlaylistActionTarget = {
+      id: card.id,
+      name: card.title,
+      owned: playlists.value.some((list) => list.id === card.id && list.owned),
+      private: card.playlistMenu?.isPublic !== true,
+      trackCount: card.playlistMenu?.trackCount ?? undefined,
+    };
+    playlistActions.value?.show(list, key);
+  }
 }
 function playEssential(rail: EssentialRail, card: EssentialCard, ids: string[]) {
   if (
@@ -3593,6 +3627,7 @@ onUnmounted(() => {
                 :model="essential"
                 :authenticated="signedIn"
                 :playable="player.ready.value && !player.busy.value"
+                :playlist-items="choicePlaylistMenu"
                 :playing="player.playing.value"
                 :track="currentVoiceId ? undefined : currentTrackId"
                 :playlist="currentPlaylistId"
@@ -3602,6 +3637,7 @@ onUnmounted(() => {
                 @section="openEssentialSection"
                 @open="openEssentialCard"
                 @play="playEssential"
+                @playlist-action="choicePlaylistAction"
               />
               <AccountWelcome
                 v-else-if="!signedIn"

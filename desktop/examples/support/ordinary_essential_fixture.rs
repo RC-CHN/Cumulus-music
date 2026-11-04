@@ -10,6 +10,10 @@ const SONGS: &str = "/api/personalized/newsong";
 const BOOKS: &str = "/api/podcast/common/single/block/get";
 const VOICES: &str = "/api/pc/voicelist/rcmd/list";
 
+fn actions_enabled() -> bool {
+    std::env::var_os("CUMULUS_ORDINARY_ESSENTIAL_ACTIONS_PROOF").is_some()
+}
+
 pub struct Library {
     base: Arc<dyn Api>,
     settings: Mutex<(u64, String)>,
@@ -27,7 +31,7 @@ impl Library {
         assert!(matches!(owner, 0 | 2 | 3));
         assert!(matches!(
             mode,
-            "initial" | "all-down" | "songs-down" | "books-down"
+            "initial" | "all-down" | "songs-down" | "books-down" | "detail-down"
         ));
         *self.settings.lock().unwrap() = (owner, mode.into());
     }
@@ -39,6 +43,38 @@ impl Library {
 fn playlist(id: u64) -> Value {
     json!({"id":id,"name":format!("合成官方歌单 {id}"),"userId":2,
         "creator":{"userId":2,"nickname":"合成用户"},"trackCount":0,"privacy":0,"tracks":[],"trackIds":[]})
+}
+
+fn action_playlist(id: u64, preview: bool) -> Value {
+    let mut result = playlist(id);
+    let total = match id {
+        501 => 105,
+        502 => 0,
+        _ => 2,
+    };
+    result["userId"] = json!(9);
+    result["creator"]["userId"] = json!(9);
+    result["trackCount"] = json!(total);
+    if !preview {
+        result["trackIds"] = json!(
+            (1000..1000 + total)
+                .map(|id| json!({"id":id}))
+                .collect::<Vec<_>>()
+        );
+    } else {
+        let row = result.as_object_mut().unwrap();
+        row.remove("tracks");
+        row.remove("trackIds");
+        if id == 504 {
+            row.remove("trackCount");
+        }
+    }
+    if id == 503 {
+        result["privacy"] = json!(10);
+    } else if id == 506 && preview {
+        result.as_object_mut().unwrap().remove("privacy");
+    }
+    result
 }
 
 fn voice(id: u64, radio: u64) -> Value {
@@ -71,15 +107,39 @@ impl Api for Library {
                     return Err(Error::Transport("synthetic choice block failure".into()));
                 }
             }
+            let actions = actions_enabled();
+            if actions && matches!(path, "/api/v6/playlist/detail" | "/api/v3/song/detail") {
+                self.reads
+                    .lock()
+                    .unwrap()
+                    .push(json!({"owner":owner,"mode":mode,"path":path,"args":args}));
+                if path == "/api/v6/playlist/detail" && mode == "detail-down" {
+                    return Err(Error::Transport("synthetic playlist read failure".into()));
+                }
+            }
             Ok(match path {
                 "/api/w/nuser/account/get" if owner == 0 => json!({"code":200,"profile":null}),
                 "/api/w/nuser/account/get" => {
                     json!({"code":200,"profile":{"userId":owner,"nickname":format!("精选账号 {owner}")}})
                 }
+                "/api/user/playlist" if actions => {
+                    json!({"code":200,"more":false,"playlist":[action_playlist(505,true)]})
+                }
+                "/api/playlist/subscribe" | "/api/playlist/unsubscribe" if actions => {
+                    panic!("proof may open but never confirm account collection mutations");
+                }
                 PLAYLISTS => {
                     assert_eq!(args["cat"], "官方");
                     assert_eq!(args["newStyle"], true);
-                    let list = (501..=506).map(playlist).collect::<Vec<_>>();
+                    let list = (501..=506)
+                        .map(|id| {
+                            if actions {
+                                action_playlist(id, true)
+                            } else {
+                                playlist(id)
+                            }
+                        })
+                        .collect::<Vec<_>>();
                     json!({"code":200,"playlists":list,"playlistIds":(501..=506).collect::<Vec<_>>()})
                 }
                 SONGS => {
@@ -112,6 +172,13 @@ impl Api for Library {
                     json!({"code":200,"data":{"recommendVoiceVOS":(701..=710).map(|id|json!({
                         "djProgram":voice(id, 600), "alg":"SYNTHETIC_PRIVATE"
                     })).collect::<Vec<_>>()}})
+                }
+                "/api/v6/playlist/detail" if actions => {
+                    let id = number(&args["id"]);
+                    assert!((501..=506).contains(&id));
+                    assert_eq!(args["n"], 100000);
+                    assert_eq!(args["s"], 0);
+                    json!({"code":200,"playlist":action_playlist(id,false),"privileges":[]})
                 }
                 "/api/v6/playlist/detail" => {
                     json!({"code":200,"playlist":playlist(number(&args["id"])),"privileges":[]})

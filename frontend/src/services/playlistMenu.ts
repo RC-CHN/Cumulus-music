@@ -2,8 +2,10 @@ import type { CoreClient, PlaylistView, TrackView } from './contracts';
 import type { MenuItem } from './menu';
 
 export type PlaylistMenuScene = 'collection' | 'detail';
+export type PlaylistActionTarget = Pick<PlaylistView, 'id' | 'name' | 'owned' | 'private'> &
+  Partial<Pick<PlaylistView, 'trackCount' | 'creator'>>;
 export type PlaylistLinkAction = 'share' | 'copy';
-export function playlistLink(playlist: PlaylistView) {
+export function playlistLink(playlist: Pick<PlaylistActionTarget, 'id' | 'private'>) {
   return !playlist.private && /^\d+$/.test(playlist.id)
     ? `https://music.163.com/#/playlist?id=${playlist.id}`
     : '';

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import type { PlaylistView, TrackView } from '../../services/contracts';
+import type { TrackView } from '../../services/contracts';
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import { playlistPending, type PlaylistMutationView } from '../../services/playlists';
 import Icon from '../Icon.vue';
 const props = defineProps<{
-  playlist: PlaylistView;
+  playlist: Pick<
+    import('../../services/playlistMenu').PlaylistActionTarget,
+    'id' | 'name' | 'owned'
+  >;
   manager: PlaylistManager;
   subscribe?: boolean;
   tracks?: TrackView[];

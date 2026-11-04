@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  reactive,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue';
 import type { OrdinaryEssentialModel } from '../composables/useOrdinaryEssential';
 import { useMotion } from '../composables/useMotion';
 import type {
@@ -8,11 +17,14 @@ import type {
   EssentialRail,
 } from '../services/ordinaryEssential';
 import Icon from './Icon.vue';
+import ActionMenu from './ActionMenu.vue';
+import type { MenuItem } from '../services/menu';
 
 const props = defineProps<{
   model: OrdinaryEssentialModel;
   authenticated: boolean;
   playable: boolean;
+  playlistItems: (card: EssentialCard) => MenuItem[];
   playing: boolean;
   track?: string;
   playlist?: string;
@@ -24,9 +36,59 @@ const emit = defineEmits<{
   section: [rail: EssentialRail];
   open: [rail: EssentialRail, card: EssentialCard];
   play: [rail: EssentialRail, card: EssentialCard, ids: string[]];
+  playlistAction: [card: EssentialCard, key: string];
 }>();
 const { data, category, loading, changing, error, categoryError, viewport, online } = props.model;
 const root = ref<HTMLElement>();
+const playlistMenu = ref<InstanceType<typeof ActionMenu>>();
+const menuTarget = shallowRef<{ card: EssentialCard; anchor: HTMLButtonElement }>();
+const menuItems = computed(() =>
+  menuTarget.value ? props.playlistItems(menuTarget.value.card) : [],
+);
+function playlistContext(
+  event: MouseEvent | KeyboardEvent,
+  rail: EssentialRail,
+  card: EssentialCard,
+) {
+  if (
+    rail !== 'playlists' ||
+    (event instanceof KeyboardEvent &&
+      event.key !== 'ContextMenu' &&
+      !(event.key === 'F10' && event.shiftKey))
+  )
+    return;
+  const row = event.currentTarget as HTMLElement;
+  const anchor =
+    (event.target instanceof Element &&
+      event.target.closest<HTMLButtonElement>('button:not(:disabled)')) ||
+    row.querySelector<HTMLButtonElement>('.essential-card-title');
+  if (!anchor) return;
+  event.preventDefault();
+  event.stopPropagation();
+  menuTarget.value = { card, anchor };
+  const rect = anchor.getBoundingClientRect();
+  const pointer = event instanceof MouseEvent && (event.clientX || event.clientY);
+  void playlistMenu.value?.showAt(
+    pointer ? event.clientX : rect.left + rect.width / 2,
+    pointer ? event.clientY : rect.top + rect.height / 2,
+    anchor,
+  );
+}
+function menuAction(key: string) {
+  const current = menuTarget.value;
+  if (!current?.anchor.isConnected || current.anchor.closest('.page-leave-active')) return;
+  emit('playlistAction', current.card, key);
+}
+function activatePlaylist(event: MouseEvent, rail: EssentialRail, card: EssentialCard) {
+  if (rail !== 'playlists' || !(event.target instanceof Element) || event.target.closest('button'))
+    return;
+  const trigger = (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(
+    '.essential-card-title',
+  );
+  trigger?.focus({ preventScroll: true });
+  emit('open', rail, card);
+}
+
 const motion = useMotion();
 const geometry = reactive(
   new Map<EssentialRail, { columns: number; previous: boolean; next: boolean }>(),
@@ -158,7 +220,12 @@ function canOpen(rail: EssentialRail, card: EssentialCard) {
   return rail === 'playlists' || rail === 'books' || (rail === 'voices' && !!card.radioId);
 }
 function play(rail: Rail, card: EssentialCard) {
-  if (!props.playable || card.history) return;
+  if (
+    !props.playable ||
+    card.history ||
+    (rail.kind === 'playlists' && card.playlistMenu?.hasTracks === false)
+  )
+    return;
   emit(
     'play',
     rail.kind,
@@ -265,6 +332,10 @@ defineExpose({ restore });
             v-for="card in column"
             :key="card.id"
             class="essential-card"
+            :data-essential-card="`${rail.kind}:${card.id}`"
+            @click="activatePlaylist($event, rail.kind, card)"
+            @contextmenu="playlistContext($event, rail.kind, card)"
+            @keydown="playlistContext($event, rail.kind, card)"
             @dblclick="(rail.kind === 'songs' || rail.kind === 'voices') && play(rail, card)"
           >
             <div class="essential-artwork">
@@ -282,7 +353,10 @@ defineExpose({ restore });
                 type="button"
                 :aria-label="`${active(rail.kind, card) && playing ? '暂停' : '播放'}${card.title}`"
                 :data-essential-focus="`${rail.kind}:${card.id}:play`"
-                :disabled="!playable"
+                :disabled="
+                  !playable || (rail.kind === 'playlists' && card.playlistMenu?.hasTracks === false)
+                "
+                :aria-haspopup="rail.kind === 'playlists' ? 'menu' : undefined"
                 @click.stop="play(rail, card)"
                 @dblclick.stop
               >
@@ -295,6 +369,7 @@ defineExpose({ restore });
                 class="essential-card-title"
                 type="button"
                 :data-essential-focus="`${rail.kind}:${card.id}:open`"
+                :aria-haspopup="rail.kind === 'playlists' ? 'menu' : undefined"
                 @click="emit('open', rail.kind, card)"
                 @dblclick.stop
               >
@@ -319,6 +394,13 @@ defineExpose({ restore });
         </div>
       </div>
     </section>
+    <ActionMenu
+      ref="playlistMenu"
+      context-only
+      :label="`歌单操作：${menuTarget?.card.title ?? ''}`"
+      :items="menuItems"
+      @select="menuAction"
+    />
   </div>
 </template>
 
@@ -411,6 +493,7 @@ select {
 }
 .essential-playlists .essential-card {
   display: block;
+  cursor: pointer;
 }
 .essential-artwork {
   position: relative;
