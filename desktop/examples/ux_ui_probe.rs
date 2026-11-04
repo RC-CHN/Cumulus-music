@@ -61,6 +61,8 @@ mod playlist_layout_fixture;
 mod playlist_square_fixture;
 #[path = "support/queue_collection_fixture.rs"]
 mod queue_collection_fixture;
+#[path = "support/queue_more_fixture.rs"]
+mod queue_more_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -166,8 +168,27 @@ impl Api for Library {
         member_sign_fixture::observed_server_time_ms()
     }
 
+    fn queue_more_experiment_groups(
+        &self,
+    ) -> ApiFuture<'_, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
+        Box::pin(async move {
+            if queue_more_fixture::enabled() {
+                queue_more_fixture::groups()
+            } else {
+                Ok(
+                    cumulus_core::protocol::pc_experiments::PcExperimentGroups::from_startup_cache(
+                        &Value::Null,
+                    ),
+                )
+            }
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(reply) = queue_more_fixture::response(path, &args, cached).await {
+                return reply;
+            }
             if let Some(reply) = remote_skin_fixture::response(path, &args, cached).await {
                 return reply;
             }
@@ -642,6 +663,7 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        if queue_more_fixture::enabled() { client=client.with_queue_recommendations(); }
         let external_import = external_import_fixture::enabled()
             .then(|| Arc::new(external_import_fixture::Wire::new(proof_store.clone())));
         if let Some(wire) = external_import.as_ref() {
@@ -708,7 +730,7 @@ fn main() {
                 if let Some(directory)=download_directory.as_ref() { audio=audio.allow_download_directory(directory.clone()); }
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
                 count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
-                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if audio_status_proof {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
+                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if audio_status_proof || queue_more_fixture::enabled() {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
                 Ok(audio)
             });
         }
@@ -744,6 +766,16 @@ fn main() {
                         let report=member_welfare_fixture::report();
                         handle.get_webview_window("main").unwrap().eval(format!("window.__welfareAck[{id}]={report};")).unwrap();
                     });
+                    return;
+                }
+            }
+            if queue_more_fixture::enabled() {
+                value["syntheticQueueMore"]=queue_more_fixture::report();
+                if value["stage"]=="queue-more-fixture" {
+                    let sequence=value["sequence"].as_u64().unwrap();
+                    let mode=value["mode"].as_str().unwrap();
+                    let report=queue_more_fixture::control(mode).unwrap();
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__queueMoreFixtureAck[{sequence}]={report};")).unwrap();
                     return;
                 }
             }
@@ -1027,7 +1059,7 @@ fn main() {
                 value["syntheticLikeReads"]=json!(fixture.reads.load(Ordering::SeqCst));
             }
             if motion_proof {
-                if audio_status_proof {value["sourceAudio"]=card_audio.report();}
+                if audio_status_proof || queue_more_fixture::enabled() {value["sourceAudio"]=card_audio.report();}
                 value["audioFactoryElapsedMs"] = json!(factory_elapsed.load(std::sync::atomic::Ordering::Acquire));
                 value["audioFactoryDelayRequestedMs"] = json!(startup_delay);
                 value["audioFactoryCount"] = json!(factory_count.load(std::sync::atomic::Ordering::Acquire));
@@ -1072,7 +1104,7 @@ fn main() {
                     if queue_click_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueClickRecorded={};",serde_json::json!(stage))).unwrap();
                     }
-                    if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled() || intelligence_start_fixture::enabled() || fm_feedback_fixture::enabled()) && stage.starts_with("ux_") {
+                    if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled() || intelligence_start_fixture::enabled() || fm_feedback_fixture::enabled() || queue_more_fixture::enabled()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();
                     }
                     if ["complete","failed"].contains(&stage.as_str()) {
