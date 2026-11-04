@@ -4,7 +4,7 @@ use crate::{
     account::{
         SessionToken,
         profile::{
-            AccountProfile, SelfProfileDetailView,
+            AccountBindingsView, AccountProfile, SelfProfileDetailView,
             edit::{ProfileEditPage, ProfileEditPhase, ProfileEditor, ProfilePatch},
             regions::RegionTable,
         },
@@ -42,6 +42,19 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         let value = AccountProfile::new(self.session.clone())
             .read_for(&token)
+            .await?;
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
+    pub async fn account_bindings(&self, epoch: &str) -> Result<AccountData<AccountBindingsView>> {
+        let token = self.player_token(epoch)?;
+        let value = AccountProfile::new(self.session.clone())
+            .binding_settings_for(&token)
             .await?;
         self.session.with_token(&token, |_| {
             Ok(AccountData {

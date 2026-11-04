@@ -297,6 +297,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::account_profile_edit_page,
                 commands::account_profile_regions,
                 commands::account_profile_edit_command,
+                commands::account_bindings,
                 commands::account_binding_qr,
                 commands::account_login_devices,
                 commands::account_login_device_removal,

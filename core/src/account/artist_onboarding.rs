@@ -29,12 +29,10 @@ impl ArtistLogin {
 
 pub(crate) async fn qr_identity(
     api: &dyn crate::protocol::api::Api,
-) -> crate::Result<(Value, ArtistLogin)> {
-    const PATH: &str = "/api/w/nuser/account/get";
-    let reply = api.call(PATH, serde_json::json!({}), false, &[200]).await?;
-    let profile = &reply["profile"];
-    if !profile.is_object() || crate::protocol::api::identifier(&profile["userId"]).is_err() {
-        return Err(crate::Error::service(PATH, serde_json::json!(301), reply));
-    }
-    Ok((profile.clone(), ArtistLogin::from_reply(&reply)))
+) -> crate::Result<(super::identity::VerifiedAccount, ArtistLogin)> {
+    let reply = api.account_reply().await?;
+    Ok((
+        super::identity::VerifiedAccount::from_reply(&reply)?,
+        ArtistLogin::from_reply(&reply),
+    ))
 }

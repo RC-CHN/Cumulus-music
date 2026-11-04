@@ -73,9 +73,9 @@ impl QrAuthentication {
         let api = self.candidate.api();
         let identity = crate::account::artist_onboarding::qr_identity(&*api).await;
         let mut state = operation.lock()?;
-        let (profile, offer) = identity?;
+        let (identity, offer) = identity?;
         self.candidate
-            .adopt_with_artist_login(&self.session, &self.base, profile, Some(offer))?;
+            .adopt_with_artist_login(&self.session, &self.base, identity, Some(offer))?;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }

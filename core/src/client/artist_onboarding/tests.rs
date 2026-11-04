@@ -23,6 +23,7 @@ impl Api for Backend {
                     assert_eq!(args, json!({}));
                     Ok(
                         json!({"code":200,"profile":{"userId":11,"nickname":"Synthetic"},
+                        "account":{"id":11,"type":10,"userName":"private-qr-account"},
                         "loginExtData":{"actionParam":{"targetUrl":"orpheus://appModal?comName=RecallUserFavorModal"}}}),
                     )
                 }
@@ -70,7 +71,9 @@ fn verified(
     session
         .adopt_registered(
             api,
-            json!({"userId":uid,"nickname":"Synthetic"}),
+            crate::account::identity::VerifiedAccount::profile_only(
+                json!({"userId":uid,"nickname":"Synthetic"}),
+            ),
             &session.token().unwrap(),
             &registry.store(),
             Some(ArtistLogin { scene }),
@@ -83,11 +86,13 @@ fn verified(
 #[tokio::test]
 async fn exact_qr_extension_does_not_escape_or_trigger_from_ordinary_profile_refresh() {
     let api = Arc::new(Backend::default());
-    let (profile, evidence) = crate::account::artist_onboarding::qr_identity(&*api)
+    let (identity, evidence) = crate::account::artist_onboarding::qr_identity(&*api)
         .await
         .unwrap();
-    assert_eq!(profile["userId"], 11);
-    assert!(profile.get("loginExtData").is_none());
+    assert_eq!(identity.profile["userId"], 11);
+    assert_eq!(identity.registration_type, Some(10));
+    assert!(identity.profile.get("loginExtData").is_none());
+    assert!(identity.profile.get("account").is_none());
     assert_eq!(evidence.scene, Some(Scene::RecallUser));
     for target in [
         "https://example.invalid/?comName=NewUserFavorModal",

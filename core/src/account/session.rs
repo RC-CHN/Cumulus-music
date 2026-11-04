@@ -4,7 +4,7 @@
 mod invalidation;
 mod legacy_api;
 mod policy;
-use super::{artist_onboarding::ArtistLogin, login_policy::LoginNotice};
+use super::{artist_onboarding::ArtistLogin, identity::VerifiedAccount, login_policy::LoginNotice};
 use crate::{
     Error, Result,
     protocol::api::{Api, identifier},
@@ -48,6 +48,7 @@ struct SessionState {
     login_notice: Option<LoginNotice>,
     initial_restore_generation: Option<u64>,
     artist_login: Option<ArtistLogin>,
+    registration_type: Option<u32>,
     changes: tokio::sync::watch::Sender<SessionToken>,
 }
 
@@ -71,6 +72,7 @@ impl SessionState {
         self.uid = None;
         self.profile = None;
         self.artist_login = None;
+        self.registration_type = None;
         self.status = status;
         if status != SessionStatus::Expired {
             self.login_notice = None;
@@ -108,6 +110,7 @@ impl AccountSession {
                 login_notice: None,
                 initial_restore_generation: None,
                 artist_login: None,
+                registration_type: None,
                 changes,
             }),
             store,
@@ -227,8 +230,12 @@ impl AccountSession {
         &self,
         expected: &SessionToken,
         api: &Arc<dyn Api>,
-        profile: Value,
+        identity: VerifiedAccount,
     ) -> Result<()> {
+        let VerifiedAccount {
+            profile,
+            registration_type,
+        } = identity;
         let uid = identifier(&profile["userId"])?;
         let mut state = self.lock()?;
         state.require(expected)?;
@@ -243,6 +250,7 @@ impl AccountSession {
             store.put(&uid, "account", "profile", &profile)?;
         }
         state.profile = Some(profile);
+        state.registration_type = registration_type;
         Ok(())
     }
 
@@ -314,10 +322,17 @@ impl AccountSession {
         state.uid = None;
         state.profile = None;
         state.artist_login = None;
+        state.registration_type = None;
         state.status = SessionStatus::SignedOut;
         state.login_notice = None;
         state.changes.send_replace(state.token());
         Ok(())
+    }
+
+    pub(crate) fn registration_type(&self, token: &SessionToken) -> Result<Option<u32>> {
+        let state = self.lock()?;
+        state.require(token)?;
+        Ok(state.registration_type)
     }
 
     pub(crate) fn artist_login(&self, token: &SessionToken) -> Result<Option<ArtistLogin>> {
@@ -353,25 +368,39 @@ impl AccountSession {
         profile: Value,
         expected: &SessionToken,
     ) -> Result<Value> {
-        self.adopt_inner(api, profile, expected, None, None, |_| Ok(()))
+        self.adopt_inner(
+            api,
+            VerifiedAccount::profile_only(profile),
+            expected,
+            None,
+            None,
+            |_| Ok(()),
+        )
     }
 
     pub(crate) fn adopt_registered(
         &self,
         api: Arc<dyn Api>,
-        profile: Value,
+        identity: VerifiedAccount,
         expected: &SessionToken,
         registry: &Arc<StateStore>,
         artist_login: Option<ArtistLogin>,
         select: impl FnOnce(&mut StateTransaction<'_>) -> Result<()>,
     ) -> Result<Value> {
-        self.adopt_inner(api, profile, expected, Some(registry), artist_login, select)
+        self.adopt_inner(
+            api,
+            identity,
+            expected,
+            Some(registry),
+            artist_login,
+            select,
+        )
     }
 
     fn adopt_inner(
         &self,
         api: Arc<dyn Api>,
-        profile: Value,
+        identity: VerifiedAccount,
         expected: &SessionToken,
         registry: Option<&Arc<StateStore>>,
         artist_login: Option<ArtistLogin>,
@@ -387,6 +416,10 @@ impl AccountSession {
                 "account session must use the candidate registry store",
             ));
         }
+        let VerifiedAccount {
+            profile,
+            registration_type,
+        } = identity;
         let uid = identifier(&profile["userId"])?;
         let mut state = self.lock()?;
         state.require(expected)?;
@@ -400,6 +433,7 @@ impl AccountSession {
         state.generation = generation;
         state.api = api;
         state.artist_login = artist_login;
+        state.registration_type = registration_type;
         state.uid = Some(uid);
         state.profile = Some(profile.clone());
         state.status = SessionStatus::Authenticated;
@@ -440,8 +474,11 @@ impl AccountSession {
             self.recover_queue_reset(&client)?;
             return Err(Error::service("session", json!(301), Value::Null));
         }
-        let profile = match api.account().await {
-            Ok(profile) => profile,
+        let VerifiedAccount {
+            profile,
+            registration_type,
+        } = match VerifiedAccount::read(&*api).await {
+            Ok(identity) => identity,
             Err(error)
                 if error.is_service_code(301) && self.has_no_native_login(&token, &api)? =>
             {
@@ -472,6 +509,7 @@ impl AccountSession {
         }
         state.generation = generation;
         state.uid = Some(uid);
+        state.registration_type = registration_type;
         state.profile = Some(profile.clone());
         state.status = SessionStatus::Authenticated;
         state.login_notice = None;

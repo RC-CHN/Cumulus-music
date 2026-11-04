@@ -5,7 +5,10 @@ use super::{
 };
 use crate::{
     Error, Result,
-    account::{AccountSession, SessionToken, profiles::LoginCandidate, session::next_generation},
+    account::{
+        AccountSession, SessionToken, identity::VerifiedAccount, profiles::LoginCandidate,
+        session::next_generation,
+    },
     protocol::api::{Api, ApiFuture},
 };
 use serde::Serialize;
@@ -332,19 +335,19 @@ impl CredentialLogin {
                 return Err(Error::State("start a new login attempt"));
             }
         }
-        let profile = self.candidate.api().account().await;
+        let identity = VerifiedAccount::read(&*self.candidate.api()).await;
         let mut state = operation.lock()?;
-        let profile = profile?;
+        let identity = identity?;
         let offer = state.artist_login.filter(|_| {
             state.artist_login_uid.as_ref().is_none_or(|expected| {
-                crate::protocol::api::identifier(&profile["userId"])
+                crate::protocol::api::identifier(&identity.profile["userId"])
                     .as_ref()
                     .ok()
                     == Some(expected)
             })
         });
         self.candidate
-            .adopt_with_artist_login(&self.session, &self.base, profile, offer)?;
+            .adopt_with_artist_login(&self.session, &self.base, identity, offer)?;
         state.pending = None;
         state.challenge = None;
         state.verification = None;

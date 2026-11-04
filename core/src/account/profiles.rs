@@ -8,7 +8,7 @@ mod quick;
 mod registration;
 mod removal;
 mod saved;
-use super::{AccountSession, SessionToken, credentials::Credentials};
+use super::{AccountSession, SessionToken, credentials::Credentials, identity::VerifiedAccount};
 use crate::{
     Error, Result,
     protocol::{
@@ -244,27 +244,28 @@ impl LoginCandidate {
         self.registry
             .store
             .transaction(|tx| removal::available(tx, &self.id))?;
-        let profile = self.client.account().await?;
-        self.adopt(session, expected, profile)
+        let identity = VerifiedAccount::read(&*self.client).await?;
+        self.adopt(session, expected, identity)
     }
 
     pub(crate) fn adopt(
         &self,
         session: &AccountSession,
         expected: &SessionToken,
-        profile: Value,
+        identity: VerifiedAccount,
     ) -> Result<Value> {
-        self.adopt_with_artist_login(session, expected, profile, None)
+        self.adopt_with_artist_login(session, expected, identity, None)
     }
 
     pub(crate) fn adopt_with_artist_login(
         &self,
         session: &AccountSession,
         expected: &SessionToken,
-        profile: Value,
+        identity: VerifiedAccount,
         artist_login: Option<super::artist_onboarding::ArtistLogin>,
     ) -> Result<Value> {
         self.registry.profile_path(&self.id)?;
+        let profile = &identity.profile;
         let uid = crate::protocol::api::identifier(&profile["userId"])?;
         if self
             .expected_uid
@@ -283,7 +284,7 @@ impl LoginCandidate {
             revision: Uuid::new_v4().simple().to_string(),
             auto_login: self.auto_login.load(Ordering::Acquire),
         };
-        let saved = SavedProfile::from_verified(&self.id, &profile, selection.auto_login)?;
+        let saved = SavedProfile::from_verified(&self.id, profile, selection.auto_login)?;
         let offline_revision = self.credentials.offline_credential_revision()?;
         let registration_phone = self
             .registration_phone
@@ -297,7 +298,7 @@ impl LoginCandidate {
             .transpose()?;
         session.adopt_registered(
             self.client.clone(),
-            profile,
+            identity,
             expected,
             &self.registry.store,
             artist_login,

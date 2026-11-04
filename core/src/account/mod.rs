@@ -4,6 +4,7 @@ pub mod artist_onboarding;
 pub mod collections;
 pub mod credential_import;
 pub mod credentials;
+pub(crate) mod identity;
 pub mod login;
 pub mod login_policy;
 pub mod profile;

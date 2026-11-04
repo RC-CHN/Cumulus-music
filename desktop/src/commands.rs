@@ -27,6 +27,14 @@ pub async fn account_profile_detail(
 }
 
 #[tauri::command]
+pub async fn account_bindings(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<cumulus_core::account::profile::AccountBindingsView>, ClientError> {
+    client.account_bindings(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn account_binding_qr(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

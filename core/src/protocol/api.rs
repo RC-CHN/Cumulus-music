@@ -35,12 +35,17 @@ pub trait Api: Send + Sync + std::any::Any {
     }
 
     fn account(&self) -> ApiFuture<'_, Value> {
+        Box::pin(async move { Ok(self.account_reply().await?["profile"].clone()) })
+    }
+
+    /// Native identity envelope. Account commands return only typed projections.
+    fn account_reply(&self) -> ApiFuture<'_, Value> {
         Box::pin(async move {
             const PATH: &str = "/api/w/nuser/account/get";
             let response = self.call(PATH, json!({}), false, &[200]).await?;
             match response.get("profile") {
                 Some(profile) if profile.is_object() && identifier(&profile["userId"]).is_ok() => {
-                    Ok(profile.clone())
+                    Ok(response)
                 }
                 _ => Err(Error::service(PATH, json!(301), response)),
             }

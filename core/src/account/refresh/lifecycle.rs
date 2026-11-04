@@ -5,7 +5,10 @@ use super::{
 };
 use crate::{
     Error, Result,
-    account::{AccountSession, SessionStatus, SessionToken, credentials::LoginCredentials},
+    account::{
+        AccountSession, SessionStatus, SessionToken, credentials::LoginCredentials,
+        identity::VerifiedAccount,
+    },
     protocol::{
         api::{Api, ApiFuture, validate_response},
         http::MusicHttpClient,
@@ -179,12 +182,15 @@ impl AccountLifecycle {
 
     async fn identity(&self, expected: &SessionToken) -> Result<Value> {
         self.session.require_api(expected, &self.api())?;
-        let profile = self
+        let identity = self
             .session
-            .run_for(expected, |api, _| async move { api.account().await })
+            .run_for(expected, |api, _| async move {
+                VerifiedAccount::read(&*api).await
+            })
             .await?;
+        let profile = identity.profile.clone();
         self.session
-            .commit_refreshed_profile(expected, &self.api(), profile.clone())?;
+            .commit_refreshed_profile(expected, &self.api(), identity)?;
         Ok(profile)
     }
 
@@ -311,15 +317,15 @@ impl AccountLifecycle {
         // interceptor could otherwise issue a second refresh request.
         let api = self.api();
         self.session.require_api(token, &api)?;
-        let profile = api.account().await;
+        let identity = VerifiedAccount::read(&*api).await;
         self.session.require_api(token, &api)?;
-        let profile = profile?;
+        let identity = identity?;
         let current = credentials.login_credentials()?;
         if !fresh_receipt(&current, intent) || current.rotation != after.rotation {
             return Err(Error::CredentialChanged);
         }
         self.session
-            .commit_refreshed_profile(token, &api, profile)?;
+            .commit_refreshed_profile(token, &api, identity)?;
         journal::complete(
             &credentials.store(),
             token.uid.as_deref().ok_or(Error::StaleResponse)?,

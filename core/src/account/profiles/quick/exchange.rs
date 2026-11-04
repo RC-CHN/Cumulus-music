@@ -4,6 +4,7 @@ use crate::{
     Error, Result,
     account::{
         AccountSession, SessionToken,
+        identity::VerifiedAccount,
         login::{LoginStatus, classify},
         profiles::LoginCandidate,
     },
@@ -429,7 +430,7 @@ impl ServerQuickLogin {
                 return Err(Error::CredentialChanged);
             }
         }
-        let profile = self.scoped(api.account()).await;
+        let identity = self.scoped(VerifiedAccount::read(&*api)).await;
         let mut state = self.lock()?;
         if state.phase != ServerQuickLoginPhase::CheckingIdentity {
             return Err(Error::Cancelled);
@@ -440,7 +441,7 @@ impl ServerQuickLogin {
             state.phase = ServerQuickLoginPhase::ResultUnknown;
             return Err(Error::CredentialChanged);
         }
-        let profile = match profile {
+        let identity = match identity {
             Ok(value) => value,
             Err(Error::Cancelled) => return Err(Error::Cancelled),
             Err(Error::StaleResponse) => return Err(Error::StaleResponse),
@@ -449,13 +450,14 @@ impl ServerQuickLogin {
                 return Ok(());
             }
         };
-        if identifier(&profile["userId"]).as_deref().ok() != self.candidate.expected_uid.as_deref()
+        if identifier(&identity.profile["userId"]).as_deref().ok()
+            != self.candidate.expected_uid.as_deref()
         {
             state.phase = ServerQuickLoginPhase::Rejected;
             state.receipt = None;
             return Ok(());
         }
-        self.candidate.adopt(&self.session, &self.base, profile)?;
+        self.candidate.adopt(&self.session, &self.base, identity)?;
         state.phase = ServerQuickLoginPhase::Authenticated;
         state.receipt = None;
         Ok(())

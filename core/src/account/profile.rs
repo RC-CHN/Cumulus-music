@@ -36,6 +36,19 @@ pub enum BindingProvider {
     Unknown,
 }
 
+impl BindingProvider {
+    fn from_type(code: u32) -> Self {
+        match code {
+            0 => Self::Email,
+            1 => Self::Cellphone,
+            2 => Self::Weibo,
+            5 => Self::Qq,
+            10 => Self::Wechat,
+            _ => Self::Unknown,
+        }
+    }
+}
+
 /// A returned row confirms a binding exists. Its display details may be absent.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -53,6 +66,16 @@ pub struct AccountBindingView {
 #[serde(rename_all = "camelCase")]
 pub struct SelfProfileDetailView {
     pub profile: SelfProfileView,
+    pub bindings: Vec<AccountBindingView>,
+}
+
+/// Account Settings and the dedicated /bind page. An absent registration
+/// provider never means an e-mail registration or a preferred binding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountBindingsView {
+    pub registration_provider: Option<BindingProvider>,
+    pub foreign_registered_phone: bool,
     pub bindings: Vec<AccountBindingView>,
 }
 
@@ -134,6 +157,38 @@ impl AccountProfile {
             .await
     }
 
+    pub async fn binding_settings_for(&self, token: &SessionToken) -> Result<AccountBindingsView> {
+        let rows = self.bindings_for(token).await?;
+        let registration_provider = self
+            .session
+            .registration_type(token)?
+            .map(BindingProvider::from_type);
+        // The recovered page enumerates these five providers in this order.
+        // Its inner binding loop leaves the last matching row effective.
+        let bindings: Vec<_> = [1, 0, 10, 5, 2]
+            .iter()
+            .filter_map(|kind| {
+                rows.iter()
+                    .rev()
+                    .find(|row| row.type_code == *kind)
+                    .cloned()
+            })
+            .collect();
+        let foreign_registered_phone = registration_provider == Some(BindingProvider::Cellphone)
+            && bindings.iter().any(|row| {
+                row.provider == BindingProvider::Cellphone
+                    && row
+                        .country_code
+                        .as_deref()
+                        .is_some_and(|country| country != "86")
+            });
+        Ok(AccountBindingsView {
+            registration_provider,
+            foreign_registered_phone,
+            bindings,
+        })
+    }
+
     pub async fn read_for(&self, token: &SessionToken) -> Result<SelfProfileDetailView> {
         let profile = self.detail_for(token).await?;
         let bindings = self.bindings_for(token).await?;
@@ -168,14 +223,7 @@ fn project_profile(uid: &str, profile: &Value, level: Option<u32>) -> Result<Sel
 
 fn project_binding(binding: &Value) -> Result<AccountBindingView> {
     let type_code = unsigned(&binding["type"]).ok_or(Error::Response("invalid binding type"))?;
-    let provider = match type_code {
-        0 => BindingProvider::Email,
-        1 => BindingProvider::Cellphone,
-        2 => BindingProvider::Weibo,
-        5 => BindingProvider::Qq,
-        10 => BindingProvider::Wechat,
-        _ => BindingProvider::Unknown,
-    };
+    let provider = BindingProvider::from_type(type_code);
     let mut view = AccountBindingView {
         provider,
         type_code,

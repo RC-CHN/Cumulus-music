@@ -160,3 +160,118 @@ async fn switching_account_during_bindings_discards_the_combined_read() {
     assert!(matches!(work.await.unwrap(), Err(Error::StaleResponse)));
     assert!(replacement.calls().is_empty());
 }
+
+#[tokio::test]
+async fn binding_settings_take_registration_only_from_the_verified_account_envelope() {
+    let api = Arc::new(ScriptApi::new([
+        json!({"code":200,"profile":{"userId":7},"account":{"id":7,"type":1,"userName":"private-registration"}}).into(),
+        json!({"code":200,"bindings":[
+            binding(5,json!({"nickname":"QQ Fixture","openid":"private-openid"})),
+            binding(1,json!({"cellphone":"1234567890","countrycode":"1242","hasPassword":false})),
+            binding(99,json!({"nickname":"unsupported-fixture"})),
+            binding(0,json!({"email":"one@example.test"})),
+            binding(5,json!({"nickname":"Latest QQ Fixture","access_token":"private-token"}))
+        ]}).into(),
+        // This otherwise valid identity read has no authoritative registration type.
+        json!({"code":200,"profile":{"userId":7},"account":{"id":8,"type":0}}).into(),
+        json!({"code":200,"bindings":[
+            binding(1,json!({"cellphone":"1234567890","countrycode":"1242","hasPassword":false}))
+        ]}).into(),
+    ]));
+    let session = Arc::new(AccountSession::new(api.clone(), None));
+    let service = AccountProfile::new(session.clone());
+    session.refresh().await.unwrap();
+    let token = session.token().unwrap();
+    let registered = service.binding_settings_for(&token).await.unwrap();
+    assert_eq!(
+        registered.registration_provider,
+        Some(BindingProvider::Cellphone)
+    );
+    assert!(registered.foreign_registered_phone);
+    assert_eq!(
+        registered
+            .bindings
+            .iter()
+            .map(|row| row.provider)
+            .collect::<Vec<_>>(),
+        [
+            BindingProvider::Cellphone,
+            BindingProvider::Email,
+            BindingProvider::Qq
+        ]
+    );
+    assert_eq!(
+        registered.bindings[2].display_name.as_deref(),
+        Some("Latest QQ Fixture")
+    );
+    let output = serde_json::to_string(&registered).unwrap();
+    for secret in [
+        "private-",
+        "tokenJsonStr",
+        "one@example.test",
+        "1234567890",
+        "unsupported-fixture",
+    ] {
+        assert!(
+            !output.contains(secret),
+            "binding projection leaked {secret}"
+        );
+    }
+
+    session.refresh().await.unwrap();
+    assert_eq!(session.token().unwrap(), token);
+    let unclassified = service.binding_settings_for(&token).await.unwrap();
+    assert_eq!(unclassified.registration_provider, None);
+    assert!(!unclassified.foreign_registered_phone);
+    assert_eq!(unclassified.bindings.len(), 1);
+    assert_eq!(
+        unclassified.bindings[0].provider,
+        BindingProvider::Cellphone
+    );
+
+    let calls = api.calls();
+    assert_eq!(calls.len(), 4);
+    for [identity, bindings] in calls.as_chunks::<2>().0 {
+        assert_eq!(identity.path, "/api/w/nuser/account/get");
+        assert_eq!(identity.payload, json!({}));
+        assert_eq!(bindings.path, "/api/w/v1/user/bindings/7");
+        assert_eq!(bindings.payload, json!({"userId":"7"}));
+        assert!(!identity.cache && !bindings.cache);
+    }
+}
+
+#[tokio::test]
+async fn binding_settings_never_publish_an_old_accounts_registration_or_rows() {
+    let (pending, release) = gate();
+    let api = Arc::new(ScriptApi::new([
+        json!({"code":200,"profile":{"userId":7},"account":{"id":7,"type":1}}).into(),
+        pending,
+    ]));
+    let session = Arc::new(AccountSession::new(api.clone(), None));
+    session.refresh().await.unwrap();
+    let owner = session.token().unwrap();
+    let profile = AccountProfile::new(session.clone());
+    let task = tokio::spawn(async move { profile.binding_settings_for(&owner).await });
+    api.wait_for_calls(2).await;
+
+    let other = Arc::new(ScriptApi::new([
+        json!({"code":200,"profile":{"userId":8},"account":{"id":8,"type":10}}).into(),
+        json!({"code":200,"bindings":[]}).into(),
+    ]));
+    session.attach(other.clone()).unwrap();
+    session.refresh().await.unwrap();
+    release
+        .send(Ok(json!({"code":200,"bindings":[
+            binding(1,json!({"cellphone":"1234567890","countrycode":"1242"}))
+        ]})))
+        .unwrap();
+    assert!(matches!(task.await.unwrap(), Err(Error::StaleResponse)));
+    let page = AccountProfile::new(session.clone())
+        .binding_settings_for(&session.token().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(page.registration_provider, Some(BindingProvider::Wechat));
+    assert!(page.bindings.is_empty());
+    assert!(!page.foreign_registered_phone);
+    assert_eq!(other.calls()[1].path, "/api/w/v1/user/bindings/8");
+}

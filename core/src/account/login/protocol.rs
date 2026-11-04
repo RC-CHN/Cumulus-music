@@ -42,9 +42,9 @@ impl Api for JskLoginApi {
                 .await
         })
     }
-    fn account(&self) -> ApiFuture<'_, Value> {
+    fn account_reply(&self) -> ApiFuture<'_, Value> {
         // Community identity verification is separate from the SDK fetch path.
         // Challenge headers must not escape into general account requests.
-        self.client.account()
+        self.client.account_reply()
     }
 }
