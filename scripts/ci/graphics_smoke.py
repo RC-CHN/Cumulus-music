@@ -6,6 +6,33 @@ from pathlib import Path
 import subprocess
 
 
+def run_check(binary, root, index, mode, env):
+    stderr = root / f'{index}.log'
+    stdout = root / f'{index}.stdout.txt'
+    try:
+        result = subprocess.run([str(binary), '--cumulus-renderer-diagnostics'], env=env,
+                                capture_output=True, timeout=60)
+    except subprocess.TimeoutExpired as error:
+        stderr.write_bytes(error.stderr or b'')
+        stdout.write_bytes(error.stdout or b'')
+        detail = stderr.read_text(encoding='utf-8', errors='replace')
+        raise AssertionError(f'graphics check timed out ({mode}): {detail}') from error
+    stderr.write_bytes(result.stderr)
+    try:
+        report = json.loads(result.stdout.decode('utf-8'))
+    except ValueError:
+        stdout.write_bytes(result.stdout)
+        report = None
+    else:
+        # Preserve the ordinary structured all-attempts report even when no
+        # renderer was selected and the diagnostic exited with an error.
+        (root / f'{index}.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    detail = ' '.join(value.decode('utf-8', errors='replace') for value in (result.stdout, result.stderr))
+    assert result.returncode == 0, f'graphics check failed ({mode}): {detail}'
+    assert isinstance(report, dict), f'invalid graphics report ({mode}): {detail}'
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -20,12 +47,7 @@ def main():
         modes.append('gpu-shm')
     for index, mode in enumerate(modes):
         env = dict(base, CUMULUS_DATA_DIR=str(root / 'state'), CUMULUS_RENDERER=mode)
-        result = subprocess.run([str(args.binary.resolve()), '--cumulus-renderer-diagnostics'],
-                                env=env, capture_output=True, text=True, timeout=60)
-        (root / f'{index}.log').write_text(result.stderr, encoding='utf-8')
-        assert result.returncode == 0, f'graphics check failed ({mode}): {result.stdout} {result.stderr}'
-        report = json.loads(result.stdout)
-        (root / f'{index}.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        report = run_check(args.binary.resolve(), root, index, mode, env)
         assert report['selected'] and report['real_music_requests'] == 0
         assert report['attempts'][-1]['outcome'] == 'ready'
         if index == 1:

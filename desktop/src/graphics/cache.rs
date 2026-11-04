@@ -67,12 +67,45 @@ pub(super) fn write(path: &Path, environment: &str, mode: Mode, now: u64) -> std
 }
 
 /// Local cache invalidation only. No machine/user serials and no network upload.
-pub(super) fn environment() -> String {
+pub(super) fn environment(diagnostic: bool) -> String {
+    #[cfg(not(target_os = "windows"))]
+    let _ = diagnostic;
     let mut hash = DefaultHasher::new();
     env!("CARGO_PKG_VERSION").hash(&mut hash);
     std::env::consts::OS.hash(&mut hash);
     #[cfg(target_os = "windows")]
-    tauri::webview_version().ok().hash(&mut hash);
+    {
+        let version = tauri::webview_version().ok();
+        version.hash(&mut hash);
+        if diagnostic {
+            let version = version
+                .as_deref()
+                .filter(|value| {
+                    value.len() <= 64
+                        && value.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric()
+                                || matches!(byte, b'.' | b' ' | b'-' | b'_')
+                        })
+                })
+                .unwrap_or("unavailable");
+            eprintln!("renderer probe: discovered WebView2 runtime {version}");
+            const OVERRIDES: &[&str] = &[
+                "WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+                "WEBVIEW2_USER_DATA_FOLDER",
+                "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                "WEBVIEW2_RELEASE_CHANNEL_PREFERENCE",
+                "WEBVIEW2_CHANNEL_SEARCH_KIND",
+                "WEBVIEW2_RELEASE_CHANNELS",
+                "WEBVIEW2_WAIT_FOR_SCRIPT_DEBUGGER",
+                "WEBVIEW2_PIPE_FOR_SCRIPT_DEBUGGER",
+            ];
+            for name in OVERRIDES {
+                if std::env::var_os(name).is_some_and(|value| !value.is_empty()) {
+                    eprintln!("renderer probe: inherited {name} override (value withheld)");
+                }
+            }
+        }
+    }
     if let Ok(exe) = std::env::current_exe().and_then(fs::metadata) {
         exe.len().hash(&mut hash);
         exe.modified().ok().hash(&mut hash);

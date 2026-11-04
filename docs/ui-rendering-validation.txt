@@ -127,6 +127,33 @@ Windows does not yet perform the Linux pixel snapshot check; its acknowledgement
 covers mapped-page layout and animation frames. Virtual-runner results do not
 establish physical GPU compatibility on every driver.
 
+Windows portable ZIP timeout evidence
+Windows job 126732070456 (CI 41875048216, ed573498a9666231dceb02733bcdb93236372b01)
+failed the exact extracted portable ZIP check. Auto reached the start of WebView
+initialization but never reported successful construction; Software reported
+construction but not the navigation-finished splash or animation acknowledgment.
+Both exhausted the existing 15-second candidate deadline. The same portable
+check succeeded on 126712056357, 126720923352 and the newer 126745234608.
+No matching probe/policy change distinguishes the failed run from these passes.
+The observed stages do not establish a driver, sandbox or device root cause.
+
+Diagnostic mode now prints monotonic child-stage elapsed times, including entry
+into native window construction, navigation request, serving the local document,
+content loading, navigation completion and failure to schedule animation. Wry
+0.55.1 pumps messages during WebView2 initialization, so early navigation events
+can appear before the window builder returns; absence of one event is evidence
+of the reached stage only, not a WebView2 error classification. Windows also
+reports the discovered runtime version and names of inherited WebView2 overrides
+without their values. Discovery is not a guarantee of which executable an
+explicit override selects. Microsoft documents override and user-data semantics
+at https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/webview2-idl#createcorewebview2environmentwithoptions.
+
+The packaging smoke script preserves both per-attempt stderr and valid failure
+reports (or partial bytes on launcher timeout). This changes diagnosis only:
+no retry, deadline, candidate order, cancellation, readiness or release gate
+was relaxed. Windows runtime verification requires the actual hosted runner or
+an affected Windows desktop; a Linux regression cannot prove the timeout fixed.
+
 Linux software paint regression
 With WebKitGTK 2.52.6 on Xvfb, the old non-composited setting reported a laid-out
 dialog but its selected tab was white in the actual display screenshot. Under

@@ -78,7 +78,7 @@ fn select(diagnostic: bool) -> std::io::Result<Report> {
     let requested = std::env::var("CUMULUS_RENDERER").unwrap_or_else(|_| "auto".into());
     let requested = Mode::parse(&requested)
         .ok_or_else(|| std::io::Error::other("unknown CUMULUS_RENDERER mode"))?;
-    let environment = cache::environment();
+    let environment = cache::environment(diagnostic);
     let path = cache::path();
     let cached = path
         .as_ref()

@@ -15,9 +15,13 @@ pub(super) const TRACE_ENV: &str = "CUMULUS_RENDERER_TRACE";
 
 pub(super) fn run(root: &Path) -> i32 {
     let diagnostic = std::env::var_os(TRACE_ENV).is_some();
-    let trace = move |stage| {
+    let started = std::time::Instant::now();
+    let trace = move |stage: &str| {
         if diagnostic {
-            eprintln!("renderer probe: {stage}");
+            eprintln!(
+                "renderer probe +{}ms: {stage}",
+                started.elapsed().as_millis()
+            );
         }
     };
     trace("waiting for parent");
@@ -41,7 +45,8 @@ pub(super) fn run(root: &Path) -> i32 {
     let complete = reported.clone();
     let result = tauri::Builder::default()
         .plugin(super::plugin())
-        .register_uri_scheme_protocol("cumulus-renderer", |_, _| {
+        .register_uri_scheme_protocol("cumulus-renderer", move |_, _| {
+            trace("serving local splash response");
             tauri::http::Response::builder()
                 .header("Content-Type", "text/html; charset=utf-8")
                 .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; connect-src ipc: http://ipc.localhost")
@@ -96,9 +101,11 @@ pub(super) fn run(root: &Path) -> i32 {
             true
         })
         .setup(move |app| {
+            trace("building isolated WebView window");
             let window = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::CustomProtocol("cumulus-renderer://localhost".parse()?))
                 .title("Cumulus").inner_size(360.0, 220.0).resizable(false)
                 .decorations(false).center().data_directory(profile)
+                .on_navigation(move |_| { trace("navigation requested"); true })
                 .build()?;
             trace("WebView created");
             #[cfg(target_os = "linux")]
@@ -122,11 +129,17 @@ pub(super) fn run(root: &Path) -> i32 {
             }
         })
         .on_page_load(move |view, payload| {
-            if payload.event() == PageLoadEvent::Finished && view.label() == "main" {
+            if view.label() != "main" {
+                return;
+            }
+            if payload.event() == PageLoadEvent::Started {
+                trace("splash content loading");
+            }
+            if payload.event() == PageLoadEvent::Finished {
                 trace("splash loaded");
                 // Require a mapped page, DOM layout and multiple animation frames.
                 // Parent timeout handles a blank, hung or terminated WebProcess.
-                let _ = view.eval(r#"(() => {
+                if view.eval(r#"(() => {
                     document.querySelector('button').addEventListener('click', () => window.__TAURI_INTERNALS__.invoke('renderer_cancel'));
                     let frames = 0; const start = performance.now();
                     const frame = () => {
@@ -137,7 +150,9 @@ pub(super) fn run(root: &Path) -> i32 {
                             window.__TAURI_INTERNALS__.invoke('renderer_ready');
                         } else requestAnimationFrame(frame);
                     }; requestAnimationFrame(frame);
-                })()"#);
+                })()"#).is_err() {
+                    trace("could not schedule animation check");
+                }
             }
         })
         .build(context);
