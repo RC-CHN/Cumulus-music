@@ -80,7 +80,7 @@ fn author(value: crate::comments::CommentAuthor) -> CommentAuthorView {
             .and_then(|v| mapping::artwork(&serde_json::json!(v))),
     }
 }
-fn comment(value: Comment, uid: &str) -> CommentView {
+pub(super) fn comment(value: Comment, uid: &str) -> CommentView {
     CommentView {
         id: value.id,
         parent_id: value.parent_id,

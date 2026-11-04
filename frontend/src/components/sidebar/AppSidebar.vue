@@ -69,6 +69,7 @@ const discovery: NavItem[] = [
   { title: '私人漫游', icon: 'music', page: { kind: 'fm' } },
   { title: '排行榜', icon: 'list', page: { kind: 'rankings', query: { kind: 'home' } } },
   { title: '歌手', icon: 'user', page: { kind: 'artist_gallery' } },
+  { title: '关注', icon: 'user', page: { kind: 'community' } },
   { title: '歌单广场', icon: 'grid', page: { kind: 'playlist_tag', tag: '推荐' } },
   { title: '一起听', icon: 'headphones', page: { kind: 'together' } },
   { title: '每日推荐', icon: 'calendar', page: { kind: 'daily' } },
@@ -96,7 +97,11 @@ const personal = computed<NavItem[]>(() => [
 function selected(target: Page) {
   if (target.kind === 'playlist')
     return props.page.kind === 'playlist' && props.page.id === target.id;
-  return props.page.kind === target.kind || (target.kind === 'mvs' && props.page.kind === 'mv');
+  return (
+    props.page.kind === target.kind ||
+    (target.kind === 'mvs' && props.page.kind === 'mv') ||
+    (target.kind === 'community' && props.page.kind === 'community_detail')
+  );
 }
 function toggle(group: 'created' | 'subscribed') {
   preferences.value[group] = !preferences.value[group];

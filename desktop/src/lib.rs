@@ -13,6 +13,7 @@ mod cold_offline;
 mod collections;
 mod commands;
 mod comments;
+mod community;
 pub mod desktop_lyrics;
 mod downloads;
 pub mod effect_activation;
@@ -294,6 +295,9 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 catalog::followed_new_song_page,
                 catalog::followed_new_song_latest,
                 catalog::release_notification,
+                community::community_feed,
+                community::community_detail,
+                community::community_comments,
                 catalog::artist_gallery,
                 collections::collection_page,
                 history::history_page,

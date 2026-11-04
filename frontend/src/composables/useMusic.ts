@@ -23,6 +23,8 @@ export type Page =
   | ({ kind: 'catalog' } & import('../services/catalogNavigation').CatalogLocation)
   | { kind: 'artist_gallery' }
   | { kind: 'follow_new_song' }
+  | { kind: 'community' }
+  | { kind: 'community_detail'; handle: string }
   | { kind: 'scene_fm' }
   | { kind: 'member' }
   | { kind: 'fm' }
@@ -217,6 +219,8 @@ export function useMusic(
         target.kind === 'catalog' ||
         target.kind === 'artist_gallery' ||
         target.kind === 'follow_new_song' ||
+        target.kind === 'community' ||
+        target.kind === 'community_detail' ||
         target.kind === 'collections' ||
         target.kind === 'mv' ||
         target.kind === 'comments'

@@ -11,6 +11,7 @@ import type { DownloadClient, SongDownloadState } from './downloads';
 import type { CloudClient } from './cloud';
 import type { MvClient } from './mv';
 import type { CommentClient } from './comments';
+import type { CommunityClient } from './community';
 import type { CommentResourceClient } from './commentResource';
 import type { CommentWriteClient } from './commentWrites';
 import type { CommentFloorClient } from './commentFloor';
@@ -98,6 +99,7 @@ export interface CoreClient
     MvClient,
     CommentClient,
     MessageClient,
+    CommunityClient,
     CommentResourceClient,
     CommentWriteClient,
     CommentFloorClient,

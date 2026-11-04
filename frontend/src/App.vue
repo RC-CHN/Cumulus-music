@@ -41,6 +41,9 @@ import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
 import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
+import CommunityPage from './components/community/CommunityPage.vue';
+import { useCommunity } from './composables/useCommunity';
+import type { CommunityResource } from './services/community';
 import type { SidebarPlaylistMove } from './services/sidebar';
 import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
@@ -245,6 +248,59 @@ watch(
   },
   { immediate: true, flush: 'sync' },
 );
+const community = useCommunity(core, () => void music.bootstrap(false));
+const communityPage = ref<InstanceType<typeof CommunityPage>>();
+watch(
+  [music.page, () => music.account.value.epoch, () => music.account.value.status],
+  ([location, epoch, status]) => {
+    community.connect(status === 'authenticated' ? epoch : null);
+    if (status !== 'authenticated') return;
+    if (location.kind === 'community_detail') {
+      if (community.handle.value !== location.handle) void community.openDetail(location.handle);
+      return;
+    }
+    community.clearDetail();
+    if (location.kind === 'community') void community.ensure();
+  },
+  { immediate: true, flush: 'sync' },
+);
+function navigateSidebar(target: Page) {
+  if (target.kind === 'community') {
+    if (!music.signedIn.value) loginOpen.value = true;
+    if (music.page.value.kind === 'community') {
+      communityPage.value?.refresh();
+      return;
+    }
+  }
+  music.navigate(target);
+}
+function openCommunityResource(resource: CommunityResource) {
+  if (!music.signedIn.value) return;
+  if (resource.kind === 'playlist') music.navigate({ kind: 'playlist', id: resource.id });
+  else if (resource.kind === 'album' || resource.kind === 'artist')
+    openCatalog({ kind: resource.kind, id: resource.id });
+  else if (resource.kind === 'podcast') openSceneRadio(resource.id);
+  else if (player.ready.value && !player.busy.value) {
+    const track = player.view.value?.track;
+    if (
+      player.loaded.value &&
+      (resource.kind === 'track'
+        ? !track?.voiceId && !track?.local && track?.id === resource.id
+        : track?.voiceId === resource.id)
+    ) {
+      void player.toggleSource();
+    } else if (resource.kind === 'voice') {
+      void player.select({ kind: 'voice', id: resource.id });
+    } else {
+      void player.select({
+        kind: 'songs',
+        ids: [resource.id],
+        index: 0,
+        quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+      });
+    }
+  }
+}
 const settings = useSettings(core, () => {
   void music.bootstrap(false);
 });
@@ -1169,6 +1225,7 @@ function mainPageEntered() {
   restoreDailyMenuFocus();
   focusSettingsSection();
   if (music.page.value.kind === 'artist_gallery') artistGalleryPage.value?.restore();
+  if (music.page.value.kind === 'community') void communityPage.value?.restore();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
   if (document.activeElement !== document.body) return;
@@ -2599,7 +2656,7 @@ onUnmounted(() => {
       :order-notice="sidebarOrderNotice"
       :playing-id="libraryPlaying ? currentPlaylistId : undefined"
       :items="playlistMenu"
-      @navigate="music.navigate"
+      @navigate="navigateSidebar"
       @ranking="openRanking({ kind: 'home' })"
       @refresh="refreshLibrary"
       @create="signedIn ? (playlistDialog = { kind: 'create' }) : (loginOpen = true)"
@@ -2821,6 +2878,16 @@ onUnmounted(() => {
                 :error="error"
                 @login="loginOpen = true"
                 @retry="music.bootstrap()"
+              />
+              <CommunityPage
+                v-else-if="page.kind === 'community' || page.kind === 'community_detail'"
+                ref="communityPage"
+                :model="community"
+                :playable="player.ready.value && !player.busy.value"
+                :detail-key="page.kind === 'community_detail' ? page.handle : undefined"
+                @open="(handle) => music.navigate({ kind: 'community_detail', handle })"
+                @resource="openCommunityResource"
+                @back="music.back()"
               />
               <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
               <ArtistGalleryPage

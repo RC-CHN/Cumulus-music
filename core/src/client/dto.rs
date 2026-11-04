@@ -288,6 +288,9 @@ pub use super::comments::{
     CommentSort, CommentView, CommentWriteAction, CommentWriteCommand, CommentWritePhase,
     CommentWriteView,
 };
+pub use super::community::{
+    CommunityCommentPage, CommunityDetail, CommunityFeedAction, CommunityFeedPage,
+};
 pub use super::likes::{LikeOperationView, LikeRecoveryCommand, LikeRecoveryView};
 pub use crate::catalog::details::CatalogQuery;
 

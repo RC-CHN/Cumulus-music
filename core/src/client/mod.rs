@@ -12,6 +12,7 @@ mod cold_offline;
 pub use cold_offline::{ColdOfflinePageView, ColdOfflinePlayerView};
 mod collections;
 mod comments;
+mod community;
 mod content;
 mod daily_experiment;
 mod downloads;
@@ -95,6 +96,7 @@ pub struct MusicClient {
     login_device_rows: login_devices::DeviceRows,
     search: search::experiment::SearchHost,
     podcast_discovery: podcast::PodcastDiscoveryHost,
+    community: community::CommunityHost,
     playlist_square: playlist_square::PlaylistSquareHost,
     playlist_essential: playlist_essential::PlaylistEssentialHost,
     profile_relations: profile_relations::ProfileRelationHost,
@@ -231,6 +233,7 @@ impl MusicClient {
             search: search::experiment::SearchHost::default(),
             podcast_discovery: Default::default(),
             playlist_square: Default::default(),
+            community: Default::default(),
             playlist_essential: Default::default(),
             profile_relations: Default::default(),
             member_offer: Default::default(),

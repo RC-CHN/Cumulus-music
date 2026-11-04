@@ -1,0 +1,68 @@
+关注动态与笔记详情（Windows PC 3.1.42.205594，只读）
+
+官方来源
+- recovered-js/modules/hybrid_app.chunk.1482700000000.js/205.js:134–137 将 /community
+  接到 M3105，保留空的 page:community（M3005）与业务模型 page:event（M3006）。
+  M473:8478–8500 的侧栏标题是“关注”，重复点击选中项触发 refreshEventFeed。
+  M3105:553–744、1526–1559 管理列表、瀑布分页、失败重试及详情路由；
+  其可读卡片、头部参考 references/ui-recovery/sources/packages/pc/src/pages/community/。
+- M359:25–37 调 M15.ec（M15:2519–2589）。POST /api/event/pc/history/feed/get
+  首次仅 {cursor:"-1"}，读 data.events、data.more、data.cursor。
+  M3006:95–126、255–302：初次替换；下一页原样带回服务端游标并按返回顺序追加。
+  M3006:303–338：显式刷新传数值 -1，成功更新列表但把模型游标重置成字符串 "-1"；
+  当仍有更多，下一次读取走首次替换分支。无更多时本客户端不发额外请求。
+  不附加 limit/offset、话题 actid 或作者 uid；M3105 的 waterfall size=5 是前端列表参数。
+  官方 M15 将有回包但业务非 200 的分支折为空；本客户端显示该失败并允许重试，
+  避免把拒绝当成真实空列表。
+- M3105:1121–1204、1551–1556 的 /community/detail/:id/:uid/:commentId?
+  调 M359:166–172 → M15.Sh（M15:2664–2681）：
+  POST /api/v1/event/{uid}/{id}，无业务参数，200 读 event。
+  Cumulus 核对原始 event.id 与 user.userId，404/403/410 或 200 无对象显示不可查看，
+  传输失败和身份不符保留显式重试。官方不存在时提示并自动返回；这里提供明确返回控件，
+  避免回复到达时意外切换页面。未迁移第三方深链和 commentId 定位。
+- M2157:1369–1377 → M2053:190–232 → M438:69–118：详情读取 event.info.threadId 的
+  评论，首次 offset=0、limit=60，续页 offset=已接收最新评论条数，beforeTime=0。
+  复用独立 Rust CommentApi 的官方 /api/v1/resource/comments/{thread} 请求形状，
+  仅在详情回执的 threadId 严格等于 A_EV_2_{eventId}_{authorUid} 才发出。页面展示精选、
+  最新及可重试分页；不创建输入框，也不使用可点赞/删除/回复的通用评论页面。
+  内嵌于关注卡片的展开评论、楼层/评论深链仍未迁移。
+- M21:1230–1309 和 M2157:897–929,984–1045,1077–1088 是事件投影及卡片顺序；
+  M2058:10 列出官方不支持的 21/24/39/41/42/57/58，22 且无转发显示删除占位。
+  正文与标题只按文本显示；配图沿用 M2081 / PicturesSheet 的 originUrl 或 GIF 缩略
+  pcSquareUrl，经过公共域名白名单、HTTPS 及查询去除；不实现图片保存/外链富文本。
+  单曲、歌单、专辑、歌手、播客、声音通过有界资源 ID 接现有入口；不从这里暴露作者 UID 或作者主页入口。转发只预览一层；
+  评论附件、演出及 H5 不推测内嵌路由。未经官方材料补证时未使用其它客户端。
+
+账户和失败边界
+- Rust 维护每个当前账户代次的有界易失记录，实际作者 ID、原始事件 ID、原始游标、
+  原始 JSON、地理位置、点赞者列表、授权 URL、签名/设备信息不送 IPC，也不落盘。
+  Vue 仅见本地详情句柄和续页句柄。游标保留服务端 JSON 数值/字符串类型和精度；
+  防同值与循环继续翻页，失败保持同一游标手动重试。切号、刷新替换、迟到详情及
+  后续详情确认会撤销旧能力。匿名信息存在时保守隐藏原作者和头像，不签发详情句柄；
+  同事件后来匿名或改变归属时原句柄撤销，已显示的同卡原位置更新，不保留旧作者；
+  若当时仍打开详情，也立即撤销详情及在途评论。
+- 官方 M15.O 的用户相关前端缓存不等于 nginx cache_key。当前不写社区原始缓存，
+  不伪造离线首页。已加载的同一账号列表在续页/刷新失败时保留；从详情返回保持位置
+  和触发按钮焦点。Vue 每次最多展示 24 张动态卡，最多保留 440 张；Rust 480 张句柄。
+  续页仍用滚动触发，键盘有等价按钮。超大、未推进、坏返回保留明确边界。
+- M15:1206–1222 的 api/event/get/{uid}（offset/limit/getcounts）是用户活动列表，
+  形状与按 UID 枚举相符，当前社区入口未见调用；不是关注动态或单条详情。M359:85–164、M15:2619–2663 的话题活动使用 actid、
+  lasttime 和独立热榜 /api/act/event/hot；本批未接话题广场，未把这些路径作回退。
+  M359:43–83 的新歌通知另走 /api/user/friend/new/song/notice/web/get，不是假定动态字段。
+  广告、草稿、通知、发笔记、点赞、回复、转发、删除及举报均未加入此只读批。
+
+复现
+- cargo test -p cumulus-core --test community_read --locked
+- npm --prefix frontend test
+- cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
+- CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a \
+    dbus-run-session -- /usr/bin/python3 scripts/ci/community_smoke.py \
+    --binary /absolute/community_ui_probe --root /absolute/new-proof-root --screenshots
+- 使用封闭合成 transport 和独立状态，不读取真实账号、不发真实请求或写入。
+  Rust 与 WebView 的测试不代表当前上游接口或 Windows 真机通过。
+- 2026-11-04 本机最终结果：Rust 专项 3/3，前端 780/780、格式与构建通过；
+  核心专项和桌面探针的 Clippy -D warnings 通过。760×540 真实 Linux WebView
+  通过 11 态，截取并复查深浅色关键画面：首屏失败、首次列表、详情失败、评论失败、
+  评论恢复及下一页、返回与焦点恢复、不可查看、续页失败与原游标重试、匿名替换、
+  真正空状态。仅合成数据，零真实请求及账号写入。
+  最终私有证据 .build/ui-proof/community-read-20261104-final/report.json。
