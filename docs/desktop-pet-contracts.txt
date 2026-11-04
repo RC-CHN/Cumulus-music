@@ -1,0 +1,135 @@
+音乐桌宠：官方 PC 3.1.42.205594 恢复契约
+==========================================
+
+范围与证据
+- 恢复的是网易云音乐顶部「宠物模式」、/petManager 与透明 pet-desktop 子窗，
+  与 musicDesktop（桌面歌词/装扮）和迷你播放器分开。未新增产品代码。
+- x86/x64 package/orpheus.ntpk 同为 SHA256
+  170413b1675708e87a9e89c2d122a8643a51e86b5b5ae1c6260cfeaf25b19be4；
+  native.ntpk 同为 195ecdc626580caf7e459f41e527bd5396248d1d4a0411c13c130ab0001097b3。
+  M* 是 recovered-js/modules 中的格式化 webpack 工厂。关键模块：
+  hybrid_25/M2979（服务与账号状态），hybrid_54/M3099（管理页），
+  hybrid_100/M3162（窗口主状态），hybrid_92/M3093（子窗口和交互），
+  hybrid_21/M2125（计划校验与转换）、M2026（调度和媒体池）。
+  对应 SHA256：
+  M2979 123266f8aeb82477d9360ea3cabb526746da709de4aa6618960963f42c0bafc5
+  M3162 8055bb445e85537fe948aaa3030053bdaf18936305354e27f6b25ab5e0029b0b
+  M3093 fb66307029e6a05e301d528c6fe09c5fd8cccaefa5e4fddab4be6b80920a0db3
+  M2125 3414dff6608fc9a98e47622c34b578d9d80e4d1f5715529f583e68155f7d819b
+  M2026 7738fc070085e79ace637bbdb09196d6590fd2563cebbf04b6ceabe5367506e3
+
+入口、库存与权益
+- hybrid_app/M205:18–27,57–60 将 pet-desktop 与 petManager 分开；前者订阅 app、
+  host、playing、async:lyric、async:petDesktop、setting、abtest。M473:4422–4544
+  给顶部入口、管理页跳转、当前宠物的唤醒/休眠及生成中进度；M3099:2670–2849 是
+  管理页列表和详情跳转，详情区分 petId、presetKey 与 mode=generate。
+- M2979:341–414,1538–1606 在启动、非自动切号及入口未显示时的网络恢复检查；
+  恢复的静态默认 preload#petInfo.enabled=true，服务器配置可以覆盖（M247:645–681）。
+  配置关闭则隐藏且不发 entry/check；请求结果须匹配当前检查序号。passable=true
+  或非 AB_NOT_HIT/CROWD_NOT_HIT 的明确结果允许显示入口并读取库存；因此额度用完
+  不等于功能不可见。失败或空结果不授予入口。账号切换会清模型、停生成轮询、
+  destroy 旧窗并重新检查。不能把旧账号缓存变成新账号的库存或权益。
+- M15:1012–1022,5144–5220，M12:277–313，M2201:25–52 定义以下普通 PC POST
+  接口。这里的“无字段”指无业务字段；用现有 PC 包装、签名和账号上下文。
+  路径共同前缀 /api/usertool/terminal/pc/pet/：
+  entry/check：无字段；200 data 为 passable、reason、uidRemaining 等资格状态。
+  my/pets：无字段；200 data.petList / presetList；原缓存按账号、非持久。
+  M2979:95–105,415–484 过滤 canShow=false，保留已有宠物、预设和生成状态的区别。
+  detail：{petId}；200 data 为个体详情和运行定义；不缓存。
+  config：无字段；200 保留整个响应，现有调用读取抽奖配置，不是替代 detail。
+  前三项可独立实现只读列表与详情；无响应样本时不得把“不可用”合并为“空库存”。
+- M58:293–320 分开判断 vipAuthInfo.authResult.canShow 和 canUse；后者明确为 false
+  时不能唤醒，interestsVipType=15 是 SVIP 提示，6 是 VIP 类型。官方缺失权限字段
+  并不自动禁用普通宠物，但不能据此把未领养、无定义或锁定的宠物伪装成可用。
+- M2979:727–763：已有 petId 直接唤醒；未领养预设只有 presetKey，先调用
+  draft/create {source:"PRESET",presetKey}，获取新 petId，再刷新库存并唤醒。
+  这一步创建账号资源。用于当前验证的范围只允许已领养、可用且有完整定义的宠物。
+
+写入流程（恢复到的边界，不执行）
+- draft/create 还接收 CTA/CUSTOM 等创建来源。M3099:1288–1322 将明确选中的
+  图片处理后经 NOS IMAGE、bucket yyimgs 上传，获得 bucket/objectKey 组合。
+  classification/submit {petId,nosKey} → style/submit {petId} →
+  action/submit {petId,preferredStyle} 各自返回 taskId，分段状态和失败处理见
+  M2979:765–930,1040 起及 M58:128–152。task/query {taskId} 只是读取；
+  官方超时可能发送 task/fail {taskId}，其本身是另一项写入，不能当自动重试。
+- settings/update {petId,petName,petPersonality,greetEnabled} 中 petPersonality 是
+  JSON 字符串，空为 ""；delete {petId}；lottery/draw 和领养/创建不是只读。
+  奖品历史为 /api/middle/play/multi/own/prize/list/v2
+  {activityIds,size:20,cursor}（M15:5221–5225，M2979:1473–1501）。
+  付费页、抽奖、删除、创建、上传照片、生成和更新设置均留到各自独立验证。
+- M3162:111–130 第一次显示会尝试 App.getAutoRunStatus，未启用时
+  App.setAutoRun(true)，随后存 currentPetId、petVisible、autoRunTipShown。
+  Cumulus 的移植边界保留用户已有启动偏好，不因打开桌宠修改系统自启动。
+
+渲染材料与实际 Linux 能力
+- 本地 orpheus.ntpk 的 1345 项清单含 10 张 pet PNG，均为引导、管理页、回退和
+  抽奖等插图，没有宠物本体动作 WebM 或实例播放计划。native.ntpk 只有 start.html
+  和 version.dat。M247/M58 中还有远端引导 PNG 和蛋的 Lottie，不能代替本体。
+- M2125:418–508 按 detail 读 petId、petType、petName，要求非空 petActionList
+  {action,webmUrl}、合法 petPlayPlan，以及可选 backgroundList/foregroundAssetList
+  {assetType,action,url} 和 petCorpusUrl。三层映射为背景、本体、前景；计划含
+  protocolVersion、按层 sequences/rules 和 defaults，输入事件为 resume/pause/
+  long_pause/tap/heart/drag，切换策略为 hard/after_current/ignore，支持 clip、
+  interval、repeat 和 loop。M2125:27–53 还要求 playing/paused 绑定及其引用
+  素材；构造计划成功只是数据校验，不代表媒体已解码。
+- M3093:1147–1158,1201–1211 把媒体交给官方 orpheus://cache 适配；M2026:553–593
+  用 HTTP(S) 直读或请求字节生成 video/webm Blob，有界重试。M2026:203–215,
+  1029–1104 使用 muted 内联视频，后台预载和共享 128 MiB 预算；
+  alpha 不可用时 mountInternal 直接返回，不创建三层，没有静态桌宠回退。
+- M2026:43–166 的两个内联 2×2 VP9/VP8 alpha WebM 是能力向量，不是桌宠素材。
+  ffprobe 分别确认 568/577 字节及 alpha_mode=1；libvpx 参考解码的四个 alpha
+  均为 128。GTK WebKit 2.52.6、en_US.UTF-8、Xvfb/X11、断网命名空间执行原
+  I() 判定，默认与 ALWAYS 硬件策略均返回 VP9=false、VP8=false。附加诊断中
+  两者 canPlayType="probably"，readyState=4、尺寸 2×2，但 Canvas alpha 都是
+  [255,255,255,255]，说明能播图像却丢了透明度。实际 GStreamer registry 含
+  vp8dec、vp9dec、matroskademux，缺 vp8alphadecodebin、vp9alphadecodebin、
+  codecalphademux；安装/选择正确解码链尚未验证，不能外推为所有 Linux/WebKit。
+  ALWAYS 只是请求的策略，不是 Xvfb 实机 GPU 加速证明。
+- 私有复现证据 .build/desktop-pet-audit-evidence/：从恢复的 M2026:43–166
+  提取两个 data URL 与 I()，在最小 WebKitGTK 宿主打开本地 HTML；alpha-probe-meta.json
+  是 ffprobe/参考解码结果，webkit-alpha-{default,always,diagnostics}.json 和
+  gstreamer-element-registry.json 是本机结果。此过程不使用账号或远端媒体。
+
+透明窗口与播放交互
+- M4:12854–12978 的 WindowPetDesktop 桥为 create/show/hide/destroy/move/resize/
+  getBounds/setTopmost/popupMenu，desktoppet.onMouseEvent 可取消订阅。x64
+  cloudmusic.dll SHA256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493
+  字符串文件偏移 0x1dac248、0x1dac3d0、0x1dacac0、0x1dacf18，另有
+  DesktopPetOsrWindow、DesktopPetWindow、DesktopPetClickThroughController RTTI：
+  Windows 实现是 CEF 层窗，存在 DComp/OSR 层窗/普通窗回退、透明区域点击穿透、
+  变 DPI 与至少半窗可见钳制。x86 相同职责字符串；没有运行原生 Windows DLL，
+  原生逐像素命中掩码、线程 ABI 与创建失败的完整分支仍未复现。
+- M3162:383–589 新窗用透明背景、置顶，起始 x=y=200，先隐藏。M2094:28–61
+  默认本体 200，尺寸 140/200/260，外窗宽 260、高分别 319/379/439；
+  大小按账号保存。M3093:85–90,655–759 按账号与显示器保存位置，屏幕/休眠变化
+  重新钳制；M2309:29–62 Windows 每秒查 notification state 3/4，自动隐藏，
+  离开再恢复，手动唤醒在当前全屏期间有覆盖锁（M3093:385–401）。
+- M2176:41–77 用 UUID 暂存、消费后删除运行输入；M2175:58–148 使用
+  pet-desktop-runtime-broadcast，去重输入 ID 与递增 revision。两处 IPC 都要求
+  数字型 petId；独立的 M2125 定义校验接受字符串/数字。不要默默将不安全数字
+  强转成正确 ID。M3162:590–774 匹配 UUID 的 modalReady 补投；仅 body 视频
+  真有一帧时子窗上报 rendererReady 后显示（M3093:2757–2795）。启动期间 5/20 秒
+  记录，30 秒上限；旧实例的就绪/失败不影响当前窗。同宠物复用，切宠物换输入，
+  Hide 暂停渲染并保留实例；Destroy 清定时器、订阅与窗。
+- M3093:410–491,515–645 单击触发 tap/问候，300ms 双击激活主窗，拖动与点击
+  去重；右键：打开云音乐、戳一下、设置宠物、主动对话、尺寸、歌词、退出。
+  M3093:1665–1889 播放/暂停走原 playing/switchResumeOrPause；普通上下首
+  jump2Track flag -1/1，FM 另走 fmPlaying/playPre/playNext；空队列三键请求
+  每日推荐；心形使用原歌曲喜欢动作、声音资源禁用。桌宠无第二个音频播放器。
+  歌词开关作用于桌宠内层，曲目切换和进度跟随主播放器；问候 corpus 与副歌/
+  emotionBubble 为可选层，M3162:179–295 仅在可见且当前曲目仍匹配时更新。
+  恢复的情绪请求经 M168，副歌来自已加载轨道模型；不臆造本地情绪结果。
+
+可实施边界
+- 下一步可只做 Rust 的 entry/check、my/pets、现有宠物 detail，保留入口/权益/
+  生成状态及账号代次，先用合成冻结样本审计。不开领取、设置、上传或付费；不会
+  在启动、登录或打开页面时创建宠物或修改自启。这个读面不算桌宠已可用。
+- 显示桌宠前先取得一份用户许可的、已领养且可用的 detail 与真实运行材料，
+  保持鉴权和完整 URL 在原生，子窗只收有边界的媒体标识和计划。用当前账号和
+  窗口代次绑定输入、资源和就绪；未通过透明首帧不展示。生产不开玩具占位。
+- Linux 先复核可分发的 alpha 解码链，或另证原生解码与合成能保持真实透明度、
+  首帧、隐藏释放和帧率；Windows WebView2 另跑原始向量、透明窗口及输入穿透。
+  现有桌面歌词 Tauri 窗只能复用透明窗/置顶等原语，整窗穿透不能替代活动区域。
+  X11/XWayland 与原生 Wayland、Windows 高 DPI/多屏、全屏自动隐藏单独验收。
+  未核对到真实宠物库存、服务权限、真实计划/素材或 Windows 运行结果，本契约
+  不能把音乐桌宠记为已迁移。
