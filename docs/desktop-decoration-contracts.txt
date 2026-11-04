@@ -1,0 +1,217 @@
+官方 Windows PC 3.1.42.205594：装扮中心与音乐桌面
+===================================================
+
+范围与证据
+----------
+
+本文是静态恢复，未连接账号、接口、素材 CDN、收银台或 Windows Explorer，
+未验证上游当前响应及实际安装、支付、桌面显示或系统电源行为。未修改 Cumulus
+现有外观偏好，也未引入产品入口。桌面宠物、桌面歌词、播放页装扮分别有独立的
+路由/状态和桥接，不能用它们的实现或测试覆盖音乐桌面。
+
+下文 A/M 指 references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js/M.js；C50/M、C64/M、C73/M、C75/M 指同目录
+hybrid_{50,64,73,75}.chunk.1482700000000.js/M.js，行号为恢复后的 webpack
+工厂行号。x86 和 x64 安装包的 orpheus.ntpk、common.skin、dark.skin
+逐字节一致；另独立检查了两个不同架构的 cloudmusic.dll。没有使用第三方源码。
+对应包 SHA-256：
+  orpheus.ntpk 170413b1675708e87a9e89c2d122a8643a51e86b5b5ae1c6260cfeaf25b19be4
+  common.skin  2233f172eed9b06feb0d9f18263af2d1e42bf4e290a0ab343df8962dbc8f7215
+  dark.skin    26e29e0cd9746e667c2182a1d17beccd60201b100fc02c111fe6a6dcc75ca749
+
+入口及本地皮肤
+--------------
+
+- 顶栏「换肤」图标 tid_header_skin_btn 直接导航 /decoration
+  (A/473:6149–6163)；活动引导可以导航 /decoration/desktop?from=guide&
+  desktopId=<id>，仅标出目录里的目标卡片，不因普通导航自动应用
+  (A/473:6125–6135，C50/3103:2387–2393)。
+- A/205:155–158 装入 C50/3103 和 page:decorationSkin（C180/3012，空
+  模型）。中心是本地 React 页面：精确 /decoration「个性皮肤」、
+  /decoration/pendant「头像挂件」、/decoration/desktop「音乐桌面」。
+  后者只有 native desktop.support 为真才装入；不支持时回到 /decoration
+  (C50/3103:2642–2708,2805–2866)。头像挂件是单独的
+  https://music.163.com/st/vippendant iframe（另有官方测试域条件）及主题、
+  登录、权益购买消息桥；不是皮肤目录 API (C50/3103:2048–2051,2082–2140)。
+- 「官方」分组永远先于远程分组。Windows 本地卡片是「默认」light、「经典红」
+  red、「酷炫黑」dark 和「按钮颜色自定义」color。质感玻璃 transparentglass
+  受另一平台/实验开关约束；开启该分支时替换独立的 color 卡片，并非
+  Windows 默认选项 (C50/3103:817–844,997–1009,1733–1750；
+  A/158:215–223 原生透明只在 macOS 主窗口调用)。
+- 本地普通卡片直接 toggleTheme(id)。A/3:216–239 默认 light，持久化
+  localStorage.currentTheme 并注入根节点 CSS token；相同键可强制重载。
+  A/473:12430–12432 连接 A/158 的 token、验证和背景处理；A/158:127–180
+  使用内建 token 或本地缓存，同时选择官方 common/dark 图形包，经
+  A/4:14271–14286 的 app.loadSkinPackets(type,name,extra) 同步原生图标。
+  common.skin/dark.skin 的解包清单包含按钮图标等，不是远程商品包。
+- color 面板中的选色或滑块即时应用并写入 customSkin 草稿，记录
+  color/isCustom/hue/brightness；确定保存并保留 color；取消恢复打开前
+  的 theme，若原本就是 color 则恢复打开前的颜色配置，否则清掉该草稿
+  (C50/3103:923–932,974–990,1013–1044)。这是已证实的实时试用/撤销；
+  不需要账号、目录、购买或系统桌面能力。Cumulus 现有 light/dark/system
+  偏好不等同于此完整卡片/颜色流程。
+
+远程皮肤：目录、预览、权益和使用
+--------------------------------
+
+所有下列 /api/... 是官方逻辑路径：A/15 转交 A/12:277–319 的通用 POST
+封装（无参调用不传 endpoint 专用 data）；A/402:412–450 根据官方
+客户端配置/会话选择实际 /api、/eapi、/xeapi 线路，以下调用不指定
+forceXeapi。这里没有取得这些请求的实时封包。
+
+1. Windows 挂载个性皮肤页面即调用 A/15:689–691,3810 的
+   POST /api/music-vip-center/app/pc/skin/list，无 endpoint 专用参数。
+   code=200 取 data.tabs，仅展示 detailVoList 是非空数组的分组，失败
+   或空返回仍保留「官方」组。分组 id/name/detailVoList；卡片
+   id/name/url/type/cornerType，previewUrl 仅用于预览，fileUrl/packageType
+   用于使用 (C50/3103:165–188,1254–1260,1768–1772,1809–1829,1844–1857,
+   1949–1992)。A/169:44–45 另有 15 分钟路径缓存表项，A/12 的字符串封装
+   传 cacheStrategy.enable=false；不要由该表项推断缓存一定命中。
+   此目录没有 UI 登录门槛，但访客线路是否成功仍未实测。
+2. 「预览」打开 皮肤预览 弹窗，渲染 previewUrl 和权益按钮；打开、关闭
+   不切换主题、不写资源，也没有限定时长试用端点。应用前后的卡片使用态
+   按主题键去掉 ^(dark|light) 后与商品 id 比较。当前正在使用的卡片动作
+   禁用 (C50/3103:98–124,1150–1258,1838–1875,1936–1943,1986–1991)。
+3. 权益先按 type=6 黑胶 VIP、15 黑胶 SVIP 分支，各取
+   isVinylVip/vinylVipExpireTime 或 isPlusVip/plusVipExpireTime；
+   其他 type 在该 UI 判断里可使用。未登录的付费类型触发 host/login。
+   无对应权益时「开通」/「续费」只打开收银台，参数 trigger:"user"、
+   source/refer:"vipSkin"、sourceId:String(id)||""、tab:"vip"/"svip"；
+   不是应用，也没有在该动作内直接付款 (C50/3103:18–86,1188–1202,
+   1859–1869)。
+4. 使用须有 id 和 fileUrl，packageType===1 产生 dark<id>，否则
+   light<id>。先调用 A/158:46–61：
+   POST /api/vipauth/app/auth/query
+   {resourceIdList:<去前缀后的字符串 ID>,resourceTypeList:24}
+   （这里是标量，不能按字段名猜成数组）。data[0].canUse 后才
+   fetch orpheus://orpheus/customskin?id=<key>&&name=config.json&&
+   url=<fileUrl>&&fetchFromServer=false，读取 JSON。此辅助函数遇到拒绝、
+   缺数据或异常返回 {}；原页面 await 后未检查返回值就 toggleTheme，
+   不能据 UI 切换断言下载成功。A/158:154–168 随后的本地 token 加载要求
+   至少一个 -- 前缀键，否则回落 light 并改持久化键。背景图由同 scheme 的
+   background.png 从缓存读 (A/158:236)。
+5. 主题 provider 另调用 verifyCustomSkin(new,old)，未等待完成
+   (A/3:237–239，A/473:12430–12432)。A/158:243–265 对远程新资源发
+   POST /api/vipauth/app/auth/set {resourceId:<id>,resourceType:24}，
+   对远程旧资源发 /api/vipauth/app/auth/stop 同形参数，然后删旧
+   wasm/skin/<旧主题键>/{background.png,config.json}。内建及用户自定义
+   不发对应远程授权写入；从 color/customskin 离开到普通主题也清理本地
+   customSkin 配置。A/15:423–428,2592–2594 对应这三个具体路由；不要误用
+   同模块的 /api/vipauth/app/interests/auth/...。这是有网络写入的
+   应用/退出流程，未验证旧新请求的确认、丢响应处理和跨设备状态；
+   不能随目录/预览自动调用，不能在失败后盲重发。CDN 商品包的原生
+   customskin 安装校验、内容许可和当前资源实物未取得。
+
+音乐桌面：目录、使用、屏幕与退出
+--------------------------------
+
+- C50/3103:2458–2469 进页请求 C75/2172:355–381 的 fetchDesktopMusicSource。
+  A/15:429–430,2595–2618 是
+  POST /api/vipauth/app/auth/interests/query/tab
+  {interestsType:136,needPrice:false}。code=200 取 data[0].interestsList，
+  每项以 String(id) 和 JSON.parse(formContentJson||"{}") 合并；否则封装
+  给空列表。页面优先非空响应、再用 configCenter["preload#pcMusicDesktop"]
+  的 data；旧客户端或配置缺首项 md5 时可用包内默认表
+  (C50/3103:2330–2359,2376–2386；A/247:186 起)。默认表是名称、缩略图、
+  MP4 URL、MD5、布局、权益等元数据，不是已随包安装的 MP4。加载目录还有
+  一个特定旧素材的本地 cache cfg/dat 一次性清理分支 (C75/2172:383–408)；
+  复刻只读目录不应附带该迁移。旧版 ID 1–5 迁移到 1443922–1447922
+  (C75/2172:315–320,375–381)。
+- 权益字段为字符串 privilege：free 可直接用；访客遇非 free 先登录；
+  vip 要 VINYL 或 SVIP，svip 要 SVIP。不满足走 source/refer:
+  "musicDesktop" 的收银台。通过仍须在线。卡片有「使用」/「停用」和加载/
+  失败重试，未发现与皮肤图片预览等同的独立试用操作
+  (C50/3103:2395–2456,2544–2595)。
+- useDesktopBackground("use") 在当前同 ID、状态 none、非启动时跳过。
+  否则打开独立 musicDesktop 子窗口（非 pet-desktop），存
+  currentMusicDesktopId/currentData/isAppStartSetting/isScreenChange，
+  持久化 musicDeskTop.currentData、置 loading，并记录 usedMusicDesktopIds。
+  startup 或屏幕变更不触发活动分支；普通使用仅命中特定活动 ID 才走
+  POST /api/music/multi/terminal/pc/desktop/activity/report {desktopId:String(id)}
+  和可选权益弹窗。历史代码失败最多四次尝试、每次等待 5s；不能当必需
+  的应用确认，也不应原样自动重放此副作用。引导读另外用
+  POST /api/link/position/show/resource {positionCode,extJson}，例如
+  music_desktop_select_guide_pos 的 {usedMusicDesktopIds}；
+  music_desktop_using_guide_pos 的 {usedMusicDesktopIds:[],musicDesktopId,
+  desktopUseGuideClickCount} (C75/2172:65–116,440–508；
+  C50/3103:2713–2723；C75/3123:720–738；A/15:4888–4896,5028–5031)。
+  独立的引导按钮点击才会解析 orpheus://desktop/mode/using?id=...，
+  按已加载目录匹配后调用 useDesktopBackgroundById；未找到时提示。
+  该直接分支没有卡片层相同的登录/权益检查；不应把远程引导目标当授权
+  (C50/3103:2756–2775；C75/2172:413–437)。
+- app/modalOpen 为 musicDesktop 建 subApp.html?route=musicDesktop...，
+  调 WindowDesktop.create(url,false,selectedDisplayId||"")；真正视频
+  metadata 就绪后延时 2s 派发 loadingStatus:"none"，才
+  WindowDesktop.show(true,selectedDisplayId)。同一切换中旧画面可先 hide。
+  视频 onError 显示 error（部分屏幕切换错误忽略），目录失败遮罩提供
+  显式再试及 8s loading 超时。stop 关闭子窗口并经 native destroy，
+  清除 currentData 和 ID，不删除用户壁纸文件
+  (A/1384:3380–3403,3581–3614；C75/2172:494–508,558–582；
+  C75/3123:1114–1144；C50/3103:2569–2595)。
+- 首次成功分支可能调用 App.getAutoRunStatus()/setAutoRun(true)，
+  Windows 还会提示并在 toast 关闭后最小化。此为实际官方副作用，
+  Cumulus 如实现须将开机自启动保留为独立用户设置。启动先读
+  musicDeskTop.currentData，要求 videoUrl+md5 或 zipConfig.videoBottomUrl+
+  zipMd5；通过 native support 后才恢复。support=false 清旧状态。
+  会员信息刷新延迟后，权限丢失或活动过期会把状态改为默认条目并提示；
+  Windows 并无该模型 macOS 专属的注销即停分支
+  (C75/2172:306–339,599–629,683–750,808–873)。
+- 首次选屏提示须多个显示器且 PH-PC-desktopPicChooseScreen=t1；确认
+  写 selectedDisplayId，取消仍执行原操作。已运行才可点常设选屏；
+  确认更换会 stop→use，两个动作标 isScreenChange:true，避免重复活动
+  上报。Os.getAllDisplayInfo() 标注主屏，订阅显示设备变化；若原
+  deviceId 消失，重设 "" 并重新挂接 (C50/3103:2407–2441,2699–2705,
+  2738–2755,2867–2877；C75/2172:755–804,867–873)。
+- 设置页「音乐桌面」由 support 控制：未开启只导航到目录，已开启
+  走 stop。托盘也按 support/当前 ID 提供开关；开启分支先恢复窗口
+  再导航，样式入口只在启用时显示。托盘「桌面屏幕常亮」存 false、
+  「跟随系统熄屏」存 true，属性名反直觉为 isDecorationDesktopNeedAwake；
+  true 时视频加 data-disablewakelock。该静态属性不证明 Windows 实际
+  睡眠行为 (C64/3097:5845–5905,5919–5939；A/622:2879–2989；
+  C73/3085:3362–3405；C75/3123:1114–1120)。
+
+素材、桌面宿主和可实现边界
+--------------------------
+
+- C75/3123:841–881,934–1017,1029–1062,1784–1800：
+  旧式 videoUrl+md5 经 orpheus://orpheus/cacheresource 拉取，再转
+  Blob URL；新版需要 zipUrl、zipMd5、zipConfig，以 &unpack=1 解包，
+  按 id/md5/path 读单个文件；前景视频走 WebGL canvas，底层视频静音、
+  循环，特定样式支持横竖屏素材、前后层交替、按时间换视频
+  (ext.videoConfigJson)。这是数据与渲染合同，不是安装包中已取得
+  完整版权素材；恢复 JS 和 MD5 字段也不能证明上游资源内容与可分发性。
+- A/205:48–55 的子窗口同步 app/host/playing/page:musicDesktop/
+  async:decorationDesktop/setting，关注播放状态、当前曲目、评论、
+  屏幕和熄屏开关。渲染可打开评论或主播放页，并用
+  playing/switchResumeOrPause（miniBar triggerScene）控制共享播放器。
+  读初始轮播 POST /api/comment/pc/song/mode/initial/carousel（无参），
+  曲目轮播 /api/comment/pc/song/mode/carousel {songId}，均取 data。
+  本地曲目用匹配到的 onlineTrack ID；未匹配不当作网络歌曲
+  (C75/2172:511–555；C75/3123:822–839,1103–1150；A/15:4344–4355)。
+- A/4:12781–12852 是独立 native desktop.destroy、desktop.create
+  {url,visible,deviceId}、desktop.load {url}、desktop.show
+  {visible,deviceId}、desktop.support 和 HookMouseMessage 回调；
+  create/destroy 的主路径见上，未将 load 猜成每次必用。子窗口用
+  HookMouseMessage 的 type=514 和 x/y，按 300ms 节流做桌面命中测试
+  (C75/3123:896–900)。这不是普通无边框 Tauri 窗口或设置静态系统壁纸。
+- 两版 cloudmusic.dll 在同一区段存在 GetWindowDesktopInfo 日志、
+  UTF-16 Progman / SHELLDLL_DefView / WorkerW，以及
+  desktop.onHookMouseMessage。x86 对应文件偏移 b06084、b06050、
+  b05ffc、b06020、b06580；x64 为 1db1380、1db13f8、1db1408、
+  1db1430、1db1960。结合已恢复窗口桥，足以把 Windows Explorer
+  桌面层宿主与普通窗口区分；这些字符串不证明实际 HWND 父子层级、
+  渲染模式探测、Z-order、Explorer 重启恢复和鼠标钩子的确切实现，
+  也不证明 Linux Wayland/X11 桌面可使用同一机制。
+
+后续可独立验证的实现边界：
+1. 纯本地的官方卡片与可撤销按钮颜色预览；以自有 token/素材重做，
+   和现有偏好迁移、实际 WebView 重启恢复一起验证。
+2. 独立皮肤目录 DTO、内建兜底、图片预览及登录/权益说明；
+   可以先用隔离夹具验证，无需下载商品包、上报授权、打开收银台。
+   音乐桌面目录也能单独验证投影，但正式入口仍须遵守 native support
+   门槛，不能用只读预览页面声称支持系统壁纸。
+3. 远程皮肤实际使用待取得并校验包样本、资产许可、会话隔离及
+   auth/set/stop 确认和恢复；不把页面变色当成安装成功。动态桌面另需
+   平台宿主、屏幕移除和 shell 重启回收、窗口输入与清理、真实渲染
+   和电源行为。Linux 和 Windows 分别验证；在本地 WebView 能播视频
+   不能替代这两平台的桌面挂接验证。
