@@ -143,8 +143,9 @@
       after.boundParametric === prior.boundParametric && !after.deviceParametric,
     'material checks do not change playback effects');
     const currentTuning = () => one('[data-device-tuning]');
+    let equalizerRevision = prior.equalizer.revision;
     const sameSong = (value) => value.state === 'playing' && value.playId === prior.playId &&
-      value.entryId === prior.entryId && value.equalizer.revision === prior.equalizer.revision;
+      value.entryId === prior.entryId && value.equalizer.revision === equalizerRevision;
     const launcher = () => one('.playerbar .equalizer-toggle');
     if (native) {
       const apply = async () => {
@@ -209,10 +210,22 @@
       await wait(() => !one('.equalizer-dialog[open]') && document.activeElement === launcher() &&
         launcher()?.getAttribute('aria-label') === '管理耳机音效' &&
         launcher()?.dataset.headphoneState === 'configured', 'footer reports the active headphone tuning');
+      // This synthetic adapter processes PEQ but does not provide a graphic
+      // equalizer. Its warning must stay visible beside a configured device.
+      const combined = await invoke('player_action', { epoch: account.epoch, action: {
+        kind: 'equalizer', expected_revision: equalizerRevision,
+        settings: { enabled: true, gains: [3, 0, 0, 0, 0, 0, 0, 0, 0, 0] },
+      } });
+      equalizerRevision = combined.equalizer.revision;
+      await wait(() => launcher()?.dataset.effectState === 'problem' &&
+        launcher()?.dataset.equalizerState === 'problem' && launcher()?.dataset.headphoneState === 'configured' &&
+        launcher().title.includes('耳机调音') && launcher().title.includes('均衡器'),
+      'the headphone shortcut retains the independent graphic EQ warning');
       click(launcher());
       await wait(() => dialog()?.getAttribute('aria-label') === '耳机音效' &&
         currentTuning()?.dataset.deviceTuning === 'configured', 'direct management reflects current tuning');
-      assert(!selects().length && button(dialog(), '浏览耳机音效') && button(dialog(), '打开均衡器'),
+      assert(currentTuning().textContent.includes('合成耳机乙') && !selects().length &&
+        button(dialog(), '浏览耳机音效') && button(dialog(), '打开均衡器'),
         'current management offers explicit browse and equalizer without loading either');
       await capture('10_headphones_footer');
       await emit('effect-peq-fail-runtime');

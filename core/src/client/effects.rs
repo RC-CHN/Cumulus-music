@@ -415,11 +415,11 @@ impl MusicClient {
                 "stop the registered parametric effect before applying headphone tuning",
             ));
         }
-        let (_, plan) = self
+        let (_, prepared) = self
             .effect_material_library()?
             .prepare_device_parametric_for(&token, brand, model, RunOptions::default())
             .await?;
-        let plan = plan.ok_or(Error::State(
+        let prepared = prepared.ok_or(Error::State(
             "headphone tuning is not a verified standalone parametric effect",
         ))?;
         self.session.check_generation(&token)?;
@@ -427,7 +427,12 @@ impl MusicClient {
             .player
             .controller()
             .await?
-            .apply_device_parametric(&token, DeviceParametricTarget { brand, model }, plan)
+            .apply_device_parametric(
+                &token,
+                DeviceParametricTarget { brand, model },
+                prepared.plan,
+                prepared.model_name,
+            )
             .await?;
         self.session.check_generation(&token)?;
         Ok(result)

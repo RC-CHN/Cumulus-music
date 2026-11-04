@@ -80,9 +80,16 @@ const headphone = computed(() => {
 const effectEntry = computed(() => {
   const status = headphone.value?.status;
   if (!status) return effectLauncher(view.value?.equalizer, view.value?.boundParametric);
+  const eqProblem = equalizerEntry.value.state === 'problem';
+  const label = headphoneTuningLabel(status);
   return {
-    state: status === 'configured' ? 'configured' : status === 'deferred' ? 'pending' : 'problem',
-    label: headphoneTuningLabel(status),
+    state:
+      eqProblem || status === 'detach_required' || status === 'processor_failed'
+        ? 'problem'
+        : status === 'deferred'
+          ? 'pending'
+          : 'configured',
+    label: eqProblem ? label + '；' + equalizerEntry.value.label : label,
   };
 });
 function openEqualizer() {

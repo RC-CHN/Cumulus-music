@@ -12,6 +12,17 @@ pub struct EffectDeviceRow {
     pub name: String,
 }
 
+pub(super) fn device_name(value: &Value) -> Option<String> {
+    let name: String = value
+        .as_str()?
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(161)
+        .collect();
+    (!name.is_empty() && name.chars().count() <= 160).then_some(name)
+}
+
 fn project(
     records: Vec<Value>,
     id_key: &str,
@@ -30,17 +41,8 @@ fn project(
             if !ids.insert(id.value()) {
                 return Err(Error::Response("duplicate effect device identity"));
             }
-            let name: String = record[name_key]
-                .as_str()
-                .ok_or(Error::Response("invalid effect device name"))?
-                .trim()
-                .chars()
-                .filter(|c| !c.is_control())
-                .take(161)
-                .collect();
-            if name.is_empty() || name.chars().count() > 160 {
-                return Err(Error::Response("invalid effect device name"));
-            }
+            let name = device_name(&record[name_key])
+                .ok_or(Error::Response("invalid effect device name"))?;
             Ok(EffectDeviceRow { id, name })
         })
         .collect()

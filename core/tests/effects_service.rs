@@ -121,7 +121,7 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
         let temp = tempfile::tempdir().unwrap();
         let registry = ProfileRegistry::open(temp.path(), ApiOrigin::Pc).unwrap();
         let (bytes, _) = sample("first");
-        let model_row = json!({"code":200,"data":[{"soundId":300,"soundType":2,"size":bytes.len(),
+        let model_row = json!({"code":200,"data":[{"soundId":300,"soundType":2,"deviceModel":"  合成耳机\u{7} ","size":bytes.len(),
             "soundMd5":hex::encode(Md5::digest(&bytes)),"deviceSoundUrl":URL}]});
         let mut replies = vec![
             json!({"code":200,"songs":[{"id":1,"name":"Synthetic","dt":30000,"ar":[],"al":{"id":1,"name":"Synthetic"}}],"privileges":[]}).into(),
@@ -166,6 +166,7 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
                 .device_parametric
                 .unwrap();
             assert_eq!(pending.status, ParametricBindingStatus::Deferred);
+            assert_eq!(pending.model_name.as_deref(), Some("合成耳机"));
             let first = pending.activation_id.simple().to_string();
             assert!(matches!(
                 client
@@ -207,7 +208,7 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
                         .await
                         .unwrap()
                         .device_parametric,
-                    Some(next)
+                    Some(next.clone())
                 );
                 assert_eq!(
                     client
@@ -232,11 +233,12 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
         let view = result.unwrap();
         assert_eq!(view.state, PlaybackStatus::Playing);
         assert_eq!(
-            view.device_parametric.map(|view| view.status),
+            view.device_parametric.as_ref().map(|view| view.status),
             (!cancel_before_load).then_some(ParametricBindingStatus::ProcessorFailed)
         );
         if let Some(failed) = view.device_parametric {
             assert_eq!(failed.activation_id, activation_id);
+            assert_eq!(failed.model_name.as_deref(), Some("合成耳机"));
         }
         assert_eq!(*device.parametric_at_unpause.lock().unwrap(), [false]);
         assert_eq!(api.calls().len(), if cancel_before_load { 4 } else { 3 });

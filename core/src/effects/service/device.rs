@@ -7,6 +7,7 @@ use crate::{
     effects::{
         api::EffectsApi,
         catalog::{EffectId, MaterialDescriptor},
+        device_directory::device_name,
         material::{Component, peq_calls, route_sections},
         parametric::ParametricPlan,
     },
@@ -19,6 +20,11 @@ pub enum DeviceMaterialCheck {
     Pending,
     StandalonePeq,
     UnsupportedGraph,
+}
+
+pub(crate) struct VerifiedDeviceParametric {
+    pub plan: ParametricPlan,
+    pub model_name: Option<String>,
 }
 
 impl EffectsLibrary {
@@ -42,7 +48,7 @@ impl EffectsLibrary {
         brand: EffectId,
         model: EffectId,
         options: RunOptions,
-    ) -> Result<(DeviceMaterialCheck, Option<ParametricPlan>)> {
+    ) -> Result<(DeviceMaterialCheck, Option<VerifiedDeviceParametric>)> {
         if options.byte_budget == Some(0) {
             return Err(Error::InvalidInput("material byte budget must be positive"));
         }
@@ -90,7 +96,10 @@ impl EffectsLibrary {
         let prepared = match routing.sections.as_slice() {
             [entry] if entry.component == Component::Peq => {
                 let plan = ParametricPlan::from_calls(&peq_calls(entry.section)?)?;
-                plan.enabled().then_some(plan)
+                plan.enabled().then(|| VerifiedDeviceParametric {
+                    plan,
+                    model_name: device_name(&row["deviceModel"]),
+                })
             }
             _ => None,
         };

@@ -49,7 +49,7 @@ pub struct DeviceParametricTarget {
     pub model: EffectId,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 pub struct DeviceParametricView {
     #[serde(flatten)]
     pub target: DeviceParametricTarget,
@@ -58,6 +58,8 @@ pub struct DeviceParametricView {
         serialize_with = "serialize_device_activation"
     )]
     pub activation_id: uuid::Uuid,
+    #[serde(rename = "modelName", skip_serializing_if = "Option::is_none")]
+    pub model_name: Option<String>,
     pub status: ParametricBindingStatus,
 }
 
@@ -69,9 +71,15 @@ fn serialize_device_activation<S: serde::Serializer>(
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct DeviceActivation {
+struct DeviceActivationId {
     target: DeviceParametricTarget,
     id: uuid::Uuid,
+}
+
+#[derive(Clone)]
+struct DeviceActivation {
+    identity: DeviceActivationId,
+    model_name: Option<String>,
 }
 
 pub(super) struct InspectRequest {
@@ -95,9 +103,9 @@ enum Selection {
     Plain(Option<Box<ParametricPlan>>),
     Bound(Arc<BoundParametric>),
     ClearBound(BoundParametricTarget),
-    DeviceRequest(DeviceParametricTarget, Box<ParametricPlan>),
+    DeviceRequest(DeviceParametricTarget, Box<ParametricPlan>, Option<String>),
     Device(DeviceActivation, Box<ParametricPlan>),
-    ClearDevice(DeviceActivation),
+    ClearDevice(DeviceActivationId),
 }
 
 #[derive(Default)]
@@ -116,16 +124,16 @@ pub(super) struct State {
 }
 
 impl State {
-    fn deferred_device(&self) -> Option<DeviceActivation> {
+    fn deferred_device(&self) -> Option<&DeviceActivation> {
         match &self.deferred {
-            Some(Selection::Device(target, _)) => Some(*target),
+            Some(Selection::Device(target, _)) => Some(target),
             _ => None,
         }
     }
 
     pub(super) fn device_status(&self) -> Option<DeviceParametricView> {
         use ParametricBindingStatus as Status;
-        let (activation, status) = if let Some(target) = self.device {
+        let (activation, status) = if let Some(target) = &self.device {
             (
                 target,
                 if self.detach_required {
@@ -137,11 +145,12 @@ impl State {
         } else if let Some(target) = self.deferred_device() {
             (target, Status::Deferred)
         } else {
-            (self.failed_device?, Status::ProcessorFailed)
+            (self.failed_device.as_ref()?, Status::ProcessorFailed)
         };
         Some(DeviceParametricView {
-            target: activation.target,
-            activation_id: activation.id,
+            target: activation.identity.target,
+            activation_id: activation.identity.id,
+            model_name: activation.model_name.clone(),
             status,
         })
     }
@@ -210,9 +219,13 @@ impl PlaybackController {
         token: &SessionToken,
         target: DeviceParametricTarget,
         plan: ParametricPlan,
+        model_name: Option<String>,
     ) -> Result<ParametricApplication> {
-        self.request_parametric(token, Selection::DeviceRequest(target, Box::new(plan)))
-            .await
+        self.request_parametric(
+            token,
+            Selection::DeviceRequest(target, Box::new(plan), model_name),
+        )
+        .await
     }
 
     pub(crate) async fn clear_device_parametric(
@@ -223,7 +236,7 @@ impl PlaybackController {
     ) -> Result<ParametricApplication> {
         self.request_parametric(
             token,
-            Selection::ClearDevice(DeviceActivation {
+            Selection::ClearDevice(DeviceActivationId {
                 target,
                 id: activation_id,
             }),
@@ -416,10 +429,13 @@ impl Actor {
             }
         }
         let selection = match selection {
-            Selection::DeviceRequest(target, plan) => Selection::Device(
+            Selection::DeviceRequest(target, plan, model_name) => Selection::Device(
                 DeviceActivation {
-                    target,
-                    id: uuid::Uuid::new_v4(),
+                    identity: DeviceActivationId {
+                        target,
+                        id: uuid::Uuid::new_v4(),
+                    },
+                    model_name,
                 },
                 plan,
             ),
@@ -438,16 +454,22 @@ impl Actor {
 
     async fn parametric_clear_device(
         &mut self,
-        target: DeviceActivation,
+        target: DeviceActivationId,
     ) -> Result<ParametricApplication> {
-        if self.parametric.deferred_device() == Some(target) {
+        let is_target = |activation: &DeviceActivation| activation.identity == target;
+        if self.parametric.deferred_device().is_some_and(is_target) {
             self.parametric.deferred = None;
-        } else if self.parametric.device == Some(target) {
+        } else if self.parametric.device.as_ref().is_some_and(is_target) {
             if self.pending.is_some() {
                 return Err(Error::MutationBusy);
             }
             return self.parametric_apply(None).await;
-        } else if self.parametric.failed_device == Some(target) {
+        } else if self
+            .parametric
+            .failed_device
+            .as_ref()
+            .is_some_and(is_target)
+        {
             self.parametric.failed_device = None;
         } else {
             return Err(Error::StaleResponse);
@@ -521,7 +543,7 @@ impl Actor {
             }
             Selection::Device(target, plan) => {
                 self.parametric.failed_device = None;
-                self.parametric.device = Some(target);
+                self.parametric.device = Some(target.clone());
                 self.parametric.possibly_attached = true;
                 let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
                     if engine.apply_parametric_component(*plan)? {
@@ -660,7 +682,7 @@ impl Actor {
 
     pub(super) async fn parametric_retry_reset(&mut self) -> Result<()> {
         if self.parametric.detach_required {
-            let device = self.parametric.device;
+            let device = self.parametric.device.clone();
             self.parametric_reset().await?;
             self.parametric.failed_device = device;
         }
@@ -691,7 +713,7 @@ impl Actor {
                     .applied
                     .as_ref()
                     .map(|binding| binding.target());
-                let device = self.parametric.device;
+                let device = self.parametric.device.clone();
                 // A native callback may have emitted silence. Continue only
                 // when removal was actually acknowledged; the actor's usual
                 // error path stops playback if that cannot be established.

@@ -243,9 +243,10 @@ onUnmounted(resetReads);
       <p role="status">
         {{ headphoneTuningLabel(applied.status) }} ·
         {{
-          brand === applied.brand
+          applied.modelName ??
+          (brand === applied.brand
             ? (models.find((item) => item.id === applied?.model)?.name ?? `型号 ${applied.model}`)
-            : `品牌 ${applied.brand} · 型号 ${applied.model}`
+            : `品牌 ${applied.brand} · 型号 ${applied.model}`)
         }}
       </p>
       <button
