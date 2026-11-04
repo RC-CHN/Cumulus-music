@@ -157,7 +157,7 @@ import {
 import { useLocal } from './composables/useLocal';
 import { useLocalMatching } from './composables/useLocalMatching';
 import type { LocalQuery } from './services/local';
-import { useComments } from './composables/useComments';
+import { useComments, type CommentReadPosition } from './composables/useComments';
 import type { CommentResource } from './services/comments';
 import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
@@ -167,7 +167,7 @@ import { usePlaylists } from './composables/usePlaylists';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { createPlayerResume } from './services/playerResume';
-import { useMusic, type Page } from './composables/useMusic';
+import { useMusic, type Page, type PlaylistSection } from './composables/useMusic';
 import { downloadSectionQuery } from './services/downloadPage';
 import { useCore } from './services/core';
 import { relayPlaybackDisposition } from './services/relay';
@@ -186,6 +186,7 @@ const music = useMusic(undefined, (commit) => {
   const proceed = () => {
     catalogDetailPage.value?.checkpoint();
     collectionsPageRef.value?.checkpoint();
+    checkpointPlaylistViewport();
     commit();
   };
   if (batchTarget.value && batchPage.value)
@@ -1626,20 +1627,99 @@ const playlistComments = usePlaylistCommentTab(
   },
 );
 const playlistCommentContext = useCommentContext(playlistComments.model, core);
-const playlistSongsActive = computed(
-  () => !subscribers.open.value && !playlistComments.active.value,
+const playlistSection = computed(() =>
+  page.value.kind === 'playlist' ? (page.value.section ?? 'songs') : 'songs',
 );
-function showPlaylistSongs() {
-  subscribers.hide();
-  playlistComments.hide();
+const playlistSongsActive = computed(() => playlistSection.value === 'songs');
+const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
+const playlistCommentPanel = ref<InstanceType<typeof CommentsPage>>();
+const playlistSubscriberPanel = ref<InstanceType<typeof PlaylistSubscribers>>();
+type PlaylistViewport = {
+  top: number;
+  comments?: CommentReadPosition;
+  subscribers?: NonNullable<typeof subscribers.value.value>;
+};
+const playlistViewports = new Map<Page, PlaylistViewport>();
+function playlistScrollElement(section: PlaylistSection) {
+  if (section === 'comments') return playlistCommentPanel.value?.$el as HTMLElement | undefined;
+  if (section === 'subscribers')
+    return playlistSubscriberPanel.value?.$el as HTMLElement | undefined;
+  const table = playlistTrackTable.value?.$el as HTMLElement | undefined;
+  return table?.querySelector<HTMLElement>('.track-scroll') ?? undefined;
 }
-function showPlaylistComments() {
-  subscribers.hide();
-  void playlistComments.show();
+function checkpointPlaylistViewport() {
+  const route = page.value;
+  if (route.kind !== 'playlist' || !playlistPanelId()) return;
+  const section = playlistSection.value;
+  const scroller = playlistScrollElement(section);
+  if (!scroller?.isConnected) return;
+  const snapshot: PlaylistViewport = {
+    top: scroller.scrollTop,
+  };
+  if (section === 'comments' && playlistComments.model.page.value) {
+    snapshot.comments = {
+      query: playlistComments.model.query.value,
+      history: playlistComments.model.history.value,
+    };
+  }
+  if (section === 'subscribers' && subscribers.value.value)
+    snapshot.subscribers = subscribers.value.value;
+  playlistViewports.set(route, snapshot);
+  if (playlistViewports.size > 20) playlistViewports.delete(playlistViewports.keys().next().value!);
 }
-function showPlaylistSubscribers() {
-  playlistComments.hide();
-  void subscribers.show();
+watch([() => account.value.epoch, () => account.value.status], () => playlistViewports.clear(), {
+  flush: 'sync',
+});
+watch(
+  [playlistPanelId, playlistSection, () => page.value],
+  ([id, section, route]) => {
+    if (!id || route.kind !== 'playlist') return;
+    const saved = playlistViewports.get(route);
+    if (section === 'comments') {
+      subscribers.hide();
+      void playlistComments.show(saved?.comments);
+    } else if (section === 'subscribers') {
+      playlistComments.hide();
+      if (!subscribers.open.value && saved?.subscribers) subscribers.restore(saved.subscribers);
+      else void subscribers.show();
+    } else {
+      subscribers.hide();
+      playlistComments.hide();
+    }
+  },
+  { flush: 'pre' },
+);
+watch(
+  [
+    () => page.value,
+    playlistTrackTable,
+    playlistCommentPanel,
+    playlistSubscriberPanel,
+    playlistComments.model.page,
+    subscribers.value,
+  ],
+  () => {
+    const route = page.value;
+    const saved = playlistViewports.get(route);
+    if (!saved || route.kind !== 'playlist' || !playlistPanelId()) return;
+    if (subscriberFocus.value || commentAuthorReturn.value?.origin === route) {
+      // The child already restores its exact card or comment anchor and focus.
+      playlistViewports.delete(route);
+      return;
+    }
+    const section = playlistSection.value;
+    const scroller = playlistScrollElement(section);
+    if (!scroller?.isConnected || scroller.closest('[inert], .page-leave-active')) return;
+    if (section === 'comments' && !playlistComments.model.page.value) return;
+    if (section === 'subscribers' && !subscribers.value.value) return;
+    playlistViewports.delete(route);
+    if (section === 'songs') playlistTrackTable.value?.restoreScroll(saved.top);
+    else scroller.scrollTop = saved.top;
+  },
+  { flush: 'post' },
+);
+function showPlaylistSection(section: PlaylistSection) {
+  if (playlistPanelId()) music.replacePlaylistSection(section);
 }
 const playlistKeyword = ref('');
 const playlistTrackSearch = computed(() =>
@@ -1789,7 +1869,6 @@ async function toggleSearchPendingTrack(target: TrackPendingToggle, anchor?: HTM
   )
     anchor.focus({ preventScroll: true });
 }
-const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
 const locatableSongId = computed(() => {
   const current = player.view.value;
   if (
@@ -1866,7 +1945,9 @@ const pageKey = computed(() =>
             ? { kind: 'collections', collectionVisit: page.value.collectionVisit }
             : page.value.kind === 'settings'
               ? { kind: 'settings' }
-              : page.value,
+              : page.value.kind === 'playlist'
+                ? { kind: 'playlist', id: page.value.id }
+                : page.value,
   }),
 );
 const playingLikes = computed(() => {
@@ -3205,7 +3286,7 @@ onUnmounted(() => {
                     class="text-button playlist-section"
                     :class="{ 'playlist-current-section': playlistSongsActive }"
                     :aria-pressed="playlistSongsActive"
-                    @click="showPlaylistSongs"
+                    @click="showPlaylistSection('songs')"
                   >
                     歌曲 <small>{{ result.total }}</small>
                   </button>
@@ -3213,10 +3294,10 @@ onUnmounted(() => {
                     <button
                       type="button"
                       class="text-button playlist-section"
-                      :class="{ 'playlist-current-section': playlistComments.active.value }"
+                      :class="{ 'playlist-current-section': playlistSection === 'comments' }"
                       aria-label="歌单评论"
-                      :aria-pressed="playlistComments.active.value"
-                      @click="showPlaylistComments"
+                      :aria-pressed="playlistSection === 'comments'"
+                      @click="showPlaylistSection('comments')"
                     >
                       评论
                       <small v-if="playlistComments.count.value">{{
@@ -3226,9 +3307,9 @@ onUnmounted(() => {
                     <button
                       type="button"
                       class="text-button playlist-section"
-                      :class="{ 'playlist-current-section': subscribers.open.value }"
-                      :aria-pressed="subscribers.open.value"
-                      @click="showPlaylistSubscribers"
+                      :class="{ 'playlist-current-section': playlistSection === 'subscribers' }"
+                      :aria-pressed="playlistSection === 'subscribers'"
+                      @click="showPlaylistSection('subscribers')"
                     >
                       收藏者
                       <small v-if="result.playlist.subscribedCount">{{
@@ -3356,14 +3437,16 @@ onUnmounted(() => {
                   <p>正在加载歌曲…</p>
                 </div>
                 <CommentsPage
-                  v-else-if="result?.playlist && playlistComments.active.value"
+                  v-else-if="result?.playlist && playlistSection === 'comments'"
+                  ref="playlistCommentPanel"
                   :model="playlistComments.model"
                   :context="playlistCommentContext"
                   :title="result.playlist.name"
                   embedded
                 />
                 <PlaylistSubscribers
-                  v-else-if="result?.playlist && subscribers.open.value"
+                  v-else-if="result?.playlist && playlistSection === 'subscribers'"
+                  ref="playlistSubscriberPanel"
                   :model="subscribers"
                   :restore-focus="subscriberFocus"
                   @profile="openSubscriber"

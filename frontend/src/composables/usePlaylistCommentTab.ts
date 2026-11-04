@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue';
-import { useComments } from './useComments.ts';
+import { useComments, type CommentReadPosition } from './useComments.ts';
 import type { CommentClient } from '../services/comments.ts';
 import type { AccountView } from '../services/contracts.ts';
 
@@ -37,11 +37,11 @@ export function usePlaylistCommentTab(
     { flush: 'sync' },
   );
 
-  function show() {
+  function show(position?: CommentReadPosition) {
     const id = playlistId();
     if (active.value || !id || !model.epoch.value) return;
     active.value = true;
-    return model.open({ kind: 'playlist', id });
+    return model.open({ kind: 'playlist', id }, position);
   }
 
   return { model, active, count, show, hide };

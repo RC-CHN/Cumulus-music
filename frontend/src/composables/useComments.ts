@@ -14,6 +14,11 @@ import {
   type CommentReadNavigation,
   type CommentReadRetry,
 } from '../services/comments.ts';
+export interface CommentReadPosition {
+  query: CommentQuery;
+  history: CommentQuery[];
+}
+
 export function useComments(core: CommentClient = useCore(), expired: () => void = () => {}) {
   const epoch = ref(''),
     resource = shallowRef<CommentResource>(),
@@ -126,9 +131,10 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     error.value = '';
     actionError.value = '';
   }
-  async function open(next: CommentResource) {
+  async function open(next: CommentResource, position?: CommentReadPosition) {
     reset(next);
-    await load();
+    if (position) history.value = position.history;
+    await load(position?.query);
   }
   function apply(result: CommentOperation) {
     if (!page.value) return;

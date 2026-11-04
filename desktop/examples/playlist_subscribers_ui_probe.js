@@ -64,6 +64,16 @@
     );
     assert(grid.scrollWidth <= grid.clientWidth, 'collector grid stays in its column');
     await emit('ux_02_collectors');
+    firstPage.scrollTop = 380;
+    const ordinaryScroll = firstPage.scrollTop;
+    click(button('我的歌单'));
+    await wait(() => button('打开歌单链接') && !one('.playlist-hero'), 'left for the library');
+    click(button('返回上一页'));
+    await wait(() => count('.playlist-subscriber-grid li') === 24 &&
+      Math.abs((one('.playlist-subscribers')?.scrollTop ?? 0) - ordinaryScroll) < 2 &&
+      [...document.querySelectorAll('.playlist-section')].at(-1)?.getAttribute('aria-pressed') === 'true',
+      'ordinary Back restores collectors and scroll');
+    await emit('ux_06_ordinary_back');
     click(button('下一页'));
     await wait(() => one('.playlist-subscribers [role="alert"]'), 'failed page');
     assert(count('.playlist-subscriber-grid li') === 24, 'preserved page after failure');

@@ -267,6 +267,59 @@ test('album tab replacement preserves visit identity without adding a back step'
   assert.equal(music.page.value.kind, 'daily');
 });
 
+test('playlist tabs replace the visit and a Back refresh keeps only a matching track prefix', async () => {
+  let revision = 'r1';
+  const music = useMusic(
+    backend({
+      playlistPage: async (id, query) =>
+        data({
+          ...page,
+          revision,
+          tracks: Array.from({ length: query.offset ? 2 : 100 }, (_, index) => ({
+            ...song,
+            id: String(query.offset + index),
+          })),
+          total: 102,
+          offset: query.offset,
+          more: !query.offset,
+          playlist: {
+            id,
+            name: 'test',
+            coverUrl: null,
+            description: '',
+            creator: '',
+            trackCount: 102,
+            owned: false,
+            favorite: false,
+            private: false,
+          },
+        }),
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'playlist', id: '2' });
+  await Promise.resolve();
+  await music.load(true);
+  const result = music.result.value;
+  assert.equal(result?.tracks.length, 102);
+  music.replacePlaylistSection('comments');
+  assert.equal(music.historyLength.value, 1);
+  assert.equal(music.result.value, result);
+  music.navigate({ kind: 'library' });
+  music.back();
+  await Promise.resolve();
+  assert.deepEqual(music.page.value, { kind: 'playlist', id: '2', section: 'comments' });
+  assert.equal(music.result.value?.tracks.at(-1)?.id, '101');
+  music.navigate({ kind: 'library' });
+  revision = 'r2';
+  music.back();
+  await Promise.resolve();
+  assert.equal(music.result.value?.tracks.length, 100);
+  assert.equal(music.result.value?.revision, 'r2');
+  music.back();
+  assert.equal(music.page.value.kind, 'daily');
+});
+
 test('navigation during restore cannot invalidate the initial identity response', async () => {
   const identity = deferred<Awaited<ReturnType<CoreClient['restoreAccount']>>>();
   const music = useMusic(backend({ restoreAccount: () => identity.promise }));

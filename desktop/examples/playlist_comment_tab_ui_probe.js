@@ -106,6 +106,43 @@
     assert(commentTab().querySelector('small')?.textContent === '12', 'observed count survives sibling switches');
     await emit('ux_03_tracks_again');
 
+    const back = () => button('返回上一页');
+    const openLibrary = async () => {
+      click(button('我的歌单'));
+      await wait(() => button('打开歌单链接') && !one('.playlist-hero'), 'leave for the library');
+    };
+    const tracks = () => one('.track-scroll');
+    tracks().scrollTop = 340;
+    const songsScroll = tracks().scrollTop;
+    assert(songsScroll > 100, 'songs have a nonzero scroll checkpoint');
+    await openLibrary();
+    click(back());
+    await wait(() => one('.playlist-hero') && songs()?.getAttribute('aria-pressed') === 'true' &&
+      Math.abs((tracks()?.scrollTop ?? 0) - songsScroll) < 2, 'songs Back restores the visit scroll');
+    await emit('ux_05_songs_back', { scrollTop: tracks().scrollTop });
+    await verifyComment('第一张合成歌单的评论', '12', one('.playlist-hero'));
+    pane().scrollTop = 120;
+    const commentsScroll = pane().scrollTop;
+    assert(commentsScroll > 20, 'embedded comments have a real scroll checkpoint');
+    await openLibrary();
+    click(back());
+    await wait(() => pane()?.textContent.includes('第一张合成歌单的评论') &&
+      commentTab().getAttribute('aria-pressed') === 'true' &&
+      Math.abs(pane().scrollTop - commentsScroll) < 2 && !one('.track-row'),
+      'ordinary Back restores comments and the visit scroll');
+    await emit('ux_06_comments_back', { scrollTop: pane().scrollTop });
+    const author = () => one('.comments-embedded [data-comment-author-control="name"]');
+    click(author());
+    await wait(() => one('.playlist-creator-page h1')?.textContent === '合成作者 3', 'comment author route');
+    click(back());
+    await wait(() => author() && document.activeElement === author() &&
+      commentTab().getAttribute('aria-pressed') === 'true', 'author Back retains the exact focus and selected tab');
+    await emit('ux_07_author_back');
+    click(back());
+    await wait(() => button('打开歌单链接') && !one('.playlist-hero'),
+      'direct Back leaves the playlist without revisiting sibling tabs');
+    await emit('ux_08_direct_back');
+
     await openPlaylist('3', '合成歌单 3');
     const second = one('.playlist-hero');
     assert(second !== first && !commentTab().querySelector('small') && !pane(), 'new playlist clears old count and panel');

@@ -11,6 +11,7 @@ import type {
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
+export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
 export type Page =
   | { kind: 'settings'; accountDetail?: 'profile' | 'devices' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
@@ -48,7 +49,7 @@ export type Page =
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }
   | { kind: 'comments'; resource: CommentResource; title: string }
-  | { kind: 'playlist'; id: string; subscriberReturn?: number }
+  | { kind: 'playlist'; id: string; section?: PlaylistSection; subscriberReturn?: number }
   | { kind: 'playlist_tag'; tag: string }
   | { kind: 'playlist_essential'; tag: string }
   | {
@@ -96,6 +97,7 @@ export function useMusic(
   const resourcesLoading = ref(false);
   const history: Page[] = [];
   const historyLength = ref(0);
+  const playlistPrefixes = new Map<Page, TrackPage>();
   let request = 0;
   let searchId = 0;
   let downloadVisit = 0;
@@ -176,7 +178,7 @@ export function useMusic(
       if (revision === likeRevision && account.value.epoch === epoch) handleLike(error);
     }
   }
-  async function load(more = false, retainDailyCache = false) {
+  async function load(more = false, retainDailyCache = false, prefix?: TrackPage) {
     const current = ++request;
     error.value = '';
     loading.value = true;
@@ -237,7 +239,15 @@ export function useMusic(
       result.value =
         more && result.value
           ? { ...value, tracks: [...result.value.tracks, ...value.tracks] }
-          : value;
+          : prefix?.revision &&
+              prefix.revision === value.revision &&
+              prefix.tracks.length > value.tracks.length
+            ? {
+                ...value,
+                tracks: [...value.tracks, ...prefix.tracks.slice(value.tracks.length)],
+                more: prefix.more,
+              }
+            : value;
     } catch (e) {
       if (current === request) {
         if (keepingCache) result.value = undefined;
@@ -275,6 +285,7 @@ export function useMusic(
       if (current !== accountRequest) return;
       if (next.epoch !== account.value.epoch) {
         history.length = 0;
+        playlistPrefixes.clear();
         historyLength.value = 0;
         if (
           [
@@ -322,11 +333,21 @@ export function useMusic(
         next.kind === 'daily_batch' &&
         !!result.value?.daily &&
         !loading.value;
-      history.push(
+      const from =
         page.value.kind === 'playlist' && subscriberReturn !== undefined
           ? { ...page.value, subscriberReturn }
-          : page.value,
-      );
+          : page.value;
+      const shown = result.value;
+      if (
+        from.kind === 'playlist' &&
+        shown?.playlist?.id === from.id &&
+        shown.tracks.length > 100
+      ) {
+        playlistPrefixes.set(from, shown);
+        if (playlistPrefixes.size > 20)
+          playlistPrefixes.delete(playlistPrefixes.keys().next().value!);
+      }
+      history.push(from);
       historyLength.value = history.length;
       page.value =
         next.kind === 'search' && next.searchId === undefined
@@ -349,9 +370,17 @@ export function useMusic(
       historyLength.value = history.length;
       if (previous) {
         page.value = previous;
-        if (!initializing.value || previous.kind === 'local') void load();
+        const prefix = playlistPrefixes.get(previous);
+        playlistPrefixes.delete(previous);
+        if (!initializing.value || previous.kind === 'local') void load(false, false, prefix);
       }
     }, page.value.kind === 'local');
+  }
+  function replacePlaylistSection(section: PlaylistSection) {
+    const current = page.value;
+    if (current.kind !== 'playlist' || (current.section ?? 'songs') === section) return;
+    // The parent detail and its data survive a child route replacement.
+    page.value = { kind: 'playlist', id: current.id, section };
   }
   function replace(next: Page) {
     if (initializing.value) return;
@@ -424,6 +453,7 @@ export function useMusic(
   }
   return {
     replace,
+    replacePlaylistSection,
     account,
     playlists,
     liked,

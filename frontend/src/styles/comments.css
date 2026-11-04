@@ -213,7 +213,6 @@ button.comment-avatar,
 }
 
 .comments-page.comments-embedded {
-  overflow: visible;
   max-width: none;
   padding-top: 12px;
   padding-right: 0;

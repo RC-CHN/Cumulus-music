@@ -11,15 +11,19 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path, help='Local synthetic frontend comparison')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
-               CUMULUS_PLAYLIST_COMMENT_TAB_PROOF='1', CUMULUS_PLAYLIST_SUBSCRIBERS_UI_PROOF='1')
+               CUMULUS_PLAYLIST_COMMENT_TAB_PROOF='1', CUMULUS_PLAYLIST_SUBSCRIBERS_UI_PROOF='1',
+               CUMULUS_PLAYLIST_CREATOR_PROOF='1')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
+    if args.runtime:
+        env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         folder = root / 'os-profile' / key
@@ -43,9 +47,18 @@ def main():
     assert read('ux_03_tracks_again')['playlistCommentThreads'] == ['A_PL_0_2']
     assert read('ux_01_tracks')['playlistCommentDetails'] == read('ux_03_tracks_again')['playlistCommentDetails'] == [2]
     assert read('ux_03_tracks_again')['subscriberOffsets'] == [0]
+    assert read('ux_05_songs_back')['playlistCommentDetails'] == [2, 2]
+    assert read('ux_05_songs_back')['scrollTop'] > 100
+    assert read('ux_06_comments_back')['playlistCommentDetails'] == [2, 2, 2]
+    assert read('ux_06_comments_back')['scrollTop'] > 20
+    assert read('ux_06_comments_back')['playlistCommentThreads'] == ['A_PL_0_2'] * 3
+    author_back = read('ux_07_author_back')
+    assert author_back['playlistCommentDetails'] == [2, 2, 2, 2]
+    assert author_back['playlistCommentThreads'] == ['A_PL_0_2'] * 3
+    assert read('ux_08_direct_back')['playlistCommentDetails'] == author_back['playlistCommentDetails']
     result = read('complete')
-    assert result['ok'] and result['playlistCommentThreads'] == ['A_PL_0_2', 'A_PL_0_3']
-    assert result['playlistCommentDetails'] == [2, 3]
+    assert result['ok'] and result['playlistCommentThreads'] == ['A_PL_0_2'] * 3 + ['A_PL_0_3']
+    assert result['playlistCommentDetails'] == [2, 2, 2, 2, 3]
     print(json.dumps({'ok': True, 'actualWebView': True, 'commentThreads': result['playlistCommentThreads']}))
 
 
