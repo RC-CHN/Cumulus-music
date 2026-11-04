@@ -1,0 +1,31 @@
+官方 PC 3.1.42.205594：实验请求顺序与网页分组投影
+
+M/147:2890–2933 调 M/34 的 App.getABTestKeys，把 165 个 PC 已开启前端键
+按 Object.entries 顺序放在前面，再按原顺序追加 25 个静态 x64 键。M/15:4129–4138
+声明 GET /api/rtrs/abt/front/expinfo/list，唯一参数为
+{expNames:"<用逗号连接的 190 个名字>"}，取 response.data。M/12 已验证的原版
+签名请求条件可能把逻辑 GET 转成加密 POST；本模块不发送请求或选择传输方法。
+原生键列表由固定版本 PE 字符串构造路径恢复，见 official-native-ab-keys.txt。
+初始前端表有 174 项；九个在 PC 关闭，不进入请求。没有用 YesPlayMusic。
+
+官方 M/147:2934–2977 对每个开放键使用第一条名字匹配的响应，缺项回到内置默认。
+PH-PC-tagT 不是 c/t1 时清空 VIP-songPlay、recommendMore、Home-refresh、
+Home-Ranklist、optimizeFM 的分组；不改变 PH-PC-skipSongs2。只有该键的字符串
+t1 为开启。启动恢复继续使用打开项的本机缓存，重置关闭项和 qingxv。失败
+只重置 qingxv，保持其余当前分组。M/147 的原生设置投影、客户端配置字段、
+曝光日志和全局缓存写回不由该分组模块实现，也不会把日志或权限投射到队列。
+
+Rust 对照：core/src/protocol/pc_experiments.rs 纯原生只读计划，可建立受限分组
+快照；不存 Cookie、客户端配置、曝光字段或未识别键。损坏的响应不会改状态。
+没有启用桌面请求、缓存采用、自动跳歌或其他实验。后续应接入原有账号/请求
+上下文、生命周期及受控部署；真实分组、播放权限和联网结果独立。
+
+复现：
+- node scripts/research/official_pc_experiment_oracle.mjs <recovered hybrid_app 模块目录>
+  以离线 VM 执行恢复 M/147 的原动作和 PC 配置，冻结 174 项默认、165 键顺序，
+  缓存恢复、失败与 6 条服务响应轨迹。M/147 SHA-256
+  9c73b4456322505cad4be5e68f10ec1d8e6eac78138ac4607662b307dac8b0c5；
+  M/34 SHA-256 be1c80adb69ead9384f76efb00b1ac3bfc87ee801e4207fb1db159d74e5e976f。
+- 原生提取器与 VM 无网络、凭据或原客户端运行。Rust 锁定测试用 190 项请求
+  字符串 SHA-256 对照完整顺序，并核对重复分组、tag 依赖、失败、缓存与坏回包。
+  cargo test --locked -p cumulus-core --test pc_experiments；三项及严格 Clippy 通过。
