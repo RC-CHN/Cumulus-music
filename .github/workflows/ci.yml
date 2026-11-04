@@ -498,6 +498,7 @@ jobs:
           python scripts/ci/community_smoke.py --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --publication --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-publication-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --profile-follow --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-profile-follow-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/community_smoke.py --topic --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-topic-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --own-profile --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-own-profile-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --profile-notes --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-profile-notes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
