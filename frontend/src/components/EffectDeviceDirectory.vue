@@ -14,6 +14,7 @@ const props = defineProps<{
   account: AccountView;
   applied?: DeviceParametricView;
   catalogueParametric?: BoundParametricStatus;
+  parametricProcessing?: boolean;
   managementOnly?: boolean;
 }>();
 const emit = defineEmits<{ browse: [] }>();
@@ -336,7 +337,7 @@ onUnmounted(resetReads);
     <p v-if="!managementOnly">选定型号后可检查和应用调音。启用后仍使用当前播放设备。</p>
     <div v-if="applied" class="effect-device-active" :data-device-tuning="applied.status">
       <p role="status">
-        {{ headphoneTuningLabel(applied.status) }} ·
+        {{ headphoneTuningLabel(applied.status, parametricProcessing) }} ·
         {{
           applied.modelName ??
           (brand === applied.brand

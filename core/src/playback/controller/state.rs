@@ -213,6 +213,19 @@ impl Actor {
     pub fn snapshot(&self) -> PlaybackSnapshot {
         let selected = self.queue.selected();
         let speed_scope = PlaybackSpeedScope::for_entry(selected.as_ref());
+        let bound_parametric = self.parametric.bound_status();
+        let device_parametric = self.parametric.device_status(self.comparable_device_play());
+        let parametric_processing = self.state == PlaybackStatus::Playing
+            && self
+                .loaded
+                .as_ref()
+                .is_some_and(|loaded| self.parametric.processing(loaded.media.entry_id))
+            && (matches!(
+                bound_parametric,
+                Some(super::ParametricBindingStatus::Configured)
+            ) || device_parametric
+                .as_ref()
+                .is_some_and(|device| device.status == super::DeviceParametricStatus::Configured));
         PlaybackSnapshot {
             startup_pending: self.startup_pending,
             startup_autoplay: self.startup_autoplay,
@@ -223,8 +236,9 @@ impl Actor {
                 .intelligence_session()
                 .and_then(|s| s.operation_id.clone()),
             equalizer: self.equalizer,
-            bound_parametric: self.parametric.bound_status(),
-            device_parametric: self.parametric.device_status(self.comparable_device_play()),
+            bound_parametric,
+            device_parametric,
+            parametric_processing,
             loudness: self.loudness.clone(),
             revision: self.revision,
             control_revision: self.control_revision,

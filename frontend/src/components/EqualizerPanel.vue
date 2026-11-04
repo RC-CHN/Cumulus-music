@@ -250,7 +250,13 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         <button type="button" @click="openDirectory(false, true)">耳机音效</button>
       </div>
       <div v-if="parametric" class="equalizer-independent" :data-parametric-state="parametric">
-        <p role="status">{{ parametricStatus[parametric] }}不受上方开关控制。</p>
+        <p role="status">
+          {{
+            parametric === 'configured' && view?.parametricProcessing
+              ? '独立参数均衡正在处理音频。'
+              : parametricStatus[parametric]
+          }}不受上方开关控制。
+        </p>
         <button type="button" @click="openDirectory(true)">管理独立参数均衡</button>
       </div>
       <div class="equalizer-controls">
@@ -390,6 +396,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     v-if="directoryOpen"
     :account="account"
     :binding-status="parametric"
+    :parametric-processing="view?.parametricProcessing"
     :device-parametric="view?.deviceParametric"
     :initial-management-only="managementOnly"
     :headphone-management="headphoneManagement"

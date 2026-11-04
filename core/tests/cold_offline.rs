@@ -575,6 +575,7 @@ async fn verify_cold_ncm(
                 volume: None,
                 speed: None,
                 audio_output: None,
+                parametric_samples: None,
                 events: vec![],
             })
         }

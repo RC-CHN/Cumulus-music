@@ -21,6 +21,8 @@ pub struct PlayerView {
     pub equalizer: EqualizerView,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bound_parametric: Option<crate::playback::controller::ParametricBindingStatus>,
+    /// PCM observed for the configured component on the current playing entry.
+    pub parametric_processing: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_parametric: Option<crate::playback::controller::DeviceParametricView>,
     pub loudness: LoudnessView,

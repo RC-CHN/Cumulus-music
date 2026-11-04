@@ -146,6 +146,11 @@ impl Actor {
         // Native clock and pause/cache flags describe only the reported entry.
         // End events are checked separately, including after the entry closes.
         let current_entry = view.entry_id == Some(loaded.media.entry_id);
+        self.parametric.observe_samples(
+            loaded.media.entry_id,
+            view.parametric_samples
+                .filter(|_| current_entry && !view.paused && !view.buffering && !view.seeking),
+        );
         if current_entry {
             self.native_seeking = view.seeking;
         }

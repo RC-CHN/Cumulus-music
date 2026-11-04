@@ -21,6 +21,7 @@ const props = defineProps<{
   headphoneManagement?: boolean;
   bindingStatus?: BoundParametricStatus;
   deviceParametric?: DeviceParametricView;
+  parametricProcessing?: boolean;
 }>();
 const emit = defineEmits<{ close: []; login: []; equalizer: [] }>();
 const core = useCore();
@@ -267,6 +268,7 @@ onUnmounted(() => {
         <EffectDeviceDirectory
           :account="account"
           :applied="deviceParametric"
+          :parametric-processing="parametricProcessing"
           :catalogue-parametric="bindingStatus"
           :management-only="!browsingHeadphones"
           @browse="browseHeadphoneCatalogue"
@@ -334,6 +336,7 @@ onUnmounted(() => {
             v-if="kind === 'devices'"
             :account="account"
             :applied="deviceParametric"
+            :parametric-processing="parametricProcessing"
             :catalogue-parametric="bindingStatus"
           />
           <div v-else-if="loading" role="status" class="effect-directory-message">
@@ -403,6 +406,7 @@ onUnmounted(() => {
         :effect-id="selected.id"
         :allowed="!recoveryOnly && access === 'allowed'"
         :binding-status="bindingStatus"
+        :parametric-processing="parametricProcessing"
       />
     </section>
   </dialog>

@@ -167,9 +167,43 @@ pub(super) struct State {
     device_paused: bool,
     failed_device: Option<DeviceActivation>,
     device_selection_save_failed: bool,
+    activity: Option<ProcessingObservation>,
+}
+
+struct ProcessingObservation {
+    entry: i64,
+    samples: u64,
+    confirmed: bool,
 }
 
 impl State {
+    pub(super) fn reset_activity(&mut self) {
+        self.activity = None;
+    }
+
+    pub(super) fn observe_samples(&mut self, entry: i64, samples: Option<u64>) {
+        self.activity = samples.map(|samples| {
+            // A cumulative count alone could belong to audio decoded before
+            // this entry or transport interval. Start with a local baseline.
+            let confirmed = self.activity.as_ref().is_some_and(|previous| {
+                previous.entry == entry
+                    && (samples > previous.samples
+                        || (previous.confirmed && samples == previous.samples))
+            });
+            ProcessingObservation {
+                entry,
+                samples,
+                confirmed,
+            }
+        });
+    }
+
+    pub(super) fn processing(&self, entry: i64) -> bool {
+        self.activity
+            .as_ref()
+            .is_some_and(|observation| observation.entry == entry && observation.confirmed)
+    }
+
     pub(super) fn discard_paused_device(&mut self) {
         if self.device_paused {
             // Pausing confirmed native removal. The plan was retained only
@@ -618,6 +652,7 @@ impl Actor {
                 .parametric_apply_selection(Selection::Device(activation))
                 .await;
         }
+        self.parametric.reset_activity();
         self.parametric.detach_required = true;
         if let Err(error) = super::engine(self.engine.clone(), self.guard(), |engine| {
             engine.clear_parametric_component()
@@ -695,6 +730,7 @@ impl Actor {
         &mut self,
         selection: Selection,
     ) -> Result<ParametricApplication> {
+        self.parametric.reset_activity();
         match selection {
             Selection::Plain(plan) => self.parametric_apply(plan.map(|plan| *plan)).await,
             Selection::ClearBound(_)
@@ -900,6 +936,7 @@ impl Actor {
     }
 
     pub(super) async fn parametric_reset(&mut self) -> Result<()> {
+        self.parametric.reset_activity();
         self.parametric.clear_deferred(&self.token);
         // Stop new observations/resume immediately, but keep the exact targets
         // and their OS fence until native removal actually succeeds.

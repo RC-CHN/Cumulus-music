@@ -84,7 +84,10 @@
         return current.deviceParametric?.status === 'configured' && current;
       }, 'explicit restore configures the idle native player');
       assert(configured.state === 'idle' && !configured.playId && configured.queueLen === 0 &&
-        configured.deviceParametric.modelName === '合成耳机乙', 'restore does not select or load audio');
+        configured.deviceParametric.modelName === '合成耳机乙' && configured.parametricProcessing === false,
+      'restore configures tuning without selecting or processing audio');
+      await wait(() => text().includes('耳机调音已配置') && !text().includes('正在处理音频'),
+        'idle configuration is visibly distinct from processing');
       assert((await invoke('effect_device_remembered', { epoch: account.epoch })).revision === stored.revision,
         'restoring the same selection does not rewrite the remembered choice');
       await capture('02_configured_idle');
@@ -96,10 +99,12 @@
       await wait(async () => {
         const current = await player();
         return current.state === 'playing' && current.position > 0.35 &&
+          current.parametricProcessing === true &&
           current.deviceParametric?.activationId === configured.deviceParametric.activationId;
       }, 'only explicit Play starts audio with the same tuning');
       click(launcher());
-      await wait(() => text().includes('合成耳机乙'), 'footer reports the playing configured model');
+      await wait(() => text().includes('合成耳机乙') && text().includes('耳机调音正在处理音频'),
+        'headphone management reports observed PCM for the active model');
       await capture('03_explicit_play');
       await emit('complete', { ok: true, rememberedAcrossProcesses: true, stageCount: 3 });
       return;
@@ -196,7 +201,8 @@
           const value = await player();
           return currentTuning()?.dataset.deviceTuning === 'configured' && sameSong(value) &&
             value.position > start.position + 0.3 && value.deviceParametric?.brand === 4100 &&
-            value.deviceParametric.model === 4102 && !value.boundParametric;
+            value.deviceParametric.model === 4102 && !value.boundParametric &&
+            value.parametricProcessing === true && currentTuning().textContent.includes('正在处理音频');
         }, 'the exact native device filter keeps the same song moving');
       };
       await apply();
@@ -250,7 +256,8 @@
       click(button(one('.equalizer-dialog[open]'), '关闭均衡器'));
       await wait(() => !one('.equalizer-dialog[open]') && document.activeElement === launcher() &&
         launcher()?.getAttribute('aria-label') === '管理耳机音效' &&
-        launcher()?.dataset.headphoneState === 'configured', 'footer reports the active headphone tuning');
+        launcher()?.dataset.headphoneState === 'configured' && launcher()?.dataset.effectState === 'processing',
+      'footer distinguishes active headphone tuning from configuration alone');
       // This synthetic adapter processes PEQ but does not provide a graphic
       // equalizer. Its warning must stay visible beside a configured device.
       const combined = await invoke('player_action', { epoch: account.epoch, action: {
@@ -292,7 +299,7 @@
           value.deviceParametric?.status === 'paused_locally' &&
           value.deviceParametric.activationId === activeDevice.activationId &&
           currentTuning()?.dataset.deviceTuning === 'paused_locally' &&
-          launcher()?.dataset.headphoneState === 'paused_locally' && value;
+          launcher()?.dataset.headphoneState === 'paused_locally' && value.parametricProcessing === false && value;
       }, 'local comparison detaches native tuning without interrupting the same song');
       const resume = button(currentTuning(), '继续当前调音');
       assert(document.activeElement === resume, 'comparison preserves keyboard focus');
@@ -306,8 +313,8 @@
         return sameSong(value) && value.position > bypassed.position + 0.25 &&
           value.deviceParametric?.status === 'configured' &&
           value.deviceParametric.activationId === activeDevice.activationId &&
-          currentTuning()?.dataset.deviceTuning === 'configured';
-      }, 'local comparison reapplies verified tuning to the same source');
+          currentTuning()?.dataset.deviceTuning === 'configured' && value.parametricProcessing === true;
+      }, 'local comparison reapplies verified tuning and observes PCM from the same source');
       // The clock may still consume audio buffered before the graph changed.
       // Wait for PCM from this exact new attachment before proving its output.
       await wait(async () => {
@@ -332,7 +339,8 @@
         const value = await player();
         return currentTuning()?.dataset.deviceTuning === 'processor_failed' &&
           launcher()?.dataset.headphoneState === 'processor_failed' &&
-          value.deviceParametric?.status === 'processor_failed' && sameSong(value) &&
+          value.deviceParametric?.status === 'processor_failed' && value.parametricProcessing === false &&
+          sameSong(value) &&
           value.position > beforeFault.position + 0.25;
       }, 'verified detach leaves a manageable failure notice and keeps the song playing');
       assert((await player()).deviceParametric.activationId === beforeFault.deviceParametric.activationId,

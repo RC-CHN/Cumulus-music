@@ -700,13 +700,17 @@ impl AudioEngine for MpvEngine {
         {
             return Err(Error::EqualizerProcessorFailed);
         }
-        if let Some(parametric) = &self.parametric
-            && !parametric
+        let parametric_samples = if let Some(parametric) = &self.parametric {
+            let stats = parametric
                 .stats()
-                .is_ok_and(|stats| stats.failed_blocks == 0)
-        {
-            return Err(Error::ParametricProcessorFailed);
-        }
+                .ok()
+                .filter(|stats| stats.failed_blocks == 0)
+                .ok_or(Error::ParametricProcessorFailed)?;
+            (stats.active_instances > 0 && stats.observed_revision == stats.revision)
+                .then_some(stats.processed_samples)
+        } else {
+            None
+        };
         let events = self.drain()?;
         // These native properties are independent reads. If the seek settles
         // between them, the clock could still have been sampled before it did.
@@ -727,6 +731,7 @@ impl AudioEngine for MpvEngine {
             volume: self.number(c"volume"),
             speed: self.number(c"speed"),
             audio_output: self.property(c"current-ao"),
+            parametric_samples,
             events,
         })
     }

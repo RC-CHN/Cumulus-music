@@ -25,9 +25,9 @@ export interface RememberedHeadphone {
   revision: string;
 }
 
-export function headphoneTuningLabel(status: DeviceParametricView['status']) {
+export function headphoneTuningLabel(status: DeviceParametricView['status'], processing = false) {
   return {
-    configured: '耳机调音已启用',
+    configured: processing ? '耳机调音正在处理音频' : '耳机调音已配置',
     deferred: '音频加载后启用耳机调音',
     paused_locally: '耳机调音已暂时停用',
     detach_required: '耳机调音尚未关闭，请重试关闭',

@@ -127,6 +127,7 @@ impl Fixture {
                 volume: None,
                 speed: None,
                 audio_output: Some("pulse".into()),
+                parametric_samples: None,
                 events: vec![],
             },
         }));

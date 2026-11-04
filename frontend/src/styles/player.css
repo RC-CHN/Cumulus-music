@@ -380,6 +380,13 @@ input[type='range'] {
   .equalizer-marker {
   color: var(--accent);
 }
+.equalizer-toggle[data-effect-state='configured']:is(
+    [data-parametric-state='configured'],
+    [data-headphone-state='configured']
+  )
+  .equalizer-marker {
+  color: var(--muted);
+}
 .equalizer-toggle[data-effect-state='problem'] .equalizer-marker {
   color: var(--warning);
 }

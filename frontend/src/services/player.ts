@@ -69,6 +69,7 @@ export interface PlayerView {
   intelligenceOperation?: string | null;
   equalizer: EqualizerView;
   boundParametric?: BoundParametricStatus;
+  parametricProcessing?: boolean;
   deviceParametric?: DeviceParametricView;
   loudness: LoudnessView;
   epoch: string;

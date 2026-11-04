@@ -40,6 +40,8 @@ pub struct PlaybackSnapshot {
     pub intelligence_operation: Option<String>,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub bound_parametric: Option<super::parametric::ParametricBindingStatus>,
+    /// PCM observed for the configured component on the current playing entry.
+    pub parametric_processing: bool,
     pub device_parametric: Option<super::parametric::DeviceParametricView>,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub revision: u64,

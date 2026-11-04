@@ -124,11 +124,15 @@ export function equalizerLauncher(view?: EqualizerView) {
   };
 }
 
-export function effectLauncher(view?: EqualizerView, parametric?: BoundParametricStatus) {
+export function effectLauncher(
+  view?: EqualizerView,
+  parametric?: BoundParametricStatus,
+  processing = false,
+) {
   const equalizer = equalizerLauncher(view);
   if (!parametric) return equalizer;
   const label = {
-    configured: '独立参数均衡已配置',
+    configured: processing ? '独立参数均衡正在处理音频' : '独立参数均衡已配置',
     deferred: '独立参数均衡等待音频加载',
     detach_required: '独立参数均衡需要清理',
     processor_failed: '独立参数均衡处理失败，已在本机停用',
@@ -139,7 +143,7 @@ export function effectLauncher(view?: EqualizerView, parametric?: BoundParametri
       parametric === 'processor_failed' ||
       equalizer.state === 'problem'
         ? 'problem'
-        : equalizer.state === 'processing'
+        : equalizer.state === 'processing' || (parametric === 'configured' && processing)
           ? 'processing'
           : parametric === 'deferred'
             ? 'pending'

@@ -137,6 +137,8 @@ pub struct EngineSnapshot {
     pub volume: Option<f64>,
     pub speed: Option<f64>,
     pub audio_output: Option<String>,
+    /// Samples from a live PEQ instance which observed its current native revision.
+    pub parametric_samples: Option<u64>,
     pub events: Vec<EngineEvent>,
 }
 

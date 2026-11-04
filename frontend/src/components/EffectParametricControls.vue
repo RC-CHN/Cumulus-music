@@ -11,6 +11,7 @@ const props = defineProps<{
   effectId: number;
   allowed: boolean;
   bindingStatus?: BoundParametricStatus;
+  parametricProcessing?: boolean;
 }>();
 const core = useCore();
 const group = ref<HTMLElement>();
@@ -47,6 +48,13 @@ const phaseLabel = computed(() => {
     return current.canResume
       ? '此音效未在播放器中应用，仍有登记待处理。可以恢复或清理。'
       : '此音效未在播放器中应用，仍有登记待清理。';
+  if (
+    current.phase === 'configured' &&
+    props.bindingStatus === 'configured' &&
+    props.parametricProcessing &&
+    !another.value
+  )
+    return '独立参数均衡正在处理音频';
   return labels[current.phase];
 });
 const mayPrepare = computed(

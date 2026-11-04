@@ -534,6 +534,7 @@ impl Actor {
         if !paused {
             self.paused_seek = false;
         }
+        self.parametric.reset_activity();
         self.state = if paused {
             PlaybackStatus::Paused
         } else {
@@ -553,6 +554,7 @@ impl Actor {
             engine.seek(media)
         })
         .await?;
+        self.parametric.reset_activity();
         self.position = Some(seconds);
         self.paused_seek = self.state == PlaybackStatus::Paused;
         self.buffered_through = None;

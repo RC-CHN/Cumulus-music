@@ -149,6 +149,7 @@ impl AudioEngine for Fake {
             volume: Some(d.volume),
             speed: Some(d.speed),
             audio_output: Some("fixture".into()),
+            parametric_samples: None,
             events: std::mem::take(&mut d.events),
         })
     }

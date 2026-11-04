@@ -184,6 +184,7 @@ impl Default for Device {
                     volume: Some(100.0),
                     speed: Some(1.0),
                     audio_output: Some("fixture".into()),
+                    parametric_samples: None,
                     events: vec![],
                 },
                 loads: 0,

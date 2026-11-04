@@ -65,14 +65,36 @@
     const started = await player();
     await wait(async () => {
       const state = await player();
-      return state.state === 'playing' && state.playId === baseline.playId && state.position > started.position + 0.35;
-    }, 'same native playback advances through PEQ');
+      return state.state === 'playing' && state.playId === baseline.playId &&
+        state.parametricProcessing === true && state.position > started.position + 0.35;
+    }, 'same native playback advances through PEQ and observes PCM');
+    const launcher = () => one('.equalizer-toggle');
+    await wait(() => launcher()?.dataset.effectState === 'processing' &&
+      launcher().title.includes('正在处理音频') && controls().textContent.includes('正在处理音频'),
+    'the footer and management show PCM processing');
     await capture('02_configured');
 
     if (window.__cumulusPeqPauseLocal || window.__cumulusPeqRuntimeFault) {
       const fault = !!window.__cumulusPeqRuntimeFault;
       stage = fault ? 'runtime-fault' : 'pause-local';
       const selection = { epoch, id: 300 };
+      if (!fault) {
+        const markerColor = () => getComputedStyle(launcher().querySelector('.equalizer-marker')).color;
+        const activeColor = markerColor();
+        const transport = (paused) => invoke('player_action', { epoch, action: { kind: 'pause', paused } });
+        const playbackPaused = await transport(true);
+        assert(playbackPaused.state === 'paused' && playbackPaused.boundParametric === 'configured' &&
+          playbackPaused.parametricProcessing === false, 'ordinary pause preserves the setup but clears processing');
+        await wait(() => launcher()?.dataset.effectState === 'configured' &&
+          !launcher().title.includes('正在处理音频') && markerColor() !== activeColor,
+        'paused playback no longer looks active');
+        await transport(false);
+        await wait(async () => {
+          const current = await player();
+          return current.playId === baseline.playId && current.parametricProcessing === true &&
+            launcher()?.dataset.effectState === 'processing';
+        }, 'ordinary resume requires new PCM before restoring the active indicator');
+      }
       const active = await invoke('effect_peq_status', selection);
       assert(active.canPause && active.release && !active.canResume, 'active binding must have a local pause receipt');
       if (fault) {
@@ -86,7 +108,8 @@
         const current = await player();
         return (fault ? current.boundParametric === 'processor_failed' : !current.boundParametric) &&
           current.state === 'playing' && current.playId === baseline.playId &&
-          current.entryId === baseline.entryId && current.position > paused.position + 0.25;
+          current.entryId === baseline.entryId && current.parametricProcessing === false &&
+          current.position > paused.position + 0.25;
       }, 'the same song keeps advancing with the native filter removed');
       if (fault) {
         assert(one('.equalizer-toggle')?.dataset.parametricState === 'processor_failed', 'footer reflects failed PEQ without a playback error');
@@ -106,8 +129,9 @@
         const current = await player();
         return current.boundParametric === 'configured' && current.state === 'playing' &&
           current.playId === baseline.playId && current.entryId === baseline.entryId &&
-          current.position > resumed.position + 0.25;
-      }, 'the same song keeps advancing after native PEQ restore');
+          current.parametricProcessing === true && current.position > resumed.position + 0.25 &&
+          launcher()?.dataset.effectState === 'processing';
+      }, 'the same song and PCM observation resume after native PEQ restore');
       assert(document.activeElement === action('pause'), 'resuming retains keyboard focus');
       await capture(fault ? '04_restored_after_fault' : '04_resumed_locally');
       await emit('complete', { ok: true, stageCount: 4, localPauseVerified: !fault, runtimeFaultVerified: fault });

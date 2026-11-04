@@ -83,9 +83,11 @@ const headphone = computed(() => {
 });
 const effectEntry = computed(() => {
   const status = headphone.value?.status;
-  if (!status) return effectLauncher(view.value?.equalizer, view.value?.boundParametric);
+  const current = view.value;
+  const processing = current?.parametricProcessing;
+  if (!status) return effectLauncher(current?.equalizer, current?.boundParametric, processing);
   const eqProblem = equalizerEntry.value.state === 'problem';
-  const label = headphoneTuningLabel(status);
+  const label = headphoneTuningLabel(status, processing);
   return {
     state:
       eqProblem || status === 'detach_required' || status === 'processor_failed'
@@ -94,7 +96,9 @@ const effectEntry = computed(() => {
           ? 'pending'
           : status === 'paused_locally'
             ? equalizerEntry.value.state
-            : 'configured',
+            : processing
+              ? 'processing'
+              : 'configured',
     label: eqProblem ? label + '；' + equalizerEntry.value.label : label,
   };
 });
@@ -819,6 +823,7 @@ async function seek(event: Event) {
       v-if="headphoneManagementOpen"
       :account="account"
       :binding-status="view?.boundParametric"
+      :parametric-processing="view?.parametricProcessing"
       :device-parametric="headphone"
       headphone-management
       @close="headphoneManagementOpen = false"
@@ -831,6 +836,7 @@ async function seek(event: Event) {
       v-if="effectDirectoryOpen"
       :account="account"
       :binding-status="view?.boundParametric"
+      :parametric-processing="view?.parametricProcessing"
       :device-parametric="view?.deviceParametric"
       @close="effectDirectoryOpen = false"
       @login="loginFromEffects"
