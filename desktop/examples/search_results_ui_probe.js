@@ -147,7 +147,23 @@
     }
     if(window.__cumulusSearchAlbumArtistProof){
       await wait(()=>one('.track-row'),'daily ready');
-      await fixture('album_artist_search');await fresh('合成艺人');
+      await fixture('album_artist_search');
+      const provides=one('#app').__vue_app__._context.provides;
+      const core=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];
+      const read=core.searchResults;
+      core.searchResults=async (...args)=>{
+        const response=await read(...args);
+        for(const section of response.value.sections){
+          for(const item of section.items){
+            if(item.kind==='album'&&item.album.id==='201'){
+              item.album.publishedAt=new Date(2020,5,17,12).getTime();
+              item.album.explicit=true;
+            }
+          }
+        }
+        return response;
+      };
+      await fresh('合成');
       const card=()=>one('[data-result-key="album:201"]');
       const artist=()=>card()?.querySelector('[data-result-action="artist:101:1"]');
       const link='https://music.163.com/album?id=201', copies=[], membershipWrites=[], albumReads=[];
@@ -182,6 +198,21 @@
         assert(target?.getAttribute('aria-label')==='查看歌手 合成合作艺人'&&
           card().querySelector('.search-card-artist-text')?.textContent.trim()==='合成未标识艺人',
           'credit without native identity is plain text');
+        const title=card().querySelector('.search-album-title-copy');
+        const explicit=card().querySelector('.search-album-explicit');
+        const date=card().querySelector('.search-album-date time');
+        assert(title?.textContent.trim()==='合成专辑 1 · SyntheticLongTitle'&&
+          title.querySelector('mark')?.textContent==='合成','album title keeps its literal keyword match');
+        assert(explicit?.getAttribute('aria-label')==='含成人内容'&&
+          explicit.getBoundingClientRect().width===12&&
+          explicit.getBoundingClientRect().right<=title.parentElement.getBoundingClientRect().right+1,
+          'explicit indicator stays visible within the title row');
+        assert(date?.dateTime==='2020-06-17'&&date.textContent==='2020-06-17'&&
+          date.getBoundingClientRect().right<=date.closest('.search-card-credit').getBoundingClientRect().right+1,
+          'album date stays visible in local calendar format');
+        const unknown=one('[data-result-key="album:202"]');
+        assert(unknown&&!unknown.querySelector('.search-album-explicit,.search-album-date'),
+          'albums without fields show neither fabricated badge nor date');
         const anchor=card().querySelector('.search-card-open');
         await albumMenu(anchor);
         click(button('分享…',menu()));
@@ -226,6 +257,14 @@
       assert(copies.length===2&&copies.every(value=>value===link),'clipboard receives only canonical album URLs');
       await theme(760,540,'dark');
       await fixture('good');await fresh('合成专辑续页');await choose('albums');
+      const narrow=card();
+      const narrowBadge=narrow?.querySelector('.search-album-explicit');
+      const narrowDate=narrow?.querySelector('.search-album-date time');
+      assert(narrowBadge?.getBoundingClientRect().width===12&&
+        narrowBadge.getBoundingClientRect().right<=narrow.querySelector('.search-album-name').getBoundingClientRect().right+1&&
+        narrowDate?.getBoundingClientRect().right<=narrow.querySelector('.search-card-credit').getBoundingClientRect().right+1,
+        'narrow album cards keep their badge and date inside the card');
+      core.searchResults=read;
       const results=()=>one('.search-result-panel');
       const grid=()=>results()?.querySelector('.search-result-grid');
       const tail=()=>grid()?.querySelector('[data-grid-index="10"] .search-card-open');
@@ -250,7 +289,7 @@
         Math.abs(results().scrollTop-scrolled)<=1,'Back restores appended results, scroll and focused album');
       assert(JSON.stringify(albumReads)==='[[0,10],[10,10]]','Back does not replay album page requests');
       await capture('album_waterfall_back');
-      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,searchAlbumCollectVerified:true,searchAlbumWaterfallVerified:true,albumReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,searchAlbumCollectVerified:true,searchAlbumMetadataVerified:true,searchAlbumWaterfallVerified:true,albumReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchCollectionNextProof){

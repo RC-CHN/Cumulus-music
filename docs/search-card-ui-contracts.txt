@@ -217,3 +217,13 @@ M/622:125–138、174–182 的播放/下一首条件把「没有曲目证据」
 `search_results_smoke.py --collection-next` 验证两个分类的菜单差异，并从
 未知曲目数的合成歌单实际启动 40 首歌的原生队列。
 Linux WebView 六个检查点和截图：.build/search-playlist-playability-webview/first/。
+
+搜索专辑标题、标记与发行日期
+官方 recommend.jsx:793–818 的普通预览使用 simple AlbumCard；AlbumCard/index.tsx:
+464–492 标记命中的标题，显示 12px 成人内容提示及发行日期。M/3095:2803–2903
+的专辑分类表也显示这些信息。Cumulus 在综合与专辑分类复用现有原生 explicit、
+publishedAt 与本地日历格式；标题省略时保留标记，未知日期不显示。专辑卡片仍是
+社区布局，不把这些字段视为恢复了整张官方列表。
+`search_results_smoke.py --album-artist` 在实际 WebView 使用合成投影测试已知及
+缺失值、标题高亮与标记布局；原生专辑字段读取沿用已验证的 AlbumCard DTO。
+Linux WebView 八个检查点和截图：.build/search-album-metadata-webview/first/。

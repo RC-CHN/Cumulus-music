@@ -715,6 +715,21 @@
   align-items: baseline;
   min-width: 0;
 }
+.search-album-name {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.search-album-title-copy {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-album-date {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 .search-playlist-credit > span,
 .search-card-credit-separator {
   flex: none;
