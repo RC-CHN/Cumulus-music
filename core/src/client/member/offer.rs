@@ -1,6 +1,9 @@
 //! Membership card delivery slot. Keep offer context and redirects in native code.
 use super::super::{MusicClient, dto::AccountData};
-use crate::{Error, Result, membership::portal::MEMBER_PORTAL};
+use crate::{
+    Error, Result,
+    membership::portal::{MEMBER_PORTAL, MemberPortalQr, member_portal_qr},
+};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
@@ -134,21 +137,51 @@ impl MusicClient {
         })
     }
 
-    pub fn member_card_external_url(&self, epoch: &str, revision: &str) -> Result<&'static str> {
+    fn with_current_member_offer<T>(
+        &self,
+        epoch: &str,
+        revision: &str,
+        use_offer: impl FnOnce(&Observed) -> Result<T>,
+    ) -> Result<T> {
         let token = self.member_token(epoch)?;
         self.session.with_token(&token, |_| {
-            self.member_offer
+            let observed = self
+                .member_offer
                 .observed
                 .lock()
-                .map_err(|_| Error::State("member offer cache unavailable"))?
+                .map_err(|_| Error::State("member offer cache unavailable"))?;
+            let entry = observed
                 .as_ref()
                 .filter(|entry| {
                     entry.epoch == epoch
                         && entry.at.elapsed() < TTL
                         && entry.offer.revision == revision
                 })
-                .and_then(|entry| entry.external)
-                .ok_or(Error::StaleResponse)
+                .ok_or(Error::StaleResponse)?;
+            use_offer(entry)
+        })
+    }
+
+    pub fn member_card_offer_qr(
+        &self,
+        epoch: &str,
+        revision: &str,
+    ) -> Result<AccountData<MemberPortalQr>> {
+        self.with_current_member_offer(epoch, revision, |entry| {
+            if entry.offer.mode != Mode::Qr {
+                return Err(Error::StaleResponse);
+            }
+            Ok(AccountData {
+                epoch: epoch.into(),
+                // Projection accepts only the exact, public portal address.
+                value: member_portal_qr()?,
+            })
+        })
+    }
+
+    pub fn member_card_external_url(&self, epoch: &str, revision: &str) -> Result<&'static str> {
+        self.with_current_member_offer(epoch, revision, |entry| {
+            entry.external.ok_or(Error::StaleResponse)
         })
     }
 }

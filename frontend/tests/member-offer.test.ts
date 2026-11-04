@@ -16,6 +16,7 @@ test('member offers ignore late accounts and refresh stale public handoffs only 
   });
   const core: MemberPortalClient = {
     memberPortalQr: async () => assert.fail('browser action cannot load a QR'),
+    memberCardOfferQr: async () => assert.fail('browser action cannot load an offer QR'),
     memberCardOffer(epoch, refresh) {
       reads.push([epoch, refresh]);
       return new Promise((done) => resolve.set(epoch, done));

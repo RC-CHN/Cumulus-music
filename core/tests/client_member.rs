@@ -143,6 +143,59 @@ async fn member_card_offer_uses_exact_delivery_slot_and_invalidates_old_actions(
 }
 
 #[tokio::test]
+async fn member_offer_qr_requires_a_current_mode_three_receipt() {
+    const SLOT: &str = "/api/delivery/deliver";
+    const PORTAL: &str = "https://music.163.com/g/vip-portal?nm_style=sbt&scene=pc_viptab_scan";
+    let (_dir, api, session, client) = fixture();
+    let respond = |mode: &str, url: &str| {
+        api.responses.lock().unwrap().insert(
+            SLOT.into(),
+            json!({"code":200,"data":{"resourceData":{
+                "text":"查看合成优惠","pcSideDisplay":mode,"jumpUrl":url
+            },"logContext":"PRIVATE"}}),
+        );
+    };
+    respond("3", PORTAL);
+    let offer = serde_json::to_value(client.member_card_offer("1", false).await.unwrap()).unwrap();
+    let revision = offer["value"]["revision"].as_str().unwrap();
+    let qr = client.member_card_offer_qr("1", revision).unwrap();
+    assert_eq!(qr.epoch, "1");
+    assert_eq!(
+        qr.value.modules,
+        cumulus_core::membership::portal::member_portal_qr()
+            .unwrap()
+            .modules
+    );
+    assert!(matches!(
+        client.member_card_offer_qr("1", "different"),
+        Err(Error::StaleResponse)
+    ));
+    assert!(client.member_card_offer_qr("2", revision).is_err());
+    assert!(matches!(
+        client.member_card_external_url("1", revision),
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(api.count(SLOT), 1, "rendering never reloads delivery");
+
+    respond("4", PORTAL);
+    let next = serde_json::to_value(client.member_card_offer("1", true).await.unwrap()).unwrap();
+    let next_revision = next["value"]["revision"].as_str().unwrap();
+    assert!(matches!(
+        client.member_card_offer_qr("1", revision),
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client.member_card_offer_qr("1", next_revision),
+        Err(Error::StaleResponse)
+    ));
+    respond("3", PORTAL);
+    let fresh = serde_json::to_value(client.member_card_offer("1", true).await.unwrap()).unwrap();
+    let fresh_revision = fresh["value"]["revision"].as_str().unwrap();
+    session.detach().unwrap();
+    assert!(client.member_card_offer_qr("1", fresh_revision).is_err());
+}
+
+#[tokio::test]
 async fn member_sign_uses_recorded_ids_and_rejects_late_account_history() {
     const CARD: &str = "/api/vipnewcenter/app/minidesk/music/sign/pc";
     const HISTORY: &str = "/api/vipnewcenter/app/level/user/checkin/history/list";

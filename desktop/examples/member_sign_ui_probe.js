@@ -20,7 +20,7 @@
   const member = () => [...document.querySelectorAll('.sidebar button:not(:disabled)')].find((node) => node.textContent.trim() === '会员中心');
   const portalTrigger = () => one('.member-portal-trigger');
   const portalDialog = () => one('.member-portal-dialog[open]');
-  async function portal(stage, cancel, trigger = portalTrigger()) {
+  async function portal(stage, cancel, trigger = portalTrigger(), dynamic = false) {
     trigger.focus();
     trigger.click();
     const qr = await wait(() => portalDialog()?.querySelector('svg[role="img"]'), 'public member portal QR');
@@ -28,9 +28,16 @@
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     await Promise.all(modal.getAnimations().map(animation => animation.finished.catch(() => {})));
     const rect = modal.getBoundingClientRect();
+    const width = dynamic ? 180 : 155;
+    const tip = dynamic ? '请打开 网易云音乐APP 扫码' : '使用云音乐 App 扫描二维码';
+    if (dynamic !== modal.classList.contains('member-offer-qr-dialog') ||
+        dynamic === !!modal.querySelector('h2') ||
+        qr.getBoundingClientRect().width !== width ||
+        (dynamic && (rect.width !== 376 || rect.height !== Math.min(520, innerHeight - 32))))
+      throw Error('fixed membership and dynamic offer QR must keep their distinct official layout');
     if (!modal.contains(document.activeElement) || rect.x < 0 || rect.y < 0 ||
         rect.right > innerWidth || rect.bottom > innerHeight || qr.querySelector('path').getAttribute('d').length < 1000 ||
-        !modal.textContent.includes('使用云音乐 App 扫描二维码') || modal.querySelector('a, iframe, img') ||
+        !modal.textContent.includes(tip) || modal.querySelector('a, iframe, img') ||
         modal.textContent.includes('://'))
       throw Error('public handoff must fit, trap focus and render only the native QR matrix');
     await emit(stage, {qrBounds:qr.getBoundingClientRect().toJSON()});
@@ -112,7 +119,9 @@
       const node = one('.member-card-offer');
       return node?.textContent.trim() === '查看合成会员优惠' && node;
     }, 'official delivery label appears on the separate offer');
-    await portal('ux_06_member_portal_dark', true, offer);
+    const {value: observedOffer} = await invoke('member_card_offer', {epoch, refresh:false});
+    if (observedOffer.mode !== 'qr') throw Error('expected a native mode-three receipt');
+    await portal('ux_06_member_offer_qr_dark', true, offer, true);
     step = 'late';
     past().click();
     await wait(() => dialog()?.querySelector('[role="status"]'), 'held native detail is pending');
@@ -138,13 +147,17 @@
     if (document.body.textContent.includes('不能显示的合成优惠') ||
         one('.member-card-offer').getAttribute('aria-haspopup') !== 'dialog')
       throw Error('unsafe offer was promoted or made actionable');
+    const rejected = await invoke('member_card_offer_qr', {epoch, revision:observedOffer.revision}).then(
+      () => false, (error) => error.code === 'stale',
+    );
+    if (!rejected) throw Error('a replaced mode-three receipt still renders a QR');
     if (!past() || !one('.sign-today')) throw Error('good card disappeared on refresh failure');
     await emit('ux_08_member_sign_cached');
     message().querySelector('button').click();
     await wait(() => card()?.textContent.includes('今日未打卡'), 'updated card shows unsigned today');
     if (one('.sign-today') || card().querySelector('[aria-label="查看今天乐签"]')) throw Error('unsigned today can start a mutation');
     await emit('ux_09_member_sign_unsigned');
-    await emit('complete', {ok:true, stageCount:10, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true, memberPortalQr:true, memberOfferVerified:true, signSongActions:true});
+    await emit('complete', {ok:true, stageCount:10, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true, memberPortalQr:true, memberOfferVerified:true, memberOfferQr:true, signSongActions:true});
   } catch (error) {
     await emit('failed', {step, message:error.message, card:card()?.textContent, dialog:dialog()?.textContent, focus:document.activeElement?.outerHTML.slice(0,260)});
   }

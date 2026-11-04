@@ -337,6 +337,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 member::member_rights,
                 member::member_portal_qr,
                 member::member_card_offer,
+                member::member_card_offer_qr,
                 member::open_member_card_offer,
                 member::member_sign_card,
                 member::member_sign_detail,

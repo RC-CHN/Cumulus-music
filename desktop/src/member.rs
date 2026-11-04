@@ -8,6 +8,17 @@ pub fn member_portal_qr() -> Result<cumulus_core::membership::portal::MemberPort
 }
 
 #[tauri::command]
+pub fn member_card_offer_qr(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+) -> Result<AccountData<cumulus_core::membership::portal::MemberPortalQr>, ClientError> {
+    client
+        .member_card_offer_qr(&epoch, &revision)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn member_card_offer(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

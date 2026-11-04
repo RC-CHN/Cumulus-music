@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TrackCurrentToggle, TrackMenuRequest } from '../services/trackMenu';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, shallowRef, watch } from 'vue';
 import type { useMember } from '../composables/useMember';
 import type { MemberTarget, MemberContent } from '../services/member';
 import type { TrackView } from '../services/contracts';
@@ -37,12 +37,21 @@ const emit = defineEmits<{
 }>();
 const page = computed(() => props.model.view.value?.page);
 const portalOpen = ref(false);
+const offerQr = shallowRef<{ epoch: string; revision: string }>();
 const promotion = useMemberOffer(useCore(), () =>
   props.signedIn && props.model.query.value.kind === 'home' ? props.accountEpoch : undefined,
 );
 watch(
-  [() => props.accountEpoch, () => props.model.query.value.kind],
-  () => (portalOpen.value = false),
+  [() => props.accountEpoch, () => props.signedIn, () => props.model.query.value.kind],
+  () => {
+    portalOpen.value = false;
+    offerQr.value = undefined;
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => promotion.offer.value?.revision,
+  () => (offerQr.value = undefined),
   { flush: 'sync' },
 );
 const top = computed(() =>
@@ -89,8 +98,15 @@ const offerLabel = computed(() => {
 });
 function openOffer() {
   if (promotion.opening.value) return;
-  if (promotion.offer.value?.mode === 'browser') void promotion.openBrowser();
+  const offer = promotion.offer.value;
+  if (offer?.mode === 'browser') void promotion.openBrowser();
+  else if (offer?.mode === 'qr')
+    offerQr.value = { epoch: props.accountEpoch, revision: offer.revision };
   else portalOpen.value = true;
+}
+function closePortal() {
+  portalOpen.value = false;
+  offerQr.value = undefined;
 }
 function refresh() {
   void props.model.refresh();
@@ -399,7 +415,13 @@ function hasContent(content: MemberContent) {
       </p>
     </template>
     <ModalTransition>
-      <MemberPortalDialog v-if="portalOpen" @close="portalOpen = false" />
+      <MemberPortalDialog
+        v-if="portalOpen || offerQr"
+        :key="offerQr?.revision ?? 'fixed'"
+        :offer="offerQr"
+        @close="closePortal"
+        @refresh-offer="promotion.load(true)"
+      />
     </ModalTransition>
   </section>
 </template>

@@ -90,7 +90,7 @@ def main():
         return
     complete = run('first', {}, 10)
     assert complete['stageCount'] == 10 and complete['memberPortalQr']
-    assert complete['memberOfferVerified'] and complete['memberOfferReads'] == 2
+    assert complete['memberOfferVerified'] and complete['memberOfferQr'] and complete['memberOfferReads'] == 2
     assert complete['signSongActions'] and complete['memberSignSongLikeWrites'] == [True, False]
     assert complete['historyPlayback'] == '2' and complete['nativeModalFocus'] and complete['noLateDetail']
     assert complete['memberSignCalls'] == [card, card, history, past, history, past,
@@ -98,6 +98,7 @@ def main():
     print(json.dumps({'ok': True, 'actualWebView': True, 'stages': 10, 'signReads': 12,
                       'historyPlayback': True, 'nativeModalFocus': True,
                       'cachedRefresh': True, 'memberPortalQr': True, 'memberOfferVerified': True,
+                      'memberOfferQr': True,
                       'syntheticLikes': 2, 'signSongActions': True,
                       'realAccountWrites': 0}))
 

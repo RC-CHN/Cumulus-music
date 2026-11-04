@@ -113,6 +113,7 @@ export function createTauriClient(): CoreClient {
     memberPage: (epoch, query, refresh) => invoke('member_page', { epoch, query, refresh }),
     memberRights: (epoch, refresh) => invoke('member_rights', { epoch, refresh }),
     memberPortalQr: () => invoke('member_portal_qr'),
+    memberCardOfferQr: (epoch, revision) => invoke('member_card_offer_qr', { epoch, revision }),
     memberCardOffer: (epoch, refresh) => invoke('member_card_offer', { epoch, refresh }),
     openMemberCardOffer: (epoch, revision) => invoke('open_member_card_offer', { epoch, revision }),
     memberSignCard: (epoch) => invoke('member_sign_card', { epoch }),
