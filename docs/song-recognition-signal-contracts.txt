@@ -100,6 +100,104 @@ song-recognition-noise-centered.f32le.gz 是上述完整 999×138 合成噪声�
 本地及 Linux/Windows CI 的识曲核心命令：
   cargo test --locked -p cumulus-core --lib --features song-recognition-zlib song_recognition
 
-仍需逐层恢复窗口至功率矩阵的 FFT 运算顺序和 C90B60 的 f32 对数，再
-核对设备输入下混、捕获与服务授权边界。完整矩阵回归仅覆盖已中心化
-矩阵之后的峰值选择，不能证明这些上游步骤或真实服务结果。
+窗口、FFT 和对数的离线差分结果
+
+以下是 Rust 选择器前面的独立标量复验。此批没有改 Rust，也没有接入
+设备输入、捕获或服务；下面的输入从冻结的 8 kHz 单声道 i16 开始。
+
+FFT：D179A0 的 twiddle 源角是 f64((-2π × i) / 2048)，D17A60/D17A74
+分别计算 cos/sin，D17A68/D17A7E 转 f32。2,048 个复数系数的 f32
+字节 SHA256：
+37ea4f39cae858307222a5d42f50a92e7c74dd567e4185263e11fd26509df166。
+D17500 基于 (4,512)、(4,128)、(4,32)、(4,8)、(4,2)、(2,1) 递归；
+radix-2 叶取相距 stride 的输入，以 twiddle[0] 做复乘后分别作和与差。
+radix-4 每个子块用分隔的 4 路 stride，递归后按以下顺序计算：
+  u = a1 × W[i×stride], v = a2 × W[2×i×stride], w = a3 × W[3×i×stride]
+  d = a0 - v, a = a0 + v, b = u + w, c = u - w
+  out0 = a + b, out2 = a - b
+  out1 = (d.re + c.im, d.im - c.re), out3 = (d.re - c.im, d.im + c.re)
+复乘的每次实数乘法、加法或减法都单独舍入 f32。噪声的 0、1、67、137
+帧在 D169E0、D16A2F、D16A6E 各自读取窗后输入、2,048 个复数结果、
+1,025 个功率；独立计算逐位一致。复验用数学公式生成 Hamming 和
+twiddle，并用原生散列核对，不需要在 Rust 内调用设备或官方 DLL。
+CB1B20/CB20A0 的 SSE、FMA 结果在 f64 内不要求相同；这两个固定输入
+集合转为 f32 后的全表实测相同。
+
+对数：C90B64 读取 0x221262c，零走 SSE，非零走 C90D60 的 AVX/FMA。
+CCC1D0（CRT 指针在 0x19f2ba0）检测 CPUID leaf 1 ECX 的 0x18001000
+（OSXSAVE、AVX、FMA3），并验证 XGETBV(0) & 6 == 6，写入硬件标志
+0x2212628 及当前标志 0x221262c。CCC248 只在硬件标志为真时接受
+显式设置；无导入原生探针没有运行 CRT，原始标志为零。真实 Windows
+启动是否另外覆盖此标志尚未观察。两条分支均需保留，不能用宿主 ln
+代替任一分支，也不能把当前 Linux 硬件状态作为合成输入的隐式选择。
+
+只复验 D13DE0 夹住下限后送给 C90B60 的正有限 normal 域，未复刻
+通用数学库的 NaN/负值/零/次正规数接口。令 RN 为单次 f32 最近舍入。
+可按 i=0..128 用高精度数学生成三个表，未复制 DLL 表字节：
+  x = 1 + i/128
+  H[i] = RN(ln(x)) 的 f32 位形清除最低 12 位
+  L[i] = ln(x) - H[i] 转 f32，向零舍入
+  R[i] = RN(2/x)
+三表 SHA256，均为每项 4 字节的小端 f32：
+  H 4c76320e09085b9eb463c242e121da58e26a1f4fb30178d17ef20c9ce5441582
+  L f3749403d5d1f6f9c1aca320aef40a3eea25d128636a25fce91d330ff1b95211
+  R 8c1e082036b2adc3a3bbec223fbeb32e62c311d5e5c2b935f9692b5640ad1794
+L 若直接转为 RN，129 项中 70 项会比官方值大一个 ULP。
+
+一般域：e 为输入 f32 指数减 127，m 为低 23 位尾数，j 为
+(m & 0x7f0000) + ((m & 0x8000) << 1)，i=j >> 16。
+r = (f32bits(j | 0x3f000000) - f32bits(m | 0x3f000000)) × R[i]。
+下列未标 FMA 的每个运算均单独舍入 f32，括号为运算顺序：
+  SSE: p = r + ((r×(1/3)+0.5)×(r×r))
+       hi = H[128]×e + H[i], lo = (L[128]×e - p) + L[i]
+  FMA: p = fma(fma(1/3,r,0.5), r×r, r)
+       hi = fma(H[128],e,H[i]), lo = fma(L[128],e,-p) + L[i]
+返回 hi + lo。近 1 域是 abs(x - 1) < 0.0625（严格小于）：
+  w=x-1, r=w/(2+w), c=w×r, z=r+r, z2=z×z, z3=z×z2
+  SSE 返回 w + (((z2×0.0125+1/12)×z3)-c)
+  FMA 返回 w + fma(fma(z2,0.0125,1/12),z3,-c)
+其中系数位形 1/3=0x3eaaaaab，0.0125=0x3c4ccccd，1/12=0x3daaaaab；
+FMA 对乘加合为一次舍入。
+
+固定 5,317 个直接调用输入包含 10 个指数、每一尾数桶的起点和舍入
+转换前后值、1±1/16 周边、最小和最大 normal、下限。读取原函数
+(input bits, output bits) 的连续小端 u32 字节，均与独立公式匹配：
+  SSE 01f24dd6168cfa79fc32f152321968561ec424a9e60fd1ef85aec4db547a708e
+  FMA de75bbcf2b50d3640d358693a7cbe481b68672e78599558b5437330386513a2c
+SSE 由 Unicorn 和宿主 x86 两种方式复验；Unicorn 不执行该 FMA 指令。
+FMA 宿主复验在无网络命名空间子进程，仅映射已审阅的叶函数和常量，
+不加载 DLL 或运行入口；非正 normal 不传入。
+
+从三个冻结的 i16 合成配方独立计算后，各阶段的每个字节与原生 SSE
+一致（合计 424,350 个功率值、413,586 个 log 值和 413,586 个中心化
+值；最终峰数 17、105、0）。下面每行依次是功率、log、中心化 SHA256：
+  two-tone
+    f25400108f9225a3dfa0fc47a6058521d2d523d05635de3292082bc67288943a
+    d50a2b3ef76433d8bd049c3b1a84ed2f733e7f4af5849df28aa13650b2a731be
+    9d939241bf0370eaa308089d52f7a89b09c2381b6d6c93183a6686dc9f088c39
+  noise
+    7175b574b3787346dfa826d2dc549b7c2a81c7e559e70229789e27a844ad4c11
+    4e7ecf40331f9e506d19aad9511a33e536c964954913da415319bdb111c94242
+    d3e75088290d3870f0a903e3d7210441afa7fbafb62836661e9a1ba05459690f
+  silence
+    3de7b5c5c854800eab28f4a2b42139ac4b90a74c954fdff1b500bc915f46719f
+    f204de945ef1474de3b117b01ecdf00a12d02dfc2fb562d3eed0fda0a272d888
+    e05b5c9954703122ec5de5c354012a409616946102b626254d87a77d20891301
+分支间，two-tone 和 noise 均有一个 log 值不同，静音为零个；这三组
+最终峰恰好均不变。原生噪声链另用原函数 FMA 叶作混合宿主复验，只
+在 C90B60 入口交给同 DLL 叶函数的 x86 结果，余下原生算法不变；
+log SHA256 b8755830dfaaa4518d221dafc77fc51089733f39b966aebe1bd28e02a0045bc6，
+中心化 SHA256 ee6520de685f21a891bf1cd3b3635e830af05442d107d13c826562eddab8bb26。
+不能从这三组最终峰相同推断两种分支对任意输入都等价。
+
+私有实验位于 .build/song-recognition-differential/，其中 signal-math.log
+是整段差分输出，log-*-vectors.bin 为两支直接调用记录。
+原生阶段记录脚本：.build/song-recognition-differential-run.sh；
+FFT 各阶段记录：.build/song-recognition-fft-oracle-run.sh --noise --record。
+两者在无网络命名空间运行。矩阵比较：
+  unshare -Urn .build/reverse-tools/bin/python \
+    .build/song-recognition-differential/signal_math.py
+
+下一步可把已恢复的 i16 → 窗 → FFT → 功率 → log → 中心化迁到独立
+离线 Rust API，显式选择 SSE/FMA 模式，并用阶段散列和包字节回归。
+设备输入下混、实机采集、上游授权和识别结果仍需单独验证。
