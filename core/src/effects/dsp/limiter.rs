@@ -2,11 +2,13 @@
 //! Live reconfiguration and the full native material graph are separate.
 mod envelope;
 mod flow;
+mod stream;
 
 use super::{Format, PlanarBlock};
 use crate::{Error, Result};
 use envelope::Envelope;
 pub use flow::{LimiterBlockFlow, LimiterFrameFlow};
+pub use stream::{LimiterStream, LimiterStreamQuantum, LimiterStreamRead, LimiterStreamWrite};
 
 #[derive(Clone, Copy, Debug)]
 pub struct LimiterSettings {

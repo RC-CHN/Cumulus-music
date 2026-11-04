@@ -1,0 +1,77 @@
+{
+  "dllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "outerWriteRva": "0x67c00",
+  "outerReadRva": "0x68120",
+  "graphRva": "0x1aa50",
+  "oracleSha256": "a41593be7cda73a3732e504830b0aca4e9bf814a6eee63b0b46b2673b9e57400",
+  "oracleBaseSha256": "ffdb0840b02601ef0149b34403cce7f2cf278c982cc3c51e18569b5a992a6dbf",
+  "floatInput": "At absolute frame i and zero-based channel c, alternate sign by (i+c) parity, use 2 when (i+c)%7=0 or 0.125+(i%5)/32 otherwise, then divide by c+1 and round to f32.",
+  "cases": [
+    {"name": "stereo-partial-wrap", "rate": 8000, "channels": 2, "quantum": 7, "fifoCapacity": 48, "enabled": true, "operations": [
+      {"op": "pull", "capacity": 4, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": 9, "graphCalls": [], "inputReady": 3, "outputReady": 0, "clockMs": 9, "inputEnd": false, "firstFrame": 0, "frameCount": 3},
+      {"op": "pull", "capacity": 2, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 9, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 7, "inputEnd": false, "timestampMs": 9, "outputFrames": 0, "outputEnd": false}], "inputReady": 1, "outputReady": 0, "clockMs": 9, "inputEnd": false, "firstFrame": 3, "frameCount": 12},
+      {"op": "pull", "capacity": 1, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "pull", "capacity": 3, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 9, "outputFrames": 0, "outputEnd": false}], "inputReady": 5, "outputReady": 0, "clockMs": 9, "inputEnd": false, "firstFrame": 15, "frameCount": 11},
+      {"op": "pull", "capacity": 4, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": 20, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 0, "outputEnd": false}], "inputReady": 1, "outputReady": 0, "clockMs": 20, "inputEnd": false, "firstFrame": 26, "frameCount": 10},
+      {"op": "pull", "capacity": 14, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "pull", "capacity": 0, "end": null, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 4, "outputEnd": false}, {"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}], "inputReady": 0, "outputReady": 11, "clockMs": 20, "inputEnd": false, "firstFrame": 36, "frameCount": 13},
+      {"op": "pull", "capacity": 11, "end": false, "outputReady": 0, "frameCount": 11, "pcmSha256": "a1fa008df717d463e485c135acf7738b76ff5e8b7875cdb05bcf7611016b85ea"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}], "inputReady": 1, "outputReady": 21, "clockMs": 20, "inputEnd": false, "firstFrame": 49, "frameCount": 22},
+      {"op": "pull", "capacity": 12, "end": false, "outputReady": 9, "frameCount": 12, "pcmSha256": "f1965e744201c71541867e35a17507d0f8bac53528f225c425ad45b3c3d98370"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}], "inputReady": 1, "outputReady": 16, "clockMs": 20, "inputEnd": false, "firstFrame": 71, "frameCount": 7},
+      {"op": "pull", "capacity": 10, "end": false, "outputReady": 6, "frameCount": 10, "pcmSha256": "5dd13404ddeff73612d8d8872b3bbde3950026bbaeebbb32904e261698d95026"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 20, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 20, "outputFrames": 4, "outputEnd": true}], "inputReady": 0, "outputReady": 45, "clockMs": 20, "inputEnd": true, "firstFrame": 0, "frameCount": 0},
+      {"op": "pull", "capacity": 2, "end": false, "outputReady": 43, "frameCount": 2, "pcmSha256": "0ed2a03fcf456dd0aa6221cf5597e24d1972a1b101e1cfee76b5a9d75c8aa8cd"},
+      {"op": "pull", "capacity": 7, "end": false, "outputReady": 36, "frameCount": 7, "pcmSha256": "ead8051728ef10b2ead4b0defa30b0de5288e55356c8739066134a9c3e12c3e7"},
+      {"op": "pull", "capacity": 99, "end": true, "outputReady": 0, "frameCount": 36, "pcmSha256": "912710b1edd1c1b998a47c5e7ede6091b3e2868ce08bc2fa43aea90c70f27854"},
+      {"op": "pull", "capacity": 3, "end": true, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": 99, "graphCalls": [], "inputReady": 0, "outputReady": 0, "clockMs": 20, "inputEnd": true, "firstFrame": 78, "frameCount": 2},
+      {"op": "pull", "capacity": 9, "end": true, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    ]},
+    {"name": "stereo-exact-quantum", "rate": 8000, "channels": 2, "quantum": 9, "fifoCapacity": 40, "enabled": true, "operations": [
+      {"op": "push", "timestampMs": 0, "graphCalls": [{"inputFrames": 9, "inputEnd": false, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}], "inputReady": 0, "outputReady": 0, "clockMs": 0, "inputEnd": false, "firstFrame": 0, "frameCount": 9},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 9, "inputEnd": false, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}], "inputReady": 0, "outputReady": 0, "clockMs": 0, "inputEnd": false, "firstFrame": 9, "frameCount": 9},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 0, "outputFrames": 7, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 0, "outputFrames": 9, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 0, "outputFrames": 3, "outputEnd": true}], "inputReady": 0, "outputReady": 19, "clockMs": 0, "inputEnd": true, "firstFrame": 0, "frameCount": 0},
+      {"op": "pull", "capacity": 30, "end": true, "outputReady": 0, "frameCount": 19, "pcmSha256": "6db39a634e8511c692f057661f20f86365b186f98e6cc4371c1228458073740b"},
+      {"op": "pull", "capacity": 3, "end": true, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    ]},
+    {"name": "eight-channel-empty-eof", "rate": 8000, "channels": 8, "quantum": 13, "fifoCapacity": 24, "enabled": true, "operations": [
+      {"op": "pull", "capacity": 4, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 0, "outputFrames": 1, "outputEnd": true}], "inputReady": 0, "outputReady": 1, "clockMs": -1, "inputEnd": true, "firstFrame": 0, "frameCount": 0},
+      {"op": "pull", "capacity": 1, "end": true, "outputReady": 0, "frameCount": 1, "pcmSha256": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"},
+      {"op": "pull", "capacity": 3, "end": true, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    ]},
+    {"name": "eight-channel-variable-chunks", "rate": 8000, "channels": 8, "quantum": 13, "fifoCapacity": 32, "enabled": true, "operations": [
+      {"op": "push", "timestampMs": 21, "graphCalls": [], "inputReady": 5, "outputReady": 0, "clockMs": 21, "inputEnd": false, "firstFrame": 0, "frameCount": 5},
+      {"op": "pull", "capacity": 2, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 13, "inputEnd": false, "timestampMs": 21, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 13, "inputEnd": false, "timestampMs": 22, "outputFrames": 0, "outputEnd": false}], "inputReady": 1, "outputReady": 0, "clockMs": 23, "inputEnd": false, "firstFrame": 5, "frameCount": 22},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 23, "outputFrames": 1, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 23, "outputFrames": 13, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 23, "outputFrames": 13, "outputEnd": true}], "inputReady": 0, "outputReady": 27, "clockMs": 23, "inputEnd": true, "firstFrame": 0, "frameCount": 0},
+      {"op": "pull", "capacity": 3, "end": false, "outputReady": 24, "frameCount": 3, "pcmSha256": "7a2bc8274e42d89d0dfb041550ed2961d4091edb7769160ccf8d84066485dca3"},
+      {"op": "pull", "capacity": 20, "end": false, "outputReady": 4, "frameCount": 20, "pcmSha256": "65a21afddf278def322e5f18abf8879468b99c0f82b9210d0be46da5f81fcc9b"},
+      {"op": "pull", "capacity": 32, "end": true, "outputReady": 0, "frameCount": 4, "pcmSha256": "6c29d43f5b3066f17eab8b7829d31e285bc83e58d7f7e22bdaf2991ce88e449c"}
+    ]},
+    {"name": "mono-bypass-timestamp", "rate": 11025, "channels": 1, "quantum": 17, "fifoCapacity": 48, "enabled": false, "operations": [
+      {"op": "push", "timestampMs": 200, "graphCalls": [{"inputFrames": 17, "inputEnd": false, "timestampMs": 200, "outputFrames": 17, "outputEnd": false}], "inputReady": 0, "outputReady": 17, "clockMs": 201, "inputEnd": false, "firstFrame": 0, "frameCount": 17},
+      {"op": "pull", "capacity": 10, "end": false, "outputReady": 7, "frameCount": 10, "pcmSha256": "da8a75e233ef69f98a3ec4128a9fbc55705e88c4f2bb624da7ea8999af1e7ee5"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 17, "inputEnd": false, "timestampMs": 201, "outputFrames": 17, "outputEnd": false}], "inputReady": 4, "outputReady": 24, "clockMs": 202, "inputEnd": false, "firstFrame": 17, "frameCount": 21},
+      {"op": "pull", "capacity": 5, "end": false, "outputReady": 19, "frameCount": 5, "pcmSha256": "0a9eac7c826765b13b104cff4edcd6e104d4c1731e70f238e33fa19ebe008eaf"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 4, "inputEnd": true, "timestampMs": 202, "outputFrames": 4, "outputEnd": true}], "inputReady": 0, "outputReady": 23, "clockMs": 202, "inputEnd": true, "firstFrame": 0, "frameCount": 0},
+      {"op": "pull", "capacity": 45, "end": true, "outputReady": 0, "frameCount": 23, "pcmSha256": "2962f9e59b68292bc114eb81145c2cc9a0347264a5a10da9cee07c391d7d6a40"}
+    ]},
+    {"name": "default-2048-quantum", "rate": 44100, "channels": 2, "quantum": 2048, "fifoCapacity": 4096, "enabled": true, "operations": [
+      {"op": "push", "timestampMs": 21, "graphCalls": [], "inputReady": 3, "outputReady": 0, "clockMs": 21, "inputEnd": false, "firstFrame": 0, "frameCount": 3},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 2048, "inputEnd": false, "timestampMs": 21, "outputFrames": 1829, "outputEnd": false}], "inputReady": 0, "outputReady": 1829, "clockMs": 67, "inputEnd": false, "firstFrame": 3, "frameCount": 2045},
+      {"op": "pull", "capacity": 123, "end": false, "outputReady": 1706, "frameCount": 123, "pcmSha256": "a7779f6075f5f0fa3a4243073c9bcb9c83458af43dcbdae85faddb3f13e1c266"},
+      {"op": "push", "timestampMs": null, "graphCalls": [], "inputReady": 1, "outputReady": 1706, "clockMs": 67, "inputEnd": false, "firstFrame": 2048, "frameCount": 1},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 67, "outputFrames": 220, "outputEnd": true}], "inputReady": 0, "outputReady": 1926, "clockMs": 67, "inputEnd": true, "firstFrame": 0, "frameCount": 0},
+      {"op": "pull", "capacity": 1024, "end": false, "outputReady": 902, "frameCount": 1024, "pcmSha256": "32d13d3af6caa296089d89fe32b7a3169d5dadb9e9174a9538efb8b872c256d0"},
+      {"op": "pull", "capacity": 2048, "end": true, "outputReady": 0, "frameCount": 902, "pcmSha256": "a9adcfa4f4b87f539590ecd3f602b26a4da33da62ffdea6c40b6ce760559850f"},
+      {"op": "pull", "capacity": 2, "end": true, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    ]}
+  ]
+}

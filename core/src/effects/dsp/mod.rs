@@ -20,7 +20,10 @@ pub use dynamics::MultibandDynamics;
 pub use dynamics_parameters::{DynamicsBand, DynamicsParameters, DynamicsSettings};
 pub use filter::{Biquad, Coefficients, GraphicKind, ParametricKind};
 pub use graphic::{BassTreble, BassTrebleSettings, GraphicEq};
-pub use limiter::{LimiterBlockFlow, LimiterFrameFlow, LimiterSettings, LimiterStage};
+pub use limiter::{
+    LimiterBlockFlow, LimiterFrameFlow, LimiterSettings, LimiterStage, LimiterStream,
+    LimiterStreamQuantum, LimiterStreamRead, LimiterStreamWrite,
+};
 pub use loudness::{LoudnessParameters, LoudnessStage};
 pub use parametric::{ParametricBand, ParametricEq};
 pub use rotation::{RotationKernel, RotationResponses, RotationResult, RotationStage};

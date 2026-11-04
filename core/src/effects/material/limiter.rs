@@ -1,6 +1,6 @@
 //! Material-load controls for the final lookahead limiter. These events do
 //! not process samples and are not a recipe for a fixed-size LADSPA filter.
-use super::super::dsp::{Format, LimiterFrameFlow, LimiterSettings, LimiterStage};
+use super::super::dsp::{Format, LimiterFrameFlow, LimiterSettings, LimiterStage, LimiterStream};
 use super::{
     Component, ControlCall, LimiterParameters, MaterialSchema, limiter_calls, route_sections,
 };
@@ -126,5 +126,10 @@ impl MaterialLimiterPlan {
                 ratio: parameters.ratio,
             },
         )
+    }
+
+    /// Open a fresh isolated B0 node with the original outer FIFO protocol.
+    pub fn pcm_stream(&self, format: Format, fifo_capacity: u32) -> Result<LimiterStream> {
+        self.pcm_stage(format)?.into_stream(fifo_capacity)
     }
 }

@@ -3,7 +3,7 @@ use crate::{Error, Result};
 use serde::Serialize;
 
 /// Frame and EOF contract only. This does not buffer, produce, or modify PCM.
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct LimiterFrameFlow {
     max_frames: u32,
     lookahead_frames: u32,
