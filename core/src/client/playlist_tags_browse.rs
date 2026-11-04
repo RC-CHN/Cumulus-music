@@ -28,7 +28,97 @@ pub struct PlaylistTagCard {
     pub cover_url: Option<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistTagGroup {
+    id: u8,
+    name: String,
+    tags: Vec<PlaylistCatalogueTag>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PlaylistCatalogueTag {
+    name: String,
+    display_name: Option<String>,
+}
+
+fn safe_label(label: &str) -> bool {
+    !label.is_empty()
+        && label.trim() == label
+        && label.chars().count() <= 80
+        && !label.chars().any(char::is_control)
+}
+
+fn valid_tag(label: &str) -> bool {
+    safe_label(label) && label != "推荐"
+}
+
+fn catalogue(reply: &Value) -> Result<Vec<PlaylistTagGroup>> {
+    let categories = reply["categories"]
+        .as_object()
+        .filter(|value| value.len() <= 32)
+        .ok_or(Error::Response("invalid playlist tag catalogue groups"))?;
+    let tags = reply["sub"]
+        .as_array()
+        .filter(|value| value.len() <= 256)
+        .ok_or(Error::Response("invalid playlist tag catalogue entries"))?;
+    let mut seen = HashSet::new();
+    let mut keys: Vec<_> = categories.keys().collect();
+    keys.sort_unstable();
+    Ok(keys
+        .into_iter()
+        .filter_map(|key| {
+            let id = key.parse::<u8>().ok().filter(|id| id.to_string() == *key)?;
+            let name = categories[key]
+                .as_str()
+                .filter(|name| safe_label(name))?
+                .to_owned();
+            let tags = tags
+                .iter()
+                .filter(|tag| tag["category"] == id)
+                .filter_map(|tag| {
+                    let name = tag["name"]
+                        .as_str()
+                        .filter(|name| valid_tag(name) && *name != "官方" && seen.insert(*name))?;
+                    let display_name = tag["displayName"]
+                        .as_str()
+                        .filter(|value| safe_label(value))
+                        .map(str::to_owned);
+                    Some(PlaylistCatalogueTag {
+                        name: name.to_owned(),
+                        display_name,
+                    })
+                })
+                .collect::<Vec<_>>();
+            (!tags.is_empty()).then_some(PlaylistTagGroup { id, name, tags })
+        })
+        .collect())
+}
+
 impl MusicClient {
+    pub async fn playlist_tag_catalogue(
+        &self,
+        epoch: &str,
+    ) -> Result<AccountData<Vec<PlaylistTagGroup>>> {
+        let token = self.playlist_token(epoch)?;
+        let value = self
+            .session
+            .run_for(&token, |api, _| async move {
+                let reply = api
+                    .call("/api/playlist/catalogue", json!({}), false, &[200])
+                    .await?;
+                catalogue(&reply)
+            })
+            .await?;
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
     pub async fn playlist_tag_page(
         &self,
         epoch: &str,
@@ -40,12 +130,7 @@ impl MusicClient {
             .run_for(&token, |api, _| async move {
                 let (path, body, requested) = match query {
                     PlaylistTagQuery::Category { tag } => {
-                        if tag.trim().is_empty()
-                            || tag.trim() != tag
-                            || tag == "推荐"
-                            || tag.chars().count() > 80
-                            || tag.chars().any(char::is_control)
-                        {
+                        if !valid_tag(&tag) {
                             return Err(Error::InvalidInput("invalid playlist category"));
                         }
                         (
@@ -140,15 +225,33 @@ pub(super) fn header_tags(value: &Value) -> Vec<String> {
     let mut seen = HashSet::new();
     tags.iter()
         .filter_map(Value::as_str)
-        .filter(|tag| {
-            !tag.is_empty()
-                && tag.trim() == *tag
-                && *tag != "推荐"
-                && tag.chars().count() <= 80
-                && !tag.chars().any(char::is_control)
-        })
+        .filter(|tag| valid_tag(tag))
         .filter(|tag| seen.insert(*tag))
         .take(3)
         .map(str::to_owned)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalogue_preserves_group_and_entry_order_and_uses_raw_tag_names() {
+        let value = json!({"categories":{"1":"风格","0":"语种","2":"空分组","01":"无效"},
+            "sub":[{"category":1,"name":"摇滚","displayName":"摇滚精选"},
+                {"category":0,"name":"华语"},
+                {"category":1,"name":"摇滚"},
+                {"category":1,"name":"民谣","displayName":"\t"},
+                {"category":1,"name":"推荐"},{"category":1,"name":"官方"},
+                {"category":5,"name":"未知分组"}]});
+        assert_eq!(
+            json!(catalogue(&value).unwrap()),
+            json!([
+                {"id":0,"name":"语种","tags":[{"name":"华语","displayName":null}]},
+                {"id":1,"name":"风格","tags":[{"name":"摇滚","displayName":"摇滚精选"},{"name":"民谣","displayName":null}]}
+            ])
+        );
+        assert!(catalogue(&json!({"categories": {}})).is_err());
+    }
 }

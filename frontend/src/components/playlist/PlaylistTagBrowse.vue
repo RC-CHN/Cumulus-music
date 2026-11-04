@@ -2,8 +2,14 @@
 import { nextTick, onMounted, ref } from 'vue';
 import Icon from '../Icon.vue';
 import type { usePlaylistTagBrowse } from '../../composables/usePlaylistTagBrowse';
-const props = defineProps<{ tag: string; model: ReturnType<typeof usePlaylistTagBrowse> }>();
-const emit = defineEmits<{ open: [id: string] }>();
+import type { usePlaylistTagCatalogue } from '../../composables/usePlaylistTagCatalogue';
+import PlaylistCataloguePicker from './PlaylistCataloguePicker.vue';
+const props = defineProps<{
+  tag: string;
+  model: ReturnType<typeof usePlaylistTagBrowse>;
+  catalogue: ReturnType<typeof usePlaylistTagCatalogue>;
+}>();
+const emit = defineEmits<{ open: [id: string]; category: [tag: string] }>();
 const root = ref<HTMLElement>();
 onMounted(async () => {
   const origin = document.activeElement;
@@ -37,6 +43,7 @@ function missingImage(event: Event) {
         <p class="muted">{{ tag }}</p>
       </div>
     </header>
+    <PlaylistCataloguePicker :tag="tag" :model="catalogue" @choose="emit('category', $event)" />
     <p v-if="model.busy.value" role="status">正在读取歌单…</p>
     <p v-if="model.failed.value" class="error-state" role="alert">
       无法读取此分类

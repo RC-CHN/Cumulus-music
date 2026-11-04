@@ -50,6 +50,7 @@ import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
+import { usePlaylistTagCatalogue } from './composables/usePlaylistTagCatalogue';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterTrackScope } from './services/trackScopeSearch';
 import TrackScopeSearch from './components/TrackScopeSearch.vue';
@@ -1480,6 +1481,11 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 const playlistTagBrowse = usePlaylistTagBrowse(core);
+const playlistTagCatalogue = usePlaylistTagCatalogue(
+  core,
+  () => account.value,
+  () => void music.bootstrap(false),
+);
 watch(
   [
     () => account.value.epoch,
@@ -2843,7 +2849,9 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'playlist_tag'"
                 :tag="page.tag"
                 :model="playlistTagBrowse"
+                :catalogue="playlistTagCatalogue"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
+                @category="(tag) => music.navigate({ kind: 'playlist_tag', tag })"
               />
               <CommentsPage
                 v-else-if="page.kind === 'comments'"

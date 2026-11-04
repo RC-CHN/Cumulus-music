@@ -112,6 +112,7 @@ fn playlist_tag_browse_proof() -> bool {
     std::env::var_os("CUMULUS_PLAYLIST_TAG_BROWSE_PROOF").is_some()
 }
 static PLAYLIST_TAG_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
+static PLAYLIST_CATALOGUE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 
 fn playlist_creator_proof() -> bool {
     std::env::var_os("CUMULUS_PLAYLIST_CREATOR_PROOF").is_some()
@@ -331,6 +332,17 @@ impl Api for Library {
                     PLAYLIST_TAG_CALLS.lock().unwrap().push(args);
                     json!({"code":200,"playlists":(100..124).map(|id| json!({"id":id,"name":format!("分类合成歌单 {id}")})).collect::<Vec<_>>(),
                         "playlistIds":(100..124).chain([3,4]).collect::<Vec<_>>()})
+                }
+                "/api/playlist/catalogue" if playlist_tag_browse_proof() => {
+                    let mut calls = PLAYLIST_CATALOGUE_CALLS.lock().unwrap();
+                    calls.push(args);
+                    if calls.len() == 1 {
+                        return Err(cumulus_core::Error::Transport("合成标签读取中断".into()));
+                    }
+                    json!({"code":200,"categories":{"1":"风格","0":"语种"},
+                        "sub":[{"name":"摇滚","displayName":"摇滚精选","category":1},
+                            {"name":"华语","category":0},{"name":"官方","category":0},
+                            {"name":"推荐","category":1},{"name":"民谣","category":1}]})
                 }
                 "/api/playlist/list/get" if playlist_tag_browse_proof() => {
                     PLAYLIST_TAG_CALLS.lock().unwrap().push(args);
@@ -591,6 +603,7 @@ fn main() {
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             if playlist_tag_browse_proof() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
+                value["playlistCatalogueCalls"] = json!(*PLAYLIST_CATALOGUE_CALLS.lock().unwrap());
             }
             if playlist_creator_proof() {
                 value["playlistCreatorCalls"] = json!(*PLAYLIST_CREATOR_CALLS.lock().unwrap());

@@ -62,6 +62,7 @@ const discovery: NavItem[] = [
   { title: '私人漫游', icon: 'music', page: { kind: 'fm' } },
   { title: '排行榜', icon: 'list', page: { kind: 'rankings', query: { kind: 'home' } } },
   { title: '歌手', icon: 'user', page: { kind: 'artist_gallery' } },
+  { title: '歌单广场', icon: 'grid', page: { kind: 'playlist_tag', tag: '官方' } },
   { title: '一起听', icon: 'headphones', page: { kind: 'together' } },
   { title: '每日推荐', icon: 'calendar', page: { kind: 'daily' } },
   { title: '随心听 FM', icon: 'music', page: { kind: 'scene_fm' } },

@@ -193,6 +193,17 @@ pub async fn playlist_creator_profile(
 }
 
 #[tauri::command]
+pub async fn playlist_tag_catalogue(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Vec<PlaylistTagGroup>>, ClientError> {
+    client
+        .playlist_tag_catalogue(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn playlist_tag_page(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

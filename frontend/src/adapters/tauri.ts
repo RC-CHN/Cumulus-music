@@ -304,6 +304,7 @@ export function createTauriClient(): CoreClient {
       invoke('playlist_collect_page', { epoch, sort, page }),
     playlistCreatorProfile: (epoch, uid) => invoke('playlist_creator_profile', { epoch, uid }),
     playlistTagPage: (epoch, query) => invoke('playlist_tag_page', { epoch, query }),
+    playlistTagCatalogue: (epoch) => invoke('playlist_tag_catalogue', { epoch }),
     playlistSubscribers: (epoch, id, offset) =>
       invoke('playlist_subscribers', { epoch, id, offset }),
     playlistPage: (id, page) => invoke('playlist_page', { id, page }),

@@ -1,8 +1,8 @@
 // Production tag navigation and both official read shapes via a synthetic API.
 (async () => {
   const one = (selector) => document.querySelector(selector);
-  const button = (label) =>
-    [...document.querySelectorAll('button')].find(
+  const button = (label, scope = document) =>
+    [...scope.querySelectorAll('button')].find(
       (item) => item.getAttribute('aria-label') === label || item.textContent.trim() === label,
     );
   const assert = (value, label) => { if (!value) throw Error(label); };
@@ -48,7 +48,34 @@
     await wait(() => document.activeElement === one('[data-tag-playlist-id="3"]'), 'back restores card focus');
     click(button('上一页'));
     await wait(() => cards().length === 24, 'back to cached first page');
-    await emit('complete', { ok: true });
+    click(button('歌单广场', one('.sidebar')));
+    const catalogue = () => one('.playlist-catalogue-panel');
+    const more = () => one('.playlist-catalogue-trigger');
+    const heading = () => one('.playlist-tag-browse .page-heading p')?.textContent;
+    await wait(() => cards().length === 24 && heading() === '官方', 'discovery enters official category');
+    await emit('ux_04_square');
+    click(more());
+    await wait(() => catalogue()?.textContent.includes('网络请求失败') &&
+      button('重新加载', catalogue()), 'catalogue error can retry');
+    click(button('重新加载', catalogue()));
+    await wait(() => catalogue() && button('语种', catalogue()) && button('华语', catalogue()),
+      'catalogue uses the first official group and displays its tags');
+    assert(!button('官方', catalogue()) && !button('推荐', catalogue()),
+      'outside and personalized tags do not become normal categories');
+    click(button('风格', catalogue()));
+    await wait(() => button('摇滚精选', catalogue()) && button('民谣', catalogue()) &&
+      !button('华语', catalogue()), 'choose the next group without mixing category tags');
+    await emit('ux_05_catalogue');
+    click(button('摇滚精选', catalogue()));
+    await wait(() => !catalogue() && heading() === '摇滚' && cards().length === 24,
+      'display label selects raw category');
+    click(more());
+    await wait(() => catalogue() && button('摇滚精选', catalogue())?.getAttribute('aria-pressed')==='true',
+      'reopening restores the group and selected tag');
+    assert(button('风格', catalogue()).getAttribute('aria-pressed')==='true', 'restored exact group');
+    catalogue().dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
+    await wait(() => !catalogue() && document.activeElement===more(), 'Escape restores trigger focus');
+    await emit('complete', { ok: true, catalogueVerified: true });
   } catch (error) {
     await emit('failed', { message: String(error) });
   }

@@ -258,6 +258,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::playlist_page,
                 commands::playlist_subscribers,
                 commands::playlist_tag_page,
+                commands::playlist_tag_catalogue,
                 commands::playlist_creator_profile,
                 commands::search_songs,
                 search::search_discovery,

@@ -149,6 +149,7 @@ export interface CoreClient
     uid: string,
   ): Promise<AccountData<PlaylistCreatorProfile | null>>;
   playlistTagPage(epoch: string, query: PlaylistTagQuery): Promise<AccountData<PlaylistTagPage>>;
+  playlistTagCatalogue(epoch: string): Promise<AccountData<PlaylistTagGroup[]>>;
   playlistSubscribers(
     epoch: string,
     id: string,
@@ -214,6 +215,11 @@ export type PlaylistTagQuery = { kind: 'category'; tag: string } | { kind: 'item
 export interface PlaylistTagPage {
   items: { id: string; name: string; coverUrl: string | null }[];
   remainingIds: string[];
+}
+export interface PlaylistTagGroup {
+  id: number;
+  name: string;
+  tags: { name: string; displayName: string | null }[];
 }
 
 export interface PlaylistSubscribersPage {
