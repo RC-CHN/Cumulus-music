@@ -216,7 +216,10 @@ def main():
         desktop_info = GioUnix.DesktopAppInfo
     start_accessibility()
     app = desktop_info.new(DESKTOP_ID)
-    assert app and Path(app.get_filename()) == entry and app.supports_files() and not app.supports_uris()
+    # Some PyGObject versions expose GioUnix methods on this instance
+    # without binding self. Call the selected introspection type explicitly.
+    assert app and Path(desktop_info.get_filename(app)) == entry
+    assert app.supports_files() and not app.supports_uris()
 
     def verify_candidates():
         for mime_type in TYPES:
@@ -244,8 +247,10 @@ def main():
                 launched.append(child)
 
             with (root / f'{name}.log').open('xb') as output:
-                assert app.launch_uris_as_manager_with_fds(list(uris), context, GLib.SpawnFlags.DO_NOT_REAP_CHILD,
-                                                          None, None, track, None, -1, output.fileno(), output.fileno())
+                assert desktop_info.launch_uris_as_manager_with_fds(
+                    app, list(uris), context, GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+                    None, None, track, None, -1, output.fileno(), output.fileno(),
+                )
             assert len(launched) == 1, 'unexpected number of GIO launch processes'
             return launched[0]
 
