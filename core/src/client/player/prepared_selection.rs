@@ -141,6 +141,28 @@ impl MusicClient {
         epoch: &str,
         paths: Vec<std::path::PathBuf>,
     ) -> Result<PlayerView> {
+        self.open_native_files(epoch, paths, true, None).await
+    }
+
+    /// Trusted same-user native relay only. Uses the live selection fence and
+    /// never exposes path input to a renderer command.
+    pub async fn play_native_open_files_warm(
+        &self,
+        epoch: &str,
+        paths: Vec<std::path::PathBuf>,
+        authority: Cancellation,
+    ) -> Result<PlayerView> {
+        self.open_native_files(epoch, paths, false, Some(authority))
+            .await
+    }
+
+    async fn open_native_files(
+        &self,
+        epoch: &str,
+        paths: Vec<std::path::PathBuf>,
+        cold: bool,
+        authority: Option<Cancellation>,
+    ) -> Result<PlayerView> {
         use crate::{
             library::{
                 native_open::{MAX_NATIVE_FILES, inspect_opened_file},
@@ -148,17 +170,20 @@ impl MusicClient {
             },
             playback::controller::PlaybackStatus,
         };
+        if let Some(authority) = &authority {
+            authority.check()?;
+        }
         let token = self.player_token(epoch)?;
         let controller = self.player.controller().await?;
         let current = controller
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
-        if current.state != PlaybackStatus::Idle || current.play_id.is_some() {
+        if cold && (current.state != PlaybackStatus::Idle || current.play_id.is_some()) {
             return Err(Error::StaleResponse);
         }
         // Even an invalid explicit file must not accidentally start the
         // restored online queue. Retire only this snapshot's startup latch.
-        let current = if current.startup_pending {
+        let current = if cold && current.startup_pending {
             controller
                 .command(&token, PlaybackCommand::SkipStartup(current.fence()))
                 .await?
@@ -176,12 +201,16 @@ impl MusicClient {
         let ticket = self.take_prepared_selection(&token, &id)?;
         let session = self.session.clone();
         let worker_token = token.clone();
+        let worker_authority = authority.clone();
         let worker = tokio::task::spawn_blocking(move || {
             let probe = Ffprobe::for_native_open();
             let deadline = Instant::now() + Duration::from_secs(10);
             let mut resources = Vec::new();
             for path in paths {
                 session.check_generation(&worker_token)?;
+                if let Some(authority) = &worker_authority {
+                    authority.check()?;
+                }
                 if Instant::now() >= deadline {
                     break;
                 }
@@ -199,7 +228,7 @@ impl MusicClient {
             return Err(Error::InvalidInput("no supported native local audio files"));
         }
         let state = self
-            .submit_selection(
+            .submit_selection_with_source(
                 &token,
                 PlaybackCommand::Replace {
                     resources,
@@ -209,6 +238,7 @@ impl MusicClient {
                 ticket.observed,
                 None,
                 Some(&ticket),
+                authority,
             )
             .await?;
         self.session.check_generation(&token)?;

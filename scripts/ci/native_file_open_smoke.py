@@ -119,7 +119,7 @@ def main():
                     assert second_tone['amplitude10000Hz'] > 200
                     assert second_tone['amplitude440Hz'] < tone['amplitude440Hz'] * .1
 
-                duplicate = subprocess.run([str(args.binary.resolve()), f'--play={first}'],
+                duplicate = subprocess.run([str(args.binary.resolve())],
                     env=env, capture_output=True, text=True, timeout=25)
                 denied = 'already running for this app profile' in duplicate.stderr
                 assert duplicate.returncode == 2 and denied, (duplicate.returncode, denied)
@@ -161,7 +161,7 @@ def main():
                   acceptedNativeArgvAndUnicode=True, invalidFileSkipped=True, openedTwoInOrder=True,
                   firstFilePinnedDecoderAdvanced=True, secondFilePinnedDecoderAdvanced=True,
                   isolatedPipeWireNullSink=True, syntheticFlacPcm=tone, syntheticMp3Pcm=second_tone,
-                  guiPauseHeld=True, runningProfileRejectsSecondFileOpen=True, invalidActivationScreenshot=True,
+                  guiPauseHeld=True, runningProfileRejectsCompetingOrdinaryLaunch=True, invalidActivationScreenshot=True,
                   invalidActivationDidNotAutoplay=True, associationMetadataChanged=False,
                   successfulMusicServiceRequests=0, physicalOutputVerified=False, windowsNativeVerified=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

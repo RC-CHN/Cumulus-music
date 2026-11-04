@@ -1,4 +1,7 @@
 //! One cold process argument group. Nothing in the WebView can supply a path.
+#[cfg(target_os = "linux")]
+pub(crate) mod linux;
+
 use cumulus_core::{Error, client::ClientError};
 use std::{
     ffi::OsString,

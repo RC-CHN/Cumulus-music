@@ -40,6 +40,15 @@ impl PlayerStreams {
         }
         Ok(())
     }
+    #[cfg(target_os = "linux")]
+    pub(crate) fn ready_for_native_open(&self, epoch: &str) -> bool {
+        self.0.lock().is_ok_and(|values| {
+            values
+                .get("main")
+                .is_some_and(|current| current.task.is_some() && current.epoch.to_string() == epoch)
+        })
+    }
+
     pub fn stop(&self, window: &str, id: Option<&str>) {
         if let Ok(mut values) = self.0.lock()
             && values

@@ -109,6 +109,10 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if window.label() == "main" {
+                    #[cfg(target_os = "linux")]
+                    if let Some(relay) = window.try_state::<native_open::linux::Relay>() {
+                        relay.stop();
+                    }
                     cold_offline::close(window.app_handle());
                     desktop_lyrics::dismiss(window.app_handle(), None);
                     mini::dismiss(window.app_handle(), None, false);
@@ -492,14 +496,23 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
 }
 
 pub fn run() {
+    let file_open = native_open::Pending::from_args(std::env::args_os().skip(1));
+    let mut context = tauri::generate_context!();
+    // An explicit handoff from the shell never depends on initializing its
+    // own graphics stack. Renderer diagnostics have no native file request.
+    #[cfg(target_os = "linux")]
+    let pre_graphics = file_open
+        .requested()
+        .then(|| native_open::linux::claim_or_exit(context.config(), &file_open));
     if !graphics::bootstrap() {
         return;
     }
     // SAFETY: desktop entry point, before the GUI runtime and worker creation.
     unsafe { prepare_graphics() };
     let launch = lifecycle::LaunchKind::from_args(std::env::args_os().skip(1));
-    let file_open = native_open::Pending::from_args(std::env::args_os().skip(1));
-    let mut context = tauri::generate_context!();
+    #[cfg(target_os = "linux")]
+    let native_claim = pre_graphics
+        .unwrap_or_else(|| native_open::linux::claim_or_exit(context.config(), &file_open));
     launch.prepare(&mut context);
     configure(tauri::Builder::default())
         .setup(move |app| {
@@ -507,7 +520,20 @@ pub fn run() {
                 Some(value) => std::path::PathBuf::from(value),
                 None => app.path().app_data_dir()?,
             };
-            match native_open::ProcessGuard::acquire(&root, file_open.requested()) {
+            #[cfg(target_os = "linux")]
+            let (root, preclaimed, relay_listener) = match native_claim {
+                Some(claim) if root.canonicalize()? == claim.root =>
+                    (claim.root, Some(claim.lease), claim.listener),
+                Some(_) => return Err(std::io::Error::other("application data directory changed").into()),
+                None => (root, None, None),
+            };
+            #[cfg(not(target_os = "linux"))]
+            let preclaimed = None;
+            let guard = match preclaimed {
+                Some(lease) => Ok(lease),
+                None => native_open::ProcessGuard::acquire(&root, file_open.requested()),
+            };
+            match guard {
                 Ok(guard) => app.manage(guard),
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     eprintln!("Cumulus is already running for this app profile; close it before opening local files.");
@@ -547,6 +573,12 @@ pub fn run() {
             shortcuts::install(app.handle());
             desktop_lyrics::start(app.handle());
             renewal::start(app.handle());
+            #[cfg(target_os = "linux")]
+            if let Some(listener) = relay_listener
+                && native_open::linux::install(app.handle(), listener).is_err()
+            {
+                eprintln!("Cumulus native file handoff is unavailable; cold startup continues.");
+            }
             Ok(())
         })
         .run(context)
