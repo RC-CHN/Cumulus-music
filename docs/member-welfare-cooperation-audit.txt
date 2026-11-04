@@ -1,0 +1,123 @@
+官方 PC 3.1.42.205594：福利活动中心与 WPS 合作
+2026-11-05。静态审计使用已解包的官方 JS/PE 及恢复 UI 源。没有请求活动列表、票据、
+合作方页面或领奖，也没有从其他客户端推断。以下行为和资格均不代表现网仍然有效。
+
+内置会员权益、福利活动和渠道合作是三条线
+- 顶栏账号菜单里的 MyVip（M/473:2340–2421）使用 host 的 vipType、黑胶/VIP Plus/
+  音乐包和各自到期日；另读 positionId=68 只替换运营文案，点该行走会员开通助手。
+  会员首页、乐签、固定 App 二维码仍是 desktop-member-contracts.txt 的既有链路。
+  不能把是否是会员、是否领过会员券、是否分到福利活动实验互相推导。
+- 云贝提示（M/473:2434–2494，恢复 UserInfoBar/view/popover-content.jsx:97–110）与
+  乐签按各自实验选择。云贝二维码是固定移动 RN 入口，不是福利活动清单，也不证明
+  可扣云贝、领取优惠或完成任何订单。商城与等级有独立链接。
+- 福利活动中心是账号菜单上的原生列表弹窗，不是会员首页 H5。WPS 是顶栏独立的
+  渠道运营气泡；没有在福利列表里找到固定 WPS 条目或两者的依赖关系。
+
+福利活动中心：账号菜单 → 条件清单 → 原生弹窗
+- M/147:1632–1646 的 PH-PC-activityCenter 开放，内置 expGroupName=""；M/15.Rf
+  与 M/147 使用 /api/rtrs/abt/front/expinfo/list {expNames:逗号连接字符串}。
+  M/473:3978–4044 与恢复 UserInfoBar/index.jsx:69–89,126–159：已登录后打开账号
+  下拉菜单，且精确分到 t1 时读取福利清单；关闭不读。M/473:39–172,3729–3769
+  的 Windows 新布局把等级移到账号菜单头部，保留商城；只有 welfareList 非空
+  才在商城下出现「福利活动中心」。没有额外的会员等级或 VIP 条件。缺失/非 t1
+  保留原菜单；读失败将数据设空，空列表不展示入口，不在关闭后自动重试。
+- M/15:819–825,4505–4511：Tc/el 为 POST /api/music/multi/terminal/pc/welfare/center/list
+  {clickedIds:数组}，code 严格数值 200 时取 data；M/12:278–319 的缺省为 POST。
+  M/402:384–387 经过 M/48:30–45 和 M/32:60–69 把业务数组变为括号字符串；
+  隔离 Node VM 执行原格式化函数，冻结空数组 → {"clickedIds":"[]"}、两个合成 ID
+  → {"clickedIds":"[fixture-1,fixture-2]"}。EAPI 的 JSON 里是字符串，Rust 应把业务数组
+  交给既有官方 EAPI 序列化（core/src/protocol/wire/serialization.rs:138–183）。
+  首次读取的官方偏好初值 []，M/16:191,386,495–523 的 welfareCenterIds 是安装
+  WebView 的全局 localStorage，不以 UID 做键。M/473:122–135,2313–2326 直接用
+  data.rightTips 文案及其原拼写 data.unreadMsgCot 数值显示菜单提示和未读数。
+- 单击菜单项用刚读到的列表开 AppModal（M/31:1875–1899），宽 574、最小高 192、
+  最大高 562，无 footer、Esc 可关。恢复 WelfareCenterModal/index.tsx:12–29,37–82
+  给出最大高 474 的可滚动内容与卡片字段 id、img、name、desc、buttonTxt、
+  buttonJumpUrl、clicked。每行高 74，图标 50×50，未点击显示小圆点，默认按钮文案
+  「去参与」（WelfareCenterItem.tsx:20–33,69–118）。没有点击时不预访问条目网页。
+- 官方行动的精确顺序在 hybrid_107/M/3169:108–122 和恢复
+  WelfareCenterModal/index.tsx:40–55：从当前返回中取 clicked 为真的 ID，点击时调用
+  openUrl(buttonJumpUrl)（未等待浏览器回执），加入当前 ID、写本地列表，再将数组
+  发给同一清单接口，用新的 welfareList 替换列表。列表协议没有已证实的独立「领取」
+  API；但带新 ID 的提交会披露点击历史，不能冒充无副作用的纯读，也不能认定开网页后
+  领取成功。动态链接可指向活动、带登录或其它有副作用的网页，本版未恢复固定白名单。
+- M/73:13–44 的浏览器助手对相对链接加 music 域；已登录且经 M/48:57–61 的
+  music.163.com 或其一级子域校验时，先 POST /api/sso/login/token {}。有 token 则构造
+  同站 /sso/login?token=…&uid=…&url=…&forceReplaceLogin=true（默认），随后系统浏览器
+  打开；取 token 失败按原链接回退。其他 HTTP(S) 目标不取网易 SSO，仍会交给浏览器。
+  这与现有本人播客管理的固定地址白名单不同，不能套用其安全结论处理任意福利 URL。
+
+福利首页引导不是打开账号菜单的前置条件
+- M/473:1374–1456 与恢复 UserVip/index.jsx:396–549：先经过 BROWSER_360 弹窗优先级，
+  在 PC t1 用 POST /api/link/scene/show/resource {currentScene:"pc_home",extJson:null}
+  读取 data.hints，否则用 POST /api/link/position/show/resource
+  {positionCode:"PC_HOMEPAGE_TOP_TOAST"} 读 dataGroupResourceList（M/15:4484–4504）。
+  已有 360 安装未决状态优先处理；旧式配置对象存在时走旧分支。
+- 新版只取首个 position.code=PC_HOMEPAGE_TOP_TOAST 的提示。template.extra.viewType
+  为 bubble 才读福利清单，非空才显示 data.extra.generalizedObject.title；使用
+  generalizedObject.duration 秒或缺省 5 秒，气泡本身无按钮。bubble_image 是 360
+  分支，另有官网渠道、浏览器安装能力和本地状态，不是福利中心；它的点击/关闭才有
+  POST /api/link/position/show/feedback {positionCode,feedbackType:"clickDetail",
+  feedbackInfo:{planId}}（M/15:4512–4522）。福利气泡不应复制该反馈。
+- 官方优先级及频控有本机并发状态（M/70:48–157）；恢复 UserVip/index.jsx:837–883,1122–1127
+  的顶栏 PopOver 对游客隐藏，优先渲染 WPS、ZERO，再渲染福利；点击外部关闭通用气泡。
+  因此单独实现账号菜单清单不需要预取运营场景、显示主动气泡、发曝光或调用合作方 SDK。
+
+WPS：配置、Windows 本机条件、一次显式合作票据
+- M/473:1271–1274、M/147:2607–2621、M/247:634–637：必须同时
+  preload#wpsCooperationSwitch 为真、PH-PC-WPS 为 t1；默认开关和
+  preload#wpsCooperationConfig.funnelReportEnabled 均 false，实验默认空。M/92:36–114,
+  116–130 通过 PC 配置版本协商和已指定的完整配置对象载入；Cumulus 已有受控
+  PC MConfig 快照（core-pc-request-context-contracts.txt），无本地强行打开开关的依据。
+- M/473:819–983：游客、无 UID、macOS 或本次已出现均跳过。通过开关才查
+  CooperWps.isWpsTargetUser()；M/4:13080–13098 转给 misc.isWpsTargetUser，取
+  isWpsTarget，缺失/异常回 false。跨异步步骤检查 UID；再按 UID 从本地
+  wpsCooperation 取 showCount、lastShowTime、isClaimed。已领取、展示数≥2、距上次
+  处理不足 604800000 毫秒均跳过；时间优先取同步后的 getCurrDate，缺失退回本机时钟
+  （M/473:818）。M/70:33–54,81–93,137–149 将召回提示排在 WPS 前，
+  WPS 无额外等待且优先于 ZERO、360。显示后保留 25 秒，超时或明确关闭均增加展示数、
+  更新时间，记 entranceInShowing=false；账号切换/卸载清掉本次计时和可见状态。
+  这不是服务端发券状态；漏回包没有独立对账。漏斗报告仅远端开关启用时发送，和领取无关。
+- Windows 原生桥的条件已经核到两份 PE，**读取不到 Version 才返回真**，并不判断版本号：
+  先用 KEY_QUERY_VALUE|KEY_WOW64_64KEY (0x101) 打开 HKCU 下
+  Software\kingsoft\Office\6.0\Common 并读取 Version；失败才用
+  KEY_QUERY_VALUE|KEY_WOW64_32KEY (0x201) 重试。任一成功回 false，两次失败才回 true。
+  两侧都用 0x800 字节读取 REG_SZ，或将 REG_EXPAND_SZ 用 0x400 宽字符缓冲展开；
+  错误类型、读失败或展开超界按失败处理。未发现上报具体版本、扫描进程或按版本比较。
+  这是静态分支结果，不等于无 WPS 的任意机器一定获上游资格。Linux 不把缺少 Windows
+  注册表当作通过，设备兼容映射也不应伪造该本机条件。
+  x86 SHA-256 b080a1c8c90cce1e2eefe93d992f81dc4db02dee7bc8c3b681e69e55a001cace：
+  0x1025692f–0x10256961 注册方法 → 0x10256749 绑定 0x10256410；
+  0x1025645c–0x102564ed 两个视图与成功/失败分支；0x10256564–0x102565a3
+  写 isWpsTarget。0x104afbb0、0x104afe10 追到 RegOpenKeyExW、RegQueryValueExW。
+  x64 SHA-256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493：
+  0x18017b3c4–0x18017b41a 注册 → 0x18017b160 绑定 0x18017ae30；
+  0x18017ae7a–0x18017af09 取两个视图；0x18017af79–0x18017af99 将 BL 写为
+  isWpsTarget。0x180634e50、0x180635c10 分别为打开和读取帮助函数；
+  M/4 原生调用无需传 UID、版本字符串或设备资料。用 objdump -d -M intel
+  配合 --start-address/--stop-address 和 objdump -p 可离线复查。
+- 恢复 WpsCooperationTip.jsx:40–95 的「立即领取」才会调用领取处理；忙时禁用。
+  M/473:911–922、M/15:927–929,5136–5143：逻辑 GET
+  /api/music/multi/terminal/pc/wps/token {activityId:"wps-vip-2026"} 取 data.token；
+  M/402:415–450 在有官方 PC 加密上下文时把逻辑 GET 改为加密 POST。
+  缺 token 或异常只显示「加载失败，请尝试再次点击」，不打开网页。
+  有 token 才拼到固定 HTTPS 合作方 personal-act.wps.cn 的
+  /rubik2/portal/HD2026052110367293/YM2026052110375225?token=…；
+  不匹配 M/48 的网易域，不调用网易 SSO 助手的取票分支。发起浏览器打开后本机记
+  isClaimed=true，但没有浏览器成功、合作方兑换或发券回执；不能称「已领取」。
+  不使用真实账号申请票据或访问合作方活动，也不自动试领或试探隐藏资格。
+
+下一步的安全独立范围
+- 推荐第一批做账号菜单到原生福利清单的完整只读流程：当前已验证账号打开菜单时
+  读唯一精确的 t1，其他分组、缺值、冲突和错误保留原菜单；通过后用固定 PC 路径
+  读取 {clickedIds:[]}。账号代次、菜单访问和重试要隔离；没有入站点击时不生成、
+  写入或发送点击记录。只投影有界文本、合法计数和可信图标；动态链接和登录票据
+  留在原生并可在首批完全舍弃。渲染有条目才出现的菜单入口、列表和返回焦点；
+  界面明确只可查看，不能展示会被误认为可领取的空按钮。闭合测试用合成 t1、空/缺
+  分组、空/拒绝回包、迟到账号切换、关闭和键盘返回。可加同版本安全静态路由
+  的独立交接时，再做用户明确确认和原生白名单，单测拒绝任意域/协议/凭据/重定向。
+- WPS 单独保留边界：Windows 的真实只读注册表投影技术上可实现且可用临时
+  合成根验证；没有合格生产活动的端到端账号/票据证据。若以后接正式入口，必须同时
+  验证 PC 配置、实际 t1 和 Windows 本机条件；仅在用户明确操作后申请一次固定
+  活动票据，跨账号和未知回包不重放，原生打开唯一固定 HTTPS 目标。合成网页回执
+  不能当真实兑换；Linux 不提供该 Windows 渠道气泡。当前没有任何产品代码改动。
