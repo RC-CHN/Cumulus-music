@@ -1,0 +1,95 @@
+Recovered limiter: native streaming host experiment
+
+The current equalizer, loudness and PEQ hosts wrap LADSPA in libmpv's
+lavfi filter graph (core/src/effects/filter_graph.rs). Keep those paths
+unchanged. A LADSPA `run(handle, sample_count)` call writes into buffers
+of `sample_count` frames and returns void. It has no produced-frame count,
+source timestamp, EOF signal or final-output callback. `activate` can
+initialize a processor but supplies no new source position. The current
+descriptors also expose a mono input and a mono output. A stereo descriptor
+could share the gain across its ports, but it could not directly express the
+recovered node's shorter first output and longer terminal output. `p=0` in
+`asetnsamples` only lets a short final input through.
+
+FFmpeg's `ladspa` wrapper does have opt-in fixed latency compensation. It
+samples a `latency` control output once, trims that many startup frames, and
+at EOF sends the same number of silence frames through the plugin. That is
+useful for constant-delay processors. The current Cumulus graph does not
+enable it; by itself it still preserves the input's total frame count, so
+cannot express the recovered outer EOF rule that emits an extra input frame
+only when its FIFO is empty. Nor does it label the silence as EOF or supply
+the new source position. This rules out a drop-in LADSPA node in the current
+graph, without ruling out a separate host that also owns framing and seeks.
+Primary host source (FFmpeg n8.0.1, filter_frame/request_frame/connect_ports):
+https://github.com/FFmpeg/FFmpeg/blob/n8.0.1/libavfilter/af_ladspa.c#L161-L265
+
+The opt-in test `limiter_host_stream_clock_and_discontinuity` uses the same
+`MpvEngine::load_pinned` and native `mpv_stream_cb_add_ro` path that normally
+passes opened audio handles to libmpv. It does not change the adapter ABI or
+production source selection. The test uses deterministic 44.1 kHz stereo
+float input; no proprietary artifacts, server, accounts or audio files are
+needed. It feeds the recovered linked DSP with irregular 613-frame writes,
+pulls no more than 379 frames at a time, and exposes complete valid bytes
+from a WAV generation in arbitrary byte-sized reads. An empty internal
+output FIFO is not reported to the demuxer as EOF. It exercises both the
+outer empty-FIFO silent frame for an exact quantum multiple and normal EOF
+with pending input. The WAV length reflects the corresponding emitted PCM.
+
+Run it on a host that supplies a compatible libmpv (Linux or the trusted
+Windows runtime installed with the app):
+
+    cargo test --locked -p cumulus-core --lib limiter_host -- --ignored --nocapture
+
+`CUMULUS_LIMITER_PROBE_MPV` may specify an explicit trusted runtime file.
+The ordinary test suite does not load a native runtime for this opt-in probe.
+
+The experiment tests two different actions deliberately. An exact seek into
+an already cached part of a pinned WAV can move libmpv's playback clock
+without calling the reader's byte seek callback. Even if the underlying byte
+callback is called, the demuxer expects an immutable file: probe/readahead
+seeks and public transport seeks are not distinguishable at that boundary.
+Regenerating a byte range from the same beginning preserves its old limiter
+history. Starting a new generation at the requested *source* frame instead
+resets the linked gain and timing, produces a different PCM pair there, and
+gives libmpv a new entry with a segment-local duration/clock. The test maps
+that clock by adding the original source position and waits for libmpv's
+natural EOF for the new entry after the limiter's drain. That mapping is a
+prototype, not a change to the transport controller.
+Primary ABI source (mpv v0.41.0, read/seek/size callback contracts):
+https://github.com/mpv-player/mpv/blob/v0.41.0/include/mpv/stream_cb.h#L85-L133
+
+Linux reference run: libmpv v0.41.0, client API 2.5, FFmpeg 8.0.1. A
+seek to source frame 40500 (0.918 s) left the reader's byte seek count at
+three. The old stereo frame was [0.20006803, -0.025008503]; the first
+new-generation frame was [0.5, -0.0625]. The first new-generation call
+converted 2048 input frames to 1829 output frames at source time 918 ms;
+EOF converted 460 to 679, draining the same 219 frames of lookahead. The
+original WAV contained 98305 frames (including the empty-FIFO sentinel),
+while the new WAV contained exactly 57804 frames. The mapped time-pos
+advanced before end-file; it is sampled separately from EOF and need not
+report the exact final sample as the output buffer finishes.
+
+A production host using this approach would need an independently seekable
+decoder with a bounded upstream pipeline that runs the verified official
+material graph through its terminal limiter before handing processed PCM to
+libmpv. The controller would open a new source generation on a logical
+seek or format/authority change, reset the actual filter chain, and accept
+position/EOF only from the new native entry. It would need precise source
+time and duration handling, with special care for resampling, encoder
+delay, the one-frame empty-FIFO rule, previews/range ends, dynamic inputs
+with unknown exact frame counts and output-device reloads. A fixed-size WAV
+and the current pinned registry cannot represent arbitrary unknown-length
+streams. This proof's random reads replay a short synthetic segment to
+maintain immutable bytes; that is not a bounded-time production strategy
+for random reads of a long source. Alternatively a custom, pinned libmpv
+build could host a native audio-frame filter with separate input/output
+queues, explicit reset and terminal drain. The deployed stock client API
+does not expose such an audio-frame filter callback; that design would
+require its own Linux and Windows packaging, FFI and parity proof.
+
+The native probe uses libmpv's null output. Its PCM comparisons inspect the
+bytes generated for the input callback, and its time/duration/EOF checks use
+actual libmpv events and properties. It does not compare audio hardware
+output, cover Windows execution, prove decoding or routing of real songs,
+or establish parity of the full proprietary material graph. No live
+limiter path is enabled.

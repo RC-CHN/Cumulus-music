@@ -15,6 +15,8 @@ use std::{
 };
 #[cfg(test)]
 mod effect_order_tests;
+#[cfg(test)]
+mod limiter_host_probe;
 mod loudness;
 mod parametric;
 
