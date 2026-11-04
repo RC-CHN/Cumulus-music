@@ -13,8 +13,8 @@ export function useSessionRenewal(core: RenewalClient, epoch: string) {
   const accept = (next: SessionRenewalView) => {
     if (alive && next.epoch === epoch) view.value = next;
   };
-  async function load() {
-    if (!alive || busy.value) return;
+  async function read() {
+    if (!alive) return;
     const serial = ++sequence;
     try {
       const next = await core.sessionRenewal(epoch);
@@ -25,6 +25,9 @@ export function useSessionRenewal(core: RenewalClient, epoch: string) {
     } catch (e) {
       if (current(serial)) error.value = failure(e).message;
     }
+  }
+  async function load() {
+    if (!busy.value) await read();
   }
   async function connect() {
     try {
@@ -51,19 +54,25 @@ export function useSessionRenewal(core: RenewalClient, epoch: string) {
     if (!action) return;
     busy.value = true;
     error.value = '';
+    let prior = '';
     const serial = ++sequence;
     try {
       const next = await core.renewSession(epoch, action);
       if (current(serial)) accept(next);
     } catch (e) {
-      if (alive) error.value = failure(e).message;
+      prior = failure(e).message;
     } finally {
+      // Lost IPC replies only read durable state. Never replay a renewal.
+      await read();
       if (alive) {
         busy.value = false;
-        // Lost IPC replies only read durable state. Never replay a renewal.
-        const prior = error.value;
-        await load();
-        if (alive) error.value ||= prior;
+        if (prior && !error.value) {
+          const state = view.value?.state;
+          // A periodic error may carry a generic 301 translation even when
+          // the native account is still active. The durable view wins.
+          if (state === 'recovery_required') error.value = '暂时无法核对账号身份，请稍后再试';
+          else if (state !== 'unconfirmed' && state !== 'expired') error.value = prior;
+        }
       }
     }
   }

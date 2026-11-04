@@ -5,7 +5,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    account::{AccountSession, SessionStatus, SessionToken},
+    account::{AccountSession, SessionStatus, SessionToken, credentials::LoginCredentials},
     protocol::{
         api::{Api, ApiFuture, validate_response},
         http::MusicHttpClient,
@@ -38,6 +38,33 @@ pub struct RefreshStatus {
     pub last_success: Option<u64>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum PendingReceipt {
+    MissingPair,
+    NeedsIdentity,
+}
+
+pub(crate) struct RefreshEvidence {
+    pub pending: Option<PendingReceipt>,
+    pub last_success: Option<u64>,
+    pub has_pair: bool,
+    pub last_login_at: Option<u64>,
+}
+
+fn has_pair(credentials: &LoginCredentials) -> bool {
+    credentials.token.as_deref().is_some_and(|v| !v.is_empty())
+        && credentials
+            .refresh_token
+            .as_deref()
+            .is_some_and(|v| !v.is_empty())
+}
+
+fn fresh_receipt(credentials: &LoginCredentials, intent: &Intent) -> bool {
+    has_pair(credentials)
+        && credentials.rotation.is_some()
+        && credentials.rotation != intent.before_rotation
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RefreshOutcome {
@@ -45,6 +72,7 @@ pub enum RefreshOutcome {
     NotDue,
     Refreshed,
     RecoveryRequired,
+    /// No complete new pair is recorded; this does not invalidate the session.
     ReauthenticationRequired,
     NoPendingRefresh,
 }
@@ -111,6 +139,30 @@ impl AccountLifecycle {
         });
         self.session.require_api(&token, &self.api())?;
         Ok(status)
+    }
+
+    pub(crate) fn refresh_evidence(&self) -> Result<RefreshEvidence> {
+        let token = self.current()?;
+        let credentials = self.client.credentials();
+        let intent = journal::load(
+            &credentials.store(),
+            token.uid.as_deref().ok_or(Error::StaleResponse)?,
+        )?;
+        let credentials = credentials.login_credentials()?;
+        let pending = intent.as_ref().filter(|i| i.pending).map(|i| {
+            if fresh_receipt(&credentials, i) {
+                PendingReceipt::NeedsIdentity
+            } else {
+                PendingReceipt::MissingPair
+            }
+        });
+        self.session.require_api(&token, &self.api())?;
+        Ok(RefreshEvidence {
+            pending,
+            last_success: intent.and_then(|i| i.last_success),
+            has_pair: has_pair(&credentials),
+            last_login_at: credentials.last_login_at,
+        })
     }
 
     pub(crate) fn jsk_not_due(
@@ -196,9 +248,7 @@ impl AccountLifecycle {
             .ok_or(Error::State("missing authenticated UID"))?;
         let credentials = self.client.credentials();
         let before = credentials.login_credentials()?;
-        if before.token.as_deref().is_none_or(str::is_empty)
-            || before.refresh_token.as_deref().is_none_or(str::is_empty)
-        {
+        if !has_pair(&before) {
             return Ok(RefreshOutcome::MissingCredentials);
         }
         let store = credentials.store();
@@ -231,20 +281,17 @@ impl AccountLifecycle {
             Begin::NotDue => return Ok(RefreshOutcome::NotDue),
             Begin::RecoveryRequired => return Ok(RefreshOutcome::RecoveryRequired),
         };
-        let client = self.client.clone();
         const PATH: &str = "/api/login/token/refresh/v1";
+        // M/1368 calls the native bridge and handles a rejected periodic
+        // refresh itself; it does not enter the ordinary 301 business path.
+        let api = self.api();
+        self.session.require_api(&token, &api)?;
         let result = self
-            .session
-            .run_for(&token, move |_, _| async move {
-                validate_response(
-                    PATH,
-                    client
-                        .request_jsk_if_revision(PATH, payload, &before.revision)
-                        .await?,
-                    &[200],
-                )
-            })
-            .await;
+            .client
+            .request_jsk_if_revision(PATH, payload, &before.revision)
+            .await
+            .and_then(|response| validate_response(PATH, response, &[200]));
+        self.session.require_api(&token, &api)?;
         if let Err(error) = result {
             if matches!(error.root(), Error::RequestNotSent(_)) {
                 journal::not_sent(&store, uid, &intent)?;
@@ -257,15 +304,22 @@ impl AccountLifecycle {
     async fn finish_jsk(&self, token: &SessionToken, intent: &Intent) -> Result<RefreshOutcome> {
         let credentials = self.client.credentials();
         let after = credentials.login_credentials()?;
-        if after.token.as_deref().is_none_or(str::is_empty)
-            || after.refresh_token.as_deref().is_none_or(str::is_empty)
-            || after.rotation.is_none()
-            || after.rotation == intent.before_rotation
-        {
+        if !fresh_receipt(&after, intent) {
             return Ok(RefreshOutcome::ReauthenticationRequired);
         }
-        self.identity(token).await?;
-        self.session.require_api(token, &self.api())?;
+        // Identity reconciliation is a read only; an ordinary 301
+        // interceptor could otherwise issue a second refresh request.
+        let api = self.api();
+        self.session.require_api(token, &api)?;
+        let profile = api.account().await;
+        self.session.require_api(token, &api)?;
+        let profile = profile?;
+        let current = credentials.login_credentials()?;
+        if !fresh_receipt(&current, intent) || current.rotation != after.rotation {
+            return Err(Error::CredentialChanged);
+        }
+        self.session
+            .commit_refreshed_profile(token, &api, profile)?;
         journal::complete(
             &credentials.store(),
             token.uid.as_deref().ok_or(Error::StaleResponse)?,

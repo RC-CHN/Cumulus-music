@@ -16,12 +16,22 @@
   await wait(()=>state()==='missing_credentials','missing_credentials');await stage('renewal_missing');
   await login();await wait(()=>state()==='not_due','fresh_login_daily_gate');await stage('renewal_login');
   await clock('advance');await reopen();await wait(()=>state()==='ready','read_due_after_fresh_login');await stage('renewal_due');
-  await click(text('检查登录续期'));await wait(()=>state()==='refreshed','due_refresh');await stage('renewal_success');
+  await click(text('检查登录续期'));await wait(()=>state()==='recovery_required'&&text('核对续期结果'),'paired_identity_pending');
+  if(text('重新登录')||!el('.session-renewal').textContent.includes('需要核对账号身份')) throw Error('paired_recovery_controls');
+  await stage('renewal_identity_pending');
+  await click(text('核对续期结果'));await wait(()=>state()==='refreshed','same_identity_confirmed');await stage('renewal_success');
   await click(text('检查登录续期'));await wait(()=>state()==='not_due','daily_gate');await stage('renewal_daily');
   await clock('advance_again');await reopen();await wait(()=>state()==='ready','read_due_after_rotation');await stage('renewal_due_again');
   await clock('reset');await login();await wait(()=>state()==='not_due','second_fresh_login_gate');await stage('renewal_second_login');
-  await clock('advance');await click(text('检查登录续期'));await wait(()=>['recovery_required','reauthentication_required'].includes(state()),'unknown_rotation');await stage('renewal_unknown');
-  await click(text('核对续期结果'));await wait(()=>state()==='reauthentication_required','reconcile_only');await stage('renewal_relogin');
+  await clock('advance');const check=text('检查登录续期');check.focus();await click(check);
+  await wait(()=>state()==='unconfirmed'&&document.activeElement===text('重新读取续期状态'),'unknown_rotation_focus');
+  if(text('核对续期结果')||!el('.session-renewal').textContent.includes('当前仍为登录状态')) throw Error('unknown_rotation_controls');
+  await stage('renewal_unconfirmed');
+  await click(text('重新读取续期状态'));await wait(()=>state()==='unconfirmed','local_read_only');
+  await click(text('重新登录'));await wait(()=>el('.qr-frame')&&!el('.account-dialog'),'optional_login_handoff');
+  await click(el('[aria-label="关闭登录"]'));await wait(()=>!el('dialog'),'optional_login_cancelled');
+  await open();await wait(()=>state()==='unconfirmed','optional_login_retains_unconfirmed');
+  await stage('renewal_relogin_cancelled');
   await report('complete',{ok:true,state:state()});
  }catch(e){await report('failed',{ok:false,error:e instanceof Error?e.message:'unknown',state:state(),message:el('.session-renewal')?.textContent});}
 })();

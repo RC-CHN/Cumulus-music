@@ -47,7 +47,9 @@ Rust用秒存时间，与JS毫秒相比边界最多不足1秒；不开放生产i
 Rust对设备ID、Cookie域/路径、已回读身份和账号代次严格绑定；不复刻原日志中的秘密输出。
 RT/轮换回执原子提交，成功后核对同一身份；官方刷新函数没有这套额外只读身份核对。
 未知写入持久化pending，重启只核对，不照搬原SDK下次前台事件再发同一未知刷新。
-无头200的 ReauthenticationRequired 是本地未取得完整回执，不能据此说原会话已被服务端注销。
+无头200的底层 ReauthenticationRequired 是本地未取得完整回执，不能据此说原会话已被服务端注销。
+正式账号弹窗以未确认呈现，保持可用会话；只有发现完整新回执才提供身份核对，详见
+desktop-session-renewal-contracts.txt。此两条原生请求不引入普通业务的 301 再验证写请求。
 实验双t1继续控制产品自动触发，不因本次旧链也拿到RT而替用户打开实验配置。
 301处理是 /api/middle/account/token/refresh 的另一状态机，其5秒抑制和失败阈值不能与
 此处24小时定期续期混用；已按原方法单独对照，见login-interception-contracts.txt。

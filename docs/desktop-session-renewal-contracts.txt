@@ -44,7 +44,8 @@ MUSIC_U 缺失或 refreshToken 缺失：MissingCredentials，不取设备令牌�
 每次轮换先在当前凭据库 UID/login_refresh/jsk 写 pending；各实例通过数据库事务排他。
 只有明确 RequestNotSent 的上下文准备失败可结束自己那条意图，保留此前成功时间。
 HTTP 发出后的错误/丢包、缺轮换头、进程中止保留 pending；未知写入不会自动重新发送。
-reconcile_jsk 只检查已保存的轮换回执和只读身份；没有新回执返回 ReauthenticationRequired。
+reconcile_jsk 只检查已保存的轮换回执和只读身份；底层没有新回执时返回历史枚举
+ReauthenticationRequired，它不证明会话已失效。正式账号弹窗投影为 Unconfirmed 并保留登录。
 有回执但身份读取失败可以再次只读核对。不同 UID 使会话过期，不以旧 UID 发布新凭据的资源。
 core/src/client/auth/renewal.rs 是宿主无关用例：原生配置 DeviceInfo/provider；设备 ID 每次绑定
 当前账号；前端只接收 epoch/state/lastSuccess/busy/canCheck/canReconcile，不接收秘密或设备事实。
@@ -58,7 +59,8 @@ auth::publish、restore_account 完成通知同一 pump。主窗口销毁中止�
 自动检查完成发布 cumulus:session-renewal 和 account-changed；不调用会重新通知自身的发布函数。
 IPC session_renewal(epoch) 只读；renew_session(epoch,check|reconcile) 由 core 决定是否发请求。
 所有命令沿用仅主窗口限制。主前端、验证码窗口、Tauri 插件均不能注入 refreshToken/签名/deviceId。
-账号窗口显示缺凭据、间隔未到、成功、未决、需重新登录等状态。未决只显示“核对续期结果”。
+账号窗口显示缺凭据、间隔未到、成功、未决、已失效等状态。只有完整新回执待核对身份时才显示
+“核对续期结果”；缺回执可重新读取本机状态或主动重新登录，当前会话保持。
 UI IPC 丢失响应后只重新读取状态，不自动重发命令；事件/读取通过代次屏障防止旧响应覆盖新事件。
 这是新增的社区账号维护入口，不声称其布局为官方像素一致。
 
@@ -69,7 +71,7 @@ UI IPC 丢失响应后只重新读取状态，不自动重发命令；事件/读
   npm --prefix frontend run build
   CARGO_INCREMENTAL=0 cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example renewal_ui_probe
   xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
-    python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 9
+    python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 10
   python3 desktop/examples/audit_renewal_probe.py /absolute/new-proof-root
 桌面探针使用真实 Vue/WebView/IPC/续期 pump 与持久化，仅音乐 HTTP 为进程内合成服务。
 DOM 完成缺凭据→新登录未到期→原生测试时钟推进后检查并轮换→重复检查间隔→第二次新登录未到期→
@@ -137,3 +139,25 @@ Rust 44 项续期/策略回归覆盖新登录、重启、恰满 24 小时、时�
 隔离 Linux GTK/WebKitGTK 的 760×540 生产前端跑完 9 态、9 图：两次跨过间隔后重开弹窗，
 均只更新状态，无新增轮换请求；已有的两次显式合成请求与 SQLite 独立审计通过。
 证据 .build/ui-proof/renewal-readiness-f2e9a2de/small/。无真实服务请求或账号变更；Windows 未实测。
+
+中断与不完整续期的账号弹窗（2026-11-05）
+官方 M/1368:2347–2389 对不完整凭据对、非 200 及异常只在 SDK 内处理，不执行
+updateTokenInfo。M/1368:8640–8678 经 PC 原生网络桥取得回包；M/198:2979–2990
+在实际 TOKEN_UPDATED 后才更新时间。没有恢复证据表明官方弹出这类错误的重新登录提示；
+下述恢复入口是 Cumulus 的产品差异，行为遵循同一凭据确认条件。
+
+- 缺少相对于本次持久意图的新完整回执：保持 Unconfirmed，重开与重启结果一致。
+  显示当前仍登录，允许只读本机状态或主动重新登录；没有重发、额外核对请求或自动退出。
+  中断、无完整凭据头的 200、业务 301 都不会把本次续期结果当作已确认或已失效。
+- 新回执已提交、身份尚未核对：显示 RecoveryRequired。只请求
+  /api/w/nuser/account/get；无论续期还是此次身份读取，都不通过普通业务的 301 拦截，
+  因此不会连带发 /api/middle/account/token/refresh 或清除现有会话。身份读取失败可再核对；
+  账号代次、回执版本及同 UID 一致后，才完成持久意图并记录成功时间。
+- 两种状态由原生持久日志与当前凭据推导，前端不持有秘密或回执版本。
+  已验证的普通业务登录失效仍走既有流程；可选重新登录沿用独立候选，取消不会替换当前账号。
+
+重跑官方完整方法的 16 个合成案例，5 个缺头、拒绝或中断分支各发一次原生请求，
+没有更新时间、更新凭据或发布事件。Rust 续期/策略回归 45 项、前端 802 项通过。
+Linux GTK/WebKitGTK 760×540 的 10 态、10 图验证完整回执只读核对、无回执焦点、
+可选重新登录后取消以及未决日志保留；SQLite 独立审计确认未发额外刷新。
+证据 .build/ui-proof/renewal-uncertain-c896c3d3/。未请求真实服务；Windows 未实测。

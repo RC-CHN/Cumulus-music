@@ -3,7 +3,9 @@ use crate::{
     Error, Result,
     account::{
         SessionStatus,
-        refresh::{AccountLifecycle, DeviceInfo, DeviceTokenProvider, RefreshOutcome},
+        refresh::{
+            AccountLifecycle, DeviceInfo, DeviceTokenProvider, PendingReceipt, RefreshOutcome,
+        },
     },
     protocol::http::MusicHttpClient,
 };
@@ -31,7 +33,7 @@ pub enum RenewalState {
     NotDue,
     Refreshed,
     RecoveryRequired,
-    ReauthenticationRequired,
+    Unconfirmed,
     Failed,
 }
 
@@ -140,10 +142,9 @@ impl MusicClient {
                     .native_account_client()?
                     .filter(|_| host.native.is_some())
                 {
-                    let lifecycle = self.renewal_lifecycle(client.clone());
-                    let status = lifecycle.refresh_status()?;
-                    last_success = status.last_success;
-                    let credentials = client.credentials().login_credentials()?;
+                    let lifecycle = self.renewal_lifecycle(client);
+                    let evidence = lifecycle.refresh_evidence()?;
+                    last_success = evidence.last_success;
                     let last = host
                         .last
                         .lock()
@@ -153,26 +154,19 @@ impl MusicClient {
                         .map(|(_, state)| *state);
                     if busy {
                         RenewalState::Checking
-                    } else if status.pending {
-                        if last == Some(RenewalState::ReauthenticationRequired) {
-                            RenewalState::ReauthenticationRequired
-                        } else {
-                            RenewalState::RecoveryRequired
+                    } else if let Some(pending) = evidence.pending {
+                        match pending {
+                            PendingReceipt::MissingPair => RenewalState::Unconfirmed,
+                            PendingReceipt::NeedsIdentity => RenewalState::RecoveryRequired,
                         }
-                    } else if credentials.token.as_deref().is_none_or(str::is_empty)
-                        || credentials
-                            .refresh_token
-                            .as_deref()
-                            .is_none_or(str::is_empty)
-                    {
+                    } else if !evidence.has_pair {
                         RenewalState::MissingCredentials
                     } else if self.session.login_policy_enabled(&token)? == Some(false) {
                         RenewalState::PolicyDisabled
                     } else {
                         // Ready/not-due are current native clock observations,
                         // not cached results from a previous foreground event.
-                        match lifecycle.jsk_not_due(credentials.last_login_at, status.last_success)
-                        {
+                        match lifecycle.jsk_not_due(evidence.last_login_at, evidence.last_success) {
                             Ok(true) if last == Some(RenewalState::Refreshed) => {
                                 RenewalState::Refreshed
                             }
@@ -200,11 +194,7 @@ impl MusicClient {
                         | RenewalState::NotDue
                         | RenewalState::Refreshed
                 ),
-            can_reconcile: !busy
-                && matches!(
-                    state,
-                    RenewalState::RecoveryRequired | RenewalState::ReauthenticationRequired
-                ),
+            can_reconcile: !busy && state == RenewalState::RecoveryRequired,
         })
     }
 
@@ -218,11 +208,18 @@ impl MusicClient {
         let token = self.auth_token(epoch)?;
         let host = &self.auth.renewal;
         let _gate = host.gate.try_lock().map_err(|_| Error::MutationBusy)?;
-        if host.native.is_some() {
+        let mut before = self.session_renewal(epoch)?;
+        if action == RenewalAction::Check
+            && host.native.is_some()
+            && !matches!(
+                before.state,
+                RenewalState::Unconfirmed | RenewalState::RecoveryRequired
+            )
+        {
             self.refresh_login_experiments(epoch).await?;
+            before = self.session_renewal(epoch)?;
         }
-        let before = self.session_renewal(epoch)?;
-        if !before.can_check && !before.can_reconcile {
+        if !before.can_reconcile && (action != RenewalAction::Check || !before.can_check) {
             return Ok(before);
         }
         let native = host
@@ -232,19 +229,24 @@ impl MusicClient {
         let client = self
             .native_account_client()?
             .ok_or(Error::State("session renewal unavailable"))?;
-        let mut device = native.device.clone();
-        device.device_id = client.credentials().device_id()?;
+        let device = if before.can_reconcile {
+            None
+        } else {
+            let mut device = native.device.clone();
+            device.device_id = client.credentials().device_id()?;
+            Some(device)
+        };
         let lifecycle = self.renewal_lifecycle(client);
         self.session.check_generation(&token)?;
         *host.flight.lock().map_err(|_| Error::LockPoisoned)? = Some(token.clone());
         let flight = Flight(&host.flight);
         let result = tokio::time::timeout(std::time::Duration::from_secs(45), async {
-            if action == RenewalAction::Reconcile || before.can_reconcile {
-                lifecycle.reconcile_jsk().await
-            } else {
+            if let Some(device) = device {
                 lifecycle
                     .refresh_jsk(&device, native.provider.as_ref(), false)
                     .await
+            } else {
+                lifecycle.reconcile_jsk().await
             }
         })
         .await
@@ -256,7 +258,7 @@ impl MusicClient {
             Ok(RefreshOutcome::NotDue) => RenewalState::NotDue,
             Ok(RefreshOutcome::Refreshed) => RenewalState::Refreshed,
             Ok(RefreshOutcome::RecoveryRequired) => RenewalState::RecoveryRequired,
-            Ok(RefreshOutcome::ReauthenticationRequired) => RenewalState::ReauthenticationRequired,
+            Ok(RefreshOutcome::ReauthenticationRequired) => RenewalState::Unconfirmed,
             Ok(RefreshOutcome::NoPendingRefresh) => RenewalState::Ready,
             Err(_) => RenewalState::Failed,
         };

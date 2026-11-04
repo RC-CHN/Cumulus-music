@@ -18,7 +18,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -57,6 +57,7 @@ fn acknowledge_stage(handle: &AppHandle, output: &std::path::Path, stage: String
 struct Service {
     inner: fixture::Service,
     rotations: AtomicUsize,
+    refuse_identity_once: AtomicBool,
 }
 impl HttpBackend for Service {
     fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
@@ -68,6 +69,12 @@ impl HttpBackend for Service {
                 .find_map(|p| p.strip_prefix("params="))
                 .ok_or(Error::Response("fixture EAPI"))?;
             let (path, payload) = eapi::unwrap(params)?;
+            if path == "/api/w/nuser/account/get"
+                && self.refuse_identity_once.swap(false, Ordering::SeqCst)
+            {
+                *self.inner.paths.lock().unwrap().entry(path).or_default() += 1;
+                return Ok(fixture::reply(json!({"code":301}), None));
+            }
             if path != "/api/login/token/refresh/v1" {
                 return self.inner.post(plan).await;
             }
@@ -76,6 +83,7 @@ impl HttpBackend for Service {
                 return Err(Error::Response("fixture refresh fields"));
             }
             if self.rotations.fetch_add(1, Ordering::SeqCst) == 0 {
+                self.refuse_identity_once.store(true, Ordering::SeqCst);
                 Ok(fixture::reply(json!({"code":200}), Some(2)))
             } else {
                 Err(Error::Transport("synthetic response lost".into()))
@@ -127,6 +135,7 @@ fn main() {
    let client=handle.state::<MusicClient>();let account=client.account().unwrap();
    let status=client.session_renewal(&account.epoch).unwrap();
    value["nativeRenewal"]=serde_json::to_value(status).unwrap();
+   value["accountStatus"]=serde_json::to_value(account.status).unwrap();
    value["fixtureRequests"]=json!(*service.inner.paths.lock().unwrap());
    value["realMusicNetworkRequests"]=json!(0);
    value["rotationRequests"]=json!(service.rotations.load(Ordering::SeqCst));

@@ -45,6 +45,15 @@ impl World {
         context: Option<Arc<RequestContext>>,
         provider: Arc<dyn DeviceTokenProvider>,
     ) -> Self {
+        Self::configured(replies, refresh, context, provider, false).await
+    }
+    async fn configured(
+        replies: impl IntoIterator<Item = HttpResponse>,
+        refresh: bool,
+        context: Option<Arc<RequestContext>>,
+        provider: Arc<dyn DeviceTokenProvider>,
+        official_policy: bool,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let credentials = Arc::new(
             Credentials::open(
@@ -64,25 +73,28 @@ impl World {
             )
             .unwrap();
         let http = Arc::new(ScriptHttp::new([identity(1)].into_iter().chain(replies)));
-        let client = Arc::new(
-            MusicClient::open_with_request_context(
-                &root.path().join("host"),
-                Some(&root.path().join("profile")),
-                ClientProfile::default(),
-                Some(http.clone()),
-                context,
-            )
-            .unwrap()
-            .with_session_renewal(
-                DeviceInfo {
-                    device_name: "Real,model".into(),
-                    device_id: "discard-other-account-id".into(),
-                    os: "pc".into(),
-                    ..Default::default()
-                },
-                provider,
-            ),
+        let client = MusicClient::open_with_request_context(
+            &root.path().join("host"),
+            Some(&root.path().join("profile")),
+            ClientProfile::default(),
+            Some(http.clone()),
+            context,
+        )
+        .unwrap()
+        .with_session_renewal(
+            DeviceInfo {
+                device_name: "Real,model".into(),
+                device_id: "discard-other-account-id".into(),
+                os: "pc".into(),
+                ..Default::default()
+            },
+            provider,
         );
+        let client = Arc::new(if official_policy {
+            client.with_official_login_policy()
+        } else {
+            client
+        });
         client.restore_account().await.unwrap();
         Self {
             root,
@@ -113,6 +125,13 @@ impl World {
             },
             Arc::new(DesktopDeviceToken),
         )
+    }
+    fn credentials(&self) -> Credentials {
+        Credentials::open(
+            Arc::new(StateStore::open(self.root.path().join("profile")).unwrap()),
+            ApiOrigin::Pc,
+        )
+        .unwrap()
     }
 }
 
@@ -277,20 +296,16 @@ async fn unknown_transport_outcome_is_durable_and_never_replays_rotation() {
     )
     .await;
     assert!(w.check().await.is_err());
-    assert_eq!(
-        w.client.session_renewal(&w.epoch()).unwrap().state,
-        State::RecoveryRequired
-    );
-    assert_eq!(
-        w.check().await.unwrap().state,
-        State::ReauthenticationRequired
-    );
+    let before = w.client.session_renewal(&w.epoch()).unwrap();
+    assert_eq!(before.state, State::Unconfirmed);
+    assert!(!before.can_check && !before.can_reconcile);
+    assert_eq!(w.check().await.unwrap().state, State::Unconfirmed);
     let http = Arc::new(ScriptHttp::new([identity(1)]));
     let client = w.reopened(http.clone());
     let account = client.restore_account().await.unwrap();
     assert_eq!(
         client.session_renewal(&account.epoch).unwrap().state,
-        State::RecoveryRequired
+        State::Unconfirmed
     );
     assert_eq!(
         client
@@ -298,38 +313,141 @@ async fn unknown_transport_outcome_is_durable_and_never_replays_rotation() {
             .await
             .unwrap()
             .state,
-        State::ReauthenticationRequired
+        State::Unconfirmed
+    );
+    assert_eq!(
+        account.status,
+        cumulus_core::account::SessionStatus::Authenticated
     );
     assert_eq!(http.calls().len(), 1);
     assert_eq!(w.http.calls().len(), 2);
 }
 
+fn jsk_flags() -> HttpResponse {
+    json!({"code":200,"data":[
+        {"expName":"PH-PC-loginJsk","expGroupName":"t1"},
+        {"expName":"PH-PC-newLoginBenefit","expGroupName":"t1"}
+    ]})
+    .into()
+}
+
 #[tokio::test]
-async fn identity_read_failure_recovers_committed_pair_without_replaying_refresh() {
-    let w = World::new(
-        [
-            rotated(),
-            HttpResponse::Ready(Err(Error::Transport("identity disconnected".into()))),
-            identity(1),
-        ],
+async fn incomplete_or_rejected_periodic_refresh_keeps_session_and_does_not_intercept_301() {
+    use cumulus_core::account::SessionStatus;
+
+    for code in [200, 301] {
+        let w = World::configured(
+            [jsk_flags(), json!({"code":code}).into()],
+            true,
+            None,
+            Arc::new(DesktopDeviceToken),
+            true,
+        )
+        .await;
+        let epoch = w.epoch();
+        let before = w.credentials().login_credentials().unwrap();
+        let result = w.check().await;
+        if code == 301 {
+            assert!(
+                result
+                    .err()
+                    .expect("periodic refresh refused")
+                    .is_service_code(301)
+            );
+        } else {
+            assert_eq!(result.unwrap().state, State::Unconfirmed);
+        }
+        let status = w.client.session_renewal(&epoch).unwrap();
+        assert_eq!(status.state, State::Unconfirmed);
+        assert!(!status.can_check && !status.can_reconcile && status.last_success.is_none());
+        assert_eq!(
+            w.client.account().unwrap().status,
+            SessionStatus::Authenticated
+        );
+        assert!(w.client.account().unwrap().login_notice.is_none());
+        assert_eq!(w.check().await.unwrap().state, State::Unconfirmed);
+        let after = w.credentials().login_credentials().unwrap();
+        assert_eq!(before.revision, after.revision);
+        assert_eq!(before.token, after.token);
+        assert_eq!(before.refresh_token, after.refresh_token);
+        assert_eq!(
+            w.http
+                .calls()
+                .iter()
+                .map(|call| call.path.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "/api/w/nuser/account/get",
+                "/api/rtrs/abt/front/expinfo/list",
+                "/api/login/token/refresh/v1"
+            ]
+        );
+    }
+}
+
+#[tokio::test]
+async fn identity_read_301_recovers_committed_pair_without_intercept_or_replaying_refresh() {
+    use cumulus_core::account::SessionStatus;
+
+    let w = World::configured(
+        [jsk_flags(), rotated(), json!({"code":301}).into()],
         true,
         None,
         Arc::new(DesktopDeviceToken),
+        true,
     )
     .await;
-    assert!(w.check().await.is_err());
-    assert_eq!(
-        w.client.session_renewal(&w.epoch()).unwrap().state,
-        State::RecoveryRequired
+    let epoch = w.epoch();
+    assert!(
+        w.check()
+            .await
+            .err()
+            .expect("identity read refused")
+            .is_service_code(301)
     );
-    assert_eq!(w.check().await.unwrap().state, State::Refreshed);
+    let pending = w.client.session_renewal(&epoch).unwrap();
+    assert_eq!(pending.state, State::RecoveryRequired);
+    assert!(pending.can_reconcile && !pending.can_check && pending.last_success.is_none());
+    assert_eq!(
+        w.client.account().unwrap().status,
+        SessionStatus::Authenticated
+    );
+    let http = Arc::new(ScriptHttp::new([identity(1), identity(1)]));
+    let reopened = w.reopened(http.clone()).with_official_login_policy();
+    let account = reopened.restore_account().await.unwrap();
+    let pending = reopened.session_renewal(&account.epoch).unwrap();
+    assert_eq!(pending.state, State::RecoveryRequired);
+    assert!(pending.can_reconcile);
+    assert_eq!(
+        http.calls().len(),
+        1,
+        "reopening only restored the active session"
+    );
+    let done = reopened
+        .renew_session(&account.epoch, Action::Reconcile)
+        .await
+        .unwrap();
+    assert_eq!(done.state, State::Refreshed);
+    assert!(done.last_success.is_some());
+    assert_eq!(
+        http.calls()
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/api/w/nuser/account/get", "/api/w/nuser/account/get"]
+    );
     assert_eq!(
         w.http
             .calls()
             .iter()
-            .filter(|c| c.path == "/api/login/token/refresh/v1")
-            .count(),
-        1
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/w/nuser/account/get",
+            "/api/rtrs/abt/front/expinfo/list",
+            "/api/login/token/refresh/v1",
+            "/api/w/nuser/account/get"
+        ]
     );
 }
 
@@ -385,11 +503,8 @@ async fn duplicate_checks_and_aborted_request_preserve_single_flight_and_recover
     sender.closed().await;
     let v = w.client.session_renewal(&w.epoch()).unwrap();
     assert!(!v.busy);
-    assert_eq!(v.state, State::RecoveryRequired);
-    assert_eq!(
-        w.check().await.unwrap().state,
-        State::ReauthenticationRequired
-    );
+    assert_eq!(v.state, State::Unconfirmed);
+    assert_eq!(w.check().await.unwrap().state, State::Unconfirmed);
     assert_eq!(w.http.calls().len(), 2);
 }
 
@@ -482,10 +597,7 @@ async fn renewal_deadline_releases_flight_but_preserves_unknown_write() {
     sender.closed().await;
     let status = w.client.session_renewal(&w.epoch()).unwrap();
     assert!(!status.busy);
-    assert_eq!(status.state, State::RecoveryRequired);
-    assert_eq!(
-        w.check().await.unwrap().state,
-        State::ReauthenticationRequired
-    );
+    assert_eq!(status.state, State::Unconfirmed);
+    assert_eq!(w.check().await.unwrap().state, State::Unconfirmed);
     assert_eq!(w.http.calls().len(), 2);
 }

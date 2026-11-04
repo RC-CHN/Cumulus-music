@@ -3,6 +3,7 @@
 mod journal;
 mod lifecycle;
 mod signature;
+pub(crate) use lifecycle::PendingReceipt;
 pub use lifecycle::{
     AccountLifecycle, DesktopDeviceToken, DeviceTokenProvider, LogoutResult, RefreshOutcome,
     RefreshStatus,

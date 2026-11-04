@@ -1,37 +1,71 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { useCore } from '../services/core';
+import { useControlFocus } from '../composables/useControlFocus';
 import { useSessionRenewal } from '../composables/useSessionRenewal';
 import { renewalMessage } from '../services/renewal';
 const props = defineProps<{ epoch: string; disabled?: boolean }>();
 const emit = defineEmits<{ login: [] }>();
 const model = useSessionRenewal(useCore(), props.epoch);
 const { view, busy, error } = model;
+const section = ref<HTMLElement>();
+const runButton = ref<HTMLButtonElement>();
+const readButton = ref<HTMLButtonElement>();
+const loginButton = ref<HTMLButtonElement>();
+const focus = useControlFocus(
+  () => props.epoch,
+  () => readButton.value ?? runButton.value ?? loginButton.value ?? section.value,
+);
+function run(event: MouseEvent) {
+  void focus.run(event, model.run);
+}
+function reload(event: MouseEvent) {
+  void focus.run(event, model.load);
+}
 onMounted(() => void model.connect());
 onUnmounted(model.dispose);
 </script>
 <template>
-  <section class="session-renewal" aria-label="登录续期" :data-state="view?.state">
+  <section
+    ref="section"
+    class="session-renewal"
+    aria-label="登录续期"
+    :data-state="view?.state"
+    tabindex="-1"
+  >
     <p aria-live="polite">{{ view ? renewalMessage(view.state) : '正在读取续期状态…' }}</p>
     <small v-if="view?.lastSuccess"
       >上次成功：{{ new Date(view.lastSuccess * 1000).toLocaleString() }}</small
     >
     <button
       v-if="view?.canCheck || view?.canReconcile"
+      ref="runButton"
       :disabled="disabled || busy || view.busy"
-      @click="model.run"
+      @click="run"
     >
       {{ busy ? '正在检查…' : view.canReconcile ? '核对续期结果' : '检查登录续期' }}
     </button>
     <button
-      v-if="view && ['expired', 'reauthentication_required'].includes(view.state)"
+      v-if="view?.state === 'unconfirmed'"
+      ref="readButton"
+      :disabled="disabled || busy"
+      @click="reload"
+    >
+      重新读取续期状态
+    </button>
+    <button
+      v-if="view && ['expired', 'unconfirmed'].includes(view.state)"
+      ref="loginButton"
       :disabled="disabled || busy"
       @click="emit('login')"
     >
       重新登录
     </button>
     <p v-if="error" role="alert">
-      {{ error }}<button :disabled="busy" @click="model.load">重新读取状态</button>
+      {{ error
+      }}<button v-if="view?.state !== 'unconfirmed'" :disabled="disabled || busy" @click="reload">
+        重新读取状态
+      </button>
     </p>
   </section>
 </template>

@@ -63,6 +63,44 @@ test('lost write reply reads recovery state and next user action only reconciles
   await f.model.run();
   assert.deepEqual(actions, ['check', 'reconcile']);
 });
+test('a missing pair keeps the account state and only offers a local status read', async () => {
+  let reads = 0;
+  const actions: string[] = [];
+  const pendingRead = deferred<SessionRenewalView>();
+  const readStarted = deferred<void>();
+  const f = fixture({
+    sessionRenewal: async () => {
+      switch (reads++) {
+        case 0:
+          return view();
+        case 1:
+          readStarted.resolve();
+          return pendingRead.promise;
+        default:
+          return view('unconfirmed');
+      }
+    },
+    renewSession: async (_, action) => {
+      actions.push(action);
+      throw { code: 'session_expired', message: '登录已失效，请重新登录' };
+    },
+  });
+  await f.model.connect();
+  const action = f.model.run();
+  await readStarted.promise;
+  assert.equal(f.model.busy.value, true);
+  assert.equal(f.model.error.value, '');
+  await f.model.run();
+  pendingRead.resolve(view('unconfirmed'));
+  await action;
+  assert.equal(f.model.view.value?.state, 'unconfirmed');
+  assert.match(renewalMessage(f.model.view.value!.state), /当前仍为登录状态/);
+  assert.equal(f.model.error.value, '');
+  await f.model.run();
+  await f.model.load();
+  assert.deepEqual(actions, ['check']);
+  assert.equal(reads, 3);
+});
 test('duplicates and disposal never repeat a renewal or publish a late response', async () => {
   const late = deferred<SessionRenewalView>();
   let writes = 0,

@@ -10,7 +10,7 @@ export type RenewalState =
   | 'not_due'
   | 'refreshed'
   | 'recovery_required'
-  | 'reauthentication_required'
+  | 'unconfirmed'
   | 'failed';
 export interface SessionRenewalView {
   epoch: string;
@@ -37,8 +37,8 @@ export function renewalMessage(state: RenewalState): string {
     missing_credentials: '当前会话未保存续期凭据，可以继续使用；登录失效后需重新登录',
     not_due: '距登录或上次成功续期不足 24 小时，暂时无需续期',
     refreshed: '登录续期成功，账号身份已核对',
-    recovery_required: '上次续期结果尚未确认，请先核对结果',
-    reauthentication_required: '无法确认上次续期，请重新登录；仍可重试核对结果',
+    recovery_required: '已收到续期凭据，需要核对账号身份才能确认结果',
+    unconfirmed: '续期未确认。当前仍为登录状态，可以继续使用。',
     failed: '续期检查未完成，请稍后重试',
   };
   return messages[state];
