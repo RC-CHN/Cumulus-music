@@ -132,7 +132,8 @@
   是否采用官方兼容回退。Core 只接收界限明确的 PCM/格式与会话事件。
 - Linux：已有安装包测试 scripts/ci/installed_linux_audio.py 的私有
   PipeWire/Pulse sink 用显式 cumulus_private.monitor 和合成音乐采样，
-  证明该平台的 monitor 机制可用；识曲宿主尚未实现。实际宿主可从
+  证明该平台的 monitor 机制可用。另有独立 Rust 合成探针，见
+  song-recognition-monitor-proof.txt；生产宿主尚未接入。实际宿主可从
   当前输出 sink 得到显式 monitor source，校验绑定后在用户启动期间
   读流，不能选默认录音源、缺 monitor 后切麦克风或把 CI 的 parec
   子进程当作生产实现。PipeWire/Pulse 后端之间也不声称天然样本相同。

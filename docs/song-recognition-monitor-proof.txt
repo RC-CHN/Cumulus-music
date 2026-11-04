@@ -1,0 +1,56 @@
+听歌识曲：Linux 私有输出 monitor 的离线桌面探针
+
+desktop/probes/recognition-monitor 是单独编译的 Linux x64 实验程序，
+不在 Tauri、desktop Cargo 目标、IPC 或正常发行包里。只在显式的私有
+合成环境里采集，未增加生产依赖。系统 libpulse.so.0 只在这个探针链接；
+core 继续只收已验证格式的 PCM。没有麦克风、真实用户播放、凭证、网络
+识曲或指纹提交。官方 Windows 路径见 song-recognition-host-contracts.txt。
+
+探针要求独立网络命名空间并隐藏 /dev/snd。Unix socket 必须在调用者拥有的
+0700 临时目录下，并匹配测试驱动启动的 PipeWire-Pulse 进程 PID 与 UID。
+先用无命令、非阻塞 Unix peer 连接检查身份，再用指定的单一 socket 地址和
+NOAUTOSPAWN 建 libpulse 上下文。不给空的 server/source，不使用宿主默认
+输出或录音设备，继承的 PULSE_SERVER 可指向无效地址。
+
+先按显式名称查 source，核对它确实是指定 sink 的 monitor；缺失、普通
+source、别的 sink 或 socket peer 不符，都在创建采集流前拒绝。录制使用
+DONT_MOVE，打开后及每次读取前复核源名字、索引和实际样本格式。无数据时
+非阻塞等待，可取消并有总时限；Pulse 的有长度空包按数字静音处理，超过
+边界或格式改变立即结束。本地 RAII 释放每个 fragment、stream、context
+及 mainloop。参考 libpulse 的公开 ABI：
+  https://freedesktop.org/software/pulseaudio/doxygen/structpa__source__info.html
+  https://github.com/pulseaudio/pulseaudio/blob/master/src/pulse/stream.h
+
+测试驱动使用独立 XDG 目录、私有 DBus 和 PipeWire/Pulse 实例。在两个新建
+null sink 播放不同合成音，且把 1760 Hz 的干扰 sink 设为该测试实例的默认
+输出。要求测试音流在各自显式 sink 上，并只采选定 440 Hz 左声道和 880 Hz
+右声道的 monitor。两种采集格式为交错双声道 48k i16 和 f32，转到已验证
+的 stock resampler。两种输入的首级下混增益来自官方冻结对照：i16 约 0.5，
+f32 约 1/sqrt(2)；不把正常浮点增益差误判为串音。音频只在内存里，日志
+写帧数和几个合成频率的幅值，不写 PCM、实际系统设备名或身份值。
+
+验证同时覆盖：源不存在、其他 sink 的 monitor、名字看似 monitor 的
+普通虚拟 source、错误 peer PID、主动取消后的原生流回收，以及移除选中
+monitor 后不切向仍在播放的默认干扰 sink。PipeWire 1.6.2 / libpulse 17.0
+本机合成对照中，两种格式都读入 192,000 帧，输出 31,984 个 i16；
+440/880 Hz 幅值约为 i16 4001/3000、f32 5657/4243，1760 Hz 干扰
+不超过 0.1。取消含启动共 208ms，确认采集流移除；移除 monitor 这次
+由约 7 秒上限结束，未观察即时的断开通知，不声称即时恢复。原型处理
+每轮最多四秒输入；真实用户设备切换、应用授权提示、Linux 不同音频
+服务器版本与 Windows WASAPI 接入均未验证。这个探针不构成上线的识曲
+或采集能力。
+
+复验（仓库根目录，使用已有的可信本地 stock 库，见重采样对照文档）：
+  mkdir -p .build/recognition-monitor-evidence
+  CARGO_TARGET_DIR="$PWD/.build/recognition-monitor-evidence/target" \
+    cargo build --locked --offline -p cumulus-core \
+      --features song-recognition-resampler --message-format=json \
+      > .build/recognition-monitor-evidence/core-build.jsonl
+  python3 scripts/research/recognition_monitor_smoke.py \
+    --stock /绝对路径/已校验的stock共享库目录 \
+    --core-build-log .build/recognition-monitor-evidence/core-build.jsonl \
+    --root .build/recognition-monitor-evidence/new-proof
+
+驱动从锁定的 core build 日志取得 rlib、使用仓库固定 Rust 工具链单独链接
+探针，要求 bwrap、dbus-run-session、pipewire、pipewire-pulse、wireplumber、
+pactl、pacat 及系统 libpulse。只在测试用的私有音频实例内改变默认 sink。
