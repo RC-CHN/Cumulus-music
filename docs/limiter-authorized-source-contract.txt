@@ -1,0 +1,120 @@
+In-process decoder: source authorization and transport boundary
+
+The FLAC decoder can share an existing verified local handle and authority
+predicate. It cannot replace ordinary playback from today's ResolvedSource
+without an additional source contract. libmpv's custom byte callbacks read
+application-supplied data; they do not expose the compressed bytes that
+libmpv fetches when it opens an ordinary signed CDN URL. Keep the present
+player active while the remaining source cases are proved separately.
+
+What the current paths actually provide
+
+* Cold offline: download/offline/cold.rs opens a regular file, checks the
+  same handle's length/mtime and SHA-256, verifies the format and unchanged
+  task/ledger, and revalidates entitlement. ColdOfflineAudio::into_playback
+  hands that already-open file to client/cold_offline.rs. The decoder and
+  output authority combines the mode lifetime, the cold focus revision and
+  the current fast entitlement; stronger entitlement checks occur before
+  starting and during polling. On revocation the owner drops Playing and
+  stops the engine, with rights loss distinct from normal EOF or a decoder
+  fault. For authorized encrypted media MpvEngine::load_pinned_ncm wraps
+  the same file with NcmReader<...> using HeaderPolicy::Strict. This reader
+  bounds its seeks to the decrypted audio payload, not the envelope or
+  cover bytes. When that payload is FLAC, it is structurally compatible
+  with the in-process Read+Seek interface. Cold playback currently has no
+  seek command; decoder byte seeks do not imply a new cold UI control.
+* Ordinary local and downloaded entries: playback/source/mod.rs checks the
+  session; downloads also check ledger/access and verified integrity, then
+  recheck their task/path/integrity reference. LocalLibrary::resolve checks
+  the file/CUE revision and emits a path and optional segment. The resolved
+  MediaInput is still a path, and libmpv reopens it. Normal local NCM goes
+  through LocalLibrary::playable_path's validated decrypted cache. This
+  resolver does not hand a replacement decoder a file whose exact opened
+  identity and integrity were the ones checked. Passing the path again
+  neither adopts cold authority nor pins the checked bytes against a path
+  swap. Keep the current normal NCM behavior until a same-handle adapter
+  is verified; do not grant the cold path access to the decoded cache.
+* Online sources: playback/source/fetch.rs uses the account-bound song or
+  program play URL, requires success, URL and MD5, and keeps actual quality,
+  trial and rights fields. MediaUrl only accepts the service CDN family and
+  is private to native code. Its account-keyed cache uses the response TTL
+  with a five-second reuse margin; a stale account cannot publish a result.
+  ResolvedSource gives the ordinary mpv loader a URL, not a Read+Seek
+  object. libmpv chooses HTTP requests, buffering and byte seek behavior.
+  An ordinary user seek uses the retained entry and does not call the
+  resolver again. On output reload the actor can renew an expired retained
+  ordinary song authorization; a qualifying explicit retry can request a
+  fresh URL. FM, Together, cloud, downloaded and constrained entries do not
+  gain the ordinary-song retry rules. Do not broaden them to every seek.
+
+Boundaries for a proposed adapter
+
+1. Keep media authorization in core, before opening a decoder. A candidate
+   must accept a previously verified opened File or a reader derived from
+   it, an immutable source identity/format and length, and a live authority
+   predicate. The first credible case is synthetic local FLAC and strict
+   NCM-wrapped FLAC through the existing cold grant and pinned File, with
+   no plaintext cache. Reuse all existing ledger and entitlement checks;
+   local/download additions must verify identity and applicable digest on
+   the actual handle used for decode, not reopen by path after validation.
+   A codec mismatch may use the current player only when the original
+   request remains authorized; loss of authority must stop both paths.
+2. Keep account, playback generation, and media focus checks before and
+   after byte work and before admitting a PCM packet to the limiter or
+   sink. Reuse the same authority on both sides of the new decode/sink
+   boundary. Cancellation must retire the sink and discard prefetched PCM,
+   not merely stop later reads; native readahead can already hold audio.
+   The existing one-shot pinned registry uses a fixed nonempty size,
+   seekable reader, 64 KiB read scratch and native cancel/close callbacks.
+   It does not manufacture source authorization or implement HTTP ranges.
+   Any new generic reader should validate returned counts, cancellation
+   after blocking work, and avoid callback re-entry into libmpv or the
+   actor. Retain the current protected offline stop classification.
+3. Keep display time and rights in Timeline and PlaybackConstraint, not the
+   codec. A CUE entry uses a nonzero underlying file start and zero-based
+   display; a server trial clip can be zero-based media with a nonzero
+   display offset. Together can further restrict those bounds. Translate
+   the existing media-time bounds to a verified inclusive start and
+   exclusive stop frame once the source rate is known. Do not feed samples
+   outside the authorized range into limiter history or expose them on
+   drain. An exact-end user seek needs defined completion at the boundary;
+   it must not fall through to the following CUE track or out-of-trial PCM.
+4. Replace the internal native entry for a logical seek without changing
+   public queue identity, current play/history checkpoint, pause, speed,
+   or volume. Actor::begin currently allocates a new play ID; a seek cannot
+   be implemented by calling it blindly. Use a separate decode generation,
+   stop/revoke old callbacks before new publication, map new segment-local
+   native time back through Timeline, and ignore old native events. Only
+   matching verified decoder drain plus sink EOF can advance the queue;
+   stale, denied, cancelled and failed paths preserve their own outcomes.
+
+Why online needs separate work
+
+The existing download MediaBackend uses a clean HTTPS client with no API
+cookies, redirects, retry or content decompression, and validates ranges
+for resumable files. Its Range request is open ended, and a 200 can be an
+intentional resume restart. A finished download also gets whole-resource
+integrity checks, which a decoder cannot use before emitting a requested
+partial range. Neither fact supplies safe random-access playback. A
+separate adapter would need bounded range windows, exact Content-Range and
+length/representation identity, fixed known compressed size for this FLAC
+decoder, cancelable worker I/O, no cookie/URL leakage, and a generation
+change whenever authorization or byte identity changes. Do not splice a
+200 response or an unverified new representation into a nonzero offset.
+No current read proves the required CDN range and validator semantics, so
+this path must remain off for online media.
+
+Acceptance before any source switch
+
+Use synthetic fixtures first: plain pinned FLAC and strict NCM-FLAC;
+replace the path after opening and prove the held handle is used; exercise
+ledger changes during open/replacement and revoke entitlement/account/focus
+during pending reads or after native prefetch; verify pause, seek, exact range end, unchanged play
+checkpoint and no queue advance on fault. Cover CUE, zero-based preview,
+Together restriction, device reload and unsupported-codec fallback before
+claiming those branches. For a future online adapter, use a controlled
+transport fixture for exact/misaligned/truncated 206, unexpected 200/redirect,
+changed validator/total, auth expiry and refresh on only the existing retry
+paths, and account switch with an outstanding response. A real authorized
+CDN read on each shipped runtime is a later separate proof. Nothing here
+changes source handling, dependencies, package assets or enabled effects.
