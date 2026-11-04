@@ -44,6 +44,7 @@ const FLAC: &[u8] = include_bytes!(concat!(
     "/tests/fixtures/tag_audio/seed.flac"
 ));
 
+mod fallback;
 mod sink;
 mod worker;
 

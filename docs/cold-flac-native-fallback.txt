@@ -1,0 +1,57 @@
+Cold FLAC: a same-handle fallback for a declined seek
+
+The optional in-process decoder can reject a valid FLAC seek when the
+compressed search exceeds its bound. Neither the absence of a SEEKTABLE
+nor the presence of one predicts whether a specific seek fits. The probe
+can check the requested sample before publishing an optional sink: lend
+the already verified ColdOfflineFlacReader to the bounded decoder, run
+the seek, and destroy the trial decoder before returning the borrow. A
+recognized budget/capability failure may select stock playback; a bad
+grant, stale request or unrelated decoder fault must not trigger fallback.
+Preflight proves the attempted seek only. It cannot guarantee that every
+future seek will fit, or that a malformed index is safe.
+
+MpvEngine::resume_cold_flac_native is an explicit native-only seam. It
+takes the same owned cold reader, absolute full-track position, paused
+intent and active request cancellation. It accepts no path, task ID,
+URL or new authorization, and does not select a queue item. The caller
+must own the intended reader/position and use an idle native sink after
+an earlier output has stopped or been destroyed. An already active
+entry is refused without changing that entry.
+
+The handoff revalidates the reader's full cold grant. The pinned registry
+rewinds that same held file or strict NCM payload and the stock FLAC
+demuxer loads it paused. Before exposing the load, the helper rejects
+unknown or out-of-range positions and commands an absolute exact seek.
+Only a settled native clock for the same entry within 10 ms of the
+requested position counts; native pause must still be active. It checks
+the request and source authority again, and resumes only when the caller
+asked for a playing intent. Any failed handoff retires its provisional
+entry under the protected Stop/destruction contract. It never silently
+restarts from zero or reopens the replaced pathname.
+
+For verification:
+
+    cargo test --locked -p cumulus-core --lib limiter_cold_flac_fallback -- --include-ignored --nocapture
+
+The Linux proof uses the real cold grant, strict NCM-FLAC, libFLAC and
+libmpv null audio output. The two compressed fixtures have no seektable
+and a sparse 8192-frame table respectively. It substitutes the original
+path, observes the bounded optional seek failure without a published
+sink, and feeds the held verified payload to stock mpv with paused and
+playing intent. Both fresh decoder attempts at source frame 40500 stop
+after 131072 compressed bytes. The native target is 0.918367 s; the
+paused clock matches it and the playing clock advances from there. The
+second test also exercises an occupied sink, an out-of-range target,
+and a real account detach before handoff. These tests use synthetic
+profile adoption only and start no decoder subprocess.
+
+There is no automatic fallback or new production decoder selection. A
+future active optional worker must first stop and hand its reader back
+after its callbacks finish; the current optional worker only proves its
+test transport and does not expose such a reclaim API. The host must
+retain and poll the cold reader's authority, preserve its current public
+playback identity, and report unavailable if the stock sink cannot
+confirm the desired position. No attempt is made to cover CUE/trial
+ranges, online Range semantics, actual sound hardware, or Windows native
+runtime here. Optional FLAC/limiter remains disabled by default.

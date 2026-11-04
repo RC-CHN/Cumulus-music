@@ -27,8 +27,8 @@ struct Stats {
     last_seek: u64,
 }
 
-struct Source {
-    input: Box<dyn PinnedReader>,
+struct Source<'reader> {
+    input: Box<dyn PinnedReader + 'reader>,
     authority: Cancellation,
     size: u64,
     offset: u64,
@@ -42,7 +42,7 @@ struct Source {
     fault: Option<&'static str>,
 }
 
-impl Source {
+impl Source<'_> {
     fn fail(&mut self, message: &'static str) -> Option<c_int> {
         self.fault.get_or_insert(message);
         None
@@ -62,13 +62,15 @@ impl Source {
 fn callback(
     cookie: Handle,
     failure: c_int,
-    work: impl FnOnce(&mut Source) -> Option<c_int>,
+    work: impl FnOnce(&mut Source<'_>) -> Option<c_int>,
 ) -> c_int {
     catch_unwind(AssertUnwindSafe(|| {
         // SAFETY: these callbacks are registered only with Decoder::open's
         // boxed Source. libFLAC calls them synchronously on this one decoder,
         // which does not hold a Rust borrow of Source during any native call.
-        let source = unsafe { cookie.cast::<Source>().as_mut() }?;
+        // Decoder's source lifetime keeps an optional borrowed reader alive
+        // through finish/delete; neither its reference nor the cookie escapes.
+        let source = unsafe { cookie.cast::<Source<'_>>().as_mut() }?;
         if source.fault.is_some() || source.authority.is_cancelled() {
             return source.fail("FLAC source revoked or failed");
         }
@@ -217,19 +219,19 @@ unsafe extern "C" fn write(
     })
 }
 
-struct Decoder<'a> {
-    api: &'a Api,
+struct Decoder<'api, 'reader> {
+    api: &'api Api,
     handle: NonNull<c_void>,
-    source: NonNull<Source>,
+    source: NonNull<Source<'reader>>,
     total: u64,
     initialized: bool,
     sent_end: bool,
 }
 
-impl<'a> Decoder<'a> {
+impl<'api, 'reader> Decoder<'api, 'reader> {
     fn open(
-        api: &'a Api,
-        mut input: Box<dyn PinnedReader>,
+        api: &'api Api,
+        mut input: Box<dyn PinnedReader + 'reader>,
         generation: Generation,
         authority: Cancellation,
     ) -> io::Result<Self> {
@@ -300,12 +302,12 @@ impl<'a> Decoder<'a> {
         Ok(result)
     }
 
-    fn source(&self) -> &Source {
+    fn source(&self) -> &Source<'reader> {
         // SAFETY: owns the boxed Source, and libFLAC cannot call back here.
         unsafe { self.source.as_ref() }
     }
 
-    fn source_mut(&mut self) -> &mut Source {
+    fn source_mut(&mut self) -> &mut Source<'reader> {
         // SAFETY: unique borrow of the decoder with no running native call.
         unsafe { self.source.as_mut() }
     }
@@ -381,7 +383,7 @@ impl<'a> Decoder<'a> {
     }
 }
 
-impl Drop for Decoder<'_> {
+impl Drop for Decoder<'_, '_> {
     fn drop(&mut self) {
         // SAFETY: closes the native decoder before restoring and dropping its
         // single leaked Box. Any final callback still has a valid Source.

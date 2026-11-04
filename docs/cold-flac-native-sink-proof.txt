@@ -42,6 +42,8 @@ not mean every unindexed file fails, or every supplied seektable is safe;
 production needs validated seek bounds/index coverage and an explicit
 fallback or error when a candidate cannot be seeked under budget. It must
 not silently reopen a different file or weaken source authority.
+The separate cold-flac-native-fallback.txt proof covers that handoff for
+a declined preflight before an optional sink is published.
 
 Pinned libFLAC seek and seektable sources:
 https://github.com/xiph/flac/blob/1.5.0/src/libFLAC/stream_decoder.c#L3402

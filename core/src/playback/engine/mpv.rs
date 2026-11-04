@@ -13,6 +13,7 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
+mod cold_fallback;
 #[cfg(test)]
 mod effect_order_tests;
 #[cfg(test)]
