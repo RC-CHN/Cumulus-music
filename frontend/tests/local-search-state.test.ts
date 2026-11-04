@@ -116,3 +116,24 @@ test('clearing a search cancels its queued filter and survives external category
   await turn();
   assert.equal(f.model.query.value.keyword, 'new folder');
 });
+test('sorting folds a pending search into one native read without sending partial IME input', async (t) => {
+  const f = fixture();
+  t.after(() => f.dispose());
+  await turn();
+  const before = f.reads.length;
+  f.search.input('夜行 ');
+  f.search.refine({ sort: 'duration', descending: true });
+  await settle();
+  assert.equal(f.reads.length, before + 1);
+  assert.deepEqual(
+    [f.reads.at(-1)?.keyword, f.reads.at(-1)?.sort, f.reads.at(-1)?.descending],
+    ['夜行 ', 'duration', true],
+  );
+  f.search.compositionStart();
+  f.search.input('yu');
+  f.search.refine({ sort: 'title', descending: false });
+  assert.equal(f.reads.at(-1)?.keyword, '夜行 ');
+  f.search.compositionEnd('雨声');
+  await turn();
+  assert.deepEqual([f.reads.at(-1)?.keyword, f.reads.at(-1)?.sort], ['雨声', 'title']);
+});

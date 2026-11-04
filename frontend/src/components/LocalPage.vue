@@ -405,7 +405,7 @@ const sortColumns = [
 let sortFocus: { field: LocalSort; queryKey: string } | undefined;
 function sort(field: LocalSort, event: MouseEvent) {
   const ownsFocus = document.activeElement === event.currentTarget;
-  props.model.filter({
+  search.refine({
     sort: field,
     descending: query.value.sort === field ? !query.value.descending : false,
   });

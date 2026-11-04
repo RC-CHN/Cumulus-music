@@ -1,6 +1,6 @@
 import { onScopeDispose, ref, watch } from 'vue';
 import type { LocalModel } from './useLocal.ts';
-import type { LocalGroup } from '../services/local.ts';
+import type { LocalGroup, LocalQuery } from '../services/local.ts';
 
 /** Recovered FlexSearchInput uses a 10 ms debounce; a visit owns its pending input. */
 export function useLocalSearch(model: LocalModel) {
@@ -40,6 +40,11 @@ export function useLocalSearch(model: LocalModel) {
     keyword.value = '';
     flush();
   }
+  function refine(value: Pick<LocalQuery, 'sort' | 'descending'>) {
+    if (!alive || !owns()) return;
+    stop();
+    model.filter(composing ? value : { ...value, keyword: keyword.value });
+  }
   function group(value: LocalGroup) {
     stop();
     if (!alive || !owns()) return;
@@ -48,7 +53,7 @@ export function useLocalSearch(model: LocalModel) {
     model.filter({ group: value, groupKey: null, keyword: '' });
   }
   watch(
-    () => [model.query.value.keyword, model.query.value.group],
+    [() => model.query.value.keyword, () => model.query.value.group],
     (next, before) => {
       stop();
       if (next[1] !== before?.[1]) composing = false;
@@ -60,5 +65,5 @@ export function useLocalSearch(model: LocalModel) {
     alive = false;
     stop();
   });
-  return { keyword, input, flush, clear, group, compositionStart, compositionEnd };
+  return { keyword, input, flush, clear, refine, group, compositionStart, compositionEnd };
 }

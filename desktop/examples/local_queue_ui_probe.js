@@ -50,6 +50,16 @@
     const direction = () => sorted()[0]?.getAttribute('aria-sort');
     const durations = () => trackRows().map(row => row.cells[5].textContent.trim());
     assert(sorted().length === 1 && sorted()[0].textContent.includes('音乐标题'), 'default active sort');
+    const search = one('[aria-label="搜索本地音乐"]');
+    search.value = '夜行';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    click(button('时长'));
+    await wait(() => direction() === 'ascending' && durations().join(',') === '00:30,01:30' &&
+      search.value === '夜行', 'sort preserves an input still inside the search debounce');
+    await filter('', 5);
+    click(button('音乐标题'));
+    await wait(() => sorted().length === 1 && sorted()[0].textContent.includes('音乐标题') &&
+      trackRows().length === 5, 'restore initial header before sort regression');
     click(button('时长'));
     await wait(() => direction() === 'ascending' && durations().join(',') === '00:30,01:00,01:30,02:00,02:00',
       'native duration ascending and active header');
