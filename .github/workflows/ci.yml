@@ -130,20 +130,21 @@ jobs:
       - name: Verify the release graphics startup
         env:
           GDK_BACKEND: x11
-          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
           xvfb-run -a dbus-run-session -- python3 scripts/ci/graphics_smoke.py --binary .build/target/release/cumulus --root .build/ci-graphics-linux
       - name: Verify playback and EQ in the extracted Debian application
         run: |
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-linux --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-linux --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm
       - name: Verify playback and EQ in the Linux portable archive
         run: |
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-portable-linux --portable --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-portable-linux --portable --verify-local-playback --verify-installed-equalizer --verify-monitor-pcm
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
@@ -622,8 +623,9 @@ jobs:
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:
           GDK_BACKEND: x11
-          WEBKIT_DISABLE_DMABUF_RENDERER: '1'
           LIBGL_ALWAYS_SOFTWARE: '1'
+          WEBKIT_FORCE_DMABUF_RENDERER: '1'
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
@@ -710,6 +712,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-reply-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-latest-releases-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-linux
+          env -u LIBGL_ALWAYS_SOFTWARE -u WEBKIT_FORCE_DMABUF_RENDERER -u WEBKIT_DMABUF_RENDERER_FORCE_SHM LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-software-linux --software-rendering --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-sidebar-linux
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
