@@ -169,4 +169,14 @@ impl CommentApi {
         }
         Ok(value["data"].clone())
     }
+    pub(crate) async fn count(&self, kind: ResourceKind, id: String) -> Result<u64> {
+        let rows = self.information(kind, &[id]).await?;
+        let count = model::number(&rows[0]["commentCount"])?;
+        if count >= (1_u64 << 53) {
+            return Err(Error::Response(
+                "comment count exceeds public integer range",
+            ));
+        }
+        Ok(count)
+    }
 }

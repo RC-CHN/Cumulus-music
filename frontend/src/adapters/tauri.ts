@@ -263,6 +263,7 @@ export function createTauriClient(): CoreClient {
     playerQueueCollection: (epoch, revision) =>
       invoke('player_queue_collection', { epoch, revision }),
     playerChorus: (epoch, playId) => invoke('player_chorus', { epoch, playId }),
+    playerCommentCount: (epoch, playId) => invoke('player_comment_count', { epoch, playId }),
     playerLyrics: (epoch, playId) => invoke('player_lyrics', { epoch, playId }),
     lyricPreferences: (epoch, playId, preferences) =>
       invoke('lyric_preferences', { epoch, playId, preferences }),

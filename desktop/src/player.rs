@@ -222,6 +222,17 @@ pub async fn player_chorus(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_comment_count(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<Option<u64>, ClientError> {
+    client
+        .player_comment_count(&epoch, &play_id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_lyrics(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

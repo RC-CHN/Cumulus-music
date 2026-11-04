@@ -375,6 +375,21 @@ impl Api for Library {
                     }
                     response
                 }
+                "/api/resource/commentInfo/list"
+                    if std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() =>
+                {
+                    let (id, comment_count) =
+                        match (args["resourceType"].as_u64(), args["resourceIds"].as_str()) {
+                            (Some(4), Some("[\"1\"]")) => (1, 1234),
+                            (Some(4), Some("[\"2\"]")) => (2, 25),
+                            _ => {
+                                return Err(cumulus_core::Error::InvalidInput(
+                                    "wrong player comment fixture resource",
+                                ));
+                            }
+                        };
+                    json!({"code":200,"data":[{"threadId":format!("R_SO_4_{id}"),"commentCount":comment_count}]})
+                }
                 "/api/song/chorus" if std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() => {
                     match args["ids"].as_str() {
                         Some("[1]" | "[\"1\"]") => {

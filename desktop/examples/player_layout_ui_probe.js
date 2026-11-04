@@ -12,6 +12,9 @@
   const hit = node => { const r=rect(node), target=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return node===target || node.contains(target); };
   const checks = [];
   let stageCount = 0;
+  const playerComment = () => one('.player-comment');
+  const commentBadge = () => one('.player-comment-count');
+  const commentDescription = () => document.getElementById(playerComment()?.getAttribute('aria-describedby'));
   async function capture(label) {
     await sleep(500);
     const panel=one('.lyrics-panel'), body=one('.lyrics-body'), record=one('.vinyl-record'), scroller=one('.lyric-scroll');
@@ -26,6 +29,7 @@
       controls:controls.map(node=>({label:node.getAttribute('aria-label')||node.textContent.trim(),player:!!node.closest('.playerbar'),...rect(node),hit:hit(node)})),
       scroll:{width:scroller.clientWidth,contentWidth:scroller.scrollWidth,top:scroller.scrollTop},
       queue:one('.queue-panel') ? {rendered:all('.queue-row').length,total:40,...rect(one('.queue-panel'))} : null,
+      commentBadge:commentBadge()?.textContent ?? null,
     };
     // The queue intentionally covers part of the lyric column; test those controls once closed.
     const covered=!!row.queue;
@@ -41,6 +45,8 @@
       metadataHints:credits.length>=2 && hintTargets.every(node=>node && node.title===node.textContent.trim()),
       playerHints:all('.now-copy .ellipsis').every(node=>node.title===node.textContent.trim()),
       queueHints:all('.queue-song .ellipsis').every(node=>node.title===node.textContent.trim()),
+      commentBadgeContained:window.__playerLayoutBaseline || (!!commentBadge() &&
+        inside(rect(commentBadge()),rect(playerComment())) && hit(playerComment())),
     };
     checks.push({label,...row.checks});
     await emit(`ux_${String(++stageCount).padStart(2,'0')}_${label}`,row);
@@ -292,10 +298,12 @@
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
     assert(one('.track-row').textContent.includes('沿着海岸'),'long fixture missing');
     await play(0);
+    const firstCommentPlay = one('.playerbar').dataset.playId;
     if(!window.__playerLayoutBaseline) {
       const mark=()=>one('.seek-chorus');
       await wait(()=>mark(),'chorus metadata appears on the playing track');
       assert(Math.abs(parseFloat(mark().style.left)-400/30)<.01&&!mark().classList.contains('reached'),'chorus marker uses full track clock');
+      await wait(()=>commentBadge()?.textContent==='999+'&&commentDescription()?.textContent.trim()==='1234 条评论','current song exposes compact and accessible comment counts');
       await verifySeekTimePreview();
       await verifyLyricModes();
       await verifyLyricFollow();
@@ -323,6 +331,13 @@
       click(one('[aria-label="关闭播放队列"]'));await wait(()=>!one('.queue-panel'),'queue close');
     }
     await play(1);
+    if(!window.__playerLayoutBaseline) {
+      await wait(()=>commentBadge()?.textContent==='25'&&commentDescription()?.textContent.trim()==='25 条评论','replacement song shows its own count');
+      const invoke = (command,args) => window.__TAURI_INTERNALS__.invoke(command,args);
+      const {epoch} = await invoke('account_snapshot');
+      const stale = await invoke('player_comment_count',{epoch,playId:firstCommentPlay}).then(()=>null,cause=>cause);
+      assert(stale?.code==='stale','previous play ID cannot read current-song comment count');
+    }
     if(!window.__playerLayoutBaseline)
       assert(!one('[aria-label="翻译歌词"]')&&!one('[aria-label="音译歌词"]')&&one('[aria-label="歌词提前半秒"]'),'original-only song does not show auxiliary toggles');
     if(!window.__playerLayoutBaseline) assert(!one('.seek-chorus'),'replacement song does not reuse previous marker');
@@ -335,6 +350,6 @@
     if(!window.__playerLayoutBaseline) { await verifyCurrentRowButton(); await verifyRecommendationToggle(); await verifyAudioOutputRecovery(); }
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline,playerCommentCountVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

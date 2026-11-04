@@ -1,4 +1,5 @@
 mod chorus;
+mod comment_count;
 mod dto;
 mod identity;
 mod intelligence;

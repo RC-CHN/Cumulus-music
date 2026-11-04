@@ -468,6 +468,7 @@ export interface PlayerClient {
   playerQueue(epoch: string): Promise<QueueView>;
   playerQueueCollection(epoch: string, revision: string): Promise<QueueCollectionView>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
+  playerCommentCount(epoch: string, playId: string): Promise<number | null>;
   playerLyrics(epoch: string, playId: string): Promise<LyricsView>;
   lyricPreferences(
     epoch: string,

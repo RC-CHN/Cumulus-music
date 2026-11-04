@@ -16,6 +16,8 @@ import { artistLabel } from '../services/artistLabel';
 import { effectLauncher, equalizerLauncher } from '../services/equalizer';
 import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
+import { usePlaybackCommentCount } from '../composables/usePlaybackCommentCount';
+import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 const equalizerOpen = ref(false);
 const effectManagementOnOpen = ref(false);
 const props = withDefaults(
@@ -42,6 +44,9 @@ const emit = defineEmits<{
 }>();
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
 const chorusMarker = usePlaybackChorus(view, loaded);
+const commentCount = usePlaybackCommentCount(view, loaded, () => props.account.epoch);
+const commentBadge = computed(() => formatPlaybackCommentCount(commentCount.value));
+const commentDescription = useId();
 const equalizerDescription = useId();
 const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
 const effectEntry = computed(() =>
@@ -509,12 +514,19 @@ async function seek(event: Event) {
       </button>
       <button
         v-if="view?.track && !view.track.local"
-        class="icon-button"
+        class="icon-button player-comment"
         aria-label="当前歌曲评论"
+        :aria-describedby="commentBadge ? commentDescription : undefined"
         @click="emit('comments', view.track)"
       >
         <Icon name="comment" />
+        <span v-if="commentBadge" class="player-comment-count" aria-hidden="true">{{
+          commentBadge
+        }}</span>
       </button>
+      <span v-if="commentBadge" :id="commentDescription" class="sr-only"
+        >{{ commentCount }} 条评论</span
+      >
     </div>
     <div class="player-feedback-stack">
       <div v-if="message" class="playback-message" role="status">

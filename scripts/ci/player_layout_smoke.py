@@ -50,10 +50,14 @@ def main():
         'layoutPassed', 'lyricFollowVerified', 'lyricTimelineVerified', 'lyricFontVerified',
         'lyricModesVerified', 'chorusMarkerVerified', 'seekTimePreviewVerified',
         'slowPlaybackWaitVerified', 'seekStepVerified', 'audioOutputRecoveryVerified',
-        'recommendationToggleVerified', 'currentRowToggleVerified'))
+        'recommendationToggleVerified', 'currentRowToggleVerified', 'playerCommentCountVerified'))
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if not args.baseline:
+        for label, expected_badge in [('long_760_dark', '999+'), ('short_760_dark', '25')]:
+            shot, = [stage for stage in stages if stage.stem.endswith('_' + label)]
+            frame = json.loads(shot.read_text(encoding='utf-8'))
+            assert frame['commentBadge'] == expected_badge and frame['checks']['commentBadgeContained']
         waiting, = [stage for stage in stages if stage.stem.endswith('_slow_playback_wait')]
         native_wait = json.loads(waiting.read_text(encoding='utf-8'))
         assert native_wait['nativePlayer']['state'] == 'buffering'
