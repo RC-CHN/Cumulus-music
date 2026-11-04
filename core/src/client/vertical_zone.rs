@@ -111,7 +111,7 @@ impl ZoneHost {
     }
 
     fn publish(&self, sequence: u64, page_code: &str, page: &mut VerticalZonePage) -> Result<()> {
-        let mut cache = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut cache = self.cache.lock().map_err(|_| Error::LockPoisoned)?;
         if cache.sequence != sequence {
             return Err(Error::StaleResponse);
         }
