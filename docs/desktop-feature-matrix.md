@@ -48,5 +48,7 @@
 - [本人排行删除](profile-play-record-contracts.txt)支持按时期删除并在不确定时只读核对；[外部歌单](external-playlist-import-contracts.txt)支持按官方规则预览分享链接，未提交外部导入任务。[冷离线 FLAC](cold-offline-flac-handoff.txt)通过合成凭据、真实解码、原路径替换与会话撤销的专项验证，正式播放器未切换。
 - [用户主页笔记](profile-notes-contracts.txt)独立读取作者列表，复用动态详情和评论，保留返回焦点；[社区编辑器](community-composer-contracts.txt)支持五类附件搜索及账号隔离的本机草稿。[排行卡](profile-play-record-contracts.txt)按作者播放周榜，同源暂停和恢复保留播放实例。三项已过 Linux 合并版 WebView，未执行真实发布。
 - [冷离线限幅联合实验](cold-flac-native-sink-proof.txt)验证真实 NCM-FLAC 解码、限幅、输出及撤权；[正式原生停止](pinned-audio-teardown.txt)不能确认当前条目停止时会销毁原生输出。完整限幅路径仍未默认启用。
+- [本人头像](account-profile-navigation-contracts.txt)与昵称分离，当前账号的笔记、关注、粉丝可直达对应资料页；[主页播客](profile-podcasts-contracts.txt)分开创建与收藏，保持同级页签历史及卡片返回。管理浏览器交接仅在显式点击时申请原服务票据。
+- [冷离线跳转回退](cold-flac-native-fallback.txt)用原授权句柄验证了无索引和稀疏索引 FLAC 的原生回退：旧输出停止和解码线程交还之后才启动新输出，保留暂停/播放。仍未默认接管正式播放。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
