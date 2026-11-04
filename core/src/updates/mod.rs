@@ -186,10 +186,10 @@ pub async fn check_latest(
         .ok_or(UpdateFailure::InvalidMetadata)?;
     if release.draft
         || release.prerelease
-        || !release
+        || release
             .published_at
             .as_deref()
-            .is_some_and(|date| chrono::DateTime::parse_from_rfc3339(date).is_ok())
+            .is_none_or(|date| chrono::DateTime::parse_from_rfc3339(date).is_err())
         || !published_repo_page(&release.html_url, version)
         || !has_assets(&release.assets, version)
     {
