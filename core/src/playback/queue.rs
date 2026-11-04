@@ -381,6 +381,37 @@ impl PlaybackQueue {
     }
 
     pub fn reorder(&mut self, entry_ids: &[String]) -> Result<()> {
+        self.reorder_entries(entry_ids, None)
+    }
+
+    pub(super) fn reorder_displayed(&mut self, movement: &super::QueueMovement) -> Result<()> {
+        let visible = movement.visible_order(&self.state)?;
+        let mut visible = visible.into_iter();
+        // Keep native-only media in the same slots; the renderer never
+        // supplies or sees these identities.
+        let ids: Vec<_> = self
+            .state
+            .items
+            .iter()
+            .map(|item| {
+                if item.visible_in_queue() {
+                    visible
+                        .next()
+                        .expect("all displayed entries kept")
+                        .to_owned()
+                } else {
+                    item.entry_id.clone()
+                }
+            })
+            .collect();
+        self.reorder_entries(&ids, Some(movement))
+    }
+
+    fn reorder_entries(
+        &mut self,
+        entry_ids: &[String],
+        movement: Option<&super::QueueMovement>,
+    ) -> Result<()> {
         let mut state = self.snapshot();
         let mut by_id: HashMap<_, _> = state
             .items
@@ -400,7 +431,12 @@ impl PlaybackQueue {
                     .ok_or(Error::InvalidInput("duplicate or unknown queue entry"))
             })
             .collect::<Result<_>>()?;
-        super::queue_more::demote_before_separator(&self.state, &mut state);
+        if let Some(movement) = movement {
+            let demoted = movement.demote(&self.state, &mut state);
+            if !demoted && state.items == self.state.items {
+                return Ok(());
+            }
+        }
         if state.mode != PlaybackMode::Random {
             state.order = entry_ids.into()
         }

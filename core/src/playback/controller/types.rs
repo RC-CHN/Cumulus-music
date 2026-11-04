@@ -206,6 +206,8 @@ pub enum PlaybackCommand {
         audio_owner: super::super::engine::Cancellation,
     },
     Reorder(Vec<String>),
+    /// Fenced move from displayed rows; only this carries marker demotion.
+    MoveDisplayed(super::super::QueueMovement),
     Mode(PlaybackMode),
     Play,
     /// Resume paused transport; a stopped selection starts at authorized zero.

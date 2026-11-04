@@ -2,12 +2,16 @@
 use super::*;
 
 impl QueueEdit {
-    pub(super) fn into_action(self) -> PlayerAction {
+    pub(super) fn into_action(self) -> (PlayerAction, Option<crate::playback::QueueMovement>) {
         match self {
-            Self::Select { entry_id } => PlayerAction::Select { entry_id },
-            Self::Remove { entry_ids } => PlayerAction::Remove { entry_ids },
-            Self::Reorder { entry_ids } => PlayerAction::Reorder { entry_ids },
-            Self::Clear => PlayerAction::Clear,
+            Self::Select { entry_id } => (PlayerAction::Select { entry_id }, None),
+            Self::Remove { entry_ids } => (PlayerAction::Remove { entry_ids }, None),
+            Self::Reorder { entry_ids } => (PlayerAction::Reorder { entry_ids }, None),
+            Self::Move {
+                entry_ids,
+                movement,
+            } => (PlayerAction::Reorder { entry_ids }, Some(movement)),
+            Self::Clear => (PlayerAction::Clear, None),
         }
     }
 }
@@ -51,7 +55,8 @@ impl MusicClient {
         token: &SessionToken,
         revision: &str,
         action: &mut PlayerAction,
-    ) -> Result<crate::playback::controller::PlaybackFence> {
+        movement: Option<&crate::playback::QueueMovement>,
+    ) -> Result<(crate::playback::controller::PlaybackFence, bool)> {
         let revision = revision
             .parse::<u64>()
             .map_err(|_| Error::InvalidInput("invalid displayed queue revision"))?;
@@ -66,6 +71,26 @@ impl MusicClient {
         }
         if before.fm {
             return Err(Error::State("FM queue requires its coordinator"));
+        }
+        if let (PlayerAction::Reorder { entry_ids }, Some(movement)) = (&*action, movement) {
+            let order = movement.visible_order(&queue)?;
+            if !order
+                .iter()
+                .copied()
+                .eq(entry_ids.iter().map(String::as_str))
+            {
+                return Err(Error::InvalidInput(
+                    "displayed order does not match the queue movement",
+                ));
+            }
+            let no_change = !movement.can_demote(&queue)
+                && order.into_iter().eq(queue
+                    .items
+                    .iter()
+                    .filter(|item| item.visible_in_queue())
+                    .map(|item| item.entry_id.as_str()));
+            // The actor derives its order again inside this exact fence.
+            return Ok((before.fence(), no_change));
         }
         if queue.items.iter().any(|item| !item.visible_in_queue()) {
             let visible = queue
@@ -113,6 +138,6 @@ impl MusicClient {
                 _ => {}
             }
         }
-        Ok(before.fence())
+        Ok((before.fence(), false))
     }
 }

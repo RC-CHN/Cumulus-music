@@ -824,7 +824,7 @@ impl MusicClient {
             }
             other => (other, None),
         };
-        let (mut action, displayed_queue, clear_room) = match action {
+        let (mut action, displayed_queue, clear_room, queue_movement) = match action {
             PlayerAction::QueueFor {
                 expected_queue_revision,
                 expected_room_id,
@@ -836,9 +836,10 @@ impl MusicClient {
                     ));
                 }
                 let room = matches!(edit, QueueEdit::Clear).then_some(expected_room_id);
-                (edit.into_action(), Some(expected_queue_revision), room)
+                let (action, movement) = edit.into_action();
+                (action, Some(expected_queue_revision), room, movement)
             }
-            other => (other, None, None),
+            other => (other, None, None, None),
         };
         let token = self.player_token(epoch)?;
         // A stale card must not cancel another selection or claim media focus.
@@ -909,13 +910,13 @@ impl MusicClient {
             None
         };
         // Reject stale UI before incrementing selection/cancelling a load.
-        let queue_guard = if let Some(revision) = displayed_queue {
-            Some(
-                self.displayed_queue_fence(&token, &revision, &mut action)
-                    .await?,
-            )
+        let (queue_guard, queue_no_change) = if let Some(revision) = displayed_queue {
+            let (fence, no_change) = self
+                .displayed_queue_fence(&token, &revision, &mut action, queue_movement.as_ref())
+                .await?;
+            (Some(fence), no_change)
         } else {
-            None
+            (None, false)
         };
         if let Some(room) = clear_room {
             self.validate_queue_clear_room(&token, room.as_deref())?;
@@ -932,6 +933,19 @@ impl MusicClient {
                 | PlayerAction::RepairQuality
         );
         self.together_validate_action(&token, &action)?;
+        if queue_no_change {
+            let current = self
+                .player
+                .controller()
+                .await?
+                .command(&token, PlaybackCommand::Snapshot)
+                .await?;
+            if queue_guard != Some(current.fence()) {
+                return Err(Error::QueueChanged);
+            }
+            self.session.check_generation(&token)?;
+            return project(&current, &token);
+        }
         let together_action = super::together::signal(&action);
         // Reject obsolete popup input before it can supersede another pending
         // selection. The actor fence below still covers the later race.
@@ -1274,7 +1288,10 @@ impl MusicClient {
             PlayerAction::Remove { entry_ids } => {
                 self.removal_command(&token, &current, queue_guard.is_some(), entry_ids)?
             }
-            PlayerAction::Reorder { entry_ids } => PlaybackCommand::Reorder(entry_ids),
+            PlayerAction::Reorder { entry_ids } => match queue_movement {
+                Some(movement) => PlaybackCommand::MoveDisplayed(movement),
+                None => PlaybackCommand::Reorder(entry_ids),
+            },
             PlayerAction::Clear => PlaybackCommand::Replace {
                 resources: vec![],
                 index: 0,

@@ -245,6 +245,7 @@ export interface QueueCollectionView {
 export type QueueEdit =
   | { kind: 'select'; entry_id: string }
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
+  | { kind: 'move'; entry_ids: string[]; movement: { entry_ids: string[]; offset: number } }
   | { kind: 'clear' };
 export type LocalQueueDropSource = {
   kind: 'local';

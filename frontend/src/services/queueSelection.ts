@@ -38,6 +38,7 @@ export function reorderQueueRows(
   ids: readonly string[],
   selected: ReadonlySet<string>,
   boundary: number,
+  keepSameOrder = false,
 ): string[] | undefined {
   if (
     !selected.size ||
@@ -52,5 +53,27 @@ export function reorderQueueRows(
   const rest = ids.filter((id) => !selected.has(id));
   const insert = ids.slice(0, boundary).filter((id) => !selected.has(id)).length;
   rest.splice(insert, 0, ...moving);
-  return rest.some((id, index) => id !== ids[index]) ? rest : undefined;
+  return keepSameOrder || rest.some((id, index) => id !== ids[index]) ? rest : undefined;
+}
+
+/** Keep the original insertion offset and exact selected IDs distinct from the
+ * resulting permutation. A divider drop can change only the selected marker. */
+export function displayedQueueMove(
+  rows: readonly { entryId: string; moreRecommendation?: boolean }[],
+  selected: ReadonlySet<string>,
+  offset: number,
+) {
+  const ids = rows.map((row) => row.entryId);
+  const firstRecommended = rows.findIndex((row) => row.moreRecommendation === true);
+  const possibleDemotion =
+    firstRecommended >= 0 &&
+    offset <= firstRecommended &&
+    rows.some((row) => row.moreRecommendation === true && selected.has(row.entryId));
+  const entry_ids = reorderQueueRows(ids, selected, offset, possibleDemotion);
+  if (!entry_ids) return;
+  return {
+    kind: 'move' as const,
+    entry_ids,
+    movement: { entry_ids: ids.filter((id) => selected.has(id)), offset },
+  };
 }

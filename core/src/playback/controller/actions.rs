@@ -36,6 +36,7 @@ impl Actor {
             PlaybackCommand::UseMissingDownloadOnline { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
+                | PlaybackCommand::MoveDisplayed(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
@@ -110,6 +111,7 @@ impl Actor {
                     | PlaybackCommand::Remove(_)
                     | PlaybackCommand::RemoveAndResume { .. }
                     | PlaybackCommand::Reorder(_)
+                    | PlaybackCommand::MoveDisplayed(_)
                     | PlaybackCommand::Mode(_)
                     | PlaybackCommand::Append { .. }
             )
@@ -286,6 +288,7 @@ impl Actor {
                 })
             }
             PlaybackCommand::Reorder(ids) => self.queue.reorder(&ids),
+            PlaybackCommand::MoveDisplayed(movement) => self.queue.reorder_displayed(&movement),
             PlaybackCommand::Mode(mode) => {
                 if let Some(context) = self
                     .queue

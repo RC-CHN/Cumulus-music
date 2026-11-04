@@ -1557,6 +1557,13 @@ async fn displayed_queue_edits_reject_replaced_lists_before_touching_transport()
         QueueEdit::Reorder {
             entry_ids: vec![current.entry_id.clone().unwrap()],
         },
+        QueueEdit::Move {
+            entry_ids: vec![current.entry_id.clone().unwrap()],
+            movement: cumulus_core::playback::QueueMovement {
+                entry_ids: vec![current.entry_id.clone().unwrap()],
+                offset: 0,
+            },
+        },
     ] {
         assert!(matches!(
             client
@@ -1582,6 +1589,110 @@ async fn displayed_queue_edits_reject_replaced_lists_before_touching_transport()
     assert_eq!(after.queue_revision, current.queue_revision);
     assert_eq!(after.entry_id, current.entry_id);
     assert_eq!(api.calls.lock().unwrap().len(), calls);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn displayed_queue_move_checks_selection_and_old_offset_before_committing() {
+    use cumulus_core::playback::{QueueMovement, controller::PlaybackStatus};
+
+    let (_dir, api, _session, client, _) = fixture();
+    let playing = client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["1".into(), "2".into(), "3".into()],
+                index: 1,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let before = client.player_queue("1").await.unwrap();
+    let ids: Vec<_> = before.tracks.iter().map(|i| i.entry_id.clone()).collect();
+    let reversed: Vec<_> = ids.iter().rev().cloned().collect();
+    let calls = api.calls.lock().unwrap().len();
+    let action = |entry_ids, moved, offset| PlayerAction::QueueFor {
+        expected_room_id: None,
+        expected_queue_revision: before.revision.clone(),
+        edit: QueueEdit::Move {
+            entry_ids,
+            movement: QueueMovement {
+                entry_ids: moved,
+                offset,
+            },
+        },
+    };
+    for invalid in [
+        action(reversed, vec![ids[0].clone()], 2),
+        action(ids.clone(), vec![ids[0].clone(), ids[0].clone()], 0),
+        action(ids.clone(), vec!["not-a-visible-entry".into()], 0),
+    ] {
+        assert!(matches!(
+            client.player_action("1", invalid).await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    let unchanged = client
+        .player_action("1", action(ids.clone(), vec![ids[1].clone()], 1))
+        .await
+        .unwrap();
+    assert_eq!(unchanged.queue_revision, before.revision);
+    let after = client
+        .player_action(
+            "1",
+            action(
+                vec![ids[1].clone(), ids[2].clone(), ids[0].clone()],
+                vec![ids[0].clone()],
+                3,
+            ),
+        )
+        .await
+        .unwrap();
+    assert_ne!(after.queue_revision, before.revision);
+    assert_eq!(after.state, PlaybackStatus::Paused);
+    assert_eq!(after.play_id, playing.play_id);
+    assert_eq!(after.entry_id, playing.entry_id);
+    assert_eq!(after.position, paused.position);
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+    let reordered: Vec<_> = client
+        .player_queue("1")
+        .await
+        .unwrap()
+        .tracks
+        .into_iter()
+        .map(|row| row.entry_id)
+        .collect();
+    assert_eq!(reordered, [ids[1].clone(), ids[2].clone(), ids[0].clone()]);
+
+    api.hold_id.store(99, Ordering::SeqCst);
+    let next = client.clone();
+    let pending = tokio::spawn(async move { next.play_selection("1", songs("99")).await });
+    api.started.notified().await;
+    let unchanged = client
+        .player_action(
+            "1",
+            PlayerAction::QueueFor {
+                expected_room_id: None,
+                expected_queue_revision: after.queue_revision.clone(),
+                edit: QueueEdit::Move {
+                    entry_ids: reordered,
+                    movement: QueueMovement {
+                        entry_ids: vec![ids[1].clone()],
+                        offset: 0,
+                    },
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(unchanged.queue_revision, after.queue_revision);
+    api.release.notify_one();
+    assert_eq!(pending.await.unwrap().unwrap().track.unwrap().id, "99");
     client.player_action("1", PlayerAction::Stop).await.unwrap();
 }
 

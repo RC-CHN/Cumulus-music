@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   selectQueueRows,
+  displayedQueueMove,
   reorderQueueRows,
   type QueueSelection,
 } from '../src/services/queueSelection.ts';
@@ -68,4 +69,25 @@ test('every subset and boundary preserves the complete entry permutation and sta
       );
     }
   }
+});
+
+test('an explicit drop retains the original offset and may change only a divider marker', () => {
+  const rows = [
+    { entryId: 'normal-a' },
+    { entryId: 'normal-b' },
+    { entryId: 'rec-a', moreRecommendation: true },
+    { entryId: 'rec-b', moreRecommendation: true },
+  ];
+  assert.deepEqual(displayedQueueMove(rows, new Set(['normal-b']), 4), {
+    kind: 'move',
+    entry_ids: ['normal-a', 'rec-a', 'rec-b', 'normal-b'],
+    movement: { entry_ids: ['normal-b'], offset: 4 },
+  });
+  assert.deepEqual(displayedQueueMove(rows, new Set(['rec-a']), 2), {
+    kind: 'move',
+    entry_ids: ['normal-a', 'normal-b', 'rec-a', 'rec-b'],
+    movement: { entry_ids: ['rec-a'], offset: 2 },
+  });
+  assert.equal(displayedQueueMove(rows, new Set(['rec-a']), 3), undefined);
+  assert.equal(displayedQueueMove(rows, new Set(['normal-a']), 0), undefined);
 });

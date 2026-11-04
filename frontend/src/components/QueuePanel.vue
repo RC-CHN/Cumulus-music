@@ -24,6 +24,7 @@ import {
   type QueueCollectionView,
 } from '../services/player';
 import { rowTop, rowExtent } from '../services/virtualWindow';
+import { displayedQueueMove } from '../services/queueSelection';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
 import { artistLabel } from '../services/artistLabel';
@@ -178,8 +179,8 @@ const drag = useQueueDrag({
   scroll: onScroll,
   rowHeight: row,
   expansion: () => expansion.value,
-  reorder: (ids, displayed, focusId) => {
-    void edit({ kind: 'reorder', entry_ids: ids }, ids.indexOf(focusId), displayed);
+  reorder: (movement, displayed, focusId) => {
+    void edit(movement, movement.entry_ids.indexOf(focusId), displayed);
   },
 });
 const dragging = drag.dragging;
@@ -351,10 +352,15 @@ function retryQueue(event: Event) {
   return queueReadFocus.run(event, () => props.player.loadQueue());
 }
 function move(index: number, direction: number) {
-  const ids = queue.value?.tracks.map((i) => i.entryId);
-  if (!ids || !ids[index + direction]) return;
-  [ids[index], ids[index + direction]] = [ids[index + direction]!, ids[index]!];
-  void edit({ kind: 'reorder', entry_ids: ids }, index + direction);
+  const displayed = queue.value;
+  const id = displayed?.tracks[index]?.entryId;
+  if (!displayed || !id || !displayed.tracks[index + direction]) return;
+  const movement = displayedQueueMove(
+    displayed.tracks,
+    new Set([id]),
+    direction < 0 ? index - 1 : index + 2,
+  );
+  if (movement) void edit(movement, index + direction, displayed);
 }
 async function focusRow(index: number) {
   const element = container.value;

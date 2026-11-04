@@ -327,9 +327,19 @@ pub enum PlaySelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueueEdit {
-    Select { entry_id: String },
-    Remove { entry_ids: Vec<String> },
-    Reorder { entry_ids: Vec<String> },
+    Select {
+        entry_id: String,
+    },
+    Remove {
+        entry_ids: Vec<String>,
+    },
+    Reorder {
+        entry_ids: Vec<String>,
+    },
+    Move {
+        entry_ids: Vec<String>,
+        movement: crate::playback::QueueMovement,
+    },
     Clear,
 }
 #[derive(Deserialize)]

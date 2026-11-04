@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import type { QueueView } from '../services/player';
+import type { QueueEdit, QueueView } from '../services/player';
 import { rowBoundary, rowTop, type RowExpansion } from '../services/virtualWindow';
-import { reorderQueueRows } from '../services/queueSelection';
+import { displayedQueueMove } from '../services/queueSelection';
 
 /** In-window pointer sorting avoids OS file drops and retains capture on the
  * scroll container, whose lifetime does not depend on virtual row recycling. */
@@ -14,7 +14,7 @@ export function useQueueDrag(options: {
   scroll(): void;
   rowHeight: number;
   expansion(): RowExpansion | undefined;
-  reorder(ids: string[], displayed: QueueView, focusId: string): void;
+  reorder(edit: Extract<QueueEdit, { kind: 'move' }>, displayed: QueueView, focusId: string): void;
 }) {
   const dragging = shallowRef<ReadonlySet<string>>(new Set()),
     boundary = ref<number>();
@@ -140,7 +140,7 @@ export function useQueueDrag(options: {
       if (active) update();
       const next =
         active && valid && boundary.value !== undefined
-          ? reorderQueueRows(ids, picked, boundary.value)
+          ? displayedQueueMove(displayed.tracks, picked, boundary.value)
           : undefined;
       if (
         !active &&

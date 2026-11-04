@@ -115,24 +115,6 @@ pub(crate) fn separator(queue: &QueueSnapshot) -> Option<String> {
         .map(|entry| entry.entry_id.clone())
 }
 
-pub(super) fn demote_before_separator(previous: &QueueSnapshot, next: &mut QueueSnapshot) {
-    if previous.more.is_none() || next.more.is_none() {
-        return;
-    }
-    let Some(index) = previous
-        .items
-        .iter()
-        .position(|entry| active(previous, entry))
-    else {
-        return;
-    };
-    if let Some(state) = &mut next.more {
-        for entry in next.items.iter().take(index) {
-            state.active.remove(&entry.entry_id);
-        }
-    }
-}
-
 pub(crate) fn clear_active(queue: &mut QueueSnapshot) {
     let Some(state) = &mut queue.more else { return };
     let active = std::mem::take(&mut state.active);
