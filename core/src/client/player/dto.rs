@@ -175,6 +175,10 @@ pub enum SongRowSelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    FollowLatest {
+        revision: String,
+        quality: Quality,
+    },
     SongRowDoubleClick {
         selection: SongRowSelection,
     },

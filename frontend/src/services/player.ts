@@ -298,6 +298,7 @@ export type PlaySelection =
     }
   | { kind: 'search_chart'; ids: string[]; quality: Quality }
   | { kind: 'songs'; ids: string[]; index: number; quality: Quality }
+  | { kind: 'follow_latest'; revision: string; quality: Quality }
   | {
       kind: 'daily_recommendations' | 'style_recommendations';
       revision: string;

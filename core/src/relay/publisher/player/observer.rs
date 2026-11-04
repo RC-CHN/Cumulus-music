@@ -23,7 +23,10 @@ pub(crate) struct Hint {
 impl Hint {
     pub(crate) fn from_command(command: &PlaybackCommand) -> Self {
         Self {
-            replace: matches!(command, PlaybackCommand::Replace { .. }),
+            replace: matches!(
+                command,
+                PlaybackCommand::Replace { .. } | PlaybackCommand::ReplaceFollowLatest(_)
+            ),
             from_handoff: matches!(command,PlaybackCommand::UpdateQueue(update) if update.queue.items.iter().any(|item|item.source["scene"]=="playlistHandoff")),
             seek: if let PlaybackCommand::Seek(seconds) = command {
                 Some(*seconds)

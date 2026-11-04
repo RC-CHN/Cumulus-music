@@ -654,6 +654,13 @@ function playSearchResults(tracks: TrackView[], index: number, context: SearchRe
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
   });
 }
+function playFollowLatest(revision: string) {
+  void player.select({
+    kind: 'follow_latest',
+    revision,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  });
+}
 function playOnlineSongs(tracks: TrackView[], index: number) {
   if (!tracks[index] || tracks[index].missing) return;
   void player.select({
@@ -2997,6 +3004,7 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'follow_new_song'"
                 :epoch="account.epoch"
                 :playable="player.ready.value && !player.busy.value"
+                @play-latest="playFollowLatest"
                 @play="playOnlineSongs"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
                 @album="(id) => openCatalog({ kind: 'album', id })"

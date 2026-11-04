@@ -168,6 +168,8 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    /// Explicit play-all with the recovered /newSongPublish first-track rule.
+    ReplaceFollowLatest(Vec<Value>),
     RestoreFm(FmRestore),
     Intelligence(IntelligenceUpdate),
     ApplyRemote(RemotePlayback),

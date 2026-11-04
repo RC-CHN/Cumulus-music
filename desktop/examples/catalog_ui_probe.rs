@@ -124,6 +124,7 @@ fn main() {
         if relay_settings {relay_fixture.mode("setting-off");}
         if relay_recovery {relay_fixture.mode("publication-rejected");}
         let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if follow_new_song {follow_new_song_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
+        let follow_store=registry.store();
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
@@ -218,6 +219,7 @@ fn main() {
             let collection_report=collection_context.then(|| collection_fixture.report());
             let album_card_report=(album_cards || artist_cards).then(||catalog_fixture.report());
             let release_report=follow_new_song.then(||follow_new_song_fixture.report());
+            let follow_store=follow_store.clone();
             let comment_read_report=comment_reads.then(||comment_fixture.report());
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
             let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
@@ -255,6 +257,11 @@ fn main() {
                     }
                     value["nativePlayer"]=serde_json::to_value(player).unwrap();
                     value["nativeQueue"]=serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
+                    if follow_new_song {
+                        let account=publication_session.token().unwrap();
+                        let queue=follow_store.get(account.uid.as_deref().unwrap(),"playback","queue").unwrap().unwrap();
+                        value["nativeFollowSources"]=serde_json::json!(queue["items"].as_array().unwrap().iter().map(|item|&item["source"]).collect::<Vec<_>>());
+                    }
                 }
                 if (is_live || relays || interactive) && ["complete","failed"].contains(&stage.as_str()){let _=client.player_action(&epoch,PlayerAction::Stop).await;}
                 if relay_publication && stage=="complete" {

@@ -48,7 +48,8 @@ def main():
     stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
               for path in output.glob('ux_*.json')}
     expected = {'initial_loading', 'first_page', 'album_expanded', 'next_error',
-                'next_recovered', 'play_latest', 'return_to_followed'}
+                'next_recovered', 'play_latest', 'repeat_playing', 'repeat_paused',
+                'repeat_after_next', 'return_to_followed'}
     if args.notifications:
         expected |= {'notification_cancelled', 'notification_unknown', 'notification_confirmed'}
     assert set(stages) == expected
@@ -58,13 +59,28 @@ def main():
     assert stages['first_page']['theme'] == 'light' and stages['next_error']['theme'] == 'dark'
     fixture = complete['followNewSongFixture']
     assert fixture['firstReads'] == 1 and fixture['playAllReads'] == 2
+    assert fixture['songDetailReads'] == 0, 'standalone play uses the fetched latest snapshot'
     assert fixture['nextCursors'] == [fixture['expectedNextCursor']] * 2
     assert fixture['notificationRequests'] == ([{'artistId': '13', 'switchStatus': 0},
                                                 {'artistId': '12', 'switchStatus': 0}]
                                                if args.notifications else [])
     playback = stages['play_latest']['nativePlayer']
     assert playback['position'] > 0.2 and playback['queueLen'] == 2
-    assert [row['track']['id'] for row in stages['play_latest']['nativeQueue']['tracks']] == ['1', '2']
+    for name in ('play_latest', 'repeat_playing', 'repeat_paused', 'repeat_after_next'):
+        stage = stages[name]
+        assert [row['track']['id'] for row in stage['nativeQueue']['tracks']] == ['1', '2']
+        assert stage['nativeFollowSources'] == [{
+            'kind': 'follow_latest', 'scene': 'album', 'href': '/newSongPublish',
+            'resourceType': 'track', 'originalResourceType': 'album',
+        }] * 2
+    repeated = stages['repeat_playing']['nativePlayer']
+    resumed = stages['repeat_paused']['nativePlayer']
+    restarted = stages['repeat_after_next']['nativePlayer']
+    assert repeated['playId'] == resumed['playId'] == playback['playId']
+    assert resumed['position'] > repeated['position'] > playback['position']
+    assert restarted['playId'] != playback['playId'] and restarted['track']['id'] == '1'
+    assert len({stages[name]['nativePlayer']['queueRevision'] for name in
+                ('play_latest', 'repeat_playing', 'repeat_paused', 'repeat_after_next')}) == 4
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(stages)
     report = {

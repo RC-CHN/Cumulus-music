@@ -11,6 +11,7 @@ const props = defineProps<{ epoch: string; playable: boolean }>();
 const emit = defineEmits<{
   expired: [];
   play: [tracks: TrackView[], index: number];
+  playLatest: [revision: string];
   album: [id: string];
   playAlbum: [id: string];
   artist: [id: string];
@@ -20,6 +21,7 @@ const model = useFollowNewSong(useCore(), () => emit('expired'));
 const {
   releases: loadedReleases,
   latest,
+  latestRevision,
   latestVisitTime,
   cursor,
   pending,
@@ -173,8 +175,8 @@ async function hideMutedArtist(id: string) {
       <button
         ref="playAll"
         class="primary follow-release-play-all"
-        :disabled="!latest.length || !playable"
-        @click="emit('play', latest, 0)"
+        :disabled="!latestRevision || !latest.length || !playable"
+        @click="latestRevision && emit('playLatest', latestRevision)"
       >
         <Icon name="play" />
         <span>播放最新</span><span v-if="latest.length">{{ latest.length }}</span>

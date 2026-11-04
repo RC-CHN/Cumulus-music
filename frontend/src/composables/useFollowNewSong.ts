@@ -8,6 +8,7 @@ const GROUP_PAGES = 4;
 export function useFollowNewSong(core: FollowNewSongClient, expired: () => void) {
   const pages = shallowRef<FollowRelease[][]>([]);
   const latest = shallowRef<TrackView[]>([]);
+  const latestRevision = ref<string | null>(null);
   const latestVisitTime = ref<number | null>(null);
   const cursor = ref<number | null>(null);
   const pending = ref(false);
@@ -34,6 +35,7 @@ export function useFollowNewSong(core: FollowNewSongClient, expired: () => void)
     ++generation;
     pages.value = [];
     latest.value = [];
+    latestRevision.value = null;
     latestVisitTime.value = null;
     cursor.value = null;
     pending.value = false;
@@ -58,7 +60,10 @@ export function useFollowNewSong(core: FollowNewSongClient, expired: () => void)
     latestError.value = '';
     try {
       const reply = await core.followedNewSongLatest(epoch);
-      if (ticket === generation && reply.epoch === epoch) latest.value = reply.value;
+      if (ticket === generation && reply.epoch === epoch) {
+        latest.value = reply.value.tracks;
+        latestRevision.value = reply.value.revision;
+      }
     } catch (reason) {
       if (ticket === generation) report(reason, latestError);
     } finally {
@@ -108,6 +113,7 @@ export function useFollowNewSong(core: FollowNewSongClient, expired: () => void)
   return {
     releases,
     latest,
+    latestRevision,
     latestVisitTime,
     cursor,
     pending,

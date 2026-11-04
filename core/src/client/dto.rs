@@ -274,7 +274,7 @@ pub use super::catalog::{
     CatalogMembershipOperation, CatalogMembershipView, CatalogPageView, CatalogResource,
     CatalogSelectionPage, CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
 };
-pub use super::catalog::{ArtistGalleryPage, ArtistGalleryQuery, FollowNewSongPage};
+pub use super::catalog::{ArtistGalleryPage, ArtistGalleryQuery, FollowLatest, FollowNewSongPage};
 pub use super::catalog::{ReleaseNotificationAction, ReleaseNotificationState};
 pub use super::cloud::{
     CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudRemovalFileState,

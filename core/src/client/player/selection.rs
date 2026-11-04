@@ -42,7 +42,12 @@ impl MusicClient {
         project(&value, &token)
     }
     pub async fn play_selection(&self, epoch: &str, input: PlaySelection) -> Result<PlayerView> {
-        self.play_selection_inner(epoch, input, None).await
+        match input {
+            PlaySelection::FollowLatest { revision, quality } => {
+                self.play_follow_latest(epoch, &revision, quality).await
+            }
+            input => self.play_selection_inner(epoch, input, None).await,
+        }
     }
 
     pub(super) async fn play_selection_inner(
@@ -506,6 +511,7 @@ impl MusicClient {
                         json!({"kind":"mv_related","mvId":mv_id,"scene":"video"}),
                     )),
                     PlaySelection::SongRowDoubleClick { .. }
+                    | PlaySelection::FollowLatest { .. }
                     | PlaySelection::Cloud { .. }
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }

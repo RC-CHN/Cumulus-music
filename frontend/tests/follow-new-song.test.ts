@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { useFollowNewSong } from '../src/composables/useFollowNewSong.ts';
 import type { AccountData, TrackView } from '../src/services/contracts.ts';
-import type { FollowNewSongPage } from '../src/services/followNewSong.ts';
+import type { FollowLatest, FollowNewSongPage } from '../src/services/followNewSong.ts';
 
 const tick = async () => {
   await Promise.resolve();
@@ -18,7 +18,7 @@ const page = (nextTimestamp: number | null, name: string): FollowNewSongPage => 
 test('starts play-all independently and retries the same failed page without clearing current releases', async () => {
   const requests: (string | number | null)[] = [];
   let fails = true;
-  let finishLatest!: (value: AccountData<TrackView[]>) => void;
+  let finishLatest!: (value: AccountData<FollowLatest>) => void;
   const model = useFollowNewSong(
     {
       followedNewSongLatest(epoch) {
@@ -43,7 +43,7 @@ test('starts play-all independently and retries the same failed page without cle
   assert.equal(model.releases.value[0]?.artistName, '首页');
   fails = false;
   await model.read();
-  finishLatest({ epoch: '1', value: [track('30')] });
+  finishLatest({ epoch: '1', value: { revision: 'latest-30', tracks: [track('30')] } });
   await tick();
   assert.deepEqual(requests, ['latest:1', null, 95, 95]);
   assert.deepEqual(
@@ -56,13 +56,13 @@ test('starts play-all independently and retries the same failed page without cle
 
 test('old release or play-all responses cannot appear after switching accounts', async () => {
   let oldPage!: (reply: AccountData<FollowNewSongPage>) => void;
-  let oldLatest!: (reply: AccountData<TrackView[]>) => void;
+  let oldLatest!: (reply: AccountData<FollowLatest>) => void;
   const model = useFollowNewSong(
     {
       followedNewSongLatest(epoch) {
         return epoch === 'old'
           ? new Promise((resolve) => (oldLatest = resolve))
-          : Promise.resolve({ epoch, value: [track('2')] });
+          : Promise.resolve({ epoch, value: { revision: 'latest-new', tracks: [track('2')] } });
       },
       followedNewSongPage(epoch) {
         return epoch === 'old'
@@ -75,10 +75,11 @@ test('old release or play-all responses cannot appear after switching accounts',
   model.connect('old');
   model.connect('new');
   oldPage({ epoch: 'old', value: page(80, '旧') });
-  oldLatest({ epoch: 'old', value: [track('1')] });
+  oldLatest({ epoch: 'old', value: { revision: 'latest-old', tracks: [track('1')] } });
   await tick();
   assert.equal(model.releases.value[0]?.artistName, '当前');
   assert.equal(model.latest.value[0]?.id, '2');
+  assert.equal(model.latestRevision.value, 'latest-new');
   assert.equal(model.cursor.value, null);
 });
 
@@ -86,7 +87,10 @@ test('four-page render groups retain earlier releases and keep later reads curso
   const calls: (number | null)[] = [];
   const model = useFollowNewSong(
     {
-      followedNewSongLatest: async (epoch) => ({ epoch, value: [] }),
+      followedNewSongLatest: async (epoch) => ({
+        epoch,
+        value: { revision: 'latest-empty', tracks: [] },
+      }),
       followedNewSongPage: async (epoch, cursor) => {
         calls.push(cursor);
         const next = cursor === null ? 100 : cursor - 1;

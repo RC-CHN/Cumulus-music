@@ -3,8 +3,12 @@ use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::{
         MusicClient,
-        dto::{ReleaseNotificationAction as NoticeAction, ReleaseNotificationState as NoticeState},
+        dto::{
+            PlaySelection, ReleaseNotificationAction as NoticeAction,
+            ReleaseNotificationState as NoticeState,
+        },
     },
+    membership::Quality,
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -25,6 +29,7 @@ const SWITCH: &str = "/api/sub/artist/publish/switch";
 struct Fixture {
     calls: Mutex<Vec<(String, Value, bool)>>,
     hold: AtomicBool,
+    deny_first: AtomicBool,
     started: Notify,
     release: Notify,
 }
@@ -52,7 +57,16 @@ impl Api for Fixture {
                 SWITCH if body == json!({"artistId":"18","switchStatus":0}) => {
                     Ok(json!({"code":400}))
                 }
-                LATEST if body == json!({}) => Ok(json!({"code":200,"data":{"songList":[song]}})),
+                LATEST if body == json!({}) => {
+                    if self.deny_first.load(Ordering::SeqCst) {
+                        let mut denied = song;
+                        denied["privilege"] = json!({"pl":0,"flag":0});
+                        return Ok(
+                            json!({"code":200,"data":{"songList":[denied,{"id":42,"name":"可播后续","privilege":{"pl":128000}}]}}),
+                        );
+                    }
+                    Ok(json!({"code":200,"data":{"songList":[song]}}))
+                }
                 LIST if body["firstRequest"] == true => Ok(json!({"code":200,"data":{
                 "latestVisitTime":925,"hasMore":true,"newWorks":[
                   {"sourceType":1,"info":{"blockType":"song","publishTime":950,
@@ -255,7 +269,12 @@ async fn list_and_independent_play_all_preserve_exact_cursor_song_mv_and_private
     assert!(next["value"]["releases"][0]["tracks"][1]["mvId"].is_null());
     assert!(next["value"]["latestVisitTime"].is_null());
     assert!(next["value"]["nextTimestamp"].is_null());
-    assert_eq!(latest["value"][0]["id"], "9007199254740993");
+    assert_eq!(latest["value"]["tracks"][0]["id"], "9007199254740993");
+    assert!(
+        latest["value"]["revision"]
+            .as_str()
+            .is_some_and(|revision| revision.len() == 32)
+    );
     assert!(
         ![first, next, latest]
             .iter()
@@ -322,5 +341,46 @@ async fn stale_accounts_and_stalled_continuations_cannot_surface_as_success() {
             .get("10", "follow_new_song", "last_enter_ms")
             .unwrap()
             .is_none()
+    );
+}
+
+#[tokio::test]
+async fn latest_selection_is_native_and_denied_head_cannot_fall_forward() {
+    let (_dir, session, api, client) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    let revision = |value| {
+        serde_json::to_value(value).unwrap()["value"]["revision"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let previous = revision(client.followed_new_song_latest(&epoch).await.unwrap());
+    api.deny_first.store(true, Ordering::SeqCst);
+    let denied = revision(client.followed_new_song_latest(&epoch).await.unwrap());
+    let select = |revision| PlaySelection::FollowLatest {
+        revision,
+        quality: Quality::Standard,
+    };
+    assert!(matches!(
+        client.play_selection(&epoch, select(previous)).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client.play_selection(&epoch, select(denied.clone())).await,
+        Err(Error::State(
+            "the latest release's first song is unavailable"
+        ))
+    ));
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    let next_epoch = session.token().unwrap().generation.to_string();
+    assert!(matches!(
+        client.play_selection(&next_epoch, select(denied)).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        vec![(LATEST.into(), json!({}), false); 2]
     );
 }

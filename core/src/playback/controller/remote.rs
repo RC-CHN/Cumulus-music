@@ -2,6 +2,66 @@ use super::{PlaybackStatus, RemotePlayback, load::LoadOptions, state::Actor};
 use crate::{Error, Result};
 
 impl Actor {
+    pub(super) async fn replace_follow_latest(
+        &mut self,
+        mut resources: Vec<serde_json::Value>,
+    ) -> Result<Option<LoadOptions>> {
+        if self.queue.is_fm() || self.quality_task.is_some() {
+            return Err(Error::MutationBusy);
+        }
+        let first_id = resources
+            .first()
+            .and_then(|item| item["id"].as_str())
+            .ok_or(Error::InvalidInput("missing first latest release"))?;
+        // M/308 replaces the list, then retains or resumes the decoder when
+        // that same ordinary online song was already current. Other content
+        // types can share a numeric ID but never inherit this authorization.
+        let retained = self
+            .loaded
+            .as_ref()
+            .filter(|loaded| {
+                self.pending.is_none()
+                    && self.state.active()
+                    && self.queue.selected().as_ref() == Some(&loaded.item)
+                    && self.ordinary_online_song(&loaded.item)
+                    && crate::protocol::api::identifier(&loaded.item.resource["id"])
+                        .is_ok_and(|id| id == first_id)
+            })
+            .map(|loaded| (loaded.item.entry_id.clone(), loaded.item.resource.clone()));
+
+        self.stamp_quality(&mut resources);
+        if let Some((_, resource)) = &retained {
+            // Keep the loaded source's native settings, including a quality
+            // selected for this active entry; only update public catalog data.
+            let song = resources[0]["song"].take();
+            let duration = resources[0]["dt"].take();
+            resources[0] = resource.clone();
+            resources[0]["song"] = song;
+            resources[0]["dt"] = duration;
+        }
+        self.queue.replace_with_selected_identity(
+            resources,
+            0,
+            serde_json::json!({"kind":"follow_latest","scene":"album","href":"/newSongPublish",
+                "resourceType":"track","originalResourceType":"album"}),
+            retained.as_ref().map(|(entry_id, _)| entry_id.clone()),
+        )?;
+        if retained.is_none() {
+            return Ok(Some(LoadOptions::default()));
+        }
+        // Keep actor identity aligned with the persisted replacement while
+        // keeping the actual media, timeline, history and playback ID.
+        let selected = self
+            .queue
+            .selected()
+            .expect("replacement selected its first song");
+        self.loaded.as_mut().expect("retained current").item = selected;
+        if self.state == PlaybackStatus::Paused {
+            self.pause(false).await?;
+        }
+        Ok(None)
+    }
+
     pub(super) async fn update_queue(
         &mut self,
         value: super::QueueUpdate,

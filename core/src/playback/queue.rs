@@ -244,10 +244,23 @@ impl PlaybackQueue {
     }
 
     pub fn replace(&mut self, resources: Vec<Value>, index: usize, source: Value) -> Result<()> {
+        self.replace_with_selected_identity(resources, index, source, None)
+    }
+
+    pub(super) fn replace_with_selected_identity(
+        &mut self,
+        resources: Vec<Value>,
+        index: usize,
+        source: Value,
+        retain: Option<String>,
+    ) -> Result<()> {
         if !resources.is_empty() && index >= resources.len() {
             return Err(Error::InvalidInput("invalid initial queue index"));
         }
-        let items = Self::entries(resources, &source);
+        let mut items = Self::entries(resources, &source);
+        if let (Some(item), Some(entry_id)) = (items.get_mut(index), retain) {
+            item.entry_id = entry_id;
+        }
         let mut order: Vec<_> = items.iter().map(|i| i.entry_id.clone()).collect();
         let current = order.get(index).cloned();
         let mode = self

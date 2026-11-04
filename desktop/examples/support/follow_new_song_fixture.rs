@@ -39,6 +39,7 @@ impl Library {
             "nextCursors":calls.iter().filter(|(path, value)| path == LIST && value["firstRequest"] == false)
                 .map(|(_, value)| &value["startTimestamp"]).collect::<Vec<_>>(),
             "playAllReads":calls.iter().filter(|(path, _)| path == LATEST).count(),
+            "songDetailReads":calls.iter().filter(|(path, _)| path == "/api/v3/song/detail").count(),
             "expectedNextCursor": NEXT_TIME,
             "notificationRequests": calls.iter().filter(|(path, _)| path == SWITCH)
                 .map(|(_, value)| value).collect::<Vec<_>>(),
@@ -71,6 +72,12 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if ![LIST, LATEST, SWITCH].contains(&path) {
+                if path == "/api/v3/song/detail" {
+                    self.calls
+                        .lock()
+                        .unwrap()
+                        .push((path.into(), payload.clone()));
+                }
                 return self.base.request(path, payload, cache).await;
             }
             let first = payload["firstRequest"].as_bool();
@@ -96,7 +103,10 @@ impl Api for Library {
                 return Ok(if attempt == 1 {
                     json!({"code":503})
                 } else {
-                    json!({"code":200,"data":{"songList":[song(1,"合成最新播放",0),song(2,"合成下一首",0)]}})
+                    let mut denied = song(5, "无权歌曲", 0);
+                    denied["privilege"] = json!({"pl":0,"flag":0});
+                    json!({"code":200,"data":{"songList":[song(1,"合成最新播放",0),denied,
+                        song(2,"合成下一首",0),song(1,"重复歌曲",0)]}})
                 });
             }
             let start = payload["startTimestamp"]

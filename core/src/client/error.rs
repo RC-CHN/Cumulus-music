@@ -251,6 +251,16 @@ impl From<Error> for ClientError {
                 ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::State("the latest release's first song is unavailable") => (
+                    "follow_latest_first_unavailable",
+                    "最新列表的第一首暂不可播放，已保留当前队列",
+                    false,
+                ),
+                Error::State("latest releases require ordinary playback") => (
+                    "follow_latest_requires_ordinary",
+                    "退出私人 FM 或一起听后再播放最新",
+                    false,
+                ),
                 Error::State("playlist has no online tracks") => {
                     ("playlist_empty", "歌单中没有可添加的在线歌曲", false)
                 }

@@ -20,12 +20,17 @@ export interface FollowNewSongPage {
   latestVisitTime: number | null;
 }
 
+export interface FollowLatest {
+  revision: string;
+  tracks: TrackView[];
+}
+
 export interface FollowNewSongClient {
   followedNewSongPage(
     epoch: string,
     startTimestamp: number | null,
   ): Promise<AccountData<FollowNewSongPage>>;
-  followedNewSongLatest(epoch: string): Promise<AccountData<TrackView[]>>;
+  followedNewSongLatest(epoch: string): Promise<AccountData<FollowLatest>>;
 }
 
 export type ReleaseNotificationState = 'ready' | 'confirmed' | 'uncertain';

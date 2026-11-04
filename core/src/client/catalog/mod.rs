@@ -11,8 +11,9 @@ use crate::{
     catalog::details::{CatalogDetails, CatalogQuery},
 };
 pub use dto::*;
-pub use follow_new_song::FollowNewSongPage;
+pub(super) use follow_new_song::FollowLatestHost;
 pub use follow_new_song::notification::{ReleaseNotificationAction, ReleaseNotificationState};
+pub use follow_new_song::{FollowLatest, FollowNewSongPage};
 pub use gallery::{ArtistGalleryPage, ArtistGalleryQuery};
 pub use membership::{
     CatalogMembershipAction, CatalogMembershipOperation, CatalogMembershipView, CatalogResource,

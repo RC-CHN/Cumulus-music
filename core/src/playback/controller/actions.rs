@@ -34,6 +34,7 @@ impl Actor {
         if matches!(
             request.command,
             PlaybackCommand::UseMissingDownloadOnline { .. }
+                | PlaybackCommand::ReplaceFollowLatest(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
@@ -166,6 +167,7 @@ impl Actor {
         if matches!(
             request.command,
             PlaybackCommand::Replace { .. }
+                | PlaybackCommand::ReplaceFollowLatest(_)
                 | PlaybackCommand::Select(_)
                 | PlaybackCommand::Next
                 | PlaybackCommand::Previous
@@ -205,6 +207,10 @@ impl Actor {
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
             }
+            PlaybackCommand::ReplaceFollowLatest(resources) => self
+                .replace_follow_latest(resources)
+                .await
+                .map(|value| options = value),
             PlaybackCommand::RestoreFm(value) => {
                 self.restore_fm(value).await.map(|value| options = value)
             }
@@ -489,7 +495,7 @@ impl Actor {
             Err(Error::State("nothing is loaded"))
         }
     }
-    async fn pause(&mut self, paused: bool) -> Result<()> {
+    pub(super) async fn pause(&mut self, paused: bool) -> Result<()> {
         if let Some(pending) = &mut self.pending {
             // A pause accepted during remote/ordinary decoding must determine
             // its first presentation state, rather than fail and later autoplay.

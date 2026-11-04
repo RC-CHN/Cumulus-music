@@ -54,7 +54,7 @@ pub async fn followed_new_song_page(
 pub async fn followed_new_song_latest(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
-) -> Result<AccountData<Vec<TrackView>>, ClientError> {
+) -> Result<AccountData<FollowLatest>, ClientError> {
     client
         .followed_new_song_latest(&epoch)
         .await

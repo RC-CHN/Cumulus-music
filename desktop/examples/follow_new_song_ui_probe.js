@@ -55,7 +55,7 @@
     assert(one('.follow-release-play-all').disabled, 'failed playall must be disabled');
     assert(one('.follow-release-page').textContent.includes('以下是历史内容'), 'history marker');
     click(button('重试播放列表'));
-    await wait(() => one('.follow-release-play-all')?.textContent.includes('2'), 'playall retry');
+    await wait(() => one('.follow-release-play-all')?.textContent.includes('4'), 'playall retry');
     assert(document.activeElement === one('.follow-release-play-all'), 'playall retry focus restored');
     await capture('first_page');
     click(all('.follow-release-expand').find((control) => control.textContent.includes('伴奏')));
@@ -84,6 +84,34 @@
     click(play);
     await wait(() => Number(one('.playerbar')?.dataset.position) > 0.25, 'latest PCM advances');
     await capture('play_latest', true);
+    const current = () => one('.playerbar').dataset;
+    const firstPlay = current().playId;
+    const playingPosition = Number(current().position);
+    click(play);
+    await wait(() => !play.disabled && current().state === 'playing' &&
+      Number(current().position) > playingPosition + 0.15, 'repeat keeps playing');
+    assert(current().playId === firstPlay, 'repeat must not restart the decoder');
+    await capture('repeat_playing', true);
+
+    click(one('.playerbar [aria-label="暂停"]'));
+    await wait(() => !play.disabled && current().state === 'paused', 'pause latest');
+    const pausedPosition = Number(current().position);
+    click(play);
+    await wait(() => !play.disabled && current().state === 'playing' &&
+      Number(current().position) > pausedPosition + 0.15, 'repeat resumes paused first song');
+    assert(current().playId === firstPlay, 'paused repeat must retain playback identity');
+    await capture('repeat_paused', true);
+
+    click(one('.playerbar [aria-label="下一首"]'));
+    await wait(() => !play.disabled && current().trackId === '2' &&
+      current().state === 'playing' && Number(current().position) > 0.25, 'next latest song');
+    const secondPlay = current().playId;
+    assert(secondPlay && secondPlay !== firstPlay, 'next must really load the second song');
+    click(play);
+    await wait(() => !play.disabled && current().trackId === '1' &&
+      current().state === 'playing' && Number(current().position) > 0.25, 'repeat after next selects first');
+    assert(current().playId !== firstPlay && current().playId !== secondPlay, 'first song loaded again');
+    await capture('repeat_after_next', true);
     if (window.__cumulusFollowNoticeProof) {
       async function confirmation(artist) {
         click(one(`[aria-label="合成新歌歌手 ${artist} 更多操作"]`));
