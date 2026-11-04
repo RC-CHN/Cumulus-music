@@ -117,8 +117,12 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
   正式 app 账户和播放接线仍待另行验证。
 - 手动 Windows x64 命令：cargo run --locked --manifest-path
   desktop/probes/native-open-windows/Cargo.toml -- --restricted-acl。
-  已通过本地 Rust wire 夹具与 Win64 交叉编译；Windows 原生手动工作流
-  已加独立验证步骤，尚未派发，不能把交叉编译算作内核 ACL 实测。
+  已通过本地 Rust wire 夹具与 Win64 交叉编译；精确主线 4aec549c 的
+  Windows Server x64 手动运行 41924309977 也已通过：
+  https://github.com/RC-CHN/Cumulus-music/actions/runs/41924309977
+  核对同一构建的常规、长期句柄及受限线程三份固定结构回执和下载包 SHA-256。
+  实际内核拒绝后无客户端帧，恢复原令牌后同一管道接收 READY；
+  未证明真实不同 Windows 登录，未打开真实文件、写注册表或启用产品接线。
 
 主要依据（适用于本实验/边界，不是 Windows 实测凭据）：
 https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi
