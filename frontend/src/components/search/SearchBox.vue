@@ -2,7 +2,7 @@
 import MenuTransition from '../MenuTransition.vue';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { searchSuggestionIndex } from '../../services/searchKeyboard';
-import type { SearchChannel } from '../../services/search';
+import type { SearchChannel, SearchChartDestination } from '../../services/search';
 import type { AccountView } from '../../services/contracts';
 import { useSearchBox } from '../../composables/useSearchBox';
 import Icon from '../Icon.vue';
@@ -22,7 +22,7 @@ const emit = defineEmits<{
   search: [keyword: string, channel?: SearchChannel, displayKeyword?: string];
   playChart: [keywords: string[]];
   radio: [id: string];
-  audiobooks: [];
+  discover: [target: SearchChartDestination];
   expired: [];
 }>();
 const model = useSearchBox(undefined, () => emit('expired'));
@@ -116,11 +116,11 @@ function openChartRadio(id: string) {
   focusInput();
   emit('radio', id);
 }
-function openAudiobooks() {
+function openDiscovery(target: SearchChartDestination) {
   if (!open.value || searching.value || composing.value) return;
   model.close();
   focusInput();
-  emit('audiobooks');
+  emit('discover', target);
 }
 async function clear() {
   model.input('');
@@ -383,7 +383,7 @@ onUnmounted(() => {
               @select="submit"
               @play="playChart"
               @radio="openChartRadio"
-              @audiobooks="openAudiobooks"
+              @discover="openDiscovery"
               @retry="(id) => model.load({ kind: 'chart', id }, 'chart:' + id)"
             />
           </template>

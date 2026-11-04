@@ -14,7 +14,7 @@ import type { CommentWriteClient } from './commentWrites';
 import type { CommentFloorClient } from './commentFloor';
 import type { LocalClient } from './local';
 import type { LocalMatchClient } from './localMatching';
-import type { AudiobookDiscoveryClient, PodcastClient } from './podcast';
+import type { AudiobookDiscoveryClient, PodcastClient, PodcastHomeClient } from './podcast';
 import type { TogetherClient } from './together';
 import type { AuthClient } from './auth';
 import type { RankingClient } from './rankings';
@@ -93,6 +93,7 @@ export interface CoreClient
     LocalMatchClient,
     PodcastClient,
     AudiobookDiscoveryClient,
+    PodcastHomeClient,
     TogetherClient,
     AuthClient,
     RankingClient,

@@ -1,5 +1,6 @@
 mod discovery;
 mod dto;
+mod home;
 pub(super) mod view;
 use super::MusicClient;
 use crate::{
@@ -8,9 +9,10 @@ use crate::{
     podcast::{PodcastApi, PodcastLibrary, PodcastScope, PodcastService},
     protocol::api::identifier,
 };
-pub(super) use discovery::AudiobookDiscoveryHost;
+pub(super) use discovery::PodcastDiscoveryHost;
 pub use discovery::{AudiobookDiscovery, AudiobookDiscoveryQuery};
 pub use dto::*;
+pub use home::{PodcastHomeBlock, PodcastHomePage};
 use serde_json::{Value, json};
 
 impl MusicClient {

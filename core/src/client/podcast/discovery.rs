@@ -1,4 +1,4 @@
-//! Public audiobook catalogue reached from the official search ranking.
+//! Public audiobook catalogue and scoped podcast discovery continuations.
 use super::{MusicClient, PodcastApi, PodcastCard, view};
 use crate::{Error, Result, client::dto::AccountData, podcast::Radio};
 use serde::{Deserialize, Serialize};
@@ -43,12 +43,64 @@ pub enum AudiobookDiscovery {
 struct Cursor {
     handle: String,
     epoch: String,
-    sub_id: String,
+    scope: DiscoveryScope,
     value: String,
 }
 
 #[derive(Default)]
-pub(in crate::client) struct AudiobookDiscoveryHost(Mutex<VecDeque<Cursor>>);
+pub(in crate::client) struct PodcastDiscoveryHost(Mutex<VecDeque<Cursor>>);
+
+#[derive(PartialEq, Eq)]
+pub(super) enum DiscoveryScope {
+    Audiobooks(String),
+    PodcastHome,
+}
+
+impl PodcastDiscoveryHost {
+    pub(super) fn resolve(
+        &self,
+        epoch: &str,
+        scope: &DiscoveryScope,
+        handle: Option<&str>,
+    ) -> Result<String> {
+        let Some(handle) = handle else {
+            return Ok(String::new());
+        };
+        let rows = self
+            .0
+            .lock()
+            .map_err(|_| Error::State("podcast discovery cursors unavailable"))?;
+        rows.iter()
+            .find(|row| row.handle == handle && row.epoch == epoch && &row.scope == scope)
+            .map(|row| row.value.clone())
+            .ok_or(Error::StaleResponse)
+    }
+
+    pub(super) fn save(&self, epoch: &str, scope: DiscoveryScope, value: String) -> Result<String> {
+        let mut rows = self
+            .0
+            .lock()
+            .map_err(|_| Error::State("podcast discovery cursors unavailable"))?;
+        rows.retain(|row| row.epoch == epoch);
+        if let Some(row) = rows
+            .iter()
+            .find(|row| row.scope == scope && row.value == value)
+        {
+            return Ok(row.handle.clone());
+        }
+        if rows.len() >= 64 {
+            rows.pop_front();
+        }
+        let handle = uuid::Uuid::new_v4().simple().to_string();
+        rows.push_back(Cursor {
+            handle: handle.clone(),
+            epoch: epoch.into(),
+            scope,
+            value,
+        });
+        Ok(handle)
+    }
+}
 
 fn valid_sub_id(id: &str) -> bool {
     !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_digit())
@@ -113,21 +165,10 @@ impl MusicClient {
                 if !valid_sub_id(&sub_id) {
                     return Err(Error::InvalidInput("invalid audiobook subcategory"));
                 }
-                let cursor = if let Some(handle) = continuation {
-                    let rows = self
-                        .audiobook_discovery
-                        .0
-                        .lock()
-                        .map_err(|_| Error::State("audiobook cursors unavailable"))?;
-                    rows.iter()
-                        .find(|row| {
-                            row.handle == handle && row.epoch == epoch && row.sub_id == sub_id
-                        })
-                        .map(|row| row.value.clone())
-                        .ok_or(Error::StaleResponse)?
-                } else {
-                    String::new()
-                };
+                let scope = DiscoveryScope::Audiobooks(sub_id.clone());
+                let cursor =
+                    self.podcast_discovery
+                        .resolve(epoch, &scope, continuation.as_deref())?;
                 let page = self
                     .session
                     .run_for(&token, |api, _| async {
@@ -143,29 +184,7 @@ impl MusicClient {
                     .collect::<Result<Vec<_>>>()?;
                 let continuation = if page.more {
                     Some(self.session.with_token(&token, |_| {
-                        let mut rows = self
-                            .audiobook_discovery
-                            .0
-                            .lock()
-                            .map_err(|_| Error::State("audiobook cursors unavailable"))?;
-                        rows.retain(|row| row.epoch == epoch);
-                        if let Some(row) = rows
-                            .iter()
-                            .find(|row| row.sub_id == sub_id && row.value == page.cursor)
-                        {
-                            return Ok(row.handle.clone());
-                        }
-                        if rows.len() >= 64 {
-                            rows.pop_front();
-                        }
-                        let handle = uuid::Uuid::new_v4().simple().to_string();
-                        rows.push_back(Cursor {
-                            handle: handle.clone(),
-                            epoch: epoch.into(),
-                            sub_id,
-                            value: page.cursor,
-                        });
-                        Ok(handle)
+                        self.podcast_discovery.save(epoch, scope, page.cursor)
                     })?)
                 } else {
                     None

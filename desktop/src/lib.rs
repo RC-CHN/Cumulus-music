@@ -215,6 +215,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 together::together_command,
                 podcast::podcast_page,
                 podcast::audiobook_discovery,
+                podcast::podcast_home,
                 podcast::scene_fm_view,
                 podcast::scene_fm_command,
                 podcast::podcast_state,

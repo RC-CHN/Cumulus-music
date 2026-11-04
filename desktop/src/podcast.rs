@@ -56,6 +56,17 @@ pub async fn audiobook_discovery(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn podcast_home(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    continuation: Option<String>,
+) -> Result<AccountData<PodcastHomePage>, ClientError> {
+    client
+        .podcast_home(&epoch, continuation.as_deref())
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn podcast_command(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

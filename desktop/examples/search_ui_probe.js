@@ -703,7 +703,7 @@
     await wait(()=>ready("合成推荐词1", "all", ".search-track-card"),"audiobook Back restores search");
     await home();
     await wait(() => button("听书榜：更多"), "official audiobook chart advertises More");
-    assert(!button("播客榜：更多"), "the separate public podcast homepage is not yet routed");
+    assert(button("播客榜：更多"), "the two official More destinations are independently available");
     click(button("听书榜：更多"));
     const bookPane = () => one(".audiobook-discovery");
     const book = (id) => one(`[data-book-id="${id}"]`);
@@ -739,6 +739,57 @@
     await capture("audiobook_more_back");
     click(button("返回上一页"));
     await wait(() => ready("合成推荐词1", "all", ".search-track-card"), "catalogue Back restores prior search");
+    await home();
+    await wait(() => button("播客榜：更多"), "official podcast chart advertises More");
+    click(button("播客榜：更多"));
+    const podcastHome = () => one(".podcast-discovery");
+    const homeRadio = (id) => one(`[data-home-radio="${id}"]`);
+    const homeVoice = (id) => one(`[data-home-voice="${id}"]`);
+    await wait(() => homeRadio(305) && homeVoice(404) && !panel(), "podcast More opens the public recommendation homepage");
+    assert(!bookPane() && !one(".podcast-open") && !homeVoice(405) &&
+      !podcastHome().textContent.includes("不显示推广"), "homepage rejects other destinations, promotion and mismatched voice identity");
+    assert(all(".podcast-home-group").map((g) => g.firstElementChild.dataset.homeVoice).join(",") === "404,406",
+      "weekly voices retain their nested creative groups and order");
+    const firstHome = await invoke("podcast_home", { epoch });
+    const homeHandle = firstHome.value.continuation;
+    assert(/^[\da-f]{32}$/.test(homeHandle) && !JSON.stringify(firstHome).includes("homePrivate") &&
+      !JSON.stringify(firstHome).includes("ignored.synthetic.invalid"), "homepage withholds the wire cursor and raw resource URL");
+    for (const [command, args] of [
+      ["podcast_home", { epoch, continuation: handle }],
+      ["podcast_home", { epoch: "0", continuation: homeHandle }],
+      ["audiobook_discovery", { epoch, query: { kind: "books", subId: "000", continuation: homeHandle } }],
+    ]) assert(!await invoke(command, args).then(() => true, () => false), "native handles cannot cross account or discovery route");
+    await capture("podcast_more_home");
+    click(button("加载更多播客", podcastHome()));
+    await wait(() => button("重试", podcastHome()), "homepage continuation exposes retry");
+    assert(homeRadio(305) && homeVoice(404) && !homeRadio(306), "a failed page retains the existing blocks");
+    button("重试", podcastHome()).scrollIntoView({ block: "nearest" });
+    await capture("podcast_more_retry");
+    click(button("重试", podcastHome()));
+    await wait(() => homeRadio(306) && homeRadio(305), "retry appends a second block even if the server repeats its ID");
+    assert(all(".podcast-home-block h2").map((h) => h.textContent).join(",") === "合成首页首批,合成新节目,合成首页后续",
+      "continued feed retains all original block boundaries and order");
+    await capture("podcast_more_next");
+    const voiceButton = homeVoice(404).querySelector("button");
+    voiceButton.scrollIntoView({ block: "center" });
+    click(voiceButton);
+    await wait(() => voiceButton.getAttribute("aria-label").startsWith("暂停") && one(".playerbar")?.dataset.state === "playing",
+      "a weekly episode reaches actual native playback");
+    assert((await snapshot()).track?.voiceId === "404", "playing media belongs to the chosen episode");
+    await capture("podcast_more_episode_playing");
+    click(homeRadio(305));
+    await wait(() => one(".podcast-cover h2")?.textContent === "合成播客 305", "homepage item opens podcast detail");
+    click(button("返回上一页"));
+    await wait(() => homeRadio(305) && homeRadio(306), "detail Back restores already loaded homepage blocks");
+    await capture("podcast_more_back");
+    await fixture("podcast_home_disabled");
+    click(button("刷新播客发现", podcastHome()));
+    await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭") && button("前往设置", podcastHome()),
+      "disabled personalization stops the recommendation request and shows Settings");
+    assert(!homeRadio(305) && !homeVoice(404) && !button("加载更多播客", podcastHome()), "old personalized content is cleared");
+    await capture("podcast_more_disabled");
+    click(button("返回上一页"));
+    await wait(() => ready("合成推荐词1", "all", ".search-track-card"), "public homepage Back restores prior search");
     await fixture("expired");
     input().click();
     type("失效");
@@ -766,6 +817,7 @@
       audioRankNavigationVerified: true,
       audioRankPlaybackVerified: true,
       audiobookMoreVerified: true,
+      podcastMoreVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

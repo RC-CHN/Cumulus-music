@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Icon from '../Icon.vue';
-import type { SearchChart, SearchChannel } from '../../services/search';
+import type { SearchChart, SearchChannel, SearchChartDestination } from '../../services/search';
 defineProps<{
   charts: SearchChart[];
   playable: boolean;
@@ -11,7 +11,7 @@ const emit = defineEmits<{
   select: [keyword: string, channel: SearchChannel | undefined, display: string];
   play: [keywords: string[]];
   radio: [id: string];
-  audiobooks: [];
+  discover: [target: SearchChartDestination];
   retry: [id: string];
 }>();
 </script>
@@ -35,17 +35,17 @@ const emit = defineEmits<{
       </button>
       <button
         v-if="
-          chart.audiobookMore &&
+          chart.more &&
           chart.items.length &&
           !pending['chart:' + chart.id] &&
           !errors['chart:' + chart.id]
         "
         class="search-chart-play"
         data-search-choice
-        :aria-label="`${chart.name}：${chart.audiobookMore}`"
-        @click="emit('audiobooks')"
+        :aria-label="`${chart.name}：${chart.more.label}`"
+        @click="emit('discover', chart.more.target)"
       >
-        {{ chart.audiobookMore }}<Icon name="forward" />
+        {{ chart.more.label }}<Icon name="forward" />
       </button>
     </div>
     <p v-if="pending['chart:' + chart.id]" class="search-muted" role="status">正在加载榜单…</p>

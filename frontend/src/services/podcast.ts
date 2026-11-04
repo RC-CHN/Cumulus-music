@@ -107,3 +107,15 @@ export interface AudiobookDiscoveryClient {
     query: AudiobookDiscoveryQuery,
   ): Promise<AccountData<AudiobookDiscovery>>;
 }
+
+export type PodcastHomeBlock =
+  | { kind: 'radios'; title: string | null; cards: PodcastCard[] }
+  | { kind: 'voices'; title: string | null; groups: EpisodeView[][] };
+export interface PodcastHomePage {
+  recommendationEnabled: boolean;
+  blocks: PodcastHomeBlock[];
+  continuation: string | null;
+}
+export interface PodcastHomeClient {
+  podcastHome(epoch: string, continuation?: string): Promise<AccountData<PodcastHomePage>>;
+}

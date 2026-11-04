@@ -112,13 +112,14 @@ export interface SearchWord {
   channel?: SearchChannel;
   radioId?: string;
 }
+export type SearchChartDestination = 'podcasts' | 'audiobooks';
 export interface SearchChart {
   id: string;
   name: string;
   items: SearchWord[];
   needPlay?: boolean;
   audio?: boolean;
-  audiobookMore?: string;
+  more?: { label: string; target: SearchChartDestination };
   playKeywords?: string[] | null;
 }
 export type SearchDiscoveryQuery =

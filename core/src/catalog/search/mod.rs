@@ -41,7 +41,18 @@ pub struct SearchChart {
     pub need_play: bool,
     pub audio: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub audiobook_more: Option<String>,
+    pub more: Option<SearchChartMore>,
+}
+#[derive(Clone, Serialize)]
+pub struct SearchChartMore {
+    pub label: String,
+    pub target: SearchChartDestination,
+}
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchChartDestination {
+    Podcasts,
+    Audiobooks,
 }
 #[derive(Serialize)]
 #[serde(

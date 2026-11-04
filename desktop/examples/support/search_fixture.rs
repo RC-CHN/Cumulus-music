@@ -12,6 +12,7 @@ static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static AUDIOBOOK_MORE_READS: AtomicUsize = AtomicUsize::new(0);
+static PODCAST_HOME_MORE_READS: AtomicUsize = AtomicUsize::new(0);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -31,6 +32,7 @@ pub fn control(value: &Value) {
             "hot_source",
             "selection_source",
             "audio_ranks",
+            "podcast_home_disabled",
             "suggest_error",
             "result_error",
             "result_play_trial",
@@ -208,7 +210,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         "/api/search/pc/rcmd/keyword/get" => json!({"operateWords":{},"algWords":words(18)}),
         "/api/search/pc/chart/list" if mode == "audio_ranks" => {
             json!({"tabInfo":{"list":[
-                {"id":"HOT_SEARCH_DJ#@#","name":"播客榜","button":{"text":"更多"}},
+                {"id":"HOT_SEARCH_DJ#@#","name":"播客榜","button":{"text":"更多","url":"https://ignored.synthetic.invalid"}},
                 {"id":"HOT_SEARCH_DJ_VOICE_BOOK#@#","name":"听书榜","button":{"text":"更多","url":"https://ignored.synthetic.invalid"}}]},
                 "items":{"HOT_SEARCH_DJ#@#":[
                     {"toUserWord":"合成播客榜条目","url":"orpheus://audio/detail?id=301&private=omit"},
@@ -276,7 +278,53 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     let radio = |id| json!({"id":id,"name":format!("合成播客 {id}"),"programCount":3,"dj":{"nickname":"合成主播"}});
     let program = |id, radio_id| json!({"id":id,"name":format!("合成声音 {id}"),"mainSong":{"id":id-400,"name":format!("合成声音 {id}"),"duration":360000},"duration":360000,"radio":radio(radio_id),"dj":{"nickname":"合成主播"}});
+    let mode = MODE.lock().unwrap().clone();
     let data = match path {
+        "/api/user/setting" if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") => {
+            assert_eq!(*args, json!({}));
+            json!({"code":200,"setting":{"personalServiceSetting":if mode == "podcast_home_disabled" {2} else {0}}})
+        }
+        "/api/voice/homepage/block/page" if mode == "podcast_home_disabled" => {
+            return Some(Err(Error::InvalidInput(
+                "disabled podcast recommendations must not be requested",
+            )));
+        }
+        "/api/voice/homepage/block/page" if mode == "audio_ranks" => {
+            let radios = |title, id| {
+                json!({"blockId":7,"blockCode":"same_block",
+                "showType":"VOICE_HOMEPAGE_FIXED_VOICELIST","uiElement":{"mainTitle":{"title":title}},
+                "creatives":[{"creativeExtInfoVO":{"radio":radio(id)}}]})
+            };
+            let voice = |id: u64, resource_id: u64| {
+                json!({"resourceType":"voice","resourceId":resource_id.to_string(),
+                "valid":true,"resourceUrl":"https://ignored.synthetic.invalid","resourceExtInfo":{"djProgram":program(id,305)}})
+            };
+            let programs = json!({"blockId":9,"showType":"VOICE_HOMEPAGE_WEEKNEW_VOICE",
+                "uiElement":{"mainTitle":{"title":"合成新节目"}},"creatives":[
+                    {"resources":[voice(404,404),voice(405,999)]},
+                    {"resources":[voice(406,406)]}]});
+            match args["cursor"].as_str() {
+                Some("") => {
+                    json!({"code":200,"data":{"cursor":"{\"homePrivate\":\"next\"}","hasMore":true,
+                    "blocks":[radios("合成首页首批",305),programs,
+                        {"showType":"VOICE_HOMEPAGE_BLOCK_BANNER","uiElement":{"mainTitle":{"title":"不显示推广"}},"creatives":[{}]}]}})
+                }
+                Some("{\"homePrivate\":\"next\"}") => {
+                    if PODCAST_HOME_MORE_READS.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return Some(Err(Error::Transport(
+                            "synthetic podcast page unavailable".into(),
+                        )));
+                    }
+                    json!({"code":200,"data":{"cursor":null,"hasMore":false,
+                        "blocks":[radios("合成首页后续",306)]}})
+                }
+                _ => {
+                    return Some(Err(Error::InvalidInput(
+                        "unexpected synthetic podcast page",
+                    )));
+                }
+            }
+        }
         "/api/dj/radio/category/list" if MODE.lock().unwrap().as_str() == "audio_ranks" => {
             assert_eq!(*args, json!({}));
             json!({"code":200,"data":{"parentCategoryVoList":[

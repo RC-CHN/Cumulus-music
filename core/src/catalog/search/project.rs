@@ -144,9 +144,14 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
                         },
                         need_play,
                         audio,
-                        audiobook_more: (id == "HOT_SEARCH_DJ_VOICE_BOOK#@#")
-                            .then(|| text(&row["button"]["text"]))
-                            .flatten(),
+                        more: text(&row["button"]["text"]).and_then(|label| {
+                            let target = match id {
+                                "HOT_SEARCH_DJ#@#" => SearchChartDestination::Podcasts,
+                                "HOT_SEARCH_DJ_VOICE_BOOK#@#" => SearchChartDestination::Audiobooks,
+                                _ => return None,
+                            };
+                            Some(SearchChartMore { label, target })
+                        }),
                     });
                 }
             }
