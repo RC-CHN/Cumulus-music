@@ -27,6 +27,12 @@ const { view, ready, equalizerDraft } = props.player;
 const { settings, preset, draft, pending, blocked, error, stage, applyDraft, discard } =
   equalizerDraft;
 const current = computed(() => view.value?.equalizer);
+const parametric = computed(() => view.value?.boundParametric);
+const parametricStatus = {
+  configured: '播放器已配置独立参数均衡。',
+  deferred: '独立参数均衡等待音频加载。',
+  detach_required: '独立参数均衡需要清理。',
+};
 const dialog = ref<HTMLDialogElement>();
 const closeButton = ref<HTMLButtonElement>();
 const presetControl = ref<HTMLSelectElement>();
@@ -229,10 +235,14 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           :disabled="disabled"
           @click="toggleMaster"
         >
-          <span></span>{{ settings?.master_bypassed ? '音效已暂停' : '音效总开关' }}
+          <span></span>{{ settings?.master_bypassed ? '均衡器与低高音已暂停' : '均衡器与低高音' }}
         </button>
         <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
         <button ref="directoryOpener" type="button" @click="openDirectory()">音效目录</button>
+      </div>
+      <div v-if="parametric" class="equalizer-independent" :data-parametric-state="parametric">
+        <p role="status">{{ parametricStatus[parametric] }}不受上方开关控制。</p>
+        <button type="button" @click="openDirectory(true)">管理独立参数均衡</button>
       </div>
       <div class="equalizer-controls">
         <label
@@ -406,6 +416,22 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
 }
 .equalizer-master small {
   color: var(--text-secondary);
+}
+.equalizer-independent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.equalizer-independent p {
+  margin: 0;
+}
+.equalizer-independent button {
+  color: var(--accent);
 }
 .equalizer-dialog::backdrop {
   background: #0004;

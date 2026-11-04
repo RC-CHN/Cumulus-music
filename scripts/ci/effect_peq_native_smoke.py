@@ -44,7 +44,7 @@ def main():
 
     complete = read('complete')
     assert complete['ok'] and complete['stageCount'] == 5 and complete['sameNativePlayback']
-    assert complete['directManagementVerified']
+    assert complete['directManagementVerified'] and complete['scopedBypassVerified']
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
     uncertain = read('ux_03_stop_uncertain')['nativePeq']
@@ -94,7 +94,8 @@ def main():
     assert len(list(output.glob('ux_*.png'))) == (5 if args.screenshots else 0)
     print(json.dumps(dict(ok=True, actualWebView=True, actualNativePcm=True, nullOutput=True,
                           processedSamples=released['processedSamples'], syntheticStarts=1,
-                          syntheticStops=2, durableReleased=True, realAccountWrites=0)))
+                          syntheticStops=2, durableReleased=True, scopedBypassVerified=True,
+                          realAccountWrites=0)))
 
 
 if __name__ == '__main__':
