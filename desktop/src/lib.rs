@@ -26,6 +26,7 @@ pub mod lifecycle;
 mod local;
 mod login_device;
 mod member;
+mod messages;
 pub mod mini;
 mod mv;
 mod platform;
@@ -397,6 +398,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 mv::video_snapshot,
                 mv::video_action,
                 mv::video_frame,
+                messages::message_counts,
+                messages::message_page,
                 comments::comments_page,
                 comments::comments_resource,
                 comments::comments_like,

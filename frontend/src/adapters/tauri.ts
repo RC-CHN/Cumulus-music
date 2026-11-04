@@ -12,6 +12,8 @@ import type { SessionRenewalView } from '../services/renewal';
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
+    messageCounts: (epoch) => invoke('message_counts', { epoch }),
+    messagePage: (epoch, query) => invoke('message_page', { epoch, query }),
     searchResults: (epoch, query) => invoke('search_results', { epoch, query }),
     searchReasonPage: (epoch, target) => invoke('search_reason_page', { epoch, target }),
     coldOfflineOpen: () => invoke('cold_offline_open'),

@@ -33,6 +33,8 @@ mod like_recovery_fixture;
 mod media_shortcuts;
 #[path = "support/member_sign_fixture.rs"]
 mod member_sign_fixture;
+#[path = "support/message_fixture.rs"]
+mod message_fixture;
 #[path = "support/mode_fixture.rs"]
 mod mode_fixture;
 #[path = "support/playback_quality_fixture.rs"]
@@ -148,6 +150,9 @@ impl Api for Library {
             if playlist_tag_browse_proof()
                 && let Some(response) = playlist_essential_fixture::response(path, &args)
             {
+                return response;
+            }
+            if let Some(response) = message_fixture::response(path, &args).await {
                 return response;
             }
             if let Some(response) = member_sign_fixture::response(path, &args).await {
@@ -502,6 +507,7 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    assert!(!message_fixture::enabled() || motion_proof);
     let peq_proof = effect_peq_fixture::enabled();
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
     assert!(!device_peq_proof || (!peq_proof && effect_directory_fixture::enabled()));
@@ -666,6 +672,12 @@ fn main() {
                     stats["processedSamples"].as_u64().is_some_and(|n|n>0) && stats["failedBlocks"]==0;
                 handle.get_webview_window("main").unwrap().eval(format!("window.__headphonePcmReady={ready};")).unwrap();return;
             }
+            if stage=="message-fixture" && message_fixture::enabled() {
+                let report=message_fixture::control(value["mode"].as_str().unwrap_or(""));
+                let id=value["id"].as_u64().expect("message probe sequence");
+                handle.get_webview_window("main").unwrap().eval(format!("window.__messageFixtureAck[{id}]={report};")).unwrap();
+                return;
+            }
             if stage=="effect-peq-fail-runtime" && effect_peq_fixture::inject_runtime_fault() {
                 handle.get_webview_window("main").unwrap().eval("window.__peqRuntimeFaultArmed=true;").unwrap();return;
             }
@@ -825,6 +837,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if message_fixture::enabled() { value["messageRequests"] = message_fixture::report(); }
             if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }
             if mode_fixture::enabled() { value["syntheticMode"] = mode_fixture::report(); }
             if library_fixture::enabled() { value["syntheticLibrary"] = library_fixture::report(); }

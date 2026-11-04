@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import SearchBox from './components/search/SearchBox.vue';
+import MessageDrawer from './components/messages/MessageDrawer.vue';
 import { useMotion } from './composables/useMotion';
 import { createPageTransition } from './services/pageTransition';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
@@ -2602,6 +2603,12 @@ onUnmounted(() => {
         /><span v-else class="avatar"><Icon name="user" /></span
         ><span>{{ signedIn ? (account.nickname ?? '我的账号') : '点击登录' }}</span>
       </button>
+      <MessageDrawer
+        :account="account"
+        :initializing="initializing"
+        @login="loginOpen = true"
+        @expired="music.bootstrap(false)"
+      />
       <AppearanceMenu />
       <button
         class="icon-button settings-button"

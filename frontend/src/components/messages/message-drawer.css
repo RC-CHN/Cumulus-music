@@ -1,0 +1,193 @@
+.message-drawer {
+  position: fixed;
+  z-index: 50;
+  inset: var(--header, 64px) 0 var(--player, 72px) auto;
+  width: min(386px, 100vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-right: 0;
+  border-radius: 12px 0 0 12px;
+  box-shadow: var(--shadow);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .message-drawer {
+    animation: message-drawer-in 160ms ease-out;
+  }
+}
+@keyframes message-drawer-in {
+  from {
+    transform: translateX(18px);
+    opacity: 0;
+  }
+}
+.message-drawer-header,
+.message-drawer-tabs {
+  display: flex;
+  align-items: center;
+  padding: 8px 14px;
+  gap: 6px;
+}
+.message-drawer-header {
+  min-height: 49px;
+}
+.message-drawer-header h2 {
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+}
+.message-drawer-tabs {
+  border-bottom: 1px solid var(--line);
+  padding-block: 0;
+}
+.message-drawer-tabs button {
+  position: relative;
+  color: var(--text-secondary);
+  padding: 6px 5px 9px;
+  min-height: 36px;
+}
+.message-drawer-tabs button[aria-selected='true'] {
+  font-weight: 600;
+  color: var(--text);
+}
+.message-drawer-tabs button[aria-selected='true']::after {
+  position: absolute;
+  inset: auto 6px 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  content: '';
+}
+.message-drawer-badge {
+  display: inline-block;
+  margin-inline-start: 3px;
+  border-radius: 20px;
+  padding: 0 4px;
+  color: var(--on-accent);
+  background: var(--accent-fill);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+}
+.message-drawer-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  scrollbar-gutter: stable;
+}
+.message-drawer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px;
+}
+.message-drawer-item {
+  border-bottom: 1px solid var(--line);
+}
+.message-conversation,
+.message-drawer-article {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  gap: 10px;
+  text-align: start;
+  padding: 12px 8px;
+}
+.message-conversation:hover,
+.message-conversation:focus-visible {
+  background: var(--surface-hover);
+}
+.message-drawer-avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border-radius: 50%;
+  color: var(--text-secondary);
+  background: var(--art-bg);
+}
+.message-drawer-copy {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.message-drawer-copy > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+.message-drawer-name {
+  font-size: 13px;
+  font-weight: 550;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.message-drawer-preview {
+  color: var(--muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.message-drawer-meta {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.message-drawer time {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.message-drawer-text {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.message-drawer-caption {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.message-drawer blockquote {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: var(--surface-alt);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.message-drawer-own .message-drawer-article {
+  flex-direction: row-reverse;
+}
+.message-drawer-own .message-drawer-text {
+  padding: 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+}
+.message-drawer-status,
+.message-drawer-count-error {
+  text-align: center;
+  color: var(--muted);
+  margin: 0;
+  padding: 12px 8px;
+}
+.message-drawer-count-error {
+  padding: 4px;
+}
+.message-drawer-status button,
+.message-drawer-count-error button {
+  margin-inline-start: 4px;
+  color: var(--accent);
+}

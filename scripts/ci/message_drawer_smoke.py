@@ -1,0 +1,82 @@
+"""Verify read-only message tabs and private history through a real desktop WebView."""
+import argparse
+import json
+import os
+from pathlib import Path
+
+from motion_smoke import launch
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--binary', type=Path, required=True)
+    parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--screenshots', action='store_true')
+    args = parser.parse_args()
+    root = args.root.resolve()
+    root.mkdir(parents=True, exist_ok=False)
+    script = Path(__file__).resolve().parents[2] / 'desktop/examples/message_drawer_ui_probe.js'
+    env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
+    env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
+               CUMULUS_MESSAGE_DRAWER_PROOF='1', CUMULUS_UX_SCRIPT=str(script))
+    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
+                'APPDATA', 'LOCALAPPDATA'):
+        profile = root / 'os-profile' / key
+        profile.mkdir(parents=True, mode=0o700)
+        env[key] = str(profile)
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
+    if args.runtime:
+        env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
+    output = root / 'first'
+    with (root / 'host.log').open('x', encoding='utf-8') as log:
+        code = launch(args.binary.resolve(), env, log, output, args.screenshots)
+    failure = output / 'failed.json'
+    assert not failure.exists(), failure.read_text(encoding='utf-8') if failure.exists() else ''
+    assert code == 0
+    report = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    assert report['ok'] and report['staleVisitDiscarded'] and report['count'] == 7
+    assert report['realAccountWrites'] == report['realMusicRequests'] == 0
+    assert not report['messageRequests']['blockedWrite']
+    assert len(list(output.glob('ux_*.json'))) == 7
+    assert len(list(output.glob('ux_*.png'))) == (7 if args.screenshots else 0)
+    t = 1_700_000_100_000
+    reads = {}
+    for path, request in report['messageRequests']['requests']:
+        reads.setdefault(path, []).append(request)
+    assert reads == {
+        '/api/pl/count': [{}, {}, {}],
+        '/api/msg/private/users': [
+            dict(limit=15, offset=0, time=-1),
+            dict(limit=15, offset=0, time=t-14),
+            dict(limit=15, offset=0, time=-1),
+        ],
+        '/api/msg/private/history': [
+            dict(limit=10, offset=0, time=-1, userId='505'),
+            dict(limit=10, offset=0, time=t, userId='505'),
+        ],
+        '/api/v1/user/comments/2': [
+            dict(limit=10, beforeTime=-1),
+            dict(limit=10, beforeTime=t),
+            dict(limit=10, beforeTime=t),
+        ],
+        '/api/forwards/get': [
+            dict(total=True, limit=10, offset=0, time=-1),
+            dict(total=True, limit=10, offset=0, time=t-2),
+        ],
+        '/api/msg/notices': [
+            dict(total=True, limit=10, offset=0, time=-1),
+            dict(total=True, limit=10, offset=0, time=t-3),
+            dict(total=True, limit=10, offset=0, time=-1),
+            dict(total=True, limit=10, offset=0, time=-1),
+        ],
+    }, reads
+    report['actualWebView'] = True
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
+
+
+if __name__ == '__main__':
+    main()

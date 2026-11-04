@@ -29,6 +29,7 @@ mod login_devices;
 mod mapping;
 mod media_preferences;
 mod member;
+pub mod messages;
 pub mod mini;
 mod mini_preferences;
 mod mv;

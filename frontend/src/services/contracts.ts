@@ -1,3 +1,4 @@
+import type { MessageClient } from './messages';
 import type { SearchClient, SearchResultsClient } from './search';
 import type { NativeLikesClient } from './nativeLikes';
 import type { LikeRecoveryClient } from './likeRecovery';
@@ -92,6 +93,7 @@ export interface CoreClient
     CloudClient,
     MvClient,
     CommentClient,
+    MessageClient,
     CommentResourceClient,
     CommentWriteClient,
     CommentFloorClient,
