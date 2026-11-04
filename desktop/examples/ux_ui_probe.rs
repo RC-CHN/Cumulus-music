@@ -452,8 +452,10 @@ fn main() {
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
     let peq_proof = effect_peq_fixture::enabled();
+    let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
+    assert!(!device_peq_proof || (!peq_proof && effect_directory_fixture::enabled()));
     assert!(
-        !peq_proof || motion_proof,
+        !(peq_proof || device_peq_proof) || motion_proof,
         "native PEQ proof needs the closed audio fixture"
     );
     let recovery_proof = std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some();
@@ -519,7 +521,7 @@ fn main() {
         let factory_elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let factory_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let card_audio = Arc::new(card_source_fixture::Control::default());
-        if peq_proof {
+        if peq_proof || device_peq_proof {
             let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER")
                 .expect("trusted synthetic PEQ adapter"));
             let wave = relay_fixture::wave(&root)?;
@@ -556,7 +558,7 @@ fn main() {
                 value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());
                 value["effectDirectoryMaterialGets"]=effect_peq_fixture::report()["materialGets"].clone();
             }
-            if peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
+            if peq_proof || device_peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
             if member_sign_fixture::enabled() {value["memberSignCalls"]=json!(member_sign_fixture::calls());}
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}

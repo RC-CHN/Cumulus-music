@@ -14,6 +14,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--library', type=Path, help='also exercise live headphone tuning with this native filter')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -21,6 +22,13 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     script = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_directory_ui_probe.js'
+    if args.library:
+        scenario = root / 'scenario.js'
+        scenario.write_text('window.__cumulusDeviceNative = true;\n' + script.read_text(encoding='utf-8'),
+                            encoding='utf-8')
+        script = scenario
+        env.update(CUMULUS_EFFECT_DEVICE_NATIVE_PROOF='1', CUMULUS_EFFECT_PEQ_RUNTIME_FAULT='1',
+                   CUMULUS_AUDIO_FILTER=str(args.library.resolve(strict=True)))
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_UX_SCRIPT=str(script),
                CUMULUS_MOTION_PROOF='1', CUMULUS_EFFECT_DIRECTORY_PROOF='1')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
@@ -39,7 +47,8 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['stageCount'] == 7 and complete['artworkVerified'] and complete['devicesVerified']
+    stages = 10 if args.library else 7
+    assert complete['ok'] and complete['stageCount'] == stages and complete['artworkVerified'] and complete['devicesVerified']
     assert complete['limitedFreeExpiryVerified'] and complete['deviceCacheVerified']
     assert complete['deviceMaterialVerified'] and complete['effectDirectoryMaterialGets'] == 1
     catalogue = '/api/usertool/sound/queryAllSound'
@@ -48,13 +57,14 @@ def main():
     brands = '/api/usertool/home/soundeffect/devicebrand/list'
     models = '/api/usertool/home/soundeffect/devicesound/list'
     calls = complete['effectDirectoryCalls']
+    applies = 2 if args.library else 0
     assert [call['path'] for call in calls] == [
         catalogue, detail, rights, catalogue, detail, rights, detail, rights, catalogue,
-        brands, models, models, models, models, models,
+        brands, *[models] * (5 + applies),
     ]
     assert [call['args']['exposeType'] for call in calls if call['path'] == catalogue] == [5, 6, 7]
     assert [call['args'] for call in calls if call['path'] in (brands, models)] == [
-        {}, *[{'deviceManagerId': 4100}] * 4, {'deviceManagerId': 4200},
+        {}, *[{'deviceManagerId': 4100}] * (4 + applies), {'deviceManagerId': 4200},
     ]
     db = (root / 'state' / 'core.sqlite3').resolve(strict=True)
     with closing(sqlite3.connect(db.as_uri() + '?mode=ro', uri=True)) as store:
@@ -64,10 +74,19 @@ def main():
     record = json.loads(materials[0][1])
     assert record['phase'] == 'ready' and record['handle']['sound_type'] == 2
     assert record['handle']['effect'] == 4102
-    assert len(list(output.glob('ux_*.png'))) == (7 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.png'))) == (stages if args.screenshots else 0)
+    if args.library:
+        enabled = json.loads((output / 'ux_07_headphones_enabled.json').read_text(encoding='utf-8'))['nativePeq']
+        disabled = json.loads((output / 'ux_08_headphones_disabled.json').read_text(encoding='utf-8'))['nativePeq']
+        fault = json.loads((output / 'ux_09_headphones_fault.json').read_text(encoding='utf-8'))['nativePeq']
+        assert enabled['attaches'] == 1 and enabled['processedSamples'] > 0 and enabled['nativeAttached']
+        assert disabled['detaches'] == 1 and not disabled['nativeAttached']
+        assert fault['detaches'] == fault['attaches'] == 2 and fault['injectedFaults'] == 1 and not fault['nativeAttached']
+        assert fault['processedSamples'] > 0 and fault['failedBlocks'] == 0
+        assert not fault['calls'] and complete['deviceTuningVerified']
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
                       'realAccountWrites': 0, 'limitedFreeExpiryVerified': True,
-                      'deviceMaterialVerified': True}))
+                      'deviceMaterialVerified': True, 'deviceTuningVerified': bool(args.library)}))
 
 
 if __name__ == '__main__':

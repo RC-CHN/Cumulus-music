@@ -212,6 +212,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 effects::effect_device_brands,
                 effects::effect_device_models,
                 effects::effect_device_material,
+                effect_activation::effect_device_apply,
+                effect_activation::effect_device_clear,
                 together::together_view,
                 together::together_statistics,
                 together::together_command,

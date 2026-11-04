@@ -387,6 +387,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     v-if="directoryOpen"
     :account="account"
     :binding-status="parametric"
+    :device-parametric="view?.deviceParametric"
     :initial-management-only="managementOnly"
     @close="directoryOpen = false"
     @login="emit('login')"

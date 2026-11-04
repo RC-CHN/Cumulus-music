@@ -7,7 +7,9 @@ mod intelligence;
 mod load;
 mod loudness;
 mod parametric;
-pub use parametric::{ParametricApplication, ParametricBindingStatus};
+pub use parametric::{
+    DeviceParametricTarget, DeviceParametricView, ParametricApplication, ParametricBindingStatus,
+};
 mod quality;
 mod remote;
 mod startup;

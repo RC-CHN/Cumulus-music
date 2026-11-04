@@ -40,6 +40,7 @@ pub struct PlaybackSnapshot {
     pub intelligence_operation: Option<String>,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub bound_parametric: Option<super::parametric::ParametricBindingStatus>,
+    pub device_parametric: Option<super::parametric::DeviceParametricView>,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub revision: u64,
     /// Accepted native control intent; engine clock polls do not advance it.

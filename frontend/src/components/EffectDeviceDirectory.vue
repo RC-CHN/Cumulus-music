@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import type { EffectDeviceChoice, EffectDeviceMaterialCheck } from '../services/effectDirectory';
+import type { BoundParametricStatus, DeviceParametricView } from '../services/player';
 
-const props = defineProps<{ account: AccountView }>();
+const props = defineProps<{
+  account: AccountView;
+  applied?: DeviceParametricView;
+  catalogueParametric?: BoundParametricStatus;
+}>();
 const core = useCore();
 const brands = ref<EffectDeviceChoice[]>([]);
 const models = ref<EffectDeviceChoice[]>([]);
@@ -17,11 +22,35 @@ const modelError = ref('');
 const material = ref<EffectDeviceMaterialCheck>();
 const materialError = ref('');
 const materialLoading = ref(false);
+const operation = ref<'apply' | 'clear'>();
+const operationError = ref('');
+const applyButton = ref<HTMLButtonElement>();
+const clearButton = ref<HTMLButtonElement>();
+const checkButton = ref<HTMLButtonElement>();
+const brandSelect = ref<HTMLSelectElement>();
+let actionFocus:
+  | { action: 'apply' | 'clear'; source: HTMLButtonElement; dialog: HTMLDialogElement | null }
+  | undefined;
+const busyWithAnotherEffect = computed(() =>
+  [props.applied?.status, props.catalogueParametric].some(
+    (status) => status && status !== 'processor_failed',
+  ),
+);
+const selectedTuning = computed(
+  () =>
+    !!props.applied && props.applied.brand === brand.value && props.applied.model === model.value,
+);
 const materialLabels: Record<EffectDeviceMaterialCheck, string> = {
   no_material: '此型号暂无可检查的调音材料。',
   pending: '调音材料尚未检查完，可继续检查。',
-  standalone_peq: '已验证材料包含单独的参数均衡。本客户端尚未启用耳机调音。',
+  standalone_peq: '已验证此型号的参数均衡，可以在当前播放会话中启用。',
   unsupported_graph: '已验证调音材料，当前无法应用其中的效果组合。',
+};
+const appliedLabels: Record<BoundParametricStatus, string> = {
+  configured: '耳机调音已启用',
+  deferred: '音频加载后启用耳机调音',
+  detach_required: '耳机调音尚未关闭，请重试关闭',
+  processor_failed: '耳机调音失败，已停用',
 };
 let brandRequest = 0;
 let modelRequest = 0;
@@ -105,6 +134,7 @@ function resetMaterial() {
   material.value = undefined;
   materialError.value = '';
   materialLoading.value = false;
+  operationError.value = '';
 }
 async function checkMaterial() {
   if (materialLoading.value || brand.value === undefined || model.value === undefined) return;
@@ -125,14 +155,62 @@ async function checkMaterial() {
     if (current()) materialLoading.value = false;
   }
 }
+async function changeTuning(action: 'apply' | 'clear') {
+  const target = action === 'clear' ? props.applied : { brand: brand.value, model: model.value };
+  if (operation.value || target?.brand === undefined || target.model === undefined) return;
+  if (action === 'apply' && (material.value !== 'standalone_peq' || busyWithAnotherEffect.value))
+    return;
+  const epoch = props.account.epoch;
+  const generation = directoryGeneration;
+  const current = () => owns(epoch) && directoryGeneration === generation;
+  const source = action === 'apply' ? applyButton.value : clearButton.value;
+  if (source && document.activeElement === source)
+    actionFocus = { action, source, dialog: source.closest('dialog') };
+  operation.value = action;
+  operationError.value = '';
+  try {
+    if (action === 'apply') await core.effectDeviceApply(epoch, target.brand, target.model);
+    else await core.effectDeviceClear(epoch, target.brand, target.model);
+  } catch (issue) {
+    if (current()) {
+      operationError.value = failure(issue).message;
+      actionFocus = undefined;
+    }
+  } finally {
+    if (current()) operation.value = undefined;
+  }
+}
 function resetReads() {
   brandRequest++;
   modelRequest++;
   directoryGeneration++;
   cachedModels.clear();
   modelReads.clear();
+  operation.value = undefined;
+  actionFocus = undefined;
   resetMaterial();
 }
+watch(
+  () => [props.applied?.status, operation.value] as const,
+  ([status, running]) => {
+    if (!actionFocus || running) return;
+    const { action, source, dialog } = actionFocus;
+    if (action === 'apply' ? !status || status === 'processor_failed' : !!status) return;
+    actionFocus = undefined;
+    if (
+      document.activeElement !== source &&
+      document.activeElement !== document.body &&
+      document.activeElement !== dialog
+    )
+      return;
+    const target =
+      action === 'apply'
+        ? clearButton.value
+        : (applyButton.value ?? checkButton.value ?? brandSelect.value);
+    target?.focus({ preventScroll: true });
+  },
+  { flush: 'post' },
+);
 watch(
   () => [props.account.epoch, props.account.status] as const,
   ([epoch]) => {
@@ -151,7 +229,26 @@ onUnmounted(resetReads);
 
 <template>
   <section class="effect-device-directory" aria-label="耳机音效目录">
-    <p>选定型号后可检查调音材料。检查可能下载材料，不会更改播放设备或启用音效。</p>
+    <p>选定型号后可检查和应用调音。启用后仍使用当前播放设备。</p>
+    <div v-if="applied" class="effect-device-active" :data-device-tuning="applied.status">
+      <p role="status">
+        {{ appliedLabels[applied.status] }} ·
+        {{
+          brand === applied.brand
+            ? (models.find((item) => item.id === applied?.model)?.name ?? `型号 ${applied.model}`)
+            : `型号 ${applied.model}`
+        }}
+      </p>
+      <button
+        ref="clearButton"
+        type="button"
+        :disabled="!!operation"
+        @click="changeTuning('clear')"
+      >
+        {{ applied.status === 'processor_failed' ? '关闭调音提示' : '关闭耳机调音' }}
+      </button>
+    </div>
+    <p v-if="operationError" role="alert">{{ operationError }}</p>
     <p v-if="brandLoading" role="status">正在读取耳机品牌…</p>
     <div v-else-if="brandError">
       <p role="alert">{{ brandError }}</p>
@@ -161,7 +258,12 @@ onUnmounted(resetReads);
     <template v-else>
       <label>
         耳机品牌
-        <select :value="brand ?? ''" @change="chooseBrand">
+        <select
+          ref="brandSelect"
+          :value="brand ?? ''"
+          :disabled="!!operation"
+          @change="chooseBrand"
+        >
           <option value="">请选择品牌</option>
           <option v-for="item in brands" :key="item.id" :value="item.id">{{ item.name }}</option>
         </select>
@@ -174,7 +276,7 @@ onUnmounted(resetReads);
       <p v-else-if="brand !== undefined && !models.length">此品牌暂无耳机型号。</p>
       <label v-else-if="models.length">
         耳机型号
-        <select :value="model ?? ''" @change="chooseModel">
+        <select :value="model ?? ''" :disabled="!!operation" @change="chooseModel">
           <option value="">请选择型号</option>
           <option v-for="item in models" :key="item.id" :value="item.id">{{ item.name }}</option>
         </select>
@@ -184,18 +286,43 @@ onUnmounted(resetReads);
         class="effect-device-material"
         :data-material-check="material"
       >
-        <button type="button" :disabled="materialLoading" @click="checkMaterial">
-          {{
-            material === 'pending'
-              ? '继续检查材料'
-              : materialError
-                ? '重试检查材料'
-                : '检查调音材料'
-          }}
-        </button>
+        <div class="effect-device-actions">
+          <button
+            ref="checkButton"
+            type="button"
+            :disabled="materialLoading || !!operation"
+            @click="checkMaterial"
+          >
+            {{
+              material === 'pending'
+                ? '继续检查材料'
+                : materialError
+                  ? '重试检查材料'
+                  : '检查调音材料'
+            }}
+          </button>
+          <button
+            v-if="material === 'standalone_peq' && !materialLoading && !busyWithAnotherEffect"
+            ref="applyButton"
+            type="button"
+            class="effect-device-apply"
+            :disabled="!!operation"
+            @click="changeTuning('apply')"
+          >
+            {{ operation === 'apply' ? '正在启用…' : '启用耳机调音' }}
+          </button>
+        </div>
         <p v-if="materialLoading" role="status">正在检查所选型号的调音材料…</p>
         <p v-else-if="materialError" role="alert">{{ materialError }}</p>
-        <p v-else-if="material" role="status">{{ materialLabels[material] }}</p>
+        <p v-else-if="material === 'standalone_peq' && busyWithAnotherEffect && !selectedTuning">
+          请先关闭当前参数均衡，再启用此型号的调音。
+        </p>
+        <p
+          v-else-if="material && (!selectedTuning || applied?.status === 'processor_failed')"
+          role="status"
+        >
+          {{ materialLabels[material] }}
+        </p>
       </div>
     </template>
   </section>
@@ -219,5 +346,43 @@ onUnmounted(resetReads);
   background: var(--surface-alt);
   border: 1px solid var(--line);
   border-radius: 6px;
+}
+.effect-device-active,
+.effect-device-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.effect-device-active {
+  justify-content: space-between;
+  margin-block: 8px 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-alt);
+}
+.effect-device-active p {
+  margin: 0;
+  color: var(--text);
+  font-weight: 500;
+}
+.effect-device-material p {
+  margin: 8px 0 0;
+}
+.effect-device-directory button {
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.effect-device-directory button:focus-visible,
+.effect-device-directory button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.effect-device-directory .effect-device-apply {
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
 }
 </style>

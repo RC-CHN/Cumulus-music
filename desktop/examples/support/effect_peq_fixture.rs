@@ -53,7 +53,9 @@ pub fn enabled() -> bool {
 }
 
 pub fn inject_runtime_fault() -> bool {
-    if !enabled() || std::env::var_os("CUMULUS_EFFECT_PEQ_RUNTIME_FAULT").is_none() {
+    if (!enabled() && std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_none())
+        || std::env::var_os("CUMULUS_EFFECT_PEQ_RUNTIME_FAULT").is_none()
+    {
         return false;
     }
     let trace = TRACE.lock().unwrap();

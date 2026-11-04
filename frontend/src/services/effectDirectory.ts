@@ -88,4 +88,6 @@ export interface EffectDirectoryClient {
     brand: number,
     model: number,
   ): Promise<EffectDeviceMaterialCheck>;
+  effectDeviceApply(epoch: string, brand: number, model: number): Promise<void>;
+  effectDeviceClear(epoch: string, brand: number, model: number): Promise<void>;
 }

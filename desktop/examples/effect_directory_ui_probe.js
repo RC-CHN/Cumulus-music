@@ -8,7 +8,7 @@
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const wait = async (predicate, message) => {
     for (let index = 0; index < 200; index++) {
-      const result = predicate();
+      const result = await predicate();
       if (result) return result;
       await sleep(65);
     }
@@ -60,6 +60,15 @@
       await sleep(65);
     }
     assert(account?.status === 'authenticated', 'synthetic account not restored');
+    const native = !!window.__cumulusDeviceNative;
+    const invoke = (command, args) => window.__TAURI_INTERNALS__.invoke(command, args);
+    const player = () => invoke('player_snapshot', { epoch: account.epoch });
+    if (native) {
+      await invoke('play_selection', { epoch: account.epoch, selection: {
+        kind: 'songs', ids: ['1'], index: 0, quality: 'standard',
+      } });
+      await wait(async () => (await player()).state === 'playing', 'native fixture playback');
+    }
     await emit('resize', { width: 760, height: 540 });
     await wait(() => innerWidth === 760 && innerHeight === 540, 'compact window size');
     await theme('dark');
@@ -111,13 +120,12 @@
     select(selects()[0], 4100);
     await wait(() => selects()[1]?.textContent.includes('合成耳机乙'), 'brand-specific models');
     select(selects()[1], 4102);
-    const material = () => one('.effect-device-material');
+    const material = () => one('.effect-device-material:not([data-device-tuning])');
     const state = () => material()?.dataset.materialCheck;
     assert(!state(), 'choosing a model does not fetch its material');
-    const player = () => window.__TAURI_INTERNALS__.invoke('player_snapshot', { epoch: account.epoch });
     const prior = await player();
     click(button(material(), '检查调音材料'));
-    await wait(() => state() === 'standalone_peq' && material().textContent.includes('尚未启用耳机调音'),
+    await wait(() => state() === 'standalone_peq' && button(material(), '启用耳机调音'),
       'exact model material is verified and previewed without applying it');
     assert(!/synthetic-bound-peq|[a-f0-9]{32}/.test(material().innerHTML),
       'the material URL and digest stay native');
@@ -132,10 +140,61 @@
     await wait(() => state() === 'standalone_peq', 'revalidated model reuses its verified material');
     const after = await player();
     assert(after.state === prior.state && after.equalizer.revision === prior.equalizer.revision &&
-      after.boundParametric === prior.boundParametric, 'material checks do not change playback effects');
+      after.boundParametric === prior.boundParametric && !after.deviceParametric,
+    'material checks do not change playback effects');
+    if (native) {
+      const currentTuning = () => one('[data-device-tuning]');
+      const sameSong = (value) => value.state === 'playing' && value.playId === prior.playId &&
+        value.entryId === prior.entryId && value.equalizer.revision === prior.equalizer.revision;
+      const apply = async () => {
+        click(button(material(), '启用耳机调音'));
+        const start = await player();
+        await wait(async () => {
+          const value = await player();
+          return currentTuning()?.dataset.deviceTuning === 'configured' && sameSong(value) &&
+            value.position > start.position + 0.3 && value.deviceParametric?.brand === 4100 &&
+            value.deviceParametric.model === 4102 && !value.boundParametric;
+        }, 'the exact native device filter keeps the same song moving');
+      };
+      await apply();
+      assert(document.activeElement === button(currentTuning(), '关闭耳机调音'),
+        'keyboard focus follows the completed apply action');
+      await capture('07_headphones_enabled');
+      const exclusive = await invoke('effect_peq_activate', {
+        epoch: account.epoch, id: 300, attempt: 'closed-fixture',
+      }).then(() => false, (error) => error.code === 'headphone_tuning_active');
+      assert(exclusive, 'ordinary PEQ activation cannot register while headphone tuning is mounted');
+      const wrong = await invoke('effect_device_clear', {
+        epoch: account.epoch, brand: 4200, model: 4102,
+      }).then(() => false, () => true);
+      assert(wrong && (await player()).deviceParametric?.status === 'configured',
+        'an unrelated device identity cannot clear the installed filter');
+      click(button(currentTuning(), '关闭耳机调音'));
+      const clearing = await player();
+      await wait(async () => {
+        const value = await player();
+        return !currentTuning() && !value.deviceParametric && sameSong(value) &&
+          value.position > clearing.position + 0.25;
+      }, 'disable removes only tuning and retains the same playing song');
+      assert(document.activeElement === button(material(), '启用耳机调音'),
+        'keyboard focus returns to applying the selected model');
+      await capture('08_headphones_disabled');
+      await apply();
+      await emit('effect-peq-fail-runtime');
+      const beforeFault = await player();
+      await wait(async () => {
+        const value = await player();
+        return currentTuning()?.dataset.deviceTuning === 'processor_failed' &&
+          value.deviceParametric?.status === 'processor_failed' && sameSong(value) &&
+          value.position > beforeFault.position + 0.25;
+      }, 'a verified native detach keeps the same song playing after a filter fault');
+      await capture('09_headphones_fault');
+      click(button(currentTuning(), '关闭调音提示'));
+      await wait(() => !currentTuning(), 'clear the detached filter notice');
+    }
     select(selects()[0], 4200);
     await wait(() => text().includes('此品牌暂无耳机型号。') && selects().length === 1, 'empty brand clears old models');
-    await capture('07_empty_headphones');
+    await capture(native ? '10_empty_headphones' : '07_empty_headphones');
     select(selects()[0], 4100);
     await Promise.resolve();
     assert(selects()[1]?.textContent.includes('合成耳机乙') && selects()[1]?.value === '',
@@ -147,8 +206,9 @@
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true,
-      deviceMaterialVerified: true, deviceCacheVerified: true, limitedFreeExpiryVerified: true });
+    await emit('complete', { ok: true, stageCount: native ? 10 : 7, artworkVerified: true,
+      devicesVerified: true, deviceTuningVerified: native, deviceMaterialVerified: true,
+      deviceCacheVerified: true, limitedFreeExpiryVerified: true });
   } catch (error) {
     const image = one('.effect-directory-card img');
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),

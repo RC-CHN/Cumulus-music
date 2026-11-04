@@ -106,6 +106,90 @@ async fn headphone_material_uses_only_the_exact_brand_model_and_verifies_the_gra
     }
 }
 
+#[tokio::test]
+async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach() {
+    use cumulus_core::{
+        account::profiles::ProfileRegistry,
+        client::{MusicClient, dto::PlaySelection},
+        membership::Quality,
+        playback::controller::{ParametricApplication, ParametricBindingStatus, PlaybackStatus},
+        protocol::http::ApiOrigin,
+    };
+    use std::{sync::atomic::Ordering, time::Duration};
+
+    for cancel_before_load in [true, false] {
+        let temp = tempfile::tempdir().unwrap();
+        let registry = ProfileRegistry::open(temp.path(), ApiOrigin::Pc).unwrap();
+        let (bytes, _) = sample("first");
+        let api = Arc::new(ScriptApi::new([
+            json!({"code":200,"songs":[{"id":1,"name":"Synthetic","dt":30000,"ar":[],"al":{"id":1,"name":"Synthetic"}}],"privileges":[]}).into(),
+            json!({"code":200,"data":[{"id":1,"code":200,"url":"https://m1.music.126.net/fixture.mp3","md5":"abcd","expi":10,"level":"standard"}]}).into(),
+            json!({"code":200,"data":[{"soundId":300,"soundType":2,"size":bytes.len(),
+                "soundMd5":hex::encode(Md5::digest(&bytes)),"deviceSoundUrl":URL}]}).into(),
+        ]));
+        let session = world(api.clone(), registry.store());
+        let epoch = session.token().unwrap().generation.to_string();
+        let device = Arc::new(playback_support::Device::default());
+        device.hold_load.store(true, Ordering::SeqCst);
+        let audio = device.clone();
+        // In the non-cancel scenario the engine explicitly rejects installation.
+        let client = MusicClient::with_session(session, registry)
+            .with_effect_material_backend(Arc::new(Origin::new(bytes)))
+            .with_audio_factory(move || Ok(playback_support::audio_engine(audio.clone())));
+        let brand = EffectId::new(7002).unwrap();
+        let load = client.play_selection(
+            &epoch,
+            PlaySelection::Songs {
+                ids: vec!["1".into()],
+                index: 0,
+                quality: Quality::Standard,
+            },
+        );
+        let tune = async {
+            device.started.notified().await;
+            assert_eq!(
+                client
+                    .apply_native_device_parametric(&epoch, brand, id())
+                    .await
+                    .unwrap(),
+                ParametricApplication::DeferredUntilLoaded
+            );
+            assert_eq!(
+                client
+                    .player_snapshot(&epoch)
+                    .await
+                    .unwrap()
+                    .device_parametric
+                    .unwrap()
+                    .status,
+                ParametricBindingStatus::Deferred
+            );
+            if cancel_before_load {
+                assert_eq!(
+                    client
+                        .clear_native_device_parametric(&epoch, brand, id())
+                        .await
+                        .unwrap(),
+                    ParametricApplication::Cleared
+                );
+            }
+            device.hold_load.store(false, Ordering::SeqCst);
+        };
+        let (result, ()) =
+            tokio::time::timeout(Duration::from_secs(6), async { tokio::join!(load, tune) })
+                .await
+                .unwrap();
+        let view = result.unwrap();
+        assert_eq!(view.state, PlaybackStatus::Playing);
+        assert_eq!(
+            view.device_parametric.map(|view| view.status),
+            (!cancel_before_load).then_some(ParametricBindingStatus::ProcessorFailed)
+        );
+        assert_eq!(*device.parametric_at_unpause.lock().unwrap(), [false]);
+        assert_eq!(api.calls().len(), 3);
+    }
+}
+
 #[test]
 fn five_hundred_twelve_official_authorization_decisions() {
     let fixture: Value =

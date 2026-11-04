@@ -201,6 +201,7 @@ impl Actor {
                 .and_then(|s| s.operation_id.clone()),
             equalizer: self.equalizer,
             bound_parametric: self.parametric.bound_status(),
+            device_parametric: self.parametric.device_status(),
             loudness: self.loudness.clone(),
             revision: self.revision,
             control_revision: self.control_revision,

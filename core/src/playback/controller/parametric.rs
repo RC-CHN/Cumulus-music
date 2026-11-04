@@ -7,6 +7,7 @@ use crate::{
             ActiveParametricObservation, BoundParametric, BoundParametricTarget,
             EffectAuthorizations,
         },
+        catalog::EffectId,
         parametric::ParametricPlan,
     },
     playback::engine::{AudioEngine, Cancellation, EngineSnapshot},
@@ -42,6 +43,19 @@ impl ParametricBindingStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct DeviceParametricTarget {
+    pub brand: EffectId,
+    pub model: EffectId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub struct DeviceParametricView {
+    #[serde(flatten)]
+    pub target: DeviceParametricTarget,
+    pub status: ParametricBindingStatus,
+}
+
 pub(super) struct InspectRequest {
     token: SessionToken,
     target: BoundParametricTarget,
@@ -63,6 +77,8 @@ enum Selection {
     Plain(Option<Box<ParametricPlan>>),
     Bound(Arc<BoundParametric>),
     ClearBound(BoundParametricTarget),
+    Device(DeviceParametricTarget, Box<ParametricPlan>),
+    ClearDevice(DeviceParametricTarget),
 }
 
 #[derive(Default)]
@@ -76,9 +92,37 @@ pub(super) struct State {
     possibly_attached: bool,
     detach_required: bool,
     failed_binding: Option<(SessionToken, BoundParametricTarget)>,
+    device: Option<DeviceParametricTarget>,
+    failed_device: Option<DeviceParametricTarget>,
 }
 
 impl State {
+    fn deferred_device(&self) -> Option<DeviceParametricTarget> {
+        match &self.deferred {
+            Some(Selection::Device(target, _)) => Some(*target),
+            _ => None,
+        }
+    }
+
+    pub(super) fn device_status(&self) -> Option<DeviceParametricView> {
+        use ParametricBindingStatus as Status;
+        let (target, status) = if let Some(target) = self.device {
+            (
+                target,
+                if self.detach_required {
+                    Status::DetachRequired
+                } else {
+                    Status::Configured
+                },
+            )
+        } else if let Some(target) = self.deferred_device() {
+            (target, Status::Deferred)
+        } else {
+            (self.failed_device?, Status::ProcessorFailed)
+        };
+        Some(DeviceParametricView { target, status })
+    }
+
     pub(super) fn bound_status(&self) -> Option<ParametricBindingStatus> {
         use ParametricBindingStatus as Status;
         if self.installing.is_some()
@@ -138,6 +182,25 @@ impl Drop for State {
 }
 
 impl PlaybackController {
+    pub(crate) async fn apply_device_parametric(
+        &self,
+        token: &SessionToken,
+        target: DeviceParametricTarget,
+        plan: ParametricPlan,
+    ) -> Result<ParametricApplication> {
+        self.request_parametric(token, Selection::Device(target, Box::new(plan)))
+            .await
+    }
+
+    pub(crate) async fn clear_device_parametric(
+        &self,
+        token: &SessionToken,
+        target: DeviceParametricTarget,
+    ) -> Result<ParametricApplication> {
+        self.request_parametric(token, Selection::ClearDevice(target))
+            .await
+    }
+
     /// Set one explicitly selected native PEQ component for this playback
     /// session. Nothing is persisted or automatically restored. A deferred
     /// request is superseded by another setting or discarded if playback stops.
@@ -296,6 +359,18 @@ impl Actor {
         if let Selection::ClearBound(target) = selection {
             return self.parametric_clear_bound(target).await;
         }
+        if let Selection::ClearDevice(target) = selection {
+            return self.parametric_clear_device(target).await;
+        }
+        if self.parametric.device.is_some()
+            || self.parametric.deferred_device().is_some()
+            || (matches!(&selection, Selection::Device(..))
+                && (self.parametric.possibly_attached || self.parametric.deferred.is_some()))
+        {
+            return Err(Error::State(
+                "clear the current parametric effect before applying another",
+            ));
+        }
         if let Selection::Bound(binding) = &selection {
             let fence = if self.parametric.bound_use.is_none() {
                 Some(
@@ -319,6 +394,25 @@ impl Actor {
             return Ok(ParametricApplication::DeferredUntilLoaded);
         }
         self.parametric_apply_selection(selection).await
+    }
+
+    async fn parametric_clear_device(
+        &mut self,
+        target: DeviceParametricTarget,
+    ) -> Result<ParametricApplication> {
+        if self.parametric.deferred_device() == Some(target) {
+            self.parametric.deferred = None;
+        } else if self.parametric.device == Some(target) {
+            if self.pending.is_some() {
+                return Err(Error::MutationBusy);
+            }
+            return self.parametric_apply(None).await;
+        } else if self.parametric.failed_device == Some(target) {
+            self.parametric.failed_device = None;
+        } else {
+            return Err(Error::StaleResponse);
+        }
+        Ok(ParametricApplication::Cleared)
     }
 
     async fn parametric_clear_bound(
@@ -366,7 +460,12 @@ impl Actor {
 
     pub(super) async fn parametric_apply_deferred(&mut self) -> Result<()> {
         if let Some(selection) = self.parametric.deferred.take() {
-            self.parametric_apply_selection(selection).await?;
+            let is_device = matches!(selection, Selection::Device(..));
+            if let Err(error) = self.parametric_apply_selection(selection).await
+                && (!is_device || self.parametric.failed_device.is_none())
+            {
+                return Err(error);
+            }
         }
         self.parametric_supervise().await
     }
@@ -377,7 +476,33 @@ impl Actor {
     ) -> Result<ParametricApplication> {
         match selection {
             Selection::Plain(plan) => self.parametric_apply(plan.map(|plan| *plan)).await,
-            Selection::ClearBound(_) => unreachable!("clear never enters the deferred queue"),
+            Selection::ClearBound(_) | Selection::ClearDevice(_) => {
+                unreachable!("clear never enters the deferred queue")
+            }
+            Selection::Device(target, plan) => {
+                self.parametric.failed_device = None;
+                self.parametric.device = Some(target);
+                self.parametric.possibly_attached = true;
+                let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
+                    if engine.apply_parametric_component(*plan)? {
+                        Ok(ParametricApplication::Configured)
+                    } else {
+                        Err(Error::State("parametric audio processing is unavailable"))
+                    }
+                })
+                .await;
+                if result.is_err() {
+                    if let Err(cleanup) = self.parametric_reset().await {
+                        let _ = self.stop(false).await;
+                        return Err(cleanup);
+                    }
+                    // Only a successful, exact detach on the still-current
+                    // owner lets a pending song open without this effect.
+                    self.session.check_generation(&self.token)?;
+                    self.parametric.failed_device = Some(target);
+                }
+                result
+            }
             Selection::Bound(binding) => {
                 let (session, token, checked) =
                     (self.session.clone(), self.token.clone(), binding.clone());
@@ -495,13 +620,16 @@ impl Actor {
 
     pub(super) async fn parametric_retry_reset(&mut self) -> Result<()> {
         if self.parametric.detach_required {
+            let device = self.parametric.device;
             self.parametric_reset().await?;
+            self.parametric.failed_device = device;
         }
         Ok(())
     }
 
     pub(super) fn clear_parametric_failure_notice(&mut self) {
         self.parametric.failed_binding = None;
+        self.parametric.failed_device = None;
     }
 
     pub(super) async fn poll_with_parametric_recovery(&mut self) -> Result<EngineSnapshot> {
@@ -523,11 +651,13 @@ impl Actor {
                     .applied
                     .as_ref()
                     .map(|binding| binding.target());
+                let device = self.parametric.device;
                 // A native callback may have emitted silence. Continue only
                 // when removal was actually acknowledged; the actor's usual
                 // error path stops playback if that cannot be established.
                 self.parametric_reset().await?;
                 self.parametric.failed_binding = target.map(|target| (self.token.clone(), target));
+                self.parametric.failed_device = device;
                 super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await
             }
             result => result,
@@ -563,6 +693,7 @@ impl Actor {
             self.parametric.detach_required = false;
         }
         self.parametric_record_applied_clear();
+        self.parametric.device = None;
         if let Some(binding) = self.parametric.installing.take() {
             self.parametric.record_clear(&self.token, &binding);
         }

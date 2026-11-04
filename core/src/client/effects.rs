@@ -17,7 +17,9 @@ use crate::{
             StandaloneParametric, StandaloneParametricPreflight,
         },
     },
-    playback::controller::{ParametricApplication, ParametricBindingStatus, PlaybackController},
+    playback::controller::{
+        DeviceParametricTarget, ParametricApplication, ParametricBindingStatus, PlaybackController,
+    },
 };
 use std::sync::Arc;
 
@@ -124,6 +126,7 @@ impl MusicClient {
         let library = EffectsLibrary::new(self.session.clone())?;
         let authorization = EffectAuthorizations::new(self.session.clone())?;
         let _lock = authorization.activation_lock_for(&token)?;
+        self.ensure_no_native_device_parametric(epoch).await?;
         let Some(ParametricActivationSource::Preflight(receipt)) = attempt.source.take() else {
             return Err(Error::State("parametric activation attempt unavailable"));
         };
@@ -148,6 +151,7 @@ impl MusicClient {
         let library = self.effect_material_library()?;
         let authorization = EffectAuthorizations::new(self.session.clone())?;
         let _activation = authorization.activation_lock_for(&token)?;
+        self.ensure_no_native_device_parametric(epoch).await?;
         if !matches!(
             attempt.source.take(),
             Some(ParametricActivationSource::Existing)
@@ -392,5 +396,71 @@ impl MusicClient {
         self.effect_material_library()?
             .check_device_material_for(&token, brand, model, RunOptions::default())
             .await
+    }
+
+    /// Install only the freshly resolved, verified standalone PEQ of this model.
+    /// Headphone tuning does not register a catalogue entitlement or select an output.
+    pub async fn apply_native_device_parametric(
+        &self,
+        epoch: &str,
+        brand: EffectId,
+        model: EffectId,
+    ) -> Result<ParametricApplication> {
+        let token = self.player_token(epoch)?;
+        let authorization = EffectAuthorizations::new(self.session.clone())?;
+        let _activation = authorization.activation_lock_for(&token)?;
+        self.ensure_no_native_device_parametric(epoch).await?;
+        if !authorization.native_pending_for(&token)?.is_empty() {
+            return Err(Error::State(
+                "stop the registered parametric effect before applying headphone tuning",
+            ));
+        }
+        let (_, plan) = self
+            .effect_material_library()?
+            .prepare_device_parametric_for(&token, brand, model, RunOptions::default())
+            .await?;
+        let plan = plan.ok_or(Error::State(
+            "headphone tuning is not a verified standalone parametric effect",
+        ))?;
+        self.session.check_generation(&token)?;
+        let result = self
+            .player
+            .controller()
+            .await?
+            .apply_device_parametric(&token, DeviceParametricTarget { brand, model }, plan)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(result)
+    }
+
+    pub async fn clear_native_device_parametric(
+        &self,
+        epoch: &str,
+        brand: EffectId,
+        model: EffectId,
+    ) -> Result<ParametricApplication> {
+        let token = self.player_token(epoch)?;
+        let result = self
+            .player
+            .controller()
+            .await?
+            .clear_device_parametric(&token, DeviceParametricTarget { brand, model })
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(result)
+    }
+
+    pub async fn ensure_no_native_device_parametric(&self, epoch: &str) -> Result<()> {
+        if self
+            .player_snapshot(epoch)
+            .await?
+            .device_parametric
+            .is_some_and(|view| !view.status.is_detached())
+        {
+            return Err(Error::State(
+                "clear headphone tuning before applying another parametric effect",
+            ));
+        }
+        Ok(())
     }
 }

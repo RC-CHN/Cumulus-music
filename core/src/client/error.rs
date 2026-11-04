@@ -18,6 +18,27 @@ impl From<Error> for ClientError {
         } else {
             match error.root() {
                 Error::State(
+                    "stop the registered parametric effect before applying headphone tuning",
+                ) => (
+                    "headphone_registration_active",
+                    "请先在本机音效登记中停止当前参数均衡，再启用耳机调音",
+                    false,
+                ),
+                Error::State(
+                    "clear headphone tuning before applying another parametric effect",
+                ) => (
+                    "headphone_tuning_active",
+                    "请先在耳机音效中关闭当前调音，再启用其他参数均衡",
+                    false,
+                ),
+                Error::State("headphone tuning is not a verified standalone parametric effect") => {
+                    (
+                        "headphone_material_unavailable",
+                        "此型号的调音材料当前无法应用，请重新检查",
+                        true,
+                    )
+                }
+                Error::State(
                     "no verified cold offline profile"
                     | "cold offline mode requires the active native profile",
                 ) => (

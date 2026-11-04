@@ -21,6 +21,8 @@ pub struct PlayerView {
     pub equalizer: EqualizerView,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bound_parametric: Option<crate::playback::controller::ParametricBindingStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_parametric: Option<crate::playback::controller::DeviceParametricView>,
     pub loudness: LoudnessView,
     pub epoch: String,
     pub revision: String,

@@ -31,6 +31,18 @@ impl EffectsLibrary {
         model: EffectId,
         options: RunOptions,
     ) -> Result<DeviceMaterialCheck> {
+        self.prepare_device_parametric_for(token, brand, model, options)
+            .await
+            .map(|(status, _)| status)
+    }
+
+    pub(crate) async fn prepare_device_parametric_for(
+        &self,
+        token: &SessionToken,
+        brand: EffectId,
+        model: EffectId,
+        options: RunOptions,
+    ) -> Result<(DeviceMaterialCheck, Option<ParametricPlan>)> {
         if options.byte_budget == Some(0) {
             return Err(Error::InvalidInput("material byte budget must be positive"));
         }
@@ -58,7 +70,7 @@ impl EffectsLibrary {
         }
         if row["soundMd5"].is_null() || row["soundMd5"].as_str() == Some("") {
             self.session.check_generation(token)?;
-            return Ok(DeviceMaterialCheck::NoMaterial);
+            return Ok((DeviceMaterialCheck::NoMaterial, None));
         }
         let descriptor = MaterialDescriptor::from_fields(
             &row["deviceSoundUrl"],
@@ -72,18 +84,21 @@ impl EffectsLibrary {
             .acquire_descriptor_locked(token, &owner, &handle, descriptor, options)
             .await?;
         let Some(material) = material else {
-            return Ok(DeviceMaterialCheck::Pending);
+            return Ok((DeviceMaterialCheck::Pending, None));
         };
         let routing = route_sections(&material.parameters)?;
-        let check = match routing.sections.as_slice() {
-            [entry]
-                if entry.component == Component::Peq
-                    && ParametricPlan::from_calls(&peq_calls(entry.section)?)?.enabled() =>
-            {
-                DeviceMaterialCheck::StandalonePeq
+        let prepared = match routing.sections.as_slice() {
+            [entry] if entry.component == Component::Peq => {
+                let plan = ParametricPlan::from_calls(&peq_calls(entry.section)?)?;
+                plan.enabled().then_some(plan)
             }
-            _ => DeviceMaterialCheck::UnsupportedGraph,
+            _ => None,
         };
-        self.session.with_token(token, |_| Ok(check))
+        let status = if prepared.is_some() {
+            DeviceMaterialCheck::StandalonePeq
+        } else {
+            DeviceMaterialCheck::UnsupportedGraph
+        };
+        self.session.with_token(token, |_| Ok((status, prepared)))
     }
 }

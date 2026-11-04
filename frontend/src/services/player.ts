@@ -50,6 +50,12 @@ export type BoundParametricStatus =
   | 'detach_required'
   | 'processor_failed';
 
+export interface DeviceParametricView {
+  brand: number;
+  model: number;
+  status: BoundParametricStatus;
+}
+
 export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   origin?: PlayerOrigin | null;
@@ -59,6 +65,7 @@ export interface PlayerView {
   intelligenceOperation?: string | null;
   equalizer: EqualizerView;
   boundParametric?: BoundParametricStatus;
+  deviceParametric?: DeviceParametricView;
   loudness: LoudnessView;
   epoch: string;
   revision: string;

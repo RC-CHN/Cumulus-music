@@ -358,6 +358,7 @@ pub async fn effect_peq_activate<R: tauri::Runtime>(
 ) -> std::result::Result<View, ClientError> {
     authorize(&window, &client, &epoch)?;
     let mut state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
+    client.ensure_no_native_device_parametric(&epoch).await?;
     state.select_epoch(&epoch);
     if resume_existing.unwrap_or(false) {
         return resume_registered(&host, &client, &mut state, &epoch, id, &attempt)
@@ -407,6 +408,41 @@ pub async fn effect_peq_activate<R: tauri::Runtime>(
         .view(&client, &epoch, id, true)
         .await
         .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn effect_device_apply<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    host: tauri::State<'_, Host>,
+    epoch: String,
+    brand: EffectId,
+    model: EffectId,
+) -> std::result::Result<(), ClientError> {
+    authorize(&window, &client, &epoch)?;
+    let _state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
+    host.check_adapter()?;
+    client
+        .apply_native_device_parametric(&epoch, brand, model)
+        .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn effect_device_clear<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    host: tauri::State<'_, Host>,
+    epoch: String,
+    brand: EffectId,
+    model: EffectId,
+) -> std::result::Result<(), ClientError> {
+    authorize(&window, &client, &epoch)?;
+    let _state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
+    client
+        .clear_native_device_parametric(&epoch, brand, model)
+        .await?;
+    Ok(())
 }
 
 async fn resume_registered(
