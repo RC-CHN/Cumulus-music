@@ -40,7 +40,7 @@ onUnmounted(() => {
         ><button
           ref="refresh"
           class="text-button"
-          aria-label="重新读取关闭设置"
+          aria-label="重新读取窗口设置"
           :disabled="model.busy.value || model.loading.value"
           @click="focus.run($event, model.read)"
         >
@@ -85,6 +85,36 @@ onUnmounted(() => {
         </div>
       </fieldset>
       <p class="settings-note">保存在这台设备，立即生效。托盘不可用时会保留窗口并提示选择。</p>
+      <fieldset
+        v-if="model.view.value && !model.view.value.damaged"
+        class="settings-options"
+        :disabled="!model.canChange.value"
+      >
+        <legend>自动启动时</legend>
+        <div class="settings-choices">
+          <label>
+            <input
+              type="radio"
+              name="settings-startup-window-mode"
+              value="minisize"
+              :checked="model.view.value.settings.startupMode === 'minisize'"
+              @click.prevent="change('startupMode', 'minisize', $event)"
+            /><span>最小化显示</span>
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="settings-startup-window-mode"
+              value="front"
+              :checked="model.view.value.settings.startupMode === 'front'"
+              @click.prevent="change('startupMode', 'front', $event)"
+            /><span>前台显示</span>
+          </label>
+        </div>
+      </fieldset>
+      <p class="settings-note">
+        仅对以 --autostart 启动时生效；手动打开会正常显示。本设置不会开启开机启动。
+      </p>
       <p class="settings-note" role="status">
         {{ native.view.value?.trayAvailable ? '系统托盘可用' : '系统托盘暂不可用' }}
       </p>
@@ -93,13 +123,13 @@ onUnmounted(() => {
       </p>
       <p v-else-if="model.saved.value" class="settings-note" role="status">已保存。</p>
       <div v-if="model.view.value?.damaged" class="settings-recovery" role="alert">
-        <p>本机关闭设置已损坏，暂不自动隐藏窗口。</p>
+        <p>本机窗口设置已损坏，暂不自动隐藏窗口。</p>
         <button
           class="secondary"
           :disabled="model.busy.value || model.loading.value"
           @click="focus.run($event, model.repair)"
         >
-          恢复默认关闭设置
+          恢复默认窗口设置
         </button>
       </div>
       <p v-if="model.error.value" class="catalog-error" role="alert">{{ model.error.value }}</p>

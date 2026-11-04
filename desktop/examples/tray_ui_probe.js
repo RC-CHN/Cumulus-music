@@ -5,7 +5,7 @@
   const assert=(ok,message)=>{if(!ok)throw Error(message);};
   const wait=async(fn,label)=>{for(let i=0;i<200;i++){if(await fn())return;await sleep(100);}throw Error(label);};
   const click=n=>{assert(n&&!n.disabled,'unavailable control');n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});n.click();};
-  const section=()=>one('.window-behavior'),refresh=()=>one('[aria-label="重新读取关闭设置"]'),dialog=()=>one('.window-close-dialog[open]');
+  const section=()=>one('.window-behavior'),refresh=()=>one('[aria-label="重新读取窗口设置"]'),dialog=()=>one('.window-close-dialog[open]');
   const ready=()=>section()?.getAttribute('aria-busy')==='false';
   const state=()=>invoke('window_lifecycle');
   let count=0,likeEvents=0;
@@ -66,9 +66,9 @@
     await emit('host_restart');await wait(async()=> (await state()).trayAvailable,'watcher restart');await capture('host_restarted');
     await emit('corrupt');await read();assert(section().querySelector('.settings-recovery'),'damage hidden');await capture('damaged_settings');
     await close();assert(dialog().querySelector('[name="close-remember"]').disabled,'damage allows remember');await capture('damaged_prompt');await cancel();
-    click(all('.window-behavior button').find(n=>n.textContent.trim()==='恢复默认关闭设置'));await wait(()=>ready()&&one('[name="settings-close-remember"]'),'repair');assert(!one('[name="settings-close-remember"]').checked,'repair did not restore reminder');await capture('repaired');
+    click(all('.window-behavior button').find(n=>n.textContent.trim()==='恢复默认窗口设置'));await wait(()=>ready()&&one('[name="settings-close-remember"]'),'repair');assert(!one('[name="settings-close-remember"]').checked,'repair did not restore reminder');await capture('repaired');
     await emit('raw-damage');await read();assert(section().querySelector('.settings-recovery')&&!one('[name="settings-close-remember"]'),'invalid JSON exposed as usable close policy');await capture('raw_json_damaged');
-    click(all('.window-behavior button').find(n=>n.textContent.trim()==='恢复默认关闭设置'));await wait(()=>ready()&&one('[name="settings-close-remember"]'),'raw JSON repair');assert(!one('[name="settings-close-remember"]').checked,'raw repair did not restore reminder');assert(document.activeElement===refresh(),'raw repair lost focus');await capture('raw_json_repaired');
+    click(all('.window-behavior button').find(n=>n.textContent.trim()==='恢复默认窗口设置'));await wait(()=>ready()&&one('[name="settings-close-remember"]'),'raw JSON repair');assert(!one('[name="settings-close-remember"]').checked,'raw repair did not restore reminder');assert(document.activeElement===refresh(),'raw repair lost focus');await capture('raw_json_repaired');
     await emit('reject-write');click(one('[name="settings-close-behavior"][value="exit"]'));await wait(()=>ready()&&section().querySelector('.catalog-error'),'write failure');assert(one('[name="settings-close-behavior"][value="tray"]').checked,'failed write changed selection');await capture('save_failed');
     await emit('allow-write');await read();await capture('save_recovered');
     await close();click(dialog().querySelector('[value="exit"]'));click(dialog().querySelector('[name="close-remember"]'));await capture('exit_prompt');

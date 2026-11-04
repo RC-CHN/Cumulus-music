@@ -30,6 +30,7 @@ fn device_close_settings_reject_old_accounts_and_stale_windows_without_initializ
     let settings = WindowSettings {
         close_behavior: CloseBehavior::Exit,
         remember_choice: true,
+        ..Default::default()
     };
     let saved = client
         .window_preferences_command(

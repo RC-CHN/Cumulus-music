@@ -26,6 +26,7 @@ fn close_policy_persists_on_device_and_competing_windows_do_not_overwrite_it() {
     let policy = WindowSettings {
         close_behavior: CloseBehavior::Exit,
         remember_choice: true,
+        startup_mode: StartupMode::Front,
     };
     let saved = WindowPreferences::replace(&store, 0, policy).unwrap();
     drop(store);
@@ -92,10 +93,46 @@ fn unknown_fields_and_failed_storage_do_not_become_remembered_exit() {
             saved.revision,
             WindowSettings {
                 close_behavior: CloseBehavior::Exit,
-                remember_choice: true
+                remember_choice: true,
+                ..Default::default()
             }
         )
         .is_err()
     );
     assert_eq!(WindowPreferences::read(&store).unwrap(), saved);
+}
+
+#[test]
+fn existing_close_rows_keep_their_policy_and_get_the_official_startup_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = StateStore::open(dir.path()).unwrap();
+    store
+        .put(
+            "local-device",
+            "window-behavior-preferences-v1",
+            "current",
+            &json!({"revision":7,"settings":{"closeBehavior":"exit","rememberChoice":true}}),
+        )
+        .unwrap();
+    let old = WindowPreferences::read(&store).unwrap();
+    assert_eq!(old.settings.startup_mode, StartupMode::Minisize);
+    assert_eq!(old.settings.plan(false), ClosePlan::Exit);
+    assert_eq!(old.revision, 7);
+    let changed = WindowPreferences::replace(
+        &store,
+        old.revision,
+        WindowSettings {
+            startup_mode: StartupMode::Front,
+            ..old.settings
+        },
+    )
+    .unwrap();
+    assert_eq!(WindowPreferences::read(&store).unwrap(), changed);
+    assert_eq!(changed.settings.plan(false), ClosePlan::Exit);
+    assert!(
+        serde_json::from_value::<WindowSettings>(json!({
+            "closeBehavior":"exit","rememberChoice":true,"startupMode":"unknown"
+        }))
+        .is_err()
+    );
 }

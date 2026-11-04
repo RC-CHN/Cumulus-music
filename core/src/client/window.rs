@@ -2,7 +2,7 @@ use super::MusicClient;
 use super::dto::AccountData;
 use crate::{
     Error, Result,
-    preferences::window::{WindowPreferences, WindowSettings},
+    preferences::window::{StartupMode, WindowPreferences, WindowSettings},
 };
 use serde::{Deserialize, Serialize};
 
@@ -31,6 +31,13 @@ pub enum WindowPreferencesCommand {
     Repair,
 }
 impl MusicClient {
+    /// Read the device-local launch preference before any account is restored.
+    pub fn window_startup_mode(&self) -> Result<StartupMode> {
+        Ok(WindowPreferences::read(&self.registry.store())?
+            .settings
+            .startup_mode)
+    }
+
     pub fn window_preferences(&self, epoch: &str) -> Result<AccountData<WindowPreferencesView>> {
         let token = self.player_token(epoch)?;
         self.session.with_local_owner(&token, |_| {

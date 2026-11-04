@@ -1,4 +1,4 @@
-//! Device-local official close behavior. Platform tray availability is supplied
+//! Device-local official startup and close behavior. Platform tray availability is supplied
 //! by the native host; unavailable or damaged state must never hide the window.
 use crate::{Error, Result, storage::StateStore};
 use serde::{Deserialize, Serialize};
@@ -12,10 +12,19 @@ pub enum CloseBehavior {
     Exit,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupMode {
+    #[default]
+    Minisize,
+    Front,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowSettings {
     pub close_behavior: CloseBehavior,
     pub remember_choice: bool,
+    #[serde(default)]
+    pub startup_mode: StartupMode,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ClosePlan {

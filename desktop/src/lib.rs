@@ -493,8 +493,11 @@ pub fn run() {
     }
     // SAFETY: desktop entry point, before the GUI runtime and worker creation.
     unsafe { prepare_graphics() };
+    let launch = lifecycle::LaunchKind::from_args(std::env::args_os().skip(1));
+    let mut context = tauri::generate_context!();
+    launch.prepare(&mut context);
     configure(tauri::Builder::default())
-        .setup(|app| {
+        .setup(move |app| {
             let root = match std::env::var_os("CUMULUS_DATA_DIR") {
                 Some(value) => std::path::PathBuf::from(value),
                 None => app.path().app_data_dir()?,
@@ -523,13 +526,14 @@ pub fn run() {
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
             lifecycle::install(app.handle())?;
+            launch.finish(app.handle());
             system_media::install(app.handle());
             shortcuts::install(app.handle());
             desktop_lyrics::start(app.handle());
             renewal::start(app.handle());
             Ok(())
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("could not start Cumulus");
 }
 

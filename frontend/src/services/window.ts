@@ -1,8 +1,10 @@
 import type { AccountData } from './contracts';
 export type CloseBehavior = 'tray' | 'exit';
+export type StartupWindowMode = 'minisize' | 'front';
 export interface WindowSettings {
   closeBehavior: CloseBehavior;
   rememberChoice: boolean;
+  startupMode: StartupWindowMode;
 }
 export interface WindowPreferencesView {
   revision: string | null;

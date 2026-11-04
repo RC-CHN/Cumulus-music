@@ -4,11 +4,13 @@ mod actions;
 mod availability;
 mod likes;
 mod media;
+mod startup;
 use cumulus_core::{
     client::{MusicClient, dto::WindowPreferencesView},
     preferences::window::CloseBehavior,
 };
 use serde::{Deserialize, Serialize};
+pub(crate) use startup::LaunchKind;
 use std::{
     sync::Mutex,
     time::{Duration, Instant},
@@ -58,6 +60,7 @@ struct Inner {
     view: LifecycleView,
     checked: Option<Instant>,
     exiting: bool,
+    startup_pending: bool,
 }
 impl Inner {
     fn available(&self) -> bool {
@@ -127,6 +130,12 @@ fn availability<R: tauri::Runtime>(app: &tauri::AppHandle<R>, available: bool) {
     let changed = state.available() != available;
     state.checked = Some(Instant::now());
     let restore = !available && state.view.hidden;
+    let startup_hidden = available && std::mem::take(&mut state.startup_pending);
+    if startup_hidden {
+        // The automatic launch window was created hidden, and its native
+        // tray is now confirmed. Explicit Show cannot be overwritten.
+        state.view.hidden = true;
+    }
     state.view.tray_available = available;
     if restore {
         state.view.hidden = false;
@@ -138,7 +147,7 @@ fn availability<R: tauri::Runtime>(app: &tauri::AppHandle<R>, available: bool) {
     if restore {
         reveal(app);
     }
-    if changed || restore {
+    if changed || restore || startup_hidden {
         change(app, |_| {});
     }
 }
@@ -154,6 +163,7 @@ fn reveal<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 pub fn show<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     change(app, |state| {
+        state.startup_pending = false;
         if !state.exiting {
             state.next();
             state.view.busy = false;
@@ -304,7 +314,10 @@ fn build<R: tauri::Runtime>(
         availability(&observed, ok)
     });
     #[cfg(target_os = "windows")]
-    let monitor = availability::monitor(tray, move |ok| availability(&observed, ok));
+    let monitor = availability::monitor(tray, move |ok| {
+        let callback = observed.clone();
+        let _ = observed.run_on_main_thread(move || availability(&callback, ok));
+    });
     #[cfg(any(target_os = "linux", target_os = "windows"))]
     if let Ok(mut guard) = app.state::<Host>().monitor.lock() {
         *guard = Some(monitor);

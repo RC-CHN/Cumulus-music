@@ -26,7 +26,7 @@ export function useWindowPreferences(core: WindowPreferencesClient = useCore()) 
       !error.value,
   );
   function accept(result: AccountData<WindowPreferencesView>, owner: string) {
-    if (result.epoch !== owner) throw { code: 'stale', message: '账号已变化，请重新读取关闭设置' };
+    if (result.epoch !== owner) throw { code: 'stale', message: '账号已变化，请重新读取窗口设置' };
     view.value = result.value;
   }
   async function read() {

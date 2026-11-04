@@ -31,7 +31,9 @@
 
 核心存储与接口
 owner=local-device，kind=window-behavior-preferences-v1，current 与 revision。
-WindowSettings={closeBehavior:tray|exit,rememberChoice:bool}；默认 tray/false。
+WindowSettings={closeBehavior:tray|exit,rememberChoice:bool,startupMode:minisize|front}；
+默认 tray/false/minisize。自动启动方式、旧记录兼容及回退详见
+docs/window-startup-mode-contracts.txt；关闭提示记住选择时保留启动方式。
 更改采用 expected_revision CAS。损坏时展示默认但 damaged=true，不能隐式覆盖；
 显式 Repair 备份到 window-behavior-recovery-v1 并增加单调修订。保存记录丢失但
 计数存在也按损坏处理；计数损坏/溢出拒绝写入，旧修订不能在修复后重新生效。

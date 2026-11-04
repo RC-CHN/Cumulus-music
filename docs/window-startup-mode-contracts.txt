@@ -1,0 +1,67 @@
+自动启动窗口方式（Windows PC 3.1.42.205594 官方恢复）
+
+官方证据，均在 references/netease-3.1.42.205594-analysis/recovered-js/modules：
+- hybrid_64.chunk.1482700000000.js/3097.js:387–405,437–505：常规「开机自动运行」
+  下有「最小化显示」和「前台显示」，值为 minisize/front；系统自动运行关闭时
+  两项禁用。默认播放器是独立控件（505 行附近），与此选择无关。
+- hybrid_183.chunk.1482700000000.js/2989.js:52–58,92–145（产品恢复卡
+  references/recovered-client/docs/product/models/page_settingNormal.txt）：
+  向原生读取自动运行及默认播放器，再读 autoRunShowType；改变展示类型仅更新
+  模型及本地设置，无音乐服务 HTTP 接口。hybrid_app/16.js:363 持久键默认 minisize。
+- hybrid_app/4.js:14046,14182–14199,14813–14822：AppStartType.autorun 为
+  "autorun"；getAppStartType 调用原生 app.getAppStartType，注册操作独立调用
+  app.setAutoRun("cloudmusic","autorun") / app.cancelAutoRun("cloudmusic")。
+- hybrid_app/1384.js:2953–2984：仅原生启动类型为 autorun 且配置不是 front，
+  Windows 的 isWindowHide 为真；macOS 单独标记 isMinimizeWindow。
+- hybrid_app/632.js:4520–4554：窗口尺寸/位置准备后，Windows 对同一条件调用
+  WindowHelper.hide，普通启动和 front 调用 bringWindowToTop。这里的 Windows
+  「最小化」实际隐藏到托盘，不能用缩小窗口或任务栏最小化替代。
+没有使用 YesPlayMusic。
+
+Cumulus 映射
+- Windows/Linux 一律仅认明确且单独的启动参数 --autostart；普通打开以及带
+  其他参数的进程仍以普通前台窗口启动。命令参数是社区客户端自己的适配，
+  不是对原版启动命令行语法的推断。现有安装包不注册开机启动，不切换默认
+  播放器，不创建 OS 启动项；需要时由用户配置的系统启动器传入这个参数。
+  因没有系统注册开关，「窗口 → 自动启动时」直接保存两个选择并说明生效范围。
+- Windows/Linux 共用核心 SQLite 的设备级设置和修订 CAS。旧版记录缺少该字段
+  时默认 minisize，同时保留原关闭行为和提醒；已记住的关闭对话操作仅改关闭
+  字段。读取失败、未知模式或损坏不会让窗口留在托盘；维修必须显式确认。
+- 仅标记为自动的启动在 Tauri 主窗口建立前设置 visible=false。安装同一套原生
+  生命周期之后，front 或无可读设置立即显示，minisize 最多等待 3 秒确认当前
+  进程的托盘可用。确认后保持未映射；超时显示主窗口，迟到的托盘注册不会
+  再把它隐藏。自动隐藏后托盘掉线沿用现有恢复；原生「显示 Cumulus」可随时
+  恢复窗口并取消尚未决定的自动隐藏，聚焦受窗口管理器规则约束。
+- 图形启动保护仍先独立运行其有界预检，预检窗口与应用主窗口不同。没有新增
+  单实例转发，手动启动另一个进程不承诺复用已经在托盘的进程；托盘显示动作
+  恢复的是原进程。
+
+验证入口
+scripts/ci/tray_protocol_smoke.py --startup 使用真实 cumulus 二进制和生产
+WebView。仅在私有 X11/Openbox、私有 D-Bus/AT-SPI、仅 loopback 的独立 Linux
+网络命名空间及全新数据目录运行。--outer-network 接收外层 /proc/self/ns/net
+标识，脚本拒绝相同命名空间或额外网卡。检查原生窗口映射和活跃焦点，真实
+键盘修改设置并只读核对 SQLite；通过私有合成 StatusNotifier host 观察真正的
+libappindicator 菜单和显隐，不把它当作物理面板验证。
+在仓库根目录以非 root 用户运行（Xvfb、Openbox、X11/XTest、AT-SPI、Gio 与
+libayatana-appindicator 已安装，CUMULUS_BIN 为已构建的绝对路径）：
+
+  outer_network=$(readlink /proc/self/ns/net)
+  proof_home=$(mktemp -d)
+  sudo unshare --net --fork --kill-child sh -ec '
+    test "$(readlink /proc/self/ns/net)" != "$1"
+    target_user=$2
+    shift 2
+    ip link set lo up
+    exec runuser -u "$target_user" -- "$@"
+  ' sh "$outer_network" "$(id -un)" env -i HOME="$proof_home" PATH=/usr/bin:/usr/sbin \
+    LC_ALL=zh_CN.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' \
+    dbus-run-session -- /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --startup \
+    --screenshots --outer-network "$outer_network" --binary "$CUMULUS_BIN" --root .build/startup-proof
+
+本地 Linux X11 生产二进制已通过六次连续独立进程：手动打开并保存前台方式、
+自动前台打开并保存最小化、自动隐藏后原生菜单恢复及首屏绘制、托盘丢失恢复、
+没有可用托盘时限时回退、保存最小化后再次手动打开。既有关闭/托盘 WebView
+回归另有 17 个状态通过。本地回归不替代跨平台 CI。
+Windows 的编译分支复用现有 Shell_NotifyIconGetRect 托盘监测；实际 Windows
+交互桌面、Explorer 及 Linux Wayland 实机本批未测。不声称 OS 启动注册。

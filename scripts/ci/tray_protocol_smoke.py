@@ -1,7 +1,8 @@
 """Observe a real Tauri/libappindicator tray over an isolated D-Bus watcher.
 
-Default mode validates only native protocol callbacks; --lifecycle validates
-the production close prompt and recovery. Neither proves a physical panel
+Default mode validates native protocol callbacks; --lifecycle validates the
+production close prompt and recovery; --startup drives the production app
+in a private X11/D-Bus/network namespace. Neither proves a physical panel
 icon, native media-key controls or the Windows shell.
 """
 import argparse
@@ -33,9 +34,15 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--root', required=True, type=Path)
-    parser.add_argument('--lifecycle', action='store_true', help='drive production window lifecycle and UI')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--lifecycle', action='store_true', help='drive production close lifecycle and UI')
+    modes.add_argument('--startup', action='store_true', help='drive the production binary with private X11 and AT-SPI')
+    parser.add_argument('--outer-network', help='caller network namespace, required for --startup')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
+    if args.startup:
+        from startup_window_smoke import startup, validate_environment
+        validate_environment(args)
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     # The caller must use a private dbus-run-session; never replace a real tray.
@@ -96,6 +103,26 @@ def main():
         folder = root / name
         folder.mkdir(mode=0o700)
         env[key] = str(folder)
+    def call(item, path, interface, method, parameters):
+        return connection.call_sync(item['service'], path, interface, method, parameters, None, Gio.DBusCallFlags.NONE, 3000, None).unpack()
+    def menu(item):
+        props = call(item, item['path'], 'org.freedesktop.DBus.Properties', 'GetAll', GLib.Variant('(s)', ('org.kde.StatusNotifierItem',)))[0]
+        menu_path = props['Menu']
+        layout = call(item, menu_path, 'com.canonical.dbusmenu', 'GetLayout', GLib.Variant('(iias)', (0, -1, ['label', 'enabled', 'visible'])))[1]
+        labels = {}
+        def visit(node):
+            item_id, properties, children = node
+            if 'label' in properties: labels[properties['label'].replace('_', '')] = item_id
+            for child in children: visit(child.unpack() if isinstance(child, GLib.Variant) else child)
+        visit(layout)
+        return menu_path, labels, props
+    if args.startup:
+        try:
+            startup(args, root, env, items, state, wait, call, menu)
+        finally:
+            Gio.bus_unown_name(owner)
+            connection.unregister_object(registration)
+        return
     process = None
     try:
         with (root / 'host.log').open('x') as log:
@@ -108,19 +135,6 @@ def main():
             state['host'] = True
             connection.emit_signal(None, WATCHER_PATH, WATCHER, 'StatusNotifierHostRegistered', None)
             wait(lambda: items, 'native tray item registration')
-            def call(item, path, interface, method, parameters):
-                return connection.call_sync(item['service'], path, interface, method, parameters, None, Gio.DBusCallFlags.NONE, 3000, None).unpack()
-            def menu(item):
-                props = call(item, item['path'], 'org.freedesktop.DBus.Properties', 'GetAll', GLib.Variant('(s)', ('org.kde.StatusNotifierItem',)))[0]
-                menu_path = props['Menu']
-                layout = call(item, menu_path, 'com.canonical.dbusmenu', 'GetLayout', GLib.Variant('(iias)', (0, -1, ['label', 'enabled', 'visible'])))[1]
-                labels = {}
-                def visit(node):
-                    item_id, properties, children = node
-                    if 'label' in properties: labels[properties['label'].replace('_', '')] = item_id
-                    for child in children: visit(child.unpack() if isinstance(child, GLib.Variant) else child)
-                visit(layout)
-                return menu_path, labels, props
             item = items[-1]
             menu_path, labels, properties = menu(item)
             def activate(label, event):
@@ -202,7 +216,7 @@ def main():
                 assert not args.screenshots or len(seen) == 17
                 with sqlite3.connect((root / 'run/state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
                     saved = json.loads(db.execute("SELECT value FROM state WHERE owner='local-device' AND kind='window-behavior-preferences-v1' AND key='current'").fetchone()[0])
-                    assert saved['settings'] == {'closeBehavior': 'exit', 'rememberChoice': True}
+                    assert saved['settings'] == {'closeBehavior': 'exit', 'rememberChoice': True, 'startupMode': 'minisize'}
                     backups = [json.loads(r[0]) for r in db.execute("SELECT value FROM state WHERE kind='window-behavior-recovery-v1'")]
                     assert len(backups) == 2 and {'current_raw': '{broken'} in backups
                     assert db.execute("SELECT count(*) FROM sqlite_master WHERE type='trigger' AND name='reject_window'").fetchone()[0] == 0

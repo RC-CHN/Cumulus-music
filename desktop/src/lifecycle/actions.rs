@@ -134,6 +134,7 @@ pub(super) async fn command<R: tauri::Runtime>(
                             settings: WindowSettings {
                                 close_behavior: behavior,
                                 remember_choice: true,
+                                ..prompt.preferences.settings
                             },
                         },
                     )
