@@ -548,6 +548,7 @@ jobs:
           python scripts/ci/playlist_cover_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playlist-cover-preview-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_audio_toplist_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-audio-toplist-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/vertical_zone_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vertical-zone-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_smoke.py --exact-fallback --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-exact-fallback-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_smoke.py --suggestion-matches --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-suggestion-matches-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_smoke.py --history-last --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-history-last-windows --runtime .build/package-stage/windows-x64/native
@@ -898,6 +899,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playlist_cover_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playlist-cover-preview-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_audio_toplist_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-audio-toplist-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vertical_zone_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vertical-zone-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --exact-fallback --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-exact-fallback-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --suggestion-matches --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-suggestion-matches-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_smoke.py --history-last --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-history-last-linux
