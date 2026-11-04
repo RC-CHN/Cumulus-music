@@ -1,0 +1,60 @@
+官方 PC 3.1.42.205594 x64：App.getABTestKeys
+
+证据为本地 references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll，
+SHA-256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493；
+PE image base 0x180000000。下文代码地址均为 RVA。可离线用 Python 标准库读取原始
+DLL，脚本不加载或执行 DLL，且拒绝其他版本：
+
+  python3 scripts/research/extract_native_ab_keys.py \
+    references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll
+
+ED1CFC 把处理函数 EC3E00 放入 r8，ED1D03 把 getABTestKeys
+（RVA 1BF0590，文件偏移 1BEF790）放入 rdx，ED1D11 调用 ED2020 注册。
+EC3E9C 经 DC0CD0 取单例，EC3EA8 调 DC0C80。后者不使用该对象的字段：
+DC0CA4 把全局向量 2213D68 当作源，DC0CB2 调 0A56D0 复制。
+EC3F27 取复制后的向量元素，EC3F79 按递增索引写桥接数组，EC3FE3 写返回槽 0；
+没有排序、过滤、去重或服务查询。
+
+文件偏移 19F1650 的 CRT 初始化指针指向 01D990。01D9BD–01DBAB 连续调用
+070840，从 6 个直接 ASCII 字符串地址和 19 个已初始化的指针单元构造 25 个
+0x20 字节的字符串对象。01DBDC 把整个连续区间交给 10E8B0；01DC06–01DC0D
+调用 243610 构造全局向量，243649–24364F 按 (end - begin) / 0x20 得到数量；
+01DC1A 的临时对象析构计数也为 0x19。整个 .text 的 RIP 引用核对表明，
+全局向量 2213D68–2213D7F 的直接引用只有构造 01DC06、复制源 DC0CA4 和析构
+19EB2FF；没有对该向量的绝对指针引用。相邻的 2213D60 不属于该向量。
+
+精确顺序（左列为取字符串参数的指令，第二列为来源 RVA；星号表示再解引用一次，
+第三列为 ASCII 字符串 RVA）：
+
+01D9BD  219D220*  1BC4650  PH-PC-DAWNLOG-NEW
+01D9D1  1BC2AC8   1BC2AC8  PC-blur-enable
+01D9E5  219D2E0*  1DA56C8  PH-PC-P2P-Enable
+01D9F9  1BC5A10   1BC5A10  PC-GPU-enable
+01DA0D  1BC5A20   1BC5A20  PC-httpdns-resource-enable
+01DA21  1BC5A40   1BC5A40  PC-httpdns-enable
+01DA35  1BC5A58   1BC5A58  PC-httpdns-api-enable
+01DA49  1BC5A70   1BC5A70  PC-cronet-enable-ver
+01DA5D  219D298*  1BC46A0  PH-PC-SYSTEM_LOCK_RECOVER_NEW
+01DA71  219D2D8*  1DA56A8  PH-PC-Xunlei-SDK-Strategy
+01DA85  219D228*  1BC46C0  PH-PC-API-HORSERACE
+01DA99  219D2A0*  1BC46D8  PH-PC-HIDE_ZERO_SIZE
+01DAAD  219D230*  1BC46F0  PH-PC-REQUEST_RANGE_ALIGN
+01DAC1  219D238*  1BC4710  PH-PC-newNetLibV2
+01DAD5  219D2B0*  1BC4740  PH-PC-newAPMLIBV2
+01DAE9  219D240*  1BC4758  PH-PC-TASKBAR_ICON_WINDOW
+01DAFD  219D2B8*  1BC4778  PH-PC-IPV6Enable
+01DB11  219D250*  1BC4790  PH-PC-PERF_MONITOR_ENABLE
+01DB25  219D258*  1BC47B0  PH-PC-STARTUP_TRACE
+01DB39  219D248*  1BC4810  PH-PC-SAFEMODE-CLEAN-V3
+01DB4D  219D260*  1BC4828  PH-PC-BOOTMONITOR
+01DB61  219D268*  1BC4840  PH-PC-AsyncDNS
+01DB75  219D270*  1BC4850  PH-PC-HTTPDNS_IPRACE
+01DB89  219D278*  1BC4868  PH-PC-networkComponentV3
+01DB9D  219D280*  1BC4888  PH-PC-aegisEncryptV2
+
+同版本 recovered-js/modules/hybrid_app.chunk.1482700000000.js：
+M4:14508–14516 零参数调用 app.getABTestKeys；M34:45–52 缓存首次成功结果，
+桥接异常返回 []；M147:2890–2933 将启用的 JS 实验名按 Object.entries 次序放在
+前面，再追加这份原生列表，按两组名称分发服务端结果。动态实验分组由
+/api/rtrs/abt/front/expinfo/list 返回，原生键名不能推出入组状态、账号权限或
+生产开关。以上仅核对该 x64 版本的静态数据流，未运行 Windows 客户端或请求服务。
