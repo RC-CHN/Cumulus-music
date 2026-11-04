@@ -1193,6 +1193,112 @@
       await emit('complete',{ok:true,podcastSearchFollowVerified:true,snapshots,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusSearchVoiceNextProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
+      await fixture('voice_next');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const snapshot=()=>invoke('player_snapshot',{epoch});
+      const queue=()=>invoke('player_queue',{epoch});
+      const ids=value=>value.tracks.map(row=>row.track.voiceId??row.track.id);
+      const menuItem=name=>one(`.action-menu [data-menu-key="${name}"]`);
+      async function until(read,predicate,label){
+        for(let i=0;i<180;i++){
+          const value=await read();
+          if(predicate(value))return value;
+          await sleep(70);
+        }
+        throw Error(label);
+      }
+      async function openMenu(id,section=''){
+        const row=one(`${section} [data-result-key="voice:${id}"]`.trim());
+        const trigger=row?.querySelector('.menu-trigger');
+        assert(trigger,'episode menu trigger '+id);
+        trigger.scrollIntoView({block:'nearest'});
+        await sleep(150);
+        click(trigger);
+        await wait(()=>one('.action-menu [role="menuitem"]'),'episode menu '+id);
+        return trigger;
+      }
+      await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['1','2','3'],index:0,quality:'standard'}});
+      const original=await until(snapshot,v=>v.track?.id==='1'&&v.state==='playing'&&v.position>.15,
+        'original catalog audio must advance');
+      const originalQueue=await queue();
+      await fresh('合成声音下一首');
+      const best=await openMenu(410,'.search-best-section');
+      assert(!menuItem('next'),'unproven best-match menu does not acquire Next');
+      key(one('.action-menu [role="menuitem"]'),'Escape');
+      await wait(()=>!one('.action-menu')&&document.activeElement===best,'best match Escape restores focus');
+
+      const comprehensive=await openMenu(401,'.search-result-section:not(.search-best-section)');
+      assert(all('.action-menu [data-menu-key]').slice(0,2).map(n=>n.dataset.menuKey).join(',')==='play,next',
+        'ordinary comprehensive voice menu shows Next immediately after Play');
+      key(menuItem('play'),'ArrowDown');
+      assert(document.activeElement===menuItem('next'),'Next is reachable by keyboard');
+      await capture('voice_next_comprehensive_menu');
+      click(menuItem('next'));
+      const added=await until(queue,v=>ids(v).join(',')==='1,401,2,3','comprehensive inserts the selected episode');
+      const stillPlaying=await until(snapshot,v=>v.position>original.position&&v.state==='playing',
+        'original audio continues playing');
+      assert(stillPlaying.playId===original.playId&&stillPlaying.entryId===original.entryId,
+        'queue insertion preserves original native decoder and resource');
+      assert(added.tracks[1].track.id==='1'&&added.tracks[1].track.voiceId==='401'&&
+        added.tracks[1].entryId!==originalQueue.tracks[0].entryId,'same media ID stays in independent program namespace');
+      assert(added.tracks.filter(row=>!row.track.voiceId).map(row=>row.entryId).join(',')===
+        originalQueue.tracks.map(row=>row.entryId).join(','),'all catalog row identities are unchanged');
+      await wait(()=>document.activeElement===comprehensive&&
+        one('.search-voice-next-notice')?.textContent.trim()==='已添加至播放列表',
+        'comprehensive menu restores focus and confirms native insertion');
+      assert(one('.search-result-panel').scrollTop>0&&
+        one('.search-voice-next-notice').getBoundingClientRect().bottom<
+          one('.search-result-panel').getBoundingClientRect().top,
+        'status remains physically visible above the scrolled results');
+      await capture('voice_next_preserves_playing', {order:ids(added),playId:stillPlaying.playId});
+
+      await invoke('player_action',{epoch,action:{kind:'pause',paused:true}});
+      const paused=await until(snapshot,v=>v.state==='paused','original native decoder paused');
+      await choose('voices');
+      assert(!one('.search-voice-next-notice'),'old category notice does not carry to new results');
+      const classified=await openMenu(402,'.search-voice-table');
+      click(menuItem('next'));
+      const two=await until(queue,v=>ids(v).join(',')==='1,402,401,2,3','classification inserts one program as Next');
+      const preserved=await snapshot();
+      assert(preserved.state==='paused'&&preserved.playId===paused.playId&&
+        preserved.entryId===paused.entryId&&Math.abs(preserved.position-paused.position)<.05,
+        'classification action preserves paused position and decoder');
+      assert(two.tracks[2].entryId===added.tracks[1].entryId,'previously queued episode retained');
+      await wait(()=>document.activeElement===classified&&
+        one('.search-voice-next-notice')?.textContent.trim()==='已添加至播放列表',
+        'classification action restores row menu focus');
+      await capture('voice_next_preserves_pause', {order:ids(two),playId:preserved.playId});
+
+      const failed=await openMenu(403,'.search-voice-table');
+      click(menuItem('next'));
+      await wait(()=>one('.search-voice-next-notice')?.textContent.trim()&&
+        one('.search-voice-next-notice').textContent.trim()!=='已添加至播放列表',
+        'failed episode read gives feedback');
+      assert((await queue()).revision===two.revision&&document.activeElement===failed,
+        'failed native read keeps the queue and restores focus');
+      await capture('voice_next_read_failure');
+
+      click(button('下一首'));
+      const advanced=await until(snapshot,v=>v.track?.voiceId==='402'&&v.state==='playing'&&v.position>.15,
+        'normal Next plays the queued episode through native decoder');
+      await capture('voice_next_native_episode',{voiceId:advanced.track.voiceId,position:advanced.position});
+      const live=await queue();
+      await invoke('player_action',{epoch,action:{kind:'queue_for',expected_queue_revision:live.revision,edit:{kind:'clear'}}});
+      await until(queue,v=>!v.tracks.length,'clear only the synthetic queue');
+      await openMenu(401,'.search-voice-table');
+      click(menuItem('next'));
+      const started=await until(snapshot,v=>v.track?.voiceId==='401'&&v.state==='playing'&&v.position>.15,
+        'Next on an empty queue starts the selected episode natively');
+      const oneEpisode=await queue();
+      assert(ids(oneEpisode).join(',')==='401'&&started.queueLen===1,'empty action starts exactly one episode');
+      await capture('voice_next_empty_starts_one',{order:ids(oneEpisode),position:started.position});
+      await emit('complete',{ok:true,voiceNextVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchVoiceQueueProof){
       await wait(()=>one('.track-row'),'daily ready');
       await theme(1120,760,'light');

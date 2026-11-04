@@ -39,6 +39,7 @@ const props = defineProps<{
   matchKeyword: string;
   playable: boolean;
   queueable: boolean;
+  voiceNext?: 'ready' | 'disabled';
   playlistActionBusy: boolean;
   playlistKnown?: boolean;
   albumSubscribed?: boolean | null;
@@ -57,6 +58,7 @@ const emit = defineEmits<{
   play: [item: SearchItem];
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queue: [request: SearchQueueRequest];
+  queueVoice: [id: string];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
   playlistSubscribe: [playlist: PlaylistView];
@@ -177,6 +179,16 @@ const items = computed<MenuItem[]>(() => {
           },
         ]
       : []),
+    ...(props.item.kind === 'voice' && props.voiceNext
+      ? [
+          {
+            key: 'next',
+            label: '下一首播放',
+            icon: 'next',
+            disabled: props.voiceNext !== 'ready' || props.item.voice.unavailable,
+          },
+        ]
+      : []),
     {
       key: 'open',
       label:
@@ -276,6 +288,13 @@ function action(key: string) {
     emit('artistAction', { artist: props.item.artist, action: key, anchor: actionAnchor() });
   } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
     emit('queue', { item: props.item, anchor: actionAnchor() });
+  } else if (
+    key === 'next' &&
+    props.item.kind === 'voice' &&
+    props.voiceNext === 'ready' &&
+    !props.item.voice.unavailable
+  ) {
+    emit('queueVoice', props.item.voice.id);
   } else if (
     key === 'collect-album' &&
     props.item.kind === 'album' &&

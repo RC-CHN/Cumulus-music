@@ -12,6 +12,7 @@ const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-search
 static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static VOICE_NEXT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static AUDIOBOOK_MORE_READS: AtomicUsize = AtomicUsize::new(0);
@@ -136,6 +137,7 @@ pub fn control(value: &Value) {
             "song_waterfall",
             "song_waterfall_error",
             "voice_queue",
+            "voice_next",
             "podcast_follow",
             "podcast_follow_incomplete",
             "podcast_follow_failed",
@@ -204,6 +206,10 @@ pub fn audio_rank_details() -> Vec<u64> {
 pub fn voice_queue_calls() -> Option<Vec<String>> {
     (MODE.lock().unwrap().as_str() == "voice_queue")
         .then(|| VOICE_QUEUE_CALLS.lock().unwrap().clone())
+}
+pub fn voice_next_calls() -> Option<Vec<(String, Value)>> {
+    (MODE.lock().unwrap().as_str() == "voice_next")
+        .then(|| VOICE_NEXT_CALLS.lock().unwrap().clone())
 }
 
 fn subscribable_playlist() -> Value {
@@ -420,13 +426,31 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
 }
 
 fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
-    if MODE.lock().unwrap().as_str() == "voice_queue"
+    let configured = MODE.lock().unwrap().clone();
+    if configured == "voice_queue"
         && matches!(
             path,
             "/api/djradio/v3/get" | "/api/v6/dj/program/byradio" | "/api/dj/program/detail"
         )
     {
         VOICE_QUEUE_CALLS.lock().unwrap().push(path.into());
+    }
+    if configured == "voice_next"
+        && matches!(
+            path,
+            "/api/djradio/v3/get"
+                | "/api/v6/dj/program/byradio"
+                | "/api/dj/program/detail"
+                | "/api/dj/play/url/check"
+        )
+    {
+        VOICE_NEXT_CALLS
+            .lock()
+            .unwrap()
+            .push((path.into(), args.clone()));
+        if path == "/api/dj/program/detail" && args["id"] == "403" {
+            return Some(Err(Error::Transport("合成单集详情暂不可读".into())));
+        }
     }
     let number = |key: &str, fallback| {
         args[key]
@@ -437,7 +461,6 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     let radio = |id| json!({"id":id,"name":format!("合成播客 {id}"),"programCount":3,"dj":{"nickname":"合成主播"}});
     let program = |id, radio_id| json!({"id":id,"name":format!("合成声音 {id}"),"mainSong":{"id":id-400,"name":format!("合成声音 {id}"),"duration":360000},"duration":360000,"radio":radio(radio_id),"dj":{"nickname":"合成主播"}});
-    let configured = MODE.lock().unwrap().clone();
     if configured.starts_with("podcast_follow")
         && matches!(
             path,
@@ -959,6 +982,17 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     ))
     .unwrap();
     let mut response = fixtures[category].clone();
+    if mode == "voice_next" && category == "all" {
+        let best = response["data"]["blocks"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|block| block["blockCode"] == "search_block_best_match")
+            .unwrap();
+        best["resources"] = json!([
+            {"type":"voice","baseInfo":{"id":410,"name":"合成最佳匹配声音","duration":360000}}
+        ]);
+    }
     if v3_enabled() && category == "songs" && args["keyword"] == "合成 V3" {
         response["data"]["resources"][0]["baseInfo"]["simpleSongData"]["originCoverType"] =
             json!(1);

@@ -314,7 +314,7 @@ function choicePlaylistAction(card: EssentialCard, key: string) {
     playlistActions.value?.show(list, key);
   }
 }
-const choiceVoiceQueueable = computed(
+const ordinaryVoiceQueueable = computed(
   () =>
     searchCollectionQueueable.value &&
     !player.view.value?.intelligence &&
@@ -342,7 +342,7 @@ async function choiceVoiceAction(
   choiceVoiceFeedback.value = '';
   try {
     if (key === 'next') {
-      if (!choiceVoiceQueueable.value) return;
+      if (!ordinaryVoiceQueueable.value) return;
       const previous = player.view.value;
       const next = await player.queueVoice(card.id);
       if (
@@ -874,6 +874,29 @@ function queueSearchCard({ item, anchor }: SearchQueueRequest) {
     return;
   if (item.kind === 'album') albumAction({ album: item.album, action: 'next', anchor });
   else playlistActions.value?.show(item.playlist, 'next');
+}
+const searchVoiceQueueFeedback = ref('');
+let searchVoiceQueueAttempt = 0;
+watch([music.page, () => music.account.value.epoch], () => {
+  searchVoiceQueueFeedback.value = '';
+  searchVoiceQueueAttempt++;
+});
+async function queueSearchVoice(id: string) {
+  const route = page.value;
+  const epoch = account.value.epoch;
+  if (route.kind !== 'search' || !ordinaryVoiceQueueable.value) return;
+  const attempt = ++searchVoiceQueueAttempt;
+  const current = () =>
+    attempt === searchVoiceQueueAttempt && page.value === route && account.value.epoch === epoch;
+  const previous = player.view.value;
+  searchVoiceQueueFeedback.value = '';
+  try {
+    const next = await player.queueVoice(id);
+    if (current() && previous?.queueLen && next && next.queueRevision !== previous.queueRevision)
+      searchVoiceQueueFeedback.value = '已添加至播放列表';
+  } catch (error) {
+    if (current()) searchVoiceQueueFeedback.value = failure(error).message;
+  }
 }
 function searchCardComments(item: SearchItem) {
   if (item.kind === 'playlist')
@@ -3792,7 +3815,7 @@ onUnmounted(() => {
                 :authenticated="signedIn"
                 :playable="player.ready.value && !player.busy.value"
                 :playlist-items="choicePlaylistMenu"
-                :voice-queueable="choiceVoiceQueueable"
+                :voice-queueable="ordinaryVoiceQueueable"
                 :voice-download-state="choiceVoiceDownloadState"
                 :voice-feedback="choiceVoiceFeedback"
                 :playing="player.playing.value"
@@ -3914,6 +3937,8 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
                 :queueable="searchCollectionQueueable"
+                :voice-queueable="ordinaryVoiceQueueable"
+                :voice-queue-feedback="searchVoiceQueueFeedback"
                 :playlist-action-busy="
                   playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
                 "
@@ -3959,6 +3984,7 @@ onUnmounted(() => {
                 @toggle-pending-voice="toggleSearchPendingVoice"
                 @play-card="playSearchCard"
                 @queue-card="queueSearchCard"
+                @queue-voice="queueSearchVoice"
                 @playlist-download="
                   (list) => page.kind === 'search' && signedIn && playlistAction(list, 'download')
                 "

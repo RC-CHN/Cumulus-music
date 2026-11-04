@@ -62,6 +62,8 @@ const props = defineProps<{
   busyLikes: Set<string>;
   playable: boolean;
   queueable: boolean;
+  voiceQueueable: boolean;
+  voiceQueueFeedback: string;
   playlistActionBusy: boolean;
   knownPlaylistIds?: ReadonlySet<string>;
   observedAlbumMembership: ReadonlyMap<string, boolean>;
@@ -109,6 +111,7 @@ const emit = defineEmits<{
   playCard: [item: SearchItem];
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queueCard: [request: SearchQueueRequest];
+  queueVoice: [id: string];
   cardComments: [item: SearchItem];
   cardDownload: [item: SearchItem];
 }>();
@@ -601,6 +604,9 @@ onBeforeUnmount(() => {
                 : '综合结果'
         }}
       </p>
+      <p v-if="voiceQueueFeedback" class="search-voice-next-notice" role="status">
+        {{ voiceQueueFeedback }}
+      </p>
     </div>
     <div class="search-results-toolbar">
       <div ref="tabs" class="search-result-tabs" role="tablist" aria-label="搜索结果分类">
@@ -935,6 +941,13 @@ onBeforeUnmount(() => {
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"
+                :voice-next="
+                  category === 'voices' || (category === 'all' && section.category === 'voices')
+                    ? voiceQueueable
+                      ? 'ready'
+                      : 'disabled'
+                    : undefined
+                "
                 :playlist-action-busy="playlistActionBusy"
                 :playlist-known="
                   item.kind === 'playlist' ? knownPlaylistIds?.has(item.playlist.id) : undefined
@@ -969,6 +982,7 @@ onBeforeUnmount(() => {
                   (target, anchor) => emit('togglePendingVoice', target, anchor)
                 "
                 @queue="emit('queueCard', $event)"
+                @queue-voice="emit('queueVoice', $event)"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
                 @playlist-subscribe="emit('playlistSubscribe', $event)"

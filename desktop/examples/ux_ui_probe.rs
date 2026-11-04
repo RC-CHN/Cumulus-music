@@ -823,6 +823,7 @@ fn main() {
                 value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
                 value["audioRankDetails"] = json!(search_fixture::audio_rank_details());
                 if let Some(calls) = search_fixture::voice_queue_calls() { value["voiceQueueCalls"] = json!(calls); }
+                if let Some(calls) = search_fixture::voice_next_calls() { value["voiceNextCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::podcast_follow_calls() { value["podcastFollowCalls"] = json!(calls); }
                 if let Some(calls) = search_fixture::artist_gallery_calls() { value["artistGalleryCalls"] = json!(calls); }
             }

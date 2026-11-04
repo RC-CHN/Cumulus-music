@@ -258,3 +258,31 @@ explicit、publishedAt 与本地日历格式；标题省略时保留标记，分
 `search_results_smoke.py --album-artist` 在实际 WebView 使用合成投影测试已知及
 缺失值、标题高亮与标记布局；原生专辑字段读取沿用已验证的 AlbumCard DTO。
 Linux WebView 八个检查点和截图：.build/search-album-metadata-webview/first/。
+
+搜索声音菜单的「下一首播放」：PC 3.1.42.205594
+
+  SearchResults/components/recommend.jsx:521–556 通过普通 VoiceCard 渲染综合声音。
+  VoiceCard/index.jsx:303–322 的更多按钮把所选声音和 ResourceType.voice 交给菜单；
+  分类标题格 M/2021:211–222 提供同类入口。M/622:29–31、1174–1211 的声音
+  菜单在「播放」后提供「下一首播放」，排除已有队列、迷你栏和多选上下文。
+  M/3085:297–311、399–411、544–584：动作只选中本期，队列非空时不清空、不
+  切当前播放；空队列回落到播放。最佳匹配 VoiceMetaCard/index.tsx:225–300
+  没有证实相同的更多入口，因此没有扩展这个动作。
+
+  Cumulus 复用已接通的原生 queue_voice，按当前账号代次与队列版本提交。
+  放入下一首通过 /api/dj/program/detail 读取本期；播放器沿既有预取或
+  播放路径核对同一期与 /api/dj/play/url/check 后解析音源，不读取同播客的
+  其他期。正常播放可以复用已经完成的预取。
+  正在播放或已暂停的当前资源、音频解码器和原队列条目继续保留；节目 ID
+  不与其底层歌曲 ID 混用。FM、心动、一起听和不可用节目继续受原生限制。
+  打开菜单与失败不改变队列；结束后由共用菜单恢复发起控件的焦点；页面或
+  账号变化后不显示旧操作回执。不新增账号写入、外链或下载逻辑。
+  成功或失败说明在固定搜索页头显示，结果滚到声音区时仍能看见。
+
+  合成 `search_results_smoke.py --voice-next` 在真实 Linux WebView 验证六态：
+  普通综合卡片、分类行、未给最佳匹配新增动作、播放/暂停时插入、
+  详情读取失败、手动下一首及空队列开始播放。检查原生条目身份、焦点、滚动中
+  提示的实际位置、播放进度和确切节目读参；既有 `--voice-queue` 八态回归通过。
+  六图及报告在本机 `.build/ui-proof/search-voice-next-4aec549c/final/`。
+  Linux 与 Windows CI 配置复跑该探针；本轮没有 Windows 实机、真实账号或
+  真实声卡验证。

@@ -91,6 +91,7 @@ def main():
     mode.add_argument('--search-next', action='store_true')
     mode.add_argument('--song-waterfall', action='store_true')
     mode.add_argument('--voice-queue', action='store_true')
+    mode.add_argument('--voice-next', action='store_true')
     mode.add_argument('--podcast-follow', action='store_true')
     mode.add_argument('--mv-play', action='store_true')
     mode.add_argument('--mv-fallback', action='store_true')
@@ -132,6 +133,8 @@ def main():
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
     if args.voice_queue:
         prefix = 'window.__cumulusSearchVoiceQueueProof = true;\n'
+    if args.voice_next:
+        prefix = 'window.__cumulusSearchVoiceNextProof = true;\n'
     if args.podcast_follow:
         prefix = 'window.__cumulusSearchPodcastFollowProof = true;\n'
     if args.mv_play:
@@ -406,6 +409,55 @@ def main():
         assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, podcastSearchFollowVerified=True,
                               membershipReads=7, syntheticWrites=2, stageCount=5)))
+        return
+    if args.voice_next:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['voiceNextVerified'] and complete['stageCount'] == 6
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        states = {p.stem.split('_', 2)[2]: json.loads(p.read_text(encoding='utf-8'))
+                  for p in first.glob('ux_*.json')}
+        detail, permit = '/api/dj/program/detail', '/api/dj/play/url/check'
+
+        def voice_calls(state):
+            calls = state['voiceNextCalls']
+            # Whole-podcast reads and authorization for an unselected episode
+            # must never occur, regardless of when decoder prefetch settles.
+            assert all(
+                (path == detail and payload in ({'id': '401'}, {'id': '402'}, {'id': '403'})) or
+                (path == permit and payload in ({'voiceId': '401'}, {'voiceId': '402'}))
+                for path, payload in calls
+            ), calls
+            return [(path, payload.get('id') or payload.get('voiceId')) for path, payload in calls]
+
+        assert not voice_calls(states['voice_next_comprehensive_menu'])
+        playing = states['voice_next_preserves_playing']
+        paused = states['voice_next_preserves_pause']
+        playing_calls = voice_calls(playing)
+        paused_calls = voice_calls(paused)
+        failed_calls = voice_calls(states['voice_next_read_failure'])
+        advanced_calls = voice_calls(states['voice_next_native_episode'])
+        calls = voice_calls(complete)
+        assert calls[:len(advanced_calls)] == advanced_calls
+        assert playing_calls and playing_calls[0] == (detail, '401')
+        assert all(episode == '401' for _, episode in playing_calls)
+        assert (detail, '402') in paused_calls and all(episode != '403' for _, episode in paused_calls)
+        assert failed_calls.count((detail, '403')) == calls.count((detail, '403')) == 1
+        assert (permit, '402') in advanced_calls
+        assert (detail, '401') in calls[len(advanced_calls):] and (permit, '401') in calls
+        assert all(1 <= calls.count((permit, episode)) <= 2 for episode in ('401', '402')), calls
+        assert playing['order'] == ['1', '401', '2', '3']
+        assert paused['order'] == ['1', '402', '401', '2', '3']
+        assert playing['playId'] == paused['playId']
+        assert states['voice_next_native_episode']['position'] > .15
+        assert states['voice_next_empty_starts_one']['order'] == ['401']
+        assert states['voice_next_empty_starts_one']['position'] > .15
+        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
+        report = dict(ok=True, actualWebView=True, voiceNextVerified=True, stageCount=6,
+                      nativeNullPlaybackVerified=True, screenshots=len(list(first.glob('ux_*.png'))),
+                      realMusicRequests=0, realAccountWrites=0)
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
         return
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
