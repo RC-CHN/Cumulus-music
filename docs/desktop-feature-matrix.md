@@ -55,7 +55,9 @@
 - [听歌识曲](song-recognition-contracts.txt)已确认官方 PC 采集、时序、原生请求和 UI 状态；官方合成向量与 Rust 的默认峰值封包、AES 和 Base64 一致。完整声学前端、生产回采和真实识别仍未验收。
 - [社区话题](community-topic-contracts.txt)从笔记内的 #话题# 进入，独立读取同一话题的热门笔记和全部笔记，恢复原游标及返回位置。前台新笔记提示不会自行刷新；参与和分享不在此入口。
 - [本人笔记删除](community-note-delete-contracts.txt)只在同一账号拥有的卡片/详情显示，确认后发一次；明确回执移除对应列表条目，回包不明可显式读取同一原生详情。404 不确认删除，原生墓碑与提交回执分别记录。只用封闭合成账号验证。
+- [动态和笔记举报](community-event-report-contracts.txt)绑定当前顶层动态及作者，确认后单次提交；状态不明只保留本机回执。Linux 封闭桌面核对小窗口菜单与旧删除流程，没有真实举报。
 - [外部歌单导入](external-playlist-import-contracts.txt)支持链接和粘贴文字，可新建歌单或导入「我喜欢的音乐」；提交前单独在 Interface 域扫码核对同一账号并确认目的地。服务任务受理与导入完成分开，未知回包及重开不重发。图片和服务端完成查询仍按契约追踪。
+- 侧栏新建菜单按官方实验分组开启导入入口，缺失或不确定的分组保留直接新建；一次性提示独立落盘。实验回包和导入授权分别验证，未读取真实分组。
 - [歌手 MV](artist-mv-discovery-contracts.txt)按官方 MV 数量门槛显示页签，用原游标续页和重试。Linux 合成桌面验证精确评论线程、原生视频画面和返回焦点；普通视频与全站 MV 发现没有用歌手列表冒充。
 - [识曲峰值选择](song-recognition-signal-contracts.txt)及[可选 zlib 封包](song-recognition-contracts.txt)有官方原生合成对照。峰值阶段接受已中心化矩阵，不接设备采集、FFT 或真实服务。
 - [经典发现首页](discovery-home-contracts.txt)接通 11 类可确认的官方区块。首页与目录详情往返保留横向和纵向位置及焦点，隐私关闭时不继续请求个性化推荐；游客和实验布局按独立证据追踪。
@@ -70,6 +72,8 @@
 - [评论及楼层举报](comment-report-contracts.txt)接通官方 PC 路径；取消不发请求，丢失回执不自动重发。Linux WebView 封闭验证，不代表真实举报已发送。
 - [手动检查更新](manual-update-contracts.txt)读取 Cumulus 已发布的稳定版元数据并允许打开固定发布页；用户可离线比对本机安装包的 SHA-256，不下载、不安装。Linux 合成桌面与 0.1.0 匿名元数据样本分开记录。
 - [可选识曲重采样与私有回采](song-recognition-monitor-proof.txt)支持本机 Linux 合成输出对照，尚未接正式入口、真实设备或识曲服务。
+- [识曲请求调度](song-recognition-request-proof.txt)按累计 3、6、9、12、15 秒前缀生成请求。封闭 PipeWire 探针已从真实 i16/f32 流走到指纹、EAPI 报文和进程内回包，验证取消后的迟到结果。正式入口、真实用户设备和上游识曲未启用。
 - [Windows WASAPI 回采原型](song-recognition-wasapi-proof.txt)的设备选择和停止策略有六项合成测试及 Windows GNU 交叉链接证据。未在 Windows 实际回采或发布入口。
+- [官方桌宠](desktop-pet-contracts.txt)已核对入口、领养状态、窗口动作和素材约束。本机 Linux WebKit 未通过半透明 WebM 探针；尚无正式窗口、现有已领养宠物的合格素材或 Windows 原生验收。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
