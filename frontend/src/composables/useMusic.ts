@@ -13,6 +13,7 @@ import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
 export type Page =
+  | { kind: 'decoration' }
   | { kind: 'settings'; accountDetail?: 'profile' | 'devices' | 'blacklist' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
   | {
@@ -223,6 +224,7 @@ export function useMusic(
         target.kind === 'profile_relations' ||
         target.kind === 'history' ||
         target.kind === 'settings' ||
+        target.kind === 'decoration' ||
         target.kind === 'local' ||
         target.kind === 'downloads' ||
         target.kind === 'cloud' ||

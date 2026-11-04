@@ -4,8 +4,24 @@
   try {
     preference = localStorage.getItem('cumulus.appearance.v1');
   } catch {}
-  document.documentElement.dataset.theme =
-    preference === 'light' || preference === 'dark'
+  // Match the runtime's bounded parser; a CSS value can only be a six-digit hex color.
+  let custom;
+  if (typeof preference === 'string' && preference.startsWith('{') && preference.length <= 96) {
+    try {
+      const entry = JSON.parse(preference);
+      if (
+        entry?.theme === 'custom' &&
+        typeof entry.color === 'string' &&
+        entry.color.length === 7 &&
+        /^#[0-9a-f]{6}$/i.test(entry.color)
+      )
+        custom = entry.color.toLowerCase();
+    } catch {}
+  }
+  if (custom) document.documentElement.style.setProperty('--custom-theme-color', custom);
+  document.documentElement.dataset.theme = custom
+    ? 'custom'
+    : preference === 'light' || preference === 'dark' || preference === 'red'
       ? preference
       : matchMedia('(prefers-color-scheme: dark)').matches
         ? 'dark'

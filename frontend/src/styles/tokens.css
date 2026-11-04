@@ -73,3 +73,26 @@
   color: var(--text);
   background: var(--accent-soft);
 }
+
+:root[data-theme='red'] {
+  --accent: #ba242d;
+  --accent-fill: #c32731;
+  --brand-start: #b61c27;
+  --accent-soft: #fff0f0;
+  --sidebar-bg: #fff5f5;
+  --search-start: #fff7f7;
+  --search-end: #ffebec;
+}
+
+/* Keep a slider preview on the newest sample instead of interpolating earlier colors. */
+:root[data-theme-preview] {
+  --appearance-button-duration: 0s;
+}
+
+:root[data-theme='custom'] {
+  --accent: color-mix(in srgb, var(--custom-theme-color) 43%, #100910);
+  --accent-fill: var(--accent);
+  --brand-start: var(--accent);
+  --accent-soft: color-mix(in srgb, var(--custom-theme-color) 9%, #fff);
+  --search-end: var(--accent-soft);
+}

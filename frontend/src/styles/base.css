@@ -52,8 +52,8 @@ h1[tabindex='-1']:focus-visible {
 }
 button {
   transition:
-    background 0.14s,
-    color 0.14s;
+    background var(--appearance-button-duration, 0.14s),
+    color var(--appearance-button-duration, 0.14s);
 }
 input {
   min-width: 0;

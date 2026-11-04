@@ -48,6 +48,7 @@ import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
 import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
+import SkinCenter from './components/decoration/SkinCenter.vue';
 import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
 import CommunityPage from './components/community/CommunityPage.vue';
@@ -2584,7 +2585,10 @@ const pageTransition = createPageTransition(() => pageMotion.reduced.value);
 onUnmounted(pageTransition.dispose);
 const pageKey = computed(() =>
   JSON.stringify({
-    account: page.value.kind === 'local' ? undefined : [account.value.epoch, account.value.status],
+    account:
+      page.value.kind === 'local' || page.value.kind === 'decoration'
+        ? undefined
+        : [account.value.epoch, account.value.status],
     page:
       page.value.kind === 'search'
         ? { kind: 'search', keyword: page.value.keyword }
@@ -3236,7 +3240,11 @@ onUnmounted(() => {
         @login="loginOpen = true"
         @expired="music.bootstrap(false)"
       />
-      <AppearanceMenu />
+      <AppearanceMenu
+        :center-open="page.kind === 'decoration'"
+        :disabled="initializing"
+        @open="page.kind !== 'decoration' && music.navigate({ kind: 'decoration' })"
+      />
       <button
         class="icon-button settings-button"
         :disabled="initializing"
@@ -3363,6 +3371,7 @@ onUnmounted(() => {
                 @play="playLocal"
                 @comments="(id, title) => openComments({ kind: 'track', id }, title)"
               />
+              <SkinCenter v-else-if="page.kind === 'decoration'" />
               <div v-else-if="initializing" class="empty-state" role="status">
                 <span class="spinner" />
                 <p>正在连接你的音乐…</p>

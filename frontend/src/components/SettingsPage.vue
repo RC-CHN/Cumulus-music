@@ -5,7 +5,7 @@ import type { SettingsModel } from '../composables/useSettings';
 import { useAppearance } from '../composables/useAppearance';
 import { useMotion } from '../composables/useMotion';
 import { useControlFocus } from '../composables/useControlFocus';
-import type { AppearancePreference } from '../services/appearance';
+import type { BuiltinAppearance } from '../services/appearance';
 import {
   settingLabels,
   settingValueLabel,
@@ -89,7 +89,7 @@ watch(
   },
 );
 const appearance = useAppearance();
-const themes: { value: AppearancePreference; label: string; icon: string }[] = [
+const themes: { value: BuiltinAppearance; label: string; icon: string }[] = [
   { value: 'system', label: '跟随系统', icon: 'monitor' },
   { value: 'light', label: '浅色', icon: 'sun' },
   { value: 'dark', label: '深色', icon: 'moon' },
@@ -237,7 +237,9 @@ function accept(op: SettingsOperation) {
           </fieldset>
           <p class="settings-note">
             当前为{{
-              appearance.effective.value === 'dark' ? '深色' : '浅色'
+              { light: '浅色', dark: '深色', red: '经典红', custom: '自定义按钮颜色' }[
+                appearance.effective.value
+              ]
             }}模式。主题保存在这台设备。
           </p>
           <p v-if="!appearance.saved.value" role="alert" class="catalog-error">
