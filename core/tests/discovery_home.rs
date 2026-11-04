@@ -160,3 +160,78 @@ async fn replacing_the_account_drops_a_feed_that_was_already_in_flight() {
     assert!(matches!(result, Err(cumulus_core::Error::StaleResponse)));
     assert_ne!(client.account().unwrap().epoch, epoch);
 }
+
+#[tokio::test]
+async fn rankings_honor_both_official_groups_and_reuse_the_independent_rank_cache() {
+    use support::{AB, RANK_ALBUM, RANK_MAIN, RANK_SONG};
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+
+    // An explicit tag exclusion overrides rank t1. Ambiguous assignment is hidden.
+    for mode in [4, 6] {
+        api.mode.store(mode, Ordering::SeqCst);
+        assert!(
+            client
+                .discovery_home_rankings(&epoch)
+                .await
+                .unwrap()
+                .value
+                .is_none()
+        );
+    }
+    {
+        let calls = api.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert!(calls.iter().all(|(path, args, sensitive)| path == AB
+            && *args == json!({"expNames":"PH-PC-tagT,PH-PC-Home-Ranklist"})
+            && !sensitive));
+    }
+
+    // Both absent rows use the two values in the official defaults.
+    api.mode.store(5, Ordering::SeqCst);
+    let value =
+        serde_json::to_value(client.discovery_home_rankings(&epoch).await.unwrap().value).unwrap();
+    assert_eq!(value["name"], "官方榜");
+    assert_eq!(value["displayType"], "TOP_3");
+    assert_eq!(value["cards"][0]["tracks"].as_array().unwrap().len(), 3);
+    assert_eq!(value["cards"][0]["tracks"][0]["name"], "合成榜首");
+    assert_eq!(value["cards"][1]["target"], "album_sales");
+    assert_eq!(value["cards"][2]["target"], "song_sales");
+    assert!(!value.to_string().contains("PRIVATE"));
+    assert!(!value.to_string().contains("全球榜"));
+
+    // Explicit allowed assignments are accepted too, but the rank data is fresh.
+    api.mode.store(0, Ordering::SeqCst);
+    assert!(
+        client
+            .discovery_home_rankings(&epoch)
+            .await
+            .unwrap()
+            .value
+            .is_some()
+    );
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(path, _, _)| path == RANK_MAIN)
+            .count(),
+        1
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(path, _, _)| path == RANK_SONG)
+            .count(),
+        1
+    );
+    assert_eq!(
+        calls
+            .iter()
+            .filter(
+                |(path, args, _)| path == RANK_ALBUM && *args == json!({"limit":3,"albumType":0})
+            )
+            .count(),
+        1
+    );
+}

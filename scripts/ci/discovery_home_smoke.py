@@ -37,7 +37,7 @@ def main():
     if args.probe_script:
         env['CUMULUS_DISCOVERY_HOME_PROOF_SCRIPT'] = str(args.probe_script.resolve())
     captured = set()
-    stages = ('home', 'dark', 'retry', 'privacy')
+    stages = ('home', 'dark', 'ranking', 'retry', 'privacy')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
         try:

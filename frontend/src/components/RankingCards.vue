@@ -7,6 +7,8 @@ import type { PlaybackStatus } from '../services/player';
 const props = defineProps<{
   groups: RankingGroup[];
   playable: boolean;
+  hideGroupHeading?: boolean;
+  focusKeyPrefix?: string;
   currentPlaylistId?: string;
   playbackState?: PlaybackStatus;
 }>();
@@ -29,7 +31,7 @@ function label(card: RankingCard) {
 <template>
   <div class="ranking-groups">
     <section v-for="group in groups" :key="group.name" class="ranking-group">
-      <h2>{{ group.name }}</h2>
+      <h2 v-if="!hideGroupHeading">{{ group.name }}</h2>
       <div class="ranking-cards" :class="{ 'with-preview': group.displayType === 'TOP_3' }">
         <article
           v-for="card in group.cards"
@@ -41,6 +43,7 @@ function label(card: RankingCard) {
           <button
             class="rank-open"
             data-rank-action="open"
+            :data-home-card="focusKeyPrefix ? focusKeyPrefix + card.id : undefined"
             :aria-label="`查看 ${card.name}`"
             @click="$emit('open', card)"
           >

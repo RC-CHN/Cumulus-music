@@ -171,7 +171,7 @@ import type { MemberTarget } from './services/member';
 import { useSceneFm } from './composables/useSceneFm';
 import { useFm } from './composables/useFm';
 import { useRankings } from './composables/useRankings';
-import { rankingQueryKey, type RankingQuery } from './services/rankings';
+import { rankingQueryKey, type RankingCard, type RankingQuery } from './services/rankings';
 import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
 import { usePodcastCatalogue } from './composables/usePodcastCatalogue';
@@ -500,6 +500,16 @@ function openRanking(
 ) {
   if (query.kind === 'album') openCatalog({ kind: 'album', id: query.id });
   else music.navigate({ kind: 'rankings', query, rankingState });
+}
+function openDiscoveryHomeRanking(card: RankingCard) {
+  if (music.page.value.kind !== 'discovery_home' || !music.signedIn.value) return;
+  if (card.target === 'playlist') music.navigate({ kind: 'playlist', id: card.id });
+  else
+    openRanking(
+      card.target === 'album_sales'
+        ? { kind: 'album_sales', year: new Date().getFullYear() }
+        : { kind: 'song_sales' },
+    );
 }
 function openDiscoveryHomeCard(card: DiscoveryHomeCard, section: DiscoveryHomeSection) {
   if (music.page.value.kind !== 'discovery_home' || !music.signedIn.value) return;
@@ -3321,6 +3331,10 @@ onUnmounted(() => {
                 ref="discoveryHomePage"
                 :model="discoveryHome"
                 :playable="player.ready.value && !player.busy.value"
+                :current-playlist-id="currentPlaylistId"
+                :playback-state="playbackState"
+                @rankings="openRanking({ kind: 'home' })"
+                @open-rank="openDiscoveryHomeRanking"
                 @open="openDiscoveryHomeCard"
                 @play-playlist="playRankingPlaylist"
                 @privacy="openPodcastPrivacy"

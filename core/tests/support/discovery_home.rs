@@ -15,6 +15,10 @@ pub const GENERAL: &str = "/api/homepage/block/page";
 pub const CUSTOM: &str = "/api/pc/customize/block/page";
 pub const BOOKS: &str = "/api/podcast/common/single/block/get";
 pub const VOICES: &str = "/api/pc/voicelist/rcmd/list";
+pub const AB: &str = "/api/rtrs/abt/front/expinfo/list";
+pub const RANK_MAIN: &str = "/api/toplist/detail/v2";
+pub const RANK_ALBUM: &str = "/api/feealbum/songsaleboard/daily/type";
+pub const RANK_SONG: &str = "/api/single/sales-ranking/get";
 
 #[derive(Default)]
 pub struct Fixture {
@@ -69,7 +73,7 @@ impl Api for Fixture {
             self.calls
                 .lock()
                 .unwrap()
-                .push((path.into(), args, sensitive));
+                .push((path.into(), args.clone(), sensitive));
             if path == BATCH && self.hold_batch.load(Ordering::SeqCst) {
                 self.batch_started.notify_one();
                 self.release_batch.notified().await;
@@ -101,6 +105,38 @@ impl Api for Fixture {
                     {"resourceType":"album","resourceId":851,"title":"合成最近专辑"},
                     {"resourceType":"dailySongsTag","resourceId":852,"title":"缺少风格上下文"}
                 ]}}),
+                AB if args["expNames"] == "PH-PC-tagT,PH-PC-Home-Ranklist" => {
+                    let group = if mode == 4 { "t2" } else { "t1" };
+                    let data = if mode == 5 {
+                        json!([])
+                    } else if mode == 6 {
+                        json!([{"expName":"PH-PC-tagT","expGroupName":"c"},
+                            {"expName":"PH-PC-tagT","expGroupName":"t1"}])
+                    } else {
+                        json!([{"expName":"PH-PC-tagT","expGroupName":group},
+                            {"expName":"PH-PC-Home-Ranklist","expGroupName":"t1"}])
+                    };
+                    json!({"code":200,"data":data})
+                }
+                RANK_MAIN => json!({"code":200,"data":[
+                    {"name":"全球榜","categoryCode":"WORLD","displayType":"TOP_3","list":[
+                        {"id":788,"name":"不应出现的全球榜","nameShowStyle":"singleRow","targetType":"PLAYLIST"}
+                    ]},
+                    {"name":"官方榜","categoryCode":"OFFICIAL","displayType":"ONLY_COVER","list":[
+                        {"id":701,"name":"合成榜单","nameShowStyle":"singleRow","targetType":"PLAYLIST","canPlay":true,
+                         "updateFrequency":"每天更新","firstCoverUrl":"https://private.invalid/PRIVATE_RANK_ART",
+                         "trackRankList":[{"trackId":811,"rank":1,"lastRank":2},{"trackId":812,"rank":2,"lastRank":2},
+                                          {"trackId":813,"rank":3,"lastRank":0},{"trackId":814,"rank":4,"lastRank":0}],
+                         "tracks":[{"first":"合成榜首","second":"合成歌手"},{"first":"合成亚军","second":"合成歌手"},
+                                   {"first":"合成第三","second":"合成歌手"},{"first":"不可显示的第四","second":"合成歌手"}]}
+                    ]}
+                ]}),
+                RANK_ALBUM => {
+                    json!({"code":200,"products":[{"albumId":851,"albumName":"合成畅销专辑","artistName":"合成歌手"}]})
+                }
+                RANK_SONG => {
+                    json!({"code":200,"data":{"itemList":[{"songId":811,"songName":"合成畅销歌","artistName":"合成歌手"}]}})
+                }
                 "/api/w/nuser/account/get" | "/api/nuser/account/get" | "/api/login/status" => {
                     json!({"code":200,"account":{"id":42},"profile":{"userId":42,"nickname":"发现测试账号"}})
                 }

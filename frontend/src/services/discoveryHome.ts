@@ -1,4 +1,5 @@
 import type { AccountData } from './contracts';
+import type { RankingGroup } from './rankings';
 
 export type DiscoveryHomeTarget =
   | { kind: 'song' | 'playlist' | 'album' | 'podcast' | 'voice'; id: string }
@@ -24,4 +25,5 @@ export interface DiscoveryHomePage {
 
 export interface DiscoveryHomeClient {
   discoveryHome(epoch: string): Promise<AccountData<DiscoveryHomePage>>;
+  discoveryHomeRankings(epoch: string): Promise<AccountData<RankingGroup | null>>;
 }

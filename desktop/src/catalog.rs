@@ -93,3 +93,14 @@ pub async fn discovery_home(
 ) -> Result<AccountData<cumulus_core::client::discovery_home::DiscoveryHomePage>, ClientError> {
     client.discovery_home(&epoch).await.map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn discovery_home_rankings(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Option<cumulus_core::catalog::rankings::RankingGroup>>, ClientError> {
+    client
+        .discovery_home_rankings(&epoch)
+        .await
+        .map_err(Into::into)
+}

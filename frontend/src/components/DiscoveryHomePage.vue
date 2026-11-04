@@ -1,19 +1,39 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import type { DiscoveryHomeModel } from '../composables/useDiscoveryHome';
 import type { DiscoveryHomeCard, DiscoveryHomeSection } from '../services/discoveryHome';
 import { useMotion } from '../composables/useMotion';
 import Icon from './Icon.vue';
+import RankingCards from './RankingCards.vue';
+import type { RankingCard } from '../services/rankings';
+import type { PlaybackStatus } from '../services/player';
 import '../styles/discovery-home.css';
 
-const props = defineProps<{ model: DiscoveryHomeModel; playable: boolean }>();
+const props = defineProps<{
+  model: DiscoveryHomeModel;
+  playable: boolean;
+  currentPlaylistId?: string;
+  playbackState?: PlaybackStatus;
+}>();
 const emit = defineEmits<{
   open: [card: DiscoveryHomeCard, section: DiscoveryHomeSection];
   playPlaylist: [id: string];
   privacy: [];
+  rankings: [];
+  openRank: [card: RankingCard];
 }>();
 const root = ref<HTMLElement>();
-const { data, loading, error, viewport } = props.model;
+const { data, ranking, loading, error, viewport } = props.model;
+const blocks = computed(() => {
+  const entries = [...(data.value?.sections ?? [])] as Array<DiscoveryHomeSection | 'rankings'>;
+  if (ranking.value) {
+    const position = entries.findIndex(
+      (entry) => entry !== 'rankings' && entry.kind !== 'playlists' && entry.kind !== 'featured',
+    );
+    entries.splice(position < 0 ? entries.length : position, 0, 'rankings');
+  }
+  return entries;
+});
 const motion = useMotion();
 const failed = ref(new Set<string>());
 const day = new Date().getDate();
@@ -30,6 +50,10 @@ function measureRail(rail: HTMLElement) {
 }
 function measureRails() {
   root.value?.querySelectorAll<HTMLElement>('[data-home-rail]').forEach(measureRail);
+}
+function rememberRankingFocus(event: FocusEvent) {
+  const focused = event.target as HTMLElement;
+  if (focused.dataset.homeCard) viewport.focus = focused.dataset.homeCard;
 }
 function railScrolled(event: Event) {
   const rail = event.currentTarget as HTMLElement;
@@ -115,95 +139,134 @@ onBeforeUnmount(() => observer?.disconnect());
           重试
         </button>
       </div>
-      <div v-if="data?.recommendationEnabled && !data.sections.length" class="empty-state">
+      <div v-if="data?.recommendationEnabled && !blocks.length" class="empty-state">
         暂无推荐内容
       </div>
-      <section
-        v-for="section in data?.sections"
-        :key="section.kind"
-        class="discovery-home-block"
-        :data-home-section="section.kind"
-        :aria-label="section.title"
-      >
-        <div class="discovery-home-block-heading">
-          <h2>{{ section.title }}</h2>
-          <div v-if="railBounds.get(section.kind)?.previous || railBounds.get(section.kind)?.next">
-            <button
-              class="icon-button"
-              type="button"
-              :aria-label="`${section.title}上一组`"
-              :aria-disabled="!railBounds.get(section.kind)?.previous"
-              @click="scrollRail($event, section, -1)"
-            >
-              <Icon name="back" />
-            </button>
-            <button
-              class="icon-button discovery-home-next"
-              type="button"
-              :aria-label="`${section.title}下一组`"
-              :aria-disabled="!railBounds.get(section.kind)?.next"
-              @click="scrollRail($event, section, 1)"
-            >
-              <Icon name="back" />
-            </button>
-          </div>
-        </div>
-        <div
-          class="discovery-home-rail"
-          :class="{
-            'discovery-home-compact': section.cards.every(
-              (card) => card.target.kind === 'song' || card.target.kind === 'voice',
-            ),
-          }"
-          :data-home-rail="section.kind"
-          @scroll.passive="railScrolled"
+      <template v-for="section in blocks" :key="section === 'rankings' ? section : section.kind">
+        <section
+          v-if="section === 'rankings' && ranking"
+          class="discovery-home-block"
+          data-home-section="rankings"
+          aria-label="榜单精选"
+          @focusin="rememberRankingFocus"
         >
-          <div v-for="card in section.cards" :key="key(section, card)" class="discovery-home-tile">
-            <button
-              class="discovery-home-card"
-              type="button"
-              :data-home-card="key(section, card)"
-              :aria-label="`${card.target.kind === 'song' || card.target.kind === 'voice' ? '播放 ' : '打开 '}${card.title}`"
-              :disabled="!playable && (card.target.kind === 'song' || card.target.kind === 'voice')"
-              @focus="viewport.focus = key(section, card)"
-              @click="emit('open', card, section)"
-            >
-              <span
-                class="discovery-home-art"
-                :class="{ 'discovery-home-daily': card.target.kind === 'daily' }"
+          <div class="discovery-home-block-heading">
+            <h2>
+              <button
+                class="discovery-home-rank-title"
+                type="button"
+                data-home-card="rankings:home"
+                @click="emit('rankings')"
               >
-                <img
-                  v-if="card.coverUrl && !failed.has(card.coverUrl)"
-                  :src="card.coverUrl"
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  referrerpolicy="no-referrer"
-                  @error="card.coverUrl && failed.add(card.coverUrl)"
-                />
-                <span v-else-if="card.target.kind === 'daily'" aria-hidden="true">{{ day }}</span>
-                <Icon v-else name="music" />
-              </span>
-              <span class="discovery-home-copy">
-                <strong class="ellipsis">{{ card.title }}</strong>
-                <span v-if="card.subtitle && card.subtitle !== card.title" class="ellipsis">{{
-                  card.subtitle
-                }}</span>
-              </span>
-            </button>
-            <button
-              v-if="card.target.kind === 'playlist' && 'id' in card.target"
-              class="icon-button discovery-home-play"
-              type="button"
-              :aria-label="`播放歌单 ${card.title}`"
-              :disabled="!playable"
-              @click="emit('playPlaylist', card.target.id)"
-            >
-              <Icon name="play" />
-            </button>
+                榜单精选 <Icon name="back" />
+              </button>
+            </h2>
           </div>
-        </div>
-      </section>
+          <RankingCards
+            :groups="[ranking]"
+            :playable="playable"
+            :current-playlist-id="currentPlaylistId"
+            :playback-state="playbackState"
+            focus-key-prefix="rankings:card:"
+            hide-group-heading
+            @open="(card) => emit('openRank', card)"
+            @play="(id) => emit('playPlaylist', id)"
+          />
+        </section>
+        <section
+          v-else-if="section !== 'rankings'"
+          class="discovery-home-block"
+          :data-home-section="section.kind"
+          :aria-label="section.title"
+        >
+          <div class="discovery-home-block-heading">
+            <h2>{{ section.title }}</h2>
+            <div
+              v-if="railBounds.get(section.kind)?.previous || railBounds.get(section.kind)?.next"
+            >
+              <button
+                class="icon-button"
+                type="button"
+                :aria-label="`${section.title}上一组`"
+                :aria-disabled="!railBounds.get(section.kind)?.previous"
+                @click="scrollRail($event, section, -1)"
+              >
+                <Icon name="back" />
+              </button>
+              <button
+                class="icon-button discovery-home-next"
+                type="button"
+                :aria-label="`${section.title}下一组`"
+                :aria-disabled="!railBounds.get(section.kind)?.next"
+                @click="scrollRail($event, section, 1)"
+              >
+                <Icon name="back" />
+              </button>
+            </div>
+          </div>
+          <div
+            class="discovery-home-rail"
+            :class="{
+              'discovery-home-compact': section.cards.every(
+                (card) => card.target.kind === 'song' || card.target.kind === 'voice',
+              ),
+            }"
+            :data-home-rail="section.kind"
+            @scroll.passive="railScrolled"
+          >
+            <div
+              v-for="card in section.cards"
+              :key="key(section, card)"
+              class="discovery-home-tile"
+            >
+              <button
+                class="discovery-home-card"
+                type="button"
+                :data-home-card="key(section, card)"
+                :aria-label="`${card.target.kind === 'song' || card.target.kind === 'voice' ? '播放 ' : '打开 '}${card.title}`"
+                :disabled="
+                  !playable && (card.target.kind === 'song' || card.target.kind === 'voice')
+                "
+                @focus="viewport.focus = key(section, card)"
+                @click="emit('open', card, section)"
+              >
+                <span
+                  class="discovery-home-art"
+                  :class="{ 'discovery-home-daily': card.target.kind === 'daily' }"
+                >
+                  <img
+                    v-if="card.coverUrl && !failed.has(card.coverUrl)"
+                    :src="card.coverUrl"
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    referrerpolicy="no-referrer"
+                    @error="card.coverUrl && failed.add(card.coverUrl)"
+                  />
+                  <span v-else-if="card.target.kind === 'daily'" aria-hidden="true">{{ day }}</span>
+                  <Icon v-else name="music" />
+                </span>
+                <span class="discovery-home-copy">
+                  <strong class="ellipsis">{{ card.title }}</strong>
+                  <span v-if="card.subtitle && card.subtitle !== card.title" class="ellipsis">{{
+                    card.subtitle
+                  }}</span>
+                </span>
+              </button>
+              <button
+                v-if="card.target.kind === 'playlist' && 'id' in card.target"
+                class="icon-button discovery-home-play"
+                type="button"
+                :aria-label="`播放歌单 ${card.title}`"
+                :disabled="!playable"
+                @click="emit('playPlaylist', card.target.id)"
+              >
+                <Icon name="play" />
+              </button>
+            </div>
+          </div>
+        </section>
+      </template>
     </template>
   </section>
 </template>

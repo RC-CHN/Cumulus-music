@@ -38,8 +38,8 @@
   try {
     await wait(() => sidebarHome() && !sidebarHome().disabled, 'sidebar home ready');
     click(sidebarHome());
-    await wait(() => roots().length === 11, 'classic homepage sections');
-    assert(roots().join(',') === 'playlists,featured,all_listen,recent,heartbeat,radar,vip,style,daily_voice,personal_voices,books', 'classic home order');
+    await wait(() => roots().length === 12, 'classic homepage sections with official ranking');
+    assert(roots().join(',') === 'playlists,featured,rankings,all_listen,recent,heartbeat,radar,vip,style,daily_voice,personal_voices,books', 'classic home order');
     assert(one('[data-home-section=featured] [data-home-card]').dataset.homeCard === 'featured:daily:', 'daily comes first in featured');
     assert(!one('.discovery-home img[src*="private.invalid"]'), 'unsafe artwork');
     assert(document.documentElement.scrollWidth <= innerWidth, 'horizontal overflow');
@@ -49,6 +49,22 @@
     await capture('home');
     await theme('深色', 'dark');
     await capture('dark');
+    const ranks = () => one('[data-home-section=rankings]');
+    ranks().scrollIntoView({ block: 'start' });
+    assert(ranks().querySelectorAll('.ranking-card').length === 3, 'official rankings and two sales panels');
+    assert(ranks().querySelectorAll('[data-rank-id="701"] .rank-preview-row').length === 3, 'only top three');
+    assert(!ranks().textContent.includes('全球榜'), 'only official ranking group');
+    await capture('ranking');
+    click(one('[data-home-card="rankings:home"]'));
+    await wait(() => one('.rankings-page h1')?.textContent === '排行榜' &&
+      one('.rankings-page [data-rank-id="701"]'), 'rank heading opens rankings homepage');
+    click(one('[aria-label="返回上一页"]'));
+    await wait(() => document.activeElement?.dataset.homeCard === 'rankings:home', 'ranking heading focus after Back');
+    click(one('[data-home-card="rankings:card:701"]'));
+    await wait(() => !one('.discovery-home') && one('.main-content')?.textContent.includes('合成歌单701'), 'ranking opens its native playlist');
+    click(one('[aria-label="返回上一页"]'));
+    await wait(() => document.activeElement?.dataset.homeCard === 'rankings:card:701', 'ranking card focus after Back');
+    one('.discovery-home').scrollTop = 0;
     const rail = one('[data-home-rail=playlists]');
     rail.scrollLeft = 80;
     one('.discovery-home').scrollTop = 40;
@@ -61,14 +77,19 @@
     await wait(() => one('.discovery-home')?.scrollTop === 40, 'return restores page scroll');
     await wait(() => document.activeElement?.dataset.homeCard === opener.dataset.homeCard, 'return restores card focus');
 
+    await emit('mode', { mode: 4 });
+    click(refresh());
+    await wait(() => !ranks() && !refresh()?.disabled, 'tag group hides ranking independently');
+    assert(roots().length === 11, 'recommendations stay visible without ranking');
     await emit('mode', { mode: 1 });
     click(refresh());
     await wait(retry, 'first-party failure shows retry');
-    assert(roots().length === 11, 'last usable homepage kept while refresh failed');
+    assert(roots().includes('playlists'), 'last usable homepage kept while refresh failed');
+    await wait(ranks, 'ranking updates independently while feed refresh fails');
     await capture('retry');
     await emit('mode', { mode: 3 });
     click(retry());
-    await wait(() => roots().length === 9 && !retry(), 'optional sections omitted');
+    await wait(() => roots().length === 10 && !retry(), 'optional sections omitted');
     assert(one('[data-home-section=playlists] [data-home-card]').dataset.homeCard === 'playlists:daily:', 'daily fallback to recommendations');
     await emit('mode', { mode: 2 });
     click(refresh());

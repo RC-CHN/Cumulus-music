@@ -25,6 +25,18 @@
   margin: 0;
   font-size: 18px;
 }
+.discovery-home-rank-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  padding: 0;
+}
+.discovery-home-rank-title .icon {
+  width: 16px;
+  height: 16px;
+  transform: rotate(180deg);
+}
 .discovery-home-block-heading > div {
   display: flex;
 }

@@ -1,6 +1,7 @@
 //! Official PC classic discovery homepage. The batch is read-only and its
 //! resource payloads are projected before crossing the account/desktop boundary.
 mod project;
+mod rankings;
 mod request;
 
 use super::{MusicClient, dto::AccountData};

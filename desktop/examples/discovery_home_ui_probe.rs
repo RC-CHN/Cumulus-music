@@ -42,10 +42,10 @@ fn main() {
                 let stage = value["stage"].as_str().expect("probe stage").to_owned();
                 match stage.as_str() {
                     "mode" => {
-                        let mode = value["mode"].as_u64().filter(|v| *v <= 3).expect("probe fixture mode");
+                        let mode = value["mode"].as_u64().filter(|v| *v <= 6).expect("probe fixture mode");
                         fixture.mode.store(mode as u8, Ordering::SeqCst);
                     }
-                    "complete" | "failed" | "home" | "dark" | "retry" | "privacy" => {
+                    "complete" | "failed" | "home" | "dark" | "ranking" | "retry" | "privacy" => {
                         value["paths"] = json!(fixture.calls.lock().unwrap().iter().map(|(path, _, _)| path).collect::<Vec<_>>());
                         fs::write(root.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                         if stage == "complete" || stage == "failed" {

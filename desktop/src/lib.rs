@@ -300,6 +300,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 rankings::ranking_page,
                 catalog::catalog_page,
                 catalog::discovery_home,
+                catalog::discovery_home_rankings,
                 catalog::followed_new_song_page,
                 catalog::followed_new_song_latest,
                 catalog::release_notification,

@@ -20,7 +20,7 @@ fn rows(value: &Value) -> impl Iterator<Item = &Value> {
     value.as_array().into_iter().flatten().take(128)
 }
 
-fn label(value: &Value) -> Option<String> {
+pub(super) fn label(value: &Value) -> Option<String> {
     let value = value.as_str()?.trim();
     if value.len() > 768 || value.contains("://") || value.chars().any(char::is_control) {
         return None;
