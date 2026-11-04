@@ -194,6 +194,27 @@
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",
     );
+    if (window.__cumulusPodcastTopClassicProof) {
+      await fixture("podcast_top_classic");
+      await home();
+      await wait(() => button("播客榜：更多"), "classic discovery entry");
+      click(button("播客榜：更多"));
+      const top = () => one('.podcast-top[data-layout="classic"]');
+      const regular = () => top()?.querySelector('[data-preview="podcast"]');
+      await wait(() => regular()?.querySelectorAll('.podcast-top-item').length === 8, "failed assignment falls back to classic scores");
+      assert(button("打开私人漫游", top()) && !top().querySelector('[data-preview="book"]'), "classic uses the roam entry, no updated audiobook card");
+      await capture("podcast_top_classic_scores");
+      click(button("今日最热", regular()));
+      await wait(() => button("播放 合成声音 407", regular()), "legacy hot tab uses the voice preview endpoint");
+      await capture("podcast_top_classic_hot");
+      click(button("查看全部", regular()));
+      await wait(() => one('.podcast-rankings')?.textContent.includes('合成声音 407') && one('.podcast-rankings [aria-pressed="true"]')?.textContent.trim() === '今日最热', "classic link selects the corresponding full chart");
+      click(button("返回上一页"));
+      await wait(() => regular()?.dataset.activeChart === 'hot', "classic detail Back preserves the chosen preview");
+      await capture("podcast_top_classic_back");
+      await emit("complete", { ok: true, stageCount: count, podcastTopClassicVerified: true, realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     if (window.__cumulusSearchHistoryLastProof) {
       await fixture("good");
       await home();
@@ -761,6 +782,34 @@
       ["podcast_catalogue", { epoch, query: { kind: "radios", parentId: "10001", subId: "000", continuation: homeHandle } }],
     ]) assert(!await invoke(command, args).then(() => true, () => false), "native handles cannot cross account or discovery route");
     await capture("podcast_more_home");
+    const updatedTop = () => one('.podcast-top[data-layout="updated"]');
+    const preview = (name) => updatedTop()?.querySelector(`[data-preview="${name}"]`);
+    await wait(() => preview('podcast')?.querySelectorAll('.podcast-top-item').length === 8 &&
+      preview('book') && button("打开 合成播客 365", preview('book')), "t1 displays eight score previews and the opted-in book recommendations");
+    assert(!button("打开私人漫游", updatedTop()) && button("高分播客", preview('podcast')).getAttribute("aria-pressed") === "true",
+      "t1 displays two ranking cards instead of the legacy roam card");
+    await capture("podcast_top_updated");
+    click(button("查看全部", preview('podcast')));
+    await wait(() => one('.podcast-rankings .podcast-rank-groups [aria-current="page"]')?.textContent.trim() === '播客榜' &&
+      one('.podcast-rankings .podcast-subtabs [aria-pressed="true"]')?.textContent.trim() === '高分必听' &&
+      all('.podcast-rank-row').length === 10, "View All deep links to the same score chart, beyond eight preview items");
+    await capture("podcast_top_deep_link");
+    click(button("返回上一页"));
+    await wait(() => preview('podcast')?.dataset.activeChart === 'score', "Back restores the top preview");
+    click(button("最热播客", preview('podcast')));
+    await wait(() => preview('podcast') && button("播放 合成声音 407", preview('podcast')), "updated hot preview uses the ordinary voice chart");
+    click(button("播放 合成声音 407", preview('podcast')));
+    await wait(() => preview('podcast') && button("暂停 合成声音 407", preview('podcast')) && one('.playerbar')?.dataset.state === 'playing', "preview row starts native playback");
+    assert((await snapshot()).track?.voiceId === '407', "preview plays selected episode identity");
+    click(button("免费听书", preview('book')));
+    await wait(() => preview('book') && button("打开 合成播客 363", preview('book')), "free book preview has independent rows");
+    click(button("查看全部", preview('book')));
+    await wait(() => one('.podcast-rankings .podcast-rank-groups [aria-current="page"]')?.textContent.trim() === '免费听书榜' &&
+      one('.podcast-rank-row')?.textContent.includes('合成播客 363'), "book preview deep links to the configured free chart");
+    click(button("返回上一页"));
+    await wait(() => preview('book')?.dataset.activeChart === 'free', "Back retains the free selection");
+    click(button("好书推荐", preview('book')));
+    await wait(() => preview('book')?.dataset.activeChart === 'recommended', "recommendation selected before opt-out proof");
     click(button("加载更多播客", podcastHome()));
     await wait(() => button("重试", podcastHome()), "homepage continuation exposes retry");
     assert(homeRadio(305) && homeVoice(404) && !homeRadio(306), "a failed page retains the existing blocks");
@@ -791,6 +840,9 @@
     await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭") && button("前往设置", podcastHome()),
       "disabled personalization stops a retained continuation and shows Settings");
     assert(!homeRadio(305) && !homeVoice(404) && !button("加载更多播客", podcastHome()), "old personalized content is cleared");
+    await wait(() => preview('book')?.dataset.activeChart === 'free' && button("打开 合成播客 363", preview('book')),
+      "opt-out immediately switches the updated card to ordinary free books");
+    assert(!button("好书推荐", preview('book')) && !button("打开 合成播客 365", preview('book')), "recommendation tab and its previous card disappear");
     assert(!await invoke("podcast_home", { epoch, continuation: homeHandle }).then(() => true, () => false),
       "the native continuation is retired after opt-out");
     await capture("podcast_more_disabled");
@@ -802,13 +854,15 @@
     await wait(() => categoryStrip() && button("音乐播客", categoryStrip()) && button("更多分类", categoryStrip()), "ordinary categories remain when personalized feed is disabled");
     const taxonomy = await invoke("podcast_catalogue", { epoch, query: { kind: "categories" } });
     const ordered = taxonomy.value.categories.map((category) => category.id);
+    const bookPosition = ordered.indexOf('10001');
+    if (bookPosition > 1) ordered.splice(1, 0, ordered.splice(bookPosition, 1)[0]);
     const stripItems = [...categoryStrip().querySelectorAll("button[data-category-id]:not(.category-more)")];
     const firstHidden = ordered[stripItems.length];
     assert(stripItems.map((node) => node.dataset.categoryId).join(",") === ordered.slice(0, stripItems.length).join(",") &&
       stripItems.every((node) => Math.abs(node.getBoundingClientRect().height - 40) < 1) &&
       categoryStrip().scrollWidth <= categoryStrip().clientWidth &&
       button("更多分类", categoryStrip()).dataset.categoryId === firstHidden,
-      "category entrance follows service order and sends More to the first hidden parent in a narrow window");
+      "t1 moves audiobooks to the second category and sends More to the first hidden parent");
     click(button("音乐播客", categoryStrip()));
     const catalogue = () => one(".podcast-catalogue");
     await wait(() => catalogue()?.dataset.parentCategory === "2" && book(351), "ordinary parent loads without personalization");
@@ -903,6 +957,7 @@
       podcastMoreVerified: true,
       podcastCategoryVerified: true,
       podcastRankingsVerified: true,
+      podcastTopUpdatedVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

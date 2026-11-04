@@ -15,6 +15,7 @@ def main():
     mode.add_argument('--exact-fallback', action='store_true')
     mode.add_argument('--suggestion-matches', action='store_true')
     mode.add_argument('--history-last', action='store_true')
+    mode.add_argument('--podcast-top-classic', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -38,6 +39,8 @@ def main():
         prefix = 'window.__cumulusSearchSuggestionMatchesProof = true;\n'
     if args.history_last:
         prefix = 'window.__cumulusSearchHistoryLastProof = true;\n'
+    if args.podcast_top_classic:
+        prefix = 'window.__cumulusPodcastTopClassicProof = true;\n'
     script.write_text(prefix + source.read_text(encoding='utf-8'), encoding='utf-8')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
@@ -47,9 +50,10 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
-    if args.exact_fallback or args.suggestion_matches or args.history_last:
+    if args.exact_fallback or args.suggestion_matches or args.history_last or args.podcast_top_classic:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-        flag = ('historyLastVerified' if args.history_last else
+        flag = ('podcastTopClassicVerified' if args.podcast_top_classic else
+                'historyLastVerified' if args.history_last else
                 'suggestionMatchesVerified' if args.suggestion_matches else 'exactFallbackVerified')
         count = 2 if args.suggestion_matches else 3
         assert complete['ok'] and complete[flag] and complete['stageCount'] == count
@@ -72,8 +76,9 @@ def verify(root, capture):
     assert complete['audiobookMoreVerified'] and complete['podcastMoreVerified']
     assert complete['podcastCategoryVerified']
     assert complete['podcastRankingsVerified']
+    assert complete['podcastTopUpdatedVerified']
     assert complete['audioRankDetails'] == [301, 301, 302, 304, 305]
-    assert complete['stageCount'] == 74 and complete['syntheticSearchCalls'] > 30
+    assert complete['stageCount'] == 76 and complete['syntheticSearchCalls'] > 30
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
     if capture:

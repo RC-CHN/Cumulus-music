@@ -16,7 +16,7 @@ pub use dto::*;
 pub use home::{PodcastHomeBlock, PodcastHomePage};
 pub use rankings::{
     PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource, PodcastRankRow,
-    PodcastRankTab, PodcastRanks,
+    PodcastRankTab, PodcastRanks, PodcastTopLayout,
 };
 use serde_json::{Value, json};
 

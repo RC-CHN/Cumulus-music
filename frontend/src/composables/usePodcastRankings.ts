@@ -6,6 +6,7 @@ import type {
   PodcastRankMenu,
   PodcastRankRow,
   PodcastRankTab,
+  PodcastRankTarget,
 } from '../services/podcast';
 
 const ORDINARY: { group: PodcastRankGroup; name: string }[] = [
@@ -32,11 +33,15 @@ export function usePodcastRankings(account: () => AccountView, expired: () => vo
   let version = 0,
     request = 0;
   let configRequest = 0;
+  let visit: number | undefined;
+  let wanted: PodcastRankTarget | undefined;
   const menus = new Map<PodcastRankGroup, PodcastRankTab[]>();
   watch(
     () => [account().epoch, account().status],
     () => {
       version++;
+      visit = undefined;
+      wanted = undefined;
       request++;
       menus.clear();
       group.value = 'voice';
@@ -80,7 +85,7 @@ export function usePodcastRankings(account: () => AccountView, expired: () => vo
       if (live()) configPending.value = false;
     }
   }
-  async function open(next: PodcastRankGroup, force = false) {
+  async function open(next: PodcastRankGroup, force = false, target?: PodcastRankTarget) {
     const { epoch, status } = account();
     if (
       status !== 'authenticated' ||
@@ -108,7 +113,12 @@ export function usePodcastRankings(account: () => AccountView, expired: () => vo
     } finally {
       if (id === request) pending.value = false;
     }
-    if (id === request && menu.value[0]) await choose(menu.value[0]);
+    if (id === request && menu.value[0]) {
+      const matched =
+        target &&
+        menu.value.find((item) => item.id === target.id && item.chartType === target.chartType);
+      await choose(matched || menu.value[0]);
+    }
   }
   async function choose(target: PodcastRankTab, force = false) {
     const { epoch, status } = account();
@@ -139,9 +149,25 @@ export function usePodcastRankings(account: () => AccountView, expired: () => vo
       if (id === request) pending.value = false;
     }
   }
-  function activate() {
-    void bookConfig();
-    if (!menu.value.length && !error.value && !pending.value) void open(group.value, true);
+  async function activate(routeVisit = 0, target?: PodcastRankTarget) {
+    const fresh = visit !== routeVisit;
+    if (fresh) {
+      visit = routeVisit;
+      wanted = target;
+    }
+    if (!fresh && (menu.value.length || error.value || pending.value)) {
+      void bookConfig();
+      return;
+    }
+    if (target && !ORDINARY.some((item) => item.group === target.group)) {
+      await bookConfig();
+      if (visit !== routeVisit) return;
+      const matching = bookGroups.value.some((item) => item.group === target.group);
+      void open(matching ? target.group : 'voice', true, matching ? target : undefined);
+    } else {
+      void bookConfig();
+      void open(target?.group ?? 'voice', true, target);
+    }
   }
   function dropPersonalized() {
     // Recheck the preference before exposing the optional tab on next entry.
@@ -160,8 +186,9 @@ export function usePodcastRankings(account: () => AccountView, expired: () => vo
     } else menu.value = menu.value.filter((item) => item.id !== 'RECOMMEND_CHARTS');
   }
   function retry() {
-    if (tab.value) void choose(tab.value, true);
-    else void open(group.value, true);
+    const current = tab.value && menu.value.find((item) => tabKey(item) === tabKey(tab.value));
+    if (current) void choose(current, true);
+    else void open(group.value, true, wanted?.group === group.value ? wanted : undefined);
   }
   return {
     groups,

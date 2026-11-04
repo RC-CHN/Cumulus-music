@@ -2,12 +2,14 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import type { PodcastRankingsModel } from '../composables/usePodcastRankings';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
-import type { EpisodeView, PodcastRankRow } from '../services/podcast';
+import type { EpisodeView, PodcastRankRow, PodcastRankTarget } from '../services/podcast';
 import { time } from '../services/player';
 import Icon from './Icon.vue';
 
 const props = defineProps<{
   model: PodcastRankingsModel;
+  target?: PodcastRankTarget;
+  visit?: number;
   playable: boolean;
   currentVoice?: string;
   playing: boolean;
@@ -20,7 +22,7 @@ usePageEntryFocus(
   () => !pending.value,
   () => true,
 );
-onMounted(() => props.model.activate());
+onMounted(() => void props.model.activate(props.visit, props.target));
 onBeforeUnmount(() => props.model.dropPersonalized());
 const change = (row: PodcastRankRow) =>
   row.rank !== null && row.lastRank !== null ? row.lastRank - row.rank : 0;

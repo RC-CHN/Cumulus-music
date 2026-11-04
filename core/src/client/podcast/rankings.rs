@@ -2,13 +2,16 @@
 use super::{EpisodeView, MusicClient, PodcastCard, home::podcast_recommendations_enabled, view};
 use crate::{
     Error, Result,
+    account::login_policy::AB_PATH,
     client::{dto::AccountData, mapping::artwork},
     podcast::{Episode, Radio},
     protocol::api::{Api, identifier},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
+
+const TOP_EXPERIMENT: &str = "podcast_tab_better";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -55,6 +58,7 @@ impl PodcastRankGroup {
     rename_all_fields = "camelCase"
 )]
 pub enum PodcastRankQuery {
+    TopConfig,
     BookGroups,
     Menu {
         group: PodcastRankGroup,
@@ -63,6 +67,8 @@ pub enum PodcastRankQuery {
         group: PodcastRankGroup,
         id: String,
         chart_type: String,
+        #[serde(default)]
+        preview: bool,
     },
 }
 #[derive(Serialize)]
@@ -110,9 +116,17 @@ pub enum PodcastRankResource {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PodcastRanks {
+    TopConfig { layout: PodcastTopLayout },
     BookGroups { groups: Vec<PodcastRankMenu> },
     Menu { tabs: Vec<PodcastRankTab> },
     Entries { rows: Vec<PodcastRankRow> },
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PodcastTopLayout {
+    Classic,
+    Updated,
 }
 
 fn label(raw: &Value) -> Option<String> {
@@ -247,6 +261,24 @@ fn row(raw: &Value, group: PodcastRankGroup) -> Option<PodcastRankRow> {
 async fn request(api: Arc<dyn Api>, query: PodcastRankQuery) -> Result<PodcastRanks> {
     use PodcastRankGroup::*;
     Ok(match query {
+        PodcastRankQuery::TopConfig => {
+            let response = tokio::time::timeout(
+                Duration::from_secs(3),
+                api.call(AB_PATH, json!({"expNames":TOP_EXPERIMENT}), false, &[200]),
+            )
+            .await;
+            let layout = response
+                .ok()
+                .and_then(Result::ok)
+                .and_then(|value| {
+                    let rows = value["data"].as_array().filter(|rows| rows.len() <= 4096)?;
+                    let mut matching = rows.iter().filter(|row| row["expName"] == TOP_EXPERIMENT);
+                    let updated = matching.next()?.get("expGroupName")? == "t1";
+                    (updated && matching.next().is_none()).then_some(PodcastTopLayout::Updated)
+                })
+                .unwrap_or(PodcastTopLayout::Classic);
+            PodcastRanks::TopConfig { layout }
+        }
         PodcastRankQuery::BookGroups => {
             let value = api
                 .call("/api/voice/book/chart/config", json!({}), false, &[200])
@@ -297,6 +329,7 @@ async fn request(api: Arc<dyn Api>, query: PodcastRankQuery) -> Result<PodcastRa
             group,
             id,
             chart_type,
+            preview,
         } => {
             if !valid_part(&id) || !valid_part(&chart_type) {
                 return Err(Error::InvalidInput("invalid podcast rank target"));
@@ -341,6 +374,7 @@ async fn request(api: Arc<dyn Api>, query: PodcastRankQuery) -> Result<PodcastRa
                     .iter()
                     .take(500)
                     .filter_map(|raw| row(raw, group))
+                    .take(if preview { 8 } else { 500 })
                     .collect(),
             }
         }

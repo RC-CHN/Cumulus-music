@@ -139,6 +139,12 @@ export interface PodcastRankTab {
   showScore: boolean;
   showRankOffset: boolean;
 }
+export interface PodcastRankTarget {
+  group: PodcastRankGroup;
+  id: string;
+  chartType: string;
+}
+export type PodcastTopLayout = 'classic' | 'updated';
 export interface PodcastRankMenu {
   group: PodcastRankGroup;
   name: string;
@@ -155,10 +161,12 @@ export interface PodcastRankRow {
   resource: PodcastRankResource;
 }
 export type PodcastRankQuery =
+  | { kind: 'top_config' }
   | { kind: 'book_groups' }
   | { kind: 'menu'; group: PodcastRankGroup }
-  | { kind: 'entries'; group: PodcastRankGroup; id: string; chartType: string };
+  | ({ kind: 'entries'; preview?: boolean } & PodcastRankTarget);
 export type PodcastRanks =
+  | { kind: 'top_config'; layout: PodcastTopLayout }
   | { kind: 'book_groups'; groups: PodcastRankMenu[] }
   | { kind: 'menu'; tabs: PodcastRankTab[] }
   | { kind: 'entries'; rows: PodcastRankRow[] };

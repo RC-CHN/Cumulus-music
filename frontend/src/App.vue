@@ -130,6 +130,7 @@ import { usePodcasts } from './composables/usePodcasts';
 import { usePodcastCatalogue } from './composables/usePodcastCatalogue';
 import { usePodcastHome } from './composables/usePodcastHome';
 import { usePodcastRankings } from './composables/usePodcastRankings';
+import { usePodcastTop } from './composables/usePodcastTop';
 import { AUDIOBOOK_CATEGORY, type PodcastScope } from './services/podcast';
 import {
   failure,
@@ -613,6 +614,13 @@ const podcastRankings = usePodcastRankings(
 );
 const podcastHome = usePodcastHome(
   () => music.account.value,
+  () => {
+    void music.bootstrap(false);
+  },
+);
+const podcastTop = usePodcastTop(
+  () => music.account.value,
+  () => podcastHome.enabled.value,
   () => {
     void music.bootstrap(false);
   },
@@ -2668,6 +2676,7 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'podcast_discovery'"
                 :model="podcastHome"
                 :catalogue="podcastCatalogue"
+                :top="podcastTop"
                 :playable="player.ready.value && !player.busy.value"
                 :current-voice="currentVoiceId"
                 :playing="player.playing.value"
@@ -2675,11 +2684,14 @@ onUnmounted(() => {
                 @play="(voice) => playSearchCard({ kind: 'voice', voice })"
                 @settings="openPodcastPrivacy"
                 @category="(id) => music.navigate({ kind: 'podcast_category', id })"
-                @rankings="music.navigate({ kind: 'podcast_rankings' })"
+                @rankings="(target) => music.navigate({ kind: 'podcast_rankings', target })"
+                @roam="music.navigate({ kind: 'scene_fm' })"
               />
               <PodcastRankingsPage
                 v-else-if="page.kind === 'podcast_rankings'"
                 :model="podcastRankings"
+                :target="page.target"
+                :visit="page.rankVisit"
                 :playable="player.ready.value && !player.busy.value"
                 :current-voice="currentVoiceId"
                 :playing="player.playing.value"

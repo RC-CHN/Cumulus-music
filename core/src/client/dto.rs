@@ -44,6 +44,7 @@ pub use super::podcast::{
     PodcastCommand, PodcastHomeBlock, PodcastHomePage, PodcastMutationView, PodcastPage,
     PodcastQuery, PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource,
     PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastState, PodcastSubcategory,
+    PodcastTopLayout,
 };
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
 pub use super::relay::{

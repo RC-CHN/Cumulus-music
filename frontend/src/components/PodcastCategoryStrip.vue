@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { PodcastCatalogueModel } from '../composables/usePodcastCatalogue';
+import { AUDIOBOOK_CATEGORY } from '../services/podcast';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ model: PodcastCatalogueModel }>();
+const props = defineProps<{ model: PodcastCatalogueModel; updated: boolean }>();
 const emit = defineEmits<{ open: [id: string]; rankings: [] }>();
 const { categories, categoriesPending, categoriesError } = props.model;
+const displayed = computed(() => {
+  const index = categories.value.findIndex((item) => item.id === AUDIOBOOK_CATEGORY);
+  if (!props.updated || index <= 1) return categories.value;
+  const order = [...categories.value];
+  const [book] = order.splice(index, 1);
+  if (book) order.splice(1, 0, book);
+  return order;
+});
 const strip = ref<HTMLElement>();
 const width = ref(0);
 let observer: ResizeObserver | undefined;
@@ -29,14 +38,14 @@ const visible = computed(() => {
     ? all
     : Math.max(0, Math.floor((width.value - 78) / 109) - 1);
 });
-const firstHidden = computed(() => categories.value[visible.value]);
+const firstHidden = computed(() => displayed.value[visible.value]);
 </script>
 
 <template>
   <nav ref="strip" class="podcast-category-strip" aria-label="浏览播客分类">
     <button type="button" @click="emit('rankings')">排行榜</button>
     <button
-      v-for="category in categories.slice(0, visible)"
+      v-for="category in displayed.slice(0, visible)"
       :key="category.id"
       type="button"
       :data-category-id="category.id"

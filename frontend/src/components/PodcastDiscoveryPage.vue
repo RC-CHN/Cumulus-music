@@ -2,15 +2,18 @@
 import { onMounted, ref } from 'vue';
 import type { PodcastHomeModel } from '../composables/usePodcastHome';
 import type { PodcastCatalogueModel } from '../composables/usePodcastCatalogue';
+import type { PodcastTopModel } from '../composables/usePodcastTop';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
-import type { EpisodeView } from '../services/podcast';
+import type { EpisodeView, PodcastRankTarget } from '../services/podcast';
 import { time } from '../services/player';
 import Icon from './Icon.vue';
 import PodcastCategoryStrip from './PodcastCategoryStrip.vue';
+import PodcastTopPreview from './PodcastTopPreview.vue';
 
 const props = defineProps<{
   model: PodcastHomeModel;
   catalogue: PodcastCatalogueModel;
+  top: PodcastTopModel;
   playable: boolean;
   currentVoice?: string;
   playing: boolean;
@@ -20,7 +23,8 @@ const emit = defineEmits<{
   play: [voice: EpisodeView];
   settings: [];
   category: [id: string];
-  rankings: [];
+  rankings: [target?: PodcastRankTarget];
+  roam: [];
 }>();
 const root = ref<HTMLElement>();
 const { blocks, enabled, pending, error, continuation, restart } = props.model;
@@ -64,8 +68,19 @@ function scrolled() {
         <Icon name="refresh" />刷新
       </button>
     </header>
+    <PodcastTopPreview
+      :model="top"
+      :playable="playable"
+      :current-voice="currentVoice"
+      :playing="playing"
+      @all="(target) => emit('rankings', target)"
+      @radio="(id) => emit('open', id)"
+      @play="(voice) => emit('play', voice)"
+      @roam="emit('roam')"
+    />
     <PodcastCategoryStrip
       :model="catalogue"
+      :updated="top.layout.value === 'updated'"
       @open="(id) => emit('category', id)"
       @rankings="emit('rankings')"
     />

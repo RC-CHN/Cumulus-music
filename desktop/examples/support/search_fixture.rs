@@ -32,6 +32,7 @@ pub fn control(value: &Value) {
             "hot_source",
             "selection_source",
             "audio_ranks",
+            "podcast_top_classic",
             "podcast_home_disabled",
             "suggest_error",
             "result_error",
@@ -173,7 +174,10 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         return None;
     }
     CALLS.fetch_add(1, Ordering::SeqCst);
-    let mode = MODE.lock().unwrap().clone();
+    let mode = match MODE.lock().unwrap().as_str() {
+        "podcast_top_classic" => "audio_ranks".into(),
+        other => other.to_owned(),
+    };
     if mode == "expired" {
         return Some(Ok(json!({"code":301})));
     }
@@ -278,8 +282,21 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     let radio = |id| json!({"id":id,"name":format!("合成播客 {id}"),"programCount":3,"dj":{"nickname":"合成主播"}});
     let program = |id, radio_id| json!({"id":id,"name":format!("合成声音 {id}"),"mainSong":{"id":id-400,"name":format!("合成声音 {id}"),"duration":360000},"duration":360000,"radio":radio(radio_id),"dj":{"nickname":"合成主播"}});
-    let mode = MODE.lock().unwrap().clone();
+    let configured = MODE.lock().unwrap().clone();
+    let mode = if configured == "podcast_top_classic" {
+        "audio_ranks".into()
+    } else {
+        configured.clone()
+    };
     let data = match path {
+        "/api/rtrs/abt/front/expinfo/list" if args == &json!({"expNames":"podcast_tab_better"}) => {
+            if configured == "podcast_top_classic" {
+                return Some(Err(Error::Transport(
+                    "synthetic experiment lookup unavailable".into(),
+                )));
+            }
+            json!({"code":200,"data":[{"expName":"podcast_tab_better","expGroupName":"t1"}]})
+        }
         "/api/podcast/ranklist/square/ranklist/get/v2"
             if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
         {
@@ -306,11 +323,18 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
             assert_eq!(*args, json!({"categoryId":"2"}));
             json!({"code":200,"data":[{"voiceMetaVO":program(408,305),"chartMetaVO":{"rank":1}}]})
         }
-        "/api/charts/voicelist" if mode == "podcast_home_disabled" => {
+        "/api/charts/voicelist"
+            if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
+        {
             assert_eq!(*args, json!({"chartType":"7"}));
-            let mut radio = radio(361);
-            radio["score"] = json!("9.3分");
-            json!({"code":200,"data":[{"voicelistMetaVO":radio,"chartMetaVO":{"rank":2}}]})
+            let rows = (361..=370)
+                .map(|id| {
+                    let mut item = radio(id);
+                    item["score"] = json!("9.3分");
+                    json!({"voicelistMetaVO":item,"chartMetaVO":{"rank":id-359}})
+                })
+                .collect::<Vec<_>>();
+            json!({"code":200,"data":rows})
         }
         "/api/charts/voicelist/category" if mode == "podcast_home_disabled" => {
             assert_eq!(*args, json!({"categoryId":"2"}));
@@ -320,14 +344,18 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
             assert_eq!(*args, json!({}));
             json!({"code":200,"data":{"list":[{"id":29,"nickname":"合成主播榜","rank":1,"lastRank":4}]}})
         }
-        "/api/voice/book/chart/config" if mode == "podcast_home_disabled" => {
+        "/api/voice/book/chart/config"
+            if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
+        {
             assert_eq!(*args, json!({}));
             json!({"code":200,"data":[
                 {"chartNameCode":"FREE_CHARTS","subList":[{"code":"VOICE_BOOK_FREE_CHARTS_ALL","name":"免费总榜"}]},
                 {"chartNameCode":"OVERALL_CHARTS","subList":[{"code":"RECOMMEND_CHARTS","name":"个性听书榜"},{"code":"VOICE_BOOK_OVERALL","name":"听书热门榜"}]}
             ]})
         }
-        "/api/voice/book/chart/get" if mode == "podcast_home_disabled" => {
+        "/api/voice/book/chart/get"
+            if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
+        {
             let id = match args["subCode"].as_str() {
                 Some("VOICE_BOOK_OVERALL") => {
                     assert_eq!(args["chartNameCode"], "OVERALL_CHARTS");

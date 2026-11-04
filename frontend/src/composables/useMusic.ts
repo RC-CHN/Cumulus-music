@@ -32,7 +32,11 @@ export type Page =
   | { kind: 'podcasts' }
   | { kind: 'podcast_category'; id: string }
   | { kind: 'podcast_discovery' }
-  | { kind: 'podcast_rankings' }
+  | {
+      kind: 'podcast_rankings';
+      target?: import('../services/podcast').PodcastRankTarget;
+      rankVisit?: number;
+    }
   | { kind: 'local' }
   | { kind: 'daily' }
   | { kind: 'daily_batch' }
@@ -94,6 +98,7 @@ export function useMusic(
   let searchId = 0;
   let downloadVisit = 0;
   let catalogVisit = 0;
+  let podcastRankVisit = 0;
   let collectionVisit = 0;
   let accountRequest = 0;
   let resourceRequest = 0;
@@ -323,11 +328,13 @@ export function useMusic(
           ? { ...next, searchId: ++searchId }
           : next.kind === 'downloads'
             ? { ...next, downloadVisit: ++downloadVisit }
-            : next.kind === 'catalog' && next.catalogVisit === undefined
-              ? { ...next, catalogVisit: ++catalogVisit }
-              : next.kind === 'collections' && next.collectionVisit === undefined
-                ? { ...next, collectionVisit: ++collectionVisit }
-                : next;
+            : next.kind === 'podcast_rankings' && next.rankVisit === undefined
+              ? { ...next, rankVisit: ++podcastRankVisit }
+              : next.kind === 'catalog' && next.catalogVisit === undefined
+                ? { ...next, catalogVisit: ++catalogVisit }
+                : next.kind === 'collections' && next.collectionVisit === undefined
+                  ? { ...next, collectionVisit: ++collectionVisit }
+                  : next;
       if (!keepDaily) void load();
     }, local);
   }
