@@ -950,3 +950,22 @@ Linux 以真实 WebKitGTK、正式 Vue/IPC、真实 SQLite 和 libmpv null 走�
 libmpv；即使通过也不能替代实体 Windows 的休眠/熄屏试验。Linux 原始报告和
 图片在私有 .build/ui-proof/phase39/power-webview/；复现入口为
 scripts/ci/playback_power_smoke.py。
+
+播放设置引导、系统音量与搜索下拉（2026-11-05）
+------------------------------------------------
+- [首页引导](playback-power-home-guide.txt)：等待、进出首页、迟到回包、
+  一次性标记、关闭焦点和跳转到播放设置通过。点击不更改开关。合并产品前端的
+  Linux WebKitGTK 真实窗口完成 9 态/9 图，报告在
+  .build/ui-proof/phase40/playback_power_guide/report.json。Windows 电源宿主
+  和实验为密封夹具。
+- [系统音量](windows-system-master-volume.txt)：设置只读 Windows 默认多媒体
+  输出；静音是 0%，不可读另行提示。合并产品前端的 Linux 窗口完成 6 态/6 图，
+  用合成 Windows 端点验证读值和错误恢复，同时以真实 libmpv 验证同一暂停曲目
+  未改变；原生 Linux 不显示该项。报告在
+  .build/ui-proof/phase40/system_master_volume/audit.json。
+- [搜索下拉](search-discovery-ui-contracts.txt)保留官方普通榜单顺序；只为
+  pc-search-audio-toplist=t1 显示播客与听书榜。对照组既不显示也不请求两榜
+  的详情。真实 Linux WebView 核对分组、输入联想、焦点和窄窗滚动。常规搜索
+  回归另外通过 76 态（139 次合成读取），不使用真实搜索会话。
+三套夹具均在公开 CI 的 Linux WebView 和 Windows 打包检查中运行。Windows
+夹具使用同次暂存媒体，不直接读写真实端点；不以 GTK 截图代验 Windows。

@@ -13,7 +13,8 @@
   设置未开启、keepAwakeGuideTipShowed 未存；还受更高优先级弹层限制。恢复的
   Header/index.jsx:686–709、856–867 在成功展示后保存已展示标记，关闭不启用；
   「去设置」关闭引导并跳 /setting/play/<DateSync 毫秒>。返回或关闭引导都不写
-  disableSystemSleep。首页一次性提示独立于设置；下述设置接线不依赖引导。
+  disableSystemSleep。首页提示已独立接入，见 playback-power-home-guide.txt；
+  下述设置接线不依赖提示。
 - M/473:10580–10622、10705–10713、12872–12879 在应用根下挂载效果。依赖仅为
   [disableSystemSleep,isPlaying]，挂载及任一依赖变化时调一次；不改变 isPlaying 的状态变化，以及
   歌曲、进度或实验变化本身，不额外调用，未见该效果的显式卸载回调。isPlaying 等于 M/7:54
