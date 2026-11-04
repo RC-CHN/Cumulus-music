@@ -1,6 +1,7 @@
 //! Native playback actor. Queue/persistence transitions are serialized, while
 //! resolving and decoding run outside the actor. A generation cancels old loads.
 mod actions;
+mod effect_runtime;
 mod equalizer;
 mod history;
 mod intelligence;

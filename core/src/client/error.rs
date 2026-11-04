@@ -442,6 +442,8 @@ impl From<Error> for ClientError {
                     ("network", "网络请求失败，请稍后重试", true)
                 }
                 Error::Playback { .. }
+                | Error::EqualizerProcessorFailed
+                | Error::LoudnessProcessorFailed
                 | Error::ParametricProcessorFailed
                 | Error::Service { .. }
                 | Error::DownloadedFileMissing

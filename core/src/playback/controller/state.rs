@@ -105,6 +105,18 @@ impl Actor {
         self.error = Some(crate::playback::failure::PlaybackFailure::from_error(error));
     }
 
+    pub(super) async fn stop_after_poll_failure(&mut self, error: &Error) {
+        use crate::effects::loudness::LoudnessStatus;
+        let loudness_failed = self.loudness.status == LoudnessStatus::Failed;
+        let _ = self.stop(false).await;
+        if loudness_failed && !matches!(error.root(), Error::Cancelled | Error::StaleResponse) {
+            // Stop forgets track gain, but still report the processing failure.
+            self.loudness.status = LoudnessStatus::Failed;
+        }
+        self.record_failure(error);
+        self.state = PlaybackStatus::Error;
+    }
+
     pub fn new(
         session: Arc<AccountSession>,
         store: Arc<StateStore>,
@@ -420,9 +432,7 @@ impl Actor {
                 },
                 _ = interval.tick() => {
                     if let Err(error) = self.tick().await {
-                        let _ = self.stop(false).await;
-                        self.record_failure(&error);
-                        self.state = PlaybackStatus::Error;
+                        self.stop_after_poll_failure(&error).await;
                     }
                 },
             }

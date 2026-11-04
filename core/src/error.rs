@@ -67,6 +67,10 @@ pub enum Error {
     Protocol(&'static str),
     #[error("invalid media data: {0}")]
     Media(&'static str),
+    #[error("graphic equalizer processor failed")]
+    EqualizerProcessorFailed,
+    #[error("loudness processor failed")]
+    LoudnessProcessorFailed,
     #[error("parametric equalizer processor failed")]
     ParametricProcessorFailed,
     #[error("audio engine {operation} failed ({code})")]

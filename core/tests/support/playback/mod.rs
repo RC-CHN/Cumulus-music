@@ -111,6 +111,9 @@ pub struct DeviceState {
     pub bounds: Vec<(f64, Option<f64>)>,
     pub pauses: Vec<bool>,
 }
+pub const POLL_FAULT_EQUALIZER: u8 = 1;
+pub const POLL_FAULT_LOUDNESS: u8 = 2;
+
 pub struct Device {
     pub loudness_supported: AtomicBool,
     pub loudness_fail: AtomicBool,
@@ -122,6 +125,8 @@ pub struct Device {
     pub parametric_bypassed: AtomicBool,
     pub parametric_clear_fail: AtomicBool,
     pub parametric_poll_fault: AtomicBool,
+    pub optional_poll_faults: AtomicU8,
+    pub optional_faults_after_pause: AtomicU8,
     pub parametric_at_unpause: Mutex<Vec<bool>>,
     pub equalizer_supported: AtomicBool,
     pub equalizer_fail: AtomicBool,
@@ -155,6 +160,8 @@ impl Default for Device {
             parametric_bypassed: AtomicBool::new(false),
             parametric_clear_fail: AtomicBool::new(false),
             parametric_poll_fault: AtomicBool::new(false),
+            optional_poll_faults: AtomicU8::new(0),
+            optional_faults_after_pause: AtomicU8::new(0),
             parametric_at_unpause: Mutex::new(Vec::new()),
             equalizer_supported: AtomicBool::new(false),
             equalizer_fail: AtomicBool::new(false),
@@ -346,6 +353,12 @@ impl AudioEngine for Engine {
         let mut state = self.0.state.lock().unwrap();
         state.pauses.push(paused);
         state.view.paused = paused;
+        if paused {
+            let faults = self.0.optional_faults_after_pause.swap(0, Ordering::SeqCst);
+            self.0
+                .optional_poll_faults
+                .fetch_or(faults, Ordering::SeqCst);
+        }
         if paused && let Some(event) = self.0.pause_event.lock().unwrap().take() {
             state.view.events.push(event);
         }
@@ -378,6 +391,13 @@ impl AudioEngine for Engine {
     fn poll(&mut self) -> Result<EngineSnapshot> {
         let mut state = self.0.state.lock().unwrap();
         state.polls += 1;
+        let faults = self.0.optional_poll_faults.load(Ordering::SeqCst);
+        if faults & POLL_FAULT_LOUDNESS != 0 && self.0.loudness.lock().unwrap().is_some() {
+            return Err(Error::LoudnessProcessorFailed);
+        }
+        if faults & POLL_FAULT_EQUALIZER != 0 && self.0.equalizer.lock().unwrap().is_some() {
+            return Err(Error::EqualizerProcessorFailed);
+        }
         if self.0.parametric_attached.load(Ordering::SeqCst)
             && self.0.parametric_poll_fault.load(Ordering::SeqCst)
             && !state.view.paused

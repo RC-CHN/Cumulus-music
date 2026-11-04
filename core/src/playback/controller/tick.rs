@@ -138,7 +138,7 @@ impl Actor {
         }
         self.equalizer_observe().await?;
         self.loudness_observe().await?;
-        let view = self.poll_with_parametric_recovery().await?;
+        let view = self.poll_with_effect_recovery().await?;
         let loaded = self
             .loaded
             .as_ref()

@@ -207,7 +207,7 @@ fn run() -> Result<serde_json::Value> {
     let mut surfaced = false;
     while Instant::now() < deadline {
         match engine.poll() {
-            Err(Error::Media("equalizer processing failed; recreate the adapter")) => {
+            Err(Error::EqualizerProcessorFailed) => {
                 surfaced = true;
                 break;
             }

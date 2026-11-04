@@ -507,16 +507,14 @@ impl Actor {
                 Ok(engine.poll())
             })
             .await?;
-        let peq_fault = observed
+        let processor_fault = observed
             .as_ref()
-            .is_err_and(|error| matches!(error.root(), Error::ParametricProcessorFailed));
-        let view = match self.recover_parametric_poll(observed).await {
-            Err(error) if peq_fault => {
-                // The transport command already succeeded. If resampling
-                // fails, stop safely rather than showing the old pause state.
-                let _ = self.stop(false).await;
-                self.state = PlaybackStatus::Error;
-                self.record_failure(&error);
+            .is_err_and(super::effect_runtime::is_processor_fault);
+        let view = match self.recover_effect_poll(observed).await {
+            Err(error) if processor_fault => {
+                // The transport command already succeeded. If removal or
+                // resampling fails, never keep the old pause state visible.
+                self.stop_after_poll_failure(&error).await;
                 return Err(error);
             }
             result => result?,

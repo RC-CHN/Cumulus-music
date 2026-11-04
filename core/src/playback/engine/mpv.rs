@@ -686,22 +686,19 @@ impl AudioEngine for MpvEngine {
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
         self.require_pinned_authority()?;
+        // The callback quarantines a failed block. Report its exact processor
+        // so the playback actor can remove that node before accepting a clock.
         if let Some(loudness) = &self.loudness
-            && loudness.stats()?.failed_blocks != 0
+            && !loudness.stats().is_ok_and(|stats| stats.failed_blocks == 0)
         {
-            return Err(Error::Media(
-                "loudness processing failed; recreate the adapter",
-            ));
+            return Err(Error::LoudnessProcessorFailed);
         }
         if let Some(equalizer) = &self.equalizer
-            && equalizer.stats()?.failed_blocks != 0
+            && !equalizer
+                .stats()
+                .is_ok_and(|stats| stats.failed_blocks == 0)
         {
-            // Failed DSP blocks are silenced at the callback boundary. Surface
-            // the failure so the controller stops instead of showing normal
-            // playback. Explicit detach/reattach creates a fresh error scope.
-            return Err(Error::Media(
-                "equalizer processing failed; recreate the adapter",
-            ));
+            return Err(Error::EqualizerProcessorFailed);
         }
         if let Some(parametric) = &self.parametric
             && !parametric

@@ -11,7 +11,7 @@ use crate::{
         catalog::EffectId,
         parametric::ParametricPlan,
     },
-    playback::engine::{AudioEngine, Cancellation, EngineSnapshot},
+    playback::engine::{AudioEngine, Cancellation},
     storage::OperationLock,
 };
 use std::{collections::VecDeque, sync::Arc};
@@ -875,36 +875,22 @@ impl Actor {
         self.parametric.failed_device = None;
     }
 
-    pub(super) async fn poll_with_parametric_recovery(&mut self) -> Result<EngineSnapshot> {
-        let result = super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await;
-        self.recover_parametric_poll(result).await
-    }
-
-    pub(super) async fn recover_parametric_poll(
-        &mut self,
-        result: Result<EngineSnapshot>,
-    ) -> Result<EngineSnapshot> {
-        match result {
-            Err(error)
-                if matches!(error.root(), Error::ParametricProcessorFailed)
-                    && self.parametric.possibly_attached =>
-            {
-                let target = self
-                    .parametric
-                    .applied
-                    .as_ref()
-                    .map(|binding| binding.target());
-                let device = self.parametric.device.clone();
-                // A native callback may have emitted silence. Continue only
-                // when removal was actually acknowledged; the actor's usual
-                // error path stops playback if that cannot be established.
-                self.parametric_reset().await?;
-                self.parametric.failed_binding = target.map(|target| (self.token.clone(), target));
-                self.parametric.failed_device = device;
-                super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await
-            }
-            result => result,
+    pub(super) async fn detach_failed_parametric(&mut self) -> Result<()> {
+        if !self.parametric.possibly_attached {
+            return Err(Error::ParametricProcessorFailed);
         }
+        let target = self
+            .parametric
+            .applied
+            .as_ref()
+            .map(|binding| binding.target());
+        let device = self.parametric.device.clone();
+        // Keep the current binding and its fences until the native graph
+        // confirms that its failed node has been removed.
+        self.parametric_reset().await?;
+        self.parametric.failed_binding = target.map(|target| (self.token.clone(), target));
+        self.parametric.failed_device = device;
+        Ok(())
     }
 
     fn parametric_record_applied_clear(&mut self) {
