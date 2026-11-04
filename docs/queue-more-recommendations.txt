@@ -123,5 +123,9 @@ PC 3.1.42.205594 普通播放列表「更多推荐」
     尾曲也在 EOF 前触发一次，及时回包可以续播；顺序模式播完后回包只追加
     并保留结束状态和原播放时钟。完整参数和实际解码次数从原生侧独立检查。
     Linux 的 LC_MESSAGES/LC_CTYPE 保持非 C，仅 LC_NUMERIC 为 C。
-    .build/ui-proof/queue-more-native-04/ 留存 16 阶段、16 图和四组数据库
-    审计结果。Windows CI 另跑同脚本；本机证据不是实服或实体听感。
+    合并产品 bcacc227 在 .build/ui-proof/queue-more-final-bcacc227/ 留存
+    16 阶段、16 图。独立 --marker-reorder 实窗另有三阶段：拖普通歌曲穿过
+    分隔时保留三个「荐」，在分隔本身放开 51 时只取消 51 的标记，
+    原生解码仍为一次、原 playId 和 3 秒暂停位置均未变；证据在
+    .build/ui-proof/queue-more-marker-bcacc227/。Windows CI 分别跑两种模式；
+    本机证据不是实服或实体听感。
