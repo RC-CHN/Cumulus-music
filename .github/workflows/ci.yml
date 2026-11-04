@@ -479,6 +479,7 @@ jobs:
           python scripts/ci/comment_resource_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-comment-resource-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
           python scripts/ci/community_smoke.py --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/community_smoke.py --publication --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-publication-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --own-profile --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-own-profile-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --profile-notes --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-profile-notes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
@@ -804,6 +805,7 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_resource_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-comment-resource-linux
           cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --publication --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-publication-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --own-profile --binary .build/target/debug/examples/community_ui_probe --root .build/ci-own-profile-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --profile-notes --binary .build/target/debug/examples/community_ui_probe --root .build/ci-profile-notes-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --profile-podcasts --binary .build/target/debug/examples/community_ui_probe --root .build/ci-profile-podcasts-linux

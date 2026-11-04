@@ -50,5 +50,6 @@
 - [冷离线限幅联合实验](cold-flac-native-sink-proof.txt)验证真实 NCM-FLAC 解码、限幅、输出及撤权；[正式原生停止](pinned-audio-teardown.txt)不能确认当前条目停止时会销毁原生输出。完整限幅路径仍未默认启用。
 - [本人头像](account-profile-navigation-contracts.txt)与昵称分离，当前账号的笔记、关注、粉丝可直达对应资料页；[主页播客](profile-podcasts-contracts.txt)分开创建与收藏，保持同级页签历史及卡片返回。管理浏览器交接仅在显式点击时申请原服务票据。
 - [冷离线跳转回退](cold-flac-native-fallback.txt)用原授权句柄验证了无索引和稀疏索引 FLAC 的原生回退：旧输出停止和解码线程交还之后才启动新输出，保留暂停/播放。仍未默认接管正式播放。
+- [社区笔记发布](community-composer-contracts.txt)已接入正文和一个已核对的音乐附件，明确确认后才检查绑定并请求。成功用服务回执进入真实详情；回包未知只核对本机持久回执，不重发、不用正文猜测。验收只用隔离合成数据，图片与转发是另行分支。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
