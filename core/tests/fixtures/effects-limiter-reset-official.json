@@ -1,0 +1,63 @@
+{
+  "dllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "outerResetRva": "0x67f70",
+  "forwardRva": "0x6b060",
+  "graphResetRva": "0x1b960",
+  "nodeResetRva": "0x65490",
+  "fifoResetRva": "0x71aa0",
+  "oracleSha256": "706dd1918ac7d1f2580a4b4fd0d9b573464576037478c6928b5285861f72e977",
+  "oracleBaseSha256": "a41593be7cda73a3732e504830b0aca4e9bf814a6eee63b0b46b2673b9e57400",
+  "floatInput": "At absolute frame i and zero-based channel c, alternate sign by (i+c) parity, use 2 when (i+c)%7=0 or 0.125+(i%5)/32 otherwise, then divide by c+1 and round to f32.",
+  "cases": [
+    {"name": "discard-pending-input-and-output", "rate": 8000, "channels": 2, "quantum": 13, "fifoCapacity": 96, "enabled": true, "params": null, "freshNativeSuffixMatches": true, "operations": [
+      {"op": "push", "timestampMs": 100, "graphCalls": [{"inputFrames": 13, "inputEnd": false, "timestampMs": 100, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 13, "inputEnd": false, "timestampMs": 101, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 13, "inputEnd": false, "timestampMs": 102, "outputFrames": 1, "outputEnd": false}, {"inputFrames": 13, "inputEnd": false, "timestampMs": 103, "outputFrames": 13, "outputEnd": false}], "inputReady": 6, "outputReady": 14, "clockMs": 104, "inputEnd": false, "firstFrame": 0, "processorDirty": false, "frameCount": 58},
+      {"op": "pull", "capacity": 3, "end": false, "outputReady": 11, "frameCount": 3, "pcmSha256": "bf86c8e39ee62898bfa553808aab2ebeb9624b6de217d01da827cfd7906d7aed"},
+      {"op": "reset", "before": {"inputReady": 6, "outputReady": 11, "clockMs": 104, "inputEnd": false, "processorDirty": false}, "after": {"inputReady": 0, "outputReady": 0, "clockMs": -1, "inputEnd": false, "processorDirty": true}, "settingsUnchanged": true},
+      {"op": "pull", "capacity": 12, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 13, "inputEnd": false, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 13, "inputEnd": false, "timestampMs": 0, "outputFrames": 0, "outputEnd": false}], "inputReady": 9, "outputReady": 0, "clockMs": -1, "inputEnd": false, "firstFrame": 100, "processorDirty": false, "frameCount": 35},
+      {"op": "pull", "capacity": 2, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": 33, "graphCalls": [{"inputFrames": 13, "inputEnd": false, "timestampMs": 33, "outputFrames": 1, "outputEnd": false}], "inputReady": 5, "outputReady": 1, "clockMs": 34, "inputEnd": false, "firstFrame": 135, "processorDirty": false, "frameCount": 9},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 5, "inputEnd": true, "timestampMs": 34, "outputFrames": 13, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 34, "outputFrames": 13, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 34, "outputFrames": 13, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 34, "outputFrames": 4, "outputEnd": true}], "inputReady": 0, "outputReady": 44, "clockMs": 34, "inputEnd": true, "firstFrame": 0, "processorDirty": false, "frameCount": 0},
+      {"op": "pull", "capacity": 5, "end": false, "outputReady": 39, "frameCount": 5, "pcmSha256": "c6edfb120e922daf6199b8de1af1a23ba6bff36d8c01ba2f44ba21e6254aafbc"},
+      {"op": "pull", "capacity": 90, "end": true, "outputReady": 0, "frameCount": 39, "pcmSha256": "5d7334a57db1e90f45a83af6a8ac80291a3d6ac4eb4262da61e2e8ba12802133"}
+    ]},
+    {"name": "clear-eof-keep-explicit-finite-profile", "rate": 11025, "channels": 1, "quantum": 11, "fifoCapacity": 60, "enabled": true, "params": {"threshold": -9.0, "attack": 0.00175, "release": 0.004, "ratio": 2.0, "outputgain": -2.0, "infinite_ratio": false}, "freshNativeSuffixMatches": true, "operations": [
+      {"op": "push", "timestampMs": 210, "graphCalls": [{"inputFrames": 11, "inputEnd": false, "timestampMs": 210, "outputFrames": 0, "outputEnd": false}, {"inputFrames": 11, "inputEnd": false, "timestampMs": 210, "outputFrames": 4, "outputEnd": false}], "inputReady": 0, "outputReady": 4, "clockMs": 210, "inputEnd": false, "firstFrame": 0, "processorDirty": false, "frameCount": 22},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 210, "outputFrames": 11, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 210, "outputFrames": 8, "outputEnd": true}], "inputReady": 0, "outputReady": 23, "clockMs": 210, "inputEnd": true, "firstFrame": 0, "processorDirty": false, "frameCount": 0},
+      {"op": "pull", "capacity": 5, "end": false, "outputReady": 18, "frameCount": 5, "pcmSha256": "c4874cccea16ab4a969f86d17a042436b359bfea124cc8ac59a371ed53bffd9f"},
+      {"op": "reset", "before": {"inputReady": 0, "outputReady": 18, "clockMs": 210, "inputEnd": true, "processorDirty": false}, "after": {"inputReady": 0, "outputReady": 0, "clockMs": -1, "inputEnd": false, "processorDirty": true}, "settingsUnchanged": true},
+      {"op": "pull", "capacity": 1, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": 25, "graphCalls": [{"inputFrames": 11, "inputEnd": false, "timestampMs": 25, "outputFrames": 0, "outputEnd": false}], "inputReady": 6, "outputReady": 0, "clockMs": 25, "inputEnd": false, "firstFrame": 100, "processorDirty": false, "frameCount": 17},
+      {"op": "pull", "capacity": 3, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 11, "inputEnd": false, "timestampMs": 25, "outputFrames": 4, "outputEnd": false}, {"inputFrames": 11, "inputEnd": false, "timestampMs": 25, "outputFrames": 11, "outputEnd": false}], "inputReady": 0, "outputReady": 15, "clockMs": 25, "inputEnd": false, "firstFrame": 117, "processorDirty": false, "frameCount": 16},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 25, "outputFrames": 11, "outputEnd": false}, {"inputFrames": 0, "inputEnd": true, "timestampMs": 25, "outputFrames": 8, "outputEnd": true}], "inputReady": 0, "outputReady": 34, "clockMs": 25, "inputEnd": true, "firstFrame": 0, "processorDirty": false, "frameCount": 0},
+      {"op": "pull", "capacity": 10, "end": false, "outputReady": 24, "frameCount": 10, "pcmSha256": "f5e7adaaa61bd0c5854f4ffecd51e1bf3231d84b9f60d768ec4dce64b9a427db"},
+      {"op": "pull", "capacity": 90, "end": true, "outputReady": 0, "frameCount": 24, "pcmSha256": "ab6f47f81049e572d867d6d965ccd3a8a64c0983d68bbdf362e37e5947ae95c8"}
+    ]},
+    {"name": "default-2048-discontinuity", "rate": 44100, "channels": 2, "quantum": 2048, "fifoCapacity": 4096, "enabled": true, "params": null, "freshNativeSuffixMatches": true, "operations": [
+      {"op": "push", "timestampMs": 123, "graphCalls": [{"inputFrames": 2048, "inputEnd": false, "timestampMs": 123, "outputFrames": 1829, "outputEnd": false}], "inputReady": 2, "outputReady": 1829, "clockMs": 169, "inputEnd": false, "firstFrame": 0, "processorDirty": false, "frameCount": 2050},
+      {"op": "pull", "capacity": 132, "end": false, "outputReady": 1697, "frameCount": 132, "pcmSha256": "0142ed3992818e65e4bf5a69ccc7684627c12057b0e153f271a5780c6051a06a"},
+      {"op": "reset", "before": {"inputReady": 2, "outputReady": 1697, "clockMs": 169, "inputEnd": false, "processorDirty": false}, "after": {"inputReady": 0, "outputReady": 0, "clockMs": -1, "inputEnd": false, "processorDirty": true}, "settingsUnchanged": true},
+      {"op": "pull", "capacity": 80, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": null, "graphCalls": [], "inputReady": 2047, "outputReady": 0, "clockMs": -1, "inputEnd": false, "firstFrame": 8000, "processorDirty": true, "frameCount": 2047},
+      {"op": "pull", "capacity": 250, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": 543, "graphCalls": [{"inputFrames": 2048, "inputEnd": false, "timestampMs": 543, "outputFrames": 1829, "outputEnd": false}], "inputReady": 0, "outputReady": 1829, "clockMs": 589, "inputEnd": false, "firstFrame": 10047, "processorDirty": false, "frameCount": 1},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 1, "inputEnd": true, "timestampMs": 589, "outputFrames": 220, "outputEnd": true}], "inputReady": 0, "outputReady": 2049, "clockMs": 589, "inputEnd": true, "firstFrame": 0, "processorDirty": false, "frameCount": 0},
+      {"op": "pull", "capacity": 1024, "end": false, "outputReady": 1025, "frameCount": 1024, "pcmSha256": "1ffe23a7851cc7a6a1285ab5b53dd937c4f1d3d0ba7744839f69c66ca15ee5a9"},
+      {"op": "pull", "capacity": 2048, "end": true, "outputReady": 0, "frameCount": 1025, "pcmSha256": "f9ffb9734dd02802057ec3c9758f487c8cf0e66a0119e53abfdd6412e95ecea0"},
+      {"op": "pull", "capacity": 3, "end": true, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+    ]},
+    {"name": "repeat-reset-with-bypass", "rate": 8000, "channels": 8, "quantum": 7, "fifoCapacity": 32, "enabled": false, "params": null, "freshNativeSuffixMatches": true, "operations": [
+      {"op": "push", "timestampMs": 19, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 19, "outputFrames": 7, "outputEnd": false}], "inputReady": 6, "outputReady": 7, "clockMs": 19, "inputEnd": false, "firstFrame": 0, "processorDirty": true, "frameCount": 13},
+      {"op": "pull", "capacity": 2, "end": false, "outputReady": 5, "frameCount": 2, "pcmSha256": "b3217b7448cb25adfe26876da702cd73fb4a1eb42e1ca2f06bee3f2ca0670e3f"},
+      {"op": "reset", "before": {"inputReady": 6, "outputReady": 5, "clockMs": 19, "inputEnd": false, "processorDirty": true}, "after": {"inputReady": 0, "outputReady": 0, "clockMs": -1, "inputEnd": false, "processorDirty": true}, "settingsUnchanged": true},
+      {"op": "reset", "before": {"inputReady": 0, "outputReady": 0, "clockMs": -1, "inputEnd": false, "processorDirty": true}, "after": {"inputReady": 0, "outputReady": 0, "clockMs": -1, "inputEnd": false, "processorDirty": true}, "settingsUnchanged": true},
+      {"op": "pull", "capacity": 0, "end": null, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "pull", "capacity": 4, "end": false, "outputReady": 0, "frameCount": 0, "pcmSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+      {"op": "push", "timestampMs": 0, "graphCalls": [{"inputFrames": 7, "inputEnd": false, "timestampMs": 0, "outputFrames": 7, "outputEnd": false}], "inputReady": 2, "outputReady": 7, "clockMs": 0, "inputEnd": false, "firstFrame": 100, "processorDirty": true, "frameCount": 9},
+      {"op": "push", "timestampMs": null, "graphCalls": [{"inputFrames": 2, "inputEnd": true, "timestampMs": 0, "outputFrames": 2, "outputEnd": true}], "inputReady": 0, "outputReady": 9, "clockMs": 0, "inputEnd": true, "firstFrame": 0, "processorDirty": true, "frameCount": 0},
+      {"op": "pull", "capacity": 3, "end": false, "outputReady": 6, "frameCount": 3, "pcmSha256": "1ef4d962cfe2da9ded220d4ca93b315e8d1b3ddc92564034bbe0105f89fc0025"},
+      {"op": "pull", "capacity": 21, "end": true, "outputReady": 0, "frameCount": 6, "pcmSha256": "c3e9165d3c3b4c62ce623edbcdc29cdeb109aef5be7f9365fa7a242d26b4d8c0"}
+    ]}
+  ]
+}

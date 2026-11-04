@@ -53,6 +53,11 @@ impl LimiterFrameFlow {
         })
     }
 
+    pub(super) fn reset(&mut self) {
+        self.skip = self.lookahead_frames;
+        self.drain = self.lookahead_frames;
+    }
+
     pub fn lookahead_frames(&self) -> u32 {
         self.lookahead_frames
     }

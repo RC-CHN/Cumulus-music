@@ -88,6 +88,7 @@ pub fn stream_ncae(
         Pull {
             capacity: u32,
         },
+        Reset,
     }
 
     fn native_quantum() -> u32 {
@@ -104,6 +105,10 @@ pub fn stream_ncae(
     let mut output = Vec::with_capacity(input.operations.len());
     for operation in input.operations {
         match operation {
+            Operation::Reset => {
+                stream.reset();
+                output.push(json!({"op":"reset"}));
+            }
             Operation::Push {
                 samples,
                 timestamp_ms,

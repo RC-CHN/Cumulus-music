@@ -52,6 +52,16 @@ impl Envelope {
         }
     }
 
+    pub(super) fn reset(&mut self) {
+        self.ring.fill(0.0);
+        self.slot = 0;
+        self.gain = 1.0;
+        self.slope = 0.0;
+        self.peaks.clear();
+        self.peak_count = 0;
+        self.peak_sum = 0.0;
+    }
+
     fn linked_peak(&self, slot: usize) -> f64 {
         let first = slot * self.channels;
         self.ring[first..first + self.channels]

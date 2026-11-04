@@ -76,6 +76,19 @@ impl LimiterStage {
 }
 
 impl LimiterStream {
+    /// A decoder discontinuity discards queued PCM, timestamps and EOF.
+    /// Keep the installed material, format and buffer capacities.
+    pub fn reset(&mut self) {
+        // 67F70 -> 6B060 resets the processor and both FIFOs. Native B0
+        // clears its history on the next active quantum; none is visible
+        // between calls, so our private stage can clear it immediately.
+        self.stage.reset_stream_state();
+        self.input_end = false;
+        self.clock_ms = None;
+        self.input.clear();
+        self.output.clear();
+    }
+
     pub fn lookahead_frames(&self) -> u32 {
         self.stage.lookahead_frames()
     }

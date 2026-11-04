@@ -28,10 +28,36 @@ fn fixture_pcm(start: u32, count: u32, channels: u32) -> Vec<f32> {
 
 #[test]
 fn bounded_stream_matches_original_fifo_graph_and_pcm() {
-    let fixture: Value = serde_json::from_str(include_str!(
+    verify_native_cases(include_str!(
         "../../../../../tests/fixtures/effects-limiter-stream-official.json"
-    ))
-    .unwrap();
+    ));
+}
+
+#[test]
+fn discontinuity_discards_old_pcm_but_retains_native_material_and_restarts_lookahead() {
+    verify_native_cases(include_str!(
+        "../../../../../tests/fixtures/effects-limiter-reset-official.json"
+    ));
+}
+
+fn material(case: &Value) -> Value {
+    if case["enabled"] == false {
+        json!({"aev2":{"limiter":{"on":false}}})
+    } else if case["params"].is_object() {
+        let mut limiter = case["params"].clone();
+        let object = limiter.as_object_mut().unwrap();
+        if let Some(infinite) = object.remove("infinite_ratio") {
+            object.insert("infiniteRatio".into(), infinite);
+        }
+        limiter["on"] = json!(true);
+        json!({"aev2":{"limiter":limiter}})
+    } else {
+        json!({})
+    }
+}
+
+fn verify_native_cases(fixture: &str) {
+    let fixture: Value = serde_json::from_str(fixture).unwrap();
     for case in fixture["cases"].as_array().unwrap() {
         let channels = u32_value(&case["channels"]);
         let format = Format::new(
@@ -40,18 +66,29 @@ fn bounded_stream_matches_original_fifo_graph_and_pcm() {
             u32_value(&case["quantum"]),
         )
         .unwrap();
-        let material = if case["enabled"] == true {
-            json!({})
-        } else {
-            json!({"aev2":{"limiter":{"on":false}}})
-        };
-        let mut stream = material_limiter_plan(&material)
+        let mut stream = material_limiter_plan(&material(case))
             .unwrap()
             .pcm_stream(format, u32_value(&case["fifoCapacity"]))
             .unwrap();
         let mut input_end = false;
         for (index, operation) in case["operations"].as_array().unwrap().iter().enumerate() {
-            if operation["op"] == "push" {
+            if operation["op"] == "reset" {
+                let check_boundary = |status: super::LimiterStreamWrite, expected: &Value| {
+                    assert_eq!(status.input_ready, u32_value(&expected["inputReady"]));
+                    assert_eq!(status.output_ready, u32_value(&expected["outputReady"]));
+                    assert_eq!(status.input_end, expected["inputEnd"].as_bool().unwrap());
+                    assert_eq!(
+                        status.clock_ms.map_or(-1, i64::from),
+                        expected["clockMs"].as_i64().unwrap()
+                    );
+                };
+                check_boundary(stream.write_status(0), &operation["before"]);
+                let lookahead = stream.lookahead_frames();
+                stream.reset();
+                check_boundary(stream.write_status(0), &operation["after"]);
+                assert_eq!(stream.lookahead_frames(), lookahead);
+                input_end = false;
+            } else if operation["op"] == "push" {
                 let count = u32_value(&operation["frameCount"]);
                 let clock = serde_json::from_value(operation["timestampMs"].clone()).unwrap();
                 let samples = fixture_pcm(u32_value(&operation["firstFrame"]), count, channels);
