@@ -30,6 +30,31 @@ export interface CommunityCard {
   counters: { likes: number | null; shares: number | null; comments: number | null };
   status: 'ready' | 'unsupported' | 'deleted' | 'unavailable';
   detail: string | null;
+  canDelete?: boolean;
+}
+
+export type CommunityDeleteAction =
+  | { kind: 'inspect' | 'check' }
+  | { kind: 'confirm'; confirmation: string };
+export interface CommunityDeleteReply {
+  status:
+    | 'ready'
+    | 'not_sent'
+    | 'uncertain'
+    | 'still_visible'
+    | 'unavailable'
+    | 'acknowledged'
+    | 'observed_removed'
+    | 'rejected';
+  retired: string[];
+  confirmation?: string;
+}
+export interface CommunityDeleteClient {
+  communityNoteDelete(
+    epoch: string,
+    detail: string,
+    action: CommunityDeleteAction,
+  ): Promise<AccountData<CommunityDeleteReply>>;
 }
 
 export interface CommunityFeedPage {
@@ -88,6 +113,7 @@ export type ComposerPublishAction =
 export type ComposerPublication =
   | { status: 'ready' | 'phone_required' | 'preflight_unavailable' }
   | { status: 'uncertain'; revision: string }
+  | { status: 'removed'; revision: string }
   | {
       status: 'rejected';
       revision: string;

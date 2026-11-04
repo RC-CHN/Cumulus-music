@@ -58,6 +58,9 @@ pub enum ComposerPublication {
         event_id: String,
         detail: String,
     },
+    Removed {
+        revision: String,
+    },
 }
 
 #[derive(Clone, Copy, Deserialize, Serialize)]
@@ -194,6 +197,7 @@ fn own_note_receipt(response: &Value, uid: &str, uuid: &str) -> Result<Option<St
     let mut candidates = events.iter().filter(|event| {
         event["uuid"].as_str() == Some(uuid)
             && event["anonymityInfo"].is_null()
+            && !project::tombstone(event)
             && project::id(&event["user"]["userId"]).as_deref() == Some(uid)
     });
     let event = candidates.next();
@@ -231,6 +235,9 @@ impl MusicClient {
             Phase::Pending => ComposerPublication::Uncertain { revision },
             Phase::Rejected { reason } => ComposerPublication::Rejected { revision, reason },
             Phase::Confirmed { event, detail } => {
+                if self.note_removed(owner, &event)? {
+                    return Ok(ComposerPublication::Removed { revision });
+                }
                 let key = handle(&detail)?;
                 let mut state = self.published_notes.state(token)?;
                 if !state.cards.iter().any(|record| record.key == key) {

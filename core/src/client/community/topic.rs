@@ -74,6 +74,15 @@ pub(in crate::client) struct TopicHost {
     pub(super) cards: CommunityHost,
 }
 impl TopicHost {
+    pub(super) fn retire_deleted(&self, token: &SessionToken, retired: &[Uuid]) -> Result<()> {
+        if !retired.is_empty() {
+            for visit in &mut self.state(token)?.visits {
+                visit.all_order.retain(|key| !retired.contains(key));
+            }
+        }
+        Ok(())
+    }
+
     fn state(&self, token: &SessionToken) -> Result<MutexGuard<'_, TopicState>> {
         let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
         if state.generation != Some(token.generation) {
@@ -277,8 +286,8 @@ impl MusicClient {
                 }
             })
             .await?;
-        self.session.with_token(&token, |_| {
-            let value = request.settle(&token, result.as_ref())?;
+        self.session.with_token(&token, |owner| {
+            let value = request.settle(self, &token, owner, result.as_ref())?;
             Ok(AccountData {
                 epoch: epoch.into(),
                 value,
@@ -366,7 +375,13 @@ impl Drop for SliceLease<'_> {
     }
 }
 impl SliceLease<'_> {
-    fn settle(&self, token: &SessionToken, reply: Option<&Value>) -> Result<CommunityTopicSlice> {
+    fn settle(
+        &self,
+        client: &MusicClient,
+        token: &SessionToken,
+        owner: &str,
+        reply: Option<&Value>,
+    ) -> Result<CommunityTopicSlice> {
         let mut state = self.host.state(token)?;
         let index = state
             .visits
@@ -430,8 +445,9 @@ impl SliceLease<'_> {
             }
         }
         let mut projected: Vec<CommunityCard> = Vec::new();
-        for (event, locator, mut card) in raw
-            .iter()
+        for (event, locator, mut card) in client
+            .note_visible_rows(owner, raw)?
+            .into_iter()
             .filter(|row| {
                 row["actId"].is_null() || project::id(&row["actId"]) == project::id(&self.act)
             })
@@ -472,6 +488,10 @@ impl SliceLease<'_> {
             card.key = record.key.to_string();
             if record.locator.is_some() {
                 card.detail = Some(card.key.clone());
+                card.can_delete = record
+                    .locator
+                    .as_ref()
+                    .is_some_and(|locator| locator.owner == owner);
             }
             if let Some(existing) = projected
                 .iter_mut()

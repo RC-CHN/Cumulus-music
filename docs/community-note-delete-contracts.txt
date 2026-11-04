@@ -1,0 +1,44 @@
+删除本人动态：Windows PC 3.1.42.205594
+
+官方入口和接口
+- EventCard.jsx:540–566,589–615 / M/2157:1094–1114,1150–1169：在笔记右键菜单
+  或卡片右上角更多菜单选「删除」，再显示「确认删除动态」。M/622:1627–1650 只在
+  resource.user.id 等于 host.uid 时给删除，否则给举报。M/3085:1397–1424,1521–1529
+  要求登录，确认后 dispatch async:hostResource/unfav；取消不发请求。
+- M/3160:1311–1315 → M/232:844–855 → M/15:2682：登录态无缓存 POST
+  /api/event/delete，业务体仅 {id: "正整数十进制事件 ID"}。M/21:1230–1234 已将
+  事件 ID 转成字符串，不能由浏览器转数字。M/12:278–313 的默认方法是 POST。
+- 官方辅助函数对非 200 返回仅记错误，且外层在未抛异常时也会返回成功。Cumulus
+  以实际业务码 200 为确认；只对业务明确拒绝单独显示拒绝。超时、HTTP 层错误、
+  模糊业务响应和切号丢失回执不能视作成功。明确未派发时可以再次显式确认。
+
+原入口更新
+- 从详情删除：M/3105:1136–1176,1188–1200 返回原路由；M/3006:190–211 同步
+  去除关注、话题热门和全部中该事件并保留游标。离开时 syncFeeds 只是本地状态同步。
+- 个人主页笔记：EventTab.tsx:51–68 / M/3088:86–99 → M/2264:176–195，移除
+  精确行，保留分页游标，当前个人资料的笔记数减一。关注流卡片无专用回调，按
+  M/3006:303–329 用数值 cursor:-1 刷新；话题卡片按 TopicSqure.jsx:191–206 和
+  M/3006:389–426 用数值 lasttime:-1 刷新全部，再读热门。迟到回执不刷新其他页面。
+- 原生在全部已注册来源内撤销该账号和精确事件的详情、评论句柄，页面也移除对应
+  不透明卡片。账号本地记录阻止旧服务快照重投该事件。匿名、转发附件内嵌卡片、
+  身份不明或归属他人不获得删除动作；自己的独立转发事件与其中的转发来源分开处理。
+
+未确认结果与发布回执
+- 浏览器提交账号代次、现有卡片句柄、检查时取得的一次性短时确认票；原生核对本人
+  所有权，在 SQLite 提交 pending 再单次派发。跨窗口/进程互斥，已派发不明确时
+  不会自动或手工重发；重新打开同一可见笔记继续显示结果未确认和只读核对。
+- 未发现官方删除核对请求。只读核对复用 M/359:166–171 → M/15:2664–2681 无缓存
+  POST /api/v1/event/{ownerUid}/{id}，业务体 {}。404/410/403、空返回、列表缺失
+  或身份不符，只说明当前不可确认；同一有效事件说明核对时仍可见。只有顶层精确
+  本人事件的 type:22 且合法 JSON 中无转发 event 或可展示附件才是已移除观察
+  （EventCard.jsx:459–478 / M/2157:1030–1045），与收到本次删除 ACK 区分。
+- M/3106:1478–1499,1552–1558 的官方发布中卡片只有空 ID；终态清掉临时卡片。
+  Cumulus 另有持久发布回执，删除同一事件后保留发布记录与防重发条件，但不给出已
+  撤销的详情链接。删除其他事件不更改未决发布；仍需发布 UUID 和本人归属才能恢复。
+
+复现：使用合成账号，无真实删除或其他外部写入。
+- cargo test -p cumulus-core --test community_delete --test community_publish --test community_read --test community_topic --test profile_notes --locked
+- cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
+- python3 scripts/ci/community_smoke.py --delete-note --binary <community_ui_probe> --root <新目录> --screenshots
+  Linux 断网实际 WebView 证明及合成截图保存在 .build/ui-proof/community-delete-b240937a/。
+  Linux 和 Windows CI 使用同一封闭 fixture；Windows 无本机 WebView2 实测。

@@ -41,6 +41,16 @@ export type TopicVisit = ReturnType<typeof visit>;
 export function useCommunityTopic(core: CommunityTopicClient, expired: () => void) {
   const active = shallowRef<TopicVisit>();
   const visits = new Map<number, TopicVisit>();
+  const retired = new Set<string>();
+  function retire(keys: ReadonlySet<string>) {
+    for (const key of keys) retired.add(key);
+    while (retired.size > 2048) retired.delete(retired.values().next().value!);
+    for (const state of visits.values()) {
+      state.hot.cards = state.hot.cards.filter((card) => !keys.has(card.key));
+      state.all.cards = state.all.cards.filter((card) => !keys.has(card.key));
+      state.group = Math.min(state.group, Math.max(0, Math.ceil(state.all.cards.length / 20) - 1));
+    }
+  }
   let owner = '';
   let generation = 0;
   let routeRevision = 0;
@@ -74,7 +84,9 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
         clear(state);
         return false;
       }
-      const patches = new Map(value.cards.map((card) => [card.key, card]));
+      const patches = new Map(
+        value.cards.filter((card) => !retired.has(card.key)).map((card) => [card.key, card]),
+      );
       const merged = new Map((value.replace ? [] : lane.cards).map((card) => [card.key, card]));
       for (const [key, card] of patches) merged.set(key, card);
       for (const key of value.retired) merged.delete(key);
@@ -131,6 +143,7 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
       owner = epoch;
       generation++;
       visits.clear();
+      retired.clear();
     }
     active.value = undefined;
     if (!owner || !target) return;
@@ -198,5 +211,5 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
     if (state?.continuation && !state.all.error && !state.refreshing)
       return read(state, 'all', { kind: 'next', continuation: state.continuation });
   }
-  return { active, enter, retry, next, refresh, notice };
+  return { active, enter, retry, next, refresh, notice, retire };
 }

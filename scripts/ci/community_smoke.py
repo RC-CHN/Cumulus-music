@@ -133,6 +133,20 @@ def verify_topic(stages, native):
     assert end == ['/api/act/event/new', '/api/act/event', '/api/act/event/hot', '/api/act/detail'], calls
 
 
+def verify_delete(stages, native):
+    assert set(stages) == {'owner_only', 'confirm', 'cancel', 'ack_detail_back', 'uncertain',
+                           'absence', 'reopen_no_replay', 'observed_removed'}
+    assert stages['confirm']['confirming'] and not stages['cancel']['confirming']
+    assert stages['absence']['confirming'] and not stages['observed_removed']['confirming']
+    ack, lost = '90071992547409973331', '90071992547409973332'
+    assert native['deleteCalls'] == [
+        ['/api/event/pc/history/feed/get', {'cursor': '-1'}],
+        [f'/api/v1/event/2/{ack}', {}], ['/api/event/delete', {'id': ack}],
+        ['/api/event/delete', {'id': lost}], [f'/api/v1/event/2/{lost}', {}],
+        [f'/api/v1/event/2/{lost}', {}], ['/api/event/pc/history/feed/get', {'cursor': -1}],
+    ], native['deleteCalls']
+
+
 def verify_community(stages, native):
     assert set(stages) == {'first_error', 'feed', 'notice_return', 'detail_error', 'comment_error', 'comments',
                            'comment_next', 'back_to_feed', 'unavailable', 'next_error',
@@ -190,13 +204,15 @@ def main():
     mode.add_argument('--own-profile', action='store_true')
     mode.add_argument('--publication', action='store_true')
     mode.add_argument('--topic', action='store_true')
+    mode.add_argument('--delete-note', action='store_true')
     mode.add_argument('--profile-playlists', action='store_true')
     mode.add_argument('--profile-follow', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    script = ('community_topic_ui_probe.js' if args.topic else
+    script = ('community_delete_ui_probe.js' if args.delete_note else
+              'community_topic_ui_probe.js' if args.topic else
               'own_profile_navigation_ui_probe.js' if args.own_profile else
               'profile_notes_ui_probe.js' if args.profile_notes else
               'profile_podcasts_ui_probe.js' if args.profile_podcasts else
@@ -207,6 +223,8 @@ def main():
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
     if args.topic:
         env['CUMULUS_COMMUNITY_TOPIC_PROOF'] = '1'
+    if args.delete_note:
+        env['CUMULUS_COMMUNITY_DELETE_PROOF'] = '1'
     if args.profile_notes:
         env['CUMULUS_PROFILE_NOTES_PROOF'] = '1'
     if args.own_profile:
@@ -248,7 +266,9 @@ def main():
               for path in output.glob('ux_*.json')}
     assert len(stages) == complete['stageCount']
     assert all(stage['width'] == 760 for stage in stages.values())
-    if args.topic:
+    if args.delete_note:
+        verify_delete(stages, complete['native'])
+    elif args.topic:
         verify_topic(stages, complete['native'])
     elif args.own_profile:
         assert set(stages) == {'own_profile', 'account_controls', 'own_notes', 'own_following', 'own_followers'}
@@ -276,7 +296,9 @@ def main():
     report = {'ok': True, 'actualWebView': True, 'states': len(stages),
               'screenshots': len(stages) if args.screenshots else 0,
               'realMusicRequests': 0, 'remoteAccountWrites': 0}
-    if args.topic:
+    if args.delete_note:
+        report['deleteCalls'] = complete['native']['deleteCalls']
+    elif args.topic:
         report['topicCalls'] = complete['native']['topicCalls']
     elif args.own_profile:
         report['ownProfileVerified'] = True

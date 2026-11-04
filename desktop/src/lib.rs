@@ -304,6 +304,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 community::community_topic,
                 community::community_topic_slice,
                 community::community_topic_notice,
+                community::community_note_delete,
                 community::community_composer_search,
                 community::community_composer_draft,
                 community::community_composer_publish,

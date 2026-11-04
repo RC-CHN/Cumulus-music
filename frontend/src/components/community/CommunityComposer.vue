@@ -84,6 +84,8 @@ const publicationText = computed(() => {
   switch (publication.value?.status) {
     case 'published':
       return '已收到并保存发布成功回执。';
+    case 'removed':
+      return '发布回执已保留；这条笔记已移除。';
     case 'uncertain':
       return '无法确认是否已经发布。草稿已保留，客户端不会再次提交。';
     case 'phone_required':

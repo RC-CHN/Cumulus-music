@@ -1,4 +1,5 @@
 pub mod composer;
+pub mod delete;
 pub mod new_song_notice;
 mod profile;
 mod project;
@@ -58,6 +59,8 @@ pub struct CommunityCard {
     counters: CommunityCounters,
     status: CommunityCardStatus,
     detail: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    can_delete: bool,
 }
 
 #[derive(Serialize)]
@@ -154,6 +157,7 @@ struct State {
     cards: VecDeque<CardLease>,
     visited: HashSet<String>,
     attachments: VecDeque<composer::AttachmentReceipt>,
+    delete_confirmation: Option<(Uuid, Uuid, std::time::Instant)>,
 }
 #[derive(Default)]
 pub(super) struct CommunityHost(Mutex<State>);
@@ -235,7 +239,13 @@ impl Drop for ReadLease<'_> {
     }
 }
 impl ReadLease<'_> {
-    fn settle(&self, token: &SessionToken, response: &Value) -> Result<CommunityFeedPage> {
+    fn settle(
+        &self,
+        client: &MusicClient,
+        token: &SessionToken,
+        viewer: &str,
+        response: &Value,
+    ) -> Result<CommunityFeedPage> {
         let data = &response["data"];
         let raw = data["events"]
             .as_array()
@@ -256,13 +266,19 @@ impl ReadLease<'_> {
             Some(next)
         };
 
-        self.settle_rows(token, raw, next, replace, None)
+        self.settle_rows(
+            token,
+            &client.note_visible_rows(viewer, raw)?,
+            next,
+            replace,
+            None,
+        )
     }
 
     fn settle_rows(
         &self,
         token: &SessionToken,
-        raw: &[Value],
+        raw: &[&Value],
         next: Option<Value>,
         replace: bool,
         owner: Option<&str>,
@@ -323,6 +339,8 @@ impl ReadLease<'_> {
             card.key = record.key.to_string();
             if record.locator.is_some() {
                 card.detail = Some(card.key.clone());
+                card.can_delete =
+                    record.locator.as_ref().map(|locator| &locator.owner) == token.uid.as_ref();
             }
             if let Some(previous) = cards.iter_mut().find(|previous| previous.key == card.key) {
                 *previous = card;
@@ -389,10 +407,10 @@ impl MusicClient {
                 api.call(FEED, args, false, &[200]).await
             })
             .await?;
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |owner| {
             Ok(AccountData {
                 epoch: epoch.into(),
-                value: request.settle(&token, &response)?,
+                value: request.settle(self, &token, owner, &response)?,
             })
         })
     }
@@ -408,7 +426,7 @@ impl MusicClient {
         let host = self
             .session
             .with_token(&token, |_| self.community_host_for(&token, key))?;
-        let locator = self.session.with_token(&token, |_| {
+        let locator = self.session.with_token(&token, |owner| {
             let mut state = host.state(&token)?;
             let record = state
                 .cards
@@ -416,6 +434,9 @@ impl MusicClient {
                 .find(|record| record.key == key)
                 .ok_or(Error::StaleResponse)?;
             let locator = record.locator.clone().ok_or(Error::StaleResponse)?;
+            if locator.owner == owner && self.note_removed(owner, &locator.event)? {
+                return Err(Error::StaleResponse);
+            }
             record.comments_receipt = None;
             record.detail_read = Some(detail_read);
             Ok(locator)
@@ -436,7 +457,7 @@ impl MusicClient {
                 }
             })
             .await?;
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |viewer| {
             let mut state = host.state(&token)?;
             let record = state
                 .cards
@@ -448,6 +469,9 @@ impl MusicClient {
                 })
                 .ok_or(Error::StaleResponse)?;
             record.detail_read = None;
+            if locator.owner == viewer && self.note_removed(viewer, &locator.event)? {
+                return Err(Error::StaleResponse);
+            }
             let value = if let Some(raw) = value {
                 let (_, owner, mut card) = project::card(&raw, true)
                     .ok_or(Error::Response("invalid community event detail"))?;
@@ -455,6 +479,7 @@ impl MusicClient {
                     return Err(Error::Response("community event detail identity mismatch"));
                 }
                 card.key = detail.into();
+                card.can_delete = token.uid.as_deref() == Some(locator.owner.as_str());
                 let resource = locator.comments();
                 let comments_available =
                     raw["info"]["threadId"].as_str() == Some(resource.thread()?.as_str());

@@ -316,6 +316,7 @@ pub use super::comments::{
 pub use super::community::composer::{
     ComposerDraft, ComposerDraftAction, ComposerKind, ComposerSearchPage, DraftAttachmentEdit,
 };
+pub use super::community::delete::{CommunityDeleteAction, CommunityDeleteReply};
 pub use super::community::new_song_notice::{CommunityNewSongNotice, CommunityNoticeMode};
 pub use super::community::publish::{ComposerPublication, ComposerPublishAction};
 pub use super::community::{

@@ -7,6 +7,19 @@ use serde_json::Value;
 
 const UNSUPPORTED: [i64; 7] = [21, 24, 39, 41, 42, 57, 58];
 const JS_TIME_MAX: u64 = 8_640_000_000_000_000;
+fn note_body(event: &Value) -> Option<Value> {
+    event["json"]
+        .as_str()
+        .filter(|text| text.len() <= 128 * 1024)
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .filter(Value::is_object)
+}
+
+pub(super) fn tombstone(event: &Value) -> bool {
+    event["type"].as_i64() == Some(22)
+        && note_body(event)
+            .is_some_and(|body| body["event"].is_null() && appendix(&body, 22, true).is_none())
+}
 
 pub(super) fn id(value: &Value) -> Option<String> {
     identifier(value).ok().filter(|v| v.len() <= 128)
@@ -156,17 +169,13 @@ pub(super) fn card(
         counters: counts(&event["info"]),
         status: CommunityCardStatus::Ready,
         detail: None,
+        can_delete: false,
     };
     if UNSUPPORTED.contains(&kind) {
         card.status = CommunityCardStatus::Unsupported;
         return Some((event_id, None, card));
     }
-    let Some(body) = event["json"]
-        .as_str()
-        .filter(|text| text.len() <= 128 * 1024)
-        .and_then(|text| serde_json::from_str::<Value>(text).ok())
-        .filter(Value::is_object)
-    else {
+    let Some(body) = note_body(event) else {
         card.status = CommunityCardStatus::Unavailable;
         return Some((event_id, None, card));
     };

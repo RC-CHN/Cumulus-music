@@ -29,6 +29,16 @@ export function useCommunity(
   const scrollTop = ref(0);
   const opener = ref<string | null>(null);
   const detailTopicOpeners = new Map<string, string>();
+  const retired = new Set<string>();
+  function retire(keys: ReadonlySet<string>) {
+    for (const key of keys) retired.add(key);
+    while (retired.size > 2048) retired.delete(retired.values().next().value!);
+    const before = cards.value.length;
+    cards.value = cards.value.filter((card) => !keys.has(card.key));
+    group.value = Math.min(group.value, groups.value - 1);
+    if (handle.value && keys.has(handle.value)) clearDetail();
+    return before !== cards.value.length;
+  }
   function rememberDetailTopic(detail: string, opener: string) {
     detailTopicOpeners.set(detail, opener);
     if (detailTopicOpeners.size > 8)
@@ -99,6 +109,7 @@ export function useCommunity(
     scrollTop.value = 0;
     opener.value = null;
     detailTopicOpeners.clear();
+    retired.clear();
     retryAction = null;
   }
 
@@ -125,13 +136,15 @@ export function useCommunity(
         detail.value = null;
       }
       if (result.replace) {
-        cards.value = result.cards;
+        cards.value = result.cards.filter((item) => !retired.has(item.key));
         group.value = 0;
         scrollTop.value = 0;
         opener.value = null;
       } else {
         const merged = new Map(cards.value.map((item) => [item.key, item]));
-        result.cards.forEach((item) => merged.set(item.key, item));
+        result.cards.forEach((item) => {
+          if (!retired.has(item.key)) merged.set(item.key, item);
+        });
         const rows = [...merged.values()];
         // Drop complete display groups only. Native handles outlive this window.
         const drop = Math.ceil(Math.max(0, rows.length - MAX_CARDS) / GROUP_SIZE) * GROUP_SIZE;
@@ -230,6 +243,7 @@ export function useCommunity(
     opener,
     detailTopicOpeners,
     rememberDetailTopic,
+    retire,
     connect,
     ensure,
     fresh,

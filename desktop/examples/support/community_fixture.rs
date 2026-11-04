@@ -88,6 +88,7 @@ pub struct Library {
     calls: Mutex<Vec<(String, Value)>>,
     fallback: super::catalog_fixture::Library,
     community_topic: super::community_topic_fixture::Library,
+    community_delete: super::community_delete_fixture::Library,
     profile_notes: super::profile_notes_fixture::Library,
     profile_podcasts: super::profile_podcasts_fixture::Library,
     profile_playlists: super::profile_playlists_fixture::Library,
@@ -135,6 +136,9 @@ impl Library {
         if super::community_topic_fixture::Library::enabled() {
             report["topicCalls"] = self.community_topic.report();
         }
+        if super::community_delete_fixture::Library::enabled() {
+            report["deleteCalls"] = self.community_delete.report();
+        }
         report
     }
 }
@@ -159,6 +163,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self.community_delete.request(path, &payload, cache) {
+                return result;
+            }
             if let Some(result) = self.community_topic.request(path, &payload, cache) {
                 return result;
             }

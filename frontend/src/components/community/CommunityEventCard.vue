@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { inject, nextTick, ref } from 'vue';
 import type { CommunityCard, CommunityResource } from '../../services/community';
+import { communityDeleteKey } from '../../composables/useCommunityDelete';
 import Icon from '../Icon.vue';
 import CommunityTopicText from './CommunityTopicText.vue';
 
@@ -14,6 +16,37 @@ const emit = defineEmits<{
   resource: [value: CommunityResource];
   topic: [name: string, opener: string];
 }>();
+const deletion = inject(communityDeleteKey, null);
+const menu = ref(false);
+const menuOpener = ref<HTMLButtonElement>();
+const deleteItem = ref<HTMLButtonElement>();
+async function openMenu(event?: MouseEvent) {
+  if (!deletion || props.nested || !props.card.canDelete) return;
+  if (event) {
+    if (event.target instanceof HTMLElement && event.target.closest('[data-community-forwarded]'))
+      return;
+    event.preventDefault();
+  }
+  menu.value = true;
+  await nextTick();
+  deleteItem.value?.focus({ preventScroll: true });
+}
+function menuFocus(event: FocusEvent) {
+  const node = event.currentTarget;
+  if (
+    node instanceof HTMLElement &&
+    event.relatedTarget instanceof Node &&
+    node.contains(event.relatedTarget)
+  )
+    return;
+  menu.value = false;
+}
+function deleteNote() {
+  if (!props.card.canDelete || props.nested) return;
+  menu.value = false;
+  // The detail page uses the same native key without adding a second link to itself.
+  deletion?.open(props.card.key, menuOpener.value);
+}
 const date = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 const labels = {
   track: '单曲',
@@ -26,7 +59,12 @@ const labels = {
 </script>
 
 <template>
-  <article class="community-event-card" :data-event-key="nested ? undefined : card.key">
+  <article
+    class="community-event-card"
+    :data-event-key="nested ? undefined : card.key"
+    :data-community-forwarded="nested ? '' : undefined"
+    @contextmenu="openMenu"
+  >
     <header class="community-author">
       <img
         v-if="card.avatarUrl"
@@ -52,6 +90,43 @@ const labels = {
       >
         查看详情
       </button>
+      <div
+        v-if="deletion && !nested && card.canDelete"
+        class="community-note-menu"
+        :class="{ 'menu-without-detail-link': !card.detail }"
+        @focusout="menuFocus"
+      >
+        <button
+          ref="menuOpener"
+          class="icon-button"
+          type="button"
+          aria-label="动态操作"
+          aria-haspopup="menu"
+          :aria-expanded="menu"
+          @click="menu ? (menu = false) : openMenu()"
+        >
+          <Icon name="more" />
+        </button>
+        <div
+          v-if="menu"
+          role="menu"
+          class="community-note-menu-items"
+          @keydown.esc.stop="
+            menu = false;
+            menuOpener?.focus();
+          "
+        >
+          <button
+            ref="deleteItem"
+            class="text-button"
+            role="menuitem"
+            type="button"
+            @click="deleteNote"
+          >
+            删除
+          </button>
+        </div>
+      </div>
     </header>
     <p v-if="card.status === 'unsupported'" class="muted">
       该笔记类型暂不支持展示，请前往 App 查看。
@@ -125,6 +200,31 @@ const labels = {
     </footer>
   </article>
 </template>
+
+<style scoped>
+.community-note-menu {
+  position: relative;
+  margin-left: 6px;
+}
+.menu-without-detail-link {
+  margin-left: auto;
+}
+.community-note-menu-items {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 3;
+  min-width: 100px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+.community-note-menu-items button {
+  width: 100%;
+  text-align: left;
+}
+</style>
 
 <style scoped>
 .community-event-card {

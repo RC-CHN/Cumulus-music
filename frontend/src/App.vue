@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import CommunityDeleteDialog from './components/community/CommunityDeleteDialog.vue';
+import { communityDeleteKey, useCommunityDelete } from './composables/useCommunityDelete';
 import SearchBox from './components/search/SearchBox.vue';
 import MessageDrawer from './components/messages/MessageDrawer.vue';
 import type { MessageTarget } from './services/messages';
@@ -1691,6 +1693,64 @@ const profileNotes = useCommunity(
   () => void music.bootstrap(false),
   '暂时无法读取用户笔记。',
 );
+const communityDeleteNotice = ref('');
+let communityDeleteOrigin: Page | undefined;
+const communityDelete = useCommunityDelete(
+  core,
+  (receipt, detail) => {
+    const origin = page.value;
+    const keys = new Set([detail, ...receipt.retired]);
+    community.retire(keys);
+    const profileChanged = profileNotes.retire(keys);
+    communityTopic.retire(keys);
+    const profile = playlistCreator.profile.value;
+    if (profileChanged && profile && profile.id === notesUid && profile.notesCount != null) {
+      playlistCreator.profile.value = {
+        ...profile,
+        notesCount: Math.max(0, profile.notesCount - 1),
+      };
+    }
+    communityDeleteNotice.value =
+      receipt.status === 'acknowledged' ? '动态已删除' : '核对时发现这条动态已移除';
+    if (origin.kind === 'community_detail' && keys.has(origin.handle)) music.back();
+    else if (origin === communityDeleteOrigin && origin.kind === 'community')
+      void community.fresh();
+    else if (origin === communityDeleteOrigin && origin.kind === 'community_topic')
+      void communityTopic.refresh();
+    if (origin === communityDeleteOrigin)
+      void nextTick(() => {
+        const next = document.querySelector<HTMLElement>(
+          '.main-content [data-community-opener], [aria-label="返回上一页"]',
+        );
+        next?.focus({ preventScroll: true });
+      });
+  },
+  () => void music.bootstrap(false),
+);
+provide(communityDeleteKey, communityDelete);
+watch(
+  communityDelete.target,
+  (value) => {
+    if (value) communityDeleteOrigin = page.value;
+  },
+  { flush: 'sync' },
+);
+watch(
+  [page, communityDelete.pending],
+  ([location, pending]) => {
+    if (location !== communityDeleteOrigin && communityDelete.target.value && !pending)
+      communityDelete.close(false);
+  },
+  { flush: 'sync' },
+);
+watch(
+  [() => account.value.epoch, () => account.value.status],
+  ([epoch, status]) => {
+    communityDeleteNotice.value = '';
+    communityDelete.connect(status === 'authenticated' ? epoch : '');
+  },
+  { immediate: true, flush: 'sync' },
+);
 watch(
   [page, () => account.value.epoch, () => account.value.status],
   ([target, epoch, status]) => {
@@ -3016,6 +3076,16 @@ onUnmounted(() => {
     </header>
     <main class="main-content">
       <LikeRecoveryNotice :model="likeRecovery" />
+      <div
+        v-if="
+          communityDeleteNotice &&
+          ['community', 'community_detail', 'community_topic', 'profile_notes'].includes(page.kind)
+        "
+        class="notice"
+        role="status"
+      >
+        {{ communityDeleteNotice }}
+      </div>
       <div class="content-page-stack">
         <Transition name="page" @after-leave="batchLeft">
           <PlaylistBatchPage
@@ -4200,6 +4270,7 @@ onUnmounted(() => {
       :quality="player.view.value?.qualityPreferences.quality ?? 'standard'"
     />
     <WindowClosePrompt />
+    <CommunityDeleteDialog v-if="communityDelete.target.value" :model="communityDelete" />
     <ModalTransition :fallback-focus="likeRecoveryFocus">
       <LikeRecoveryDialog
         v-if="likeRecovery.open.value"

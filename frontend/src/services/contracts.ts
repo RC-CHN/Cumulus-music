@@ -12,7 +12,12 @@ import type { DownloadClient, SongDownloadState } from './downloads';
 import type { CloudClient } from './cloud';
 import type { MvClient } from './mv';
 import type { CommentClient } from './comments';
-import type { CommunityClient, CommunityNoticeClient, ProfileNotesClient } from './community';
+import type {
+  CommunityClient,
+  CommunityDeleteClient,
+  CommunityNoticeClient,
+  ProfileNotesClient,
+} from './community';
 import type { CommentResourceClient } from './commentResource';
 import type { CommentWriteClient } from './commentWrites';
 import type { CommentFloorClient } from './commentFloor';
@@ -106,6 +111,7 @@ export interface CoreClient
     MessageClient,
     CommunityClient,
     CommunityTopicClient,
+    CommunityDeleteClient,
     ProfileNotesClient,
     CommunityNoticeClient,
     CommentResourceClient,

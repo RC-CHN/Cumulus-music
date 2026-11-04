@@ -144,7 +144,7 @@ impl MusicClient {
                 }
             })
             .await?;
-        self.session.with_token(&token, |_| {
+        self.session.with_token(&token, |viewer| {
             let value = if let Some(response) = response {
                 let raw = response["events"]
                     .as_array()
@@ -163,7 +163,13 @@ impl MusicClient {
                 } else {
                     None
                 };
-                request.settle_rows(&token, raw, next, request.refresh, Some(&uid))?
+                request.settle_rows(
+                    &token,
+                    &self.note_visible_rows(viewer, raw)?,
+                    next,
+                    request.refresh,
+                    Some(&uid),
+                )?
             } else {
                 let mut page = request.settle_rows(&token, &[], None, true, Some(&uid))?;
                 page.unavailable = true;
