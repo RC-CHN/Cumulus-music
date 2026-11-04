@@ -30,4 +30,10 @@
 复现
 - cargo test -p cumulus-core --test profile_play_record --locked
 - npm --prefix frontend ci && npm --prefix frontend run build
-- Linux 实际 WebView 用封闭合成 transport；无需真实账号、Cookie 或公网。
+- cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+- LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_play_record_smoke.py
+    --binary /absolute/ux_ui_probe --root /absolute/new-proof-root --screenshots
+- Linux 实际 WebView 用封闭合成 transport。第一组 13 个状态覆盖访客入口隐藏和授权、
+  双页签及两次返回/焦点、权限撤回且无排行请求、本人播放量、空结果、失败与重试。
+  libmpv/null 实际播访客第二首并保留队列顺序；无真实账号、外网请求或实体声卡验证。
+  回执在 .build/ui-proof/profile-play-record-0805a60b/report.json。
