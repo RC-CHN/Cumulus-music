@@ -1193,6 +1193,19 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    // An emit reply does not wait for this spawned snapshot.
+                    // Do not let Stop on completion overtake the JSON sample.
+                    if (system_master_volume_fixture::running() || playback_power_guide_fixture::enabled())
+                        && stage.starts_with("ux_")
+                        && !handle.get_webview_window("main").is_some_and(|window| {
+                            window.eval(format!("window.__systemProbeStageRecorded={};", json!(stage))).is_ok()
+                        })
+                    {
+                        let failure = json!({"ok":false,"stage":stage,"error":"native system probe acknowledgement failed"});
+                        let _=fs::write(output.join("failed.json"),serde_json::to_vec_pretty(&failure).unwrap());
+                        handle.exit(1);
+                        return;
+                    }
                     if queue_click_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueClickRecorded={};",serde_json::json!(stage))).unwrap();
                     }

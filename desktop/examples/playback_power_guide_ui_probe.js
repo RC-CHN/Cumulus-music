@@ -32,7 +32,10 @@
   let stageCount = 0;
   async function capture(label, data = {}) {
     await sleep(330);
-    await emit(`ux_${String(++stageCount).padStart(2, '0')}_${label}`, data);
+    const stage = `ux_${String(++stageCount).padStart(2, '0')}_${label}`;
+    window.__systemProbeStageRecorded = null;
+    await emit(stage, data);
+    await wait(() => window.__systemProbeStageRecorded === stage, 'native evidence saved for ' + stage);
     await sleep(450);
   }
   function enterHome() {

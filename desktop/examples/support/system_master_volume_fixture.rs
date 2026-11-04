@@ -4,7 +4,6 @@ use tauri::Manager;
 static MODE: AtomicU8 = AtomicU8::new(0);
 static READS: AtomicUsize = AtomicUsize::new(0);
 
-#[cfg(target_os = "linux")]
 pub fn running() -> bool {
     std::env::var_os("CUMULUS_SYSTEM_MASTER_VOLUME_PROOF").is_some()
 }

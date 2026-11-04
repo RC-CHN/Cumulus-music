@@ -39,12 +39,15 @@
     assert(bar().dataset.playId === playId && bar().dataset.state === 'paused' &&
       Math.abs(Number(bar().dataset.position) - pausedAt) < 0.2, 'diagnostics never changed the player');
     assert(document.documentElement.scrollWidth <= innerWidth, 'no viewport overflow');
-    await emit('ux_' + String(++count).padStart(2, '0') + '_' + label, {
+    const stage = 'ux_' + String(++count).padStart(2, '0') + '_' + label;
+    window.__systemProbeStageRecorded = null;
+    await emit(stage, {
       visible: !!diagnosis(), percent: volume(), playId, pausedAt,
       focused: document.activeElement?.getAttribute('aria-label'),
       text: diagnosis()?.textContent.trim() ?? '',
       width:innerWidth, theme:document.documentElement.dataset.theme,
     });
+    await wait(() => window.__systemProbeStageRecorded === stage, 'native evidence saved for ' + stage);
   }
   async function readFixture(mode, expected) {
     window.__systemMasterVolumeFixtureAck = null;
