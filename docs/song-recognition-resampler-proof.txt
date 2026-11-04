@@ -1,0 +1,105 @@
+听歌识曲：官方两阶段重采样的离线样本对照
+
+范围：官方 PC 3.1.42.205594 x64，默认输出回采到 8 kHz 单声道 i16 的
+格式转换接缝。调用地址、设备选择和网络边界见 song-recognition-host-contracts.txt。
+本次只运行离线合成探针，未启动网易云应用、打开音频设备、连接服务或加入
+生产依赖。以下“Windows DLL”是在 Wine 中执行原 PE 文件，不是实际 Windows
+驱动、系统回采或打包安装验证。
+
+证据与调用
+
+- 对照使用安装包内 swresample-3.dll 和 avutil-56.dll，SHA256 分别为
+  2e3a886d9638ee5af22b810703de7a068ac7521bc09d36f5b45a48ca329bad42、
+  1fdad3dd763ea004ddaf2f99bec3b238a640a17238f03e9b20edd3e1e7793c1e。
+  swresample_version() 返回 0x030764，即 3.7.100。保留的配置字符串
+  显示 ffmpeg4.3 构建目录、MSVC x64、共享库、运行时 CPU 检测和 x86
+  汇编，不能据此确认官方的具体 Git 提交。
+- 以公开 FFmpeg n4.3.9 构建同 ABI 的非 GPL 基础共享库。版本定义：
+  https://github.com/FFmpeg/FFmpeg/blob/n4.3.9/libswresample/version.h
+  实测下载的 codeload 源包 SHA256：
+  43e77716cc5acd71775c92751859fb744332d152eb45f1db49be1b50533542a9。
+- 探针重建官方 312900/315450/315740 的调用及缓冲上限。第一上下文
+  Stereo→Mono，保留样本率及 f32/i16 格式；第二上下文 Mono→Mono，
+  输出 8000 Hz S16。每个独立样本流新建两层并复用到该流结束。
+  输出容量是 ceil((delay_in_source_frames+input_frames)*8000/input_rate)，
+  保存 swr_convert 实际返回的样本，诊断尾部另存。探针直接用两 DLL，
+  不是运行 cloudmusic.dll 的原始捕获 worker。
+- 两个速率（44100、48000 Hz）× 两种输入格式（packed stereo i16、
+  packed stereo f32）× 两种信号 × 三种分包，共 24 个流/每模式。
+  两种信号分别是整数 xorshift 的 3 秒加 250 帧、4099 帧的阶跃极值
+  （f32 包含超出 ±1 的有限值）。分包为单包、每 10 ms 一包、固定
+  循环的极小与大包混合。输入 recipe、位宽和分包序列均在 C 源中。
+- 每个流冻结输入、第一层 mono、最终 i16、诊断 drain 及每包 CSV
+  的独立 SHA256；同时冻结产出量、0 产出包、极值、削波和延迟。
+  fixture：core/tests/fixtures/song-recognition-resampler-official.json。
+  三种分包的累计样本和诊断尾部逐字节相同；每包产出和延迟序列各自
+  保持原貌，不能把分包不变解释成每一包都有输出。
+
+实测
+
+- 官方 DLL 在无外网、无 /dev/snd、独立 Wine 10.0 前缀内运行。
+  默认 CPU flags=0x1fd3db 的两次完整运行逐字节相同。另以官方
+  av_force_cpu_flags(0) 单独运行，冻结独立 scalar 对照；这个全局
+  设置仅用于一次性探针，不能在应用内为该功能更改其他解码器。
+- Linux x64 的 FFmpeg n4.3.9 共享库开启 x86 汇编时，auto 和
+  强制 scalar 两模式各 24 条，与相应官方 DLL 的所有阶段逐字节一致。
+  关闭 x86 汇编只能复现 scalar；按 auto 对照确实失败。与 auto
+  相比，scalar 的 f32→i16 在每个分包下有 35 个（44.1k 噪声）、
+  26 个（48k 噪声）和 1 个（44.1k 极值）相差 1；其他流在本批
+  相同。差异位于第二段的最终样本，不在 downmix、包计数或诊断尾部。
+  该结果说明相同版本和相同舍入位宽不足以替代 CPU 计算分支。
+- 同一 n4.3.9 源码另用 MinGW-w64 x64 与 NASM 交叉构建 PE DLL。
+  在同一 Wine 隔离配置用 stock DLL 执行 auto 和 scalar，各 24 条也
+  逐字节匹配原版 MSVC DLL。这个比较有 Windows ABI 和 DLL 加载证据，
+  没有 Windows 宿主、真实 WASAPI 或不同 CPU 型号的运行证据。
+- 10ms 分包刚收到三秒输入时两速率均只有 23,984 个输出样本，未到
+  24,000 门槛。额外输入后，44.1k 为 24,029、48k 为 24,026；
+  用 NULL 输入另作诊断 drain 分别再得 17、16 个样本。官方实时采集
+  以累计实际产出为准，停止和单包末尾不能擅自补这些尾样本。
+- 极值向量确实触达 i16 两端，44.1k/48k 的 f32 极值输入输出中
+  饱和到 -32768 / +32767 的样本数分别为 168 / 168 与 154 / 152
+  （auto）。这不是录音权限或物理声卡测试。
+
+最小复验
+
+从仓库根目录构建研究工具，只写到新的忽略目录：
+  cc -O2 -std=c11 -Wall -Wextra -Werror \
+    scripts/research/fingerprint_resampler_probe.c -o .build/resampler-probe -ldl
+  x86_64-w64-mingw32-gcc -O2 -std=c11 -Wall -Wextra -Werror \
+    scripts/research/fingerprint_resampler_probe.c -o .build/resampler-probe.exe
+
+运行参数是：swresample库路径 avutil库路径 结果文件前缀 auto|scalar。
+每次给新前缀；标准输出保存为 JSONL。Windows 将已核对散列的两个
+同目录 DLL 与探针置于独立试验目录；Wine 只在隔离前缀执行。Linux
+将同一构建产物目录加入 LD_LIBRARY_PATH，以免加载不匹配的 avutil。
+公开源码的 Linux configure：
+  ./configure --disable-everything --disable-autodetect --disable-programs \
+    --disable-doc --disable-network --disable-static --enable-shared \
+    --enable-swresample --enable-avutil
+  make libavutil/libavutil.so libswresample/libswresample.so
+Linux 需 NASM；不要为 auto 对照加 --disable-x86asm。交叉编译 Windows
+另加 --enable-cross-compile --cross-prefix=x86_64-w64-mingw32-
+--arch=x86_64 --target-os=mingw32，并可禁用 avcodec、avformat、avfilter、
+swscale、avdevice、postproc。旧 Makefile 与本机新版 windres 的预处理器
+参数不兼容；实测先用 MinGW GCC -E -xc-header -DRC_INVOKED -I. 单独
+预处理 libavutil/avutilres.rc 及 libswresample/swresampleres.rc，再用
+windres --preprocessor=cat -J rc -O coff 生成对应 .o，未改运算源码。
+对照：
+  python3 scripts/research/verify_fingerprint_resampler.py \
+    <JSONL日志> <原结果前缀> auto
+官方 DLL 只在本地复验材料中；CI 或发行物不复制它们。
+
+部署取舍
+
+- 可行路线是从固定公开源码自行构建、并行打包的隔离 stock 共享库，
+  用有界 Rust FFI 校验版本/资源/上下文所有权，再在目标机器原生 CI
+  中运行上面的对照。应明确两层的状态和缓存重建、持续或停止的边界，
+  不跨版本加载整套通用 FFmpeg。许可、组件安全维护和实际主程序的
+  DLL/SO 加载共存应单独评估；不因两个小库能运行就把旧 FFmpeg 带入
+  默认包。已安装的 Linux libswresample.so.6 仅见新 ABI
+  swr_alloc_set_opts2，不能无条件拿来当官方 3.7.100 的实现。
+- Rust 纯移植可以用同一 fixture，但需恢复/复验滤波器、相位插值、定点
+  累加、SIMD/FMA 浮点舍入及尾部状态。平均左右声道、一次性重采样、
+  或仅比较 RMS/时长都不足以宣称样本级兼容。默认硬件标志目前只实测
+  0x1fd3db；更早 CPU、实际 Windows 运行与输入设备变更均需另测。
+- 本批没有添加生产依赖或运行时 API；回采宿主、授权与真实服务另行验证。
