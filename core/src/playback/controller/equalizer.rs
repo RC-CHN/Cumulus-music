@@ -151,28 +151,29 @@ impl Actor {
         ) {
             return Ok(());
         }
-        let result = match super::engine(self.engine.clone(), self.guard(), |engine| {
-            engine.observe_equalizer()
+        let result = super::engine(self.engine.clone(), self.guard(), |engine| {
+            match engine.observe_equalizer() {
+                Ok(Some(stats)) if stats.failed_blocks == 0 => Ok(
+                    if stats.active_instances != 0
+                        && stats.processed_samples != 0
+                        && stats.observed_revision == stats.revision
+                    {
+                        EqualizerStatus::Processing
+                    } else {
+                        EqualizerStatus::Configured
+                    },
+                ),
+                Ok(None) => Ok(EqualizerStatus::Configured),
+                _ => {
+                    // A failed optional filter must not mute the rest of the
+                    // song. Keep playback only after its removal succeeds.
+                    engine.clear_equalizer()?;
+                    Ok(EqualizerStatus::Failed)
+                }
+            }
         })
-        .await
-        {
-            Ok(value) => value,
-            Err(error) => {
-                self.equalizer.status = EqualizerStatus::Failed;
-                return Err(error);
-            }
-        };
-        self.equalizer.status = match result {
-            Some(stats) if stats.failed_blocks != 0 => EqualizerStatus::Failed,
-            Some(stats)
-                if stats.active_instances != 0
-                    && stats.processed_samples != 0
-                    && stats.observed_revision == stats.revision =>
-            {
-                EqualizerStatus::Processing
-            }
-            _ => EqualizerStatus::Configured,
-        };
-        Ok(())
+        .await;
+        self.equalizer.status = result.as_ref().copied().unwrap_or(EqualizerStatus::Failed);
+        result.map(|_| ())
     }
 }

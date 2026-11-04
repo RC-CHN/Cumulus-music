@@ -6,7 +6,7 @@ use cumulus_core::{
     effects::equalizer::{
         EqualizerPreferences, EqualizerPreset, EqualizerSettings, EqualizerStatus,
     },
-    playback::controller::PlaybackCommand as Cmd,
+    playback::controller::{PlaybackCommand as Cmd, PlaybackStatus},
 };
 use serde_json::json;
 use std::{sync::atomic::Ordering, time::Duration};
@@ -71,6 +71,52 @@ async fn unavailable_and_failed_application_are_saved_and_explicitly_retried() {
     assert_eq!(retried.equalizer.status, EqualizerStatus::Configured);
     assert_eq!(retried.equalizer.preferences.revision, 1);
     assert_eq!(*f.device.equalizer.lock().unwrap(), Some(curve(5.0)));
+}
+
+#[tokio::test]
+async fn bad_dsp_block_detaches_only_equalizer_and_keeps_current_song_advancing() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    f.command(change(0, 5.0)).await.unwrap();
+    let loaded = f.command(replace(&[1])).await.unwrap();
+    f.device
+        .equalizer_failed_block
+        .store(true, Ordering::SeqCst);
+    let failed = until(&f.player, |s| s.equalizer.status == EqualizerStatus::Failed).await;
+    assert_eq!(failed.state, PlaybackStatus::Playing);
+    assert_eq!(failed.play_id, loaded.play_id);
+    assert_eq!(failed.equalizer.preferences, loaded.equalizer.preferences);
+    assert!(f.device.equalizer.lock().unwrap().is_none());
+
+    f.device.state.lock().unwrap().view.position = Some(5.0);
+    let advanced = until(&f.player, |s| s.position == Some(5.0)).await;
+    assert_eq!(advanced.play_id, loaded.play_id);
+    assert_eq!(advanced.equalizer.status, EqualizerStatus::Failed);
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+
+    f.device
+        .equalizer_failed_block
+        .store(false, Ordering::SeqCst);
+    let retried = f.command(Cmd::RetryEqualizer).await.unwrap();
+    assert_eq!(retried.equalizer.status, EqualizerStatus::Configured);
+    assert_eq!(retried.play_id, loaded.play_id);
+    assert_eq!(*f.device.equalizer.lock().unwrap(), Some(curve(5.0)));
+}
+
+#[tokio::test]
+async fn bad_dsp_block_stops_transport_when_native_detach_fails() {
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    f.command(change(0, 5.0)).await.unwrap();
+    f.command(replace(&[1])).await.unwrap();
+    f.device.equalizer_clear_fail.store(true, Ordering::SeqCst);
+    f.device
+        .equalizer_failed_block
+        .store(true, Ordering::SeqCst);
+    let failed = until(&f.player, |s| s.state == PlaybackStatus::Error).await;
+    assert_eq!(failed.equalizer.status, EqualizerStatus::Failed);
+    assert!(failed.play_id.is_none());
+    assert!(f.device.state.lock().unwrap().view.paused);
 }
 #[tokio::test]
 async fn stale_revision_cannot_overwrite_a_second_controller_or_the_native_curve() {

@@ -111,6 +111,8 @@ pub struct Device {
     pub parametric_at_unpause: Mutex<Vec<bool>>,
     pub equalizer_supported: AtomicBool,
     pub equalizer_fail: AtomicBool,
+    pub equalizer_failed_block: AtomicBool,
+    pub equalizer_clear_fail: AtomicBool,
     pub equalizer_hold: AtomicBool,
     pub equalizer_started: Notify,
     pub equalizer: Mutex<Option<cumulus_core::effects::equalizer::EqualizerSettings>>,
@@ -140,6 +142,8 @@ impl Default for Device {
             parametric_at_unpause: Mutex::new(Vec::new()),
             equalizer_supported: AtomicBool::new(false),
             equalizer_fail: AtomicBool::new(false),
+            equalizer_failed_block: AtomicBool::new(false),
+            equalizer_clear_fail: AtomicBool::new(false),
             equalizer_hold: AtomicBool::new(false),
             equalizer_started: Notify::new(),
             equalizer: Mutex::new(None),
@@ -242,9 +246,22 @@ impl AudioEngine for Engine {
         Ok(true)
     }
     fn clear_equalizer(&mut self) -> Result<()> {
+        if self.0.equalizer_clear_fail.load(Ordering::SeqCst) {
+            return Err(Error::State("injected equalizer cleanup failure"));
+        }
         *self.0.equalizer.lock().unwrap() = None;
         self.0.equalizer_clears.fetch_add(1, Ordering::SeqCst);
         Ok(())
+    }
+    fn observe_equalizer(
+        &mut self,
+    ) -> Result<Option<cumulus_core::effects::equalizer::abi::EqualizerStats>> {
+        Ok(self.0.equalizer.lock().unwrap().as_ref().map(|_| {
+            cumulus_core::effects::equalizer::abi::EqualizerStats {
+                failed_blocks: u64::from(self.0.equalizer_failed_block.load(Ordering::SeqCst)),
+                ..Default::default()
+            }
+        }))
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         self.0.started.notify_one();
