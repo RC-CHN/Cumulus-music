@@ -751,6 +751,61 @@ test('late lyrics never replace the selected song and old queues are rejected', 
   assert.equal(f.player.queue.value, undefined);
   f.player.dispose();
 });
+test('stopping playback retires an in-flight lyric read without leaving the spinner or error', async () => {
+  const held = deferred<LyricsView>();
+  const f = fixture({
+    playerLyrics: async (_epoch, id) => (id === 'slow' ? held.promise : lyrics(id)),
+  });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'slow'));
+  f.player.toggleLyrics();
+  assert.equal(f.player.lyricLoading.value, true);
+  f.emit(state('3'));
+  assert.equal(f.player.lyricLoading.value, false);
+  assert.equal(f.player.lyrics.value, undefined);
+  held.resolve(lyrics('slow'));
+  await turn();
+  assert.equal(f.player.lyricError.value, '');
+  assert.equal(f.player.lyrics.value, undefined);
+  f.emit(state('4', '1', 'next'));
+  await turn();
+  assert.equal(f.player.lyrics.value?.playId, 'next');
+  f.player.dispose();
+});
+test('a lyric adjustment owns its document until settlement, without blocking the next song', async () => {
+  const held = deferred<LyricsView>();
+  const reads: string[] = [];
+  const adjustments: string[] = [];
+  const f = fixture({
+    playerLyrics: async (_epoch, id) => {
+      reads.push(id);
+      return lyrics(id);
+    },
+    lyricOffset: async (_epoch, id, gain) => {
+      adjustments.push(id);
+      return id === 'old' ? held.promise : { ...lyrics(id), offset: gain / 2 };
+    },
+  });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'old'));
+  f.player.toggleLyrics();
+  await turn();
+  const old = f.player.offset(1);
+  assert.equal(f.player.lyricUpdating.value, true);
+  await f.player.loadLyrics();
+  assert.equal(await f.player.offset(1), false);
+  assert.deepEqual(reads, ['old']);
+  assert.deepEqual(adjustments, ['old']);
+  f.emit(state('3', '1', 'new'));
+  await turn();
+  assert.equal(f.player.lyricUpdating.value, false);
+  assert.equal(await f.player.offset(-1), true);
+  held.resolve({ ...lyrics('old'), offset: 0.5 });
+  assert.equal(await old, false);
+  assert.equal(f.player.lyrics.value?.playId, 'new');
+  assert.equal(f.player.lyrics.value?.offset, -0.5);
+  f.player.dispose();
+});
 test('an account change closes old lyrics and rejects their pending result while same-account reconnect preserves the open preference', async () => {
   const held = deferred<LyricsView>();
   const f = fixture({

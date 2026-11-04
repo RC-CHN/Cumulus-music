@@ -76,6 +76,19 @@
     click(one('[aria-label="歌词"]'));
     await wait(()=>one('.lyric-line.current'),'lyrics loaded');
   }
+  async function verifyLyricsAfterStop() {
+    all('.track-row')[2].dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+    await wait(()=>one('.playerbar')?.dataset.state==='playing'&&one('.playerbar').dataset.trackId==='3','play song with delayed lyrics');
+    click(one('[aria-label="歌词"]'));
+    await wait(()=>one('.lyrics-column [role="status"]')?.textContent.includes('正在加载歌词'),'delayed lyric read is visible');
+    click(one('[aria-label="停止播放"]'));
+    await wait(()=>one('.playerbar').dataset.state==='idle','stop during lyric read');
+    const cleared=()=>one('.lyrics-column .empty-state')?.textContent.trim()==='暂无播放中的歌曲';
+    await wait(cleared,'stopping clears the old lyric spinner');
+    await sleep(2300);
+    assert(cleared()&&one('.lyrics-panel > header > span').textContent==='播放详情'&&!one('.lyric-line')&&!one('.lyric-tools [aria-label="歌词提前半秒"]'),'late lyrics never replace the stopped view');
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_lyrics_stopped_read`,{cleared:cleared(),playId:one('.playerbar').dataset.playId??null});
+  }
   async function verifyLyricModes() {
     const roman=()=>one('[aria-label="音译歌词"]'), translation=()=>one('[aria-label="翻译歌词"]');
     const pressed=node=>node?.getAttribute('aria-pressed')==='true';
@@ -338,6 +351,7 @@
     await wait(()=>all('.track-row').length>2,'daily');
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
     assert(one('.track-row').textContent.includes('沿着海岸'),'long fixture missing');
+    if(!window.__playerLayoutBaseline) await verifyLyricsAfterStop();
     await play(0);
     const firstCommentPlay = one('.playerbar').dataset.playId;
     if(!window.__playerLayoutBaseline) {
@@ -396,6 +410,6 @@
     if(!window.__playerLayoutBaseline) { await verifyCurrentRowButton(); await verifyRecommendationToggle(); await verifyTrackActions(); await verifyAudioOutputRecovery(); }
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline,playerCommentCountVerified:!window.__playerLayoutBaseline,currentTrackMenuVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,lyricStopVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline,playerCommentCountVerified:!window.__playerLayoutBaseline,currentTrackMenuVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

@@ -19,7 +19,7 @@ const emit = defineEmits<{
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
 }>();
-const { view, lyrics, lyricLoading, lyricError, loaded, busy } = props.player;
+const { view, lyrics, lyricLoading, lyricUpdating, lyricError, loaded, busy } = props.player;
 const container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>();
 const metadata = computed(() => playbackMetadata(view.value?.track));
@@ -84,22 +84,10 @@ const activeAuxiliary = computed<Auxiliary | undefined>(() => {
   if (preferences?.translationEnable && auxiliaryAvailable.value.translation) return 'translation';
   if (preferences?.romaEnable && auxiliaryAvailable.value.romanization) return 'romanization';
 });
-const changingLyric = ref(false);
-async function changeLyric(operation: () => Promise<void>) {
-  const current = lyrics.value;
-  if (!current || changingLyric.value) return;
-  changingLyric.value = true;
-  try {
-    await operation();
-    if (
-      !lyricError.value &&
-      current.epoch === lyrics.value?.epoch &&
-      current.playId === lyrics.value.playId
-    )
-      followLyrics();
-  } finally {
-    changingLyric.value = false;
-  }
+const changingLyric = computed(() => lyricLoading.value || lyricUpdating.value);
+async function changeLyric(operation: () => Promise<boolean>) {
+  if (!lyrics.value || changingLyric.value) return;
+  if (await operation()) followLyrics();
 }
 function toggleAuxiliary(kind: Auxiliary) {
   if (!auxiliaryAvailable.value[kind]) return;
@@ -283,7 +271,8 @@ const displayedAuxiliary = computed(() =>
     @keydown.esc.stop="player.lyricsOpen.value = false"
   >
     <header>
-      <span>正在播放</span><DesktopLyricToggle v-if="view" :epoch="view.epoch" /><button
+      <span>{{ view?.playId ? '正在播放' : '播放详情' }}</span
+      ><DesktopLyricToggle v-if="view" :epoch="view.epoch" /><button
         ref="close"
         class="icon-button"
         aria-label="收起播放详情"
@@ -421,6 +410,7 @@ const displayedAuxiliary = computed(() =>
             </button>
           </div>
         </template>
+        <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
         <div class="lyric-tools">
           <template v-if="lyrics">
             <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />

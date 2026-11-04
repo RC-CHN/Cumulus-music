@@ -49,7 +49,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   );
   const queueOpen = ref(false),
     lyricsOpen = ref(false),
-    lyricLoading = ref(false);
+    lyricLoading = ref(false),
+    lyricUpdating = ref(false);
   let epoch = '',
     connection = 0,
     request = 0,
@@ -113,6 +114,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (['session_expired', 'profile_changed'].includes(issue.code)) onSessionChanged();
     return issue;
   }
+  function resetLyrics() {
+    lyricRequest++;
+    lyrics.value = undefined;
+    lyricLoading.value = false;
+    lyricUpdating.value = false;
+    lyricError.value = '';
+  }
   function accept(next: PlayerView) {
     if (next.epoch !== epoch || (view.value && BigInt(next.revision) < BigInt(view.value.revision)))
       return;
@@ -125,8 +133,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       reported.value = undefined;
     }
     if (old?.playId !== next.playId) {
-      lyrics.value = undefined;
-      lyricRequest++;
+      resetLyrics();
       if (lyricsOpen.value && next.playId) void loadLyrics();
     }
     if (queueOpen.value && old?.queueRevision !== next.queueRevision) void loadQueue();
@@ -140,7 +147,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     request++;
     failedOperation = undefined;
     queueRequest++;
-    lyricRequest++;
+    resetLyrics();
     ready.value = false;
     busy.value = false;
     queueBusy.value = false;
@@ -151,9 +158,6 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queuePreparation++;
     view.value = undefined;
     queue.value = undefined;
-    lyrics.value = undefined;
-    lyricLoading.value = false;
-    lyricError.value = '';
     reported.value = undefined;
     let registered = false,
       ended = false;
@@ -737,7 +741,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   async function loadLyrics() {
     const playId = view.value?.playId;
-    if (!playId) return;
+    if (!playId || lyricLoading.value || lyricUpdating.value) return;
     const current = ++lyricRequest,
       captured = epoch;
     lyricLoading.value = true;
@@ -758,16 +762,34 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   async function updateLyrics(operation: (epoch: string, playId: string) => Promise<LyricsView>) {
     const playId = view.value?.playId;
-    if (!playId) return;
-    const current = ++lyricRequest;
+    if (
+      !playId ||
+      lyricLoading.value ||
+      lyricUpdating.value ||
+      lyrics.value?.playId !== playId ||
+      lyrics.value.epoch !== epoch
+    )
+      return false;
+    const current = ++lyricRequest,
+      captured = epoch;
+    lyricUpdating.value = true;
     lyricError.value = '';
     try {
-      const value = await operation(epoch, playId);
-      if (current === lyricRequest && value.epoch === epoch && value.playId === view.value?.playId)
+      const value = await operation(captured, playId);
+      if (
+        current === lyricRequest &&
+        value.epoch === epoch &&
+        value.playId === view.value?.playId
+      ) {
         lyrics.value = value;
+        return true;
+      }
     } catch (e) {
       if (current === lyricRequest) lyricError.value = failure(e).message;
+    } finally {
+      if (current === lyricRequest) lyricUpdating.value = false;
     }
+    return false;
   }
   const preferences = (value: LyricPreferences) =>
     updateLyrics((e, id) => core.lyricPreferences(e, id, value));
@@ -776,7 +798,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     equalizerDraft.reset();
     connection++;
     request++;
-    lyricRequest++;
+    resetLyrics();
     queueRequest++;
     queuePreparation++;
     queueBusy.value = false;
@@ -814,6 +836,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueOpen,
     lyricsOpen,
     lyricLoading,
+    lyricUpdating,
     playing,
     loaded,
     connect,

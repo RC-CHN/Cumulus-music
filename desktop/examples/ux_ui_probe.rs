@@ -385,6 +385,9 @@ impl Api for Library {
                 }
                 "/api/song/lyric/v1" => {
                     let long = std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some();
+                    if long && (args["id"] == 3 || args["id"] == "3") {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
                     let mut response = json!({"code":200,"lrc":{"lyric":(0..30).map(|i|format!("[00:{i:02}.00]合成歌词 {i} {}\n", if long && i % 3 == 0 {"SyntheticLyricsWithoutWordBreaks".repeat(4)} else {String::new()})).collect::<String>()}});
                     if long && (args["id"] == 1 || args["id"] == "1") {
                         for (key, text) in [("tlyric", "合成翻译"), ("romalrc", "synthetic roman")]
