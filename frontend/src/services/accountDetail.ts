@@ -64,9 +64,18 @@ export interface LoginDevice {
   current: boolean;
   signedIn: boolean;
 }
+export interface LoginDeviceLimits {
+  nickname?: string | null;
+  avatarUrl?: string | null;
+  currentNum?: number | null;
+  currentTier?: 'ordinary' | 'vip' | 'svip' | null;
+  ordinaryLimit: number;
+  vipLimit: number;
+  svipLimit: number;
+}
 export interface LoginDevicesView {
   devices: LoginDevice[];
-  limits?: { currentNum?: number | null; deviceLimit?: number | null } | null;
+  limits?: LoginDeviceLimits | null;
 }
 export interface AccountBindingQrView {
   modules: boolean[][];

@@ -8,6 +8,7 @@ import { useCore } from '../../services/core';
 import ModalTransition from '../ModalTransition.vue';
 import AccountReadLayout from './AccountReadLayout.vue';
 import LoginDeviceGroup from './LoginDeviceGroup.vue';
+import LoginDeviceMembership from './LoginDeviceMembership.vue';
 import LoginDeviceDetail from './LoginDeviceDetail.vue';
 import LoginDeviceRemovalDialog from './LoginDeviceRemovalDialog.vue';
 import AccountBindingQrDialog from './AccountBindingQrDialog.vue';
@@ -118,16 +119,7 @@ watch(
         </button>
       </div>
     </template>
-    <dl v-if="value?.limits" class="login-device-limit" aria-label="设备额度">
-      <div>
-        <dt>当前数量</dt>
-        <dd>{{ value.limits.currentNum ?? '未提供' }}</dd>
-      </div>
-      <div>
-        <dt>设备额度</dt>
-        <dd>{{ value.limits.deviceLimit ?? '未提供' }}</dd>
-      </div>
-    </dl>
+    <LoginDeviceMembership v-if="value?.limits" :key="account.epoch" :limits="value.limits" />
     <LoginDeviceGroup
       kind="signed-in"
       title="已登录的设备"

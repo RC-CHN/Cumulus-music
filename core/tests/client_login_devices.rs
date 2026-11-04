@@ -34,6 +34,12 @@ fn list(rows: Value) -> Value {
     json!({"code":200,"data":{"userDeviceList":rows}})
 }
 
+fn with_limits(rows: Value, limits: Value) -> Value {
+    let mut reply = list(rows);
+    reply["data"]["userDeviceLimitInfoDTO"] = limits;
+    reply
+}
+
 #[tokio::test]
 async fn reads_official_device_groups_and_projects_only_bounded_display_fields() {
     let reply = json!({
@@ -50,9 +56,12 @@ async fn reads_official_device_groups_and_projects_only_bounded_display_fields()
                  "loginType":"扫码登录", "lastActiveTime":"1720000000000", "os":"Windows"}
             ],
             "userDeviceLimitInfoDTO":{
-                "currentNum":"2", "deviceLimit":8,
+                "currentNum":"2", "deviceLimit":120, "vipType":6,
+                "nickname":"Synthetic member",
+                "avatarUrl":"http://p1.music.126.net/test/avatar.jpg?token=SYNTHETIC_PRIVATE#fragment",
                 "familyLink":"https://example.invalid/?token=SYNTHETIC_PRIVATE",
-                "deviceLimitRule":{"15":10}
+                "familyText":"SYNTHETIC_FAMILY_PROMOTION",
+                "deviceLimitRule":{"0":7,"1":11,"15":12}
             }
         }
     });
@@ -79,14 +88,17 @@ async fn reads_official_device_groups_and_projects_only_bounded_display_fields()
     assert_ne!(rows[0]["id"], rows[1]["id"]);
     assert_eq!(
         wire["value"]["limits"],
-        json!({"currentNum":2,"deviceLimit":8})
+        json!({"nickname":"Synthetic member","avatarUrl":"https://p1.music.126.net/test/avatar.jpg?param=320y320",
+            "currentNum":2,"currentTier":"vip","ordinaryLimit":7,"vipLimit":8,"svipLimit":12})
     );
     let serialized = wire.to_string();
     for excluded in [
         "SYNTHETIC_RAW",
         "SYNTHETIC_PRIVATE",
+        "SYNTHETIC_FAMILY_PROMOTION",
         "deviceKey",
         "familyLink",
+        "deviceLimitRule",
     ] {
         assert!(!serialized.contains(excluded));
     }
@@ -95,6 +107,47 @@ async fn reads_official_device_groups_and_projects_only_bounded_display_fields()
     assert_eq!(calls[1].path, "/api/middle/user/device/list");
     assert_eq!(calls[1].payload, json!({"excStatus":9}));
     assert!(!calls[1].cache);
+}
+
+#[tokio::test]
+async fn compares_official_tiers_and_hides_empty_summaries_without_reusing_old_data() {
+    let reply = |limits| with_limits(json!([{"deviceKey":"synthetic"}]), limits).into();
+    let (_root, _, session, client) = world([
+        identity(),
+        reply(json!({"vipType":1,"currentNum":0,"deviceLimitRule":{"0":null,"1":4}})),
+        reply(json!({"vipType":15,"currentNum":3,"deviceLimitRule":{"6":0}})),
+        reply(
+            json!({"vipType":42,"nickname":"invalid\nname","avatarUrl":"https://example.invalid/track"}),
+        ),
+        reply(json!({"isEmpty":true,"nickname":"stale card"})),
+        with_limits(
+            json!([]),
+            json!({"vipType":15,"nickname":"unpublished card"}),
+        )
+        .into(),
+    ]);
+    session.refresh().await.unwrap();
+    let epoch = client.account().unwrap().epoch;
+    let next = async || {
+        serde_json::to_value(client.login_devices(&epoch).await.unwrap().value).unwrap()["limits"]
+            .clone()
+    };
+    assert_eq!(
+        next().await,
+        json!({"nickname":null,"avatarUrl":null,"currentNum":null,"currentTier":"ordinary",
+            "ordinaryLimit":4,"vipLimit":8,"svipLimit":10})
+    );
+    let svip = next().await;
+    assert_eq!(svip["currentTier"], "svip");
+    assert_eq!(svip["vipLimit"], 0);
+    assert_eq!(svip["currentNum"], 3);
+    let unknown = next().await;
+    assert!(unknown["currentTier"].is_null());
+    assert!(unknown["nickname"].is_null());
+    assert!(unknown["avatarUrl"].is_null());
+    assert_eq!(unknown["ordinaryLimit"], 5);
+    assert!(next().await.is_null());
+    assert!(next().await.is_null());
 }
 
 #[tokio::test]
@@ -163,19 +216,16 @@ async fn rejects_unauthenticated_and_stale_reads_without_publishing_old_devices(
     ]));
     session.attach(other.clone()).unwrap();
     session.refresh().await.unwrap();
-    send.send(Ok(list(json!([{"deviceKey":"SYNTHETIC_OLD_DEVICE"}]))))
-        .unwrap();
+    send.send(Ok(with_limits(
+        json!([{"deviceKey":"SYNTHETIC_OLD_DEVICE"}]),
+        json!({"vipType":6,"nickname":"Previous account membership"}),
+    )))
+    .unwrap();
     assert!(matches!(read.await.unwrap(), Err(Error::StaleResponse)));
     let current = client.account().unwrap();
     assert_eq!(current.nickname.as_deref(), Some("Other account"));
-    assert!(
-        client
-            .login_devices(&current.epoch)
-            .await
-            .unwrap()
-            .value
-            .devices
-            .is_empty()
-    );
+    let view = client.login_devices(&current.epoch).await.unwrap().value;
+    assert!(view.devices.is_empty());
+    assert!(view.limits.is_none());
     assert_eq!(other.calls().len(), 2);
 }

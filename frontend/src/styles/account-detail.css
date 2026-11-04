@@ -187,29 +187,109 @@
 .account-binding-detail small {
   color: var(--text-secondary);
 }
-.login-device-limit {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.login-device-membership {
   max-width: 620px;
   margin: 0 0 24px;
+}
+.login-device-membership-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 10px;
+  margin-bottom: 24px;
+}
+.login-device-membership-identity > div {
+  min-width: 0;
+}
+.login-device-membership-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--art-bg);
+  color: var(--text-secondary);
+}
+.login-device-membership-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.login-device-membership-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 20px;
+}
+.login-device-membership-name strong {
+  min-width: 0;
+  max-width: 126px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+}
+.login-device-membership-badge,
+.login-device-limit-current {
+  padding: 1px 3px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 9px;
+  line-height: 1;
+}
+.login-device-membership-identity p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.login-device-limit {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
+  overflow: hidden;
 }
-.login-device-limit > div {
-  padding: 8px 12px;
+.login-device-limit th,
+.login-device-limit td {
   text-align: center;
 }
-.login-device-limit > div + div {
-  border-left: 1px solid var(--line);
-}
-.login-device-limit dt {
+.login-device-limit th {
+  height: 26px;
+  border-bottom: 1px solid var(--line);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 400;
 }
-.login-device-limit dd {
-  margin: 4px 0 0;
-  font-size: 20px;
-  font-weight: 600;
+.login-device-limit td {
+  height: 37px;
+}
+.login-device-limit [data-current-tier='ordinary'] {
+  background-color: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.login-device-limit [data-current-tier='vip'] {
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.login-device-limit [data-current-tier='svip'] {
+  background-color: rgb(249 149 0 / 12%);
+}
+.login-device-limit-current {
+  margin-right: 6px;
+  vertical-align: 3px;
+}
+.login-device-limit-value {
+  font-size: 22px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.login-device-limit-value small {
+  margin-left: 2px;
+  font-size: 10px;
+  font-weight: 400;
 }
 .login-device-group {
   margin-top: 26px;

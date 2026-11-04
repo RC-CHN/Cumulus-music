@@ -38,8 +38,21 @@ pub struct LoginDeviceView {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginDeviceLimitsView {
+    pub nickname: Option<String>,
+    pub avatar_url: Option<String>,
     pub current_num: Option<u32>,
-    pub device_limit: Option<u32>,
+    pub current_tier: Option<LoginDeviceTier>,
+    pub ordinary_limit: u32,
+    pub vip_limit: u32,
+    pub svip_limit: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LoginDeviceTier {
+    Ordinary,
+    Vip,
+    Svip,
 }
 
 fn text(value: &Value, limit: usize) -> Option<&str> {
@@ -55,6 +68,38 @@ fn unsigned(value: &Value) -> Option<u64> {
             return None;
         }
         text.parse().ok()
+    })
+}
+
+fn device_limit(value: &Value) -> Option<u32> {
+    unsigned(value).and_then(|n| u32::try_from(n).ok())
+}
+
+fn membership(raw: &Value) -> Option<LoginDeviceLimitsView> {
+    if !raw.is_object() || raw["isEmpty"] == true {
+        return None;
+    }
+    let rules = &raw["deviceLimitRule"];
+    Some(LoginDeviceLimitsView {
+        nickname: text(&raw["nickname"], 512).map(str::to_owned),
+        avatar_url: raw["avatarUrl"]
+            .as_str()
+            .filter(|s| s.len() <= 2048)
+            .and_then(|_| super::mapping::artwork(&raw["avatarUrl"])),
+        // Numeric zero is displayed as "unknown" by UserMembershipCard.
+        current_num: device_limit(&raw["currentNum"])
+            .filter(|&n| n > 0 || raw["currentNum"].is_string()),
+        current_tier: match raw["vipType"].as_u64() {
+            Some(0 | 1) => Some(LoginDeviceTier::Ordinary),
+            Some(6) => Some(LoginDeviceTier::Vip),
+            Some(15) => Some(LoginDeviceTier::Svip),
+            _ => None,
+        },
+        ordinary_limit: device_limit(&rules["0"])
+            .or_else(|| device_limit(&rules["1"]))
+            .unwrap_or(5),
+        vip_limit: device_limit(&rules["6"]).unwrap_or(8),
+        svip_limit: device_limit(&rules["15"]).unwrap_or(10),
     })
 }
 
@@ -154,11 +199,10 @@ fn parse(response: &Value) -> Result<DeviceList> {
     }
     // Keep the service order within the same group; pin the current device.
     devices.sort_by_key(|device| (!device.current, !device.signed_in));
-    let raw_limits = &data["userDeviceLimitInfoDTO"];
-    let limits = raw_limits.is_object().then(|| LoginDeviceLimitsView {
-        current_num: unsigned(&raw_limits["currentNum"]).and_then(|n| u32::try_from(n).ok()),
-        device_limit: unsigned(&raw_limits["deviceLimit"]).and_then(|n| u32::try_from(n).ok()),
-    });
+    // M/3122 does not publish this DTO when there are no device rows.
+    let limits = (!devices.is_empty())
+        .then(|| membership(&data["userDeviceLimitInfoDTO"]))
+        .flatten();
     Ok(DeviceList {
         rows: native_rows,
         view: LoginDevicesView { devices, limits },

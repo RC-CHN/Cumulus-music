@@ -16,6 +16,16 @@ Cumulus 账号资料、绑定及登录设备读取
     读 data.userDeviceList 与可选 userDeviceLimitInfoDTO；
     当前设备优先，status 1/“1”归已登录，未知字段不填默认值。
     WebView 只收到本次响应生成的行 ID，不得到原始 deviceKey。
+  设备额度：pages/loginDevice/index.tsx:229–244、
+    pages/loginDevice/components/UserMembershipCard.tsx:251–269、367–437。
+    资料卡位于两个设备分组上方。使用同一设备列表响应里的 nickname、
+    avatarUrl 和 currentNum，不从设备分组计数推导。数字 0 按官方显示为未知。
+    vipType 1（畅听）与 0 同列；6 和 15 分别标为黑胶 VIP 与 SVIP。
+    无法识别的类型不标当前档；额度按 deviceLimitRule 的 0→1、6、15
+    取值，缺值采用官方组件的 5/8/10；不把 DTO 的 deviceLimit 当成三档额度。
+    M3122:14–31、292–322 在找不到设备时不会更新 DTO；本端在无设备、
+    DTO 缺失、标记 isEmpty、加载、失败或切换账号时不渲染卡片，避免露出
+    官方初始化模型的占位数据或上一账号的内容。
   地区显示使用 M591 的静态回退表：31 个省级分组、472 个城市映射。
     源文件 SHA-256 7c07d9246b81e74422479a3d99c8972fbcf0c58e259cfa1b4abc337ee1a41351。
     只移植地名和代码；未知值显示原代码，暂未移植 M198 的地区表文件与服务器更新。
@@ -28,6 +38,7 @@ Rust 与 IPC：
   desktop 主窗口只暴露 account_profile_detail / account_login_devices，
   参数为当前 epoch；不接受目标 UID、设备键或任意业务路径。
   响应外壳为 {epoch,value}。读取不新增持久状态，也不改账号资料。
+  额度卡的头像只接受已知网易音乐图床；强制 HTTPS，并替换上游查询参数和片段。
   缺失必需结构、归属不符及服务错误返回错误；成功的空数组才是空列表。
 
 当前边界：
@@ -35,6 +46,14 @@ Rust 与 IPC：
   登录设备分别见 account-avatar.txt 和 login-device-removal.txt。
   界面按恢复的页面结构重建，
   合并绑定摘要、保留明确错误态，未声明与官方截图像素一致。
+  官方额度卡另外有两种会员转化入口：VIP 用户打开 `source:'song', tab:'svip'`
+  的收银台，非黑胶档打开 `tab:'vip'`，SVIP 不显示升级按钮；非黑胶档在
+  `familyText`、`familyLink`、`familyImageUrl` 齐全时可打开动态家庭会员链接
+  （UserMembershipCard.tsx:277–365）。本端额度卡只展示对照，不复制收银台、
+  动态家庭会员链接或曝光埋点，也不把这些字段送入 WebView。
+  同版 `pages/setting/views/Account.jsx:262–360` 的账号设置入口没有独立实名
+  认证或注销资格查询；用户页的“已主动注销”是他人资料展示状态，不能用来
+  推定当前账号的验证或注销接口。
   合成接口和真实 WebView 验证不能证明当前服务端接受这些请求。
 
 验证：
@@ -45,6 +64,12 @@ Rust 与 IPC：
   资料含地区与掩码、设备加载、设备列表、本机设备详情、深色错误、重试后的空结果。
   本机窗口只抓取验证进程；截图使用合成账号。两套证据可分别在
   .build/account-detail-webview 和 .build/account-detail-physical 查看。
+  设备额度卡另在 Linux WebKitGTK/Xvfb + Openbox、zh_CN.UTF-8 的实际
+  WebView 扩展到七个状态和七张截图，含浅色 VIP、880×670 深色畅听、
+  加载/失败/空列表隐藏、重试替换，以及四次设备列表读取，无实服请求或写入。
+  运行 `scripts/ci/account_login_smoke.py --account-detail --screenshots`；
+  结果与截图在 .build/ui-proof/account-device-membership/linux。
+  同一构建的 `--device-removal` 六状态合成回归也通过。
   Linux/Windows CI 均配置同一合成用例；本机没有实际 Windows 桌面实测。
 
   可执行真实只读验证：

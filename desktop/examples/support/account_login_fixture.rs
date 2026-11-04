@@ -399,8 +399,18 @@ impl HttpBackend for Service {
                         rows.push(json!({"deviceKey":"fixture-private-key-b","deviceName":"测试桌面","status":"1","ifLoginDevice":true,"loginPlace":"杭州","lastActiveTime":1700000000000_u64,"os":"Windows"}));
                         json!(rows)
                     };
+                    let limits = if mode == "devices_empty" || uid == 5 {
+                        json!({"isEmpty":true,"nickname":"不应显示的合成设备账户"})
+                    } else if mode == "devices_ordinary" {
+                        json!({"vipType":1,"nickname":"畅听合成账号","currentNum":0,"deviceLimitRule":{"1":4}})
+                    } else {
+                        json!({"vipType":6,"nickname":"设备额度合成账号","currentNum":1,
+                            "deviceLimit":30,"deviceLimitRule":{"6":9,"15":11},
+                            "familyLink":"https://example.invalid/?auth=synthetic-family-private",
+                            "familyText":"不应显示的家庭会员链接","familyImageUrl":"https://example.invalid/family.png"})
+                    };
                     return Ok(auth::reply(
-                        json!({"code":200,"data":{"userDeviceList":rows,"userDeviceLimitInfoDTO":{"currentNum":1,"deviceLimit":3}}}),
+                        json!({"code":200,"data":{"userDeviceList":rows,"userDeviceLimitInfoDTO":limits}}),
                         None,
                     ));
                 }

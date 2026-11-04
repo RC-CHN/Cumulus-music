@@ -19,7 +19,9 @@ pub use super::local::{
 pub use super::login_device_removal::{
     LoginDeviceRemovalCommand, LoginDeviceRemovalPhase, LoginDeviceRemovalView,
 };
-pub use super::login_devices::{LoginDeviceLimitsView, LoginDeviceView, LoginDevicesView};
+pub use super::login_devices::{
+    LoginDeviceLimitsView, LoginDeviceTier, LoginDeviceView, LoginDevicesView,
+};
 pub use super::media_preferences::{SystemMediaPreferencesCommand, SystemMediaPreferencesView};
 pub use super::member::MemberWelfareView;
 pub use super::member::{
