@@ -36,6 +36,7 @@ CASES = (
     f'{COLD}::fallback::limiter_cold_flac_fallback_preserves_the_held_file_and_native_transport',
     f'{COLD}::fallback::limiter_cold_flac_fallback_does_not_publish_bad_position_or_revoked_source',
     f'{COLD}::sink::handoff::limiter_cold_flac_active_seek_retires_sink_and_reclaims_exact_source',
+    f'{COLD}::production::limiter_cold_flac_production_controller_opt_in_and_stock_fallback',
     f'{STOP}::pinned_stop_native_rejection_and_stale_ack_both_destroy_the_sink',
     f'{STOP}::pinned_stop_revocation_while_opening_closes_the_unpublished_sink',
 )

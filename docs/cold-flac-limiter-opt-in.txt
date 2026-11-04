@@ -58,6 +58,7 @@ not a replacement controller: default and missing runtime, AAC and
 48 kHz fallback, indexed seeks, running and paused unindexed fallback,
 replacement of the verified NCM pathname, and persisted cached-rights
 revocation without account or queue mutation. The fixtures are synthetic.
+The Windows cold FLAC CI proof runs the same production controller case;
 Windows native CI and physical sound output must be reported separately.
 
 FLAC metadata: https://www.rfc-editor.org/rfc/rfc9639.html#section-8.2
