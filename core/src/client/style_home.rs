@@ -10,7 +10,7 @@ const MAX_CARDS: usize = 12;
 const MAX_ROWS: usize = 128;
 const MAX_SONG_IDS: usize = 32;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize, Hash, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct StyleSeedHandle {
     revision: String,
@@ -53,12 +53,76 @@ pub(super) struct StyleHome {
 struct SeedState {
     started: u64,
     latest: Option<SeedSnapshot>,
+    discovery_started: u64,
+    discovery: Option<SeedSnapshot>,
 }
 
 struct SeedSnapshot {
     token: SessionToken,
     revision: String,
     seeds: Vec<(String, StyleSeed)>,
+}
+
+pub(super) struct DiscoveryStyleSeeds {
+    revision: String,
+    seeds: Vec<(String, StyleSeed)>,
+}
+
+impl Default for DiscoveryStyleSeeds {
+    fn default() -> Self {
+        Self {
+            revision: uuid::Uuid::new_v4().simple().to_string(),
+            seeds: Vec::new(),
+        }
+    }
+}
+
+impl DiscoveryStyleSeeds {
+    pub(super) fn add(&mut self, item: &Value) -> Option<StyleSeedHandle> {
+        let seed = from_item(item)?;
+        let id = if let Some((id, _)) = self.seeds.iter().find(|(_, old)| old == &seed) {
+            id.clone()
+        } else if self.seeds.len() < MAX_CARDS {
+            let id = uuid::Uuid::new_v4().simple().to_string();
+            self.seeds.push((id.clone(), seed));
+            id
+        } else {
+            return None;
+        };
+        Some(StyleSeedHandle {
+            revision: self.revision.clone(),
+            id,
+        })
+    }
+}
+
+impl StyleHome {
+    pub(super) fn begin_discovery(&self) -> Result<u64> {
+        let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        state.discovery_started = state
+            .discovery_started
+            .checked_add(1)
+            .ok_or(Error::State("discovery style revision exhausted"))?;
+        Ok(state.discovery_started)
+    }
+
+    pub(super) fn publish_discovery(
+        &self,
+        token: &SessionToken,
+        request: u64,
+        cards: DiscoveryStyleSeeds,
+    ) -> Result<()> {
+        let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if state.discovery_started != request {
+            return Err(Error::StaleResponse);
+        }
+        state.discovery = (!cards.seeds.is_empty()).then(|| SeedSnapshot {
+            token: token.clone(),
+            revision: cards.revision,
+            seeds: cards.seeds,
+        });
+        Ok(())
+    }
 }
 
 fn key(value: &Value) -> Option<String> {
@@ -104,6 +168,17 @@ fn songs(item: &Value) -> Option<String> {
     join_songs(item["songIds"].as_array()?.iter().map(decimal))
 }
 
+fn from_item(item: &Value) -> Option<StyleSeed> {
+    if item["resourceType"] != "dailySongs" || item["subResourceType"] != "style_dailySong" {
+        return None;
+    }
+    Some(StyleSeed {
+        category_id: key(&item["extData"]["categoryId"])?,
+        tag_id: key(&item["extData"]["tagId"])?,
+        song_id: songs(item)?,
+    })
+}
+
 fn project(response: &Value) -> Result<Vec<(StyleSeedCard, StyleSeed)>> {
     let items = response["data"]["items"]
         .as_array()
@@ -118,15 +193,8 @@ fn project(response: &Value) -> Result<Vec<(StyleSeedCard, StyleSeed)>> {
         .take(MAX_ROWS)
         .filter(|item| item["moduleType"] == "tag_daily_rec")
         .chain(demotes.take(MAX_ROWS))
-        .filter(|item| {
-            item["resourceType"] == "dailySongs" && item["subResourceType"] == "style_dailySong"
-        })
         .filter_map(|item| {
-            let seed = StyleSeed {
-                category_id: key(&item["extData"]["categoryId"])?,
-                tag_id: key(&item["extData"]["tagId"])?,
-                song_id: songs(item)?,
-            };
+            let seed = from_item(item)?;
             let title = item["title"]
                 .as_str()
                 .or_else(|| item["coverText"].as_str())?
@@ -210,13 +278,15 @@ impl MusicClient {
         token: &SessionToken,
         handle: &StyleSeedHandle,
     ) -> Result<StyleSeed> {
-        self.style_home
+        let state = self
+            .style_home
             .state
             .lock()
-            .map_err(|_| Error::LockPoisoned)?
-            .latest
-            .as_ref()
-            .filter(|snapshot| snapshot.token == *token && snapshot.revision == handle.revision)
+            .map_err(|_| Error::LockPoisoned)?;
+        [state.latest.as_ref(), state.discovery.as_ref()]
+            .into_iter()
+            .flatten()
+            .find(|snapshot| snapshot.token == *token && snapshot.revision == handle.revision)
             .and_then(|snapshot| snapshot.seeds.iter().find(|(id, _)| id == &handle.id))
             .map(|(_, seed)| seed.clone())
             .ok_or(Error::QueueChanged)

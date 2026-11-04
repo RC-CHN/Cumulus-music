@@ -44,11 +44,22 @@
     assert(!one('.discovery-home img[src*="private.invalid"]'), 'unsafe artwork');
     assert(document.documentElement.scrollWidth <= innerWidth, 'horizontal overflow');
     await wait(() => one('[aria-label="推荐歌单上一组"]')?.getAttribute('aria-disabled') === 'true', 'carousel edge state');
-    assert(!one('[aria-label="精选推荐下一组"]'), 'no inactive carousel arrows');
+    assert(!one('[aria-label="最近常听下一组"]'), 'no inactive carousel arrows');
     await theme('浅色', 'light');
     await capture('home');
     await theme('深色', 'dark');
     await capture('dark');
+    const style = one('[aria-label="打开 合成首页风格"]');
+    style.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    await sleep(180);
+    const styleRail = one('[data-home-rail=featured]');
+    const styleOffset = styleRail.scrollLeft;
+    click(style);
+    await wait(() => !one('.discovery-home') && one('.main-content')?.textContent.includes('合成首页种子歌曲'), 'native seeded style list');
+    await capture('seeded_style');
+    click(one('[aria-label="返回上一页"]'));
+    await wait(() => document.activeElement?.dataset.homeCard === style.dataset.homeCard &&
+      Math.abs(one('[data-home-rail=featured]').scrollLeft - styleOffset) <= 2, 'style focus and horizontal position after Back');
     const ranks = () => one('[data-home-section=rankings]');
     ranks().scrollIntoView({ block: 'start' });
     assert(ranks().querySelectorAll('.ranking-card').length === 3, 'official rankings and two sales panels');

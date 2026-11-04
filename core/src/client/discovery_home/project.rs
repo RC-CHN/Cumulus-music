@@ -1,5 +1,6 @@
 use super::{
     DiscoveryHomeCard as Card, DiscoveryHomeSection as Section, DiscoveryHomeTarget as Target,
+    DiscoveryStyleSeeds,
     request::{
         ALL_LISTEN, BOOKS, CUSTOM, DAILY_VOICE, GENERAL, HEARTBEAT, HomeFeed, PLAYLISTS, STYLE,
         VIP, VOICES,
@@ -198,6 +199,17 @@ fn feature(row: &Value) -> Option<Card> {
     })
 }
 
+fn style_feature(row: &Value, seeds: &mut DiscoveryStyleSeeds) -> Option<Card> {
+    Some(Card {
+        title: label(&row["coverText"]).or_else(|| label(&row["title"]))?,
+        subtitle: label(&row["title"]),
+        cover_url: square(&row["coverUrl"]),
+        target: Target::Style {
+            seed: seeds.add(row)?,
+        },
+    })
+}
+
 fn recent(row: &Value) -> Option<Card> {
     let target = match row["resourceType"].as_str()? {
         "userfm" => Target::Fm,
@@ -236,7 +248,11 @@ fn child<'a>(batch: &'a Value, path: &str) -> Option<&'a Value> {
         .then_some(&response["data"])
 }
 
-pub(super) fn home(feed: &HomeFeed, recent_data: Option<&Value>) -> Result<Vec<Section>> {
+pub(super) fn home(
+    feed: &HomeFeed,
+    recent_data: Option<&Value>,
+    seeds: &mut DiscoveryStyleSeeds,
+) -> Result<Vec<Section>> {
     let general = child(&feed.batch, GENERAL)
         .and_then(|data| data["blocks"].as_array())
         .ok_or(Error::Response("missing homepage recommendation blocks"))?;
@@ -244,13 +260,22 @@ pub(super) fn home(feed: &HomeFeed, recent_data: Option<&Value>) -> Result<Vec<S
     let mut result = Vec::new();
     let mix = feed.mix.as_ref().and_then(|reply| {
         let mut titles = HashSet::new();
-        let mut section = section(
-            "featured",
-            "精选推荐".into(),
-            rows(&reply["data"]["items"])
-                .filter_map(feature)
-                .filter(|card| titles.insert(card.title.clone())),
-        )?;
+        let data = &reply["data"];
+        let mut section = section("featured", "精选推荐".into(), {
+            // Normal items keep their position. The official wrapper supplies
+            // its demote styles after normal items, never before.
+            rows(&data["items"])
+                .map(|row| (row, false))
+                .chain(rows(&data["extInfo"]["pcRcmdDemoteItems"]).map(|row| (row, true)))
+                .filter_map(|(row, demote)| {
+                    if demote || row["moduleType"] == "tag_daily_rec" {
+                        style_feature(row, seeds)
+                    } else {
+                        feature(row)
+                    }
+                })
+                .filter(|card| titles.insert(card.title.clone()))
+        })?;
         if section.cards.len() < 4 {
             return None;
         }

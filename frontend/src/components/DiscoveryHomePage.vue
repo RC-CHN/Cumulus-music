@@ -61,7 +61,9 @@ function railScrolled(event: Event) {
   measureRail(rail);
 }
 function key(section: DiscoveryHomeSection, card: DiscoveryHomeCard) {
-  return section.kind + ':' + card.target.kind + ':' + ('id' in card.target ? card.target.id : '');
+  const { target } = card;
+  const id = target.kind === 'style' ? target.seed.id : 'id' in target ? target.id : '';
+  return section.kind + ':' + target.kind + ':' + id;
 }
 function scrollRail(event: MouseEvent, section: DiscoveryHomeSection, direction: number) {
   if (!railBounds.get(section.kind)?.[direction < 0 ? 'previous' : 'next']) return;

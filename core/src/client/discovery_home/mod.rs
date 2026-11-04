@@ -4,7 +4,11 @@ mod project;
 mod rankings;
 mod request;
 
-use super::{MusicClient, dto::AccountData};
+use super::{
+    MusicClient,
+    dto::AccountData,
+    style_home::{DiscoveryStyleSeeds, StyleSeedHandle},
+};
 use crate::{Result, account::AccountApi};
 use serde::Serialize;
 
@@ -40,6 +44,7 @@ enum DiscoveryHomeTarget {
     Album { id: String },
     Podcast { id: String },
     Voice { id: String },
+    Style { seed: StyleSeedHandle },
     Fm,
     Daily,
 }
@@ -47,28 +52,41 @@ enum DiscoveryHomeTarget {
 impl MusicClient {
     pub async fn discovery_home(&self, epoch: &str) -> Result<AccountData<DiscoveryHomePage>> {
         let token = self.playlist_token(epoch)?;
-        let value = self
+        let request = self
+            .session
+            .with_token(&token, |_| self.style_home.begin_discovery())?;
+        let (value, seeds) = self
             .session
             .run_for(&token, |api, _| async move {
+                let mut seeds = DiscoveryStyleSeeds::default();
                 if AccountApi::new(api.clone()).settings().await?["personalServiceSetting"] == 2 {
-                    return Ok(DiscoveryHomePage {
-                        recommendation_enabled: false,
-                        sections: Vec::new(),
-                    });
+                    return Ok((
+                        DiscoveryHomePage {
+                            recommendation_enabled: false,
+                            sections: Vec::new(),
+                        },
+                        seeds,
+                    ));
                 }
                 let (feed, recent) = tokio::join!(request::feed(api.clone()), request::recent(api));
                 let feed = feed?;
                 let recent = request::optional(recent)?;
-                let sections = project::home(&feed, recent.as_ref())?;
-                Ok(DiscoveryHomePage {
-                    recommendation_enabled: true,
-                    sections,
-                })
+                let sections = project::home(&feed, recent.as_ref(), &mut seeds)?;
+                Ok((
+                    DiscoveryHomePage {
+                        recommendation_enabled: true,
+                        sections,
+                    },
+                    seeds,
+                ))
             })
             .await?;
-        Ok(AccountData {
-            epoch: epoch.into(),
-            value,
+        self.session.with_token(&token, |_| {
+            self.style_home.publish_discovery(&token, request, seeds)?;
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
         })
     }
 }

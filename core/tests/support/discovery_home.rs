@@ -58,14 +58,25 @@ fn general() -> Value {
         ]}]}
     ]}})
 }
+pub const SEED: &str = "/api/homepage/category/daily/song/list";
 fn mix() -> Value {
     json!({"code":200,"data":{"items":[
         {"moduleType":"radar","resourceType":"playList","resourceId":741,"title":"合成精选雷达"},
         {"moduleType":"mood","resourceType":"playList","resourceId":742,"title":"合成精选心情"},
         {"moduleType":"rank_board","resourceType":"toplist","resourceId":743,"title":"合成精选榜单"},
         {"moduleType":"daily_podcast","resourceType":"podcast","resourceId":744,"title":"合成精选播客"},
+        {"moduleType":"tag_daily_rec","resourceType":"dailySongs","subResourceType":"style_dailySong",
+            "title":"合成首页风格","extData":{"categoryId":18,"tagId":21},
+            "targetUrl":"https://music.163.com/style?songId=81%2C82&secret=PRIVATE_SEED","songIds":[999]},
         {"moduleType":"unsupported","resourceType":"url","resourceId":745,"title":"未知链接","url":"https://private.invalid/PRIVATE_DEEP"}
-    ]}})
+    ],"extInfo":{"pcRcmdDemoteItems":[
+        {"moduleType":"tag_daily_rec","resourceType":"dailySongs","subResourceType":"style_dailySong",
+            "title":"合成首页风格","extData":{"categoryId":18,"tagId":21},"songIds":[81,82]},
+        {"moduleType":"unknown","resourceType":"dailySongs","subResourceType":"style_dailySong",
+            "title":"合成降级风格","extData":{"categoryId":19,"tagId":22},"songIds":[83,84]},
+        {"resourceType":"dailySongs","subResourceType":"other","title":"不可路由降级风格",
+            "extData":{"categoryId":19,"tagId":23},"songIds":[85]}
+    ]}}})
 }
 impl Api for Fixture {
     fn request<'a>(&'a self, path: &'a str, args: Value, sensitive: bool) -> ApiFuture<'a, Value> {
@@ -100,6 +111,28 @@ impl Api for Fixture {
                 }),
                 MIX if mode == 3 => json!({"code":500}),
                 MIX => mix(),
+                SEED => {
+                    let (song_id, title, category_id, tag_id) = match &args {
+                        args if *args
+                            == json!({"source":"homepage","categoryId":"18","tagId":"21","songId":"81,82"}) =>
+                        {
+                            (81, "合成首页种子歌曲", 18, 21)
+                        }
+                        args if *args
+                            == json!({"source":"homepage","categoryId":"19","tagId":"22","songId":"83,84"}) =>
+                        {
+                            (83, "合成降级种子歌曲", 19, 22)
+                        }
+                        _ => {
+                            return Err(cumulus_core::Error::Response(
+                                "unexpected discovery style seed",
+                            ));
+                        }
+                    };
+                    json!({"code":200,"data":{"dailySongs":[{"id":song_id,"name":title,"dt":30000}],
+                        "tags":{"categoryId":category_id,"categoryName":"合成首页分类",
+                            "tagVOList":[{"tagId":tag_id,"tagName":"合成首页标签"}]}}})
+                }
                 RECENT if mode == 3 => json!({"code":500}),
                 RECENT => json!({"code":200,"data":{"resources":[
                     {"resourceType":"album","resourceId":851,"title":"合成最近专辑"},

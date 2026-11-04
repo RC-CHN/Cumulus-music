@@ -64,7 +64,9 @@ references/ui-recovery/sources/packages/pc/src/pages/home-page/views/MainView.js
   最近常听、红心相似、雷达、会员、相似风格、每日播客、个人播客、有声书。服务端无
   合法内容的区块不显示。精选至少四个可路由资源才显示，每日推荐卡排在最前，
   其余最多九项；没有完整精选时，推荐歌单内先放每日推荐与存在的专属私人雷达，
-  再放普通歌单。个人播客只显示完整的三项组。榜单精选位于精选之后，取
+  再放普通歌单。精选按官方混合序列支持正常风格卡，再接降级风格；点卡片读取该次
+  推荐种子的歌曲列表，返回恢复横向位置和焦点。个人播客只显示完整的三项组。
+  榜单精选位于精选之后，取
   “官方榜”且每张卡最多显示三项；标题进入排行榜总页，普通榜单打开歌单、
   两个畅销榜打开各自页面。首页推荐缓存不影响榜单更新。
 - 原生投影只向 WebView 返回有界标题、摘要、公共 CDN 图片及类型化资源 ID。
@@ -79,7 +81,7 @@ references/ui-recovery/sources/packages/pc/src/pages/home-page/views/MainView.js
 - 本地功能边界：目前未移植官方跨进程的首页盘缓存、缓存的 VIP/Plus 门槛和动态
   preload TTL，未复刻游客首页与不同 AB 分组布局、活动横幅/热播召回、场景
   标签、按曝光/分区的局部刷新、听书偏好筛选及会员权益徽章。每日混合的专属 FM、
-  明星/相似歌曲 FM、专区、风格种子和原生广告卡仍需各自的路由及实验上下文；
+  明星/相似歌曲 FM、专区和原生广告卡仍需各自的路由及实验上下文；
   普通 FM 卡只打开已有私人漫游页，不会在首页替用户开始漫游。最近常听的
   dailySongsTag、红心特殊样式与本地缓存回退未移植。原生 eCPM 分支由独立 AB 配置
   驱动，包含 /api/pc/page/rcmd/resource/show 与
@@ -93,5 +95,5 @@ references/ui-recovery/sources/packages/pc/src/pages/home-page/views/MainView.js
   cargo build -p cumulus-desktop --example discovery_home_ui_probe
     --features custom-protocol --locked
   在已初始化的图形桌面，以不存在的 CUMULUS_PROOF_DIR 路径运行该例程，输出
-  home/dark/ranking/retry/privacy/complete JSON。不使用现有账号资料。合成检查不代表线上推荐、
+  home/dark/seeded_style/ranking/retry/privacy/complete JSON。不使用现有账号资料。合成检查不代表线上推荐、
   权益、声卡播放或 Windows 现场行为已通过。

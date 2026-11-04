@@ -1,9 +1,10 @@
-import type { AccountData } from './contracts';
+import type { AccountData, StyleSeedHandle } from './contracts';
 import type { RankingGroup } from './rankings';
 
 export type DiscoveryHomeTarget =
   | { kind: 'song' | 'playlist' | 'album' | 'podcast' | 'voice'; id: string }
-  | { kind: 'fm' | 'daily' };
+  | { kind: 'fm' | 'daily' }
+  | { kind: 'style'; seed: StyleSeedHandle };
 
 export interface DiscoveryHomeCard {
   title: string;

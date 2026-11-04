@@ -117,6 +117,71 @@ async fn official_batch_order_parameters_and_bounded_public_sections() {
 }
 
 #[tokio::test]
+async fn home_style_dispatch_keeps_native_seed_and_dialog_revisions_independent() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let home = serde_json::to_value(client.discovery_home(&epoch).await.unwrap().value).unwrap();
+    let cards = home["sections"][1]["cards"].as_array().unwrap();
+    let style = cards
+        .iter()
+        .filter(|card| card["target"]["kind"] == "style")
+        .collect::<Vec<_>>();
+    assert_eq!(
+        style
+            .iter()
+            .map(|card| card["title"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["合成首页风格", "合成降级风格"]
+    );
+    assert!(!home.to_string().contains("PRIVATE_SEED"));
+    assert!(!home.to_string().contains("songId"));
+    let seed =
+        |index: usize| serde_json::from_value(style[index]["target"]["seed"].clone()).unwrap();
+
+    // The direct daily-style drawer reads the same endpoint separately. It
+    // must not invalidate cached discovery cards.
+    let dialog =
+        serde_json::to_value(client.style_home_seeds(&epoch).await.unwrap().value).unwrap();
+    let dialog_seed = || {
+        serde_json::from_value(json!({
+            "revision":dialog["revision"], "id":dialog["cards"][0]["id"]
+        }))
+        .unwrap()
+    };
+    for (position, id) in [(0, "81"), (1, "83")] {
+        let value = serde_json::to_value(
+            client
+                .seeded_style_recommendations(&epoch, seed(position))
+                .await
+                .unwrap()
+                .value,
+        )
+        .unwrap();
+        assert_eq!(value["tracks"][0]["id"], id);
+    }
+    api.mode.store(1, Ordering::SeqCst);
+    assert!(client.discovery_home(&epoch).await.is_err());
+    assert!(
+        client
+            .seeded_style_recommendations(&epoch, seed(0))
+            .await
+            .is_ok()
+    );
+    api.mode.store(2, Ordering::SeqCst);
+    client.discovery_home(&epoch).await.unwrap();
+    assert!(matches!(
+        client.seeded_style_recommendations(&epoch, seed(0)).await,
+        Err(cumulus_core::Error::QueueChanged)
+    ));
+    assert!(
+        client
+            .seeded_style_recommendations(&epoch, dialog_seed())
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
 async fn privacy_short_circuits_and_secondary_failure_does_not_break_the_feed() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;

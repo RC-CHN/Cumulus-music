@@ -520,6 +520,9 @@ function openDiscoveryHomeCard(card: DiscoveryHomeCard, section: DiscoveryHomeSe
     case 'fm':
       music.navigate({ kind: target.kind });
       break;
+    case 'style':
+      music.navigate({ kind: 'style_recommendations', seed: target.seed });
+      break;
     case 'playlist':
       music.navigate({ kind: 'playlist', id: target.id });
       break;

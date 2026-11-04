@@ -37,7 +37,7 @@ def main():
     if args.probe_script:
         env['CUMULUS_DISCOVERY_HOME_PROOF_SCRIPT'] = str(args.probe_script.resolve())
     captured = set()
-    stages = ('home', 'dark', 'ranking', 'retry', 'privacy')
+    stages = ('home', 'dark', 'seeded_style', 'ranking', 'retry', 'privacy')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
         try:
@@ -67,6 +67,8 @@ def main():
     assert complete['ok'] and not complete['realAccount']
     assert all((output / f'{stage}.json').is_file() for stage in stages)
     assert not args.screenshots or len(captured) == len(stages)
+    style = json.loads((output / 'seeded_style.json').read_text(encoding='utf-8'))
+    assert style['paths'].count('/api/homepage/category/daily/song/list') == 1
     retry = json.loads((output / 'retry.json').read_text(encoding='utf-8'))
     privacy = json.loads((output / 'privacy.json').read_text(encoding='utf-8'))
     paths = [path for path in privacy['paths'][len(retry['paths']):]
