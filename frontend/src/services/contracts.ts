@@ -61,6 +61,7 @@ import type { AccountAvatarClient } from './accountAvatar';
 import type { AccountProfileEditClient } from './accountProfileEdit';
 import type { QueueClickPreferencesClient } from './queueClickPreferences';
 import type { StartupPreferencesClient } from './startup';
+import type { PlaybackPowerClient } from './playbackPower';
 import type { AutostartClient, WindowPreferencesClient, WindowLifecycleClient } from './window';
 import type { SystemMediaClient } from './systemMedia';
 import type { ShortcutsClient } from './shortcuts';
@@ -167,6 +168,7 @@ export interface CoreClient
     LoginDeviceRemovalClient,
     AccountProfileEditClient,
     StartupPreferencesClient,
+    PlaybackPowerClient,
     QueueClickPreferencesClient,
     OutputClient,
     EffectDirectoryClient,

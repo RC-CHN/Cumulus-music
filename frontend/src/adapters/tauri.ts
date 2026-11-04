@@ -149,6 +149,8 @@ export function createTauriClient(): CoreClient {
     queueClickPreferences: (epoch) => invoke('queue_click_preferences', { epoch }),
     queueClickPreferencesCommand: (epoch, command) =>
       invoke('queue_click_preferences_command', { epoch, command }),
+    playbackPower: (epoch) => invoke('playback_power', { epoch }),
+    setPlaybackPower: (epoch, enabled) => invoke('set_playback_power', { epoch, enabled }),
     startupPreferences: (epoch) => invoke('startup_preferences', { epoch }),
     startupPreferencesCommand: (epoch, command) =>
       invoke('startup_preferences_command', { epoch, command }),
