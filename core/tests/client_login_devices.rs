@@ -110,6 +110,35 @@ async fn reads_official_device_groups_and_projects_only_bounded_display_fields()
 }
 
 #[tokio::test]
+async fn signed_out_history_keeps_service_order_even_with_a_current_flag() {
+    let (_root, _, session, client) = world([
+        identity(),
+        list(json!([
+            {"deviceKey":"history-a","deviceName":"Older","status":0},
+            {"deviceKey":"active","deviceName":"Active","status":1},
+            {"deviceKey":"history-b","deviceName":"Current marker","status":0,"ifLoginDevice":true},
+            {"deviceKey":"history-c","deviceName":"Last","status":0}
+        ]))
+        .into(),
+    ]);
+    session.refresh().await.unwrap();
+    let devices = client
+        .login_devices(&client.account().unwrap().epoch)
+        .await
+        .unwrap()
+        .value
+        .devices;
+    assert_eq!(
+        devices
+            .iter()
+            .map(|device| device.name.as_deref().unwrap())
+            .collect::<Vec<_>>(),
+        ["Active", "Older", "Current marker", "Last"]
+    );
+    assert!(devices[2].current && !devices[2].signed_in);
+}
+
+#[tokio::test]
 async fn compares_official_tiers_and_hides_empty_summaries_without_reusing_old_data() {
     let reply = |limits| with_limits(json!([{"deviceKey":"synthetic"}]), limits).into();
     let (_root, _, session, client) = world([

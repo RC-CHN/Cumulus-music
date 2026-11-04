@@ -14,8 +14,18 @@ Cumulus 账号资料、绑定及登录设备读取
   PC M15:4962–4981、M3122:14–80/304、pages/loginDevice/index.tsx
     POST /api/middle/user/device/list {excStatus:9}
     读 data.userDeviceList 与可选 userDeviceLimitInfoDTO；
-    当前设备优先，status 1/“1”归已登录，未知字段不填默认值。
+    已登录组当前设备优先，status 1/“1”归已登录，未知字段不填默认值。
     WebView 只收到本次响应生成的行 ID，不得到原始 deviceKey。
+  设备浏览：pages/loginDevice/index.tsx:133–148、212–296 与 M3122:33–47。
+    已登录组初始显示六台，点击「查看更多」原地展开全部，保留前六台和原顺序；
+    「收起」回到本页顶部，尊重减少动态效果。退出登录组直接显示全部，按服务顺序。
+    「本机」只在已登录列表标记，详情和移除权限继续依赖同一原生身份。
+    行数继续由 Rust 总计 128 台上限约束。展开、收起和打开详情不发请求。
+    同账号显式刷新保留展开；离开页面或换号后恢复初始状态。
+    键盘展开聚焦第一条新增设备，收起聚焦页标题；关闭详情回到原卡和原滚动位置。
+    DeviceItem.tsx:117–124 和 M3122:39–40 的列表日期为 YYYY.MM.DD；
+    详情使用 YYYY.MM.DD HH:mm:ss、本机/可移除详情分别保留官方 276/326 像素空间
+    （小窗口限制最大高度，且不会向没有原生移除权限的用户显示操作）。
   设备额度：pages/loginDevice/index.tsx:229–244、
     pages/loginDevice/components/UserMembershipCard.tsx:251–269、367–437。
     资料卡位于两个设备分组上方。使用同一设备列表响应里的 nickname、
@@ -71,6 +81,13 @@ Rust 与 IPC：
   结果与截图在 .build/ui-proof/account-device-membership/linux。
   同一构建的 `--device-removal` 六状态合成回归也通过。
   Linux/Windows CI 均配置同一合成用例；本机没有实际 Windows 桌面实测。
+
+  2026-11-05 追加设备浏览：本地执行恢复的 M3122 分组函数，确认已退出设备顺序和
+  列表、详情日期格式。Rust 读取/移除 13 项回归通过。实际 Linux GTK/WebKitGTK
+  在 880×670 深色窗口用 8 台已登录与 8 台已退出设备验证；整个专项 11 态、11 图。
+  同一原生构建另通过 6 态设备移除回归。展开、收起、详情及返回没有请求；
+  进入、显式刷新才重读列表。证据 .build/ui-proof/device-browse-bacec192/。
+  未访问真实服务或修改真实账号设备；Windows 未实测。
 
   可执行真实只读验证：
     cargo run -p cumulus-core --locked --example account_security_read -- \

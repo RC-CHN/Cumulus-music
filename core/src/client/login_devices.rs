@@ -197,8 +197,8 @@ fn parse(response: &Value) -> Result<DeviceList> {
             signed_in: row["status"] == 1 || row["status"] == "1",
         });
     }
-    // Keep the service order within the same group; pin the current device.
-    devices.sort_by_key(|device| (!device.current, !device.signed_in));
+    // M/3122 only pins the current device within the signed-in group.
+    devices.sort_by_key(|device| (!device.signed_in, device.signed_in && !device.current));
     // M/3122 does not publish this DTO when there are no device rows.
     let limits = (!devices.is_empty())
         .then(|| membership(&data["userDeviceLimitInfoDTO"]))

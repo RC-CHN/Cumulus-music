@@ -350,6 +350,71 @@
     assert(membership().textContent.includes("已登录设备数未知"), "missing device count");
     assert(limits().join(",") === "4台,8台,10台", "ordinary alias and default quota rules");
     await stage("devices_ordinary_dark", { expectNickname });
+
+    const group = (kind) => page(devices)?.querySelector(`[data-device-group="${kind}"]`);
+    const signedIn = () => all(".login-device-card", group("signed-in"));
+    const signedOut = () => all(".login-device-card", group("signed-out"));
+    const toggle = () => group("signed-in")?.querySelector(".login-device-expand");
+    const scroller = () => page(devices)?.querySelector(".account-read-scroll");
+    await mode("devices_many");
+    click(one('[data-testid="account-devices-retry"]'));
+    await wait(() => signedIn().length === 6 && signedOut().length === 8 && toggle(), "only the signed-in group is initially collapsed");
+    const prefix = signedIn();
+    assert(prefix[0].textContent.includes("测试桌面") && prefix[0].textContent.includes("本机"), "current device is pinned");
+    assert(/\d{4}\.\d{2}\.\d{2} · 杭州/.test(prefix[0].querySelector(".login-device-last-active").textContent), "device day and place");
+    assert(!group("signed-out").querySelector(".login-device-expand") && toggle().getAttribute("aria-expanded") === "false", "no paging history");
+    await stage("devices_many_collapsed_dark", { expectNickname });
+
+    click(toggle()); // Activation without a pointer detail exercises the keyboard path.
+    await wait(() => signedIn().length === 8 && document.activeElement === signedIn()[6], "expanded list focuses first newly revealed row");
+    assert(prefix.every((row, index) => signedIn()[index] === row), "first six devices stay in the same list");
+    assert(toggle().textContent.trim() === "收起" && toggle().getAttribute("aria-expanded") === "true", "official in-place collapse action");
+    await stage("devices_many_expanded_dark", { expectNickname });
+    const lastOnline = signedIn().at(-1);
+    click(lastOnline);
+    await wait(() => one(".login-device-detail")?.textContent.includes("测试在线 7"), "last online device detail");
+    await settle();
+    const dialog = one(".login-device-detail");
+    assert(/\d{4}\.\d{2}\.\d{2} \d{2}:\d{2}:\d{2}/.test(dialog.textContent), "device detail time includes seconds");
+    assert(dialog.getBoundingClientRect().height >= 325 && one('[data-testid="login-device-remove-open"]'), "removable device detail reserves official space");
+    const beforeClose = scroller().scrollTop;
+    await stage("devices_expanded_detail_dark", { expectNickname });
+    click(button("关闭设备详情"));
+    await wait(() => !one(".login-device-detail") && document.activeElement === lastOnline, "same expanded row regains focus");
+    assert(Math.abs(scroller().scrollTop - beforeClose) <= 1, "details do not reset device list scroll");
+
+    const lastHistory = signedOut().at(-1);
+    click(lastHistory);
+    await wait(() => one(".login-device-detail")?.textContent.includes("历史设备 8"), "all history entries are reachable");
+    click(button("关闭设备详情"));
+    await wait(() => !one(".login-device-detail") && document.activeElement === lastHistory, "history also restores focus");
+    click(one('[data-testid="account-devices-retry"]'));
+    await wait(() => signedIn().length === 8 && signedOut().length === 8 && !lastOnline.isConnected, "explicit refresh retains expansion for the same account");
+    click(toggle());
+    await wait(() => signedIn().length === 6 && scroller().scrollTop <= 1 && document.activeElement?.id === "account-read-title", "collapse returns page scroll and focus to the top");
+
+    const motionKey = "cumulus.motion.v1";
+    const savedMotion = localStorage.getItem(motionKey);
+    function setMotion(value) {
+      if (value === null) localStorage.removeItem(motionKey);
+      else localStorage.setItem(motionKey, value);
+      dispatchEvent(new StorageEvent("storage", { key: motionKey, newValue: value, storageArea: localStorage }));
+    }
+    setMotion("disabled");
+    await wait(() => document.documentElement.dataset.motion === "reduced", "reduced motion is active");
+    click(toggle());
+    await wait(() => signedIn().length === 8, "expanded in reduced motion");
+    click(toggle());
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    assert(signedIn().length === 6 && signedOut().length === 8 && scroller().scrollTop <= 1, "reduced-motion collapse is immediate");
+    setMotion(savedMotion);
+    assert(!page(devices).innerHTML.includes("fixture-private-"), "no server device identifiers");
+    await stage("devices_many_back_to_top_dark", { expectNickname });
+    click(toggle());
+    await wait(() => signedIn().length === 8, "expanded before leaving");
+    await back("devices");
+    click(settingsEntry("devices"));
+    await wait(() => signedIn().length === 6 && signedOut().length === 8 && toggle()?.getAttribute("aria-expanded") === "false", "returning to the page starts collapsed");
     await emit("complete", { ok: true, accountDetail: true, stageCount: count, expectNickname });
   }
   async function profileEdit() {

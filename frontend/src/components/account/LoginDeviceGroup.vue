@@ -1,42 +1,47 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, nextTick, ref, useId } from 'vue';
 import { accountDate, loginDeviceIcon, type LoginDevice } from '../../services/accountDetail';
-import { useControlFocus } from '../../composables/useControlFocus';
 import Icon from '../Icon.vue';
 const props = defineProps<{
   kind: 'signed-in' | 'signed-out';
   title: string;
   emptyLabel: string;
   devices: LoginDevice[];
+  expanded?: boolean;
 }>();
-const emit = defineEmits<{ detail: [device: LoginDevice, event: MouseEvent] }>();
-const heading = ref<HTMLElement>();
+const emit = defineEmits<{
+  detail: [device: LoginDevice, event: MouseEvent];
+  toggle: [expanded: boolean, trigger: HTMLButtonElement];
+}>();
 const headingId = useId();
-const page = ref(0);
-const perPage = 6;
-const count = computed(() => Math.ceil(props.devices.length / perPage));
+const listId = useId();
+const list = ref<HTMLUListElement>();
+const initialRows = 6;
+const expandable = computed(() => props.kind === 'signed-in' && props.devices.length > initialRows);
 const visible = computed(() =>
-  props.devices.slice(page.value * perPage, (page.value + 1) * perPage),
+  expandable.value && !props.expanded ? props.devices.slice(0, initialRows) : props.devices,
 );
-const focus = useControlFocus(
-  () => props.devices,
-  () => heading.value,
-);
-watch(
-  () => props.devices,
-  () => (page.value = 0),
-);
-function turn(event: Event, delta: number) {
-  void focus.run(event, () => {
-    page.value = Math.max(0, Math.min(count.value - 1, page.value + delta));
-  });
+async function toggle(event: MouseEvent) {
+  const trigger = event.currentTarget;
+  if (!(trigger instanceof HTMLButtonElement) || !expandable.value) return;
+  const opening = !props.expanded;
+  const keyboard = event.detail === 0 && document.activeElement === trigger;
+  emit('toggle', opening, trigger);
+  if (!opening || !keyboard) return;
+  await nextTick();
+  if (props.expanded && document.activeElement === trigger) {
+    const firstRevealed =
+      list.value?.querySelectorAll<HTMLButtonElement>('.login-device-card')[initialRows];
+    firstRevealed?.focus({ preventScroll: true });
+    firstRevealed?.scrollIntoView({ block: 'center', inline: 'nearest' });
+  }
 }
 </script>
 <template>
   <section class="login-device-group" :data-device-group="kind" :aria-labelledby="headingId">
-    <h2 :id="headingId" ref="heading" tabindex="-1">{{ title }} {{ devices.length }}</h2>
+    <h2 :id="headingId">{{ title }} {{ devices.length }}</h2>
     <p v-if="!devices.length" class="login-devices-empty">{{ emptyLabel }}</p>
-    <ul v-else class="login-device-grid">
+    <ul v-else :id="listId" ref="list" class="login-device-grid">
       <li v-for="device in visible" :key="device.id">
         <button
           type="button"
@@ -50,7 +55,9 @@ function turn(event: Event, delta: number) {
           <span class="login-device-card-text">
             <span class="login-device-name">
               <strong>{{ device.name || '未知设备' }}</strong>
-              <small v-if="device.current" class="login-device-current">本机</small>
+              <small v-if="device.current && kind === 'signed-in'" class="login-device-current"
+                >本机</small
+              >
             </span>
             <span class="login-device-last-active">
               {{ accountDate(device.lastActiveTime) || '活跃时间未提供'
@@ -61,12 +68,15 @@ function turn(event: Event, delta: number) {
         </button>
       </li>
     </ul>
-    <nav v-if="count > 1" class="login-device-pages" :aria-label="`${title}分页`">
-      <button type="button" :disabled="page === 0" @click="turn($event, -1)">上一组</button>
-      <span role="status">{{ page + 1 }} / {{ count }}</span>
-      <button type="button" :disabled="page + 1 === count" @click="turn($event, 1)">
-        查看更多
-      </button>
-    </nav>
+    <button
+      v-if="expandable"
+      type="button"
+      class="login-device-expand"
+      :aria-expanded="!!expanded"
+      :aria-controls="listId"
+      @click="toggle"
+    >
+      {{ expanded ? '收起' : '查看更多' }}<Icon :name="expanded ? 'up' : 'down'" />
+    </button>
   </section>
 </template>

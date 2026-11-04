@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue';
+import { computed, nextTick, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../../services/contracts';
 import { groupLoginDevices, type LoginDevice } from '../../services/accountDetail';
 import { useLoginDeviceRemoval } from '../../composables/useLoginDeviceRemoval';
 import { useAccountRead } from '../../composables/useAccountRead';
 import { useCore } from '../../services/core';
+import { useMotion } from '../../composables/useMotion';
 import ModalTransition from '../ModalTransition.vue';
 import AccountReadLayout from './AccountReadLayout.vue';
 import LoginDeviceGroup from './LoginDeviceGroup.vue';
@@ -24,6 +25,19 @@ const { value, state, error, refresh } = useAccountRead(
 );
 const groups = computed(() => groupLoginDevices(value.value?.devices ?? []));
 const layout = ref<InstanceType<typeof AccountReadLayout>>();
+const expanded = ref(false);
+const motion = useMotion();
+async function toggleSignedIn(open: boolean, trigger: HTMLButtonElement) {
+  const epoch = owner();
+  if (!epoch) return;
+  expanded.value = open;
+  if (open) return;
+  await nextTick();
+  if (owner() !== epoch || expanded.value) return;
+  if (document.activeElement === trigger)
+    layout.value?.focusAnchor()?.focus({ preventScroll: true });
+  layout.value?.scrollToTop(!motion.reduced.value);
+}
 const detail = shallowRef<LoginDevice>();
 const detailOrigin = ref<HTMLElement | null>(null);
 const panel = ref<'detail' | 'confirm' | 'operation' | 'binding'>();
@@ -83,6 +97,7 @@ const fallbackFocus = () => layout.value?.focusAnchor() ?? null;
 watch(
   owner,
   () => {
+    expanded.value = false;
     detailOrigin.value = null;
     detail.value = undefined;
     panel.value = undefined;
@@ -125,7 +140,9 @@ watch(
       title="已登录的设备"
       empty-label="暂无已登录的设备"
       :devices="groups.signedIn"
+      :expanded="expanded"
       @detail="showDetail"
+      @toggle="toggleSignedIn"
     />
     <LoginDeviceGroup
       kind="signed-out"

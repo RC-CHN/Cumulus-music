@@ -61,7 +61,7 @@
 }
 .account-read-retry:hover:not(:disabled),
 .login-device-card:hover,
-.login-device-pages button:hover:not(:disabled) {
+.login-device-expand:hover {
   background: var(--surface-hover);
 }
 .account-read-scroll {
@@ -374,18 +374,20 @@
   height: 18px;
   color: var(--muted);
 }
-.login-device-pages {
-  display: flex;
+.login-device-expand {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: 5px;
   margin: 10px 0 0 16px;
   color: var(--text-secondary);
   font-size: 13px;
-}
-.login-device-pages button {
   min-height: 30px;
   padding: 2px 8px;
   border-radius: 4px;
+}
+.login-device-expand .icon {
+  width: 16px;
+  height: 16px;
 }
 .login-devices-empty {
   max-width: 620px;
@@ -412,6 +414,9 @@
 }
 .login-device-detail::backdrop {
   background: var(--overlay);
+}
+.login-device-detail-removable {
+  min-height: min(326px, calc(100vh - 24px));
 }
 .login-device-detail[hidden] {
   display: none;

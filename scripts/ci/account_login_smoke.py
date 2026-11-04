@@ -64,7 +64,7 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (8 if args.active_switch else 7 if args.quick_login or args.account_detail else 4 if args.account_avatar else 5 if args.profile_edit or args.qr_status else 6 if args.device_removal else 2 if args.baseline else 37)
+    assert len(states) == (11 if args.account_detail else 8 if args.active_switch else 7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit or args.qr_status else 6 if args.device_removal else 2 if args.baseline else 37)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
@@ -245,7 +245,11 @@ def main():
         paths = complete['fixture']['paths']
         assert paths['/api/w/v1/user/detail/2'] == 1
         assert paths['/api/w/v1/user/bindings/2'] == 1
-        assert paths['/api/middle/user/device/list'] == 4
+        listing = '/api/middle/user/device/list'
+        assert paths[listing] == 7
+        assert [by_name[name]['fixture']['paths'][listing] for name in (
+            'devices_many_collapsed_dark', 'devices_many_expanded_dark',
+            'devices_expanded_detail_dark', 'devices_many_back_to_top_dark')] == [5, 5, 5, 6]
         assert not any(path.endswith(('/kickoff', '/profile/update')) or 'cashier' in path or 'family' in path for path in paths)
     elif not args.baseline:
         by_name = {state['stage'].split('_',2)[2]: state for state in states}

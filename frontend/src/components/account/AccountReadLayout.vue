@@ -16,11 +16,20 @@ const props = defineProps<{
 const emit = defineEmits<{ back: [] }>();
 const heading = ref<HTMLElement>();
 const root = ref<HTMLElement>();
+const scroll = ref<HTMLElement>();
 const focus = useControlFocus(
   () => props.epoch,
   () => heading.value,
 );
-defineExpose({ focusAnchor: () => heading.value ?? null });
+defineExpose({
+  focusAnchor: () => heading.value ?? null,
+  scrollToTop: (smooth: boolean) => {
+    const target = scroll.value;
+    if (!target) return;
+    if (smooth) target.scrollTo({ top: 0, behavior: 'smooth' });
+    else target.scrollTop = 0;
+  },
+});
 onMounted(async () => {
   await nextTick();
   const current = document.activeElement;
@@ -68,7 +77,7 @@ onBeforeUnmount(() => {
         {{ state === 'error' ? '重试' : '刷新' }}
       </button>
     </header>
-    <div class="account-read-scroll" tabindex="0" :aria-label="title">
+    <div ref="scroll" class="account-read-scroll" tabindex="0" :aria-label="title">
       <slot name="before" />
       <p v-if="state === 'loading'" class="account-read-status" role="status">
         <span class="spinner" aria-hidden="true" />正在读取{{

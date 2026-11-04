@@ -23,6 +23,7 @@ onBeforeUnmount(() => {
   <dialog
     ref="dialog"
     class="login-device-detail"
+    :class="{ 'login-device-detail-removable': !device.current && canRemove }"
     aria-labelledby="login-device-detail-title"
     @cancel.prevent="emit('close')"
   >

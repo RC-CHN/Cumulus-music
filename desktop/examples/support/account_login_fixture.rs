@@ -497,6 +497,25 @@ impl HttpBackend for Service {
                     }
                     let rows = if mode == "devices_empty" || uid == 5 {
                         json!([])
+                    } else if mode == "devices_many" {
+                        let rows = (1..=8)
+                            .flat_map(|number| {
+                                let history = json!({"deviceKey":format!("fixture-private-history-{number}"),
+                                    "deviceName":format!("历史设备 {number}"),"status":0,"region":"上海",
+                                    "lastActiveTime":1700000000000_u64,"os":"Windows"});
+                                let active = if number == 8 {
+                                    json!({"deviceKey":"fixture-private-current","deviceName":"测试桌面",
+                                        "status":"1","ifLoginDevice":true,"loginPlace":"杭州",
+                                        "lastActiveTime":1700000000000_u64,"os":"Windows"})
+                                } else {
+                                    json!({"deviceKey":format!("fixture-private-active-{number}"),
+                                        "deviceName":format!("测试在线 {number}"),"status":"1","loginPlace":"杭州",
+                                        "loginType":"扫码登录","lastActiveTime":1700000000000_u64,"os":"Android"})
+                                };
+                                [history, active]
+                            })
+                            .collect::<Vec<_>>();
+                        json!(rows)
                     } else {
                         let mut rows = Vec::new();
                         if !self.removed_devices.lock().unwrap().contains(&uid) {
