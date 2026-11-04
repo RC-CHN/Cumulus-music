@@ -22,7 +22,37 @@ use std::{
     },
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{Listener, Manager, webview::PageLoadEvent};
+use tauri::{AppHandle, Listener, Manager, webview::PageLoadEvent};
+
+fn acknowledge_stage(handle: &AppHandle, output: &std::path::Path, stage: String) {
+    let ack = format!("window.__authAck={};", json!(stage));
+    if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() != Ok("1") {
+        handle
+            .get_webview_window("main")
+            .unwrap()
+            .eval(ack)
+            .unwrap();
+        return;
+    }
+    let marker = output.join(format!("{stage}.captured"));
+    let handle = handle.clone();
+    tauri::async_runtime::spawn(async move {
+        let captured = tokio::time::timeout(std::time::Duration::from_secs(8), async {
+            while !marker.is_file() {
+                tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+            }
+        })
+        .await
+        .is_ok();
+        if !captured
+            || handle
+                .get_webview_window("main")
+                .is_none_or(|window| window.eval(ack).is_err())
+        {
+            handle.exit(1);
+        }
+    });
+}
 #[derive(Default)]
 struct Service {
     inner: fixture::Service,
@@ -103,7 +133,7 @@ fn main() {
    if stage=="complete" && value["rotationRequests"]!=2 {value["ok"]=json!(false);}
    fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
    if stage=="complete"||stage=="failed" {handle.exit(if stage=="complete"&&value["ok"]==true {0}else{1});}
-   else {handle.get_webview_window("main").unwrap().eval(format!("window.__authAck={};",json!(stage))).unwrap();}
+   else {acknowledge_stage(&handle,&output,stage);}
   });Ok(())
  }).on_page_load(|webview,payload| {if payload.event()==PageLoadEvent::Finished&&webview.label()=="main" {webview.eval(include_str!("renewal_ui_probe.js")).unwrap();}})
  .run(tauri::generate_context!()).expect("renewal UI proof");

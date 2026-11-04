@@ -46,7 +46,7 @@ def paint_checks(picture, payload):
     return checks
 
 
-def launch(binary, env, log, output, capture, *, before_ack=None):
+def launch(binary, env, log, output, capture, *, before_ack=None, capture_glob='ux_*.json'):
     if not capture:
         if before_ack is not None:
             raise ValueError('capture acknowledgement hook requires capture mode')
@@ -62,7 +62,7 @@ def launch(binary, env, log, output, capture, *, before_ack=None):
         while process.poll() is None:
             if time.monotonic() >= deadline:
                 raise TimeoutError('WebView did not finish')
-            for path in output.glob('ux_*.json'):
+            for path in output.glob(capture_glob):
                 if path in seen:
                     continue
                 try:

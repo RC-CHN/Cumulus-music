@@ -13,6 +13,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -27,15 +28,18 @@ def main():
         env['PATH'] = str(args.runtime.resolve())+os.pathsep+env.get('PATH', '')
     output = root/'run/first'
     with (root/'host.log').open('x', encoding='utf-8') as log:
-        code = launch(args.binary.resolve(), env, log, output, False)
+        code = launch(args.binary.resolve(), env, log, output, args.screenshots,
+                      capture_glob='renewal_*.json')
     failed = output/'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'session renewal process exited {code}'
     captures = len(list(output.glob('renewal_*.png')))
-    assert captures == 0
     (output/'capture.json').write_text(json.dumps(dict(ok=True, exit_code=code, screenshots=captures))+'\n', encoding='utf-8')
     audit = Path(__file__).resolve().parents[2]/'desktop/examples/audit_renewal_probe.py'
-    subprocess.run([sys.executable, str(audit), str(root/'run'), '--no-screenshots'], check=True)
+    command = [sys.executable, str(audit), str(root/'run')]
+    if not args.screenshots:
+        command.append('--no-screenshots')
+    subprocess.run(command, check=True)
 
 
 if __name__ == '__main__':
