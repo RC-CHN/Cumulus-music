@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { TrackCurrentToggle, TrackMenuRequest } from '../../services/trackMenu';
+import type {
+  TrackCurrentToggle,
+  TrackMenuRequest,
+  TrackPendingToggle,
+} from '../../services/trackMenu';
 import type { ArtistCardRequest } from '../../services/artistCards';
 import type { AlbumCardRequest } from '../../services/catalogCards';
 import type { PlaylistLinkAction } from '../../services/playlistMenu';
@@ -17,7 +21,6 @@ import {
   type SearchChannel,
   type SearchHotTarget,
   type SearchItem,
-  type SearchPendingTrackToggle,
   type SearchReasonTarget,
   type SearchSection,
 } from '../../services/search';
@@ -59,7 +62,7 @@ const props = defineProps<{
   observedAlbumMembership: ReadonlyMap<string, boolean>;
   currentId?: string;
   currentToggle?: TrackCurrentToggle;
-  pendingTrackToggle?: SearchPendingTrackToggle;
+  pendingTrackToggle?: TrackPendingToggle;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
   currentVoiceId?: string;
@@ -82,7 +85,7 @@ const emit = defineEmits<{
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   playTrack: [track: TrackView, toggleCurrent: boolean];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
-  togglePendingTrack: [target: SearchPendingTrackToggle];
+  togglePendingTrack: [target: TrackPendingToggle, anchor?: HTMLButtonElement];
   downloadTrack: [track: TrackView];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
@@ -781,10 +784,18 @@ onBeforeUnmount(() => {
                         ? currentToggle
                         : undefined
                     "
+                    :pending-toggle="
+                      !item.track.missing &&
+                      !item.track.local &&
+                      pendingTrackToggle?.trackId === item.track.id
+                        ? pendingTrackToggle
+                        : undefined
+                    "
                     :playable="playable"
                     navigable
                     @play="(_index, gesture) => playTrack(item.track, gesture === 'double_click')"
                     @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
+                    @toggle-pending="(target, anchor) => emit('togglePendingTrack', target, anchor)"
                     @like="emit('like', $event)"
                     @more="showTrackMenu"
                     @artist="emit('artist', $event)"
@@ -856,11 +867,13 @@ onBeforeUnmount(() => {
               :playable="playable"
               :current-id="currentId"
               :current-toggle="currentToggle"
+              :pending-toggle="pendingTrackToggle"
               navigable
               @play="
                 (index, gesture) => playTrack(tracks(section)[index], gesture === 'double_click')
               "
               @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
+              @toggle-pending="(target, anchor) => emit('togglePendingTrack', target, anchor)"
               @like="emit('like', $event)"
               @more="showTrackMenu"
               @artist="emit('artist', $event)"

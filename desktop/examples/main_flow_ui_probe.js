@@ -123,6 +123,7 @@
     let loadingPauseVerified = false;
     let loadingStepVerified = false;
     let loadingSearchCoverVerified = false;
+    let loadingSearchRowsVerified = false;
     if (window.__mainFlowLoadingStep) {
       const held = await wait(async () => {
         const player = await invoke("player_snapshot", { epoch });
@@ -174,6 +175,27 @@
       }, "search cover retains the same paused decoder and queue");
       loadingSearchCoverVerified = true;
       await stage("search_loading_cover", { samePendingSelection: true });
+      const loadingRow = (category, action) => one(
+        `[aria-labelledby="search-tab-${category}"]:not(.search-results-leave-active) ${songRow} .track-play[aria-label^="${action} "]`,
+      );
+      await click(() => one('[data-category="songs"]'), "switch to dedicated songs while the decoder is loading");
+      await click(() => loadingRow("songs", "继续播放"), "continue the same loading entry from its song row");
+      await wait(async () => {
+        const playback = await invoke("player_snapshot", { epoch });
+        const row = loadingRow("songs", "暂停");
+        return playback.state === "loading" && sameSource(playback) &&
+          playback.pendingPaused === false && row && !row.disabled && document.activeElement === row;
+      }, "song row continues the same loading decoder and retains focus");
+      await click(() => one('[data-category="lyrics"]'), "switch to lyric search while the decoder is loading");
+      await click(() => loadingRow("lyrics", "暂停"), "pause the same loading entry from its lyric row");
+      await wait(async () => {
+        const playback = await invoke("player_snapshot", { epoch });
+        const row = loadingRow("lyrics", "继续播放");
+        return playback.state === "loading" && sameSource(playback) &&
+          playback.pendingPaused === true && row && !row.disabled && document.activeElement === row;
+      }, "lyric row pauses the same loading decoder and retains focus");
+      loadingSearchRowsVerified = true;
+      await stage("search_loading_rows", { samePendingSelection: true });
       await emit("release_loading_seek");
       await wait(() => state() === "paused" && one(".playerbar")?.dataset.playId === id &&
         position() >= .45, "same decoder first presents paused at the accepted position");
@@ -246,7 +268,7 @@
       await wait(() => state() === "paused", "resumed native entry paused");
     }
     await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof,
-      loadingSeekVerified, loadingPauseVerified, loadingStepVerified, loadingSearchCoverVerified,
+      loadingSeekVerified, loadingPauseVerified, loadingStepVerified, loadingSearchCoverVerified, loadingSearchRowsVerified,
       httpsRetryViaPlayVerified, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");

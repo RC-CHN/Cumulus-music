@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
+import type {
+  TrackCurrentToggle,
+  TrackMenuRequest,
+  TrackPendingToggle,
+  TrackPlayGesture,
+} from '../services/trackMenu';
 import { computed, nextTick, watch } from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import type { TrackView } from '../services/contracts';
@@ -13,6 +18,7 @@ const props = defineProps<{
   playable?: boolean;
   currentId?: string;
   currentToggle?: TrackCurrentToggle;
+  pendingToggle?: TrackPendingToggle;
   toggleBusy?: boolean;
   navigable?: boolean;
   locateIndex?: number;
@@ -22,6 +28,7 @@ const emit = defineEmits<{
   like: [track: TrackView];
   play: [index: number, gesture?: TrackPlayGesture];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
+  togglePending: [target: TrackPendingToggle, anchor: HTMLButtonElement];
   more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
@@ -85,6 +92,7 @@ defineExpose({ locate, restoreScroll });
           currentId === track.id,
           currentToggle?.trackId === track.id ? currentToggle : undefined,
           currentToggle?.trackId === track.id && toggleBusy,
+          pendingToggle?.trackId === track.id ? pendingToggle : undefined,
           liked.has(track.id),
           busy.has(track.id),
           playable,
@@ -104,6 +112,11 @@ defineExpose({ locate, restoreScroll });
             ? currentToggle
             : undefined
         "
+        :pending-toggle="
+          !track.missing && !track.local && pendingToggle?.trackId === track.id
+            ? pendingToggle
+            : undefined
+        "
         :toggle-busy="toggleBusy"
         :liked="liked.has(track.id)"
         :busy="busy.has(track.id)"
@@ -111,6 +124,7 @@ defineExpose({ locate, restoreScroll });
         :navigable="navigable"
         @play="(index, gesture) => emit('play', index, gesture)"
         @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
+        @toggle-pending="(target, anchor) => emit('togglePending', target, anchor)"
         @like="emit('like', $event)"
         @more="emit('more', $event)"
         @artist="emit('artist', $event)"

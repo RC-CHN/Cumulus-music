@@ -1,6 +1,13 @@
 import type { TrackView } from './contracts';
 
 export type TrackPlayGesture = 'double_click';
+export interface TrackPendingToggle {
+  trackId: string;
+  key: string;
+  pause: boolean;
+  disabled: boolean;
+}
+
 export interface TrackCurrentToggle {
   trackId: string;
   epoch: string;

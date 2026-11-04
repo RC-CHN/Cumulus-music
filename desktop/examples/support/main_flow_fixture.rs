@@ -214,6 +214,9 @@ impl Api for Service {
                     }
                     json!({"code":200,"data":{"totalCount":rows.len(),"resources":rows,"hasMore":false}})
                 }
+                "/api/search/resource/lyric" => {
+                    json!({"code":200,"data":{"totalCount":1,"resources":[{"song":song(),"lyrics":"合成主流程歌词"}],"hasMore":false}})
+                }
                 "/api/v3/song/detail" => {
                     if self.multi_song_queue() {
                         let packed = p["c"]

@@ -75,7 +75,7 @@ def main():
         stage_names = STAGES[:position] + (checkpoint,) + STAGES[position:]
     elif not args.ordinary_https and not args.loading_step:
         position = STAGES.index('playback')
-        stage_names = STAGES[:position] + ('search_loading_cover',) + STAGES[position:]
+        stage_names = STAGES[:position] + ('search_loading_cover', 'search_loading_rows') + STAGES[position:]
     if args.missing_download:
         position = stage_names.index('local_offline_playback')
         stage_names = stage_names[:position] + ('download_missing', 'download_online') + stage_names[position:]
@@ -141,10 +141,12 @@ def main():
     assert stages['playback']['loadingPauseVerified'] == (not args.ordinary_https and not args.loading_step)
     assert stages['playback']['loadingStepVerified'] == args.loading_step
     assert stages['playback']['loadingSearchCoverVerified'] == (not args.ordinary_https and not args.loading_step)
+    assert stages['playback']['loadingSearchRowsVerified'] == stages['playback']['loadingSearchCoverVerified']
     if stages['playback']['loadingSearchCoverVerified']:
-        held = stages['search_loading_cover']
-        assert held['samePendingSelection'] and held['fixture']['sourceLoads'] == 0
-        assert held['fixture']['sourceAuthorizations'] == held['fixture']['sourceLoadAttempts'] == 1
+        for stage in ('search_loading_cover', 'search_loading_rows'):
+            held = stages[stage]
+            assert held['samePendingSelection'] and held['fixture']['sourceLoads'] == 0
+            assert held['fixture']['sourceAuthorizations'] == held['fixture']['sourceLoadAttempts'] == 1
         assert stages['playback']['fixture']['sourceAuthorizations'] == 1
         assert stages['playback']['fixture']['sourceLoadAttempts'] == 1
     if args.loading_step:

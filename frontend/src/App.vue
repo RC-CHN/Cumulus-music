@@ -7,7 +7,7 @@ import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
-import type { SearchHotTarget, SearchItem, SearchPendingTrackToggle } from './services/search';
+import type { SearchHotTarget, SearchItem } from './services/search';
 import {
   searchCardIsCurrent,
   searchCardSelection,
@@ -87,7 +87,12 @@ import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './service
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
-import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from './services/trackMenu';
+import type {
+  TrackCurrentToggle,
+  TrackMenuRequest,
+  TrackPendingToggle,
+  TrackPlayGesture,
+} from './services/trackMenu';
 import {
   currentCatalogTrack,
   currentPlaybackDownload,
@@ -1708,7 +1713,7 @@ watch(
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
 const currentSearchSongId = computed(() => searchCurrentSongId(player.view.value));
-const searchPendingTrackToggle = computed<SearchPendingTrackToggle | undefined>((previous) => {
+const searchPendingTrackToggle = computed<TrackPendingToggle | undefined>((previous) => {
   const trackId = currentSearchSongId.value;
   const pending = player.pendingTransport.value;
   if (!trackId || !pending || player.view.value?.epoch !== account.value.epoch) return;
@@ -1723,15 +1728,36 @@ const searchPendingTrackToggle = computed<SearchPendingTrackToggle | undefined>(
     return previous;
   return { trackId, key, pause: !pending.paused, disabled };
 });
-function toggleSearchPendingTrack(target: SearchPendingTrackToggle) {
+async function toggleSearchPendingTrack(target: TrackPendingToggle, anchor?: HTMLButtonElement) {
+  const currentPage = page.value;
+  const source = player.view.value;
   if (
-    page.value.kind !== 'search' ||
-    (page.value.category && page.value.category !== 'all') ||
+    currentPage.kind !== 'search' ||
+    !['all', 'songs', 'lyrics'].includes(currentPage.category ?? 'all') ||
+    !source ||
     target.disabled ||
-    searchPendingTrackToggle.value !== target
+    searchPendingTrackToggle.value !== target ||
+    (anchor &&
+      (!anchor.isConnected || anchor.closest('.page-leave-active,.search-results-leave-active')))
   )
     return;
-  void player.togglePrimaryTransport(target.key);
+  const ownsFocus = anchor && document.activeElement === anchor;
+  await player.togglePrimaryTransport(target.key);
+  if (!ownsFocus || !anchor) return;
+  await nextTick();
+  const current = player.view.value;
+  if (
+    current?.epoch === source.epoch &&
+    current.playId === source.playId &&
+    current.queueRevision === source.queueRevision &&
+    page.value === currentPage &&
+    document.activeElement === document.body &&
+    anchor.isConnected &&
+    anchor.getClientRects().length &&
+    !anchor.closest('.page-leave-active,.search-results-leave-active') &&
+    !anchor.disabled
+  )
+    anchor.focus({ preventScroll: true });
 }
 const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
 const locatableSongId = computed(() => {

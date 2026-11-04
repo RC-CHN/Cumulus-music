@@ -1,12 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../../services/contracts';
-import type {
-  SearchTrackHint,
-  SearchReasonTag,
-  SearchReasonTarget,
-  SearchPendingTrackToggle,
-} from '../../services/search';
+import type { SearchTrackHint, SearchReasonTag, SearchReasonTarget } from '../../services/search';
+import type { TrackPendingToggle } from '../../services/trackMenu';
 import { artworkAt } from '../../services/artwork';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import Icon from '../Icon.vue';
@@ -22,13 +18,13 @@ const props = defineProps<{
   playable: boolean;
   current: boolean;
   playing: boolean;
-  pendingToggle?: SearchPendingTrackToggle;
+  pendingToggle?: TrackPendingToggle;
   liked: boolean;
   busyLike: boolean;
 }>();
 const emit = defineEmits<{
   play: [];
-  pendingToggle: [target: SearchPendingTrackToggle];
+  pendingToggle: [target: TrackPendingToggle];
   like: [];
   more: [event: MouseEvent | KeyboardEvent];
   download: [];

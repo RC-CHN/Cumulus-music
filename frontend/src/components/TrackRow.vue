@@ -1,6 +1,12 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import SearchMatchText from './search/SearchMatchText.vue';
-import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
+import type {
+  TrackCurrentToggle,
+  TrackMenuRequest,
+  TrackPendingToggle,
+  TrackPlayGesture,
+} from '../services/trackMenu';
 import type { TrackView } from '../services/contracts';
 import { artworkAt } from '../services/artwork';
 import Icon from './Icon.vue';
@@ -14,6 +20,7 @@ const props = defineProps<{
   playable?: boolean;
   currentId?: string;
   currentToggle?: TrackCurrentToggle;
+  pendingToggle?: TrackPendingToggle;
   toggleBusy?: boolean;
   navigable?: boolean;
 }>();
@@ -21,13 +28,16 @@ const emit = defineEmits<{
   like: [track: TrackView];
   play: [index: number, gesture?: TrackPlayGesture];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
+  togglePending: [target: TrackPendingToggle, anchor: HTMLButtonElement];
   more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
 }>();
+const shownToggle = computed(() => props.pendingToggle ?? props.currentToggle);
 function primary(event: MouseEvent) {
-  if (props.currentToggle)
-    emit('toggleCurrent', props.currentToggle, event.currentTarget as HTMLButtonElement);
+  const anchor = event.currentTarget as HTMLButtonElement;
+  if (props.pendingToggle) emit('togglePending', props.pendingToggle, anchor);
+  else if (props.currentToggle) emit('toggleCurrent', props.currentToggle, anchor);
   else emit('play', props.index);
 }
 function more(event: MouseEvent | KeyboardEvent) {
@@ -59,16 +69,19 @@ function duration(ms: number) {
       ><button
         class="track-play icon-button"
         data-result-action="play"
-        :aria-label="`${currentToggle ? (currentToggle.pause ? '暂停' : '继续播放') : '播放'} ${track.name}`"
-        :disabled="!playable || track.missing || (!!currentToggle && toggleBusy)"
+        :aria-label="`${shownToggle ? (shownToggle.pause ? '暂停' : '继续播放') : '播放'} ${track.name}`"
+        :disabled="
+          track.missing ||
+          (pendingToggle ? pendingToggle.disabled : !playable || (!!currentToggle && toggleBusy))
+        "
         @click.stop="primary"
         @dblclick.stop
       >
         <span>{{ (index + 1).toString().padStart(2, '0') }}</span
         ><Icon
           :name="
-            currentToggle
-              ? currentToggle.pause
+            shownToggle
+              ? shownToggle.pause
                 ? 'pause'
                 : 'play'
               : !track.missing && !track.local && track.id === currentId
