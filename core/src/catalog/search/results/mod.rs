@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 pub(crate) mod reason;
 pub(crate) mod v3;
+pub use v3::{SearchHotZoneSource, SearchHotZoneTarget};
 
 /// M/622 p: missing summary fields do not prove a playlist is empty.
 pub(crate) fn playlist_known_empty(value: &Value) -> bool {

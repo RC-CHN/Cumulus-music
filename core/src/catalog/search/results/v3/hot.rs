@@ -1,7 +1,10 @@
-//! M/21 hot-explanation normalization. Only fixed internal detail and song/program targets are executable.
+//! M/21 hot-explanation normalization for internal details and verified zones.
+mod vertical_zone;
 use super::{image, text};
 use crate::protocol::api::identifier;
 use serde_json::{Value, json};
+pub(crate) use vertical_zone::HotZoneContext;
+pub use vertical_zone::{SearchHotZoneSource, SearchHotZoneTarget};
 
 fn target(kind: &str, id: &Value) -> Option<Value> {
     let kind = match kind {
@@ -113,7 +116,7 @@ fn heat(value: &Value) -> Option<String> {
     })
 }
 
-pub(super) fn explanation(block: &Value) -> Option<Value> {
+pub(super) fn explanation(block: &Value, zones: HotZoneContext<'_>) -> Option<Value> {
     let first = block["resources"].as_array()?.first()?;
     let data = &first["baseInfo"]["hotExplainModuleData"];
     let title = text(&data["title"], 160)?;
@@ -135,7 +138,16 @@ pub(super) fn explanation(block: &Value) -> Option<Value> {
     let target = match &data["textAction"] {
         Value::Null => related.and_then(related_target),
         Value::String(value) if value.is_empty() => related.and_then(related_target),
-        Value::String(value) => explicit(value),
+        Value::String(value) => match vertical_zone::action(value, zones) {
+            vertical_zone::ZoneAction::Other => explicit(value),
+            // M/21 drops the RN hotspot entirely when its zone is unsupported.
+            vertical_zone::ZoneAction::Blocked => return None,
+            vertical_zone::ZoneAction::Allowed(zone) => {
+                let mut target = serde_json::to_value(zone).ok()?;
+                target["kind"] = json!("vertical_zone");
+                Some(target)
+            }
+        },
         _ => None,
     };
     if let Some(target) = target {
@@ -154,6 +166,30 @@ pub(super) fn explanation(block: &Value) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{
+        pc_experiments::PcExperimentGroups, wire::serialization::encode_component,
+    };
+
+    fn explanation(block: &Value) -> Option<Value> {
+        super::explanation(block, HotZoneContext::default())
+    }
+
+    fn zone_groups(group: &str) -> PcExperimentGroups {
+        PcExperimentGroups::refreshed(&json!({"data":[
+            {"expName":"PH-PC-zhuanqu","expGroupName":group}
+        ]}))
+        .unwrap()
+    }
+
+    fn zone_block(action: &str, can_click: bool) -> Value {
+        json!({"resources":[{
+            "baseInfo":{"hotExplainModuleData":{
+                "title":"热点","text":"说明","textAction":action,"canClick":can_click,
+                "urlText":"查看专区"
+            }},
+            "relatedResources":[{"resourceType":"song","baseInfo":{"simpleSongData":{"id":17}}}]
+        }]})
+    }
 
     #[test]
     fn typed_target_wins_and_related_resource_never_overrides_a_blocked_action() {
@@ -178,7 +214,6 @@ mod tests {
 
         for unsafe_link in [
             "https://music.163.com/playlist?id=29",
-            "orpheus://rnpage?component=private",
             "orpheus://playlist/29/30",
             "orpheus://playlist/29#x",
             "orpheus://playlist/0",
@@ -234,5 +269,117 @@ mod tests {
         let card = explanation(&block).unwrap();
         assert!(card["playTarget"].is_null());
         assert!(card["action"].is_null());
+    }
+
+    #[test]
+    fn zone_action_keeps_only_the_registered_page_and_resolved_tab_name() {
+        let group = zone_groups("t1");
+        let zones = HotZoneContext {
+            groups: Some(&group),
+            ready_pages: Some(&|code| code == "Rock_12"),
+        };
+        let name = "独立音乐 + 100% & A";
+        let encoded = encode_component(&encode_component(&encode_component(name)));
+        let link = format!(
+            "orpheus://rnpage/discard_7?component=ignored&%63omponent=cube-renderer-rn&page=first&page=Rock_12&tabKey=first&tabKey={encoded}&from=PRIVATE&url=https%3A%2F%2Fprivate.invalid"
+        );
+        let projected = super::explanation(&zone_block(&link, true), zones).unwrap();
+        let target = json!({
+            "kind":"vertical_zone", "pageCode":"Rock_12", "tabKeyName":name, "from":"searchHotExplain"
+        });
+        assert_eq!(
+            projected["action"],
+            json!({"label":"查看专区","target":target})
+        );
+        assert!(projected["playTarget"].is_null());
+        let serialized = projected.to_string();
+        assert!(!serialized.contains("PRIVATE") && !serialized.contains("private.invalid"));
+        assert!(!serialized.contains("discard_7") && !serialized.contains("orpheus://"));
+
+        // The public result DTO accepts the flat typed action and only the
+        // fixed source. A tab name that resembles a key is still a name.
+        let action: crate::client::dto::SearchHotAction =
+            serde_json::from_value(projected["action"].clone()).unwrap();
+        assert_eq!(serde_json::to_value(action).unwrap()["target"], target);
+        let mut forged = projected["action"].clone();
+        forged["target"]["from"] = json!("anotherSource");
+        assert!(serde_json::from_value::<crate::client::dto::SearchHotAction>(forged).is_err());
+
+        let projected = super::explanation(
+            &zone_block(
+                "orpheus://rnpage&?component=cube-renderer-rn&page=Rock_12&tabKey=不使用&tabKey=",
+                true,
+            ),
+            zones,
+        )
+        .unwrap();
+        assert_eq!(
+            projected["action"]["target"],
+            json!({
+                "kind":"vertical_zone", "pageCode":"Rock_12", "from":"searchHotExplain"
+            })
+        );
+        let projected = super::explanation(
+            &zone_block(
+                "orpheus://rnpage?component=cube-renderer-rn&page=Rock_12&tabKey=A%2BB+%25bad",
+                true,
+            ),
+            zones,
+        )
+        .unwrap();
+        assert_eq!(projected["action"]["target"]["tabKeyName"], "A+B %bad");
+        let read_only = super::explanation(&zone_block(&link, false), zones).unwrap();
+        assert!(read_only["action"].is_null() && read_only["playTarget"].is_null());
+    }
+
+    #[test]
+    fn zone_gate_drops_the_card_without_falling_back_to_its_song() {
+        let allowed = zone_groups("t1");
+        let control = zone_groups("c");
+        let valid = zone_block(
+            "orpheus://rnpage?component=cube-renderer-rn&page=Rock_12",
+            true,
+        );
+        for zones in [
+            HotZoneContext::default(),
+            HotZoneContext {
+                groups: Some(&allowed),
+                ready_pages: None,
+            },
+            HotZoneContext {
+                groups: Some(&control),
+                ready_pages: Some(&|_| true),
+            },
+            HotZoneContext {
+                groups: None,
+                ready_pages: Some(&|_| true),
+            },
+            HotZoneContext {
+                groups: Some(&allowed),
+                ready_pages: Some(&|code| code == "rock_12"),
+            },
+        ] {
+            assert!(super::explanation(&valid, zones).is_none());
+        }
+        let zones = HotZoneContext {
+            groups: Some(&allowed),
+            ready_pages: Some(&|_| true),
+        };
+        for link in [
+            "orpheus://rnpage?component=private&page=Rock_12",
+            "orpheus://rnpage?component=cube-renderer-rn&component=private&page=Rock_12",
+            "orpheus://rnpage/Rock_12?component=cube-renderer-rn",
+            "orpheus://rnpage/1/2?component=cube-renderer-rn&page=Rock_12",
+            "orpheus://rnpage?component=cube-renderer-rn&page=Rock%252D12",
+            "orpheus://rnpage?component=cube-renderer-rn&page=..%2FRock_12",
+            "orpheus://rnpage?component=cube-renderer-rn&page=Rock_12#private",
+            "orpheus://rnpage?component=cube-renderer-rn&page=Rock_12&tabKey=%250A",
+            "orpheus://rnpage?component=cube-renderer-rn&page=Rock_12&tabKey=https%3A%2F%2Fprivate.invalid",
+        ] {
+            assert!(
+                super::explanation(&zone_block(link, true), zones).is_none(),
+                "{link}"
+            );
+        }
     }
 }

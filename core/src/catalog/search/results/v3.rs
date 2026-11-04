@@ -2,6 +2,8 @@
 mod hot;
 use super::{SearchCategory, SearchChannel, SearchResultQuery};
 use crate::{Error, Result, error::code_matches, protocol::api::Api};
+pub(crate) use hot::HotZoneContext;
+pub use hot::{SearchHotZoneSource, SearchHotZoneTarget};
 use serde_json::{Map, Value, json};
 
 pub(crate) const PATH: &str = "/api/search/pc/complex/page/v3";
@@ -12,7 +14,11 @@ const HOT_CORE: &str = "search_block_hot_result_core_resources";
 const BEST: &str = "search_block_best_match";
 const CORRECTION: &str = "search_block_correction";
 
-pub(crate) async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
+pub(crate) async fn request(
+    api: &dyn Api,
+    q: &SearchResultQuery,
+    zones: HotZoneContext<'_>,
+) -> Result<Value> {
     if q.category != SearchCategory::All || q.offset != 0 || !(1..=100).contains(&q.limit) {
         return Err(Error::InvalidInput("invalid comprehensive search page"));
     }
@@ -23,7 +29,7 @@ pub(crate) async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Valu
         "channel": channel, "bizQueryInfo": "",
     });
     match api.call(PATH, payload, false, &[200]).await {
-        Ok(raw) => normalize(&raw["data"]),
+        Ok(raw) => normalize(&raw["data"], zones),
         Err(error) => match error.root() {
             Error::Service {
                 endpoint,
@@ -35,7 +41,7 @@ pub(crate) async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Valu
                     .as_array()
                     .is_some_and(|rows| !rows.is_empty()) =>
             {
-                normalize_mode(&body["data"], true)
+                normalize_mode(&body["data"], true, zones)
             }
             // An empty 599 and a 405 carry a scoped user explanation. Leave
             // them as service errors for the caller's shared empty-state path.
@@ -548,11 +554,11 @@ fn rewrite(resource: &Value) -> Option<Value> {
     Some(json!({"baseInfo":base}))
 }
 
-fn normalize(data: &Value) -> Result<Value> {
-    normalize_mode(data, false)
+fn normalize(data: &Value, zones: HotZoneContext<'_>) -> Result<Value> {
+    normalize_mode(data, false, zones)
 }
 
-fn normalize_mode(data: &Value, partial: bool) -> Result<Value> {
+fn normalize_mode(data: &Value, partial: bool, zones: HotZoneContext<'_>) -> Result<Value> {
     let rows = if data.is_null() {
         &[][..]
     } else {
@@ -569,7 +575,7 @@ fn normalize_mode(data: &Value, partial: bool) -> Result<Value> {
         };
         if code == HOT {
             if explanation.is_none() {
-                explanation = hot::explanation(block);
+                explanation = hot::explanation(block, zones);
             }
             continue;
         }
@@ -610,6 +616,14 @@ fn normalize_mode(data: &Value, partial: bool) -> Result<Value> {
 mod tests {
     use super::*;
     use crate::protocol::api::ApiFuture;
+
+    async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
+        super::request(api, q, HotZoneContext::default()).await
+    }
+
+    fn normalize(data: &Value) -> Result<Value> {
+        super::normalize(data, HotZoneContext::default())
+    }
 
     fn query() -> SearchResultQuery {
         SearchResultQuery {
@@ -699,6 +713,49 @@ mod tests {
             request(&Wire(200, "hotquery"), &next).await,
             Err(Error::InvalidInput(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn v3_zone_gate_applies_to_complete_and_partial_search_responses() {
+        struct Wire(u16);
+        impl Api for Wire {
+            fn request<'a>(&'a self, path: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
+                Box::pin(async move {
+                    assert_eq!(path, PATH);
+                    Ok(json!({"code":self.0,"data":{"blocks":[
+                        {"blockCode":HOT,"resources":[{"baseInfo":{"hotExplainModuleData":{
+                            "title":"专区热点","text":"热点说明","canClick":true,
+                            "textAction":"orpheus://rnpage?component=cube-renderer-rn&page=ROCK&tabKey=%E6%91%87%E6%BB%9A"
+                        }}}]},
+                        {"blockCode":"search_block_song","resources":[{"baseInfo":{"simpleSongData":{"id":77,"name":"独立歌曲"}}}]}
+                    ]}}))
+                })
+            }
+        }
+
+        let groups =
+            crate::protocol::pc_experiments::PcExperimentGroups::refreshed(&json!({"data":[
+                {"expName":"PH-PC-zhuanqu","expGroupName":"t1"}
+            ]}))
+            .unwrap();
+        let enabled = HotZoneContext {
+            groups: Some(&groups),
+            ready_pages: Some(&|page| page == "ROCK"),
+        };
+        for code in [200, 599] {
+            let approved = super::request(&Wire(code), &query(), enabled)
+                .await
+                .unwrap();
+            let blocked = request(&Wire(code), &query()).await.unwrap();
+            assert_eq!(approved["data"]["blocks"], blocked["data"]["blocks"]);
+            assert_eq!(
+                approved["data"]["hotExplanation"]["action"],
+                json!({
+                    "label":"查看详情","target":{"kind":"vertical_zone","pageCode":"ROCK","tabKeyName":"摇滚","from":"searchHotExplain"}
+                })
+            );
+            assert!(blocked["data"].get("hotExplanation").is_none());
+        }
     }
 
     #[test]

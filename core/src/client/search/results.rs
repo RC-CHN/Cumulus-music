@@ -119,13 +119,31 @@ pub struct SearchHotAction {
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SearchHotTarget {
-    Song { id: String },
-    Voice { id: String },
-    Album { id: String },
-    Artist { id: String },
-    Playlist { id: String },
-    Podcast { id: String },
-    Mv { id: String },
+    Song {
+        id: String,
+    },
+    Voice {
+        id: String,
+    },
+    Album {
+        id: String,
+    },
+    Artist {
+        id: String,
+    },
+    Playlist {
+        id: String,
+    },
+    Podcast {
+        id: String,
+    },
+    Mv {
+        id: String,
+    },
+    VerticalZone {
+        #[serde(flatten)]
+        zone: api::SearchHotZoneTarget,
+    },
 }
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -223,7 +241,14 @@ impl MusicClient {
                             api::v3::PATH,
                             Some(tabs),
                             layout,
-                            api::v3::request(api.as_ref(), &query).await,
+                            // No RN hotspot is exposed until the native host
+                            // can supply a verified registry and destination.
+                            api::v3::request(
+                                api.as_ref(),
+                                &query,
+                                api::v3::HotZoneContext::default(),
+                            )
+                            .await,
                         )
                     } else {
                         (

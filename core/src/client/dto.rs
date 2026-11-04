@@ -87,8 +87,8 @@ pub use super::relay::{
 pub use super::remote_skins::{RemoteSkinCatalog, RemoteSkinImage};
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
 pub use super::search::{
-    ReasonTarget, SearchCategory, SearchHistoryCommand, SearchItem, SearchReasonPage,
-    SearchResultQuery, SearchResultView, SearchSection,
+    ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,
+    SearchItem, SearchReasonPage, SearchResultQuery, SearchResultView, SearchSection,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,
