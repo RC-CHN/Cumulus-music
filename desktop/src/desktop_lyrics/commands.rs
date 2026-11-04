@@ -175,6 +175,12 @@ pub async fn desktop_lyric_action<R: Runtime>(
                 let document = content.document.as_mut().ok_or(Error::MutationBusy)?;
                 let gain = if matches!(action, Action::OffsetBack) { -1.0 } else { 1.0 };
                 app.state::<MusicClient>().desktop_lyric_offset(document, gain).await?;
+                if let Some(play_id) = &snapshot.view.selection.audio_play_id {
+                    // The write is already durable. A closed main window
+                    // cannot turn it into a failure and invite a second delta.
+                    let _ = app.emit_to("main", "cumulus:desktop-lyric-changed",
+                        serde_json::json!({"epoch": snapshot.view.epoch, "playId": play_id}));
+                }
             }
         }
         Action::Lock => gui(&app, move |app| {

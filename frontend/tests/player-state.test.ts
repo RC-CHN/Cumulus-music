@@ -806,6 +806,48 @@ test('a lyric adjustment owns its document until settlement, without blocking th
   assert.equal(f.player.lyrics.value?.offset, -0.5);
   f.player.dispose();
 });
+test('floating lyric changes refresh the open detail from cache without replacing newer local edits', async () => {
+  const held = deferred<LyricsView>();
+  const reads: (boolean | undefined)[] = [];
+  let cachedOffset = 0;
+  const f = fixture({
+    playerLyrics: async (_epoch, id, cachedOnly) => {
+      reads.push(cachedOnly);
+      if (reads.length === 2) return held.promise;
+      return { ...lyrics(id), offset: cachedOffset };
+    },
+    lyricOffset: async (_epoch, id) => {
+      cachedOffset = 1;
+      return { ...lyrics(id), offset: cachedOffset };
+    },
+  });
+  await f.player.connect(account());
+  f.emit(state('2', '1', 'song'));
+  f.player.toggleLyrics();
+  await turn();
+  f.player.observeLyricChange({ epoch: '0', playId: 'song' });
+  f.player.observeLyricChange({ epoch: '1', playId: 'other' });
+  assert.deepEqual(reads, [undefined]);
+  f.player.observeLyricChange({ epoch: '1', playId: 'song' });
+  assert.equal(f.player.lyricLoading.value, false);
+  assert.equal(await f.player.offset(1), true);
+  held.resolve({ ...lyrics('song'), offset: 0.5 });
+  await turn();
+  assert.equal(f.player.lyrics.value?.offset, 1);
+  assert.deepEqual(reads, [undefined, true, true]);
+
+  f.player.toggleLyrics();
+  cachedOffset = -0.5;
+  f.player.observeLyricChange({ epoch: '1', playId: 'song' });
+  await turn();
+  assert.equal(f.player.lyrics.value?.offset, 1);
+  assert.equal(reads.length, 3);
+  f.player.toggleLyrics();
+  await turn();
+  assert.equal(f.player.lyrics.value?.offset, -0.5);
+  assert.equal(reads.at(-1), true);
+  f.player.dispose();
+});
 test('an account change closes old lyrics and rejects their pending result while same-account reconnect preserves the open preference', async () => {
   const held = deferred<LyricsView>();
   const f = fixture({

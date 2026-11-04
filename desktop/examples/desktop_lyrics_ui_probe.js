@@ -105,9 +105,16 @@
       await capture('unlocked');
       await lyric("document.querySelector('.lyric-details').click();return true;"); await wait(()=>one('.lyrics-panel .lyric-line'),'detail event opens shared lyrics');
       const shared=(await read()).lyrics.frame.offset; click(one('.lyrics-panel [aria-label="歌词提前半秒"]'));
-      await wait(async()=> (await read()).lyrics?.frame.offset===shared+0.5,'main offset reaches desktop lyrics'); await capture('main_detail',true);
+      await wait(async()=> (await read()).lyrics?.frame.offset===shared+0.5,'main offset reaches desktop lyrics');
+      const requestsBefore=(await fixture('stats')).requests;
+      await clickLyric('歌词延后半秒');
+      await wait(()=>one('.lyric-tools > small')?.textContent.trim()===`${shared.toFixed(1)}s`,'floating lyric offset reaches the already open main details');
+      const reflected=await read();
+      assert(reflected.lyrics?.frame.offset===shared&&reflected.media.selection.audioPlayId===before.media.selection.audioPlayId,'both surfaces retain one native play ID and offset');
+      assert((await fixture('stats')).requests===requestsBefore,'cross-window lyric update should not request lyrics again');
+      await capture('main_detail',true);
       await clickLyric('桌面歌词设置'); await wait(()=>!one('.lyrics-panel') && one('.desktop-lyric-settings'),'settings event');
-      checks.push('main details and shared offset','main settings event');
+      checks.push('main details and two-way shared offset','main settings event');
       checks.push('style controls and custom palette','vertical layout','passive unlock and draft retention');
       const old=await read(); await player({kind:'next'}); await player({kind:'pause',paused:true});
       assert(await lyric(`try{await window.__TAURI_INTERNALS__.invoke('desktop_lyric_action',{generation:${JSON.stringify(old.generation)},ticket:${JSON.stringify(old.ticket)},action:'toggle'});return false}catch{return true}`),'stale track action');

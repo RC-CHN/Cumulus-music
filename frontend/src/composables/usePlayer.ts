@@ -57,6 +57,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queuePreparation = 0,
     queueRequest = 0,
     lyricRequest = 0;
+  let lyricProjectionPending = false;
+  let lyricProjectionRequest: symbol | undefined;
   let disconnect: (() => void) | undefined;
   type PlaybackOperation = (epoch: string) => Promise<PlayerView>;
   let failedOperation: { repeat?: PlaybackOperation; selection?: PlayerView } | undefined;
@@ -116,6 +118,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   function resetLyrics() {
     lyricRequest++;
+    lyricProjectionPending = false;
+    lyricProjectionRequest = undefined;
     lyrics.value = undefined;
     lyricLoading.value = false;
     lyricUpdating.value = false;
@@ -744,6 +748,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (!playId || lyricLoading.value || lyricUpdating.value) return;
     const current = ++lyricRequest,
       captured = epoch;
+    lyricProjectionPending = false;
     lyricLoading.value = true;
     lyricError.value = '';
     try {
@@ -753,12 +758,57 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     } catch (e) {
       if (current === lyricRequest) lyricError.value = failure(e).message;
     } finally {
-      if (current === lyricRequest) lyricLoading.value = false;
+      if (current === lyricRequest) {
+        lyricLoading.value = false;
+        void refreshLyricProjection();
+      }
     }
   }
   function toggleLyrics() {
     lyricsOpen.value = !lyricsOpen.value;
     if (lyricsOpen.value && !lyrics.value) void loadLyrics();
+    else if (lyricsOpen.value) void refreshLyricProjection();
+  }
+  function observeLyricChange(target: { epoch: string; playId: string }) {
+    if (target.epoch !== epoch || target.playId !== view.value?.playId) return;
+    lyricProjectionPending = true;
+    void refreshLyricProjection();
+  }
+  async function refreshLyricProjection() {
+    const playId = view.value?.playId;
+    if (
+      !playId ||
+      !lyricsOpen.value ||
+      !lyricProjectionPending ||
+      lyricProjectionRequest ||
+      lyricLoading.value ||
+      lyricUpdating.value
+    )
+      return;
+    const reading = Symbol();
+    const version = lyricRequest;
+    const captured = epoch;
+    lyricProjectionPending = false;
+    lyricProjectionRequest = reading;
+    try {
+      const value = await core.playerLyrics(captured, playId, true);
+      if (lyricProjectionRequest !== reading) return;
+      // A local gesture may have committed after this projection was made.
+      // Read the current cached document once the newer action has settled.
+      if (version !== lyricRequest) lyricProjectionPending = true;
+      else if (value.epoch === epoch && value.playId === view.value?.playId) {
+        if (!lyrics.value) lyricError.value = '';
+        lyrics.value = value;
+      }
+    } catch {
+      // A notification is advisory. Keep the last readable document and
+      // leave any explicit retry with the user; this never fetches remotely.
+    } finally {
+      if (lyricProjectionRequest === reading) {
+        lyricProjectionRequest = undefined;
+        void refreshLyricProjection();
+      }
+    }
   }
   async function updateLyrics(operation: (epoch: string, playId: string) => Promise<LyricsView>) {
     const playId = view.value?.playId;
@@ -787,7 +837,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     } catch (e) {
       if (current === lyricRequest) lyricError.value = failure(e).message;
     } finally {
-      if (current === lyricRequest) lyricUpdating.value = false;
+      if (current === lyricRequest) {
+        lyricUpdating.value = false;
+        void refreshLyricProjection();
+      }
     }
     return false;
   }
@@ -864,6 +917,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     editQueue,
     toggleQueue,
     loadLyrics,
+    observeLyricChange,
     toggleLyrics,
     preferences,
     offset,

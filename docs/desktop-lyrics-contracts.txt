@@ -62,6 +62,13 @@ core/client/desktop_lyrics.rs：
 - refresh_desktop_lyric_document只读取共享服务的新版本。详情页修改偏移后会被读回；
   没有变化则不克隆/解析整份歌词，不发请求。desktop_lyric_offset复用半秒gain语义，
   失败不自动重发；旧曲目文档不能调整后来播放的曲目。
+- 浮动窗偏移落盘后，只通知主窗口当前账号代次与 playId。详情用
+  player_lyrics 的 cachedOnly 模式读共享文档，不清除已显示内容、重读文件或请求服务。
+  调整和读取进行中合并通知；旧投影不能覆盖更新的本地调整。通知丢失不把已落盘
+  的半秒改动误报失败或重放。关闭详情时保留刷新意图，下次打开再读取。
+  Linux 双窗口回归用同一个原生宿主复现旧详情不刷新；修复版 25 项通过，
+  验证双向偏移、同一播放 ID、合成歌词请求计数不变。报告和截图：
+  .build/lyric-two-way-proof.WwRw3Y/after/。
 - 歌词HTTP保持/api/song/lyric/v1(id,lv,tv,rv,yv)与/api/cloud/lyric/get
   (songId,userId,lv,kv=-1)；本地相邻.lrc读取无HTTP。来源/版本/错误规则详见
   core-lyrics-contracts.txt。普通歌词请求按现有服务的账号状态判断，不扩大会员权益。

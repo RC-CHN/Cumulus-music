@@ -237,7 +237,14 @@ pub async fn player_lyrics(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     play_id: String,
+    cached_only: Option<bool>,
 ) -> Result<LyricsView, ClientError> {
+    if cached_only == Some(true) {
+        return client
+            .player_cached_lyrics(&epoch, &play_id)
+            .await
+            .map_err(Into::into);
+    }
     client
         .player_lyrics(&epoch, &play_id)
         .await

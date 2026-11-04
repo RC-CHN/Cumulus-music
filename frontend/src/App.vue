@@ -22,7 +22,7 @@ import AlbumActions from './components/catalog/AlbumActions.vue';
 import ArtistActions from './components/catalog/ArtistActions.vue';
 import type { ArtistCardRequest } from './services/artistCards';
 import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
-import { onDesktopLyricOpen } from './adapters/desktopLyrics';
+import { onDesktopLyricChanged, onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { onMiniReturn } from './adapters/mini';
 import { createLyricReportClient, onLyricReportOpen } from './adapters/lyricReports';
 import { useLyricReport } from './composables/useLyricReport';
@@ -1707,6 +1707,7 @@ watch(music.likeActivity, () => {
 });
 let nativeLikeListener: (() => void) | undefined;
 let desktopLyricListener: (() => void) | undefined;
+let desktopLyricChangedListener: (() => void) | undefined;
 let lyricReportListener: (() => void) | undefined;
 let miniFmListener: (() => void) | undefined;
 const miniFmFocus = useMiniFmFocus(
@@ -1780,6 +1781,15 @@ onMounted(async () => {
     /* The settings entry remains available if event subscription fails. */
   }
   try {
+    const stop = await onDesktopLyricChanged((value) => {
+      if (mounted) player.observeLyricChange(value);
+    });
+    if (mounted) desktopLyricChangedListener = stop;
+    else stop();
+  } catch {
+    /* Explicit lyric reads remain available if the native event cannot attach. */
+  }
+  try {
     const stop = await onMiniReturn(async (value) => {
       if (
         !mounted ||
@@ -1813,6 +1823,7 @@ onUnmounted(() => {
   accountListener?.();
   nativeLikeListener?.();
   desktopLyricListener?.();
+  desktopLyricChangedListener?.();
   lyricReportListener?.();
   miniFmListener?.();
 });

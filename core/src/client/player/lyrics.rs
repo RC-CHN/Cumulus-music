@@ -336,6 +336,13 @@ impl MusicClient {
             failed,
         )))
     }
+    /// Project the active shared document without refreshing its source.
+    pub async fn player_cached_lyrics(&self, epoch: &str, play_id: &str) -> Result<LyricsView> {
+        self.cached_player_lyrics(epoch, play_id, None)
+            .await?
+            .map(|(_, document, _)| document)
+            .ok_or(Error::StaleResponse)
+    }
     pub async fn lyric_preferences(
         &self,
         epoch: &str,

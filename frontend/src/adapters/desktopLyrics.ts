@@ -22,3 +22,9 @@ export function onDesktopLyricOpen(
     (event) => handler(event.payload),
   );
 }
+export function onDesktopLyricChanged(handler: (value: { epoch: string; playId: string }) => void) {
+  return getCurrentWindow().listen<{ epoch: string; playId: string }>(
+    'cumulus:desktop-lyric-changed',
+    (event) => handler(event.payload),
+  );
+}
