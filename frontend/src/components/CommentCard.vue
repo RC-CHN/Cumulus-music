@@ -85,7 +85,12 @@ const emit = defineEmits<{
       <div class="comment-footer">
         <time :datetime="timestamp(item.time)">{{ item.timeText || localTime(item.time) }}</time>
         <div class="comment-operations">
-          <button v-if="showFloor" class="text-button" @click="emit('floor', item, $event)">
+          <button
+            v-if="showFloor"
+            class="text-button"
+            data-comment-floor-trigger
+            @click="emit('floor', item, $event)"
+          >
             查看回复
           </button>
           <button class="text-button" :disabled="writing || busy" @click="emit('reply', item)">

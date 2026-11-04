@@ -98,7 +98,7 @@ watch(
   },
   { flush: 'post' },
 );
-const floorView = useCommentFloorView(floor, scroller, floorContainer, owner);
+const floorView = useCommentFloorView(floor, scroller, floorContainer, owner, context.floorOrigin);
 const writing = computed(() => writer.busy.value || writer.pending.value.length > 0);
 const authorNavigation = inject(commentAuthorNavigation);
 function authorGroup(node: HTMLElement) {

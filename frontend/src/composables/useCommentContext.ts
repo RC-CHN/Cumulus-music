@@ -9,6 +9,7 @@ import { useCommentWrites } from './useCommentWrites.ts';
 /** Comment interaction state can outlive a rendered album panel, never its account. */
 export function useCommentContext(model: CommentsModel, core: CoreClient = useCore()) {
   const target = ref('');
+  const floorOrigin = ref<{ group: string; commentId: string }>();
   const floor = useCommentFloor(core, () => model.sessionExpired());
   const writer = useCommentWrites(
     core,
@@ -32,6 +33,7 @@ export function useCommentContext(model: CommentsModel, core: CoreClient = useCo
     [() => model.epoch.value, () => model.resource.value && resourceKey(model.resource.value)],
     () => {
       target.value = '';
+      floorOrigin.value = undefined;
       floor.connect(model.epoch.value, model.resource.value);
       void writer.connect(model.epoch.value, model.resource.value);
     },
@@ -40,9 +42,10 @@ export function useCommentContext(model: CommentsModel, core: CoreClient = useCo
   function dispose() {
     stop();
     target.value = '';
+    floorOrigin.value = undefined;
     writer.disconnect();
     floor.connect('');
   }
-  return { target, floor, writer, dispose };
+  return { target, floor, floorOrigin, writer, dispose };
 }
 export type CommentContext = ReturnType<typeof useCommentContext>;

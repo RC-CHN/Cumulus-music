@@ -10,30 +10,29 @@ export function useCommentFloorView(
   root: Ref<HTMLElement | undefined>,
   panel: Ref<HTMLDivElement | undefined>,
   scope: () => string,
+  origin: Ref<{ group: string; commentId: string } | undefined>,
 ) {
-  let serial = 0,
-    origin: HTMLElement | undefined;
+  let serial = 0;
   const motion = useMotion();
   const stop = watch(
     scope,
     () => {
       serial++;
-      origin = undefined;
     },
     { flush: 'sync' },
   );
   onScopeDispose(() => {
     serial++;
-    origin = undefined;
     stop();
   });
   async function open(item: CommentItem, event: MouseEvent) {
     const ticket = ++serial,
       owner = scope(),
       node = root.value;
-    origin = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
-    const anchor = origin,
-      pending = model.open(item);
+    const anchor = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
+    const group = anchor?.closest<HTMLElement>('.comment-group')?.dataset.group;
+    origin.value = group ? { group, commentId: item.id } : undefined;
+    const pending = model.open(item);
     await nextTick();
     if (
       ticket === serial &&
@@ -56,7 +55,8 @@ export function useCommentFloorView(
   async function close() {
     const owner = scope(),
       node = root.value,
-      anchor = origin;
+      address = origin.value;
+    origin.value = undefined;
     serial++;
     model.close();
     await nextTick();
@@ -67,8 +67,15 @@ export function useCommentFloorView(
       document.activeElement !== document.body
     )
       return;
-    if (visibleCommentControl(anchor)) anchor!.focus({ preventScroll: true });
-    else if (anchor?.isConnected) {
+    const anchor =
+      address &&
+      Array.from(node.querySelectorAll<HTMLButtonElement>('[data-comment-floor-trigger]')).find(
+        (button) =>
+          button.closest<HTMLElement>('.comment-group')?.dataset.group === address.group &&
+          button.closest<HTMLElement>('[data-comment-id]')?.dataset.commentId === address.commentId,
+      );
+    if (anchor && visibleCommentControl(anchor)) anchor.focus({ preventScroll: true });
+    else if (anchor) {
       anchor.focus({ preventScroll: true });
       anchor.scrollIntoView({ block: 'nearest' });
     } else node.querySelector<HTMLElement>('[data-comment-read-heading]')?.focus();
