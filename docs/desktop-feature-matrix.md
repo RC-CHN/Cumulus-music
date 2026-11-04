@@ -67,7 +67,9 @@
 - [识曲重采样对照](song-recognition-resampler-proof.txt)冻结官方 DLL 和公开同 ABI 的 24 个输入用例，当前尚未接入回采或真实识曲。
 - [最近常听的风格卡](discovery-home-contracts.txt)进入官方普通风格页，不复用精选卡的种子。
 - [个人主页举报](profile-report-contracts.txt)支持四种预设和自定义原文、明确确认与仅本机回执。只验证合成提交，不代表真实举报。
-- [手动检查更新](manual-update-contracts.txt)读取 Cumulus 已发布的稳定版元数据并允许打开固定发布页，不下载或安装。Linux 合成桌面与 0.1.0 匿名实服样本分开记录。
+- [评论及楼层举报](comment-report-contracts.txt)接通官方 PC 路径；取消不发请求，丢失回执不自动重发。Linux WebView 封闭验证，不代表真实举报已发送。
+- [手动检查更新](manual-update-contracts.txt)读取 Cumulus 已发布的稳定版元数据并允许打开固定发布页；用户可离线比对本机安装包的 SHA-256，不下载、不安装。Linux 合成桌面与 0.1.0 匿名元数据样本分开记录。
 - [可选识曲重采样与私有回采](song-recognition-monitor-proof.txt)支持本机 Linux 合成输出对照，尚未接正式入口、真实设备或识曲服务。
+- [Windows WASAPI 回采原型](song-recognition-wasapi-proof.txt)的设备选择和停止策略有六项合成测试及 Windows GNU 交叉链接证据。未在 Windows 实际回采或发布入口。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
