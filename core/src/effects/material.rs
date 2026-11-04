@@ -5,6 +5,7 @@ mod equalization;
 mod limiter;
 mod routing;
 use super::dsp::{Coefficients, ParametricBand, ParametricEq, ParametricKind, RotationStage};
+pub use super::dsp::{LimiterBlockFlow, LimiterFrameFlow};
 use crate::{Error, Result};
 pub use controls::{
     CompressorParameters, ControlCall, DelayParameters, LimiterParameters, alc_calls,
@@ -12,8 +13,7 @@ pub use controls::{
 };
 pub use equalization::{EqualizationCall, bass_treble_calls, graphic_calls};
 pub use limiter::{
-    LimiterBeginCall, LimiterBlockFlow, LimiterFrameFlow, MATERIAL_BEGIN_LIMITER,
-    MaterialLimiterPlan, material_limiter_plan,
+    LimiterBeginCall, MATERIAL_BEGIN_LIMITER, MaterialLimiterPlan, material_limiter_plan,
 };
 pub use routing::{Component, ComponentSection, MaterialRouting, MaterialSchema, route_sections};
 use serde::{Deserialize, Serialize};

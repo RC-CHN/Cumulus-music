@@ -1,4 +1,6 @@
 //! Offline probe of actual Rust wrappers. No DLL, Python or account at runtime.
+#[path = "support/limiter_wire.rs"]
+mod limiter_wire;
 #[path = "support/effects_dsp_wire.rs"]
 mod wire;
 use cumulus_core::effects::{material, ncae};
@@ -6,7 +8,7 @@ use std::io::{Read, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).ok_or(
-        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,limiter-plan,limiter-flow,dly,alc,spspatial}; for NCAE PEQ use material-render-active-peq PATH",
+        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,limiter-plan,limiter-flow,dly,alc,spspatial}; for NCAE PCM use material-render-active-peq PATH or material-limiter-render PATH",
     )?;
     let mut input = Vec::new();
     std::io::stdin()
@@ -14,6 +16,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .read_to_end(&mut input)?;
     if input.len() > 16 * 1024 * 1024 {
         return Err("input too large".into());
+    }
+    if mode == "material-limiter-render" {
+        let path = std::env::args_os()
+            .nth(2)
+            .ok_or("material-limiter-render requires an NCAE path")?;
+        if std::env::args_os().nth(3).is_some() {
+            return Err("material-limiter-render does not accept a component override".into());
+        }
+        println!(
+            "{}",
+            serde_json::to_string(&limiter_wire::render_ncae(path, &input)?)?
+        );
+        return Ok(());
     }
     let result = if mode == "material-render-active-peq" {
         let path = std::env::args_os()

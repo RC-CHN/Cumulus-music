@@ -1,5 +1,6 @@
 //! Material-load controls for the final lookahead limiter. These events do
 //! not process samples and are not a recipe for a fixed-size LADSPA filter.
+use super::super::dsp::{Format, LimiterFrameFlow, LimiterSettings, LimiterStage};
 use super::{
     Component, ControlCall, LimiterParameters, MaterialSchema, limiter_calls, route_sections,
 };
@@ -84,97 +85,46 @@ pub fn material_limiter_plan(material: &Value) -> Result<MaterialLimiterPlan> {
     })
 }
 
-/// Frame and EOF contract only. This does not buffer, produce, or modify PCM.
-#[derive(Debug)]
-pub struct LimiterFrameFlow {
-    max_frames: u32,
-    lookahead_frames: u32,
-    skip: u32,
-    drain: u32,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LimiterBlockFlow {
-    pub output_frames: u32,
-    pub output_end: bool,
-    pub pad_input_frames: u32,
-    pub skip_output_frames: u32,
-}
-
 impl MaterialLimiterPlan {
-    /// Model one fresh fixed-format stream with this material already loaded.
-    /// The native dynamic kernel and mid-stream updates are outside this API.
+    fn attack(&self) -> f32 {
+        if self.parameters.attack > 0.0 {
+            self.parameters.attack
+        } else {
+            MATERIAL_BEGIN_LIMITER.attack
+        }
+    }
+
+    /// Model the frame protocol without applying the PCM kernel.
     pub fn frame_flow(
         &self,
         sample_rate: u32,
         channels: u32,
         max_frames: u32,
     ) -> Result<LimiterFrameFlow> {
-        super::super::dsp::Format::new(sample_rate as f32, channels, max_frames)?;
-        // The explicit native setter ignores nonpositive attack. At this
-        // point the begin bridge has already applied the default.
-        let attack = if self.parameters.attack > 0.0 {
-            self.parameters.attack
-        } else {
-            MATERIAL_BEGIN_LIMITER.attack
-        };
-        let lookahead = if self.enabled {
-            // The node's allocation at 64F83–64F97 is sized for 100 ms.
-            // Bound this diagnostic to that capacity, never reproduce an
-            // out-of-bounds or unverified native case.
-            if attack > 0.1 {
-                return Err(crate::Error::InvalidInput(
-                    "limiter attack exceeds bounded frame flow",
-                ));
-            }
-            // 6501F–6504C: truncate attack * rate * channels, then align to
-            // a full frame. 6533F–65351 seeds both skip and drain to frames-1.
-            let samples = (f64::from(sample_rate) * f64::from(attack) * f64::from(channels)) as u32;
-            let frames = samples / channels;
-            frames.checked_sub(1).ok_or(crate::Error::InvalidInput(
-                "limiter attack is shorter than one frame",
-            ))?
-        } else {
-            0
-        };
-        Ok(LimiterFrameFlow {
-            max_frames,
-            lookahead_frames: lookahead,
-            skip: lookahead,
-            drain: lookahead,
-        })
-    }
-}
-
-impl LimiterFrameFlow {
-    pub fn lookahead_frames(&self) -> u32 {
-        self.lookahead_frames
+        let format = Format::new(sample_rate as f32, channels, max_frames)?;
+        LimiterFrameFlow::new(format, self.enabled, self.attack())
     }
 
-    pub fn next_block(&mut self, input_frames: u32, input_end: bool) -> Result<LimiterBlockFlow> {
-        if input_frames > self.max_frames {
-            return Err(crate::Error::InvalidInput(
-                "limiter input exceeds block capacity",
-            ));
-        }
-        // 63C2E–63C77 extends EOF input within the current block capacity.
-        let padding = if input_end {
-            (self.max_frames - input_frames).min(self.drain)
-        } else {
-            0
-        };
-        self.drain -= padding;
-        let processed = input_frames + padding;
-        // 64B55–64BB0 withholds the initial lookahead frames, which can
-        // span multiple input blocks or even the first EOF blocks.
-        let skip = processed.min(self.skip);
-        self.skip -= skip;
-        Ok(LimiterBlockFlow {
-            output_frames: processed - skip,
-            output_end: input_end && self.drain == 0,
-            pad_input_frames: padding,
-            skip_output_frames: skip,
-        })
+    /// Prepare the recovered final node on a fresh stream. This is a single
+    /// component renderer; it does not load the rest of the material graph.
+    pub fn pcm_stage(&self, format: Format) -> Result<LimiterStage> {
+        let parameters = self.parameters;
+        LimiterStage::new(
+            format,
+            LimiterSettings {
+                enabled: self.enabled,
+                threshold_db: parameters.threshold,
+                attack_seconds: self.attack(),
+                release_seconds: if parameters.release > 0.0 {
+                    parameters.release
+                } else {
+                    MATERIAL_BEGIN_LIMITER.release
+                },
+                input_gain_db: 0.0,
+                output_gain_db: parameters.outputgain,
+                infinite_ratio: parameters.infinite_ratio,
+                ratio: parameters.ratio,
+            },
+        )
     }
 }
