@@ -634,6 +634,7 @@ onBeforeUnmount(() => {
           'search-lyrics-panel': lyrics,
           'search-playlist-panel': category === 'playlists',
           'search-album-panel': category === 'albums',
+          'search-voice-panel': category === 'voices',
         }"
         tabindex="0"
         @scroll.capture.passive="scroll"
@@ -852,7 +853,13 @@ onBeforeUnmount(() => {
               :preview="oneRowPreview(section)"
               :carousel="carousel(section)"
               :table="
-                category === 'playlists' ? 'playlist' : category === 'albums' ? 'album' : undefined
+                category === 'playlists'
+                  ? 'playlist'
+                  : category === 'albums'
+                    ? 'album'
+                    : category === 'voices'
+                      ? 'voice'
+                      : undefined
               "
               @position="previewPosition(section, $event)"
               v-slot="{ item, index }"
@@ -861,7 +868,7 @@ onBeforeUnmount(() => {
                 :item="item"
                 :category="category"
                 :table-row="
-                  category === 'playlists' || category === 'albums'
+                  category === 'playlists' || category === 'albums' || category === 'voices'
                     ? { index, number: offset + index + 1 }
                     : undefined
                 "

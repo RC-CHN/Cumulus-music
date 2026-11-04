@@ -280,6 +280,7 @@ function doubleClick(event: MouseEvent) {
 function activateRow(event: MouseEvent) {
   if (
     props.tableRow &&
+    props.item.kind !== 'voice' &&
     !event.defaultPrevented &&
     event.target instanceof Element &&
     !event.target.closest('button, a, .action-menu-host')
@@ -402,8 +403,9 @@ watch(
       'search-collection-row': tableRow,
       'search-playlist-row': tableRow && item.kind === 'playlist',
       'search-album-row': tableRow && item.kind === 'album',
+      'search-voice-row': tableRow && item.kind === 'voice',
       'search-collection-striped': tableRow && tableRow.index % 2 === 0,
-      'search-voice-card': item.kind === 'voice',
+      'search-voice-card': !tableRow && item.kind === 'voice',
       'search-card-current': current,
       'search-card-unavailable': unavailable && !canPlay,
     }"
@@ -412,15 +414,11 @@ watch(
     @click="activateRow"
     @dblclick="doubleClick"
   >
-    <template v-if="tableRow && (item.kind === 'playlist' || item.kind === 'album')">
-      <div
-        class="search-collection-number"
-        :class="item.kind === 'playlist' ? 'search-playlist-number' : 'search-album-number'"
-        role="cell"
-      >
+    <template v-if="tableRow && ['playlist', 'album', 'voice'].includes(item.kind)">
+      <div class="search-collection-number" :class="`search-${item.kind}-number`" role="cell">
         <span>{{ String(tableRow.number).padStart(2, '0') }}</span>
         <button
-          v-if="item.kind === 'album' && canPlay"
+          v-if="(item.kind === 'album' || item.kind === 'voice') && canPlay"
           type="button"
           class="search-card-play"
           data-result-action="play"
@@ -432,7 +430,11 @@ watch(
           <Icon :name="current && playing ? 'pause' : 'play'" />
         </button>
       </div>
-      <div class="search-collection-title-cell" role="cell">
+      <div
+        class="search-collection-title-cell"
+        :class="{ 'search-voice-title-cell': item.kind === 'voice' }"
+        role="cell"
+      >
         <span class="search-result-art">
           <img
             v-if="card.cover && !failedCover"
@@ -462,6 +464,7 @@ watch(
           </button>
         </span>
         <button
+          v-if="item.kind !== 'voice'"
           type="button"
           class="search-card-open"
           data-result-action="open"
@@ -486,7 +489,69 @@ watch(
           </span>
           <SearchMatchText v-else :text="card.name" :keyword="matchKeyword" />
         </button>
+        <div v-else class="search-voice-title-copy">
+          <span class="search-result-name" :data-tooltip="card.name">
+            <SearchMatchText :text="card.name" :keyword="matchKeyword" />
+          </span>
+          <span
+            v-if="item.voice.creator || item.voice.radioId || item.voice.unavailable"
+            class="search-voice-attribution"
+          >
+            <span
+              v-if="item.voice.creator"
+              class="search-voice-author"
+              :data-tooltip="item.voice.creator"
+            >
+              by&nbsp;<SearchMatchText :text="item.voice.creator" :keyword="matchKeyword" />
+            </span>
+            <button
+              v-if="item.voice.radioId"
+              type="button"
+              class="search-voice-radio"
+              data-result-action="voice-radio"
+              :data-tooltip="item.voice.radioName || '查看所属播客'"
+              @click.stop="action('open')"
+              @dblclick.stop
+            >
+              {{ item.voice.radioName ? `播单：${item.voice.radioName}` : '查看所属播客' }}
+            </button>
+            <span v-else-if="item.voice.unavailable" class="search-voice-author"
+              >单集暂不可播放</span
+            >
+          </span>
+        </div>
+        <div v-if="item.kind === 'voice'" class="search-voice-title-actions">
+          <button
+            type="button"
+            class="icon-button"
+            data-result-action="voice-download"
+            :aria-label="`下载 ${card.name}`"
+            :disabled="item.voice.unavailable"
+            @click.stop="action('download')"
+            @dblclick.stop
+          >
+            <Icon name="download" />
+          </button>
+          <button
+            type="button"
+            class="icon-button"
+            data-result-action="voice-comments"
+            :aria-label="`查看评论：${card.name}`"
+            @click.stop="action('comments')"
+            @dblclick.stop
+          >
+            <Icon name="comment" />
+          </button>
+          <ActionMenu
+            ref="menu"
+            class="search-card-menu"
+            :label="`更多操作：${card.name}`"
+            :items="items"
+            @select="action"
+          />
+        </div>
         <ActionMenu
+          v-else
           ref="menu"
           class="search-card-menu"
           :label="`更多操作：${card.name}`"
@@ -523,7 +588,7 @@ watch(
           <template v-else>—</template>
         </span>
       </template>
-      <template v-else>
+      <template v-else-if="item.kind === 'album'">
         <div class="search-album-author-cell search-card-credit" role="cell">
           <SearchArtistCredits
             v-if="albumArtists.length"
@@ -539,6 +604,14 @@ watch(
           </span>
           <span v-else>—</span>
         </div>
+      </template>
+      <template v-else-if="item.kind === 'voice'">
+        <span class="search-voice-listens search-voice-stat-cell" role="cell">
+          {{ voiceListens ?? '—' }}
+        </span>
+        <span class="search-voice-duration search-voice-stat-cell" role="cell">
+          {{ voiceDuration || '—' }}
+        </span>
       </template>
     </template>
     <template v-else>

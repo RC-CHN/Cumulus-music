@@ -896,6 +896,7 @@
     }
     if(window.__cumulusSearchVoiceQueueProof){
       await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
       await fixture('voice_queue');
       const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
       const {epoch}=await invoke('account_snapshot');
@@ -911,10 +912,21 @@
       await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['1','2','3'],index:0,quality:'standard'}});
       await playing(state=>state.resourceKind==='catalog'&&state.track?.id==='1');
       const original=await readQueue();
-      await fresh('合成声音队列');await choose('voices');
+      await fresh('合成声音队列');
+      assert(one('.search-voice-card .search-voice-footer')&&!one('.search-voice-table'),
+        'comprehensive keeps compact voice cards');
+      await choose('voices');
       const card=()=>one('[data-result-key="voice:401"]');
       const play=()=>card()?.querySelector('.search-card-play');
+      const headers=()=>all('.search-voice-table [role="columnheader"]');
+      const widths=nodes=>nodes.map(node=>node.getBoundingClientRect().width);
+      const aligned=row=>widths(headers()).every((width,index)=>
+        Math.abs(row.children[index].getBoundingClientRect().width-width)<1);
       assert(card()?.querySelector('.search-voice-radio'),'selected episode has a known parent radio');
+      const title=card().querySelector('.search-voice-title-copy');
+      title.click();
+      assert(one('.search-voice-table')&&(await readQueue()).revision===original.revision,
+        'a single title click neither opens the radio nor starts the episode');
       click(play());
       const voice=await playing(state=>state.track?.voiceId==='401');
       const queue=await readQueue();
@@ -929,6 +941,47 @@
       const paused=await invoke('player_snapshot',{epoch});
       assert(paused.playId===voice.playId&&paused.queueRevision===voice.queueRevision,'pause keeps decoder and queue');
       await capture('search_episode_pauses_in_place');
+      assert(headers().map(node=>node.textContent.trim()).join(',')==='#,标题,播放量,时长'&&
+        card().getAttribute('aria-rowindex')==='2'&&aligned(card())&&
+        Math.abs(card().getBoundingClientRect().height-64)<1&&
+        Math.abs(card().querySelector('.search-result-art').getBoundingClientRect().width-48)<1,
+        'official four-column search voice table uses aligned 64px rows and 48px art');
+      assert(card().querySelector('.search-voice-duration')?.textContent.trim()==='06:00'&&
+        card().querySelector('.search-voice-listens')?.textContent.trim()==='1.2万'&&
+        card().querySelector('[data-result-action="voice-download"]')&&
+        card().querySelector('[data-result-action="voice-comments"]')&&card().querySelector('.menu-trigger'),
+        'duration, listener count, and inline episode actions belong to the row');
+      assert(Math.abs(title.querySelector('.search-result-name').getBoundingClientRect().left-
+        title.querySelector('.search-voice-attribution').getBoundingClientRect().left)<1,
+        'voice title aligns with its author and parent link');
+      const handles=all('.search-voice-column-resizer'), before=widths(headers());
+      assert(handles.length===2,'voice table has title and listener count handles');
+      handles[0].focus({preventScroll:true});key(handles[0],'ArrowLeft');
+      await wait(()=>Math.abs(widths(headers())[2]-before[2]-12)<1&&aligned(card()),
+        'title gives width to the listener count without breaking alignment');
+      handles[1].focus({preventScroll:true});key(handles[1],'ArrowLeft');
+      await wait(()=>Math.abs(widths(headers())[3]-before[3]-12)<1&&aligned(card()),
+        'listener count gives its remaining surplus to the duration');
+      title.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+      const resumed=await playing(state=>state.track?.voiceId==='401');
+      assert(resumed.playId===voice.playId&&resumed.queueRevision===voice.queueRevision,
+        'double-click on row text resumes the same voice without opening its radio');
+      await capture('search_voice_table_columns');
+      const comment=()=>card()?.querySelector('[data-result-action="voice-comments"]');
+      const commentReads=[], beforeComments=window.fetch;
+      window.fetch=function(url,options){
+        if(String(url).endsWith('/comments_page'))commentReads.push(JSON.parse(options.body).resource);
+        return beforeComments.call(window,url,options);
+      };
+      click(comment());
+      await wait(()=>one('.comments-page')&&commentReads.some(resource=>resource.kind==='voice'&&resource.id==='401'),
+        'inline comments open the exact episode through native IPC');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&document.activeElement===comment(),'comments Back restores the inline button');
+      window.fetch=beforeComments;
+      const afterComments=await invoke('player_snapshot',{epoch});
+      assert(afterComments.playId===resumed.playId&&afterComments.queueRevision===resumed.queueRevision,
+        'comment navigation leaves the voice and queue intact');
       await choose('podcasts');
       click(one('[data-result-key="podcast:301"] .search-card-play'));
       await playing(state=>state.track?.voiceId==='401'&&state.origin?.kind==='podcast');
@@ -956,12 +1009,24 @@
           const first=grid().querySelector('[data-grid-index="0"] .search-card-play');
           first.focus({preventScroll:true});key(first,'ArrowDown');
           await wait(()=>document.activeElement===grid()?.querySelector('[data-grid-index="1"] .search-card-play'),
-            'voice cards offer grid navigation from their play controls');
+            'voice play controls navigate one table row at a time');
         }
+        if(category==='voices')hold(category,'合成长音频续页');
         panel().scrollTop=panel().scrollHeight;
         panel().dispatchEvent(new Event('scroll'));
+        if(category==='voices'){
+          await wait(()=>held&&one('.search-load-more')?.getAttribute('aria-busy')==='true'&&
+            grid()?.dataset.loadedCount==='10','waiting for the next voice page keeps current rows');
+          await capture('search_voice_table_loading');
+          release();
+        }
         const opener=()=>grid()?.querySelector(`[data-grid-index="10"] ${category==='voices'?'.search-voice-radio':'.search-card-open'}`);
         await wait(()=>grid()?.dataset.loadedCount==='20'&&opener(),'scroll appends ten long-audio results');
+        if(category==='voices'){
+          const row=opener().closest('.search-voice-row');
+          assert(aligned(row)&&row.getAttribute('aria-rowindex')==='12'&&all('.search-voice-row').length<20,
+            'late narrow voice row keeps aligned columns, ordinal and bounded rendering');
+        }
         opener().scrollIntoView({block:'nearest'});
         const rect=opener().getBoundingClientRect(), position=panel().scrollTop;
         assert(opener().contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
@@ -976,7 +1041,7 @@
           'appending or opening details cannot alter the existing native queue');
         await capture('search_'+category+'_waterfall_back');
       }
-      await emit('complete',{ok:true,voiceQueueVerified:true,audioWaterfallVerified:true,audioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,voiceQueueVerified:true,voiceTableVerified:true,audioWaterfallVerified:true,audioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchSongWaterfallProof){
@@ -1185,7 +1250,9 @@
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('good');await fresh('合成');
       const check=(kind, expected)=>{
-        const title=one(`[data-result-key^="${kind}:"] .search-result-name`);
+        const card=one(`[data-result-key^="${kind}:"]`);
+        const title=card?.querySelector(card.classList.contains('search-playlist-row')
+          ? '.search-card-open' : '.search-result-name');
         const text=title?.textContent.trim();
         assert(text&&title.dataset.tooltip===text,'title and tooltip keep identical text: '+kind);
         const marks=[...title.querySelectorAll('mark.search-match-text')];
@@ -1227,7 +1294,12 @@
       for(const [category,kind] of [['playlists','playlist'],['podcasts','podcast'],['voices','voice'],['mvs','mv']]){
         await choose(category);check(kind,true);
         if(kind==='playlist')assert(!playlistCard()?.querySelector('.search-playlist-count'),'dedicated playlist results retain their layout');
-        if(kind==='voice')checkVoiceListens();
+        if(kind==='voice'){
+          const row=one('.search-voice-row');
+          assert(row?.querySelector('.search-voice-listens[role="cell"]')?.textContent.trim()==='1.2万'&&
+            row.querySelector('.search-voice-duration[role="cell"]')&&row.querySelector('button.search-voice-radio'),
+            'dedicated voice table places metrics in cells and keeps the parent link');
+        }
       }
       await capture('mv_category_card_title_matches');
       await fresh('不匹配结果');

@@ -41,6 +41,12 @@ export const searchTableLayouts = {
     { id: 'artists', name: '作者', width: 128, grow: 2, resizable: true },
     { id: 'publishTime', name: '时间', width: 128, grow: 2 },
   ]),
+  voice: tableLayout('搜索声音结果', [
+    { id: 'num', name: '#', label: '序号', width: 45, grow: 0 },
+    { id: 'title', name: '标题', width: 200, grow: 5, resizable: true },
+    { id: 'listenerCount', name: '播放量', width: 79, grow: 0, resizable: true },
+    { id: 'duration', name: '时长', width: 64, grow: 0, resizable: true },
+  ]),
 };
 export type SearchTableKind = keyof typeof searchTableLayouts;
 

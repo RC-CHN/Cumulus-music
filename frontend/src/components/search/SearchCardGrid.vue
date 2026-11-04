@@ -258,7 +258,9 @@ async function focusItem(index: number, last = false, primary = false) {
     ?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
   const opener =
     primary && props.table
-      ? [...(buttons ?? [])].find((button) => button.matches('.search-card-open'))
+      ? [...(buttons ?? [])].find((button) =>
+          button.matches(props.table === 'voice' ? '.search-card-play' : '.search-card-open'),
+        )
       : undefined;
   (opener ?? (last ? buttons?.[buttons.length - 1] : buttons?.[0]))?.focus({
     preventScroll: true,
@@ -282,7 +284,11 @@ function keydown(event: KeyboardEvent) {
       event.preventDefault();
       void focusItem(target, event.shiftKey);
     }
-  } else if (event.target.matches('.search-card-open, .search-voice-card .search-card-play')) {
+  } else if (
+    event.target.matches(
+      '.search-card-open, :is(.search-voice-card,.search-voice-row) .search-card-play',
+    )
+  ) {
     const move: Record<string, number> = {
       ArrowRight: index + 1,
       ArrowLeft: index - 1,
@@ -365,7 +371,7 @@ defineExpose({ reconcileViewport: () => update() });
         'search-person-grid': items.every((i) => i.kind === 'artist' || i.kind === 'user'),
         'search-related-grid': items.every((i) => i.kind === 'related'),
         'search-video-grid': items.every((i) => i.kind === 'mv'),
-        'search-voice-grid': items.every((i) => i.kind === 'voice'),
+        'search-voice-grid': !layout && items.every((i) => i.kind === 'voice'),
       }"
       :role="layout ? 'rowgroup' : undefined"
       :style="positionedRows ? { height: `${items.length * TABLE_ROW_HEIGHT}px` } : undefined"

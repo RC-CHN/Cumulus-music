@@ -75,3 +75,14 @@ test('album preserves a fixed date column and its widths cannot leak into playli
   assert.deepEqual(readSearchColumnShares('album', storage), resized);
   assert.equal(readSearchColumnShares('playlist', storage), initialPlaylistShares);
 });
+
+test('voice can transfer surplus through listener count to duration and has its own preference', () => {
+  const layout = searchTableLayouts.voice;
+  assert.equal(layout.baseWidth, 388);
+  assert.deepEqual(layout.shares, [1, 0, 0]);
+  assert.notEqual(layout.storageKey, searchTableLayouts.album.storageKey);
+  assert.notEqual(layout.storageKey, searchTableLayouts.playlist.storageKey);
+  const count = resizeSearchColumns(layout.shares, 0, -24, 120);
+  const duration = resizeSearchColumns(count, 1, -12, 120);
+  assert.deepEqual(widths(duration, 120), [96, 12, 12]);
+});

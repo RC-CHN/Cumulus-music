@@ -84,18 +84,19 @@
     }
     // Voice double click uses the selected episode while its radio link stays independent.
     await choose('voices');const voice=all('.search-result-card')[1];voice.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await wait(()=>voice.classList.contains('search-card-current')&&voice.querySelector('.search-card-play').getAttribute('aria-label').startsWith('暂停'),'voice double click');await capture('voice_double_play');
-    assert(voice.querySelector('.search-voice-duration')?.textContent==='06:00'&&
+    assert(voice.querySelector('.search-voice-duration')?.textContent.trim()==='06:00'&&
       voice.querySelector('.search-voice-radio')?.textContent.trim()==='播单：合成播客 2',
       'known episode duration and parent radio label');
-    const direct=voice.querySelector('.search-card-download');
+    const direct=voice.querySelector('[data-result-action="voice-download"]');
+    const actions=direct?.closest('.search-voice-title-actions');
     await hover(voice);
-    await wait(()=>direct&&Number(getComputedStyle(direct).opacity)>.99,'direct voice download on hover');
+    await wait(()=>actions&&Number(getComputedStyle(actions).opacity)>.99,'direct voice download on hover');
     click(voice.querySelector('.menu-trigger'));await wait(()=>one('.action-menu'),'voice menu');
     assert(button('下载声音'),'context menu still exposes voice download');
     one('.action-menu').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
     await wait(()=>!one('.action-menu'),'voice menu closes before direct action');
     await pointer(innerWidth-3,75);direct.focus({preventScroll:true});
-    await wait(()=>document.activeElement===direct&&!voice.matches(':hover')&&Number(getComputedStyle(direct).opacity)>.99,
+    await wait(()=>document.activeElement===direct&&!voice.matches(':hover')&&Number(getComputedStyle(actions).opacity)>.99,
       'keyboard reveals direct voice download');
     const r=direct.getBoundingClientRect();
     assert(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)?.closest('button')===direct,
