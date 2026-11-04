@@ -1,0 +1,64 @@
+听歌识曲：Windows WASAPI 回采原型与离线验证边界
+
+desktop/probes/recognition-wasapi 是独立的、不可发布的 Cargo 工作区。
+它只在自己的测试二进制编译原型；生产 Rust core、桌面 IPC、打包、配置、
+依赖锁和启动行为不变。没有命令行、环境变量或任意设备入口。Windows
+COM 绑定使用已锁定的 windows-rs 0.61.3（MIT OR Apache-2.0）。
+无厂商 DLL、Windows 设备数据、用户音频、指纹请求、鉴权或上传。
+
+官方基线：PC 3.1.42.205594 x64，cloudmusic.dll SHA256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+函数地址及恢复边界详见 song-recognition-host-contracts.txt：
+
+- 30CFCE–30D02E 的显式 ID 分支使用 GetDevice。原型只使用该分支。
+  校验返回的设备 ID UTF-16 单元完全相同、端点 ACTIVE 且 IMMEndpoint
+  数据流为 eRender；无 GetDefaultAudioEndpoint、eCapture 或端点
+  枚举替补。编译时固定 ID 是合成向量，不是驱动或真实隔离证明。
+  原型只在 pre-cancel 测试中被调用，返回早于 CoInitializeEx。
+- 30C5F0：Activate/GetMixFormat，再使用 shared=0、
+  EVENTCALLBACK 0x40000 | LOOPBACK 0x20000、50,000,000 个 100ns
+  单位、periodicity=0、默认会话。GetMixFormat API 失败立即返回。
+  只接受交错双声道 44,100/48,000 Hz 的 i16 PCM 或 f32 IEEE float。
+  显式核对 tag、声道数、有效位宽、block align 和 byte rate；扩展
+  格式要求 cbSize=22、FL/FR mask=3、精确子格式 GUID。
+- 30BFC0 的原始 24 个回退格式中，保留已验证 resampler 可用的
+  48k/i16、44.1k/i16、48k/f32、44.1k/f32 相对顺序。混合格式不能
+  解析或 Initialize 返回 AUDCLNT_E_UNSUPPORTED_FORMAT 才尝试这些
+  候选；同一格式字节不试两次。每次重新激活同一设备的客户端；
+  设备无效、取消、超时和其他 HRESULT 不再试。这是有意收紧的
+  原型策略；官方也会在其他 Initialize 错误时进更大的回退网格。
+- 30C4D9/30C54C/30C5B8/30AF80：从已协商的客户端获取
+  IAudioCaptureClient，再设私有事件并 Start。等待最多 10 ms，超时也主动取包。
+  原型没有运行 30D1C0 的辅助静音 render 客户端，未验证旧版本
+  Windows 或需此分支的驱动。设备取包失败或取消不会更换设备。
+- 30DAA0：GetNextPacketSize 为 0 不取包，GetBuffer 返回
+  AUDCLNT_S_BUFFER_EMPTY 不发布数据。成功取得的原生包在同线程
+  释放一次，ReleaseBuffer 使用完整帧数，即使只需要最后一个包的
+  前缀。SILENT 生成数字零而不读指针；时间戳错误、不连续、未知
+  flags、非法帧数、非静音空指针、非有限或超范围浮点终止本次采集。
+  这些是原型的防护策略，未在已恢复的官方主分支看到等价 flags 策略。
+- 原型每包最多 48,000 帧，每次最多四秒输入和八秒墙钟。以类型化
+  Cancellation 检查取消；仅在完整会话成功后返回交错 [L,R] 的 i16
+  或 f32 帧，可作为已验证 stock resampler 的输入形状。未将 Windows
+  音频交给重采样或指纹层执行。同步 COM 调用本身不可由标志抢占；
+  后续真实隔离驱动须额外设外部进程超时。未实现默认设备切换或重试。
+
+仓库根目录独立复验（依赖已在本机 Cargo 缓存，使用固定 Rust 工具链）：
+
+  export CARGO_TARGET_DIR="$PWD/.build/recognition-wasapi-target"
+  PROBE_MANIFEST=desktop/probes/recognition-wasapi/Cargo.toml
+  cargo fmt --all --check --manifest-path "$PROBE_MANIFEST"
+  cargo test --locked --offline --manifest-path "$PROBE_MANIFEST"
+  cargo clippy --locked --offline --all-targets --manifest-path "$PROBE_MANIFEST" -- -D warnings
+  cargo test --locked --offline --no-run --target x86_64-pc-windows-gnu --manifest-path "$PROBE_MANIFEST"
+  cargo clippy --locked --offline --all-targets --target x86_64-pc-windows-gnu --manifest-path "$PROBE_MANIFEST" -- -D warnings
+
+Linux 实际执行的合成测试：显式端点身份与方向拒绝，独立冻结 WAVE
+字节与畸形拒绝，格式回退次序和终态错误，交错 PCM 字节序、静音和
+最终包截断，拒绝后仍释放，以及取消/释放失败/超时不返回样本。Windows
+x64 仅交叉编译与链接；PE 中保留实际 COM、Windows event 和释放导入。
+没有可用的私有 Windows 合成 render 驱动，未执行该 PE，未测量 WASAPI
+回采、设备移除或事件驱动质量。下一步需在无用户音频的隔离 Windows VM
+配置独享虚拟 render fixture，测试驱动通过受控清单绑定该端点而非从
+用户输入读取 ID。给选中和另一默认端点分别注入已知频率，证明仅回采
+选中端点、取消和移除不替换端点；记录实际混合格式及是否需要辅助 render。

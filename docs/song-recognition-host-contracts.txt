@@ -42,7 +42,7 @@
   观察到的主分支没有读取 GetBuffer flags 再处理 SILENT 或
   DATA_DISCONTINUITY，不能据此写成“官方补零”或“官方跨设备无缝恢复”。
   Windows 移植应遵守 API 对空/静音指针的保护，并在可控测试中记录
-  这种边界差异。尚未观察设备被拔出、设备切换、不同独占模式的行为。
+  这种边界差异。隔离的 Windows 原型及验证见 song-recognition-wasapi-proof.txt。尚未观察设备被拔出、设备切换、不同独占模式的行为。
 
 2. 送入离线指纹的格式与长度
 
