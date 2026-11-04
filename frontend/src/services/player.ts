@@ -61,6 +61,7 @@ export interface PlayerView {
   state: PlaybackStatus;
   playId: string | null;
   entryId: string | null;
+  downloadTaskId?: string;
   track: TrackView | null;
   position: number | null;
   bufferedThrough?: number | null;

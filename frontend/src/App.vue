@@ -2662,7 +2662,11 @@ onUnmounted(() => {
                 :model="downloads"
                 :playable="player.ready.value"
                 :queueable="player.ready.value && !player.busy.value && !player.view.value?.fm"
-                :current-id="currentTrackId"
+                :current-task-id="
+                  player.loaded.value && player.view.value?.epoch === account.epoch
+                    ? player.view.value.downloadTaskId
+                    : undefined
+                "
                 @dialog="downloadDialog = $event"
                 @batch="openDownloadBatch"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"

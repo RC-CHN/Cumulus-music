@@ -24,7 +24,7 @@ const props = defineProps<{
   locked: boolean;
   playable: boolean;
   queueable?: boolean;
-  currentId?: string;
+  currentTaskId?: string;
   repairing: Set<string>;
   more: boolean;
   loadingMore: boolean;
@@ -215,7 +215,8 @@ async function key(event: KeyboardEvent, index: number) {
         :key="task.id"
         class="download-row"
         :style="columns.style.value"
-        :class="{ current: task.track.id === currentId }"
+        :class="{ current: !active && task.id === currentTaskId }"
+        :aria-current="!active && task.id === currentTaskId ? 'true' : undefined"
         role="row"
         :aria-rowindex="query.offset + start + i + 2"
         :data-download-index="start + i"

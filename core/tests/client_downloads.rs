@@ -580,6 +580,12 @@ async fn local_download_selection_uses_the_owned_file_and_revalidates_integrity(
             let view = subscription.current().unwrap();
             if view.state == cumulus_core::playback::controller::PlaybackStatus::Playing {
                 assert_eq!(view.actual_quality.as_deref(), Some("lossless"));
+                assert_eq!(view.download_task_id.as_deref(), Some(id.as_str()));
+                assert!(
+                    !serde_json::to_string(&view)
+                        .unwrap()
+                        .contains(&serde_json::to_string(&path).unwrap())
+                );
                 break;
             }
             subscription.changed().await.unwrap();

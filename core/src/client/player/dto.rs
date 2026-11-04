@@ -25,6 +25,9 @@ pub struct PlayerView {
     pub state: PlaybackStatus,
     pub play_id: Option<String>,
     pub entry_id: Option<String>,
+    /// Local download task identity only; never expose the media file locator.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download_task_id: Option<String>,
     pub track: Option<TrackView>,
     pub origin: Option<PlayerOrigin>,
     #[serde(skip_serializing_if = "Option::is_none")]

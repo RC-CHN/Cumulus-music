@@ -218,6 +218,12 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         state: value.state,
         play_id: value.play_id.clone(),
         entry_id: value.selected.as_ref().map(|i| i.entry_id.clone()),
+        download_task_id: value
+            .selected
+            .as_ref()
+            .and_then(|i| i.resource["download_task_id"].as_str())
+            .filter(|id| id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .map(str::to_owned),
         resource_kind: value.selected.as_ref().map(|i| identity::kind(&i.resource)),
         track: value
             .selected

@@ -105,7 +105,10 @@
     assert(JSON.stringify(sortedReads)==='["单曲 01"]','sort and pending search request the native page once');
     client.downloads=originalDownloads;
     click(one('[data-download-sort="name"]'));await wait(()=>ready()&&first()?.textContent.includes('019'),'name descending');click(button('播放全部',one('.download-toolbar')));await fixture('verify_queue',{ids:Array.from({length:10},(_,i)=>19-i),current:19});pausePlayer();await capture('play_filtered_order');
-    const chosen=all('[data-download-index]').find(n=>n.textContent.includes('合成单曲 017'));chosen.focus({preventScroll:true});key(chosen,'Enter');await fixture('verify_queue',{ids:Array.from({length:10},(_,i)=>19-i),current:17});pausePlayer();await capture('play_filtered_row');
+    const chosen=all('[data-download-index]').find(n=>n.textContent.includes('合成单曲 017'));chosen.focus({preventScroll:true});key(chosen,'Enter');await fixture('verify_queue',{ids:Array.from({length:10},(_,i)=>19-i),current:17});pausePlayer();
+    const highlighted=()=>all('.download-row[aria-current="true"]');
+    await wait(()=>highlighted().length===1&&highlighted()[0].dataset.downloadTask===chosen.dataset.downloadTask,'highlight only the loaded offline task');
+    await capture('play_filtered_row');
     await select('voice');click(button('播放全部',one('.download-toolbar')));await fixture('verify_queue',{ids:Array.from({length:12},(_,i)=>121+i),current:121});pausePlayer();await capture('play_voice_all');
     let mode='',releaseGrowth,readStarted=false;
     // Only inject delay/failure at the existing typed adapter in this isolated

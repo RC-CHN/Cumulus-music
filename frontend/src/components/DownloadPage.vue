@@ -25,7 +25,7 @@ const props = defineProps<{
   playable: boolean;
   preparing?: boolean;
   queueable?: boolean;
-  currentId?: string;
+  currentTaskId?: string;
 }>();
 const emit = defineEmits<{
   dialog: [target: DownloadDialogTarget];
@@ -223,7 +223,7 @@ function play(task?: DownloadTask) {
           :locked="locked"
           :playable="playable && !locked && !preparing"
           :queueable="queueable && !locked"
-          :current-id="currentId"
+          :current-task-id="currentTaskId"
           :repairing="repairing"
           :more="model.hasMore.value"
           :loading-more="model.loadingMore.value"
