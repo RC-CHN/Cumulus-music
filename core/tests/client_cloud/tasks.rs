@@ -193,7 +193,9 @@ async fn task_directory_requires_recorded_unchanged_source_and_its_account_witho
 async fn encoding_retry_only_rechecks_the_known_song_then_publishes_once_even_if_source_is_gone() {
     let f = Fixture::new(0);
     f.api.encoding_mode.store(1, Ordering::Release);
-    let client = f.client();
+    // This scenario tests encoding, not NOS part boundaries. Keep the
+    // upload to one journaled chunk on slow hosted Windows filesystems.
+    let client = f.client_with_chunk_size(support::DATA.len());
     let input = f.input();
     let created = client
         .cloud_command(
@@ -205,7 +207,7 @@ async fn encoding_retry_only_rechecks_the_known_song_then_publishes_once_even_if
         .await
         .unwrap();
     let id = created.accepted[0].clone();
-    tokio::time::timeout(Duration::from_secs(5), async {
+    tokio::time::timeout(Duration::from_secs(20), async {
         loop {
             f.clock.0.fetch_add(1000, Ordering::AcqRel);
             let p = client
@@ -221,7 +223,7 @@ async fn encoding_retry_only_rechecks_the_known_song_then_publishes_once_even_if
         }
     })
     .await
-    .unwrap();
+    .expect("encoding failure and worker release were not observed");
     let bulk = client
         .cloud_command(
             "1",
