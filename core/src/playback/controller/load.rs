@@ -385,6 +385,7 @@ impl Actor {
             Ok(prepared) => {
                 self.source_retry = None;
                 self.position = Some(prepared.position);
+                self.paused_seek = applied_seek.is_some() && pending.paused;
                 if let Some(revision) = applied_seek {
                     self.seek_revision = revision;
                 }

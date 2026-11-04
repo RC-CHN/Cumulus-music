@@ -145,6 +145,7 @@ impl AudioEngine for Fake {
             buffered_through: None,
             paused: d.paused,
             buffering: false,
+            seeking: false,
             volume: Some(d.volume),
             speed: Some(d.speed),
             audio_output: Some("fixture".into()),

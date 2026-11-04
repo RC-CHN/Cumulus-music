@@ -139,8 +139,6 @@ impl Actor {
         self.equalizer_observe().await?;
         self.loudness_observe().await?;
         let view = self.poll_with_parametric_recovery().await?;
-        let mut events = std::mem::take(&mut self.deferred_events);
-        events.extend(view.events);
         let loaded = self
             .loaded
             .as_ref()
@@ -148,7 +146,10 @@ impl Actor {
         // Native clock and pause/cache flags describe only the reported entry.
         // End events are checked separately, including after the entry closes.
         let current_entry = view.entry_id == Some(loaded.media.entry_id);
-        let current_position = view.position.filter(|_| current_entry);
+        let reported_position = view.position_for(loaded.media.entry_id);
+        let current_position = reported_position.filter(|_| !self.paused_seek);
+        let mut events = std::mem::take(&mut self.deferred_events);
+        events.extend(view.events);
         let was_paused = self.state == PlaybackStatus::Paused;
         // Native events can share a poll (including ones drained by a
         // transport command). A dead engine or current-entry failure cannot
@@ -268,7 +269,7 @@ impl Actor {
             self.source_retry = retry;
             return Ok(());
         }
-        self.buffered_through = if !ended && current_position.is_some() {
+        self.buffered_through = if !ended && reported_position.is_some() {
             view.buffered_through
                 .and_then(|time| loaded.timeline.from_media(time).ok())
                 .filter(|end| self.position.is_some_and(|position| *end > position))

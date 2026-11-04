@@ -521,18 +521,20 @@ impl Actor {
             }
             result => result?,
         };
-        // Poll consumes native events even when we only need the clock.
-        // The regular tick still owns their handling for this load.
-        self.deferred_events.extend(view.events);
         let loaded = self.loaded.as_ref().expect("checked");
-        if let Some(position) = view
-            .position
-            .filter(|_| view.entry_id == Some(loaded.media.entry_id))
+        if let Some(position) = view.position_for(loaded.media.entry_id)
+            && !self.paused_seek
         {
             let observed = loaded.timeline.from_media(position)?;
             if !preserve_position || !self.position.is_some_and(|p| observed < p) {
                 self.position = Some(observed);
             }
+        }
+        // Poll consumes native events even when we only need the clock.
+        // The regular tick still owns their handling for this load.
+        self.deferred_events.extend(view.events);
+        if !paused {
+            self.paused_seek = false;
         }
         self.state = if paused {
             PlaybackStatus::Paused
@@ -554,6 +556,7 @@ impl Actor {
         })
         .await?;
         self.position = Some(seconds);
+        self.paused_seek = self.state == PlaybackStatus::Paused;
         self.buffered_through = None;
         self.seek_revision = self.control_revision;
         self.persist_transport().await

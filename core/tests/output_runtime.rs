@@ -123,6 +123,7 @@ impl Fixture {
                 buffered_through: None,
                 paused: true,
                 buffering: false,
+                seeking: false,
                 volume: None,
                 speed: None,
                 audio_output: Some("pulse".into()),

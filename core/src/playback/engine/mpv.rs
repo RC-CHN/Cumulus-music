@@ -711,16 +711,22 @@ impl AudioEngine for MpvEngine {
             return Err(Error::ParametricProcessorFailed);
         }
         let events = self.drain()?;
+        // These native properties are independent reads. If the seek settles
+        // between them, the clock could still have been sampled before it did.
+        let seeking_before = self.property(c"seeking").as_deref() != Some("no");
+        let position = self.number(c"time-pos");
+        let seeking = seeking_before || self.property(c"seeking").as_deref() != Some("no");
         Ok(EngineSnapshot {
             entry_id: self.entry,
-            position: self.number(c"time-pos"),
+            position,
             duration: self.number(c"duration"),
             // Advisory demuxer timestamp; never use it for seeking or rights.
-            buffered_through: (self.property(c"seeking").as_deref() == Some("no"))
+            buffered_through: (!seeking)
                 .then(|| self.number(c"demuxer-cache-time"))
                 .flatten(),
             paused: self.property(c"pause").as_deref() == Some("yes"),
             buffering: self.property(c"paused-for-cache").as_deref() == Some("yes"),
+            seeking,
             volume: self.number(c"volume"),
             speed: self.number(c"speed"),
             audio_output: self.property(c"current-ao"),

@@ -132,8 +132,18 @@ pub struct EngineSnapshot {
     pub buffered_through: Option<f64>,
     pub paused: bool,
     pub buffering: bool,
+    /// The clock may still describe the pre-seek decode position.
+    pub seeking: bool,
     pub volume: Option<f64>,
     pub speed: Option<f64>,
     pub audio_output: Option<String>,
     pub events: Vec<EngineEvent>,
+}
+
+impl EngineSnapshot {
+    /// A pending native seek can still report the old clock for this entry.
+    pub(crate) fn position_for(&self, entry_id: i64) -> Option<f64> {
+        self.position
+            .filter(|_| self.entry_id == Some(entry_id) && !self.seeking)
+    }
 }

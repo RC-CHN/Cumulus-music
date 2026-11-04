@@ -571,6 +571,7 @@ async fn verify_cold_ncm(
                 buffered_through: None,
                 paused: false,
                 buffering: false,
+                seeking: false,
                 volume: None,
                 speed: None,
                 audio_output: None,

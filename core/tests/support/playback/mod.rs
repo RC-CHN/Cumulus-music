@@ -106,6 +106,7 @@ pub struct DeviceState {
     pub view: EngineSnapshot,
     pub loads: usize,
     pub stops: usize,
+    pub polls: usize,
     pub duration: f64,
     pub bounds: Vec<(f64, Option<f64>)>,
     pub pauses: Vec<bool>,
@@ -172,6 +173,7 @@ impl Default for Device {
                     buffered_through: None,
                     paused: true,
                     buffering: false,
+                    seeking: false,
                     volume: Some(100.0),
                     speed: Some(1.0),
                     audio_output: Some("fixture".into()),
@@ -179,6 +181,7 @@ impl Default for Device {
                 },
                 loads: 0,
                 stops: 0,
+                polls: 0,
                 duration: 120.0,
                 bounds: vec![],
                 pauses: vec![],
@@ -311,6 +314,7 @@ impl AudioEngine for Engine {
         state.view.position = Some(request.start);
         state.view.duration = Some(state.duration);
         state.view.buffered_through = None;
+        state.view.seeking = false;
         state.view.paused = true;
         Ok(LoadedMedia {
             entry_id,
@@ -367,11 +371,13 @@ impl AudioEngine for Engine {
         state.stops += 1;
         state.view.entry_id = None;
         state.view.position = None;
+        state.view.seeking = false;
         state.view.paused = true;
         Ok(())
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
         let mut state = self.0.state.lock().unwrap();
+        state.polls += 1;
         if self.0.parametric_attached.load(Ordering::SeqCst)
             && self.0.parametric_poll_fault.load(Ordering::SeqCst)
             && !state.view.paused

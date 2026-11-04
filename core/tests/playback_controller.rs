@@ -77,6 +77,127 @@ async fn paused_seek_survives_latency_reports_speed_changes_and_repeated_pause()
 }
 
 #[tokio::test]
+async fn a_pending_rewind_cannot_restore_the_pre_seek_clock() {
+    let f = Fixture::new();
+    let playing = f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Seek(60.0)).await.unwrap();
+    f.command(Cmd::Pause(true)).await.unwrap();
+    let rewound = f.command(Cmd::Seek(10.0)).await.unwrap();
+    assert_eq!(rewound.position, Some(10.0));
+    let before = {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.position = Some(60.0);
+        state.view.buffered_through = Some(75.0);
+        state.polls
+    };
+    // mpv may acknowledge its queued seek before seeking=yes becomes visible.
+    let queued = until(&f.player, |snapshot| {
+        f.device.state.lock().unwrap().polls > before && snapshot.revision > rewound.revision
+    })
+    .await;
+    assert_eq!(queued.position, Some(10.0));
+    let before = {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.seeking = true;
+        state.polls
+    };
+    let observed = until(&f.player, |snapshot| {
+        f.device.state.lock().unwrap().polls > before && snapshot.revision > queued.revision
+    })
+    .await;
+    assert_eq!(observed.position, Some(10.0));
+    assert_eq!(observed.state, Status::Paused);
+    assert_eq!(observed.play_id, playing.play_id);
+    assert_eq!(observed.buffered_through, None);
+
+    // Pause/unpause sample the engine directly, before the next periodic tick.
+    assert_eq!(
+        f.command(Cmd::Pause(true)).await.unwrap().position,
+        Some(10.0)
+    );
+    f.device.state.lock().unwrap().view.seeking = false;
+    assert_eq!(
+        f.command(Cmd::Pause(false)).await.unwrap().position,
+        Some(10.0)
+    );
+    assert_eq!(
+        f.store.get("9", "playback", "position").unwrap().unwrap()["seconds"],
+        json!(10.0)
+    );
+    {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.position = Some(10.4);
+        state.view.seeking = false;
+    }
+    until(&f.player, |snapshot| snapshot.position == Some(10.4)).await;
+}
+
+#[tokio::test]
+async fn accepted_room_transport_replaces_a_local_paused_seek_and_resumes_its_clock() {
+    use cumulus_core::playback::controller::RemotePlayback;
+
+    let f = Fixture::new();
+    let playing = f.command(replace(&[1])).await.unwrap();
+    let entry_id = playing.selected.unwrap().entry_id;
+    f.command(Cmd::Pause(true)).await.unwrap();
+    let paused = f.command(Cmd::Seek(10.0)).await.unwrap();
+    let resumed = f
+        .command(Cmd::ApplyRemote(RemotePlayback {
+            expected: paused.fence(),
+            entry_id,
+            position: 15.0,
+            paused: false,
+        }))
+        .await
+        .unwrap();
+    assert_eq!(resumed.play_id, paused.play_id);
+    assert_eq!(resumed.state, Status::Playing);
+    assert_eq!(resumed.position, Some(15.0));
+    f.device.state.lock().unwrap().view.position = Some(15.5);
+    until(&f.player, |snapshot| snapshot.position == Some(15.5)).await;
+}
+
+#[tokio::test]
+async fn a_stalled_seek_keeps_the_latest_accepted_position_on_failure_and_releases_next_track() {
+    let f = Fixture::new();
+    let first = f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Seek(60.0)).await.unwrap();
+    f.command(Cmd::Pause(true)).await.unwrap();
+    f.command(Cmd::Seek(10.0)).await.unwrap();
+    {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.position = Some(60.0);
+        state.view.seeking = true;
+    }
+    f.device.fail_seek.store(true, Ordering::SeqCst);
+    assert!(f.command(Cmd::Seek(20.0)).await.is_err());
+    assert_eq!(f.command(Cmd::Snapshot).await.unwrap().position, Some(10.0));
+    f.device.fail_seek.store(false, Ordering::SeqCst);
+    let newer = f.command(Cmd::Seek(8.0)).await.unwrap();
+    assert_eq!(newer.position, Some(8.0));
+    assert_eq!(newer.play_id, first.play_id);
+    {
+        let mut state = f.device.state.lock().unwrap();
+        state.view.position = Some(60.0);
+        state.view.events.push(EngineEvent::Ended {
+            entry_id: 1,
+            reason: EndReason::Error,
+            error: -15,
+        });
+    }
+    let failed = until(&f.player, |snapshot| snapshot.state == Status::Error).await;
+    assert_eq!(failed.position, Some(8.0));
+    assert_eq!(failed.play_id, first.play_id);
+    assert_eq!(song(&failed), Some(1));
+    let next = f.command(Cmd::Next).await.unwrap();
+    assert_eq!(song(&next), Some(2));
+    assert_ne!(next.play_id, first.play_id);
+    assert_eq!(next.position, Some(0.0));
+    f.device.state.lock().unwrap().view.position = Some(1.0);
+    until(&f.player, |snapshot| snapshot.position == Some(1.0)).await;
+}
+
+#[tokio::test]
 async fn eof_is_bound_to_native_entry_and_single_loop_differs_from_manual_next() {
     let f = Fixture::new();
     f.command(replace(&[1, 2])).await.unwrap();

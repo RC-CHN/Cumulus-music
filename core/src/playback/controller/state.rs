@@ -79,6 +79,9 @@ pub(super) struct Actor {
     pub state: PlaybackStatus,
     pub play_id: Option<String>,
     pub position: Option<f64>,
+    /// Keep an explicit paused seek as the display/restore clock until resume
+    /// or a different load. An acknowledged seek can still be queued in mpv.
+    pub paused_seek: bool,
     pub buffered_through: Option<f64>,
     pub error: Option<crate::playback::failure::PlaybackFailure>,
     pub history_error: Option<String>,
@@ -144,6 +147,7 @@ impl Actor {
             state: PlaybackStatus::Idle,
             play_id: None,
             position: None,
+            paused_seek: false,
             buffered_through: None,
             error: None,
             history_error: None,
@@ -274,6 +278,7 @@ impl Actor {
     }
     pub async fn cancel_load(&mut self) -> Result<()> {
         self.cancel.cancel();
+        self.paused_seek = false;
         self.deferred_events.clear();
         self.generation
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_add(1))
