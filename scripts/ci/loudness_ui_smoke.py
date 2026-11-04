@@ -73,6 +73,7 @@ def main():
     parser.add_argument('--filter-library', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--runtime-fault', action='store_true', help='verify typed GEQ and loudness faults during native Pause')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -80,7 +81,8 @@ def main():
     if args.runtime:
         base['PATH'] = str(args.runtime.resolve()) + os.pathsep + base.get('PATH','')
     audit = []
-    for mode, expected in [('normal',10), ('reopen',2), ('missing',4), ('damaged',3)]:
+    modes = [('runtime_fault', 6)] if args.runtime_fault else [('normal',10), ('reopen',2), ('missing',4), ('damaged',3)]
+    for mode, expected in modes:
         group = 'normal' if mode == 'reopen' else mode
         directory = root / group
         directory.mkdir(exist_ok=mode == 'reopen')
@@ -108,6 +110,14 @@ def main():
         if mode == 'damaged':
             backups = read_closed_loudness_backups(directory / 'run/state/core.sqlite3')
             assert len(backups) == 1 and json.loads(backups[0][0])['current']['enabled'] == 'broken'
+        if mode == 'runtime_fault':
+            wet, paused, resumed, reapplied = (stage['native'] for stage in stages[2:])
+            assert wet['state'] == resumed['state'] == reapplied['state'] == 'playing' and paused['state'] == 'paused'
+            assert wet['equalizer']['status'] == reapplied['equalizer']['status'] == 'processing'
+            assert paused['equalizer']['status'] == resumed['equalizer']['status'] == 'failed'
+            assert all(stage['playId'] == wet['playId'] and stage['entryId'] == wet['entryId']
+                       and stage['error'] is None for stage in (paused, resumed, reapplied))
+            assert wet['position'] < paused['position'] < resumed['position'] < reapplied['position']
         audit.append({'mode':mode,'states':expected,'screenshots':captures})
     result = {'ok':True,'actualWebView':True,'actualDecoder':True,'audioOutput':'null','physicalDisplayVerified':False,'physicalAudioOutputVerified':False,'realMusicRequests':0,'cases':audit}
     (root / 'audit.json').write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')

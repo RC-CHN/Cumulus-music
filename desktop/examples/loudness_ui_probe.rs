@@ -1,4 +1,6 @@
 //! Real settings IPC, local metadata, player actor and native filter with null AO.
+#[path = "support/effect_runtime_fault.rs"]
+mod fault;
 #[path = "support/loudness_fixture.rs"]
 mod fixture;
 use cumulus_core::{
@@ -10,7 +12,14 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 struct Offline;
 impl Api for Offline {
@@ -40,7 +49,13 @@ fn main() {
         }
         let session = Arc::new(AccountSession::new(Arc::new(Offline), Some(registry.store())));
         let client = MusicClient::with_session(session, registry);
-        let client = cumulus_desktop::configure_native_audio(client, &app.path().resource_dir()?, true);
+        let fault_armed = (setup_mode == "runtime_fault").then(|| Arc::new(AtomicBool::new(false)));
+        let client = if let Some(armed) = fault_armed.clone() {
+            let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER").expect("explicit probe filter"));
+            client.with_audio_factory(move || Ok(Box::new(fault::Audio::open(path.clone(), armed.clone())?)))
+        } else {
+            cumulus_desktop::configure_native_audio(client, &app.path().resource_dir()?, true)
+        };
         tauri::async_runtime::block_on(async {
             client.start_local_library().await?;
             if !reopen { client.local_command(LocalCommand::Watch { path: setup.join("media").to_string_lossy().into_owned() }).await?; }
@@ -52,6 +67,11 @@ fn main() {
         app.listen("loudness-proof", move |event| {
             let value: Value = serde_json::from_str(event.payload()).unwrap();
             let stage = value["stage"].as_str().unwrap_or("").to_owned();
+            if stage == "arm-runtime-fault" && let Some(armed) = &fault_armed {
+                armed.store(true, Ordering::Release);
+                handle.get_webview_window("main").unwrap().eval("window.__runtimeFaultArmed=true;").unwrap();
+                return;
+            }
             if stage == "resize" {
                 let width = value["width"].as_f64().unwrap();
                 let height = value["height"].as_f64().unwrap();

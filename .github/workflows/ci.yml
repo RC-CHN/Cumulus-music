@@ -268,6 +268,7 @@ jobs:
           python scripts/ci/equalizer_live_smoke.py --binary .build/target/debug/examples/equalizer_ui_probe.exe --root .build/ci-equalizer-live-windows --runtime .build/package-stage/windows-x64/native --filter-library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
           cargo build -p cumulus-desktop --example loudness_ui_probe --features custom-protocol --locked
           python scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe.exe --root .build/ci-loudness-ui-windows --runtime .build/package-stage/windows-x64/native --filter-library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
+          python scripts/ci/loudness_ui_smoke.py --runtime-fault --binary .build/target/debug/examples/loudness_ui_probe.exe --root .build/ci-effect-runtime-windows --runtime .build/package-stage/windows-x64/native --filter-library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows
           python scripts/ci/ui_smoke.py --binary .build/target/debug/examples/login_interception_ui_probe.exe --root .build/ci-login-windows-legacy --legacy
@@ -565,6 +566,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/equalizer_live_smoke.py --binary .build/target/debug/examples/equalizer_ui_probe --root .build/ci-equalizer-live-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example loudness_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/loudness_ui_smoke.py --binary .build/target/debug/examples/loudness_ui_probe --root .build/ci-loudness-ui-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/loudness_ui_smoke.py --runtime-fault --binary .build/target/debug/examples/loudness_ui_probe --root .build/ci-effect-runtime-linux --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example login_interception_ui_probe --features custom-protocol --locked
           xvfb-run -a dbus-run-session -- /usr/bin/python3 desktop/examples/run_auth_probe.py .build/ci-login --binary .build/target/debug/examples/login_interception_ui_probe --stage-prefix interception_ --screenshots 4 --small
           python3 desktop/examples/audit_login_interception_probe.py .build/ci-login

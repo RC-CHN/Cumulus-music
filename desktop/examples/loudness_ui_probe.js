@@ -66,6 +66,35 @@
         await capture('missing_filter', 'failed', true);
         await toggle(); await capture('missing_disabled', 'off', false);
         assert(one('.playerbar [aria-label="暂停"]'), 'ordinary playback stopped');
+      } else if (mode === 'runtime_fault') {
+        step = 'runtime fault';
+        const player = () => invoke('player_snapshot', {epoch});
+        const first = await player();
+        await invoke('player_action', {epoch, action:{kind:'equalizer', expected_revision:first.equalizer.revision,
+          settings:{enabled:true, gains:[3,0,0,0,0,0,0,0,0,0]}}});
+        await wait(() => one('.playerbar .equalizer-toggle')?.dataset.equalizerState === 'processing', 'native equalizer processing');
+        await capture('runtime_processing', 'processing', true);
+        await emit('arm-runtime-fault');
+        await wait(() => window.__runtimeFaultArmed, 'fault injection armed');
+        await click(one('.playerbar [aria-label="暂停"]'));
+        await wait(() => one('.playerbar [aria-label="播放"]') &&
+          one('.playerbar .equalizer-toggle')?.dataset.equalizerState === 'problem', 'pause and equalizer failure visible');
+        await capture('runtime_paused', 'failed', true);
+        const paused = await player();
+        assert(paused.state === 'paused' && paused.playId === first.playId && paused.entryId === first.entryId,
+          'pause lost the current native playback');
+        await click(one('.playerbar [aria-label="播放"]'));
+        await wait(() => Number(one('[aria-label="播放进度"]')?.value) > paused.position + 0.3, 'same native clock advanced');
+        await capture('runtime_resumed', 'failed', true);
+        await click(one('[aria-label="重新应用音量均衡"]'));
+        await wait(() => phase() === 'processing', 'loudness explicitly reattached');
+        await click(one('.playerbar .equalizer-toggle'));
+        await wait(() => one('.equalizer-dialog[open]'), 'equalizer dialog opens');
+        await click([...one('.equalizer-dialog[open]').querySelectorAll('button')].find(node => node.textContent.trim() === '重新应用'));
+        await wait(() => one('.playerbar .equalizer-toggle')?.dataset.equalizerState === 'processing', 'GEQ explicitly reattached');
+        await click(one('.equalizer-dialog[open] [aria-label="关闭均衡器"]'));
+        await wait(() => !one('.equalizer-dialog[open]'), 'equalizer dialog closed');
+        await capture('runtime_reapplied', 'processing', true);
       } else {
         for (const [width,height,theme] of [[1120,760,'light'],[1120,760,'dark'],[760,540,'dark'],[760,540,'light']]) {
           step = `layout ${width} ${theme}`; await layout(width,height,theme); await capture(`processing_${width}_${theme}`, 'processing', true);
