@@ -1,0 +1,51 @@
+name: Windows native open transport lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-named-pipe:
+    name: Synthetic local named pipe
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Verify the isolated Win64 transport
+        env:
+          CUMULUS_LAB_ENV_CANARY: synthetic-parent-only
+        run: |
+          if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') {
+            throw 'A real Windows x64 runner is required'
+          }
+          $manifest = 'desktop/probes/native-open-windows/Cargo.toml'
+          cargo fmt --manifest-path $manifest -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting check failed' }
+          cargo clippy --locked --manifest-path $manifest --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Clippy failed' }
+          cargo test --locked --manifest-path $manifest
+          if ($LASTEXITCODE -ne 0) { throw 'Wire fixtures failed' }
+          $proof = Join-Path $env:RUNNER_TEMP 'cumulus-native-open-windows-lab.json'
+          cargo run --quiet --locked --manifest-path $manifest | Tee-Object -FilePath $proof
+          if ($LASTEXITCODE -ne 0) { throw 'Native named-pipe proof failed' }
+          $report = Get-Content -Raw $proof | ConvertFrom-Json
+          foreach ($key in @('ok','nativeWindowsNamedPipe','actualChildProcesses','childEnvironmentIsolated',
+                            'canonicalDirectoryIsolation','firstInstanceExclusive','logonOnlyDaclObserved',
+                            'sameUserAndLogonBothDirections','unicodeSyntheticFrame','busyBeforeSend',
+                            'boundedMalformedAndStalledFrames','lostReceiptNotRetried')) {
+            if ($report.$key -ne $true) { throw "Missing proof: $key" }
+          }
+          if ($report.productionEnabled -ne $false -or $report.realFilesOpened -ne 0 -or $report.registryWrites -ne 0) {
+            throw 'Unexpected production activity'
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-native-open-transport-lab
+          path: ${{ runner.temp }}/cumulus-native-open-windows-lab.json
+          if-no-files-found: error
+          retention-days: 7

@@ -1,0 +1,73 @@
+Windows 原生文件打开：候选注册证据与暖转交前置实验
+
+官方证据与安装器边界
+- 原版 Windows 3.1.42.205594 的 native shell command 采用 --play="%1"；
+  M4:14568–14579、M377:24–34、M3085:5915–5926 将暖启动的本地路径转到
+  与冷启动相同的 onPlayLocalMusic 分支。恢复链和 DLL 锚点见
+  docs/default-player-contracts.txt。该证据没有证明原版 IPC 传输或安全描述符。
+- 固定 Tauri CLI 2.12.4 的 installer.nsi:662–665 向 APP_ASSOCIATE 传普通
+  "%1"，不会传 --play。FileAssociation.nsh:66–76 写 Software\Classes\.ext
+  的未命名默认值；101–106 会在卸载时恢复备份。既不适配 Cumulus 参数，
+  也不能保证保留用户后来选择。因此不启用 bundle.fileAssociations。
+- 将来仅声明 MP3/FLAC Open With 候选时，可用 currentUser 安装器的
+  bundle.windows.nsis.installerHooks。POSTINSTALL（726–728）应在可执行
+  文件和卸载信息存在后写自有 HKCU Software\Classes\Cumulus.Audio.1，
+  使用命令 `"$INSTDIR\cumulus.exe" --play="%1"`，并为两个后缀写入
+  OpenWithProgids 的自有命名值。微软文档的 AllowSilentDefaultTakeOver
+  可让 Windows 在无显式选择时不把此 ProgID 当默认候选。不写扩展名默认、
+  HKCR、UserChoice/Hash、OpenWithList/MRU 或 RegisteredApplications；
+  Windows Settings 的 Default Apps 入口是另一项后续功能。
+- 卸载只应在 POSTUNINSTALL（866–868，已过 CheckIfAppIsRunning）确认
+  自有命令与安装位置仍匹配后移除本产品命名值/自有键。/UPDATE 路径保留候选；
+  不碰外部值，安装与真正卸载后才通知 SHCNE_ASSOCCHANGED。不要在
+  PREUNINSTALL 执行删除：它先于 771 行的应用运行/取消检查。
+- 已有脚本 windows_nsis_smoke.py 的当前用户临时安装用 `/S /D=绝对目录`，
+  卸载用 `/S _?=绝对目录`；末尾目录是 NSIS 原始参数，不带引号。`/P`
+  为被动模式，`/UPDATE` 保留更新状态，`/R` 在静默/被动安装后运行应用，
+  `/ARGS` 随之传参。候选测试不应传 `/R` 或修改默认。
+- 将来在一次性 Windows x64 用户/Runner 上验 exact NSIS：用现有 CI 产物
+  SHA/run/attempt、校验和与 scratch 守卫；记录安装前、安装后、更新后、卸载后
+  既有键和有效默认（默认未配置也须区别）；用 SHAssocEnumHandlers 枚举
+  MP3/FLAC 候选，显式 ShellExecuteEx/SEE_MASK_CLASSNAME 启动该 ProgID，
+  用实际桌面/解码观察冷启动与原实例暖转交。不能用双击启动默认作为替代。
+  Windows Server 的 Shell 枚举也不能代替 Windows 10/11 的菜单外观。
+
+独立命名管道实验（未连接产品）
+- desktop/probes/native-open-windows 是独立、未发布的 Rust workspace。父进程
+  只创建临时目录/管道和自己的子进程；不读实际应用数据、Shell 注册表、
+  播放器或媒体文件，不使用用户音频，不接触音乐服务。所有文件路径都是
+  固定合成值；操作只返回固定阶段名、布尔证明及错误类型/Win32 错误号，
+  不输出 SID、真实目录路径、管道名称、进程或账号数据。
+- 管道名用规范化本地目录的 FileIdInfo（卷 ID + 文件 ID）和当前 logon SID
+  作进程间寻址，同一目录的别名得到同一地址，其他目录不能错投。不是授权
+  凭据。仅 Windows 磁盘绝对路径；UNC、设备或 URL 不作为本地文件。
+- Tokio 1.53.1 的重叠 I/O 拥有内核缓冲区。原生命名管道显式 first instance、
+  单实例、拒绝远端客户端；安全描述符的 protected DACL 只授权当前 logon SID。
+  实验用 GetSecurityInfo 读回实际 DACL（不打印）。两端分别用内核 pipe
+  PID、OpenProcessToken 的 TokenUser/TokenLogonSid 和同一个仍存活的进程句柄
+  核对用户、登录会话；失败时不收发路径。不冒用对方令牌。
+- 只有该次连接 ready 后才发送一个有长度限制的帧。最多 8 条无控制字符的
+  UTF-8 路径，每项最多 4096 字节，整体 32 KiB；坏帧或未完成帧有明确的
+  限时结果。仅一帧进入实验接收点，同一连接不处理第二条命令；Windows
+  byte pipe 没有 Unix 半关闭语义。忙时 CreateFileW 立即拒绝；发送后丢回执
+  视为未确认，不重连或重发。独立子进程只继承 Windows loader 最小环境，
+  工作目录也限定在对应临时目录。测试超时会清理自身子进程。
+- Windows x64 实机命令：
+  cargo run --locked --manifest-path desktop/probes/native-open-windows/Cargo.toml
+  仓库的手动工作流 Windows native open transport lab 可运行同一程序并只保留
+  JSON。没有自动部署/安装，且不参与发行门槛。Linux 只验证帧向量，MinGW
+  只证明 x64 代码编译链接；真正的 Windows ACL、握手和错误结果必须以这条
+  Windows 命令或 Runner 的报告为准。未用 Wine 或编译结果替代实机。
+- 仍需实际 Windows 报告、独立登录拒绝/受限或提升令牌边界，以及正式 app
+  的单资料目录所有权、活跃账号/队列栅栏、原窗口恢复、实际播放和窗口关闭
+  取消。安装器和 Windows 产品暖转交目前均保持关闭。
+
+主要依据（适用于本实验/边界，不是 Windows 实测凭据）：
+https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi
+https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/FileAssociation.nsh
+https://learn.microsoft.com/en-us/windows/win32/shell/how-to-include-an-application-on-the-open-with-dialog-box
+https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids
+https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow
+https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights
+https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
+https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions
