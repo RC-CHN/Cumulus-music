@@ -111,9 +111,20 @@ def isolated_audio(root, env):
             raise RuntimeError(f'cannot select private sink ({selected.returncode}): {error}')
 
         wait_for('private sink selection (WirePlumber default metadata)', select_private_sink, 10)
-        actual_sink = subprocess.check_output(['pactl', 'get-default-sink'], env=pactl_env,
-                                              text=True, timeout=3).strip()
-        assert actual_sink == 'cumulus_private', f'wrong private default sink: {actual_sink}'
+
+        def private_sink_published():
+            assert all(process.poll() is None for process in (core, pulse, policy)), (
+                'private audio service exited before publishing the selected sink')
+            actual_sink = subprocess.check_output(['pactl', 'get-default-sink'], env=pactl_env,
+                                                  text=True, timeout=3).strip()
+            # The successful setter can precede publication to this separate
+            # Pulse connection. Wait for metadata without setting it again.
+            if actual_sink == '@DEFAULT_SINK@':
+                return False
+            assert actual_sink == 'cumulus_private', f'wrong private default sink: {actual_sink}'
+            return True
+
+        wait_for('private sink readback (WirePlumber default metadata)', private_sink_published, 10)
         wm = spawn('openbox', '--sm-disable', process_env=env)
 
         def wm_ready():

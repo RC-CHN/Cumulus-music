@@ -221,3 +221,12 @@ Linux 发行包均衡器选择器回归
   重现同一超时，新脚本通过相同的 PCM 和状态断言。两者均使用无外网的
   私有 Xvfb、D-Bus 和 PipeWire；开发程序不代表新提交的发行包或远端 CI。
   报告、合成截图和对照失败在 .build/ui-proof/installed-eq-focus/。
+
+Linux 包探针的私有输出就绪检查
+  私有 PipeWire 中一次真实启动的 set-default-sink 已成功，但紧接着的
+  get-default-sink 返回了 @DEFAULT_SINK@，应用尚未启动。探针现在在
+  成功设置后只轮询这个占位状态，必须读到 cumulus_private 才启动应用；
+  其他输出、服务退出和超时仍失败。用原始 b778dc24 .deb，将首次读取
+  人为替换为占位值，实际设置只成功一次，下一次读取来自私有 PipeWire，
+  并继续执行正式程序的 PCM 验证。报告和读回记录位于
+  .build/ui-proof/installed-eq-focus/sink-readback/。
