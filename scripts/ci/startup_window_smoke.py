@@ -226,10 +226,20 @@ def startup(args, root, env, items, watcher, wait, call, menu):
         child = DesktopChild(pid)
         try:
             # GDesktopAppInfo's descriptive get_executable can truncate a
-            # quoted name at its first space; verify the actual spawned process.
-            assert Path(f'/proc/{pid}/exe').resolve(strict=True) == args.binary.resolve(strict=True)
-            assert Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0') == [
-                os.fsencode(args.binary.resolve()), b'--autostart', b'']
+            # quoted name at its first space. The launch callback can run
+            # before exec replaces the child, so sample its real identity.
+            executable = args.binary.resolve(strict=True)
+            argv = [os.fsencode(executable), b'--autostart', b'']
+
+            def exec_completed():
+                assert child.poll() is None, 'registered command exited before its native identity was verified'
+                try:
+                    return (Path(f'/proc/{pid}/exe').samefile(executable)
+                            and Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0') == argv)
+                except FileNotFoundError:
+                    return False
+
+            wait_for('Gio child to exec the exact registered binary and argv', exec_completed, 5)
         except Exception:
             stop(child)
             raise
