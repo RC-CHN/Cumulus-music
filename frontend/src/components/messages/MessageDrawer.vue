@@ -4,12 +4,17 @@ import { useCore } from '../../services/core';
 import type { AccountView } from '../../services/contracts';
 import {
   messageTabs,
+  type MessageDeleteOutcome,
+  type MessagePendingDeletion,
   type MessageRow,
   type MessageTab,
   type MessageTarget,
 } from '../../services/messages';
 import { useMessageDrawer } from '../../composables/useMessageDrawer';
+import ActionMenu from '../ActionMenu.vue';
 import Icon from '../Icon.vue';
+import ModalTransition from '../ModalTransition.vue';
+import MessageDeleteDialog from './MessageDeleteDialog.vue';
 
 const props = defineProps<{
   account: AccountView;
@@ -19,8 +24,9 @@ const props = defineProps<{
   openTarget: (epoch: string, target: MessageTarget) => object | undefined;
 }>();
 const emit = defineEmits<{ login: []; expired: [] }>();
+const core = useCore();
 const model = useMessageDrawer(
-  useCore(),
+  core,
   () => props.account,
   () => emit('expired'),
 );
@@ -30,6 +36,162 @@ const drawer = ref<HTMLElement>();
 const scroller = ref<HTMLElement>();
 const backButton = ref<HTMLButtonElement>();
 const uid = useId();
+const deleteMenuLabel = '私信操作';
+const deleteMenu = ref<InstanceType<typeof ActionMenu>>();
+const deleteBusy = ref(false);
+const deleteNotice = ref('');
+const pendingDeletes = ref<MessagePendingDeletion[]>([]);
+const pendingReadFailed = ref(false);
+const deleteMenuTarget = shallowRef<{
+  row: MessageRow;
+  epoch: string;
+  anchor: HTMLElement;
+}>();
+const confirmation = shallowRef<typeof deleteMenuTarget.value>();
+let deletionVisit = 0;
+let pendingRead = 0;
+const deleteOptions = computed(() =>
+  deleteMenuTarget.value?.row.deletionPending
+    ? [{ key: 'check', label: '核对删除结果', icon: 'refresh' }]
+    : [
+        {
+          key: 'remove',
+          label: peer.value ? '删除这条私信' : '删除私信',
+          icon: 'trash',
+          danger: true,
+        },
+      ],
+);
+const unmatchedDeletes = computed(() => {
+  if (peer.value || tab.value !== 'private') return [];
+  const visibleReceipts = new Set(current.value.rows.map((row) => row.deletionReceipt));
+  return pendingDeletes.value.filter((operation) => !visibleReceipts.has(operation.receipt));
+});
+const deleteResultText: Record<MessageDeleteOutcome, string> = {
+  removed: '删除成功。',
+  uncertain: '删除结果尚未确认，已保留原消息。可以核对结果。',
+  still_listed: '当前页仍能看到这项私信，先前的删除结果尚未确认。',
+  not_in_page: '当前页未看到这项私信，无法确认先前的删除是否成功。',
+  read_unavailable: '暂时无法核对删除结果，已保留待核对记录。',
+};
+
+function resetDeletion() {
+  deletionVisit++;
+  pendingRead++;
+  deleteMenu.value?.close();
+  deleteMenuTarget.value = undefined;
+  confirmation.value = undefined;
+  deleteBusy.value = false;
+  deleteNotice.value = '';
+  pendingDeletes.value = [];
+  pendingReadFailed.value = false;
+}
+async function readPending() {
+  const epoch = props.account.epoch;
+  const sequence = ++pendingRead;
+  const isCurrent = () => sequence === pendingRead && shown.value && props.account.epoch === epoch;
+  try {
+    const result = await core.pendingMessageDeletions(epoch);
+    if (!isCurrent() || result.epoch !== epoch) return;
+    pendingReadFailed.value = false;
+    pendingDeletes.value = result.value;
+  } catch {
+    if (isCurrent()) pendingReadFailed.value = true;
+  }
+}
+function openDeleteMenu(item: MessageRow, event: MouseEvent | KeyboardEvent) {
+  if (
+    !item.deletionReceipt ||
+    !visible.value ||
+    current.value.busy ||
+    deleteBusy.value ||
+    confirmation.value
+  )
+    return;
+  if (
+    event instanceof KeyboardEvent &&
+    !(event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey))
+  )
+    return;
+  const owner = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+  const anchor = owner?.matches('[data-message-delete]')
+    ? owner
+    : owner?.querySelector<HTMLElement>('[data-message-delete]');
+  if (!anchor) return;
+  event.preventDefault();
+  event.stopPropagation();
+  deleteMenuTarget.value = { row: item, epoch: props.account.epoch, anchor };
+  const bounds = anchor.getBoundingClientRect();
+  const rightClick = event instanceof MouseEvent && event.type === 'contextmenu';
+  void deleteMenu.value?.showAt(
+    rightClick && event.clientX ? event.clientX : bounds.left,
+    rightClick && event.clientY ? event.clientY : bounds.bottom,
+    anchor,
+  );
+}
+function chooseDeletion(action: string) {
+  const chosen = deleteMenuTarget.value;
+  if (!chosen || chosen.epoch !== props.account.epoch || !current.value.rows.includes(chosen.row))
+    return;
+  if (action === 'check' && chosen.row.deletionReceipt) {
+    void settleDeletion(chosen.row.deletionReceipt, 'check', chosen.row);
+  } else if (action === 'remove' && !chosen.row.deletionPending) {
+    confirmation.value = chosen;
+  }
+}
+function confirmDeletion() {
+  const chosen = confirmation.value;
+  if (
+    chosen?.row.deletionReceipt &&
+    chosen.epoch === props.account.epoch &&
+    current.value.rows.includes(chosen.row)
+  )
+    void settleDeletion(chosen.row.deletionReceipt, 'remove', chosen.row);
+}
+function deletionFallback() {
+  return (
+    backButton.value ?? drawer.value?.querySelector<HTMLElement>('[aria-selected="true"]') ?? null
+  );
+}
+async function settleDeletion(receipt: string, action: 'remove' | 'check', row?: MessageRow) {
+  if (!visible.value || deleteBusy.value) return;
+  const epoch = props.account.epoch;
+  const sequence = deletionVisit;
+  const list = current.value;
+  const isCurrent = () =>
+    sequence === deletionVisit && shown.value && props.account.epoch === epoch;
+  deleteBusy.value = true;
+  deleteNotice.value = '';
+  try {
+    const result = await core.deleteMessage(epoch, receipt, action);
+    if (!isCurrent() || result.epoch !== epoch) return;
+    if (result.value === 'removed' && row) {
+      list.rows = list.rows.filter((item) => item.deletionReceipt !== receipt);
+    } else if (result.value === 'uncertain' && row) {
+      row.deletionPending = true;
+      pendingDeletes.value = pendingDeletes.value.some((item) => item.receipt === receipt)
+        ? pendingDeletes.value
+        : [...pendingDeletes.value, { receipt, conversation: !peer.value }];
+    }
+    deleteNotice.value = deleteResultText[result.value];
+  } catch (error) {
+    if (!isCurrent()) return;
+    const code = (error as { code?: string })?.code;
+    if (code === 'session_expired') emit('expired');
+    deleteNotice.value = '未能完成操作，已保留原消息。';
+  } finally {
+    if (isCurrent()) {
+      confirmation.value = undefined;
+      deleteBusy.value = false;
+      await readPending();
+      if (isCurrent() && row && pendingDeletes.value.some((item) => item.receipt === receipt))
+        row.deletionPending = true;
+    }
+  }
+}
+function drawerEscape() {
+  if (!confirmation.value && !deleteBusy.value) close();
+}
 const labels: Record<MessageTab, string> = {
   private: '私信',
   comments: '评论',
@@ -109,6 +271,7 @@ watch(
   () => [props.account.epoch, props.account.status],
   () => {
     suspended.value = undefined;
+    resetDeletion();
   },
   { flush: 'sync' },
 );
@@ -129,6 +292,7 @@ function timestamp(value: number) {
 function close(restore = true) {
   suspended.value = undefined;
   model.close();
+  resetDeletion();
   scrollPositions.clear();
   previousFocus = null;
   if (restore) trigger.value?.focus({ preventScroll: true });
@@ -139,13 +303,17 @@ async function toggle() {
   if (props.account.status !== 'authenticated') return emit('login');
   scrollPositions.clear();
   model.open();
+  void readPending();
   await nextTick();
   drawer.value?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
 }
 function outside(event: PointerEvent) {
   if (
     visible.value &&
-    event.target instanceof Node &&
+    event.target instanceof Element &&
+    !confirmation.value &&
+    !deleteBusy.value &&
+    !event.target.closest(`[role="menu"][aria-label="${deleteMenuLabel}"]`) &&
     !drawer.value?.contains(event.target) &&
     !trigger.value?.contains(event.target)
   )
@@ -215,10 +383,19 @@ async function load(mode: 'first' | 'more') {
 }
 function scroll() {
   const list = scroller.value;
-  if (!list || list === restoringScroll || current.value.error || current.value.busy) return;
   if (
-    peer.value ? list.scrollTop < 60 : list.scrollHeight - list.clientHeight - list.scrollTop < 60
+    !list ||
+    list === restoringScroll ||
+    current.value.error ||
+    current.value.busy ||
+    confirmation.value ||
+    deleteBusy.value
   )
+    return;
+  // Switching views can clamp the previous scroll position to zero, which
+  // is not a user scroll to the edge. Short lists use their explicit buttons.
+  const range = list.scrollHeight - list.clientHeight;
+  if (range > 60 && (peer.value ? list.scrollTop < 60 : range - list.scrollTop < 60))
     void load('more');
 }
 function refresh() {
@@ -248,7 +425,7 @@ function refresh() {
       class="message-drawer"
       role="dialog"
       :aria-label="peer ? `与 ${peer.name} 的私信` : '消息'"
-      @keydown.esc.stop.prevent="close()"
+      @keydown.esc.stop.prevent="drawerEscape"
     >
       <header class="message-drawer-header">
         <button
@@ -265,7 +442,7 @@ function refresh() {
           class="icon-button"
           aria-label="刷新消息"
           title="刷新消息"
-          :disabled="current.busy || countsBusy"
+          :disabled="current.busy || countsBusy || deleteBusy"
           @click="refresh"
         >
           <Icon name="refresh" />
@@ -301,6 +478,27 @@ function refresh() {
         未读数暂不可用
         <button @click="model.readCounts">重试</button>
       </p>
+      <p v-if="deleteNotice" class="message-drawer-status" role="status" data-message-delete-result>
+        {{ deleteNotice }}
+      </p>
+      <p v-if="pendingReadFailed && !peer && tab === 'private'" class="message-drawer-count-error">
+        暂时无法读取待核对的删除记录 <button @click="readPending">重试</button>
+      </p>
+      <div v-if="unmatchedDeletes.length" class="message-drawer-pending">
+        <p>还有 {{ unmatchedDeletes.length }} 项待核对的删除记录</p>
+        <ul aria-label="待核对的私信删除">
+          <li v-for="operation in unmatchedDeletes" :key="operation.receipt">
+            <button
+              type="button"
+              data-message-check-pending
+              :disabled="deleteBusy"
+              @click="settleDeletion(operation.receipt, 'check')"
+            >
+              核对{{ operation.conversation ? '私信会话' : '单条私信' }}删除结果
+            </button>
+          </li>
+        </ul>
+      </div>
       <div
         :id="`${uid}-content`"
         ref="scroller"
@@ -330,7 +528,12 @@ function refresh() {
             v-for="item in showRows"
             :key="item.id"
             class="message-drawer-item"
-            :class="{ 'message-drawer-own': peer && item.own }"
+            :class="{
+              'message-drawer-own': peer && item.own,
+              'message-drawer-editable': item.deletionReceipt,
+            }"
+            @contextmenu="openDeleteMenu(item, $event)"
+            @keydown="openDeleteMenu(item, $event)"
           >
             <button
               v-if="!peer && tab === 'private' && item.peerId"
@@ -379,6 +582,26 @@ function refresh() {
                 </button>
               </div>
             </article>
+            <button
+              v-if="item.deletionReceipt"
+              type="button"
+              class="icon-button message-delete-action"
+              :data-message-delete="item.id"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              :aria-label="
+                item.deletionPending
+                  ? '待核对的私信删除'
+                  : peer
+                    ? '这条私信的操作'
+                    : `与 ${item.author} 的私信操作`
+              "
+              :title="item.deletionPending ? '删除结果待核对' : '私信操作'"
+              :disabled="deleteBusy"
+              @click="openDeleteMenu(item, $event)"
+            >
+              <Icon :name="item.deletionPending ? 'refresh' : 'more'" />
+            </button>
           </li>
         </ul>
         <p v-if="current.busy && !current.rows.length" class="message-drawer-status" role="status">
@@ -409,6 +632,24 @@ function refresh() {
           <span v-else>本次最多显示 300 条</span>
         </div>
       </div>
+      <ActionMenu
+        ref="deleteMenu"
+        :label="deleteMenuLabel"
+        :items="deleteOptions"
+        :disabled="deleteBusy || !!confirmation"
+        variant="song"
+        context-only
+        @select="chooseDeletion"
+      />
+      <ModalTransition :fallback-focus="deletionFallback">
+        <MessageDeleteDialog
+          v-if="confirmation"
+          :conversation="!peer"
+          :busy="deleteBusy"
+          @close="confirmation = undefined"
+          @confirm="confirmDeletion"
+        />
+      </ModalTransition>
     </section>
   </Teleport>
 </template>

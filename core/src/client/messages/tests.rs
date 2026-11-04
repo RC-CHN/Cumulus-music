@@ -239,3 +239,294 @@ fn attachment_targets_require_exact_compatible_resource_and_comment_identity() {
     assert!(attachment::forwarded(1, &json!({"type":21,"json":{"album":{"id":7}}})).is_none());
     assert!(attachment::forwarded(2, &json!({"resourceType":0,"resource":{"id":7}})).is_none());
 }
+
+#[tokio::test]
+async fn private_deletion_is_observation_bound_persisted_before_write_and_readback_only_after_loss()
+{
+    use crate::{
+        account::{AccountSession, profiles::ProfileRegistry},
+        protocol::{
+            api::{Api, ApiFuture},
+            http::ApiOrigin,
+        },
+        storage::StateStore,
+    };
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    };
+
+    use tokio::sync::Notify;
+
+    struct Backend {
+        store: Arc<StateStore>,
+        uid: AtomicU64,
+        history_reads: AtomicU64,
+        hold_private: AtomicBool,
+        private_started: Notify,
+        release_private: Notify,
+        requests: Mutex<Vec<(String, Value)>>,
+    }
+
+    const LONG: &str = "9007199254740997";
+    const JOURNAL: &str = "private-message-deletion-v1";
+
+    impl Api for Backend {
+        fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
+            Box::pin(async move {
+                assert!(!cache);
+                self.requests
+                    .lock()
+                    .unwrap()
+                    .push((path.into(), args.clone()));
+                match path {
+                    "/api/w/nuser/account/get" => Ok(json!({
+                        "code":200,"profile":{"userId":self.uid.load(Ordering::SeqCst),"nickname":"Synthetic"}
+                    })),
+                    "/api/msg/private/users" => {
+                        assert_eq!(args, json!({"time":-1,"offset":0,"limit":15}));
+                        if self.hold_private.swap(false, Ordering::SeqCst) {
+                            self.private_started.notify_one();
+                            self.release_private.notified().await;
+                        }
+                        Ok(json!({"code":200,"more":false,"msgs":[
+                            {"fromUser":{"userId":501,"nickname":"SYNTHETIC PRIVATE NICKNAME"},
+                             "lastMsg":{"type":6,"msg":"SYNTHETIC PRIVATE BODY"}},
+                            {"fromUser":{"userId":"502","nickname":"Other"}}
+                        ]}))
+                    }
+                    "/api/msg/private/history" => {
+                        assert_eq!(
+                            args,
+                            json!({"userId":"501","time":-1,"limit":10,"offset":0})
+                        );
+                        let reads = self.history_reads.fetch_add(1, Ordering::SeqCst);
+                        if reads < 3 {
+                            Ok(json!({"code":200,"more":false,"msgs":[
+                                {"id":LONG,"time":500,"fromUser":{"userId":501},"toUser":{"userId":2},
+                                 "msg":{"type":6,"msg":"SYNTHETIC PRIVATE BODY"}},
+                                {"id":301,"time":490,"fromUser":{"userId":2},"toUser":{"userId":501}},
+                                {"id":302,"time":480,"fromUser":{"userId":999}},
+                                {"commentId":303,"time":470,"fromUser":{"userId":501}},
+                                {"id":304,"time":460,"fromUser":{"userId":2},"toUser":{"userId":999}}
+                            ]}))
+                        } else {
+                            Ok(json!({"code":200,"more":false,"msgs":[]}))
+                        }
+                    }
+                    "/api/msg/private/delete" => {
+                        assert_eq!(args, json!({"userId":"502"}));
+                        let stored = self.store.values("2", JOURNAL).unwrap();
+                        assert_eq!(stored.len(), 2);
+                        assert!(stored.contains_key("peer:502"));
+                        Ok(json!({"code":200}))
+                    }
+                    "/api/msg/private/delete/single" => {
+                        let journal = self.store.values("2", JOURNAL).unwrap();
+                        if args == json!({"id":LONG}) {
+                            assert_eq!(journal.len(), 1);
+                            let raw = serde_json::to_string(&journal).unwrap();
+                            assert!(!raw.contains("SYNTHETIC PRIVATE"));
+                            assert!(journal.contains_key(&format!("item:501:{LONG}")));
+                            Err(Error::Transport("synthetic reply was lost".into()))
+                        } else {
+                            assert_eq!(args, json!({"id":301}));
+                            assert!(journal.contains_key("item:501:301"));
+                            Ok(json!({"code":403}))
+                        }
+                    }
+                    _ => panic!("unexpected private message API: {path}"),
+                }
+            })
+        }
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
+    let store = registry.store();
+    let backend = Arc::new(Backend {
+        store: store.clone(),
+        uid: AtomicU64::new(2),
+        history_reads: AtomicU64::new(0),
+        hold_private: AtomicBool::new(false),
+        private_started: Notify::new(),
+        release_private: Notify::new(),
+        requests: Mutex::default(),
+    });
+    let session = Arc::new(AccountSession::new(backend.clone(), Some(store.clone())));
+    session.refresh().await.unwrap();
+    let epoch = session.token().unwrap().generation.to_string();
+    let client = Arc::new(MusicClient::with_session(session.clone(), registry.clone()));
+    let remove = MessageDeleteAction::Remove;
+    let check = MessageDeleteAction::Check;
+
+    assert!(matches!(
+        client.delete_message(&epoch, &"a".repeat(32), remove).await,
+        Err(Error::StaleResponse)
+    ));
+    let thread = || query(MessageTab::Thread, None, Some("501"));
+    let unobserved = client.message_page(&epoch, thread()).await.unwrap().value;
+    assert!(
+        unobserved
+            .rows
+            .iter()
+            .all(|row| row.deletion_receipt.is_none())
+    );
+    let private = client
+        .message_page(&epoch, query(MessageTab::Private, None, None))
+        .await
+        .unwrap()
+        .value;
+    let observed = client.message_page(&epoch, thread()).await.unwrap().value;
+    let lost = observed.rows[0].deletion_receipt.as_deref().unwrap();
+    let rejected = observed.rows[1].deletion_receipt.as_deref().unwrap();
+    let peer = private.rows[0].deletion_receipt.as_deref().unwrap();
+    let other = private.rows[1].deletion_receipt.as_deref().unwrap();
+    assert!(
+        observed.rows[2..]
+            .iter()
+            .all(|row| row.deletion_receipt.is_none())
+    );
+
+    assert_eq!(
+        client
+            .delete_message(&epoch, lost, remove)
+            .await
+            .unwrap()
+            .value,
+        MessageDeleteOutcome::Uncertain
+    );
+    assert_eq!(
+        client
+            .delete_message(&epoch, lost, remove)
+            .await
+            .unwrap()
+            .value,
+        MessageDeleteOutcome::Uncertain
+    );
+    assert!(matches!(
+        client.delete_message(&epoch, peer, remove).await,
+        Err(Error::State(_))
+    ));
+    assert!(matches!(
+        client.delete_message(&epoch, rejected, remove).await,
+        Err(Error::Service { .. })
+    ));
+    assert_eq!(
+        client
+            .delete_message(&epoch, lost, check)
+            .await
+            .unwrap()
+            .value,
+        MessageDeleteOutcome::StillListed
+    );
+    backend.hold_private.store(true, Ordering::SeqCst);
+    let old_page = tokio::spawn({
+        let client = client.clone();
+        let epoch = epoch.clone();
+        async move {
+            client
+                .message_page(&epoch, query(MessageTab::Private, None, None))
+                .await
+                .unwrap()
+        }
+    });
+    tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        backend.private_started.notified(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        client
+            .delete_message(&epoch, other, remove)
+            .await
+            .unwrap()
+            .value,
+        MessageDeleteOutcome::Removed
+    );
+    backend.release_private.notify_one();
+    let delayed = old_page.await.unwrap().value;
+    assert!(
+        delayed
+            .rows
+            .iter()
+            .all(|row| row.deletion_receipt.is_none())
+    );
+    assert!(matches!(
+        client.delete_message(&epoch, other, remove).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        client
+            .pending_message_deletions(&epoch)
+            .await
+            .unwrap()
+            .value
+            .len(),
+        1
+    );
+
+    // Reload from disk with no row observations. Only the journal receipt may
+    // be read back, and seeing no row in a bounded page is not confirmation.
+    let restarted = MusicClient::with_session(session.clone(), registry.clone());
+    assert_eq!(
+        restarted
+            .delete_message(&epoch, lost, check)
+            .await
+            .unwrap()
+            .value,
+        MessageDeleteOutcome::NotInPage
+    );
+    assert!(matches!(
+        restarted.delete_message(&epoch, lost, remove).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        restarted
+            .pending_message_deletions(&epoch)
+            .await
+            .unwrap()
+            .value
+            .len(),
+        1
+    );
+
+    session.detach().unwrap();
+    backend.uid.store(3, Ordering::SeqCst);
+    session.refresh().await.unwrap();
+    let next = session.token().unwrap().generation.to_string();
+    assert_ne!(epoch, next);
+    assert!(
+        restarted
+            .pending_message_deletions(&next)
+            .await
+            .unwrap()
+            .value
+            .is_empty()
+    );
+    assert!(matches!(
+        restarted.delete_message(&next, lost, check).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client.delete_message(&next, peer, remove).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(store.values("2", JOURNAL).unwrap().len(), 1);
+    assert!(store.values("3", JOURNAL).unwrap().is_empty());
+    let wire = backend.requests.lock().unwrap();
+    let deletes = wire
+        .iter()
+        .filter(|(path, _)| path.contains("/delete"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(
+        deletes,
+        vec![
+            ("/api/msg/private/delete/single".into(), json!({"id":LONG})),
+            ("/api/msg/private/delete/single".into(), json!({"id":301})),
+            ("/api/msg/private/delete".into(), json!({"userId":"502"})),
+        ]
+    );
+}

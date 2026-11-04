@@ -1,4 +1,4 @@
-"""Verify read-only message tabs and private history through a real desktop WebView."""
+"""Verify message tabs and opt-in synthetic actions through a real desktop WebView."""
 import argparse
 import json
 import os
@@ -14,7 +14,9 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    parser.add_argument('--attachments', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--attachments', action='store_true')
+    mode.add_argument('--deletion', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -28,6 +30,11 @@ def main():
                             script.read_text(encoding='utf-8'), encoding='utf-8')
         env.update(CUMULUS_UX_SCRIPT=str(injected), CUMULUS_MESSAGE_ATTACHMENTS_PROOF='1',
                    CUMULUS_SEARCH_UI_PROOF='1')
+    if args.deletion:
+        injected = root / 'deletion-probe.js'
+        injected.write_text('window.__cumulusMessageDeletionProof = true;\n' +
+                            script.read_text(encoding='utf-8'), encoding='utf-8')
+        env.update(CUMULUS_UX_SCRIPT=str(injected), CUMULUS_MESSAGE_DELETION_PROOF='1')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         profile = root / 'os-profile' / key
@@ -44,6 +51,12 @@ def main():
     assert not failure.exists(), failure.read_text(encoding='utf-8') if failure.exists() else ''
     assert code == 0
     report = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.deletion:
+        verify_deletion(report, output, args.screenshots)
+        report['actualWebView'] = True
+        (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(json.dumps(report, ensure_ascii=False))
+        return
     if args.attachments:
         verify_attachments(report, output, args.screenshots)
         report['actualWebView'] = True
@@ -107,6 +120,23 @@ def verify_attachments(report, output, screenshots):
             if path.startswith('/api/v1/resource/comments/')] == expected
     assert sum(path == '/api/msg/private/history' for path, _ in requests) == 1
     assert sum(path == '/api/msg/notices' for path, _ in requests) == 1
+
+
+def verify_deletion(report, output, screenshots):
+    assert report['ok'] and report['privateDeletionVerified'] and report['count'] == 9
+    assert report['realAccountWrites'] == report['realMusicRequests'] == 0
+    assert not report['messageRequests']['blockedWrite']
+    assert len(list(output.glob('ux_*.json'))) == 9
+    assert len(list(output.glob('ux_*.png'))) == (9 if screenshots else 0)
+    requests = report['messageRequests']['requests']
+    assert [(path, args) for path, args in requests if '/delete' in path] == [
+        ('/api/msg/private/delete', {'userId': 502}),
+        ('/api/msg/private/delete', {'userId': 501}),
+        ('/api/msg/private/delete/single', {'id': 301}),
+        ('/api/msg/private/delete/single', {'id': '9007199254740997'}),
+    ]
+    history = [args for path, args in requests if path == '/api/msg/private/history']
+    assert history == [dict(limit=10, offset=0, time=-1, userId='505')] * 5, history
 
 
 if __name__ == '__main__':

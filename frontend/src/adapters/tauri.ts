@@ -14,6 +14,8 @@ export function createTauriClient(): CoreClient {
   return {
     messageCounts: (epoch) => invoke('message_counts', { epoch }),
     messagePage: (epoch, query) => invoke('message_page', { epoch, query }),
+    pendingMessageDeletions: (epoch) => invoke('pending_message_deletions', { epoch }),
+    deleteMessage: (epoch, receipt, action) => invoke('delete_message', { epoch, receipt, action }),
     artistOffer: (epoch) => invoke('artist_onboarding_offer', { epoch }),
     artistCandidates: (epoch, id, similarTo) =>
       invoke('artist_onboarding_candidates', { epoch, id, similarTo }),

@@ -23,13 +23,31 @@ export interface MessageRow {
   unread: number | null;
   own: boolean;
   target: MessageTarget | null;
+  deletionReceipt?: string;
+  deletionPending?: boolean;
 }
 export interface MessagePage {
   rows: MessageRow[];
   nextCursor: number | null;
   hint: string | null;
 }
+export type MessageDeleteOutcome =
+  | 'removed'
+  | 'uncertain'
+  | 'still_listed'
+  | 'not_in_page'
+  | 'read_unavailable';
+export interface MessagePendingDeletion {
+  receipt: string;
+  conversation: boolean;
+}
 export interface MessageClient {
   messageCounts(epoch: string): Promise<AccountData<MessageCounts>>;
   messagePage(epoch: string, query: MessageQuery): Promise<AccountData<MessagePage>>;
+  pendingMessageDeletions(epoch: string): Promise<AccountData<MessagePendingDeletion[]>>;
+  deleteMessage(
+    epoch: string,
+    receipt: string,
+    action: 'remove' | 'check',
+  ): Promise<AccountData<MessageDeleteOutcome>>;
 }

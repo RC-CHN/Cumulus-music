@@ -1,7 +1,10 @@
+mod deletion;
 mod projection;
 
 use super::{MusicClient, dto::AccountData};
 use crate::{Error, Result};
+pub(super) use deletion::DeletionHost;
+pub use deletion::{MessageDeleteAction, MessageDeleteOutcome, MessagePendingDeletion};
 pub use projection::attachment::MessageTarget;
 use projection::project;
 use serde::{Deserialize, Serialize};
@@ -47,6 +50,10 @@ pub struct MessageRow {
     pub unread: Option<u64>,
     pub own: bool,
     pub target: Option<MessageTarget>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deletion_receipt: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub deletion_pending: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -125,21 +132,36 @@ impl MusicClient {
         })
     }
 
-    /// No clear/send/delete operation or periodic reader is registered.
+    /// Explicit bounded reader; never clears, sends, or marks a message read.
     pub async fn message_page(
         &self,
         epoch: &str,
         query: MessageQuery,
     ) -> Result<AccountData<MessagePage>> {
         let token = self.player_token(epoch)?;
-        let value = self
+        let revision = self.message_deletion.revision()?;
+        let (mut value, observed) = self
             .session
             .run_for(&token, |api, uid| async move {
                 let (path, args, limit) = endpoint(&query, &uid)?;
                 let response = api.call(&path, args, false, &[200]).await?;
-                project(&query, &response, &uid, limit)
+                let page = project(&query, &response, &uid, limit)?;
+                let observed = deletion::observed(&query, &response, &uid);
+                Ok((page, observed))
             })
             .await?;
+        if !observed.is_empty()
+            && let Ok(store) = self.session.persistent_store()
+        {
+            self.session.with_token(&token, |uid| {
+                // Deletion capabilities fail closed independently of the
+                // original read-only inbox if the local journal is unavailable.
+                let _ = self
+                    .message_deletion
+                    .publish(&store, &token, uid, revision, &mut value, observed);
+                Ok(())
+            })?;
+        }
         Ok(AccountData {
             epoch: token.generation.to_string(),
             value,

@@ -210,3 +210,30 @@
   width: 14px;
   height: 14px;
 }
+.message-drawer-editable {
+  display: flex;
+  align-items: flex-start;
+}
+.message-drawer-editable > .message-conversation,
+.message-drawer-editable > .message-drawer-article {
+  flex: 1;
+  min-width: 0;
+}
+.message-delete-action {
+  flex: none;
+  margin: 8px 2px 0 0;
+}
+.message-drawer-pending {
+  flex: none;
+  max-height: 120px;
+  overflow: auto;
+  padding: 4px 14px;
+  border-block-end: 1px solid var(--line);
+}
+.message-drawer-pending p,
+.message-drawer-pending ul {
+  margin: 4px 0;
+}
+.message-drawer-pending button {
+  color: var(--text-secondary);
+}

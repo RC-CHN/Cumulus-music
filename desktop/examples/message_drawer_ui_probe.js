@@ -56,9 +56,35 @@
     assert(bounds.width <= 387 && bounds.right <= innerWidth + 1 && bounds.bottom <= innerHeight,
       'drawer remains within window: ' + JSON.stringify({ bounds: bounds.toJSON(), innerWidth, innerHeight, position: getComputedStyle(drawer()).position }));
     assert(document.documentElement.scrollWidth <= innerWidth, 'drawer causes no horizontal overflow');
+    let paint = {};
+    if (window.__cumulusMessageDeletionProof) {
+      const confirm = label === 'delete_conversation_confirm';
+      const modal = await wait(() => {
+        const dialog = one('[data-message-delete-confirm]');
+        if (!confirm) return dialog ? false : { closed: true };
+        if (!dialog?.open || dialog.getBoundingClientRect().width <= 0 ||
+            getComputedStyle(dialog).opacity !== '1' ||
+            dialog.getAnimations().some((a) => a.pending || a.playState === 'running'))
+          return false;
+        return dialog;
+      }, 'actual confirmation layout settled');
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      paint = {
+        ratio: devicePixelRatio, screenX, screenY,
+        dialogs: confirm ? [{
+          open: true, rect: modal.getBoundingClientRect().toJSON(), opacity: '1',
+          background: getComputedStyle(modal).backgroundColor,
+        }] : [],
+        paintSamples: confirm ? [] : [{
+          x: bounds.left + 4, y: bounds.top + 35,
+          color: getComputedStyle(drawer()).backgroundColor,
+        }],
+      };
+    }
     await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, {
       label, dark: document.documentElement.dataset.theme === 'dark',
       rows: all('.message-drawer-item').length,
+      ...paint,
     });
     await sleep(170);
   }
@@ -79,6 +105,106 @@
     assert(!contains('一键全读') && !drawer().querySelector('textarea'),
       'read-only drawer has no mark-all or compose controls');
     await capture('private');
+    if (window.__cumulusMessageDeletionProof) {
+      const action = (id) => one(`[data-message-delete="${id}"]`);
+      const menuItem = (key) => one(`[role="menu"][aria-label="私信操作"] [data-menu-key="${key}"]`);
+      const dialog = () => one('dialog[open][data-message-delete-confirm]');
+      const notice = () => one('[data-message-delete-result]')?.textContent.trim();
+      const writes = async () => (await fixture()).requests.filter(([path]) => path.includes('/delete'));
+      const open = async (id, key = 'remove', context = false) => {
+        const trigger = await wait(() => {
+          const button = action(id);
+          return button?.isConnected && !button.disabled && button;
+        }, 'deletion action enabled on exact row ' + id);
+        if (context) {
+          const row = trigger.closest('li');
+          const box = row.getBoundingClientRect();
+          row.dispatchEvent(new MouseEvent('contextmenu', {
+            bubbles: true, cancelable: true, clientX: box.left + 20, clientY: box.top + 10,
+          }));
+        } else click(trigger);
+        const choice = await wait(() => {
+          const item = menuItem(key);
+          return item?.isConnected && !item.disabled && !item.closest('[inert]') &&
+            document.activeElement === item && item;
+        }, 'private context action ready ' + key);
+        choice.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+        click(choice);
+      };
+      const confirm = async (title, submit = true) => {
+        const modal = await wait(dialog, 'native confirmation dialog');
+        assert(modal.querySelector('h2').textContent === title, 'distinct official confirmation');
+        await wait(() => document.activeElement === modal.querySelector('[autofocus]'),
+          'cancel is default focus in destructive confirmation');
+        click(modal.querySelector(submit ? '.primary' : '.secondary'));
+        await wait(() => !dialog(), 'confirmation fully leaves');
+      };
+      await open(501, 'remove', true);
+      await wait(dialog, 'conversation context menu opens modal');
+      await capture('delete_conversation_confirm');
+      await confirm('确定删除私信？', false);
+      await wait(() => document.activeElement === action(501), 'cancel returns to exact row action');
+      assert((await writes()).length === 0 && one('[data-message-peer="501"]'),
+        'cancel never dispatches and leaves original conversation');
+      await capture('delete_cancel');
+      await open(502);
+      await confirm('确定删除私信？');
+      await wait(() => notice()?.includes('已保留原消息'), 'explicit service rejection reports failure');
+      assert(one('[data-message-peer="502"]') && action(502).title === '私信操作',
+        'rejection preserves conversation without marking uncertainty');
+      await capture('delete_rejected');
+      await open(501);
+      await confirm('确定删除私信？');
+      await wait(() => !one('[data-message-peer="501"]') && notice() === '删除成功。',
+        'confirmed whole deletion removes just that conversation');
+      assert(one('[data-message-peer="502"]') && one('[data-message-peer="505"]'),
+        'unrelated conversations stay intact');
+      await capture('delete_conversation');
+      click(one('[data-message-peer="505"]'));
+      await wait(() => ready() && contains('可确认删除的私信') && action('9007199254740997'),
+        'thread real identities and data are rendered');
+      assert(contains('没有原生消息 ID 的私信') && !action(303),
+        'fallback UI identifier never authorizes a deletion');
+      await open(301);
+      await confirm('确定删除这条私信？');
+      await wait(() => !contains('可确认删除的私信') && notice() === '删除成功。',
+        'confirmed single deletion removes only that row');
+      assert(contains('回执丢失的私信') && contains('没有原生消息 ID 的私信'),
+        'single deletion does not remove other rows');
+      await capture('delete_single');
+      const long = '9007199254740997';
+      await open(long);
+      await confirm('确定删除这条私信？');
+      await wait(() => action(long)?.title === '删除结果待核对' && notice()?.includes('已保留原消息'),
+        'lost response leaves visible row marked for readback');
+      await capture('delete_uncertain');
+      await open(long, 'check');
+      await wait(() => notice()?.includes('当前页仍能看到'), 'readback can observe existing message');
+      await fixture('deletion-omit');
+      await open(long, 'check');
+      await wait(() => notice()?.includes('当前页未看到'), 'bounded absence is explicitly inconclusive');
+      assert(action(long)?.title === '删除结果待核对' && contains('回执丢失的私信'),
+        'bounded absence never clears uncertain row');
+      await wait(() => !button('刷新消息')?.disabled, 'refresh enabled after readback');
+      click(button('刷新消息'));
+      await wait(() => ready() && action(long)?.title === '删除结果待核对',
+        'explicit refresh also retains unresolved row during the visit');
+      await capture('delete_bounded_absence');
+      click(button('关闭消息'));
+      await wait(() => !drawer(), 'close clears transient private row content');
+      click(trigger());
+      await wait(() => ready() && one('[data-message-check-pending]'),
+        'native account journal exposes unresolved check after reopening');
+      assert(!contains('回执丢失的私信'), 'journal contains no private message body');
+      click(one('[data-message-check-pending]'));
+      await wait(() => notice()?.includes('当前页未看到'), 'journal readback without original row');
+      assert((await writes()).length === 4, 'no unknown readback or reopening replays a mutation');
+      await capture('delete_pending_reopen');
+      await emit('complete', {
+        ok: true, count, privateDeletionVerified: true, realAccountWrites: 0, realMusicRequests: 0,
+      });
+      return;
+    }
     if (window.__cumulusMessageAttachmentsProof) {
       const epoch = account.epoch;
       const target = (id) => one(`[data-message-attachment="${id}"]`);

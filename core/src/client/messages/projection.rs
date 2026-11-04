@@ -61,7 +61,7 @@ fn sender(value: &Value) -> Option<String> {
     text(&value["nickname"], 100)
 }
 
-fn user_id(value: &Value) -> Option<String> {
+pub(super) fn user_id(value: &Value) -> Option<String> {
     positive_id(&value["userId"]).or_else(|| positive_id(&value["id"]))
 }
 
@@ -162,6 +162,8 @@ fn project_row(tab: MessageTab, value: &Value, uid: &str) -> MessageRow {
         unread: None,
         own: false,
         target: None,
+        deletion_receipt: None,
+        deletion_pending: false,
     };
     let fallback = "未知用户";
     match tab {

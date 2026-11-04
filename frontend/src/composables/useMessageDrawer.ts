@@ -102,6 +102,13 @@ export function useMessageDrawer(
         seen.add(row.id);
         rows.push(row);
       }
+      // An ambiguous write may have been applied. A fresh bounded read
+      // cannot establish this, so preserve unresolved rows during this visit.
+      if (mode === 'first') {
+        for (const row of target.rows.filter((row) => row.deletionPending)) {
+          if (!seen.has(row.id)) rows.push(row);
+        }
+      }
       target.rows = rows.slice(0, MAX_ROWS);
       target.cursor = result.value.nextCursor;
       target.capped = rows.length > MAX_ROWS || (rows.length === MAX_ROWS && !!target.cursor);

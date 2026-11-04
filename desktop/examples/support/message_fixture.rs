@@ -11,6 +11,9 @@ static FAILED_COMMENT_PAGE: AtomicBool = AtomicBool::new(false);
 static HOLD_NOTICE: AtomicBool = AtomicBool::new(false);
 static NOTICE_HELD: AtomicBool = AtomicBool::new(false);
 static WRITE_ATTEMPT: AtomicBool = AtomicBool::new(false);
+static REMOVED_SINGLE: AtomicBool = AtomicBool::new(false);
+static REMOVED_CONVERSATION: AtomicBool = AtomicBool::new(false);
+static OMIT_UNKNOWN: AtomicBool = AtomicBool::new(false);
 
 pub fn enabled() -> bool {
     std::env::var("CUMULUS_MESSAGE_DRAWER_PROOF").as_deref() == Ok("1")
@@ -18,6 +21,9 @@ pub fn enabled() -> bool {
 
 fn attachments() -> bool {
     std::env::var("CUMULUS_MESSAGE_ATTACHMENTS_PROOF").as_deref() == Ok("1")
+}
+fn deletion() -> bool {
+    std::env::var("CUMULUS_MESSAGE_DELETION_PROOF").as_deref() == Ok("1")
 }
 fn target_comment(id: u64) -> Value {
     json!({"code":200,"comments":[],"currentComment":{"commentId":id,
@@ -30,6 +36,7 @@ pub fn control(mode: &str) -> Value {
     match mode {
         "hold" => HOLD_NOTICE.store(true, Ordering::SeqCst),
         "release" => HOLD_NOTICE.store(false, Ordering::SeqCst),
+        "deletion-omit" if deletion() => OMIT_UNKNOWN.store(true, Ordering::SeqCst),
         "read" => {}
         _ => panic!("unknown message fixture command"),
     }
@@ -59,6 +66,38 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             Err(Error::State("wrong synthetic comment anchor"))
         });
     }
+    if deletion()
+        && matches!(
+            path,
+            "/api/msg/private/delete" | "/api/msg/private/delete/single"
+        )
+    {
+        REQUESTS.lock().unwrap().push((path.into(), args.clone()));
+        return Some(match (path, args) {
+            ("/api/msg/private/delete", args) if args == &json!({"userId":501}) => {
+                assert!(!REMOVED_CONVERSATION.swap(true, Ordering::SeqCst));
+                Ok(json!({"code":200}))
+            }
+            ("/api/msg/private/delete", args) if args == &json!({"userId":502}) => {
+                Ok(json!({"code":403}))
+            }
+            ("/api/msg/private/delete/single", args) if args == &json!({"id":301}) => {
+                assert!(!REMOVED_SINGLE.swap(true, Ordering::SeqCst));
+                Ok(json!({"code":200}))
+            }
+            ("/api/msg/private/delete/single", args)
+                if args == &json!({"id":"9007199254740997"}) =>
+            {
+                Err(Error::Transport(
+                    "synthetic private message reply lost".into(),
+                ))
+            }
+            _ => {
+                WRITE_ATTEMPT.store(true, Ordering::SeqCst);
+                Err(Error::InvalidInput("wrong synthetic deletion identity"))
+            }
+        });
+    }
     if !matches!(
         path,
         "/api/pl/count"
@@ -84,7 +123,7 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             json!({"code":200,"msg":3,"comment":2,"forward":1,"notice":4})
         }
         "/api/msg/private/users" if args == &json!({"limit":15,"offset":0,"time":-1}) => {
-            let rows = (0..15).map(|idx| json!({"fromUser":{"userId":501+idx,"nickname":format!("合成联系人 {:02}",idx+1)},
+            let rows = (0..15).filter(|idx| !deletion() || *idx != 0 || !REMOVED_CONVERSATION.load(Ordering::SeqCst)).map(|idx| json!({"fromUser":{"userId":501+idx,"nickname":format!("合成联系人 {:02}",idx+1)},
                 "lastMsgTime":T-idx,"newMsgCount":if idx==0 {3} else {0},
                 "lastMsg":json!({"type":6,"msg":format!("私信预览 {}",idx+1)}).to_string()})).collect::<Vec<_>>();
             json!({"code":200,"more":true,"msgs":rows})
@@ -103,7 +142,22 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             if !(501..516).contains(&peer) {
                 return Some(Err(Error::InvalidInput("history picked another user")));
             }
-            if args["time"] == -1 && attachments() {
+            if args["time"] == -1 && deletion() {
+                let mut rows = Vec::new();
+                if !REMOVED_SINGLE.load(Ordering::SeqCst) {
+                    rows.push(
+                        json!({"id":301,"time":T+3,"fromUser":{"userId":2,"nickname":"合成自己"},
+                        "toUser":{"userId":peer},"msg":{"type":6,"msg":"可确认删除的私信"}}),
+                    );
+                }
+                if !OMIT_UNKNOWN.load(Ordering::SeqCst) {
+                    rows.push(json!({"id":"9007199254740997","time":T+2,"fromUser":{"userId":peer,"nickname":"合成对方"},
+                        "toUser":{"userId":2},"msg":{"type":6,"msg":"回执丢失的私信"}}));
+                }
+                rows.push(json!({"commentId":303,"time":T+1,"fromUser":{"userId":peer,"nickname":"合成对方"},
+                    "msg":{"type":6,"msg":"没有原生消息 ID 的私信"}}));
+                json!({"code":200,"more":false,"msgs":rows})
+            } else if args["time"] == -1 && attachments() {
                 let rows = [
                     (360, json!({"type":2,"album":{"id":7,"name":"合成分享专辑"}})),
                     (359, json!({"type":1,"song":{"id":3,"name":"合成分享单曲","url":"https://private.invalid/song"}})),

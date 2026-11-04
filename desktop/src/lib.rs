@@ -425,6 +425,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 mv::video_frame,
                 messages::message_counts,
                 messages::message_page,
+                messages::pending_message_deletions,
+                messages::delete_message,
                 comments::comments_page,
                 comments::comments_resource,
                 comments::comments_like,
