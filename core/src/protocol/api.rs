@@ -9,6 +9,23 @@ pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
+    /// Native signed authority only. A generic API adapter does not acquire
+    /// experiment access by implementing the ordinary request transport.
+    fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        _revision: &'a str,
+    ) -> ApiFuture<'a, super::pc_experiments::PcExperimentGroups> {
+        Box::pin(async {
+            Err(Error::State(
+                "PC experiment requires a native signed transport",
+            ))
+        })
+    }
+
     /// The two official search-box long-audio charts are hidden by default.
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
         Box::pin(async { Ok(false) })

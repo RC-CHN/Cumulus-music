@@ -1,4 +1,51 @@
+use cumulus_core::catalog::vertical_zone::{VerticalZoneMenu, VerticalZonePage, ZoneEntry};
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
+
+fn require_main(label: &str) -> Result<(), ClientError> {
+    if label != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "vertical zone navigation requires the main window",
+        )
+        .into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn vertical_zone_menu<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<VerticalZoneMenu>, ClientError> {
+    require_main(window.label())?;
+    client.vertical_zone_menu(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn vertical_zone_page<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    page_code: String,
+    tab_key: Option<String>,
+    tab_key_name: Option<String>,
+) -> Result<AccountData<VerticalZonePage>, ClientError> {
+    require_main(window.label())?;
+    let entry = match (tab_key.as_deref(), tab_key_name.as_deref()) {
+        (None, Some(name)) => ZoneEntry::SearchTabName(name),
+        (Some(_), Some(_)) => {
+            return Err(cumulus_core::Error::InvalidInput(
+                "vertical zone tab key and display name are mutually exclusive",
+            )
+            .into());
+        }
+        (key, None) => ZoneEntry::Tab(key.unwrap_or_default()),
+    };
+    client
+        .vertical_zone_page(&epoch, &page_code, entry)
+        .await
+        .map_err(Into::into)
+}
 
 #[tauri::command]
 pub async fn artist_gallery(

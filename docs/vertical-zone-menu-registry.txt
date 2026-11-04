@@ -1,0 +1,35 @@
+PC 3.1.42.205594｜精选专区入口和原生登记
+
+Choice/index.jsx:41–55、215–250 在网络可用且 PH-PC-zhuanqu=t1 时读取
+专区入口。M/15:4982–4992 请求 /api/secondary/tab/list {}，业务 200 取
+data.hints；M/1211:62–64、120–163 只取第一个 position.code 等于
+music_top_tab_full 的记录，再读 data.extra.nowChannelItems。排除 feature、
+playlist、chart、singer、vip、origin；剩余入口按服务顺序取 code、title 和
+url 的 page 参数。前五项直接显示，后续进「更多」。M/2986:120–145 的空结果
+不会清空当前入口。PH-PC-zhuanquTab 是独立的内容布局门控。
+
+Cumulus 只接受当前已验证账号的原生签名 PC 分组，不接受 WebView 的组值、隐私
+参数或 URL。实验读取仍使用 PC 签名、会话 Cookie 原作用域和原有 30 分钟缓存，
+绑定账号代次、原生 API 实例及凭据修订。访客、非 t1、无法验证的分组返回入口
+不可用；账号过期、被切换或凭据修订不同不会沿用旧入口。Cumulus 未恢复访客
+PC 实验授权路径。
+
+原生菜单只返回 key、name、pageCode。对 URL 只解析唯一的 page 查询值，按专区
+已有的有界 ASCII 标识校验；不会打开该 URL、返回原文或传递 s_ctrp 等日志。
+过滤重复 key/pageCode、缺展示名、坏字段和不合规标识，余项保留原始展示文字
+及顺序。空结果或普通读失败保留同账号、同代次、同原生实例、同凭据修订已经
+验证的菜单；初次读取失败允许显式重试。菜单不会落盘或在账户间复制。
+
+主窗口 IPC vertical_zone_menu(epoch) 返回 {epoch,value:{available,
+defaultZoneTags,moreZoneTags}}；vertical_zone_page(epoch,pageCode,tabKey?,
+tabKeyName?) 返回 {epoch,value:VerticalZonePage}。未先加载菜单的深链先建立
+同一原生登记，未登记的 pageCode 在读隐私和专区内容之前拒绝；页面回包前
+复核同一登记。tabKey 与 tabKeyName 互斥；后一项只选择已有原生搜索展示名
+分支，按 M/1211:193–245 先请求默认标签，再从服务返回的标签查真实 key。
+展示名不会直接送往网络，也不携带任意页面或资源类型。
+
+原生验证：隔离合成传输 6 项核心客户端测试，覆盖有序前五/更多、去除保留和
+无效项、不暴露 URL 或日志、未分组和访客、伪造页面不发内容请求、标签按名
+解析顺序、空/失败回退、凭据轮换及跨代次迟到回包；另外原有专区内容 2 项和
+原生签名传输 3 项通过。没有真实账号或服务读写。本文件只证明原生菜单和读取；
+页面呈现及资源操作由桌面批次另验。

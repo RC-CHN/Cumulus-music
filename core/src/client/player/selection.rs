@@ -68,7 +68,9 @@ impl MusicClient {
                 card_key,
                 quality,
             } => {
-                let trial = self.vertical_zone_playlist_trial(&token, &view_id, &card_key, &id)?;
+                let trial = self
+                    .vertical_zone_playlist_trial(&token, &view_id, &card_key, &id)
+                    .await?;
                 let playlist = PlaySelection::Playlist {
                     id: id.clone(),
                     start_id: None,
@@ -775,7 +777,8 @@ impl MusicClient {
             }
         }
         if let Some((view, card_key, id, _)) = zone_playlist {
-            self.vertical_zone_playlist_trial(&token, &view, &card_key, &id)?;
+            self.vertical_zone_playlist_trial(&token, &view, &card_key, &id)
+                .await?;
         }
         if resources.get(index).is_none_or(|v| v["missing"] == true) {
             return Err(Error::State("selected song is unavailable"));

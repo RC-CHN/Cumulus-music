@@ -608,6 +608,18 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        self.pc_experiment_revision().map(Some)
+    }
+
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> crate::protocol::api::ApiFuture<'a, crate::protocol::pc_experiments::PcExperimentGroups>
+    {
+        Box::pin(async move { self.pc_experiment_groups(revision).await })
+    }
+
     fn search_audio_toplist_assignment(&self) -> crate::protocol::api::ApiFuture<'_, bool> {
         Box::pin(async {
             let revision = self.pc_experiment_revision()?;

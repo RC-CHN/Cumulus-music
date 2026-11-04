@@ -1,5 +1,8 @@
 //! Official PC 3.1.42 vertical-zone catalogue, separate from the FM queue.
+mod menu;
 mod projection;
+pub(crate) use menu::read_menu;
+pub use menu::{VerticalZoneMenu, VerticalZoneMenuTag};
 
 use crate::{
     Error, Result,
