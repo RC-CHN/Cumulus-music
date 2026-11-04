@@ -61,7 +61,11 @@ M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求�
     实际读取必须走完 Begin/Next/End/Cleanup 并得到正常结果类别才记通过。
     只记录参与结果的调用，省略原版条件日志的错误细节。其他类别和失败清理顺序
     由同一个 Rust 执行器的本地替身验证，不能当作更改 Windows 网络状态的实测。
-    Windows 原生一次性采样和四路监听是两个独立验收点，均不连接生产计数或播放。
+    精确主线 00dcdb3b 的原生 x64 运行 41916367260 通过：
+    https://github.com/RC-CHN/Cumulus-music/actions/runs/41916367260
+    报告为 ProviderPresent，Startup/Begin/Next/End/Cleanup 均成功，未调用
+    GetLastError；未解析提供方记录或向服务发请求。四路监听通知仍待原生验收，
+    不连接生产计数或播放。
 * M/12:297–329 在请求返回真值后、格式化数据之前派发 musicFeOnline。catch 除
   responseError、fetchFrontEndEncryptError 外派发 musicFeOffline；同步格式化错误可能
   先后产生两个事件。JSON 非成功业务码在 M/12:174–194 被包装为 responseError。
