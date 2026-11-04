@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为 `1ccc2ae4`，另列后续合并项；总体流程及验证层级见
+本表基线为待集成产品树 `78c6be65`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -62,7 +62,7 @@
 | `page:dailyRecommend` (5) | `models/page_dailyRecommend.txt` | [已接入口](desktop-rankings-contracts.txt) | 日推和播放；生日及系统推送为独立分支。 |
 | `page:decorationSkin` (0) | `models/page_decorationSkin.txt` | [部分](desktop-decoration-contracts.txt) | 随包主题、在线目录和预览；远程安装和挂件未接。 |
 | `page:download` (9) | `models/page_download.txt` | [已接入口](desktop-download-contracts.txt) | 下载页与任务管理；不同资源授权单独验收。 |
-| `page:essential` (6) | `models/page_essential.txt` | [仅恢复](artist-mv-discovery-contracts.txt) | 当前主线未接独立普通精选；其他发现页不算。 |
+| `page:essential` (6) | `models/page_essential.txt` | [已接入口](ordinary-essential-contracts.txt) | 普通精选四个正文分区；匿名注册、横幅和实验变体另列。 |
 | `page:essentialPlaylist` (4) | `models/page_essentialPlaylist.txt` | [已接入口](playlist-detail-ui-contracts.txt) | 精品歌单分类、续页和详情；与普通精选区分。 |
 | `page:event` (20) | `models/page_event.txt` | [已接入口](community-read-contracts.txt) | 动态详情/评论；嵌入卡和深链还有边界。 |
 | `page:eventPublish` (12) | `models/page_eventPublish.txt` | [部分](community-composer-contracts.txt) | 草稿与经确认的纯文本/已核对附件，合成写入；图片/转发待做。 |
@@ -98,7 +98,7 @@
 | `page:setting` (0) | `models/page_setting.txt` | [已接入口](settings-mapping.json) | 独立子项证据；页面存在不等于所有设置已实现。 |
 | `page:settingAbout` (1) | `models/page_settingAbout.txt` | [部分](settings-support-contracts.txt) | 本机诊断与版本；无官方客服和自动日志上传。 |
 | `page:settingAccount` (1) | `models/page_settingAccount.txt` | [已接入口](account-feature-audit.txt) | 账号资料、登录设备和绑定摘要；各真实写操作分开。 |
-| `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](window-lifecycle-contracts.txt) | 已有关闭行为等本机设置；主线无 OS 开机启动/默认关联。 |
+| `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](window-startup-mode-contracts.txt) | 自动启动窗口形态已接；OS 注册、默认关联仍独立。 |
 | `page:settingPrivacy` (3) | `models/page_settingPrivacy.txt` | [已接入口](account-settings-contracts.txt) | 六项远端设置、联动与回读；系统唤起交接另验。 |
 | `page:singleIndexList` (2) | `models/page_singleIndexList.txt` | [已接入口](rankings-ui-contracts.txt) | 歌曲指数榜独立于普通歌单。 |
 | `page:sns` (2) | `models/page_sns.txt` | [仅恢复](sns-login-recovery.txt) | 微信、QQ、微博授权宿主没有正式实现。 |
@@ -118,3 +118,14 @@
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | 设置逐项证据，系统相关和音效部分未完成。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |
 | `window:moveDownload` (3) | `models/window_moveDownload.txt` | [已接入口](core-download-directory-contracts.txt) | 任务锁定、搬移及恢复；平台文件系统故障另验。 |
+
+后续验收以行为边界为单位：
+
+- 播放与搜索优先核对源入口的行为。例如播放列表接收其他页面的条目，
+  与列表内部排序、默认添加到下一首、真正替换播放队列分别验证；热点卡的
+  播放按钮、进入播放页和外链不能共用未经核对的动作。
+- 系统开机启动由系统注册状态决定，和窗口显示方式、关闭时隐藏、程序
+  启动时播放歌曲、默认播放器四条链区分。CI 也区分普通可执行文件、便携
+  包与已安装包；原生启动成功不等于已经输出音频。
+- 动态壁纸、头像挂件、桌宠、远程小程序、第三方登录和识曲各自有独立宿主
+  或授权条件；不以已实现的主题、桌面歌词、网易云扫码或设备选择冒充。

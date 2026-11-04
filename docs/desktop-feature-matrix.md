@@ -84,4 +84,7 @@
 - [福利活动和 WPS](member-welfare-cooperation-audit.txt)各有官方入口、请求与写入契约。福利只读入口仅向服务分组确认且有效列表非空的当前账号显示；切号拒绝旧回包。未启用动态跳转、领取或 WPS 合作流程。
 - [Linux 图形回退](ui-rendering-validation.txt)的软件配置保留合成；X11 强制共享内存，Wayland 由宿主协商。X11 实际绘制导入弹窗，物理 Wayland 实际验证默认和 GPU/SHM 超时后成功回退。Windows 行为与设备限制不变。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
+- [普通精选](ordinary-essential-contracts.txt)使用独立的官方歌单、最新音乐、精选有声书和热门播客，保留滚动和焦点；匿名注册、广告和实验排版分开。
+- [自动启动窗口模式](window-startup-mode-contracts.txt)支持前台或留在托盘，托盘缺失会显示窗口；这个模式与系统注册、文件关联不同。
+- [本地旁挂歌词](core-lyrics-contracts.txt)按原生路径顺序读取，Windows 的真实运行仍需验收。[淡入淡出](playback-fade-mute-contracts.txt)有官方 DLL 的离线数值对照；生产后端没有 DirectSound，未启用该设置。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
