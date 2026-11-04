@@ -1,0 +1,82 @@
+听歌识曲：离线请求调度、EAPI 正文和结果
+
+依据：官方 PC 3.1.42.205594 x64 的 cloudmusic.dll，
+SHA256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+原生 RVA 以下不带映像基址。恢复请求反汇编在
+references/netease-3.1.42.205594-analysis/protocol/core/regions/00314510.asm；
+页面在该分析目录 recovered-js/modules/hybrid_158.chunk.1482700000000.js/3157.js。
+core/src/song_recognition/request 只做离线调度、封包、合成回调；没有 HTTP
+实现、账号 Cookie、自动采集、授权、页面接线或上传。
+
+1. 前缀和会话
+
+- .rdata 19F9880 至 19F9897 的六个小端 DWORD 是 3/5/2/8000/2/16。
+  307152–307195 用 (已保留次数+1) × 3 × 8000 × 2 比较累计字节数。
+  307397–307413 从缓存开头复制这段数据，构造 times=1…5，
+  duration=3/6/9/12/15 秒；每次是完整前缀。3074C5–3074DA 达到
+  五次停止积累。30747C 调 311490 入队请求任务，不能从录音每满三秒
+  推断某条网络请求已经发出，也不能因一次未命中重复提交同一前缀。
+- 307C70 → 62C0C0 取一次原生 UUID，去掉花括号后保留宿主大小写；
+  307413 → 2FB070 → 2FB410 把同一 36 字符串传给各任务。Rust 接收
+  显式 UUID，校验形状，保留大小写。它与用于隔离回调的本地代际、
+  页面 8 字符 GUID 和逐次 GetTickCount 均独立。
+- 3074E1–307508 以严格大于 16,000 ms 判定超时；3075D6–3075E2
+  对无同轮新入队的原生超时写 -5。页面另有 16 秒计时，见 M3157:312–335。
+  本模块用注入的单调毫秒时钟复现原生阈值，保守地在过期后拒绝新发包
+  和晚回包，不依赖原生线程与页面的先后竞态。-5 是本地合成终态，
+  不冒充从服务接收。每轮保留最多 120,000 个 i16，取消、终态及新建
+  释放调度器内部的 PCM 缓存；未调度的余量不补零。
+- 每个 prefix 只能保留一次、生成一次 fixture 请求、处理一次回执。
+  指纹为空复用 31406D 观察到的 -6，当前任务不发包。代际和序号绑定
+  到请求凭据；过期代际的音频、请求、完成、时钟及取消不会更改当前代际。
+  账号、设备、窗口生命周期将来必须调用取消或新建，不在本模块读账号。
+
+2. 请求构造
+
+- 3138A5–313977 从宿主 e_url 拼 /music/audio/match；已恢复默认值为
+  https://music.163.com/eapi/music/audio/match，规范签名路径为
+  /api/music/audio/match。方法是 POST，观察到 Windows_Curl; User-Agent、
+  os: pc、Referer: music.163.com（无 scheme）及原生按 URL 取得 Cookie。
+  Rust fixture 仅描述这些常量，不运行 Cookie 解析或套默认 HTTP 请求模板。
+- 3148DD–314AB2 填 JSON header 的 appver、clientSign、deviceId、
+  os、requestId；requestId 为该次 GetTickCount 的 u32 十进制字符串，
+  允许时钟回绕，不能作为唯一请求回执。314BB6–314E16 写 rawdata
+  （已封指纹的标准 Base64）、sessionId、times、algorithmCode=
+  shazam_v2、duration、from=pc_back_discern、decrypt=1。
+- 314E39–314E92 用 D3ED20/D42300 写 JSON 后再执行 EAPI；D44200
+  的对象分支遍历 D26E50 提取的成员名，以紧凑标点递归写值；
+  D446C7 取 ':'，D4237A 从 1DABBE0 追加 LF。Rust 按显式字典序、
+  紧凑 JSON 及一个 LF 形成合成向量，用已恢复的 encrypt_json 按规范
+  路径生成大写十六进制 params=；没有 e_r。冻结向量使用 ASCII 合成
+  设备上下文及官方离线静音指纹，EAPI 由 Python hashlib 和 OpenSSL
+  独立生成；未执行官方 DLL 的整段 HTTP 请求。其他输入转义、真实 header、
+  Content-Type、Cookie/设备权限及服务响应加密仍需单独验证。
+
+3. 原生与页面的两层结果
+
+- 3078A4–3078B6 将回执的内部代际与当前代际比较。308060 在
+  30825A 检查正文整数 code=200，在 308341 检查 data.type=1；
+  该标志在读取 result[0].song.id 之前设定，所以类型命中并不等于
+  找到可用的歌。3078DD–307921 命中可立即收尾；307927–307941
+  否则只在第五次回执收尾。307B55–307B99 发送结果、停采集、清代际。
+  因此，先到的有效命中可以胜过未完成的更新尝试；第五次未命中已
+  收尾后，先发后到的旧尝试也不能覆盖结果。Rust 模拟回调到达顺序，
+  不声称原生网络同时请求的数量或队列竞争顺序。
+- M3157:51–102、248–310 将桥 code 0/200 映射为完成，有歌才是命中，
+  无歌是 no-track；负数 timeout，其他正数 offline，缺码 unknown。
+  这是独立的桥 code，不是正文 code。歌曲来自 data.result[].song。
+  Rust 仅投影有界的正整数 ID，接受安全 JS 整数及十进制 ID 字符串；
+  无效响应、重复回调和异步晚到不携带原始正文到界面。
+- 结果不是播放权限。官方 M3157:337–368 约 500ms 后按曲目 ID
+  补读 /api/song/enhance/privilege；未来生产调用仍需经过独立授权，
+  本模块没有补读、播放或反馈。真实回包解析、签名及账号资格未验证。
+
+合成验证：
+  cargo test --offline --locked -p cumulus-core --lib song_recognition::request
+  cargo clippy --offline --locked -p cumulus-core --all-targets -- -D warnings
+
+core/tests/fixtures/song-recognition-request.json 对照从合成静音向量生成的
+完整 JSON（包括末尾 LF）和独立 EAPI 密文。六项测试覆盖每一采样边界、
+累计数据、逐次字段与 u32 回绕、单次派发、不同代际、乱序命中/最终无
+结果、独立双层状态、取消、超时和空指纹。测试传输仅持有进程内队列；
+在 Linux 无网络命名空间直接执行测试二进制，六项也全部通过。

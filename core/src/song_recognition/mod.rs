@@ -6,6 +6,7 @@
 //! from a device or sends a request.
 
 mod packing;
+pub mod request;
 #[cfg(all(
     feature = "song-recognition-resampler",
     target_arch = "x86_64",
