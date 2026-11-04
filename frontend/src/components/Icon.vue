@@ -28,6 +28,8 @@ const paths: Record<string, string> = {
   upload: 'M12 15V3m-5 5 5-5 5 5M4 16v5h16v-5',
   headphones: 'M4 14v-3a8 8 0 0 1 16 0v3M4 12H2v8h5v-8zM20 12h2v8h-5v-8z',
   comment: 'M4 4h16v12H9l-5 4zM8 8h8M8 12h5',
+  chatPair:
+    'M12 14c-2 1-4 1-6 .5L3 16l1-3a5 5 0 0 1-2-4c0-3.3 3.1-6 7-6 3.4 0 6.2 2 6.9 4.7M10 15c0-2.8 2.7-5 6-5s6 2.2 6 5c0 1.3-.6 2.4-1.6 3.3L21 21l-2.8-1.2c-.7.2-1.4.3-2.2.3-3.3 0-6-2.3-6-5.1ZM6 9h.01M11 9h.01M14 15h.01M18 15h.01',
   thumb: 'M8 10l4-7h3v7h6l-2 11H8zM3 10h5v11H3z',
   video: 'M3 5h13v14H3zM16 9l5-3v12l-5-3',
   cloud: 'M7 18h11a4 4 0 0 0 .2-8 6 6 0 0 0-11.5-2A5 5 0 0 0 7 18Z',

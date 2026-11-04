@@ -5,6 +5,7 @@ import { bindingGroups, bindingMethodName } from '../../services/accountBindings
 import type { AccountView } from '../../services/contracts';
 import { useCore } from '../../services/core';
 import Icon from '../Icon.vue';
+import AccountBindingProviderMark from './AccountBindingProviderMark.vue';
 import AccountBindingQrDialog from './AccountBindingQrDialog.vue';
 import AccountReadLayout from './AccountReadLayout.vue';
 
@@ -46,17 +47,12 @@ watch(owner, () => (qr.value = false), { flush: 'sync' });
     >
       <h2 :id="`binding-group-${group.key}`">{{ group.title }}</h2>
       <ul>
-        <li
-          v-for="row in group.rows"
-          :key="row.method"
-          :data-binding-method="row.method"
-          :class="{ 'binding-known': row.binding }"
-        >
-          <span class="binding-icon" aria-hidden="true">
-            <Icon v-if="row.method === 'cellphone'" name="phone" />
-            <Icon v-else-if="row.method === 'email'" name="mail" />
-            <span v-else>{{ { wechat: '微信', qq: 'QQ', weibo: '微博' }[row.method] }}</span>
-          </span>
+        <li v-for="row in group.rows" :key="row.method" :data-binding-method="row.method">
+          <AccountBindingProviderMark
+            class="binding-row-mark"
+            :method="row.method"
+            :bound="Boolean(row.binding)"
+          />
           <div class="binding-description">
             <strong>{{ bindingMethodName[row.method] }}</strong>
             <div v-if="row.detail || row.change || row.binding" class="binding-detail">
@@ -127,31 +123,24 @@ watch(owner, () => (qr.value = false), { flush: 'sync' });
 .binding-group li {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   min-height: 80px;
   padding: 8px clamp(6px, 2vw, 20px);
+  border-radius: 14px;
 }
-.binding-group li:nth-child(odd) {
-  border-radius: 8px;
-  background: var(--surface-alt);
-}
-.binding-icon {
-  display: grid;
-  place-items: center;
-  flex: 0 0 40px;
-  height: 40px;
-  border-radius: 50%;
+.binding-group li:focus-within {
   background: var(--surface-hover);
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
 }
-.binding-known .binding-icon {
-  color: var(--accent);
+@media (hover: hover) {
+  .binding-group li:hover {
+    background: var(--surface-hover);
+    box-shadow: 0 6px 16px rgb(0 0 0 / 8%);
+  }
 }
-.binding-icon > .icon {
-  width: 22px;
-  height: 22px;
+.binding-row-mark {
+  --provider-mark-size: 64px;
+  --provider-mark-glyph: 36px;
+  --provider-mark-label: 15px;
 }
 .binding-description {
   flex: 1;
@@ -178,14 +167,15 @@ watch(owner, () => (qr.value = false), { flush: 'sync' });
   align-items: center;
   justify-content: center;
   gap: 4px;
-  min-width: 76px;
-  min-height: 30px;
+  min-width: 84px;
+  min-height: 28px;
   padding: 2px 8px;
   border-radius: 16px;
   font-size: 13px;
   white-space: nowrap;
 }
 .binding-confirmed {
+  border: 1px solid var(--line);
   color: var(--text-secondary);
 }
 .binding-actions .icon {
