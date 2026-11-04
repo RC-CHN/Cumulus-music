@@ -148,6 +148,24 @@
     await wait(test, label);
     await settle();
   }
+  async function openAtReadingPosition(control, block = "nearest") {
+    assert(control && !control.disabled, "enabled navigation control");
+    control.scrollIntoView({ block, behavior: "instant" });
+    control.focus({ preventScroll: true });
+    await settle();
+    const position = main().scrollTop;
+    // Do not call click(): its second scroll would change the position the
+    // app actually checkpoints after we have sampled it.
+    control.click();
+    return position;
+  }
+  async function restoredViewport(position, focused, label) {
+    try {
+      await wait(() => Math.abs(main().scrollTop - position) < 1 && focused(), label);
+    } catch {
+      throw Error(`${label}: expected ${position}, observed ${main().scrollTop}, focus ${focused()}`);
+    }
+  }
   async function sales() {
     click(rank().querySelector('[data-rank-id="albumRank"] .rank-open'));
     await wait(
@@ -560,34 +578,29 @@
       sourceControl: await sourceState(),
     });
     await pause();
-    global.scrollIntoView({ block: "center" });
-    global.focus({ preventScroll: true });
-    const homeScroll = main().scrollTop;
-    click(global);
+    const homeScroll = await openAtReadingPosition(global, "center");
+    assert(homeScroll > 0, "home reading position exercises a scrolled page");
     await wait(() => shown(".playlist-hero"), "playlist detail");
     await back(
       () => ready() && rank()?.querySelector('[data-rank-id="101"]'),
       "home return",
     );
-    assert(
-      Math.abs(main().scrollTop - homeScroll) < 1,
+    await restoredViewport(
+      homeScroll,
+      () => document.activeElement.closest("[data-rank-id]")?.dataset.rankId === "101",
       "home reading position",
     );
-    assert(
-      document.activeElement.closest("[data-rank-id]")?.dataset.rankId ===
-        "101",
-      "home source focus",
-    );
     await theme("light");
-    await capture("home_return_light");
+    await capture("home_return_light", { expectedScrollTop: homeScroll });
     await sales();
     await capture("sales_daily_light");
     click(button("周榜", rank()));
     click(button("数字单曲", rank()));
     await theme("dark");
     await capture("weekly_singles_dark");
-    const weeklyScroll = main().scrollTop;
-    click(rank().querySelector('[data-sale-id="7"] .sale-album'));
+    const weeklyScroll = await openAtReadingPosition(
+      rank().querySelector('[data-sale-id="7"] .sale-album'),
+    );
     await wait(() => shown(".album-header"), "album detail");
     await capture("album_dark");
     await back(
@@ -599,13 +612,13 @@
         button("数字单曲", rank()).getAttribute("aria-pressed") === "true",
       "weekly singles restored",
     );
-    assert(main().scrollTop === weeklyScroll, "sales reading position");
-    assert(
-      document.activeElement.closest("[data-sale-id]")?.dataset.saleId === "7",
-      "album source focus",
+    await restoredViewport(
+      weeklyScroll,
+      () => document.activeElement.closest("[data-sale-id]")?.dataset.saleId === "7",
+      "sales reading position",
     );
     await theme("light");
-    await capture("weekly_return_light");
+    await capture("weekly_return_light", { expectedScrollTop: weeklyScroll });
     await resize(760, 540);
     await yearMenu();
     await capture("year_menu_light");

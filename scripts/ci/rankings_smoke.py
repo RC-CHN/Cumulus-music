@@ -68,7 +68,9 @@ def main():
     assert max(image['bottom'] for image in card['images'])-min(image['bottom'] for image in card['images']) < .1
     assert abs((card['heading']['top']+card['heading']['height']/2)-(card['frequency']['top']+card['frequency']['height']/2)) < 1
     assert states['home_return_light']['focusedCard'] == '101'
-    assert abs(states['global_dark']['scrollTop']-states['home_return_light']['scrollTop']) < 1
+    assert states['home_return_light']['expectedScrollTop'] > 0
+    for name in ['home_return_light', 'weekly_return_light']:
+        assert abs(states[name]['expectedScrollTop']-states[name]['scrollTop']) < 1
     for label in ['weekly_singles_dark', 'weekly_return_light', 'historical_week_light', 'period_recovered_light']:
         assert states[label]['period'] == '周榜' and states[label]['singles'] == '数字单曲'
         assert 'week单曲' in states[label]['firstSale']
