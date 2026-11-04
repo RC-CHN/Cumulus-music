@@ -1,6 +1,6 @@
 use super::{
-    Engine, Message, PlaybackSnapshot, PlaybackStatus, PrefetchSnapshot, Reply, Response,
-    types::Preferences,
+    Engine, Message, PlaybackSnapshot, PlaybackSpeedScope, PlaybackStatus, PrefetchSnapshot, Reply,
+    Response, types::Preferences,
 };
 use crate::{
     Error, Result,
@@ -179,6 +179,9 @@ impl Actor {
             || value.unmute_volume == 0.0
             || !value.speed.is_finite()
             || !(0.25..=4.0).contains(&value.speed)
+            || value
+                .voice_speed
+                .is_some_and(|rate| !rate.is_finite() || !(0.25..=4.0).contains(&rate))
         {
             return Err(Error::State("invalid persisted player preferences"));
         }
@@ -186,6 +189,7 @@ impl Actor {
     }
     pub fn snapshot(&self) -> PlaybackSnapshot {
         let selected = self.queue.selected();
+        let speed_scope = PlaybackSpeedScope::for_entry(selected.as_ref());
         PlaybackSnapshot {
             startup_pending: self.startup_pending,
             startup_autoplay: self.startup_autoplay,
@@ -237,7 +241,9 @@ impl Actor {
                 .map(|timeline| timeline.snapshot()),
             volume: self.prefs.volume,
             unmute_volume: self.prefs.unmute_volume,
-            speed: self.prefs.speed,
+            speed: self.prefs.speed(speed_scope),
+            speed_scope,
+            song_speed: self.prefs.speed,
             mode: self.queue.mode(),
             queue_len: self.queue.len(),
             visible_queue_len: self.queue.visible_len(),

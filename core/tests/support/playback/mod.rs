@@ -45,6 +45,16 @@ pub struct Backend {
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if path == "/api/dj/program/detail" {
+                assert_eq!(payload["id"], "22");
+                return Ok(
+                    json!({"code":200,"program":{"id":22,"mainTrackId":2,"duration":120000}}),
+                );
+            }
+            if path == "/api/dj/play/url/check" {
+                assert_eq!(payload["voiceId"], "22");
+                return Ok(json!({"code":200,"data":{"voiceId":22,"songId":2,"canPlay":true}}));
+            }
             if path == "/api/vipauth/app/auth/query" {
                 self.quality_reads.fetch_add(1, Ordering::SeqCst);
                 if self.quality_read_failed.load(Ordering::SeqCst) {

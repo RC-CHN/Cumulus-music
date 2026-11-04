@@ -530,7 +530,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const equalizerDraft = useEqualizerDraft(() => view.value, configureEqualizer, syncPlayback);
   // Absolute playback preferences have their own feedback. Saving one must
   // not supersede an in-flight transport or become the audio-error retry.
-  async function configurePreference(input: Extract<PlayerAction, { kind: 'volume' | 'speed' }>) {
+  async function configurePreference(
+    input: Extract<PlayerAction, { kind: 'volume' | 'speed' | 'speed_for' }>,
+  ) {
     const captured = epoch,
       session = connection;
     if (!ready.value) throw { code: 'stale', message: '播放器尚未连接', retryable: false };
@@ -551,7 +553,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     }
   }
   const configureVolume = (value: number) => configurePreference({ kind: 'volume', value });
-  const configureSpeed = (value: number) => configurePreference({ kind: 'speed', value });
+  const configureSpeed = (value: number) =>
+    configurePreference({
+      kind: 'speed_for',
+      scope: view.value?.speedScope ?? (view.value?.track?.voiceId ? 'voice' : 'song'),
+      value,
+    });
   async function configureMode(
     mode: import('../services/player').PlaybackMode,
     queueRevision: string,

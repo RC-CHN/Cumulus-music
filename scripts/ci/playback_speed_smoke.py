@@ -38,7 +38,7 @@ def main():
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
-    env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1')
+    env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_SEARCH_UI_PROOF='1')
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -64,11 +64,12 @@ def main():
     assert complete['ok'] and complete['stageCount'] == count
     if not args.baseline:
         assert complete['speeds'] == [2, 1.5, 1.25, 1, .75, .5, .25, 3, 4]
-        assert complete['resumedFromSeek'] and complete['speedFailureIsolated']
+        assert complete['resumedFromSeek'] and complete['speedFailureIsolated'] and complete['independentSongAndPodcastRates']
         assert abs(complete['resumedPosition'] - 10 - complete['resumeElapsed'] * 1.25) < .35
         assert complete['realMusicRequests'] == complete['accountWrites'] == 0
         stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted((root / 'first').glob('ux_*.json'))]
         report = verify(stages)
+        report['independentSongAndPodcastRates'] = True
     else:
         report = {'ok': True, 'baseline': True}
     if args.screenshots:

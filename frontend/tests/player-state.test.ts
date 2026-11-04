@@ -287,7 +287,7 @@ test('speed preference failures stay independent of transport and native source 
     playerAction: async (_epoch, input) => {
       actions.push(input);
       if (input.kind === 'play') return loading.promise;
-      if (input.kind === 'speed')
+      if (input.kind === 'speed_for')
         throw { code: 'storage', message: 'speed preference failed', retryable: true };
       return state('4', '1', 'recovered');
     },
@@ -299,14 +299,19 @@ test('speed preference failures stay independent of transport and native source 
   assert.equal(f.player.error.value, '');
   loading.resolve(state('2', '1', 'first'));
   await playing;
-  f.emit({ ...state('3', '1', 'first'), state: 'error', error: 'audio source failure' });
+  f.emit({
+    ...state('3', '1', 'first'),
+    state: 'error',
+    error: 'audio source failure',
+    speedScope: 'voice',
+  });
   await assert.rejects(f.player.configureSpeed(2), { code: 'storage' });
   assert.equal(f.player.error.value, '');
   await f.player.retry();
   assert.deepEqual(actions, [
     { kind: 'play' },
-    { kind: 'speed', value: 1.5 },
-    { kind: 'speed', value: 2 },
+    { kind: 'speed_for', scope: 'song', value: 1.5 },
+    { kind: 'speed_for', scope: 'voice', value: 2 },
     { kind: 'refresh_for', play_id: 'first', expected_queue_revision: '1' },
   ]);
   f.player.dispose();

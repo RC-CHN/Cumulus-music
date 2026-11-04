@@ -1,5 +1,5 @@
 use super::{
-    PlaybackCommand, PlaybackStatus, Reply, Request,
+    PlaybackCommand, PlaybackSpeedScope, PlaybackStatus, Reply, Request,
     load::{LoadOptions, LoadSource},
     state::Actor,
 };
@@ -69,6 +69,7 @@ impl Actor {
                 | PlaybackCommand::SyncQueue
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Speed(_)
+                | PlaybackCommand::SpeedFor { .. }
                 | PlaybackCommand::Equalizer { .. }
                 | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
@@ -133,6 +134,7 @@ impl Actor {
                 | PlaybackCommand::SyncQueue
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Speed(_)
+                | PlaybackCommand::SpeedFor { .. }
                 | PlaybackCommand::Equalizer { .. }
                 | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
@@ -303,8 +305,11 @@ impl Actor {
                     ))
                 }
             }
-            PlaybackCommand::Volume(value) => self.preference(value, true).await,
-            PlaybackCommand::Speed(value) => self.preference(value, false).await,
+            PlaybackCommand::Volume(value) => self.preference(value, true, None).await,
+            PlaybackCommand::Speed(value) => self.preference(value, false, None).await,
+            PlaybackCommand::SpeedFor { scope, value } => {
+                self.preference(value, false, Some(scope)).await
+            }
             PlaybackCommand::Next
             | PlaybackCommand::Previous
             | PlaybackCommand::StepPreservingState(_) => {
@@ -572,7 +577,12 @@ impl Actor {
         }
         Ok(())
     }
-    async fn preference(&mut self, value: f64, volume: bool) -> Result<()> {
+    async fn preference(
+        &mut self,
+        value: f64,
+        volume: bool,
+        speed_scope: Option<PlaybackSpeedScope>,
+    ) -> Result<()> {
         if !value.is_finite()
             || (volume && !(0.0..=100.0).contains(&value))
             || (!volume && !(0.25..=4.0).contains(&value))
@@ -581,6 +591,9 @@ impl Actor {
         }
         let before = self.prefs;
         let mut next = before;
+        let current_scope = PlaybackSpeedScope::for_entry(self.queue.selected().as_ref());
+        let scope = speed_scope.unwrap_or(current_scope);
+        let apply_engine = self.state.active() && (volume || scope == current_scope);
         if volume {
             next.volume = value;
             // Keep restoration native and durable for UI, media keys and MPRIS.
@@ -591,9 +604,9 @@ impl Actor {
                 next.unmute_volume = before.volume;
             }
         } else {
-            next.speed = value;
+            next.set_speed(scope, value);
         }
-        if self.state.active() {
+        if apply_engine {
             super::engine(self.engine.clone(), self.guard(), move |engine| {
                 if volume {
                     engine.volume(value)
@@ -609,12 +622,12 @@ impl Actor {
             "preferences",
             &serde_json::to_value(next)?,
         ) {
-            if self.state.active() {
+            if apply_engine {
                 super::engine(self.engine.clone(), self.guard(), move |engine| {
                     if volume {
                         engine.volume(before.volume)
                     } else {
-                        engine.speed(before.speed)
+                        engine.speed(before.speed(scope))
                     }
                 })
                 .await?;

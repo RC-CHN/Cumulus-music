@@ -26,6 +26,7 @@ export const qualities: { value: Quality; label: string }[] = [
   { value: '64aac', label: '节省流量' },
 ];
 export type PlaybackMode = 'order_loop' | 'single_loop' | 'random' | 'sequential';
+export type PlaybackSpeedScope = 'song' | 'voice';
 export type PlaybackStatus =
   | 'idle'
   | 'preparing'
@@ -83,6 +84,7 @@ export interface PlayerView {
   volume: number;
   unmuteVolume: number;
   speed: number;
+  speedScope?: PlaybackSpeedScope;
   mode: PlaybackMode;
   queueLen: number;
   error: string | null;
@@ -350,6 +352,7 @@ export type PlayerAction =
   | { kind: 'seek'; seconds: number }
   | { kind: 'seek_for'; play_id: string; expected_queue_revision: string; seconds: number }
   | { kind: 'volume' | 'speed'; value: number }
+  | { kind: 'speed_for'; scope: PlaybackSpeedScope; value: number }
   | { kind: 'quality'; level: Quality }
   | { kind: 'quality_for'; level: Quality; play_id: string; expected_revision: string }
   | { kind: 'mode'; mode: PlaybackMode }

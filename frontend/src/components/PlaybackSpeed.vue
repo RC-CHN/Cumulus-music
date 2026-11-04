@@ -24,7 +24,11 @@ const items = computed(() =>
   ]),
 );
 watch(
-  [() => props.player.view.value?.epoch, props.player.ready],
+  [
+    () => props.player.view.value?.epoch,
+    () => props.player.view.value?.speedScope,
+    props.player.ready,
+  ],
   () => {
     generation++;
     pending.value = false;

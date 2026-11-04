@@ -51,9 +51,15 @@ pub(super) async fn restore_local(
             )
             .await?;
     }
-    if current.speed == 1.0 {
+    if current.song_speed == 1.0 {
         controller
-            .command(token, PlaybackCommand::Speed(saved.previous_speed))
+            .command(
+                token,
+                PlaybackCommand::SpeedFor {
+                    scope: PlaybackSpeedScope::Song,
+                    value: saved.previous_speed,
+                },
+            )
             .await?;
     }
     if current.mode == PlaybackMode::OrderLoop && saved.previous_mode == PlaybackMode::Sequential {

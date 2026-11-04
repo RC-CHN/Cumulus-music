@@ -33,7 +33,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 use types::Reply;
 pub use types::{
     FmRestore, IntelligenceUpdate, PlaybackCommand, PlaybackFence, PlaybackSnapshot,
-    PlaybackStatus, PrefetchSnapshot, QueueTransport, QueueUpdate, RemotePlayback, StartupRestore,
+    PlaybackSpeedScope, PlaybackStatus, PrefetchSnapshot, QueueTransport, QueueUpdate,
+    RemotePlayback, StartupRestore,
 };
 
 type Engine = Arc<Mutex<Box<dyn AudioEngine>>>;

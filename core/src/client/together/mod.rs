@@ -19,7 +19,7 @@ use crate::{
     listen_together::{CommandKind, RoomRole, SharedMode, TogetherPhase, TogetherService},
     playback::{
         PlaybackMode,
-        controller::{PlaybackCommand, PlaybackController},
+        controller::{PlaybackCommand, PlaybackController, PlaybackSpeedScope},
         engine::Cancellation,
     },
     storage::StateStore,
@@ -118,7 +118,9 @@ impl MusicClient {
                 "together does not support sequential playback",
             ));
         }
-        if attached && matches!(action,PlayerAction::Speed {value} if *value!=1.0) {
+        if attached
+            && matches!(action, PlayerAction::Speed { value } | PlayerAction::SpeedFor { value, .. } if *value != 1.0)
+        {
             return Err(Error::State("together requires normal playback speed"));
         }
         Ok(())
@@ -394,7 +396,7 @@ impl MusicClient {
         } else {
             Binding {
                 room_id: room.into(),
-                previous_speed: current.speed,
+                previous_speed: current.song_speed,
                 previous_mode: current.mode,
             }
         };
@@ -407,7 +409,13 @@ impl MusicClient {
                 .delete(uid, lifecycle::NOTICE, "current")
         })?;
         controller
-            .command(token, PlaybackCommand::Speed(1.0))
+            .command(
+                token,
+                PlaybackCommand::SpeedFor {
+                    scope: PlaybackSpeedScope::Song,
+                    value: 1.0,
+                },
+            )
             .await?;
         if current.mode == PlaybackMode::Sequential {
             controller

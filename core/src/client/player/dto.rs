@@ -2,7 +2,10 @@ use crate::{
     client::dto::TrackView,
     lyrics::{DisplayType, LyricLine, LyricPreferences, YrcInfo},
     membership::Quality,
-    playback::{PlaybackMode, TimelineSnapshot, controller::PlaybackStatus},
+    playback::{
+        PlaybackMode, TimelineSnapshot,
+        controller::{PlaybackSpeedScope, PlaybackStatus},
+    },
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +49,7 @@ pub struct PlayerView {
     pub volume: f64,
     pub unmute_volume: f64,
     pub speed: f64,
+    pub speed_scope: PlaybackSpeedScope,
     pub mode: PlaybackMode,
     pub queue_len: usize,
     pub error: Option<&'static str>,
@@ -404,6 +408,10 @@ pub enum PlayerAction {
         value: f64,
     },
     Speed {
+        value: f64,
+    },
+    SpeedFor {
+        scope: PlaybackSpeedScope,
         value: f64,
     },
     Next,

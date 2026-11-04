@@ -260,6 +260,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         volume: value.volume,
         unmute_volume: value.unmute_volume,
         speed: value.speed,
+        speed_scope: value.speed_scope,
         mode: value.mode,
         queue_len: value.visible_queue_len,
         error: failure.as_ref().map(|error| error.message),
@@ -808,6 +809,7 @@ impl MusicClient {
             action,
             PlayerAction::Volume { .. }
                 | PlayerAction::Speed { .. }
+                | PlayerAction::SpeedFor { .. }
                 | PlayerAction::Mode { .. }
                 | PlayerAction::Equalizer { .. }
                 | PlayerAction::SaveCustomEqualizer { .. }
@@ -1077,6 +1079,7 @@ impl MusicClient {
             PlayerAction::Seek { seconds } => PlaybackCommand::Seek(seconds),
             PlayerAction::Volume { value } => PlaybackCommand::Volume(value),
             PlayerAction::Speed { value } => PlaybackCommand::Speed(value),
+            PlayerAction::SpeedFor { scope, value } => PlaybackCommand::SpeedFor { scope, value },
             PlayerAction::Next if policy == NativeTransportPolicy::PreserveStep => {
                 PlaybackCommand::StepPreservingState(crate::playback::Step::Next)
             }

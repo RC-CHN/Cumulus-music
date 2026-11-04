@@ -85,7 +85,8 @@
     const playerAction=core.playerAction;
     let failedSpeedWrites=0;
     core.playerAction=async (epoch,action)=>{
-      if(action.kind==='speed'){
+      if(action.kind==='speed_for'){
+        assert(action.scope==='song','the song menu writes the song rate');
         failedSpeedWrites++;
         throw {code:'storage',message:'合成倍速保存失败',retryable:true};
       }
@@ -139,6 +140,22 @@
     const resumedPosition=Number(bar().dataset.position);
     assert(Math.abs(resumedPosition-10-elapsed*1.25)<.35,'resumed native clock differs from requested seek');
     click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','final pause');
-    await emit('complete',{ok:true,stageCount:count,speeds,resumedPosition,resumeElapsed:elapsed,resumedFromSeek:true,speedFailureIsolated:true,realMusicRequests:0,accountWrites:0});
+    const {epoch}=await core.accountSnapshot();
+    const songId=bar().dataset.trackId;
+    const voice=await core.playSelection(epoch,{kind:'voice',id:'402'});
+    assert(voice.speedScope==='voice'&&voice.speed===1,'podcast starts at its independent default rate');
+    await wait(()=>bar().dataset.state==='playing'&&bar().dataset.playId===voice.playId&&Number(bar().dataset.position)>.2,'podcast native clock');
+    click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','native podcast pause');
+    const voiceSeek=one('.playerbar [aria-label="播放进度"]');voiceSeek.value='10';voiceSeek.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!button().disabled,'native podcast seek');
+    await choose(1.5);
+    const voiceAfter=await core.playerSnapshot(epoch);
+    assert(voiceAfter.speedScope==='voice'&&voiceAfter.speed===1.5,'podcast menu writes the voice rate');
+    const songAgain=await core.playSelection(epoch,{kind:'songs',ids:[songId],index:0,quality:'standard'});
+    assert(songAgain.speedScope==='song'&&songAgain.speed===1.25,'song rate restored after podcast');
+    await wait(()=>bar().dataset.state==='playing'&&bar().dataset.playId===songAgain.playId&&Number(bar().dataset.position)>.2,'returned song native clock');
+    const voiceAgain=await core.playSelection(epoch,{kind:'voice',id:'402'});
+    assert(voiceAgain.speedScope==='voice'&&voiceAgain.speed===1.5,'podcast rate restored after song');
+    await emit('complete',{ok:true,stageCount:count,speeds,resumedPosition,resumeElapsed:elapsed,resumedFromSeek:true,speedFailureIsolated:true,independentSongAndPodcastRates:true,realMusicRequests:0,accountWrites:0});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount:count,width:innerWidth,height:innerHeight,ratio:devicePixelRatio});}
 })();

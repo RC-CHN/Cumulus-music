@@ -64,6 +64,8 @@ pub struct PlaybackSnapshot {
     pub volume: f64,
     pub unmute_volume: f64,
     pub speed: f64,
+    pub speed_scope: PlaybackSpeedScope,
+    pub(crate) song_speed: f64,
     pub mode: PlaybackMode,
     pub queue_len: usize,
     /// Public list count excludes a retained current decoder outside the list.
@@ -182,6 +184,10 @@ pub enum PlaybackCommand {
     SeekDuringLoad(f64),
     Volume(f64),
     Speed(f64),
+    SpeedFor {
+        scope: PlaybackSpeedScope,
+        value: f64,
+    },
     Next,
     Previous,
     /// System transports keep a paused or stopped player from starting sound.
@@ -219,6 +225,46 @@ pub(super) struct Preferences {
     #[serde(default = "default_unmute_volume")]
     pub unmute_volume: f64,
     pub speed: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice_speed: Option<f64>,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlaybackSpeedScope {
+    #[default]
+    Song,
+    Voice,
+}
+impl PlaybackSpeedScope {
+    pub(super) fn for_entry(entry: Option<&QueueEntry>) -> Self {
+        if entry.is_some_and(|item| {
+            !item.resource["voice_id"].is_null() || !item.resource["song"]["voice_id"].is_null()
+        }) {
+            Self::Voice
+        } else {
+            Self::Song
+        }
+    }
+}
+impl Preferences {
+    pub(super) fn speed(self, scope: PlaybackSpeedScope) -> f64 {
+        match scope {
+            PlaybackSpeedScope::Song => self.speed,
+            PlaybackSpeedScope::Voice => self.voice_speed.unwrap_or(self.speed),
+        }
+    }
+
+    pub(super) fn set_speed(&mut self, scope: PlaybackSpeedScope, value: f64) {
+        match scope {
+            PlaybackSpeedScope::Song => {
+                // A legacy shared value was visible in both modes. Preserve
+                // it for voice before the first independent song adjustment.
+                self.voice_speed.get_or_insert(self.speed);
+                self.speed = value;
+            }
+            PlaybackSpeedScope::Voice => self.voice_speed = Some(value),
+        }
+    }
 }
 fn default_unmute_volume() -> f64 {
     10.0
@@ -229,6 +275,7 @@ impl Default for Preferences {
             volume: 100.0,
             unmute_volume: default_unmute_volume(),
             speed: 1.0,
+            voice_speed: None,
         }
     }
 }

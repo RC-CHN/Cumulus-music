@@ -1,5 +1,5 @@
 use super::{
-    Message, PlaybackStatus, Response,
+    Message, PlaybackSpeedScope, PlaybackStatus, Response,
     state::{Actor, Loaded, Pending, SourceRetryPoint},
 };
 use crate::{
@@ -349,6 +349,7 @@ impl Actor {
                 }
                 let target = prepared.timeline.to_media(prepared.position);
                 let prefs = self.prefs;
+                let speed = prefs.speed(PlaybackSpeedScope::for_entry(Some(&prepared.item)));
                 let paused = pending.paused;
                 match target {
                     Ok(target) => {
@@ -359,7 +360,7 @@ impl Actor {
                                     engine.seek(target)?;
                                 }
                                 engine.volume(prefs.volume)?;
-                                engine.speed(prefs.speed)?;
+                                engine.speed(speed)?;
                                 engine.pause(paused)
                             })
                             .await;
