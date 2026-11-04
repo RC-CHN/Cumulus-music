@@ -232,6 +232,7 @@ async function hideMutedArtist(id: string) {
             {{ release.kind === 'album' ? '专辑上线' : '单曲上线' }}
           </p>
           <FollowArtistNoticeMenu
+            class="follow-release-menu"
             :epoch="epoch"
             :artist-id="release.artistId"
             :artist-name="release.artistName"
@@ -396,6 +397,20 @@ async function hideMutedArtist(id: string) {
   border-radius: 10px;
   padding: 14px 18px;
   margin-block-end: 12px;
+}
+.follow-release > header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+}
+.follow-release-artist,
+.follow-release header > p {
+  grid-column: 1;
+}
+.follow-release-menu {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
 }
 .follow-release header > p {
   margin-block: 6px 10px;

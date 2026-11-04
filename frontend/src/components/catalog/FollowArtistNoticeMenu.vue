@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import ActionMenu from '../ActionMenu.vue';
 import { failure } from '../../services/contracts';
 import { useCore } from '../../services/core';
@@ -11,10 +11,18 @@ const core = useCore();
 const menu = [{ key: 'disable', label: '不接收此歌手的通知' }];
 const root = ref<HTMLElement>();
 const dialog = ref<HTMLDialogElement>();
+const closeButton = ref<HTMLButtonElement>();
 const open = ref(false);
 const busy = ref(false);
 const state = ref<ReleaseNotificationState>();
 const error = ref('');
+const title = computed(() =>
+  state.value === 'uncertain'
+    ? '新歌通知状态待核对'
+    : state.value === 'confirmed'
+      ? '已取消该歌手的新歌通知'
+      : '确认取消该歌手新歌通知？',
+);
 let generation = 0;
 
 function retire() {
@@ -53,7 +61,11 @@ async function request(action: 'inspect' | 'disable') {
     error.value = issue.message;
     if (issue.code === 'session_expired' || issue.code === 'profile_changed') emit('expired');
   } finally {
-    if (requestId === generation) busy.value = false;
+    if (requestId === generation) {
+      busy.value = false;
+      await nextTick();
+      if (requestId === generation && open.value) closeButton.value?.focus({ preventScroll: true });
+    }
   }
 }
 
@@ -77,10 +89,12 @@ async function close() {
       v-if="open"
       ref="dialog"
       class="playlist-dialog playlist-editor-confirm"
-      aria-label="确认取消该歌手新歌通知？"
+      :aria-label="title"
       @cancel.prevent="close"
     >
-      <header><h2>确认取消该歌手新歌通知？</h2></header>
+      <header>
+        <h2>{{ title }}</h2>
+      </header>
       <p v-if="state === 'uncertain'">
         上一次操作未收到确认。请在官方客户端核对通知设置，这里不会再次发送。
       </p>
@@ -89,7 +103,13 @@ async function close() {
       <p v-else-if="busy">正在检查通知操作记录…</p>
       <p v-if="error" role="alert">{{ error }}</p>
       <footer>
-        <button type="button" class="download-button" autofocus :disabled="busy" @click="close">
+        <button
+          ref="closeButton"
+          type="button"
+          class="download-button"
+          :disabled="busy"
+          @click="close"
+        >
           {{ state === 'ready' ? '取消' : '关闭' }}
         </button>
         <button
@@ -105,9 +125,3 @@ async function close() {
     </dialog>
   </div>
 </template>
-
-<style scoped>
-.follow-artist-notice {
-  margin-inline-start: auto;
-}
-</style>
