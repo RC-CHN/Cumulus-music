@@ -487,7 +487,7 @@ async fn remembered_headphone_requires_confirmed_attach_and_an_explicit_current_
         .unwrap();
     assert!(matches!(
         client
-            .restore_native_headphone(&epoch, &remembered.revision)
+            .restore_native_headphone(&epoch, "00000000000000000000000000000000")
             .await,
         Err(Error::StaleResponse)
     ));

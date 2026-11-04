@@ -85,7 +85,13 @@ pub struct PlaybackFence {
 }
 impl PlaybackSnapshot {
     pub(crate) fn headphone_restore_ready(&self) -> bool {
-        !self.startup_pending && (self.state == PlaybackStatus::Idle || self.state.active())
+        if self.state == PlaybackStatus::Idle {
+            // The UI intentionally skips startup restore on an empty queue.
+            // There is no pending selection that can load on its own.
+            !self.startup_pending || (self.queue_len == 0 && self.selected.is_none())
+        } else {
+            !self.startup_pending && self.state.active()
+        }
     }
 
     pub fn fence(&self) -> PlaybackFence {
