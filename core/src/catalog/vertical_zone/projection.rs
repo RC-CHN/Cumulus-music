@@ -11,12 +11,25 @@ fn rows(value: &Value) -> impl Iterator<Item = &Value> {
 }
 
 fn text(value: &Value) -> Option<String> {
-    let text = value.as_str()?.trim();
+    safe_label(value.as_str()?.trim()).map(str::to_owned)
+}
+
+fn safe_label(text: &str) -> Option<&str> {
     (!text.is_empty()
         && text.len() <= 768
         && !text.contains("://")
         && !text.chars().any(char::is_control))
-    .then(|| text.into())
+    .then_some(text)
+}
+
+fn marked(value: &Value) -> bool {
+    // The recovered privacy gates use JavaScript truthiness, not strict === true.
+    match value {
+        Value::Null | Value::Bool(false) => false,
+        Value::Number(number) => number.as_f64().is_some_and(|number| number != 0.0),
+        Value::String(value) => !value.is_empty(),
+        _ => true,
+    }
 }
 
 fn id(value: &Value) -> Option<String> {
@@ -27,7 +40,11 @@ pub(super) fn tab(value: &Value) -> Option<ZoneTab> {
     let key = value["tabKey"].as_str().filter(|s| super::valid_tab(s))?;
     Some(ZoneTab {
         key: key.into(),
-        name: text(&value["tabKeyName"]).unwrap_or_default(),
+        name: value["tabKeyName"]
+            .as_str()
+            .and_then(safe_label)
+            .unwrap_or_default()
+            .into(),
     })
 }
 
@@ -62,7 +79,7 @@ fn carousel(row: &Value) -> Option<ZoneCard> {
 }
 
 fn recommendation(row: &Value, horizontal: bool, block_personalized: bool) -> Option<ZoneCard> {
-    let personalized = block_personalized || row["hideAfterClosePersonalized"] == true;
+    let personalized = block_personalized || marked(&row["hideAfterClosePersonalized"]);
     let target = match row["resourceType"].as_str()? {
         "playlist" => ZoneTarget::Playlist {
             id: id(&row["id"]).or_else(|| id(&row["resourceId"]))?,
@@ -134,7 +151,7 @@ pub(super) fn blocks(content: &Value, recommendation_enabled: bool) -> Vec<ZoneB
                 .get("children")
                 .or_else(|| module.get("childrens"))
                 .unwrap_or(&Value::Null);
-            let personalized = module["hideAfterClosePersonalized"] == true;
+            let personalized = marked(&module["hideAfterClosePersonalized"]);
             let requires_recommendation = personalized && !recommendation_enabled;
             let projected = rows(children)
                 .filter_map(|row| match kind {
@@ -143,7 +160,7 @@ pub(super) fn blocks(content: &Value, recommendation_enabled: bool) -> Vec<ZoneB
                     Block::Horizontal | Block::Grid => {
                         if !requires_recommendation
                             && !recommendation_enabled
-                            && row["hideAfterClosePersonalized"] == true
+                            && marked(&row["hideAfterClosePersonalized"])
                         {
                             return None;
                         }

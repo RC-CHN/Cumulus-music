@@ -133,15 +133,15 @@ async fn named_search_retries_only_an_exact_label_and_mismatch_falls_back() {
             "/api/zone/tab/get",
             json!({"pageCode":"jazz","tabKey":"default"}),
             json!({
-            "code":200,"data":{"tabMetas":[{"tabKey":"swing","tabKeyName":"摇摆"}],
+            "code":200,"data":{"tabMetas":[{"tabKey":"swing","tabKeyName":" 摇摆"}],
             "currentTabContent":{"tabKey":"default","tabKeyName":"推荐","blocks":[]}}}),
         ),
         (
             "/api/zone/tab/get",
             json!({"pageCode":"jazz","tabKey":"swing"}),
             json!({
-            "code":200,"data":{"tabMetas":[{"tabKey":"swing","tabKeyName":"摇摆"}],
-            "currentTabContent":{"tabKey":"swing","tabKeyName":"摇摆","blocks":[]}}}),
+            "code":200,"data":{"tabMetas":[{"tabKey":"swing","tabKeyName":" 摇摆"}],
+            "currentTabContent":{"tabKey":"swing","tabKeyName":" 摇摆","blocks":[]}}}),
         ),
         (
             "/api/zone/tab/get",
@@ -167,7 +167,7 @@ async fn named_search_retries_only_an_exact_label_and_mismatch_falls_back() {
         Some(&groups),
         true,
         "jazz",
-        ZoneEntry::SearchTabName("摇摆"),
+        ZoneEntry::SearchTabName(" 摇摆"),
     )
     .await
     .unwrap();

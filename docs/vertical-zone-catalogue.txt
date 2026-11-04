@@ -28,3 +28,8 @@ M/437:18–86、M/400:141–166，hybrid_40 M/3089:3447–3500,3670–3930,4020�
 - cargo test -p cumulus-core --test vertical_zone --locked：封闭夹具核对
   请求先后及精确实参、四类模块/个性化关闭、tabName 单次重查、不同
   tabKey 降级，以及 301 终止；没有真实账号/服务或 WebView 声明。
+- 补充离线回放：执行解包 M/1211、M/437、M/400 和 M/485 的原始工厂，
+  用本地 M/15 传输替身及 M/21 歌单投影桩。四种模块在渲染前的有效项数量
+  为 2/3/1/1，榜单对位文案正确；带前置空格的显示名只按原文精确匹配，
+  default 后只重读一次真实 swing key。结果
+  .build/ui-proof/vertical-zone-official-oracle.json；没有调用实际服务。

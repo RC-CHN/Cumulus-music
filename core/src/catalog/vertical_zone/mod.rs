@@ -149,7 +149,10 @@ async fn classic(
     let value = api
         .call(CLASSIC_PATH, json!({"pageCode":page_code}), false, &[200])
         .await?;
-    let content = &value["data"][0];
+    let rows = value["data"]
+        .as_array()
+        .ok_or(Error::Response("missing classic vertical zone data"))?;
+    let content = rows.first().unwrap_or(&Value::Null);
     Ok(VerticalZonePage {
         layout,
         tabs: Vec::new(),
