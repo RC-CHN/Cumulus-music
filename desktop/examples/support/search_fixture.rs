@@ -411,6 +411,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     Some(4) => {
                         entry["userId"] = json!(501);
                         entry["creator"] = json!({"userId":502,"nickname":"合成不匹配作者"});
+                        entry["privacy"] = json!(10);
                     }
                     _ => {}
                 }

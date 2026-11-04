@@ -2,10 +2,20 @@ import type { CoreClient, PlaylistView, TrackView } from './contracts';
 import type { MenuItem } from './menu';
 
 export type PlaylistMenuScene = 'collection' | 'detail';
+export type PlaylistLinkAction = 'share' | 'copy';
 export function playlistLink(playlist: PlaylistView) {
   return !playlist.private && /^\d+$/.test(playlist.id)
     ? `https://music.163.com/#/playlist?id=${playlist.id}`
     : '';
+}
+export function playlistLinkMenuItem(list: PlaylistView, key: PlaylistLinkAction): MenuItem {
+  return {
+    key,
+    label: key === 'share' ? '分享…' : '复制链接',
+    icon: key === 'share' ? 'share' : 'copy',
+    disabled: !(list.trackCount > 0) || !playlistLink(list),
+    hint: list.private ? '私密歌单不能分享' : undefined,
+  };
 }
 
 /** Official 622.js playlist menu conditions. Batch branches are tracked
@@ -48,29 +58,19 @@ export function playlistMenuItems(
     if (!known && !list.owned)
       items.push({ key: 'subscribe', label: '收藏', icon: 'star', disabled: state.busy });
   }
-  items.push({
-    key: 'share',
-    label: '分享…',
-    icon: 'share',
-    disabled: !nonempty || !playlistLink(list),
-    hint: list.private ? '私密歌单不能分享' : undefined,
-  });
+  items.push(playlistLinkMenuItem(list, 'share'));
   if (scene === 'detail')
     items.push(
       { key: 'batch', label: '批量操作', icon: 'list', disabled: !nonempty || state.busy },
       queueAction,
     );
   if (scene === 'collection') {
-    items.push(
-      {
-        key: 'copy',
-        label: '复制链接',
-        icon: 'copy',
-        disabled: !nonempty || !playlistLink(list),
-        hint: list.private ? '私密歌单不能分享' : undefined,
-      },
-      { key: 'download', label: '下载全部', icon: 'download', disabled: !nonempty || state.busy },
-    );
+    items.push(playlistLinkMenuItem(list, 'copy'), {
+      key: 'download',
+      label: '下载全部',
+      icon: 'download',
+      disabled: !nonempty || state.busy,
+    });
     if (!list.favorite && (list.owned || known)) {
       items.push({ key: 'manage-divider', label: '', separator: true });
       if (list.owned)

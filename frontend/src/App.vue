@@ -2247,6 +2247,10 @@ onUnmounted(() => {
                 @playlist-download="
                   (list) => page.kind === 'search' && signedIn && playlistAction(list, 'download')
                 "
+                @playlist-link="
+                  (list, action) =>
+                    page.kind === 'search' && signedIn && playlistAction(list, action)
+                "
                 @download-track="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
                 @card-comments="searchCardComments"
                 @card-download="

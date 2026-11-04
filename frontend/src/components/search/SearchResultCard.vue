@@ -2,6 +2,7 @@
 import { computed, ref, useId, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
 import type { PlaylistView } from '../../services/contracts';
+import { playlistLinkMenuItem, type PlaylistLinkAction } from '../../services/playlistMenu';
 import { artworkAt } from '../../services/artwork';
 import { time } from '../../services/player';
 import { playlistCoverCount } from '../../services/playlistHeader';
@@ -40,6 +41,7 @@ const emit = defineEmits<{
   play: [item: SearchItem];
   queue: [request: SearchQueueRequest];
   playlistDownload: [playlist: PlaylistView];
+  playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
   comments: [item: SearchItem];
   download: [item: SearchItem];
 }>();
@@ -128,6 +130,8 @@ const items = computed<MenuItem[]>(() => {
       : []),
     ...(props.item.kind === 'playlist'
       ? [
+          playlistLinkMenuItem(props.item.playlist, 'share'),
+          playlistLinkMenuItem(props.item.playlist, 'copy'),
           {
             key: 'download-playlist',
             label: '下载全部',
@@ -175,6 +179,12 @@ function action(key: string) {
     emit('artistAction', { artist: props.item.artist, action: key, anchor: actionAnchor() });
   } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
     emit('queue', { item: props.item, anchor: actionAnchor() });
+  } else if (
+    (key === 'share' || key === 'copy') &&
+    props.item.kind === 'playlist' &&
+    !playlistLinkMenuItem(props.item.playlist, key).disabled
+  ) {
+    emit('playlistLink', props.item.playlist, key);
   } else if (
     key === 'download-playlist' &&
     props.item.kind === 'playlist' &&

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TrackMenuRequest } from '../../services/trackMenu';
 import type { ArtistCardRequest } from '../../services/artistCards';
+import type { PlaylistLinkAction } from '../../services/playlistMenu';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { advanceSearchPage, type SearchPageStep } from '../../services/searchPagination';
 import type { SearchViewportMemory } from '../../services/searchViewport';
@@ -71,6 +72,7 @@ const emit = defineEmits<{
   playTrack: [track: TrackView, toggleCurrent: boolean];
   downloadTrack: [track: TrackView];
   playlistDownload: [playlist: PlaylistView];
+  playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
   collect: [tracks: TrackView[]];
   more: [request: TrackMenuRequest];
   like: [track: TrackView];
@@ -778,6 +780,7 @@ onBeforeUnmount(() => {
                 @play="emit('playCard', $event)"
                 @queue="emit('queueCard', $event)"
                 @playlist-download="emit('playlistDownload', $event)"
+                @playlist-link="(list, action) => emit('playlistLink', list, action)"
                 @comments="emit('cardComments', $event)"
                 @download="emit('cardDownload', $event)"
               />

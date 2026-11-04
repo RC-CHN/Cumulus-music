@@ -167,3 +167,12 @@ Linux WebView 通过四个检查点，记录与截图在 .build/search-artist-co
 `search_results_smoke.py --collection-next` 同时核对两个分类入口、原生歌单
 分页读取、完整确认曲目及取消焦点。打开和取消确认均不会发出下载命令；该用例不访问真实账号或媒体。
 Linux WebView 四个检查点和截图：.build/search-playlist-download-webview/first/。
+
+搜索歌单菜单的「分享」和「复制链接」
+M/622:135–146、203–207、245–247 给普通歌单的分享和复制动作复用非空及私密
+检查。Cumulus 在综合和歌单分类显示两个菜单动作，与现有歌单菜单共用检查。
+公开歌单仅从有效 ID 生成官方地址，分享只打开可复制的本地对话框，直接复制
+走已有原生剪贴板；私密歌单和空歌单禁用这两项，不打开外链或发布内容。
+`search_results_smoke.py --playlist-creator` 验证两种分类下的公开地址、私密限制、
+原生剪贴板调用和焦点恢复，并回归歌单创建者与独立详情入口。
+Linux WebView 四个检查点和截图：.build/search-playlist-links-webview/first/。

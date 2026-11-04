@@ -249,6 +249,25 @@
       await fixture('playlist_creator_search');await fresh('合成作者入口');
       const card=id=>one(`[data-result-key="playlist:${id}"]`);
       const creator=()=>card(3)?.querySelector('.search-playlist-creator');
+      const link='https://music.163.com/#/playlist?id=3';
+      const clipboard=[];
+      const fetchIPC=window.fetch;
+      window.fetch=function(url,options){
+        if(String(url).endsWith('/copy_text'))clipboard.push(JSON.parse(options.body).text);
+        return fetchIPC.call(window,url,options);
+      };
+      const menu=()=>one('.action-menu[role="menu"]:not([inert])');
+      const share=()=>one('.track-share-dialog[open]:not([inert])');
+      const menuItem=key=>menu()?.querySelector(`[data-menu-key="${key}"]`);
+      async function playlistMenu(id){
+        const anchor=card(id)?.querySelector('.search-card-open');
+        assert(anchor&&!anchor.disabled,'playlist card available');
+        anchor.scrollIntoView({block:'nearest'});
+        anchor.focus({preventScroll:true});
+        anchor.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+        await wait(()=>menuItem('share')&&menu()?.contains(document.activeElement),'playlist context menu with link actions');
+        return anchor;
+      }
       for(const category of ['all','playlists']){
         if(category!=='all')await choose(category);
         const action=creator(), bad=card(4);
@@ -256,6 +275,23 @@
         assert(card(3).querySelector('.search-card-open')&&card(3).querySelector('.search-card-play'),'playlist open and playback remain separate');
         assert(bad?.textContent.includes('合成不匹配作者')&&!bad.querySelector('.search-playlist-creator'),
           'mismatched creator remains plain text');
+        const privateAnchor=await playlistMenu(4);
+        assert(menuItem('share')?.disabled&&menuItem('copy')?.disabled&&
+          menuItem('share').title==='私密歌单不能分享','private playlist cannot share or copy a link');
+        key(document.activeElement,'Escape');
+        await wait(()=>!menu()&&document.activeElement===privateAnchor,'private menu returns focus');
+        const publicAnchor=await playlistMenu(3);
+        assert(!menuItem('share').disabled&&!menuItem('copy')?.disabled,'public nonempty playlist can use links');
+        click(menuItem('share'));
+        await wait(()=>share()?.querySelector('[aria-label="歌单分享链接"]')?.value===link,'share dialog uses the canonical public URL');
+        await capture('playlist_search_share_'+category);
+        click(button('关闭分享',share()));
+        await wait(()=>!share()&&document.activeElement===publicAnchor,'share close restores playlist focus');
+        await playlistMenu(3);
+        click(menuItem('copy'));
+        const feedback=()=>one('.playlist-action-feedback:not([inert])');
+        await wait(()=>feedback()?.textContent.includes('链接已复制'),'playlist menu copies the canonical URL via native clipboard');
+        assert(document.activeElement===publicAnchor,'copy feedback leaves focus on the original card');
         click(action);
         await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成用户主页 501'&&
           one('.playlist-creator-page [data-library-open="30"]'),'creator profile and public playlists');
@@ -266,7 +302,8 @@
       }
       click(card(3).querySelector('.search-card-open'));
       await wait(()=>!one('.playlist-creator-page')&&one('.playlist-hero h1')?.textContent.trim()==='合成歌单 3'&&one('.track-row'),'playlist card still opens playlist');
-      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      assert(clipboard.length===2&&clipboard.every(text=>text===link),'no private or unexpected URL reaches the clipboard');
+      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchMvProof){
