@@ -479,3 +479,24 @@ Linux 安装包 CI 定位与修复
   只保存接口名、响应码和数量：.build/ui-proof/phase18-live-read/report.json。
 - 识曲重采样的 [独立原生对照](song-recognition-resampler-proof.txt) 使用合成分包
   输入。Wine 运行 Windows DLL 的样本不能证明 Windows 设备回采，正式应用也未启用此链。
+
+2026-11-04 合并产品 a6d1fd4e：最近风格、个人主页举报、手动更新及回采证据
+
+- 固定 Node 锁定安装、格式、797 项测试、类型检查及生产构建通过；后续生产树变更只在
+  Rust 的日期判断，另有独立的合成回采探针。Rust 格式及工作区严格 Clippy 通过。
+  工作流 YAML 与 75 个 CI Python 单测通过。
+- 同一个 Linux Tauri WebView 产品树在断网命名空间通过：发现首页 7 态（区分精选
+  风格种子与最近常听默认参数）、个人主页举报 7 态（两次明确的合成提交；取消、未知
+  回执重开和本机核对均无重发）、手动检查更新 5 态与未登录本机诊断 2 态。目录
+  .build/ui-proof/phase19-a6d1fd4e/{discovery-home,profile-report,manual-update,network-diagnostics}/。
+- 正式 Rust 更新代码独立匿名 GET 固定 GitHub 元数据地址：已发布与已安装均为 0.1.0，
+  没有更新可供打开，未发起浏览器、下载、安装或发布。Linux WebView 的新版浏览器
+  交接则用封闭传输及拦截启动器验证；Windows 使用测试适配器验证固定地址。
+- 同一候选的完整桌面主流程：19 态、18 张截图、两个进程寿命，隔离合成扫码、资源
+  读回、歌单往返、原生 HTTPS 两首曲的自然接续、下载校验和范围续传；完全断开回环
+  后重开恢复同一合成账号并从本地播放。零真实业务请求和写入，见
+  .build/ui-proof/phase19-a6d1fd4e/main-flow/report.json 及 https-receipt.json。
+- 私有 Linux 输出回采探针 i16/f32 各捕获 192000 帧并产出 31984 个 8 kHz 样本；
+  两组目标音调对照一致，默认输出的干扰信号不混入。采集取消释放流，移除监听源无
+  默认设备回退。仅合成音频、关闭上传、正式界面未接入；见
+  .build/recognition-monitor-private/run5/report.json。
