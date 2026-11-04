@@ -59,6 +59,36 @@ HistoryApi::recent 先要求code=200，再做结构校验：
   声音的秒级play_progress/listened检查点不改变revision，新一次播放或元数据改变仍会失效。
   远端刷新总会请求网络；同账号同分类有OperationLock，切号及关闭多端后的迟到结果丢弃。
 
+设置页的多端可见范围
+  同版本 pages/setting/views/Play.jsx:303–340、683–711 和 M3097:1797–1825
+  在播放设置显示「最近播放记录」。第一次由开到关先显示「播放列表同步」，明确
+  说明「关闭后，本设备最近播放列表仅展示本地记录」；关闭弹窗不保存，也不消耗
+  这个首次提示。确认后，本机以后直接切换。M116:507–518、1357–1375 仅向
+  setting/updateSetting 下发 {allowMultiterminalRecord:boolean}，由本机存储合并，
+  没有 HTTP 请求。M147:2969–2971、3027–3047 的 PH-PC-setting-multiterminal-record
+  可为未自行调整的用户下发实验默认；Cumulus
+  延用已上线的默认开，不猜测当前用户的官方实验组，不覆盖手动选择。
+
+  设置→最近播放记录的 typed IPC `history_sync_preference` 只收当前 epoch 和
+  `read` 或 `set {enabled,confirmed_first_disable}`。回复只含 enabled 和
+  firstDisableConfirmed，不读取原生历史、Cookie 或原始设置。首次确认标志和
+  原有 `play-history-v1/sync-enabled` 在一个 SQLite 事务内提交，按本设备当前
+  账号隔离，切换账号不复用上一个账号的偏好或确认；访客显示说明，不能修改。
+  官方的首次提示标志是页面本机存储；这里随已有的账号隔离偏好存储。已有
+  Cumulus 最近播放页快捷开关仍操作同一个 sync-enabled，首次说明仅在设置入口。
+  设置保存失败或 IPC 回执不明时只读本机状态，不自动重发；取消和换号清理弹窗。
+  关闭和重新开启都不读取或删除历史；返回最近播放才根据新选择决定是否请求
+  服务端。关闭后保留此前远端快照但不展示，重新开启可合并本机和远端记录。
+
+  合成验收：Rust history 16 项、桌面 IPC 3 项通过，覆盖第二个合成账号、旧代次、
+  设备本机回读和非主窗口拒绝。Linux WebKitGTK/Xvfb + Openbox、zh_CN.UTF-8
+  的 `scripts/ci/catalog_smoke.py --history --screenshots` 共 31 态/31 图；
+  五个新增状态在 760×540 验证首次弹窗、关闭返回、仅本机记录、再次开启和列表合并。
+  合成远端列表计数在偏好操作与仅本机视图均为 15；重新进入多端列表才增加至 16。
+  整个新增段没有增加历史写入，全部实服请求为 0。设置公共弹窗的 22 态回归也通过。
+  本机证据在 .build/ui-proof/history-sync-settings/linux-final 与 settings-regression。
+  尚未在实际 Windows 桌面复跑本次新增状态。
+
 删除与失败恢复
 history/mutation 使用用户提供的UUID意图、显示快照revision和选中ID，而非任意原响应。
 选择必须在显示的快照中；同一UUID不得换分类/选择/版本。远端同步开启时先有读取快照。

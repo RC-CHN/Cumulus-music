@@ -324,7 +324,7 @@ def main():
         (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))
         return
-    count = 14 if args.relay_recovery else 20 if args.relay_publication else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 26 if args.history else 18
+    count = 14 if args.relay_recovery else 20 if args.relay_publication else 19 if args.relay else 22 if args.settings else 21 if args.relay_settings else 31 if args.history else 18
     assert complete['ok'] and complete['stageCount'] == count and complete['realMusicRequests'] == 0
     if args.screenshots:
         assert captures == count, 'missing WebView screenshots'
@@ -422,11 +422,22 @@ def main():
     elif args.settings:
         assert all(v['scrollBottom'] <= v['mainBottom'] + 1 for v in stages)
     elif args.history:
-        assert all(v['rows'] <= 35 and v['footerBottom'] <= v['mainBottom'] + 1 for v in stages)
-        assert {v['scope'] for v in stages} == {'歌曲', '播客', '有声书', '声音', '歌单', '专辑'}
+        history_rows = [v for v in stages if not v.get('preferenceUi')]
+        assert all(v['rows'] <= 35 and v['footerBottom'] <= v['mainBottom'] + 1 for v in history_rows)
+        assert {v['scope'] for v in history_rows} == {'歌曲', '播客', '有声书', '声音', '歌单', '专辑'}
         for kind in ('catalog', 'voice'):
             stage = next(v for v in stages if v['stage'].endswith(f'_selected_{kind}_playback'))
             assert stage['batchTracks'] == ['2', '3'] and stage['playbackKind'] == kind
+        by_name = {v['stage'][6:]: v for v in stages}
+        initial = by_name['sync_first_off_confirm']
+        assert initial['checked'] and initial['dialog']
+        assert not by_name['sync_confirmed_off']['checked'] and not by_name['sync_confirmed_off']['dialog']
+        assert by_name['sync_enabled_again']['checked'] and not by_name['sync_enabled_again']['dialog']
+        no_refresh = [by_name[name] for name in ('sync_confirmed_off', 'sync_local_history', 'sync_enabled_again')]
+        restored = by_name['sync_combined_history']
+        assert all(row['syntheticHistoryReads'] == initial['syntheticHistoryReads'] for row in no_refresh)
+        assert restored['syntheticHistoryReads'] > initial['syntheticHistoryReads']
+        assert all(row['syntheticHistoryWrites'] == 2 for row in [initial, *no_refresh, restored])
     else:
         assert all(v['cards'] <= 30 for v in stages)
     if not args.collections and not args.history and not args.settings and not args.relay and not args.relay_settings:

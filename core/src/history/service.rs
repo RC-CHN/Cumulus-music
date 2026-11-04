@@ -25,6 +25,23 @@ pub struct HistorySnapshot {
     pub remote: Option<RemoteHistory>,
     pub entries: Vec<HistoryRecord>,
 }
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum HistorySyncAction {
+    Read,
+    Set {
+        enabled: bool,
+        confirmed_first_disable: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistorySyncState {
+    pub enabled: bool,
+    pub first_disable_confirmed: bool,
+}
+
 pub struct HistoryService {
     pub(super) session: Arc<AccountSession>,
     pub(super) store: Arc<StateStore>,
@@ -172,6 +189,43 @@ impl HistoryService {
         self.session.with_local_owner(token, |owner| {
             self.store
                 .put(owner, NAMESPACE, "sync-enabled", &json!(enabled))
+        })
+    }
+    /// Device-local display policy; this operation does not load any history rows or API.
+    pub fn sync_setting_for(
+        &self,
+        token: &SessionToken,
+        action: HistorySyncAction,
+    ) -> Result<HistorySyncState> {
+        self.session.with_token(token, |owner| {
+            self.store.transaction(|tx| {
+                let mut current = enabled(tx, owner)?;
+                let mut confirmed = match tx.get(owner, NAMESPACE, "sync-first-off-confirmed")? {
+                    None => false,
+                    Some(Value::Bool(value)) => value,
+                    _ => return Err(Error::State("invalid recent play confirmation state")),
+                };
+                if let HistorySyncAction::Set {
+                    enabled: desired,
+                    confirmed_first_disable,
+                } = action
+                    && desired != current
+                {
+                    if !desired && !confirmed {
+                        if !confirmed_first_disable {
+                            return Err(Error::State("confirm local-only recent play first"));
+                        }
+                        tx.put(owner, NAMESPACE, "sync-first-off-confirmed", &json!(true))?;
+                        confirmed = true;
+                    }
+                    tx.put(owner, NAMESPACE, "sync-enabled", &json!(desired))?;
+                    current = desired;
+                }
+                Ok(HistorySyncState {
+                    enabled: current,
+                    first_disable_confirmed: confirmed,
+                })
+            })
         })
     }
     pub async fn refresh_for(

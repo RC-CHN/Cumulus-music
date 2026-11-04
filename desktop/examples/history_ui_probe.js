@@ -73,6 +73,68 @@
       await capture('selected_'+kind+'_playback',{batchTracks,playbackKind:player.resourceKind});
     }
     await invoke('player_action',{epoch,action:{kind:'stop'}});
+
+    const pref=()=>one('input[name="recent-history-sync"]');
+    const preference=async()=> (await invoke('history_sync_preference',{epoch,action:{kind:'read'}})).value;
+    const prefDialog=()=>all('dialog[open]').find(d=>d.textContent.includes('播放列表同步'));
+    const showPreferences=async()=>{
+      click(one('[aria-label="打开设置"]'));
+      await wait(()=>pref()&&!pref().disabled,'recent-play preference ready');
+      pref().scrollIntoView({block:'center'});
+      await sleep(350);
+    };
+    const capturePreference=async(name)=>{
+      await sleep(300);
+      const scroll=one('.settings-scroll').getBoundingClientRect(), row=pref().getBoundingClientRect();
+      assert(row.top>=scroll.top-1&&row.bottom<=scroll.bottom+1,'recent-play preference clipped');
+      assert(document.documentElement.scrollWidth<=innerWidth,'settings horizontal overflow');
+      await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{preferenceUi:true,width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,checked:pref().checked,dialog:!!prefDialog()});
+      await sleep(900);
+    };
+    const openSongHistory=async()=>{
+      click(button('最近播放'));
+      const activeTab=()=>one('[aria-label="播放记录类型"] [aria-current]')?.textContent.trim();
+      await wait(()=>ready()&&activeTab(),'history reopened');
+      if(activeTab()!=='歌曲')await tab('歌曲');
+    };
+    const currentSongs=async()=> (await invoke('history_page',{epoch,kind:'song',refresh:false})).value;
+    await showPreferences();
+    assert(pref().checked&&!(await preference()).firstDisableConfirmed,'initial history policy');
+    click(pref());
+    await wait(prefDialog,'first-off confirmation');
+    assert(prefDialog().textContent.includes('关闭后，本设备最近播放列表仅展示本地记录'),'official confirmation copy');
+    assert(pref().checked&&(await preference()).enabled,'no disable before confirmation');
+    await capturePreference('sync_first_off_confirm');
+    click(prefDialog().querySelector('[aria-label="关闭设置确认"]'));
+    await wait(()=>!prefDialog()&&document.activeElement===pref(),'return focus after closing confirmation');
+    assert(pref().checked&&!(await preference()).firstDisableConfirmed,'cancellation does not consume confirmation');
+    click(pref());
+    await wait(prefDialog,'first-off confirmation reopens');
+    click(button('确定关闭'));
+    await wait(()=>!prefDialog()&&pref()&&!pref().checked&&!pref().disabled,'confirmed local-only policy');
+    assert((await preference()).firstDisableConfirmed,'confirmation persisted');
+    await capturePreference('sync_confirmed_off');
+    await openSongHistory();
+    const localOnly=await currentSongs();
+    assert(localOnly.entries.length>0&&localOnly.entries.every(row=>row.origin==='local')&&!localOnly.remoteIncluded,'history displays only local entries');
+    await capture('sync_local_history');
+    await showPreferences();
+    assert(!pref().checked,'reopening settings retains disabled state');
+    click(pref());
+    await wait(()=>pref().checked&&!pref().disabled,'history policy re-enabled');
+    click(pref());
+    await wait(()=>!pref().checked&&!pref().disabled,'second disable skips confirmation');
+    assert(!prefDialog(),'confirmation only once');
+    click(pref());
+    await wait(()=>pref().checked&&!pref().disabled,'second re-enable');
+    await theme('深色');
+    pref().scrollIntoView({block:'center'});
+    await capturePreference('sync_enabled_again');
+    await openSongHistory();
+    await wait(()=>one('.history-status input')?.checked&&ready(),'synced history ready');
+    const combined=await currentSongs();
+    assert(combined.remoteIncluded&&combined.entries.some(row=>row.origin==='remote')&&combined.entries.some(row=>row.origin==='local'),'re-enabled history combines retained rows');
+    await capture('sync_combined_history');
     await emit('complete',{ok:true,stageCount,realMusicRequests:0,playbackVerified:true});
   }catch(error){await emit('failed',{ok:false,error:String(error),stageCount});}
 })();

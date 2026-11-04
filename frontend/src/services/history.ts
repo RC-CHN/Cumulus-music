@@ -79,6 +79,19 @@ export interface HistoryClient {
     command: HistoryCommand,
   ): Promise<AccountData<HistoryPage>>;
 }
+export interface HistorySyncState {
+  enabled: boolean;
+  firstDisableConfirmed: boolean;
+}
+export type HistorySyncAction =
+  | { kind: 'read' }
+  | { kind: 'set'; enabled: boolean; confirmed_first_disable: boolean };
+export interface HistorySyncClient {
+  historySyncPreference(
+    epoch: string,
+    action: HistorySyncAction,
+  ): Promise<AccountData<HistorySyncState>>;
+}
 export const historyPending = (op: HistoryOperation) =>
   op.phase === 'pending' || op.phase === 'uncertain';
 

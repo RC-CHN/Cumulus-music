@@ -54,6 +54,7 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "collection_page",
             "history_page",
             "history_command",
+            "history_sync_preference",
             "account_settings_page",
             "account_settings_command",
             "relay_view",
@@ -169,6 +170,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         (
             "history_command",
             json!({"epoch":"0","kind":"song","command":{"kind":"set_sync","enabled":false}}),
+        ),
+        (
+            "history_sync_preference",
+            json!({"epoch":"0","action":{"kind":"set","enabled":false,"confirmed_first_disable":true}}),
         ),
         (
             "collection_page",

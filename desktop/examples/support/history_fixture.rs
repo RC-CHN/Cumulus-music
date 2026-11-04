@@ -16,6 +16,7 @@ pub struct Library {
     base: super::fixture::Library,
     mode: AtomicU8,
     removed: Mutex<BTreeMap<String, BTreeSet<String>>>,
+    pub reads: AtomicUsize,
     pub writes: AtomicUsize,
 }
 impl Library {
@@ -87,6 +88,7 @@ impl Api for Library {
                     }
                     return Ok(json!({"code":200}));
                 }
+                self.reads.fetch_add(1, Ordering::SeqCst);
                 if mode == 1 {
                     return Err(Error::Transport("synthetic offline".into()));
                 }

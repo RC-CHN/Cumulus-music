@@ -5,12 +5,27 @@ mod view;
 use super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,
-    history::{HistoryKind, HistoryService},
+    history::{HistoryKind, HistoryService, HistorySyncAction, HistorySyncState},
 };
 pub use dto::*;
 use std::collections::HashSet;
 
 impl MusicClient {
+    pub fn history_sync_preference(
+        &self,
+        epoch: &str,
+        action: HistorySyncAction,
+    ) -> Result<AccountData<HistorySyncState>> {
+        let token = self.player_token(epoch)?;
+        let value = HistoryService::new(self.session.clone())?.sync_setting_for(&token, action)?;
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
     pub async fn history_page(
         &self,
         epoch: &str,

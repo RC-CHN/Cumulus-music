@@ -30,6 +30,19 @@ allowNewFollowerNotify：boolean，新粉丝通知。
 allowPeopleCanSeeMyPlayRecord：boolean，历史兼容写入；正式界面仅显示其联动回读，
   用官方三选一 playRecordSetting 修改可见范围，避免两个矛盾控件同时出现。
 personalizedRecommend/allowCopyrightReversionNotify 是官方本机通知设置，不加入此远端白名单。
+  M3097:1181–1199、1442–1508：非 macOS 显示「桌面通知／每日推荐」，
+  PH-PC-push2=t1 才显示「版权回归」。启用时清除对应的七天禁止时间，
+  仅 dispatch setting/updateSetting；不能把它们混入远端隐私的局部补丁。
+  恢复源码 `_core/init/utils/app.ts:595–1170` 是实际通知链：preload#push
+  与多个实验控制启动/恢复和整点、半点检查、静默期与限次；每日推荐检查
+  正在播放、全屏、个人服务关闭及资源，版权回归检查登录且优先检查
+  POST /api/pc/popup/copyright（M15:4837）。展示依赖排队的官方原生
+  daysong_notify/immersive_push_notify 以及关闭、七天免打扰、设置和点击行为。
+  M3085:5443–5457、5517–5553 区分查看已有回归歌单、创建回归歌单、
+  修改本地免打扰和打开设置。新建回归歌单的另一条独立写入是
+  M15:4843–4852 的 POST /api/unique/playlist/create，带序列化 trackIds、
+  uniqueCode:"COPY_RIGHT_SONGS_RETURN"、playlistName:"回归歌单"、playlistDesc:""。
+  通知展示与定时管线仍未接入；本次不加没有消费方的占位开关。
 
 原研究的联动观察
 playRecordSetting=1 曾使 allowPeopleCanSeeMyPlayRecord=false。

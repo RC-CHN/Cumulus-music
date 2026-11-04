@@ -1,4 +1,18 @@
-use cumulus_core::client::{ClientError, MusicClient, dto::*};
+use cumulus_core::{
+    client::{ClientError, MusicClient, dto::*},
+    history::{HistorySyncAction, HistorySyncState},
+};
+
+#[tauri::command]
+pub async fn history_sync_preference(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    action: HistorySyncAction,
+) -> Result<AccountData<HistorySyncState>, ClientError> {
+    client
+        .history_sync_preference(&epoch, action)
+        .map_err(Into::into)
+}
 
 #[tauri::command]
 pub async fn history_page(

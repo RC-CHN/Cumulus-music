@@ -343,6 +343,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 collections::collection_page,
                 history::history_page,
                 history::history_command,
+                history::history_sync_preference,
                 settings::account_settings_page,
                 settings::startup_preferences,
                 settings::queue_click_preferences,

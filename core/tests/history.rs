@@ -3,7 +3,7 @@ use cumulus_core::{
     account::AccountSession,
     history::{
         HistoryAction, HistoryApi, HistoryBoundary, HistoryKind, HistoryMutationPhase,
-        HistoryRecord, HistoryService, RecordOrigin, merge_records,
+        HistoryRecord, HistoryService, HistorySyncAction, RecordOrigin, merge_records,
     },
     protocol::api::{Api, ApiFuture},
     storage::StateStore,
@@ -26,6 +26,84 @@ struct Backend {
     write_error: AtomicU8,
     started: Notify,
     release: Notify,
+}
+#[tokio::test]
+async fn settings_visibility_is_local_account_scoped_and_first_off_confirmation_is_durable() {
+    let (_root, _store, api, session, service) = fixture();
+    let token = session.token().unwrap();
+    let set = |enabled, confirmed_first_disable| HistorySyncAction::Set {
+        enabled,
+        confirmed_first_disable,
+    };
+    let initial = service
+        .sync_setting_for(&token, HistorySyncAction::Read)
+        .unwrap();
+    assert!(initial.enabled && !initial.first_disable_confirmed);
+    assert!(service.sync_setting_for(&token, set(false, false)).is_err());
+    assert!(api.calls.lock().unwrap().is_empty());
+
+    let original = service
+        .refresh_for(&token, HistoryKind::Song)
+        .await
+        .unwrap();
+    assert_eq!(original.entries.len(), 2);
+    let calls_before = api.calls.lock().unwrap().len();
+    let off = service.sync_setting_for(&token, set(false, true)).unwrap();
+    assert!(!off.enabled && off.first_disable_confirmed);
+    let local_only = service.snapshot_for(&token, HistoryKind::Song).unwrap();
+    assert!(local_only.entries.is_empty());
+    assert_eq!(local_only.remote, original.remote);
+    assert!(
+        service
+            .refresh_for(&token, HistoryKind::Song)
+            .await
+            .is_err()
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), calls_before);
+
+    session
+        .adopt(api.clone(), json!({"userId":100}), &token)
+        .unwrap();
+    assert!(matches!(
+        service.sync_setting_for(&token, set(true, false)),
+        Err(Error::StaleResponse)
+    ));
+    let other = session.token().unwrap();
+    let other_value = service
+        .sync_setting_for(&other, HistorySyncAction::Read)
+        .unwrap();
+    assert!(other_value.enabled && !other_value.first_disable_confirmed);
+    session
+        .adopt(api.clone(), json!({"userId":99}), &other)
+        .unwrap();
+
+    let reopened = HistoryService::new(session.clone()).unwrap();
+    let token = session.token().unwrap();
+    let persisted = reopened
+        .sync_setting_for(&token, HistorySyncAction::Read)
+        .unwrap();
+    assert!(!persisted.enabled && persisted.first_disable_confirmed);
+    assert!(
+        reopened
+            .sync_setting_for(&token, set(true, false))
+            .unwrap()
+            .enabled
+    );
+    assert_eq!(
+        reopened
+            .snapshot_for(&token, HistoryKind::Song)
+            .unwrap()
+            .entries
+            .len(),
+        2
+    );
+    assert!(
+        !reopened
+            .sync_setting_for(&token, set(false, false))
+            .unwrap()
+            .enabled
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), calls_before);
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {

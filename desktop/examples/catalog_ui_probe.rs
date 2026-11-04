@@ -258,6 +258,7 @@ fn main() {
             let artist_album_reads=catalog_fixture.artist_album_reads.load(std::sync::atomic::Ordering::SeqCst);
             let comment_reads=catalog_fixture.comment_reads.load(std::sync::atomic::Ordering::SeqCst);
             let history_writes=history_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
+            let history_reads=history_fixture.reads.load(std::sync::atomic::Ordering::SeqCst);
             let settings_writes=settings_fixture.writes.load(std::sync::atomic::Ordering::SeqCst);
             let relay_pulls=relay_fixture.pulls.load(std::sync::atomic::Ordering::SeqCst);
             let relay_setting_writes=relay_fixture.setting_writes.load(std::sync::atomic::Ordering::SeqCst);
@@ -270,7 +271,7 @@ fn main() {
                 if let Some(report)=comment_read_report {value["commentReadFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
-                if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);}
+                if histories {value["syntheticHistoryWrites"]=serde_json::json!(history_writes);value["syntheticHistoryReads"]=serde_json::json!(history_reads);}
                 if settings {value["syntheticSettingsWrites"]=serde_json::json!(settings_writes);}
                 if relays {value["syntheticRelayPulls"]=serde_json::json!(relay_pulls);value["syntheticRelaySettingWrites"]=serde_json::json!(relay_setting_writes);}
                 let client=handle.state::<MusicClient>();
