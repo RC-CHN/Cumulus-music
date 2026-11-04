@@ -50,7 +50,8 @@ core/src/song_recognition/request 只做离线调度、封包、合成回调；�
   路径生成大写十六进制 params=；没有 e_r。冻结向量使用 ASCII 合成
   设备上下文及官方离线静音指纹，EAPI 由 Python hashlib 和 OpenSSL
   独立生成；未执行官方 DLL 的整段 HTTP 请求。其他输入转义、真实 header、
-  Content-Type、Cookie/设备权限及服务响应加密仍需单独验证。
+  Cookie/设备权限及服务响应加密仍需单独验证。通用 curl 下层已确认
+  默认表单 Content-Type 和执行码边界，见 song-recognition-desktop-contracts.txt。
 
 3. 原生与页面的两层结果
 

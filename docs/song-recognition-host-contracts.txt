@@ -115,8 +115,8 @@
   314665–314692 把配置 e_url 给 3371F0 的原生 Cookie 获取链；
   这不授权跨域复制 Cookie，也没有独立的识曲 Cookie/login token
   生成。314E39–314E92 将 JSON 序列化、CE42F0 封装，再发送
-  params=<密文>。此函数里未确认底层默认 Content-Type，不能用
-  通用请求模板补造 e_r、未观察到的头或设备字段。
+  params=<密文>。下层默认表单 Content-Type、curl 执行码与 UI 生命周期
+  见 song-recognition-desktop-contracts.txt；不要补造 e_r 或额外设备字段。
 - 现有 Rust EAPI encrypt_json 可作为纯算法使用，先冻结此路由的
   正文、顺序、类型和加密字节。离线前缀调度、结果门控和合成封包见
   song-recognition-request-proof.txt；没有做真实结果权限补读。授权上下文只在 core 内；

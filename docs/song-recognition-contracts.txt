@@ -19,6 +19,9 @@
 
 1. 入口、录制及页面生命周期
 
+桌面入口、native HTTP 下层、结果权限和 Linux 启用门槛的后续逐项审计：
+song-recognition-desktop-contracts.txt。
+
 - hybrid_app.chunk.1482700000000.js/473.js:5656–5694、5975–5984 的 Windows
   识曲入口直接导航；macOS 独有的麦克风权限分支不属于支持范围。Windows 桌面
   快捷方式由 UI/components/HeadAndDesktopShortcuts.jsx:45–75 调

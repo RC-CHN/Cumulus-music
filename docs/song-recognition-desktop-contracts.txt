@@ -1,0 +1,184 @@
+听歌识曲：官方桌面入口、采集生命周期和结果权限契约
+
+范围：官方 PC 3.1.42.205594 x64 静态证据；cloudmusic.dll SHA256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+以下地址为该 DLL RVA。未打开实际设备、访问网易云、读取账号，未接入生产 UI。
+源目录：
+  UI = references/ui-recovery/sources/packages/pc/src/
+  JS = references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  A  = references/netease-3.1.42.205594-analysis/protocol/core/regions/
+M4、M15、M21、M377、M473、M1190、M1980 位于 hybrid_app；M3092 位于
+hybrid_59，M3085 位于 hybrid_73，M3157 位于 hybrid_158。它们是恢复的
+模块行号，不是打包后的全文行号。采样、算法、原型及合成证据分别见
+song-recognition-host-contracts.txt、song-recognition-request-proof.txt
+和 song-recognition-monitor-proof.txt。
+
+1. 哪个操作开始收音
+
+- M473:5966–5984：顶部搜索框后、消息等用户操作前的听歌识曲图标，
+  test id tid_header_recognize_btn，title“听歌识曲”；点击进入
+  /listenToSong/listening（5656–5694）。Windows 无登录判断、无麦克风
+  许可或二次确认。仅 macOS 分支调用 getAllowMicphone：denied 调
+  showTipsAuthMicrophone，notDetermined 暂不导航，authorized 继续；
+  macOS 分支不能复制给 Linux。无 UI 登录门槛不代表服务允许游客。
+- 已在 /listenToSong 再点该图标，M3085:941–942、1045–1055、
+  1061–1077 用 replace 到 /listenToSong/listening；从其他页通常
+  push。UI/pages/listenToSong/index.js:22–49 读取 listening 参数，
+  设 progressing 并 replace 到 /listenToSong。M3157:151–164 的新
+  模型本身初始 progressing，因此“裸路由总是只展示”也不是官方行为。
+- 头部“创建桌面快捷方式”只在非 macOS 展示，300ms debounce，调用
+  app.createRecognizeShutcut（官方拼写），分别提示“创建【听歌识曲】
+  图标失败”和“创建【听歌识曲】图标至桌面成功”（UI/.../components/
+  HeadAndDesktopShortcuts.jsx:45–75）。ED1DCE 注册 EBEED0；
+  EBEF06 → 2F2B30 以 create-musicdiscern-shortcut 参数调用
+  ShellExecuteW（2F2CAA），创建路径另见 2F2FE3 的 recognize-music
+  参数。创建图标不等于录音；非 macOS 启动时 M1980:114–125 读
+  getStartCommand 的 recognize-music，令初始路由为 /listenToSong/listening。
+  未恢复 Linux 桌面文件安装，也未运行或写入快捷方式。
+- 实际采集触发不是“图标有 hover”或“路由字符串被读取”。ListeningView
+  挂载后按顺序 dispatch playing/pause、page:modListenToSong/startRecognize
+  （UI/.../views/ListeningView.jsx:162–169；M3092:1197–1203）。
+  这是先提交暂停动作、再提交开始动作；未见等待播放器确认。M3157:
+  199–220 先 stop 旧 UI GUID，再生成 8 字符 GUID、调用 recognizeMusic、
+  保存新 GUID 和清空旧结果。这个 GUID 与原生请求 UUID 完全独立。
+- ListeningView.jsx:91–99、109–146、193–229：16 秒倒计时，按秒更新，
+  当剩余时间正且是 3 的倍数时切换两条提示。Windows 文案为“正在识别
+  电脑中正在播放的音乐”“外部声源无法识别”。中心波纹与按钮“停止识别”
+  同时存在。点停止发 stopRecognize，随后进入 termination；M3157:
+  225–245 默认 isManual=true 时才调用原生 stop，并清活动 GUID。
+- 进入识曲结果/失败页不会自动继续。ErrorView.jsx:104–110、194–214：
+  termination 显示“识别电脑正在播放的音乐”＋“开始识别”；
+  no-track 显示“未识别出音乐，请重试”；unknown 和 timeout 显示
+  “未识别出音乐，仅支持当前电脑正在播放的音乐”；offline 显示
+  “网络连接异常，请重试”。后三类和 no-track 的按钮为“重新识别”。
+  ResultView.jsx:122–136 的“继续识别”也只切回 progressing，
+  由 ListeningView 再按同一路径挂载。未找到自动恢复原曲或自动播放结果。
+- UI/pages/listenToSong/index.js:63–69 的 NoNet 未传 keepAfterOnline；UI/components/
+  NoNet/index.tsx:27–60 缺网卸下实际子视图、显示 wuwangluo 空状态，
+  恢复联网时可重新挂载原子视图。如果当时模型仍 progressing，官方
+  机制可重新开始，未见外层强制取消。倒计时清理只清 JS interval；
+  M3157:312–335 到点进入 timeout 并 clear cache，未再调用 native stop。
+  不能把离页/断网/超时当成已确认的官方采集或 HTTP 即时取消。
+
+2. Windows 原生桥、调用次序及失败
+
+- M4:14663–14716 发 app.recognizeMusic(guid)、app.stopRecognizeMusic(guid)、
+  app.clearRecognizeMusicCache(guid)，并通过 app/RecognizeMusic 注册
+  回调；M1190:58–70 的兼容导出还订阅 app.onRecognizeMusic。
+  Native ED1D77/ED1D94/ED1DEB 将三者分别注册到 ED1360/EDEF80/EBDC10。
+  ED1690–ED16CA 与 EDF2B0–EDF2EA 提取字符串，再转 2FA690/2FA960；
+  这些入口未见浏览器麦克风授权或账号资格判断。
+- 2FA690 准备识曲控制对象、带当前 GUID 建任务；2FA7CC 缺工作对象
+  写 -2，2FA865 入队失败写 -3，2FA8F5–2FA905 把失败送回统一回调。
+  WASAPI 2F8610 → 30A040 默认走系统 eRender/eConsole 输出回采，
+  不是当前客户端指定输出或麦克风；默认设备、显式 ID、格式、辅助
+  render 分支见 host 契约。启动、worker 和终态失败不等于“歌没命中”。
+- 2FA960 停止入口在 2FAA1C–2FAA3D 比当前 UI GUID；匹配走
+  2FAC50/2FAFC0 后续清理，另在 2FAAB5–2FAB44 路径投递 stop job。
+  EBDC8B → 2F8560 投递另一个 cache 清理 job。两条链不能合并成一个
+  必定即时中止的操作；没有实际驱动/网络竞态证明。Native 3078A4
+  还检查内部任务代际，不用同一 UI GUID 去匹配所有状态。
+- Native 2F89E0–2F9047 构造 guid、sessionId、code、httpmsg、
+  recordtime、responsetime、times、duration，调用 app.onRecognizeMusic。
+  M377:39–42 将回调取第一个参数，M3157:372–385 再 dispatch onRecognized。
+  回调收尾会清活动 GUID/缓存、置前窗口（M3157:248–309），但 JS
+  此处没有再比较回包 GUID 后才保存，不能照搬旧回包覆盖新会话。
+
+3. 原生请求客户端、授权上下文和返回码
+
+- M318/M841/M18 与 EC7843→33D450→315330 的宿主 e_url 配置见
+  host 契约。3138A5–313977 用 e_url 拼 /music/audio/match，
+  在 313977 构造通用原生 curl 请求对象 2FFE90：默认实际 POST
+  https://music.163.com/eapi/music/audio/match；CE42F0 规范路径
+  /api/music/audio/match。不是 WebView fetch、旧 /api/music/matcher、
+  文件匹配、通用 PC 域代替地址，也不从回包接受新目的地。
+- 3146E6–3147E0 显式装外层 User-Agent: Windows_Curl;、os: pc、
+  Referer: music.163.com（没有 scheme）和 Cookie。314665–314692
+  先把配置 e_url 传 3375D0→3371F0；3372AF 后比较 URL 解析所得
+  host 和管理对象配置（337306），可用本地 Cookie 回读 3369D0；
+  否则 3377D0 路径尝试初始化，失败返回空串。这里不是新的登录会话、
+  账号硬件凭据或 Cookie 跨域许可。应用只能给可信最终 HTTPS origin/path
+  绑定本次账号代际内已有授权 Cookie；游客资格、风控和实际服务未验。
+- 加密 JSON 的 deviceId 来自 SystemHelper 32B770（现有恢复 asm
+  含 localware、neteasecloudmusic、Device ID 日志），不是此路径从扫码
+  凭据 DTO 读取；clientSign 来自 32D5C0→32DA30→CEE370 的 mask=15
+  设备标识入口，314967–31497B 用 CP_UTF8=65001 转窄串。日志
+  “Get AD ID Failed.” 单独不能作为 Windows 广告 ID 的依据。
+  314651 取的 OS 版本缓存不进入已见五字段 header；保留 appver、
+  os、deviceId、clientSign、每次 GetTickCount 的十进制 requestId。
+  设备身份、会话 UUID、URL 签名、账号/风控是不同概念。当前 Rust
+  fixture 只接受受限可打印 ASCII；未来使用真实身份需另证编码、
+  转义、作用域和资格，不直接复用凭据 deviceId 或伪造默认值。
+- 默认 Content-Type 已从下层确认：2FFE90 的 3000B3 初始化 +0x180=1，
+  +0x2E8 默认空（30023A–300243）；识曲路径设置普通 POST、无附件，
+  314EED 设置原始 params=... 正文。3033DE–30340F 选 CURLOPT_POST，
+  3037E4 添加 Content-Type: application/x-www-form-urlencoded，
+  30384E–303861 以 CURLOPT_POSTFIELDS 写正文，303B6D 加空 Expect:
+  取消默认 100-continue 期望。引用 A/00314510.asm、
+  A/00303130.asm 和 DLL 2FFE90 初始化；已恢复的是普通识曲分支，
+  不是其他附件或文件匹配通路。
+- 303BB4 是 curl_easy_perform；303C1A 的 0x200002 是 CURLINFO_RESPONSE_CODE，
+  单独写 +0x138。303BCC/30423F 返回 +0x2A8 的 curl/native 执行码，
+  314F52–314F5E 保存此码，314F7C–314F92 从 304310 另取响应正文，
+  31508F/3150AB 装任务。不能将 HTTP status、原生执行码、正文 JSON code
+  混为一谈；可见正文随后走 JSON 解析，没有证据说服务的所有响应都明文，
+  也未见在该读回点先调用通用 Rust decrypt_response。
+- 通用 curl 3034F9 配 FOLLOWLOCATION；2FFE90 默认 +0x2E4=0 不启用
+  304136 的自动重试，+0x2E0=-1 不走覆盖总超时配置。识曲代际的 16 秒
+  门控是另一层。未来生产适配须拒绝跨 origin 重定向、明确短超时及停止，
+  不能把通用 curl 的行为等价为可以追随重定向携带 Cookie 或无限挂起。
+
+4. 结果转为可播放曲目
+
+- Native 正文 code==200 且 data.type==1 的提前命中门槛与第五次
+  收尾见 request 契约；页面 M3157:51–102 单独映射桥 code：
+  0/200 完成；负数 timeout；其他正数 offline；缺码 unknown。
+  对 httpmsg JSON.parse 后取 data.result[].song，以当时 host.uid
+  走 M21.D/x 的曲目规范化。完成无曲目才为 NOTRACK。
+- M21.x（537–558）把 track.id 转为字符串，保留规范化歌名、艺人、
+  专辑、版权状态等；M3157:337–368 等 500ms 后以这些 ID 调 M15.Dg
+  /api/song/enhance/privilege，正文 ids 是字符串数组的 JSON 文本，
+  不传 trialMode；取 data。M21.e（683–706）按 ID 合并当前 uid 的权限，
+  同 ID 最后值胜。进入结果页及已购资源、会员状态变化触发补读
+  （ResultView.jsx:88–92、152–176），不是在采集开始时或每个分包补读。
+- 结果卡首项默认展开，不自动播；点卡片只切当前项。TrackCard.jsx:
+  158–202、250–295 显示封面、歌词状态和当前曲目的进度，圆形播放按钮
+  使用 ResourceType.track、Scene.listenToSong。通用 RoundPlayButton
+  根据是否当前曲目/正在播，在 pause、resume、playAll 之间走既有
+  动作；并无识曲专有试听/下载 URL。喜欢、收藏、下载、分享、下一首
+  均是单独显式动作（Operation.tsx:64–163）。上传音频反馈另有用户选择；
+  识曲成功、超时或播放失败都不能自动触发上传。
+- Cumulus 当前 Scheduler 只回安全候选 ID；生产需保持候选/元数据与
+  generation、账号代际绑定。若需要凭 ID 补取详情，这是本项目额外
+  的现有 catalog 读链，不能称官方结果页原样。匹配不授予播放资格：
+  使用正常 /api/song/enhance/privilege 和既有播放来源授权，漏回、
+  失效、切换账号及权限失败不能开播，也不能让权限接口增加未匹配候选。
+  此处尚未接生产调用。
+
+5. Linux 启用门槛（产品边界，非官方 Linux 行为）
+
+- 明确入口点击后才建立一轮捕获许可；不因历史页、恢复窗口、网络恢复、
+  默认设备切换或一个未知外部启动参数自动打开音频。事前明确提示
+  “只识别所选电脑输出正在播放的声音，不使用麦克风”；说明会向
+  已授权的识曲服务发送派生指纹，拒绝后不暂停也不打开设备。
+  确认目标及服务许可后，只暂停当前自己会话的活动音乐；确认失败
+  不开录，不停止其他应用、不切换输出、不自动恢复先前音乐。
+- 官方 Windows 选系统默认 render，而 Cumulus 的 mpv audio-device
+  是配置名，current-ao 只是驱动（core/src/playback/engine/mpv.rs:
+  565–577），不是实际 sink 证明。Linux 必须由音频服务器提供明确
+  当前选定的 render sink；确认它的 monitor_of_sink、名称、索引
+  和服务器实例绑定，不能把名字包含 .monitor 当成证明，也不查默认
+  source。没有权限、选定输出消失/改变、服务切换、格式不可支持时
+  停止；不移流、不改默认 sink、不重建播放引擎、不切麦克风。
+- 现有私有探针证明本机显式 Pulse monitor + DONT_MOVE 和每次读前
+  核对可用。生产的用户级 Unix 音频服务需要独立的可信发现（权限、
+  本机连接及服务器生命周期），不能照抄仅在私有目录/PID 启动的
+  合成条件，也不能使用 pactl/parec 子进程代替生产适配。纯 ALSA、
+  独占设备或未知 monitor 关系当前保留不可用状态。
+- 先撤销本地 generation 再取消设备/请求；取消、离页、账号变更、
+  输出变更、网络掉线和超时都停止并释放原生流及有界缓存。拒绝
+  迟到回包、不自动重试、不存储 PCM/指纹/响应正文。验证要求至少：
+  私有双输出（一个默认干扰）正向采样，取消和正在发包时换输出，
+  移除/重启音频服务，证明正常播放设备与其他流未改动；然后在独立
+  用户授权下验证真实客户端环境。真实服务资格与提交指纹授权必须
+  单独成立；当前合成往返通过不构成授权、上线或播放结果证明。
