@@ -14,7 +14,19 @@ import SessionRenewal from './SessionRenewal.vue';
 import { useConfirmationFocus } from '../composables/useConfirmationFocus';
 import { useControlFocus } from '../composables/useControlFocus';
 const props = defineProps<{ account: AccountView }>();
-const emit = defineEmits<{ close: []; login: []; changed: []; listeningRank: [] }>();
+const emit = defineEmits<{
+  close: [];
+  login: [];
+  changed: [];
+  listeningRank: [];
+  profileShortcut: [kind: 'notes' | 'following' | 'followers'];
+}>();
+const profileCount = new Intl.NumberFormat('zh-CN', { notation: 'compact' });
+const profileSections = [
+  { kind: 'notes', label: '笔记' },
+  { kind: 'following', label: '关注' },
+  { kind: 'followers', label: '粉丝' },
+] as const;
 const core = useCore();
 const model = useLogin(core, () => emit('changed'));
 const { busy } = model;
@@ -253,6 +265,26 @@ onBeforeUnmount(deactivate);
       <p v-if="account.status === 'authenticated'" class="muted">
         当前账号：{{ account.nickname }}
       </p>
+      <div
+        v-if="account.status === 'authenticated' && account.profileShortcut"
+        class="account-profile-shortcuts"
+        role="group"
+        aria-label="我的主页快捷入口"
+      >
+        <button
+          v-for="section in profileSections"
+          :key="section.kind"
+          class="text-button"
+          type="button"
+          :disabled="busy || leaving || removing"
+          @click="emit('profileShortcut', section.kind)"
+        >
+          <strong v-if="account.profileShortcut[section.kind] !== null">
+            {{ profileCount.format(account.profileShortcut[section.kind]!) }}
+          </strong>
+          <span>{{ section.label }}</span>
+        </button>
+      </div>
       <SessionRenewal
         :key="epoch"
         :epoch="epoch"
@@ -410,3 +442,21 @@ onBeforeUnmount(deactivate);
     </p>
   </dialog>
 </template>
+
+<style scoped>
+.account-profile-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-block: 0.75rem;
+}
+.account-profile-shortcuts button {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+}
+.account-profile-shortcuts strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+</style>

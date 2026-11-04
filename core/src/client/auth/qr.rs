@@ -1,4 +1,4 @@
-use super::super::dto::{AccountView, QrView};
+use super::super::dto::{AccountProfileShortcut, AccountView, QrView};
 use super::{LoginChallengeView, MusicClient, PendingFlow, PendingLogin, mapping};
 use crate::{
     Error, Result,
@@ -25,12 +25,32 @@ impl MusicClient {
             .unwrap_or(false);
         self.session.check_generation(&snapshot.token)?;
         let profile = snapshot.profile.unwrap_or_default();
+        let count = |field: &str| {
+            profile[field]
+                .as_u64()
+                .filter(|value| *value <= 9_007_199_254_740_991)
+        };
+        let profile_shortcut = if snapshot.status == crate::account::SessionStatus::Authenticated {
+            snapshot
+                .token
+                .uid
+                .as_ref()
+                .map(|id| AccountProfileShortcut {
+                    id: id.clone(),
+                    notes: count("eventCount"),
+                    following: count("follows"),
+                    followers: count("followeds"),
+                })
+        } else {
+            None
+        };
         Ok(AccountView {
             epoch: snapshot.token.generation.to_string(),
             status: snapshot.status,
             nickname: profile["nickname"].as_str().map(str::to_owned),
             avatar_url: mapping::artwork(&profile["avatarUrl"]),
             can_sign_out,
+            profile_shortcut,
             login_notice: snapshot.login_notice,
         })
     }

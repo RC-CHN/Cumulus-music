@@ -104,7 +104,18 @@ pub struct AccountView {
     pub nickname: Option<String>,
     pub avatar_url: Option<String>,
     pub can_sign_out: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_shortcut: Option<AccountProfileShortcut>,
     pub login_notice: Option<crate::account::login_policy::LoginNotice>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountProfileShortcut {
+    pub id: String,
+    pub notes: Option<u64>,
+    pub following: Option<u64>,
+    pub followers: Option<u64>,
 }
 
 #[derive(Serialize)]

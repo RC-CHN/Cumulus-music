@@ -1,0 +1,23 @@
+顶栏本人头像和账号快捷入口（官方 Windows PC 3.1.42.205594）
+
+- 恢复的 components/UserInfoBar/index.jsx:154–187 将头像与昵称分开。
+  components/UserAvatar/index.tsx:295–313 把已登录用户头像连接到
+  /userDetail/user/{uid}；匿名头像仍是登录入口。昵称展开账号区域，不导航到主页。
+- UserInfoBar/view/popover-content.jsx:84–94 和 UserinfoNewBarHeader.tsx:40–47
+  从已登录的 host 读取笔记、关注、粉丝的数量；分别连接到用户的笔记页、
+  follows 和 fans。Cumulus 使用相同的三个目的地及已验证会话中的资料计数；
+  没有计数时只显示链接，不伪造零。入口位于当前 Cumulus 的账号切换窗口，
+  不是完整重做官方浮层、活动福利、等级和会员实验。
+- account_snapshot 等现有 IPC 的 profileShortcut 只从当前已验证 SessionToken
+  投影本人的十进制 UID，附最多三个非负安全整数。匿名、过期和本地退出不返回。
+  不读取凭据来补导航，不发新请求，不暴露手机号、绑定数据或第三方授权。
+  Rust 切号复核仍由原账号 API 完成。本人资料、笔记、关注/粉丝采用各自的
+  会话代次和原接口，未用前端 isSelf 替代核心鉴权。
+- cargo test --locked -p cumulus-core --test account_profile_navigation
+- cargo build --locked -p cumulus-desktop --example community_ui_probe --features custom-protocol
+- LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py
+    --own-profile --binary /absolute/community_ui_probe --root /absolute/new-proof --screenshots
+- Linux 760px 实际 Tauri WebView 通过 5 态：头像直达本人主页、昵称保留账号窗口、
+  计数可见、本人笔记与关注/粉丝各走正确读接口。原听歌排行 WebView 13 态也通过。
+  .build/ui-proof/own-profile-entry-fb73c373/{own,rank}/report.json。原生合成夹具
+  没有访问真实服务或写入账号；Windows 实机另验。

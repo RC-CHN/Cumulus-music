@@ -82,7 +82,9 @@ impl Library {
             "details":calls.iter().filter(|(path, _)|path==DETAIL).count(),
             "unavailable":calls.iter().filter(|(path, _)|path==UNAVAILABLE).count(),
             "commentOffsets":calls.iter().filter(|(path, _)|path==COMMENTS).map(|(_,body)|&body["offset"]).collect::<Vec<_>>()});
-        if super::profile_notes_fixture::Library::enabled() {
+        if super::profile_notes_fixture::Library::enabled()
+            || super::profile_notes_fixture::Library::own_enabled()
+        {
             report["profileNotesCalls"] = self.profile_notes.report();
         }
         if super::profile_podcasts_fixture::Library::enabled() {

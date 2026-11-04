@@ -214,6 +214,12 @@ export interface AccountView {
   status: 'unknown' | 'authenticated' | 'expired' | 'signed_out';
   nickname: string | null;
   avatarUrl: string | null;
+  profileShortcut?: {
+    id: string;
+    notes: number | null;
+    following: number | null;
+    followers: number | null;
+  };
   /** Additive native capability; absent on older core versions. */
   canSignOut?: boolean;
   loginNotice?: {

@@ -86,6 +86,7 @@ import ArtistOnboarding from './components/onboarding/ArtistOnboarding.vue';
 import { useModalOrigin } from './composables/useModalOrigin';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
+import TopbarAccount from './components/account/TopbarAccount.vue';
 import AccountWelcome from './components/AccountWelcome.vue';
 import TrackTable from './components/TrackTable.vue';
 import CatalogPage from './components/CatalogPage.vue';
@@ -1753,6 +1754,31 @@ function playProfileRank(tracks: TrackView[], index: number) {
 }
 const profileRelations = useProfileRelations(core, () => void music.bootstrap(false));
 let relationVisit = 0;
+function openMyProfile(section: 'home' | 'notes' | ProfileRelationMode = 'home') {
+  const owner = account.value;
+  const profile = owner.profileShortcut;
+  if (initializing.value || owner.status !== 'authenticated' || !profile) return;
+  accountsOpen.value = false;
+  if (section === 'home' || section === 'notes') {
+    const kind = section === 'home' ? 'playlist_creator' : 'profile_notes';
+    if (page.value.kind === kind && page.value.id === profile.id) return;
+    if (section === 'notes') {
+      profileNotes.connect(null);
+      notesUid = null;
+    }
+    music.navigate({ kind, id: profile.id });
+  } else {
+    music.navigate({
+      kind: 'profile_relations',
+      id: profile.id,
+      name: owner.nickname ?? '我',
+      owner: owner.epoch,
+      isSelf: true,
+      mode: section,
+      relationVisit: ++relationVisit,
+    });
+  }
+}
 watch([() => account.value.epoch, profileUid], () => profileRelations.clearGate(), {
   flush: 'sync',
 });
@@ -2899,20 +2925,13 @@ onUnmounted(() => {
         @expired="music.bootstrap(false)"
       />
       <div class="header-spacer" data-tauri-drag-region />
-      <button
-        class="account-button"
-        :title="signedIn ? (account.nickname ?? '我的账号') : '点击登录'"
+      <TopbarAccount
+        :account="account"
         :disabled="initializing"
-        @click="signedIn ? (accountsOpen = true) : (loginOpen = true)"
-      >
-        <img
-          v-if="account.avatarUrl"
-          :src="account.avatarUrl"
-          alt=""
-          referrerpolicy="no-referrer"
-        /><span v-else class="avatar"><Icon name="user" /></span
-        ><span>{{ signedIn ? (account.nickname ?? '我的账号') : '点击登录' }}</span>
-      </button>
+        @profile="openMyProfile()"
+        @accounts="accountsOpen = true"
+        @login="loginOpen = true"
+      />
       <MessageDrawer
         :account="account"
         :initializing="initializing"
@@ -4127,6 +4146,7 @@ onUnmounted(() => {
         :account="account"
         @close="accountsOpen = false"
         @changed="authorized"
+        @profile-shortcut="openMyProfile"
         @listening-rank="
           accountsOpen = false;
           music.navigate({ kind: 'profile_play_record', uid: null, name: '', period: 'week' });

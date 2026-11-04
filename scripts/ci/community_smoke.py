@@ -94,19 +94,23 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    profile = parser.add_mutually_exclusive_group()
-    profile.add_argument('--profile-notes', action='store_true')
-    profile.add_argument('--profile-podcasts', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--profile-notes', action='store_true')
+    mode.add_argument('--profile-podcasts', action='store_true')
+    mode.add_argument('--own-profile', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    script = ('profile_notes_ui_probe.js' if args.profile_notes else
+    script = ('own_profile_navigation_ui_probe.js' if args.own_profile else
+              'profile_notes_ui_probe.js' if args.profile_notes else
               'profile_podcasts_ui_probe.js' if args.profile_podcasts else 'community_ui_probe.js')
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'),
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
     if args.profile_notes:
         env['CUMULUS_PROFILE_NOTES_PROOF'] = '1'
+    if args.own_profile:
+        env['CUMULUS_OWN_PROFILE_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -138,7 +142,14 @@ def main():
               for path in output.glob('ux_*.json')}
     assert len(stages) == complete['stageCount']
     assert all(stage['width'] == 760 for stage in stages.values())
-    if args.profile_notes:
+    if args.own_profile:
+        assert set(stages) == {'own_profile', 'account_controls', 'own_notes', 'own_following', 'own_followers'}
+        calls = complete['native']['profileNotesCalls']
+        assert [path for path, _ in calls if path != '/api/w/nuser/account/get'] == [
+            '/api/w/v1/user/detail/2', '/api/event/get/2',
+            '/api/user/follow/users/mixed/get/v2', '/api/user/getfolloweds/',
+        ], calls
+    elif args.profile_notes:
         verify_profile_notes(stages, complete['native'])
     elif args.profile_podcasts:
         verify_profile_podcasts(stages, complete['native'], root)
@@ -150,7 +161,9 @@ def main():
     report = {'ok': True, 'actualWebView': True, 'states': len(stages),
               'screenshots': len(stages) if args.screenshots else 0,
               'realMusicRequests': 0, 'remoteAccountWrites': 0}
-    if args.profile_notes:
+    if args.own_profile:
+        report['ownProfileVerified'] = True
+    elif args.profile_notes:
         report['profileNotesCalls'] = complete['native']['profileNotesCalls']
     elif args.profile_podcasts:
         report['profilePodcastCalls'] = complete['native']['profilePodcastCalls']

@@ -24,6 +24,48 @@ impl Library {
         std::env::var("CUMULUS_PROFILE_NOTES_PROOF").as_deref() == Ok("1")
     }
 
+    pub fn own_enabled() -> bool {
+        std::env::var("CUMULUS_OWN_PROFILE_PROOF").as_deref() == Ok("1")
+    }
+
+    fn own_request(&self, path: &str, payload: &Value, cache: bool) -> Option<Result<Value>> {
+        let account = || json!({"userId":2,"nickname":"合成本人资料","eventCount":3,"follows":4,"followeds":5});
+        let value = match path {
+            "/api/w/nuser/account/get" if *payload == json!({}) => {
+                json!({"code":200,"profile":account()})
+            }
+            "/api/w/v1/user/detail/2" if *payload == json!({"all":true,"userId":"2"}) => {
+                json!({"code":200,"profile":account(),"listenSongs":51})
+            }
+            "/api/event/get/2"
+                if *payload == json!({"offset":0,"limit":20,"getcounts":true,"time":-1}) =>
+            {
+                json!({"code":200,"events":[row(51,2,"合成本人笔记")],"more":false})
+            }
+            "/api/user/follow/users/mixed/get/v2"
+                if *payload
+                    == json!({
+                        "page":{"size":19,"cursor":"0"},"size":19,"scene":0,"sortType":0,"authority":false
+                    }) =>
+            {
+                json!({"code":200,"data":{"records":[],"page":{"more":false,"recordCount":0}}})
+            }
+            "/api/user/getfolloweds/"
+                if *payload
+                    == json!({"userId":"2","time":0,"offset":0,"limit":20,"getcounts":true}) =>
+            {
+                json!({"code":200,"followeds":[],"more":false,"size":0})
+            }
+            _ => return None,
+        };
+        assert!(!cache);
+        self.calls
+            .lock()
+            .unwrap()
+            .push((path.into(), payload.clone()));
+        Some(Ok(value))
+    }
+
     pub fn block(&self) {
         self.blocked.store(true, Ordering::SeqCst);
     }
@@ -33,6 +75,9 @@ impl Library {
     }
 
     pub fn request(&self, path: &str, payload: &Value, cache: bool) -> Option<Result<Value>> {
+        if Self::own_enabled() {
+            return self.own_request(path, payload, cache);
+        }
         if !Self::enabled() {
             return None;
         }

@@ -82,7 +82,11 @@
     gap: 4px;
     padding: 0;
   }
-  .topbar .account-button > :first-child {
+  .topbar .account-control {
+    max-width: 90px;
+  }
+  .topbar .account-button > img,
+  .topbar .account-button > .avatar {
     flex-shrink: 0;
   }
   .window-controls {

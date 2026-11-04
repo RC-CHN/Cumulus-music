@@ -127,6 +127,29 @@
 .header-spacer {
   flex: 1;
 }
+.account-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.account-avatar-button {
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  padding: 0;
+}
+.account-nickname {
+  min-width: 0;
+  padding-inline: 0;
+}
+.account-nickname .account-unfold {
+  flex: 0 0 12px;
+  width: 12px;
+}
 .account-button {
   display: flex;
   align-items: center;
@@ -135,11 +158,13 @@
   color: var(--text-secondary);
   max-width: 240px;
 }
-.account-button > span:last-child {
+.account-button > span:not(.avatar) {
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.account-avatar-button img,
 .account-button img,
 .avatar {
   width: 26px;
