@@ -12,7 +12,7 @@
  const rect=n=>{const r=n.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height};};
  const hit=n=>{const r=rect(n),top=document.elementFromPoint((r.left+r.right)/2,(r.top+r.bottom)/2);return top===n||n.contains(top);};
  const labels={order_loop:'列表循环',single_loop:'单曲循环',random:'随机播放',sequential:'顺序播放'};
- let count=0,last='bootstrap',playId;
+ let count=0,last='bootstrap',playId,manualSequentialWrapVerified=false;
  async function fixture(kind){window.__modeFixtureAck=null;await emit('mode-fixture',{kind});await wait(()=>window.__modeFixtureAck===kind,'mode fixture');}
  async function settled(mode){await wait(()=>bar().dataset.mode===mode&&trigger().getAttribute('aria-busy')==='false','native mode '+mode);}
  async function cycle(mode){click(trigger());await settled(mode);}
@@ -38,12 +38,12 @@
   }
   const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'native seek');playId=bar().dataset.playId;
  }
- async function capture(label){
+ async function capture(label,edgeSongId){
   last=label;await sleep(300);const p=feedback(),r=p&&rect(p);
   assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(hit(trigger()),'mode button hit');assert(bar().dataset.state==='paused'&&Math.abs(Number(bar().dataset.position)-10)<.2,'pause position');assert(bar().dataset.playId===playId,'mode does not reload media');assert(!one('.playback-message'),'mode feedback independent of audio');if(bar().dataset.fm==='true'){assert(one('.now-copy small').textContent.trim()==='未知歌手','footer distinguishes missing artist from idle copy');assert(one('.fm-copy>p').textContent.trim()===(one('.fm-copy h2').textContent==='暂时没有可播放的推荐'?'重新获取推荐，发现更多音乐':'未知歌手'),'FM distinguishes missing artist from empty recommendation');}
   if(r){assert(r.left>=8&&r.right<=innerWidth-8&&r.top>=8&&r.bottom<=innerHeight-8,'feedback contained');assert([...p.querySelectorAll('button')].every(hit),'retry hit');}
   if(trigger().getAttribute('aria-busy')==='false')assert(trigger().getAttribute('aria-label')===(bar().dataset.fm==='true'&&bar().dataset.mode==='sequential'?'无限漫游':labels[bar().dataset.mode]),'label actual confirmed mode');
-  await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,visible:document.visibilityState==='visible',focused:document.hasFocus(),theme:document.documentElement.dataset.theme,active:{tag:document.activeElement?.tagName,label:document.activeElement?.getAttribute('aria-label'),text:document.activeElement?.textContent.trim().slice(0,80)},mode:bar().dataset.mode,proposed:control().dataset.proposedMode,family:control().dataset.family,fm:bar().dataset.fm==='true',trackId:bar().dataset.trackId,playId,position:Number(bar().dataset.position),contained:true,triggerHit:true,feedback:r?{...r,text:p.textContent,buttons:[...p.querySelectorAll('button')].map(n=>({text:n.textContent,hit:hit(n),focused:document.activeElement===n}))}:null,paintSamples:r?[{x:r.left+8,y:r.top+8,color:getComputedStyle(p).backgroundColor}]:[]});
+  await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,ratio:devicePixelRatio,screenX:window.screenX,screenY:window.screenY,visible:document.visibilityState==='visible',focused:document.hasFocus(),theme:document.documentElement.dataset.theme,active:{tag:document.activeElement?.tagName,label:document.activeElement?.getAttribute('aria-label'),text:document.activeElement?.textContent.trim().slice(0,80)},mode:bar().dataset.mode,proposed:control().dataset.proposedMode,family:control().dataset.family,fm:bar().dataset.fm==='true',trackId:bar().dataset.trackId,playId,position:Number(bar().dataset.position),edgeSongId,contained:true,triggerHit:true,feedback:r?{...r,text:p.textContent,buttons:[...p.querySelectorAll('button')].map(n=>({text:n.textContent,hit:hit(n),focused:document.activeElement===n}))}:null,paintSamples:r?[{x:r.left+8,y:r.top+8,color:getComputedStyle(p).backgroundColor}]:[]});
  }
  try{
   await wait(()=>trigger()&&!trigger().disabled&&one('.track-row .track-play:not(:disabled)'),'ready');
@@ -51,6 +51,24 @@
    await wait(()=>bar().dataset.mode==='random'&&bar().dataset.trackId==='2','persisted normal mode/entry');await prepare();await capture('reopened_normal');await cycle('sequential');await capture('reopened_switched');await reach('random');await capture('reopened_restored');
   }else{
    await prepare();
+   const {epoch}=await invoke('account_snapshot');
+   const initial=await invoke('player_queue',{epoch});
+   const firstSong=initial.tracks[0]?.track.id,lastSong=initial.tracks.at(-1)?.track.id;
+   assert(firstSong&&lastSong&&firstSong!==lastSong&&bar().dataset.trackId===firstSong,'sequential wrap fixture starts at the first track');
+   await reach('sequential');
+   const prev=bar().querySelector('[aria-label="上一首"]'),next=bar().querySelector('[aria-label="下一首"]');
+   assert(hit(prev)&&hit(next),'manual step controls are visible');
+   click(prev);
+   await wait(()=>bar().dataset.trackId===lastSong&&bar().dataset.state==='playing','previous on the first sequential track wraps to the last');
+   await prepare();await capture('manual_previous_wrap',lastSong);
+   click(next);
+   await wait(()=>bar().dataset.trackId===firstSong&&bar().dataset.state==='playing','next on the last sequential track wraps to the first');
+   await prepare();await capture('manual_next_wrap',firstSong);
+   const returned=await invoke('player_queue',{epoch});
+   assert(returned.tracks.map(item=>item.entryId).join()===initial.tracks.map(item=>item.entryId).join(),'manual wraps preserve queue entry order');
+   manualSequentialWrapVerified=true;
+   await reach('order_loop');
+   await wait(()=>!one('.mode-glyph-enter-active,.mode-glyph-leave-active'),'wrap fixture restores the settled starting glyph');
    for(const [w,h,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]){
     await emit('resize',{width:w,height:h});await sleep(240);if(innerWidth!==w||innerHeight!==h)await emit('resize',{width:w*w/innerWidth,height:h*h/innerHeight});await wait(()=>innerWidth===w&&innerHeight===h,'resize');click(one('[aria-label="外观主题"]'));await wait(()=>one('.action-menu'),'theme menu');click(button(theme==='dark'?'深色':'浅色'));await wait(()=>document.documentElement.dataset.theme===theme&&!one('.action-menu'),'theme applied');
     await reach('order_loop');const suffix=`${w}_${theme}`;
@@ -71,6 +89,6 @@
    click(one('.fm-actions .primary'));await wait(()=>bar().dataset.state==='playing','playing before desired queue mismatch');await fixture('empty_desired');await wait(()=>one('.fm-copy h2').textContent==='暂时没有可播放的推荐'&&one('.fm-notice'),'empty domain queue observed');assert(one('.fm-actions .primary').textContent.trim()==='暂停漫游','audible pause intent wins over empty desired queue');assert(one('.fm-actions .primary path').getAttribute('d')==='M8 5v14M16 5v14','pause label and icon agree');click(one('.fm-actions .primary'));await wait(()=>bar().dataset.state==='paused','mismatched source still pauses audible audio');await prepare();await capture('fm_empty_desired_paused');await fixture('restore_desired');await wait(()=>one('.fm-copy h2').textContent!=='暂时没有可播放的推荐'&&!one('.fm-notice'),'desired queue restored');await capture('fm_desired_restored');
    held=true;release=null;client.playerAction=async(...args)=>{if(args[1].kind==='mode_for'&&held){held=false;await new Promise(r=>release=r);}return original(...args);};const originalFm=client.fmCommand;let releaseLeave;client.fmCommand=async(...args)=>{const result=await originalFm(...args);if(args[2].kind==='leave')await new Promise(r=>releaseLeave=r);return result;};click(trigger());await wait(()=>release,'held FM mode');click(button('返回原播放队列'));await wait(()=>releaseLeave&&bar().dataset.fm==='false'&&bar().dataset.trackId==='2'&&bar().dataset.state==='paused','normal queue restored before page reply');playId=bar().dataset.playId;assert(control().dataset.family==='ordinary'&&bar().dataset.mode==='random','normal mode backup restored');assert(button('返回原播放队列')?.disabled,'pending page return remains disabled');await capture('leaving_fm');releaseLeave();await wait(()=>!button('返回原播放队列')&&!one('.fm-actions .primary').disabled,'FM page return committed');await wait(()=>document.activeElement===one('.fm-header h1'),'FM leave restores focus to its heading');client.fmCommand=originalFm;await capture('left_fm');release();await sleep(600);assert(!feedback()&&bar().dataset.mode==='random','late FM intent discarded');client.playerAction=original;await capture('late_fm_rejected');
   }
-  await emit('complete',{ok:true,stageCount:count,reopened:!!window.__modeReopen,modeUiVerified:true,ordinaryVerified:true,fmVerified:!window.__modeReopen,togetherPresentationVerified:false,realMusicRequests:0,accountWrites:0});
+  await emit('complete',{ok:true,stageCount:count,reopened:!!window.__modeReopen,modeUiVerified:true,ordinaryVerified:true,manualSequentialWrapVerified,fmVerified:!window.__modeReopen,togetherPresentationVerified:false,realMusicRequests:0,accountWrites:0});
  }catch(error){await emit('failed',{ok:false,error:String(error),last,stageCount:count,active:document.activeElement?.outerHTML.slice(0,500),body:document.body.textContent.slice(-1600)});}
 })();

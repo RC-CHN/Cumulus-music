@@ -163,9 +163,16 @@ fn invalid_edits_leave_queue_intact_and_sequential_end_does_not_advance() {
     assert!(queue.replace(vec![json!(3)], 1, Value::Null).is_err());
     assert_eq!(queue.snapshot(), before);
     queue.set_mode(PlaybackMode::Sequential).unwrap();
-    assert!(queue.peek(Step::Previous, false).is_none());
+    assert_eq!(
+        queue.peek(Step::Previous, false).unwrap().entry_id,
+        before.order[1]
+    );
     queue.select(&before.order[1]).unwrap();
     let revision = queue.revision();
+    assert_eq!(
+        queue.peek(Step::Next, false).unwrap().entry_id,
+        before.order[0]
+    );
     assert!(queue.advance(Step::Next, true).unwrap().is_none());
     assert_eq!(queue.revision(), revision);
     queue.remove(&before.order).unwrap();

@@ -115,3 +115,12 @@ intelligence-api-contracts.txt；不能以API成功代替心动播放/恢复验�
   intelligence-playback-contracts.txt。恢复会话的主/小窗状态/退出已有intelligence-restored-ui-contracts.txt后续专项；
   正式账号协调器、五态UI入口和全链路仍未完成，
   不能把上述普通/FM通过或原生转换通过当作完整心动功能验收。
+
+顺序播放的手动切歌
+- 恢复的官方 M/7（7.js:138–140）选择文件队列 playingList；其 jump2Track
+  使用 M/176（176.js:20–32）的显示顺序查找，没有上一/下一首时绕回末/首项。
+  自然播放结束是另一条分支，M/308（playing.txt:3886–3913）在顺序模式最后一首
+  保持结束。社区版对手动上下首应用首尾切换，自动 EOF 和预取仍不越过队尾。
+- Rust 控制器核对两边手动切换、自然 EOF 后停在最后一首、再次手动下一首可回首项。
+  mode_ui_smoke 用真实底栏按钮各测一次，确认原生队列的条目顺序不变；
+  FM 与一起听仍用各自流程。

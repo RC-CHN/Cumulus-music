@@ -22,7 +22,8 @@ def main():
         p=root/'os-profile'/name;p.mkdir(parents=True,mode=0o700);env[key]=str(p)
     if args.runtime:env['PATH']=str(args.runtime.resolve())+os.pathsep+env.get('PATH','')
     if args.frontend_dist:env['CUMULUS_PROOF_FRONTEND_DIST']=str(args.frontend_dist.resolve())
-    labels=[f'{stage}_{width}_{theme}' for width,theme in [(1120,'light'),(760,'light'),(760,'dark'),(1120,'dark')] for stage in ['single','random','sequential','loop','failed','closed','reopened','retried']]
+    labels=['manual_previous_wrap','manual_next_wrap']
+    labels += [f'{stage}_{width}_{theme}' for width,theme in [(1120,'light'),(760,'light'),(760,'dark'),(1120,'dark')] for stage in ['single','random','sequential','loop','failed','closed','reopened','retried']]
     labels+=['pending','coalesced','stale_ordinary','fresh_ordinary','fm_infinite','fm_single','fm_infinite_again','fm_failed','fm_recovered','fm_resumed','fm_warning_paused','fm_empty_desired_paused','fm_desired_restored','leaving_fm','left_fm','late_fm_rejected']
     reopened_labels=['reopened_normal','reopened_switched','reopened_restored']
     if args.empty_fm:
@@ -39,6 +40,7 @@ def main():
         assert complete['ok'] and complete['stageCount']==len(stages) and complete['modeUiVerified'] and complete['ordinaryVerified']
         assert complete['fmVerified']==(args.empty_fm or not reopened) and not complete['togetherPresentationVerified']
         assert complete.get('emptyFmVerified',False)==args.empty_fm
+        assert complete.get('manualSequentialWrapVerified',False)==(not args.empty_fm and not reopened)
         assert complete['accountWrites']==complete['realMusicRequests']==complete['syntheticMode']['skipWrites']==0
         if args.empty_fm and not reopened:
             before=json.loads((root/name/'ux_02_empty_initial.json').read_text(encoding='utf-8'))
@@ -48,6 +50,8 @@ def main():
             path=root/name/f'ux_{i:02}_{label}.json';row=json.loads(path.read_text(encoding='utf-8'));native=row['nativePlayer']
             assert row['contained'] and row['triggerHit'] and native['mode']==row['mode'] and native['fm']==row['fm']
             assert not native['error']
+            if label in ('manual_previous_wrap','manual_next_wrap'):
+                assert native['mode']=='sequential' and native['track']['id']==row['edgeSongId']
             if args.empty_fm and row['fm']:
                 assert native['state']=='idle' and native['queueLen']==0 and native['track'] is native['playId'] is native['position'] is None
                 assert row['family']=='fm' and row['returnHit'] and row['emptyControlsDisabled']
@@ -56,7 +60,7 @@ def main():
                 assert native['playId']==row['playId'] and native['track']['id']==row['trackId']
             if row['feedback']:assert all(c['hit'] for c in row['feedback']['buttons'])
             if args.screenshots:assert path.with_suffix('.png').is_file()
-        reports.append({'ok':True,'actualWebView':True,'modeUiVerified':True,'ordinaryVerified':True,'fmVerified':args.empty_fm or not reopened,'emptyFmVerified':args.empty_fm,'togetherPresentationVerified':False,'states':len(stages),'reopened':reopened,'screenshots':len(stages) if args.screenshots else 0,'realAccountWrites':0,'realMusicRequests':0,'physicalAudioOutputVerified':False,'physicalDisplayVerified':False})
+        reports.append({'ok':True,'actualWebView':True,'modeUiVerified':True,'ordinaryVerified':True,'manualSequentialWrapVerified':not args.empty_fm and not reopened,'fmVerified':args.empty_fm or not reopened,'emptyFmVerified':args.empty_fm,'togetherPresentationVerified':False,'states':len(stages),'reopened':reopened,'screenshots':len(stages) if args.screenshots else 0,'realAccountWrites':0,'realMusicRequests':0,'physicalAudioOutputVerified':False,'physicalDisplayVerified':False})
     (root/'audit.json').write_text(json.dumps(reports,indent=2)+'\n',encoding='utf-8');print(json.dumps(reports))
 
 

@@ -109,6 +109,33 @@ async fn eof_is_bound_to_native_entry_and_single_loop_differs_from_manual_next()
 }
 
 #[tokio::test]
+async fn sequential_manual_step_wraps_both_ends_but_natural_eof_does_not() {
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Mode(PlaybackMode::Sequential))
+        .await
+        .unwrap();
+    let previous = f.command(Cmd::Previous).await.unwrap();
+    assert_eq!(song(&previous), Some(2));
+    assert_eq!(previous.state, Status::Playing);
+    let next = f.command(Cmd::Next).await.unwrap();
+    assert_eq!(song(&next), Some(1));
+    assert_eq!(next.state, Status::Playing);
+
+    let last = f.command(Cmd::Next).await.unwrap();
+    assert_eq!(song(&last), Some(2));
+    let entry_id = f.device.state.lock().unwrap().view.entry_id.unwrap();
+    event(&f.device, entry_id, EndReason::Eof);
+    let ended = until(&f.player, |state| state.state == Status::Ended).await;
+    assert_eq!(song(&ended), Some(2));
+    assert_eq!(ended.play_id, last.play_id);
+    assert_eq!(ended.position, Some(120.0));
+    let wrap_after_eof = f.command(Cmd::Next).await.unwrap();
+    assert_eq!(song(&wrap_after_eof), Some(1));
+    assert_eq!(wrap_after_eof.state, Status::Playing);
+}
+
+#[tokio::test]
 async fn fatal_native_event_in_eof_batch_cannot_advance_or_reload_playback() {
     use cumulus_core::playback::failure::PlaybackFailure;
 

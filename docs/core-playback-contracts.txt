@@ -77,7 +77,8 @@ Snapshot是原生类型，包含账号Token和资源Value，必须另映射UI；
 每200ms处理原生事件和进度，周期保存为1秒，暂停/定位/停止等转换立即保存。
 状态：idle/preparing/loading/playing/paused/buffering/ended/error。
 只有与已加载原生entry_id对应的EOF能自动推进；SingleLoop仅自动曲末重复当前，手动
-下一首仍推进；Sequential到队尾保留ended；随机播放顺序随队列持久化。
+下一首仍推进；Sequential自然播放到队尾保留ended，手动上下首仍可跨首尾；
+随机播放顺序随队列持久化。
 同批原生事件内，引擎关闭或当前条目的致命错误优先于 EOF 和输出重载，
 保留当前队列与可用进度，不自动切歌或重取音源。控制器回归覆盖两种事件顺序；
 仅有有效 EOF 或可恢复输出事件时沿用原流程。

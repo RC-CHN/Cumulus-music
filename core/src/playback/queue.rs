@@ -445,7 +445,9 @@ impl PlaybackQueue {
             let next = match step {
                 Step::Next if index + distance < size => index + distance,
                 Step::Previous if index >= distance => index - distance,
-                _ if self.state.mode == PlaybackMode::Sequential => return None,
+                // Sequential mode stops at a natural end, but the manual
+                // controls still wrap to the opposite end of display order.
+                _ if ended && self.state.mode == PlaybackMode::Sequential => return None,
                 Step::Next => (index + distance) % size,
                 Step::Previous => (index + size - distance) % size,
             };
