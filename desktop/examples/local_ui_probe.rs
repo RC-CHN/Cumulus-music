@@ -111,10 +111,6 @@ fn fixtures(root: &Path, cue_only: bool, queue: bool) -> Result<(), Box<dyn std:
             "TITLE \"{cue_album}\"\nPERFORMER \"{cue_artist}\"\nFILE \"album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"夜行 · 上篇\"\nINDEX 01 00:00:00\nTRACK 02 AUDIO\nTITLE \"夜行 · 下篇\"\nINDEX 01 00:30:00\n"
         ),
     )?;
-    fs::write(
-        media.join("album.lrc"),
-        "[00:00]夜色渐深\n[00:35]沿着灯火向前\n[00:50]音乐陪你到天明\n",
-    )?;
     if cue_only {
         return Ok(());
     }
@@ -228,6 +224,16 @@ fn main() {
             }
             if !["local_picker","local_library","local_cue","local_ncm","local_groups","local_reopened","local_history_warning","local_history_page","local_history_replay","complete","failed"].contains(&stage){return;}
             let suffix=if reopen{"-reopened"}else{""};
+            if stage=="local_library" && !reopen {
+                // The real GTK folder picker must select the audio folder,
+                // without mistaking its only child for the chosen directory.
+                // Sidecars are discovered at playback, after the scan.
+                let lyrics=output.join("media/lyric/lrc");
+                fs::create_dir_all(&lyrics).unwrap();
+                fs::write(lyrics.join("album.lrc"),
+                    "[00:00]夜色渐深\n[00:35]沿着灯火向前\n[00:50]音乐陪你到天明\n").unwrap();
+                assert!(!output.join("media/album.lrc").exists());
+            }
             if stage=="complete" {
                 let history=cumulus_core::history::HistoryService::new(session.clone()).unwrap();
                 let token=session.token().unwrap();
