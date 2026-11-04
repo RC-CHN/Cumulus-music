@@ -37,6 +37,8 @@ mod like_recovery_fixture;
 mod media_shortcuts;
 #[path = "support/member_sign_fixture.rs"]
 mod member_sign_fixture;
+#[path = "support/member_welfare_fixture.rs"]
+mod member_welfare_fixture;
 #[path = "support/message_fixture.rs"]
 mod message_fixture;
 #[path = "support/mode_fixture.rs"]
@@ -151,6 +153,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(reply) = member_welfare_fixture::response(path, &args, cached).await {
+                return reply;
+            }
             if playlist_tag_browse_proof()
                 && let Some(response) = playlist_square_fixture::response(path, &args)
             {
@@ -616,6 +621,10 @@ fn main() {
             client=client.with_official_external_import_sidebar()
                 .with_login_providers(Some(Arc::new(external_import_fixture::OfflineLogin)),None);
         }
+        if member_welfare_fixture::enabled() {
+            client=client.with_official_member_welfare()
+                .with_login_providers(Some(Arc::new(external_import_fixture::OfflineLogin)),None);
+        }
         if effect_directory_fixture::enabled() {
             client = client.with_effect_material_backend(Arc::new(effect_peq_fixture::Material));
         }
@@ -674,6 +683,26 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if let Some(wire) = external_import.as_ref() { value["externalImport"] = wire.report(); }
             if external_import_fixture::sidebar_mode().is_some() { value["externalImportSidebarReads"] = json!(external_import_fixture::sidebar_reads()); }
+            if member_welfare_fixture::enabled() {
+                value["memberWelfareFixture"] = member_welfare_fixture::report();
+                if value["stage"]=="member-welfare-fixture" {
+                    use tauri::Emitter;
+                    let id=value["id"].as_u64().unwrap();
+                    let action=value["action"].as_str().unwrap();
+                    member_welfare_fixture::action(action);
+                    let switch=action=="switch";
+                    let handle=handle.clone(); let session=fixture_session.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if switch {
+                            session.refresh().await.unwrap();
+                            handle.emit_to("main","cumulus:account-changed",handle.state::<MusicClient>().account().unwrap()).unwrap();
+                        }
+                        let report=member_welfare_fixture::report();
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__welfareAck[{id}]={report};")).unwrap();
+                    });
+                    return;
+                }
+            }
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if effect_directory_fixture::enabled() {
                 value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());

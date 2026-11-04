@@ -10,6 +10,9 @@
   border-radius: 6px;
   padding: 0;
 }
+.action-menu.account-action-menu {
+  width: min(286px, calc(100vw - 16px));
+}
 .action-menu.ranking-year-menu .menu-items {
   display: block;
   max-height: min(360px, calc(100vh - 120px));

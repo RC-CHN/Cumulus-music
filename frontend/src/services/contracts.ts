@@ -1,6 +1,7 @@
 import type { LocalNetworkReport } from './networkDiagnostics';
 import type { PackageVerification, UpdateCheck } from './updates';
 import type { ExternalPlaylistImportClient } from './externalPlaylistImport';
+import type { MemberWelfareClient } from './memberWelfare';
 import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
 import type { ArtistOnboardingClient } from './artistOnboarding';
@@ -112,6 +113,7 @@ export interface CoreClient
     PlayerClient,
     PlaylistClient,
     ExternalPlaylistImportClient,
+    MemberWelfareClient,
     PlaylistCoverClient,
     DownloadClient,
     ColdOfflineClient,

@@ -3229,6 +3229,7 @@ onUnmounted(() => {
         :disabled="initializing"
         @profile="openMyProfile()"
         @accounts="accountsOpen = true"
+        @member="music.navigate({ kind: 'member' })"
         @login="loginOpen = true"
       />
       <MessageDrawer

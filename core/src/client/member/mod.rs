@@ -2,6 +2,7 @@ mod dto;
 mod offer;
 mod project;
 mod sign;
+mod welfare;
 use super::{MusicClient, dto::AccountData, mapping};
 use crate::{
     Error, Result,
@@ -17,6 +18,8 @@ pub use sign::{
     MemberSignAction, MemberSignCard, MemberSignCommand, MemberSignDetail, MemberSignOutcome,
     MemberSignPhase,
 };
+pub(super) use welfare::MemberWelfareHost;
+pub use welfare::MemberWelfareView;
 
 fn now() -> f64 {
     time::OffsetDateTime::now_utc().unix_timestamp_nanos() as f64 / 1e9

@@ -15,7 +15,7 @@ const props = withDefaults(
     disabled?: boolean;
     focusChecked?: boolean;
     contextOnly?: boolean;
-    variant?: 'song' | 'speed' | 'quality' | 'mini' | 'year';
+    variant?: 'song' | 'speed' | 'quality' | 'mini' | 'year' | 'account';
   }>(),
   {
     icon: 'more',
@@ -99,7 +99,7 @@ async function display(last = false, point?: { x: number; y: number }, target?: 
   emit('opened');
   position.value.visibility = 'hidden';
   await nextTick();
-  if (revision !== displayRevision || !open.value || (!point && !trigger.value) || !panel.value)
+  if (revision !== displayRevision || !open.value || (!point && !returnTarget) || !panel.value)
     return;
   place();
   await nextTick();
@@ -127,11 +127,12 @@ function observeContent() {
     resizeObserver?.observe(element);
 }
 function place() {
-  if (!panel.value || !open.value || (!origin && !trigger.value)) return;
+  const triggerNode = returnTarget ?? trigger.value;
+  if (!panel.value || !open.value || (!origin && !triggerNode)) return;
   const point = origin;
   const anchor = point
       ? { right: point.x, top: point.y, bottom: point.y }
-      : trigger.value!.getBoundingClientRect(),
+      : triggerNode!.getBoundingClientRect(),
     box = panel.value.getBoundingClientRect();
   const left = Math.max(
     8,
@@ -141,9 +142,9 @@ function place() {
         : point
           ? point.x
           : props.variant === 'quality'
-            ? (anchor.right + trigger.value!.getBoundingClientRect().left - box.width) / 2
+            ? (anchor.right + triggerNode!.getBoundingClientRect().left - box.width) / 2
             : props.variant === 'year'
-              ? trigger.value!.getBoundingClientRect().left
+              ? triggerNode!.getBoundingClientRect().left
               : anchor.right - box.width,
       innerWidth - box.width - 8,
     ),
@@ -201,6 +202,7 @@ watch(
 );
 const show = (last = false) => display(last);
 const showAt = (x: number, y: number, target?: HTMLElement) => display(false, { x, y }, target);
+const showBelow = (target: HTMLElement) => display(false, undefined, target);
 function closeChild(restore: boolean) {
   const parent = child.value?.anchor;
   child.value = undefined;
@@ -297,7 +299,8 @@ watch(open, (active) => {
     if (
       !panel.value?.contains(event.target as Node) &&
       !submenu.value?.contains(event.target as Node) &&
-      !trigger.value?.contains(event.target as Node)
+      !trigger.value?.contains(event.target as Node) &&
+      (origin || !returnTarget?.contains(event.target as Node))
     )
       close();
   };
@@ -337,6 +340,7 @@ onUnmounted(() => {
 defineExpose({
   show,
   showAt,
+  showBelow,
   close,
   containsFocus: () =>
     !!panel.value?.contains(document.activeElement) ||
@@ -380,6 +384,7 @@ defineExpose({
             'quality-action-menu': variant === 'quality',
             'mini-action-menu': variant === 'mini',
             'ranking-year-menu': variant === 'year',
+            'account-action-menu': variant === 'account',
           }"
           role="menu"
           tabindex="-1"

@@ -3,6 +3,25 @@ use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
 };
 #[tauri::command]
+pub async fn member_welfare_available(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<bool>, ClientError> {
+    client
+        .member_welfare_available(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn member_welfare_list(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Option<MemberWelfareView>>, ClientError> {
+    client.member_welfare_list(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn member_portal_qr() -> Result<cumulus_core::membership::portal::MemberPortalQr, ClientError> {
     cumulus_core::membership::portal::member_portal_qr().map_err(Into::into)
 }

@@ -90,6 +90,7 @@ use std::{path::Path, sync::Arc};
 pub struct MusicClient {
     external_import: external_import::ExternalImportHost,
     external_import_sidebar: bool,
+    member_welfare: member::MemberWelfareHost,
     session: Arc<AccountSession>,
     registry: Arc<ProfileRegistry>,
     auth: auth::AuthHost,
@@ -255,6 +256,7 @@ impl MusicClient {
         Self {
             external_import: Default::default(),
             external_import_sidebar: false,
+            member_welfare: Default::default(),
             playlist_cover: playlist_cover::CoverHost::default(),
             artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),

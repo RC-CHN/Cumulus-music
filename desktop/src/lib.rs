@@ -370,6 +370,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 member::member_card_offer_qr,
                 member::open_member_card_offer,
                 member::member_sign_card,
+                member::member_welfare_available,
+                member::member_welfare_list,
                 member::member_sign_detail,
                 member::member_sign_command,
                 member::open_member_link,
@@ -497,7 +499,8 @@ pub fn run() {
                 .with_official_search_experiment()
                 .with_official_quality_experiments()
                 .with_official_daily_experiment()
-                .with_official_external_import_sidebar();
+                .with_official_external_import_sidebar()
+                .with_official_member_welfare();
             let client = client.with_login_device_name(&login_device::name())?;
             let client = configure_native_im(client, &app.path().resource_dir()?);
             let resources = app.path().resource_dir()?;
