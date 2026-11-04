@@ -464,6 +464,7 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-layout-windows --runtime .build/package-stage/windows-x64/native --layout
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-collections-windows --runtime .build/package-stage/windows-x64/native --collections
           python scripts/ci/collection_context_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-collections-context-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/follow_new_song_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-follow-new-song-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/album_card_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-album-card-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/artist_card_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-artist-card-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/comment_read_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-comment-read-windows --runtime .build/package-stage/windows-x64/native
@@ -776,6 +777,7 @@ jobs:
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-layout-linux --layout
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-linux --collections
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/collection_context_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-collections-context-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/follow_new_song_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-follow-new-song-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/album_card_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-album-card-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/artist_card_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-card-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_read_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-comment-read-linux

@@ -38,5 +38,6 @@
 - [精品歌单](playlist-detail-ui-contracts.txt)已接通分类入口、独立标签、原游标续页和详情返回。[单曲和歌词搜索](desktop-player-contracts.txt)可暂停或继续当前正在解码加载的歌，Linux 隔离主流程核对播放实例、音源授权和加载次数不变。
 - [乐签详情](desktop-member-contracts.txt)已接通原曲喜欢、暂停/继续、奖励进度和专用会员二维码；没有新增领奖入口。[前瞻限幅器](core-effects-material-routing.txt)已有原生对照的离线 PCM 内核、有限输入输出缓冲和尾部排空；正式播放器和完整音效图未接入。
 - 歌单详情切换曲目、评论、收藏者不增加返回步骤，离开再返回时恢复页签和滚动位置。搜索声音的结果行和综合卡按单集 ID 控制当前正在加载的同一实例；Linux 隔离桌面验证首载期间暂停/继续，未重复解码加载。[歌单详情](playlist-detail-ui-contracts.txt) · [声音搜索](search-card-ui-contracts.txt)
+- [消息中心](message-drawer-contracts.txt)已接通私信、评论、@我、通知及会话历史的按需读取；仅有合成桌面证据，没有发送、删除、清除未读或后台轮询。[新歌发布](follow-new-song-contracts.txt)可从关注歌手页读取发布流，独立播放官方最新列表；通知取消和完整社区入口仍待补。限幅流的[离线重置](core-effects-material-routing.txt)已与官方原生对照，实际桌面播放跳转不使用这条音效链。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
