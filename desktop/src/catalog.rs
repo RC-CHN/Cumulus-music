@@ -60,3 +60,16 @@ pub async fn followed_new_song_latest(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn release_notification(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    artist: String,
+    action: ReleaseNotificationAction,
+) -> Result<AccountData<ReleaseNotificationState>, ClientError> {
+    client
+        .release_notification(&epoch, &artist, action)
+        .await
+        .map_err(Into::into)
+}

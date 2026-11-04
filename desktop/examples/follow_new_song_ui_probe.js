@@ -84,6 +84,40 @@
     click(play);
     await wait(() => Number(one('.playerbar')?.dataset.position) > 0.25, 'latest PCM advances');
     await capture('play_latest', true);
+    if (window.__cumulusFollowNoticeProof) {
+      async function confirmation(artist) {
+        click(one(`[aria-label="合成新歌歌手 ${artist} 更多操作"]`));
+        await wait(() => button('不接收此歌手的通知'), 'notification menu');
+        click(button('不接收此歌手的通知'));
+        await wait(() => one('dialog[open]')?.textContent.includes('后续将屏蔽') ||
+          one('dialog[open]')?.textContent.includes('未收到确认'), 'notification confirmation');
+      }
+      await confirmation(1);
+      click(button('取消', one('dialog[open]')));
+      await wait(() => !one('dialog[open]') && document.activeElement?.getAttribute('aria-label') ===
+        '合成新歌歌手 1 更多操作', 'cancellation restores menu focus');
+      assert(all('.follow-release').length === 10, 'cancel keeps feed');
+      await capture('notification_cancelled');
+
+      await confirmation(2);
+      click(button('确认', one('dialog[open]')));
+      await wait(() => one('dialog[open]')?.textContent.includes('不会再次发送'), 'lost reply visible');
+      click(button('关闭', one('dialog[open]')));
+      await wait(() => !one('dialog[open]'), 'unknown result can close');
+      await confirmation(2);
+      assert(!button('确认', one('dialog[open]')) && all('.follow-release').length === 10,
+        'unknown does not allow another write or hide cards');
+      await capture('notification_unknown');
+      click(button('关闭', one('dialog[open]')));
+      await wait(() => !one('dialog[open]'), 'close recovered journal');
+
+      await confirmation(1);
+      click(button('确认', one('dialog[open]')));
+      await wait(() => all('.follow-release').length === 1 && !one('dialog[open]'), 'confirmed hides all cards for artist');
+      assert(one('.follow-release')?.getAttribute('aria-label') === '合成新歌歌手 2', 'other artist remains');
+      assert(document.activeElement === one('#follow-release-title'), 'focus recovers after removing artist');
+      await capture('notification_confirmed');
+    }
     click(one('[aria-label="返回上一页"]'));
     await wait(() => button('关注歌手')?.getAttribute('aria-current') === 'page', 'return to followed artists');
     await wait(() => document.activeElement === button('新歌发布'), 'return focus to new-song entry');

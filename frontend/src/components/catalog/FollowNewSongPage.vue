@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import Icon from '../Icon.vue';
+import FollowArtistNoticeMenu from './FollowArtistNoticeMenu.vue';
 import { useCore } from '../../services/core';
 import { useFollowNewSong } from '../../composables/useFollowNewSong';
 import type { TrackView } from '../../services/contracts';
@@ -17,7 +18,7 @@ const emit = defineEmits<{
 }>();
 const model = useFollowNewSong(useCore(), () => emit('expired'));
 const {
-  releases,
+  releases: loadedReleases,
   latest,
   latestVisitTime,
   cursor,
@@ -35,6 +36,11 @@ const heading = ref<HTMLElement>();
 const playAll = ref<HTMLButtonElement>();
 const sentinel = ref<HTMLElement>();
 const expanded = ref<number | null>(null);
+const mutedArtists = ref(new Set<string>());
+const notificationNotice = ref('');
+const releases = computed(() =>
+  loadedReleases.value.filter((release) => !mutedArtists.value.has(release.artistId)),
+);
 const trackWindow = ref(0);
 const dayFormat = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
@@ -50,7 +56,11 @@ const TRACK_WINDOW = 24;
 
 watch(
   () => props.epoch,
-  (epoch) => model.connect(epoch),
+  (epoch) => {
+    mutedArtists.value = new Set();
+    notificationNotice.value = '';
+    model.connect(epoch);
+  },
   { immediate: true },
 );
 onBeforeUnmount(model.clear);
@@ -143,6 +153,14 @@ async function retryLatest() {
     target?.focus({ preventScroll: true });
   }
 }
+async function hideMutedArtist(id: string) {
+  mutedArtists.value.add(id);
+  expanded.value = null;
+  trackWindow.value = 0;
+  notificationNotice.value = '该歌手新歌通知已取消';
+  await nextTick();
+  heading.value?.focus({ preventScroll: true });
+}
 </script>
 
 <template>
@@ -162,6 +180,7 @@ async function retryLatest() {
         <span>播放最新</span><span v-if="latest.length">{{ latest.length }}</span>
       </button>
     </header>
+    <p v-if="notificationNotice" class="muted" role="status">{{ notificationNotice }}</p>
     <p v-if="latestError" class="muted" role="status">
       播放列表读取失败。
       <button type="button" class="text-button" :disabled="latestPending" @click="retryLatest">
@@ -212,6 +231,13 @@ async function retryLatest() {
             {{ clock(release.publishTime) }} ·
             {{ release.kind === 'album' ? '专辑上线' : '单曲上线' }}
           </p>
+          <FollowArtistNoticeMenu
+            :epoch="epoch"
+            :artist-id="release.artistId"
+            :artist-name="release.artistName"
+            @muted="hideMutedArtist"
+            @expired="emit('expired')"
+          />
         </header>
 
         <div v-if="release.kind === 'album' && release.albumId" class="follow-release-resource">

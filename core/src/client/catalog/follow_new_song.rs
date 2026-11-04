@@ -11,6 +11,8 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod notification;
+
 const LIST: &str = "/api/sub/artist/new/works/song-mv/list/v2";
 const PLAY_ALL: &str = "/api/sub/artist/new/works/song/playall";
 const LIMIT: usize = 10;

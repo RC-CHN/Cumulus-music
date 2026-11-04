@@ -125,6 +125,8 @@ export function createTauriClient(): CoreClient {
     followedNewSongPage: (epoch, startTimestamp) =>
       invoke('followed_new_song_page', { epoch, startTimestamp }),
     followedNewSongLatest: (epoch) => invoke('followed_new_song_latest', { epoch }),
+    releaseNotification: (epoch, artist, action) =>
+      invoke('release_notification', { epoch, artist, action }),
     collectionPage: (epoch, query, refresh) => invoke('collection_page', { epoch, query, refresh }),
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
     accountSettingsPage: (epoch, refresh) => invoke('account_settings_page', { epoch, refresh }),

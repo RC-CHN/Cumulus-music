@@ -30,7 +30,7 @@ import type { FmClient } from './fm';
 import type { SceneFmClient } from './sceneFm';
 import type { MemberClient, MemberPortalClient } from './member';
 import type { CatalogClient } from './catalog';
-import type { FollowNewSongClient } from './followNewSong';
+import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
 import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
@@ -117,6 +117,7 @@ export interface CoreClient
     MemberPortalClient,
     CatalogClient,
     FollowNewSongClient,
+    ReleaseNotificationClient,
     CollectionClient,
     HistoryClient,
     SettingsClient,

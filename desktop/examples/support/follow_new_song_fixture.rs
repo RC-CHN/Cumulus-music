@@ -8,6 +8,7 @@ use tokio::sync::Notify;
 
 const LIST: &str = "/api/sub/artist/new/works/song-mv/list/v2";
 const LATEST: &str = "/api/sub/artist/new/works/song/playall";
+const SWITCH: &str = "/api/sub/artist/publish/switch";
 const FIRST_TIME: u64 = 1_700_000_000_000;
 const NEXT_TIME: u64 = FIRST_TIME - 9 * 86_400_000;
 
@@ -39,6 +40,8 @@ impl Library {
                 .map(|(_, value)| &value["startTimestamp"]).collect::<Vec<_>>(),
             "playAllReads":calls.iter().filter(|(path, _)| path == LATEST).count(),
             "expectedNextCursor": NEXT_TIME,
+            "notificationRequests": calls.iter().filter(|(path, _)| path == SWITCH)
+                .map(|(_, value)| value).collect::<Vec<_>>(),
         })
     }
 }
@@ -55,7 +58,7 @@ fn release(index: u64, time: u64) -> Value {
             "publishTime":time,
             "albumId":if album {Some(7)} else {None},
             "albumSongCount":if album {Some(2)} else {None},
-            "blockTitle":{"artistId":12,"artistName":format!("合成新歌歌手 {}", index + 1),
+            "blockTitle":{"artistId":if album {13} else {12},"artistName":format!("合成新歌歌手 {}", index + 1),
                 "resourceId":index+1,"resourceName":if album {"合成新专辑"} else {"合成新单曲"}},
             "songLists":if album {vec![song(2,"合成专辑曲目",29),song(3,"合成专辑第二首",0)]}
                 else if index==0 {vec![song(1,"合成新单曲",0),song(4,"合成伴奏",0)]}
@@ -67,7 +70,7 @@ fn release(index: u64, time: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            if ![LIST, LATEST].contains(&path) {
+            if ![LIST, LATEST, SWITCH].contains(&path) {
                 return self.base.request(path, payload, cache).await;
             }
             let first = payload["firstRequest"].as_bool();
@@ -79,6 +82,15 @@ impl Api for Library {
                     .filter(|(p, v)| p == path && v["firstRequest"].as_bool() == first)
                     .count()
             };
+            if path == SWITCH {
+                assert!(!cache && std::env::var_os("CUMULUS_FOLLOW_NOTICE_PROOF").is_some());
+                return if payload == json!({"artistId":"13","switchStatus":0}) {
+                    Err(Error::Transport("synthetic switch reply lost".into()))
+                } else {
+                    assert_eq!(payload, json!({"artistId":"12","switchStatus":0}));
+                    Ok(json!({"code":200}))
+                };
+            }
             if path == LATEST {
                 assert!(!cache && payload == json!({}));
                 return Ok(if attempt == 1 {

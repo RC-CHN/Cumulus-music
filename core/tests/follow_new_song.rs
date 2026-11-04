@@ -1,7 +1,10 @@
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
-    client::MusicClient,
+    client::{
+        MusicClient,
+        dto::{ReleaseNotificationAction as NoticeAction, ReleaseNotificationState as NoticeState},
+    },
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -16,6 +19,7 @@ use tokio::sync::Notify;
 
 const LIST: &str = "/api/sub/artist/new/works/song-mv/list/v2";
 const LATEST: &str = "/api/sub/artist/new/works/song/playall";
+const SWITCH: &str = "/api/sub/artist/publish/switch";
 
 #[derive(Default)]
 struct Fixture {
@@ -39,6 +43,15 @@ impl Api for Fixture {
                 "al":{"id":17,"name":"合成专辑","picUrl":"https://p1.music.126.net/a.jpg?token=PRIVATE"},
                 "mv":"998","url":"https://example.invalid/PRIVATE","credentials":"PRIVATE"});
             match path {
+                SWITCH if body == json!({"artistId":"16","switchStatus":0}) => {
+                    Ok(json!({"code":200}))
+                }
+                SWITCH if body == json!({"artistId":"17","switchStatus":0}) => {
+                    Err(Error::Transport("synthetic acknowledgement lost".into()))
+                }
+                SWITCH if body == json!({"artistId":"18","switchStatus":0}) => {
+                    Ok(json!({"code":400}))
+                }
                 LATEST if body == json!({}) => Ok(json!({"code":200,"data":{"songList":[song]}})),
                 LIST if body["firstRequest"] == true => Ok(json!({"code":200,"data":{
                 "latestVisitTime":925,"hasMore":true,"newWorks":[
@@ -59,6 +72,124 @@ impl Api for Fixture {
             }
         })
     }
+}
+
+#[tokio::test]
+async fn explicit_notice_disable_uses_only_the_switch_and_confirms_once() {
+    let (_dir, session, api, client) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    assert_eq!(
+        client
+            .release_notification(&epoch, "16", NoticeAction::Inspect)
+            .await
+            .unwrap()
+            .value,
+        NoticeState::Ready
+    );
+    assert!(api.calls.lock().unwrap().is_empty());
+    api.hold.store(true, Ordering::SeqCst);
+    let active = {
+        let client = client.clone();
+        let epoch = epoch.clone();
+        tokio::spawn(async move {
+            client
+                .release_notification(&epoch, "16", NoticeAction::Disable)
+                .await
+        })
+    };
+    api.started.notified().await;
+    assert_eq!(
+        client
+            .release_notification(&epoch, "16", NoticeAction::Disable)
+            .await
+            .unwrap()
+            .value,
+        NoticeState::Uncertain
+    );
+    api.release.notify_one();
+    assert_eq!(active.await.unwrap().unwrap().value, NoticeState::Confirmed);
+    assert_eq!(
+        client
+            .release_notification(&epoch, "16", NoticeAction::Disable)
+            .await
+            .unwrap()
+            .value,
+        NoticeState::Confirmed
+    );
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        [(
+            SWITCH.into(),
+            json!({"artistId":"16","switchStatus":0}),
+            false
+        )]
+    );
+}
+
+#[tokio::test]
+async fn notice_loss_stays_account_local_and_never_replays_but_service_rejection_is_retryable() {
+    let (dir, session, api, client) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    assert_eq!(
+        client
+            .release_notification(&epoch, "17", NoticeAction::Disable)
+            .await
+            .unwrap()
+            .value,
+        NoticeState::Uncertain
+    );
+    let reopened = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let reopened_session = Arc::new(AccountSession::new(api.clone(), Some(reopened.store())));
+    reopened_session
+        .adopt(
+            api.clone(),
+            json!({"userId":9}),
+            &reopened_session.token().unwrap(),
+        )
+        .unwrap();
+    let reopened_epoch = reopened_session.token().unwrap().generation.to_string();
+    let reopened = MusicClient::with_session(reopened_session, reopened);
+    assert_eq!(
+        reopened
+            .release_notification(&reopened_epoch, "17", NoticeAction::Disable)
+            .await
+            .unwrap()
+            .value,
+        NoticeState::Uncertain
+    );
+    assert!(
+        client
+            .release_notification(&epoch, "18", NoticeAction::Disable)
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        client
+            .release_notification(&epoch, "18", NoticeAction::Inspect)
+            .await
+            .unwrap()
+            .value,
+        NoticeState::Ready
+    );
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(
+        client
+            .release_notification(&epoch, "17", NoticeAction::Inspect)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    let next_epoch = session.token().unwrap().generation.to_string();
+    assert_eq!(
+        client
+            .release_notification(&next_epoch, "17", NoticeAction::Inspect)
+            .await
+            .unwrap()
+            .value,
+        NoticeState::Ready
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), 2);
 }
 
 fn fixture() -> (

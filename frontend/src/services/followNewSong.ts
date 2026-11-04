@@ -27,3 +27,12 @@ export interface FollowNewSongClient {
   ): Promise<AccountData<FollowNewSongPage>>;
   followedNewSongLatest(epoch: string): Promise<AccountData<TrackView[]>>;
 }
+
+export type ReleaseNotificationState = 'ready' | 'confirmed' | 'uncertain';
+export interface ReleaseNotificationClient {
+  releaseNotification(
+    epoch: string,
+    artist: string,
+    action: 'inspect' | 'disable',
+  ): Promise<AccountData<ReleaseNotificationState>>;
+}

@@ -12,6 +12,7 @@ use crate::{
 };
 pub use dto::*;
 pub use follow_new_song::FollowNewSongPage;
+pub use follow_new_song::notification::{ReleaseNotificationAction, ReleaseNotificationState};
 pub use gallery::{ArtistGalleryPage, ArtistGalleryQuery};
 pub use membership::{
     CatalogMembershipAction, CatalogMembershipOperation, CatalogMembershipView, CatalogResource,
