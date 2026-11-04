@@ -80,3 +80,127 @@ impl PlaybackQueue {
         self.commit_more(next, None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::catalog::queue_more::QueueMoreSong;
+    use crate::playback::queue_more::{KIND, PREFERENCE, recommended};
+    use serde_json::json;
+
+    fn track(id: u64) -> Value {
+        json!({"id":id,"song":{"id":id,"name":"synthetic"}})
+    }
+
+    fn song(id: &str) -> QueueEntry {
+        recommended(
+            QueueMoreSong {
+                id: id.into(),
+                name: "synthetic recommended".into(),
+                duration_ms: 8000,
+                fee: None,
+                artists: Vec::new(),
+                album_id: None,
+                album_name: String::new(),
+                cover_url: None,
+                algorithm: Some("never public".into()),
+                privilege: None,
+            },
+            "standard",
+        )
+    }
+
+    #[test]
+    fn mixed_queue_uses_seed_offset_keeps_current_and_never_duplicate_rec_tracks() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temporary.path()).unwrap());
+        let mut queue = PlaybackQueue::new(Some(store.clone()), "123").unwrap();
+        queue
+            .replace(
+                vec![track(1), json!({"voice_id":"7"}), track(2)],
+                0,
+                json!({"kind":"daily_recommendations"}),
+            )
+            .unwrap();
+        let current = queue.selected().unwrap();
+        queue
+            .insert_more(vec![song("2"), song("3"), song("3"), song("4")], 2)
+            .unwrap();
+        let snapshot = queue.snapshot();
+        assert_eq!(
+            snapshot
+                .items
+                .iter()
+                .map(|item| seed(item))
+                .collect::<Vec<_>>(),
+            vec![
+                Some("1".into()),
+                None,
+                Some("3".into()),
+                Some("4".into()),
+                Some("2".into())
+            ]
+        );
+        assert_eq!(queue.selected(), Some(current));
+        assert_eq!(
+            queue.more_view(true).unwrap().separator_before.as_ref(),
+            Some(&snapshot.items[2].entry_id)
+        );
+        assert!(
+            !serde_json::to_string(&snapshot)
+                .unwrap()
+                .contains("never public")
+        );
+
+        let recommended_id = snapshot.items[2].entry_id.clone();
+        let selected = queue.select(&recommended_id).unwrap();
+        queue.set_more_preference(false).unwrap();
+        assert_eq!(queue.selected(), Some(selected.clone()));
+        assert!(queue.more_view(false).unwrap().separator_before.is_none());
+        assert!(
+            queue
+                .snapshot()
+                .items
+                .iter()
+                .all(|row| !active(&queue.state, row))
+        );
+        assert_eq!(queue.len(), 4);
+
+        let reopened = PlaybackQueue::new(Some(store.clone()), "123").unwrap();
+        assert_eq!(reopened.selected(), Some(selected));
+        assert_eq!(
+            store.get("123", KIND, PREFERENCE).unwrap(),
+            Some(json!(false))
+        );
+        assert_eq!(store.get("456", KIND, PREFERENCE).unwrap(), None);
+        assert!(
+            PlaybackQueue::new(Some(store), "456")
+                .unwrap()
+                .more_view(true)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn room_gate_checks_in_the_same_commit_as_preferences_and_recommendations() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temporary.path()).unwrap());
+        let mut queue = PlaybackQueue::new(Some(store.clone()), "123").unwrap();
+        queue
+            .replace(
+                vec![track(1), track(2)],
+                0,
+                json!({"kind":"style_recommendations"}),
+            )
+            .unwrap();
+        let before = queue.snapshot();
+        store
+            .put("123", ROOM_BINDING, "current", &json!({"synthetic":true}))
+            .unwrap();
+        assert!(queue.more_view(true).is_none());
+        assert!(queue.set_more_preference(false).is_err());
+        assert!(queue.insert_more(vec![song("3")], 2).is_err());
+        assert_eq!(queue.snapshot(), before);
+        assert_eq!(store.get("123", KIND, PREFERENCE).unwrap(), None);
+    }
+}
