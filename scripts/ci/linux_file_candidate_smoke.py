@@ -11,6 +11,7 @@ import signal
 import socket
 import sqlite3
 import subprocess
+import sys
 import time
 
 from diagnostics import verify_proof_databases
@@ -55,6 +56,34 @@ class Child:
             os.kill(self.pid, signal.SIGKILL)
 
 
+def verify_uninstalled_mime_state(env):
+    # GIO caches XDG paths. Query the preinstall view in a fresh process so
+    # the actual launch below can independently discover the extracted menu.
+    # Only stable API IDs enter the assertion, not localized gio CLI prose.
+    query = """
+import gi
+import json
+import sys
+gi.require_version('Gio', '2.0')
+from gi.repository import Gio
+result = {}
+for mime_type in sys.argv[1:]:
+    default = Gio.AppInfo.get_default_for_type(mime_type, False)
+    result[mime_type] = {
+        'default': default.get_id() if default else None,
+        'candidates': [app.get_id() for app in Gio.AppInfo.get_all_for_type(mime_type)],
+    }
+print(json.dumps(result))
+"""
+    output = subprocess.check_output([sys.executable, '-I', '-c', query, *TYPES],
+                                     env=env, encoding='utf-8', timeout=5)
+    result = json.loads(output)
+    assert set(result) == set(TYPES), 'missing uninstalled GIO lookup'
+    for mime_type, observed in result.items():
+        assert observed['default'] == OTHER_ID, f'preexisting GIO default not selected for {mime_type}'
+        assert DESKTOP_ID not in observed['candidates'], f'Cumulus visible before extraction for {mime_type}'
+
+
 def isolated_roots(root, package):
     xdg = {}
     for key, suffix in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
@@ -77,11 +106,7 @@ def isolated_roots(root, package):
     uninstalled.mkdir()
     (uninstalled / 'mime').symlink_to('/usr/share/mime', target_is_directory=True)
     clean = dict(os.environ, **xdg, XDG_DATA_DIRS=str(uninstalled), LC_ALL='C')
-    for mime_type in TYPES:
-        output = subprocess.check_output(['gio', 'mime', mime_type], env=clean, text=True, timeout=5)
-        assert f'Default application for “{mime_type}”: {OTHER_ID}' in output or (
-            f'Default application for "{mime_type}": {OTHER_ID}' in output)
-        assert DESKTOP_ID not in output
+    verify_uninstalled_mime_state(clean)
 
     extracted = root / 'extracted'
     subprocess.run(['dpkg-deb', '-x', str(package), str(extracted)], check=True, timeout=60)
