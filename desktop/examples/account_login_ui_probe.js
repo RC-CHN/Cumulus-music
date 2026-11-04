@@ -728,13 +728,16 @@
     await country("HK");
     fill("登录手机号", "51234567");
     click(one('.login-options input[type="checkbox"]'));
-    click(button("密码登录"));
-    await sleep(0);
-    const outgoing = one(".tab-leave-active");
+    const passwordSwitch = button("密码登录");
+    const outgoing = passwordSwitch?.closest(".login-panel");
+    assert(outgoing, "SMS panel before method switch");
+    click(passwordSwitch);
+    // Capture the original panel, even if reduced motion or a slow frame
+    // means the animation class is never observable on the next tick.
     const immediate = {
-      inert: outgoing?.inert ?? null,
+      inert: outgoing.inert,
       secretLength:
-        outgoing?.querySelector('input[aria-label="短信验证码"]')?.value
+        outgoing.querySelector('input[aria-label="短信验证码"]')?.value
           .length ?? 0,
     };
     await wait(
@@ -774,13 +777,26 @@
       "remember choice survives switch",
     );
     await stage("phone_password_light", { expectGuest: true });
+    const motionKey = "cumulus.motion.v1";
+    const savedMotion = localStorage.getItem(motionKey);
+    const motion = (value) => {
+      if (value === null) localStorage.removeItem(motionKey);
+      else localStorage.setItem(motionKey, value);
+      dispatchEvent(new StorageEvent("storage", {
+        key: motionKey, newValue: value, storageArea: localStorage,
+      }));
+    };
+    motion("disabled");
+    await wait(() => document.documentElement.dataset.motion === "reduced", "reduce motion");
     fill("登录密码", "fixture-password");
-    click(button("验证码登录"));
-    await sleep(0);
+    const smsSwitch = button("验证码登录");
+    const passwordPanel = smsSwitch?.closest(".login-panel");
+    const password = passwordPanel?.querySelector('[aria-label="登录密码"]');
+    assert(password?.value.length, "filled password before method switch");
+    click(smsSwitch);
     assert(
-      one(".tab-leave-active")?.querySelector('[aria-label="登录密码"]')?.value
-        .length === 0,
-      "outgoing password cleared before animation",
+      passwordPanel.inert && password.value.length === 0,
+      "outgoing password panel immediately inert and cleared",
     );
     await wait(
       () =>
@@ -789,6 +805,8 @@
         !one(".tab-leave-active"),
       "SMS mode",
     );
+    assert(!passwordPanel.isConnected, "outgoing panel removed with reduced motion");
+    motion(savedMotion);
     await settle();
     assert(
       one('[aria-label="登录手机号"]').value === "51234567" &&
