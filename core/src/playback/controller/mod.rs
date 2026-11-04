@@ -15,6 +15,7 @@ pub use parametric::{
 };
 mod quality;
 mod remote;
+mod skip;
 mod startup;
 mod state;
 mod tick;

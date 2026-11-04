@@ -62,6 +62,13 @@ pub struct SourceResolver {
     clock: Arc<dyn ResolverClock>,
 }
 impl SourceResolver {
+    pub(crate) async fn confirmed_plain_skip_denial(
+        &self,
+        token: &SessionToken,
+        item: &super::QueueEntry,
+    ) -> Result<bool> {
+        super::preflight::confirmed_plain_skip_denial(&self.session, token, item).await
+    }
     pub(super) fn check_account_generation(&self, token: &SessionToken) -> Result<()> {
         self.session.check_generation(token)
     }

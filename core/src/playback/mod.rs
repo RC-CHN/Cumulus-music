@@ -14,6 +14,7 @@ pub mod preflight;
 pub mod quality;
 pub mod quality_preferences;
 mod queue;
+pub mod skip_policy;
 pub mod source;
 mod timeline;
 pub(crate) use queue::{FM_BACKUP_POSITION, FM_BACKUP_QUEUE, FmRestoreOutcome, QueueResetPlan};

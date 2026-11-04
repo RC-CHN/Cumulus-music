@@ -60,6 +60,7 @@ pub struct OrdinaryCandidateRow {
     pub entry_id: String,
     pub original_song_id: String,
     pub candidate: OrdinaryCandidate,
+    pub(crate) no_download_publication: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -172,6 +173,7 @@ pub(super) async fn inspect(
         };
         rows.push(OrdinaryCandidateRow {
             entry_id,
+            no_download_publication: !publications.contains_key(&id),
             original_song_id: id,
             candidate,
         });
@@ -220,6 +222,23 @@ pub(super) async fn inspect(
         rows,
         candidate_order,
     })
+}
+
+/// M/308 runs the selected resource check before it calls the M/59 scan. Only
+/// prove the branch when no managed publication could turn this into the
+/// separate local/noPath workflow. This check performs no alternative lookup.
+pub(super) async fn confirmed_plain_skip_denial(
+    session: &Arc<AccountSession>,
+    token: &SessionToken,
+    item: &super::QueueEntry,
+) -> Result<bool> {
+    if !super::skip_policy::plain_copyright_denial(item) {
+        return Ok(false);
+    }
+    let id = identifier(&item.resource["id"])?;
+    let publications = download::snapshot(session, token, HashSet::from([id])).await?;
+    session.check_generation(token)?;
+    Ok(publications.is_empty())
 }
 
 fn classify_online(
