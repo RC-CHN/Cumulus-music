@@ -534,7 +534,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                 let playlist = |id| json!({"type":"playlist","baseInfo":{"id":id,"userId":3,"name":format!("合成轮播歌单 {id}"),"trackCount":40,"creator":{"userId":3,"nickname":"合成作者"}}});
                 let artist = |id| json!({"type":"artist","baseInfo":{"id":id,"name":format!("合成轮播歌手 {id}")}});
                 Some(json!({"code":200,"data":{"blocks":[
-                    {"blockCode":"search_block_best_match","resources":[playlist(28)]},
+                    {"blockCode":"search_block_best_match","resources":[artist(102),playlist(28),playlist(29),playlist(30)]},
                     {"blockCode":"search_block_playlist","uiElement":{"mainTitle":{"title":"歌单"}},"resources":(20..32).map(playlist).collect::<Vec<_>>()},
                     {"blockCode":"search_block_artist","uiElement":{"mainTitle":{"title":"歌手"}},"resources":(100..110).map(artist).collect::<Vec<_>>()}
                 ]}}))
@@ -626,6 +626,9 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             {
                 Some(json!({"code":200,"data":{"blocks":[
                     {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
+                    {"blockCode":"search_block_hot_result_core_resources","resources":(100..104).map(|id|
+                        json!({"type":"artist","baseInfo":{"artistDTO":{"id":id,"name":format!("合成热点歌手 {id}")}}})
+                    ).collect::<Vec<_>>()},
                     {"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"综合 V3 合成歌曲","mark":1048576,"originCoverType":1,"dt":60000,"ar":[],"al":{"id":1,"name":"合成专辑"},"newSongExt":{"songAlias":"歌词存在时隐藏别名"}}},"extInfo":{"mv":601,"lyrics":{"txt":"🎵合成歌词片段","range":[{"first":2,"second":4}]}}},
                     {"type":"song","baseInfo":{"simpleSongData":{"id":2,"name":"合成备用曲目","mark":1,"originCoverType":"1","album":{"mark":1048576},"newSongExt":{"songAlias":"不会展示的旧别名"}}},"extInfo":{"songAlias":"前缀<em>合成 V3</em>别名","lyrics":{"txt":"🎵合成","range":[{"first":1,"second":4}]}}},
                     {"type":"song","baseInfo":{"simpleSongData":{"id":3,"name":"合成标签曲目"}},"extInfo":{"algClickableTags":[

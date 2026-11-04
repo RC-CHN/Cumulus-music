@@ -84,6 +84,19 @@
       await wait(()=>one('.track-row'),'daily ready');
       await theme(1120,760,'light');
       await fresh('合成轮播');
+      const best=()=>one('.search-best-section');
+      const third=()=>best()?.querySelector('[data-result-key="playlist:29"] .search-card-open');
+      const keys=[...best().querySelectorAll('[data-result-key]')].map(node=>node.dataset.resultKey);
+      assert(keys.join(',')==='artist:102,playlist:28,playlist:29'&&best().classList.contains('search-best-compact'),
+        'expanded best match retains the first three supported results in order');
+      assert(getComputedStyle(best().querySelector('.search-result-grid')).gridTemplateColumns.split(' ').length===3&&
+        getComputedStyle(best().querySelector('.search-result-name')).fontSize==='14px'&&
+        getComputedStyle(best().querySelector('.search-result-sub')).fontSize==='12px','three desktop cards use compact official styling');
+      await capture('best_match_expanded');
+      click(third());
+      await wait(()=>one('.playlist-hero h1')?.textContent.includes('合成歌单 29'),'third best match opens its real playlist');
+      click(button('返回上一页'));
+      await wait(()=>third()===document.activeElement,'Back restores the third best-match card instead of its duplicate carousel entry');
       const carousel=()=>one('.search-carousel[aria-label="歌单预览"]');
       const artist=()=>one('.search-carousel[aria-label="歌手预览"]');
       const current=()=>Number(carousel()?.dataset.previewStart);
@@ -117,6 +130,8 @@
       await capture('carousel_back_focus');
       await theme(760,540,'dark');
       await wait(()=>columns()<6,'narrow carousel measures resized viewport');
+      assert(best().querySelectorAll('[data-result-key]').length===3&&
+        getComputedStyle(best().querySelector('.search-result-grid')).gridTemplateColumns.split(' ').length===1,'narrow best match stacks without dropping the third card');
       reveal();
       for(let attempt=0;attempt<10&&next().getAttribute('aria-disabled')!=='true';attempt++) { click(next()); await sleep(40); }
       await wait(settled,'narrow rail settles');
@@ -131,7 +146,7 @@
       click(button('返回上一页'));
       await wait(()=>current()===preserved&&settled(),'category Back restores the carousel independently of network');
       await capture('carousel_category_back');
-      await emit('complete',{ok:true,searchCarouselVerified:true,stageCount:count,realAccountWrites:0});
+      await emit('complete',{ok:true,searchCarouselVerified:true,searchBestThirdVerified:true,stageCount:count,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchFilteredPaginationProof){
@@ -1096,6 +1111,9 @@
       const tabs=()=>all('[data-category][role="tab"]').map(node=>node.dataset.category).join(',');
       await wait(()=>tabs()==='all,mvs,songs'&&one('#search-result-panel').textContent.includes('综合 V3 合成歌曲'),'v3 tab order and projected song');
       assert(one('#search-result-panel').textContent.includes('合成热点内容'),'hot explanation');
+      const controlBest=one('.search-best-section');
+      assert(controlBest&&[...controlBest.querySelectorAll('[data-result-key]')].map(node=>node.dataset.resultKey).join(',')==='artist:100,artist:101'&&
+        !controlBest.classList.contains('search-best-expanded'),'v3 without expansion keeps the first two hot-core cards');
       assert(!document.querySelector('[href*="example.invalid/private"]'),'no raw action');
       assert(one('.search-track-mv')?.getAttribute('aria-label')==='播放 MV 综合 V3 合成歌曲','v3 extInfo MV projected to song badge');
       const verifyHints=()=>{

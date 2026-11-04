@@ -159,10 +159,16 @@ function bestMatch(section: SearchSection) {
     section.id.startsWith(prefix),
   );
 }
+function expandedBestMatch(section: SearchSection) {
+  return category.value === 'all' && !!view.value?.previewLayout && bestMatch(section);
+}
 function previewItems(section: SearchSection) {
   const items = section.items.filter((i) => i.kind !== 'song');
   if (category.value !== 'all') return items;
-  if (bestMatch(section)) return items.slice(0, 2);
+  if (bestMatch(section))
+    return items
+      .filter((item) => item.kind !== 'related')
+      .slice(0, expandedBestMatch(section) ? 3 : 2);
   if (carousel(section)) return items.slice(0, 10);
   return section.category && !['voices', 'all'].includes(section.category)
     ? items.slice(0, 6)
@@ -661,7 +667,15 @@ onBeforeUnmount(() => {
             :class="{
               'search-result-tracks': section.items.some((i) => i.kind === 'song'),
               'search-best-section': bestMatch(section),
+              'search-best-expanded': expandedBestMatch(section),
+              'search-best-compact':
+                expandedBestMatch(section) && previewItems(section).length === 3,
             }"
+            :style="
+              expandedBestMatch(section)
+                ? { '--search-best-columns': Math.max(1, previewItems(section).length) }
+                : undefined
+            "
           >
             <header v-if="category === 'all' && !bestMatch(section)">
               <h2>

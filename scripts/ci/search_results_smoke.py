@@ -106,14 +106,15 @@ def main():
     if args.carousel:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['searchCarouselVerified'] and complete['stageCount'] == 5
+        assert complete['ok'] and complete['searchCarouselVerified'] and complete['searchBestThirdVerified'] and complete['stageCount'] == 6
         calls = complete['searchCarouselCalls']
         assert [call['path'] for call in calls] == ['/api/rtrs/abt/front/expinfo/list', '/api/search/pc/complex/page']
         assert calls[0]['args']['expNames'] == 'PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency'
         assert complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchCarouselVerified=True,
-                              stageCount=5, nativeAssignmentAndResultReads=2, realAccountWrites=0)))
+                              searchBestThirdVerified=True, stageCount=6,
+                              nativeAssignmentAndResultReads=2, realAccountWrites=0)))
         return
     if args.filtered_pagination:
         first = root / 'first'
