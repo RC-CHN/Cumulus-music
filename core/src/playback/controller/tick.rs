@@ -190,6 +190,12 @@ impl Actor {
                 recover: true,
                 retain_source_retry: position.is_some(),
                 source: Some(loaded.source.clone()),
+                refresh_expired_source: !self.queue.is_fm()
+                    && self.queue.intelligence_context().is_none()
+                    && loaded.item.source["kind"] != "listen_together"
+                    && loaded.item.resource["cloud_song_id"].is_null()
+                    && super::quality::song_resource(&loaded.item.resource)
+                    && loaded.item.resource["playback_constraint"].is_null(),
                 ..Default::default()
             };
             return self.begin(options, uuid::Uuid::new_v4().simple().to_string(), None).await;

@@ -10,7 +10,7 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
-use std::sync::atomic::Ordering;
+use std::{sync::atomic::Ordering, time::Duration};
 use support::*;
 
 #[tokio::test]
@@ -944,6 +944,104 @@ async fn output_recovery_reloads_same_source_at_current_clock_without_advancing_
         assert_eq!(f.device.state.lock().unwrap().view.position, Some(expected));
         f.command(Cmd::Stop).await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn output_recovery_does_not_reopen_an_expired_url_or_duplicate_a_loop_prefetch() {
+    use cumulus_core::playback::engine::EngineEvent;
+    for (ids, elapsed, paused) in [(&[1, 2][..], 11, true), (&[1][..], 6, false)] {
+        let f = Fixture::new();
+        f.command(Cmd::Replace {
+            resources: ids
+                .iter()
+                .map(|id| json!({"id":id,"dt":120000,"level":"lossless"}))
+                .collect(),
+            index: 0,
+            source: json!({"kind":"songs"}),
+        })
+        .await
+        .unwrap();
+        f.command(Cmd::Seek(42.5)).await.unwrap();
+        f.command(Cmd::Pause(paused)).await.unwrap();
+        until(&f.player, |s| s.prefetch.state == "ready").await;
+        let before = f.player.snapshot();
+        let queue = f.player.queue(&f.token()).await.unwrap();
+        assert_eq!(f.api.count(1), 1);
+        f.api.url_version.store(1, Ordering::SeqCst);
+        f.clock.0.store(elapsed, Ordering::SeqCst);
+        if ids.len() == 1 {
+            let request = json!({"id":1,"dt":120000,"level":"lossless"});
+            until(&f.player, |s| {
+                s.prefetch.state == "ready"
+                    && f.api.count(1) == 2
+                    && f.resolver
+                        .cached_until(&request, &f.token())
+                        .unwrap()
+                        .is_some_and(|deadline| deadline > Duration::from_secs(elapsed))
+            })
+            .await;
+        } else {
+            assert_eq!(f.api.count(1), 1);
+        }
+        assert_eq!(f.device.state.lock().unwrap().loads, 1);
+        f.device.required_url_version.store(1, Ordering::SeqCst);
+        f.device
+            .state
+            .lock()
+            .unwrap()
+            .view
+            .events
+            .push(EngineEvent::OutputReload { entry_id: 1 });
+        let after = until(&f.player, |s| {
+            s.play_id != before.play_id
+                && matches!(s.state, Status::Playing | Status::Paused | Status::Error)
+        })
+        .await;
+        assert_eq!(
+            after.state,
+            if paused {
+                Status::Paused
+            } else {
+                Status::Playing
+            }
+        );
+        assert_eq!(after.selected, before.selected);
+        assert_eq!(after.position, Some(42.5));
+        assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+        let calls = f.api.calls.lock().unwrap();
+        let requests: Vec<_> = calls.iter().filter(|(id, _)| *id == 1).collect();
+        assert_eq!(requests.len(), 2);
+        assert!(requests.iter().all(|(_, level)| level == "lossless"));
+        let device = f.device.state.lock().unwrap();
+        assert_eq!(device.loads, 2);
+        assert_eq!(device.view.position, Some(42.5));
+    }
+}
+
+#[tokio::test]
+async fn stopping_during_expired_output_authorization_cannot_restart_playback() {
+    use cumulus_core::playback::engine::EngineEvent;
+    let f = Fixture::new();
+    f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Seek(42.5)).await.unwrap();
+    f.api.hold.store(1, Ordering::SeqCst);
+    f.clock.0.store(11, Ordering::SeqCst);
+    f.device
+        .state
+        .lock()
+        .unwrap()
+        .view
+        .events
+        .push(EngineEvent::OutputReload { entry_id: 1 });
+    tokio::time::timeout(Duration::from_secs(5), f.api.started.notified())
+        .await
+        .unwrap();
+    let stopped = f.command(Cmd::Stop).await.unwrap();
+    f.api.release.notify_one();
+    assert_eq!(stopped.state, Status::Idle);
+    assert_eq!(f.command(Cmd::Snapshot).await.unwrap().state, Status::Idle);
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    assert_eq!(f.api.count(1), 2);
 }
 
 #[tokio::test]

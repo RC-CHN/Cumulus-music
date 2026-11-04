@@ -21,6 +21,7 @@ pub(super) struct LoadOptions {
     pub relative: bool,
     pub restart_at_end: bool,
     pub source: Option<Arc<ResolvedSource>>,
+    pub refresh_expired_source: bool,
 }
 pub(super) struct Prepared {
     pub item: QueueEntry,
@@ -157,6 +158,15 @@ impl Actor {
                 .await?;
                 cancel.check()?;
                 let source = match options.source {
+                    Some(source)
+                        if options.refresh_expired_source
+                            && source.needs_renewal_for_reopen(resolver.now()) =>
+                    {
+                        // The retained entry supplies the original requested
+                        // quality/identity. Its cache may already have been
+                        // renewed by a single-track loop's prefetch.
+                        resolver.resolve(&item.resource, &token).await?
+                    }
                     Some(source) => source,
                     None => resolver.resolve(&item.resource, &token).await?,
                 };

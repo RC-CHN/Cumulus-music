@@ -20,12 +20,14 @@ use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+const AUTHORIZATION_REUSE_MARGIN: Duration = Duration::from_secs(5);
 
 /// No Debug or Serialize: info includes native authorization facts and URLs.
 #[derive(Clone)]
 pub struct ResolvedSource {
     pub input: MediaInput,
     pub info: Value,
+    expires_at: Option<Duration>,
 }
 impl ResolvedSource {
     pub fn timeline(&self, duration: Option<f64>) -> Result<Timeline> {
@@ -33,6 +35,13 @@ impl ResolvedSource {
     }
     pub fn actual_quality(&self) -> Option<&str> {
         self.info["resource_info"]["level"].as_str()
+    }
+    fn reuse_until(&self) -> Option<Duration> {
+        self.expires_at
+            .map(|deadline| deadline.saturating_sub(AUTHORIZATION_REUSE_MARGIN))
+    }
+    pub(crate) fn needs_renewal_for_reopen(&self, now: Duration) -> bool {
+        self.reuse_until().is_some_and(|deadline| deadline <= now)
     }
 }
 
@@ -92,6 +101,14 @@ impl SourceResolver {
     }
     pub(crate) fn now(&self) -> Duration {
         self.clock.now()
+    }
+    fn authorization_expiry(&self, ttl: &Value) -> Option<Duration> {
+        let ttl = ttl
+            .as_f64()
+            .or_else(|| ttl.as_str()?.parse().ok())
+            .filter(|value| value.is_finite() && *value > 0.0)?;
+        self.now()
+            .checked_add(Duration::try_from_secs_f64(ttl).ok()?)
     }
     pub fn new(session: Arc<AccountSession>, library: Option<Arc<LocalLibrary>>) -> Self {
         Self::with_clock(session, library, Arc::new(Monotonic(Instant::now())))
@@ -296,6 +313,7 @@ impl SourceResolver {
                         json!({"kind":"local","metadata":source.metadata,"segment":source.segment}),
                         gain,
                     ),
+                    expires_at: None,
                 })
             } else {
                 let path = resource["path"]
@@ -306,6 +324,7 @@ impl SourceResolver {
                 Ok(ResolvedSource {
                     input: MediaInput::File(path),
                     info: loudness::with_gain(json!({"kind":"local"}), gain),
+                    expires_at: None,
                 })
             }
         })
@@ -400,14 +419,9 @@ impl SourceResolver {
             });
             let outcome: Outcome = result.map_err(Arc::new);
             if let Ok(value) = &outcome {
-                let ttl_value = &value.info["resource_info"]["expi"];
-                let ttl = ttl_value
-                    .as_f64()
-                    .or_else(|| ttl_value.as_str().and_then(|s| s.parse().ok()))
-                    .filter(|n| n.is_finite() && *n > 5.0);
-                let deadline = ttl
-                    .and_then(|n| Duration::try_from_secs_f64(n - 5.0).ok())
-                    .and_then(|d| self.clock.now().checked_add(d));
+                let deadline = value
+                    .reuse_until()
+                    .filter(|deadline| *deadline > self.now());
                 if let Some(deadline) = deadline {
                     let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
                     // Invalidation must win even after the fetch consistency

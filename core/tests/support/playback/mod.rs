@@ -33,6 +33,7 @@ pub struct Backend {
     pub gains: Mutex<std::collections::BTreeMap<u64, Value>>,
     pub calls: Mutex<Vec<(u64, String)>>,
     pub hold: AtomicU64,
+    pub url_version: AtomicU64,
     pub deny_lossless: AtomicBool,
     pub trial: AtomicBool,
     pub quality_use_state: AtomicU8,
@@ -72,7 +73,8 @@ impl Api for Backend {
                 200
             };
             Ok(json!({"code":200,"data":[{
-                "id":id,"code":code,"url":"https://m1.music.126.net/fixture.mp3?secret=private",
+                "id":id,"code":code,
+                "url":format!("https://m1.music.126.net/fixture.mp3?secret=private&version={}", self.url_version.load(Ordering::SeqCst)),
                 "md5":"abcd","expi":10,"level":"standard",
                 "gain":self.gains.lock().unwrap().get(&id).cloned().unwrap_or(Value::Null),
                 "freeTrialInfo":if self.trial.load(Ordering::SeqCst) {json!({"start":30,"end":60})} else {Value::Null}
@@ -122,6 +124,7 @@ pub struct Device {
     pub state: Mutex<DeviceState>,
     pub hold_load: AtomicBool,
     pub load_failure_code: AtomicI32,
+    pub required_url_version: AtomicU64,
     pub fail_seek: AtomicBool,
     pub pause_event: Mutex<Option<EngineEvent>>,
     pub fail_unpause: AtomicBool,
@@ -170,6 +173,7 @@ impl Default for Device {
             }),
             hold_load: AtomicBool::new(false),
             load_failure_code: AtomicI32::new(0),
+            required_url_version: AtomicU64::new(0),
             fail_seek: AtomicBool::new(false),
             pause_event: Mutex::new(None),
             fail_unpause: AtomicBool::new(false),
@@ -277,6 +281,16 @@ impl AudioEngine for Engine {
             return Err(Error::Playback {
                 operation: "load ended",
                 code,
+            });
+        }
+        let required = self.0.required_url_version.load(Ordering::SeqCst);
+        if required > 0
+            && !matches!(&request.source, cumulus_core::playback::engine::MediaInput::Url(url)
+                if url.as_str().ends_with(&format!("&version={required}")))
+        {
+            return Err(Error::Playback {
+                operation: "load ended",
+                code: -15,
             });
         }
         let entry_id = state.loads as i64;

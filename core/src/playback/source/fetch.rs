@@ -78,6 +78,7 @@ impl SourceResolver {
         }
         let mut source = ResolvedSource {
             input,
+            expires_at: self.authorization_expiry(&info["expi"]),
             info: json!({"kind":"online","resource_info":info,"trial":trial,"rights":rights,"full_trial":full_trial}),
         };
         if trial {
