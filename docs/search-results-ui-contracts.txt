@@ -385,6 +385,10 @@ M/15:2342–2360 从 /api/search/voicelist/get 的搜索包读取
 快照晚到、完整与未知、自己的播客、确认写入、回执丢失和只读核对；
 两次模拟写请求的先后顺序被验证，未写真实账号。Linux 五阶段截图位于
 `.build/ui-proof/search-podcast-follow-exact/first/`。
+Windows CI 6c87c80 的原指针停在另一行时，其悬停提示覆盖了当前按钮的键盘提示。
+测试先把原生指针移到没有提示的播客页签，再检查同一按钮焦点及可见提示随状态更新；
+原生写入和回读断言仍保留。Linux WebView 复现和五阶段修复回归见
+`.build/ui-proof/podcast-follow-ci-pointer/`。
 `search_results_smoke.py --voice-queue` 验证两个分类真实 WebView 的 0/10、
 10/10 读取、列宽和指标、等待续页时保留首批、窄窗后排行、主播/播客/评论
 返回及原生播放条目。Linux WebView 八个检查点和截图：

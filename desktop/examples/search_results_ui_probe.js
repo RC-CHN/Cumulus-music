@@ -942,6 +942,19 @@
       await theme(1120,760,'light');
       const row=id=>one(`[data-result-key="podcast:${id}"].search-podcast-row`);
       const follow=id=>row(id)?.querySelector('.search-podcast-follow');
+      async function parkPointer(){
+        const tab=one('[data-category="podcasts"]');
+        assert(tab&&!tab.closest('[data-tooltip]'),'a neutral native pointer target is available');
+        const box=tab.getBoundingClientRect();
+        window.__searchPointerAck=false;
+        await emit('search-pointer',{x:box.left+box.width/2,y:box.top+box.height/2});
+        await wait(()=>window.__searchPointerAck&&tab.matches(':hover')&&
+          !one('.search-result-card:hover'),'native pointer parked away from result tooltips');
+      }
+      const showsTooltip=label=>{
+        const tip=one('.content-tooltip');
+        return tip?.textContent.trim()===label&&getComputedStyle(tip).visibility==='visible';
+      };
       let snapshots=0, releaseFirst;
       const firstReply=new Promise(resolve=>{releaseFirst=resolve;});
       const request=window.fetch;
@@ -967,8 +980,12 @@
       await wait(()=>snapshots===1,'the first membership snapshot settles');
       await wait(()=>follow(301)?.getAttribute('aria-pressed')==='false','complete list yields an explicit Follow action');
       assert(!follow(302)&&!follow(303),'own and unknown-creator rows expose no follow action');
+      // The runner pointer can rest over another result after the resize.
+      // Exercise the focused tooltip without a competing hover target.
+      await parkPointer();
       const trigger=follow(301);
       trigger.focus({preventScroll:true});
+      await wait(()=>showsTooltip('收藏播客'),'keyboard focus opens the initial follow tooltip');
       await wait(()=>Number(getComputedStyle(trigger).opacity)>.99,'keyboard reveals inline follow');
       const box=trigger.getBoundingClientRect();
       assert(trigger.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2)),
@@ -977,7 +994,7 @@
       await wait(()=>snapshots===2&&follow(301)?.getAttribute('aria-pressed')==='true'&&
         follow(301).getAttribute('aria-disabled')==='false','confirmed native detail wins the immediate stale list read');
       assert(document.activeElement===trigger,'the original inline button keeps keyboard focus');
-      await wait(()=>one('.content-tooltip')?.textContent.trim()==='取消收藏','focused follow tooltip reflects confirmation');
+      await wait(()=>showsTooltip('取消收藏'),'focused follow tooltip reflects confirmation');
       await capture('podcast_follow_confirmed');
       await enter('podcast_follow_incomplete',3);
       assert(!follow(301),'a paginated snapshot cannot drive a Follow or Unfollow action');
@@ -987,11 +1004,14 @@
       await capture('podcast_follow_failed_read');
       await enter('podcast_follow_lost',5);
       await wait(()=>follow(301)?.getAttribute('aria-pressed')==='true','new visit observes confirmed follow');
-      click(follow(301));
+      await parkPointer();
+      const pendingTrigger=follow(301);
+      click(pendingTrigger);
       await wait(()=>snapshots===6&&follow(301)?.getAttribute('aria-label').startsWith('核对收藏')&&
         follow(301).getAttribute('aria-disabled')==='false','lost unfollow acknowledgement exposes read-only reconciliation');
       assert(!follow(301).hasAttribute('aria-pressed'),'unresolved write never projects a confirmed state');
-      await wait(()=>one('.content-tooltip')?.textContent.trim()==='核对收藏','focused pending tooltip reflects read-only action');
+      assert(document.activeElement===pendingTrigger,'the unresolved inline button keeps keyboard focus');
+      await wait(()=>showsTooltip('核对收藏'),'focused pending tooltip reflects read-only action');
       await capture('podcast_follow_pending');
       click(follow(301));
       await wait(()=>snapshots===7&&follow(301)?.getAttribute('aria-pressed')==='false'&&
