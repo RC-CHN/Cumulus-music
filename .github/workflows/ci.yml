@@ -554,7 +554,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --search-experiment v3 --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-v3-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_playback_read_smoke.py --download --binary .build/target/debug/examples/search_playback_read --root .build/ci-search-native-download-linux
           cargo build -p cumulus-desktop --example main_flow_ui_probe --features custom-protocol --locked
-          python3 scripts/ci/main_flow_https_smoke.py --eof-next --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
+          python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-retry-linux
           python3 scripts/ci/main_flow_https_smoke.py --retry-once --retry-with-play --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-main-play-retry-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/main_flow_smoke.py --missing-download --binary .build/target/debug/examples/main_flow_ui_probe --root .build/ci-main-flow-missing-download-linux

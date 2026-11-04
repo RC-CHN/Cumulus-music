@@ -280,3 +280,50 @@ Cumulus 桌面主流程验收
   本机报告 .build/current-main-flow.nI6xOJ/run/report.json 和 https-receipt.json，
   同一运行目录保留截图。复现使用 scripts/ci/main_flow_https_smoke.py
   --eof-next --screenshots；隔离命名空间仅开放合成回环服务。
+
+Linux 合成桌面硬断网：已发布下载 → 离线播放
+
+  在上述主流程命令加 `--hard-network-cut --screenshots`，可与 `--eof-next`
+  同用。继续用正式 Vue、IPC、原生下载调度、SQLite 与 libmpv；不需改产品代码。
+  搜索结果点下载，UI 默认请求 standard，封闭夹具固定返回 lossless FLAC。
+  下载按原场景暂停并从已校验字节续传。外部驱动在发布、文件摘要及离线账本
+  检查通过后扣住原生截图回执，独立只读 SQLite 核对唯一任务、请求音质、实际
+  音质、合成歌曲免费标记和回执 ID。没有读取凭据行，也没有向页面传送下载 URL。
+
+  回环 HTTPS 服务旁的独立控制器此时才核对：应用原生进程、驱动、HTTPS 夹具
+  使用同一私有 Linux 网络命名空间，且与实际外层启动器所在空间不同；只有回环接口，
+  IPv4/IPv6 均无主路由。控制器验证一条已有 TCP 连接能传输后，在该空间关闭
+  回环；保留原有连接和监听器，证明旧连接不能再传输、新 TCP 和 HTTPS 连接也
+  建不起来，才允许同一个 WebView 点播放。原生本地播放时钟推进、停止、目标清理、
+  不误删旁边文件与账号重开仍由原探针核对。`https-receipt.json` 只在 GUI 及
+  网络复核均通过后写入独立的网络判据。这不是只关闭 Rust 传输开关。
+
+  可复现：构建原 main_flow_ui_probe（见上文），再运行：
+  `python3 scripts/ci/main_flow_https_smoke.py --eof-next --hard-network-cut --screenshots --binary <构建产物> --root .build/NEW_HARD_CUT_PROOF`
+  与普通 HTTPS 模式共用依赖，另外需在测试命名空间中可运行 `sudo -n ip`。
+  可按上文传 `--openbox-directory`。不改变宿主网络。输入均为仓库合成数据；
+  仍未测试真实 CDN、实体声卡、Windows 或真实会员下载。下载数据来自封闭
+  应用夹具，真正的回环 HTTPS 只用于在线播放及网络可达性的独立对照。
+  本机复验通过 19 个检查点、18 张截图和两个进程。`.build/ui-proof/main-flow-hard-cut-final-20261104/` 内的
+  `report.json` 与 `https-receipt.json` 分别保留应用与网络判据；Linux 主流程 CI
+  直接运行这个版本的自然曲终与硬断网合成验收。
+
+可选的后续真实下载验收边界
+
+  已有 `search_playback_read --live-download` 是独立固定 WebView，不是生产
+  Vue，也只关闭该探针的两层传输。其精确说明见 search-playback-read-proof.txt。
+  如用户明确授权一次独立下载，输入应为此前已授权、停止写入后复制的 PC 会话、
+  一个固定公开搜索查询及此次全新的私有输出目录。只使用一个固定结果且服务的
+  歌曲详情和权限均明确允许免费标准下载时才前进；该项不满足就停止，不搜索替代
+  曲目，也不发新二维码、续期、试听、历史上报或真实资源写入。授权范围包含一次
+  `/api/song/enhance/download/url/v1` 的 standard 请求与一次回执绑定的 CDN GET；
+  需同时满足同 ID、非试听、非加密、支持格式、最多 32 MiB、长度和 MD5；拒绝
+  跳转、重试及封面、歌词等额外请求。只保留匿名布尔和计数，清理本次临时账号
+  副本和本次文件，原库与既有资源不动。已有账号读取和播放证明不代表这次下载
+  已执行或已授权。
+
+  要把这一授权流程接到生产 Vue 的同窗口验收，下一步应在隔离只读宿主复用上述
+  下载准入、真实调度和账本审核；只开放一条按同次回执固定的媒体转发路径，发布
+  后由外部控制器先关闭新转发、再关闭既有隧道，确认不能重连后才发 GUI 回执。
+  真服务运行还需隔离宿主代理和 Unix socket；本节合成驱动不证明该接线已存在。
+  不借这一权限开启歌单写入。真实私密歌单验证需独立意图、回读及清理许可。

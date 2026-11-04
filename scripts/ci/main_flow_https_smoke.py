@@ -2,6 +2,7 @@
 """Opt-in Linux production WebView proof of ordinary HTTPS audio, without egress."""
 
 import argparse
+from contextlib import nullcontext
 import hashlib
 import http.client
 import http.server
@@ -14,6 +15,8 @@ import ssl
 import subprocess
 import tempfile
 import threading
+
+from main_flow_network_cut import controller
 
 SCRIPT = Path(__file__).resolve()
 HOST = 'cumulus-local-fixture.music.126.net'
@@ -153,15 +156,18 @@ def ordinary_https(args, directory):
                     finally:
                         connection.close()
             else:
-                subprocess.run([
-                    'xvfb-run', '-a', 'dbus-run-session', '--', '/usr/bin/python3',
-                    str(SCRIPT.with_name('main_flow_smoke.py')), '--ordinary-https',
-                    '--binary', str(args.binary), '--root', str(args.root),
-                    *(['--https-retry-once'] if args.retry_once else []),
-                    *(['--https-retry-with-play'] if args.retry_with_play else []),
-                    *(['--https-eof-next'] if args.eof_next else []),
-                    *(['--screenshots'] if args.screenshots else []),
-                ], check=True, timeout=360)
+                socket_path = directory/'network-cut.sock'
+                with (controller(socket_path, args.source_pid) if args.hard_network_cut else nullcontext()) as cutoff:
+                    subprocess.run([
+                        'xvfb-run', '-a', 'dbus-run-session', '--', '/usr/bin/python3',
+                        str(SCRIPT.with_name('main_flow_smoke.py')), '--ordinary-https',
+                        '--binary', str(args.binary), '--root', str(args.root),
+                        *(['--https-retry-once'] if args.retry_once else []),
+                        *(['--https-retry-with-play'] if args.retry_with_play else []),
+                        *(['--https-eof-next'] if args.eof_next else []),
+                        *(['--screenshots'] if args.screenshots else []),
+                        *(['--loopback-cut-control', str(socket_path)] if args.hard_network_cut else []),
+                    ], check=True, timeout=360)
         finally:
             server.shutdown()
             thread.join(timeout=2)
@@ -178,6 +184,8 @@ def ordinary_https(args, directory):
         report['mainPlayRecoveredFirstHttpsOpen'] = True
     if args.eof_next:
         report['orderedTrackGets'] = [1, 2]
+    if args.hard_network_cut:
+        report['networkCutBeforeOfflinePlayback'] = cutoff
     if not args.preflight:
         (args.root/'https-receipt.json').write_text(json.dumps(report, indent=2)+'\n')
     print(json.dumps(report))
@@ -230,6 +238,8 @@ def outer(args):
             *(['--retry-with-play'] if args.retry_with_play else []),
             *(['--eof-next'] if args.eof_next else []),
             *(['--screenshots'] if args.screenshots else []),
+            *(['--hard-network-cut', '--source-pid', str(os.getpid())]
+              if args.hard_network_cut else []),
         ], check=True, timeout=390)
 
 
@@ -244,10 +254,17 @@ if __name__ == '__main__':
     special.add_argument('--eof-next', action='store_true', help='exercise real EOF into a second authorized HTTPS track')
     parser.add_argument('--retry-with-play', action='store_true', help='exercise the main Play button with --retry-once')
     parser.add_argument('--preflight', action='store_true', help='verify only TLS and namespace policy')
+    parser.add_argument('--hard-network-cut', action='store_true',
+                        help='cut the isolated network after verified download, before offline playback')
+    parser.add_argument('--source-pid', type=int, help=argparse.SUPPRESS)
     parser.add_argument('--isolated', type=Path, help=argparse.SUPPRESS)
     arguments = parser.parse_args()
     if arguments.retry_with_play and (not arguments.retry_once or arguments.preflight):
         parser.error('--retry-with-play requires a desktop run with --retry-once')
+    if arguments.hard_network_cut and (arguments.preflight or not arguments.screenshots):
+        parser.error('--hard-network-cut requires a desktop run with --screenshots')
+    if (arguments.source_pid is not None) != bool(arguments.isolated and arguments.hard_network_cut):
+        parser.error('invalid network cutoff namespace handoff')
     if arguments.isolated:
         ordinary_https(arguments, arguments.isolated)
     else:

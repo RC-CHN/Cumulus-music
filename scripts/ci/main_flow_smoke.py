@@ -3,6 +3,7 @@ import argparse
 import hashlib
 import json
 import os
+import socket
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -13,6 +14,32 @@ STAGES = (
     'guest', 'qr_pending', 'login_adopted', 'recovered', 'daily', 'search', 'playback', 'playlist_created', 'playlist_edited',
     'playlist_song_added', 'playlist_song_removed', 'playlist_cleaned', 'download_paused', 'download_complete', 'local_offline_playback', 'download_disposed', 'complete',
 )
+
+
+def cut_after_publish(control, stage, proof, native_pid):
+    if stage.name != 'ux_download_complete.json':
+        return
+    audit = proof['audit']
+    assert proof['captureHandshake'] and proof['stage'] == 'ux_download_complete'
+    assert not proof['fixture']['offline'] and proof['fixture']['mediaTransfers'] == 2
+    assert audit['file'] == audit['taskIntegrity'] == audit['ledgerIntegrity']
+    database = stage.parent.parent/'state/core.sqlite3'
+    with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=1)) as state:
+        tasks = state.execute(
+            "SELECT key, json_extract(value, '$.status'), json_extract(value, '$.options.quality'), "
+            "json_extract(value, '$.resource.level'), json_extract(value, '$.song.fee'), "
+            "json_extract(value, '$.song_id') = CAST(json_extract(value, '$.resource.id') AS TEXT) "
+            "FROM state WHERE kind = 'download_tasks_v1'"
+        ).fetchall()
+    assert tasks == [(audit['id'], 'complete', 'standard', 'lossless', 0, 1)], 'unexpected synthetic download receipt'
+    if Path(f'/proc/{native_pid}/ns/net').readlink() != Path('/proc/self/ns/net').readlink():
+        raise RuntimeError('native application and capture driver do not share the isolated network')
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        connection.settimeout(7)
+        connection.connect(str(control))
+        connection.sendall(b'C')
+        if connection.recv(1) != b'Y':
+            raise RuntimeError('network controller did not confirm cutoff')
 
 
 def main():
@@ -29,6 +56,7 @@ def main():
     special.add_argument('--missing-download', action='store_true')
     parser.add_argument('--https-retry-with-play', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
+    parser.add_argument('--loopback-cut-control', type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if (args.https_retry_once or args.https_eof_next) and not args.ordinary_https:
         parser.error('HTTPS playback scenarios require --ordinary-https')
@@ -36,6 +64,9 @@ def main():
         parser.error('--https-retry-with-play requires --https-retry-once')
     if (args.loading_step or args.missing_download) and args.ordinary_https:
         parser.error('--loading-step and --missing-download use the synthetic decoder gate')
+    if args.loopback_cut_control and (not args.ordinary_https or not args.screenshots
+                                      or os.name != 'posix' or not args.loopback_cut_control.is_socket()):
+        parser.error('the synthetic cutoff requires the isolated HTTPS controller and capture barrier')
     stage_names = STAGES
     expected_source_loads = 2 if args.https_eof_next else 1
     if args.https_retry_once or args.https_eof_next:
@@ -75,7 +106,9 @@ def main():
         env[key] = str(profile)
     output = root/'run/first'
     with (root/'host.log').open('x', encoding='utf-8') as log:
-        code = launch(args.binary.resolve(), env, log, output, args.screenshots)
+        code = launch(args.binary.resolve(), env, log, output, args.screenshots,
+                      before_ack=(lambda *stage: cut_after_publish(args.loopback_cut_control, *stage))
+                      if args.loopback_cut_control else None)
     failed = output/'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
@@ -253,6 +286,8 @@ def main():
         report['mainPlayRecoveredFirstHttpsOpen'] = True
     if args.missing_download:
         report['missingDownloadPlayedOnlyAfterExplicitAction'] = True
+    if args.loopback_cut_control:
+        report['hardCutAfterStandardDownloadRequest'] = True
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

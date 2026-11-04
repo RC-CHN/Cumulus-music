@@ -46,8 +46,10 @@ def paint_checks(picture, payload):
     return checks
 
 
-def launch(binary, env, log, output, capture):
+def launch(binary, env, log, output, capture, *, before_ack=None):
     if not capture:
+        if before_ack is not None:
+            raise ValueError('capture acknowledgement hook requires capture mode')
         return subprocess.run([str(binary)], env=env, stdout=log, stderr=log, timeout=180).returncode
     env = {**env, 'CUMULUS_PROOF_CAPTURE_ACK': '1'}
     import gi
@@ -82,6 +84,8 @@ def launch(binary, env, log, output, capture):
                         'waitSeconds': time.monotonic() - started, 'samples': checks,
                     }, indent=2) + '\n', encoding='utf-8')
                     assert all(check['ok'] for check in checks), 'dialog compositor frame remained stale'
+                if before_ack is not None:
+                    before_ack(path, payload, process.pid)
                 path.with_suffix('.captured').write_text('captured\n', encoding='utf-8')
                 seen.add(path)
             time.sleep(.1)
