@@ -377,3 +377,15 @@ Linux 合成桌面硬断网：已发布下载 → 离线播放
   本人私密歌单与置顶顺序分开验证；访客只见公开条目。发笔记回包不明时仅在
   明确点击并查到唯一匹配 UUID 后结清，合成回环测试不使用真实账号。
 - Windows 冷离线 FLAC 续播专项已加入原生 runner；此 Linux 验证不等同于其运行结果。
+
+2026-11-04 合并产品候选 d39d59d5
+- 严格全工作区 Clippy 通过；Rust 全目标 1985 通过、15 忽略、0 失败，前端
+  790 通过以及格式、生产构建。相同产品内容构建了真实桌面及专项宿主。
+- Linux 封闭合成 WebView：访客资料关注 10、笔记发布及恢复 10、私信回复 10、
+  删除 9、附件 9，合计 48 个状态及截图。核对明确取消、迟到回执只结清对应
+  草稿、未知结果不可重发及精确只读核对。报告在
+  `.build/ui-proof/product-phase11/{profile-follow,publication,reply,message-delete,message-attachments}/report.json`。
+  没有真实关注、取消、私信或公开发布。
+- 另执行同一产品的冷离线 FLAC 原生限幅用例。验证有索引的跳转和超预算时以原
+  授权句柄切回普通 libmpv，保留暂停／播放，撤权后停止；常规桌面默认未启用。
+  日志 `.build/ui-proof/product-phase11/production-cold-flac.log`；输出为 null。
