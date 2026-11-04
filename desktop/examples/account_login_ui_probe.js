@@ -278,6 +278,7 @@
     const foreign = "短信验证账号";
     const test = (name) => one(`[data-testid="${name}"]`);
     const entry = () => test("account-bindings-open");
+    const provider = (name) => one(`[data-binding-provider="${name}"]`);
     const foreignEntry = () => test("account-bindings-foreign-password");
     const retry = () => test("account-bindings-retry");
     const page = () => one(".account-bindings-page");
@@ -300,15 +301,20 @@
     click(button("打开设置"));
     await wait(() => one(".settings-scroll"), "guest settings");
     await settle();
-    assert(!entry() && !foreignEntry(), "no binding control for guests");
+    assert(!entry() && !foreignEntry() && !provider("wechat"), "no binding control for guests");
     await stage("bindings_guest_light", { expectGuest: true });
 
     await open();
     await email();
     await logged(domestic);
     await wait(() => entry() && !entry().disabled, "bound settings entry");
+    assert(all("[data-binding-provider]").map((node) => node.dataset.bindingProvider).join(",") ===
+      "wechat,qq,weibo", "official Settings provider order");
+    assert(provider("wechat").dataset.bindingState === "bound" &&
+      provider("qq").dataset.bindingState === "unbound" &&
+      provider("weibo").dataset.bindingState === "bound", "Settings badges follow account bindings");
     await mode("bindings_failed");
-    click(entry());
+    click(provider("wechat"));
     await wait(() => readState() === "error", "binding read failure");
     assert(!row("email") && !action("qq", "bind"), "failure does not impersonate an empty binding list");
     await stage("bindings_error_light", { expectNickname: domestic });
@@ -316,6 +322,9 @@
     click(retry());
     await wait(() => methods("registration") === "email" &&
       methods("others") === "cellphone,wechat,qq,weibo", "official groups and order");
+    const circle = row("email").querySelector(".provider-mark").getBoundingClientRect();
+    assert(Math.abs(circle.width - 64) < 1 && Math.abs(circle.height - 64) < 1,
+      "binding page uses the recovered 64px provider mark");
     const contents = page().textContent;
     assert(contents.includes("b***@e***") && contents.includes("+86 ***8000") &&
       contents.includes("ID：合成微信昵称") && contents.includes("ID：合成微博昵称"), "masked addresses and social names");
@@ -328,7 +337,8 @@
     await stage("bindings_ready_light", { expectNickname: domestic });
     await showQr(action("qq", "bind"), "扫码设置", "bindings_qr_light", domestic);
     click(back());
-    await wait(() => !page() && document.activeElement === entry(), "Back restores Settings opener focus");
+    await wait(() => !page() && document.activeElement === provider("wechat"),
+      "Back restores the exact Settings badge focus");
     await stage("bindings_back_light", { expectNickname: domestic });
 
     await chooser();
@@ -345,7 +355,7 @@
     click(one(".login-submit"));
     await logged(foreign);
     await wait(foreignEntry, "foreign registered phone Settings route");
-    assert(!entry() && !page() && !document.body.textContent.includes("合成微信昵称"),
+    assert(!entry() && !provider("wechat") && !page() && !document.body.textContent.includes("合成微信昵称"),
       "foreign registered phone replaces binding entry, no previous account data");
     await theme("dark");
     await resize(880, 670);
