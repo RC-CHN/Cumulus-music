@@ -1,0 +1,195 @@
+听歌识曲（官方 PC 3.1.42.205594）：恢复契约与实现边界
+
+状态：已静态恢复入口、原生回采、进度、请求、签名和结果；已离线执行官方
+PCM 归一化叶函数。指纹算法、设备预处理和真实服务仍未验证。本次不增加
+生产识曲、模拟识曲界面、录音权限或上传；没有使用真实账号、采集或联网。
+
+来源约定
+- UI = references/ui-recovery/sources/packages/pc/src/pages/listenToSong/
+- JS = references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  其中 M 编号指对应 chunk 下的模块文件，非生成包行号。
+- Native = references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll
+  x64 SHA256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+  以下地址是该版本 RVA，映像基址 0x180000000，不是其他版本或 x86 ABI。
+- A = references/netease-3.1.42.205594-analysis/；其
+  protocol/core/regions/00314510.asm 有注释的请求反汇编，
+  native/evidence/x64/cloudmusic.dll.rtti.json:2380–2429、2527–2604 有桥和原生类。
+
+1. 入口、录制及页面生命周期
+
+- hybrid_app.chunk.1482700000000.js/473.js:5656–5694、5975–5984 的 Windows
+  识曲入口直接导航；macOS 独有的麦克风权限分支不属于支持范围。Windows 桌面
+  快捷方式由 UI/components/HeadAndDesktopShortcuts.jsx:45–75 调
+  app.createRecognizeShutcut（官方拼写），M1980:114–124 消费 recognize-music
+  启动指令。页面路由 /listenToSong/listening 转为 progress 并替换为
+  /listenToSong，依据状态显示进行、结果或错误页（UI/index.js:22–49）。
+- UI/views/ListeningView.jsx:91–146、162–196、213–228：Windows 提示识别
+  “电脑中正在播放的音乐”，不能识别外部声源。进入进行页先暂停本客户端
+  播放，然后启动识别，显示 16 秒倒计时（每秒更新，每 3 秒交替提示），
+  可手动停止。没有找到自动恢复播放或自动播放匹配曲目的调用。
+- hybrid_158.chunk.1482700000000.js/3157.js:199–245：开始前按旧 GUID 停止
+  前次识别，再生成独立的 8 字符 GUID 启动并重置结果；手动停止按 GUID 调桥，
+  清空活动 GUID。M3157:312–335 的界面超时分支设置 timeout 并清缓存；
+  这里没有另外调用 stop。页面卸载的计时器清理不等价于原生取消。
+  M4:14663–14731 对应 app.recognizeMusic(guid)、app.stopRecognizeMusic(guid)、
+  app.clearRecognizeMusicCache(guid)、RecognizeMusic 事件及独立的反馈入口。
+- 原生是 Windows 音频输出回采，不是默认麦克风。Native 30C65B 设置
+  EVENTCALLBACK (0x40000)，30C7A3 在默认回采分支加 LOOPBACK (0x20000)，
+  30CA52 调 IAudioClient::Initialize，带 GetMixFormat 和自定格式回退。
+  30C4D9–30C5B8 取 Capture Service、设事件、启动。设备选择见 30CF40；
+  日志源 audio_capture_wasapi.cpp、GetNextPacketSize / GetBuffer 见
+  A/native/strings/x64/cloudmusic.dll.jsonl:308300–308338。不同格式、
+  布局、设备切换与精确重采样尚未逐样本验证，不能把任意麦克风输入当等价。
+- Native audio_discern_data_processor.cpp 工作函数 3070D0：307152–307195
+  在活动条件满足后，按 (已收集次数 + 1) × 3 × 8000 × 2 字节等待缓冲，
+  即 3/6/9/12/15 秒的累计 8 kHz、每样本 2 字节的前缀，非连续五个独立
+  3 秒片段。307397–307413 复制此前缀，传递从 1 起算的 times 及以秒
+  为单位的 duration=times×3。3074C5–3074DA 达到五次后停止继续收集，
+  3074E1–307508 检查 16,000 毫秒期限。成功、正在请求等状态会短路，
+  不能把最大五次理解为始终并发或始终发满。该单位结论来自所选缓冲；
+  尚未冻结声道混合及从硬件混音格式到该缓冲的全套数据转换。
+
+2. 指纹及原生 EAPI
+
+- 313F40 从任务缓冲取数据，313FD8–313FDB 将字节数除以 2。
+  315270 仅清零 8 字节本地对象，实际构造为 D0A2C0，D0A450 复位，
+  D0A3B0 接收输入指针和样本数，D0A430 抽取结果向量。空向量在 31406D
+  返回 -6。D0A9C0 → D10000 将有符号 16 位样本按 1/32768 转为 f32，
+  再交给 D0CA30；指纹提取继续执行 D10660、D0AA80 等内部代码。
+  314B58 → 62C5D0 将结果向量做标准 Base64，再写 rawdata。
+  因此 rawdata 是派生指纹字节，不是 PCM 文件或 PCM 的 Base64。
+- 默认实际 POST https://music.163.com/eapi/music/audio/match。
+  M318:13–16 的 domain 是 https://music.163.com；M841:16–25 的
+  e_url 是 {domain}/eapi；M18:43–54、87–91 展开 domain（去掉
+  interface.），通过 M4:14538–14545 app.initUrls 传给原生。M255:12–20
+  允许恢复已有配置，所以域可配置，不能把浏览器 apiDomain 或 interfacepc
+  代入原生默认值。原生 EC7843 读 UTF-16 键 e_url（2193410 指向 1A07F68），
+  EC7922 → 33D450 写全局对象 +0x130；315330 返回该字段；
+  3138A5–313977 拼 /music/audio/match，构造 POST。
+- 签名使用 canonical path /api/music/audio/match（3145AE–3145CC），
+  314E92 调已恢复的 CE42F0 EAPI，之后拼 params=。外层请求设置
+  Windows_Curl; User-Agent、Referer、原生 Cookie；设备上下文在加密
+  JSON header 内为对象，含 os、appver、deviceId、clientSign、requestId。
+  appver 为 3.1.42.205594；3149FB–314A0A 从 GetTickCount 得到无符号值，
+  0987B0 转为十进制字符串。这不是 JS 8 字符会话 GUID、服务 sessionId
+  或 Rust 通用请求的毫秒时间与随机后缀。正文其他字段如下：
+
+    rawdata        Base64 指纹字符串
+    sessionId      原生会话字符串（不从 GUID 推测）
+    times          请求次序，整数
+    duration       累计输入秒数，整数
+    algorithmCode  字符串 "shazam_v2"
+    from           字符串 "pc_back_discern"
+    decrypt        整数 1
+
+  参见 A/protocol/core/regions/00314510.asm:39–42、99–112、239–283、
+  285–450。Rust 可复用 core/src/protocol/wire/eapi.rs::encrypt_json，
+  需按本路由冻结正文和序列化；不能直接套通用 http/request.rs 的 e_r
+  或其他默认设备字段。Cookie 和签名仍由 core 持有。服务的现行可用性、
+  响应加密、资格及登录态组合未实测。Windows UI 启动没有强制登录门槛，
+  不应把无实测的账户要求写成官方条件。
+- M841 的 discern / discern_uri 对应旧 /api/music/matcher，原生全局初始化
+  33D1F0 的同名 HTTP 字符串也不是 e_url 字段。Native 3B12B0 的
+  /music/file/match 是本地文件匹配，字段 rawdatas/base64Fp 等不同。
+  两条都不能替代 Windows 输出回采请求。
+
+3. 结果与反馈
+
+- Native 2F89E0–2F939E 将 guid、sessionId、code、httpmsg、recordtime、
+  responsetime、times、duration 发到页面；M377:39–42 接桥，M3157:372–385
+  订阅。M3157:51–102、248–310：code 0/200 是完成，负数超时，其他正数
+  对应 offline，未分类是 unknown。对 httpmsg 作 JSON.parse，取
+  data.result[].song，按当时 host.uid 转换曲目；完成但没有曲目进入 no-track。
+  回调处理收尾清活动 GUID/缓存并置前窗口。停止与失败页允许显式重试，
+  无可靠证据说每种取消都能在任何竞态阻止迟到回调。
+- M3157:337–368、M15:1699–1710：等 500ms 后按结果曲目 ID 请求
+  /api/song/enhance/privilege，ids 是 JSON 字符串；UI/views/ResultView.jsx:88–92
+  在进入结果及授权变动时补读。播放是现有授权曲目流程，禁止以识曲候选
+  绕过播放资格；UI/components/TrackCard.jsx:158–202、250–296。
+- 上传音频反馈独立于普通识曲，只有用户点反馈。UI/views/ResultView.jsx:46–77、
+  139–146 和 ErrorView.jsx:164–219；hybrid_59.chunk.1482700000000.js/3092.js:
+  1300–1347 要求 guid 与 sessionId，发送 guid/sessionId/type/msg/songIds/nos，
+  nos 是 host、cookie、encryptParam，type 为完成 1、未知 2、错误/超时 3。
+  Native 2F4510 写 objectKey、nosKey、algorithmCode、scene=sing_audio，
+  POST /music/matcher/feedback/add；RTTI 有 FilePath 与 NOS 回调类型。
+  缓存留存、音频上传凭证和回读未完全恢复，不能自动上传或用作识曲回退。
+
+4. 离线对照、可迁移范围与上线门槛
+
+已实测：Linux x86_64、Unicorn 2.1.4、独立无网络命名空间，原样执行
+D10000。只映射指定原生代码页和常量页，不执行整个 DLL、初始化、导入表、
+Windows 设备调用或 HTTP。输入为 0/1/4/7 个合成 i16（含两端、-1 和
+小幅值），逐字节等于样本 / 32768 的 f32，未写超出有效输出。7 样本结果：
+000080bf008000bc000000b800000000000000380000003c00fe7f3f。
+这仅验证数值归一化，完全没有获得 shazam_v2 指纹、识别命中或服务证据。
+
+叶函数复验：在含解包材料的仓库根目录，用装有 pefile 和 Unicorn 2.1.4 的
+本地 Python（示例 .build/reverse-tools/bin/python）运行，若 unshare 不可用，
+使用已隔离的离线研究环境，勿改用真实账号/音频或打开网络。脚本不写文件：
+
+  unshare -Urn .build/reverse-tools/bin/python - <<'PY'
+  import hashlib, struct
+  from pathlib import Path
+  from pefile import PE
+  from unicorn import Uc, UC_ARCH_X86, UC_MODE_64, UC_HOOK_CODE
+  from unicorn import UC_PROT_READ as R, UC_PROT_WRITE as W, UC_PROT_EXEC as X
+  from unicorn.x86_const import UC_X86_REG_RCX as CX, UC_X86_REG_RDX as DX
+  from unicorn.x86_const import UC_X86_REG_R8 as R8, UC_X86_REG_RSP as SP, UC_X86_REG_RIP as IP
+  dll = Path('references/netease-3.1.42.205594-x64-unpacked/redist_packages/cloudmusic.dll')
+  raw = dll.read_bytes()
+  assert hashlib.sha256(raw).hexdigest() == '557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493'
+  image = PE(data=raw, fast_load=True).get_memory_mapped_image()
+  base, scratch = 0x180000000, 0x71000000
+  entry, constant = base + 0xd10000, base + 0x1ba1000
+  sentinel = scratch + 0xf000
+  vm = Uc(UC_ARCH_X86, UC_MODE_64)
+  for page, mode in ((entry,R|X), (constant,R)):
+      vm.mem_map(page, 4096)
+      vm.mem_write(page, image[page-base:page-base+4096])
+      vm.mem_protect(page, 4096, mode)
+  vm.mem_map(scratch, 0x10000, R|W)
+  def guard(_vm, addr, _size, _data):
+      assert entry <= addr < entry+0xe6, hex(addr)
+  vm.hook_add(UC_HOOK_CODE, guard)
+  for samples in [(), (-32768,), (-1,0,32767,1), (-32768,-257,-1,0,1,256,32767)]:
+      sp = scratch + 0xe008
+      vm.mem_write(sp, struct.pack('<Q',sentinel))
+      vm.mem_write(scratch, struct.pack('<'+'h'*len(samples),*samples))
+      vm.mem_write(scratch+4096, b'\xab'*32)
+      for reg, val in ((SP,sp),(CX,scratch),(DX,len(samples)),(R8,scratch+4096)):
+          vm.reg_write(reg,val)
+      vm.emu_start(entry,sentinel,count=512)
+      assert vm.reg_read(IP) == sentinel
+      want = struct.pack('<'+'f'*len(samples),*(n/32768 for n in samples))
+      assert bytes(vm.mem_read(scratch+4096,32)) == want.ljust(32,b'\xab')
+      print(len(samples),want.hex() or '(empty)')
+  PY
+
+完整离线指纹最短路线：
+1. 复用 references/recovered-client/scripts/freeze_material_routing.py 的
+   整 DLL SHA 检查、Windows x64 栈、合成内存、执行许可和指令上限模式，
+   在独立 Oracle 中只放行经核对的原生函数。第一次仅调用
+   D0A2C0 → D0A450 → D0A3B0 → D0A430，检查返回向量 begin/end/capacity
+   及分配所有权；在未知指令、未审阅导入、异常或预算耗尽处报错。
+2. 构造 D0A2C0/D0A610 用 C4D714 等分配；D0A9C0/D0CA30 继续调用
+   D10660；D0AA80 还调用 D0CBD0/D0C5A0/D0F4C0/D0D770/D10280 和
+   CRT/容器代码。先审核调用链与表数据，最多替换已审阅的有界分配、
+   释放、内存拷贝和零填充；FFT/数学、编码、散列和输出必须执行原始字节。
+   现有脚本不含识曲这些入口与适配，不能直接运行得到完整官方向量。
+3. 对固定生成器的静音、脉冲、分段复合音、确定性噪声和长短边界执行
+   每个 3/6/9/12/15 秒前缀，确认跨进程重复一致，再冻结输入描述、长度、
+   指纹字节、每个向量哈希和源 DLL 哈希。至少一项非空且输入变化确实改变
+   输出才是有效的指纹 Oracle。另追 3087B1 附近的 8000 配置与下混重采样；
+   设备采集、输入样本转换和指纹编码要分开验。
+4. Rust 先可移植纯状态、计时/采样单位、EAPI 固定字段、结果解析及权限补读，
+   用合成 transport 比较发送次数和正文。只有得到原始指纹向量后才选择
+   是否移植原生运算，逐字节比对；不要用 Chromaprint 或其他 Shazam 实现
+   冒充同一编码。cloudmusic.dll 只有 16 个通用导出，没有识曲 ABI；
+   neaudioaiif.dll 的 25 个导出也无匹配识曲接口，不把私有 RVA 做产品 FFI。
+5. 将来 Windows 用明确启动的 WASAPI 输出回采；Linux 需要单独验证
+   PulseAudio/PipeWire 的输出 monitor 适配，不用麦克风作自动回退。
+   不把测试构造结果接到用户可用入口。只有真实编码具备、合成端到端
+   与隐私边界通过并有适当授权，才能单独试读服务：客户端以本次会话 GUID
+   和账号代际隔离回调，停止、离页、换账号、关闭窗口及超时均回收设备与
+   临时内存，拒绝迟到回调；默认不保留/上传 PCM 或暴露服务凭证。
+   真实请求、反馈上传和设备麦克风权限分别处理，不由本契约授权。
