@@ -201,7 +201,7 @@ def start_accessibility():
     return Atspi
 
 
-def focus_equalizer_control(atspi, pid, name, roles):
+def focus_installed_control(atspi, pid, name, roles, dialog=None):
     def children(node):
         for index in range(node.get_child_count()):
             child = node.get_child_at_index(index)
@@ -230,19 +230,22 @@ def focus_equalizer_control(atspi, pid, name, roles):
                 continue
             # WebKit controls themselves belong to a subprocess. Scope them
             # through the ordinary package's own top-level application.
-            dialogs = list(matching(application, '均衡器', (atspi.Role.DIALOG,)))
-            assert len(dialogs) <= 1, 'multiple installed equalizer dialogs'
-            if not dialogs:
-                return None
-            controls = list(matching(dialogs[0], name, roles))
-            assert len(controls) <= 1, f'multiple installed equalizer controls named {name!r}'
+            root = application
+            if dialog:
+                dialogs = list(matching(root, dialog, (atspi.Role.DIALOG,)))
+                assert len(dialogs) <= 1, f'multiple installed dialogs named {dialog!r}'
+                if not dialogs:
+                    return None
+                root = dialogs[0]
+            controls = list(matching(root, name, roles))
+            assert len(controls) <= 1, f'multiple installed controls named {name!r}'
             if controls and controls[0].get_state_set().contains(atspi.StateType.SENSITIVE):
                 return controls[0]
         return None
 
-    control = wait_for(f'installed equalizer control {name!r}', find)
+    control = wait_for(f'installed control {name!r}', find)
     component = control.get_component_iface()
-    assert component is not None and component.grab_focus(), f'cannot focus equalizer control {name!r}'
+    assert component is not None and component.grab_focus(), f'cannot focus installed control {name!r}'
     wait_for(f'keyboard focus on {name!r}',
              lambda: control.get_state_set().contains(atspi.StateType.FOCUSED))
 
@@ -377,11 +380,20 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         return result
 
     with closing(Input(x, y)) as inputs:
+        assert accessibility is not None, 'installed playback proof requires a private AT-SPI session'
+
+        def activate(name, roles):
+            focus_installed_control(accessibility, app.pid, name, roles)
+            assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
+            inputs.key('Return')
+
+        button_roles = (accessibility.Role.PUSH_BUTTON,)
         wait_for('installed main window focus', lambda: active_window() == window)
-        inputs.click(62, 520)  # Local Music
-        time.sleep(2)
+        activate('本地音乐', (*button_roles, accessibility.Role.LINK))
+        focus_installed_control(accessibility, app.pid, '选择音乐目录', button_roles)
         screenshot('installed-local-page.png')
-        inputs.click(661, 448)  # Choose directory
+        assert active_window() == window, 'installed app lost keyboard focus before opening the picker'
+        inputs.key('Return')
         wait_for('native file picker focus', lambda: active_window() not in (None, window))
         inputs.key('l', 'Control_L')
         time.sleep(.35)
@@ -396,7 +408,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         local_id = wait_for('generated FLAC indexed by the installed app', indexed)
         time.sleep(1.7)  # Allow one WebView local-index refresh after the native commit.
         screenshot('installed-local-imported.png')
-        inputs.click(316, 174)  # Play all in the local list.
+        activate('播放全部', button_roles)
         first = wait_for('native playing position', lambda: position('playing', .15))
         next_position = wait_for('native position advancement', lambda: position('playing', first['seconds']+1))
         assert next_position['entry_id'] == first['entry_id']
@@ -408,10 +420,8 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             assert baseline['amplitude440Hz'] > baseline['rms'] * 1.3, 'private sink did not receive the 440 Hz fixture'
         if packaged_filter:
             inputs.click(1049, 722)  # EQ in the playback footer.
-            assert accessibility is not None, 'installed equalizer proof requires a private AT-SPI session'
-
             def equalizer_key(name, roles, key):
-                focus_equalizer_control(accessibility, app.pid, name, roles)
+                focus_installed_control(accessibility, app.pid, name, roles, dialog='均衡器')
                 assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
                 inputs.key(key)
 
@@ -462,7 +472,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                         f'installed tone reset did not restore the original {frequency} Hz tone')
             inputs.key('Escape')
             time.sleep(.35)
-        inputs.click(559, 712)  # Pause.
+        activate('暂停', button_roles)
         paused = wait_for('native paused position', lambda: position('paused', first['seconds']))
         assert paused['entry_id'] == first['entry_id'] and paused['paused']
         # Let the audio backend settle its final buffered clock sample, then

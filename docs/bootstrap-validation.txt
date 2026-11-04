@@ -230,3 +230,15 @@ Linux 包探针的私有输出就绪检查
   人为替换为占位值，实际设置只成功一次，下一次读取来自私有 PipeWire，
   并继续执行正式程序的 PCM 验证。报告和读回记录位于
   .build/ui-proof/installed-eq-focus/sink-readback/。
+
+Linux 普通程序空配置启动与本地播放（e0099f1）
+  新增歌手导航后，旧安装探针按坐标打开了「最近播放」，随后等不到目录选择器。
+  同一普通程序用 PID 限定的 AT-SPI 定位「本地音乐」「选择音乐目录」
+  「播放全部」「暂停」并发送真实键盘输入，完成 GTK 文件夹选择、合成 FLAC
+  索引和播放。真实窗口 1120×760，新 SQLite 库具有歌曲与单集两套下载索引。
+  私有 PipeWire 监听测得播放时 440 Hz 振幅 2317.055，暂停后 RMS 为零。
+  证据 .build/ui-proof/local-gallery-voice-e0099f1/ordinary/，含旧导航截图、
+  新报告和只读索引回执。无外网、无宿主声卡、无测试 IPC；这是普通开发程序，
+  不代表该提交的发行包、实体声卡听感或 Windows 实机。
+  同一新版探针也复验了 b778dc24 的原始 Debian 和便携 CI 产物，仍通过包内
+  滤镜、预设、旁路、低高音和暂停静音。报告在 .build/ui-proof/installed-local-controls-b778dc24/。

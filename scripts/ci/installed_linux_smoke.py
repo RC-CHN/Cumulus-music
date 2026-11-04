@@ -86,8 +86,7 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None, ver
     accessibility = None
     if verify_local_playback:
         from installed_linux_audio import isolated_audio, start_accessibility, verify_playback
-        if packaged_filter is not None:
-            accessibility = start_accessibility()
+        accessibility = start_accessibility()
         audio = isolated_audio(root, env)
     else:
         audio = nullcontext()
