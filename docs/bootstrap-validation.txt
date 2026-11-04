@@ -242,3 +242,14 @@ Linux 普通程序空配置启动与本地播放（e0099f1）
   不代表该提交的发行包、实体声卡听感或 Windows 实机。
   同一新版探针也复验了 b778dc24 的原始 Debian 和便携 CI 产物，仍通过包内
   滤镜、预设、旁路、低高音和暂停静音。报告在 .build/ui-proof/installed-local-controls-b778dc24/。
+
+Ubuntu 24.04 安装包探针的无障碍角色兼容
+  07441f2 的 Linux CI（41789881163，任务 126440517930）在读取新版
+  AT-SPI `SWITCH` 常量时中止。WebKit GTK 将此 ARIA 开关映射为
+  `TOGGLE_BUTTON`；探针以该角色匹配，在系统提供 `SWITCH` 时也接受它。
+  仍须在当前安装进程的均衡器对话框找到唯一、可用且获得焦点的命名开关，
+  核对原生设置、播放位置和私有 PipeWire PCM；未放宽超时或跳过任何断言。
+  本地在隐藏 `SWITCH` 常量的 Python 绑定中复验 b778dc24 的真实 CI Debian 包，
+  预设、总旁路、重新启用、低高音和暂停静音全部通过。证据位于
+  `.build/ui-proof/installed-atspi-legacy-role/deb-final/`；这是本地兼容复验，
+  不等同于最新提交的远端 CI 通过。

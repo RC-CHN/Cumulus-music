@@ -427,7 +427,11 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
 
             equalizer_key('均衡器预设', (accessibility.Role.COMBO_BOX,), 'Down')
             master = '启用均衡器和低高音增强'
-            master_roles = (accessibility.Role.TOGGLE_BUTTON, accessibility.Role.SWITCH)
+            # WebKit exposes this ARIA switch as a toggle button. Ubuntu
+            # 24.04's AT-SPI bindings do not define the newer SWITCH role.
+            master_roles = (accessibility.Role.TOGGLE_BUTTON,)
+            if (switch_role := getattr(accessibility.Role, 'SWITCH', None)) is not None:
+                master_roles += (switch_role,)
             wait_for('installed equalizer preset committed', preset_saved)
             wait_for('installed audio filter mapped by the player',
                      lambda: str(packaged_filter) in Path(f'/proc/{app.pid}/maps').read_text())
