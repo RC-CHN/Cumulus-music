@@ -18,6 +18,27 @@
     await wait(()=>one('.playlist-editor-page'),'page opened');if(ready)await wait(()=>one('[aria-label="歌单名称"]')?.value,'editor loaded');await sleep(250);
   }
   async function close(discard=false){click(button('取消编辑歌单'));if(discard){await wait(()=>one('.playlist-editor-confirm'),'leave confirmation');click(button('放弃修改并离开'));}await new Promise(requestAnimationFrame);const previous=one('.content-page-previous');if(one('.playlist-editor-page'))assert(getComputedStyle(previous).display==='none'||getComputedStyle(previous).visibility==='hidden','retained page must not overlap editor exit animation');await wait(()=>!one('.playlist-editor-page'),'editor closed');await sleep(150);}
+  const coverFocusState=(cover,overlay)=>{
+    const style=getComputedStyle(overlay);
+    return {active:document.activeElement===cover,focusVisible:cover.matches(':focus-visible'),
+      radius:getComputedStyle(cover).borderRadius,direction:style.flexDirection,
+      opacity:Number(style.opacity),outline:style.outlineStyle,duration:style.transitionDuration};
+  };
+  async function focusCover(cover){
+    const overlay=cover?.querySelector(':scope > span');
+    assert(overlay,'cover replacement overlay missing');
+    cover.scrollIntoView({block:'nearest'});
+    cover.focus();
+    let state;
+    await wait(()=>{
+      state=coverFocusState(cover,overlay);
+      return state.active&&state.focusVisible&&state.opacity===1&&state.outline==='solid';
+    },'cover keyboard overlay did not settle').catch(error=>{
+      throw Error(`${error.message}: ${JSON.stringify(state)}`);
+    });
+    assert(state.radius==='12px'&&state.direction==='row',`cover source geometry: ${JSON.stringify(state)}`);
+    return state;
+  }
   let stageCount=0;const checks=[];
   async function capture(label){
     await sleep(250);const page=one('.playlist-editor-page'),modal=one('dialog[open]');
@@ -39,8 +60,20 @@
       assert(focusFits(one('[aria-label="歌单名称"]')),'initial name focus ring must not be clipped');
       if(width===1120){assert(rect(one('.playlist-cover-edit button')).width===178,'official cover box');assert(Math.abs(rect(one('.playlist-cover-edit')).x-rect(one('.playlist-editor-fields')).right-45)<1,'official column gap');}
       await capture('editor_'+suffix);
-      click(button('选择标签'));await wait(()=>one('.tag-picker section'),'tags');click(button('摇滚',one('.tag-picker')));await sleep(100);click(button('古典',one('.tag-picker')));await sleep(100);assert(button('爵士',one('.tag-picker')).disabled,'three-tag limit');click(button('移除标签 古典'));await sleep(100);assert(!button('爵士',one('.tag-picker')).disabled,'removing tag re-enables choice');one('.playlist-editor-body').scrollTop=10000;await capture('tags_'+suffix);click(button('完成选择'));await wait(()=>!one('.tag-picker'),'tags closed');click(button('选择标签'));await wait(()=>one('.tag-picker'),'tags reopen');button('选择标签').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await wait(()=>!one('.tag-picker'),'tag trigger Escape');
-      const cover=button('替换歌单封面');cover.scrollIntoView({block:'nearest'});cover.focus();await sleep(180);assert(getComputedStyle(cover).borderRadius==='12px'&&getComputedStyle(cover.querySelector('span')).flexDirection==='row'&&Number(getComputedStyle(cover.querySelector('span')).opacity)===1,'cover source geometry and keyboard overlay');await capture('cover_focus_'+suffix);window.__coverFixtureAck=null;await emit('cover-fixture',{kind:'landscape',playlistId:'3'});await wait(()=>window.__coverFixtureAck,'cover fixture');assert(window.__coverFixtureAck.ok,'cover fixture prepared');click(cover);await wait(()=>one('.cover-dialog[open]'),'cover modal');await capture('cover_'+suffix);click(button('关闭封面编辑'));await wait(()=>!one('.cover-dialog'),'cover closed');assert(document.activeElement===cover,'cover returns focus: '+document.activeElement?.outerHTML.slice(0,240)+' connected='+cover.isConnected+' disabled='+cover.disabled);
+      click(button('选择标签'));await wait(()=>one('.tag-picker section'),'tags');click(button('摇滚',one('.tag-picker')));await sleep(100);click(button('古典',one('.tag-picker')));await sleep(100);assert(button('爵士',one('.tag-picker')).disabled,'three-tag limit');click(button('移除标签 古典'));await sleep(100);assert(!button('爵士',one('.tag-picker')).disabled,'removing tag re-enables choice');one('.playlist-editor-body').scrollTop=10000;await capture('tags_'+suffix);click(button('完成选择'));await wait(()=>!one('.tag-picker'),'tags closed');click(button('选择标签'));await wait(()=>one('.tag-picker'),'tags reopen');const tags=button('选择标签');tags.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await wait(()=>!one('.tag-picker')&&document.activeElement===tags,'tag trigger Escape returns focus');
+      const cover=button('替换歌单封面');
+      await focusCover(cover);
+      await capture('cover_focus_'+suffix);
+      window.__coverFixtureAck=null;
+      await emit('cover-fixture',{kind:'landscape',playlistId:'3'});
+      await wait(()=>window.__coverFixtureAck,'cover fixture');
+      assert(window.__coverFixtureAck.ok,'cover fixture prepared');
+      click(cover);
+      await wait(()=>one('.cover-dialog[open]'),'cover modal');
+      await capture('cover_'+suffix);
+      click(button('关闭封面编辑'));
+      await wait(()=>!one('.cover-dialog'),'cover closed');
+      assert(document.activeElement===cover,'cover returns focus: '+document.activeElement?.outerHTML.slice(0,240)+' connected='+cover.isConnected+' disabled='+cover.disabled);
       input('歌单名称','未保存草稿');input('歌单简介','保留这段简介');await sleep(100);
       click(button('每日推荐'));await wait(()=>one('.playlist-editor-confirm'),'navigation guarded');await capture('leave_'+suffix);assert(document.activeElement===button('继续编辑'),'safe leave focus');if(value==='dark')one('.playlist-editor-confirm').dispatchEvent(new Event('cancel',{cancelable:true}));else click(button('继续编辑'));await wait(()=>!one('.playlist-editor-confirm'),'continue');assert(one('[aria-label="歌单名称"]').value==='未保存草稿','draft survived cancelled navigation');await capture('draft_'+suffix);
       for(const label of ['歌单名称','歌单简介']){const field=one(`[aria-label="${label}"]`);field.focus();await sleep(100);assert(visible(field)&&focusFits(field),'field and focus ring scroll into view');}
