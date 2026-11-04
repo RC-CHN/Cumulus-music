@@ -106,6 +106,47 @@
     await wait(()=>visibility()==='hidden'&&Math.abs(Number(input.value)-original)<.11,'cancel clears the pending preview');
     assert(Number(one('.playerbar').dataset.position)===original,'cancel leaves native playback untouched');
   }
+  async function verifySlowPlayback() {
+    window.__cardSourceAck = {};
+    let sequence=0;
+    const configure=async mode=>{
+      const id=++sequence;
+      await emit('card-source-fixture',{id,mode});
+      await wait(()=>window.__cardSourceAck[id]?.forcedBuffering===(mode==='buffer-on'),'native buffering fixture command');
+    };
+    const indicator=()=>one('.seek-load-indicator');
+    const playingState=()=>one('.playerbar').dataset.state;
+    const identity=one('.playerbar').dataset.playId;
+    await configure('buffer-on');
+    click(one('.playerbar [aria-label="播放"]'));
+    await wait(()=>playingState()==='buffering','short native buffering');
+    assert(!indicator(),'no immediate slow loading cue');
+    await sleep(700);
+    await configure('buffer-off');
+    await wait(()=>playingState()==='playing','short buffer recovers');
+    assert(!indicator(),'short native buffering does not flash');
+    await configure('buffer-on');
+    await wait(()=>playingState()==='buffering','second native buffering episode');
+    const entered=performance.now();
+    await sleep(2250);
+    assert(!indicator(),'the second wait did not inherit the first timer');
+    await wait(indicator,'sustained buffering shows seek thumb cue');
+    assert(performance.now()-entered>=2700,'cue waits for continuous buffering');
+    const root=document.documentElement, previous=root.dataset.motion;
+    if(!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      root.dataset.motion='full';
+      assert(getComputedStyle(indicator()).animationName==='seek-load-pulse','full motion pulses the thumb');
+    }
+    root.dataset.motion='reduced';
+    assert(getComputedStyle(indicator()).animationName==='none','reduced motion keeps a static cue');
+    if(previous===undefined) delete root.dataset.motion; else root.dataset.motion=previous;
+    await capture('slow_playback_wait');
+    await configure('buffer-off');
+    await wait(()=>playingState()==='playing'&&!indicator(),'cue clears when native playback resumes');
+    assert(one('.playerbar').dataset.playId===identity,'buffering does not replace the song');
+    click(one('.playerbar [aria-label="暂停"]'));
+    await wait(()=>playingState()==='paused','pause after native buffering proof');
+  }
   async function verifyLyricFollow() {
     const scroller=one('.lyric-scroll');
     const resume=()=>all('.lyric-tools button').find(node=>node.textContent.trim()==='回到当前');
@@ -194,6 +235,7 @@
       await verifyLyricFollow();
       await wait(()=>mark()?.classList.contains('reached'),'chorus marker reflects passed progress');
       await verifyLyricFont();
+      await verifySlowPlayback();
     }
     for(const [width,height,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]) {
       await emit('resize',{width,height});await wait(()=>innerWidth===width&&innerHeight===height,'resize');await appearance(theme);
@@ -226,6 +268,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

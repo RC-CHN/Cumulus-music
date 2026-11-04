@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, nextTick, useId, watch } from 'vue';
+import { computed, ref, shallowRef, nextTick, useId, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
 import { currentCatalogDownload, time } from '../services/player';
@@ -103,6 +103,7 @@ function primaryTransport(event: MouseEvent) {
 }
 const draft = ref<number>();
 const seekHovered = ref(false);
+const seekInFlight = shallowRef<{ key: string }>();
 const outsideTrial = ref(false);
 const rail = computed(() => seekRail(view.value?.timeline));
 const seekValue = computed(() => draft.value ?? view.value?.position ?? rail.value.min);
@@ -138,6 +139,28 @@ const scrubKey = computed(() => {
     trial?.total,
   ]);
 });
+const slowPlayback = ref(false);
+watch(
+  () => {
+    const current = view.value;
+    if (
+      !current?.playId ||
+      (!['preparing', 'loading', 'buffering'].includes(current.state) &&
+        !(loaded.value && seekInFlight.value?.key === scrubKey.value))
+    )
+      return;
+    return JSON.stringify([current.epoch, current.playId]);
+  },
+  (owner, _old, onCleanup) => {
+    slowPlayback.value = false;
+    if (!owner) return;
+    // Native progress may update many times during one continuous wait.
+    // Only completion or a replacement selection restarts this deadline.
+    const timer = setTimeout(() => (slowPlayback.value = true), 3000);
+    onCleanup(() => clearTimeout(timer));
+  },
+  { immediate: true, flush: 'sync' },
+);
 watch(
   scrubKey,
   () => {
@@ -228,8 +251,16 @@ async function seek(event: Event) {
   }
   outsideTrial.value = false;
   draft.value = seconds;
-  await props.player.seekDisplayed(current, seconds);
-  if (scrubKey.value === key && draft.value === seconds) draft.value = undefined;
+  const operation = { key };
+  seekInFlight.value = operation;
+  try {
+    await props.player.seekDisplayed(current, seconds);
+  } finally {
+    if (seekInFlight.value === operation) {
+      seekInFlight.value = undefined;
+      if (scrubKey.value === key && draft.value === seconds) draft.value = undefined;
+    }
+  }
 }
 </script>
 <template>
@@ -352,7 +383,7 @@ async function seek(event: Event) {
         <time>{{ time(draft ?? view?.position) }}</time>
         <div
           class="seek-rail"
-          :class="{ 'seek-rail-layered': layeredSeek }"
+          :class="{ 'seek-rail-layered': layeredSeek, 'seek-rail-stalled': slowPlayback }"
           @pointerenter="showSeekTime"
           @pointerleave="seekHovered = false"
         >
@@ -404,6 +435,9 @@ async function seek(event: Event) {
             @pointercancel="cancelScrub"
             @change="seek"
           />
+          <span v-if="slowPlayback" class="seek-load-rail" aria-hidden="true">
+            <span class="seek-load-indicator" :style="{ left: seekPlayed + '%' }" />
+          </span>
           <span
             v-if="loaded && layeredSeek"
             class="seek-time-preview"

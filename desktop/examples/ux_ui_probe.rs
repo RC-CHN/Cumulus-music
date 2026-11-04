@@ -411,6 +411,13 @@ fn main() {
     let media_proof = std::env::var_os("CUMULUS_SYSTEM_MEDIA_PROOF").is_some();
     let shortcut_proof = std::env::var_os("CUMULUS_SHORTCUT_UI_PROOF").is_some();
     let card_source_proof = card_source_fixture::enabled();
+    let playback_wait_proof = std::env::var_os("CUMULUS_PLAYER_WAIT_PROOF").is_some();
+    assert!(
+        !playback_wait_proof
+            || (motion_proof && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()),
+        "playback wait proof requires isolated layout/audio fixtures"
+    );
+    let audio_status_proof = card_source_proof || playback_wait_proof;
     assert!(
         !card_source_proof
             || (motion_proof && library_fixture::enabled() && search_fixture::enabled()),
@@ -481,7 +488,7 @@ fn main() {
                 if let Some(directory)=download_directory.as_ref() { audio=audio.allow_download_directory(directory.clone()); }
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
                 count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
-                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if card_source_proof {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
+                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if audio_status_proof {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
                 Ok(audio)
             });
         }
@@ -518,7 +525,7 @@ fn main() {
                 value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());
             }
             let stage=value["stage"].as_str().unwrap_or("");
-            if card_source_proof && stage=="card-source-fixture" {
+            if audio_status_proof && stage=="card-source-fixture" {
                 let id=value["id"].as_u64().expect("synthetic card control id");
                 let reply=card_audio.configure(value["mode"].as_str().unwrap_or("")).unwrap_or_else(|error|json!({"error":error.to_string()}));
                 handle.get_webview_window("main").unwrap().eval(format!("window.__cardSourceAck[{id}]={reply};")).unwrap();return;
@@ -679,7 +686,7 @@ fn main() {
                 value["syntheticLikeReads"]=json!(fixture.reads.load(Ordering::SeqCst));
             }
             if motion_proof {
-                if card_source_proof {value["sourceAudio"]=card_audio.report();}
+                if audio_status_proof {value["sourceAudio"]=card_audio.report();}
                 value["audioFactoryElapsedMs"] = json!(factory_elapsed.load(std::sync::atomic::Ordering::Acquire));
                 value["audioFactoryDelayRequestedMs"] = json!(startup_delay);
                 value["audioFactoryCount"] = json!(factory_count.load(std::sync::atomic::Ordering::Acquire));

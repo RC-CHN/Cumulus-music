@@ -19,6 +19,8 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_PLAYER_LAYOUT_PROOF='1')
+    if not args.baseline:
+        env['CUMULUS_PLAYER_WAIT_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -40,15 +42,21 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    expected = 20 if args.baseline else 23
+    expected = 20 if args.baseline else 24
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
     assert args.baseline or all(complete[key] for key in (
         'layoutPassed', 'lyricFollowVerified', 'lyricTimelineVerified', 'lyricFontVerified',
-        'lyricModesVerified', 'chorusMarkerVerified', 'seekTimePreviewVerified'))
+        'lyricModesVerified', 'chorusMarkerVerified', 'seekTimePreviewVerified',
+        'slowPlaybackWaitVerified'))
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
+    if not args.baseline:
+        waiting, = [stage for stage in stages if stage.stem.endswith('_slow_playback_wait')]
+        native_wait = json.loads(waiting.read_text(encoding='utf-8'))
+        assert native_wait['nativePlayer']['state'] == 'buffering'
+        assert native_wait['sourceAudio']['forcedBuffering']
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == expected
     report = dict(complete, actualWebView=True, screenshots=expected if args.screenshots else 0,

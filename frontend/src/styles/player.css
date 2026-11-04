@@ -217,13 +217,45 @@
   transition: opacity 120ms ease;
 }
 .seek-time-preview.visible,
-.seek-rail input:focus-visible + .seek-time-preview {
+.seek-rail input:focus-visible ~ .seek-time-preview {
   visibility: visible;
   opacity: 1;
+}
+.seek-rail-stalled input::-webkit-slider-thumb {
+  opacity: 0;
+}
+.seek-load-rail {
+  position: absolute;
+  inset: 0 5px;
+  pointer-events: none;
+}
+.seek-load-indicator {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--accent);
+  animation: seek-load-pulse 1.5s ease-in-out infinite alternate;
+}
+@keyframes seek-load-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.3;
+  }
+}
+:root[data-motion='reduced'] .seek-load-indicator {
+  animation: none;
 }
 @media (prefers-reduced-motion: reduce) {
   .seek-time-preview {
     transition: none;
+  }
+  .seek-load-indicator {
+    animation: none;
   }
 }
 .trial-seek-track {
