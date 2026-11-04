@@ -163,6 +163,20 @@ jobs:
             GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' \
             dbus-run-session -- /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --startup \
             --screenshots --outer-network "$outer_network" --binary .build/target/release/cumulus --root .build/ci-autostart-linux
+      - name: Verify native audio files open in the ordinary Linux application
+        run: |
+          outer_network=$(readlink /proc/self/ns/net)
+          proof_home=$(mktemp -d)
+          sudo unshare --net --fork --kill-child sh -ec '
+            test "$(readlink /proc/self/ns/net)" != "$1"
+            target_user=$2
+            shift 2
+            ip link set lo up
+            exec runuser -u "$target_user" -- "$@"
+          ' sh "$outer_network" "$(id -un)" env -i HOME="$proof_home" PATH=/usr/bin:/usr/sbin \
+            GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' \
+            dbus-run-session -- /usr/bin/python3 scripts/ci/native_file_open_smoke.py \
+            --outer-network "$outer_network" --binary .build/target/release/cumulus --root .build/ci-native-open-linux
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
@@ -525,6 +539,7 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-ordinary-essential-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --ordinary-essential-actions --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-ordinary-essential-actions-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/catalog_smoke.py --ordinary-essential-voice-actions --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-ordinary-essential-voice-actions-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-album-windows --runtime .build/package-stage/windows-x64/native --album
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-album-batch-windows --runtime .build/package-stage/windows-x64/native --album-batch
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-windows --runtime .build/package-stage/windows-x64/native --artist
@@ -882,6 +897,7 @@ jobs:
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential-actions --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-actions-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential-voice-actions --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-voice-actions-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-album-linux --album
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-album-batch-linux --album-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-linux --artist
