@@ -194,12 +194,22 @@
   try {
     await wait(()=>one('.track-row'),'startup');await resize(1120,760);await theme('light');await comments();
     input('评论内容','合成草稿：只检查保留，不发送。');one('[aria-label="评论内容"]').focus();
-    await wait(()=>one('[data-group="page"] [data-comment-id="101"] .comment-avatar:not(img)'),'avatar fallback');const cardText=one('[data-comment-id="101"] .comment-content');
+    await wait(()=>one('[data-group="page"] [data-comment-id="101"] .comment-avatar svg'),'avatar fallback');const cardText=one('[data-comment-id="101"] .comment-content');
     const quote=one('[data-comment-id="102"] .comment-quote');
     const inlineEmoji=cardText.querySelector('.comment-inline-emoji');
     assert(cardText.textContent==='提到合成曲目 😄'&&cardText.children.length===1&&inlineEmoji?.getAttribute('aria-label')==='大笑'&&inlineEmoji?.getAttribute('role')==='img'&&!cardText.querySelector('img, a'),'safe official rich comment projection with labelled emoji');
     assert(quote.textContent.includes('引用合成引用曲目')&&!quote.textContent.includes('private-reply-key'),'quoted rich text projection');
     await capture('initial_light',{stickyComposer:await verifyStickyComposer(),richCommentText:true});page().scrollTop=0;
+    const authorControl = (id, control, scope=page()) => scope?.querySelector(`[data-comment-id="${id}"] [data-comment-author-control="${control}"]`);
+    async function authorBack(id, control, scope) {
+      click(authorControl(id,control,scope()));
+      await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成主播主页','comment author profile');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&document.activeElement===authorControl(id,control,scope()),'return to exact comment author control');
+      assert(one('[aria-label="评论内容"]').value==='合成草稿：只检查保留，不发送。','profile navigation preserves unsent draft');
+    }
+    assert(!authorControl(103,'name')&&!authorControl(103,'avatar'),'unavailable author is display only');
+    await authorBack(101,'name',page);await capture('author_return_light');
     await mode('fail-next');await read(button('下一页',pagination()),()=>ready()&&one('.comment-read-error'),'next failed');assert(ids()[0]==='101','failed next retains page');assert(fullControl(button('重试',pagination())),'pagination error retry fully visible');await capture('next_failed_light');
     await mode('none');await read(button('重试',pagination()),()=>ready()&&ids()[0]==='121','retry exact next');await capture('next_retry_light');
     await read(button('上一页',pagination()),()=>ready()&&ids()[0]==='101','back first');await capture('back_light');
@@ -217,6 +227,7 @@
     await mode('none');await theme('light');await read(button('刷新评论',page()),()=>ready()&&ids()[0]==='101','latest recovery');await capture('latest_recovered_light');
     await mode('fail-floor-first');await openFloor();assert(one('.comment-floor-panel .error-state'),'first floor failure');await capture('floor_failed_first_light');
     await mode('none');await read(button('重试',one('.comment-floor-panel .error-state')),()=>floorReady()&&floorIds()[0]==='501','first floor retry');assert(one('[data-floor-group="current"] [data-comment-id="602"]'),'current reply visible');await capture('floor_retry_light');
+    await authorBack(501,'avatar',floor);assert(floorIds()[0]==='501','profile back retains open floor and exact reply page');await capture('floor_author_return_light');
     await mode('fail-floor-next');await read(button('下一页回复',floor()),()=>floorReady()&&one('.comment-floor-panel .error-state'),'floor next failure');assert(floorIds()[0]==='501','failed floor retains page');assert(fullControl(button('重试',floor().querySelector('footer'))),'floor error retry fully visible');await capture('floor_next_failed_light');
     await mode('none');await read(button('重试',floor().querySelector('footer')),()=>floorReady()&&floorIds()[0]==='521','floor cursor retry');await capture('floor_next_retry_light');
     await read(button('上一页回复',floor()),()=>floorReady()&&floorIds()[0]==='501','floor back');await capture('floor_back_light');

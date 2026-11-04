@@ -17,6 +17,7 @@ const emit = defineEmits<{
   remove: [item: CommentItem];
   locate: [id: string];
   reconcile: [id: string];
+  author: [id: string, event: MouseEvent];
   close: [];
 }>();
 const { page, query, history, loading, error } = props.model;
@@ -82,6 +83,7 @@ const groups = computed(() => [
         @remove="emit('remove', $event)"
         @locate="emit('locate', $event)"
         @reconcile="emit('reconcile', $event)"
+        @author="(id, event) => emit('author', id, event)"
       />
     </section>
     <p v-if="page && !page.comments.length" class="muted">暂无回复。</p>

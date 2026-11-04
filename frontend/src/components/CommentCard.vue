@@ -34,24 +34,45 @@ const emit = defineEmits<{
   reply: [item: CommentItem];
   remove: [item: CommentItem];
   floor: [item: CommentItem, event: MouseEvent];
+  author: [id: string, event: MouseEvent];
 }>();
 </script>
 <template>
   <article class="comment-card" :data-comment-id="item.id">
-    <img
-      v-if="item.author?.avatarUrl && !failedAvatar"
+    <component
+      :is="item.author?.profileId ? 'button' : 'span'"
       class="comment-avatar"
-      :src="item.author.avatarUrl"
-      alt=""
-      loading="lazy"
-      decoding="async"
-      referrerpolicy="no-referrer"
-      @error="failedAvatar = true"
-    />
-    <span v-else class="comment-avatar"><Icon name="user" /></span>
+      :type="item.author?.profileId ? 'button' : undefined"
+      :aria-label="
+        item.author?.profileId ? `查看 ${item.author.name || '云音乐用户'} 的主页` : undefined
+      "
+      :data-comment-author-control="item.author?.profileId ? 'avatar' : undefined"
+      @click="item.author?.profileId && emit('author', item.author.profileId, $event)"
+    >
+      <img
+        v-if="item.author?.avatarUrl && !failedAvatar"
+        :src="item.author.avatarUrl"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        referrerpolicy="no-referrer"
+        @error="failedAvatar = true"
+      />
+      <Icon v-else name="user" />
+    </component>
     <div class="comment-copy">
       <div class="comment-author">
-        {{ item.author?.name || '云音乐用户' }}<small v-if="item.owned">我</small>
+        <button
+          v-if="item.author?.profileId"
+          class="comment-author-name"
+          type="button"
+          data-comment-author-control="name"
+          @click="emit('author', item.author.profileId, $event)"
+        >
+          {{ item.author.name || '云音乐用户' }}
+        </button>
+        <span v-else>{{ item.author?.name || '云音乐用户' }}</span
+        ><small v-if="item.owned">我</small>
       </div>
       <p class="comment-content"><CommentText :text="item.content" /></p>
       <div v-for="(reply, index) in item.replies" :key="index" class="comment-quote">

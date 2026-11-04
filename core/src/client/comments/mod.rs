@@ -36,6 +36,7 @@ pub struct CommentView {
 pub struct CommentAuthorView {
     pub name: String,
     pub avatar_url: Option<String>,
+    pub profile_id: Option<String>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,6 +70,9 @@ pub struct CommentPageView {
 }
 fn author(value: crate::comments::CommentAuthor) -> CommentAuthorView {
     CommentAuthorView {
+        profile_id: (!value.unavailable)
+            .then(|| crate::protocol::api::identifier(&serde_json::json!(value.id)).ok())
+            .flatten(),
         name: value.nickname,
         avatar_url: value
             .avatar

@@ -1,4 +1,5 @@
 import type { AccountData, LikeResult } from './contracts';
+import type { InjectionKey } from 'vue';
 export interface CommentResource {
   kind: 'playlist' | 'voice' | 'event' | 'album' | 'track' | 'mv' | 'topic' | 'video';
   id: string;
@@ -19,7 +20,20 @@ export interface CommentReadRetry<Query> {
 export interface CommentAuthor {
   name: string;
   avatarUrl: string | null;
+  profileId?: string | null;
 }
+export interface CommentAuthorAnchor {
+  scope: string;
+  id: string;
+  control: string;
+  group: string;
+  scrollTop: number;
+}
+export const commentAuthorNavigation: InjectionKey<{
+  open: (epoch: string, id: string, anchor: CommentAuthorAnchor) => void;
+  restore: (epoch: string, scope: string) => CommentAuthorAnchor | undefined;
+  restored: (anchor: CommentAuthorAnchor) => void;
+}> = Symbol('comment-author-navigation');
 export interface CommentReply {
   id: string | null;
   content: string | null;

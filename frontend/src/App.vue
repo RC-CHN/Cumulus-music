@@ -23,7 +23,9 @@ import ArtistActions from './components/catalog/ArtistActions.vue';
 import ArtistGalleryPage from './components/catalog/ArtistGalleryPage.vue';
 import { useArtistGallery } from './composables/useArtistGallery';
 import type { ArtistCardRequest } from './services/artistCards';
-import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
+import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick, provide } from 'vue';
+import { commentAuthorNavigation, type CommentAuthorAnchor } from './services/comments';
+import { useCommentContext } from './composables/useCommentContext';
 import { onDesktopLyricChanged, onDesktopLyricOpen } from './adapters/desktopLyrics';
 import { onMiniReturn } from './adapters/mini';
 import { createLyricReportClient, onLyricReportOpen } from './adapters/lyricReports';
@@ -676,6 +678,39 @@ function playLocal(query: LocalQuery, revision: string, startId: string | null) 
 }
 const comments = useComments(undefined, () => {
   void music.bootstrap(false);
+});
+const commentContext = useCommentContext(comments, core);
+const commentAuthorReturn = shallowRef<{
+  epoch: string;
+  origin: Page;
+  destination: Page;
+  anchor: CommentAuthorAnchor;
+}>();
+provide(commentAuthorNavigation, {
+  open(epoch, id, anchor) {
+    const origin = music.page.value;
+    if (
+      epoch !== account.value.epoch ||
+      !signedIn.value ||
+      music.initializing.value ||
+      !['comments', 'playlist', 'catalog'].includes(origin.kind)
+    )
+      return;
+    const destination: Page = { kind: 'playlist_creator', id };
+    commentAuthorReturn.value = { epoch, origin, destination, anchor };
+    music.navigate(destination);
+  },
+  restore(epoch, scope) {
+    const saved = commentAuthorReturn.value;
+    return saved?.epoch === epoch &&
+      saved.origin === music.page.value &&
+      saved.anchor.scope === scope
+      ? saved.anchor
+      : undefined;
+  },
+  restored(anchor) {
+    if (commentAuthorReturn.value?.anchor === anchor) commentAuthorReturn.value = undefined;
+  },
 });
 function openComments(resource: CommentResource, title: string) {
   playlistDialog.value = undefined;
@@ -1519,11 +1554,21 @@ function openSubscriber(id: string, focus: SubscriberFocus) {
 const playlistComments = usePlaylistCommentTab(
   core,
   () => account.value,
-  playlistPanelId,
+  () => {
+    const saved = commentAuthorReturn.value;
+    return (
+      playlistPanelId() ??
+      (saved?.origin.kind === 'playlist' &&
+      (music.page.value === saved.origin || music.page.value === saved.destination)
+        ? saved.origin.id
+        : null)
+    );
+  },
   () => {
     void music.bootstrap(false);
   },
 );
+const playlistCommentContext = useCommentContext(playlistComments.model, core);
 const playlistSongsActive = computed(
   () => !subscribers.open.value && !playlistComments.active.value,
 );
@@ -1954,6 +1999,7 @@ watch([() => account.value.epoch, () => account.value.status], () => {
   if (page.value.kind === 'rankings' && !music.initializing.value)
     void rankings.enter(page.value.query, page.value.rankingState);
   comments.connect(account.value);
+  commentAuthorReturn.value = undefined;
   localMatching.connect(account.value);
   if (page.value.kind === 'mv') void loadMv(page.value.id, page.value.taskId);
   if (page.value.kind === 'comments') void comments.open(page.value.resource);
@@ -2026,10 +2072,16 @@ watch(
 );
 watch(
   () => page.value,
-  (value) => {
+  (value, previous) => {
+    const saved = commentAuthorReturn.value;
+    if (saved && value !== saved.origin && value !== saved.destination) {
+      commentAuthorReturn.value = undefined;
+      if (saved.origin.kind === 'comments') comments.close();
+    }
+    if (previous.kind === 'comments' && value !== saved?.destination) comments.close();
     mv.show(value.kind === 'mvs');
     if (value.kind === 'mv') void loadMv(value.id, value.taskId);
-    if (value.kind === 'comments') void comments.open(value.resource);
+    if (value.kind === 'comments' && value !== saved?.origin) void comments.open(value.resource);
     if (value.kind === 'rankings') void rankings.enter(value.query, value.rankingState);
     if (value.kind === 'history') void recent.open(value.scope);
     if (value.kind === 'settings' && !value.accountDetail) void settings.open();
@@ -2796,6 +2848,7 @@ onUnmounted(() => {
               <CommentsPage
                 v-else-if="page.kind === 'comments'"
                 :model="comments"
+                :context="commentContext"
                 :title="page.title"
                 :playable="player.ready.value && !player.busy.value"
                 :player="player.view.value"
@@ -3200,6 +3253,7 @@ onUnmounted(() => {
                 <CommentsPage
                   v-else-if="result?.playlist && playlistComments.active.value"
                   :model="playlistComments.model"
+                  :context="playlistCommentContext"
                   :title="result.playlist.name"
                   embedded
                 />

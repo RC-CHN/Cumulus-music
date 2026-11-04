@@ -116,6 +116,8 @@ pub struct CommentAuthor {
     pub id: String,
     pub nickname: String,
     pub avatar: Option<String>,
+    #[serde(default)]
+    pub unavailable: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CommentReply {
@@ -171,6 +173,12 @@ fn author(v: &Value) -> Result<Option<CommentAuthor>> {
         id: identifier(&v["userId"])?,
         nickname: text(&v["nickname"]),
         avatar: v["avatarUrl"].as_str().map(str::to_owned),
+        unavailable: matches!(
+            v["accountStatus"]
+                .as_i64()
+                .or_else(|| v["accountStatus"].as_str()?.parse().ok()),
+            Some(30 | 40)
+        ),
     }))
 }
 impl Comment {

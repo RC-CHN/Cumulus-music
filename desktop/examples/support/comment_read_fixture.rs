@@ -41,6 +41,9 @@ fn comment(id: u64, parent: u64) -> Value {
         value["user"]["avatarUrl"] = json!("https://p1.music.126.net/cumulus-synthetic-cover.png");
         value["beReplied"] = json!([{"beRepliedCommentId":99,"content":"这是一条合成的原评论。","richContent":"引用<song id=\"private-reply-key\">合成引用曲目</song>","user":{"userId":4,"nickname":"被回复的听友"}}]);
     }
+    if id == 103 {
+        value["user"]["accountStatus"] = json!(40);
+    }
     value
 }
 fn radio() -> Value {
@@ -99,6 +102,10 @@ impl Api for Library {
             }
             match path {
                 "/api/w/v1/user/detail/3" if args["userId"] == "3" => {
+                    self.calls
+                        .lock()
+                        .unwrap()
+                        .push(json!({"path":path,"args":args,"mode":mode}));
                     return Ok(
                         json!({"code":200,"profile":{"userId":3,"nickname":"合成主播主页"}}),
                     );

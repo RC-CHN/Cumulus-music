@@ -2,7 +2,17 @@
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import { useCommentReadFocus } from '../composables/useCommentReadFocus';
 import { useCommentFloorView } from '../composables/useCommentFloorView';
-import { computed, ref, watch, nextTick, onUnmounted, useId } from 'vue';
+import {
+  computed,
+  inject,
+  ref,
+  watch,
+  nextTick,
+  onMounted,
+  onActivated,
+  onUnmounted,
+  useId,
+} from 'vue';
 import type { CommentsModel } from '../composables/useComments';
 import CommentCard from './CommentCard.vue';
 import CommentResourceHeader from './CommentResourceHeader.vue';
@@ -11,7 +21,7 @@ import type { PlayerView } from '../services/player';
 import CommentWritePanel from './CommentWritePanel.vue';
 import CommentFloorPanel from './CommentFloorPanel.vue';
 import { useCommentContext, type CommentContext } from '../composables/useCommentContext';
-import { resourceKey, type CommentItem } from '../services/comments';
+import { commentAuthorNavigation, resourceKey, type CommentItem } from '../services/comments';
 const props = defineProps<{
   model: CommentsModel;
   title: string;
@@ -90,6 +100,49 @@ watch(
 );
 const floorView = useCommentFloorView(floor, scroller, floorContainer, owner);
 const writing = computed(() => writer.busy.value || writer.pending.value.length > 0);
+const authorNavigation = inject(commentAuthorNavigation);
+function authorGroup(node: HTMLElement) {
+  const group = node.closest<HTMLElement>('[data-floor-group], .comment-group');
+  return group?.dataset.floorGroup
+    ? `floor:${group.dataset.floorGroup}`
+    : (group?.dataset.group ?? '');
+}
+function openAuthor(id: string, event: MouseEvent) {
+  const node = event.currentTarget as HTMLElement;
+  const commentId = node.closest<HTMLElement>('[data-comment-id]')?.dataset.commentId;
+  const control = node.dataset.commentAuthorControl;
+  if (commentId && control && scroller.value?.contains(node))
+    authorNavigation?.open(props.model.epoch.value, id, {
+      scope: owner(),
+      id: commentId,
+      control,
+      group: authorGroup(node),
+      scrollTop: scroller.value.scrollTop,
+    });
+}
+async function restoreAuthor() {
+  const anchor = authorNavigation?.restore(props.model.epoch.value, owner());
+  if (!anchor) return;
+  await nextTick();
+  if (authorNavigation?.restore(props.model.epoch.value, owner()) !== anchor) return;
+  const root = scroller.value;
+  const node = Array.from(
+    root?.querySelectorAll<HTMLButtonElement>('[data-comment-author-control]') ?? [],
+  ).find(
+    (button) =>
+      button.dataset.commentAuthorControl === anchor.control &&
+      button.closest<HTMLElement>('[data-comment-id]')?.dataset.commentId === anchor.id &&
+      authorGroup(button) === anchor.group,
+  );
+  if (!root || !node || !node.isConnected) return;
+  root.scrollTop = anchor.scrollTop;
+  node.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  node.focus({ preventScroll: true });
+  authorNavigation?.restored(anchor);
+}
+watch([page, floor.page], restoreAuthor, { flush: 'post' });
+onMounted(restoreAuthor);
+onActivated(restoreAuthor);
 onUnmounted(() => {
   if (!props.context) context.dispose();
 });
@@ -271,6 +324,7 @@ const missingTarget = computed(
         @remove="composer?.requestDelete($event)"
         @locate="model.locate"
         @reconcile="floorReconcile"
+        @author="openAuthor"
         @close="floorView.close"
       />
     </div>
@@ -291,6 +345,7 @@ const missingTarget = computed(
             @reply="replyTo"
             @remove="composer?.requestDelete($event)"
             @floor="floorView.open"
+            @author="openAuthor"
           /></section
       ></template>
       <div v-if="page && groups.every((group) => !group.items.length)" class="empty-state">

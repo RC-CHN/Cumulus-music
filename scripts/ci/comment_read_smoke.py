@@ -38,7 +38,7 @@ def main():
     assert complete['ok'] and complete['commentReads']
     states = {value['stage'].split('_', 2)[2]: value for path in sorted(output.glob('ux_*.json'))
               if (value := json.loads(path.read_text(encoding='utf-8')))}
-    assert len(states) == complete['stageCount'] == 39
+    assert len(states) == complete['stageCount'] == 41
     assert states['initial_light']['stickyComposer'] and states['small_latest_light']['stickyComposer']
     assert states['initial_light']['richCommentText']
     for state in states.values():
@@ -64,11 +64,16 @@ def main():
     assert states['late_read_inflight_dark']['commentReadFixture']['pending']
     assert not states['left_before_late_dark']['ids'] and not states['late_finished_dark']['ids']
     assert states['late_finished_dark']['commentReadFixture']['delayedCompleted'] == 1
-    for state in list(states.values())[:25]: assert state['draft'] == '合成草稿：只检查保留，不发送。'
+    for state in list(states.values())[:27]: assert state['draft'] == '合成草稿：只检查保留，不发送。'
+    assert states['author_return_light']['focusComment'] == '101'
+    assert states['floor_author_return_light']['focusComment'] == '501'
+    profile = [c for c in states['floor_author_return_light']['commentReadFixture']['calls']
+               if c['path'] == '/api/w/v1/user/detail/3']
+    assert len(profile) >= 1 and all(c['args']['userId'] == '3' for c in profile)
     assert states['reduced_floor_open_light']['motion'] == states['reduced_floor_close_light']['motion'] == 'reduced'
     assert not states['expired_light']['ids'] and states['expired_light']['cards'] == 0
-    if args.screenshots: assert len(list(output.glob('ux_*.png'))) == 39
-    report = dict(ok=True,states=39,screenshots=39 if args.screenshots else 0,exactReadRetryVerified=True,historyAndFocusVerified=True,stickyComposerVerified=True,richCommentTextVerified=True,realMusicRequests=0,realAccountWrites=0,playbackVerified=False)
+    if args.screenshots: assert len(list(output.glob('ux_*.png'))) == 41
+    report = dict(ok=True,states=41,screenshots=41 if args.screenshots else 0,exactReadRetryVerified=True,historyAndFocusVerified=True,stickyComposerVerified=True,richCommentTextVerified=True,authorProfileVerified=True,realMusicRequests=0,realAccountWrites=0,playbackVerified=False)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report))
 
