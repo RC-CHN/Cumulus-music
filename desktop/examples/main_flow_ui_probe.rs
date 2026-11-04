@@ -28,6 +28,8 @@ const OWNER: &str = "2";
 const TASKS: &str = "download_tasks_v1";
 const LEDGER: &str = "offline_music_v1";
 const SENTINEL: &[u8] = b"unrelated synthetic file\n";
+const PLAYBACK_FIXTURE: &[u8] =
+    include_bytes!("../../core/tests/fixtures/tag_audio/playback-12s.m4a");
 
 fn checkpoint(store: &StateStore, media: &Path, seed: &Path) -> Result<Value> {
     let (tasks, records) =
@@ -133,6 +135,48 @@ fn disposed(store: &StateStore, media: &Path, checkpoint: &Value) -> Result<Valu
     Ok(json!({"id":id,"fileAbsent":true,"ledgerAbsent":true,"sentinelUnchanged":true}))
 }
 
+fn hide_download(
+    store: &StateStore,
+    media: &Path,
+    seed: &Path,
+    out: &Path,
+    hide: bool,
+) -> Result<()> {
+    let receipt: Value = serde_json::from_slice(&fs::read(out.join("ux_download_complete.json"))?)?;
+    let proof = &receipt["audit"];
+    let name = Path::new(
+        proof["relative"]
+            .as_str()
+            .ok_or(Error::State("missing synthetic target receipt"))?,
+    );
+    if !matches!(
+        name.components().collect::<Vec<_>>().as_slice(),
+        [std::path::Component::Normal(_)]
+    ) {
+        return Err(Error::State("synthetic download is not a direct child"));
+    }
+    let target = media.join(name);
+    let backup = out.join("missing-download-fixture.flac");
+    let (source, destination) = if hide {
+        (&target, &backup)
+    } else {
+        (&backup, &target)
+    };
+    if !matches!(fs::symlink_metadata(destination), Err(error) if error.kind() == std::io::ErrorKind::NotFound)
+        || serde_json::to_value(inspect_file(source)?)? != proof["file"]
+    {
+        return Err(Error::State("synthetic missing-download move mismatch"));
+    }
+    if hide && checkpoint(store, media, seed)? != *proof {
+        return Err(Error::State("synthetic download changed before move"));
+    }
+    fs::rename(source, destination)?;
+    if !hide && checkpoint(store, media, seed)? != *proof {
+        return Err(Error::State("fallback changed the download task or ledger"));
+    }
+    Ok(())
+}
+
 fn main() {
     // SAFETY: precedes WebView and worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
@@ -141,9 +185,12 @@ fn main() {
     let retry_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_RETRY").as_deref() == Ok("1");
     let eof_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_EOF").as_deref() == Ok("1");
     let loading_step = std::env::var("CUMULUS_MAIN_FLOW_LOADING_STEP").as_deref() == Ok("1");
+    let missing_download =
+        std::env::var("CUMULUS_MAIN_FLOW_MISSING_DOWNLOAD").as_deref() == Ok("1");
     assert!(!(retry_https || eof_https) || ordinary_https);
     assert!(!(retry_https && eof_https));
     assert!(!(loading_step && ordinary_https));
+    assert!(!(missing_download && (ordinary_https || loading_step)));
     let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
     if reopen {
         let completed: Value = serde_json::from_slice(
@@ -159,10 +206,14 @@ fn main() {
     fs::create_dir(&out).unwrap();
     let downloads = root.join("media");
     let seed = root.join("synthetic.flac");
+    let playback_seed = root.join("synthetic-playback.m4a");
     if !reopen {
         fs::create_dir(&downloads).unwrap();
         fs::write(downloads.join("unrelated.txt"), SENTINEL).unwrap();
         fs::write(&seed, fixture::media::DATA).unwrap();
+        // The tiny FLAC is for resumable-download byte checks. A 12-second
+        // source gives the renderer time to see the same playback after seek.
+        fs::write(&playback_seed, PLAYBACK_FIXTURE).unwrap();
     }
     let path = serde_json::to_string(&downloads).unwrap();
     let mut context = assets::context();
@@ -198,7 +249,7 @@ fn main() {
                 Some(wire.clone()), Some(wire::Wire::context()),
             )?
                 .with_download_backend(fixture.clone())
-                .with_audio_factory(move || Ok(Box::new(fixture::Audio::open(seed.clone(), audio_path.clone(), audio_fixture.clone())?)));
+                .with_audio_factory(move || Ok(Box::new(fixture::Audio::open(playback_seed.clone(), audio_path.clone(), audio_fixture.clone())?)));
             app.manage(client);
             app.add_capability(r#"{"identifier":"synthetic-main-flow-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
             let handle = app.handle().clone();
@@ -216,6 +267,19 @@ fn main() {
                 }
                 if !ordinary_https && stage == "release_loading_seek" {
                     fixture.release_loading_seek();
+                    return;
+                }
+                if missing_download && ["hide_download", "restore_download"].contains(&stage.as_str()) {
+                    let hide = stage == "hide_download";
+                    match hide_download(&store, &downloads, &checkpoint_seed, &out, hide) {
+                        Ok(()) => handle.get_webview_window("main").unwrap().eval(format!(
+                            "window.__mainFlowDownloadHidden={hide};"
+                        )).unwrap(),
+                        Err(error) => {
+                            fs::write(out.join("failed.json"), serde_json::to_vec(&json!({"stage":stage,"auditError":error.to_string()})).unwrap()).unwrap();
+                            handle.exit(1);
+                        }
+                    }
                     return;
                 }
                 if eof_https && stage == "wait_https_prefetch" {
@@ -252,7 +316,8 @@ fn main() {
                     return;
                 }
                 let ordinary_stage = ["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_search_loading_cover","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str());
-                if !(ordinary_stage || retry_https && stage == "ux_https_failure" || eof_https && stage == "ux_https_before_eof") { return; }
+                if !(ordinary_stage || retry_https && stage == "ux_https_failure" || eof_https && stage == "ux_https_before_eof"
+                    || missing_download && ["ux_download_missing", "ux_download_online"].contains(&stage.as_str())) { return; }
                 let client = handle.state::<MusicClient>();
                 let account = client.account().unwrap();
                 value["authenticated"] = json!(account.status == SessionStatus::Authenticated);
@@ -314,7 +379,7 @@ fn main() {
         })
         .on_page_load(move |webview, payload| {
             if payload.event()==PageLoadEvent::Finished {
-                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};window.__mainFlowHttpsEof={eof_https};window.__mainFlowLoadingStep={loading_step};")).unwrap();
+                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};window.__mainFlowHttpsEof={eof_https};window.__mainFlowLoadingStep={loading_step};window.__mainFlowMissingDownload={missing_download};")).unwrap();
                 let source = if reopen {
                     include_str!("main_flow_reopen_probe.js")
                 } else {

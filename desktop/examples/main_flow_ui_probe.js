@@ -318,6 +318,33 @@
     await wait(() => one('.download-row button[aria-label^="播放下载"]'), "download playback control");
     await stage("download_complete", { bytes: file.bytes });
     await wait(() => window.__mainFlowDownloadVerified === true, "native file hash and ledger checkpoint");
+    if (window.__mainFlowMissingDownload) {
+      await emit("hide_download");
+      await wait(() => window.__mainFlowDownloadHidden === true, "synthetic completed file moved aside");
+      await click(() => one('.download-row button[aria-label^="播放下载"]'), "open the missing download");
+      const online = () => button("在线播放", one(".playback-message"));
+      const missing = await wait(async () => {
+        const snapshot = await invoke("player_snapshot", { epoch });
+        return snapshot.state === "error" && snapshot.errorCode === "playback_download_missing" &&
+          snapshot.resourceKind === "downloaded" && snapshot.playId && snapshot.entryId &&
+          online() && !online().disabled && snapshot;
+      }, "missing file is actionable without a new authorization");
+      check(!button("重试", one(".playback-message")), "missing-file action must be explicit");
+      await stage("download_missing", { qualifiedMissing: true });
+      await click(online, "explicitly play the same missing song online");
+      await wait(async () => {
+        const snapshot = await invoke("player_snapshot", { epoch });
+        return snapshot.state === "playing" && snapshot.resourceKind === "catalog" &&
+          snapshot.entryId === missing.entryId && snapshot.playId !== missing.playId &&
+          snapshot.track?.id === missing.track?.id && snapshot.position >= .1;
+      }, "fresh native online source plays the same selected song");
+      await wait(() => document.activeElement === button("暂停", one(".playerbar")), "playback focus returns to transport");
+      await stage("download_online", { sameSelectedEntry: true, nativeProgress: true });
+      await click(() => button("停止播放", one(".playerbar")), "stop online fallback");
+      await wait(() => state() === "idle", "online fallback stopped");
+      await emit("restore_download");
+      await wait(() => window.__mainFlowDownloadHidden === false, "original file and ledger restored for offline test");
+    }
     await emit("disconnect");
     await wait(() => window.__mainFlowOffline === true, "native offline acknowledgement");
     await click(() => one('.download-row button[aria-label^="播放下载"]'), "play downloaded file");

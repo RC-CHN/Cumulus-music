@@ -46,8 +46,21 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const reportedRevision = ref(0);
   const error = computed(() => reported.value?.message ?? '');
   const errorCode = computed(() => reported.value?.code ?? view.value?.errorCode);
+  const canPlayMissingDownloadOnline = computed(() => {
+    const current = view.value;
+    return (
+      ready.value &&
+      current?.epoch === epoch &&
+      current.state === 'error' &&
+      !!current.playId &&
+      !!current.entryId &&
+      current.errorCode === 'playback_download_missing'
+    );
+  });
   const canRetry = computed(
-    () => reported.value?.retryable ?? view.value?.errorRetryable ?? !!view.value?.error,
+    () =>
+      !canPlayMissingDownloadOnline.value &&
+      (reported.value?.retryable ?? view.value?.errorRetryable ?? !!view.value?.error),
   );
   const queueOpen = ref(false),
     lyricsOpen = ref(false),
@@ -786,6 +799,23 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       });
     return action({ kind: 'refresh' });
   }
+  function playMissingDownloadOnline(displayedKey: string) {
+    const current = view.value;
+    if (
+      !canPlayMissingDownloadOnline.value ||
+      busy.value ||
+      displayedKey !== retryKey.value ||
+      !current?.playId
+    )
+      return;
+    const input: PlayerAction = {
+      kind: 'play_missing_download_online',
+      play_id: current.playId,
+      expected_queue_revision: current.queueRevision,
+    };
+    // Leave this choice in its own action; general Retry cannot opt in to networking.
+    return run((owner) => core.playerAction(owner, input), null, true);
+  }
   async function loadQueue() {
     const current = ++queueRequest,
       captured = epoch;
@@ -1025,6 +1055,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     downloads,
     retry,
     retryKey,
+    canPlayMissingDownloadOnline,
+    playMissingDownloadOnline,
     loadQueue,
     editQueue,
     toggleQueue,

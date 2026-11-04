@@ -26,12 +26,13 @@ def main():
     special.add_argument('--https-retry-once', action='store_true', help=argparse.SUPPRESS)
     special.add_argument('--https-eof-next', action='store_true', help=argparse.SUPPRESS)
     special.add_argument('--loading-step', action='store_true')
+    special.add_argument('--missing-download', action='store_true')
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
     args = parser.parse_args()
     if (args.https_retry_once or args.https_eof_next) and not args.ordinary_https:
         parser.error('HTTPS playback scenarios require --ordinary-https')
-    if args.loading_step and args.ordinary_https:
-        parser.error('--loading-step uses the synthetic decoder gate')
+    if (args.loading_step or args.missing_download) and args.ordinary_https:
+        parser.error('--loading-step and --missing-download use the synthetic decoder gate')
     stage_names = STAGES
     expected_source_loads = 2 if args.https_eof_next else 1
     if args.https_retry_once or args.https_eof_next:
@@ -41,6 +42,9 @@ def main():
     elif not args.ordinary_https and not args.loading_step:
         position = STAGES.index('playback')
         stage_names = STAGES[:position] + ('search_loading_cover',) + STAGES[position:]
+    if args.missing_download:
+        position = stage_names.index('local_offline_playback')
+        stage_names = stage_names[:position] + ('download_missing', 'download_online') + stage_names[position:]
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -55,6 +59,8 @@ def main():
         env['CUMULUS_MAIN_FLOW_HTTPS_EOF'] = '1'
     if args.loading_step:
         env['CUMULUS_MAIN_FLOW_LOADING_STEP'] = '1'
+    if args.missing_download:
+        env['CUMULUS_MAIN_FLOW_MISSING_DOWNLOAD'] = '1'
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
@@ -154,11 +160,24 @@ def main():
     assert not os.path.lexists(media/proof['relative'])
     assert {path.relative_to(media).as_posix() for path in media.rglob('*') if path.is_file()} == {'unrelated.txt'}
     assert (media/'unrelated.txt').read_bytes() == b'unrelated synthetic file\n'
+    authorization_stage = downloaded
+    if args.missing_download:
+        missing, online = (stages[name] for name in ('download_missing', 'download_online'))
+        source = '/api/song/enhance/player/url/v1'
+        assert missing['qualifiedMissing'] and online['sameSelectedEntry'] and online['nativeProgress']
+        assert missing['fixture']['calls'][source] == downloaded['fixture']['calls'][source]
+        assert missing['fixture']['sourceLoadAttempts'] == downloaded['fixture']['sourceLoadAttempts']
+        assert missing['fixture']['localLoads'] == online['fixture']['localLoads'] == 0
+        assert online['fixture']['calls'][source] == missing['fixture']['calls'][source] + 1
+        assert online['fixture']['sourceLoads'] == expected_source_loads + 1
+        assert online['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
+        expected_source_loads += 1
+        authorization_stage = online
     offline = stages['local_offline_playback']
     assert offline['nativeProgress'] and offline['fixture']['offline']
     assert offline['fixture']['sourceLoads'] == expected_source_loads and offline['fixture']['localLoads'] == 1
     assert offline['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
-    assert offline['fixture']['calls']['/api/song/enhance/player/url/v1'] == downloaded['fixture']['calls']['/api/song/enhance/player/url/v1']
+    assert offline['fixture']['calls']['/api/song/enhance/player/url/v1'] == authorization_stage['fixture']['calls']['/api/song/enhance/player/url/v1']
     disposal = stages['download_disposed']
     assert disposal['stoppedBeforeDelete']
     assert disposal['audit'] == {'id': proof['id'], 'fileAbsent': True, 'ledgerAbsent': True, 'sentinelUnchanged': True}
@@ -166,7 +185,7 @@ def main():
         assert stage['fixture']['offline'] and not stage['fixture']['disposablePresent']
         assert stage['fixture']['offlineMediaAttempts'] == 0
         assert stage['wire']['offlineBusinessAttempts'] == 0
-        assert stage['fixture']['calls'] == downloaded['fixture']['calls']
+        assert stage['fixture']['calls'] == authorization_stage['fixture']['calls']
         assert stage['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
         assert stage['fixture']['sourceLoads'] == expected_source_loads and stage['fixture']['localLoads'] == 1
     assert stages['complete']['ok'] and stages['complete']['allInOneWebView']
@@ -224,6 +243,8 @@ def main():
                   rejectedOfflineRelayExperimentAttempts=stages['complete']['wire']['offlineRelayExperimentAttempts'])
     if args.https_eof_next:
         report['nativeHttpsEofAdvanced'] = True
+    if args.missing_download:
+        report['missingDownloadPlayedOnlyAfterExplicitAction'] = True
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
     print(json.dumps(report))
 

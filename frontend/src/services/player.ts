@@ -340,6 +340,7 @@ export type PlayerAction =
   | { kind: 'retry_equalizer' | 'repair_equalizer' }
   | { kind: 'play' | 'next' | 'previous' | 'stop' | 'restore' | 'startup' | 'refresh' | 'clear' }
   | { kind: 'refresh_for'; play_id: string; expected_queue_revision: string }
+  | { kind: 'play_missing_download_online'; play_id: string; expected_queue_revision: string }
   | { kind: 'pause'; paused: boolean }
   | { kind: 'pause_for'; play_id: string; expected_queue_revision: string; paused: boolean }
   | { kind: 'seek'; seconds: number }

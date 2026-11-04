@@ -1101,6 +1101,50 @@ test('a stale footer retry cannot refresh a replacement failed source', async ()
   f.player.dispose();
 });
 
+test('missing download only goes online from the current explicit action and never from generic retry', async () => {
+  const attempts: PlayerAction[] = [];
+  const answer = deferred<void>();
+  const f = fixture({
+    playerAction: async (_epoch, input) => {
+      attempts.push(input);
+      await answer.promise;
+      throw { code: 'network', message: '在线音源读取失败', retryable: true };
+    },
+  });
+  const missing: PlayerView = {
+    ...state('2', '1', 'download-a'),
+    resourceKind: 'downloaded',
+    state: 'error',
+    error: '下载文件已丢失',
+    errorCode: 'playback_download_missing',
+    errorRetryable: false,
+  };
+  await f.player.connect(account());
+  f.emit(missing);
+  const staleKey = f.player.retryKey.value;
+  assert.equal(f.player.canPlayMissingDownloadOnline.value, true);
+  f.emit({ ...missing, revision: '3', queueRevision: '2' });
+  await f.player.playMissingDownloadOnline(staleKey);
+  await f.player.retry();
+  assert.deepEqual(attempts, []);
+  const currentKey = f.player.retryKey.value;
+  const pending = f.player.playMissingDownloadOnline(currentKey);
+  await f.player.playMissingDownloadOnline(currentKey);
+  assert.deepEqual(attempts, [
+    { kind: 'play_missing_download_online', play_id: 'download-a', expected_queue_revision: '2' },
+  ]);
+  answer.resolve();
+  await pending;
+  assert.equal(f.player.error.value, '在线音源读取失败');
+  assert.equal(f.player.canPlayMissingDownloadOnline.value, true);
+  await f.player.retry();
+  assert.equal(attempts.length, 1);
+  f.emit(state('4', '1', 'replacement'));
+  assert.equal(f.player.error.value, '');
+  assert.equal(f.player.canPlayMissingDownloadOnline.value, false);
+  f.player.dispose();
+});
+
 test('a late failed refresh cannot become the retry of a newer native playback attempt', async () => {
   for (const sameEntry of [false, true]) {
     const finish = deferred<void>();

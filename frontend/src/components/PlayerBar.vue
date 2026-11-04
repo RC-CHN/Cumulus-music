@@ -137,7 +137,7 @@ function downloadCurrent() {
   }
 }
 const transportControls = ref<HTMLElement>();
-async function retryPlayback(event: MouseEvent) {
+async function playbackFeedbackAction(event: MouseEvent, action: (key: string) => unknown) {
   const origin = event.currentTarget as HTMLButtonElement,
     owner = view.value?.epoch,
     host = transportControls.value,
@@ -145,8 +145,7 @@ async function retryPlayback(event: MouseEvent) {
     key = origin.dataset.retryKey;
   if (!key || key !== props.player.retryKey.value) return;
   if (document.activeElement === origin) host?.focus({ preventScroll: true });
-  if (ready.value) await props.player.retry(key);
-  else emit('retry');
+  await action(key);
   await nextTick();
   if (owner === view.value?.epoch && document.activeElement === host) {
     const target =
@@ -155,6 +154,15 @@ async function retryPlayback(event: MouseEvent) {
         : null) ?? host?.querySelector<HTMLButtonElement>('.play-toggle:not(:disabled)');
     target?.focus({ preventScroll: true });
   }
+}
+function retryPlayback(event: MouseEvent) {
+  return playbackFeedbackAction(event, (key) =>
+    ready.value ? props.player.retry(key) : emit('retry'),
+  );
+}
+function playMissingDownloadOnline(event: MouseEvent) {
+  if (!props.togetherActive)
+    return playbackFeedbackAction(event, props.player.playMissingDownloadOnline);
 }
 function openAudioOutput(event: MouseEvent) {
   const key = (event.currentTarget as HTMLButtonElement).dataset.retryKey;
@@ -661,6 +669,15 @@ async function seek(event: Event) {
           @click="retryPlayback"
         >
           重试</button
+        ><button
+          v-if="player.canPlayMissingDownloadOnline.value && !togetherActive"
+          type="button"
+          class="text-button"
+          :disabled="busy"
+          :data-retry-key="player.retryKey.value"
+          @click="playMissingDownloadOnline"
+        >
+          在线播放</button
         ><button
           v-if="player.errorCode.value === 'audio_output_failed'"
           type="button"
