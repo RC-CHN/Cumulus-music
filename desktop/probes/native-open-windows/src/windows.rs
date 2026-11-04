@@ -46,7 +46,28 @@ const BUSY: u8 = 5;
 const TRACKS: &[&str] = &[r"C:\合成\01 % 空格.mp3", r"C:\合成\02.flac"];
 
 fn fail(detail: &'static str) -> io::Error {
+    // Every detail is a fixed lab assertion, never error Display, a path,
+    // a pipe name, a SID, or any value returned by a Win32 API.
+    eprintln!("native open lab assertion: {detail}");
     io::Error::other(detail)
+}
+
+fn at<T>(stage: &'static str, result: io::Result<T>) -> io::Result<T> {
+    result.inspect_err(|error| {
+        eprintln!(
+            "native open lab stage: {stage}: {:?} ({:?})",
+            error.kind(),
+            error.raw_os_error()
+        );
+    })
+}
+
+fn expect_open_error<T>(stage: &'static str, result: io::Result<T>, code: u32) -> io::Result<()> {
+    match result {
+        Err(error) if error.raw_os_error() == Some(code as i32) => Ok(()),
+        Err(error) => at(stage, Err(error)),
+        Ok(_) => Err(fail(stage)),
+    }
 }
 fn demand(ok: bool, detail: &'static str) -> io::Result<()> {
     if ok { Ok(()) } else { Err(fail(detail)) }
@@ -119,9 +140,10 @@ fn verify_acl(server: &NamedPipeServer, identity: &Identity) -> io::Result<()> {
             &mut raw,
         )
     };
-    if status != 0 || raw.is_null() {
+    if status != 0 {
         return Err(io::Error::from_raw_os_error(status as i32));
     }
+    demand(!raw.is_null(), "pipe ACL descriptor missing")?;
     let descriptor = Descriptor(raw);
     let mut text = ptr::null_mut();
     let mut length = 0;
@@ -153,13 +175,14 @@ fn verify_acl(server: &NamedPipeServer, identity: &Identity) -> io::Result<()> {
         .strip_suffix(')')
         .ok_or_else(|| fail("pipe DACL malformed"))?;
     let sid = identity.logon_sddl();
+    demand(flags.contains('P'), "pipe DACL protection bit absent")?;
     demand(
-        flags.contains('P')
-            && !ace.contains(['(', ')'])
-            && ace.starts_with("A;")
-            && ace.split(';').count() == 6
-            && ace.split(';').next_back() == Some(sid.as_str()),
-        "pipe DACL is not restricted to the current logon",
+        !ace.contains(['(', ')']) && ace.starts_with("A;") && ace.split(';').count() == 6,
+        "pipe DACL does not contain one allow entry",
+    )?;
+    demand(
+        ace.split(';').next_back() == Some(sid.as_str()),
+        "pipe DACL allow entry does not match current logon",
     )
 }
 
@@ -285,10 +308,12 @@ fn spawn(root: &Path, scenario: &str) -> io::Result<Child> {
 
 async fn wait(mut child: Child, expected: u8) -> io::Result<()> {
     let result = timeout(CHILD, child.wait()).await??;
-    demand(
-        result.code() == Some(i32::from(expected)),
-        "unexpected lab child exit",
-    )
+    let code = result.code();
+    if code != Some(i32::from(expected)) {
+        eprintln!("native open lab child exit: expected {expected}, got {code:?}");
+        return Err(fail("unexpected lab child exit"));
+    }
+    Ok(())
 }
 
 async fn incoming(pipe: &NamedPipeServer, identity: &Identity) -> io::Result<()> {
@@ -298,38 +323,48 @@ async fn incoming(pipe: &NamedPipeServer, identity: &Identity) -> io::Result<()>
 
 async fn run_lab() -> io::Result<()> {
     eprintln!("native open lab: directory and logon scope");
-    let root = tempfile::tempdir()?;
-    let other = tempfile::tempdir()?;
-    let identity = Identity::current()?;
-    let address = identity.address(root.path())?;
-    let alias = root.path().canonicalize()?;
+    let root = at("create primary scratch directory", tempfile::tempdir())?;
+    let other = at("create alternate scratch directory", tempfile::tempdir())?;
+    let identity = at("current process token", Identity::current())?;
+    let address = at("primary directory identity", identity.address(root.path()))?;
+    let alias = at(
+        "primary directory canonicalization",
+        root.path().canonicalize(),
+    )?;
     demand(
-        identity.address(&alias)? == address && identity.address(other.path())? != address,
-        "directory identity does not follow canonical aliases",
+        at("canonical alias identity", identity.address(&alias))? == address,
+        "canonical alias changed the directory identity",
+    )?;
+    demand(
+        at(
+            "alternate directory identity",
+            identity.address(other.path()),
+        )? != address,
+        "different scratch directories share a directory identity",
     )?;
     demand(
         !local_path(Path::new(r"\\server\share\song.mp3"))
             && !local_path(Path::new("https://example.invalid/song.flac")),
         "non-local path accepted",
     )?;
-    let mut server = listener(&address, &identity)?;
-    verify_acl(&server, &identity)?;
-    demand(
-        listener(&address, &identity)
-            .err()
-            .and_then(|e| e.raw_os_error())
-            == Some(ERROR_ACCESS_DENIED as i32),
-        "first pipe instance was not exclusive",
+    let mut server = at("create first pipe instance", listener(&address, &identity))?;
+    at("read and verify pipe DACL", verify_acl(&server, &identity))?;
+    expect_open_error(
+        "reject duplicate first pipe instance",
+        listener(&address, &identity),
+        ERROR_ACCESS_DENIED,
     )?;
-    wait(spawn(other.path(), "normal")?, UNAVAILABLE).await?;
+    let child = at("spawn wrong-directory child", spawn(other.path(), "normal"))?;
+    at("wrong-directory child", wait(child, UNAVAILABLE).await)?;
 
     eprintln!("native open lab: authenticated child, exact frame and busy path");
     let first = spawn(&alias, "normal")?;
     incoming(&server, &identity).await?;
     // One persistent server instance; a simultaneous sender cannot open it.
-    demand(
-        open(&address).err().and_then(|e| e.raw_os_error()) == Some(ERROR_PIPE_BUSY as i32),
-        "competing sender did not receive pipe busy",
+    expect_open_error(
+        "reject competing sender as busy",
+        open(&address),
+        ERROR_PIPE_BUSY,
     )?;
     write_code(&mut server, READY).await?;
     demand(
