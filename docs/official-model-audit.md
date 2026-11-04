@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `7947ceea`；总体流程及验证层级见
+本表基线为产品树 `68f45557`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -17,7 +17,7 @@
 
 | 官方模型（动作版本） | 恢复卡 | 当前状态与证据 | 剩余或适用边界 |
 | --- | --- | --- | --- |
-| `$$MainWindow` (2) | `models/__MainWindow.txt` | [宿主](window-lifecycle-contracts.txt) | 主窗关闭、恢复；开机启动、显式文件冷启动及 Linux 暖交接分别验收，系统关联独立。 |
+| `$$MainWindow` (2) | `models/__MainWindow.txt` | [宿主](window-lifecycle-contracts.txt) | 主窗关闭、恢复；开机启动、冷/暖文件打开、Debian 打开方式候选分别验收，系统默认独立。 |
 | `$$SubWindow` (15) | `models/__SubWindow.txt` | [宿主](desktop-lyrics-contracts.txt) | 浮动歌词及部分子窗；远程 H5 和桌宠不是同一链路。 |
 | `@@dva` (1) | `models/__dva.txt` | [待逐动作](architecture.txt) | 官方框架内部动作；对照业务副作用，不要求移植 DVA。 |
 | `@bff:modelForNej` (2) | `models/_bff_modelForNej.txt` | [待逐动作](architecture.txt) | 官方框架桥；尚无完整调用方和作用映射。 |
@@ -80,8 +80,8 @@
 | `page:loginMail` (9) | `models/page_loginMail.txt` | [已接入口](email-login-contracts.txt) | 邮件及相应挑战；线上支持边界单列。 |
 | `page:loginNickname` (8) | `models/page_loginNickname.txt` | [已接入口](nickname-editor-contracts.txt) | 昵称规则、确认与失败；不是所有注册渠道。 |
 | `page:loginPhone` (19) | `models/page_loginPhone.txt` | [已接入口](phone-entry-contracts.txt) | 手机号、密码、SMS 和已恢复的复用挑战。 |
-| `page:loginQrcode` (10) | `models/page_loginQrcode.txt` | [已接入口](refresh-token-issuance-evidence.txt) | 真实扫码下发并保存；不证明刷新轮换。 |
-| `page:loginQuick` (2) | `models/page_loginQuick.txt` | [部分](server-quick-login.txt) | 有恢复/候选隔离；原生 SDK 等分支待核。 |
+| `page:loginQrcode` (10) | `models/page_loginQrcode.txt` | [已接入口](refresh-token-issuance-evidence.txt) | 真实扫码下发并保存；官方异常状态可原地显式重试，不证明真实刷新轮换。 |
+| `page:loginQuick` (2) | `models/page_loginQuick.txt` | [部分](server-quick-login.txt) | 有恢复、候选隔离和独立快捷历史许可；主动退出后不保留凭据，原生 SDK 等分支待核。 |
 | `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；无实时推送、新会话发送。 |
 | `page:modListenToSong` (9) | `models/page_modListenToSong.txt` | [仅原型](song-recognition-authority.txt) | 实际封闭回采、指纹和请求对照；无生产采集、提交或独立域权限。 |
 | `page:musicDesktop` (0) | `models/page_musicDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 装扮桌面与歌词窗是不同宿主。 |
@@ -98,7 +98,7 @@
 | `page:setting` (0) | `models/page_setting.txt` | [已接入口](settings-mapping.json) | 独立子项证据；页面存在不等于所有设置已实现。 |
 | `page:settingAbout` (1) | `models/page_settingAbout.txt` | [部分](settings-support-contracts.txt) | 本机诊断与版本；无官方客服和自动日志上传。 |
 | `page:settingAccount` (1) | `models/page_settingAccount.txt` | [已接入口](account-feature-audit.txt) | 账号资料、登录设备和绑定摘要；各真实写操作分开。 |
-| `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](desktop-autostart-contracts.txt) | 启动窗口形态及本机注册已接；默认关联仍独立。 |
+| `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](desktop-autostart-contracts.txt) | 启动窗口、本机自启动及 Debian 候选已接；未修改系统默认。 |
 | `page:settingPrivacy` (3) | `models/page_settingPrivacy.txt` | [已接入口](account-settings-contracts.txt) | 六项远端设置、联动与回读；系统唤起交接另验。 |
 | `page:singleIndexList` (2) | `models/page_singleIndexList.txt` | [已接入口](rankings-ui-contracts.txt) | 歌曲指数榜独立于普通歌单。 |
 | `page:sns` (2) | `models/page_sns.txt` | [仅恢复](sns-login-recovery.txt) | 微信、QQ、微博授权宿主没有正式实现。 |
@@ -113,7 +113,7 @@
 | `page:vinylPage` (24) | `models/page_vinylPage.txt` | [部分](desktop-member-contracts.txt) | 会员权益、部分动态开通；无原生收银台/兑换。 |
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
 | `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、列表与移除；未对真实用户设备执行删除。 |
-| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；不同媒体/实验按各自证据。 |
+| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；官方自动跳歌只有普通歌曲的只读预判，未接正式播放器控制。 |
 | `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作、本地单行和普通在线歌单多选拖入；可显式重读过期歌单。同步、特殊队列和其他来源另验。 |
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | 设置逐项证据，系统相关和音效部分未完成。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |
