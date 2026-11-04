@@ -403,9 +403,7 @@ async fn remembered_headphone_requires_confirmed_attach_and_an_explicit_current_
         client
             .restore_native_headphone(&epoch, &remembered.revision)
             .await,
-        Err(Error::State(
-            "start playback before restoring headphone tuning"
-        ))
+        Err(Error::State("player not ready for headphone restore"))
     ));
     assert!(api.calls().is_empty());
     assert_eq!(factory_calls.load(Ordering::SeqCst), 0);
@@ -454,7 +452,7 @@ async fn remembered_headphone_requires_confirmed_attach_and_an_explicit_current_
     assert_eq!(restored.state, PlaybackStatus::Paused);
     assert!(device.parametric_attached.load(Ordering::SeqCst));
     assert_eq!(device.state.lock().unwrap().loads, 1);
-    assert_ne!(
+    assert_eq!(
         client
             .remembered_native_headphone(&epoch)
             .unwrap()

@@ -84,6 +84,10 @@ pub struct PlaybackFence {
     pub play_id: Option<String>,
 }
 impl PlaybackSnapshot {
+    pub(crate) fn headphone_restore_ready(&self) -> bool {
+        !self.startup_pending && (self.state == PlaybackStatus::Idle || self.state.active())
+    }
+
     pub fn fence(&self) -> PlaybackFence {
         PlaybackFence {
             control_revision: self.control_revision,

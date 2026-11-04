@@ -63,6 +63,43 @@
     const native = !!window.__cumulusDeviceNative;
     const invoke = (command, args) => window.__TAURI_INTERNALS__.invoke(command, args);
     const player = () => invoke('player_snapshot', { epoch: account.epoch });
+    if (window.__cumulusDeviceReopened) {
+      const launcher = () => one('.playerbar .equalizer-toggle');
+      await wait(async () => {
+        const current = await player();
+        return launcher() && !launcher().disabled && current.state === 'idle' &&
+          current.queueLen === 0 && !current.playId && !current.deviceParametric;
+      }, 'reopened process is ready and has no active playback or tuning');
+      click(launcher());
+      const eq = await wait(() => one('.equalizer-dialog[open]'), 'ordinary equalizer');
+      click(button(eq, '耳机音效'));
+      await wait(() => dialog()?.getAttribute('aria-label') === '耳机音效' &&
+        text().includes('上次使用') && button(dialog(), '恢复耳机调音'), 'local remembered selection');
+      const stored = await invoke('effect_device_remembered', { epoch: account.epoch });
+      assert(stored?.brand === 4100 && stored?.model === 4102, 'stored choice belongs to the restored account');
+      await capture('01_remembered_local');
+      click(button(dialog(), '恢复耳机调音'));
+      const configured = await wait(async () => {
+        const current = await player();
+        return current.deviceParametric?.status === 'configured' && current;
+      }, 'explicit restore configures the idle native player');
+      assert(configured.state === 'idle' && !configured.playId && configured.queueLen === 0 &&
+        configured.deviceParametric.modelName === '合成耳机乙', 'restore does not select or load audio');
+      assert((await invoke('effect_device_remembered', { epoch: account.epoch })).revision === stored.revision,
+        'restoring the same selection does not rewrite the remembered choice');
+      await capture('02_configured_idle');
+      await invoke('play_selection', { epoch: account.epoch, selection: {
+        kind: 'songs', ids: ['1'], index: 0, quality: 'standard',
+      } });
+      await wait(async () => {
+        const current = await player();
+        return current.state === 'playing' && current.position > 0.35 &&
+          current.deviceParametric?.activationId === configured.deviceParametric.activationId;
+      }, 'only explicit Play starts audio with the same tuning');
+      await capture('03_explicit_play');
+      await emit('complete', { ok: true, rememberedAcrossProcesses: true, stageCount: 3 });
+      return;
+    }
     if (native) {
       await invoke('play_selection', { epoch: account.epoch, selection: {
         kind: 'songs', ids: ['1'], index: 0, quality: 'standard',
@@ -273,15 +310,11 @@
       click(button(one('.playerbar'), '停止播放'));
       await wait(async () => (await player()).state === 'idle' &&
         launcher()?.getAttribute('aria-label') === '均衡器', 'stop does not restore the remembered tuning');
-      click(launcher());
-      const eq = await wait(() => one('.equalizer-dialog[open]'), 'open ordinary equalizer while idle');
-      click(button(eq, '耳机音效'));
-      await wait(() => dialog()?.getAttribute('aria-label') === '耳机音效' &&
-        text().includes('上次使用'), 'remembered headphone remains reachable without active tuning');
-      click(button(dialog(), '恢复耳机调音'));
-      await wait(() => text().includes('请先播放或暂停一段音频') && !currentTuning(),
-        'an explicit restore with no current audio cannot start playback');
-      assert((await player()).state === 'idle', 'remembered record is never an autoplay instruction');
+      const idle = await player();
+      await invoke('player_action', { epoch: account.epoch, action: {
+        kind: 'queue_for', expected_queue_revision: idle.queueRevision, edit: { kind: 'clear' },
+      } });
+      assert((await player()).queueLen === 0, 'reopen starts with an empty synthetic queue');
     }
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');

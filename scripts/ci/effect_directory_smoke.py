@@ -9,6 +9,41 @@ from contextlib import closing
 from motion_smoke import launch
 
 
+def verify_reopened(args, root, env, source, original_process):
+    scenario = root / 'scenario-reopen.js'
+    scenario.write_text('window.__cumulusDeviceReopened = true;\n' + source.read_text(encoding='utf-8'),
+                        encoding='utf-8')
+    env = {**env, 'CUMULUS_PROOF_REOPEN': '1', 'CUMULUS_UX_SCRIPT': str(scenario)}
+    output = root / 'reopen'
+    with (root / 'reopen-host.log').open('x', encoding='utf-8') as log:
+        code = launch(args.binary.resolve(strict=True), env, log, output, args.screenshots)
+    failed = output / 'failed.json'
+    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+    assert code == 0, f'reopened headphone proof exited {code}'
+
+    def read(name):
+        return json.loads((output / f'{name}.json').read_text(encoding='utf-8'))
+
+    before = read('ux_01_remembered_local')
+    idle = read('ux_02_configured_idle')
+    playing = read('ux_03_explicit_play')
+    complete = read('complete')
+    assert complete['ok'] and complete['rememberedAcrossProcesses'] and complete['stageCount'] == 3
+    assert before['nativePeq']['processId'] != original_process
+    assert not before['effectDirectoryCalls'] and before['nativePeq']['attaches'] == 0
+    assert before['nativePeq']['decoderLoads'] == idle['nativePeq']['decoderLoads'] == 0
+    assert before['nativePlayer']['state'] == idle['nativePlayer']['state'] == 'idle'
+    assert idle['nativePeq']['attaches'] == 1 and idle['nativePeq']['processedSamples'] == 0
+    assert idle['effectDirectoryCalls'] == playing['effectDirectoryCalls'] == [
+        {'path': '/api/usertool/home/soundeffect/devicesound/list', 'args': {'deviceManagerId': 4100}},
+    ]
+    assert playing['nativePlayer']['state'] == 'playing' and playing['nativePeq']['decoderLoads'] == 1
+    assert playing['nativePeq']['attaches'] == 1 and playing['nativePeq']['processedSamples'] > 0
+    for view in (before, idle, playing, complete):
+        assert view['nativePeq']['materialGets'] == view['nativePeq']['starts'] == view['nativePeq']['stops'] == 0
+    assert len(list(output.glob('ux_*.png'))) == (3 if args.screenshots else 0)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -21,7 +56,8 @@ def main():
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    script = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_directory_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_directory_ui_probe.js'
+    script = source
     if args.library:
         scenario = root / 'scenario.js'
         scenario.write_text('window.__cumulusDeviceNative = true;\n' + script.read_text(encoding='utf-8'),
@@ -90,9 +126,11 @@ def main():
         assert fault['detaches'] == fault['attaches'] == 2 and fault['injectedFaults'] == 1 and not fault['nativeAttached']
         assert fault['processedSamples'] > 0 and fault['failedBlocks'] == 0
         assert not fault['calls'] and complete['deviceTuningVerified'] and complete['headphoneFooterVerified']
+        verify_reopened(args, root, env, source, footer['nativePeq']['processId'])
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
                       'realAccountWrites': 0, 'limitedFreeExpiryVerified': True,
-                      'deviceMaterialVerified': True, 'deviceTuningVerified': bool(args.library)}))
+                      'deviceMaterialVerified': True, 'deviceTuningVerified': bool(args.library),
+                      'rememberedAcrossProcesses': bool(args.library)}))
 
 
 if __name__ == '__main__':

@@ -38,10 +38,10 @@ impl From<Error> for ClientError {
                         true,
                     )
                 }
-                Error::State("start playback before restoring headphone tuning") => (
-                    "headphone_restore_needs_playback",
-                    "请先播放或暂停一段音频，再恢复耳机调音",
-                    false,
+                Error::State("player not ready for headphone restore") => (
+                    "headphone_restore_player_unready",
+                    "播放器尚未就绪，请稍后恢复耳机调音",
+                    true,
                 ),
                 Error::State("invalid remembered headphone selection") => (
                     "headphone_selection_damaged",

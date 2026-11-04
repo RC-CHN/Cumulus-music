@@ -42,6 +42,7 @@ struct Trace {
     stats: Option<EqualizerStats>,
     native_attached: bool,
     injected_faults: u32,
+    loads: u32,
 }
 
 static TRACE: std::sync::LazyLock<Mutex<Trace>> =
@@ -219,7 +220,9 @@ impl AudioEngine for Audio {
             ));
         }
         request.source = MediaInput::File(self.wave.clone());
-        self.engine.load(request, cancel)
+        let loaded = self.engine.load(request, cancel)?;
+        TRACE.lock().unwrap().loads += 1;
+        Ok(loaded)
     }
     fn pause(&mut self, paused: bool) -> Result<()> {
         self.engine.pause(paused)
@@ -276,6 +279,7 @@ pub fn report() -> Value {
         "processId":std::process::id(),
         "calls":trace.calls,
         "materialGets":trace.material_gets,
+        "decoderLoads":trace.loads,
         "starts":trace.starts,
         "stops":trace.stops,
         "attaches":trace.attaches,

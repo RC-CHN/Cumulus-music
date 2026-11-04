@@ -83,6 +83,7 @@ struct DeviceActivationId {
 struct DeviceActivation {
     identity: DeviceActivationId,
     model_name: Option<String>,
+    remember_selection: bool,
 }
 
 pub(crate) struct DeviceRestoreAuthority {
@@ -425,7 +426,7 @@ impl Actor {
             // A restore should never adopt a replacement queue or start a
             // decoder. Reload only the stored queue to verify its identity.
             self.queue.reload()?;
-            if !self.state.active()
+            if !self.snapshot().headphone_restore_ready()
                 || self.pending.is_some()
                 || self.snapshot().fence() != expected.playback
                 || self
@@ -461,13 +462,14 @@ impl Actor {
             }
         }
         let selection = match selection {
-            Selection::DeviceRequest(target, plan, model_name, _) => Selection::Device(
+            Selection::DeviceRequest(target, plan, model_name, restore) => Selection::Device(
                 DeviceActivation {
                     identity: DeviceActivationId {
                         target,
                         id: uuid::Uuid::new_v4(),
                     },
                     model_name,
+                    remember_selection: restore.is_none(),
                 },
                 plan,
             ),
@@ -586,7 +588,7 @@ impl Actor {
                     }
                 })
                 .await;
-                if result.is_ok() {
+                if result.is_ok() && target.remember_selection {
                     // A local preference failure must not undo confirmed
                     // native tuning or affect the current playback.
                     self.parametric.device_selection_save_failed = self
@@ -600,7 +602,7 @@ impl Actor {
                             )
                         })
                         .is_err();
-                } else {
+                } else if result.is_err() {
                     if let Err(cleanup) = self.parametric_reset().await {
                         let _ = self.stop(false).await;
                         return Err(cleanup);

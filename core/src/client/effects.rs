@@ -20,7 +20,7 @@ use crate::{
     },
     playback::controller::{
         DeviceParametricTarget, DeviceRestoreAuthority, ParametricApplication,
-        ParametricBindingStatus, PlaybackController, PlaybackStatus,
+        ParametricBindingStatus, PlaybackController,
     },
 };
 use std::sync::Arc;
@@ -421,7 +421,7 @@ impl MusicClient {
         })
     }
 
-    /// Explicitly revalidate a saved choice for the already active selection.
+    /// Explicitly revalidate a saved choice for a settled native player.
     /// This does not initialize audio or start/resume playback.
     pub async fn restore_native_headphone(
         &self,
@@ -438,18 +438,8 @@ impl MusicClient {
             .controller
             .get()
             .map(|player| player.snapshot())
-            .filter(|value| {
-                value.account == token
-                    && matches!(
-                        value.state,
-                        PlaybackStatus::Playing
-                            | PlaybackStatus::Paused
-                            | PlaybackStatus::Buffering
-                    )
-            })
-            .ok_or(Error::State(
-                "start playback before restoring headphone tuning",
-            ))?;
+            .filter(|value| value.account == token && value.headphone_restore_ready())
+            .ok_or(Error::State("player not ready for headphone restore"))?;
         self.apply_device_parametric_for(
             &token,
             remembered.brand,
