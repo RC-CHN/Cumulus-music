@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `26eccdf8`；总体流程及验证层级见
+本表基线为产品树 `f84398ae`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -21,7 +21,7 @@
 | `$$SubWindow` (15) | `models/__SubWindow.txt` | [宿主](desktop-lyrics-contracts.txt) | 浮动歌词及部分子窗；远程 H5 和桌宠不是同一链路。 |
 | `@@dva` (1) | `models/__dva.txt` | [待逐动作](architecture.txt) | 官方框架内部动作；对照业务副作用，不要求移植 DVA。 |
 | `@bff:modelForNej` (2) | `models/_bff_modelForNej.txt` | [待逐动作](architecture.txt) | 官方框架桥；尚无完整调用方和作用映射。 |
-| `abtest` (18) | `models/abtest.txt` | [部分](discovery-home-contracts.txt) | 按功能核对实验选择；未迁移所有实验。 |
+| `abtest` (18) | `models/abtest.txt` | [部分](official-pc-experiments.txt) | 已恢复完整 PC 请求顺序和网页分组；尚未替换各业务现有分组路径。 |
 | `app` (54) | `models/app.txt` | [部分](window-lifecycle-contracts.txt) | 本机宿主和菜单；未覆盖每个 modal、原生回调或授权交接。 |
 | `assignedAudioEffect` (10) | `models/assignedAudioEffect.txt` | [部分](effects-directory-desktop.txt) | 已接已验证材料的授权和处理反馈；逐歌、设备完整图待核。 |
 | `async:action` (20) | `models/async_action.txt` | [待逐动作](catalog-navigation-ui-contracts.txt) | 部分资源有各自类型化入口；未完成统一派发器逐动作映射。 |
@@ -80,9 +80,9 @@
 | `page:loginMail` (9) | `models/page_loginMail.txt` | [已接入口](email-login-contracts.txt) | 邮件及相应挑战；线上支持边界单列。 |
 | `page:loginNickname` (8) | `models/page_loginNickname.txt` | [已接入口](nickname-editor-contracts.txt) | 昵称规则、确认与失败；不是所有注册渠道。 |
 | `page:loginPhone` (19) | `models/page_loginPhone.txt` | [已接入口](phone-entry-contracts.txt) | 手机号、密码、SMS 和已恢复的复用挑战。 |
-| `page:loginQrcode` (10) | `models/page_loginQrcode.txt` | [已接入口](refresh-token-issuance-evidence.txt) | 真实扫码下发并保存；官方异常状态可原地显式重试，不证明真实刷新轮换。 |
+| `page:loginQrcode` (10) | `models/page_loginQrcode.txt` | [已接入口](refresh-token-issuance-evidence.txt) | 真实扫码下发并保存；异常可原地重试，legacy 与 JSK 的扫码后 801 分开；不证明真实刷新轮换。 |
 | `page:loginQuick` (2) | `models/page_loginQuick.txt` | [部分](server-quick-login.txt) | 有恢复、候选隔离、快捷历史许可及服务判失效后的本机清理；主动退出不保留凭据。 |
-| `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；消息计数已有 Rust 轮询执行器，桌面未接；无实时推送、新会话发送。 |
+| `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；已接账号隔离的原生未读计数与顶栏红点；无实时推送、新会话发送。 |
 | `page:modListenToSong` (9) | `models/page_modListenToSong.txt` | [仅原型](song-recognition-authority.txt) | 实际封闭回采、指纹和请求对照；无生产采集、提交或独立域权限。 |
 | `page:musicDesktop` (0) | `models/page_musicDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 装扮桌面与歌词窗是不同宿主。 |
 | `page:myAudio` (16) | `models/page_myAudio.txt` | [已接入口](desktop-podcast-contracts.txt) | 我的播客/收藏/节目管理边界。 |
