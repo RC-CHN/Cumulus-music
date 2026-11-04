@@ -23,6 +23,18 @@
   });
   const snap = (name) => send(`ux_${name}`, { visible: document.visibilityState === 'visible' });
   const observe = (state) => one(`[data-import-state="${state}"]`);
+  const textarea = () => one('[data-import-text]', dialog());
+  const setText = (text) => {
+    textarea().value = text;
+    textarea().dispatchEvent(new InputEvent('input', { bubbles: true }));
+  };
+  const proceed = () => button('提交导入…');
+  const hittable = (node) => {
+    if (!node) return false;
+    const rect = node.getBoundingClientRect();
+    return [rect.y + rect.height / 2, rect.bottom - 2].every((y) =>
+      node.contains(document.elementFromPoint(rect.x + rect.width / 2, y)));
+  };
   async function open() {
     click(button('歌单导入预览', document));
     await wait(dialog, 'external import dialog');
@@ -45,6 +57,11 @@
       await wait(() => observe('unknown'), 'unknown receipt survives process reopen');
       await preview('https://www.kuwo.cn/synthetic/another');
       assert(!button('授权并导入…') && !button('提交导入…'), 'reopen forbids resubmission');
+      click(button('文字导入'));
+      assert(textarea().value === '', 'text is not retained after process reopen');
+      setText('不会重复提交的合成文字');
+      await wait(() => textarea().value.length > 0, 'reopen text input');
+      assert(!button('授权并导入…') && !proceed(), 'unknown receipt blocks both lanes');
       click(button('核对本机回执'));
       await wait(() => observe('unknown'), 'reopen inspect remains unknown');
       await snap('reopened');
@@ -79,9 +96,37 @@
     await wait(() => observe('accepted'), 'receipt says accepted only');
     assert(!dialog().textContent.includes('fixture-task-id'), 'native task id is private');
     await snap('accepted');
-    await preview('https://www.kuwo.cn/synthetic/playlist?list=2');
-    click(button('提交导入…'));
-    await wait(() => button('确认提交导入'), 'second explicit confirmation');
+    const linksTab = button('链接导入');
+    linksTab.focus();
+    linksTab.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+    await wait(() => button('文字导入')?.getAttribute('aria-selected') === 'true' &&
+      document.activeElement === button('文字导入'), 'keyboard switches and focuses the text tab');
+    setText('歌'.repeat(6000));
+    await wait(() => textarea()?.getAttribute('aria-invalid') === 'true' && proceed()?.disabled, 'bounded text paste');
+    const originalText = '  合成歌手 A&B=#?+ 50%\n合成曲目 🎵  ';
+    setText(originalText);
+    await wait(() => proceed() && !proceed().disabled, 'text ready without preflight');
+    click(proceed());
+    await wait(() => observe('confirm')?.dataset.importSource === 'text', 'typed text confirmation');
+    assert(!observe('confirm').textContent.includes('合成歌手'), 'raw text is not echoed by receipt');
+    setText(originalText + '\n编辑后的合成文字');
+    await wait(() => !observe('confirm') && proceed() && !proceed().disabled, 'editing revokes text confirmation');
+    await snap('text_edited');
+
+    click(proceed());
+    await wait(() => observe('confirm')?.dataset.importSource === 'text' &&
+      document.activeElement === button('取消提交') && hittable(button('确认提交导入')),
+      'text confirmation defaults to cancel focus and is not covered by the footer');
+    await snap('text_confirm');
+    click(button('确认提交导入'));
+    await wait(() => observe('accepted') && textarea().value === '' && !observe('confirm'), 'text accepted and draft cleared');
+    assert(!dialog().textContent.includes('fixture-text-task'), 'text task id remains native');
+    await snap('text_accepted');
+
+    setText('未知回执的合成文字');
+    await wait(() => proceed() && !proceed().disabled, 'new text input');
+    click(proceed());
+    await wait(() => observe('confirm')?.dataset.importSource === 'text', 'next explicit text confirmation');
     click(button('确认提交导入'));
     await wait(() => observe('unknown'), 'missing task id is unknown');
     await snap('unknown');

@@ -1,9 +1,9 @@
-//! Account-bound link-import preparation and durable one-shot dispatch.
+//! Account-bound external import preparation and durable one-shot dispatch.
 use super::{MusicClient, dto::AccountData};
 use crate::{
     Error, Result,
     account::SessionToken,
-    playlist::{ExternalPlaylistInput, external_import as wire},
+    playlist::external_import as wire,
     protocol::http::{HttpBackend, ReqwestBackend},
     storage::StateStore,
 };
@@ -23,6 +23,7 @@ const LATEST: &str = "latest";
 pub enum ExternalImportAction {
     Inspect,
     Prepare { inputs: Vec<String> },
+    PrepareText { text: String },
     Cancel { receipt: String },
     Submit { receipt: String },
 }
@@ -47,7 +48,7 @@ enum ExternalImportOutcome {
 struct ExternalImportPreview {
     receipt: String,
     name: String,
-    links: Vec<ExternalPlaylistInput>,
+    source: wire::SourcePreview,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -168,7 +169,7 @@ struct Draft {
     token: SessionToken,
     name: String,
     receipt: String,
-    batch: wire::LinkBatch,
+    batch: wire::TaskBatch,
 }
 
 #[derive(Default)]
@@ -208,6 +209,42 @@ impl MusicClient {
         self
     }
 
+    fn prepare_external_import(
+        &self,
+        token: &SessionToken,
+        store: &StateStore,
+        source: impl FnOnce() -> Result<(wire::TaskBatch, wire::SourcePreview)>,
+    ) -> Result<ExternalImportPreview> {
+        if self.external_import_credentials(token)?.is_none() {
+            return Err(Error::State("authorize the external import session first"));
+        }
+        let (batch, source) = source()?;
+        let name = default_name();
+        let receipt = Uuid::new_v4().simple().to_string();
+        self.session.with_token(token, |uid| {
+            if matches!(
+                parse(store.get(uid, JOURNAL, LATEST)?)?,
+                Some(Record {
+                    phase: Phase::Unknown,
+                    ..
+                })
+            ) {
+                return Err(Error::State("previous external import remains unconfirmed"));
+            }
+            *self.external_import.matching(token)? = Some(Draft {
+                token: token.clone(),
+                name: name.clone(),
+                receipt: receipt.clone(),
+                batch,
+            });
+            Ok(ExternalImportPreview {
+                receipt,
+                name,
+                source,
+            })
+        })
+    }
+
     pub async fn external_import_command(
         &self,
         epoch: &str,
@@ -228,29 +265,12 @@ impl MusicClient {
                 })?;
             }
             ExternalImportAction::Prepare { inputs } => {
-                if self.external_import_credentials(&token)?.is_none() {
-                    return Err(Error::State("authorize the external import session first"));
-                }
-                let mut batch = wire::batch(&inputs)?;
-                let name = default_name();
-                let receipt = Uuid::new_v4().simple().to_string();
-                self.session.with_token(&token, |uid| {
-                    if matches!(outcome(uid)?, ExternalImportOutcome::Unknown { .. }) {
-                        return Err(Error::State("previous external import remains unconfirmed"));
-                    }
-                    prepared = Some(ExternalImportPreview {
-                        receipt: receipt.clone(),
-                        name: name.clone(),
-                        links: std::mem::take(&mut batch.preview),
-                    });
-                    *self.external_import.matching(&token)? = Some(Draft {
-                        token: token.clone(),
-                        name,
-                        receipt,
-                        batch,
-                    });
-                    Ok(())
-                })?;
+                prepared =
+                    Some(self.prepare_external_import(&token, &store, || wire::links(&inputs))?);
+            }
+            ExternalImportAction::PrepareText { text } => {
+                prepared =
+                    Some(self.prepare_external_import(&token, &store, || wire::text(&text))?);
             }
             ExternalImportAction::Cancel { receipt } => {
                 self.session.with_token(&token, |_| {

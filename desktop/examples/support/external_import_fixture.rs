@@ -77,6 +77,7 @@ impl HttpBackend for Wire {
                         .get("2", "external-playlist-import-v1", "latest")?
                         .unwrap();
                     assert_eq!(row["phase"]["state"], "unknown");
+                    assert_eq!(row.as_object().unwrap().len(), 2);
                     let n = self.sends.fetch_add(1, Ordering::AcqRel);
                     self.requests.lock().unwrap().push("submit".into());
                     Ok(reply(
@@ -84,7 +85,8 @@ impl HttpBackend for Wire {
                             0 => {
                                 json!({"code":200,"data":{"taskId":"fixture-task-id-must-not-leak"}})
                             }
-                            1 => json!({"code":200,"data":{}}),
+                            1 => json!({"code":200,"data":{"taskId":"fixture-text-task-private"}}),
+                            2 => json!({"code":200,"data":{}}),
                             _ => panic!("unexpected import replay"),
                         },
                         vec![],

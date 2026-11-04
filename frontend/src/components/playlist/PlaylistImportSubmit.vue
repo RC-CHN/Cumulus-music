@@ -6,11 +6,12 @@ import type {
   ExternalImportAuthAction,
   ExternalImportAuthState,
   ExternalImportAuthView,
+  ExternalImportInput,
   ExternalImportView,
 } from '../../services/externalPlaylistImport';
 
-const props = defineProps<{ epoch: string; inputs: readonly string[]; ready: boolean }>();
-const emit = defineEmits<{ authorizationPanel: [shown: boolean] }>();
+const props = defineProps<{ epoch: string; input: ExternalImportInput; ready: boolean }>();
+const emit = defineEmits<{ authorizationPanel: [shown: boolean]; clearText: [] }>();
 const core = useCore();
 const value = ref<ExternalImportView>();
 const auth = ref<ExternalImportAuthView>();
@@ -114,6 +115,8 @@ async function command(action: ExternalImportAction) {
   if (!alive || busy.value) return;
   const epoch = props.epoch;
   const attempt = inputVersion;
+  const preparing = action.kind === 'prepare' || action.kind === 'prepare_text';
+  const submittingText = action.kind === 'submit' && value.value?.prepared?.source.kind === 'text';
   busy.value = true;
   error.value = '';
   if (action.kind === 'submit' && value.value) value.value = { ...value.value, prepared: null };
@@ -124,7 +127,7 @@ async function command(action: ExternalImportAction) {
       !alive ||
       props.epoch !== epoch ||
       result.epoch !== epoch ||
-      (action.kind === 'prepare' && attempt !== inputVersion)
+      (preparing && attempt !== inputVersion)
     ) {
       if (prepared)
         void core
@@ -133,23 +136,36 @@ async function command(action: ExternalImportAction) {
       return;
     }
     value.value = result.value;
+    if (submittingText && attempt === inputVersion) emit('clearText');
     if (prepared) {
       await nextTick();
-      if (alive && value.value?.prepared?.receipt === prepared.receipt) cancelButton.value?.focus();
+      if (alive && value.value?.prepared?.receipt === prepared.receipt) {
+        const button = cancelButton.value;
+        button?.focus({ preventScroll: true });
+        button?.scrollIntoView({ block: 'nearest' });
+        const dialog = button?.closest('dialog');
+        const footer = dialog?.querySelector('footer');
+        if (dialog && footer && button) {
+          // Some WebViews ignore scroll padding when the footer is sticky.
+          const covered =
+            button.getBoundingClientRect().bottom - footer.getBoundingClientRect().top;
+          if (covered > -8) dialog.scrollTop += covered + 8;
+        }
+      }
     }
   } catch {
     if (alive && props.epoch === epoch) {
       error.value =
         action.kind === 'submit'
           ? '暂未能读取导入结果。请核对本机回执，勿重复提交。'
-          : action.kind === 'prepare'
-            ? '无法准备导入，请检查链接和授权。'
+          : preparing
+            ? '无法准备导入，请检查输入和授权。'
             : '';
       if (action.kind === 'submit') {
         // Fence controls until an explicit local read; never replay the write.
         value.value = undefined;
       }
-      if (action.kind === 'prepare') {
+      if (preparing) {
         void core
           .externalPlaylistImportAuth(epoch)
           .then((next) => {
@@ -184,11 +200,13 @@ function proceed() {
     authShown.value = true;
     if (canBegin.value) void authorize({ kind: 'begin' });
     else schedule();
-  } else void command({ kind: 'prepare', inputs: [...props.inputs] });
+  } else if (props.input.kind === 'text') {
+    void command({ kind: 'prepare_text', text: props.input.text });
+  } else void command({ kind: 'prepare', inputs: [...props.input.inputs] });
 }
 
 watch(
-  () => props.inputs.slice(),
+  () => (props.input.kind === 'links' ? props.input.inputs.slice() : props.input.text),
   () => {
     inputVersion++;
     discard();
@@ -237,7 +255,11 @@ onBeforeUnmount(() => {
     <p v-if="value?.outcome.state === 'unknown'" role="status" data-import-state="unknown">
       导入结果未知。请在「创建的歌单」和小秘书私信查看；此客户端不会重发。
     </p>
-    <p v-if="value?.outcome.state === 'accepted'" role="status" data-import-state="accepted">
+    <p
+      v-if="value?.outcome.state === 'accepted' && !value.prepared"
+      role="status"
+      data-import-state="accepted"
+    >
       歌单正在导入。任务已受理，可在「创建的歌单」和小秘书私信查看结果。
     </p>
     <button
@@ -279,8 +301,17 @@ onBeforeUnmount(() => {
         重新扫码
       </button>
     </div>
-    <div v-if="value?.prepared" class="external-import-confirm" data-import-state="confirm">
-      <p>将把已识别的链接交给网易云音乐，服务端将尝试创建「{{ value.prepared.name }}」。</p>
+    <div
+      v-if="value?.prepared"
+      class="external-import-confirm"
+      data-import-state="confirm"
+      :data-import-source="value.prepared.source.kind"
+    >
+      <p>
+        将把{{
+          value.prepared.source.kind === 'text' ? '输入的文字' : '已识别的链接'
+        }}交给网易云音乐，服务端将尝试创建「{{ value.prepared.name }}」。
+      </p>
       <button ref="cancelButton" type="button" class="secondary" @click="discard(true)">
         取消提交
       </button>
@@ -294,11 +325,16 @@ onBeforeUnmount(() => {
       </button>
     </div>
     <button
-      v-else-if="value && canSubmit && (!authShown || authAvailable)"
+      v-else-if="
+        value &&
+        value.outcome.state !== 'unknown' &&
+        (canSubmit || input.kind === 'text') &&
+        (!authShown || authAvailable)
+      "
       ref="proceedButton"
       class="secondary"
       type="button"
-      :disabled="busy || authBusy"
+      :disabled="!canSubmit || busy || authBusy"
       @click="proceed"
     >
       {{ authAvailable ? '提交导入…' : '授权并导入…' }}

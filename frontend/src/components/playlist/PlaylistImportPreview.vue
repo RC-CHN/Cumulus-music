@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useCore } from '../../services/core';
+import {
+  maxExternalImportTextBytes,
+  type ExternalImportInput,
+} from '../../services/externalPlaylistImport';
 import type { ExternalPlaylistInput, ExternalPlaylistSource } from '../../services/playlists';
 import Icon from '../Icon.vue';
 import ModalTransition from '../ModalTransition.vue';
@@ -12,7 +16,14 @@ const trigger = ref<HTMLButtonElement>();
 const dialog = ref<HTMLDialogElement>();
 const open = ref(false);
 const authorizationPanel = ref(false);
+const tabs = [
+  ['links', '链接导入'],
+  ['text', '文字导入'],
+] as const;
+type ImportTab = (typeof tabs)[number][0];
+const tab = ref<ImportTab>('links');
 const inputs = ref(['']);
+const rawText = ref('');
 const observed = ref<ExternalPlaylistInput[]>();
 const busy = ref(false);
 const issue = ref('');
@@ -22,6 +33,22 @@ const recognized = computed(
   () => observed.value?.filter((item) => item.kind === 'link').length ?? 0,
 );
 const canRead = computed(() => inputs.value.some((input) => input.trim().length > 0));
+const textBytes = computed(() =>
+  rawText.value.length > maxExternalImportTextBytes
+    ? maxExternalImportTextBytes + 1
+    : new TextEncoder().encode(rawText.value).length,
+);
+const textTooLarge = computed(() => textBytes.value > maxExternalImportTextBytes);
+const input = computed<ExternalImportInput>(() =>
+  tab.value === 'links'
+    ? { kind: 'links', inputs: inputs.value }
+    : { kind: 'text', text: rawText.value },
+);
+const ready = computed(() =>
+  tab.value === 'links'
+    ? recognized.value > 0 && !observed.value?.some((item) => item.kind === 'unrecognized')
+    : textBytes.value > 0 && !textTooLarge.value,
+);
 const names: Record<ExternalPlaylistSource, string> = {
   qq: 'QQ音乐',
   kugou: '酷狗音乐',
@@ -50,6 +77,8 @@ function focusLink(index: number) {
 async function show() {
   if (open.value) return;
   inputs.value = [''];
+  rawText.value = '';
+  tab.value = 'links';
   authorizationPanel.value = false;
   open.value = true;
   await nextTick();
@@ -59,7 +88,35 @@ async function show() {
 function close() {
   invalidate();
   inputs.value = [''];
+  rawText.value = '';
   open.value = false;
+}
+function chooseTab(target: ImportTab) {
+  if (tab.value === target) return;
+  // The fixed H5 switches component instances; the abandoned form is discarded.
+  inputs.value = [''];
+  rawText.value = '';
+  tab.value = target;
+}
+async function tabKey(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  chooseTab(
+    event.key === 'Home'
+      ? 'links'
+      : event.key === 'End'
+        ? 'text'
+        : tab.value === 'links'
+          ? 'text'
+          : 'links',
+  );
+  await nextTick();
+  dialog.value?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')?.focus();
+}
+async function clearText() {
+  rawText.value = '';
+  await nextTick();
+  dialog.value?.querySelector<HTMLElement>('[data-import-text]')?.focus();
 }
 async function add() {
   if (inputs.value.length >= maxLinks) return;
@@ -74,7 +131,7 @@ async function remove(index: number) {
   focusLink(Math.min(index, inputs.value.length - 1));
 }
 async function preview() {
-  if (!open.value || busy.value || !canRead.value) return;
+  if (!open.value || tab.value !== 'links' || busy.value || !canRead.value) return;
   const ticket = ++generation;
   const current = () => open.value && ticket === generation;
   busy.value = true;
@@ -110,67 +167,120 @@ async function preview() {
         </button>
       </header>
       <form :aria-busy="busy" @submit.prevent="preview">
-        <p v-show="!authorizationPanel" class="muted">
-          粘贴外部歌单分享链接。预览只识别链接，不读取曲目或提交导入。
-        </p>
-        <fieldset v-show="!authorizationPanel">
-          <legend>链接</legend>
-          <div v-for="(_, index) in inputs" :key="index" class="import-link-row">
-            <label>
-              链接 {{ index + 1 }}
-              <input
-                v-model="inputs[index]"
-                :data-import-input="index"
-                maxlength="4096"
-                inputmode="url"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="粘贴歌单链接或分享文字"
-              />
-            </label>
-            <button
-              v-if="inputs.length > 1"
-              type="button"
-              class="text-button"
-              :aria-label="`删除链接 ${index + 1}`"
-              @click="remove(index)"
-            >
-              删除
-            </button>
-            <p v-if="observed?.[index]?.kind === 'link'" class="import-link-result">
-              {{ sourceLabel(observed[index]) }}
-            </p>
-            <p v-else-if="observed?.[index]?.kind === 'unrecognized'" class="import-link-result">
-              未识别到网页链接
-            </p>
-          </div>
-        </fieldset>
-        <button
+        <div
           v-show="!authorizationPanel"
-          type="button"
-          class="text-button"
-          :disabled="inputs.length >= maxLinks"
-          @click="add"
+          class="external-import-tabs"
+          role="tablist"
+          aria-label="导入方式"
         >
-          添加链接
-        </button>
-        <p v-if="!authorizationPanel && inputs.length >= maxLinks" class="muted">
-          最多预览 10 个链接。
-        </p>
-        <p v-if="!authorizationPanel && issue" role="alert">{{ issue }}</p>
-        <p v-else-if="!authorizationPanel && observed" role="status">
-          已识别 {{ recognized }} 个链接。
-        </p>
+          <button
+            v-for="[key, label] in tabs"
+            :id="`external-import-tab-${key}`"
+            :key="key"
+            role="tab"
+            type="button"
+            :aria-controls="`external-import-panel-${key}`"
+            :aria-selected="key === tab"
+            :tabindex="key === tab ? 0 : -1"
+            @click="chooseTab(key)"
+            @keydown="tabKey"
+          >
+            {{ label }}
+          </button>
+        </div>
+        <section
+          v-show="!authorizationPanel && tab === 'links'"
+          id="external-import-panel-links"
+          role="tabpanel"
+          aria-labelledby="external-import-tab-links"
+        >
+          <p class="muted">粘贴外部歌单分享链接。预览只识别链接，不读取曲目或提交导入。</p>
+          <fieldset>
+            <legend>链接</legend>
+            <div v-for="(_, index) in inputs" :key="index" class="import-link-row">
+              <label>
+                链接 {{ index + 1 }}
+                <input
+                  v-model="inputs[index]"
+                  :data-import-input="index"
+                  maxlength="4096"
+                  inputmode="url"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="粘贴歌单链接或分享文字"
+                />
+              </label>
+              <button
+                v-if="inputs.length > 1"
+                type="button"
+                class="text-button"
+                :aria-label="`删除链接 ${index + 1}`"
+                @click="remove(index)"
+              >
+                删除
+              </button>
+              <p v-if="observed?.[index]?.kind === 'link'" class="import-link-result">
+                {{ sourceLabel(observed[index]) }}
+              </p>
+              <p v-else-if="observed?.[index]?.kind === 'unrecognized'" class="import-link-result">
+                未识别到网页链接
+              </p>
+            </div>
+          </fieldset>
+          <button
+            type="button"
+            class="text-button"
+            :disabled="inputs.length >= maxLinks"
+            @click="add"
+          >
+            添加链接
+          </button>
+          <p v-if="inputs.length >= maxLinks" class="muted">最多预览 10 个链接。</p>
+          <p v-if="issue" role="alert">{{ issue }}</p>
+          <p v-else-if="observed" role="status">已识别 {{ recognized }} 个链接。</p>
+        </section>
+        <section
+          v-show="!authorizationPanel && tab === 'text'"
+          id="external-import-panel-text"
+          role="tabpanel"
+          aria-labelledby="external-import-tab-text"
+        >
+          <p class="muted">复制歌曲文字，再将整段文字粘贴到下方。确认后交给网易云音乐识别。</p>
+          <label>
+            歌曲文字
+            <textarea
+              v-model="rawText"
+              data-import-text
+              rows="5"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="粘贴到此处"
+              aria-describedby="external-import-text-limit"
+              :aria-invalid="textTooLarge || undefined"
+            />
+          </label>
+          <p
+            id="external-import-text-limit"
+            :role="textTooLarge ? 'alert' : undefined"
+            class="muted"
+          >
+            {{ textTooLarge ? '文字超过 16 KiB，请缩短后再导入。' : '最多 16 KiB。' }}
+          </p>
+          <button v-if="rawText" type="button" class="text-button" @click="clearText">
+            清空文字
+          </button>
+        </section>
         <PlaylistImportSubmit
           :epoch="accountEpoch"
-          :inputs="inputs"
-          :ready="recognized > 0 && !observed?.some((item) => item.kind === 'unrecognized')"
+          :input="input"
+          :ready="ready"
           @authorization-panel="authorizationPanel = $event"
+          @clear-text="rawText = ''"
         />
         <footer>
           <button type="button" class="secondary" @click="close">关闭</button>
           <button
-            v-show="!authorizationPanel"
+            v-show="!authorizationPanel && tab === 'links'"
             type="submit"
             class="primary"
             :disabled="!canRead || busy"
@@ -187,9 +297,31 @@ async function preview() {
 .external-playlist-preview {
   width: min(416px, calc(100vw - 32px));
   max-height: min(576px, calc(100dvh - 32px));
+  scroll-padding-block: 65px 85px;
 }
-.external-playlist-preview form > p:first-child {
-  margin: 0 0 16px;
+.external-import-tabs {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.external-import-tabs button {
+  padding: 6px 3px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+}
+.external-import-tabs [aria-selected='true'] {
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
+.external-playlist-preview [role='tabpanel'] > p:first-child {
+  margin: 0 0 12px;
+}
+.external-playlist-preview textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
 }
 .import-link-row {
   display: grid;

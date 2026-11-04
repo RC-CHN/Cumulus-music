@@ -1,5 +1,5 @@
-//! The fixed desktop H5 link-import request. This is an Interface-origin WEAPI
-//! call, independent of the PC API transport and generic route selection.
+//! The fixed desktop H5 link and text import requests. Both use Interface
+//! WEAPI independent of the PC API transport and generic route selection.
 use super::{
     ExternalPlaylistInput, external_input::selected_link, preview_external_playlist_inputs,
 };
@@ -13,15 +13,24 @@ use crate::{
         wire::{serialization::encode_component, weapi},
     },
 };
+use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 pub(crate) const TASK_CREATE: &str = "/api/playlist/import/name/task/create";
 const PAGE_ORIGIN: &str = "https://mp.music.163.com";
+const TEXT_PREFIX: &str = "rpc://playlist/import?text=";
+const MAX_TEXT_BYTES: usize = 16 * 1024;
 
-pub(crate) struct LinkBatch {
-    pub preview: Vec<ExternalPlaylistInput>,
+pub(crate) struct TaskBatch {
     encoded: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(crate) enum SourcePreview {
+    Links { links: Vec<ExternalPlaylistInput> },
+    Text { bytes: usize },
 }
 
 fn encode_uri(input: &str) -> String {
@@ -39,8 +48,8 @@ fn encode_uri(input: &str) -> String {
     out
 }
 
-pub(crate) fn batch(inputs: &[String]) -> Result<LinkBatch> {
-    let preview = preview_external_playlist_inputs(inputs)?;
+pub(crate) fn links(inputs: &[String]) -> Result<(TaskBatch, SourcePreview)> {
+    let links = preview_external_playlist_inputs(inputs)?;
     let mut encoded = Vec::new();
     for input in inputs.iter().filter(|input| !input.trim().is_empty()) {
         let (literal, parsed) =
@@ -65,10 +74,28 @@ pub(crate) fn batch(inputs: &[String]) -> Result<LinkBatch> {
             "enter at least one playlist import link",
         ));
     }
-    Ok(LinkBatch { preview, encoded })
+    Ok((TaskBatch { encoded }, SourcePreview::Links { links }))
 }
 
-impl LinkBatch {
+pub(crate) fn text(raw: &str) -> Result<(TaskBatch, SourcePreview)> {
+    let bytes = raw.len();
+    if bytes == 0 || bytes > MAX_TEXT_BYTES {
+        return Err(Error::InvalidInput(
+            "external playlist text must contain 1 to 16384 UTF-8 bytes",
+        ));
+    }
+    // H5:4590–4615 encodes the whole opaque RPC string once. Applying
+    // a URL parser or encoding only the text as a query value changes it.
+    let encoded = encode_uri(&format!("{TEXT_PREFIX}{raw}"));
+    Ok((
+        TaskBatch {
+            encoded: vec![encoded],
+        },
+        SourcePreview::Text { bytes },
+    ))
+}
+
+impl TaskBatch {
     pub(crate) fn payload(&self, name: &str) -> Result<Value> {
         let songs = self
             .encoded
@@ -112,7 +139,7 @@ fn scoped_credentials(credentials: &Credentials) -> Result<RequestCredentials> {
 
 pub(crate) fn request(
     credentials: &Credentials,
-    batch: &LinkBatch,
+    batch: &TaskBatch,
     name: &str,
 ) -> Result<PreparedRequest> {
     let cookie = scoped_credentials(credentials)?;
@@ -253,9 +280,9 @@ mod tests {
         ))
         .unwrap();
         let inputs: Vec<String> = serde_json::from_value(vector["inputs"].clone()).unwrap();
-        let batch = batch(&inputs).unwrap();
+        let (batch, preview) = links(&inputs).unwrap();
         let name = vector["name"].as_str().unwrap();
-        assert_eq!(batch.preview.len(), 4);
+        assert!(matches!(preview, SourcePreview::Links { links } if links.len() == 4));
         let csrf = vector["csrf"].as_str().unwrap();
         let cookie = RequestCredentials {
             target: ApiOrigin::Interface
@@ -336,13 +363,13 @@ mod tests {
             "__csrf=interface-only; Path=/; Secure",
             "__csrf=shared-httponly; Domain=music.163.com; Path=/; Secure; HttpOnly",
         ]);
-        let links = batch(&["https://y.qq.com/playlist/fixture".into()]).unwrap();
-        let native = request(&interface, &links, "合成歌单").unwrap();
+        let (batch, _) = links(&["https://y.qq.com/playlist/fixture".into()]).unwrap();
+        let native = request(&interface, &batch, "合成歌单").unwrap();
         assert!(native.plan.headers["Cookie"].contains("interface-only"));
         assert!(native.plan.headers["Cookie"].contains("shared-httponly"));
         assert!(native.plan.url.query().is_none());
         set(&["__csrf=page-visible; Domain=music.163.com; Path=/; Secure"]);
-        let native = request(&interface, &links, "合成歌单").unwrap();
+        let native = request(&interface, &batch, "合成歌单").unwrap();
         assert_eq!(native.plan.url.query(), Some("csrf_token=page-visible"));
         assert!(native.plan.headers["Cookie"].contains("interface-only"));
         assert!(native.revalidate(&interface).is_ok());
@@ -358,7 +385,7 @@ mod tests {
             "http://router.home.arpa/x",
             "https://music.example:8080/42",
         ] {
-            assert!(batch(&[input.into()]).is_err(), "{input}");
+            assert!(links(&[input.into()]).is_err(), "{input}");
         }
         let valid = json!({"code":200,"data":{"taskId":"task-a_1"}});
         assert_eq!(
@@ -384,5 +411,28 @@ mod tests {
             .as_deref(),
             Some("9007199254740993")
         );
+    }
+
+    #[test]
+    fn text_is_one_opaque_encode_uri_song_and_preview_does_not_echo_it() {
+        let raw = "  第一首 / A&B=#?+ 50%\r\nSecond 🎵\t尾  ";
+        let (batch, preview) = text(raw).unwrap();
+        assert_eq!(
+            serde_json::to_value(preview).unwrap(),
+            json!({"kind":"text","bytes":44})
+        );
+        let payload = batch.payload("导入音乐 2026/11/4 12:34:56").unwrap();
+        // Frozen from Node's encodeURI over H5:4605, with the full original text.
+        let expected = "rpc://playlist/import?text=%20%20%E7%AC%AC%E4%B8%80%E9%A6%96%20/%20A&B=#?+%2050%25%0D%0ASecond%20%F0%9F%8E%B5%09%E5%B0%BE%20%20";
+        let songs: Value = serde_json::from_str(payload["songs"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            songs,
+            json!([{"name":payload["playlistName"],"type":"","url":expected}])
+        );
+        assert_eq!(payload["importStarPlaylist"], false);
+        assert!(text("").is_err());
+        assert!(text(" \n").is_ok(), "official only checks nonempty input");
+        assert!(text(&"x".repeat(MAX_TEXT_BYTES)).is_ok());
+        assert!(text(&"歌".repeat(MAX_TEXT_BYTES / 3 + 1)).is_err());
     }
 }

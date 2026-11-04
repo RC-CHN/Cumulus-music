@@ -1,9 +1,16 @@
 import type { AccountData } from './contracts';
 import type { ExternalPlaylistInput } from './playlists';
 
+export const maxExternalImportTextBytes = 16 * 1024;
+
+export type ExternalImportInput =
+  | { kind: 'links'; inputs: readonly string[] }
+  | { kind: 'text'; text: string };
+
 export type ExternalImportAction =
   | { kind: 'inspect' }
   | { kind: 'prepare'; inputs: string[] }
+  | { kind: 'prepare_text'; text: string }
   | { kind: 'cancel' | 'submit'; receipt: string };
 
 export type ExternalImportOutcome =
@@ -13,7 +20,11 @@ export type ExternalImportOutcome =
 export interface ExternalImportView {
   authorized: boolean;
   outcome: ExternalImportOutcome;
-  prepared: { receipt: string; name: string; links: ExternalPlaylistInput[] } | null;
+  prepared: {
+    receipt: string;
+    name: string;
+    source: { kind: 'links'; links: ExternalPlaylistInput[] } | { kind: 'text'; bytes: number };
+  } | null;
 }
 
 export type ExternalImportAuthAction =

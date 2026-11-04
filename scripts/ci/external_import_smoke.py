@@ -53,19 +53,22 @@ def main():
         if mode == 'first':
             assert result['externalImport'] == {'requests': [
                 '/api/login/qrcode/unikey', *(['/api/login/qrcode/client/login'] * 3),
-                '/api/w/nuser/account/get', 'submit', 'submit',
-            ], 'dispatches': 2}
+                '/api/w/nuser/account/get', 'submit', 'submit', 'submit',
+            ], 'dispatches': 3}
             assert record('ux_preview')['externalImport']['requests'] == []
             assert record('ux_cancelled')['externalImport']['dispatches'] == 0
-            assert record('ux_checked')['externalImport']['dispatches'] == 2
+            assert record('ux_text_edited')['externalImport']['dispatches'] == 1
+            assert record('ux_text_confirm')['externalImport']['dispatches'] == 1
+            assert record('ux_text_accepted')['externalImport']['dispatches'] == 2
+            assert record('ux_checked')['externalImport']['dispatches'] == 3
         else:
             assert result['externalImport'] == {'requests': [], 'dispatches': 0}
-        stages = 8 if mode == 'first' else 1
+        stages = 11 if mode == 'first' else 1
         assert len(list(output.glob('ux_*.json'))) == stages
         assert len(list(output.glob('ux_*.png'))) == (stages if args.screenshots else 0)
         receipts[mode] = result['externalImport']
-    report = {'ok': True, 'actualWebView': True, 'states': 9,
-              'screenshots': 9 if args.screenshots else 0,
+    report = {'ok': True, 'actualWebView': True, 'states': 12,
+              'screenshots': 12 if args.screenshots else 0,
               'realMusicRequests': 0, 'remoteAccountWrites': 0, 'synthetic': receipts}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

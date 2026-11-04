@@ -33,7 +33,11 @@
   query 仅给 appBizName，createBusinessCode 和 extParam 均为 undefined，WEAPI JSON 中省略；
   taskIdForLog 是空字符串。importStarPlaylist 默认 false，属于另一个可选目标。
   桌面 rqRefer 取 window.rqRefer，无值时用空字符串（H5:7211–7228）。
-  文字分支复用接口，把整个输入封成 rpc://playlist/import?text=...（4590–4652）；
+  文字分支复用接口。H5:3839–3874,4445–4465,4544–4550,4590–4652 的单一文本框只检查非空；
+  `rows:1000` 是显示参数，未恢复官方字节数、歌曲数或行数限制。固定桌面跳过自动剪贴板
+  识别。把完整原文拼在 `rpc://playlist/import?text=` 后，对整个字符串调用 JS encodeURI，
+  作为 songs JSON 数组唯一一项的 url；name 和 type 与链接分支一致。换行、空白和 Unicode
+  原样参与编码；`&=#?+` 保留，`%` 编成 `%25`，不能拆行、trim 或改用 encodeURIComponent。
   图片使用 /api/playlist/import/create，带 playlistId 和 picIds JSON 字符串（5359–5407）。
   H5 的本地音乐隐藏页分支通过 /api/playlist/local/detail 读详情，提交 multiSongs；
   官方桌面固定入口没有 initPage=3 或对应目标，不能把该页当外部链接的预览。
@@ -82,8 +86,44 @@
   渲染；PrivateItem.jsx:103–175 和 TalkItem.jsx:123–190,304–327 未见该导入专用的
   消息类型、固定发送者 ID 或 taskId 与消息/歌单的绑定。不能按标题、时间或昵称自动归因。
 - 丢失创建回包时没有任务编号可查，空 taskIdForLog 也没有可证明的幂等语义；
-  不能自动重发、改走其他协议或宣称任务失败/完成。以下 Cumulus 实现只移植链接任务创建；
-  文字、图片、红心目标及服务端任务回查仍需分别恢复和验证。
+  不能自动重发、改走其他协议或宣称任务失败/完成。以下 Cumulus 实现移植链接和文字任务创建；
+  图片、红心目标及服务端任务回查没有接入。
+
+图片导入：已恢复的链路与授权缺口
+- H5 k7Bb:873–880,941–1008,1260–1313,1419–1448,1529–1542,5611–5621：本地多选
+  `image/*` 或主动粘贴，只允许文件名后缀 JPG、JPEG、PNG、BMP（忽略大小写）；GIF 不通过。
+  一次最多八张，按已有文件名剔除重复并截到剩余名额，超过 20 MiB 拒绝，等于 20 MiB 可提交。
+  待上传、完成、失败分别为 1、2、3；删除本地项停止后续上传步骤，最终只取完成项的对象 key。
+- 固定哈希 vendors/13t5 的 I、E、W、z：先求原图 MD5。H5 传入 bucket=yyimgs、type=image、
+  bizKey=64e97e4d、encrypt=true；该调用不传替代 host 或 fetch。由相同网页来源直接 XHR
+  POST https://mp.music.163.com/api/nos/token/whalealloc，查询是 filename、fileSize、type、
+  bucket、bizKey、md5、encryptFlag=1；无请求正文，credentials=include，绕过通用 WEAPI
+  主机改写。分配响应取 data 或 result，其中 objectKey、token 必需，另带 bucket、docId、
+  resourceId、outerUrl。不是本项目封面和云盘附件使用的 /api/nos/token/alloc。
+- 13t5 的 F、A、z：同一个对象按 offset、complete、version=1.0 和已获得的 context 分片；
+  初始 256 KiB。直接 POST https://nosup-hz1.127.net/yyimgs/<objectKey>；备选为
+  https://music.163.com/web/proxy/nosupload，查询 objectkey=yyimgs/<objectKey>。使用
+  x-nos-token、文件 MIME 和全文件十六进制 Content-MD5，不转发主站 Cookie；回包读取
+  context、offset。浏览器以 MD5、大小、bucket、taskType 存上传续点，但键没有账号绑定，
+  不能把该浏览器缓存或用户提供的任意 key 当作本机可信上传回执。续点命中时用同一个对象
+  和令牌查询 `uploadContext=&context=…&version=1.0`；分片失败时原脚本会在两个固定入口间
+  有界重试。对象分片续传不等于重放歌单任务创建。
+- H5:5417–5467,5523–5534,5750–5766,7874–7888 先读 /api/nuser/account/get，以账号 ID 并行取
+  /api/user/playlist/create {userId,limit:100} 与 /api/user/playlist {uid,limit:1}，前置
+  后者首项；经通用包装器后仍为 Interface WEAPI。Windows 选新建时先 POST
+  /api/user/binding/cellphone（H5:7926–7928），code=302 提示登录，bind 非真提示先绑手机。
+  通过后 H5:5558–5579 调 nm.baseplaylist.createPlaylist；M290:443–469 的同步确认不等于创建成功，
+  M3160:484–550 与 M232:720–745 以 PC UID 调 /api/playlist/create {uid,name,privacy}，
+  未传 isPrivate 时 privacy=0（公开，M66:15）。实际结果经 M17:430–435、M3142:33–66
+  唤起 H5:5273–5295 的回调。
+- H5:5359–5407,7835–7845 只在选定目标、存在成功上传时调用 Interface
+  POST /weapi/playlist/import/create，{playlistId,picIds,rqRefer}；picIds 是按上传选择顺序的
+  `yyimgs/<objectKey>` JSON 数组字符串，不用 docId。与链接/文字相同，只有有效 taskId
+  表示已受理；缺回执不得重放。以后原生实现须锁定同一账号代次、目标歌单与已完成对象回执，
+  禁止把旧账号或未知上传的对象交给任务服务。
+- 现有 Interface 域扫码未证明具备 MP 同源分配授权，不能拷贝 PC/Interface 主机专属 Cookie、
+  替换分配接口或以合成上传冒充真实 OCR。本次不访问 MP、对象服务或歌单写接口，也不自动
+  新建公开歌单或修改既有歌单。
 
 当前 Cumulus 本地子集
 - 「我的歌单 → 歌单导入预览」是本地入口，明确不同于 t1 的正式侧栏入口。
@@ -104,11 +144,16 @@
   `.build/ui-proof/external-playlist-preview-20261104/audit.json`。
   无真实业务请求或账号写入；既有四次歌单排序变更只在合成夹具中运行。
 
-Cumulus 链接任务与独立扫码授权
+Cumulus 链接、文字任务与独立扫码授权
 - 在现有「我的歌单 → 歌单导入预览」中，识别到有效链接才显示导入动作。入口和旧版
   官方按 PH-PC-songlistTransfer=t1 试验进入的侧栏菜单不同；仍保留本地预览和取消。
   启动授权需用户点击。先预览，再原生准备确切链接及名称，最后显式确认才发送。
   确认时取消按钮优先获得焦点。关闭、编辑、切账号或取消时销毁待发送草稿。
+- 同一窗口的「文字导入」页直接接收手动输入；没有额外预览或曲目匹配请求。原生
+  `prepare_text` 只允许 1–16384 个 UTF-8 字节，这是社区上限；不裁切文本。返回的确认
+  DTO 只有来源类型、字节数、生成的名称和随机回执，不包含原文。切换标签或编辑作废
+  当前确认，明确提交后清空原文本框；没有把原文或其编码写到磁盘。与链接共享账号授权、
+  回执与未决写入限制，不能切换标签绕过「结果未知」。
 - 单独的 Interface 域身份来源为恢复材料 netease_account_probe.py:34–39,103–109,
   186–194,260–281、产品报告 01:105–112 和 07:21–27 的历史真实验证。Rust 原生
   只在该域创建 type=3 二维码（/api/login/qrcode/unikey）、读取状态
@@ -144,3 +189,8 @@ Cumulus 链接任务与独立扫码授权
 - 缩窗内扫码区域独立显示，链接表单保留但暂时收起。真实 Linux WebView 核对说明
   位于底部按钮之上，授权后还原原输入及确认动作；见
   `.build/ui-proof/external-import-fd5f2239/verified-qr/report.json`。
+- 加入文字后，同一 Linux 真 WebView 夹具通过 12 个检查点和 12 张截图。核对了
+  键盘切换、超限拒绝、编辑作废确认、确认按钮未被固定页脚遮挡、成功后清空文字，
+  以及缺 taskId 时在读回和重开后保持「结果未知」。共三次明确确认的合成派发
+  （链接受理、文字受理、文字缺回执），重开零次，无真实请求。报告在
+  `.build/external-import-text-evidence/verified-layout-final/report.json`。
