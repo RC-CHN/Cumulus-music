@@ -65,6 +65,15 @@ async fn official_batch_order_parameters_and_bounded_public_sections() {
         sections[3]["cards"][0]["target"],
         json!({"kind":"album","id":"851"})
     );
+    let recent = sections[3]["cards"].as_array().unwrap();
+    assert_eq!(recent.len(), 2);
+    assert_eq!(recent[1]["title"], "合成最近风格");
+    assert_eq!(recent[1]["target"]["kind"], "recent_style");
+    assert!(
+        recent[1]["target"]["id"]
+            .as_str()
+            .is_some_and(|id| id.len() == 64 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    );
     assert_eq!(sections[9]["cards"].as_array().unwrap().len(), 3);
     assert!(!view.to_string().contains("PRIVATE"));
     assert!(!view.to_string().contains("错配歌曲"));

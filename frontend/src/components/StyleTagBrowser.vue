@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { failure, type StyleCategory, type StyleTagOperation } from '../services/contracts';
 import { useCore } from '../services/core';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ epoch: string; applied?: StyleCategory; revision?: string | null }>();
+const props = defineProps<{
+  epoch: string;
+  applied?: StyleCategory;
+  revision?: string | null;
+  preloadCategories?: boolean;
+}>();
 const emit = defineEmits<{ refreshed: []; expired: [] }>();
 const core = useCore();
 const trigger = ref<HTMLButtonElement>();
@@ -62,6 +67,7 @@ const appliedIds = computed(() =>
     : new Set<string>(),
 );
 let request = 0;
+let categoryReadStarted = false;
 let dialogRun = 0;
 
 function report(issue: unknown) {
@@ -161,7 +167,12 @@ async function act(kind: 'save' | 'reconcile' | 'accept') {
   }
 }
 
+function selectApplied() {
+  selected.value =
+    categories.value.find((item) => item.id === props.applied?.id)?.id ?? categories.value[0]?.id;
+}
 async function load() {
+  categoryReadStarted = true;
   const epoch = props.epoch;
   const current = ++request;
   loading.value = true;
@@ -170,8 +181,7 @@ async function load() {
     const result = await core.styleRecommendationCategories(epoch);
     if (current !== request || props.epoch !== epoch || result.epoch !== epoch) return;
     categories.value = result.value;
-    selected.value =
-      result.value.find((item) => item.id === props.applied?.id)?.id ?? result.value[0]?.id;
+    selectApplied();
   } catch (issue) {
     if (current === request && props.epoch === epoch) error.value = failure(issue).message;
   } finally {
@@ -181,15 +191,18 @@ async function load() {
 async function show() {
   dialogRun++;
   open.value = true;
-  categories.value = [];
-  selected.value = undefined;
+  if (props.preloadCategories) selectApplied();
+  else {
+    categories.value = [];
+    selected.value = undefined;
+  }
   draft.value = undefined;
   operationsKnown.value = false;
   feedback.value = '';
   await nextTick();
   if (!open.value || !dialog.value) return;
   dialog.value.showModal();
-  void load();
+  if (!props.preloadCategories || !categoryReadStarted) void load();
   void readOperations();
 }
 function close(force = false) {
@@ -197,17 +210,26 @@ function close(force = false) {
   dialogRun++;
   submitting.value = false;
   readingOperations.value = false;
-  request++;
+  // The recent-style read belongs to the route, not the dialog visit.
+  if (!props.preloadCategories) request++;
   dialog.value?.close();
   open.value = false;
   trigger.value?.focus({ preventScroll: true });
 }
+onMounted(() => {
+  if (props.preloadCategories) void load();
+});
 watch(
   () => props.epoch,
   () => {
     operation.value = undefined;
     attempted.value = undefined;
     if (open.value) close(true);
+    if (props.preloadCategories) {
+      categories.value = [];
+      selected.value = undefined;
+      void load();
+    }
   },
 );
 watch(

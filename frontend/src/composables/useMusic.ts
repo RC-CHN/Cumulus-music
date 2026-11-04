@@ -52,7 +52,7 @@ export type Page =
   | { kind: 'local' }
   | { kind: 'daily' }
   | { kind: 'daily_batch' }
-  | { kind: 'style_recommendations'; seed?: StyleSeedHandle }
+  | { kind: 'style_recommendations'; seed?: StyleSeedHandle; origin?: 'home_recent' }
   | { kind: 'library' }
   | { kind: 'downloads'; downloadVisit?: number; initialTab?: 'active' }
   | { kind: 'cloud' }

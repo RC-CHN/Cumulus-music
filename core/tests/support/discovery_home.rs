@@ -111,7 +111,7 @@ impl Api for Fixture {
                 }),
                 MIX if mode == 3 => json!({"code":500}),
                 MIX => mix(),
-                SEED => {
+                SEED if args["source"] == "homepage" => {
                     let (song_id, title, category_id, tag_id) = match &args {
                         args if *args
                             == json!({"source":"homepage","categoryId":"18","tagId":"21","songId":"81,82"}) =>
@@ -136,7 +136,10 @@ impl Api for Fixture {
                 RECENT if mode == 3 => json!({"code":500}),
                 RECENT => json!({"code":200,"data":{"resources":[
                     {"resourceType":"album","resourceId":851,"title":"合成最近专辑"},
-                    {"resourceType":"dailySongsTag","resourceId":852,"title":"缺少风格上下文"}
+                    {"resourceType":"dailySongsTag","resourceId":"PRIVATE_STYLE_ROW_ID","title":"合成最近风格","tag":"风格日推",
+                     "targetUrl":"https://private.invalid/PRIVATE_STYLE_TARGET"},
+                    {"resourceType":"dailySongsTag","resourceId":"PRIVATE_STYLE_ROW_ID","title":"重复行"},
+                    {"resourceType":"dailySongsTag","resourceId":"https://private.invalid/PRIVATE_STYLE_BAD","title":"错误身份"}
                 ]}}),
                 AB if args["expNames"] == "PH-PC-tagT,PH-PC-Home-Ranklist" => {
                     let group = if mode == 4 { "t2" } else { "t1" };
@@ -176,6 +179,13 @@ impl Api for Fixture {
                 "/api/user/playlist" => json!({"code":200,"playlist":[],"more":false}),
                 "/api/v6/playlist/detail" | "/api/v3/playlist/detail" => {
                     json!({"code":200,"playlist":{"id":701,"name":"合成歌单701","trackIds":[],"tracks":[],"creator":{"userId":42,"nickname":"发现测试账号"}},"privileges":[]})
+                }
+                "/api/homepage/category/daily/song/list" => json!({"code":200,"data":{
+                    "dailySongs":[{"id":841,"name":"合成风格歌曲","ar":[{"id":881,"name":"合成歌手"}],
+                                   "al":{"id":891,"name":"合成专辑"},"dt":180000}]
+                }}),
+                "/api/homepage/daily/song/config/get" => {
+                    json!({"code":200,"data":{"categorys":[]}})
                 }
                 "/api/v3/discovery/recommend/songs" => json!({"code":200,"data":{"dailySongs":[]}}),
                 _ => json!({"code":200,"data":[]}),

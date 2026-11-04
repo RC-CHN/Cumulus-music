@@ -524,6 +524,9 @@ function openDiscoveryHomeCard(card: DiscoveryHomeCard, section: DiscoveryHomeSe
     case 'style':
       music.navigate({ kind: 'style_recommendations', seed: target.seed });
       break;
+    case 'recent_style':
+      music.navigate({ kind: 'style_recommendations', origin: 'home_recent' });
+      break;
     case 'playlist':
       music.navigate({ kind: 'playlist', id: target.id });
       break;
@@ -4035,6 +4038,7 @@ onUnmounted(() => {
                       :epoch="account.epoch"
                       :applied="result?.styleTags"
                       :revision="result?.revision"
+                      :preload-categories="page.origin === 'home_recent'"
                       @refreshed="music.load()"
                       @expired="music.bootstrap(false)"
                     />

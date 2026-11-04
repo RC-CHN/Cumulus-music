@@ -88,6 +88,20 @@
     await wait(() => one('.discovery-home')?.scrollTop === 40, 'return restores page scroll');
     await wait(() => document.activeElement?.dataset.homeCard === opener.dataset.homeCard, 'return restores card focus');
 
+    const styleCard = one('[data-home-card^="recent:recent_style:"]');
+    assert(styleCard && styleCard.textContent.includes('合成最近风格') &&
+      !styleCard.outerHTML.includes('PRIVATE'), 'bounded recent style row');
+    styleCard.scrollIntoView({ block: 'center' });
+    await sleep(200);
+    const beforeStyle = one('.discovery-home').scrollTop;
+    click(styleCard);
+    await wait(() => !one('.discovery-home') && one('.main-content h1')?.textContent === '风格推荐' &&
+      one('.main-content')?.textContent.includes('合成风格歌曲'), 'recent style opens the unseeded style page');
+    await capture('recent_style');
+    click(one('[aria-label="返回上一页"]'));
+    await wait(() => document.activeElement?.dataset.homeCard === styleCard.dataset.homeCard &&
+      Math.abs(one('.discovery-home').scrollTop - beforeStyle) <= 1, 'recent style Back restores card and scroll');
+
     await emit('mode', { mode: 4 });
     click(refresh());
     await wait(() => !ranks() && !refresh()?.disabled, 'tag group hides ranking independently');

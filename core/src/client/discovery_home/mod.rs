@@ -47,6 +47,7 @@ enum DiscoveryHomeTarget {
     Style { seed: StyleSeedHandle },
     Fm,
     Daily,
+    RecentStyle { id: String },
 }
 
 impl MusicClient {

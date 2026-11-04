@@ -2,7 +2,7 @@ import type { AccountData, StyleSeedHandle } from './contracts';
 import type { RankingGroup } from './rankings';
 
 export type DiscoveryHomeTarget =
-  | { kind: 'song' | 'playlist' | 'album' | 'podcast' | 'voice'; id: string }
+  | { kind: 'song' | 'playlist' | 'album' | 'podcast' | 'voice' | 'recent_style'; id: string }
   | { kind: 'fm' | 'daily' }
   | { kind: 'style'; seed: StyleSeedHandle };
 

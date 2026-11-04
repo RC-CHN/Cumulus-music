@@ -37,7 +37,7 @@ def main():
     if args.probe_script:
         env['CUMULUS_DISCOVERY_HOME_PROOF_SCRIPT'] = str(args.probe_script.resolve())
     captured = set()
-    stages = ('home', 'dark', 'seeded_style', 'ranking', 'retry', 'privacy')
+    stages = ('home', 'dark', 'seeded_style', 'ranking', 'recent_style', 'retry', 'privacy')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
         try:
@@ -67,8 +67,11 @@ def main():
     assert complete['ok'] and not complete['realAccount']
     assert all((output / f'{stage}.json').is_file() for stage in stages)
     assert not args.screenshots or len(captured) == len(stages)
-    style = json.loads((output / 'seeded_style.json').read_text(encoding='utf-8'))
-    assert style['paths'].count('/api/homepage/category/daily/song/list') == 1
+    seeded = json.loads((output / 'seeded_style.json').read_text(encoding='utf-8'))
+    assert seeded['styleCalls'] == [
+        ['/api/homepage/category/daily/song/list',
+         {'source': 'homepage', 'categoryId': '18', 'tagId': '21', 'songId': '81,82'}, False],
+    ], seeded['styleCalls']
     retry = json.loads((output / 'retry.json').read_text(encoding='utf-8'))
     privacy = json.loads((output / 'privacy.json').read_text(encoding='utf-8'))
     paths = [path for path in privacy['paths'][len(retry['paths']):]
@@ -76,6 +79,13 @@ def main():
                          '/api/pc/daily/rcmd/block')]
     assert paths.count('/api/batch') == 1 and paths.count('/api/user/setting') == 2, paths
     assert paths[-1] == '/api/user/setting', paths
+    style = json.loads((output / 'recent_style.json').read_text(encoding='utf-8'))
+    assert style['styleCalls'] == seeded['styleCalls'] + [
+        ['/api/homepage/category/daily/song/list',
+         {'source': '', 'categoryId': '', 'tagId': '', 'songId': ''}, False],
+        ['/api/homepage/daily/song/config/get', {'limit': 20}, False],
+    ], style['styleCalls']
+    assert complete['styleCalls'] == style['styleCalls'], 'return to home triggered style reread'
     report = dict(ok=True, actualWebView=True, screenshots=len(captured), realAccount=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

@@ -45,8 +45,12 @@ fn main() {
                         let mode = value["mode"].as_u64().filter(|v| *v <= 6).expect("probe fixture mode");
                         fixture.mode.store(mode as u8, Ordering::SeqCst);
                     }
-                    "complete" | "failed" | "home" | "dark" | "seeded_style" | "ranking" | "retry" | "privacy" => {
-                        value["paths"] = json!(fixture.calls.lock().unwrap().iter().map(|(path, _, _)| path).collect::<Vec<_>>());
+                    "complete" | "failed" | "home" | "dark" | "seeded_style" | "ranking" | "recent_style" | "retry" | "privacy" => {
+                        let calls = fixture.calls.lock().unwrap();
+                        value["paths"] = json!(calls.iter().map(|(path, _, _)| path).collect::<Vec<_>>());
+                        value["styleCalls"] = json!(calls.iter().filter(|(path, _, _)| matches!(path.as_str(),
+                            "/api/homepage/category/daily/song/list" | "/api/homepage/daily/song/config/get"))
+                            .collect::<Vec<_>>());
                         fs::write(root.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                         if stage == "complete" || stage == "failed" {
                             handle.exit(i32::from(stage == "failed"));

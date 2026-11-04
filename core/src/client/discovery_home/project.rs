@@ -12,6 +12,7 @@ use crate::{
     protocol::{api::identifier, artwork::square},
 };
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
 const CARDS: usize = 18;
@@ -210,10 +211,35 @@ fn style_feature(row: &Value, seeds: &mut DiscoveryStyleSeeds) -> Option<Card> {
     })
 }
 
+fn recent_identity(value: &Value) -> Option<String> {
+    match value {
+        Value::Number(number) if number.as_u64().is_some_and(|id| id > 0) => {
+            Some(number.to_string())
+        }
+        Value::String(value)
+            if value.len() <= 128
+                && !value.trim().is_empty()
+                && !value.chars().any(char::is_control)
+                && !value.contains("://") =>
+        {
+            Some(value.clone())
+        }
+        _ => None,
+    }
+}
+
 fn recent(row: &Value) -> Option<Card> {
     let target = match row["resourceType"].as_str()? {
         "userfm" => Target::Fm,
-        "dailySongsTag" => return None, // The official style route carries additional seed context.
+        "dailySongsTag" => {
+            // M/244 sets a fixed /styleRecommend route. The official link
+            // handler forwards a resource identity, but M/3126 ignores it
+            // for its list query. Use an opaque row key solely for focus.
+            let resource = recent_identity(&row["resourceId"])?;
+            Target::RecentStyle {
+                id: hex::encode(Sha256::digest(resource.as_bytes())),
+            }
+        }
         "playlist" | "list" | "toplist" => Target::Playlist {
             id: id(&row["resourceId"])?,
         },
@@ -338,7 +364,12 @@ pub(super) fn home(
         result.extend(section(
             "recent",
             "最近常听".into(),
-            rows(&data["data"]["resources"]).take(12).filter_map(recent),
+            rows(&data["data"]["resources"])
+                .filter(|row| {
+                    row["resourceType"] == "userfm" || recent_identity(&row["resourceId"]).is_some()
+                })
+                .take(12)
+                .filter_map(recent),
         ));
     }
     add_songs(
