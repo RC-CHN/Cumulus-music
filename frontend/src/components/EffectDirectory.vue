@@ -270,8 +270,13 @@ onUnmounted(() => {
           :catalogue-parametric="bindingStatus"
           :management-only="!browsingHeadphones"
           @browse="browseHeadphoneCatalogue"
-        />
-        <button type="button" @click="emit('equalizer')">打开均衡器</button>
+        >
+          <template #management-actions>
+            <button class="headphone-equalizer-link" type="button" @click="emit('equalizer')">
+              打开均衡器
+            </button>
+          </template>
+        </EffectDeviceDirectory>
       </template>
       <template v-else>
         <section
@@ -439,6 +444,16 @@ onUnmounted(() => {
 .effect-directory-message,
 .effect-directory-card span {
   color: var(--text-secondary);
+}
+.headphone-equalizer-link {
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.headphone-equalizer-link:focus-visible,
+.headphone-equalizer-link:hover {
+  border-color: var(--accent);
 }
 .effect-directory nav {
   display: flex;

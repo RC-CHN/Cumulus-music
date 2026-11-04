@@ -263,7 +263,10 @@ onUnmounted(resetReads);
     <p v-if="operationError" role="alert">{{ operationError }}</p>
     <template v-if="managementOnly">
       <p v-if="!applied" role="status">当前没有耳机调音。</p>
-      <button ref="browseButton" type="button" @click="emit('browse')">浏览耳机音效</button>
+      <div class="effect-device-actions">
+        <button ref="browseButton" type="button" @click="emit('browse')">浏览耳机音效</button>
+        <slot name="management-actions" />
+      </div>
     </template>
     <p v-else-if="brandLoading" role="status">正在读取耳机品牌…</p>
     <div v-else-if="brandError">
@@ -341,6 +344,9 @@ onUnmounted(resetReads);
         </p>
       </div>
     </template>
+    <div v-if="!managementOnly && $slots['management-actions']" class="effect-device-secondary">
+      <slot name="management-actions" />
+    </div>
   </section>
 </template>
 
@@ -385,6 +391,9 @@ onUnmounted(resetReads);
 }
 .effect-device-material p {
   margin: 8px 0 0;
+}
+.effect-device-secondary {
+  margin-top: 12px;
 }
 .effect-device-directory button {
   min-height: 34px;

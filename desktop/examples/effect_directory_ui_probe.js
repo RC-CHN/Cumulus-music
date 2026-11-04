@@ -221,6 +221,8 @@
         launcher()?.dataset.equalizerState === 'problem' && launcher()?.dataset.headphoneState === 'configured' &&
         launcher().title.includes('耳机调音') && launcher().title.includes('均衡器'),
       'the headphone shortcut retains the independent graphic EQ warning');
+      assert(getComputedStyle(launcher()).whiteSpace === 'nowrap' &&
+        document.documentElement.scrollWidth === innerWidth, 'headphone label fits in the compact footer');
       click(launcher());
       await wait(() => dialog()?.getAttribute('aria-label') === '耳机音效' &&
         currentTuning()?.dataset.deviceTuning === 'configured', 'direct management reflects current tuning');
@@ -228,6 +230,14 @@
         button(dialog(), '浏览耳机音效') && button(dialog(), '打开均衡器'),
         'current management offers explicit browse and equalizer without loading either');
       await capture('10_headphones_footer');
+      click(button(dialog(), '打开均衡器'));
+      await wait(() => !dialog() && one('.equalizer-dialog[open]'), 'graphic equalizer opens separately');
+      assert((await player()).deviceParametric?.status === 'configured', 'viewing the graphic equalizer preserves tuning');
+      click(button(one('.equalizer-dialog[open]'), '关闭均衡器'));
+      await wait(() => !one('.equalizer-dialog[open]') && document.activeElement === launcher(),
+        'closing the graphic equalizer returns to the headphone launcher');
+      click(launcher());
+      await wait(() => currentTuning()?.dataset.deviceTuning === 'configured', 'local management can reopen');
       await emit('effect-peq-fail-runtime');
       const beforeFault = await player();
       await wait(async () => {

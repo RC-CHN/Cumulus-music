@@ -362,6 +362,12 @@ input[type='range'] {
 .player-tools .equalizer-toggle {
   position: relative;
 }
+.player-tools .equalizer-toggle[data-headphone-state] {
+  inline-size: 32px;
+  min-inline-size: 32px;
+  padding-inline: 2px;
+  white-space: nowrap;
+}
 .equalizer-marker {
   position: absolute;
   top: 1px;
