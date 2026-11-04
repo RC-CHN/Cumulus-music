@@ -349,6 +349,62 @@ async fn a_temporary_url_service_failure_keeps_the_queue_for_an_explicit_same_so
 }
 
 #[tokio::test]
+async fn displayed_removal_resumes_only_when_it_removes_the_paused_current_song() {
+    use cumulus_core::playback::controller::PlaybackStatus;
+    let (_dir, _api, _session, client, _) = fixture();
+    client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["1".into(), "2".into(), "3".into()],
+                index: 0,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let queue = client.player_queue("1").await.unwrap();
+    let remove = |revision: String, id: String| PlayerAction::QueueFor {
+        expected_queue_revision: revision,
+        expected_room_id: None,
+        edit: QueueEdit::Remove {
+            entry_ids: vec![id],
+        },
+    };
+    let edited = client
+        .player_action(
+            "1",
+            remove(queue.revision, queue.tracks[2].entry_id.clone()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(edited.state, PlaybackStatus::Paused);
+    assert_eq!(edited.play_id, paused.play_id);
+    client
+        .player_action("1", remove(edited.queue_revision, paused.entry_id.unwrap()))
+        .await
+        .unwrap();
+    let next = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let state = client.player_snapshot("1").await.unwrap();
+            if state.state == PlaybackStatus::Playing {
+                break state;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(next.track.unwrap().id, "2");
+    assert_eq!(next.queue_len, 1);
+    assert_ne!(next.play_id, paused.play_id);
+}
+
+#[tokio::test]
 async fn authorized_media_and_output_failures_keep_distinct_action_and_snapshot_diagnostics() {
     use cumulus_core::{client::ClientError, playback::controller::PlaybackStatus};
     let device = Arc::new(support::Device::default());

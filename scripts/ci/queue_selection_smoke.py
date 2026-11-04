@@ -17,7 +17,8 @@ LABELS = ['single_selected', 'control_selected', 'shift_range', 'subtract_range'
           'selection_cleared', 'autoscroll_preview', 'autoscroll_cancelled']
 LABELS += [f'selection_{width}_{theme}' for width, theme in
            [(1120, 'light'), (760, 'light'), (760, 'dark'), (1120, 'dark')]]
-LABELS += ['double_click_played', 'current_double_click_toggled', 'explicit_played', 'queue_replaced']
+LABELS += ['double_click_played', 'current_double_click_toggled', 'explicit_played',
+           'queue_replaced', 'paused_current_removed']
 
 
 def main():
@@ -60,9 +61,16 @@ def main():
         row = json.loads(path.read_text(encoding='utf-8'))
         native, queue = row['nativePlayer'], row['nativeQueue']
         assert row['rendered'] < 40 and queue['revision'] == native['queueRevision']
-        assert len(queue['tracks']) == native['queueLen'] == (40 if index <= 12 else 3 if label == 'queue_replaced' else 38)
-        assert not native['error'] and native['state'] == 'paused'
-        assert native['playId'] == row['playId'] and abs(native['position'] - 10) < .2
+        expected_size = {'queue_replaced': 3, 'paused_current_removed': 2}.get(
+            label, 40 if index <= 12 else 38)
+        assert len(queue['tracks']) == native['queueLen'] == expected_size
+        assert not native['error'] and native['playId'] == row['playId']
+        if label == 'paused_current_removed':
+            assert native['state'] == 'playing' and native['position'] > .15
+            assert native['entryId'] == queue['current'] == row['successor']
+            assert [item['track']['id'] for item in queue['tracks']] == ['1', '3']
+        else:
+            assert native['state'] == 'paused' and abs(native['position'] - 10) < .2
         assert phases.setdefault(row['phase'], native['playId']) == native['playId']
         if label == 'all_selected':
             assert '38' in row['selectionText'] and len(row['selection']) < 38
@@ -72,7 +80,7 @@ def main():
             assert row['currentTransportPreserved']
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
-    assert len(set(phases.values())) == 4
+    assert len(set(phases.values())) == 5
     report = dict(ok=True, actualWebView=True, states=len(LABELS),
                   screenshots=len(LABELS) if args.screenshots else 0,
                   queueSelectionUi=True, realMusicRequests=0, realAccountWrites=0,

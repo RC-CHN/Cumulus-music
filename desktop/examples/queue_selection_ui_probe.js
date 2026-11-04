@@ -33,7 +33,11 @@
   last=label;await sleep(220);const p=rect(panel());
   assert(document.documentElement.scrollWidth<=innerWidth&&p.right<=innerWidth&&p.bottom<=rect(bar()).top+1,'contained');
   assert(rows().length<40,'virtual rendering bounded');
-  assert(bar().dataset.state==='paused'&&bar().dataset.playId===playId&&Math.abs(Number(bar().dataset.position)-10)<.2,'queue gestures preserve paused native audio');
+  const activeRemoval=label==='paused_current_removed';
+  const position=Number(bar().dataset.position);
+  assert(bar().dataset.playId===playId&&(activeRemoval
+    ? bar().dataset.state==='playing'&&position>.15
+    : bar().dataset.state==='paused'&&Math.abs(position-10)<.2),'queue edit uses the expected native transport');
   assert(!one('.playback-message'),'edit error isolated from audio');
   const controls=all('.queue-selection button');assert(controls.every(hit),'selected controls hit');
   const stage=`ux_${String(++count).padStart(2,'0')}_${label}`;
@@ -99,6 +103,18 @@
   const playTarget=row(ids[2]).querySelector('.queue-play');click(playTarget);await wait(()=>bar().dataset.playId!==playId&&bar().dataset.state==='playing','explicit cover control plays');await prepare();phase='explicit_play';await capture('explicit_played');
   // A new queue has new entry identities; no selection leaks to replacement.
   await client.playSelection(epoch,{kind:'songs',ids:['1','2','3'],index:1,quality:'standard'});await prepare();phase='replacement';await ready();await wait(()=>!one('.queue-selection button'),'replacement selection cleared');await capture('queue_replaced');
+  const replacement=await client.playerQueue(epoch), removed=replacement.current;
+  const successor=replacement.tracks[2].entryId;
+  await wait(()=>song(removed)&&hit(song(removed)),'paused current row is visible');
+  await choose(removed);
+  key(song(removed),'Delete');
+  await wait(()=>bar().dataset.playId!==playId&&bar().dataset.trackId==='3'&&bar().dataset.state==='playing'&&Number(bar().dataset.position)>.15,'removing paused current starts its successor');
+  await ready();
+  const successorQueue=await client.playerQueue(epoch);
+  assert(successorQueue.current===successor&&successorQueue.tracks.map(item=>item.track.id).join()==='1,3','only current song was removed and successor stays in order');
+  await wait(()=>document.activeElement===song(successor),'current deletion focuses its successor');
+  phase='current_removed';playId=bar().dataset.playId;
+  await capture('paused_current_removed',{successor});
   await emit('complete',{ok:true,queueSelectionUi:true,stageCount:count,realMusicRequests:0,accountWrites:0});
  } catch(error) {await emit('failed',{ok:false,last,count,error:String(error),phase,editTrace,active:document.activeElement?.outerHTML.slice(0,350),body:document.body.textContent.slice(-2500)});}
 })();

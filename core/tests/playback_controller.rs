@@ -136,6 +136,26 @@ async fn sequential_manual_step_wraps_both_ends_but_natural_eof_does_not() {
 }
 
 #[tokio::test]
+async fn removing_a_paused_entry_cannot_resume_after_audio_ownership_is_revoked() {
+    use cumulus_core::playback::engine::Cancellation;
+    let f = Fixture::new();
+    let playing = f.command(replace(&[1, 2])).await.unwrap();
+    f.command(Cmd::Pause(true)).await.unwrap();
+    f.command(Cmd::RemoveAndResume {
+        entry_ids: vec![playing.selected.unwrap().entry_id],
+        audio_owner: Cancellation::new(|| false),
+    })
+    .await
+    .unwrap();
+    let successor = until(&f.player, |state| {
+        state.state == Status::Paused && song(state) == Some(2)
+    })
+    .await;
+    assert_eq!(successor.queue_len, 1);
+    assert!(f.device.state.lock().unwrap().view.paused);
+}
+
+#[tokio::test]
 async fn fatal_native_event_in_eof_batch_cannot_advance_or_reload_playback() {
     use cumulus_core::playback::failure::PlaybackFailure;
 

@@ -75,6 +75,7 @@ impl Actor {
                     | PlaybackCommand::StepPreservingState(_)
                     | PlaybackCommand::Select(_)
                     | PlaybackCommand::Remove(_)
+                    | PlaybackCommand::RemoveAndResume { .. }
                     | PlaybackCommand::Reorder(_)
                     | PlaybackCommand::Mode(_)
                     | PlaybackCommand::Append { .. }
@@ -144,6 +145,7 @@ impl Actor {
             return;
         }
         let mut options = None;
+        let mut resume_after_removal = None;
         if matches!(
             request.command,
             PlaybackCommand::Replace { .. }
@@ -152,6 +154,7 @@ impl Actor {
                 | PlaybackCommand::Previous
                 | PlaybackCommand::StepPreservingState(_)
                 | PlaybackCommand::Remove(_)
+                | PlaybackCommand::RemoveAndResume { .. }
         ) && let Err(error) = self.save_position()
         {
             self.reply(request.reply, Err(error));
@@ -219,6 +222,22 @@ impl Actor {
                 .select(&id)
                 .map(|_| options = Some(LoadOptions::default())),
             PlaybackCommand::Remove(ids) => self.queue.remove(&ids),
+            PlaybackCommand::RemoveAndResume {
+                entry_ids,
+                audio_owner,
+            } => {
+                let removing_paused_current = self.state == PlaybackStatus::Paused
+                    && self.queue.intelligence_context().is_none()
+                    && self.loaded.as_ref().is_some_and(|loaded| {
+                        entry_ids.contains(&loaded.item.entry_id)
+                            && self.queue.selected().as_ref() == Some(&loaded.item)
+                    });
+                self.queue.remove(&entry_ids).map(|_| {
+                    if removing_paused_current {
+                        resume_after_removal = Some(audio_owner);
+                    }
+                })
+            }
             PlaybackCommand::Reorder(ids) => self.queue.reorder(&ids),
             PlaybackCommand::Mode(mode) => {
                 if let Some(context) = self
@@ -361,7 +380,7 @@ impl Actor {
                 self.record_failure(&error);
             }
         } else {
-            let result = self.sync_queue().await;
+            let result = self.sync_queue_after_edit(resume_after_removal).await;
             self.reply(request.reply, result);
         }
     }

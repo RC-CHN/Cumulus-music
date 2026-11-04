@@ -13,6 +13,39 @@ impl QueueEdit {
 }
 
 impl MusicClient {
+    pub(super) fn removal_command(
+        &self,
+        token: &SessionToken,
+        current: &PlaybackSnapshot,
+        displayed: bool,
+        entry_ids: Vec<String>,
+    ) -> Result<PlaybackCommand> {
+        if !displayed
+            || current.state != crate::playback::controller::PlaybackStatus::Paused
+            || current.intelligence.is_some()
+            || !current
+                .selected
+                .as_ref()
+                .is_some_and(|selected| entry_ids.contains(&selected.entry_id))
+        {
+            return Ok(PlaybackCommand::Remove(entry_ids));
+        }
+        // The displayed edit holds the room gate. An attached or persisted
+        // room, or media ownership belonging to another surface, must never
+        // acquire an independent ordinary-playback resume.
+        let audio = self.focus.snapshot()?;
+        if audio.owner != Some(super::super::focus::Owner::Audio)
+            || self.queue_clear_context(token)?.room_id.is_some()
+        {
+            return Ok(PlaybackCommand::Remove(entry_ids));
+        }
+        let focus = self.focus.clone();
+        Ok(PlaybackCommand::RemoveAndResume {
+            entry_ids,
+            audio_owner: Cancellation::new(move || focus.check_snapshot(audio).is_ok()),
+        })
+    }
+
     pub(super) async fn displayed_queue_fence(
         &self,
         token: &SessionToken,

@@ -1023,7 +1023,9 @@ impl MusicClient {
                 unreachable!("displayed queue edit normalized before generic action")
             }
             PlayerAction::Select { entry_id } => PlaybackCommand::Select(entry_id),
-            PlayerAction::Remove { entry_ids } => PlaybackCommand::Remove(entry_ids),
+            PlayerAction::Remove { entry_ids } => {
+                self.removal_command(&token, &current, queue_guard.is_some(), entry_ids)?
+            }
             PlayerAction::Reorder { entry_ids } => PlaybackCommand::Reorder(entry_ids),
             PlayerAction::Clear => PlaybackCommand::Replace {
                 resources: vec![],

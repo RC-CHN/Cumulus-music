@@ -8,7 +8,7 @@ use crate::{
     account::SessionToken,
     playback::{
         PlaybackQueue, Step,
-        engine::{EndReason, EngineEvent},
+        engine::{Cancellation, EndReason, EngineEvent},
         failure::PlaybackFailure,
     },
 };
@@ -74,6 +74,13 @@ impl Actor {
         stopped
     }
     pub async fn sync_queue(&mut self) -> Result<()> {
+        self.sync_queue_after_edit(None).await
+    }
+
+    pub(super) async fn sync_queue_after_edit(
+        &mut self,
+        resume_after_removal: Option<Cancellation>,
+    ) -> Result<()> {
         self.queue.reload()?;
         if self
             .source_retry
@@ -89,12 +96,14 @@ impl Actor {
             .or_else(|| self.pending.as_ref().map(|p| &p.item));
         if before_item.is_some() && before_item != self.queue.selected().as_ref() {
             let position = self.position;
-            let paused = self.state == PlaybackStatus::Paused
-                || self.pending.as_ref().is_some_and(|p| p.paused);
             let before = before_item.map(|item| item.entry_id.clone());
             let after = self.queue.selected();
+            let was_paused = self.state == PlaybackStatus::Paused
+                || self.pending.as_ref().is_some_and(|p| p.paused);
             self.stop(false).await?;
             if let Some(after) = after {
+                let paused =
+                    was_paused && resume_after_removal.is_none_or(|owner| owner.is_cancelled());
                 self.begin(
                     LoadOptions {
                         paused,

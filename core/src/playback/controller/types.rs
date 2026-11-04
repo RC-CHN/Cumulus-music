@@ -165,6 +165,12 @@ pub enum PlaybackCommand {
     },
     Select(String),
     Remove(Vec<String>),
+    /// Explicit displayed ordinary-queue removal; a paused successor may
+    /// become audible only while the captured audio owner is still current.
+    RemoveAndResume {
+        entry_ids: Vec<String>,
+        audio_owner: super::super::engine::Cancellation,
+    },
     Reorder(Vec<String>),
     Mode(PlaybackMode),
     Play,
