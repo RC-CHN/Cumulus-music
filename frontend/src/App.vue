@@ -25,6 +25,9 @@ import { catalogResourceSelection, type AlbumCardRequest } from './services/cata
 import AlbumActions from './components/catalog/AlbumActions.vue';
 import ArtistActions from './components/catalog/ArtistActions.vue';
 import ArtistGalleryPage from './components/catalog/ArtistGalleryPage.vue';
+import LatestReleasesPage from './components/catalog/LatestReleasesPage.vue';
+import { createLatestReleaseMemory } from './composables/useLatestReleases';
+import type { LatestSongRowSelection } from './services/latestReleases';
 import { useArtistGallery } from './composables/useArtistGallery';
 import type { ArtistCardRequest } from './services/artistCards';
 import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick, provide } from 'vue';
@@ -195,11 +198,13 @@ import { modalDepth } from './services/modal';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
 const collectionMemory = createCollectionViewportMemory();
+const latestReleaseMemory = createLatestReleaseMemory();
 const collectionRevision = ref(0);
 const observedAlbumMembership = shallowRef(new Map<string, boolean>());
 const albumActions = ref<InstanceType<typeof AlbumActions>>();
 const artistActions = ref<InstanceType<typeof ArtistActions>>();
 const collectionsPageRef = ref<InstanceType<typeof CollectionsPage>>();
+const latestReleasesPageRef = ref<InstanceType<typeof LatestReleasesPage>>();
 const playlistLibraryState = ref(libraryView());
 const settingsPage = ref<InstanceType<typeof SettingsPage>>();
 const music = useMusic(undefined, (commit) => {
@@ -321,6 +326,7 @@ watch(
   () => {
     searchMemory.connect(music.account.value);
     collectionMemory.connect(music.account.value);
+    latestReleaseMemory.connect(music.signedIn.value ? music.account.value.epoch : null);
   },
   { immediate: true },
 );
@@ -1475,6 +1481,7 @@ watch(
   (next, previous) => {
     albumActions.value?.close();
     artistActions.value?.close();
+    if (previous.kind === 'latest_releases') latestReleasesPageRef.value?.checkpoint();
     if (previous.kind === 'rankings') {
       checkpointRanking(previous);
       rankings.leave();
@@ -2756,9 +2763,9 @@ const visibleTrackToggle = computed<TrackCurrentToggle | undefined>((previous) =
     pause,
   };
 });
-async function toggleVisibleTrack(target: TrackCurrentToggle, anchor: HTMLButtonElement) {
+async function toggleVisibleTrack(target: TrackCurrentToggle, anchor?: HTMLButtonElement) {
   if (visibleTrackToggle.value !== target || !player.ready.value || player.busy.value) return;
-  const ownsFocus = document.activeElement === anchor;
+  const ownsFocus = anchor && document.activeElement === anchor;
   await player.action({
     kind: 'pause_for',
     play_id: target.playId,
@@ -2767,6 +2774,7 @@ async function toggleVisibleTrack(target: TrackCurrentToggle, anchor: HTMLButton
   });
   await nextTick();
   if (
+    anchor &&
     ownsFocus &&
     document.activeElement === document.body &&
     visibleTrackToggle.value?.playId === target.playId &&
@@ -2775,6 +2783,23 @@ async function toggleVisibleTrack(target: TrackCurrentToggle, anchor: HTMLButton
     !anchor.disabled
   )
     anchor.focus({ preventScroll: true });
+}
+function playLatestSongRow(selection: LatestSongRowSelection) {
+  if (page.value.kind !== 'latest_releases' || page.value.tab !== 'songs') return;
+  const current = visibleTrackToggle.value;
+  // M3085 toggles an already loaded matching online track before the queue policy.
+  if (current?.trackId === selection.start_id) {
+    void toggleVisibleTrack(current);
+    return;
+  }
+  void player.select({
+    kind: 'song_row_double_click',
+    selection: {
+      kind: 'latest_release',
+      ...selection,
+      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    },
+  });
 }
 function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
@@ -3118,6 +3143,12 @@ onUnmounted(() => {
                 :model="coldOffline"
                 @retry="music.bootstrap()"
               />
+              <div v-else-if="page.kind === 'latest_releases' && !signedIn" class="empty-state">
+                <p>请登录后查看新歌速递和新碟上架</p>
+                <button class="text-button" type="button" @click="loginOpen = true">
+                  登录账号
+                </button>
+              </div>
               <AccountWelcome
                 v-else-if="!signedIn"
                 :account="account"
@@ -3403,6 +3434,34 @@ onUnmounted(() => {
                 @more="(request) => trackActions?.show(request)"
                 @comments="trackComments"
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
+              />
+              <LatestReleasesPage
+                v-else-if="page.kind === 'latest_releases'"
+                ref="latestReleasesPageRef"
+                :epoch="account.epoch"
+                :visit="page.latestVisit ?? 0"
+                :tab="page.tab"
+                :memory="latestReleaseMemory"
+                :liked="liked"
+                :busy-likes="busyLikes"
+                :playable="player.ready.value && !player.busy.value"
+                :queueable="searchCollectionQueueable"
+                :current-id="currentTrackId"
+                :current-toggle="visibleTrackToggle"
+                :current-album-id="currentOrigin?.kind === 'album' ? currentOrigin.id : undefined"
+                :playing="player.playing.value"
+                :observed-album-membership="observedAlbumMembership"
+                @tab="(tab) => page.kind === 'latest_releases' && music.navigate({ ...page, tab })"
+                @expired="music.bootstrap(false)"
+                @play="playOnlineSongs"
+                @double-click="playLatestSongRow"
+                @collect="(tracks) => (playlistDialog = { kind: 'tracks', tracks })"
+                @like="music.like"
+                @toggle-current="toggleVisibleTrack"
+                @more="(request) => trackActions?.show(request)"
+                @open="openCatalog"
+                @play-album="playAlbumCard"
+                @album-action="albumAction"
               />
               <TogetherPage v-else-if="page.kind === 'together'" :model="together" />
               <PodcastPage

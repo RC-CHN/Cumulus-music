@@ -1,0 +1,152 @@
+.latest-releases-page,
+.latest-release-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.latest-release-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 26px;
+  border-bottom: 1px solid var(--line);
+}
+.latest-release-tabs button {
+  position: relative;
+  padding: 0 2px;
+  min-height: 37px;
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 600;
+}
+.latest-release-tabs [aria-selected='true'] {
+  color: var(--text);
+}
+.latest-release-tabs [aria-selected='true']::after {
+  position: absolute;
+  inset: auto 2px -1px;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--accent);
+  content: '';
+}
+.latest-release-toolbar,
+.latest-release-regions,
+.latest-release-actions,
+.latest-release-recommendations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.latest-release-toolbar {
+  justify-content: space-between;
+  flex-shrink: 0;
+  row-gap: 12px;
+  margin: 12px 0 18px;
+}
+.latest-release-regions button {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.latest-release-regions [aria-pressed='true'] {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--line));
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.latest-release-regions [aria-disabled='true'],
+.latest-release-recommendations [aria-disabled='true'] {
+  cursor: default;
+}
+.latest-release-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 36px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.latest-release-actions svg {
+  width: 18px;
+  height: 18px;
+}
+.latest-song-feedback {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  margin: 0 0 8px;
+  color: var(--danger);
+  font-size: 12px;
+}
+.latest-playback-notice {
+  color: var(--warning);
+}
+.latest-release-recommendations {
+  gap: 12px;
+}
+.latest-release-recommendations button {
+  position: relative;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.latest-release-recommendations button + button::before {
+  position: absolute;
+  left: -7px;
+  top: 50%;
+  width: 1px;
+  height: 10px;
+  transform: translateY(-50%);
+  background: var(--line);
+  content: '';
+}
+.latest-release-recommendations [aria-pressed='true'] {
+  color: var(--accent);
+}
+.latest-album-scroll {
+  flex: 1;
+  min-height: 180px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+}
+.latest-album-layout {
+  position: relative;
+}
+.latest-album-row {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  align-items: start;
+  gap: 16px;
+}
+.latest-album-row h2 {
+  align-self: center;
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+.latest-album-tail {
+  display: grid;
+  min-height: 36px;
+  place-content: center;
+  padding: 6px 0;
+  text-align: center;
+}
+.latest-inline-error p {
+  margin: 0 0 6px;
+}
+@media (max-width: 850px) {
+  .latest-release-regions {
+    gap: 6px;
+  }
+  .latest-release-regions button {
+    padding-inline: 10px;
+  }
+}

@@ -232,6 +232,10 @@ export type QueueEdit =
   | { kind: 'clear' };
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
 export type SongRowDoubleClickSelection =
+  | ({
+      kind: 'latest_release';
+      quality: Quality;
+    } & import('./latestReleases').LatestSongRowSelection)
   | {
       kind: 'catalog';
       pages: import('./catalog').CatalogSelectionPage[];

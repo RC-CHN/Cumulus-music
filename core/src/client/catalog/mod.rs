@@ -2,6 +2,7 @@ pub(super) mod cards;
 mod dto;
 mod follow_new_song;
 mod gallery;
+mod latest_releases;
 mod membership;
 mod project;
 mod selection;
@@ -15,6 +16,8 @@ pub(super) use follow_new_song::FollowLatestHost;
 pub use follow_new_song::notification::{ReleaseNotificationAction, ReleaseNotificationState};
 pub use follow_new_song::{FollowLatest, FollowNewSongPage};
 pub use gallery::{ArtistGalleryPage, ArtistGalleryQuery};
+pub(super) use latest_releases::LatestReleasesHost;
+pub use latest_releases::{LatestReleasePage, LatestReleaseQuery, NewSongArea};
 pub use membership::{
     CatalogMembershipAction, CatalogMembershipOperation, CatalogMembershipView, CatalogResource,
 };

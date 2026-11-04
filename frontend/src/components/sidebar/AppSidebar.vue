@@ -69,6 +69,7 @@ const discovery: NavItem[] = [
   { title: '会员中心', icon: 'star', page: { kind: 'member' } },
   { title: '私人漫游', icon: 'music', page: { kind: 'fm' } },
   { title: '排行榜', icon: 'list', page: { kind: 'rankings', query: { kind: 'home' } } },
+  { title: '新歌新碟', icon: 'music', page: { kind: 'latest_releases', tab: 'songs' } },
   { title: '歌手', icon: 'user', page: { kind: 'artist_gallery' } },
   { title: '关注', icon: 'user', page: { kind: 'community' } },
   { title: '歌单广场', icon: 'grid', page: { kind: 'playlist_tag', tag: '推荐' } },

@@ -116,6 +116,7 @@ pub struct MusicClient {
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     quality_experiment: quality_experiment::QualityExperiment,
     daily_experiment: daily_experiment::DailyExperiment,
+    latest_releases: catalog::LatestReleasesHost,
 }
 
 impl MusicClient {
@@ -258,6 +259,7 @@ impl MusicClient {
             style_recommendations: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
             daily_experiment: daily_experiment::DailyExperiment::default(),
+            latest_releases: catalog::LatestReleasesHost::default(),
             together: together::TogetherHost::default(),
             scene_fm: scene_fm::SceneFmHost::default(),
             local: local::LocalHost::new(registry.store()),

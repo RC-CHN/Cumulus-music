@@ -33,20 +33,21 @@ const items = computed<MenuItem[]>(() => {
   const track = request.value?.track;
   if (!track) return [];
   const available = !track.missing && !track.local;
+  const canPlay = available && !request.value?.playUnavailable;
   const link = songLink(track);
   return [
     {
       key: 'play',
       label: '播放',
       icon: 'play',
-      disabled: !available || !props.player.ready.value || props.player.busy.value,
+      disabled: !canPlay || !props.player.ready.value || props.player.busy.value,
     },
     {
       key: 'next',
       label: '下一首播放',
       icon: 'next',
       disabled:
-        !available ||
+        !canPlay ||
         !props.player.ready.value ||
         props.player.busy.value ||
         props.player.view.value?.fm,

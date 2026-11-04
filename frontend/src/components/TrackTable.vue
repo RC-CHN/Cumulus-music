@@ -16,11 +16,13 @@ const props = defineProps<{
   liked: Set<string>;
   busy: Set<string>;
   playable?: boolean;
+  playableIds?: ReadonlySet<string>;
   currentId?: string;
   currentToggle?: TrackCurrentToggle;
   pendingToggle?: TrackPendingToggle;
   toggleBusy?: boolean;
   navigable?: boolean;
+  preserveScrollOnRefresh?: boolean;
   locateIndex?: number;
   scrollScope?: string;
 }>();
@@ -57,7 +59,10 @@ function scroll() {
 watch(
   () => props.tracks,
   (_now, previous) => {
-    if (props.tracks[0]?.id !== previous[0]?.id || props.tracks.length < previous.length) {
+    if (
+      !props.preserveScrollOnRefresh &&
+      (props.tracks[0]?.id !== previous[0]?.id || props.tracks.length < previous.length)
+    ) {
       reset();
     }
   },
@@ -96,6 +101,7 @@ defineExpose({ locate, restoreScroll });
           liked.has(track.id),
           busy.has(track.id),
           playable,
+          playableIds?.has(track.id),
           navigable,
           matchKeyword,
           originalRecordings?.has(track.id),
@@ -108,19 +114,25 @@ defineExpose({ locate, restoreScroll });
         :index="start + index"
         :current-id="currentId"
         :current-toggle="
-          !track.missing && !track.local && currentToggle?.trackId === track.id
+          !track.missing &&
+          !track.local &&
+          (playableIds?.has(track.id) ?? true) &&
+          currentToggle?.trackId === track.id
             ? currentToggle
             : undefined
         "
         :pending-toggle="
-          !track.missing && !track.local && pendingToggle?.trackId === track.id
+          !track.missing &&
+          !track.local &&
+          (playableIds?.has(track.id) ?? true) &&
+          pendingToggle?.trackId === track.id
             ? pendingToggle
             : undefined
         "
         :toggle-busy="toggleBusy"
         :liked="liked.has(track.id)"
         :busy="busy.has(track.id)"
-        :playable="playable"
+        :playable="playable && (playableIds?.has(track.id) ?? true)"
         :navigable="navigable"
         @play="(index, gesture) => emit('play', index, gesture)"
         @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"

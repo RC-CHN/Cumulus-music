@@ -309,6 +309,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 community::community_detail,
                 community::community_comments,
                 catalog::artist_gallery,
+                catalog::latest_releases,
                 collections::collection_page,
                 history::history_page,
                 history::history_command,

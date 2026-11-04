@@ -22,6 +22,7 @@ export interface TrackMenuRequest {
   event: MouseEvent | KeyboardEvent;
   play: () => void;
   nextOrigin?: 'search';
+  playUnavailable?: boolean;
 }
 export function songLink(track: TrackView) {
   return !track.local && /^[1-9][0-9]*$/.test(track.id)

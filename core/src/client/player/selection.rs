@@ -65,6 +65,20 @@ impl MusicClient {
             PlaySelection::SongRowDoubleClick { selection } => {
                 let keep_queue = !self.replace_queue_on_double_click(&token)?;
                 let input = match selection {
+                    SongRowSelection::LatestRelease {
+                        area,
+                        revision,
+                        start_id,
+                        quality,
+                    } => {
+                        let (ids, index) =
+                            self.latest_release_rows_for(&token, area, &revision, &start_id)?;
+                        PlaySelection::Songs {
+                            ids,
+                            index,
+                            quality,
+                        }
+                    }
                     SongRowSelection::Catalog {
                         pages,
                         index,

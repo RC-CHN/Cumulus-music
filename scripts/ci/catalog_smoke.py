@@ -75,6 +75,7 @@ def main():
     mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
     mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
     mode.add_argument('--album', action='store_true', help='album-local tabs, draft retention, header actions and native null playback')
+    mode.add_argument('--latest-releases', action='store_true')
     mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
     mode.add_argument('--collections', action='store_true')
     mode.add_argument('--history', action='store_true')
@@ -104,6 +105,12 @@ def main():
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
         source = 'album_batch_ui_probe.js' if args.album_batch else 'album_ui_probe.js'
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
+    if args.latest_releases:
+        env['CUMULUS_LATEST_RELEASES_PROOF'] = '1'
+        env['CUMULUS_MOTION_PROOF'] = '1'
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/latest_releases_ui_probe.js')
+        if args.screenshots:
+            env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
     if args.layout:
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/catalog_layout_ui_probe.js')
     if args.relay_publication:
@@ -138,6 +145,33 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.latest_releases:
+        assert complete['ok'] and complete['states'] == 15
+        states = {p.stem.removeprefix('ux_'): json.loads(p.read_text(encoding='utf-8'))
+                  for p in output.glob('ux_*.json')}
+        assert len(states) == 15 and (not args.screenshots or captures == 15)
+        assert states['playing']['playedId'] == '1' and states['playing']['queueLength'] == 99
+        assert states['playing']['nativePlayer']['position'] > .2
+        assert states['current_double_click']['nativePlayer']['state'] == 'paused'
+        assert states['current_double_click']['playId'] == states['denied_first']['playId']
+        assert states['different_double_click']['playedId'] == '3'
+        calls = complete['latestReleasesCalls']
+        songs = [body for route, body in calls if route == '/api/v2/discovery/new/songs']
+        assert [row['areaId'] for row in songs] == ['0', '96', '96', '536870911', '536870911'], songs
+        assert all(row['limit'] == 100 and row['offset'] == 0 for row in songs)
+        albums = [body for route, body in calls if route == '/api/discovery/new/albums/area']
+        recommended = [row for row in albums if row['rcmd']]
+        assert recommended[0]['offset'] == 0 and recommended[0]['limit'] == 10
+        assert recommended[1] == recommended[2] and recommended[1]['offset'] == 10, recommended
+        all_albums = [row for row in albums if not row['rcmd']]
+        assert [row['offset'] for row in all_albums[:2]] == [0, 50], all_albums
+        assert all_albums[0]['month'] == all_albums[1]['month']
+        assert all(row['limit'] == (10 if row['rcmd'] else 50) for row in albums)
+        result = dict(ok=True, actualWebView=True, states=15, screenshots=captures,
+                      nativeNullPlaybackVerified=True, realMusicRequests=0, realAccountWrites=0)
+        (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(result))
+        return
     if args.album_batch:
         assert complete['ok'] and complete['albumBatchVerified'] and complete['albumQueueVerified'] and not complete['writesSubmitted']
         assert complete['albumSelectedQueueVerified']

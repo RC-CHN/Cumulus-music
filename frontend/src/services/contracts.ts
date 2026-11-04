@@ -34,6 +34,7 @@ import type { SceneFmClient } from './sceneFm';
 import type { MemberClient, MemberPortalClient } from './member';
 import type { CatalogClient } from './catalog';
 import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
+import type { LatestReleaseClient } from './latestReleases';
 import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
 import type { SettingsClient } from './settings';
@@ -126,6 +127,7 @@ export interface CoreClient
     MemberPortalClient,
     CatalogClient,
     FollowNewSongClient,
+    LatestReleaseClient,
     ReleaseNotificationClient,
     CollectionClient,
     HistoryClient,

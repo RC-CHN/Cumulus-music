@@ -161,6 +161,12 @@ pub enum SearchResultPlayback {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SongRowSelection {
+    LatestRelease {
+        area: super::super::catalog::NewSongArea,
+        revision: String,
+        start_id: String,
+        quality: Quality,
+    },
     Catalog {
         pages: Vec<super::super::catalog::CatalogSelectionPage>,
         index: usize,

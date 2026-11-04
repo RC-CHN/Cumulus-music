@@ -25,6 +25,8 @@ mod fm_feedback_fixture;
 mod intelligence_start_fixture;
 #[path = "support/intelligence_ui_fixture.rs"]
 mod intelligence_ui_fixture;
+#[path = "support/latest_releases_fixture.rs"]
+mod latest_releases_fixture;
 #[path = "support/library_fixture.rs"]
 mod library_fixture;
 #[path = "support/like_recovery_fixture.rs"]
@@ -217,6 +219,21 @@ impl Api for Library {
             }
             if let Some(result) = profile_relations_fixture::response(path, &args) {
                 return result;
+            }
+            if let Some(result) = latest_releases_fixture::response(path, &args) {
+                return result;
+            }
+            if latest_releases_fixture::enabled()
+                && matches!(
+                    path,
+                    "/api/album/v3/detail"
+                        | "/api/album/v4/detail"
+                        | "/api/album/privilege"
+                        | "/api/album/detail/dynamic"
+                        | "/api/song/enhance/privilege"
+                )
+            {
+                return fixture::Library::default().request(path, args, false).await;
             }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
@@ -641,6 +658,7 @@ fn main() {
                 value["effectDirectoryMaterialGets"]=effect_peq_fixture::report()["materialGets"].clone();
             }
             if peq_proof || device_peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
+            if latest_releases_fixture::enabled() {value["latestReleasesCalls"]=latest_releases_fixture::report();}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
             if member_sign_fixture::enabled() {
                 value["memberSignCalls"]=json!(member_sign_fixture::calls());

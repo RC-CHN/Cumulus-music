@@ -142,6 +142,7 @@ export function createTauriClient(): CoreClient {
     rankingPage: (epoch, query, refresh) => invoke('ranking_page', { epoch, query, refresh }),
     catalogPage: (epoch, query, refresh) => invoke('catalog_page', { epoch, query, refresh }),
     artistGallery: (epoch, query) => invoke('artist_gallery', { epoch, query }),
+    latestReleases: (epoch, query) => invoke('latest_releases', { epoch, query }),
     followedNewSongPage: (epoch, startTimestamp) =>
       invoke('followed_new_song_page', { epoch, startTimestamp }),
     followedNewSongLatest: (epoch) => invoke('followed_new_song_latest', { epoch }),

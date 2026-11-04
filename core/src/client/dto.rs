@@ -297,7 +297,9 @@ pub use super::catalog::{
     CatalogSelectionPage, CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
 };
 pub use super::catalog::{ArtistGalleryPage, ArtistGalleryQuery, FollowLatest, FollowNewSongPage};
-pub use super::catalog::{ReleaseNotificationAction, ReleaseNotificationState};
+pub use super::catalog::{
+    LatestReleasePage, LatestReleaseQuery, ReleaseNotificationAction, ReleaseNotificationState,
+};
 pub use super::cloud::{
     CloudCommand, CloudDeleteView, CloudFailure, CloudPageView, CloudQuery, CloudRemovalFileState,
     CloudRemovalFileView, CloudRemovalPhase, CloudRemovalView, CloudResourceView, CloudResult,

@@ -38,7 +38,7 @@
 - [精品歌单](playlist-detail-ui-contracts.txt)已接通分类入口、独立标签、原游标续页和详情返回。[单曲和歌词搜索](desktop-player-contracts.txt)可暂停或继续当前正在解码加载的歌，Linux 隔离主流程核对播放实例、音源授权和加载次数不变。
 - [乐签详情](desktop-member-contracts.txt)已接通原曲喜欢、暂停/继续、奖励进度和专用会员二维码；没有新增领奖入口。[前瞻限幅器](core-effects-material-routing.txt)已有原生对照的离线 PCM 内核、有限输入输出缓冲和尾部排空；正式播放器和完整音效图未接入。
 - 歌单详情切换曲目、评论、收藏者不增加返回步骤，离开再返回时恢复页签和滚动位置。搜索声音的结果行和综合卡按单集 ID 控制当前正在加载的同一实例；Linux 隔离桌面验证首载期间暂停/继续，未重复解码加载。[歌单详情](playlist-detail-ui-contracts.txt) · [声音搜索](search-card-ui-contracts.txt)
-- [消息中心](message-drawer-contracts.txt)已接通私信、评论、@我、通知及会话历史的按需读取；仅有合成桌面证据，没有发送、删除、清除未读或后台轮询。[新歌发布](follow-new-song-contracts.txt)可从关注歌手页读取发布流，独立播放官方最新列表；取消新歌通知走单独确认与持久化回执。限幅流的[离线重置](core-effects-material-routing.txt)已与官方原生对照，实际桌面播放跳转不使用这条音效链。
+- [消息中心](message-drawer-contracts.txt)已接通私信、评论、@我、通知及会话历史的按需读取，以及确认后的会话/私信删除和已验证会话内纯文本回复；仅有隔离合成桌面写入证据。未实现清除未读或后台轮询。[新歌发布](follow-new-song-contracts.txt)可从关注歌手页读取发布流，独立播放官方最新列表；取消新歌通知走单独确认与持久化回执。限幅流的[离线重置](core-effects-material-routing.txt)已与官方原生对照，实际桌面播放跳转不使用这条音效链。
 - [关注动态](community-read-contracts.txt)提供只读列表、详情及评论分页；[用户关注和粉丝](profile-relations-ui-contracts.txt)区分本人、访客以及隐私拒绝；[艺人偏好引导](artist-onboarding-contracts.txt)只从官方登录入口或符合时限的原账号记录触发。这些路径以各专项实际桌面和封闭合成服务为证；不表示已完成社交发布、真实账号写入、Windows 实机或所有官方实验分支。
 - 关注页的[新歌提示](community-read-contracts.txt)使用独立接口和账号访问时间；[已确认类型的消息附件](message-drawer-contracts.txt)可排入当前播放列表、打开资料页或定位评论，返回保留抽屉位置。未确认归属的云盘歌曲、普通外链和社区私密动态不猜测授权。
 - [普通视频恢复审计](ordinary-video-pc-recovery.txt)复现了官方 PC 从卡片走入 MV 默认路由的行为，未找到可独立授权的普通视频播放链。[限幅器联合实验](limiter-native-pipeline-proof.txt)已在 Linux 跑通真实解码、有限缓冲、恢复限幅器和同一 libmpv 实例，验证跳转换代、尾帧及自然 EOF；正式播放器尚未启用该路径。
@@ -51,5 +51,7 @@
 - [本人头像](account-profile-navigation-contracts.txt)与昵称分离，当前账号的笔记、关注、粉丝可直达对应资料页；[主页播客](profile-podcasts-contracts.txt)分开创建与收藏，保持同级页签历史及卡片返回。管理浏览器交接仅在显式点击时申请原服务票据。
 - [冷离线跳转回退](cold-flac-native-fallback.txt)用原授权句柄验证了无索引和稀疏索引 FLAC 的原生回退：旧输出停止和解码线程交还之后才启动新输出，保留暂停/播放。仍未默认接管正式播放。
 - [社区笔记发布](community-composer-contracts.txt)已接入正文和一个已核对的音乐附件，明确确认后才检查绑定并请求。成功用服务回执进入真实详情；回包未知只核对本机持久回执，不重发、不用正文猜测。验收只用隔离合成数据，图片与转发是另行分支。
+- [新歌速递与新碟上架](latest-releases-contracts.txt)按官方地区、推荐开关及周/月分组读取，全部模式先取齐同月；隔离 Linux WebView 验证批量播放、首曲拒绝、原生双击、原游标重试和专辑返回。真实服务目录读取和 Windows 结果仍单独追踪。
+- [听歌识曲](song-recognition-contracts.txt)已确认官方 PC 采集、时序、原生请求和 UI 状态；没有可用的声学指纹对照和正式采集入口，不能当作可识曲功能。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。

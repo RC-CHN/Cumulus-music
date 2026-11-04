@@ -23,6 +23,11 @@ export type Page =
   | ({ kind: 'catalog' } & import('../services/catalogNavigation').CatalogLocation)
   | { kind: 'artist_gallery' }
   | { kind: 'follow_new_song' }
+  | {
+      kind: 'latest_releases';
+      tab: import('../services/latestReleases').LatestReleaseTab;
+      latestVisit?: number;
+    }
   | { kind: 'community' }
   | { kind: 'community_detail'; handle: string }
   | { kind: 'scene_fm' }
@@ -117,6 +122,7 @@ export function useMusic(
   let catalogVisit = 0;
   let podcastRankVisit = 0;
   let collectionVisit = 0;
+  let latestVisit = 0;
   let accountRequest = 0;
   let resourceRequest = 0;
   let likeRevision = 0;
@@ -231,6 +237,7 @@ export function useMusic(
         target.kind === 'catalog' ||
         target.kind === 'artist_gallery' ||
         target.kind === 'follow_new_song' ||
+        target.kind === 'latest_releases' ||
         target.kind === 'community' ||
         target.kind === 'community_detail' ||
         target.kind === 'collections' ||
@@ -384,7 +391,9 @@ export function useMusic(
                 ? { ...next, catalogVisit: ++catalogVisit }
                 : next.kind === 'collections' && next.collectionVisit === undefined
                   ? { ...next, collectionVisit: ++collectionVisit }
-                  : next;
+                  : next.kind === 'latest_releases' && next.latestVisit === undefined
+                    ? { ...next, latestVisit: ++latestVisit }
+                    : next;
       if (!keepDaily) void load();
     }, local);
   }
