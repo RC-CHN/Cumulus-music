@@ -1,14 +1,57 @@
 <script setup lang="ts">
 import { computed, watch, ref } from 'vue';
 import type { useMemberSign } from '../composables/useMemberSign';
-import type { MemberSignDay } from '../services/member';
+import { validMemberQr, type MemberSignDay } from '../services/member';
+import type { TrackCurrentToggle } from '../services/trackMenu';
 import Icon from './Icon.vue';
+import MemberQrImage from './MemberQrImage.vue';
 
-const props = defineProps<{ model: ReturnType<typeof useMemberSign>; playable: boolean }>();
-const emit = defineEmits<{ play: [id: string] }>();
+const props = defineProps<{
+  model: ReturnType<typeof useMemberSign>;
+  playable: boolean;
+  signedIn: boolean;
+  liked: Set<string>;
+  busyLikes: Set<string>;
+  likeNotice: string;
+  currentToggle?: TrackCurrentToggle;
+  experience: 'VIP' | 'SVIP';
+}>();
+const emit = defineEmits<{
+  play: [id: string];
+  like: [id: string];
+  toggle: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
+}>();
 const card = computed(() => props.model.card.value);
 const detail = computed(() => props.model.detail.value);
 const selected = computed(() => props.model.day.value);
+const activeSong = computed(() =>
+  props.currentToggle?.trackId === detail.value?.songId ? props.currentToggle : undefined,
+);
+const likedSong = computed(() => !!detail.value && props.liked.has(detail.value.songId));
+const likeDisabled = computed(
+  () => !props.signedIn || !detail.value || props.busyLikes.has(detail.value.songId),
+);
+const likeRequest = ref<string>();
+watch(detail, () => (likeRequest.value = undefined));
+const portalMatrix = computed(() => {
+  const modules = detail.value?.portalQr?.modules;
+  return validMemberQr(modules) ? modules : undefined;
+});
+const rewardSubtitle = computed(() => {
+  const value = detail.value?.nextReward?.subtitle ?? '';
+  const split = value.match(/^(\d+)(.*)$/);
+  return split ? [split[1], split[2]] : [value, ''];
+});
+function toggleSong(event: MouseEvent) {
+  if (!props.playable || !detail.value) return;
+  if (activeSong.value) emit('toggle', activeSong.value, event.currentTarget as HTMLButtonElement);
+  else emit('play', detail.value.songId);
+}
+function likeSong() {
+  if (!detail.value || likeDisabled.value) return;
+  likeRequest.value = detail.value.songId;
+  emit('like', detail.value.songId);
+}
 const today = computed(() => card.value?.days.find((day) => day.today));
 const action = computed(() => props.model.action.value);
 const canViewToday = computed(
@@ -179,25 +222,52 @@ const date = computed(() =>
               referrerpolicy="no-referrer"
             />
             <Icon v-else name="music" />
-            <button
-              class="icon-button"
-              type="button"
-              :disabled="!playable"
-              :aria-label="`播放 ${detail.song}`"
-              @click="emit('play', detail.songId)"
-            >
-              <Icon name="play" />
-            </button>
+            <div class="sign-detail-controls">
+              <button
+                class="icon-button"
+                type="button"
+                :aria-disabled="likeDisabled"
+                :aria-pressed="likedSong"
+                :aria-label="`${likedSong ? '取消喜欢' : '喜欢'} ${detail.song}`"
+                @click="likeSong"
+              >
+                <Icon name="heart" :class="{ 'sign-liked': likedSong }" />
+              </button>
+              <button
+                class="icon-button"
+                type="button"
+                :aria-disabled="!playable"
+                :aria-label="`${activeSong?.pause ? '暂停' : activeSong ? '继续播放' : '播放'} ${detail.song}`"
+                @click="toggleSong"
+              >
+                <Icon :name="activeSong?.pause ? 'pause' : 'play'" />
+              </button>
+            </div>
           </div>
         </div>
-        <footer v-if="detail.monthTotal !== null || detail.nextReward">
+        <p
+          v-if="likeRequest === detail.songId && likeNotice"
+          class="sign-detail-notice"
+          role="status"
+        >
+          {{ likeNotice }}
+        </p>
+        <footer>
           <span v-if="detail.monthTotal !== null"
             >本月累计打卡 <strong>{{ detail.monthTotal }}</strong> 天</span
           >
-          <span v-if="detail.nextReward"
-            >再打卡 <strong>{{ detail.nextReward.daysToGo }}</strong> 天可得
-            {{ detail.nextReward.subtitle }}{{ detail.nextReward.title }}</span
+          <span v-if="detail.allRewardsClaimed"
+            >每月打卡得 <strong>{{ experience }}</strong> 体验</span
           >
+          <span v-else-if="detail.nextReward"
+            >再打卡 <strong>{{ detail.nextReward.daysToGo }}</strong> 天可得
+            <strong v-if="rewardSubtitle[0]">{{ rewardSubtitle[0] }}</strong
+            >{{ rewardSubtitle[1] }}{{ detail.nextReward.title }}</span
+          >
+          <div v-if="portalMatrix" class="sign-detail-portal">
+            <div>云音乐 App 扫码去会员中心<br /><strong>会员每日打卡得成长值</strong></div>
+            <MemberQrImage :modules="portalMatrix" :width="60" label="乐签会员中心二维码" />
+          </div>
         </footer>
       </template>
     </dialog>
@@ -364,21 +434,47 @@ button.sign-stamp[aria-disabled='true'],
   width: 34%;
   height: 34%;
 }
-.sign-detail-cover button {
+.sign-detail-controls {
   position: absolute;
   right: 10px;
   bottom: 10px;
+  display: flex;
+  gap: 6px;
+}
+.sign-detail-controls button {
   color: white;
   background: #172031d9;
   border-radius: 50%;
 }
+.sign-detail-controls button[aria-disabled='true'] {
+  opacity: 0.65;
+}
+.sign-liked {
+  fill: #ff4969;
+  color: #ff4969;
+}
+.sign-detail-notice {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
 .sign-dialog footer {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
   gap: 8px 18px;
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px dashed #65708a88;
   font-size: 13px;
+}
+.sign-detail-portal {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+.sign-detail-portal strong {
+  color: #8d2f3e;
 }
 </style>

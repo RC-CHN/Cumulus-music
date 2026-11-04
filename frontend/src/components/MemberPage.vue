@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TrackMenuRequest } from '../services/trackMenu';
+import type { TrackCurrentToggle, TrackMenuRequest } from '../services/trackMenu';
 import { computed, ref, watch } from 'vue';
 import type { useMember } from '../composables/useMember';
 import type { MemberTarget, MemberContent } from '../services/member';
@@ -21,6 +21,8 @@ const props = defineProps<{
   liked: Set<string>;
   busyLikes: Set<string>;
   currentId?: string;
+  currentToggle?: TrackCurrentToggle;
+  likeNotice: string;
 }>();
 const emit = defineEmits<{
   open: [target: MemberTarget];
@@ -30,6 +32,8 @@ const emit = defineEmits<{
   more: [request: TrackMenuRequest];
   comments: [track: TrackView];
   download: [tracks: TrackView[]];
+  signLike: [id: string];
+  toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
 }>();
 const page = computed(() => props.model.view.value?.page);
 const portalOpen = ref(false);
@@ -178,7 +182,15 @@ function hasContent(content: MemberContent) {
         <MemberSignCard
           :model="model.sign"
           :playable="playable"
+          :signed-in="signedIn"
+          :liked="liked"
+          :busy-likes="busyLikes"
+          :like-notice="likeNotice"
+          :current-toggle="currentToggle"
+          :experience="currentTier === 'vinyl' || currentTier === 'plus' ? 'SVIP' : 'VIP'"
           @play="emit('open', { kind: 'song', id: $event })"
+          @like="emit('signLike', $event)"
+          @toggle="(target, anchor) => emit('toggleCurrent', target, anchor)"
         />
       </div>
       <MemberCards

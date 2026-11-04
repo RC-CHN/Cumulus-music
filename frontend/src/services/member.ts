@@ -74,7 +74,9 @@ export interface MemberSignDetail {
   wish: string | null;
   wishAuthor: string | null;
   monthTotal: number | null;
+  allRewardsClaimed: boolean;
   nextReward: { daysToGo: number; title: string; subtitle: string | null } | null;
+  portalQr: { modules: boolean[][] };
 }
 export interface MemberClient {
   memberRights(epoch: string, refresh: boolean): Promise<AccountData<MemberRights>>;
@@ -96,4 +98,19 @@ export interface MemberCardOffer {
   mode: 'app' | 'qr' | 'browser';
   label: string | null;
   revision: string;
+}
+
+export function validMemberQr(modules: unknown): modules is boolean[][] {
+  return (
+    Array.isArray(modules) &&
+    modules.length >= 21 &&
+    modules.length <= 41 &&
+    (modules.length - 21) % 4 === 0 &&
+    modules.every(
+      (row) =>
+        Array.isArray(row) &&
+        row.length === modules.length &&
+        row.every((cell) => typeof cell === 'boolean'),
+    )
+  );
 }

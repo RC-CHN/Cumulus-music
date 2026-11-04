@@ -88,15 +88,17 @@ def main():
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
         return
-    complete = run('first', {}, 9)
-    assert complete['stageCount'] == 9 and complete['memberPortalQr']
+    complete = run('first', {}, 10)
+    assert complete['stageCount'] == 10 and complete['memberPortalQr']
     assert complete['memberOfferVerified'] and complete['memberOfferReads'] == 2
+    assert complete['signSongActions'] and complete['memberSignSongLikeWrites'] == [True, False]
     assert complete['historyPlayback'] == '2' and complete['nativeModalFocus'] and complete['noLateDetail']
     assert complete['memberSignCalls'] == [card, card, history, past, history, past,
                                            history, past, history, today, card, card]
-    print(json.dumps({'ok': True, 'actualWebView': True, 'stages': 9, 'signReads': 12,
+    print(json.dumps({'ok': True, 'actualWebView': True, 'stages': 10, 'signReads': 12,
                       'historyPlayback': True, 'nativeModalFocus': True,
                       'cachedRefresh': True, 'memberPortalQr': True, 'memberOfferVerified': True,
+                      'syntheticLikes': 2, 'signSongActions': True,
                       'realAccountWrites': 0}))
 
 

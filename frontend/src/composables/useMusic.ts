@@ -389,7 +389,7 @@ export function useMusic(
       commit();
     });
   }
-  async function like(track: TrackView) {
+  async function like(track: Pick<TrackView, 'id'>) {
     if (!signedIn.value || busyLikes.value.has(track.id)) return;
     const owner = account.value.epoch;
     const active = () => signedIn.value && account.value.epoch === owner;

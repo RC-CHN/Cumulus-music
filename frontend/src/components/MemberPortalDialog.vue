@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { useCore } from '../services/core';
+import { validMemberQr } from '../services/member';
 import Icon from './Icon.vue';
+import MemberQrImage from './MemberQrImage.vue';
 
 const emit = defineEmits<{ close: [] }>();
 const core = useCore();
@@ -11,13 +13,6 @@ const matrix = shallowRef<boolean[][]>();
 const status = ref<'loading' | 'ready' | 'failed'>('loading');
 let active = true;
 let reading = false;
-
-const size = computed(() => (matrix.value?.length ?? 0) + 8);
-const path = computed(() =>
-  (matrix.value ?? [])
-    .flatMap((row, y) => row.flatMap((dark, x) => (dark ? [`M${x + 4} ${y + 4}h1v1h-1z`] : [])))
-    .join(' '),
-);
 
 function close() {
   active = false;
@@ -31,18 +26,7 @@ async function load() {
   try {
     const { modules } = await core.memberPortalQr();
     if (!active) return;
-    if (
-      !Array.isArray(modules) ||
-      modules.length < 21 ||
-      modules.length > 41 ||
-      (modules.length - 21) % 4 !== 0 ||
-      !modules.every(
-        (row) =>
-          Array.isArray(row) &&
-          row.length === modules.length &&
-          row.every((cell) => typeof cell === 'boolean'),
-      )
-    ) {
+    if (!validMemberQr(modules)) {
       status.value = 'failed';
       return;
     }
@@ -94,18 +78,8 @@ onBeforeUnmount(() => {
         <p role="alert">暂时无法生成会员中心二维码。</p>
         <button class="secondary" @click="retry">重试</button>
       </template>
-      <template v-else>
-        <svg
-          role="img"
-          aria-label="网易云音乐会员中心二维码"
-          :viewBox="`0 0 ${size} ${size}`"
-          width="155"
-          height="155"
-          shape-rendering="crispEdges"
-        >
-          <rect :width="size" :height="size" fill="#fff" />
-          <path :d="path" fill="#000" />
-        </svg>
+      <template v-else-if="matrix">
+        <MemberQrImage :modules="matrix" :width="155" label="网易云音乐会员中心二维码" />
         <p>使用云音乐 App 扫描二维码</p>
       </template>
     </div>

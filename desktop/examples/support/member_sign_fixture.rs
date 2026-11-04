@@ -16,6 +16,8 @@ static PAST_READS: AtomicUsize = AtomicUsize::new(0);
 static WRITE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REVEALED: AtomicBool = AtomicBool::new(false);
 static OFFER_READS: AtomicUsize = AtomicUsize::new(0);
+static SIGN_SONG_LIKED: AtomicBool = AtomicBool::new(false);
+static SIGN_SONG_LIKE_WRITES: Mutex<Vec<bool>> = Mutex::new(Vec::new());
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_MEMBER_SIGN_PROOF").is_some()
@@ -42,7 +44,8 @@ pub fn reveal_write() -> bool {
 }
 
 fn today_detail() -> Value {
-    json!({"time":TODAY,"songInfo":{"songId":1,"songName":"合成今日乐签歌曲"},"monthCheckInTotalDay":6})
+    json!({"time":TODAY,"songInfo":{"songId":1,"songName":"合成今日乐签歌曲"},"monthCheckInTotalDay":6,
+        "monthCheckInPrizList":[{"day":3,"prizeShowName":"合成已领奖励","userPrizeRecordId":"PRIVATE"}]})
 }
 
 async fn write_response(mode: &str, suffix: &str, args: &Value) -> Option<Result<Value>> {
@@ -95,6 +98,23 @@ async fn write_response(mode: &str, suffix: &str, args: &Value) -> Option<Result
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
+    }
+    if path == "/api/song/like/get" {
+        let ids = if SIGN_SONG_LIKED.load(Ordering::Acquire) {
+            vec![2, 3, 7, 10]
+        } else {
+            vec![3, 7, 10]
+        };
+        return Some(Ok(json!({"code":200,"ids":ids})));
+    }
+    if path == "/api/song/like" {
+        assert!(write_mode().is_none());
+        assert_eq!(args["trackId"], "2");
+        assert_eq!(args["userid"], "2");
+        let desired = args["like"].as_bool().unwrap();
+        SIGN_SONG_LIKE_WRITES.lock().unwrap().push(desired);
+        SIGN_SONG_LIKED.store(desired, Ordering::Release);
+        return Some(Ok(json!({"code":200})));
     }
     if path == "/api/delivery/deliver" {
         assert_eq!(*args, json!({"positionId":65}));
@@ -172,4 +192,8 @@ pub fn calls() -> Vec<Value> {
 
 pub fn offer_reads() -> usize {
     OFFER_READS.load(Ordering::Acquire)
+}
+
+pub fn sign_song_like_writes() -> Vec<bool> {
+    SIGN_SONG_LIKE_WRITES.lock().unwrap().clone()
 }

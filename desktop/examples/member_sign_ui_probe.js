@@ -1,4 +1,4 @@
-// Real membership UI, read-only Rust IPC, and native playback on closed synthetic data.
+// Real membership UI, native playback and reversible likes on closed synthetic data.
 (async () => {
   const one = (selector) => document.querySelector(selector);
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -60,7 +60,8 @@
     await wait(() => dialog()?.querySelector('h3')?.textContent === '合成历史乐签歌曲', 'historical detail retry');
     if (!dialog().textContent.includes('合成歌手') || !dialog().textContent.includes('保持好奇') ||
       !dialog().textContent.includes('来自合成评论者') || !dialog().textContent.includes('累计打卡 5') ||
-      !dialog().textContent.includes('再打卡 2') || !dialog().textContent.includes('1天黑胶体验') || dialog().querySelector('img'))
+      !dialog().textContent.includes('再打卡 2') || !dialog().textContent.includes('1天黑胶体验') ||
+      !dialog().querySelector('[aria-label="乐签会员中心二维码"]') || dialog().querySelector('img'))
       throw Error('recorded detail projection does not match official shape');
     await emit('ux_05_member_sign_detail');
     const {epoch} = await invoke('account_snapshot');
@@ -70,6 +71,32 @@
       return value.state === 'playing' && value.track?.id === '2' && value.position > 0.15 && value;
     }, 'record song reaches native output');
     if (playback.queueLen !== 1) throw Error('record playback selects wrong queue');
+    step = 'sign-song-actions';
+    const control = (label) => dialog()?.querySelector(`[aria-label="${label} 合成历史乐签歌曲"]`);
+    const heart = await wait(() => control('喜欢'), 'sign song can be liked');
+    heart.focus();
+    heart.click();
+    await wait(() => control('取消喜欢') === heart && heart.getAttribute('aria-pressed') === 'true',
+      'liked membership is read back on the same control');
+    const pause = await wait(() => control('暂停'), 'sign player shows current track pause');
+    pause.focus();
+    pause.click();
+    await wait(async () => {
+      const value = await invoke('player_snapshot', {epoch});
+      return value.state === 'paused' && value.playId === playback.playId &&
+        value.queueRevision === playback.queueRevision && control('继续播放') === pause;
+    }, 'pause keeps the same native song and queue');
+    await emit('ux_10_member_sign_song_actions');
+    control('继续播放').click();
+    await wait(async () => {
+      const value = await invoke('player_snapshot', {epoch});
+      return value.state === 'playing' && value.playId === playback.playId &&
+        value.queueRevision === playback.queueRevision && control('暂停') === pause;
+    }, 'sign resume keeps the same native song and queue');
+    if (document.activeElement !== pause) throw Error('song playback stole focus');
+    control('取消喜欢').click();
+    await wait(() => control('喜欢') === heart && heart.getAttribute('aria-pressed') === 'false',
+      'unlike confirms and restores the original state');
     close().click();
     await wait(() => !dialog() && document.activeElement === past(), 'native close returns focus to record');
     one('.playerbar [aria-label="停止播放"]').click();
@@ -95,6 +122,8 @@
     await wait(() => dialog()?.querySelector('h3')?.textContent === '合成今日乐签歌曲', 'today resolves through its own record');
     await sleep(850);
     if (dialog()?.querySelector('h3')?.textContent !== '合成今日乐签歌曲') throw Error('late historical result overwrites today');
+    if (!/每月打卡得\s+VIP\s+体验/.test(dialog().textContent) || dialog().textContent.includes('PRIVATE'))
+      throw Error('claimed reward branch does not match the official footer');
     const bounds = dialog().getBoundingClientRect();
     if (bounds.x < 0 || bounds.y < 0 || bounds.right > innerWidth || bounds.bottom > innerHeight)
       throw Error('compact dark modal is clipped');
@@ -115,7 +144,7 @@
     await wait(() => card()?.textContent.includes('今日未打卡'), 'updated card shows unsigned today');
     if (one('.sign-today') || card().querySelector('[aria-label="查看今天乐签"]')) throw Error('unsigned today can start a mutation');
     await emit('ux_09_member_sign_unsigned');
-    await emit('complete', {ok:true, stageCount:9, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true, memberPortalQr:true, memberOfferVerified:true});
+    await emit('complete', {ok:true, stageCount:10, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true, memberPortalQr:true, memberOfferVerified:true, signSongActions:true});
   } catch (error) {
     await emit('failed', {step, message:error.message, card:card()?.textContent, dialog:dialog()?.textContent, focus:document.activeElement?.outerHTML.slice(0,260)});
   }

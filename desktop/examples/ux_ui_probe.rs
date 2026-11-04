@@ -608,6 +608,7 @@ fn main() {
             if member_sign_fixture::enabled() {
                 value["memberSignCalls"]=json!(member_sign_fixture::calls());
                 value["memberOfferReads"]=json!(member_sign_fixture::offer_reads());
+                value["memberSignSongLikeWrites"]=json!(member_sign_fixture::sign_song_like_writes());
             }
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
