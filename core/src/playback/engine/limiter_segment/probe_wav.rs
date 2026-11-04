@@ -255,7 +255,12 @@ impl DecodedWave {
             self.offset += take;
             written += take;
         }
-        self.trace.lock().unwrap().bytes_returned += written;
+        let mut trace = self.trace.lock().unwrap();
+        // The proof may detach its account under this same lock. Do not
+        // count bytes copied only to scratch while revocation raced a read;
+        // the native registry independently checks again before publishing.
+        self.authority.check().map_err(io::Error::other)?;
+        trace.bytes_returned += written;
         Ok(written)
     }
 }

@@ -178,6 +178,10 @@ impl MpvEngine {
     pub fn api_version(&self) -> u64 {
         self.api_version
     }
+    #[cfg(all(test, windows))]
+    pub(super) fn proof_runtime_version(&mut self) -> Option<String> {
+        self.property(c"mpv-version")
+    }
     fn native_mut(&mut self) -> Result<&mut Native> {
         self.native.as_mut().ok_or(Error::Playback {
             operation: "native sink retired",

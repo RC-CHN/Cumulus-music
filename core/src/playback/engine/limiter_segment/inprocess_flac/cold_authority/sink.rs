@@ -226,9 +226,14 @@ async fn limiter_cold_flac_sink_seek_eof_and_buffered_revocation() {
     engine.pause(false).unwrap();
     let revocation_clock = wait_for_play(&mut engine, &revoked);
     assert!(revocation_clock + 0.5 < seconds(SOURCE_END));
-    let prefetched = revoked.trace.lock().unwrap().bytes_returned;
-    fixture.cold.detach().unwrap();
-    assert!(revoked.gate.is_cancelled());
+    let prefetched = {
+        // Record the byte counter at detach, not in an earlier sampling
+        // interval when a concurrent prefetch is still authorized.
+        let trace = revoked.trace.lock().unwrap();
+        fixture.cold.detach().unwrap();
+        assert!(revoked.gate.is_cancelled());
+        trace.bytes_returned
+    };
     assert!(matches!(engine.poll(), Err(Error::Cancelled)));
     assert!(authority.validate().is_err());
     until(|| {

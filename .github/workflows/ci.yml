@@ -258,6 +258,21 @@ jobs:
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: python scripts/ci/package.py --platform '${{ matrix.platform }}'
+      - name: Verify cold FLAC seeks and held-file fallback on native Windows
+        if: runner.os == 'Windows'
+        env:
+          CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
+        run: python scripts/ci/windows_cold_flac.py --runtime .build/package-stage/windows-x64/native --report .build/ci-windows-cold-flac
+      - name: Preserve the Windows cold FLAC runtime report
+        if: always() && !cancelled() && hashFiles('.build/ci-windows-cold-flac/report.json') != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-cold-flac-native
+          path: |
+            .build/ci-windows-cold-flac/report.json
+            .build/ci-windows-cold-flac/tests.log
+          if-no-files-found: error
+          retention-days: 14
       - name: Launch the extracted Windows portable ZIP
         shell: pwsh
         run: |

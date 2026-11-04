@@ -11,6 +11,8 @@ use std::{
 
 mod abi;
 mod cold_authority;
+#[cfg(windows)]
+mod windows_runtime;
 use abi::{Api, FrameHeader, Handle};
 
 const RATE: u32 = 44_100;

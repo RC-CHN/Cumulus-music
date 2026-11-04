@@ -72,5 +72,36 @@ the stock sink cannot confirm the desired position. A separate native
 failure-injection proof covers synchronous sink destruction when exact
 Stop cannot be confirmed; the active-seek fixtures exercise successful
 Stop. No claim covers CUE/trial ranges, online Range semantics, actual
-sound hardware or Windows native runtime. Optional FLAC/limiter remains
+sound hardware or product activation. Optional FLAC/limiter remains
 disabled by default.
+
+Windows native CI verification
+
+The existing Windows package job runs scripts/ci/windows_cold_flac.py
+after staging the exact media runtime. It creates a temporary proof copy
+of the package DLLs without changing the NSIS/ZIP or MSYS2 installation.
+It uses a staged or installed UCRT64 libFLAC only if the DLL matches the
+audited SHA-256. If it is absent from the package and the installed bytes
+are unavailable or different, it extracts only libFLAC.dll from the
+hash-locked MSYS2 1.5.0-2 archive. A different libFLAC already in the
+package is an error, not an override. Its PE architecture and libogg /
+libwinpthread imports are checked against the package closure.
+
+The test process has an absolute path for each DLL and a System32/Windows
+PATH. A dedicated Rust test refuses relative and missing SDK inputs even
+with the real DLLs in the working directory. Win32 resolves each native
+export to its actual module; both must identify the audited staged files.
+The driver runs exact Rust tests, so an unmatched or ignored selector
+cannot pass. These cover indexed seeks and EOF, the authorized original
+handle after a pathname replacement, preflight and active fallback,
+account loss, and protected native Stop/destruction.
+
+The windows-cold-flac-native CI artifact contains the exact commit/run,
+tested cases, module paths, ABI and runtime versions, PE imports, DLL
+hashes and native logs. Tests use synthetic audio and libmpv null output.
+A successful report is native runner evidence for that SHA; Windows
+cross-compilation or a source change adding the workflow is not.
+
+Pinned package and Windows sharing references:
+https://packages.msys2.org/packages/mingw-w64-ucrt-x86_64-flac
+https://doc.rust-lang.org/std/os/windows/fs/trait.OpenOptionsExt.html#tymethod.share_mode

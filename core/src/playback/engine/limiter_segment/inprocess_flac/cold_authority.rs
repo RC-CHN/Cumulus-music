@@ -31,7 +31,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     fs,
-    io::{self, Cursor, Read, Seek, SeekFrom},
+    io::{self, Cursor, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -225,8 +225,19 @@ impl Fixture {
 }
 
 fn replace(path: &Path) {
-    fs::rename(path, path.with_extension("retired")).unwrap();
-    fs::write(path, b"replacing the name must not replace the held file").unwrap();
+    // File::open shares delete/rename on Windows. Move the held file to a
+    // sibling on the same volume and never truncate an existing pathname.
+    let retired = path.with_extension("retired");
+    fs::rename(path, &retired).unwrap();
+    let mut replacement = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .unwrap();
+    replacement
+        .write_all(b"replacing the name must not replace the held file")
+        .unwrap();
+    assert!(!same_file::is_same_file(path, retired).unwrap());
 }
 
 #[tokio::test]
