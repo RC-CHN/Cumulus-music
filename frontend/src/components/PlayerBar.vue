@@ -304,6 +304,7 @@ watch(
     if (
       !current?.playId ||
       (!['preparing', 'loading', 'buffering'].includes(current.state) &&
+        !current.nativeSeeking &&
         !(loaded.value && seekInFlight.value?.key === scrubKey.value))
     )
       return;

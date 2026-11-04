@@ -43,6 +43,7 @@ pub struct PlayerView {
     pub position: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buffered_through: Option<f64>,
+    pub native_seeking: bool,
     pub timeline: Option<TimelineSnapshot>,
     pub quality_preferences: QualityPreferencesView,
     pub can_change_quality: bool,

@@ -56,6 +56,8 @@ pub struct PlaybackSnapshot {
     pub selected: Option<QueueEntry>,
     pub position: Option<f64>,
     pub buffered_through: Option<f64>,
+    /// The current native decoder is still seeking; not a transport fence.
+    pub native_seeking: bool,
     pub timeline: Option<TimelineSnapshot>,
     pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub can_change_quality: bool,

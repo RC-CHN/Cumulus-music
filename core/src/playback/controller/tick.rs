@@ -146,6 +146,9 @@ impl Actor {
         // Native clock and pause/cache flags describe only the reported entry.
         // End events are checked separately, including after the entry closes.
         let current_entry = view.entry_id == Some(loaded.media.entry_id);
+        if current_entry {
+            self.native_seeking = view.seeking;
+        }
         let reported_position = view.position_for(loaded.media.entry_id);
         let current_position = reported_position.filter(|_| !self.paused_seek);
         let mut events = std::mem::take(&mut self.deferred_events);

@@ -42,7 +42,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    expected = 20 if args.baseline else 29
+    expected = 20 if args.baseline else 30
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
@@ -56,6 +56,10 @@ def main():
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if not args.baseline:
+        seek_path, = [stage for stage in stages if stage.stem.endswith('_slow_native_seek_wait')]
+        seek = json.loads(seek_path.read_text(encoding='utf-8'))
+        assert seek['nativePlayer']['nativeSeeking'] and seek['nativePlayer']['state'] == 'playing'
+        assert seek['nativePlayer']['playId'] == seek['playId']
         stopped_path, = [stage for stage in stages if stage.stem.endswith('_lyrics_stopped_read')]
         stopped = json.loads(stopped_path.read_text(encoding='utf-8'))
         assert stopped['cleared'] and stopped['playId'] is None

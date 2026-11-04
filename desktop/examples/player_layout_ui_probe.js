@@ -24,7 +24,7 @@
     await wait(()=>trackAction('share')&&hit(trackAction('share')),'current song menu opens above bottom bar');
     return trackActionMenu();
   }
-  async function capture(label) {
+  async function capture(label, extra = {}) {
     await sleep(500);
     const panel=one('.lyrics-panel'), body=one('.lyrics-body'), record=one('.vinyl-record'), scroller=one('.lyric-scroll');
     const metadata=all('.vinyl-info h1, .vinyl-info p, .vinyl-info small');
@@ -32,7 +32,7 @@
     const hintTargets=[one('.vinyl-info h1'), ...credits];
     const controls=all('.playerbar button:not(:disabled), .playerbar input:not(:disabled), .playerbar select:not(:disabled), .lyric-tools button:not(:disabled), .lyric-browse-time:not(:disabled), [aria-label="收起播放详情"]').filter(n=>rect(n).width>0 && rect(n).height>0);
     const player=rect(one('.playerbar'));
-    const row={label,width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,
+    const row={...extra,label,width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,
       panel:rect(panel),body:rect(body),info:rect(one('.vinyl-info')),record:rect(record),player,
       metadata:metadata.map(node=>({tag:node.tagName,...rect(node),title:node.title})),
       controls:controls.map(node=>({label:node.getAttribute('aria-label')||node.textContent.trim(),player:!!node.closest('.playerbar'),...rect(node),hit:hit(node)})),
@@ -149,7 +149,8 @@
     const configure=async mode=>{
       const id=++sequence;
       await emit('card-source-fixture',{id,mode});
-      await wait(()=>window.__cardSourceAck[id]?.forcedBuffering===(mode==='buffer-on'),'native buffering fixture command');
+      const field=mode.startsWith('seek-')?'heldSeeking':'forcedBuffering';
+      await wait(()=>window.__cardSourceAck[id]?.[field]===mode.endsWith('-on'),'native status fixture command');
     };
     const indicator=()=>one('.seek-load-indicator');
     const playingState=()=>one('.playerbar').dataset.state;
@@ -181,6 +182,26 @@
     await configure('buffer-off');
     await wait(()=>playingState()==='playing'&&!indicator(),'cue clears when native playback resumes');
     assert(one('.playerbar').dataset.playId===identity,'buffering does not replace the song');
+    const input=one('.playerbar [aria-label="播放进度"]');
+    await configure('seek-on');
+    await wait(()=>!input.disabled,'ordinary playback allows seek');
+    input.value='14.01';
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>Math.abs(Number(one('.playerbar').dataset.position)-14.01)<.015&&!input.disabled,
+      'ordinary native seek accepted and IPC is no longer pending');
+    assert(playingState()==='playing'&&!indicator(),'seek wait is not buffering and does not flash');
+    const accepted=performance.now();
+    // The real decoder is not blocked by this status-only test fixture. Fail
+    // within the held entry, before a long wait could run into its natural EOF.
+    for(let i=0;i<55&&!indicator();i++) await sleep(100);
+    assert(indicator(),'sustained native seek still shows the thumb cue after IPC');
+    assert(performance.now()-accepted>=2400,'native seek cue retains the delayed threshold');
+    assert(playingState()==='playing'&&one('.playerbar').dataset.playId===identity,
+      'seek cue does not change playback intent or identity');
+    await capture('slow_native_seek_wait',{playId:identity});
+    await configure('seek-off');
+    await wait(()=>!indicator()&&Number(one('.playerbar').dataset.position)>14.1,'seek cue clears and same clock advances');
     click(one('.playerbar [aria-label="暂停"]'));
     await wait(()=>playingState()==='paused','pause after native buffering proof');
   }

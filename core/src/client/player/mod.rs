@@ -247,6 +247,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .and_then(|i| origin::recommendation(&i.source)),
         position: value.position,
         buffered_through: value.buffered_through,
+        native_seeking: value.native_seeking,
         timeline: value.timeline.clone(),
         quality_preferences: QualityPreferencesView {
             applies_to_current: value.quality_preferences_apply,

@@ -27,6 +27,7 @@ pub fn record_authorization(ids: &[Value]) {
 #[derive(Default)]
 pub struct Control {
     buffer: AtomicBool,
+    seek: AtomicBool,
     fail_resume: AtomicBool,
     fail_output: AtomicBool,
     loads: AtomicU64,
@@ -39,6 +40,8 @@ impl Control {
         match mode {
             "buffer-on" => self.buffer.store(true, Ordering::SeqCst),
             "buffer-off" => self.buffer.store(false, Ordering::SeqCst),
+            "seek-on" => self.seek.store(true, Ordering::SeqCst),
+            "seek-off" => self.seek.store(false, Ordering::SeqCst),
             "fail-next-resume" => self.fail_resume.store(true, Ordering::SeqCst),
             "fail-next-output" => self.fail_output.store(true, Ordering::SeqCst),
             "stop-in-native" if native_stop_enabled() => {
@@ -51,6 +54,7 @@ impl Control {
     }
     pub fn report(&self) -> Value {
         let mut report = json!({"loads":self.loads.load(Ordering::SeqCst),"failedResumes":self.failed_resumes.load(Ordering::SeqCst),"forcedBuffering":self.buffer.load(Ordering::SeqCst),"pendingResumeFailure":self.fail_resume.load(Ordering::SeqCst),"pendingOutputFailure":self.fail_output.load(Ordering::SeqCst)});
+        report["heldSeeking"] = json!(self.seek.load(Ordering::SeqCst));
         if native_stop_enabled() {
             report["observedNativeStops"] =
                 json!(self.observed_native_stops.load(Ordering::SeqCst));
@@ -62,14 +66,20 @@ impl Control {
 pub struct Audio {
     inner: NativeAudio,
     control: Arc<Control>,
+    held_seek: bool,
 }
 impl Audio {
     pub fn new(inner: NativeAudio, control: Arc<Control>) -> Self {
-        Self { inner, control }
+        Self {
+            inner,
+            control,
+            held_seek: false,
+        }
     }
 }
 impl AudioEngine for Audio {
     fn load(&mut self, input: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
+        self.held_seek = false;
         self.control.loads.fetch_add(1, Ordering::SeqCst);
         if self.control.fail_output.swap(false, Ordering::SeqCst) {
             return Err(Error::Playback {
@@ -87,7 +97,9 @@ impl AudioEngine for Audio {
         self.inner.pause(paused)
     }
     fn seek(&mut self, position: f64) -> Result<()> {
-        self.inner.seek(position)
+        self.inner.seek(position)?;
+        self.held_seek = self.control.seek.load(Ordering::SeqCst);
+        Ok(())
     }
     fn volume(&mut self, value: f64) -> Result<()> {
         self.inner.volume(value)
@@ -96,6 +108,7 @@ impl AudioEngine for Audio {
         self.inner.speed(value)
     }
     fn stop(&mut self) -> Result<()> {
+        self.held_seek = false;
         self.inner.stop()
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
@@ -109,6 +122,12 @@ impl AudioEngine for Audio {
             self.inner.stop()?;
         }
         let mut snapshot = self.inner.poll()?;
+        if self.held_seek && !self.control.seek.load(Ordering::SeqCst) {
+            self.held_seek = false;
+        }
+        if self.held_seek && snapshot.entry_id.is_some() {
+            snapshot.seeking = true;
+        }
         if native_stop_enabled() {
             let count = snapshot
                 .events

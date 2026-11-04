@@ -82,6 +82,7 @@ export interface PlayerView {
   track: TrackView | null;
   position: number | null;
   bufferedThrough?: number | null;
+  nativeSeeking?: boolean;
   timeline: Timeline | null;
   qualityPreferences: {
     revision: string | null;

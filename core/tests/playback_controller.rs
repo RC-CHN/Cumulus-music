@@ -109,6 +109,7 @@ async fn a_pending_rewind_cannot_restore_the_pre_seek_clock() {
     assert_eq!(observed.state, Status::Paused);
     assert_eq!(observed.play_id, playing.play_id);
     assert_eq!(observed.buffered_through, None);
+    assert!(observed.native_seeking);
 
     // Pause/unpause sample the engine directly, before the next periodic tick.
     assert_eq!(
@@ -129,7 +130,44 @@ async fn a_pending_rewind_cannot_restore_the_pre_seek_clock() {
         state.view.position = Some(10.4);
         state.view.seeking = false;
     }
-    until(&f.player, |snapshot| snapshot.position == Some(10.4)).await;
+    let settled = until(&f.player, |snapshot| snapshot.position == Some(10.4)).await;
+    assert!(!settled.native_seeking);
+}
+
+#[tokio::test]
+async fn only_the_current_decoder_projects_seek_wait_and_replacement_clears_it() {
+    let f = Fixture::new();
+    let current = f.command(replace(&[1, 2])).await.unwrap();
+    let (polls, entry_id) = {
+        let mut engine = f.device.state.lock().unwrap();
+        let entry_id = engine.view.entry_id.expect("current native entry");
+        engine.view.entry_id = Some(entry_id + 100);
+        engine.view.seeking = true;
+        (engine.polls, entry_id)
+    };
+    let stale = until(&f.player, |view| {
+        f.device.state.lock().unwrap().polls > polls && view.revision > current.revision
+    })
+    .await;
+    assert!(!stale.native_seeking);
+    f.device.state.lock().unwrap().view.entry_id = Some(entry_id);
+    let seeking = until(&f.player, |view| view.native_seeking).await;
+    assert_eq!(seeking.state, Status::Playing);
+    assert_eq!(seeking.play_id, current.play_id);
+    let polls = {
+        let mut engine = f.device.state.lock().unwrap();
+        engine.view.entry_id = Some(entry_id + 100);
+        engine.view.seeking = false;
+        engine.polls
+    };
+    let stale = until(&f.player, |view| {
+        f.device.state.lock().unwrap().polls > polls && view.revision > seeking.revision
+    })
+    .await;
+    assert!(stale.native_seeking);
+    let next = f.command(Cmd::Next).await.unwrap();
+    assert_ne!(next.play_id, current.play_id);
+    assert!(!next.native_seeking);
 }
 
 #[tokio::test]
