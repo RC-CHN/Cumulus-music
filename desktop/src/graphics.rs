@@ -36,7 +36,16 @@ pub unsafe fn prepare_process() {
                     .unwrap_or(false)
             });
         let defaults: &[(&str, &str)] = match mode.as_str() {
-            "software" => &[("WEBKIT_DISABLE_COMPOSITING_MODE", "1")],
+            // Keep the WebKit compositor: its unaccelerated page path can
+            // leave a working DOM behind a white/stale content surface. Mesa
+            // rasterizes in software; WebKit presents via shared memory.
+            "software" if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() => &[
+                ("LIBGL_ALWAYS_SOFTWARE", "1"),
+                ("WEBKIT_FORCE_DMABUF_RENDERER", "1"),
+                ("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1"),
+            ],
+            // Do not conflict with an explicit WebKit renderer opt-out.
+            "software" => &[("LIBGL_ALWAYS_SOFTWARE", "1")],
             "gpu-shm" => &[
                 ("WEBKIT_FORCE_DMABUF_RENDERER", "1"),
                 ("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1"),

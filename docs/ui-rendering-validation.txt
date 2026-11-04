@@ -52,7 +52,13 @@ sets process-local defaults only when the user has not supplied that variable:
   __NV_DISABLE_EXPLICIT_SYNC=1.
 - NVIDIA + X11: GPU shared-memory transport (the Wayland setting is inapplicable).
 - Other drivers: normal hardware-acceleration initialization.
-CUMULUS_RENDERER=software explicitly selects software rendering;
+CUMULUS_RENDERER=software requests Mesa software GL on Linux while keeping
+WebKit compositing enabled. Its process-local defaults are LIBGL_ALWAYS_SOFTWARE=1
+and, unless a user supplies WEBKIT_DISABLE_DMABUF_RENDERER, WEBKIT_FORCE_DMABUF_RENDERER=1
+with WEBKIT_DMABUF_RENDERER_FORCE_SHM=1. This keeps WebKit's renderer active and
+presents through shared memory rather than exporting DMA-BUF buffers. A runtime
+or GL implementation that does not honor these compatibility switches is still
+subject to the normal startup probe. Existing explicit values are preserved.
 CUMULUS_RENDERER=gpu-shm selects GPU/shared-memory transport;
 CUMULUS_RENDERER=gpu requests the direct path without auto driver workarounds.
 No desktop-wide, driver, display-frequency or login-session setting is modified.
@@ -72,7 +78,7 @@ The splash also honors reduced motion. A real GTK/WebKit check with animations
 disabled confirmed the media query matched and the logo's translation stayed zero.
 
 Auto mode tries each candidate once: normal GPU configuration, then GPU/SHM on
-Linux, then software. Windows uses WebView2's normal renderer, then --disable-gpu
+Linux, then software GL with shared-memory presentation. Windows uses WebView2's normal renderer, then --disable-gpu
 as a compatibility fallback. Explicit CUMULUS_RENDERER choices remain pinned for
 advanced diagnosis. Each child has a 15-second deadline; success requires BOTH a
 successful exit and a render acknowledgement in its private temporary directory.
@@ -89,7 +95,8 @@ Known-bad higher candidates are skipped until the seven-day retry period expires
 or the environment changes. The period does not extend on every successful launch.
 Cache invalidation includes the executable, display/backend overrides and on Linux
 WebKit version, kernel/driver version and GPU model; Windows includes WebView2's
-version. Windows driver changes are caught by the mandatory check, but recovery to
+version. Linux renderer enable/disable environment overrides also invalidate the
+cache. Windows driver changes are caught by the mandatory check, but recovery to
 a faster profile after a driver repair may wait for the seven-day retry period.
 The stored environment key is a local hash, not a serial number or server identity.
 Missing, malformed, oversized or unwritable cache never prevents renderer checks.
@@ -109,6 +116,26 @@ default, cached and software paths on both supported platforms, plus Linux SHM.
 Windows does not yet perform the Linux pixel snapshot check; its acknowledgement
 covers mapped-page layout and animation frames. Virtual-runner results do not
 establish physical GPU compatibility on every driver.
+
+Linux software paint regression
+With WebKitGTK 2.52.6 on Xvfb, the old non-composited setting reported a laid-out
+dialog but its selected tab was white in the actual display screenshot. Under
+Mesa llvmpipe the same fixture completed all 15 painted steps with the compositor
+enabled and the shared-memory defaults above. The expected tab pixel RGB
+(204, 41, 72) was present. Adding WEBKIT_DISABLE_DMABUF_RENDERER=1 again
+produced (255, 255, 255), even though llvmpipe was still active. Disabling the
+WebKit renderer entirely is distinct from disabling DMA-BUF export. The local
+2.52.6 binary's renderer initialization reads FORCE_DMABUF_RENDERER before
+enabling its SHM flag and FORCE_SHM before its separate DMA-BUF export flag.
+These observations use synthetic data and a network namespace with no external
+routes; they do not establish hardware/Wayland fallback on every driver.
+
+The Linux ordinary-binary paint probe supports
+scripts/ci/installed_linux_smoke.py --software-rendering with its usual
+--binary, --commit and --root arguments under isolated Xvfb and D-Bus.
+The full application fixture separately checks actual colored page pixels;
+the bounded graphics-only startup child still requires its snapshot and never
+retries the full application.
 
 WebView2's browser flags are a compatibility mechanism with runtime-version risk,
 not a permanent API guarantee. The fallback is checked on every launch and the

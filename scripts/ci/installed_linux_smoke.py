@@ -66,7 +66,8 @@ def own_window(pid):
     return None
 
 
-def observe(binary, root, verify_local_playback=False, packaged_filter=None, verify_monitor_pcm=False):
+def observe(binary, root, verify_local_playback=False, packaged_filter=None,
+            verify_monitor_pcm=False, *, software_rendering=False):
     import gi
     gi.require_version('Gdk', '3.0')
     gi.require_version('GdkX11', '3.0')
@@ -76,6 +77,8 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None, ver
            if not key.startswith('CUMULUS_') and key != 'APPDIR' and 'proxy' not in key.lower()}
     env['CUMULUS_DEVICE_IDENTITY'] = 'native'
     env['CUMULUS_DATA_DIR'] = str(root/'state')
+    if software_rendering:
+        env['CUMULUS_RENDERER'] = 'software'
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR', 'XDG_STATE_HOME'):
         folder = root/key
         folder.mkdir(mode=0o700)
@@ -143,6 +146,8 @@ def main():
     parser.add_argument('--ci-run', help='require this CI run in the package manifest')
     parser.add_argument('--ci-attempt', help='require this CI attempt in the package manifest')
     parser.add_argument('--portable', action='store_true', help='verify the portable tar.gz instead of the Debian package')
+    parser.add_argument('--software-rendering', action='store_true',
+                        help='exercise the pinned native software profile through ordinary startup')
     parser.add_argument('--verify-local-playback', action='store_true',
                         help='exercise synthetic audio via X11 and a private PipeWire null sink')
     parser.add_argument('--verify-installed-equalizer', action='store_true',
@@ -171,7 +176,8 @@ def main():
         assert binary.is_file() and os.access(binary, os.X_OK), 'expected a built executable'
         binary_hash = digest(binary)
         width, height, playback = observe(binary, root, args.verify_local_playback,
-                                         verify_monitor_pcm=args.verify_monitor_pcm)
+                                         verify_monitor_pcm=args.verify_monitor_pcm,
+                                         software_rendering=args.software_rendering)
         assert digest(binary) == binary_hash, 'executable changed during the probe'
         result = dict(ok=True, commit=args.commit, ordinaryBinary=True, binarySha256=binary_hash)
     else:
@@ -200,11 +206,14 @@ def main():
             assert digest(packaged_filter) == digest(args.filter)
             width, height, playback = observe(executable, root, args.verify_local_playback,
                                               packaged_filter if args.verify_installed_equalizer else None,
-                                              args.verify_monitor_pcm)
+                                              args.verify_monitor_pcm,
+                                              software_rendering=args.software_rendering)
         result = dict(ok=True, commit=args.commit, archiveVerified=True, package=name,
                       packageSha256=asset['sha256'], ciRun=manifest['ciRun'],
                       ciAttempt=manifest['ciAttempt'], installedFilterMatchesPortable=True)
     result.update(ordinaryWindowPainted=True, noExternalNetwork=True, width=width, height=height)
+    if args.software_rendering:
+        result['softwareRenderingRequested'] = True
     if playback is not None:
         result['localPlayback'] = playback
     (root/'report.json').write_text(json.dumps(result, indent=2)+'\n', encoding='utf-8')
