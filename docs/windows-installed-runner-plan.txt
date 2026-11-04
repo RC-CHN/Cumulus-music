@@ -1,0 +1,99 @@
+Windows 安装包验证：安全接线与普通播放证据缺口
+
+2026-11-05，审计主线 ed573498。当前 CI 的 Windows 包构建会验证
+原生媒体、冷 FLAC 和便携 ZIP 的图形启动。NSIS 安装版的实际安装、
+普通应用播放和卸载是另一个层次，当前工作流未运行安装诊断。
+
+观察到的已通过阶段（仅对应列出的提交，不当作发布凭据）：
+- ca767c7b / CI 41865352761 attempt 1 / Windows 126698064215：
+  原生打包与媒体通过；windows-cold-flac-native artifact 13346567449
+  的 report.json 逐项匹配完整 SHA/run/attempt，10 个场景通过、
+  libFLAC 1.5.0 / mpv 0.41.0、相对加载被拒绝。该 Windows job
+  随后通过解压便携 ZIP 启动，仍在 Windows WebView 回归时不称 CI 通过。
+- ed573498 / 41875048216 Windows 126732070456 已通过原生字符编码观察；
+  2e289ae3 / 41869410070 Windows 126712056357 已通过严格 Clippy；
+  两次都未在本次观察时产出 Windows 包通过结论。
+- 旧 8bfe8e21 的 Windows 失败是输出 CP1252 无法写 U+2192，
+  已由 c2b1bd57 修复；旧 db4f0817 Linux WebView 的标题推荐文案
+  断言已由 f5892d4d 修复。这两条不能作为当前 Windows 产品故障。
+
+1. 先做单独、手动的安装诊断
+
+现有 scripts/ci/windows_nsis_smoke.py 可验证从同次 CI 取出的
+NSIS 与便携 ZIP 的 SHA-256/大小/版本；它用新目录安装，核对所有
+相邻 DLL 和 exe 字节，运行安装版 ffprobe 对合成 WAV，启动普通
+安装文件的图形诊断模式并卸载。它只声明安装、布局、ffprobe、
+图形诊断、目标运行时文件及卸载注册项清理。/S、/D 和 _?= 有
+明确参数；当前“disposable runner”参数只表示调用者确认，不能创建
+Windows 用户、清除宿主文件、改变网络或证明无真实资料。
+
+建议以独立手动 Windows 安装诊断工作流启用，完成实际验证前不动
+ci.yml、release.yml 或 CI gate；此诊断也不成为另一次发布构建：
+- 接受三个严格输入：40 位小写 SHA、正十进制 source CI run 和
+  attempt。只从固定仓库的 CI workflow 元数据读
+  GET actions/runs/{run}/attempts/{attempt}；核对 workflow ID、
+  同一 head_repository、head_branch=main、event=push、head_sha、
+  run_attempt、completed/success。再核对这一 attempt 的
+  Native (windows-x64) 成功，不接受 PR、fork、另一 workflow 或
+  更近的其他 SHA。只设 contents:read / actions:read，无发布权限。
+- 下载该 source run 唯一未过期的 packages-windows-x64 artifact；
+  尽管下载 API 按 run 查询，仍要求 manifest-windows-x64.json 的
+  commit、ciRun、ciAttempt 全部与明确输入相同。不同 attempt、
+  缺件或 digest 不符立即失败，不重新打包。诊断只上传本次报告，
+  不上传/替换 package artifact 或 release-provenance。
+- 执行在全新一次性 Windows x64 VM 与用户下（可先用独立
+  windows-2022 GitHub-hosted 诊断核对；普通 hosted runner 本身不
+  保证无外网）。检查当前 HKCU、默认安装位置和 HKLM 旧 WiX
+  登记无既有 Cumulus。/D 仅约束安装文件，Tauri 仍会触及
+  HKCU 卸载与产品位置/语言键及开始菜单；正常卸载也不保证
+  删除所有设置。不能把新目录当成沙箱，测试后应销毁 VM 或用户。
+- 在启动真实 installer 之前读取 Windows x64 的 WebView2 Evergreen
+  预安装版本：HKLM\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\
+  {F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}\pv 或同标识的
+  HKCU\Software\Microsoft\EdgeUpdate\Clients\…\pv 必须是有效非零
+  版本。包脚本未覆盖默认 DownloadBootstrapper，缺运行时的安装器
+  可外连 Microsoft，因此预检失败必须停，不更改真实包替代。
+  Tauri CLI 2.12.4 模板明确先查这两个位置并分支；Microsoft
+  也将大于 0.0.0.0 的版本作为预安装依据。预检排除默认下载分支，
+  不是一般网络隔离证明；要求零外连时必须在已隔离的子 VM 中执行，
+  先把校验产物复制进去，仅带出白名单报告。
+- 清理继承的 CUMULUS_、MPV_DLL_DIR_CUMULUS、WebView2 运行时和
+  browser profile 覆盖，临时工作目录和本地安装目录分离，PATH
+  只包含 Windows 系统目录。脚本 graphics_smoke.py 自行分配新的
+  CUMULUS_DATA_DIR；普通 graphics 子窗口显式用一次性的 WebView
+  data_directory 并由 Windows Job Object 限定其子进程。
+- 命令：
+  python scripts/ci/windows_nsis_smoke.py --disposable-runner --packages PACKAGE_DIR --commit FULL_SHA --ci-run RUN --ci-attempt ATTEMPT --root NEW_REPORT
+  保留 install.log、uninstall.log、graphics JSON 与 report.json；
+  整段失败依旧失败。待实际机器确认后，再讨论独立可选 CI 接线，
+  不能靠模拟脚本结果为 Windows 发布签字。
+
+依据（固定模板和 Windows 官方文档）：
+https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi
+https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution#detect-if-a-webview2-runtime-is-already-installed
+
+2. 安装版普通本地播放仍需新的 Windows 证明
+
+Linux 的 scripts/ci/installed_linux_audio.py 使用 AT-SPI、X11 和
+私有 PipeWire，不能原封移植。Windows 已有独立 SendInput 驱动的
+局部基础（scripts/ci/shortcut_windows_keys.py），但没有能操控
+普通安装版 WebView2 的 UI Automation 适配器。
+
+最小完整证据：在有可用隔离 render endpoint 和隔离网络的 Windows
+交互式桌面，对安装目录的 cumulus.exe 作普通启动，另设新
+CUMULUS_DATA_DIR 与 WebView2 profile、保持 system-only PATH 和
+应用资源默认解析，不用测试 IPC、图形诊断参数、MSYS2 DLL 路径或
+从便携 ZIP 复制可执行程序替代安装文件。用 PID 限定 UI Automation
+窗口、按角色和名称找“本地音乐”“选择音乐目录”/“选择目录”
+与“播放全部”，处理原生目录对话框，加入有已知标题及持续时间的
+合成 FLAC，检查文件已索引。通过只读观察当次 SQLite 中 local-guest
+播放队列和 position，核对文件身份（Windows 扩展/短路径按文件比对）、
+本地来源、同一 entry、位置两次实际前进、暂停后停住；使用真实 EQ
+控件并读回预设/开关。可采用 PowerShell UIAutomationClient 或现有
+SendInput，不要注入生产 JS、修改用户设置、读取登录态或使用真实曲目。
+不能预设无头 runner 会提供可用 UIA/前台或音频 endpoint：缺少即
+报告环境边界。再加明确选定的合成输出 loopback/频率测量，才可说
+实际音频和 EQ 改变通过；进度与设置写入不等于 PCM 或物理听感。
+
+本次只跑了 6 项 Windows NSIS/ZIP 的 Linux 合成 provenance/layout
+测试，没有运行 Windows installer 或普通 GUI，也未触发 CI/发行。

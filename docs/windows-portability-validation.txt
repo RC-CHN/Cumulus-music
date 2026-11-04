@@ -76,3 +76,7 @@ CI 在上传 Windows 包前以当次包清单核对 commit、run/attempt、ZIP �
 C DSP DLL 和声明的 DLL 依赖至新临时目录。以现有 graphics_smoke 启动其中的可执行文件，
 PATH 仅包含该目录和 Windows 系统路径，不沿用打包暂存目录 DLL 设置。
 该检查覆盖发行 ZIP 的实际启动和相邻运行时布局；不验证 NSIS 安装过程或物理音频输出。
+
+实际 NSIS 安装、卸载和普通 Windows 应用播放另见
+windows-installed-runner-plan.txt。独立诊断只接受明确 CI run/attempt
+的包，不生成或替代发行凭据；当前完整 Windows 安装播放尚无实测。
