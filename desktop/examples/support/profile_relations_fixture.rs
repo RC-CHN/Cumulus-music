@@ -39,7 +39,12 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         "/api/user/playlist" => json!({"code":200,"more":false,"playlist":[]}),
         "/api/user/personal/page/info" if args == &json!({"userId":"3"}) => {
-            json!({"code":200,"data":{"userRelationDTO":{"canSeeFansOrFollows":!matches!(times,4|6),"fansOrFollowsToastText":"合成作者限制了查看"}}})
+            let notice = if times == 6 {
+                "合成作者取消了查看权限"
+            } else {
+                "合成作者限制了查看"
+            };
+            json!({"code":200,"data":{"userRelationDTO":{"canSeeFansOrFollows":!matches!(times,4|6),"fansOrFollowsToastText":notice}}})
         }
         "/api/user/getfollows/3" if args == &json!({"offset":0,"limit":20,"getcounts":true}) => {
             let mut rows = vec![

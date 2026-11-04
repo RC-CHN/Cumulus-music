@@ -95,8 +95,10 @@
     assert(creator() && !heading(), 'header denial stays on profile');
     await capture('07_denied');
     click(entry('followers'));
-    await wait(() => !notice(), 'clears previous denial before retry');
-    await wait(() => notice() === '合成作者限制了查看' && creator() && !heading(), 'destination privacy revocation returns to profile');
+    // Identify the new response even if both native reads finish between observations.
+    await wait(() => notice() === '合成作者取消了查看权限' &&
+      creator()?.querySelector('h1').textContent === '合成作者 3' && !heading(),
+      'destination privacy revocation returns to the same profile');
     click(entry('followers'));
     await wait(() => heading() === '合成作者 3的粉丝' && card(90), 'guest fans allowed after new verification');
     await capture('08_guest_fans');
