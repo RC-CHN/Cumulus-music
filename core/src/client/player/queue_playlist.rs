@@ -21,7 +21,7 @@ use std::{
 };
 
 // Official module 7.g; insertions keep the nearest prefix, then the suffix.
-const QUEUE_LIMIT: usize = 10_000;
+pub(super) const QUEUE_LIMIT: usize = 10_000;
 
 pub(super) enum QueueCollection {
     ArtistFavor {

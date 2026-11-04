@@ -46,8 +46,12 @@ def main():
     assert complete['groupPinyinOrder'] is True
     if args.small:
         assert complete['width'] == 760
+        assert complete['dropQueue'] is None
+    else:
+        assert complete['dropQueue'] == ['雨声', '夜行 · 下篇', '夜行 · 上篇']
+        assert (run / 'ux_03_local_queue_drop.json').is_file()
     assert complete['audioOutput'] == 'null' and complete['queue'] == ['夜行 · 下篇', '雨声', '夜行 · 上篇']
-    assert len(list(run.glob('ux_*.png'))) == (2 if args.screenshots else 0)
+    assert len(list(run.glob('ux_*.png'))) == ((2 if args.small else 3) if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'queueCount': len(complete['queue'])}))
 
 

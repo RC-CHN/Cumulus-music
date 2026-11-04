@@ -18,18 +18,20 @@ import {
   type LocalTrack,
   type LocalRoot,
 } from '../services/local';
-import { time } from '../services/player';
+import { time, type LocalQueueDropSource } from '../services/player';
 const props = defineProps<{
   model: LocalModel;
   matching: LocalMatchingModel;
   playable: boolean;
   queueable: boolean;
+  queueDropEnabled?: boolean;
   queueLocal: (query: LocalQuery, revision: string, trackId?: string) => Promise<unknown>;
   currentId?: string;
 }>();
 const emit = defineEmits<{
   play: [query: LocalQuery, revision: string, id: string | null];
   comments: [id: string, title: string];
+  queueDrag: [event: PointerEvent, source: LocalQueueDropSource];
 }>();
 const { view, query, loading, busy, error, readError, notice } = props.model;
 const groupCollator = new Intl.Collator('zh-CN-u-co-pinyin');
@@ -110,6 +112,30 @@ watch(
   { flush: 'post' },
 );
 const readLocked = computed(() => loading.value || !!readError.value || !view.value);
+function startQueueDrop(event: PointerEvent, row: LocalTrack) {
+  const hit = event.target instanceof Element ? event.target : undefined;
+  if (hit?.closest('button, a, input, select') && !hit.closest('.local-title')) return;
+  const revision = view.value?.revision;
+  const scope = { ...query.value };
+  const scopeKey = localQueryKey(scope);
+  if (!revision) return;
+  const current = () =>
+    !!props.queueDropEnabled &&
+    ownsVisit() &&
+    !readLocked.value &&
+    !busy.value &&
+    keyword.value === query.value.keyword &&
+    localQueryKey(query.value) === scopeKey &&
+    view.value?.revision === revision &&
+    view.value.tracks.some(
+      (candidate) =>
+        candidate.track.id === row.track.id &&
+        candidate.revision === row.revision &&
+        !candidate.track.missing,
+    );
+  if (current())
+    emit('queueDrag', event, { query: scope, revision, trackId: row.track.id, current });
+}
 const canPlay = computed(
   () => props.playable && !busy.value && !readLocked.value && !!view.value?.playable,
 );
@@ -783,6 +809,8 @@ function status(root: LocalRoot) {
               @dblclick="!row.track.missing && play(row.track.id)"
               @contextmenu="showTrackMenu($event, row)"
               @keydown="handleTrackKey($event, row)"
+              @pointerdown="startQueueDrop($event, row)"
+              @dragstart.prevent
             >
               <td>
                 <button

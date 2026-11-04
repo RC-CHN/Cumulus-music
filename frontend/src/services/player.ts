@@ -230,6 +230,12 @@ export type QueueEdit =
   | { kind: 'select'; entry_id: string }
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
   | { kind: 'clear' };
+export type LocalQueueDropSource = {
+  query: import('./local').LocalQuery;
+  revision: string;
+  trackId: string;
+  current: () => boolean;
+};
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
 export type SongRowDoubleClickSelection =
   | ({
@@ -355,6 +361,15 @@ export type PlayerAction =
       revision: string;
       track_id?: string;
       expected_queue_revision: string;
+    }
+  | {
+      kind: 'drop_local_into_queue';
+      query: import('./local').LocalQuery;
+      revision: string;
+      track_id: string;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
     }
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }

@@ -341,6 +341,14 @@ pub enum PlayerAction {
         track_id: Option<String>,
         expected_queue_revision: String,
     },
+    DropLocalIntoQueue {
+        query: crate::library::catalog::LocalQuery,
+        revision: String,
+        track_id: String,
+        expected_queue_revision: String,
+        expected_play_id: Option<String>,
+        before_entry_id: Option<String>,
+    },
     QueueDownloads {
         task_ids: Vec<String>,
         expected_queue_revision: String,

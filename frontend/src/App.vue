@@ -943,6 +943,7 @@ function trackComments(track: TrackView) {
 }
 const local = useLocal();
 const localPageRef = ref<InstanceType<typeof LocalPage>>();
+const queuePanel = ref<InstanceType<typeof QueuePanel>>();
 const localMatching = useLocalMatching(undefined, () => {
   void music.bootstrap(false);
 });
@@ -3442,8 +3443,10 @@ onUnmounted(() => {
                   !player.view.value?.fm
                 "
                 :queue-local="player.queueLocal"
+                :queue-drop-enabled="player.queueOpen.value && queuePanel?.canDropLocal"
                 :current-id="currentLocalId"
                 @play="playLocal"
+                @queue-drag="(event, source) => queuePanel?.beginLocalDrop(event, source)"
                 @comments="(id, title) => openComments({ kind: 'track', id }, title)"
               />
               <SkinCenter v-else-if="page.kind === 'decoration'" :account="account" />
@@ -4541,6 +4544,7 @@ onUnmounted(() => {
     <Transition name="queue-panel" @after-leave="queueLeft">
       <QueuePanel
         v-if="player.queueOpen.value"
+        ref="queuePanel"
         :player="player"
         :authenticated="signedIn"
         :together="together"

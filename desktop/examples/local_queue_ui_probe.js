@@ -22,7 +22,7 @@
   }
   async function capture(stage, value = {}) {
     await emit(stage, value);
-    if (window.__localProof.capture) await new Promise(done => setTimeout(done, 700));
+    if (window.__localProof.capture) await new Promise(done => setTimeout(done, value.paintSamples ? 3400 : 700));
   }
   async function filter(word, count) {
     const input = one('[aria-label="搜索本地音乐"]');
@@ -218,7 +218,75 @@
     await capture('ux_02_local_track_playing');
     assert(document.documentElement.scrollWidth <= innerWidth &&
       one('.local-page').scrollWidth <= one('.local-page').clientWidth + 1, 'no horizontal clipping');
-    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, trackMenu: true, localSort: true, groupPinyinOrder: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
+    let dropQueue = null;
+    if (innerWidth >= 980) {
+      const held = await invoke('player_action', { epoch, action: { kind: 'pause', paused: true } });
+      await filter('雨声', 1);
+      click(button('播放队列'));
+      const viewport = await wait(() => one('.queue-scroll') &&
+        document.querySelectorAll('.queue-row').length === 2 && one('.queue-scroll'), 'queue drop destination');
+      await new Promise(done => setTimeout(done, 320));
+      const pointer = (target, kind, x, y) => target.dispatchEvent(new PointerEvent(kind, {
+        bubbles: true, cancelable: true, pointerId: 57, pointerType: 'mouse', button: 0,
+        buttons: kind === 'pointerup' ? 0 : 1, clientX: x, clientY: y,
+      }));
+      function startDrop(slot) {
+        const title = one('.local-tracks tbody .local-title');
+        const source = title.getBoundingClientRect();
+        const x = source.left + 4, y = source.top + source.height / 2;
+        assert(document.elementFromPoint(x, y)?.closest('.local-title') === title, 'visible source is reachable by pointer');
+        const bounds = viewport.getBoundingClientRect();
+        const targetX = bounds.left + bounds.width / 2, targetY = bounds.top + 8 + slot * 64;
+        pointer(title, 'pointerdown', x, y);
+        pointer(viewport, 'pointermove', targetX, targetY);
+        return (backToSource = false) => {
+          if (backToSource) {
+            pointer(title, 'pointerup', x, y);
+            title.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+          } else pointer(viewport, 'pointerup', targetX, targetY);
+        };
+      }
+      const old = await invoke('player_queue', { epoch });
+      const aborted = startDrop(1);
+      const marker = await wait(() => {
+        const node = one('.queue-drop-marker');
+        return node?.style.top === '64px' && one('.queue-drag-hint')?.textContent.includes('添加本地歌曲') && node;
+      }, 'drop insertion line between the two displayed rows');
+      const markerRect = marker.getBoundingClientRect();
+      await capture('ux_03_local_queue_drop', {
+        insertBefore: 1, noTransfer: true, screenX, screenY, ratio: devicePixelRatio,
+        paintSamples: [{ x: markerRect.left + 8, y: markerRect.top + 1, color: getComputedStyle(marker).backgroundColor }],
+      });
+      viewport.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      aborted(true);
+      await wait(() => !one('.queue-drop-marker') && one('.queue-scroll'), 'Escape clears only drag, leaves queue open');
+      assert((await invoke('player_queue', { epoch })).revision === old.revision, 'cancel does not mutate queue');
+      assert((await invoke('player_snapshot', { epoch })).playId === held.playId, 'canceled release does not play the source');
+      const external = new Event('drop', { bubbles: true, cancelable: true });
+      Object.defineProperty(external, 'dataTransfer', {
+        get() { throw Error('queue must not inspect an external drop payload'); },
+      });
+      viewport.dispatchEvent(external);
+      assert((await invoke('player_queue', { epoch })).revision === old.revision, 'external drop does not mutate queue');
+      const drop = startDrop(0);
+      await wait(() => one('.queue-drop-marker')?.style.top === '0px', 'explicit insertion boundary before first row');
+      drop();
+      await wait(async () => (await invoke('player_queue', { epoch })).tracks.map(row => row.track.name).join(',') ===
+        '雨声,夜行 · 上篇,夜行 · 下篇', 'drop inserts at the pointer boundary rather than next after current');
+      await wait(() => document.querySelectorAll('.queue-row').length === 3 && !one('.queue-drop-marker'), 'updated visible queue');
+      await filter('夜行 · 上篇', 1);
+      await wait(() => one('.local-tracks tbody .local-title')?.textContent.includes('夜行 · 上篇'), 'active duplicate source is indexed');
+      startDrop(3)();
+      dropQueue = await wait(async () => {
+        const state = await invoke('player_queue', { epoch });
+        const found = state.tracks.map(row => row.track.name);
+        return found.join(',') === '雨声,夜行 · 下篇,夜行 · 上篇' && found;
+      }, 'drop moves the active duplicate to the tail without a duplicate');
+      const final = await invoke('player_snapshot', { epoch });
+      assert(final.playId === held.playId && final.entryId === held.entryId && final.state === 'paused' &&
+        Math.abs(final.position - held.position) < .05, 'drop retains the same native paused CUE clock');
+    }
+    await emit('complete', { ok: true, queue: names, dropQueue, retainedPlayback: true, folderTree: true, groupMenu: true, trackMenu: true, localSort: true, groupPinyinOrder: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
   } catch (error) {
     await emit('failed', { message: String(error), stack: error?.stack });
   }

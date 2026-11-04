@@ -194,7 +194,7 @@ fn main() {
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
             if queue {
-                if ["local_queue_started", "ux_01_local_track_menu", "ux_02_local_track_playing", "complete", "failed"].contains(&stage) {
+                if ["local_queue_started", "ux_01_local_track_menu", "ux_02_local_track_playing", "ux_03_local_queue_drop", "complete", "failed"].contains(&stage) {
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if stage=="complete"||stage=="failed"{handle.exit(if stage=="complete"{0}else{1});}
                 }

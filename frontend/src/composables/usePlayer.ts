@@ -11,6 +11,7 @@ import type {
   PlayerAction,
   QueueView,
   QueueEdit,
+  LocalQueueDropSource,
   LyricsView,
   LyricPreferences,
   QualityTrialCommand,
@@ -845,6 +846,39 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   // Queue edits belong to the list the user saw, with their own pending/error
   // feedback. They must never become the footer's audio-error retry operation.
   async function editQueue(input: QueueEdit, displayed = queue.value): Promise<boolean> {
+    return sendQueueEdit(
+      displayed,
+      (snapshot) => ({
+        kind: 'queue_for',
+        expected_queue_revision: snapshot.revision,
+        ...(input.kind === 'clear' ? { expected_room_id: snapshot.clearContext.roomId } : {}),
+        edit: input,
+      }),
+      input.kind === 'clear',
+    );
+  }
+  async function dropLocalIntoQueue(
+    source: LocalQueueDropSource,
+    displayed: QueueView,
+    playId: string | null,
+    before: string | null,
+  ) {
+    if (!source.current() || (view.value?.playId ?? null) !== playId) return false;
+    return sendQueueEdit(displayed, (snapshot) => ({
+      kind: 'drop_local_into_queue',
+      query: source.query,
+      revision: source.revision,
+      track_id: source.trackId,
+      expected_queue_revision: snapshot.revision,
+      expected_play_id: playId,
+      before_entry_id: before,
+    }));
+  }
+  async function sendQueueEdit(
+    displayed: QueueView | undefined | null,
+    action: (snapshot: QueueView) => PlayerAction,
+    rereadOnFailure = false,
+  ): Promise<boolean> {
     if (!ready.value || busy.value || queueBusy.value || queueEditing.value) return false;
     if (
       !displayed ||
@@ -859,12 +893,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditing.value = true;
     queueEditError.value = '';
     try {
-      const next = await core.playerAction(captured, {
-        kind: 'queue_for',
-        expected_queue_revision: displayed.revision,
-        ...(input.kind === 'clear' ? { expected_room_id: displayed.clearContext.roomId } : {}),
-        edit: input,
-      });
+      const next = await core.playerAction(captured, action(displayed));
       if (session !== connection || captured !== epoch || !ready.value) return false;
       accept(next);
       return true;
@@ -875,7 +904,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         if (['session_expired', 'profile_changed'].includes(problem.code)) onSessionChanged();
         // Re-read room policy after a rejected confirmation. This never
         // retries the clear or adopts a new room as the old confirmation.
-        if (input.kind === 'clear') await loadQueue();
+        if (rereadOnFailure) await loadQueue();
       }
       return false;
     } finally {
@@ -1006,6 +1035,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   return {
     queuePlaylist,
     queueLocal,
+    dropLocalIntoQueue,
     queueAlbum,
     queueDaily,
     queueStyleRecommendations,

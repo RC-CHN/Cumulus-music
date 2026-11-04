@@ -15,6 +15,7 @@ mod prepared_selection;
 mod quality;
 mod queue_click;
 mod queue_collection;
+mod queue_drop;
 mod queue_edit;
 mod queue_playlist;
 mod reports;
@@ -438,6 +439,29 @@ impl MusicClient {
         {
             return self
                 .next_play(epoch, id, quality, expected_queue_revision, next_origin)
+                .await;
+        }
+        if let PlayerAction::DropLocalIntoQueue {
+            query,
+            revision,
+            track_id,
+            expected_queue_revision,
+            expected_play_id,
+            before_entry_id,
+        } = action
+        {
+            return self
+                .drop_local_into_queue(
+                    epoch,
+                    queue_drop::LocalDrop {
+                        query,
+                        revision,
+                        track_id,
+                        expected_queue_revision,
+                        expected_play_id,
+                        before_entry_id,
+                    },
+                )
                 .await;
         }
         if let PlayerAction::QueueLocal {
@@ -1035,6 +1059,7 @@ impl MusicClient {
             | PlayerAction::QueueArtistSongs { .. }
             | PlayerAction::QueueDownloads { .. }
             | PlayerAction::QueueLocal { .. }
+            | PlayerAction::DropLocalIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
             | PlayerAction::QueueCloudBatch { .. } => {
                 unreachable!("handled before user transport commands")

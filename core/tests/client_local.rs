@@ -2,6 +2,8 @@
 mod lyric_reports;
 #[path = "support/lyric_wave.rs"]
 mod lyric_wave;
+#[path = "client_local/queue_drop.rs"]
+mod queue_drop;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod support;

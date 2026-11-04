@@ -66,6 +66,8 @@ quality/mode/select/remove/reorder/clear；JSON变体字段保持snake_case，�
 
 队列
 player_queue(epoch)返回epoch/revision/current及QueueTrack(entryId,TrackView)。
+当前播放列表支持把可见本地歌曲行拖到明确落点，保留正在播放或暂停的条目；
+来源、落点和本地文件权限见 queue-drop-contracts.txt。
 使用一次actor回复中的状态和队列，不能把两个时刻的queueRevision与列表拼在一起。
 右侧抽屉按62px行高与视区缓冲虚拟渲染；异步列表出现后观察尺寸，窗口变化重新计算。
 可选曲、上移/下移、移出和清空；排序提交完整entryId序列，重复歌曲仍有不同entryId。
