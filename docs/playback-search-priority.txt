@@ -152,6 +152,37 @@ Linux 桌面批量复验（4d8e9d0，2026-11-04）：
   `handleNativePlayError`（4282–4419）是另一条路径，使用专有 SDK 的错误编号；
   不将它的跳歌条件套到 libmpv。Rust 的普通队列继续只在正常 EOF 时自动推进。
 
+  普通目录歌曲队列的原生只读预判：
+
+  * M/308 playOneTrackInPlayingList 先取候选的 checkPlayPrivilege；M/147:1812–1824
+    实验分组默认为空，只有严格的 t1 才进入自动处理。播放列表中直接 call
+    不触发跳过；miniBar/native/petDesktop、手动方向、自然结束、顺序队尾、单曲/随机、
+    播客付费试听分别有条件。M/1384 的启动版权刷新另有移除队列项逻辑，不合并到此入口。
+  * M/59:117–175 的导出 j（函数 O）按 curPlayingList 展示顺序扫描遇到的 track，
+    第一个空项停止。先查下载 trackMap、M/127.a offlineTrack 和 M/23.Y，失败后才
+    进入在线 M/23.Z；纯本地与下载页面是各自资源分支。M/23.Z 重新读 M/119.b 的
+    连接状态（不是 Redux app.isOnline）；已知在线时使用 M/21.A 正规化后的
+    privilege.maxPlayBr（线上的 pl）、isOfflineDownOnline、flag 第 10 位试听。
+    Redux app.isOnline 另外控制能否请求同录音替代。
+  * 只有 noCopyrightRcmd.type 数值 1 且有 songId 才产生同录音候选。M/120.a →
+    M/15.ki POST /api/v3/song/detail，传 c=JSON.stringify([{id,v:0},…]) 和
+    trialMode:-1；同批保留重复 ID，每 500 条并发分批。M/21.B 在权限行多于歌曲时
+    可产生只含 ID 与权限的补位项。M/59 以回包 ID 替换候选，缺席则保留原行占位，
+    最后按最终 ID 首次出现去重。这里的“候选”从来不是媒体播放授权。
+  * Rust `PlaybackController::ordinary_queue_preflight` 读取并在返回前重新验证
+    实际账号与队列版本。只接普通目录歌曲；不使用扫描标题或手输路径来匹配本地。
+    唯一完成的同账号下载须核对任务、账本、文件摘要、加密标记与现有会员状态；
+    不续期或打开解码器。和官方原始数据库候选相比，文件已知不存在可走在线预判，
+    损坏、无权利快照或存在多份完成记录标为不确定。账号切换、队列变化或替代详情
+    的 HTTP/业务失败会使预判失败，不转成版权拒绝，也不改变播放或队列。
+  * 在线范围只接原生调用者明确确认 M/119 在线且 MV 替代实验关闭的情况；连接状态、
+    离线缓存、显式本地/云盘/播客、混合队列、启动移除分支和专有播放器故障均未接入。
+    没有新增前端 IPC，也未接实验曝光、暂停/跳转/结束动作或替代音频切换。真实应用
+    的实验状态、联网状态及不同触发来源必须补全并实测后才能启用。
+  * `cargo test -p cumulus-core --test ordinary_queue_preflight --locked` 在真实
+    Rust 播放 actor 上用合成 FLAC/NCM、账号和封闭接口验证上述分支；没有实际服务
+    授权、WebView、设备解码或真实账号操作的结论。
+
   `/api/song/enhance/player/url/v1` 的 JSON 服务码 429、500–599，无论出现在
   外层或匹配资源行，均给出可显式重试的 `playback_source_temporary`；403/404、
   缺失资源和 301 保留既有处理。重试沿用当前账号、播放标识及队列版本校验，

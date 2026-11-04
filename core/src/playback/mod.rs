@@ -10,6 +10,7 @@ pub mod failure;
 pub mod intelligence;
 pub mod output;
 pub mod preferences;
+pub mod preflight;
 pub mod quality;
 pub mod quality_preferences;
 mod queue;

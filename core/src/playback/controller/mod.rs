@@ -220,6 +220,33 @@ impl PlaybackController {
             reply.queue.ok_or(Error::State("missing queue reply"))?,
         ))
     }
+
+    /// Native-only, read-only M/59.j audit for an ordinary song queue. This
+    /// does not select a row, change queue state, or obtain a media URL.
+    pub async fn ordinary_queue_preflight(
+        &self,
+        token: &SessionToken,
+        expected_queue_revision: u64,
+        environment: super::preflight::OrdinaryQueueEnvironment,
+    ) -> Result<super::preflight::OrdinaryQueuePreflight> {
+        let (before, queue) = self.queue_with_state(token).await?;
+        if before.queue_revision != expected_queue_revision {
+            return Err(Error::QueueChanged);
+        }
+        if before.fm || before.intelligence.is_some() {
+            return Err(Error::InvalidInput("preflight requires ordinary playback"));
+        }
+        let result = self
+            .resolver
+            .ordinary_queue_preflight(token, &queue, environment)
+            .await?;
+        let (after, current) = self.queue_with_state(token).await?;
+        if after.queue_revision != before.queue_revision || current != queue {
+            return Err(Error::QueueChanged);
+        }
+        self.resolver.check_account_generation(token)?;
+        Ok(result)
+    }
 }
 impl Drop for PlaybackController {
     fn drop(&mut self) {

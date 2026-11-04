@@ -62,6 +62,18 @@ pub struct SourceResolver {
     clock: Arc<dyn ResolverClock>,
 }
 impl SourceResolver {
+    pub(super) fn check_account_generation(&self, token: &SessionToken) -> Result<()> {
+        self.session.check_generation(token)
+    }
+
+    pub(crate) async fn ordinary_queue_preflight(
+        &self,
+        token: &SessionToken,
+        queue: &super::QueueSnapshot,
+        environment: super::preflight::OrdinaryQueueEnvironment,
+    ) -> Result<super::preflight::OrdinaryQueuePreflight> {
+        super::preflight::inspect(self.session.clone(), token, queue, environment).await
+    }
     pub(crate) async fn voice_resume_position(
         &self,
         resource: &Value,

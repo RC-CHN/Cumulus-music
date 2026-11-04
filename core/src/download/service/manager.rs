@@ -109,6 +109,34 @@ impl DownloadService {
         self.guard(&token)?;
         Ok(out)
     }
+    /// Read only the catalog-song publications relevant to a native playback
+    /// preflight; this does not construct a transfer backend or renew a grant.
+    pub(crate) fn queue_publications(
+        session: &AccountSession,
+        token: &SessionToken,
+        wanted: &std::collections::HashSet<&str>,
+    ) -> Result<Vec<DownloadTask>> {
+        let store = session.persistent_store()?;
+        let owner = session.with_token(token, |uid| Ok(uid.to_owned()))?;
+        let mut out = Vec::new();
+        for (id, value) in store.values(&owner, KIND)? {
+            if !value["song_id"]
+                .as_str()
+                .is_some_and(|id| wanted.contains(id))
+            {
+                continue;
+            }
+            let task: DownloadTask = serde_json::from_value(value)?;
+            if task.id != id {
+                return Err(Error::State("download task ID mismatch"));
+            }
+            if task.origin == DownloadOrigin::Song && task.status == DownloadStatus::Complete {
+                out.push(task);
+            }
+        }
+        session.check_generation(token)?;
+        Ok(out)
+    }
     pub(super) fn save(&self, task: &DownloadTask) -> Result<()> {
         self.store
             .put(&self.owner, KIND, &task.id, &serde_json::to_value(task)?)
