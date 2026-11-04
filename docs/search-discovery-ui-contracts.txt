@@ -119,9 +119,16 @@ core/examples/search_discovery_read.rs是显式传入已有PC配置与新私有�
 SearchBox/view/searchRankCard.tsx:235–237、300–398 把播客榜/听书榜的 orpheus 条目
 解析出 id 后进入 /audioDetail/:id；普通榜条目提交搜索。Cumulus 仅在两个已知榜单内
 解析并投影一个明确的十进制播客 ID。外链、缺 ID 和歧义 ID 保留标签但禁用，
-原始 URL 不跨 IPC，不以标题发起文字搜索。点击进入已有播客详情；同一详情再次点
-只关闭搜索浮层，不重复加载或自动播放。官方外链、同页恢复/播放分支以及“更多”
-公开发现/分类目的地没有接入。
+原始 URL 不跨 IPC，不以标题发起文字搜索。点击进入已有播客详情；同一详情再次
+点击时，如果正在播放，则只关闭搜索浮层，不打断音频；如果当前播客来源相同且已暂停，
+沿用原生 play ID 和队列版本恢复。其他普通音频未播放时，根据当前播客详情的
+顺序和版本开始播放节目，原生重读并校验版本后才替换队列。依据
+SearchBox/view/searchRankCard.tsx:326–369；仍保留 FM、心动和播放器准备状态保护。
+没有接入官方外链或“更多”公开发现/分类目的地。节目播放沿用已有播客来源，
+没有扩展官方搜索场景的埋点数据。
+`search_smoke.py` 合成回归验证不同目标只打开详情、普通音乐播放中不被打断、
+普通音乐暂停时从同页开始原生节目队列，以及原节目暂停后用原队列继续播放。
+Linux WebView 通过 53 个检查点和截图；记录在 .build/search-audio-rank-playback-webview/audit.json。
 
 搜索建议的原词回退
 官方 SearchBox/view/searchResultsItems.jsx:103–147 和 M623:618–640、743–765 仅在

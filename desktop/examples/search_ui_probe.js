@@ -606,6 +606,35 @@
     click(row("合成播客榜条目"));
     await wait(()=>!panel(),"same podcast closes search");
     assert(one(".podcast-cover h2")?.textContent==="合成播客 301", "same target retains the current detail");
+    const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+    const {epoch}=await invoke("account_snapshot");
+    const snapshot=()=>invoke("player_snapshot",{epoch});
+    const pause=()=>invoke("player_action",{epoch,action:{kind:"pause",paused:true}});
+    const stillSong=await snapshot();
+    assert(stillSong.track?.id==="178"&&stillSong.state==="playing",
+      "reselecting the current radio does not interrupt already playing music");
+    await pause();
+    await wait(()=>one(".playerbar")?.dataset.state==="paused","normal song is paused");
+    await home();
+    click(row("合成播客榜条目"));
+    await wait(()=>!panel()&&one(".playerbar")?.dataset.state==="playing"&&
+      one(".now-playing")?.textContent.includes("401"),"same radio starts its programs when other audio is paused");
+    const playingRadio=await snapshot();
+    const nativeQueue=await invoke("player_queue",{epoch});
+    assert(playingRadio.origin?.kind==="podcast"&&playingRadio.origin.id==="301"&&
+      playingRadio.track?.voiceId==="401"&&nativeQueue.tracks.map(row=>row.track.voiceId).join(",")==="401,402,403",
+      "replacement uses the active radio's authoritative episode queue");
+    await capture("podcast_rank_play_from_detail");
+    const pausedRadio=await pause();
+    await wait(()=>one(".playerbar")?.dataset.state==="paused","radio is paused");
+    await home();
+    click(row("合成播客榜条目"));
+    await wait(()=>!panel()&&one(".playerbar")?.dataset.state==="playing","same paused radio resumes");
+    const resumedRadio=await snapshot();
+    assert(resumedRadio.playId===pausedRadio.playId&&resumedRadio.entryId===pausedRadio.entryId&&
+      resumedRadio.queueRevision===pausedRadio.queueRevision,
+      "resume keeps the original native decoder and queue");
+    await capture("podcast_rank_resume_in_place");
     click(button("返回上一页"));
     await wait(()=>ready("合成推荐词1", "all", ".search-track-card"),"audio rank Back restores search");
     await home();
@@ -638,6 +667,7 @@
       searchDisplayLabelVerified: true,
       cyclicSuggestionsVerified: true,
       audioRankNavigationVerified: true,
+      audioRankPlaybackVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

@@ -301,8 +301,41 @@ function openSceneRadio(id: string) {
 }
 function openSearchChartRadio(id: string) {
   const scope = podcasts.query.value.scope;
-  if (page.value.kind === 'podcasts' && scope.kind === 'radio' && scope.id === id) return;
-  openSceneRadio(id);
+  if (page.value.kind !== 'podcasts' || scope.kind !== 'radio' || scope.id !== id) {
+    openSceneRadio(id);
+    return;
+  }
+  const current = player.view.value;
+  if (
+    !player.ready.value ||
+    player.busy.value ||
+    current?.epoch !== account.value.epoch ||
+    current.fm ||
+    current.intelligence ||
+    ['playing', 'buffering', 'preparing', 'loading'].includes(current.state)
+  )
+    return;
+  if (
+    current.state === 'paused' &&
+    current.origin?.kind === 'podcast' &&
+    current.origin.id === id &&
+    player.loaded.value
+  ) {
+    void player.toggleSource();
+    return;
+  }
+  const detail = podcasts.page.value;
+  if (
+    !podcasts.loading.value &&
+    detail?.epoch === account.value.epoch &&
+    detail.scope.kind === 'radio' &&
+    detail.scope.id === id &&
+    detail.scope.ascending === scope.ascending &&
+    detail.radio?.id === id &&
+    !detail.radio.unavailable &&
+    detail.remoteTotal > 0
+  )
+    playPodcast(scope, detail.revision, null);
 }
 const fm = useFm(undefined, () => {
   void music.bootstrap(false);
