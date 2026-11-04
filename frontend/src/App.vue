@@ -16,6 +16,7 @@ import MessageDrawer from './components/messages/MessageDrawer.vue';
 import type { MessageTarget } from './services/messages';
 import { commentStartPosition } from './services/comments';
 import { useMotion } from './composables/useMotion';
+import { usePlaybackPowerGuide } from './composables/usePlaybackPowerGuide';
 import { createPageTransition } from './services/pageTransition';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
 import SearchReasonPage from './components/search/SearchReasonPage.vue';
@@ -57,6 +58,7 @@ import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
 import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
+import HeaderPlaybackPowerGuide from './components/HeaderPlaybackPowerGuide.vue';
 import SkinCenter from './components/decoration/SkinCenter.vue';
 import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
@@ -1781,7 +1783,10 @@ function revealSettingsSection() {
   player.queueOpen.value = false;
   void nextTick(focusSettingsSection);
 }
-function openSettingsSection(epoch: string, section: 'settings-audio-output' | 'settings-privacy') {
+function openSettingsSection(
+  epoch: string,
+  section: 'settings-audio-output' | 'settings-playback' | 'settings-privacy',
+) {
   if (epoch !== music.account.value.epoch) return;
   const current = music.page.value;
   if (current.kind === 'settings' && !current.accountDetail) {
@@ -2761,6 +2766,16 @@ function lyricPanelLeave(element: Element) {
   (element as HTMLElement).inert = true;
 }
 const accountsOpen = ref(false);
+const playbackPowerGuide = usePlaybackPowerGuide(
+  core,
+  () => account.value.epoch,
+  () => !initializing.value && music.accountReady.value && page.value.kind === 'discovery_home',
+  () => !!(loginOpen.value || accountsOpen.value || modalDepth.value),
+);
+function openPlaybackGuideSettings() {
+  const epoch = playbackPowerGuide.dismiss();
+  if (epoch !== undefined) openSettingsSection(epoch, 'settings-playback');
+}
 const accountFocus = useModalOrigin(
   () => loginOpen.value || accountsOpen.value,
   () => document.querySelector<HTMLElement>('.account-button'),
@@ -3629,16 +3644,14 @@ onUnmounted(() => {
         :disabled="initializing"
         @open="page.kind !== 'decoration' && music.navigate({ kind: 'decoration' })"
       />
-      <button
-        class="icon-button settings-button"
+      <HeaderPlaybackPowerGuide
+        :visible="playbackPowerGuide.visible.value"
         :disabled="initializing"
-        aria-label="打开设置"
-        title="设置"
-        :aria-pressed="page.kind === 'settings'"
-        @click="music.navigate({ kind: 'settings' })"
-      >
-        <Icon name="settings" />
-      </button>
+        :settings-open="page.kind === 'settings'"
+        @settings="music.navigate({ kind: 'settings' })"
+        @dismiss="playbackPowerGuide.dismiss()"
+        @playback="openPlaybackGuideSettings"
+      />
       <WindowControls />
     </header>
     <main class="main-content">

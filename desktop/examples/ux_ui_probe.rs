@@ -43,6 +43,8 @@ mod member_welfare_fixture;
 mod message_fixture;
 #[path = "support/mode_fixture.rs"]
 mod mode_fixture;
+#[path = "support/playback_power_guide_fixture.rs"]
+mod playback_power_guide_fixture;
 #[path = "support/playback_quality_fixture.rs"]
 mod playback_quality_fixture;
 #[path = "support/playlist_collect_fixture.rs"]
@@ -168,6 +170,12 @@ impl Api for Library {
         member_sign_fixture::observed_server_time_ms()
     }
 
+    fn playback_power_experiment(
+        &self,
+    ) -> ApiFuture<'_, Option<cumulus_core::protocol::pc_experiments::PcExperimentGroups>> {
+        Box::pin(async { playback_power_guide_fixture::assignment() })
+    }
+
     fn queue_more_experiment_groups(
         &self,
     ) -> ApiFuture<'_, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
@@ -186,6 +194,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(reply) = playback_power_guide_fixture::home_response(path, &args) {
+                return Ok(reply);
+            }
             if let Some(reply) = queue_more_fixture::response(path, &args, cached).await {
                 return reply;
             }
@@ -600,6 +611,7 @@ fn main() {
         "queue recommendations require the isolated native player and queue capture"
     );
     assert!(!message_fixture::enabled() || motion_proof);
+    assert!(!playback_power_guide_fixture::enabled() || motion_proof);
     assert!(!queue_more_fixture::tip_enabled() || queue_more_fixture::enabled());
     let peq_proof = effect_peq_fixture::enabled();
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
@@ -668,6 +680,10 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        if playback_power_guide_fixture::enabled() {
+            playback_power_guide_fixture::initialize(&proof_store)?;
+            client=client.with_playback_power_sink(Arc::new(playback_power_guide_fixture::Sink));
+        }
         if queue_more_fixture::enabled() { client=client.with_queue_recommendations(); }
         let external_import = external_import_fixture::enabled()
             .then(|| Arc::new(external_import_fixture::Wire::new(proof_store.clone())));
@@ -749,6 +765,9 @@ fn main() {
         let cover_root=root.clone();
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
+            if playback_power_guide_fixture::enabled() {
+                value["playbackPowerGuideFixture"]=playback_power_guide_fixture::report(&proof_store).unwrap();
+            }
             if let Some(wire) = external_import.as_ref() { value["externalImport"] = wire.report(); }
             if external_import_fixture::sidebar_mode().is_some() { value["externalImportSidebarReads"] = json!(external_import_fixture::sidebar_reads()); }
             if remote_skin_fixture::enabled() {

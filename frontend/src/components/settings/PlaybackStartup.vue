@@ -42,7 +42,7 @@ onUnmounted(() => {
     aria-labelledby="settings-playback"
     :aria-busy="busy"
   >
-    <h2 id="settings-playback">播放</h2>
+    <h2 id="settings-playback" tabindex="-1">播放</h2>
     <div class="settings-section-content">
       <div class="settings-read-status">
         <span>{{ power.visible.value ? '播放行为' : '启动行为' }}</span
@@ -143,6 +143,11 @@ onUnmounted(() => {
   </section>
 </template>
 <style scoped>
+#settings-playback:focus-visible {
+  outline: none;
+  text-decoration: underline 2px var(--accent);
+  text-underline-offset: 0.15em;
+}
 .settings-choices {
   flex-direction: column;
   align-items: flex-start;

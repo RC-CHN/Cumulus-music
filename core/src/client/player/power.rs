@@ -15,9 +15,12 @@ const RETRY_READ: Duration = Duration::from_secs(15);
 const DEADLINE: Duration = Duration::from_secs(8);
 
 #[derive(Clone, Copy, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PlaybackPowerView {
     pub available: bool,
     pub enabled: bool,
+    /// M/70 gives the SMTC introduction precedence over this introduction.
+    pub guide_deferred_for_system_media: bool,
 }
 
 pub(super) struct Assignment {
@@ -25,6 +28,7 @@ pub(super) struct Assignment {
     api: Arc<dyn Api>,
     read_at: Instant,
     exposed: bool,
+    guide_deferred_for_system_media: bool,
     settled: bool,
 }
 impl Assignment {
@@ -50,10 +54,10 @@ impl MusicClient {
         let mut changes = self.session.subscribe()?;
         let mut cached = self.player.power_assignment.lock().await;
         let api = self.session.native_api(&owner)?;
-        let available = if let Some(entry) =
+        let (available, guide_deferred_for_system_media) = if let Some(entry) =
             cached.as_ref().filter(|entry| entry.matches(&owner, &api))
         {
-            entry.exposed
+            (entry.exposed, entry.guide_deferred_for_system_media)
         } else {
             let result = tokio::select! {
                 biased;
@@ -61,16 +65,15 @@ impl MusicClient {
                 result = tokio::time::timeout(DEADLINE, api.playback_power_experiment()) => result,
             };
             let settled = matches!(&result, Ok(Ok(_)));
-            let exposed = result
-                .ok()
-                .and_then(Result::ok)
-                .flatten()
-                .and_then(|groups| {
-                    groups
-                        .group(GROUP)
-                        .map(PlaybackKeepAwake::windows_setting_visible)
-                })
-                .unwrap_or(false);
+            let groups = result.ok().and_then(Result::ok).flatten();
+            let exposed = groups
+                .as_ref()
+                .and_then(|groups| groups.group(GROUP))
+                .is_some_and(PlaybackKeepAwake::windows_setting_visible);
+            let guide_deferred_for_system_media = groups.is_some_and(|groups| {
+                groups.group("PH-PC-newSMTCoff") == Some("t1")
+                    && groups.group("PH-PC-SMTC") != Some("t1")
+            });
             if !Arc::ptr_eq(&api, &self.session.native_api(&owner)?) {
                 return Err(Error::StaleResponse);
             }
@@ -79,14 +82,16 @@ impl MusicClient {
                 api,
                 read_at: Instant::now(),
                 exposed,
+                guide_deferred_for_system_media,
                 settled,
             });
-            exposed
+            (exposed, guide_deferred_for_system_media)
         };
         self.session.with_local_owner(&owner, |_| {
             Ok(PlaybackPowerView {
                 available: available && control.sink.available(),
                 enabled: control.enabled(),
+                guide_deferred_for_system_media,
             })
         })
     }
@@ -103,16 +108,14 @@ impl MusicClient {
         let cached = self.player.power_assignment.lock().await;
         let api = self.session.native_api(&owner)?;
         self.session.with_local_owner(&owner, |_| {
-            if !cached
-                .as_ref()
-                .is_some_and(|entry| entry.exposed && entry.matches(&owner, &api))
-                || !control.sink.available()
-            {
+            let Some(entry) = cached.as_ref().filter(|entry| {
+                entry.exposed && entry.matches(&owner, &api) && control.sink.available()
+            }) else {
                 return Ok(PlaybackPowerView {
-                    available: false,
                     enabled: control.enabled(),
+                    ..PlaybackPowerView::default()
                 });
-            }
+            };
             control.set(&self.player.store, enabled)?;
             if let Some(controller) = self.player.controller.get() {
                 controller.power_preference_changed();
@@ -120,6 +123,7 @@ impl MusicClient {
             Ok(PlaybackPowerView {
                 available: true,
                 enabled,
+                guide_deferred_for_system_media: entry.guide_deferred_for_system_media,
             })
         })
     }

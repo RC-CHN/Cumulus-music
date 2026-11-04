@@ -2,6 +2,7 @@
 export interface PlaybackPowerView {
   available: boolean;
   enabled: boolean;
+  guideDeferredForSystemMedia?: boolean;
 }
 export interface PlaybackPowerClient {
   playbackPower(epoch: string): Promise<PlaybackPowerView>;
