@@ -124,9 +124,15 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
     assert_ipc_response(
         &window,
         request("account_snapshot", json!({})),
-        Ok(
-            json!({"epoch":"1","status":"authenticated","nickname":"用户","avatarUrl":null,"canSignOut":false,"loginNotice":null}),
-        ),
+        Ok(json!({
+            "epoch":"1",
+            "status":"authenticated",
+            "nickname":"用户",
+            "avatarUrl":null,
+            "canSignOut":false,
+            "profileShortcut":{"id":"9","notes":null,"following":null,"followers":null},
+            "loginNotice":null,
+        })),
     );
     assert_ipc_response(
         &window,
