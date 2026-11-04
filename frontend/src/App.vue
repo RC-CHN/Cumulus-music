@@ -1987,7 +1987,13 @@ watch([relay.playbackTarget, player.view], () => {
       : 'discard';
   if (result === 'wait') return;
   relay.playbackTarget.value = undefined;
-  if (result === 'open' && !modalDepth.value && !player.busy.value && !player.lyricsOpen.value)
+  if (
+    result === 'open' &&
+    player.ready.value &&
+    !modalDepth.value &&
+    !player.busy.value &&
+    !player.lyricsOpen.value
+  )
     player.toggleLyrics();
 });
 watch(
