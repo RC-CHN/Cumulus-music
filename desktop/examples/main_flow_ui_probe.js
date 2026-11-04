@@ -109,13 +109,20 @@
     }
     await search();
     await stage("search");
+    const decoderGate = !window.__mainFlowOrdinaryHttps && !window.__mainFlowLoadingStep;
+    const cover = (action) => one(`.search-track-card[data-result-key="song:1"] .search-track-cover[aria-label^="${action} "]`);
     if (window.__mainFlowHttpsEof || window.__mainFlowLoadingStep)
       await click(() => one(".search-result-actions .primary"), "search play all for the two-song queue");
+    else if (decoderGate) {
+      await click(() => one('[data-category="all"]'), "comprehensive search results");
+      await click(() => cover("播放"), "direct play from a comprehensive search cover");
+    }
     else
       await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
     let loadingSeekVerified = false;
     let loadingPauseVerified = false;
     let loadingStepVerified = false;
+    let loadingSearchCoverVerified = false;
     if (window.__mainFlowLoadingStep) {
       const held = await wait(async () => {
         const player = await invoke("player_snapshot", { epoch });
@@ -138,6 +145,11 @@
         return state() === "loading" && range && !range.disabled && range;
       }, "authorized loading progress accepts a seek");
       const id = one(".playerbar")?.dataset.playId;
+      const identity = await invoke("player_snapshot", { epoch });
+      const sameSource = (playback) => playback.playId === id && playback.entryId === identity.entryId &&
+        playback.queueRevision === identity.queueRevision && playback.track?.id === "1";
+      await wait(() => cover("暂停") && !cover("暂停").disabled,
+        "the search cover is enabled and matches the loading pause intent");
       input(slider, ".45", "change");
       await wait(() => state() === "loading" && position() >= .45,
         "native actor accepted position while decode is gated");
@@ -145,9 +157,23 @@
       await wait(async () => {
         const playback = await invoke("player_snapshot", { epoch });
         const resume = button("播放", one(".playerbar"));
-        return playback.state === "loading" && playback.playId === id &&
+        return playback.state === "loading" && sameSource(playback) &&
           playback.pendingPaused === true && resume && !resume.disabled;
       }, "native actor accepted pause before decoder completion");
+      await click(() => cover("播放"), "continue the same loading decoder directly from search");
+      await wait(async () => {
+        const playback = await invoke("player_snapshot", { epoch });
+        return playback.state === "loading" && sameSource(playback) &&
+          playback.pendingPaused === false && cover("暂停") && !cover("暂停").disabled;
+      }, "search cover continues the same selection during decoder loading");
+      await click(() => cover("暂停"), "pause the same loading decoder directly from search");
+      await wait(async () => {
+        const playback = await invoke("player_snapshot", { epoch });
+        return playback.state === "loading" && sameSource(playback) &&
+          playback.pendingPaused === true && cover("播放") && !cover("播放").disabled;
+      }, "search cover retains the same paused decoder and queue");
+      loadingSearchCoverVerified = true;
+      await stage("search_loading_cover", { samePendingSelection: true });
       await emit("release_loading_seek");
       await wait(() => state() === "paused" && one(".playerbar")?.dataset.playId === id &&
         position() >= .45, "same decoder first presents paused at the accepted position");
@@ -205,7 +231,7 @@
       await wait(() => state() === "paused", "resumed native entry paused");
     }
     await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof,
-      loadingSeekVerified, loadingPauseVerified, loadingStepVerified, output: "null" });
+      loadingSeekVerified, loadingPauseVerified, loadingStepVerified, loadingSearchCoverVerified, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");
 

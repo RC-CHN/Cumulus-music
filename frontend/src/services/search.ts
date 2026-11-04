@@ -113,6 +113,12 @@ export interface SearchWord {
   radioId?: string;
 }
 export type SearchChartDestination = 'podcasts' | 'audiobooks';
+export interface SearchPendingTrackToggle {
+  trackId: string;
+  key: string;
+  pause: boolean;
+  disabled: boolean;
+}
 export interface SearchChart {
   id: string;
   name: string;

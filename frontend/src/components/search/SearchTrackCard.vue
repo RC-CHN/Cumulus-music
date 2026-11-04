@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../../services/contracts';
-import type { SearchTrackHint, SearchReasonTag, SearchReasonTarget } from '../../services/search';
+import type {
+  SearchTrackHint,
+  SearchReasonTag,
+  SearchReasonTarget,
+  SearchPendingTrackToggle,
+} from '../../services/search';
 import { artworkAt } from '../../services/artwork';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import Icon from '../Icon.vue';
@@ -17,11 +22,13 @@ const props = defineProps<{
   playable: boolean;
   current: boolean;
   playing: boolean;
+  pendingToggle?: SearchPendingTrackToggle;
   liked: boolean;
   busyLike: boolean;
 }>();
 const emit = defineEmits<{
   play: [];
+  pendingToggle: [target: SearchPendingTrackToggle];
   like: [];
   more: [event: MouseEvent | KeyboardEvent];
   download: [];
@@ -38,15 +45,22 @@ const failedCover = ref(false);
 const element = ref<HTMLElement>();
 const cover = ref<HTMLButtonElement>();
 const identity = props.track.id;
+const mayPlay = computed(
+  () =>
+    !props.track.missing && (props.pendingToggle ? !props.pendingToggle.disabled : props.playable),
+);
+const pause = computed(() => props.pendingToggle?.pause ?? (props.current && props.playing));
 const playbackFocus = usePlaybackTriggerFocus(
-  () => props.playable,
+  () => mayPlay.value,
   element,
   () =>
     props.track.id === identity &&
     !element.value?.closest('.page-leave-active,.search-results-leave-active'),
 );
 function play() {
-  if (!props.track.missing) playbackFocus.start(() => emit('play'), cover.value);
+  if (!mayPlay.value) return;
+  const pending = props.pendingToggle;
+  playbackFocus.start(() => (pending ? emit('pendingToggle', pending) : emit('play')), cover.value);
 }
 watch(
   () => props.track.coverUrl,
@@ -68,8 +82,8 @@ watch(
     <button
       ref="cover"
       class="search-track-cover"
-      :aria-label="`${current && playing ? '暂停' : '播放'} ${track.name}`"
-      :disabled="!playable || track.missing"
+      :aria-label="`${pause ? '暂停' : '播放'} ${track.name}`"
+      :disabled="!mayPlay"
       @click.stop="play"
       @dblclick.stop
     >
@@ -83,7 +97,7 @@ watch(
         @error="failedCover = true"
       />
       <Icon v-else name="music" />
-      <span class="search-track-mask"><Icon :name="current && playing ? 'pause' : 'play'" /></span>
+      <span class="search-track-mask"><Icon :name="pause ? 'pause' : 'play'" /></span>
     </button>
     <div class="search-track-copy">
       <p class="search-track-title">

@@ -38,6 +38,9 @@ def main():
         position = STAGES.index('playback')
         checkpoint = 'https_failure' if args.https_retry_once else 'https_before_eof'
         stage_names = STAGES[:position] + (checkpoint,) + STAGES[position:]
+    elif not args.ordinary_https and not args.loading_step:
+        position = STAGES.index('playback')
+        stage_names = STAGES[:position] + ('search_loading_cover',) + STAGES[position:]
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -93,6 +96,13 @@ def main():
     assert stages['playback']['loadingSeekVerified'] == (not args.ordinary_https and not args.loading_step)
     assert stages['playback']['loadingPauseVerified'] == (not args.ordinary_https and not args.loading_step)
     assert stages['playback']['loadingStepVerified'] == args.loading_step
+    assert stages['playback']['loadingSearchCoverVerified'] == (not args.ordinary_https and not args.loading_step)
+    if stages['playback']['loadingSearchCoverVerified']:
+        held = stages['search_loading_cover']
+        assert held['samePendingSelection'] and held['fixture']['sourceLoads'] == 0
+        assert held['fixture']['sourceAuthorizations'] == held['fixture']['sourceLoadAttempts'] == 1
+        assert stages['playback']['fixture']['sourceAuthorizations'] == 1
+        assert stages['playback']['fixture']['sourceLoadAttempts'] == 1
     if args.loading_step:
         assert stages['playback']['fixture']['sourceLoadAttempts'] == 2
         assert stages['playback']['fixture']['sourceAuthorizations'] == 2

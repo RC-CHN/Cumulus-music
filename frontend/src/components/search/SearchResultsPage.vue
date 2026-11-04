@@ -15,6 +15,7 @@ import {
   type SearchCategory,
   type SearchChannel,
   type SearchItem,
+  type SearchPendingTrackToggle,
   type SearchReasonTarget,
   type SearchSection,
 } from '../../services/search';
@@ -54,6 +55,7 @@ const props = defineProps<{
   observedAlbumMembership: ReadonlyMap<string, boolean>;
   currentId?: string;
   currentToggle?: TrackCurrentToggle;
+  pendingTrackToggle?: SearchPendingTrackToggle;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
   currentVoiceId?: string;
@@ -75,6 +77,7 @@ const emit = defineEmits<{
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   playTrack: [track: TrackView, toggleCurrent: boolean];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
+  togglePendingTrack: [target: SearchPendingTrackToggle];
   downloadTrack: [track: TrackView];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
@@ -743,9 +746,13 @@ onBeforeUnmount(() => {
                 :playable="playable"
                 :current="item.track.id === currentId"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
+                :pending-toggle="
+                  pendingTrackToggle?.trackId === item.track.id ? pendingTrackToggle : undefined
+                "
                 :liked="liked.has(item.track.id)"
                 :busy-like="busyLikes.has(item.track.id)"
                 @play="playTrack(item.track, true)"
+                @pending-toggle="emit('togglePendingTrack', $event)"
                 @like="emit('like', item.track)"
                 @more="
                   (event) =>

@@ -7,7 +7,7 @@ import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
-import type { SearchItem } from './services/search';
+import type { SearchItem, SearchPendingTrackToggle } from './services/search';
 import {
   searchCardIsCurrent,
   searchCardSelection,
@@ -1615,6 +1615,31 @@ watch(
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
 const currentSearchSongId = computed(() => searchCurrentSongId(player.view.value));
+const searchPendingTrackToggle = computed<SearchPendingTrackToggle | undefined>((previous) => {
+  const trackId = currentSearchSongId.value;
+  const pending = player.pendingTransport.value;
+  if (!trackId || !pending || player.view.value?.epoch !== account.value.epoch) return;
+  const key = player.primaryTransportKey.value;
+  const disabled =
+    !player.ready.value ||
+    player.pendingTransportBusy.value ||
+    player.loadingStepBusy.value ||
+    !!player.view.value?.intelligence ||
+    !!together.view.value?.attached;
+  if (previous?.trackId === trackId && previous.key === key && previous.disabled === disabled)
+    return previous;
+  return { trackId, key, pause: !pending.paused, disabled };
+});
+function toggleSearchPendingTrack(target: SearchPendingTrackToggle) {
+  if (
+    page.value.kind !== 'search' ||
+    (page.value.category && page.value.category !== 'all') ||
+    target.disabled ||
+    searchPendingTrackToggle.value !== target
+  )
+    return;
+  void player.togglePrimaryTransport(target.key);
+}
 const playlistTrackTable = ref<InstanceType<typeof TrackTable>>();
 const locatableSongId = computed(() => {
   const current = player.view.value;
@@ -2471,6 +2496,7 @@ onUnmounted(() => {
                 :observed-album-membership="observedAlbumMembership"
                 :current-id="currentSearchSongId"
                 :current-toggle="visibleTrackToggle"
+                :pending-track-toggle="searchPendingTrackToggle"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
                 :current-voice-id="searchCurrentVoiceId(player.view.value)"
@@ -2501,6 +2527,7 @@ onUnmounted(() => {
                 @play="playSearchResults"
                 @play-track="playSearchTrack"
                 @toggle-current="toggleVisibleTrack"
+                @toggle-pending-track="toggleSearchPendingTrack"
                 @play-card="playSearchCard"
                 @queue-card="queueSearchCard"
                 @playlist-download="
