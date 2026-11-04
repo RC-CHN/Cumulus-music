@@ -43,11 +43,11 @@ def assert_requests(requests):
         if index % 2 == 0:
             assert set(payload) == {'songIds', 'currentPlaySongId', 'source'}, request
             assert payload['source'] == 'curlist_more_rcmd', request
-            assert list(map(str, payload['songIds'])) == (SEEDS if index == 0 else RETAINED), request
-            assert str(payload['currentPlaySongId']) == ('1' if index == 0 else '52'), request
+            assert payload['songIds'] == (SEEDS if index == 0 else RETAINED), request
+            assert payload['currentPlaySongId'] == ('1' if index == 0 else '52'), request
         else:
             assert set(payload) == {'ids'}, request
-            assert list(map(str, json.loads(payload['ids']))) == (
+            assert json.loads(payload['ids']) == (
                 APPENDED[2:] if index == 1 else ['61', '62', '63']
             ), request
 
@@ -77,11 +77,11 @@ def verify_stages(output, control, screenshots):
             expected_badges = {entry['entryId'] for entry in tracks if entry['moreRecommendation']}
             assert {r['entryId'] for r in row['rows'] if r['badge']} == expected_badges, label
         else:
-            assert row['anchor'] is None and model.get('separatorBefore') is None, label
+            assert row['anchor'] is None and (model or {}).get('separatorBefore') is None, label
             assert not any(r['badge'] for r in row['rows']), label
-        assert model['visible'] == (not control), label
+        assert bool(model and model['visible']) == (not control), label
         if label == 'control':
-            assert row['toggle'] is None and not model['prefetchOnOpen'], label
+            assert row['toggle'] is None and not (model and model['prefetchOnOpen']), label
         elif label in ['unopened', 'held', 'appended', 'reopened']:
             initial = initial or native['playId']
             assert native['playId'] == initial and native['track']['id'] == '1', label

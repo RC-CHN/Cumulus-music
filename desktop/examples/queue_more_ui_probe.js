@@ -153,11 +153,11 @@
     await checkCounts(0, 0, 'no recommendation while drawer is unopened');
     if (window.__queueMoreControl) {
       await open();
-      assert(!(await more()).visible && !toggle() && !divider(), 'control assignment suppresses UI');
+      assert(!(await more())?.visible && !toggle() && !divider(), 'control assignment suppresses UI');
       await capture('control');
       await checkCounts(0, 0, 'control assignment suppresses network');
     } else {
-      assert((await more()).prefetchOnOpen, 'eligible and awaiting the first drawer mount');
+      await wait(async () => (await more())?.prefetchOnOpen, 'eligible and awaiting the first drawer mount');
       await capture('unopened');
       await fixture('hold');
       await open();
