@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `bcacc227`；总体流程及验证层级见
+本表基线为产品树 `754045ba`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
