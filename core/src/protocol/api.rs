@@ -9,6 +9,12 @@ pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
+    fn playback_power_experiment(
+        &self,
+    ) -> ApiFuture<'_, Option<super::pc_experiments::PcExperimentGroups>> {
+        Box::pin(async { Ok(None) })
+    }
+
     fn queue_more_experiment_groups(
         &self,
     ) -> ApiFuture<'_, super::pc_experiments::PcExperimentGroups> {
@@ -122,9 +128,4 @@ pub fn playlist_name(value: &str) -> Result<String> {
         ));
     }
     Ok(value.into())
-}
-fn playback_power_experiment(
-    &self,
-) -> ApiFuture<'_, Option<super::pc_experiments::PcExperimentGroups>> {
-    Box::pin(async { Ok(None) })
 }
