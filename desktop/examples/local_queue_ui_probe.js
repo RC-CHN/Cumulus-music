@@ -100,6 +100,20 @@
       .find(node => node.title.endsWith('Bonus'));
     await wait(() => toggle() && trackRows().length === 5, 'folder groups');
     assert(toggle().getAttribute('aria-expanded') === 'false' && !nested(), 'nested folder starts collapsed');
+    const parentFolder = () => toggle()?.closest('.local-folder-row')?.querySelector('[data-local-folder-key]');
+    const folderKey = key => document.activeElement.dispatchEvent(new KeyboardEvent('keydown', {
+      key, bubbles: true, cancelable: true,
+    }));
+    parentFolder().focus();
+    folderKey('ArrowRight');
+    await wait(() => nested() && document.activeElement === parentFolder(), 'right expands branch without selecting');
+    folderKey('ArrowRight');
+    await wait(() => document.activeElement === nested(), 'right focuses first child');
+    folderKey('ArrowLeft');
+    await wait(() => document.activeElement === parentFolder(), 'left returns to parent');
+    folderKey('ArrowLeft');
+    await wait(() => !nested() && toggle().getAttribute('aria-expanded') === 'false' &&
+      trackRows().length === 5, 'left collapses without changing the native selection');
     click(toggle());
     assert(document.activeElement === toggle(), 'disclosure retains focus');
     await wait(() => nested() && toggle().getAttribute('aria-expanded') === 'true', 'nested folder expanded');

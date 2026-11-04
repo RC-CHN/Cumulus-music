@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { LocalPage } from '../services/local';
 import { localFolderTree, visibleLocalFolders } from '../services/localFolders';
 import Icon from './Icon.vue';
@@ -13,11 +13,49 @@ const emit = defineEmits<{ select: [key: string] }>();
 const expanded = defineModel<Set<string>>('expanded', { required: true });
 const roots = computed(() => localFolderTree(props.groups));
 const rows = computed(() => visibleLocalFolders(roots.value, expanded.value));
+const treeElement = ref<HTMLElement>();
 let revealed: string | undefined;
 function toggle(key: string) {
   const next = new Set(expanded.value);
   if (!next.delete(key)) next.add(key);
   expanded.value = next;
+}
+function navigate(event: KeyboardEvent, index: number) {
+  if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const node = rows.value[index]?.node;
+  if (!node) return;
+  let target: string | undefined;
+  switch (event.key) {
+    case 'ArrowRight':
+      if (node.children.length && !expanded.value.has(node.group.key)) toggle(node.group.key);
+      else target = node.children[0]?.group.key;
+      break;
+    case 'ArrowLeft':
+      if (node.children.length && expanded.value.has(node.group.key)) toggle(node.group.key);
+      else target = node.parent?.group.key;
+      break;
+    case 'ArrowUp':
+      target = rows.value[index - 1]?.node.group.key;
+      break;
+    case 'ArrowDown':
+      target = rows.value[index + 1]?.node.group.key;
+      break;
+    case 'Home':
+      target = rows.value[0]?.node.group.key;
+      break;
+    case 'End':
+      target = rows.value.at(-1)?.node.group.key;
+      break;
+    default:
+      return;
+  }
+  event.preventDefault();
+  if (target !== undefined)
+    Array.from(
+      treeElement.value?.querySelectorAll<HTMLButtonElement>('[data-local-folder-key]') ?? [],
+    )
+      .find((button) => button.dataset.localFolderKey === target)
+      ?.focus();
 }
 watch(
   [() => props.selected, () => props.searching, roots],
@@ -65,9 +103,9 @@ watch(
       ><small>{{ group.count }}</small>
     </button>
   </template>
-  <div v-else class="local-folder-rows" role="group" aria-label="文件夹层级">
+  <div v-else ref="treeElement" class="local-folder-rows" role="group" aria-label="文件夹层级">
     <div
-      v-for="{ node, depth } in rows"
+      v-for="({ node, depth }, index) in rows"
       :key="node.group.key"
       class="local-folder-row"
       :style="{ '--folder-depth': Math.min(depth, 4) }"
@@ -93,6 +131,7 @@ watch(
         aria-expanded="false"
         aria-keyshortcuts="Shift+F10"
         :title="node.group.name"
+        @keydown="navigate($event, index)"
         @click="emit('select', node.group.key)"
       >
         <Icon name="folder" /><span>{{ node.name }}</span
