@@ -240,7 +240,8 @@ export type SongRowDoubleClickSelection =
   | { kind: 'playlist'; id: string; start_id: string; revision: string | null; quality: Quality };
 export type PlaySelection =
   | { kind: 'song_row_double_click'; selection: SongRowDoubleClickSelection }
-  | { kind: 'voice' | 'search_result_voice'; id: string }
+  | { kind: 'message_track'; id: string; quality: Quality }
+  | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'downloads'; query: import('./downloads').DownloadQuery; start_id: string | null }
   | { kind: 'playlist_batch'; id: string; ids: string[]; revision: string; quality: Quality }
   | {

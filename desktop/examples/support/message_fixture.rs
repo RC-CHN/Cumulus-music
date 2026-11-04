@@ -16,6 +16,16 @@ pub fn enabled() -> bool {
     std::env::var("CUMULUS_MESSAGE_DRAWER_PROOF").as_deref() == Ok("1")
 }
 
+fn attachments() -> bool {
+    std::env::var("CUMULUS_MESSAGE_ATTACHMENTS_PROOF").as_deref() == Ok("1")
+}
+fn target_comment(id: u64) -> Value {
+    json!({"code":200,"comments":[],"currentComment":{"commentId":id,
+        "content":format!("合成定位评论 {id}"),"time":T,"likedCount":0,
+        "user":{"userId":501,"nickname":"合成评论者"}},
+        "total":1,"more":false})
+}
+
 pub fn control(mode: &str) -> Value {
     match mode {
         "hold" => HOLD_NOTICE.store(true, Ordering::SeqCst),
@@ -34,6 +44,20 @@ pub fn report() -> Value {
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
+    }
+    if attachments() && path.starts_with("/api/v1/resource/comments/") {
+        REQUESTS.lock().unwrap().push((path.into(), args.clone()));
+        let (id, wire_id) = match path {
+            "/api/v1/resource/comments/R_SO_4_3" => (411, "411"),
+            "/api/v1/resource/comments/R_AL_3_7" => (701, "701"),
+            "/api/v1/resource/comments/A_PL_0_2" => (702, "702"),
+            _ => return Some(Err(Error::State("unexpected synthetic comment resource"))),
+        };
+        return Some(if args["commentId"] == wire_id && args["offset"] == 0 {
+            Ok(target_comment(id))
+        } else {
+            Err(Error::State("wrong synthetic comment anchor"))
+        });
     }
     if !matches!(
         path,
@@ -79,7 +103,17 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             if !(501..516).contains(&peer) {
                 return Some(Err(Error::InvalidInput("history picked another user")));
             }
-            if args["time"] == -1 {
+            if args["time"] == -1 && attachments() {
+                let rows = [
+                    (360, json!({"type":2,"album":{"id":7,"name":"合成分享专辑"}})),
+                    (359, json!({"type":1,"song":{"id":3,"name":"合成分享单曲","url":"https://private.invalid/song"}})),
+                    (358, json!({"type":15,"comment":{"resourceType":3,"commentId":701,"threadId":"R_AL_3_7","resourceJson":"{\"id\":7}"}})),
+                    (357, json!({"type":14,"song":{"id":3,"name":"合成私有云歌曲"}})),
+                    (356, json!({"type":12,"promotionUrl":{"text":"合成外链","url":"https://private.invalid/link"}})),
+                    (355, json!({"type":15,"comment":{"resourceType":3,"commentId":701,"threadId":"R_AL_3_7","resourceJson":"{\"id\":8}"}})),
+                ].into_iter().map(|(id,msg)|json!({"id":id,"time":T+id,"fromUser":{"userId":peer,"nickname":"合成对方"},"msg":msg})).collect::<Vec<_>>();
+                json!({"code":200,"more":false,"msgs":rows})
+            } else if args["time"] == -1 {
                 json!({"code":200,"more":true,"hint":"合成提示","msgs":[
                     {"id":301,"time":T+1,"fromUser":{"userId":2,"nickname":"合成自己"},
                         "msg":{"type":6,"msg":"较新的自己消息"}},
@@ -92,6 +126,13 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             } else {
                 return Some(Err(Error::InvalidInput("unexpected history cursor")));
             }
+        }
+        "/api/v1/user/comments/2"
+            if attachments() && args == &json!({"limit":10,"beforeTime":-1}) =>
+        {
+            json!({"code":200,"more":false,"total":1,"comments":[{"id":411,"time":T,
+                "user":{"nickname":"合成评论者"},"content":"合成收到评论","combindId":"2:411:R_SO_4_3",
+                "resourceType":4,"resourceJson":"{\"id\":3}"}]})
         }
         "/api/v1/user/comments/2" if args == &json!({"limit":10,"beforeTime":-1}) => {
             json!({"code":200,"more":true,"total":2,"comments":[{"id":411,"time":T,
@@ -114,6 +155,15 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         "/api/forwards/get" if args == &json!({"total":true,"limit":10,"offset":0,"time":T-2}) => {
             json!({"code":200,"more":false,"lasttime":T-3,"newCount":1,"forwards":[]})
+        }
+        "/api/msg/notices"
+            if attachments() && args == &json!({"total":true,"limit":10,"offset":0,"time":-1}) =>
+        {
+            json!({"code":200,"more":false,"notices":[
+                {"id":61,"time":T,"notice":{"type":2,"user":{"nickname":"合成通知者"},"playlist":{"id":2,"name":"合成歌单"}}},
+                {"id":62,"time":T-1,"notice":{"type":6,"comment":{"commentId":702,"threadId":"A_PL_0_2","content":"合成喜欢评论"}}},
+                {"id":63,"time":T-2,"notice":{"type":6,"comment":{"commentId":703,"threadId":"R_MV_5_42","content":"移动端查看的评论"}}}
+            ]})
         }
         "/api/msg/notices" if args == &json!({"total":true,"limit":10,"offset":0,"time":-1}) => {
             if HOLD_NOTICE.load(Ordering::SeqCst) {

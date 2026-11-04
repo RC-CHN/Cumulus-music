@@ -218,7 +218,11 @@ const entryPanel = selectedPanel.value;
 usePageEntryFocus(
   section,
   () => !!detail.view.value || !!detail.error.value,
-  () => props.model.valid() && selectedPanel.value === entryPanel && !positions.has(entryPanel),
+  () =>
+    props.model.valid() &&
+    selectedPanel.value === entryPanel &&
+    !positions.has(entryPanel) &&
+    !(entryPanel === 'album:comments' && props.model.comments.initialTarget.value),
 );
 let pendingRestore: CatalogPanelKey | undefined = positions.has(selectedPanel.value)
   ? selectedPanel.value

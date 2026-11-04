@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import SearchBox from './components/search/SearchBox.vue';
 import MessageDrawer from './components/messages/MessageDrawer.vue';
+import type { MessageTarget } from './services/messages';
+import { commentStartPosition } from './services/comments';
 import { useMotion } from './composables/useMotion';
 import { createPageTransition } from './services/pageTransition';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
@@ -790,6 +792,59 @@ provide(commentAuthorNavigation, {
 function openComments(resource: CommentResource, title: string) {
   playlistDialog.value = undefined;
   music.navigate({ kind: 'comments', resource, title });
+}
+function openMessageTarget(epoch: string, target: MessageTarget): Page | undefined {
+  if (!signedIn.value || initializing.value || epoch !== account.value.epoch) return;
+  if (target.kind === 'play_track' || target.kind === 'play_voice') {
+    if (!player.ready.value || player.busy.value) return;
+    const quality = player.view.value?.qualityPreferences.quality ?? 'standard';
+    void player.select(
+      target.kind === 'play_track'
+        ? { kind: 'message_track', id: target.id, quality }
+        : { kind: 'message_voice', id: target.id },
+    );
+    return;
+  }
+  if (playlistEditor.value || batchTarget.value || downloadBatch.value || cloudBatchTarget.value)
+    return;
+  const origin = page.value;
+  switch (target.kind) {
+    case 'album':
+    case 'artist':
+      openCatalog({ kind: target.kind, id: target.id });
+      break;
+    case 'playlist':
+      music.navigate({ kind: 'playlist', id: target.id });
+      break;
+    case 'mv':
+      openMv(target.id);
+      break;
+    case 'comment':
+      if (target.resource.kind === 'album') {
+        music.navigate({
+          kind: 'catalog',
+          resource: { kind: 'album', id: target.resource.id },
+          albumTab: 'comments',
+          initialCommentId: target.commentId,
+        });
+      } else if (target.resource.kind === 'playlist') {
+        music.navigate({
+          kind: 'playlist',
+          id: target.resource.id,
+          section: 'comments',
+          initialCommentId: target.commentId,
+        });
+      } else {
+        music.navigate({
+          kind: 'comments',
+          resource: target.resource,
+          title: '评论',
+          initialCommentId: target.commentId,
+        });
+      }
+      break;
+  }
+  return page.value !== origin ? page.value : undefined;
 }
 function playCommentResource(card: CommentResourceCard) {
   if (currentCommentResource(card, player.view.value) && player.loaded.value)
@@ -1789,7 +1844,7 @@ watch(
     const saved = playlistViewports.get(route);
     if (section === 'comments') {
       subscribers.hide();
-      void playlistComments.show(saved?.comments);
+      void playlistComments.show(saved?.comments ?? commentStartPosition(route.initialCommentId));
     } else if (section === 'subscribers') {
       playlistComments.hide();
       if (!subscribers.open.value && saved?.subscribers) subscribers.restore(saved.subscribers);
@@ -2321,7 +2376,8 @@ watch([() => account.value.epoch, () => account.value.status], () => {
   commentAuthorReturn.value = undefined;
   localMatching.connect(account.value);
   if (page.value.kind === 'mv') void loadMv(page.value.id, page.value.taskId);
-  if (page.value.kind === 'comments') void comments.open(page.value.resource);
+  if (page.value.kind === 'comments')
+    void comments.open(page.value.resource, commentStartPosition(page.value.initialCommentId));
 });
 watch([() => account.value.epoch, music.accountReady], () => {
   if (music.accountReady.value) void player.connect(account.value);
@@ -2400,7 +2456,8 @@ watch(
     if (previous.kind === 'comments' && value !== saved?.destination) comments.close();
     mv.show(value.kind === 'mvs');
     if (value.kind === 'mv') void loadMv(value.id, value.taskId);
-    if (value.kind === 'comments' && value !== saved?.origin) void comments.open(value.resource);
+    if (value.kind === 'comments' && value !== saved?.origin)
+      void comments.open(value.resource, commentStartPosition(value.initialCommentId));
     if (value.kind === 'rankings') void rankings.enter(value.query, value.rankingState);
     if (value.kind === 'history') void recent.open(value.scope);
     if (value.kind === 'settings' && !value.accountDetail) void settings.open();
@@ -2715,6 +2772,9 @@ onUnmounted(() => {
       <MessageDrawer
         :account="account"
         :initializing="initializing"
+        :route="page"
+        :open-target="openMessageTarget"
+        :playable="player.ready.value && !player.busy.value"
         @login="loginOpen = true"
         @expired="music.bootstrap(false)"
       />

@@ -1,12 +1,23 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, useId, watch } from 'vue';
 import { useCore } from '../../services/core';
 import type { AccountView } from '../../services/contracts';
-import { messageTabs, type MessageRow, type MessageTab } from '../../services/messages';
+import {
+  messageTabs,
+  type MessageRow,
+  type MessageTab,
+  type MessageTarget,
+} from '../../services/messages';
 import { useMessageDrawer } from '../../composables/useMessageDrawer';
 import Icon from '../Icon.vue';
 
-const props = defineProps<{ account: AccountView; initializing: boolean }>();
+const props = defineProps<{
+  account: AccountView;
+  initializing: boolean;
+  route: object;
+  playable: boolean;
+  openTarget: (epoch: string, target: MessageTarget) => object | undefined;
+}>();
 const emit = defineEmits<{ login: []; expired: [] }>();
 const model = useMessageDrawer(
   useCore(),
@@ -31,6 +42,76 @@ const empty: Record<MessageTab, string> = {
   forwards: '还没有人提到你',
   notices: '还没有通知',
 };
+const suspended = shallowRef<{
+  epoch: string;
+  origin: object;
+  destination: object;
+  row: string;
+  top: number;
+}>();
+const visible = computed(() => shown.value && !suspended.value);
+let restoringScroll: HTMLElement | undefined;
+const attachmentLabels: Record<MessageTarget['kind'], string> = {
+  play_track: '播放单曲',
+  play_voice: '播放声音',
+  playlist: '查看歌单',
+  album: '查看专辑',
+  artist: '查看艺人',
+  mv: '打开 MV',
+  comment: '查看这条评论',
+};
+function playTarget(target: MessageTarget) {
+  return target.kind === 'play_track' || target.kind === 'play_voice';
+}
+function activateAttachment(row: MessageRow) {
+  const target = row.target;
+  if (!visible.value || !target || !current.value.rows.includes(row)) return;
+  if (playTarget(target) && !props.playable) return;
+  const epoch = props.account.epoch;
+  const origin = props.route;
+  const top = scroller.value?.scrollTop ?? 0;
+  const destination = props.openTarget(epoch, target);
+  if (destination && destination !== origin)
+    suspended.value = { epoch, origin, destination, row: row.id, top };
+}
+watch(
+  () => props.route,
+  async (route) => {
+    const saved = suspended.value;
+    if (!saved || route === saved.destination) return;
+    if (route !== saved.origin || props.account.epoch !== saved.epoch) {
+      close(false);
+      return;
+    }
+    const previous = document.activeElement;
+    suspended.value = undefined;
+    await nextTick();
+    if (!visible.value || props.route !== saved.origin || props.account.epoch !== saved.epoch)
+      return;
+    const list = scroller.value;
+    if (list) {
+      restoringScroll = list;
+      list.scrollTo(0, saved.top);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          if (restoringScroll === list) restoringScroll = undefined;
+        }),
+      );
+    }
+    if (document.activeElement !== previous && document.activeElement !== document.body) return;
+    const anchor = [
+      ...(scroller.value?.querySelectorAll<HTMLButtonElement>('[data-message-attachment]') ?? []),
+    ].find((button) => button.dataset.messageAttachment === saved.row);
+    anchor?.focus({ preventScroll: true });
+  },
+);
+watch(
+  () => [props.account.epoch, props.account.status],
+  () => {
+    suspended.value = undefined;
+  },
+  { flush: 'sync' },
+);
 const showRows = computed(() =>
   peer.value ? [...current.value.rows].reverse() : current.value.rows,
 );
@@ -46,13 +127,15 @@ function timestamp(value: number) {
   return value <= 8_640_000_000_000_000 ? date.format(value) : '';
 }
 function close(restore = true) {
+  suspended.value = undefined;
   model.close();
   scrollPositions.clear();
   previousFocus = null;
   if (restore) trigger.value?.focus({ preventScroll: true });
 }
 async function toggle() {
-  if (shown.value) return close();
+  if (visible.value) return close();
+  if (suspended.value) close(false);
   if (props.account.status !== 'authenticated') return emit('login');
   scrollPositions.clear();
   model.open();
@@ -61,7 +144,7 @@ async function toggle() {
 }
 function outside(event: PointerEvent) {
   if (
-    shown.value &&
+    visible.value &&
     event.target instanceof Node &&
     !drawer.value?.contains(event.target) &&
     !trigger.value?.contains(event.target)
@@ -132,7 +215,7 @@ async function load(mode: 'first' | 'more') {
 }
 function scroll() {
   const list = scroller.value;
-  if (!list || current.value.error || current.value.busy) return;
+  if (!list || list === restoringScroll || current.value.error || current.value.busy) return;
   if (
     peer.value ? list.scrollTop < 60 : list.scrollHeight - list.clientHeight - list.scrollTop < 60
   )
@@ -151,7 +234,7 @@ function refresh() {
     aria-label="消息"
     title="消息"
     aria-haspopup="dialog"
-    :aria-expanded="shown"
+    :aria-expanded="visible"
     :disabled="initializing"
     @click="toggle"
   >
@@ -159,7 +242,7 @@ function refresh() {
   </button>
   <Teleport to="body">
     <section
-      v-if="shown"
+      v-if="visible"
       :id="`${uid}-messages`"
       ref="drawer"
       class="message-drawer"
@@ -283,6 +366,17 @@ function refresh() {
                 <p v-if="item.caption" class="message-drawer-caption">{{ item.caption }}</p>
                 <p class="message-drawer-text">{{ item.body }}</p>
                 <blockquote v-if="item.quote">{{ item.quote }}</blockquote>
+                <button
+                  v-if="item.target"
+                  class="message-drawer-attachment"
+                  :data-message-attachment="item.id"
+                  :data-target-kind="item.target.kind"
+                  :disabled="playTarget(item.target) && !playable"
+                  @click="activateAttachment(item)"
+                >
+                  <Icon :name="playTarget(item.target) ? 'play' : 'forward'" />
+                  {{ attachmentLabels[item.target.kind] }}
+                </button>
               </div>
             </article>
           </li>

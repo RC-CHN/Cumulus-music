@@ -1,4 +1,5 @@
 import type { AccountData } from './contracts';
+import type { CommentResource } from './comments';
 
 export const messageTabs = ['private', 'comments', 'forwards', 'notices'] as const;
 export type MessageTab = (typeof messageTabs)[number];
@@ -7,6 +8,10 @@ export type MessageQuery =
   | { tab: 'thread'; cursor: number | null; peerId: string };
 
 export type MessageCounts = Record<MessageTab, number | null>;
+export type MessageTarget =
+  | { kind: 'play_track' | 'play_voice' | 'playlist' | 'album' | 'artist' | 'mv'; id: string }
+  | { kind: 'comment'; resource: CommentResource; commentId: string };
+
 export interface MessageRow {
   id: string;
   peerId: string | null;
@@ -17,6 +22,7 @@ export interface MessageRow {
   time: number | null;
   unread: number | null;
   own: boolean;
+  target: MessageTarget | null;
 }
 export interface MessagePage {
   rows: MessageRow[];

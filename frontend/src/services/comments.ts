@@ -95,3 +95,10 @@ export function commentQuery(sort: 'latest' | 'hot' = 'latest'): CommentQuery {
 export function resourceKey(resource: CommentResource): string {
   return JSON.stringify([resource.kind, resource.id, resource.owner ?? null]);
 }
+
+/** Open the exact native comment in the first read without a list preflight. */
+export function commentStartPosition(commentId?: string) {
+  return commentId
+    ? { query: { ...commentQuery(), commentId }, history: [] as CommentQuery[], focusTarget: true }
+    : undefined;
+}

@@ -2,6 +2,7 @@ mod projection;
 
 use super::{MusicClient, dto::AccountData};
 use crate::{Error, Result};
+pub use projection::attachment::MessageTarget;
 use projection::project;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -45,6 +46,7 @@ pub struct MessageRow {
     pub time: Option<u64>,
     pub unread: Option<u64>,
     pub own: bool,
+    pub target: Option<MessageTarget>,
 }
 
 #[derive(Debug, Serialize)]

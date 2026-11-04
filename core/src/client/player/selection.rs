@@ -79,12 +79,10 @@ impl MusicClient {
                 };
                 (input, keep_queue.then_some(RetainedRow::Catalog))
             }
-            input @ PlaySelection::SearchResultTrack { .. } => {
-                (input, Some(RetainedRow::SearchSong))
-            }
-            input @ PlaySelection::SearchResultVoice { .. } => {
-                (input, Some(RetainedRow::SearchVoice))
-            }
+            input @ (PlaySelection::SearchResultTrack { .. }
+            | PlaySelection::MessageTrack { .. }) => (input, Some(RetainedRow::SearchSong)),
+            input @ (PlaySelection::SearchResultVoice { .. }
+            | PlaySelection::MessageVoice { .. }) => (input, Some(RetainedRow::SearchVoice)),
             input => (input, None),
         };
         if !matches!(
@@ -167,6 +165,7 @@ impl MusicClient {
             self.session.with_token(&token, |_| Ok(()))?;
             return project(&state, &token);
         }
+        let message_voice = matches!(&input, PlaySelection::MessageVoice { .. });
         let input = match input {
             PlaySelection::Downloads { query, start_id } => {
                 let (resources, index) = self.download_selection(epoch, query, start_id).await?;
@@ -222,7 +221,9 @@ impl MusicClient {
                 self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
-            PlaySelection::Voice { id } | PlaySelection::SearchResultVoice { id } => {
+            PlaySelection::Voice { id }
+            | PlaySelection::SearchResultVoice { id }
+            | PlaySelection::MessageVoice { id } => {
                 let id = identifier(&json!(id))?;
                 let resource = self
                     .session
@@ -243,7 +244,11 @@ impl MusicClient {
                             snapshot,
                             (
                                 resource,
-                                json!({"kind":"voice","id":id,"scene":"search","pldScene":"audio"}),
+                                if message_voice {
+                                    json!({"kind":"voice","id":id,"scene":"message"})
+                                } else {
+                                    json!({"kind":"voice","id":id,"scene":"search","pldScene":"audio"})
+                                },
                             ),
                             lease.ok_or(Error::StaleResponse)?,
                             RetainedRow::SearchVoice,
@@ -508,9 +513,16 @@ impl MusicClient {
                     | PlaySelection::Local { .. }
                     | PlaySelection::Podcast { .. }
                     | PlaySelection::Voice { .. }
-                    | PlaySelection::SearchResultVoice { .. } => {
+                    | PlaySelection::SearchResultVoice { .. }
+                    | PlaySelection::MessageVoice { .. } => {
                         unreachable!("cloud handled before song detail requests")
                     }
+                    PlaySelection::MessageTrack { id, quality } => Ok((
+                        vec![json!(identifier(&json!(id))?)],
+                        0,
+                        quality,
+                        json!({"kind":"songs","scene":"message"}),
+                    )),
                     PlaySelection::SearchResultTrack { id, quality, .. } => Ok((
                         vec![json!(identifier(&json!(id))?)],
                         0,

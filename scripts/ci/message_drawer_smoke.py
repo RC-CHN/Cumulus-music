@@ -14,6 +14,7 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--attachments', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -21,6 +22,12 @@ def main():
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_MESSAGE_DRAWER_PROOF='1', CUMULUS_UX_SCRIPT=str(script))
+    if args.attachments:
+        injected = root / 'attachment-probe.js'
+        injected.write_text('window.__cumulusMessageAttachmentsProof = true;\n' +
+                            script.read_text(encoding='utf-8'), encoding='utf-8')
+        env.update(CUMULUS_UX_SCRIPT=str(injected), CUMULUS_MESSAGE_ATTACHMENTS_PROOF='1',
+                   CUMULUS_SEARCH_UI_PROOF='1')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         profile = root / 'os-profile' / key
@@ -37,6 +44,12 @@ def main():
     assert not failure.exists(), failure.read_text(encoding='utf-8') if failure.exists() else ''
     assert code == 0
     report = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.attachments:
+        verify_attachments(report, output, args.screenshots)
+        report['actualWebView'] = True
+        (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(json.dumps(report, ensure_ascii=False))
+        return
     assert report['ok'] and report['staleVisitDiscarded'] and report['count'] == 7
     assert report['realAccountWrites'] == report['realMusicRequests'] == 0
     assert not report['messageRequests']['blockedWrite']
@@ -76,6 +89,24 @@ def main():
     report['actualWebView'] = True
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
+
+
+def verify_attachments(report, output, screenshots):
+    assert report['ok'] and report['attachmentTargetsVerified'] and report['count'] == 9
+    assert report['realAccountWrites'] == report['realMusicRequests'] == 0
+    assert not report['messageRequests']['blockedWrite']
+    assert len(list(output.glob('ux_*.json'))) == 9
+    assert len(list(output.glob('ux_*.png'))) == (9 if screenshots else 0)
+    requests = report['messageRequests']['requests']
+    expected = [
+        ('/api/v1/resource/comments/R_AL_3_7', '701'),
+        ('/api/v1/resource/comments/R_SO_4_3', '411'),
+        ('/api/v1/resource/comments/A_PL_0_2', '702'),
+    ]
+    assert [(path, args['commentId']) for path, args in requests
+            if path.startswith('/api/v1/resource/comments/')] == expected
+    assert sum(path == '/api/msg/private/history' for path, _ in requests) == 1
+    assert sum(path == '/api/msg/notices' for path, _ in requests) == 1
 
 
 if __name__ == '__main__':

@@ -79,6 +79,79 @@
     assert(!contains('一键全读') && !drawer().querySelector('textarea'),
       'read-only drawer has no mark-all or compose controls');
     await capture('private');
+    if (window.__cumulusMessageAttachmentsProof) {
+      const epoch = account.epoch;
+      const target = (id) => one(`[data-message-attachment="${id}"]`);
+      const focused = (id) => document.activeElement?.dataset.messageAttachment === String(id);
+      const returnToDrawer = async (id) => {
+        click(one('.back-button'));
+        await wait(() => drawer() && focused(id), 'same attachment restored after direct Back: ' + id);
+      };
+      const destination = async (label, predicate) => {
+        stage = label;
+        await wait(() => !drawer() && predicate(), label);
+        await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, { label });
+        await sleep(170);
+      };
+      const located = (id) => {
+        const target = one(`[data-group="current"] [data-comment-id="${id}"]`);
+        const bounds = target?.getBoundingClientRect();
+        const viewport = one('.main-content')?.getBoundingClientRect();
+        return target && target === document.activeElement && bounds.top >= viewport.top &&
+          bounds.bottom <= viewport.bottom;
+      };
+      click(one('[data-message-peer="505"]'));
+      await wait(() => ready() && target(360) && target(359) && target(358), 'known thread attachments');
+      assert(!target(357) && !target(356) && !target(355) &&
+        !drawer().querySelector('a[href],iframe') && !contains('private.invalid'),
+      'private cloud, external URLs and mismatched comment identifiers stay inert');
+      await capture('attachment_thread');
+      click(target(360));
+      await destination('attachment_album', () => one('.catalog-page')?.textContent.includes('测试专辑'));
+      await returnToDrawer(360);
+      assert((await fixture()).requests.filter(([path]) => path === '/api/msg/private/history').length === 1,
+        'direct Back restores same thread without rereading it');
+      await capture('attachment_return');
+      click(target(358));
+      await destination('attachment_album_comment', () => one('.catalog-page') && located(701));
+      await returnToDrawer(358);
+      await invoke('play_selection', {epoch,selection:{kind:'songs',ids:['1','2'],index:0,quality:'standard'}});
+      const baseline = await wait(async () => {
+        const view = await invoke('player_snapshot', {epoch});
+        return view.state === 'playing' && view.track?.id === '1' && view.position > .1 && view;
+      }, 'native baseline queue playing');
+      click(target(359));
+      await wait(async () => {
+        const view = await invoke('player_snapshot',{epoch});
+        return drawer() && view.state === 'playing' && view.track?.id === '3' && view.position > .1;
+      }, 'message track plays through native engine and leaves drawer open');
+      const queue = await invoke('player_queue',{epoch});
+      assert(queue.tracks.map((row) => row.track.id).join(',') === '1,3,2' &&
+        queue.tracks[0].entryId === baseline.entryId, 'message play inserts and preserves the existing queue');
+      await capture('attachment_native_play');
+      click(button('返回私信列表'));
+      await wait(() => one('[data-message-tab="comments"]'),'private list restored');
+      pick('comments');
+      await wait(() => ready() && target(411), 'received comment has canonical target');
+      click(target(411));
+      await destination('attachment_song_comment', () => located(411));
+      await returnToDrawer(411);
+      pick('notices');
+      await wait(() => ready() && target(61) && target(62) && contains('移动端查看的评论'), 'typed notice targets');
+      assert(!target(63),'MV like notification remains unsupported as in official NoticeItem');
+      click(target(61));
+      await destination('attachment_notice_playlist', () => one('.playlist-hero'));
+      await returnToDrawer(61);
+      click(target(62));
+      await destination('attachment_playlist_comment', () => located(702));
+      await returnToDrawer(62);
+      assert(one('[data-message-tab="notices"] .message-drawer-badge')?.textContent.trim() === '4',
+        'viewing typed targets never clears unread');
+      assert(!(await fixture()).blockedWrite,'no explicit message mutation');
+      await emit('complete',{ok:true,attachmentTargetsVerified:true,count,realAccountWrites:0,realMusicRequests:0});
+      return;
+    }
+
     scroller().scrollTop = 170;
     await wait(() => scroller().scrollTop > 0, 'private scroller moved');
     const before = scroller().scrollTop;

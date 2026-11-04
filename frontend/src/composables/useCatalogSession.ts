@@ -1,3 +1,4 @@
+import { commentStartPosition } from '../services/comments.ts';
 import { computed, ref } from 'vue';
 import type { AccountView, CoreClient } from '../services/contracts.ts';
 import type {
@@ -122,7 +123,10 @@ export function useCatalogSession(
     } else {
       albumTab.value = location.albumTab ?? 'songs';
       if (albumTab.value === 'comments' && comments.resource.value?.id !== resource.id)
-        await comments.open({ kind: 'album', id: resource.id });
+        await comments.open(
+          { kind: 'album', id: resource.id },
+          commentStartPosition(location.initialCommentId),
+        );
     }
   }
   async function refreshState() {

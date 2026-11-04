@@ -190,3 +190,52 @@ async fn detaching_owner_rejects_an_already_dispatched_private_thread() {
     api.release.notify_one();
     assert!(matches!(read.await.unwrap(), Err(Error::StaleResponse)));
 }
+
+#[test]
+fn attachment_targets_require_exact_compatible_resource_and_comment_identity() {
+    use super::projection::attachment;
+    use crate::comments::ResourceKind;
+
+    assert!(
+        matches!(attachment::thread(&json!({"type":1,"song":{"id":3,"url":"https://private.invalid"}})),
+        Some(MessageTarget::PlayTrack { id }) if id == "3")
+    );
+    assert!(
+        matches!(attachment::thread(&json!({"type":5,"program":{"id":401,"mainSong":{"id":3}}})),
+        Some(MessageTarget::PlayVoice { id }) if id == "401")
+    );
+    assert!(
+        matches!(attachment::thread(&json!({"type":7,"mv":{"id":33}})),
+        Some(MessageTarget::Mv { id }) if id == "33")
+    );
+    for message in [
+        json!({"type":14,"song":{"id":3}}),
+        json!({"type":7,"mv":{"id":"https://private.invalid/33"}}),
+        json!({"type":12,"promotionUrl":{"id":3,"url":"https://private.invalid"}}),
+        json!({"type":2,"album":{"id":"3/redirect"}}),
+    ] {
+        assert!(attachment::thread(&message).is_none());
+    }
+    let good = json!({"resourceType":4,"combindId":"2:411:R_SO_4_3","resourceJson":"{\"id\":3}"});
+    assert!(matches!(attachment::received_comment(&good),
+        Some(MessageTarget::Comment { resource, comment_id })
+          if resource.kind == ResourceKind::Track && resource.id == "3" && comment_id == "411"));
+    for invalid in [
+        json!({"resourceType":3,"combindId":"2:411:R_SO_4_3","resourceJson":"{\"id\":3}"}),
+        json!({"resourceType":4,"combindId":"2:411:R_SO_4_3","resourceJson":"{\"id\":4}"}),
+        json!({"resourceType":4,"combindId":"2:411:R_SO_4_3:extra","resourceJson":"{\"id\":3}"}),
+        json!({"resourceType":2,"combindId":"2:411:A_EV_2_3_9","resourceJson":"{\"id\":3}"}),
+    ] {
+        assert!(attachment::received_comment(&invalid).is_none());
+    }
+    assert!(
+        attachment::notice(&json!({"type":6,"comment":{"threadId":"R_MV_5_3","commentId":411}}))
+            .is_none()
+    );
+    assert!(
+        matches!(attachment::forwarded(1,&json!({"type":19,"json":{"album":{"id":7}}})),
+        Some(MessageTarget::Album { id }) if id == "7")
+    );
+    assert!(attachment::forwarded(1, &json!({"type":21,"json":{"album":{"id":7}}})).is_none());
+    assert!(attachment::forwarded(2, &json!({"resourceType":0,"resource":{"id":7}})).is_none());
+}

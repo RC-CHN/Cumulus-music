@@ -51,8 +51,14 @@ export type Page =
   | { kind: 'cloud' }
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }
-  | { kind: 'comments'; resource: CommentResource; title: string }
-  | { kind: 'playlist'; id: string; section?: PlaylistSection; subscriberReturn?: number }
+  | { kind: 'comments'; resource: CommentResource; title: string; initialCommentId?: string }
+  | {
+      kind: 'playlist';
+      id: string;
+      section?: PlaylistSection;
+      subscriberReturn?: number;
+      initialCommentId?: string;
+    }
   | { kind: 'playlist_tag'; tag: string }
   | { kind: 'playlist_essential'; tag: string }
   | {

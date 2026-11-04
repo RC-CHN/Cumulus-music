@@ -63,8 +63,20 @@ function sortKey(event: KeyboardEvent, value: 'latest' | 'hot') {
 }
 usePageEntryFocus(
   scroller,
-  () => !!page.value || !!error.value,
-  () => !props.embedded,
+  () => {
+    const initial = props.model.initialTarget.value;
+    return initial ? page.value?.currentComment?.id === initial : !!page.value || !!error.value;
+  },
+  () => !props.embedded || !!props.model.initialTarget.value,
+  (root) => {
+    const initial = props.model.initialTarget.value;
+    if (!initial) return;
+    const item = root.querySelector<HTMLElement>('[data-group="current"] [data-comment-id]');
+    if (item?.dataset.commentId !== initial) return;
+    item.tabIndex = -1;
+    item.scrollIntoView({ block: 'center', behavior: 'instant' });
+    return item;
+  },
 );
 watch(
   query,

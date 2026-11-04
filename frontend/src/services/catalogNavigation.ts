@@ -6,6 +6,7 @@ export interface CatalogLocation {
   catalogVisit?: number;
   artistTab?: ArtistTab;
   albumTab?: AlbumTab;
+  initialCommentId?: string;
 }
 export type CatalogPanelKey = `artist:${ArtistTab}` | `album:${AlbumTab}`;
 export interface CatalogPosition {

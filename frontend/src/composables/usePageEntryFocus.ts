@@ -5,6 +5,7 @@ export function usePageEntryFocus(
   root: Ref<HTMLElement | undefined>,
   ready: () => boolean,
   eligible: () => boolean,
+  preferred?: (root: HTMLElement) => HTMLElement | undefined,
 ) {
   let alive = true,
     handled = false,
@@ -36,6 +37,7 @@ export function usePageEntryFocus(
     )
       return;
     const target =
+      preferred?.(root.value) ??
       root.value.querySelector<HTMLElement>('h1') ??
       root.value.querySelector<HTMLElement>('[role="alert"] button:not(:disabled)');
     if (target) {

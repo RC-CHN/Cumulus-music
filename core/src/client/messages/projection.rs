@@ -1,3 +1,5 @@
+pub(super) mod attachment;
+
 use super::{MessagePage, MessageQuery, MessageRow, MessageTab, valid_cursor};
 use crate::{Error, Result};
 use serde_json::Value;
@@ -159,6 +161,7 @@ fn project_row(tab: MessageTab, value: &Value, uid: &str) -> MessageRow {
         time: time(&value["time"]),
         unread: None,
         own: false,
+        target: None,
     };
     let fallback = "未知用户";
     match tab {
@@ -168,8 +171,11 @@ fn project_row(tab: MessageTab, value: &Value, uid: &str) -> MessageRow {
             row.author = sender(user).unwrap_or_else(|| fallback.into());
             row.own = id.as_deref() == Some(uid);
             let private = tab == MessageTab::Private;
-            (row.caption, row.body) =
-                sharing(&payload(&value[if private { "lastMsg" } else { "msg" }]));
+            let detail = payload(&value[if private { "lastMsg" } else { "msg" }]);
+            (row.caption, row.body) = sharing(&detail);
+            if !private {
+                row.target = attachment::thread(&detail);
+            }
             if private {
                 row.peer_id = id;
                 row.time = time(&value["lastMsgTime"]);
@@ -181,10 +187,13 @@ fn project_row(tab: MessageTab, value: &Value, uid: &str) -> MessageRow {
             row.body = text(&value["content"], 2_000).unwrap_or_default();
             row.quote = text(&value["beRepliedContent"], 1_000);
             row.caption = sender(&value["beRepliedUser"]).map(|name| format!("回复 {name}"));
+            row.target = attachment::received_comment(value);
         }
         MessageTab::Forwards => {
             let event = payload(&value["json"]);
-            match number(&value["type"]) {
+            let kind = number(&value["type"]);
+            row.target = kind.and_then(|kind| attachment::forwarded(kind, &event));
+            match kind {
                 Some(1) => {
                     row.author = sender(&event["user"]).unwrap_or_else(|| fallback.into());
                     row.time = time(&event["eventTime"]).or(row.time);
@@ -212,6 +221,7 @@ fn project_row(tab: MessageTab, value: &Value, uid: &str) -> MessageRow {
             let detail = payload(&value["notice"]);
             row.author = sender(&detail["user"]).unwrap_or_else(|| "通知".into());
             (row.caption, row.body) = notice(&detail);
+            row.target = attachment::notice(&detail);
         }
     }
     row.id = row.peer_id.clone().unwrap_or_else(|| row_id(value));

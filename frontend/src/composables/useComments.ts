@@ -17,6 +17,7 @@ import {
 export interface CommentReadPosition {
   query: CommentQuery;
   history: CommentQuery[];
+  focusTarget?: boolean;
 }
 
 export function useComments(core: CommentClient = useCore(), expired: () => void = () => {}) {
@@ -29,6 +30,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     actionError = ref(''),
     busy = shallowRef(new Set<string>()),
     history = shallowRef<CommentQuery[]>([]);
+  const initialTarget = ref<string>();
   const retryTarget = shallowRef<CommentReadRetry<CommentQuery>>();
   let generation = 0,
     listing = 0,
@@ -44,6 +46,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     listing++;
     epoch.value = '';
     resource.value = undefined;
+    initialTarget.value = undefined;
     page.value = undefined;
     loading.value = false;
     busy.value = new Set();
@@ -58,6 +61,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     listing++;
     epoch.value = next;
     resource.value = undefined;
+    initialTarget.value = undefined;
     page.value = undefined;
     loading.value = false;
     busy.value = new Set();
@@ -124,6 +128,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
     resource.value = next;
     page.value = undefined;
     query.value = commentQuery();
+    initialTarget.value = undefined;
     history.value = [];
     retryTarget.value = undefined;
     busy.value = new Set();
@@ -133,7 +138,10 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
   }
   async function open(next: CommentResource, position?: CommentReadPosition) {
     reset(next);
-    if (position) history.value = position.history;
+    if (position) {
+      history.value = position.history;
+      if (position.focusTarget) initialTarget.value = position.query.commentId ?? undefined;
+    }
     await load(position?.query);
   }
   function apply(result: CommentOperation) {
@@ -202,6 +210,7 @@ export function useComments(core: CommentClient = useCore(), expired: () => void
   }
   return {
     epoch,
+    initialTarget,
     resource,
     page,
     query,
