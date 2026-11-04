@@ -62,9 +62,19 @@ fn at<T>(stage: &'static str, result: io::Result<T>) -> io::Result<T> {
     })
 }
 
-fn expect_open_error<T>(stage: &'static str, result: io::Result<T>, code: u32) -> io::Result<()> {
+fn expect_open_error<T>(
+    stage: &'static str,
+    result: io::Result<T>,
+    codes: &[u32],
+) -> io::Result<()> {
     match result {
-        Err(error) if error.raw_os_error() == Some(code as i32) => Ok(()),
+        Err(error)
+            if codes
+                .iter()
+                .any(|&code| error.raw_os_error() == Some(code as i32)) =>
+        {
+            Ok(())
+        }
         Err(error) => at(stage, Err(error)),
         Ok(_) => Err(fail(stage)),
     }
@@ -85,6 +95,15 @@ impl Drop for Descriptor {
 }
 
 fn listener(address: &str, identity: &Identity) -> io::Result<NamedPipeServer> {
+    create_listener(address, identity, true, 1)
+}
+
+fn create_listener(
+    address: &str,
+    identity: &Identity,
+    first: bool,
+    limit: usize,
+) -> io::Result<NamedPipeServer> {
     // Protected DACL with exactly the current Windows logon SID; default
     // named-pipe permissions include Everyone read and are not used.
     let text = wide(&format!("D:P(A;;GA;;;{})", identity.logon_sddl()));
@@ -112,9 +131,9 @@ fn listener(address: &str, identity: &Identity) -> io::Result<NamedPipeServer> {
     // Tokio creates an overlapped handle registered on this I/O runtime.
     unsafe {
         ServerOptions::new()
-            .first_pipe_instance(true)
+            .first_pipe_instance(first)
             .reject_remote_clients(true)
-            .max_instances(1)
+            .max_instances(limit)
             .pipe_mode(PipeMode::Byte)
             .in_buffer_size((wire::MAX + 8) as u32)
             .out_buffer_size(64)
@@ -123,6 +142,27 @@ fn listener(address: &str, identity: &Identity) -> io::Result<NamedPipeServer> {
                 (&mut security as *mut SECURITY_ATTRIBUTES).cast(),
             )
     }
+}
+
+fn verify_first_instance_flag(address: &str, identity: &Identity) -> io::Result<()> {
+    // This isolated pipe has capacity for a second instance. The flag must
+    // forbid it even when a full instance cap cannot explain the denial.
+    let address = format!("{address}.first-instance-control");
+    let first = at(
+        "create first-instance control pipe",
+        create_listener(&address, identity, true, 2),
+    )?;
+    expect_open_error(
+        "reject duplicate first flag with capacity available",
+        create_listener(&address, identity, true, 2),
+        &[ERROR_ACCESS_DENIED],
+    )?;
+    let second = at(
+        "open available control slot without first flag",
+        create_listener(&address, identity, false, 2),
+    )?;
+    drop((first, second));
+    Ok(())
 }
 
 fn verify_acl(server: &NamedPipeServer, identity: &Identity) -> io::Result<()> {
@@ -349,11 +389,16 @@ async fn run_lab() -> io::Result<()> {
     )?;
     let mut server = at("create first pipe instance", listener(&address, &identity))?;
     at("read and verify pipe DACL", verify_acl(&server, &identity))?;
+    // Windows Server 2022 can report the single-instance cap before the
+    // first-instance flag (ERROR_PIPE_BUSY in run 41904927043). Neither code
+    // admits another listener; the separate control below still requires
+    // ACCESS_DENIED specifically for FIRST_PIPE_INSTANCE.
     expect_open_error(
-        "reject duplicate first pipe instance",
+        "reject duplicate single-slot pipe instance",
         listener(&address, &identity),
-        ERROR_ACCESS_DENIED,
+        &[ERROR_ACCESS_DENIED, ERROR_PIPE_BUSY],
     )?;
+    verify_first_instance_flag(&address, &identity)?;
     let child = at("spawn wrong-directory child", spawn(other.path(), "normal"))?;
     at("wrong-directory child", wait(child, UNAVAILABLE).await)?;
 
@@ -364,7 +409,7 @@ async fn run_lab() -> io::Result<()> {
     expect_open_error(
         "reject competing sender as busy",
         open(&address),
-        ERROR_PIPE_BUSY,
+        &[ERROR_PIPE_BUSY],
     )?;
     write_code(&mut server, READY).await?;
     demand(
