@@ -1,6 +1,7 @@
 //! Device-local output preferences and native application policy. Device names
 //! are preferences, not evidence of a physical endpoint receiving samples.
 mod managed;
+pub mod official_fade;
 mod preferences;
 mod runtime;
 pub use managed::ManagedOutput;

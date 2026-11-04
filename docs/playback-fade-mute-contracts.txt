@@ -1,0 +1,73 @@
+桌面播放：DirectSound 淡入淡出和静音恢复边界
+来源：网易云音乐 Windows x64 3.1.42.205594，cloudmusic.dll SHA256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+没有服务请求、第三方客户端或真实账号资料参与。
+
+淡入淡出
+恢复的 hybrid_app M/116:239、287、323：playFade 默认 true，旧版 playfade 可迁移。
+M/308:4256–4268 在恢复上次播放前，仅在值为真时调用 switchEffect(true)。
+Play.jsx:83–93、210–223、459–466（hybrid_64 M/3097 同分支）：当前设备类型
+大小写不敏感等于 DirectSound 才可选；其他后端显示禁用和未勾选。切换设备时先按
+目标后端决定显示状态；切回支持的设备使用已保存的值。用户点设置先 dispatch
+setting/updateSetting，再显示已更新并调用 native bridge。调用绑定在 hybrid_app
+M/4:15558–15567，参数 `audioplayer.switchEffect("id", [{name:"fade",on:bool}])`。
+
+x64 F22BCD 将 switchEffect 注册到 F27B10；该处理器读 name/on，只在 name=fade
+时写全局状态（1B4B50）。关闭分支把当前原生用户音量重新应用到输出，随后处理可能
+携带的九个有名字的时长覆盖（F281FB–F2836F）。M/4 正常开关调用不携带覆盖。
+1B4820/1B4870 初始化下表（毫秒）；1B4800 只写正整数，1B4B60 映射枚举名称。
+
+  0 PauseFadeIn              600
+  1 SeekFadeIn                 0
+  2 ManualTrackChangeFadeIn 1000
+  3 AutoTrackChangeFadeIn    600
+  4 PauseFadeOut             600
+  5 SeekFadeOut                0
+  6 StopFadeOut              600
+  7 ManualTrackChangeFadeOut 600
+  8 AutoTrackChangeFadeOut   600
+
+1B4920 检查全局开关、输出 vtable 能力及配置时长严格大于 20；部分淡出/定位还
+要求现有播放状态。由 1B42C0 构造状态，F1A930 调用工厂、旧任务收尾及新任务开始。
+1B4570 启动阶段拒绝负值、绝对差小于 0.01、时长小于 20ms；使用
+ceil(时长/20) 步。1B4610 立即调用一次，之后调度 20ms，体量值按 f64
+`start + tick * ((end - start) / steps)` 两步运算；终点直接使用原目标值。
+1B47E0 可提前走终点一次。调的是原生逻辑音量回调；没有解码两路叠加、逐样本
+PCM 乘法或音频源时钟交叠的证据。core/src/playback/output/official_fade.rs 只迁移
+这段计算和九项时长，保留 Rust 对非有限输入/会使原整数加法溢出的时长的拒绝。
+
+隔离原生对照：只映射官方 x64 DLL 中含 1B4570/1B4610/1B47E0/1B4820/1B4800
+的代码页和常量页，不运行 DLL 初始化；用 Microsoft x64 ABI 合成音量接收器。
+1B46CC 的 5 字节跳转仅跳过回调之后的 Windows 队列调度；保留原始计算与回调，
+由测试驱动明确推进步数，不声称实测 Windows 线程调度精度。驱动 SHA256
+5509cf3be34a555c5919c8e316b8352fbdd4030afa801102846aa6f17bf1e533；
+冻结的 core/tests/fixtures/official-playback-fade.json SHA256
+e1783a4181b124b736154f645f3ea7f73b680c03be2ad6191d0a5489fe21342b。
+11 组输入、129 个原始回调的 f64 位和终点标记逐项对照（默认/覆盖、进入/退出、
+边界门限、非整步、强制完成）。JSON 只含合成输入及原始回调数值，不含 DLL 或机器码。
+
+当前 Cumulus Linux libmpv 0.41.0：同一合成 WAV 请求 dsound 时报告找不到该
+后端并以 END_FILE −14 结束；null 后端播放时间推进到 0.198s。不碰物理设备或系统音量。
+Windows 发行使用 MSYS2 UCRT64 的 libmpv；对应 0.41.0 公开输出表有 WASAPI，
+没有 DirectSound，MSYS2 该版本构建配方从原版源构建 libmpv。来源：
+https://github.com/mpv-player/mpv/blob/v0.41.0/audio/out/ao.c#L34-L108
+https://github.com/msys2/MINGW-packages/blob/master/mingw-w64-mpv/PKGBUILD
+这里没有运行 Windows 发行包或验证真实设备。正式播放器不挂入该算法、不显示开关；
+用 WASAPI 或 Linux 任意实现淡化会改变上述已证实的后端适用范围。
+
+静音检测、恢复和修复
+M/116:326 的 mutereCover 默认 true；Play.jsx:509–516 的对应控件位于 `item dn`，
+同一切换处理只保存 setting，未发现这个值被传给播放/原生自动恢复。它不能作为
+授权在播放、下一首或恢复时改用户音量的证据。
+M/1193:112–119 注册 onrecovervolume，并在启动请求 `audioplayer.isDeviceMute(.1)`，
+接收 CheckDeviceMute 的 `[isMute, curOutDevice]`；M/1384:4021–4030、4413–4421
+只派发并记录结果，未在 JS 中调用恢复。原生 F22C6D → F1DA20 → 2EECC0 保存探测
+阈值（默认 0.1）；2ECD60 的路径可发 onCheckDeviceMute。
+不能把原生启动处理说成纯读取：2ECD60 在特定分支取得的系统标量大于 1e-5 时，
+2ECF87 调 2EC890，启用写入、目标为 1.0，只选近零 WaveOut 设备。2EEF20 比较
+两声道量化值的较大值是否小于约 0.001 的量化门限；2ECD08 调 `waveOutSetVolume`。
+`recoverVolume` 单独注册 F22CBD → F225C0 → F19D20 → 2ED030，可走系统设备和
+进程会话恢复；`repairVolume` 则注册 F22F8D → F23CD0，是独立诊断修复操作。
+恢复证据涉及 Windows WaveOut/WASAPI 设备与应用会话，并非 Cumulus 播放器滑条为零。
+没有完整证据把隐藏开关、原生自动检查和所有恢复写操作绑成同一触发契约；没有
+实际 Windows mixer 实验。本项目不启动自动取消静音或自动修改系统/其他应用音量。
