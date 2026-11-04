@@ -33,8 +33,9 @@
 - `4c07fc7` 有 Linux 合成桌面增量证据：`.build/search-podcast-home-webview/audit.json`、`.build/queue-explicit-current-verified/audit.json`、`.build/lyric-two-way-proof.WwRw3Y/after/report.json`。主流程的最新报告版本及独立账号权限见 [桌面主流程](desktop-main-flow-proof.txt)。本机证据目录不随公开仓库分发，契约中保留复现入口。
 - 后续开发主线的专项证据见 [播放、音效与搜索](playback-search-priority.txt)：暂停倒拖、耳机调音对比、音效故障时保留播放、声音和播客分类、播客行内收藏、跨分类的搜索纠正。音效恢复仅在原生确认拆除故障滤镜时继续，已验证耳机型号的独立 PEQ 不代表完整的官方效果图。各项证据仍按相应提交、平台和运行条件读取。
 - `e0099f1` 的合并版在 Linux 实际 WebView 验证 [歌手发现](artist-gallery-contracts.txt) 的官方筛选和跨批分页、[本地单曲菜单](local-resource-ui-contracts.txt) 的播放与下一首、[播放栏播客单集下载](desktop-player-contracts.txt) 的资源身份和显式确认。12 张截图及回执在 `.build/ui-proof/local-gallery-voice-e0099f1/`。歌手页跨过 200 条后仍按服务位置续读；本地菜单保持当前 CUE 条目的暂停位置；单集确认框打开和取消均未提交下载。它们分别使用只读合成服务或本地合成文件验证，不能替代实服权益或 Windows 实机验证。
-- 后续补齐[歌单广场](playlist-detail-ui-contracts.txt)的官方推荐首页、普通标签与分类续页，播客播放栏确认后实际下载，以及[评论作者主页和回程](comment-read-ui-contracts.txt)。Linux 隔离桌面验证推荐和标签的失败重试、关闭个性化后不继续读取、发布一份合成 MP3 并继续播放、作者跳转后保留原楼层及草稿。歌单广场的顶部动态标签/精品推荐、真实节目权益与嵌入评论的回程仍按各自证据验收。
+- 后续补齐[歌单广场](playlist-detail-ui-contracts.txt)的官方推荐首页、顶部动态标签和普通分类的 60px 自动续页，播客播放栏确认后实际下载，以及[评论作者主页和回程](comment-read-ui-contracts.txt)。Linux 隔离桌面验证有界渲染、原游标重试、个性化关闭、发布一份合成 MP3 并继续播放，以及作者跳转后保留原楼层及草稿。真实节目权益与嵌入评论的回程仍按各自证据验收。
 - [会员卡](desktop-member-contracts.txt)支持固定 App 扫码，并读取官方动态开通配置。已知公开的二维码和浏览器交接由原生处理；原生收银台、支付和 SSO 仍不在已验收范围。独立参数均衡和耳机调音的底栏[处理反馈](effects-directory-desktop.txt)已通过 Linux libmpv 专项，读取当前条目原生样本计数区分「已配置」与「正在处理」。
-- [精品歌单](playlist-detail-ui-contracts.txt)已接通分类入口、独立标签、原游标续页和详情返回；顶部个性化标签仍待迁移。[单曲和歌词搜索](desktop-player-contracts.txt)可暂停或继续当前正在解码加载的歌，Linux 隔离主流程核对播放实例、音源授权和加载次数不变。
+- [精品歌单](playlist-detail-ui-contracts.txt)已接通分类入口、独立标签、原游标续页和详情返回。[单曲和歌词搜索](desktop-player-contracts.txt)可暂停或继续当前正在解码加载的歌，Linux 隔离主流程核对播放实例、音源授权和加载次数不变。
+- [乐签详情](desktop-member-contracts.txt)已接通原曲喜欢、暂停/继续、奖励进度和专用会员二维码；没有新增领奖入口。[前瞻限幅器](core-effects-material-routing.txt)已对照原生启动、参数和尾部排空，Rust 输出的是控制和帧调度计划，动态 PCM 内核与正式播放器尚未接入。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
