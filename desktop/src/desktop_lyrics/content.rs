@@ -7,6 +7,21 @@ use cumulus_core::client::{
 use cumulus_core::preferences::desktop_lyrics::Appearance;
 use state::ContentState;
 
+/// Wait for a local projection read, then recheck the displayed window
+/// receipt before giving an explicit mutation access to its document.
+pub(super) async fn for_action(
+    host: &Host,
+    generation: &str,
+    ticket: &str,
+) -> Result<tokio::sync::OwnedMutexGuard<state::Content>> {
+    let cache = host.lock()?.get(generation)?.content.clone();
+    let content = tokio::time::timeout(std::time::Duration::from_secs(2), cache.lock_owned())
+        .await
+        .map_err(|_| Error::MutationBusy)?;
+    host.lock()?.captured(generation, ticket)?;
+    Ok(content)
+}
+
 pub(super) async fn read<R: Runtime>(
     app: &tauri::AppHandle<R>,
     generation: &str,
@@ -126,4 +141,48 @@ pub(super) async fn read<R: Runtime>(
         return Err(Error::StaleResponse);
     }
     Ok((content.state, frame))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{future::Future, task::Poll};
+
+    #[tokio::test]
+    async fn content_action_waits_for_reader_and_rejects_a_replaced_window() {
+        let directory = tempfile::tempdir().unwrap();
+        let client = MusicClient::open(directory.path(), None).unwrap();
+        let host = Host::default();
+        let (generation, ticket, cache) = {
+            let mut ledger = host.lock().unwrap();
+            let (generation, _) = ledger.begin().unwrap();
+            let ticket = ledger
+                .observe(&generation, client.mini_snapshot().unwrap())
+                .unwrap();
+            let window = ledger.get_mut(&generation).unwrap();
+            window.ready = true;
+            (generation, ticket, window.content.clone())
+        };
+        for replace in [false, true] {
+            let reader = cache.lock().await;
+            let action = for_action(&host, &generation, &ticket);
+            tokio::pin!(action);
+            std::future::poll_fn(|context| {
+                assert!(matches!(action.as_mut().poll(context), Poll::Pending));
+                Poll::Ready(())
+            })
+            .await;
+            if replace {
+                let mut ledger = host.lock().unwrap();
+                ledger.take(Some(&generation)).unwrap();
+                ledger.begin().unwrap();
+            }
+            drop(reader);
+            if replace {
+                assert!(matches!(action.await, Err(Error::StaleResponse)));
+            } else {
+                assert!(action.await.is_ok());
+            }
+        }
+    }
 }

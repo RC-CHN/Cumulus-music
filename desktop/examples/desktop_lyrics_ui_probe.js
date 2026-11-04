@@ -48,6 +48,15 @@
     await sleep(1000);
   };
   const clickLyric = label => lyric(`const n=document.querySelector('[aria-label=${JSON.stringify(label)}]');if(!n||n.disabled)throw Error('lyric control: '+${JSON.stringify(label)});${label==='关闭桌面歌词'?'setTimeout(()=>n.click(),70)':'n.click()'};return true;`);
+  const delayLyricDuringReads = () => lyric(`
+    const button=document.querySelector('[aria-label="歌词延后半秒"]');
+    if(!button||button.disabled)throw Error('visible offset control unavailable');
+    const invoke=window.__TAURI_INTERNALS__.invoke, generation=location.hash.split('=')[1];
+    const reads=Array.from({length:8},()=>invoke('desktop_lyric_read',{generation}));
+    button.click();
+    await Promise.all(reads);
+    return true;
+  `);
   const field = (label,value) => { const input=one(`[aria-label="${label}"]`); assert(input, label); input.value=value; input.dispatchEvent(new Event(input.tagName==='SELECT'?'change':'input',{bubbles:true})); };
   const apply = async () => { await sleep(50); const before=(await settings()).preferences.current.revision; click(button('应用样式')); await wait(async()=> (await settings()).preferences.current.revision!==before,'style saved'); await wait(()=>!button('应用样式').disabled || !one('.desktop-lyric-settings[aria-busy="true"]'),'style completed'); await sleep(500); };
   const openSettings = async () => { if(!one('.desktop-lyric-settings')) click(one('[aria-label="打开设置"]')); await wait(()=>one('[aria-label="显示桌面歌词"]'),'settings mounted'); one('.desktop-lyric-settings').scrollIntoView({block:'start',behavior:'instant'}); await sleep(300); };
@@ -77,7 +86,10 @@
       await clickLyric('播放'); await wait(async()=>(await read()).media.playing,'lyric play');
       await sleep(300); await clickLyric('暂停'); await wait(async()=>!(await read()).media.playing,'lyric pause');
       assert((await read()).media.selection.audioPlayId===before.media.selection.audioPlayId,'second player');
-      await ready(); const offset=(await read()).lyrics.frame.offset; await clickLyric('歌词延后半秒');
+      await ready();
+      await wait(()=>lyric("return !!document.querySelector('[aria-label=\"播放\"]:not(:disabled)')&&!!document.querySelector('[aria-label=\"歌词延后半秒\"]:not(:disabled)');"),'displayed paused lyric controls');
+      const offset=(await read()).lyrics.frame.offset;
+      await delayLyricDuringReads();
       await wait(async()=>(await read()).lyrics?.frame.offset!==undefined && (await read()).lyrics?.frame.offset!==offset,'offset update');
       assert(Math.abs((await read()).lyrics.frame.offset-offset+0.5)<1e-9,'delay offset sign'); await capture('paused_offset'); checks.push('shared native audio and YRC','IPC isolation','offset control');
       field('桌面歌词行数','false'); await sleep(50); field('桌面歌词双行对齐','split'); field('桌面歌词字号','30'); await apply();

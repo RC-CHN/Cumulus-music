@@ -167,8 +167,12 @@ pub async fn desktop_lyric_action<R: Runtime>(
             app.state::<MusicClient>().mini_action(&snapshot, action).await?;
         }
         Action::OffsetBack | Action::OffsetForward | Action::Retry => {
-            let cache = host.lock()?.get(&generation)?.content.clone();
-            let mut content = cache.try_lock().map_err(|_| Error::MutationBusy)?;
+            let mut content = content::for_action(&host, &generation, &ticket).await?;
+            // A track/account change can win while an ordinary frame is being
+            // projected; never apply a delayed action to the new selection.
+            if !snapshot.same_controls(&app.state::<MusicClient>().mini_snapshot()?) {
+                return Err(Error::StaleResponse.into());
+            }
             if matches!(action, Action::Retry) {
                 content.key = None; content.document = None; content.state = state::ContentState::Loading;
             } else {
