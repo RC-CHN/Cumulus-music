@@ -343,6 +343,7 @@ jobs:
           python scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-drawer-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/profile_relations_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-relations-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/profile_play_record_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-play-record-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/profile_play_record_smoke.py --play-card --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-play-record-card-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/profile_play_record_smoke.py --removal --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-play-record-removal-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --attachments --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-attachments-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --voice-download-submit --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-download-submit-windows --runtime .build/package-stage/windows-x64/native
@@ -477,6 +478,7 @@ jobs:
           python scripts/ci/comment_resource_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-comment-resource-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
           python scripts/ci/community_smoke.py --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/community_smoke.py --profile-notes --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-profile-notes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-settings-windows --runtime .build/package-stage/windows-x64/native --settings
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-windows --runtime .build/package-stage/windows-x64/native --relay
@@ -657,6 +659,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-drawer-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_relations_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-relations-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_play_record_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-play-record-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_play_record_smoke.py --play-card --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-play-record-card-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_play_record_smoke.py --removal --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-play-record-removal-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --attachments --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-attachments-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-download-submit --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-download-submit-linux
@@ -798,6 +801,7 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/comment_resource_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-comment-resource-linux
           cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --profile-notes --binary .build/target/debug/examples/community_ui_probe --root .build/ci-profile-notes-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-history-linux --history
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-settings-linux --settings
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-linux --relay
