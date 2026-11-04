@@ -236,7 +236,49 @@ Windows 离线对照顺序：
    首次空种子拒绝、事务失败不轮换、账号凭据 deviceId 不变。分支没实测就保留缺口，
    不通过真实账号请求来弥补采集证据，也不把 CI 编译成功记为官方等价。
 
-当前文件不包含实现或 Windows 实采结果。
+当前没有 Windows 硬件采集或生产接线。已有仅处理合成字符串的独立探针，见下节。
+
+7. Windows 代码页与主板过滤离线探针
+
+`scripts/research/windows_identity_encoding_probe.rs` 没有外部依赖，不启动桌面、COM、
+WMI，不读硬件/注册表/账号，不接收参数，不更改系统或线程的 locale。它调用：
+
+- GetACP、GetCPInfoExW(CP_ACP / CP_THREAD_ACP)：报告 OS 返回的编号与最大字符宽度；
+  用同一固定字节串对照别名和显式编号，不假设两者相同。
+- WideCharToMultiByte(CP_ACP, 0)：生成固定 Unicode 字符串的窄字节；再分别用两个
+  代码页别名解码。另用固定 CP1252、CP936、UTF-8 和坏 UTF-8 字节作为对照。
+- MultiByteToWideChar：并列记录 `-1` 输入的完整目标、`-1` 输入的短一单元目标，
+  以及显式非 NUL 输入长度配合同样短目标。`short` 行包括返回值、立即读出的
+  GetLastError、改写单元数及目标内容，保留人工添加 NUL 之前的观察。API 返回失败
+  但仍写入部分内容也是有效观察。空内容走早退；缓冲区前后哨兵必须完整。
+- 用 Windows UCRT 的 `iswctype(0x4)`、`_wcslwr_s` 检查上述主板过滤规则；冻结
+  ASCII 序列的空格、原大小写、占位词、全数字和长度边界，额外报告合成的非 ASCII
+  数字分类。探针不从成功的完整缓冲区输出推断官方短缓冲区一定可用。
+
+在仓库根目录用已固定工具链的 Windows x64 PowerShell 运行：
+
+    New-Item -ItemType Directory -Force .build/windows-identity-encoding | Out-Null
+    rustc --edition 2024 -D warnings scripts/research/windows_identity_encoding_probe.rs -o .build/windows-identity-encoding/probe.exe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & .build/windows-identity-encoding/probe.exe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+可另编一个带本探针专用 UTF-8 manifest 的 MSVC 可执行文件，不改全局代码页：
+
+    rustc --edition 2024 -D warnings -C link-arg=/MANIFEST:EMBED -C link-arg=/MANIFESTINPUT:scripts/research/windows_identity_encoding_utf8.manifest scripts/research/windows_identity_encoding_probe.rs -o .build/windows-identity-encoding/probe-utf8.exe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & .build/windows-identity-encoding/probe-utf8.exe
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+第二个程序必须实际报告 GetACP=65001 才计为 UTF-8 ACP 证据。显式 CP65001 对照并不
+等于进程 ACP 为 UTF-8。两次都只保留合成输入观察；`encoding_probe=complete` 只说明
+探针断言通过，不等同于硬件采集、官方二进制对照或生产接线已验证。
+
+本地 Linux 用 Rust 1.96.0 / x86_64-pc-windows-gnu 交叉链接并核对 PE 导入，纯合成
+UTF-16 规则通过 2 项测试。未在本机执行 Windows API；短缓冲区、别名与 UTF-8
+manifest 的运行观察仍等 Windows。Windows Native CI 运行上面的首个程序，输出只含
+合成样本及代码页结果；
+它不需要解包材料、账号、网络、音频设备或桌面会话。
 
 Microsoft 主文档核对（只支持 API 语义，不能替代网易字段选择的本地恢复证据）：
 GetAdaptersInfo / IP_ADAPTER_INFO：
