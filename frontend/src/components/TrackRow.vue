@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import SearchMatchText from './search/SearchMatchText.vue';
-import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
+import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
 import type { TrackView } from '../services/contracts';
 import { artworkAt } from '../services/artwork';
 import Icon from './Icon.vue';
@@ -13,15 +13,23 @@ const props = defineProps<{
   busy: boolean;
   playable?: boolean;
   currentId?: string;
+  currentToggle?: TrackCurrentToggle;
+  toggleBusy?: boolean;
   navigable?: boolean;
 }>();
 const emit = defineEmits<{
   like: [track: TrackView];
   play: [index: number, gesture?: TrackPlayGesture];
+  toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
 }>();
+function primary(event: MouseEvent) {
+  if (props.currentToggle)
+    emit('toggleCurrent', props.currentToggle, event.currentTarget as HTMLButtonElement);
+  else emit('play', props.index);
+}
 function more(event: MouseEvent | KeyboardEvent) {
   emit('more', { track: props.track, event, play: () => emit('play', props.index) });
 }
@@ -51,14 +59,22 @@ function duration(ms: number) {
       ><button
         class="track-play icon-button"
         data-result-action="play"
-        :aria-label="`播放 ${track.name}`"
-        :disabled="!playable || track.missing"
-        @click.stop="emit('play', index)"
+        :aria-label="`${currentToggle ? (currentToggle.pause ? '暂停' : '继续播放') : '播放'} ${track.name}`"
+        :disabled="!playable || track.missing || (!!currentToggle && toggleBusy)"
+        @click.stop="primary"
         @dblclick.stop
       >
         <span>{{ (index + 1).toString().padStart(2, '0') }}</span
         ><Icon
-          :name="!track.missing && !track.local && track.id === currentId ? 'volume' : 'play'"
+          :name="
+            currentToggle
+              ? currentToggle.pause
+                ? 'pause'
+                : 'play'
+              : !track.missing && !track.local && track.id === currentId
+                ? 'volume'
+                : 'play'
+          "
         /></button
     ></span>
     <div class="track-title" role="cell">

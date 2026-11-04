@@ -42,7 +42,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    expected = 20 if args.baseline else 26
+    expected = 20 if args.baseline else 27
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
@@ -50,7 +50,7 @@ def main():
         'layoutPassed', 'lyricFollowVerified', 'lyricTimelineVerified', 'lyricFontVerified',
         'lyricModesVerified', 'chorusMarkerVerified', 'seekTimePreviewVerified',
         'slowPlaybackWaitVerified', 'seekStepVerified', 'audioOutputRecoveryVerified',
-        'recommendationToggleVerified'))
+        'recommendationToggleVerified', 'currentRowToggleVerified'))
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if not args.baseline:
@@ -71,6 +71,11 @@ def main():
         assert daily['nativePlayer']['playId'] == daily['playId']
         assert daily['nativePlayer']['track']['id'] == daily['trackId']
         assert daily['nativePlayer']['recommendationOrigin']['kind'] == 'daily'
+        row_toggle, = [stage for stage in stages if stage.stem.endswith('_current_row_toggle')]
+        row = json.loads(row_toggle.read_text(encoding='utf-8'))
+        assert row['nativePlayer']['state'] == 'paused'
+        assert row['nativePlayer']['playId'] == row['playId']
+        assert row['nativePlayer']['track']['id'] == row['trackId']
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == expected
     report = dict(complete, actualWebView=True, screenshots=expected if args.screenshots else 0,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
+import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
 import { computed, nextTick, watch } from 'vue';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import type { TrackView } from '../services/contracts';
@@ -12,6 +12,8 @@ const props = defineProps<{
   busy: Set<string>;
   playable?: boolean;
   currentId?: string;
+  currentToggle?: TrackCurrentToggle;
+  toggleBusy?: boolean;
   navigable?: boolean;
   locateIndex?: number;
   scrollScope?: string;
@@ -19,6 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   like: [track: TrackView];
   play: [index: number, gesture?: TrackPlayGesture];
+  toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   more: [request: TrackMenuRequest];
   artist: [id: string];
   album: [id: string];
@@ -80,6 +83,8 @@ defineExpose({ locate, restoreScroll });
           track,
           start + index,
           currentId === track.id,
+          currentToggle?.trackId === track.id ? currentToggle : undefined,
+          currentToggle?.trackId === track.id && toggleBusy,
           liked.has(track.id),
           busy.has(track.id),
           playable,
@@ -94,11 +99,18 @@ defineExpose({ locate, restoreScroll });
         :original-recording="originalRecordings?.has(track.id)"
         :index="start + index"
         :current-id="currentId"
+        :current-toggle="
+          !track.missing && !track.local && currentToggle?.trackId === track.id
+            ? currentToggle
+            : undefined
+        "
+        :toggle-busy="toggleBusy"
         :liked="liked.has(track.id)"
         :busy="busy.has(track.id)"
         :playable="playable"
         :navigable="navigable"
         @play="(index, gesture) => emit('play', index, gesture)"
+        @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @like="emit('like', $event)"
         @more="emit('more', $event)"
         @artist="emit('artist', $event)"

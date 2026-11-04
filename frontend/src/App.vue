@@ -81,7 +81,7 @@ import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './service
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
-import type { TrackMenuRequest, TrackPlayGesture } from './services/trackMenu';
+import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from './services/trackMenu';
 import {
   currentCatalogDownload,
   type QueueCollectionView,
@@ -1980,6 +1980,54 @@ function playVisibleTrack(index: number, gesture?: TrackPlayGesture) {
   const sourceIndex = positions === null ? index : positions[index];
   if (sourceIndex !== undefined) play(sourceIndex, gesture);
 }
+const visibleTrackToggle = computed<TrackCurrentToggle | undefined>((previous) => {
+  const current = player.view.value;
+  if (
+    !current?.playId ||
+    !current.track ||
+    current.resourceKind !== 'catalog' ||
+    current.fm ||
+    current.epoch !== account.value.epoch ||
+    !player.loaded.value
+  )
+    return;
+  const pause = player.playing.value;
+  if (
+    previous?.playId === current.playId &&
+    previous.epoch === current.epoch &&
+    previous.queueRevision === current.queueRevision &&
+    previous.trackId === current.track.id &&
+    previous.pause === pause
+  )
+    return previous;
+  return {
+    trackId: current.track.id,
+    epoch: current.epoch,
+    playId: current.playId,
+    queueRevision: current.queueRevision,
+    pause,
+  };
+});
+async function toggleVisibleTrack(target: TrackCurrentToggle, anchor: HTMLButtonElement) {
+  if (visibleTrackToggle.value !== target || !player.ready.value || player.busy.value) return;
+  const ownsFocus = document.activeElement === anchor;
+  await player.action({
+    kind: 'pause_for',
+    play_id: target.playId,
+    expected_queue_revision: target.queueRevision,
+    paused: target.pause,
+  });
+  await nextTick();
+  if (
+    ownsFocus &&
+    document.activeElement === document.body &&
+    visibleTrackToggle.value?.playId === target.playId &&
+    anchor.isConnected &&
+    anchor.getClientRects().length &&
+    !anchor.disabled
+  )
+    anchor.focus({ preventScroll: true });
+}
 function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
   if (!tracks?.[index] || tracks[index].missing) return;
@@ -3030,7 +3078,10 @@ onUnmounted(() => {
                     :busy="busyLikes"
                     :playable="player.ready.value"
                     :current-id="currentTrackId"
+                    :current-toggle="visibleTrackToggle"
+                    :toggle-busy="player.busy.value"
                     @play="playVisibleTrack"
+                    @toggle-current="toggleVisibleTrack"
                     @like="music.like"
                     @more="showVisibleTrackActions"
                   />

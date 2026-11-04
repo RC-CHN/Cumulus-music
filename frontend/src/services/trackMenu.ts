@@ -1,6 +1,13 @@
 import type { TrackView } from './contracts';
 
 export type TrackPlayGesture = 'double_click';
+export interface TrackCurrentToggle {
+  trackId: string;
+  epoch: string;
+  playId: string;
+  queueRevision: string;
+  pause: boolean;
+}
 
 // UI-only request: playback retains the originating list and its ordering.
 export interface TrackMenuRequest {

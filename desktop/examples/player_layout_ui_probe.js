@@ -272,6 +272,21 @@
     await wait(()=>text()==='播放全部'&&!button().disabled,'new recommendation snapshot exposes start action');
     assert(bar().dataset.playId===playId&&bar().dataset.state==='paused','refresh leaves the paused queue intact');
   }
+  async function verifyCurrentRowButton() {
+    const bar=()=>one('.playerbar');
+    const {playId,trackId,position}=bar().dataset;
+    const row=()=>one(`.track-row[data-track-id="${trackId}"] .track-play`);
+    await wait(()=>row()?.getAttribute('aria-label').startsWith('继续播放 ')&&!row().disabled,'current song row offers continue');
+    click(row());
+    await wait(()=>row()?.getAttribute('aria-label').startsWith('暂停 ')&&bar().dataset.state==='playing'&&!row().disabled,'current song row resumes');
+    assert(bar().dataset.playId===playId&&Number(bar().dataset.position)>=Number(position)-.1,'row resume preserves session and position');
+    click(row());
+    await wait(()=>row()?.getAttribute('aria-label').startsWith('继续播放 ')&&bar().dataset.state==='paused'&&!row().disabled,'current song row pauses');
+    await wait(()=>document.activeElement===row(),'current row toggle preserves focus');
+    assert(bar().dataset.playId===playId,'row pause preserves the active session');
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_current_row_toggle`,{playId,trackId});
+    await sleep(800);
+  }
   try {
     await wait(()=>all('.track-row').length>2,'daily');
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
@@ -317,9 +332,9 @@
     }
     click(one('[aria-label="收起播放详情"]'));await wait(()=>!one('.lyrics-panel'),'details close');await sleep(300);
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
-    if(!window.__playerLayoutBaseline) { await verifyRecommendationToggle(); await verifyAudioOutputRecovery(); }
+    if(!window.__playerLayoutBaseline) { await verifyCurrentRowButton(); await verifyRecommendationToggle(); await verifyAudioOutputRecovery(); }
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();
