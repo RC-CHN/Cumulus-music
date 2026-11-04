@@ -76,7 +76,9 @@
 - [识曲权限与采集选择](song-recognition-desktop-contracts.txt)保留候选字符串 ID 和顺序，按当前账号及识曲代次读权限，不返回授权地址。可选 Linux 宿主仅在私有合成输出验证选择许可，未确认不采集，所选输出移除或服务重启后不回退。正式桌面入口、真实设备及真实识曲仍待验证。
 - [Windows WASAPI 回采原型](song-recognition-wasapi-proof.txt)的设备选择和停止策略有六项合成测试及 Windows GNU 交叉链接证据。未在 Windows 实际回采或发布入口。
 - [官方桌宠](desktop-pet-contracts.txt)已核对入口、领养状态、窗口动作和素材约束。本机 Linux WebKit 未通过半透明 WebM 探针；尚无正式窗口、现有已领养宠物的合格素材或 Windows 原生验收。
-- [本地换肤](desktop-decoration-contracts.txt)从顶栏打开，支持默认、经典红、酷炫黑及自定义按钮颜色。预览不落盘，明确应用后跨进程恢复；远程皮肤、挂件、音乐桌面和购买仍未接入。
+- [换肤](desktop-decoration-contracts.txt)支持默认、经典红、酷炫黑及自定义按钮颜色。明确应用后跨进程恢复。登录后的在线目录只读，预览须明确点击，原始地址不进入前端；远程应用、购买、挂件和音乐桌面仍未接入。
+- [最近播放记录](play-history-contracts.txt)的设置开关在本机按账号保存，首次关闭须确认。关闭只隐藏多端记录，重新开启后可合并；开关本身不请求或删除历史。
+- [识曲原生身份构造](song-recognition-native-identity.txt)有官方合成对照。普通请求身份不会代用识曲的原生字段；未接真实授权、设备采集或生产请求。
 - [福利活动和 WPS](member-welfare-cooperation-audit.txt)各有官方入口、请求与写入契约。福利只读入口仅向服务分组确认且有效列表非空的当前账号显示；切号拒绝旧回包。未启用动态跳转、领取或 WPS 合作流程。
 - [Linux 图形回退](ui-rendering-validation.txt)的软件配置保留合成；X11 强制共享内存，Wayland 由宿主协商。X11 实际绘制导入弹窗，物理 Wayland 实际验证默认和 GPU/SHM 超时后成功回退。Windows 行为与设备限制不变。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
