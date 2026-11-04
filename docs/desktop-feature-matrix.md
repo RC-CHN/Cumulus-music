@@ -45,5 +45,6 @@
 - [搜索歌单](search-results-ui-contracts.txt)按官方标题下的第二行展示接口推荐理由；[播放最新](follow-new-song-contracts.txt)保留重复选中首曲时的原进度，并在首曲不可播时保留原队列。[动态会员扫码](desktop-member-contracts.txt)使用独立窗口和当前投放凭据，旧版本无法生成二维码；未验证真实开通、支付或礼券。
 - [听歌排行](profile-play-record-contracts.txt)恢复了用户主页入口、周榜和总榜、访客实时权限及本人播放次数。访客被拒绝时不请求榜单；同账号近期播放历史仍独立。[云盘元数据](cloud-metadata-recovery.txt)按官方规则补首位歌手，保留原云盘 ID；未找到 PC 端手动重新匹配链路。
 - [播客和有声书分类](search-discovery-ui-contracts.txt)恢复官方评分；[播放最新](follow-new-song-contracts.txt)在首曲没有线上授权时仅使用当前账号同一歌曲已验证的下载。[进程内 FLAC](limiter-inprocess-decoder.txt)验证了专有前瞻限幅器前的解码和样本跳转，仍未切换正式播放器；网络授权与输入边界见[源契约](limiter-authorized-source-contract.txt)。
+- [本人排行删除](profile-play-record-contracts.txt)支持按时期删除并在不确定时只读核对；[外部歌单](external-playlist-import-contracts.txt)支持按官方规则预览分享链接，未提交外部导入任务。[冷离线 FLAC](cold-offline-flac-handoff.txt)通过合成凭据、真实解码、原路径替换与会话撤销的专项验证，正式播放器未切换。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。

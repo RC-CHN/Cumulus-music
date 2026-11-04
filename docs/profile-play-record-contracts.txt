@@ -65,3 +65,6 @@
   收到 3 次明确选择产生的合成写入，实际远端写入为 0。原有 13 态读流程回归
   同批次通过。Rust 专项 7/7、前端 787/787；尚未验证真实账号删除和 Windows 实机。
   回执和截图：.build/ui-proof/profile-rank-remove-ad03256a/{removal,read-regression}/report.json。
+- 合并版 cee48f77 再验证删除 10 态、读取 13 态及各自截图；同批的侧栏/导入预览
+  51 态、歌单管理 42 态、普通应用在私有 PipeWire 的播放与暂停均通过。报告目录：
+  .build/ui-proof/product-phase6-removal/。远端使用合成数据按两个原生平台分别验收。
