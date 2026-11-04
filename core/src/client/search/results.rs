@@ -237,19 +237,38 @@ impl MusicClient {
                             .search
                             .tabs_for(&self.session, token, api.as_ref(), &query.keyword)
                             .await?;
-                        (
-                            api::v3::PATH,
-                            Some(tabs),
-                            layout,
-                            // No RN hotspot is exposed until the native host
-                            // can supply a verified registry and destination.
-                            api::v3::request(
-                                api.as_ref(),
-                                &query,
-                                api::v3::HotZoneContext::default(),
-                            )
-                            .await,
-                        )
+                        let raw = api::v3::fetch(api.as_ref(), &query).await;
+                        let projected = match raw {
+                            Ok(raw) if raw.has_zone_candidate() => {
+                                let context = match self.vertical_zone_search_registry(epoch).await
+                                {
+                                    Ok(context) => context,
+                                    Err(error)
+                                        if error.is_service_code(301)
+                                            || matches!(
+                                                error,
+                                                Error::StaleResponse | Error::CredentialChanged
+                                            ) =>
+                                    {
+                                        return Err(error);
+                                    }
+                                    Err(_) => None,
+                                };
+                                self.session.require_api(token, &api)?;
+                                if let Some((groups, menu)) = &context {
+                                    let contains = |page: &str| menu.contains(page);
+                                    raw.project(api::v3::HotZoneContext {
+                                        groups: Some(groups),
+                                        ready_pages: Some(&contains),
+                                    })
+                                } else {
+                                    raw.project(api::v3::HotZoneContext::default())
+                                }
+                            }
+                            Ok(raw) => raw.project(api::v3::HotZoneContext::default()),
+                            Err(error) => Err(error),
+                        };
+                        (api::v3::PATH, Some(tabs), layout, projected)
                     } else {
                         (
                             api::COMPREHENSIVE_PATH,

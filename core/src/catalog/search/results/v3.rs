@@ -14,11 +14,30 @@ const HOT_CORE: &str = "search_block_hot_result_core_resources";
 const BEST: &str = "search_block_best_match";
 const CORRECTION: &str = "search_block_correction";
 
-pub(crate) async fn request(
-    api: &dyn Api,
-    q: &SearchResultQuery,
-    zones: HotZoneContext<'_>,
-) -> Result<Value> {
+pub(crate) struct RawComprehensive {
+    data: Value,
+    partial: bool,
+}
+impl RawComprehensive {
+    pub(crate) fn has_zone_candidate(&self) -> bool {
+        self.data["blocks"].as_array().is_some_and(|blocks| {
+            blocks
+                .iter()
+                .take(MAX_BLOCKS)
+                .any(|block| block["blockCode"] == HOT && hot::candidate(block))
+        })
+    }
+    pub(crate) fn project(self, zones: HotZoneContext<'_>) -> Result<Value> {
+        normalize_mode(&self.data, self.partial, zones)
+    }
+}
+
+#[cfg(test)]
+async fn request(api: &dyn Api, q: &SearchResultQuery, zones: HotZoneContext<'_>) -> Result<Value> {
+    fetch(api, q).await?.project(zones)
+}
+
+pub(crate) async fn fetch(api: &dyn Api, q: &SearchResultQuery) -> Result<RawComprehensive> {
     if q.category != SearchCategory::All || q.offset != 0 || !(1..=100).contains(&q.limit) {
         return Err(Error::InvalidInput("invalid comprehensive search page"));
     }
@@ -29,7 +48,10 @@ pub(crate) async fn request(
         "channel": channel, "bizQueryInfo": "",
     });
     match api.call(PATH, payload, false, &[200]).await {
-        Ok(raw) => normalize(&raw["data"], zones),
+        Ok(mut raw) => Ok(RawComprehensive {
+            data: raw["data"].take(),
+            partial: false,
+        }),
         Err(error) => match error.root() {
             Error::Service {
                 endpoint,
@@ -41,7 +63,10 @@ pub(crate) async fn request(
                     .as_array()
                     .is_some_and(|rows| !rows.is_empty()) =>
             {
-                normalize_mode(&body["data"], true, zones)
+                Ok(RawComprehensive {
+                    data: body["data"].clone(),
+                    partial: true,
+                })
             }
             // An empty 599 and a 405 carry a scoped user explanation. Leave
             // them as service errors for the caller's shared empty-state path.
@@ -554,6 +579,7 @@ fn rewrite(resource: &Value) -> Option<Value> {
     Some(json!({"baseInfo":base}))
 }
 
+#[cfg(test)]
 fn normalize(data: &Value, zones: HotZoneContext<'_>) -> Result<Value> {
     normalize_mode(data, false, zones)
 }

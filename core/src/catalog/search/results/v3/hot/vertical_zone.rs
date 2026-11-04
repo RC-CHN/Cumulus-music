@@ -32,23 +32,44 @@ pub(super) enum ZoneAction {
     Allowed(SearchHotZoneTarget),
 }
 
-pub(super) fn action(value: &str, context: HotZoneContext<'_>) -> ZoneAction {
-    let Some(tail) = value
+fn tail(value: &str) -> Option<&str> {
+    value
         .strip_prefix("orpheus://rnpage")
         .filter(|tail| tail.is_empty() || tail.starts_with(['/', '?', '&', '#']))
-    else {
+}
+
+fn allowed_encoding(value: &str) -> bool {
+    value.len() <= 2048 && !value.contains('#') && !value.chars().any(char::is_control)
+}
+
+pub(super) fn candidate(value: &str) -> bool {
+    allowed_encoding(value) && tail(value).and_then(target).is_some()
+}
+
+pub(super) fn action(value: &str, context: HotZoneContext<'_>) -> ZoneAction {
+    let Some(tail) = tail(value) else {
         return ZoneAction::Other;
     };
-    if value.len() > 2048 || value.contains('#') || value.chars().any(char::is_control) {
+    if !allowed_encoding(value) {
         return ZoneAction::Blocked;
     }
-    let Some(target) = target(tail, context) else {
+    let Some(target) = target(tail) else {
         return ZoneAction::Blocked;
     };
+    if context
+        .groups
+        .and_then(|groups| groups.group("PH-PC-zhuanqu"))
+        != Some("t1")
+        || !context
+            .ready_pages
+            .is_some_and(|contains| contains(&target.page_code))
+    {
+        return ZoneAction::Blocked;
+    }
     ZoneAction::Allowed(target)
 }
 
-fn target(tail: &str, context: HotZoneContext<'_>) -> Option<SearchHotZoneTarget> {
+fn target(tail: &str) -> Option<SearchHotZoneTarget> {
     let (id, query) = tail.split_at(tail.find(['?', '&'])?);
     if !id.is_empty() && !id.strip_prefix('/').is_some_and(valid_token) {
         return None;
@@ -70,13 +91,6 @@ fn target(tail: &str, context: HotZoneContext<'_>) -> Option<SearchHotZoneTarget
     if component.as_deref() != Some("cube-renderer-rn")
         || !valid_token(&page_code)
         || page_code.len() > 128
-        || context
-            .groups
-            .and_then(|groups| groups.group("PH-PC-zhuanqu"))
-            != Some("t1")
-        || !context
-            .ready_pages
-            .is_some_and(|contains| contains(&page_code))
     {
         return None;
     }

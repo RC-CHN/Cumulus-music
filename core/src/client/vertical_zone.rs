@@ -311,6 +311,17 @@ impl MusicClient {
         }))
     }
 
+    pub(super) async fn vertical_zone_search_registry(
+        &self,
+        epoch: &str,
+    ) -> Result<Option<(PcExperimentGroups, VerticalZoneMenu)>> {
+        let Some(authority) = self.vertical_zone_authority(epoch).await? else {
+            return Ok(None);
+        };
+        let menu = self.load_zone_menu(&authority, false).await?;
+        Ok(Some((authority.groups, menu)))
+    }
+
     /// Choice reads only after the exact PC assignment. Empty/failed refreshes
     /// keep a previously verified same-authority list, as in M/2986.getTags.
     pub async fn vertical_zone_menu(&self, epoch: &str) -> Result<AccountData<VerticalZoneMenu>> {

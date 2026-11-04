@@ -84,6 +84,7 @@ export type SearchHotPlaybackTarget = {
 };
 export type SearchHotTarget =
   | SearchHotPlaybackTarget
+  | ({ kind: 'vertical_zone' } & import('./verticalZone').VerticalZoneLocation)
   | {
       kind: 'album' | 'artist' | 'playlist' | 'podcast' | 'mv';
       id: string;

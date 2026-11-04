@@ -116,6 +116,13 @@ fn heat(value: &Value) -> Option<String> {
     })
 }
 
+pub(super) fn candidate(block: &Value) -> bool {
+    let data = &block["resources"][0]["baseInfo"]["hotExplainModuleData"];
+    data["textAction"]
+        .as_str()
+        .is_some_and(vertical_zone::candidate)
+}
+
 pub(super) fn explanation(block: &Value, zones: HotZoneContext<'_>) -> Option<Value> {
     let first = block["resources"].as_array()?.first()?;
     let data = &first["baseInfo"]["hotExplainModuleData"];

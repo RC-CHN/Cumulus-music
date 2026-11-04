@@ -925,6 +925,12 @@ function openSearchHotTarget(target: SearchHotTarget, anchor: HTMLButtonElement)
   else if (target.kind === 'playlist') music.navigate({ kind: 'playlist', id: target.id });
   else if (target.kind === 'podcast') openSceneRadio(target.id);
   else if (target.kind === 'mv') openMv(target.id);
+  else if (target.kind === 'vertical_zone')
+    goToVerticalZone({
+      pageCode: target.pageCode,
+      tabKeyName: target.tabKeyName,
+      from: 'searchHotExplain',
+    });
   else if (target.kind === 'album' || target.kind === 'artist')
     openCatalog({ kind: target.kind, id: target.id });
 }
