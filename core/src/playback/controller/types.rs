@@ -35,6 +35,7 @@ pub struct PlaybackSnapshot {
     /// Native startup policy state, excluded from the public player DTO.
     pub startup_pending: bool,
     pub startup_autoplay: bool,
+    pub queue_more_available: bool,
     pub fm: bool,
     pub intelligence: Option<crate::playback::intelligence::IntelligenceContext>,
     pub intelligence_operation: Option<String>,
@@ -147,6 +148,13 @@ pub struct StartupRestore {
     pub allow_autoplay: bool,
 }
 pub enum PlaybackCommand {
+    QueueMoreOpened {
+        expected_revision: u64,
+    },
+    QueueMoreToggle {
+        expected_revision: u64,
+        enabled: bool,
+    },
     Startup(StartupRestore),
     /// Consume a failed startup preparation without changing newer transport.
     SkipStartup(PlaybackFence),
@@ -242,6 +250,7 @@ pub enum PlaybackCommand {
 pub(super) struct Reply {
     pub state: PlaybackSnapshot,
     pub queue: Option<QueueSnapshot>,
+    pub queue_more: Option<crate::playback::queue_more::QueueMoreView>,
 }
 #[derive(Clone, Copy, Serialize, Deserialize)]
 pub(super) struct Preferences {

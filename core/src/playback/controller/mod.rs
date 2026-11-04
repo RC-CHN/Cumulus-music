@@ -14,6 +14,7 @@ pub use parametric::{
     DeviceParametricView, ParametricApplication, ParametricBindingStatus,
 };
 mod quality;
+mod queue_more;
 mod remote;
 mod skip;
 mod startup;
@@ -70,6 +71,8 @@ enum Message {
     },
     Quality(quality::QualityReady),
     Prefetched(tick::Prefetched),
+    QueueMoreGroups(queue_more::GroupsReady),
+    QueueMoreRows(queue_more::RowsReady),
 }
 
 pub struct PlaybackController {
@@ -87,7 +90,7 @@ impl PlaybackController {
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
     ) -> Result<Self> {
-        Self::start_inner(session, store, resolver, engine, false)
+        Self::start_inner(session, store, resolver, engine, false, false)
     }
     /// Production native observer + durable network worker. The ordinary start
     /// constructor remains isolated for embedders and read-only test adapters.
@@ -97,14 +100,15 @@ impl PlaybackController {
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
     ) -> Result<Self> {
-        Self::start_inner(session, store, resolver, engine, true)
+        Self::start_inner(session, store, resolver, engine, true, false)
     }
-    fn start_inner(
+    pub(crate) fn start_inner(
         session: Arc<AccountSession>,
         store: Arc<StateStore>,
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
         relay_enabled: bool,
+        queue_more_enabled: bool,
     ) -> Result<Self> {
         tokio::runtime::Handle::try_current()
             .map_err(|_| Error::State("playback requires an async runtime"))?;
@@ -118,6 +122,7 @@ impl PlaybackController {
             sender.clone(),
             shutdown.clone(),
         )?;
+        actor.queue_more.supported = queue_more_enabled;
         let relay = if relay_enabled {
             let runtime = crate::relay::publisher::player::Runtime::start(session.clone())?;
             actor.relay = Some(crate::relay::publisher::player::Observer::new(
@@ -219,6 +224,22 @@ impl PlaybackController {
         Ok((
             reply.state,
             reply.queue.ok_or(Error::State("missing queue reply"))?,
+        ))
+    }
+
+    pub(crate) async fn queue_with_more(
+        &self,
+        token: &SessionToken,
+    ) -> Result<(
+        PlaybackSnapshot,
+        QueueSnapshot,
+        Option<super::queue_more::QueueMoreView>,
+    )> {
+        let reply = self.request(token, PlaybackCommand::Queue, None).await?;
+        Ok((
+            reply.state,
+            reply.queue.ok_or(Error::State("missing queue reply"))?,
+            reply.queue_more,
         ))
     }
 

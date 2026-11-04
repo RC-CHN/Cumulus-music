@@ -212,6 +212,7 @@ fn begin(current: &QueueSnapshot, input: IntelligenceBegin) -> Result<Plan> {
         mode: PlaybackMode::OrderLoop,
         fm_source: None,
         intelligence: Some(context.clone()),
+        more: None,
     };
     let session = IntelligenceSession {
         operation_id: input.operation_id,

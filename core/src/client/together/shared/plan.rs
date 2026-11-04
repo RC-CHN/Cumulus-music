@@ -158,6 +158,7 @@ pub(super) fn build(
             },
             fm_source: None,
             intelligence: None,
+            more: None,
         },
         transport,
     })

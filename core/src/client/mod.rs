@@ -242,7 +242,8 @@ impl MusicClient {
             registry,
         )
         .with_login_providers(Some(backend), None)
-        .with_relay_publication();
+        .with_relay_publication()
+        .with_queue_recommendations();
         client.auth.profile = profile;
         client.auth.context = context;
         client.auth.options = options;

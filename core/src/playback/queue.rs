@@ -2,6 +2,7 @@
 //! distinct from song identity; the on-disk representation is ours.
 mod fm_identity;
 mod intelligence;
+mod more;
 mod persistence;
 mod reset;
 use super::quality_preferences::QualityPreferences;
@@ -65,6 +66,9 @@ pub struct QueueSnapshot {
     pub fm_source: Option<crate::fm::FmSource>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub intelligence: Option<super::intelligence::IntelligenceContext>,
+    /// Origin of the last complete ordinary replacement, not the selected row's source.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub more: Option<super::queue_more::QueueMoreOrigin>,
 }
 
 impl QueueSnapshot {
@@ -279,6 +283,7 @@ impl PlaybackQueue {
                 mode,
                 fm_source: None,
                 intelligence: None,
+                more: super::queue_more::QueueMoreOrigin::new(&source),
             },
             source["kind"] != "fm",
         )
@@ -395,6 +400,7 @@ impl PlaybackQueue {
                     .ok_or(Error::InvalidInput("duplicate or unknown queue entry"))
             })
             .collect::<Result<_>>()?;
+        super::queue_more::demote_before_separator(&self.state, &mut state);
         if state.mode != PlaybackMode::Random {
             state.order = entry_ids.into()
         }

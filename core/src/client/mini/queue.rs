@@ -52,6 +52,7 @@ impl MusicClient {
                 .take(limit)
                 .map(|i| {
                     Ok(QueueTrack {
+                        more_recommendation: false,
                         entry_id: i.entry_id.clone(),
                         track: super::super::player::track(&i.resource)?,
                     })

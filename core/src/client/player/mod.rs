@@ -73,6 +73,7 @@ pub(super) enum NativeTransportPolicy {
 pub(super) struct PlayerHost {
     intelligence: Arc<intelligence::IntelligenceHost>,
     relay_enabled: bool,
+    queue_more_enabled: bool,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     pub(super) factory: EngineFactory,
@@ -96,6 +97,7 @@ impl PlayerHost {
         Self {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
             relay_enabled: false,
+            queue_more_enabled: false,
             session,
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),
@@ -122,12 +124,7 @@ impl PlayerHost {
                     .map_err(|_| Error::State("audio initialization failed"))??;
                 let library = Arc::new(LocalLibrary::new(self.store.clone())?);
                 let resolver = Arc::new(SourceResolver::new(self.session.clone(), Some(library)));
-                let start = if self.relay_enabled {
-                    PlaybackController::start_with_relay_publication
-                } else {
-                    PlaybackController::start
-                };
-                Ok(Arc::new(start(
+                Ok(Arc::new(PlaybackController::start_inner(
                     self.session.clone(),
                     self.store.clone(),
                     resolver,
@@ -136,6 +133,8 @@ impl PlayerHost {
                         focus: self.focus.clone(),
                         owner: super::focus::Owner::Audio,
                     }))),
+                    self.relay_enabled,
+                    self.queue_more_enabled,
                 )?))
             })
             .await
@@ -219,6 +218,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         epoch: token.generation.to_string(),
         revision: value.revision.to_string(),
         queue_revision: value.queue_revision.to_string(),
+        queue_more_available: value.queue_more_available,
         state: value.state,
         pending_paused: matches!(
             value.state,
@@ -295,6 +295,11 @@ impl MusicClient {
     /// player starts. Injected read-only sessions stay isolated unless opted in.
     pub fn with_relay_publication(mut self) -> Self {
         self.player.relay_enabled = true;
+        self
+    }
+    /// Native host configuration, not a renderer supplied capability.
+    pub fn with_queue_recommendations(mut self) -> Self {
+        self.player.queue_more_enabled = true;
         self
     }
     pub fn validate_player_epoch(&self, epoch: &str) -> Result<()> {
@@ -376,6 +381,44 @@ impl MusicClient {
         }
         if matches!(action, PlayerAction::Startup) {
             return self.startup_player(epoch).await;
+        }
+        let recommendation = match &action {
+            PlayerAction::QueueMoreOpened { expected_revision } => Some((expected_revision, None)),
+            PlayerAction::QueueMoreToggle {
+                expected_revision,
+                enabled,
+            } => Some((expected_revision, Some(*enabled))),
+            _ => None,
+        };
+        if let Some((expected_revision, enabled)) = recommendation {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "recommendations require the queue panel",
+                ));
+            }
+            let expected_revision = expected_revision
+                .parse::<u64>()
+                .map_err(|_| Error::InvalidInput("invalid queue revision"))?;
+            let token = self.player_token(epoch)?;
+            let _room = self.together.gate.lock().await;
+            if self.together_attached(&token, None)? {
+                return Err(Error::State("room owns the playback queue"));
+            }
+            let command = match enabled {
+                Some(enabled) => PlaybackCommand::QueueMoreToggle {
+                    expected_revision,
+                    enabled,
+                },
+                None => PlaybackCommand::QueueMoreOpened { expected_revision },
+            };
+            let value = self
+                .player
+                .controller()
+                .await?
+                .command(&token, command)
+                .await?;
+            self.session.check_generation(&token)?;
+            return project(&value, &token);
         }
         if let PlayerAction::PlayMissingDownloadOnline {
             play_id,
@@ -1123,6 +1166,9 @@ impl MusicClient {
             }
         }
         let command = match action {
+            PlayerAction::QueueMoreOpened { .. } | PlayerAction::QueueMoreToggle { .. } => {
+                unreachable!("handled before user transport commands")
+            }
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
             PlayerAction::PlayMissingDownloadOnline { .. } => {
                 unreachable!("handled before user transport commands")
@@ -1285,13 +1331,17 @@ impl MusicClient {
     pub async fn player_queue(&self, epoch: &str) -> Result<QueueView> {
         let token = self.player_token(epoch)?;
         let controller = self.player.controller().await?;
-        let (snapshot, queue) = controller.queue_with_state(&token).await?;
+        let (snapshot, queue, more_recommendations) = controller.queue_with_more(&token).await?;
         self.session.check_generation(&token)?;
+        let more_visible = more_recommendations
+            .as_ref()
+            .is_some_and(|view| view.enabled);
         Ok(QueueView {
             fm: snapshot.fm,
             clear_context: self.queue_clear_context(&token)?,
             epoch: epoch.into(),
             revision: snapshot.queue_revision.to_string(),
+            more_recommendations,
             current: queue
                 .current
                 .as_ref()
@@ -1310,6 +1360,8 @@ impl MusicClient {
                     Ok(QueueTrack {
                         entry_id: i.entry_id.clone(),
                         track: track(&i.resource)?,
+                        more_recommendation: more_visible
+                            && crate::playback::queue_more::active(&queue, i),
                     })
                 })
                 .collect::<Result<_>>()?,

@@ -4,6 +4,7 @@ mod constraint;
 pub mod controller;
 pub mod mode;
 pub(crate) mod profile_rank;
+pub mod queue_more;
 pub use constraint::PlaybackConstraint;
 pub mod engine;
 pub mod failure;

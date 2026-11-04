@@ -168,6 +168,7 @@ impl MusicClient {
                             mode: before.mode,
                             fm_source: None,
                             intelligence: None,
+                            more: None,
                         },
                         transport: Some(QueueTransport {
                             position: None,

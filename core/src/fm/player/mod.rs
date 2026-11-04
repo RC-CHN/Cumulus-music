@@ -305,6 +305,7 @@ fn projection(queue: &FmQueue, quality: &str) -> Result<QueueSnapshot> {
         },
         fm_source: Some(queue.source.clone()),
         intelligence: None,
+        more: None,
     })
 }
 pub(crate) fn unapplied_mode(desired: &FmQueue, actual: &QueueSnapshot) -> Option<PlaybackMode> {

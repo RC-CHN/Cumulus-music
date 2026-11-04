@@ -74,6 +74,7 @@ pub(super) struct Actor {
     pub control_revision: u64,
     pub seek_revision: u64,
     pub queue: PlaybackQueue,
+    pub queue_more: super::queue_more::Coordinator,
     pub prefs: Preferences,
     pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub state: PlaybackStatus,
@@ -150,6 +151,7 @@ impl Actor {
             shutdown,
             generation: Arc::new(AtomicU64::new(0)),
             token,
+            queue_more: Default::default(),
             bound: true,
             revision: 0,
             control_revision: 0,
@@ -229,6 +231,7 @@ impl Actor {
         PlaybackSnapshot {
             startup_pending: self.startup_pending,
             startup_autoplay: self.startup_autoplay,
+            queue_more_available: self.queue_more_available(),
             fm: self.queue.is_fm(),
             intelligence: self.queue.intelligence_context().cloned(),
             intelligence_operation: self
@@ -296,6 +299,7 @@ impl Actor {
         let _ = reply.send(result.map(|_| Reply {
             state: self.snapshot(),
             queue: None,
+            queue_more: None,
         }));
     }
     pub fn generation(&self) -> u64 {
@@ -446,6 +450,8 @@ impl Actor {
                     Some(Message::Loaded { generation, result }) => self.loaded(generation,result).await,
                     Some(Message::Quality(value)) => self.quality_ready(value).await,
                     Some(Message::Prefetched(value)) => self.prefetched(value),
+                    Some(Message::QueueMoreGroups(value)) => self.queue_more_groups(value),
+                    Some(Message::QueueMoreRows(value)) => self.queue_more_rows(value).await,
                     Some(Message::Shutdown) | None => break,
                 },
                 _ = interval.tick() => {
@@ -454,6 +460,7 @@ impl Actor {
                     }
                 },
             }
+            self.observe_queue_more();
             if self.bound
                 && let Some(relay) = &mut self.relay
             {
@@ -474,6 +481,7 @@ impl Actor {
         if let Some(task) = self.prefetch_task.take() {
             task.abort();
         }
+        self.queue_more.abort();
         publisher.send_replace(self.snapshot());
     }
 }

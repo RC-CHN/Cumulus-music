@@ -45,6 +45,7 @@ fn queue(ids: &[u64]) -> QueueSnapshot {
         mode: PlaybackMode::OrderLoop,
         fm_source: None,
         intelligence: None,
+        more: None,
     }
 }
 fn frame(ids: &[u64]) -> PublicationFrame {

@@ -45,7 +45,22 @@ impl Actor {
             let _ = request.reply.send(Ok(Reply {
                 state: self.snapshot(),
                 queue: Some(self.queue.snapshot()),
+                queue_more: self.queue_more_view(),
             }));
+            return;
+        }
+        let more = match &request.command {
+            PlaybackCommand::QueueMoreOpened { expected_revision } => {
+                Some(self.queue_more_action(*expected_revision, None))
+            }
+            PlaybackCommand::QueueMoreToggle {
+                expected_revision,
+                enabled,
+            } => Some(self.queue_more_action(*expected_revision, Some(*enabled))),
+            _ => None,
+        };
+        if let Some(more) = more {
+            self.reply(request.reply, more);
             return;
         }
         if let PlaybackCommand::SkipStartup(expected) = &request.command {
@@ -440,6 +455,8 @@ impl Actor {
             PlaybackCommand::Quality(_)
             | PlaybackCommand::TrialQuality { .. }
             | PlaybackCommand::Queue
+            | PlaybackCommand::QueueMoreOpened { .. }
+            | PlaybackCommand::QueueMoreToggle { .. }
             | PlaybackCommand::SkipStartup(_) => unreachable!("handled above"),
         };
         if let Err(error) = result {

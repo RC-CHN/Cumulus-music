@@ -58,6 +58,7 @@ impl PlaybackQueue {
                 expected: input,
                 position: checkpoint,
             }),
+            None,
         )?;
         Ok(if restore {
             FmRestoreOutcome::Restored(position)
@@ -104,17 +105,27 @@ impl PlaybackQueue {
         quality: Option<(&str, &QualityPreferences)>,
         intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
     ) -> Result<()> {
-        self.commit_owned_with_fm(candidate, release_fm, quality, intelligence, None)
+        self.commit_owned_with_fm(candidate, release_fm, quality, intelligence, None, None)
+    }
+
+    pub(super) fn commit_more(
+        &mut self,
+        candidate: QueueSnapshot,
+        preference: Option<bool>,
+    ) -> Result<()> {
+        self.commit_owned_with_fm(candidate, false, None, None, None, Some(preference))
     }
 
     fn commit_owned_with_fm(
         &mut self,
-        candidate: QueueSnapshot,
+        mut candidate: QueueSnapshot,
         release_fm: bool,
         quality: Option<(&str, &QualityPreferences)>,
         intelligence: Option<Arc<crate::playback::intelligence::IntelligenceSession>>,
         fm: Option<FmCommit<'_>>,
+        more: Option<Option<bool>>,
     ) -> Result<()> {
+        super::super::queue_more::normalize(&mut candidate);
         candidate.validate()?;
         let unchanged_session = match (&intelligence, &self.intelligence) {
             (Some(a), Some(b)) => Arc::ptr_eq(a, b),
@@ -131,7 +142,9 @@ impl PlaybackQueue {
         } else if candidate.intelligence.is_some() {
             return Err(Error::State("missing intelligence state"));
         }
-        if (quality.is_some() || intelligence.is_some() || fm.is_some()) && self.store.is_none() {
+        if (quality.is_some() || intelligence.is_some() || fm.is_some() || more.is_some())
+            && self.store.is_none()
+        {
             return Err(Error::State("transition requires persistent queue"));
         }
         let revision = self.next_revision()?;
@@ -181,6 +194,15 @@ impl PlaybackQueue {
                 }
                 if let Some((expected, preference)) = quality {
                     QualityPreferences::replace_in(tx, &self.owner, expected, preference)?;
+                }
+                if let Some(preference) = more {
+                    use crate::playback::queue_more::{KIND, PREFERENCE, ROOM_BINDING};
+                    if tx.get(&self.owner, ROOM_BINDING, "current")?.is_some() {
+                        return Err(Error::State("room owns the playback queue"));
+                    }
+                    if let Some(preference) = preference {
+                        tx.put(&self.owner, KIND, PREFERENCE, &json!(preference))?;
+                    }
                 }
                 tx.put(&self.owner, "playback", "queue", &snapshot)?;
                 if !unchanged_session {

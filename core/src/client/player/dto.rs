@@ -29,6 +29,7 @@ pub struct PlayerView {
     pub epoch: String,
     pub revision: String,
     pub queue_revision: String,
+    pub queue_more_available: bool,
     pub state: PlaybackStatus,
     /// Desired first presentation state while a decoder is pending.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,6 +123,7 @@ pub struct LoudnessView {
 pub struct QueueTrack {
     pub entry_id: String,
     pub track: TrackView,
+    pub more_recommendation: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,6 +134,7 @@ pub struct QueueView {
     pub revision: String,
     pub current: Option<String>,
     pub tracks: Vec<QueueTrack>,
+    pub more_recommendations: Option<crate::playback::queue_more::QueueMoreView>,
 }
 /// Local room policy for the displayed confirmation. No chat/RTC credentials.
 #[derive(Clone, Serialize)]
@@ -338,6 +341,13 @@ pub struct PlaylistDropRow {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
+    QueueMoreOpened {
+        expected_revision: String,
+    },
+    QueueMoreToggle {
+        expected_revision: String,
+        enabled: bool,
+    },
     QueueFor {
         expected_queue_revision: String,
         #[serde(default)]

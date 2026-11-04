@@ -594,6 +594,16 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn queue_more_experiment_groups(
+        &self,
+    ) -> crate::protocol::api::ApiFuture<'_, crate::protocol::pc_experiments::PcExperimentGroups>
+    {
+        Box::pin(async {
+            let revision = self.pc_experiment_revision()?;
+            self.pc_experiment_groups(&revision).await
+        })
+    }
+
     fn observed_server_time_ms(&self) -> Option<u64> {
         self.server_clock
             .lock()

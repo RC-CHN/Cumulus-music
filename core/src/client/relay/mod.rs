@@ -177,6 +177,7 @@ impl MusicClient {
                             mode,
                             fm_source: None,
                             intelligence: None,
+                            more: None,
                         },
                         transport: Some(QueueTransport {
                             position: Some(plan.position_ms as f64 / 1000.0),
