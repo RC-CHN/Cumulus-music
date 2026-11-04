@@ -30,8 +30,11 @@
  async function choose(id,mod={}){const n=song(id);assert(n,'visible selection row');n.focus({preventScroll:true});const r=rect(n);pointer(n,'pointerdown',r.left+8,r.top+12,mod);pointer(n,'pointerup',r.left+8,r.top+12,mod);await sleep(35);}
  async function prepare(){await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.1,'native playing');click(button('暂停',bar()));await wait(()=>bar().dataset.state==='paused','pause');const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'seek');playId=bar().dataset.playId;}
  async function capture(label,extra={}){
-  last=label;await sleep(220);const p=rect(panel());
-  assert(document.documentElement.scrollWidth<=innerWidth&&p.right<=innerWidth&&p.bottom<=rect(bar()).top+1,'contained');
+  last=label;
+  await wait(()=>{const node=panel();return node&&!node.matches('.queue-panel-enter-active,.queue-panel-leave-active')&&getComputedStyle(node).transform==='none';},'settled queue panel');
+  const p=rect(panel()),footer=rect(bar()),documentWidth=document.documentElement.scrollWidth;
+  assert(documentWidth<=innerWidth&&p.right<=innerWidth&&p.bottom<=footer.top+1,
+    'queue contained '+JSON.stringify({width:innerWidth,documentWidth,panel:p,footer}));
   assert(rows().length<40,'virtual rendering bounded');
   const activeRemoval=label==='paused_current_removed';
   const position=Number(bar().dataset.position);
