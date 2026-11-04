@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `68f45557`；总体流程及验证层级见
+本表基线为产品树 `26eccdf8`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -81,8 +81,8 @@
 | `page:loginNickname` (8) | `models/page_loginNickname.txt` | [已接入口](nickname-editor-contracts.txt) | 昵称规则、确认与失败；不是所有注册渠道。 |
 | `page:loginPhone` (19) | `models/page_loginPhone.txt` | [已接入口](phone-entry-contracts.txt) | 手机号、密码、SMS 和已恢复的复用挑战。 |
 | `page:loginQrcode` (10) | `models/page_loginQrcode.txt` | [已接入口](refresh-token-issuance-evidence.txt) | 真实扫码下发并保存；官方异常状态可原地显式重试，不证明真实刷新轮换。 |
-| `page:loginQuick` (2) | `models/page_loginQuick.txt` | [部分](server-quick-login.txt) | 有恢复、候选隔离和独立快捷历史许可；主动退出后不保留凭据，原生 SDK 等分支待核。 |
-| `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；无实时推送、新会话发送。 |
+| `page:loginQuick` (2) | `models/page_loginQuick.txt` | [部分](server-quick-login.txt) | 有恢复、候选隔离、快捷历史许可及服务判失效后的本机清理；主动退出不保留凭据。 |
+| `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；消息计数已有 Rust 轮询执行器，桌面未接；无实时推送、新会话发送。 |
 | `page:modListenToSong` (9) | `models/page_modListenToSong.txt` | [仅原型](song-recognition-authority.txt) | 实际封闭回采、指纹和请求对照；无生产采集、提交或独立域权限。 |
 | `page:musicDesktop` (0) | `models/page_musicDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 装扮桌面与歌词窗是不同宿主。 |
 | `page:myAudio` (16) | `models/page_myAudio.txt` | [已接入口](desktop-podcast-contracts.txt) | 我的播客/收藏/节目管理边界。 |
