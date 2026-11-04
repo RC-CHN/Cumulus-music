@@ -4,12 +4,14 @@ import { useCore } from '../../services/core';
 import type { ExternalPlaylistInput, ExternalPlaylistSource } from '../../services/playlists';
 import Icon from '../Icon.vue';
 import ModalTransition from '../ModalTransition.vue';
+import PlaylistImportSubmit from './PlaylistImportSubmit.vue';
 
 const props = defineProps<{ accountEpoch: string }>();
 const core = useCore();
 const trigger = ref<HTMLButtonElement>();
 const dialog = ref<HTMLDialogElement>();
 const open = ref(false);
+const authorizationPanel = ref(false);
 const inputs = ref(['']);
 const observed = ref<ExternalPlaylistInput[]>();
 const busy = ref(false);
@@ -48,6 +50,7 @@ function focusLink(index: number) {
 async function show() {
   if (open.value) return;
   inputs.value = [''];
+  authorizationPanel.value = false;
   open.value = true;
   await nextTick();
   dialog.value?.showModal();
@@ -107,8 +110,10 @@ async function preview() {
         </button>
       </header>
       <form :aria-busy="busy" @submit.prevent="preview">
-        <p class="muted">粘贴外部歌单分享链接。预览只识别链接，不读取曲目或提交导入。</p>
-        <fieldset>
+        <p v-show="!authorizationPanel" class="muted">
+          粘贴外部歌单分享链接。预览只识别链接，不读取曲目或提交导入。
+        </p>
+        <fieldset v-show="!authorizationPanel">
           <legend>链接</legend>
           <div v-for="(_, index) in inputs" :key="index" class="import-link-row">
             <label>
@@ -141,6 +146,7 @@ async function preview() {
           </div>
         </fieldset>
         <button
+          v-show="!authorizationPanel"
           type="button"
           class="text-button"
           :disabled="inputs.length >= maxLinks"
@@ -148,12 +154,27 @@ async function preview() {
         >
           添加链接
         </button>
-        <p v-if="inputs.length >= maxLinks" class="muted">最多预览 10 个链接。</p>
-        <p v-if="issue" role="alert">{{ issue }}</p>
-        <p v-else-if="observed" role="status">已识别 {{ recognized }} 个链接。</p>
+        <p v-if="!authorizationPanel && inputs.length >= maxLinks" class="muted">
+          最多预览 10 个链接。
+        </p>
+        <p v-if="!authorizationPanel && issue" role="alert">{{ issue }}</p>
+        <p v-else-if="!authorizationPanel && observed" role="status">
+          已识别 {{ recognized }} 个链接。
+        </p>
+        <PlaylistImportSubmit
+          :epoch="accountEpoch"
+          :inputs="inputs"
+          :ready="recognized > 0 && !observed?.some((item) => item.kind === 'unrecognized')"
+          @authorization-panel="authorizationPanel = $event"
+        />
         <footer>
           <button type="button" class="secondary" @click="close">关闭</button>
-          <button type="submit" class="primary" :disabled="!canRead || busy">
+          <button
+            v-show="!authorizationPanel"
+            type="submit"
+            class="primary"
+            :disabled="!canRead || busy"
+          >
             {{ busy ? '正在识别…' : '预览链接' }}
           </button>
         </footer>

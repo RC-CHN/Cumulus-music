@@ -63,18 +63,22 @@ fn family(host: &str, suffix: &str) -> bool {
             .is_some_and(|prefix| prefix.ends_with('.'))
 }
 
+pub(super) fn selected_link(input: &str) -> Option<(&str, Url)> {
+    let first = link_tokens(input).next();
+    // The official recognizer checks Xiaohongshu short links before the
+    // general URI candidate. Validate the actual URL host in either branch.
+    let xiaohongshu = link_tokens(input).find_map(|token| {
+        let url = valid_link(token)?;
+        (url.domain()? == "xhslink.com").then_some((token, url))
+    });
+    xiaohongshu.or_else(|| first.and_then(|token| valid_link(token).map(|url| (token, url))))
+}
+
 fn classify(input: &str) -> ExternalPlaylistInput {
     if input.trim().is_empty() {
         return ExternalPlaylistInput::Empty;
     }
-    let first = link_tokens(input).next();
-    // The official recognizer checks Xiaohongshu short links before the
-    // general URI candidate. The preview validates the actual URL host.
-    let xiaohongshu = link_tokens(input).find_map(|token| {
-        let url = valid_link(token)?;
-        (url.domain()? == "xhslink.com").then_some(url)
-    });
-    let Some(url) = xiaohongshu.or_else(|| first.and_then(valid_link)) else {
+    let Some((_, url)) = selected_link(input) else {
         return ExternalPlaylistInput::Unrecognized;
     };
     let host = url

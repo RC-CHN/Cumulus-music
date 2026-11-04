@@ -1,0 +1,21 @@
+{
+  "inputs": [
+    "分享链接 https://y.qq.com/a/%E4%B8%AD?text=专辑#试听",
+    "",
+    "https://www.kuwo.cn/歌单/[42]?ref=A+B",
+    "https://y.qq.com/a/%E4%B8%AD?text=专辑#试听"
+  ],
+  "name": "导入音乐 2026/11/4 12:34:56",
+  "csrf": "fixture+csrf",
+  "key": "0123456789ABCDEF",
+  "payload": {
+    "playlistName": "导入音乐 2026/11/4 12:34:56",
+    "taskIdForLog": "",
+    "importStarPlaylist": false,
+    "rqRefer": "",
+    "songs": "[{\"name\":\"导入音乐 2026/11/4 12:34:56\",\"type\":\"\",\"url\":\"https://y.qq.com/a/%25E4%25B8%25AD?text=%E4%B8%93%E8%BE%91#%E8%AF%95%E5%90%AC\"},{\"name\":\"导入音乐 2026/11/4 12:34:56\",\"type\":\"\",\"url\":\"https://www.kuwo.cn/%E6%AD%8C%E5%8D%95/%5B42%5D?ref=A+B\"},{\"name\":\"导入音乐 2026/11/4 12:34:56\",\"type\":\"\",\"url\":\"https://y.qq.com/a/%25E4%25B8%25AD?text=%E4%B8%93%E8%BE%91#%E8%AF%95%E5%90%AC\"}]",
+    "csrf_token": "fixture+csrf"
+  },
+  "params": "nk/STRDPNM4qXpH2YcVVVxNKUpDS0w8DaVBCDLPnMZC7BTtCC67q8HB4IHELkCXgg2iqV0mEuEtaWztHfsKETGIBNZt6neboLhRterVo0DUHppjrGGaSAqGZDVkbAhIrnTECfeZPBI20WaPsRm/iA1Ol7ss7cPiU5mcqkgdRarLWK2hyFLix40O7aasO7ek3kJbyErcfr8M6VvIWVCVwsYEmX2rJQv832+1PwndFUYtYi9+Nn9+1bEqhdP8AR6qSk71IzbJGoCbaU87D41TYEN20HXB5QE1huavh4h50h4Osm7YYMPlUS/hNk54DUsRaDXcsZV+mPCT9q6ArmHlHag8gWSNnkWEpX/WHTLZCjFMEuq+kOkfSrP3oxMlfdoEXNUQIS7HDSih8NLX31sgbBOQc4SGkG2pTxvgO9gMyQ+yTZJhRuJWCK5i3c2YuxOEl9+DLX7u1GvvWxpRdI+j3pff66/KHA0YQVLnfQxNFaXXK/XPKdqM0F1UjzllF3OzSbP50PqFo8YdDi2WVGeioc/hfbpcMIbGVgptwrYFiXNfdd8SRGU4xJwuyod7QjXwG7zW0h+f6UYir7CSwnKeeeRPNm/7lX7Vxqzal5Cy4Z8fusrv0+E7Oe2V4XAe4lj97Svt8ynY6QSCm2pri9jiYqlDLwlZp1j0wF0nsr7pgy5kCagce/eQJnMGmTBM+ZbNzGd+5ByUaQJ3IlVsliQuArEx/w7C5Qc0dfj5BSK5VuFoQPXQvJuMQP4dL+rtTPDWgQA7aM+eDoqhTYCiP86qfAAkhF3wtdS+bmZlY8TshwT8sXnawxKNfG7zQAzB4enwSQNJqe4UH28Hemq7Ai0E9BK/l5y+61VKfTEuffwjOjljJwdFyXkshXXhBmh84dQ6ha3inpzl1k7qhb/kVPeUnNHdgbvwp3gfd9M0vIMDRt6wi4WbgKLznV/ziTPIwVsi/lhwWtO3Dkm0st8DvTj1PoNfy7gsCfR+JnVNBxkoe9KBCcVSzy4QBb7lnQi0nGLdxjML4O8TFo8YuG1w7oAQygYjBVVkN3yXowreF0vKNrws=",
+  "encSecKey": "76b7934417bc7e2c67d6f91ce791b7b5e0097c20cbf92fd92e28e732c2a4a8f39f32bb5994988cc3c9d3e4e70f7976fce22c6de0a6fa903eb7198c5ae8da9c11d1da84e1792ebe1ea7fce9ee7c6d6a6e6cb9aae484a023a0c5c46842d8d96d6601156201a48f8bbbf51e4ec34e598de36bb70a80be3a6a223751a8c27b749269"
+}

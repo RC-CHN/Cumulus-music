@@ -5,6 +5,7 @@ mod account_binding_qr;
 mod account_profile;
 pub mod artist_onboarding;
 mod auth;
+mod external_import;
 pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
@@ -82,6 +83,7 @@ pub use error::ClientError;
 use std::{path::Path, sync::Arc};
 
 pub struct MusicClient {
+    external_import: external_import::ExternalImportHost,
     session: Arc<AccountSession>,
     registry: Arc<ProfileRegistry>,
     auth: auth::AuthHost,
@@ -241,6 +243,7 @@ impl MusicClient {
         let focus = Arc::new(focus::MediaFocus::default());
         let output = crate::playback::output::OutputRuntime::new(registry.store());
         Self {
+            external_import: Default::default(),
             playlist_cover: playlist_cover::CoverHost::default(),
             artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),

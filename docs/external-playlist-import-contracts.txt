@@ -81,16 +81,14 @@
 - 小秘书提示指私信，不是 /api/msg/notices 的通知标签。恢复的 PC 私信界面按一般消息
   渲染；PrivateItem.jsx:103–175 和 TalkItem.jsx:123–190,304–327 未见该导入专用的
   消息类型、固定发送者 ID 或 taskId 与消息/歌单的绑定。不能按标题、时间或昵称自动归因。
-- 下一步可在封闭夹具内先验证链接提交和本地回执：同一账号的一次显式提交只派发一次，
-  收到合法 taskId 才显示「已受理」，未知回包保持「结果未知」并提供人工检查入口。
-  丢失创建回包时没有任务编号可查，空 taskIdForLog 也没有可证明的幂等语义；不能自动重发、
-  改走其他协议或宣称任务失败/完成。当前没有移植任务创建、图片上传、文字上传、
-  收藏到红心或任务回读，也没有启动远端 H5 或安装通用网页桥。
+- 丢失创建回包时没有任务编号可查，空 taskIdForLog 也没有可证明的幂等语义；
+  不能自动重发、改走其他协议或宣称任务失败/完成。以下 Cumulus 实现只移植链接任务创建；
+  文字、图片、红心目标及服务端任务回查仍需分别恢复和验证。
 
 当前 Cumulus 本地子集
 - 「我的歌单 → 歌单导入预览」是本地入口，明确不同于 t1 的正式侧栏入口。
   维持一个手动输入、最多十项的原输入规则，原样保留字段顺序和重复项，显式点击预览后才处理。
-  该入口仅展示识别到的域名、平台标签或不能识别提示；不显示曲目、不创建歌单或导入任务。
+  该入口的预览只展示域名、平台标签或不能识别提示；预览本身不读取曲目、不创建任务。
 - Core Rust 的 preview_external_playlist_inputs 是纯函数；类型化 IPC preview_external_playlist
   只返回域名、平台和空/未识别状态。输入最多十项、每项最多 16 KiB；HTTP(S) DNS 主机
   使用 URL 解析、平台按真实域名边界匹配，拒绝本机无域名、IP、凭据和非 HTTP 协议。
@@ -105,3 +103,41 @@
   非网页输入、编辑废弃旧结果、重开清空、十项上限和返回焦点。证据
   `.build/ui-proof/external-playlist-preview-20261104/audit.json`。
   无真实业务请求或账号写入；既有四次歌单排序变更只在合成夹具中运行。
+
+Cumulus 链接任务与独立扫码授权
+- 在现有「我的歌单 → 歌单导入预览」中，识别到有效链接才显示导入动作。入口和旧版
+  官方按 PH-PC-songlistTransfer=t1 试验进入的侧栏菜单不同；仍保留本地预览和取消。
+  启动授权需用户点击。先预览，再原生准备确切链接及名称，最后显式确认才发送。
+  确认时取消按钮优先获得焦点。关闭、编辑、切账号或取消时销毁待发送草稿。
+- 单独的 Interface 域身份来源为恢复材料 netease_account_probe.py:34–39,103–109,
+  186–194,260–281、产品报告 01:105–112 和 07:21–27 的历史真实验证。Rust 原生
+  只在该域创建 type=3 二维码（/api/login/qrcode/unikey）、读取状态
+  （/api/login/qrcode/client/login）。803 或可能已经授权后的不确定状态只核对
+  /api/w/nuser/account/get，不重发旧二维码请求。合成测试验证 801、802、803、
+  中断核对、取消迟到、错账号及 EAPI-only Cookie。
+- 另行扫码后须确认同一个用户 ID、当前 PC 账号代次和两个路径的有效 Cookie。
+  接受的 Interface 会话只存在原生进程内存中，不复制、重定域名或使用 PC Cookie。
+  扫码只向 Vue 暴露有界二维码矩阵和流程状态；新进程需重新授权。
+- WEAPI 请求使用固定 Interface URL，禁用重试和重定向。按实际目标决定 HTTP Cookie，
+  仅固定 H5 文档路径按 Domain、Path、Secure 和 HttpOnly 规则可见的 __csrf
+  才进入查询和加密载荷（vendors N1T3 不解码文档的原始值）。两类 Cookie 的读取
+  不打开 H5 域、不扩大凭据作用域。HTTP Origin 和 Referer 取固定 H5 来源。
+- Rust 保留链接顺序及重复项，以 JS encodeURI 的保留字符和 UTF-8 字节规则封包。
+  无法识别、含账户信息、IP/本地后缀或自定义端口的链接不能提交；只上传用户明确
+  确认的链接，不开链接、不调用桌面不存在的预览接口。Node 独立的 encodeURI、
+  AES-CBC 与 RSA 合成向量见 core/tests/fixtures/external_import_weapi.json；
+  用 node scripts/research/external_import_weapi_vector.mjs 可离线复现。
+- 每账号 SQLite 事务先记录本机操作及未确认状态，再核对同一个 Interface 凭据
+  和 PC 账号代次，然后只向固定接口派发一次。明确未调用传输时恢复上一份回执；
+  进程退出或发送后的不确定状态仍为「结果未知」。完整 200 且有合法 taskId
+  才记「已受理」，不当作导入完成。迟到的正回执可结清原账号记录，但不更新新账号
+  的界面。不在回执中写入链接、分享文字、Cookie 或签名；taskId 仅在原生记录中。
+- 「核对本机回执」只读 SQLite。没有可证明的任务回查或找回丢失 taskId 的接口；
+  用户可在已创建歌单或小秘书私信查看。没有访问真实账户的导入服务或测试真实创建。
+- 复现：cargo test --locked -p cumulus-core --lib external_import；
+  scripts/ci/external_import_smoke.py 使用隔离的真实桌面、封闭合成传输和进程重开。
+
+- Linux 隔离真实 WebView 已通过 9 个授权、确认和重开场景；合成请求为一次建码、
+  三次轮询、一次身份核对和两个明确确认的导入，进程重开为零请求。报告在
+  `.build/ui-proof/external-import-fd5f2239/verified/report.json`。没有真实扫码、
+  真实任务或上游完成证据。Linux 与 Windows CI 注册同一封闭夹具。

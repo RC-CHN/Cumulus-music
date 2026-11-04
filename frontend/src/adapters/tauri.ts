@@ -297,6 +297,11 @@ export function createTauriClient(): CoreClient {
     playlistTags: (epoch) => invoke('playlist_tags', { epoch }),
     playlistEditor: (epoch, id) => invoke('playlist_editor', { epoch, id }),
     previewExternalPlaylist: (inputs) => invoke('preview_external_playlist', { inputs }),
+    externalPlaylistImport: (epoch, action) =>
+      invoke('external_playlist_import', { epoch, action }),
+    externalPlaylistImportAuth: (epoch) => invoke('external_playlist_import_auth', { epoch }),
+    externalPlaylistImportAuthAction: (epoch, action) =>
+      invoke('external_playlist_import_auth_action', { epoch, action }),
     playlistOrderView: (epoch) => invoke('playlist_order_view', { epoch }),
     mutatePlaylist: (epoch, command) => invoke('mutate_playlist', { epoch, command }),
     reconcilePlaylist: (epoch, operationId) => invoke('reconcile_playlist', { epoch, operationId }),

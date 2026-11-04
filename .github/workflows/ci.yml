@@ -359,6 +359,7 @@ jobs:
           python scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-deletion-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-reply-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-latest-releases-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/profile_relations_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-relations-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/profile_play_record_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-play-record-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/profile_play_record_smoke.py --play-card --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-play-record-card-windows --runtime .build/package-stage/windows-x64/native
@@ -683,6 +684,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-deletion-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-reply-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-latest-releases-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_relations_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-relations-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_play_record_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-play-record-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_play_record_smoke.py --play-card --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-play-record-card-linux

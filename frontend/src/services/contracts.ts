@@ -1,3 +1,4 @@
+import type { ExternalPlaylistImportClient } from './externalPlaylistImport';
 import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
 import type { ArtistOnboardingClient } from './artistOnboarding';
@@ -102,6 +103,7 @@ export interface CoreClient
     NativeLikesClient,
     PlayerClient,
     PlaylistClient,
+    ExternalPlaylistImportClient,
     PlaylistCoverClient,
     DownloadClient,
     ColdOfflineClient,

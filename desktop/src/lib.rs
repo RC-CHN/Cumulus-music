@@ -1,5 +1,6 @@
 mod account_avatar;
 mod artist_onboarding;
+mod external_import;
 pub use account_avatar::AccountAvatarPicker;
 mod browser;
 pub use browser::LoginDocumentBrowser;
@@ -394,6 +395,9 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 playlists::playlist_tags,
                 playlists::playlist_collect_page,
                 playlists::preview_external_playlist,
+                external_import::external_playlist_import,
+                external_import::external_playlist_import_auth,
+                external_import::external_playlist_import_auth_action,
                 playlists::playlist_order_view,
                 playlists::mutate_playlist,
                 playlists::reconcile_playlist,

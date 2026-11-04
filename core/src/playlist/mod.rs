@@ -1,6 +1,7 @@
 //! Official playlist contracts and account-bound persistent mutation recovery.
 mod api;
 pub mod cover;
+pub(crate) mod external_import;
 mod external_input;
 mod extras;
 mod service;

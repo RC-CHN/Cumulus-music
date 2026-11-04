@@ -13,6 +13,8 @@ mod download_page_fixture;
 mod effect_directory_fixture;
 #[path = "support/effect_peq_fixture.rs"]
 mod effect_peq_fixture;
+#[path = "support/external_import_fixture.rs"]
+mod external_import_fixture;
 #[allow(dead_code)]
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
@@ -596,6 +598,12 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        let external_import = external_import_fixture::enabled()
+            .then(|| Arc::new(external_import_fixture::Wire::new(proof_store.clone())));
+        if let Some(wire) = external_import.as_ref() {
+            client = client.with_login_providers(Some(wire.clone()), None)
+                .with_external_import_backend(wire.clone());
+        }
         if effect_directory_fixture::enabled() {
             client = client.with_effect_material_backend(Arc::new(effect_peq_fixture::Material));
         }
@@ -652,6 +660,7 @@ fn main() {
         let cover_root=root.clone();
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
+            if let Some(wire) = external_import.as_ref() { value["externalImport"] = wire.report(); }
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if effect_directory_fixture::enabled() {
                 value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());

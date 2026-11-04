@@ -234,6 +234,42 @@ impl Credentials {
         })
     }
 
+    /// Fixed H5 document-cookie projection used by external playlist import.
+    /// This does not open that origin or authorize sending any credential to it.
+    pub(crate) fn external_import_document_csrf(&self, revision: &str) -> Result<Option<String>> {
+        if self.origin != ApiOrigin::Interface {
+            return Err(Error::InvalidInput(
+                "external import requires separate Interface credentials",
+            ));
+        }
+        let document = Url::parse("https://mp.music.163.com/6879c89ac689f300cb660959/new/index.html?appBizName=pc_externa_playlist")
+            .map_err(|_| Error::State("invalid compiled external import page"))?;
+        let state = self.lock()?;
+        self.require_current(&state)?;
+        if revision != state.record.revision {
+            return Err(Error::CredentialChanged);
+        }
+        let jar = jar(&state.record)?;
+        let mut visible = jar
+            .matches(&document)
+            .into_iter()
+            .filter(|cookie| {
+                cookie.name() == "__csrf"
+                    && cookie.http_only() != Some(true)
+                    && !cookie.value().is_empty()
+            })
+            .map(|cookie| cookie.value());
+        let Some(first) = visible.next() else {
+            return Ok(None);
+        };
+        if visible.any(|value| value != first) {
+            return Err(Error::State(
+                "ambiguous external import document CSRF cookie",
+            ));
+        }
+        Ok(Some(first.into()))
+    }
+
     pub fn login_credentials(&self) -> Result<LoginCredentials> {
         let url = self.origin.request_url(
             crate::protocol::http::WireRoute::Eapi,
