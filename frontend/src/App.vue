@@ -96,6 +96,9 @@ import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
 import TopbarAccount from './components/account/TopbarAccount.vue';
 import AccountWelcome from './components/AccountWelcome.vue';
+import DiscoveryHomePage from './components/DiscoveryHomePage.vue';
+import { useDiscoveryHome } from './composables/useDiscoveryHome';
+import type { DiscoveryHomeCard, DiscoveryHomeSection } from './services/discoveryHome';
 import TrackTable from './components/TrackTable.vue';
 import CatalogPage from './components/CatalogPage.vue';
 import { useCatalogWorkspace } from './composables/useCatalogWorkspace';
@@ -241,6 +244,13 @@ const music = useMusic(undefined, (commit) => {
   else if (settingsPage.value) settingsPage.value.requestLeave(proceed);
   else proceed();
 });
+const discoveryHome = useDiscoveryHome(
+  core,
+  () => music.account.value,
+  () => music.page.value.kind === 'discovery_home',
+  () => void music.bootstrap(false),
+);
+const discoveryHomePage = ref<InstanceType<typeof DiscoveryHomePage>>();
 const artistGallery = useArtistGallery(
   core,
   () => music.account.value,
@@ -334,6 +344,10 @@ function openCommunityResource(resource: CommunityResource) {
 }
 const settings = useSettings(core, () => {
   void music.bootstrap(false);
+});
+watch(settings.personalServiceObservation, (current) => {
+  if (current?.epoch === music.account.value.epoch)
+    discoveryHome.observePreference(current.value !== 2);
 });
 watch(
   () => [music.account.value.epoch, music.account.value.status],
@@ -485,6 +499,44 @@ function openRanking(
 ) {
   if (query.kind === 'album') openCatalog({ kind: 'album', id: query.id });
   else music.navigate({ kind: 'rankings', query, rankingState });
+}
+function openDiscoveryHomeCard(card: DiscoveryHomeCard, section: DiscoveryHomeSection) {
+  if (music.page.value.kind !== 'discovery_home' || !music.signedIn.value) return;
+  const target = card.target;
+  const quality = player.view.value?.qualityPreferences.quality ?? 'standard';
+  switch (target.kind) {
+    case 'daily':
+    case 'fm':
+      music.navigate({ kind: target.kind });
+      break;
+    case 'playlist':
+      music.navigate({ kind: 'playlist', id: target.id });
+      break;
+    case 'album':
+      openCatalog({ kind: 'album', id: target.id });
+      break;
+    case 'podcast':
+      openSceneRadio(target.id);
+      break;
+    case 'voice':
+      if (player.loaded.value && player.view.value?.track?.voiceId === target.id)
+        void player.toggleSource();
+      else void player.select({ kind: 'voice', id: target.id });
+      break;
+    case 'song': {
+      const current = visibleTrackToggle.value;
+      if (current?.trackId === target.id) {
+        void toggleVisibleTrack(current);
+        return;
+      }
+      const ids = section.cards.flatMap(({ target }) =>
+        target.kind === 'song' ? [target.id] : [],
+      );
+      const index = ids.indexOf(target.id);
+      if (index >= 0) void player.select({ kind: 'songs', ids, index, quality });
+      break;
+    }
+  }
 }
 function openCatalog(resource: CatalogResource) {
   music.navigate({ kind: 'catalog', resource });
@@ -1317,6 +1369,7 @@ function mainPageEntered() {
   restoreDailyMenuFocus();
   focusSettingsSection();
   if (music.page.value.kind === 'artist_gallery') artistGalleryPage.value?.restore();
+  if (music.page.value.kind === 'discovery_home') void discoveryHomePage.value?.restore();
   if (music.page.value.kind === 'community') void communityPage.value?.restore();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
@@ -3237,6 +3290,15 @@ onUnmounted(() => {
                 :error="error"
                 @login="loginOpen = true"
                 @retry="music.bootstrap()"
+              />
+              <DiscoveryHomePage
+                v-else-if="page.kind === 'discovery_home'"
+                ref="discoveryHomePage"
+                :model="discoveryHome"
+                :playable="player.ready.value && !player.busy.value"
+                @open="openDiscoveryHomeCard"
+                @play-playlist="playRankingPlaylist"
+                @privacy="openPodcastPrivacy"
               />
               <CommunityPage
                 v-else-if="page.kind === 'community' || page.kind === 'community_detail'"

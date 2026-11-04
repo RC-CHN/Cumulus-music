@@ -85,3 +85,11 @@ pub async fn latest_releases(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn discovery_home(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<cumulus_core::client::discovery_home::DiscoveryHomePage>, ClientError> {
+    client.discovery_home(&epoch).await.map_err(Into::into)
+}

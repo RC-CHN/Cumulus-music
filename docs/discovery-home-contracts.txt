@@ -1,0 +1,73 @@
+发现首页：官方 PC 3.1.42.205594 经典首页
+========================================
+
+入口与范围
+
+桌面侧栏“首页”进入已登录账号的经典推荐页。App 启动默认页保持现有每日推荐；
+游客使用现有登录引导。首页不是每日歌曲推荐、风格推荐或播客发现的改名。
+仅复原现有材料可确认、可通过当前核心路由表达的经典版业务区块。此页无新增
+账号写操作、无曝光上报，也不会执行服务端下发的任意链接。
+
+依据：references/recovered-client/docs/product/models/page_homePage.txt 的
+fetchBlocksData 与 fetchRecentListenResource；
+references/netease-3.1.42.205594-analysis/recovered-js/modules/
+hybrid_app.chunk.1482700000000.js 中 M/15（2900–3008、4249–4264）、
+M/244（216–260、312–398、493–533）、M/21（785–808、1025–1077）；
+references/ui-recovery/sources/packages/pc/src/pages/home-page/views/MainView.jsx
+（408–433、445–468、555–581、2005–2092、2149–2160、2386–2405）。
+
+请求与顺序
+
+1. /api/user/setting {}。personalServiceSetting 为 2 时返回关闭状态，提供现有
+   设置 → 隐私入口；Cumulus 此时不请求推荐、精选或最近常听。官方经典页将
+   最近常听作为独立生命周期 effect，可能仍有后台读取；本项目选择在已知关闭时
+   一并停读。本地设置确认关闭会撤下已显示的账号首页快照。
+2. /api/batch（只读），每个键的参数对象先序列化为 JSON 字符串，子请求为：
+   /api/personalized/taste                        {}
+   /api/pc/customize/block/page                   {newStyle:true}
+   /api/playlist/tags                             {}
+   /api/homepage/block/page                       {cursor,extInfo,newStyle:true}
+   /api/podcast/common/single/block/get           {pageCode:"PC_HOMEPAGE_PODCAST",
+     blockCode:"PC_HOMEPAGE_VOICEBOOK_RCMD",extInfo:'{"position":"homePage"}'}
+   /api/pc/voicelist/rcmd/list                    {limit:9}
+   cursor 为 {"offset":0,"blockCodeOrderList":[依次：
+   HOMPAGE_BLOCK_VIP_RCMD、HOMEPAGE_BLOCK_RED_SIMILAR_SONG、HOMEPAGE_BLOCK_STYLE_RCMD、
+   HOMEPAGE_MUSIC_PODCAST_RCMD_BLOCK、HOMEPAGE_BLOCK_PLAYLIST_RCMD、HOMEPAGE_BLOCK_ALL_LISTEN]}；
+   extInfo 为 '{"abInfo":{"hp-new-homepageV3.1":"t3"}}'。字段原有拼写保持。
+3. 批请求之后，/api/pc/daily/rcmd/block {clientTime:"YYYY-MM-DD HH:mm:ss"}，使用本地
+   时间，读取 data.items。精选失败不废弃主请求。
+4. /api/pc/recent/listen/list {} 在允许推荐时与批请求并行，读取 data.resources
+   中的类型化资源。独立失败只隐藏最近常听，账号失效或切换按会话失效处理。
+
+显示、播放与恢复
+
+- 区块以官方 HomeFrameNew=t1 的已实现顺序呈现：推荐歌单、精选推荐、大家都在听、
+  最近常听、红心相似、雷达、会员、相似风格、每日播客、个人播客、有声书。服务端无
+  合法内容的区块不显示。精选至少四个可路由资源才显示，每日推荐卡排在最前，
+  其余最多九项；没有完整精选时，推荐歌单内先放每日推荐与存在的专属私人雷达，
+  再放普通歌单。个人播客只显示完整的三项组。
+- 原生投影只向 WebView 返回有界标题、摘要、公共 CDN 图片及类型化资源 ID。
+  卡片不转发原始资源响应、播放 URL、未审核外部链接、算法跟踪字段或签名材料。
+  现有歌单、专辑、播客详情、每日推荐和私人漫游路由负责目标页。歌曲播放使用
+  当前区块的歌曲队列，歌单、节目使用原生选择器，权益和实际媒体可用性仍由
+  现有播放器处理。未匹配的 moduleType/resourceType 不猜测。
+- 普通详情往返按账号保留首页纵向位置、分栏横向位置及打开卡片的焦点。临时网络
+  失败保留当前可用页面并可重试；首次失败给出重试。会话换代清空页面和浏览位置，
+  丢弃旧请求的结果。在进程中使用官方默认经典缓存窗口 3h−3000ms；刷新显式重新
+  检查隐私设置，设置页确认改变时也使首页缓存失效。
+- 本地功能边界：目前未移植官方跨进程的首页盘缓存、缓存的 VIP/Plus 门槛和动态
+  preload TTL，未复刻游客首页与不同 AB 分组布局、排行/活动横幅/热播召回、场景
+  标签、按曝光/分区的局部刷新、听书偏好筛选及会员权益徽章。每日混合的专属 FM、
+  明星/相似歌曲 FM、专区、风格种子和原生广告卡仍需各自的路由及实验上下文；
+  普通 FM 卡只打开已有私人漫游页，不会在首页替用户开始漫游。最近常听的
+  dailySongsTag、红心特殊样式与本地缓存回退未移植。原生 eCPM 分支由独立 AB 配置
+  驱动，包含 /api/pc/page/rcmd/resource/show 与
+  /api/pc/page/rcmd/block/resource/refresh；没有假定任何分组，也未模拟广告端。
+- Rust 用账户代次绑定的 discovery_home 用例，Tauri 只桥接，Vue 只处理交互。
+  回归：cargo test -p cumulus-core --test discovery_home --locked（合成响应）；
+  真实 Tauri WebView 合成业务检查：
+  cargo build -p cumulus-desktop --example discovery_home_ui_probe
+    --features custom-protocol --locked
+  在已初始化的图形桌面，以不存在的 CUMULUS_PROOF_DIR 路径运行该例程，输出
+  home/dark/retry/privacy/complete JSON。不使用现有账号资料。合成检查不代表线上推荐、
+  权益、声卡播放或 Windows 现场行为已通过。

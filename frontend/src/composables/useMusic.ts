@@ -22,6 +22,7 @@ export type Page =
     }
   | ({ kind: 'catalog' } & import('../services/catalogNavigation').CatalogLocation)
   | { kind: 'artist_gallery' }
+  | { kind: 'discovery_home' }
   | { kind: 'follow_new_song' }
   | {
       kind: 'latest_releases';
@@ -237,6 +238,7 @@ export function useMusic(
         target.kind === 'member' ||
         target.kind === 'catalog' ||
         target.kind === 'artist_gallery' ||
+        target.kind === 'discovery_home' ||
         target.kind === 'follow_new_song' ||
         target.kind === 'latest_releases' ||
         target.kind === 'community' ||

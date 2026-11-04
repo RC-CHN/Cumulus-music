@@ -66,6 +66,7 @@ interface NavItem {
   page: Page;
 }
 const discovery: NavItem[] = [
+  { title: '首页', icon: 'grid', page: { kind: 'discovery_home' } },
   { title: '会员中心', icon: 'star', page: { kind: 'member' } },
   { title: '私人漫游', icon: 'music', page: { kind: 'fm' } },
   { title: '排行榜', icon: 'list', page: { kind: 'rankings', query: { kind: 'home' } } },

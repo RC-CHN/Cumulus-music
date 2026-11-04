@@ -40,6 +40,7 @@ import type { FmClient } from './fm';
 import type { SceneFmClient } from './sceneFm';
 import type { MemberClient, MemberPortalClient } from './member';
 import type { CatalogClient } from './catalog';
+import type { DiscoveryHomeClient } from './discoveryHome';
 import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
 import type { LatestReleaseClient } from './latestReleases';
 import type { CollectionClient } from './collections';
@@ -99,6 +100,7 @@ export interface CoreClient
   extends ArtistOnboardingClient,
     SearchClient,
     SearchResultsClient,
+    DiscoveryHomeClient,
     LikeRecoveryClient,
     NativeLikesClient,
     PlayerClient,

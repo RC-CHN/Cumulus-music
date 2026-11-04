@@ -231,3 +231,7 @@ required-features = ["custom-protocol"]
 [[example]]
 name = "search_playback_read"
 required-features = ["custom-protocol"]
+
+[[example]]
+name = "discovery_home_ui_probe"
+required-features = ["custom-protocol"]

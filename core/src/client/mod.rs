@@ -16,6 +16,7 @@ mod comments;
 mod community;
 mod content;
 mod daily_experiment;
+pub mod discovery_home;
 mod downloads;
 pub mod dto;
 mod effects;

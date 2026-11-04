@@ -1,0 +1,84 @@
+import { ref, shallowRef, watch } from 'vue';
+import { failure, type AccountView } from '../services/contracts';
+import type { DiscoveryHomeClient, DiscoveryHomePage } from '../services/discoveryHome';
+
+// M/32.n uses 3h when the preload config has no home override.
+const FRESH_MS = 3 * 60 * 60 * 1000 - 3000;
+
+export function useDiscoveryHome(
+  core: DiscoveryHomeClient,
+  account: () => AccountView,
+  active: () => boolean,
+  expired: () => void,
+) {
+  const data = shallowRef<DiscoveryHomePage>();
+  const error = ref('');
+  const loading = ref(false);
+  const viewport = { scroll: 0, focus: '', rails: new Map<string, number>() };
+  let owner: string | undefined;
+  let serial = 0;
+  let observed = 0;
+  function reset(epoch?: string) {
+    ++serial;
+    owner = epoch;
+    data.value = undefined;
+    error.value = '';
+    loading.value = false;
+    observed = 0;
+    viewport.scroll = 0;
+    viewport.focus = '';
+    viewport.rails.clear();
+  }
+  async function load(force = false) {
+    if (!owner || !active() || loading.value) return;
+    if (!force && observed && Date.now() - observed < FRESH_MS) return;
+    const epoch = owner;
+    const request = ++serial;
+    loading.value = true;
+    error.value = '';
+    try {
+      const response = await core.discoveryHome(epoch);
+      if (owner !== epoch || request !== serial || response.epoch !== epoch) return;
+      data.value = response.value;
+      observed = Date.now();
+      if (!response.value.recommendationEnabled) {
+        viewport.scroll = 0;
+        viewport.focus = '';
+        viewport.rails.clear();
+      }
+    } catch (e) {
+      if (owner !== epoch || request !== serial) return;
+      const issue = failure(e);
+      error.value = issue.message;
+      if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
+        reset();
+        if (active()) expired();
+      }
+    } finally {
+      if (request === serial) loading.value = false;
+    }
+  }
+  watch(
+    [() => account().epoch, () => account().status, active],
+    ([epoch, status, visible]) => {
+      const key = status === 'authenticated' ? epoch : undefined;
+      if (owner !== key) reset(key);
+      if (key && visible) void load();
+    },
+    { immediate: true, flush: 'sync' },
+  );
+  function observePreference(enabled: boolean) {
+    if (!owner || data.value?.recommendationEnabled === enabled) return;
+    if (!enabled) {
+      reset(owner);
+      data.value = { recommendationEnabled: false, sections: [] };
+      observed = Date.now();
+    } else {
+      observed = 0;
+      if (active()) void load();
+    }
+  }
+  return { data, loading, error, viewport, refresh: () => load(true), observePreference };
+}
+
+export type DiscoveryHomeModel = ReturnType<typeof useDiscoveryHome>;
