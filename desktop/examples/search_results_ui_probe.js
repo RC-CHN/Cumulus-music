@@ -236,6 +236,10 @@
       await wait(()=>grid()?.dataset.loadedCount==='20'&&tail(),'scrolling appends the next album page');
       assert(JSON.stringify(albumReads)==='[[0,10],[10,10]]'&&all('.search-result-card').length<=20,
         'native offsets advance by ten and the card window stays bounded');
+      tail().scrollIntoView({block:'nearest'});
+      const rect=tail().getBoundingClientRect();
+      assert(tail().contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
+        'appended album is visibly reachable');
       const scrolled=results().scrollTop;
       await capture('album_waterfall_appended');
       click(tail());

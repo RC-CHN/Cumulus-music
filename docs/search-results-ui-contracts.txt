@@ -240,3 +240,4 @@ M/3095:2913–2935、2944–3012 的专辑结果把 loadMore 交给列表组件�
 位置和卡片焦点。还未迁移同一模块中的官方专辑表格排布。
 `search_results_smoke.py --album-artist` 通过实际 WebView 验证原生 0/10、10/10
 请求、第二页卡片进入详情和返回不重新读取。
+Linux WebView 通过八个检查点并保留截图：.build/search-album-waterfall-webview/first/。
