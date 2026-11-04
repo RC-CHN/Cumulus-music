@@ -149,6 +149,14 @@ search_smoke.py --suggestion-matches 可验证重复命中、特殊符号和原�
 清掉旧项，普通 Enter 继续提交当前原词。输入法合成和 Enter 防重复不变。
 `search_smoke.py --suggestion-matches` 同时验证指针命中、焦点、Enter、离开及改词。
 Linux WebView 的悬停和原词回归均通过，截图见 .build/search-hover-enter-webview/first/。
+官方 M623:367–392、695–717 用一个当前索引确认建议；Cumulus 的建议是实际可聚焦
+按钮。按钮获得焦点后，Enter 确认该按钮，方向键也从该按钮继续；鼠标此时不能换掉
+键盘将要提交的项目。焦点在输入框时，悬停选择仍有效。实际 WebView
+`search_results_smoke.py --suggestion-focus` 同时核对两种 Enter 送到原生结果 IPC
+的准确关键词、竞争时的方向键以及异步建议替换的焦点移交。
+Linux 旧版探针中，聚焦“键盘”再悬停“鼠标”使实际请求误发合成鼠标词；
+修复版四态通过，证据 .build/ui-proof/search-suggestion-owner-{baseline,fixed}-9822da8/。
+使用合成建议和隔离服务，未触达真实账号。
 
 删除最后一条搜索历史
 官方 SearchBox/view/history.jsx:173–182 单独删除至空时关闭当前搜索浮层。Cumulus

@@ -22,6 +22,11 @@ function clearPointer() {
   pointer.value = undefined;
 }
 function point(event: PointerEvent) {
+  if (
+    document.activeElement instanceof HTMLButtonElement &&
+    document.activeElement.hasAttribute('data-search-suggestion')
+  )
+    return;
   if (event.pointerType === 'mouse' || event.pointerType === 'pen')
     pointer.value = event.currentTarget as HTMLButtonElement;
 }
@@ -51,7 +56,7 @@ watch(showExact, (show) => {
 });
 </script>
 <template>
-  <div class="search-suggestions" @pointerleave="clearPointer">
+  <div class="search-suggestions" @focusin="clearPointer" @pointerleave="clearPointer">
     <button
       v-if="showExact"
       ref="exactButton"

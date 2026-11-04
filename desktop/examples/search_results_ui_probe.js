@@ -205,18 +205,27 @@
       await wait(()=>one('.track-row'),'daily ready');
       const provides=one('#app').__vue_app__._context.provides;
       const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
-      const discovery=core.searchDiscovery;
+      const discovery=core.searchDiscovery, results=core.searchResults;
       const input=one('[aria-label="搜索音乐"]'), submitButton=button('开始搜索');
       const exact=()=>one('.search-suggestion.search-exact');
-      const choice=()=>one('.search-suggestion[data-search-suggestion]');
+      const choices=()=>all('.search-suggestion[data-search-suggestion]');
+      const choice=()=>choices()[0];
+      const resultsRead=[];
       let receipt, complete;
+      core.searchResults=async(...args)=>{
+        resultsRead.push(args[1].keyword);
+        return results(...args);
+      };
       core.searchDiscovery=async(...args)=>{
         if(args[1].kind!=='suggestions')return discovery(...args);
         const waitForRelease=new Promise(resolve=>{receipt=resolve;});
         const result=await discovery(...args);
         complete=true;
         await waitForRelease;
-        return {...result,value:{...result.value,suggestions:[{keyword:args[1].keyword,label:args[1].keyword+'建议',tag:null}]}};
+        const suggestions=args[1].keyword.startsWith('合成键鼠')
+          ? ['鼠标','键盘','下一项'].map(label=>({keyword:args[1].keyword+label,label,tag:null}))
+          : [{keyword:args[1].keyword,label:args[1].keyword+'建议',tag:null}];
+        return {...result,value:{...result.value,suggestions,recommended:[]}};
       };
       async function pending(word){
         receipt=undefined;complete=false;
@@ -225,6 +234,21 @@
         await wait(()=>complete&&exact(),'pending exact search has a delayed suggestion reply');
         key(input,'ArrowDown');
         assert(document.activeElement===exact(),'ArrowDown focuses exact search while the reply is pending');
+      }
+      async function competing(word){
+        await pending(word);
+        receipt();
+        await wait(()=>choices().length===3&&!exact(),'three simultaneous suggestions');
+        return choices();
+      }
+      function hover(item){
+        item.dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));
+      }
+      async function committed(word,source) {
+        await wait(()=>resultsRead.some(keyword=>keyword.startsWith(word)),'search reaches native IPC');
+        const keyword=resultsRead.find(value=>value.startsWith(word));
+        assert(keyword===word+source,'expected '+source+' to own Enter; native search received '+keyword);
+        await wait(()=>ready()&&one('.search-heading-copy h1')?.textContent.includes(keyword),'committed result heading');
       }
       try{
         await pending('合成焦点');
@@ -240,8 +264,27 @@
         await wait(()=>choice()?.textContent.includes('不抢焦点')&&!exact(),'second suggestion reply');
         assert(document.activeElement===submitButton,'reply must not steal focus that already left the exact action');
         await capture('suggestion_focus_untouched');
-      } finally{receipt?.();core.searchDiscovery=discovery;}
-      await emit('complete',{ok:true,searchSuggestionFocusVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+        const enterWord='合成键鼠回车';
+        let [pointed,focused,next]=await competing(enterWord);
+        focused.focus();
+        hover(pointed);
+        key(focused,'Enter');
+        await committed(enterWord,'键盘');
+        await capture('suggestion_focused_enter');
+        const hoverWord='合成键鼠方向';
+        [pointed,focused,next]=await competing(hoverWord);
+        focused.focus();
+        hover(pointed);
+        key(focused,'ArrowDown');
+        assert(document.activeElement===next,'ArrowDown advances from the focused suggestion, not the hovered one');
+        input.focus();
+        hover(pointed);
+        key(input,'Enter');
+        await committed(hoverWord,'鼠标');
+        await capture('suggestion_hover_enter');
+      } finally{receipt?.();core.searchDiscovery=discovery;core.searchResults=results;}
+      await emit('complete',{ok:true,searchSuggestionFocusVerified:true,searchSuggestionOwnerVerified:true,
+        stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchAlbumArtistProof){

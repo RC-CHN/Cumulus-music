@@ -160,15 +160,19 @@ function key(event: KeyboardEvent) {
     focusInput();
     return;
   }
-  const pointed = open.value ? suggestionsPanel.value?.activePointer() : undefined;
   const fromInput = event.target === input.value;
-  const fromSuggestion =
+  const focusedSuggestion =
+    open.value &&
     event.target instanceof HTMLButtonElement &&
-    event.target.hasAttribute('data-search-suggestion');
-  if (event.key === 'Enter' && (fromInput || (pointed && fromSuggestion))) {
+    event.target.hasAttribute('data-search-suggestion')
+      ? event.target
+      : undefined;
+  const pointed = fromInput && open.value ? suggestionsPanel.value?.activePointer() : undefined;
+  if (event.key === 'Enter' && (fromInput || focusedSuggestion)) {
     event.preventDefault();
     if (!event.repeat) {
-      if (pointed) pointed.click();
+      const choice = focusedSuggestion ?? pointed;
+      if (choice) choice.click();
       else submit();
     }
     return;
