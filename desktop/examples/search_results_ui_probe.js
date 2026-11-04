@@ -1528,10 +1528,11 @@
       await fixture('good');await fresh('合成');
       const check=(kind, expected)=>{
         const card=one(`[data-result-key^="${kind}:"]`);
-        const title=card?.querySelector(card.classList.contains('search-playlist-row')
-          ? '.search-card-open' : '.search-result-name');
+        const tablePlaylist=card?.classList.contains('search-playlist-row');
+        const title=card?.querySelector(tablePlaylist ? '.search-playlist-table-name' : '.search-result-name');
+        const titleTooltip=tablePlaylist ? title?.closest('.search-card-open') : title;
         const text=title?.textContent.trim();
-        assert(text&&title.dataset.tooltip===text,'title and tooltip keep identical text: '+kind);
+        assert(text&&titleTooltip?.dataset.tooltip===text,'title and tooltip keep identical text: '+kind);
         const marks=[...title.querySelectorAll('mark.search-match-text')];
         assert(marks.length===(expected?1:0)&&(!expected||marks[0].textContent==='合成'),
           'exact card title mark: '+kind);
@@ -1543,6 +1544,15 @@
             'comprehensive playlist shows the bounded plain recommendation');
           const reasonMark=recommendation.querySelector('mark');
           assert(expected?reasonMark?.textContent==='合成':!reasonMark,'only matched recommendation text is marked');
+        } else if(tablePlaylist){
+          const reason=card.querySelector('.search-playlist-table-recommendation');
+          const reasonText=reason?.textContent.trim();
+          assert(reasonText==='合成 推荐理由'&&reason.dataset.tooltip===reasonText&&
+            titleTooltip.getAttribute('aria-description')===reasonText&&!reason.querySelector('em'),
+            'playlist table separates title and reason tooltips and exposes the reason to readers');
+          const reasonMarks=[...reason.querySelectorAll('mark.search-match-text')];
+          assert(reasonMarks.length===(expected?1:0)&&(!expected||reasonMarks[0].textContent==='合成'),
+            'playlist table marks the title and recommendation independently');
         } else if(kind==='mv'){
           const artist=subtitle?.querySelector('.search-card-artist');
           const artistMarks=[...(subtitle?.querySelectorAll('mark.search-match-text')??[])];
@@ -1570,7 +1580,10 @@
       await capture('comprehensive_card_title_matches');
       for(const [category,kind] of [['playlists','playlist'],['podcasts','podcast'],['voices','voice'],['mvs','mv']]){
         await choose(category);check(kind,true);
-        if(kind==='playlist')assert(!playlistCard()?.querySelector('.search-playlist-count'),'dedicated playlist results retain their layout');
+        if(kind==='playlist'){
+          assert(!playlistCard()?.querySelector('.search-playlist-count'),'dedicated playlist results retain their layout');
+          await capture('playlist_category_title_and_reason');
+        }
         if(kind==='voice'){
           const row=one('.search-voice-row');
           assert(row?.querySelector('.search-voice-listens[role="cell"]')?.textContent.trim()==='1.2万'&&
@@ -1581,7 +1594,7 @@
       await capture('mv_category_card_title_matches');
       await fresh('不匹配结果');
       for(const kind of ['playlist','podcast','voice','mv'])check(kind,false);
-      await emit('complete',{ok:true,cardTitleMatchesVerified:true,mvArtistMatchesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,cardTitleMatchesVerified:true,playlistCategoryRecommendationVerified:true,mvArtistMatchesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchVoiceDirectProof){
