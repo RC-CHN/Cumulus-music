@@ -87,3 +87,6 @@ export interface MemberClient {
   ): Promise<AccountData<MemberSignOutcome>>;
   openMemberLink(epoch: string, revision: string, key: string): Promise<void>;
 }
+export interface MemberPortalClient {
+  memberPortalQr(): Promise<{ modules: boolean[][] }>;
+}

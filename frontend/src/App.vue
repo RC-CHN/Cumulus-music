@@ -2746,6 +2746,7 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'member'"
                 :model="member"
                 :nickname="account.nickname"
+                :account-epoch="account.epoch"
                 :playable="player.ready.value && !player.busy.value"
                 :liked="liked"
                 :busy-likes="busyLikes"

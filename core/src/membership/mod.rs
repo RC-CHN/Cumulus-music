@@ -7,6 +7,7 @@ mod cold;
 mod manager;
 pub(crate) use cold::{ColdEntitlement, ColdMembership};
 mod offline;
+pub mod portal;
 mod quality;
 mod state;
 pub use api::MembershipApi;

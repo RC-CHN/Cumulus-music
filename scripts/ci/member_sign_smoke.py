@@ -88,14 +88,14 @@ def main():
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))
         return
-    complete = run('first', {}, 7)
-    assert complete['stageCount'] == 7
+    complete = run('first', {}, 9)
+    assert complete['stageCount'] == 9 and complete['memberPortalQr']
     assert complete['historyPlayback'] == '2' and complete['nativeModalFocus'] and complete['noLateDetail']
     assert complete['memberSignCalls'] == [card, card, history, past, history, past,
                                            history, past, history, today, card, card]
-    print(json.dumps({'ok': True, 'actualWebView': True, 'stages': 7, 'signReads': 12,
+    print(json.dumps({'ok': True, 'actualWebView': True, 'stages': 9, 'signReads': 12,
                       'historyPlayback': True, 'nativeModalFocus': True,
-                      'cachedRefresh': True, 'realAccountWrites': 0}))
+                      'cachedRefresh': True, 'memberPortalQr': True, 'realAccountWrites': 0}))
 
 
 if __name__ == '__main__':

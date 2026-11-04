@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import type { TrackMenuRequest } from '../services/trackMenu';
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { useMember } from '../composables/useMember';
 import type { MemberTarget, MemberContent } from '../services/member';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import MemberCards from './MemberCards.vue';
 import MemberSignCard from './MemberSignCard.vue';
+import MemberPortalDialog from './MemberPortalDialog.vue';
+import ModalTransition from './ModalTransition.vue';
 import TrackTable from './TrackTable.vue';
 const props = defineProps<{
   model: ReturnType<typeof useMember>;
   nickname: string | null;
+  accountEpoch: string;
   playable: boolean;
   liked: Set<string>;
   busyLikes: Set<string>;
@@ -26,6 +29,12 @@ const emit = defineEmits<{
   download: [tracks: TrackView[]];
 }>();
 const page = computed(() => props.model.view.value?.page);
+const portalOpen = ref(false);
+watch(
+  [() => props.accountEpoch, () => props.model.query.value.kind],
+  () => (portalOpen.value = false),
+  { flush: 'sync' },
+);
 const top = computed(() =>
   page.value?.kind === 'home'
     ? page.value.modules.find((m) => m.content.kind === 'banners')
@@ -78,15 +87,24 @@ function hasContent(content: MemberContent) {
     <div v-if="model.query.value.kind === 'home'" class="member-hero">
       <div class="member-hero-stack">
         <div class="member-rights-card">
-          <span class="member-brand">{{
-            primary?.name ?? (model.rights.value ? '会员权益' : '正在读取会员权益…')
-          }}</span>
-          <strong
-            >{{ nickname || '我的账号'
-            }}<span v-if="primary?.level"> Lv.{{ primary.level }}</span></strong
+          <button
+            type="button"
+            class="member-portal-trigger"
+            aria-label="查看会员中心二维码"
+            aria-haspopup="dialog"
+            @click="portalOpen = true"
           >
-          <small v-if="primary">有效期至 {{ date(primary.expiresAt) }}</small
-          ><small v-else-if="model.rights.value">当前没有生效中的会员权益</small>
+            <span class="member-brand">{{
+              primary?.name ?? (model.rights.value ? '会员权益' : '正在读取会员权益…')
+            }}</span>
+            <strong
+              >{{ nickname || '我的账号'
+              }}<span v-if="primary?.level"> Lv.{{ primary.level }}</span></strong
+            >
+            <small v-if="primary">有效期至 {{ date(primary.expiresAt) }}</small
+            ><small v-else-if="model.rights.value">当前没有生效中的会员权益</small>
+            <span class="member-portal-chevron" aria-hidden="true">›</span>
+          </button>
           <button
             class="member-rights-refresh"
             :disabled="model.rightsLoading.value"
@@ -306,6 +324,9 @@ function hasContent(content: MemberContent) {
         {{ page.dates.length ? '这一天没有推荐歌曲' : '暂无可查看的历史推荐' }}
       </p>
     </template>
+    <ModalTransition>
+      <MemberPortalDialog v-if="portalOpen" @close="portalOpen = false" />
+    </ModalTransition>
   </section>
 </template>
 <style scoped>
@@ -377,6 +398,32 @@ function hasContent(content: MemberContent) {
 .member-brand {
   font-size: 13px;
   letter-spacing: 1px;
+}
+.member-portal-trigger {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 0 24px 0 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.member-portal-trigger:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.member-portal-chevron {
+  position: absolute;
+  top: 50%;
+  right: 3px;
+  translate: 0 -50%;
+  font-size: 23px;
+  line-height: 1;
 }
 .member-rights-card strong {
   font-size: 20px;

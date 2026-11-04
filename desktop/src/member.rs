@@ -3,6 +3,11 @@ use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
 };
 #[tauri::command]
+pub fn member_portal_qr() -> Result<cumulus_core::membership::portal::MemberPortalQr, ClientError> {
+    cumulus_core::membership::portal::member_portal_qr().map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn member_rights(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

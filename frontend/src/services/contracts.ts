@@ -26,7 +26,7 @@ import type { AuthClient } from './auth';
 import type { RankingClient } from './rankings';
 import type { FmClient } from './fm';
 import type { SceneFmClient } from './sceneFm';
-import type { MemberClient } from './member';
+import type { MemberClient, MemberPortalClient } from './member';
 import type { CatalogClient } from './catalog';
 import type { CollectionClient } from './collections';
 import type { HistoryClient } from './history';
@@ -108,6 +108,7 @@ export interface CoreClient
     FmClient,
     SceneFmClient,
     MemberClient,
+    MemberPortalClient,
     CatalogClient,
     CollectionClient,
     HistoryClient,

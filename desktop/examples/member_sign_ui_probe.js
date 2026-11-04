@@ -18,6 +18,26 @@
   const close = () => one('.sign-dialog[open] [aria-label="关闭乐签"]');
   const message = () => card()?.querySelector('.sign-notice[role="status"]');
   const member = () => [...document.querySelectorAll('.sidebar button:not(:disabled)')].find((node) => node.textContent.trim() === '会员中心');
+  const portalTrigger = () => one('.member-portal-trigger');
+  const portalDialog = () => one('.member-portal-dialog[open]');
+  async function portal(stage, cancel) {
+    portalTrigger().focus();
+    portalTrigger().click();
+    const qr = await wait(() => portalDialog()?.querySelector('svg[role="img"]'), 'public member portal QR');
+    const modal = portalDialog();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await Promise.all(modal.getAnimations().map(animation => animation.finished.catch(() => {})));
+    const rect = modal.getBoundingClientRect();
+    if (!modal.contains(document.activeElement) || rect.x < 0 || rect.y < 0 ||
+        rect.right > innerWidth || rect.bottom > innerHeight || qr.querySelector('path').getAttribute('d').length < 1000 ||
+        !modal.textContent.includes('使用云音乐 App 扫描二维码') || modal.querySelector('a, iframe, img') ||
+        modal.textContent.includes('://'))
+      throw Error('public handoff must fit, trap focus and render only the native QR matrix');
+    await emit(stage, {qrBounds:qr.getBoundingClientRect().toJSON()});
+    if (cancel) modal.dispatchEvent(new Event('cancel', {cancelable:true}));
+    else modal.querySelector('[aria-label="关闭会员中心二维码"]').click();
+    await wait(() => !portalDialog() && document.activeElement === portalTrigger(), 'member portal restores card focus');
+  }
   let step = 'entry';
   try {
     (await wait(member, 'member sidebar ready')).click();
@@ -28,19 +48,21 @@
     if (card().querySelector('.sign-texture') || card().querySelectorAll('.sign-days button').length !== 2)
       throw Error('unsigned stamp is interactive or unsafe texture leaked');
     await emit('ux_02_member_sign_card');
+    step = 'portal-light';
+    await portal('ux_03_member_portal_light', false);
 
     step = 'past';
     past().focus();
     past().click();
     await wait(() => dialog()?.querySelector('[role="alert"]'), 'detail failure is visible within modal');
-    await emit('ux_03_member_sign_detail_retry');
+    await emit('ux_04_member_sign_detail_retry');
     dialog().querySelector('[role="alert"] button').click();
     await wait(() => dialog()?.querySelector('h3')?.textContent === '合成历史乐签歌曲', 'historical detail retry');
     if (!dialog().textContent.includes('合成歌手') || !dialog().textContent.includes('保持好奇') ||
       !dialog().textContent.includes('来自合成评论者') || !dialog().textContent.includes('累计打卡 5') ||
       !dialog().textContent.includes('再打卡 2') || !dialog().textContent.includes('1天黑胶体验') || dialog().querySelector('img'))
       throw Error('recorded detail projection does not match official shape');
-    await emit('ux_04_member_sign_detail');
+    await emit('ux_05_member_sign_detail');
     const {epoch} = await invoke('account_snapshot');
     (await wait(() => dialog()?.querySelector('[aria-label="播放 合成历史乐签歌曲"]:not(:disabled)'), 'historical song can play')).click();
     const playback = await wait(async () => {
@@ -58,6 +80,9 @@
     one('[aria-label="外观主题"]').click();
     (await wait(() => [...document.querySelectorAll('.action-menu button')].find((node) => node.textContent.trim() === '深色'), 'dark mode choice')).click();
     await wait(() => document.documentElement.dataset.theme === 'dark', 'dark theme');
+    step = 'portal-dark';
+    await portal('ux_06_member_portal_dark', true);
+    step = 'late';
     past().click();
     await wait(() => dialog()?.querySelector('[role="status"]'), 'held native detail is pending');
     await sleep(100);
@@ -69,19 +94,19 @@
     const bounds = dialog().getBoundingClientRect();
     if (bounds.x < 0 || bounds.y < 0 || bounds.right > innerWidth || bounds.bottom > innerHeight)
       throw Error('compact dark modal is clipped');
-    await emit('ux_05_member_sign_today');
+    await emit('ux_07_member_sign_today');
     close().click();
 
     step = 'refresh';
     one('[aria-label="刷新会员内容"]').click();
     await wait(() => message()?.textContent.includes('正在显示上次读取'), 'refresh failure preserves card');
     if (!past() || !one('.sign-today')) throw Error('good card disappeared on refresh failure');
-    await emit('ux_06_member_sign_cached');
+    await emit('ux_08_member_sign_cached');
     message().querySelector('button').click();
     await wait(() => card()?.textContent.includes('今日未打卡'), 'updated card shows unsigned today');
     if (one('.sign-today') || card().querySelector('[aria-label="查看今天乐签"]')) throw Error('unsigned today can start a mutation');
-    await emit('ux_07_member_sign_unsigned');
-    await emit('complete', {ok:true, stageCount:7, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true});
+    await emit('ux_09_member_sign_unsigned');
+    await emit('complete', {ok:true, stageCount:9, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true, memberPortalQr:true});
   } catch (error) {
     await emit('failed', {step, message:error.message, card:card()?.textContent, dialog:dialog()?.textContent, focus:document.activeElement?.outerHTML.slice(0,260)});
   }
