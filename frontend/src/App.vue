@@ -139,6 +139,7 @@ import {
 } from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
 import PlaylistDialog from './components/PlaylistDialog.vue';
+import PlaylistImportPreview from './components/playlist/PlaylistImportPreview.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
 import DownloadPage from './components/DownloadPage.vue';
 import ColdOfflinePage from './components/download/ColdOfflinePage.vue';
@@ -1029,6 +1030,11 @@ watch(
 const trackActions = ref<InstanceType<typeof TrackActions>>();
 watch(music.page, () => trackActions.value?.close());
 const playlistDialog = ref<PlaylistDialogTarget>();
+const importDialog = ref<InstanceType<typeof PlaylistImportPreview>>();
+function openExternalPlaylistImport(anchor: HTMLElement, origin: 'sidebar' | 'library') {
+  if (signedIn.value) void importDialog.value?.show(anchor, origin);
+  else loginOpen.value = true;
+}
 const queueCollectionReturn = shallowRef<HTMLElement>();
 const queueCollectionOwner = ref('');
 let queueDiscoverOwner: string | undefined;
@@ -1728,6 +1734,44 @@ const {
   historyLength,
   signedIn,
 } = music;
+const sidebarImportEnabled = ref(false);
+const sidebarLookupReady = ref(false);
+watch(
+  initializing,
+  (starting) => {
+    if (!starting) sidebarLookupReady.value = true;
+  },
+  { immediate: true, flush: 'sync' },
+);
+watch(
+  [
+    () => account.value.epoch,
+    () => account.value.status,
+    () => sidebarLookupReady.value && music.accountReady.value,
+  ],
+  ([epoch, status, ready], _, onCleanup) => {
+    sidebarImportEnabled.value = false;
+    if (!ready || status === 'expired') return;
+    let current = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    onCleanup(() => {
+      current = false;
+      clearTimeout(timer);
+    });
+    async function refresh() {
+      try {
+        const reply = await core.externalPlaylistImportSidebar(epoch);
+        if (current) sidebarImportEnabled.value = reply.epoch === epoch && reply.value === true;
+      } catch {
+        if (current) sidebarImportEnabled.value = false;
+      } finally {
+        if (current) timer = setTimeout(() => void refresh(), 30 * 60 * 1000);
+      }
+    }
+    void refresh();
+  },
+  { immediate: true, flush: 'sync' },
+);
 const playlistCreator = usePlaylistCreator(core);
 const profileFollow = useProfileFollow(
   core,
@@ -3124,12 +3168,15 @@ onUnmounted(() => {
       "
       :order-notice="sidebarOrderNotice"
       :new-song-dot="communityNotice.dot.value"
+      :import-enabled="sidebarImportEnabled"
+      :signed-in="signedIn"
       :playing-id="libraryPlaying ? currentPlaylistId : undefined"
       :items="playlistMenu"
       @navigate="navigateSidebar"
       @ranking="openRanking({ kind: 'home' })"
       @refresh="refreshLibrary"
       @create="signedIn ? (playlistDialog = { kind: 'create' }) : (loginOpen = true)"
+      @import-playlist="openExternalPlaylistImport($event, 'sidebar')"
       @action="playlistAction"
       @reorder="reorderSidebar"
     />
@@ -3925,7 +3972,6 @@ onUnmounted(() => {
               <PlaylistLibraryPage
                 v-else-if="page.kind === 'library'"
                 :playlists="playlists"
-                :account-epoch="account.epoch"
                 :state="playlistLibraryState"
                 :loading="music.resourcesLoading.value"
                 :error="music.playlistError.value"
@@ -3941,6 +3987,7 @@ onUnmounted(() => {
                 :playing="libraryPlaying"
                 @refresh="refreshLibrary"
                 @create="playlistDialog = { kind: 'create' }"
+                @import-playlist="openExternalPlaylistImport($event, 'library')"
                 @link="playlistDialog = { kind: 'open' }"
                 @history="playlistDialog = { kind: 'history' }"
                 @browse="music.navigate({ kind: 'daily' })"
@@ -4560,6 +4607,11 @@ onUnmounted(() => {
         "
       />
     </ModalTransition>
+    <PlaylistImportPreview
+      ref="importDialog"
+      :account-epoch="account.epoch"
+      :authenticated="signedIn"
+    />
     <ModalTransition :fallback-focus="downloadReturnFocus">
       <DownloadDialog
         v-if="downloadDialog"

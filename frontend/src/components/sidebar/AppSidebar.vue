@@ -22,6 +22,8 @@ const props = defineProps<{
   orderDisabled: boolean;
   orderNotice: string;
   newSongDot: boolean;
+  importEnabled: boolean;
+  signedIn: boolean;
   playingId?: string;
   items: (list: PlaylistView) => MenuItem[];
 }>();
@@ -29,6 +31,7 @@ const emit = defineEmits<{
   navigate: [page: Page];
   ranking: [];
   create: [];
+  importPlaylist: [trigger: HTMLElement];
   refresh: [];
   action: [list: PlaylistView, key: string];
   reorder: [move: SidebarPlaylistMove];
@@ -179,9 +182,12 @@ function refresh() {
           :order-disabled="orderDisabled"
           :selected-id="page.kind === 'playlist' ? page.id : undefined"
           :playing-id="playingId"
+          :import-enabled="importEnabled"
+          :signed-in="signedIn"
           :items="items"
           @toggle="toggle('created')"
           @create="emit('create')"
+          @import-playlist="emit('importPlaylist', $event)"
           @open="emit('navigate', { kind: 'playlist', id: $event.id })"
           @action="(list, key) => emit('action', list, key)"
           @reorder="emit('reorder', $event)"

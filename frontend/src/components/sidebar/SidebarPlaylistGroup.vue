@@ -8,6 +8,7 @@ import type { SidebarPlaylistMove } from '../../services/sidebar';
 import Icon from '../Icon.vue';
 import ActionMenu from '../ActionMenu.vue';
 import SidebarPlaylistRow from './SidebarPlaylistRow.vue';
+import SidebarPlaylistCreate from './SidebarPlaylistCreate.vue';
 const props = defineProps<{
   group: 'created' | 'subscribed';
   playlists: PlaylistView[];
@@ -16,11 +17,14 @@ const props = defineProps<{
   scroller?: HTMLElement;
   selectedId?: string;
   playingId?: string;
+  importEnabled?: boolean;
+  signedIn?: boolean;
   items: (list: PlaylistView) => MenuItem[];
 }>();
 const emit = defineEmits<{
   toggle: [];
   create: [];
+  importPlaylist: [trigger: HTMLElement];
   open: [list: PlaylistView];
   action: [list: PlaylistView, key: string];
   reorder: [move: SidebarPlaylistMove];
@@ -150,15 +154,13 @@ async function context(event: MouseEvent | KeyboardEvent, list: PlaylistView) {
         <span>{{ title }} {{ playlists.length > 999 ? '999+' : playlists.length }}</span>
         <Icon v-if="playlists.length" name="down" :class="{ folded: !expanded }" />
       </button>
-      <button
+      <SidebarPlaylistCreate
         v-if="group === 'created'"
-        class="sidebar-create"
-        aria-label="新建歌单"
-        data-tooltip="新建歌单"
-        @click="emit('create')"
-      >
-        <Icon name="plus" />
-      </button>
+        :import-enabled="!!importEnabled"
+        :signed-in="!!signedIn"
+        @create="emit('create')"
+        @import-playlist="emit('importPlaylist', $event)"
+      />
     </header>
     <Transition name="sidebar-fold">
       <div

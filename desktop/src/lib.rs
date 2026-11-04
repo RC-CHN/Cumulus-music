@@ -411,6 +411,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 playlists::playlist_collect_page,
                 playlists::preview_external_playlist,
                 external_import::external_playlist_import,
+                external_import::external_playlist_import_sidebar,
                 external_import::external_playlist_import_auth,
                 external_import::external_playlist_import_auth_action,
                 playlists::playlist_order_view,
@@ -495,7 +496,8 @@ pub fn run() {
             let client = renewal::configure(client, &profile)
                 .with_official_search_experiment()
                 .with_official_quality_experiments()
-                .with_official_daily_experiment();
+                .with_official_daily_experiment()
+                .with_official_external_import_sidebar();
             let client = client.with_login_device_name(&login_device::name())?;
             let client = configure_native_im(client, &app.path().resource_dir()?);
             let resources = app.path().resource_dir()?;

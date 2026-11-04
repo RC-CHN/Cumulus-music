@@ -21,6 +21,38 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_EXTERNAL_IMPORT_PROOF").is_some()
 }
 
+static SIDEBAR_READS: AtomicUsize = AtomicUsize::new(0);
+
+pub fn sidebar_mode() -> Option<String> {
+    std::env::var("CUMULUS_EXTERNAL_IMPORT_SIDEBAR_PROOF").ok()
+}
+
+pub fn sidebar_reads() -> usize {
+    SIDEBAR_READS.load(Ordering::Acquire)
+}
+
+pub fn sidebar_assignment(args: &Value, cached: bool) -> Value {
+    assert_eq!(args, &json!({"expNames":"PH-PC-songlistTransfer"}));
+    assert!(!cached);
+    SIDEBAR_READS.fetch_add(1, Ordering::AcqRel);
+    let row = json!({"expName":"PH-PC-songlistTransfer","expGroupName":"t1"});
+    let data = match sidebar_mode().as_deref() {
+        Some("assigned" | "guest") => json!([row]),
+        Some("absent") => json!([]),
+        Some("ambiguous") => json!([row, row]),
+        _ => panic!("invalid sidebar proof mode"),
+    };
+    json!({"code":200,"data":data})
+}
+
+pub struct OfflineLogin;
+
+impl HttpBackend for OfflineLogin {
+    fn post(&self, _plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
+        Box::pin(async { Err(Error::State("offline sidebar proof")) })
+    }
+}
+
 pub struct Wire {
     store: Arc<StateStore>,
     requests: Mutex<Vec<String>>,

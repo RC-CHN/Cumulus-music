@@ -3,6 +3,17 @@ use cumulus_core::client::{
 };
 
 #[tauri::command]
+pub async fn external_playlist_import_sidebar(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<bool>, ClientError> {
+    client
+        .external_import_sidebar(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn external_playlist_import(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

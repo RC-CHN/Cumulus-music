@@ -74,7 +74,8 @@
   color: var(--text);
 }
 .sidebar-group-toggle:focus-visible,
-.sidebar-create:focus-visible {
+.sidebar-create:focus-visible,
+.sidebar-create-menu .menu-trigger:focus-visible {
   outline-offset: -2px;
 }
 .sidebar-group-toggle .icon {
@@ -87,9 +88,13 @@
 .sidebar-group-toggle .icon.folded {
   transform: none;
 }
-.sidebar-create {
+.sidebar-playlist-create {
   margin-left: auto;
+  position: relative;
   flex-shrink: 0;
+}
+.sidebar-create,
+.sidebar-create-menu .menu-trigger {
   padding: 8px;
   width: 30px;
   height: 32px;
@@ -97,14 +102,45 @@
   color: var(--muted);
   border-radius: 6px;
 }
-.sidebar-create > .icon {
+.sidebar-create > .icon,
+.sidebar-create-menu .menu-trigger > .icon {
   width: 14px;
   height: 14px;
   background: var(--surface-hover);
   border-radius: 50%;
 }
-.sidebar-create:hover {
+.sidebar-create:hover,
+.sidebar-create-menu .menu-trigger:hover {
   color: var(--text);
+}
+.sidebar-import-hint {
+  position: absolute;
+  z-index: 3;
+  inset: calc(100% + 5px) 1px auto auto;
+  width: max-content;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 12px;
+  line-height: 19px;
+  pointer-events: none;
+}
+.sidebar-import-hint::before {
+  position: absolute;
+  right: 9px;
+  bottom: 100%;
+  border: 5px solid transparent;
+  border-bottom-color: var(--text);
+  content: '';
+}
+.sidebar-import-hint.above {
+  inset: auto 1px calc(100% + 5px) auto;
+}
+.sidebar-import-hint.above::before {
+  inset: 100% 9px auto auto;
+  border-top-color: var(--text);
+  border-bottom-color: transparent;
 }
 .sidebar-playlist-list {
   padding-top: 4px;

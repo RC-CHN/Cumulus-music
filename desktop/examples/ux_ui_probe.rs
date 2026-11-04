@@ -286,9 +286,17 @@ impl Api for Library {
                 {
                     json!({"code":200,"data":[]})
                 }
+                "/api/rtrs/abt/front/expinfo/list"
+                    if external_import_fixture::sidebar_mode().is_some() =>
+                {
+                    external_import_fixture::sidebar_assignment(&args, cached)
+                }
                 "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
                 "/api/w/nuser/account/get" => {
+                    if external_import_fixture::sidebar_mode().as_deref() == Some("guest") {
+                        return Err(cumulus_core::Error::LoginDeferred);
+                    }
                     json!({"code":200,"profile":{"userId":2,"nickname":"界面体验验证"}})
                 }
                 "/api/w/v1/user/detail/501" if search_fixture::enabled() => {
@@ -604,6 +612,10 @@ fn main() {
             client = client.with_login_providers(Some(wire.clone()), None)
                 .with_external_import_backend(wire.clone());
         }
+        if external_import_fixture::sidebar_mode().is_some() {
+            client=client.with_official_external_import_sidebar()
+                .with_login_providers(Some(Arc::new(external_import_fixture::OfflineLogin)),None);
+        }
         if effect_directory_fixture::enabled() {
             client = client.with_effect_material_backend(Arc::new(effect_peq_fixture::Material));
         }
@@ -661,6 +673,7 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if let Some(wire) = external_import.as_ref() { value["externalImport"] = wire.report(); }
+            if external_import_fixture::sidebar_mode().is_some() { value["externalImportSidebarReads"] = json!(external_import_fixture::sidebar_reads()); }
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
             if effect_directory_fixture::enabled() {
                 value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { useCore } from '../../services/core';
 import {
   maxExternalImportTextBytes,
@@ -10,11 +10,12 @@ import Icon from '../Icon.vue';
 import ModalTransition from '../ModalTransition.vue';
 import PlaylistImportSubmit from './PlaylistImportSubmit.vue';
 
-const props = defineProps<{ accountEpoch: string }>();
+const props = defineProps<{ accountEpoch: string; authenticated: boolean }>();
 const core = useCore();
-const trigger = ref<HTMLButtonElement>();
+const trigger = shallowRef<HTMLElement>();
 const dialog = ref<HTMLDialogElement>();
 const open = ref(false);
+const title = ref('歌单导入预览');
 const authorizationPanel = ref(false);
 const tabs = [
   ['links', '链接导入'],
@@ -63,7 +64,7 @@ function invalidate() {
   busy.value = false;
 }
 watch(inputs, invalidate, { deep: true, flush: 'sync' });
-watch(() => props.accountEpoch, close, { flush: 'sync' });
+watch([() => props.accountEpoch, () => props.authenticated], close, { flush: 'sync' });
 onBeforeUnmount(invalidate);
 
 function sourceLabel(entry: ExternalPlaylistInput | undefined) {
@@ -74,8 +75,10 @@ function sourceLabel(entry: ExternalPlaylistInput | undefined) {
 function focusLink(index: number) {
   return dialog.value?.querySelector<HTMLInputElement>(`[data-import-input="${index}"]`)?.focus();
 }
-async function show() {
-  if (open.value) return;
+async function show(anchor: HTMLElement, origin: 'sidebar' | 'library') {
+  if (open.value || !props.authenticated) return;
+  trigger.value = anchor;
+  title.value = origin === 'sidebar' ? '歌单导入' : '歌单导入预览';
   inputs.value = [''];
   rawText.value = '';
   tab.value = 'links';
@@ -85,6 +88,7 @@ async function show() {
   dialog.value?.showModal();
   focusLink(0);
 }
+defineExpose({ show });
 function close() {
   invalidate();
   inputs.value = [''];
@@ -149,9 +153,6 @@ async function preview() {
 </script>
 
 <template>
-  <button ref="trigger" class="text-button" aria-haspopup="dialog" @click="show">
-    歌单导入预览
-  </button>
   <ModalTransition :return-focus="() => trigger ?? null">
     <dialog
       v-if="open"
@@ -161,7 +162,7 @@ async function preview() {
       @cancel.prevent="close"
     >
       <header>
-        <h2 id="external-playlist-title">歌单导入预览</h2>
+        <h2 id="external-playlist-title">{{ title }}</h2>
         <button class="icon-button" type="button" aria-label="关闭导入预览" @click="close">
           <Icon name="close" />
         </button>

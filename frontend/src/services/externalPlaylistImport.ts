@@ -56,6 +56,7 @@ export interface ExternalImportAuthView {
 }
 
 export interface ExternalPlaylistImportClient {
+  externalPlaylistImportSidebar(epoch: string): Promise<AccountData<boolean>>;
   externalPlaylistImport(
     epoch: string,
     action: ExternalImportAction,

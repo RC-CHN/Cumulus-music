@@ -6,6 +6,7 @@ mod account_profile;
 pub mod artist_onboarding;
 mod auth;
 mod external_import;
+mod external_import_sidebar;
 pub use auth::LoginCaptchaProvider;
 mod catalog;
 mod cloud;
@@ -88,6 +89,7 @@ use std::{path::Path, sync::Arc};
 
 pub struct MusicClient {
     external_import: external_import::ExternalImportHost,
+    external_import_sidebar: bool,
     session: Arc<AccountSession>,
     registry: Arc<ProfileRegistry>,
     auth: auth::AuthHost,
@@ -252,6 +254,7 @@ impl MusicClient {
         let output = crate::playback::output::OutputRuntime::new(registry.store());
         Self {
             external_import: Default::default(),
+            external_import_sidebar: false,
             playlist_cover: playlist_cover::CoverHost::default(),
             artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),

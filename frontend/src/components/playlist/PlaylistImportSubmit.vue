@@ -388,10 +388,6 @@ onBeforeUnmount(() => {
   width: fit-content;
   margin: 2px 0;
 }
-.external-import-destination input {
-  width: auto;
-  accent-color: var(--accent);
-}
 .external-import-auth,
 .external-import-confirm {
   border: 1px solid var(--line);
