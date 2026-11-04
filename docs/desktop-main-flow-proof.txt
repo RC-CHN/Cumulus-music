@@ -366,3 +366,14 @@ Linux 合成桌面硬断网：已发布下载 → 离线播放
   .build/ui-proof/product-phase9/main-flow/{report,https-receipt}.json。
   同一构建的本人入口 5 态、主页播客 10 态、笔记 8 态、社区草稿/读取
   15 态与发布 7 态均使用独立封闭夹具通过，报告在该目录相应子目录。
+
+2026-11-04 合并候选 3bf9fa1c
+- 账号状态的 IPC 断言核对了新增的类型化 profileShortcut；严格工作区 Clippy 通过，
+  全工作区 Rust 1979 通过、14 按原配置忽略、0 失败。前端 789 通过及格式/生产构建、
+  CI Python 75 项通过。同一候选构建了实际桌面和社区宿主。
+- Linux 隔离真实 WebView 共 55 态和 55 张截图：本人／访客歌单 7、主页播客 10、
+  主页笔记 8、头像及统计 5、发布及未知回执核对 10、关注及编辑器 15。对应
+  `.build/ui-proof/product-phase10/{playlists,podcasts,notes,own-profile,publication,default}/report.json`。
+  本人私密歌单与置顶顺序分开验证；访客只见公开条目。发笔记回包不明时仅在
+  明确点击并查到唯一匹配 UUID 后结清，合成回环测试不使用真实账号。
+- Windows 冷离线 FLAC 续播专项已加入原生 runner；此 Linux 验证不等同于其运行结果。
