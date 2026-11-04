@@ -53,6 +53,17 @@ export interface MemberSignCard {
   buttonText: string | null;
   textureUrl: string | null;
   days: MemberSignDay[];
+  action: MemberSignAction;
+}
+export interface MemberSignAction {
+  phase: 'ready' | 'signed' | 'unknown' | 'unavailable';
+  dayKey: string | null;
+}
+export type MemberSignCommand = { kind: 'check_in'; dayKey: string } | { kind: 'reconcile' };
+export interface MemberSignOutcome {
+  action: MemberSignAction;
+  card: MemberSignCard | null;
+  detail: MemberSignDetail | null;
 }
 export interface MemberSignDetail {
   time: number;
@@ -70,5 +81,9 @@ export interface MemberClient {
   memberPage(epoch: string, query: MemberQuery, refresh: boolean): Promise<AccountData<MemberView>>;
   memberSignCard(epoch: string): Promise<AccountData<MemberSignCard>>;
   memberSignDetail(epoch: string, signTime: number): Promise<AccountData<MemberSignDetail>>;
+  memberSignCommand(
+    epoch: string,
+    command: MemberSignCommand,
+  ): Promise<AccountData<MemberSignOutcome>>;
   openMemberLink(epoch: string, revision: string, key: string): Promise<void>;
 }

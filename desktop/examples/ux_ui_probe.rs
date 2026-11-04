@@ -127,6 +127,10 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn observed_server_time_ms(&self) -> Option<u64> {
+        member_sign_fixture::observed_server_time_ms()
+    }
+
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if let Some(response) = member_sign_fixture::response(path, &args).await {
@@ -577,6 +581,9 @@ fn main() {
                 value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());
             }
             let stage=value["stage"].as_str().unwrap_or("");
+            if stage=="member-sign-reveal" && member_sign_fixture::reveal_write() {
+                handle.get_webview_window("main").unwrap().eval("window.__memberSignRevealed=true;").unwrap();return;
+            }
             if audio_status_proof && stage=="card-source-fixture" {
                 let id=value["id"].as_u64().expect("synthetic card control id");
                 let reply=card_audio.configure(value["mode"].as_str().unwrap_or("")).unwrap_or_else(|error|json!({"error":error.to_string()}));

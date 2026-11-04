@@ -339,6 +339,7 @@ jobs:
           python scripts/ci/effect_peq_native_smoke.py --resume-after-stop --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-effect-peq-resume-windows --runtime .build/package-stage/windows-x64/native --library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
           python scripts/ci/effect_peq_restart_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-effect-peq-restart-windows --runtime .build/package-stage/windows-x64/native --library .build/package-stage/windows-x64/native/cumulus_audio_filter.dll
           python scripts/ci/daily_history_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-daily-history-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/member_sign_smoke.py --write lost --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-member-sign-lost-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/style_home_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-style-home-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-cards-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-preview-windows --runtime .build/package-stage/windows-x64/native
@@ -630,6 +631,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/effect_peq_restart_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-effect-peq-restart-linux --library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/daily_history_smoke.py --birthday --style-write --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-daily-history-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_sign_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-sign-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_sign_smoke.py --write confirmed --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-sign-confirmed-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_sign_smoke.py --write lost --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-sign-lost-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/style_home_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-style-home-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_cards_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-cards-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_preview_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-preview-linux

@@ -1,7 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useMember } from '../src/composables/useMember.ts';
-import type { MemberClient, MemberView } from '../src/services/member.ts';
+import { useMemberSign } from '../src/composables/useMemberSign.ts';
+import type {
+  MemberClient,
+  MemberSignCard,
+  MemberSignCommand,
+  MemberView,
+} from '../src/services/member.ts';
 const account = {
   epoch: '1',
   status: 'authenticated' as const,
@@ -31,10 +37,20 @@ function client(changes: Partial<MemberClient> = {}): MemberClient {
     memberRights: async () => ({ epoch: '1', value: rights }),
     memberSignCard: async (epoch) => ({
       epoch,
-      value: { title: '黑胶乐签', subtitle: '', buttonText: null, textureUrl: null, days: [] },
+      value: {
+        title: '黑胶乐签',
+        subtitle: '',
+        buttonText: null,
+        textureUrl: null,
+        days: [],
+        action: { phase: 'unavailable', dayKey: null },
+      },
     }),
     memberSignDetail: async () => {
       throw new Error('no sign history fixture');
+    },
+    memberSignCommand: async () => {
+      throw new Error('no sign command fixture');
     },
     openMemberLink: async () => {},
     ...changes,
@@ -180,4 +196,68 @@ test('same page in flight is not invalidated and no hidden expiry refresh is sch
   await m.loadRights();
   m.show(false);
   m.dispose();
+});
+
+test('sign action rejects a stale day, cannot replay a lost receipt, and reconciles read-only', async () => {
+  const dayKey = '2026-11-01';
+  const card: MemberSignCard = {
+    title: '黑胶乐签',
+    subtitle: '',
+    buttonText: null,
+    textureUrl: null,
+    days: [],
+    action: { phase: 'ready', dayKey },
+  };
+  const gate = deferred<void>();
+  const calls: MemberSignCommand[] = [];
+  const m = useMemberSign(
+    client({
+      memberSignCard: async (epoch) => ({ epoch, value: card }),
+      memberSignCommand: async (epoch, command) => {
+        calls.push(command);
+        if (command.kind === 'check_in') {
+          await gate.promise;
+          throw new Error('lost native receipt');
+        }
+        return {
+          epoch,
+          value: {
+            action: { phase: 'signed', dayKey },
+            card: null,
+            detail: {
+              time: 1,
+              songId: '1',
+              song: '合成乐签',
+              artist: null,
+              coverUrl: null,
+              wish: null,
+              wishAuthor: null,
+              monthTotal: null,
+              nextReward: null,
+            },
+          },
+        };
+      },
+    }),
+    (error) => String(error),
+  );
+  m.connect('1');
+  m.show(true);
+  await Promise.resolve();
+  await m.submit({ kind: 'check_in', dayKey: '2026-10-31' });
+  assert.deepEqual(calls, []);
+  const first = m.submit({ kind: 'check_in', dayKey });
+  await m.submit({ kind: 'check_in', dayKey });
+  assert.deepEqual(calls, [{ kind: 'check_in', dayKey }]);
+  gate.resolve();
+  await first;
+  assert.equal(m.action.value?.phase, 'unknown');
+  await m.submit({ kind: 'check_in', dayKey });
+  await m.submit({ kind: 'reconcile' });
+  assert.deepEqual(calls, [{ kind: 'check_in', dayKey }, { kind: 'reconcile' }]);
+  assert.equal(m.action.value?.phase, 'signed');
+  assert.equal(m.day.value?.signed, true);
+  assert.equal(m.detail.value?.song, '合成乐签');
+  m.connect('2');
+  assert.equal(m.detail.value, undefined);
 });

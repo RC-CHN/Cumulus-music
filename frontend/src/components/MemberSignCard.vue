@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, watch, ref } from 'vue';
 import type { useMemberSign } from '../composables/useMemberSign';
+import type { MemberSignDay } from '../services/member';
 import Icon from './Icon.vue';
 
 const props = defineProps<{ model: ReturnType<typeof useMemberSign>; playable: boolean }>();
@@ -9,6 +10,50 @@ const card = computed(() => props.model.card.value);
 const detail = computed(() => props.model.detail.value);
 const selected = computed(() => props.model.day.value);
 const today = computed(() => card.value?.days.find((day) => day.today));
+const action = computed(() => props.model.action.value);
+const canViewToday = computed(
+  () => !!props.model.confirmedDetail.value || !!(today.value?.signed && today.value.signTime),
+);
+const buttonKind = computed(() => {
+  if (action.value?.phase === 'unknown') return 'reconcile';
+  if (canViewToday.value) return 'view';
+  if (action.value?.phase === 'ready' && action.value.dayKey) return 'check-in';
+});
+const actionDisabled = computed(
+  () =>
+    props.model.signBusy.value ||
+    props.model.cardBusy.value ||
+    (buttonKind.value === 'check-in' && !!props.model.cardError.value),
+);
+const buttonText = computed(() => {
+  if (props.model.signBusy.value)
+    return buttonKind.value === 'reconcile' ? '正在核对…' : '正在打卡…';
+  if (buttonKind.value === 'reconcile') return '核对打卡结果';
+  if (buttonKind.value === 'view')
+    return (today.value?.signed && card.value?.buttonText) || '查看乐签';
+  return card.value?.buttonText || '立即打卡';
+});
+function isSigned(day: MemberSignDay) {
+  return day.signed || (day.today && action.value?.phase === 'signed');
+}
+function viewDay(day: MemberSignDay) {
+  if (props.model.signBusy.value) return;
+  if (day.today && props.model.confirmedDetail.value) props.model.showConfirmedDetail();
+  else void props.model.open(day);
+}
+function activateToday(kind: typeof buttonKind.value, dayKey?: string | null) {
+  if (actionDisabled.value || kind !== buttonKind.value) return;
+  if (kind === 'reconcile') void props.model.submit({ kind: 'reconcile' });
+  else if (kind === 'check-in' && dayKey) void props.model.submit({ kind: 'check_in', dayKey });
+  else if (kind === 'view' && props.model.confirmedDetail.value) props.model.showConfirmedDetail();
+  else if (kind === 'view' && today.value) viewDay(today.value);
+}
+function activateRendered(event: MouseEvent) {
+  const button = event.currentTarget as HTMLButtonElement;
+  const kind = button.dataset.action;
+  if (kind === 'view' || kind === 'reconcile' || kind === 'check-in')
+    activateToday(kind, button.dataset.dayKey);
+}
 const dialog = ref<HTMLDialogElement>();
 watch(
   selected,
@@ -27,7 +72,11 @@ const date = computed(() =>
 </script>
 
 <template>
-  <section class="sign-card" aria-labelledby="member-sign-title" :aria-busy="model.cardBusy.value">
+  <section
+    class="sign-card"
+    aria-labelledby="member-sign-title"
+    :aria-busy="model.cardBusy.value || model.signBusy.value"
+  >
     <img
       v-if="card?.textureUrl"
       class="sign-texture"
@@ -47,37 +96,52 @@ const date = computed(() =>
     <p v-else-if="model.cardBusy.value && !card" class="sign-notice" role="status">正在读取乐签…</p>
     <template v-if="card">
       <ol v-if="card.days.length" class="sign-days" aria-label="最近打卡记录">
-        <li v-for="(day, i) in card.days" :key="i" :data-state="day.signed ? 'signed' : 'unsigned'">
+        <li
+          v-for="(day, i) in card.days"
+          :key="i"
+          :data-state="isSigned(day) ? 'signed' : 'unsigned'"
+        >
           <span>{{ day.today ? '今天' : day.label }}</span>
           <button
-            v-if="day.signed && day.signTime"
+            v-if="(day.signed && day.signTime) || (day.today && model.confirmedDetail.value)"
             class="sign-stamp"
             type="button"
             :aria-label="`查看${day.today ? '今天' : day.label}乐签`"
-            @click="model.open(day)"
+            :aria-disabled="model.signBusy.value"
+            @click="viewDay(day)"
           >
             <img v-if="day.coverUrl" :src="day.coverUrl" alt="" referrerpolicy="no-referrer" />
             <Icon v-else name="music" />
           </button>
-          <span v-else class="sign-stamp" :aria-label="day.signed ? '已打卡' : '未打卡'">
-            <Icon v-if="day.signed" name="music" />
+          <span v-else class="sign-stamp" :aria-label="isSigned(day) ? '已打卡' : '未打卡'">
+            <Icon v-if="isSigned(day)" name="music" />
             <span v-else aria-hidden="true">–</span>
           </span>
         </li>
       </ol>
       <p v-else class="sign-notice">暂无打卡记录</p>
-      <button
-        v-if="today?.signed && today.signTime"
-        class="sign-button sign-today"
-        type="button"
-        @click="model.open(today)"
-      >
-        {{ card.buttonText || '查看乐签' }}
-      </button>
-      <span v-else-if="today" class="sign-notice">{{
-        today.signed ? '今日已打卡' : '今日未打卡'
-      }}</span>
     </template>
+    <p v-if="action?.phase === 'unknown'" class="sign-notice sign-action-notice" role="status">
+      打卡结果待确认。核对只会读取记录。
+    </p>
+    <p v-if="model.signError.value" class="sign-notice sign-error" role="alert">
+      {{ model.signError.value }}
+    </p>
+    <button
+      v-if="buttonKind"
+      class="sign-button"
+      :class="{ 'sign-today': buttonKind === 'view' }"
+      type="button"
+      :aria-disabled="actionDisabled"
+      :data-action="buttonKind"
+      :data-day-key="action?.dayKey"
+      @click="activateRendered"
+    >
+      {{ buttonText }}
+    </button>
+    <span v-else-if="today" class="sign-notice">{{
+      isSigned(today) ? '今日已打卡' : '今日未打卡'
+    }}</span>
     <dialog
       ref="dialog"
       class="sign-dialog"
@@ -214,6 +278,11 @@ button.sign-stamp,
 button.sign-stamp:hover,
 .sign-button:hover {
   background: #ffe8ca;
+}
+button.sign-stamp[aria-disabled='true'],
+.sign-button[aria-disabled='true'] {
+  opacity: 0.65;
+  cursor: default;
 }
 .sign-stamp img,
 .sign-detail-cover img {
