@@ -58,5 +58,8 @@
 - [外部歌单导入](external-playlist-import-contracts.txt)支持链接和粘贴文字；提交前单独在 Interface 域扫码核对同一账号。服务任务受理与导入完成分开，未知回包及重开不重发。图片、红心目标和服务端完成查询仍按契约追踪。
 - [歌手 MV](artist-mv-discovery-contracts.txt)按官方 MV 数量门槛显示页签，用原游标续页和重试。Linux 合成桌面验证精确评论线程、原生视频画面和返回焦点；普通视频与全站 MV 发现没有用歌手列表冒充。
 - [识曲峰值选择](song-recognition-signal-contracts.txt)及[可选 zlib 封包](song-recognition-contracts.txt)有官方原生合成对照。峰值阶段接受已中心化矩阵，不接设备采集、FFT 或真实服务。
+- [经典发现首页](discovery-home-contracts.txt)接通 11 类可确认的官方区块。首页与目录详情往返保留横向和纵向位置及焦点，隐私关闭时不继续请求个性化推荐；游客和实验布局按独立证据追踪。
+- [播客最近更新](podcast-recent-contracts.txt)用官方更新游标读取订阅单集；Linux 合成桌面验证原生声音、暂停、两种双击队列策略和返回位置。逐播客更新红点和旧版推荐仍有独立边界。
+- [离线识曲声谱](song-recognition-signal-contracts.txt)从已经转换好的 8 kHz 单声道 PCM 到封包经过官方对照。[设备回采与请求](song-recognition-host-contracts.txt)目前有恢复契约，尚无产品识别。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
