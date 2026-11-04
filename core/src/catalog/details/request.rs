@@ -72,13 +72,18 @@ pub(super) fn validate(query: &CatalogQuery, response: &Value) -> Result<()> {
         CatalogQuery::ArtistVideos {
             cursor: previous, ..
         } => {
-            for row in rows(&response["data"]["records"])? {
+            let records = rows(&response["data"]["records"])?;
+            for row in records {
                 crate::catalog::metadata::VideoCardMetadata::from_official(row)?;
             }
             let page = &response["data"]["page"];
-            if !page.is_object() || !page["more"].is_boolean() || page["size"].as_u64().is_none() {
-                return Err(Error::Response("missing artist video page"));
-            }
+            let size = page["size"]
+                .as_u64()
+                .filter(|size| *size <= 100 && *size >= records.len() as u64)
+                .ok_or(Error::Response("invalid artist video page size"))?;
+            let more = page["more"]
+                .as_bool()
+                .ok_or(Error::Response("missing artist video page"))?;
             let cursor = &page["cursor"];
             let text = cursor
                 .as_str()
@@ -86,8 +91,15 @@ pub(super) fn validate(query: &CatalogQuery, response: &Value) -> Result<()> {
                 .unwrap_or_else(|| cursor.to_string());
             let next = crate::catalog::artist::video_cursor(&text)
                 .map_err(|_| Error::Response("invalid artist video next cursor"))?;
-            if page["more"] == true
-                && (page["size"] == 0 || next == crate::catalog::artist::video_cursor(previous)?)
+            // Official pages address returned rows by cursor minus size. Use
+            // canonical decimal comparison, since the cursor can exceed u64.
+            let decimal_cmp = |a: &str, b: &str| a.len().cmp(&b.len()).then_with(|| a.cmp(b));
+            if !records.is_empty() && decimal_cmp(next, &size.to_string()).is_lt() {
+                return Err(Error::Response("invalid artist video page positions"));
+            }
+            if more
+                && (size == 0
+                    || !decimal_cmp(next, crate::catalog::artist::video_cursor(previous)?).is_gt())
             {
                 return Err(Error::Response("artist video pagination did not advance"));
             }

@@ -11,6 +11,8 @@ use serde_json::Value;
 use std::{fs, path::PathBuf, sync::Arc};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
+#[path = "support/artist_mv_fixture.rs"]
+mod artist_mv_fixture;
 #[path = "support/collection_fixture.rs"]
 mod collection_fixture;
 #[path = "support/comment_read_fixture.rs"]
@@ -27,6 +29,8 @@ mod live;
 mod relay_contention;
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
+#[path = "support/search_mv_fixture.rs"]
+mod search_mv_fixture;
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
 fn main() {
@@ -48,6 +52,11 @@ fn main() {
     let profile = std::env::var_os("CUMULUS_CATALOG_PROFILE").map(PathBuf::from);
     let is_live = profile.is_some();
     let artists = std::env::var("CUMULUS_ARTIST_PROOF").as_deref() == Ok("1");
+    let artist_mv = std::env::var("CUMULUS_ARTIST_MV_PROOF").as_deref() == Ok("1");
+    assert!(
+        !artist_mv || !is_live,
+        "artist MV proof uses synthetic services only"
+    );
     assert!(
         !(artists && is_live),
         "artist proof uses synthetic services only"
@@ -87,6 +96,7 @@ fn main() {
     );
     let interactive = albums
         || artists
+        || artist_mv
         || rankings
         || album_cards
         || artist_cards
@@ -116,6 +126,7 @@ fn main() {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let contention=Arc::new(relay_contention::Fixture::new(registry.store()));
         let catalog_fixture=Arc::new(fixture::Library::default());
+        let artist_mv_fixture=Arc::new(artist_mv_fixture::Library::new(catalog_fixture.clone()));
         if album_cards {catalog_fixture.album_cards();}
         if artist_cards {catalog_fixture.artist_cards();}
         let collection_fixture=Arc::new(collection_fixture::Library::default());
@@ -126,7 +137,7 @@ fn main() {
         let relay_fixture=Arc::new(relay_fixture::Library::default());
         if relay_settings {relay_fixture.mode("setting-off");}
         if relay_recovery {relay_fixture.mode("publication-rejected");}
-        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if follow_new_song {follow_new_song_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
+        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if artist_mv {artist_mv_fixture.clone()}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if follow_new_song {follow_new_song_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
         let follow_store=registry.store();
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
@@ -143,6 +154,10 @@ fn main() {
                 Ok(Box::new(if follow_offline_head {audio.allow_download_directory(offline_dir.clone())} else {audio}))
             })
         }else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
+        let client = if artist_mv {
+            let path=search_mv_fixture::create(&root)?;
+            client.with_video_factory(Arc::new(move || Ok(Box::new(search_mv_fixture::NativeVideo::open(path.clone())?))))
+        } else {client};
         app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
@@ -235,6 +250,7 @@ fn main() {
             let collection_report=collection_context.then(|| collection_fixture.report());
             let album_card_report=(album_cards || artist_cards).then(||catalog_fixture.report());
             let release_report=follow_new_song.then(||follow_new_song_fixture.report());
+            let artist_mv_report=artist_mv.then(||artist_mv_fixture.report());
             let follow_store=follow_store.clone();
             let comment_read_report=comment_reads.then(||comment_fixture.report());
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
@@ -250,6 +266,7 @@ fn main() {
                 if let Some(report)=collection_report {value["collectionFixture"]=report;}
                 if let Some(report)=album_card_report {value["albumCardFixture"]=report;}
                 if let Some(report)=release_report {value["followNewSongFixture"]=report;}
+                if let Some(report)=artist_mv_report {value["artistMvCalls"]=serde_json::json!(report);value["nativeMvCalls"]=serde_json::json!(search_mv_fixture::calls());}
                 if let Some(report)=comment_read_report {value["commentReadFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}

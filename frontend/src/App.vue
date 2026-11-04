@@ -3460,6 +3460,7 @@ onUnmounted(() => {
                 @more="(request) => trackActions?.show(request)"
                 @download="(tracks) => (downloadDialog = { kind: 'start', tracks })"
                 @mv="openMv"
+                @mv-comments="(id, title) => openComments({ kind: 'mv', id }, title)"
                 @expired="music.bootstrap(false)"
               />
               <div v-else-if="page.kind === 'catalog'" class="empty-state">

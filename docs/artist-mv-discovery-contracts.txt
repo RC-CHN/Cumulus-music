@@ -1,0 +1,47 @@
+歌手 MV 发现：Windows PC 3.1.42.205594
+
+官方入口与边界
+- 主路由 M/205 与侧栏 M/473:8360–8486；精选 ChoiceRoot 的路由和页签
+  pages/choice/index.jsx:56–72,209–235 / M/3089:4357–4383：精选、歌单广场、排行榜、
+  歌手、VIP，及 PH-PC-zhuanqu 分组的服务专区。未发现独立的全站 MV 分类、地区筛选、
+  最新 MV 或视频广场。个人收藏的 fetchFavMVList 是 /api/mlog/mycollect/bytime/get
+  （M/3011:264–300，M/15:3617–3640），不能作为全站发现。
+- 精选主体 PageEssential.tsx:693–717 是官方歌单、歌曲、有声书和播客。匿名精选激活时的
+  横幅是独立入口（:453–470，M/3145:12–18,322–340，M/15:3305–3314），POST
+  /api/v2/banner/get {clientType:"pc",adextjson:"{}"}；M/437:93–97 将 targetType=1004
+  路由到具体 /videoDetail/:id。它不是 MV 列表，不作为本次歌手页回退。
+- M/3088:3359–3363,3419–3444：artist/v3/detail 的 artist.mvSize 为正时才出现「MV」
+  页签和 /userDetail/artist/:id/video；零、缺字段和未知不显示，不因动态视频数猜测。
+  见 M/2999:479–513。现有 Cumulus 歌手目录保持同账号代次隔离；未验证匿名读权限。
+
+列表、续页与操作
+- M/3088:2953–3019 → M/2999:313–359 → M/15:3700–3717：无缓存 POST
+  /api/mlog/artist/video {artistId:"…",tab:1,order:0,page:"{\"size\":20,\"cursor\":0}"}。
+  page 是 JSON 字符串，cursor 在其中是未经浮点转换的十进制数字；data.page.more 决定
+  续页，回传 data.page.cursor。官方 M/2999:154–176 把返回放到 cursor-size 开始的
+  位置并清理缺项；Rust 校验边界、回退/停滞，Vue 按稀疏位置合并并保留续页失败的前缀。
+- M/2019:129–167 与 M/3088:3011–3018：12 跨距、span=4 的三列虚拟瀑布，滚到近底
+  请求后续；尚有下一页时保留不完整尾行。本客户端保留可键盘操作的「加载更多」和
+  重试。若合法页无卡片但仍有续页，提供手动继续，避免空页自动连续请求。
+- VideoCard/index.tsx:212–275,276–325 / M/2093:154–209,227–281：显示 56.5% 封面、
+  播放次数/时长、悬浮播放，歌手页 showArtist=false。已确认 MV 的点击和右键「播放」
+  打开 /videoDetail/:id，右键「查看评论」走 M/622:1753–1783、M/3085:1013–1017；
+  复用已接入的 MV 详情、授权、原生播放及专属评论读取。工具栏返回恢复对应列表滚动和
+  卡片焦点；播放器「关闭视频」只停止播放。
+  菜单也支持键盘菜单键和 Shift+F10。本次不新增举报、收藏、下载、分享或复制操作。
+- M/205:230–234 虽声明 /videoDetail/:id/:type?，M/3098:2540–2559,2606–2612
+  只证明默认 mv 的详情/播放。普通视频或未识别资源只展示有界元数据，不改用 MV 请求。
+
+合成验证
+- cargo test -p cumulus-core --test artist_catalog --test catalog_details --test client_catalog --locked
+- cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+- python3 scripts/ci/catalog_smoke.py --artist-mv --binary <catalog_ui_probe> --root <新目录> --screenshots
+  实际 Linux WebView 使用封闭合成账号和 libmpv null 输出，无真实媒体请求或远程写入。
+- 2026-11-04：Linux GTK/WebKitGTK 在 en_US.UTF-8、隔离网络及合成账号下通过 9 个
+  状态、采集 9 张截图。游标 90071992547409931234 的续页失败和重试请求完全一致，
+  20 项保留并合并为 39 项；视口只挂载 24 张卡片。评论读取 R_MV_5_601，480p
+  授权只指向 601，libmpv 时钟实际前进且帧像素到达画布；两个工具栏返回均恢复
+  scrollTop=551 与原卡片焦点。无 mvSize 的另一歌手无页签且没有 MV 请求。
+  同批 --artist 独立回归通过 50 个桌面状态，3 个核心套件通过 14 个测试，前端通过
+  797 个测试，目录示例通过 Clippy。报告、截图和构建哈希见本地未提交目录
+  .build/ui-proof/artist-mv-2edfadf6/；此记录不代表 Windows 或真实服务已验证。

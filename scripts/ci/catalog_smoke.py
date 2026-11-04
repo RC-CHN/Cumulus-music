@@ -74,6 +74,7 @@ def main():
     mode.add_argument('--playback-credit', action='store_true', help='open current album and artist while playing')
     mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
     mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
+    mode.add_argument('--artist-mv', action='store_true', help='artist MV continuous loading, comments and native video')
     mode.add_argument('--album', action='store_true', help='album-local tabs, draft retention, header actions and native null playback')
     mode.add_argument('--latest-releases', action='store_true')
     mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
@@ -97,6 +98,12 @@ def main():
                   'playback_credit_ui_probe.js' if args.playback_credit else
                   'catalog_navigation_ui_probe.js' if args.navigation else 'artist_ui_probe.js')
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
+        if args.screenshots:
+            env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
+    if args.artist_mv:
+        env['CUMULUS_ARTIST_MV_PROOF'] = '1'
+        env['CUMULUS_SEARCH_MV_PROOF'] = '1'
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/artist_mv_ui_probe.js')
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
     if args.album or args.album_batch:
@@ -145,6 +152,27 @@ def main():
         raise AssertionError((output / 'failed.json').read_text(encoding='utf-8'))
     assert returncode == 0, f'catalog probe exited {returncode}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.artist_mv:
+        assert complete['ok'] and complete['stageCount'] == 9 and complete['nativeVideo']
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        stages = {p.stem.split('_', 2)[2]: json.loads(p.read_text(encoding='utf-8')) for p in output.glob('ux_*.json')}
+        assert set(stages) == {'initial', 'next_error', 'retry', 'menu', 'comments', 'comments_back', 'native_play', 'play_back', 'unknown_count'}
+        assert [stages[key]['total'] for key in ('initial', 'next_error', 'retry', 'comments_back', 'play_back', 'unknown_count')] == [20, 20, 39, 39, 39, 0]
+        assert stages['comments_back']['focus'] == stages['play_back']['focus'] == 'artist-mv:90071992547409931230:601'
+        assert stages['native_play']['nativeId'] == '601' and stages['native_play']['frames'] > 1
+        assert stages['native_play']['position'] > .15 and (not args.screenshots or captures == 9)
+        calls = complete['artistMvCalls']
+        assert [c['args'] for c in calls if c['path'] == '/api/mlog/artist/video'] == [
+            {'artistId': '12', 'tab': 1, 'order': 0, 'page': '{"size":20,"cursor":' + cursor + '}'}
+            for cursor in ('0', '90071992547409931234', '90071992547409931234')], calls
+        assert sum(c['path'] == '/api/v1/resource/comments/R_MV_5_601' for c in calls) == 1, calls
+        play = [c['args'] for c in complete['nativeMvCalls'] if c['path'] == '/api/song/enhance/play/mv/url']
+        assert play == [{'id': '601', 'r': 480}], play
+        result = dict(ok=True, actualWebView=True, states=9, screenshots=captures,
+                      nativeVideoVerified=True, realMusicRequests=0, realAccountWrites=0, artistMvCalls=calls)
+        (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(result))
+        return
     if args.latest_releases:
         assert complete['ok'] and complete['states'] == 15
         states = {p.stem.removeprefix('ux_'): json.loads(p.read_text(encoding='utf-8'))

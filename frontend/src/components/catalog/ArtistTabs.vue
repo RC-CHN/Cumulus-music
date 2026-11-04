@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { ArtistCard, ArtistTab } from '../../services/catalog';
+import { artistHasMvs } from '../../services/catalogPages';
 const props = defineProps<{
   artist: ArtistCard;
   selected: ArtistTab;
@@ -12,11 +13,11 @@ const active = computed(() => (props.selected === 'all' ? 'songs' : props.select
 const items = computed<{ key: ArtistTab; label: string; count?: number }[]>(() => [
   { key: 'songs', label: '歌曲' },
   { key: 'albums', label: '专辑', count: props.artist.albumCount },
-  ...(props.artist.mvCount !== 0 || props.selected === 'videos'
+  ...(artistHasMvs(props.artist.mvCount)
     ? [
         {
           key: 'videos' as const,
-          label: props.artist.mvCount == null ? '视频' : 'MV',
+          label: 'MV',
           count: props.artist.mvCount ?? undefined,
         },
       ]

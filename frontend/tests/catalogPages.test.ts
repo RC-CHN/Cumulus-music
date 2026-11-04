@@ -2,10 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useCatalogPages } from '../src/composables/useCatalogPages.ts';
 import { useCatalogMembership } from '../src/composables/useCatalogMembership.ts';
-import { nextCatalogQuery } from '../src/services/catalogPages.ts';
+import { artistHasMvs, artistVideoSlots, nextCatalogQuery } from '../src/services/catalogPages.ts';
 import type {
   CatalogQuery,
   CatalogView,
+  CatalogVideoCard,
   CatalogMembershipView,
   CatalogMembershipAction,
 } from '../src/services/catalog.ts';
@@ -117,6 +118,39 @@ test('large video cursors retain decimal precision and stalled pagination stops'
   });
   v.page.nextCursor = '000';
   assert.equal(nextCatalogQuery(v), null);
+  v.query.cursor = '90071992547409931234';
+  v.page.nextCursor = '90071992547409931233';
+  assert.equal(nextCatalogQuery(v), null);
+});
+test('artist MV only opens for a positive count and sparse pages replace official slots', () => {
+  for (const count of [null, undefined, 0, -1, NaN]) assert.equal(artistHasMvs(count), false);
+  assert.equal(artistHasMvs(1), true);
+  const card = (id: string): CatalogVideoCard => ({
+    id,
+    title: id,
+    kind: 'mv',
+    description: '',
+    artists: [],
+    coverUrl: null,
+    durationMs: 0,
+    playCount: 0,
+    mvId: id,
+  });
+  const page = (nextCursor: string, size: number, videos: CatalogVideoCard[]): CatalogView => ({
+    ...view(),
+    query: { kind: 'artist_videos', id: '12', cursor: '0', size: 20 },
+    page: { kind: 'artist_videos', more: true, nextCursor, size, videos },
+  });
+  assert.deepEqual(
+    artistVideoSlots([
+      page('90071992547409931234', 3, [card('1'), card('2'), card('3')]),
+      page('90071992547409931235', 3, [card('4')]),
+    ]).map(({ slot, video }) => [slot, video.id]),
+    [
+      ['90071992547409931231', '1'],
+      ['90071992547409931232', '4'],
+    ],
+  );
 });
 test('a lost membership reply inspects the journal without resending and requires reconciliation', async () => {
   const calls: string[] = [];

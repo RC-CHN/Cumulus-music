@@ -14,6 +14,7 @@ import { usePageEntryFocus } from '../composables/usePageEntryFocus';
 import { waitForViewportFrames } from '../services/viewportLayout';
 import TrackTable from './TrackTable.vue';
 import CatalogCards from './catalog/CatalogCards.vue';
+import ArtistMvGrid from './catalog/ArtistMvGrid.vue';
 import AlbumHeader from './catalog/AlbumHeader.vue';
 import AlbumContent from './catalog/AlbumContent.vue';
 import Icon from './Icon.vue';
@@ -49,6 +50,7 @@ const emit = defineEmits<{
   collectTracks: [tracks: TrackView[]];
   playTracks: [tracks: TrackView[], index: number];
   mv: [id: string];
+  mvComments: [id: string, title: string];
   expired: [];
   artistTab: [tab: ArtistTab];
   albumTab: [tab: AlbumTab];
@@ -83,6 +85,8 @@ const {
   intro,
   auxiliary,
   cards,
+  artistMvAvailable,
+  artistVideos,
   refreshState,
   refresh,
   collect,
@@ -364,7 +368,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
     :aria-label="`${resource.kind === 'artist' ? '歌手' : '专辑'}详情`"
   >
     <div
-      v-if="detail.error.value || list.error.value"
+      v-if="detail.error.value || (tab !== 'videos' && list.error.value)"
       class="catalog-error catalog-detail-error"
       role="alert"
     >
@@ -372,7 +376,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         {{ detail.error.value }}<span v-if="detail.view.value"> · 保留上次内容</span
         ><button class="text-button" :disabled="detail.loading.value" @click="refresh">重试</button>
       </div>
-      <div v-if="list.error.value" class="catalog-list-error">
+      <div v-if="tab !== 'videos' && list.error.value" class="catalog-list-error">
         {{ list.error.value }}<span v-if="list.pages.value.length"> · 保留已加载内容</span
         ><button class="text-button" :disabled="list.loading.value" @click="list.retry">
           重试
@@ -582,6 +586,20 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
               <p v-if="!intro.briefDescription && !intro.sections.length">暂无歌手介绍</p>
             </article>
           </template>
+          <template v-else-if="tab === 'videos'">
+            <ArtistMvGrid
+              v-if="artistMvAvailable"
+              :videos="artistVideos"
+              :continuation="next?.kind === 'artist_videos' ? next.cursor : null"
+              :loading="list.loading.value || list.loadingMore.value"
+              :error="list.error.value"
+              @play="emit('mv', $event)"
+              @comments="(id, title) => emit('mvComments', id, title)"
+              @more="list.more"
+              @retry="list.retry"
+            />
+            <p v-else class="empty-state">暂无 MV</p>
+          </template>
           <CatalogCards
             v-else-if="list.pages.value.length"
             v-bind="cards"
@@ -590,14 +608,20 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
             :origin="origin"
             :playing="playing"
             @open="emit('open', $event)"
-            @mv="emit('mv', $event)"
             @play-album="emit('playAlbum', $event)"
             @album-action="emit('albumAction', $event)"
             @play-artist="emit('playArtist', $event)"
             @artist-action="emit('artistAction', $event)"
           />
-          <p v-if="list.loading.value" class="catalog-loading" role="status">正在加载…</p>
-          <button v-if="next" class="load-more" :disabled="list.loading.value" @click="list.more">
+          <p v-if="tab !== 'videos' && list.loading.value" class="catalog-loading" role="status">
+            正在加载…
+          </p>
+          <button
+            v-if="tab !== 'videos' && next"
+            class="load-more"
+            :disabled="list.loading.value"
+            @click="list.more"
+          >
             {{ list.loadingMore.value ? '正在加载…' : '加载更多' }}
           </button>
         </div>

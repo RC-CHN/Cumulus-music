@@ -14,7 +14,7 @@ import {
   type CatalogPanelKey,
   type CatalogPosition,
 } from '../services/catalogNavigation.ts';
-import { nextCatalogQuery } from '../services/catalogPages.ts';
+import { artistHasMvs, artistVideoSlots, nextCatalogQuery } from '../services/catalogPages.ts';
 import { useCatalog } from './useCatalog.ts';
 import { useCatalogMembership } from './useCatalogMembership.ts';
 import { useArtistPages } from './useArtistPages.ts';
@@ -100,6 +100,8 @@ export function useCatalogSession(
   const auxiliary = computed(() =>
     detail.view.value?.page.kind === 'album' ? detail.view.value.page.read : undefined,
   );
+  const artistMvAvailable = computed(() => artistHasMvs(artist.value?.mvCount));
+  const artistVideos = computed(() => artistVideoSlots(list.pages.value));
   const cards = computed(() => ({
     albums: list.pages.value.flatMap((view) =>
       view.page.kind === 'artist_albums' ? view.page.albums : [],
@@ -107,19 +109,20 @@ export function useCatalogSession(
     artists: list.pages.value.flatMap((view) =>
       view.page.kind === 'similar_artists' ? view.page.artists : [],
     ),
-    videos: list.pages.value.flatMap((view) =>
-      view.page.kind === 'artist_videos' ? view.page.videos : [],
-    ),
     concerts: list.pages.value.flatMap((view) =>
       view.page.kind === 'artist_concerts' ? view.page.concerts : [],
     ),
   }));
+  async function readArtistTab(refresh = false) {
+    if (disposed || (tab.value === 'videos' && !artistMvAvailable.value)) return;
+    const query = artistQuery(tab.value, resource.id);
+    if (query) await list.open(query, refresh);
+  }
   async function select(location: CatalogLocation) {
     if (disposed) return;
     if (resource.kind === 'artist') {
       tab.value = location.artistTab ?? 'songs';
-      const query = artistQuery(tab.value, resource.id);
-      if (query) await list.open(query);
+      await readArtistTab();
     } else {
       albumTab.value = location.albumTab ?? 'songs';
       if (albumTab.value === 'comments' && comments.resource.value?.id !== resource.id)
@@ -147,16 +150,20 @@ export function useCatalogSession(
         ? comments.load()
         : Promise.resolve(),
     ]);
+    // A restored or evicted artist visit can be targeting MV before its own
+    // artist header returns. Never request the tab without a positive mvSize.
+    if (resource.kind === 'artist' && tab.value === 'videos') await readArtistTab();
   }
   async function refresh() {
     if (disposed) return;
     observed.value = null;
-    const query = resource.kind === 'artist' ? artistQuery(tab.value, resource.id) : undefined;
+    const mv = resource.kind === 'artist' && tab.value === 'videos';
     await Promise.all([
       detail.open(resource, true),
       refreshState(),
-      query ? list.open(query, true) : Promise.resolve(),
+      resource.kind === 'artist' && !mv ? readArtistTab(true) : Promise.resolve(),
     ]);
+    if (mv && tab.value === 'videos') await readArtistTab(true);
   }
   async function collect(reconcile = false) {
     if (disposed || (!reconcile && (subscribed.value === null || stateReading.value))) return;
@@ -210,6 +217,8 @@ export function useCatalogSession(
     intro,
     auxiliary,
     cards,
+    artistMvAvailable,
+    artistVideos,
     select,
     activate,
     refreshState,

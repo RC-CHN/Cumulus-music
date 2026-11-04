@@ -341,20 +341,23 @@ async fn official_privilege_merge_appends_missing_metadata_in_reply_order_and_ke
 async fn stalled_video_pagination_does_not_replace_the_last_known_page() {
     let (_dir, api, session, service) = fixture();
     let token = session.token().unwrap();
-    let query = CatalogQuery::ArtistVideos {
-        id: "12".into(),
-        cursor: "000".into(),
-        size: 20,
-    };
-    let saved = service.page_for(&token, &query).await.unwrap();
-    api.stalled_video.store(true, Ordering::SeqCst);
-    assert!(service.page_for(&token, &query).await.is_err());
-    assert_eq!(
-        service
-            .cached_for(&token, &query)
-            .unwrap()
-            .unwrap()
-            .response,
-        saved.response
-    );
+    for cursor in ["000", "90071992547409931234"] {
+        let query = CatalogQuery::ArtistVideos {
+            id: "12".into(),
+            cursor: cursor.into(),
+            size: 20,
+        };
+        api.stalled_video.store(false, Ordering::SeqCst);
+        let saved = service.page_for(&token, &query).await.unwrap();
+        api.stalled_video.store(true, Ordering::SeqCst);
+        assert!(service.page_for(&token, &query).await.is_err());
+        assert_eq!(
+            service
+                .cached_for(&token, &query)
+                .unwrap()
+                .unwrap()
+                .response,
+            saved.response
+        );
+    }
 }

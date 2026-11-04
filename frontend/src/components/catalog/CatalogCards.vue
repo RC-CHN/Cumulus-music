@@ -1,23 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue';
 import { useVirtualRows } from '../../composables/useVirtualRows';
-import type {
-  AlbumCard,
-  ArtistCard,
-  CatalogVideoCard,
-  ConcertCard,
-  CatalogResource,
-} from '../../services/catalog';
+import type { AlbumCard, ArtistCard, ConcertCard, CatalogResource } from '../../services/catalog';
 import type { PlayerOrigin } from '../../services/player';
 import type { AlbumCardRequest } from '../../services/catalogCards';
 import type { ArtistCardRequest } from '../../services/artistCards';
 import AlbumItem from './AlbumCard.vue';
 import ArtistItem from './ArtistCard.vue';
-import Icon from '../Icon.vue';
 const props = defineProps<{
   albums?: AlbumCard[];
   artists?: ArtistCard[];
-  videos?: CatalogVideoCard[];
   concerts?: ConcertCard[];
   playable?: boolean;
   queueable?: boolean;
@@ -27,7 +19,6 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   open: [resource: CatalogResource];
-  mv: [id: string];
   playAlbum: [album: AlbumCard];
   albumAction: [request: AlbumCardRequest];
   playArtist: [artist: ArtistCard];
@@ -35,7 +26,6 @@ const emit = defineEmits<{
 }>();
 const albums = computed(() => props.albums ?? []);
 const artists = computed(() => props.artists ?? []);
-const videos = computed(() => props.videos ?? []);
 const concerts = computed(() => props.concerts ?? []);
 const columns = ref(3);
 const availableWidth = ref(540);
@@ -43,9 +33,7 @@ const rowHeight = computed(() => {
   const width = (availableWidth.value - (columns.value - 1) * 16) / columns.value;
   return albums.value.length ? width + 80 : artists.value.length ? width + 74 : 260;
 });
-const total = computed(
-  () => albums.value.length + artists.value.length + videos.value.length + concerts.value.length,
-);
+const total = computed(() => albums.value.length + artists.value.length + concerts.value.length);
 const {
   container: scroller,
   start,
@@ -77,9 +65,6 @@ const windowAlbums = computed(() =>
 );
 const windowArtists = computed(() =>
   artists.value.slice(start.value * columns.value, end.value * columns.value),
-);
-const windowVideos = computed(() =>
-  videos.value.slice(start.value * columns.value, end.value * columns.value),
 );
 const windowConcerts = computed(() =>
   concerts.value.slice(start.value * columns.value, end.value * columns.value),
@@ -128,33 +113,6 @@ function date(value: string | number | null) {
         @play="emit('playArtist', $event)"
         @action="emit('artistAction', $event)"
       />
-      <article
-        v-for="(video, i) in windowVideos"
-        :key="`video:${i}:${video.id}`"
-        class="catalog-video-card"
-      >
-        <button
-          :disabled="!video.mvId"
-          :aria-label="`播放 MV ${video.title}`"
-          @click="video.mvId && emit('mv', video.mvId)"
-        >
-          <img
-            v-if="video.coverUrl"
-            :src="video.coverUrl"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            referrerpolicy="no-referrer"
-          /><span v-else class="catalog-card-placeholder"><Icon name="video" /></span
-          ><span v-if="video.mvId" class="catalog-video-play"><Icon name="play" /></span></button
-        ><strong :title="video.title">{{ video.title }}</strong
-        ><small :title="video.artists.map((a) => a.name).join(' / ')">{{
-          video.artists.map((a) => a.name).join(' / ')
-        }}</small
-        ><small v-if="!video.mvId">{{
-          video.kind === 'video' ? '普通视频播放暂未接入' : '暂不支持此视频类型'
-        }}</small>
-      </article>
       <article
         v-for="(concert, i) in windowConcerts"
         :key="`concert:${i}:${concert.id}`"
