@@ -18,7 +18,7 @@ PLAYLIST = "/api/v6/playlist/detail"
 PLAY = "/api/song/enhance/player/url/v1"
 MODULES = ["carousel", "horizontal", "ranking", "grid"]
 CASES = {
-    "full": ("menu", "rock_modules", "album_back", "playlist_back", "playlist_play", "rock_hot", "jazz_fallback"),
+    "full": ("menu_open", "menu", "rock_modules", "album_back", "playlist_back", "playlist_play", "rock_hot", "jazz_fallback"),
     "privacy": ("privacy_gate", "privacy_settings"),
 }
 
@@ -54,6 +54,7 @@ def check_case(directory, case, screenshots, windows):
         if screenshots:
             assert path.with_suffix(".png").is_file()
     if case == "full":
+        assert rows["menu_open"]["focus"] == "JAZZ" and rows["menu"]["focus"] == "更多"
         assert rows["rock_modules"]["modules"] == MODULES
         assert rows["rock_hot"]["modules"] == rows["jazz_fallback"]["modules"] == ["grid"]
         assert rows["jazz_fallback"]["zoneTitle"] == "爵士"
@@ -138,8 +139,9 @@ def main():
         assert code == 0, (case, code, directory)
         result[case] = check_case(directory, case, args.screenshots, windows)
     summary = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, windowsMediaRuntime=media,
-                   stateCount=sum(map(len, CASES.values())), realMusicRequests=0, realAccountWrites=0,
-                   cases=result)
+                   stateCount=sum(map(len, CASES.values())),
+                   screenshots=sum(map(len, CASES.values())) if args.screenshots else 0,
+                   realMusicRequests=0, realAccountWrites=0, cases=result)
     (root / "audit.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary))
 

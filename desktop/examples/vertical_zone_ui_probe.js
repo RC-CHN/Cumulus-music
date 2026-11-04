@@ -29,6 +29,14 @@
   const back = () => click(one('[aria-label="返回上一页"]'), 'Back');
   let count = 0;
   async function capture(name, values = {}) {
+    await wait(() => {
+      const page = one('.page-view');
+      return page && !page.matches('.page-enter-active,.page-leave-active') &&
+        getComputedStyle(page).opacity === '1';
+    }, `settled page before ${name}`);
+    // Allow the settled layout/focus to reach the compositor before the host
+    // captures the actual X11 pixels. The DOM can be ready during enter.
+    await sleep(100);
     const stage = `ux_${String(++count).padStart(2, '0')}_${name}`;
     await emit(stage, {
       ...values, captureHandshake: true,
@@ -72,9 +80,18 @@
     if (!window.__verticalZonePrivacy) {
       click(more(), '更多');
       await wait(() => menu('JAZZ') && document.activeElement === menu('JAZZ'), 'More entry focus');
+      await wait(() => {
+        const entry = menu('JAZZ');
+        const panel = entry?.closest('.choice-zone-panel');
+        if (!panel || panel.matches('.menu-enter-active,.menu-leave-active')) return false;
+        const rect = entry.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 &&
+          entry.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+      }, 'More entry can be seen and clicked');
+      await capture('menu_open', { focus: document.activeElement.dataset.choiceZone });
       menu('JAZZ').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await wait(() => more().getAttribute('aria-expanded') === 'false' && document.activeElement === more(), 'More escape restores focus');
-      await capture('menu');
+      await capture('menu', { focus: document.activeElement.textContent.trim() });
     }
     click(menu('ROCK'), '摇滚');
     await wait(() => zone()?.getAttribute('aria-label') === '摇滚' && tab('default')?.getAttribute('aria-current') === 'page' &&
