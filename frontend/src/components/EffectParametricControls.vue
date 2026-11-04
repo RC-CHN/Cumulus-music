@@ -1,11 +1,17 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import { effectRegistrationChanged } from '../composables/useEffectRegistrationChanges';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
 import type { EffectPeqPhase, EffectPeqView } from '../services/effectDirectory';
+import type { BoundParametricStatus } from '../services/player';
 
-const props = defineProps<{ epoch: string; effectId: number; allowed: boolean }>();
+const props = defineProps<{
+  epoch: string;
+  effectId: number;
+  allowed: boolean;
+  bindingStatus?: BoundParametricStatus;
+}>();
 const core = useCore();
 const group = ref<HTMLElement>();
 const view = shallowRef<EffectPeqView>();
@@ -16,6 +22,7 @@ let alive = true;
 let observation = 0;
 let observationTimer: ReturnType<typeof setTimeout> | undefined;
 let observationRead: Promise<EffectPeqView> | undefined;
+let bindingRefreshPending = false;
 
 const labels: Record<EffectPeqPhase, string> = {
   idle: '可检查是否支持独立参数均衡',
@@ -27,6 +34,17 @@ const labels: Record<EffectPeqPhase, string> = {
   recovery_required: '此音效有待处理的登记或本地状态',
 };
 const another = computed(() => !!view.value?.activeId && view.value.activeId !== props.effectId);
+const phaseLabel = computed(() => {
+  const current = view.value;
+  if (!current) return '独立参数均衡状态待查询';
+  if (
+    current.phase === 'recovery_required' &&
+    current.registration === 'registered' &&
+    !props.bindingStatus
+  )
+    return '此音效未在播放器中应用，仍有登记待清理。';
+  return labels[current.phase];
+});
 const mayPrepare = computed(
   () =>
     props.allowed &&
@@ -84,6 +102,23 @@ function observeDeferred() {
   schedule();
 }
 
+function refreshBinding() {
+  if (!alive || !bindingRefreshPending || busy.value || confirmation.value) return;
+  bindingRefreshPending = false;
+  void run(() => core.effectPeqStatus(props.epoch, props.effectId));
+}
+watch(
+  () => props.bindingStatus,
+  () => {
+    const phase = view.value?.phase;
+    if (phase !== 'configured' && phase !== 'deferred' && phase !== 'recovery_required') return;
+    // The player projection is not a receipt for this exact effect. Re-read
+    // the selected binding locally after its native state changes.
+    bindingRefreshPending = true;
+    refreshBinding();
+  },
+);
+
 async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration = false) {
   if (busy.value || !alive) return;
   const epoch = props.epoch;
@@ -111,7 +146,8 @@ async function run(action: () => Promise<EffectPeqView>, mayChangeRegistration =
     if (mutationDispatched) effectRegistrationChanged(epoch);
     if (alive) {
       busy.value = false;
-      observeDeferred();
+      if (bindingRefreshPending) refreshBinding();
+      else observeDeferred();
       await nextTick();
       if (alive && focused && document.activeElement === document.body)
         group.value?.focus({ preventScroll: true });
@@ -148,6 +184,7 @@ async function cancelStop() {
   confirmation.value = undefined;
   await nextTick();
   if (alive) group.value?.querySelector<HTMLButtonElement>('[data-peq-action="stop"]')?.focus();
+  refreshBinding();
 }
 
 onMounted(() => void run(() => core.effectPeqStatus(props.epoch, props.effectId)));
@@ -161,13 +198,7 @@ onBeforeUnmount(() => {
   <div ref="group" tabindex="-1" class="effect-parametric" :data-peq-phase="view?.phase">
     <p role="status">
       {{
-        busy
-          ? '正在处理独立参数均衡…'
-          : another
-            ? '请先处理另一个音效的独立参数均衡'
-            : view
-              ? labels[view.phase]
-              : '独立参数均衡状态待查询'
+        busy ? '正在处理独立参数均衡…' : another ? '请先处理另一个音效的独立参数均衡' : phaseLabel
       }}
     </p>
     <p v-if="error || view?.issue" role="alert">{{ error || view?.issue }}</p>

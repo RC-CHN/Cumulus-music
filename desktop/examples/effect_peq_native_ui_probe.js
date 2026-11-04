@@ -69,6 +69,25 @@
     }, 'same native playback advances through PEQ');
     await capture('02_configured');
 
+    if (window.__cumulusPeqPlayerStop) {
+      stage = 'player-stop';
+      const stopped = await invoke('player_action', { epoch, action: { kind: 'stop' } });
+      assert(stopped.state === 'idle' && !stopped.boundParametric, 'ordinary stop clears the local PEQ');
+      await wait(() => phase('recovery_required') && enabled(action('stop')) &&
+        controls().textContent.includes('仍有登记待清理'), 'visible PEQ details update after ordinary stop');
+      await capture('03_player_stopped');
+      click(action('stop'));
+      await wait(() => phase('recovery_required') && enabled(action('stop')) &&
+        action('stop').textContent.includes('未确认'), 'explicit cleanup response is uncertain');
+      click(action('stop'));
+      click(await wait(() => enabled(action('confirm-stop')), 'confirm exact cleanup retry'));
+      await wait(() => phase('idle') && !one('[data-effect-registration="300"]'),
+        'explicit cleanup releases the local registration');
+      await capture('04_player_stop_released');
+      await emit('complete', { ok: true, stageCount: 4, playerStopStatusVerified: true });
+      return;
+    }
+
     stage = 'direct-management';
     click(button(one('.effect-directory[open]'), '关闭音效目录'));
     await wait(() => !one('.effect-directory[open]'), 'initial directory closes');

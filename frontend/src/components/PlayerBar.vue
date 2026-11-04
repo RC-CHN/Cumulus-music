@@ -689,6 +689,7 @@ async function seek(event: Event) {
     <EffectDirectory
       v-if="effectDirectoryOpen"
       :account="account"
+      :binding-status="view?.boundParametric"
       @close="effectDirectoryOpen = false"
       @login="loginFromEffects"
     />

@@ -376,6 +376,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
   <EffectDirectory
     v-if="directoryOpen"
     :account="account"
+    :binding-status="parametric"
     :initial-management-only="managementOnly"
     @close="directoryOpen = false"
     @login="emit('login')"

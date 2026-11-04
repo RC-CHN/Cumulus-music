@@ -16,11 +16,17 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--player-stop', action='store_true', help='stop ordinary playback before explicit PEQ cleanup')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_peq_native_ui_probe.js'
+    if args.player_stop:
+        script = root / 'player-stop.js'
+        script.write_text('window.__cumulusPeqPlayerStop = true;\n' + source.read_text(encoding='utf-8'),
+                          encoding='utf-8')
+        source = script
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_UX_SCRIPT=str(source), CUMULUS_MOTION_PROOF='1',
                CUMULUS_EFFECT_PEQ_NATIVE_PROOF='1', CUMULUS_AUDIO_FILTER=str(args.library.resolve(strict=True)))
     if args.frontend_dist:
@@ -43,23 +49,31 @@ def main():
         return json.loads((output / (name + '.json')).read_text(encoding='utf-8'))
 
     complete = read('complete')
-    assert complete['ok'] and complete['stageCount'] == 5 and complete['sameNativePlayback']
-    assert complete['directManagementVerified'] and complete['scopedBypassVerified']
-    assert complete['lateStopVerified']
+    stages = 4 if args.player_stop else 5
+    assert complete['ok'] and complete['stageCount'] == stages
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
-    uncertain = read('ux_03_stop_uncertain')['nativePeq']
-    reconciled = read('ux_04_reconciled')['nativePeq']
-    released = read('ux_05_released')['nativePeq']
     assert prepared['materialGets'] == 1 and prepared['starts'] == prepared['attaches'] == 0
     assert configured['starts'] == configured['attaches'] == 1 and configured['nativeAttached']
     assert configured['processedSamples'] > 0 and configured['failedBlocks'] == 0
-    assert uncertain['stops'] == uncertain['detaches'] == 1 and not uncertain['nativeAttached']
-    assert uncertain['calls'] == configured['calls'] + [
-        {'path': '/api/usertool/sound/queryAllSound', 'result': 'ack'},
-        {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
-    ]
-    assert reconciled == uncertain
+    if args.player_stop:
+        assert complete['playerStopStatusVerified']
+        player_stopped = read('ux_03_player_stopped')['nativePeq']
+        assert player_stopped['stops'] == 0 and player_stopped['detaches'] == 1
+        assert not player_stopped['nativeAttached'] and player_stopped['calls'] == configured['calls']
+        released = read('ux_04_player_stop_released')['nativePeq']
+    else:
+        assert complete['sameNativePlayback'] and complete['directManagementVerified']
+        assert complete['scopedBypassVerified'] and complete['lateStopVerified']
+        uncertain = read('ux_03_stop_uncertain')['nativePeq']
+        reconciled = read('ux_04_reconciled')['nativePeq']
+        released = read('ux_05_released')['nativePeq']
+        assert uncertain['stops'] == uncertain['detaches'] == 1 and not uncertain['nativeAttached']
+        assert uncertain['calls'] == configured['calls'] + [
+            {'path': '/api/usertool/sound/queryAllSound', 'result': 'ack'},
+            {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
+        ]
+        assert reconciled == uncertain
     assert released == complete['nativePeq']
     assert released['stops'] == 2 and released['detaches'] == 1 and not released['nativeAttached']
     assert released['failedBlocks'] == 0
@@ -75,8 +89,8 @@ def main():
         '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
         '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
         '/api/vipauth/app/interests/auth/query', '/api/vipauth/app/interests/auth/query',
-        '/api/vipauth/app/interests/recyclequery', '/api/usertool/sound/queryAllSound',
-    ]
+        '/api/vipauth/app/interests/recyclequery',
+    ] + ([] if args.player_stop else ['/api/usertool/sound/queryAllSound'])
 
     # Audit the completed synthetic profile independently of the renderer and
     # Rust trace; do not export the opaque registration record.
@@ -88,12 +102,13 @@ def main():
     assert len(rows) == 1 and rows[0][:2] == ('2', '300')
     lease = json.loads(rows[0][2])
     assert lease['phase'] == 'released' and lease['start_acknowledged'] and lease['stop_acknowledged']
-    assert len(list(output.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.png'))) == (stages if args.screenshots else 0)
+    checks = {'playerStopStatusVerified': True} if args.player_stop else {
+        'scopedBypassVerified': True, 'lateStopVerified': True,
+    }
     print(json.dumps(dict(ok=True, actualWebView=True, actualNativePcm=True, nullOutput=True,
                           processedSamples=released['processedSamples'], syntheticStarts=1,
-                          syntheticStops=2, durableReleased=True, scopedBypassVerified=True,
-                          lateStopVerified=True,
-                          realAccountWrites=0)))
+                          syntheticStops=2, durableReleased=True, realAccountWrites=0, **checks)))
 
 
 if __name__ == '__main__':

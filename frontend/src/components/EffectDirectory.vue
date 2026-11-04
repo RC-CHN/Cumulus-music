@@ -10,11 +10,16 @@ import type {
   EffectAccess,
   PendingEffectRegistration,
 } from '../services/effectDirectory';
+import type { BoundParametricStatus } from '../services/player';
 import Icon from './Icon.vue';
 import EffectDeviceDirectory from './EffectDeviceDirectory.vue';
 import EffectParametricControls from './EffectParametricControls.vue';
 
-const props = defineProps<{ account: AccountView; initialManagementOnly?: boolean }>();
+const props = defineProps<{
+  account: AccountView;
+  initialManagementOnly?: boolean;
+  bindingStatus?: BoundParametricStatus;
+}>();
 const emit = defineEmits<{ close: []; login: [] }>();
 const core = useCore();
 const { effective: appearance } = useAppearance();
@@ -360,6 +365,7 @@ onUnmounted(() => {
         :epoch="account.epoch"
         :effect-id="selected.id"
         :allowed="!recoveryOnly && access === 'allowed'"
+        :binding-status="bindingStatus"
       />
     </section>
   </dialog>
