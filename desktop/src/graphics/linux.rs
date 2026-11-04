@@ -21,8 +21,8 @@ pub fn configure(view: &webkit2gtk::WebView) {
     };
     settings.set_enable_smooth_scrolling(true);
     // WebKit's compositing policy is independent of the GL implementation.
-    // Software mode selects Mesa and SHM before the process starts, while
-    // retaining this compositor to paint layered pages and dialogs.
+    // Software mode selects Mesa before startup and retains this compositor
+    // to paint layered pages and dialogs. Only X11 forces SHM presentation.
     settings.set_hardware_acceleration_policy(webkit2gtk::HardwareAccelerationPolicy::Always);
     // SAFETY: runs on the GTK main thread; settings stays owned throughout;
     // each borrowed feature/string is only used while the owning list lives.

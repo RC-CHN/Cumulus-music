@@ -35,38 +35,56 @@ pub unsafe fn prepare_process() {
                     .and_then(|p| p.file_name().map(|s| s == "nvidia"))
                     .unwrap_or(false)
             });
-        let defaults: &[(&str, &str)] = match mode.as_str() {
-            // Keep the WebKit compositor: its unaccelerated page path can
-            // leave a working DOM behind a white/stale content surface. Mesa
-            // rasterizes in software; WebKit presents via shared memory.
-            "software" if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() => &[
-                ("LIBGL_ALWAYS_SOFTWARE", "1"),
-                ("WEBKIT_FORCE_DMABUF_RENDERER", "1"),
-                ("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1"),
-            ],
-            // Do not conflict with an explicit WebKit renderer opt-out.
-            "software" => &[("LIBGL_ALWAYS_SOFTWARE", "1")],
-            "gpu-shm" => &[
-                ("WEBKIT_FORCE_DMABUF_RENDERER", "1"),
-                ("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1"),
-            ],
-            "gpu" => &[("WEBKIT_FORCE_DMABUF_RENDERER", "1")],
-            "auto" if nvidia && wayland => &[
-                ("WEBKIT_FORCE_DMABUF_RENDERER", "1"),
-                ("__NV_DISABLE_EXPLICIT_SYNC", "1"),
-            ],
-            "auto" if nvidia => &[
-                ("WEBKIT_FORCE_DMABUF_RENDERER", "1"),
-                ("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1"),
-            ],
-            _ => &[],
-        };
-        for &(key, value) in defaults {
+        let dmabuf_override = std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_some();
+        for &(key, value) in linux_defaults(&mode, wayland, nvidia, dmabuf_override) {
             if std::env::var_os(key).is_none() {
                 // SAFETY: entry-point-only initialization, before GUI and workers.
                 unsafe { std::env::set_var(key, value) };
             }
         }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_defaults(
+    mode: &str,
+    wayland: bool,
+    nvidia: bool,
+    dmabuf_override: bool,
+) -> &'static [(&'static str, &'static str)] {
+    const MESA: (&str, &str) = ("LIBGL_ALWAYS_SOFTWARE", "1");
+    const ENABLE_TRANSPORT: (&str, &str) = ("WEBKIT_FORCE_DMABUF_RENDERER", "1");
+    const FORCE_SHM: (&str, &str) = ("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1");
+    match mode {
+        // Keep WebKit compositing. Forced shared memory resolves stale layers
+        // on X11 but can stall frames on native NVIDIA Wayland.
+        "software" if !wayland && !dmabuf_override => &[MESA, ENABLE_TRANSPORT, FORCE_SHM],
+        "software" => &[MESA],
+        "gpu-shm" => &[ENABLE_TRANSPORT, FORCE_SHM],
+        "gpu" => &[ENABLE_TRANSPORT],
+        "auto" if nvidia && wayland => &[ENABLE_TRANSPORT, ("__NV_DISABLE_EXPLICIT_SYNC", "1")],
+        "auto" if nvidia => &[ENABLE_TRANSPORT, FORCE_SHM],
+        _ => &[],
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::linux_defaults;
+
+    #[test]
+    fn software_renderer_retains_the_backend_specific_transport() {
+        let mesa = ("LIBGL_ALWAYS_SOFTWARE", "1");
+        assert_eq!(linux_defaults("software", true, true, false), &[mesa]);
+        assert_eq!(linux_defaults("software", false, false, true), &[mesa]);
+        assert_eq!(
+            linux_defaults("software", false, false, false),
+            &[
+                mesa,
+                ("WEBKIT_FORCE_DMABUF_RENDERER", "1"),
+                ("WEBKIT_DMABUF_RENDERER_FORCE_SHM", "1")
+            ]
+        );
     }
 }
 
