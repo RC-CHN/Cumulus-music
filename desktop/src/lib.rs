@@ -37,6 +37,7 @@ pub mod mini;
 mod mv;
 mod network_diagnostics;
 mod platform;
+pub mod playback_keep_awake;
 mod player;
 mod playlist_cover;
 mod playlists;

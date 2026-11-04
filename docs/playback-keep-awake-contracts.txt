@@ -1,0 +1,55 @@
+播放防休眠：3.1.42.205594 Windows 路径及未激活适配
+
+官方设置、路由和运行触发
+
+- hybrid_app.chunk.1482700000000.js/147.js:2307–2322 定义 PH-PC-keepAwake
+  isOpen=true，默认 expGroupName 为空；hybrid_64.chunk.1482700000000.js/
+  3097.js:1611、1875–1905 只在 t1 且非 macOS 的设置「播放」页显示
+  「音乐播放时不自动休眠或熄屏」。Play.jsx:209–222、384–415 和 M/116:
+  313–322、394–399、507–516 表明开关默认为 false，提交 setting/updateSetting，
+  合并通用本地 setting 存储并提示设置已更新。不发送网络设置请求，也不直接
+  调原生电源 API。
+- M/70:77–82、121–128、166 限制引导：路径 / 或 /homePage、非 macOS、t1、
+  设置未开启、keepAwakeGuideTipShowed 未存；还受更高优先级弹层限制。恢复的
+  Header/index.jsx:686–709、856–867 在成功展示后保存已展示标记，关闭不启用；
+  「去设置」关闭引导并跳 /setting/play/<DateSync 毫秒>。返回或关闭引导都不写
+  disableSystemSleep。默认开关、提示和引导只记录来源，本批未接 UI 或持久化。
+- M/473:10580–10622、10705–10713、12872–12879 在应用根下挂载效果。依赖仅为
+  [disableSystemSleep,isPlaying]，挂载及任一依赖变化时调一次；不改变 isPlaying 的状态变化，以及
+  歌曲、进度或实验变化本身，不额外调用，未见该效果的显式卸载回调。isPlaying 等于 M/7:54
+  的 playingState == Playing (2)，其余枚举 Stop (0)、Pause (1)、End (-1)。
+  非 macOS 才派发；设置和 Playing 均为真时同时防系统休眠和熄屏，否则清除两者。
+  t1 控制设置/引导曝光，不参与这一执行条件；已保存的 true 在非 t1 时仍可生效。
+- M/308:941–978 在若干恢复路径先将模型设为 Playing，再执行原生恢复/加载；
+  3312–3334 的原生 buffering 通知只记日志，不改 playingState。不能按
+  Cumulus 播放器 Buffering 一律释放，也不能凭一次解码进度补造原始模型信号。
+
+原生边界
+
+- M/4:13871–13884 的 Os.setAudioPowerManage 调用 os.setPowerRequests，
+  {enable:true,preventSystemSleep:<布尔>,preventDisplaySleep:<布尔>}。
+  清除时 enable 也为 true；屏幕与系统字段缺省 false。效果不等待回执或重试。
+- 解包的 x64 redist_packages/cloudmusic.dll SHA-256
+  557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+  RVA f6bf91–f6bfa6 的注册将 setPowerRequests 指到 f6d190。
+  f6d556–f6d75b 默认 display=false、system=false、enable=true，并读取同名字段。
+  f6d760–f6d7ac 从 ES_CONTINUOUS (0x80000000) 开始；enable 为 true 才合并
+  ES_SYSTEM_REQUIRED (0x1) 与 ES_DISPLAY_REQUIRED (0x2)。f6d7b2 通过
+  IAT 19ef7d0 调 kernel32!SetThreadExecutionState；活跃 0x80000003，清除
+  0x80000000。f6d7be 检查零返回，失败取错误并走错误响应；非零进入成功响应。
+  不使用 away mode，不改变电源计划，不重试。平台线程语义参考 Microsoft
+  https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setthreadexecutionstate。
+
+社区实现和验证
+
+core/playback/keep_awake.rs 的纯模型只接恢复的枚举及设置，不推测现有 Rust
+状态对应关系；desktop/playback_keep_awake.rs 提供不能跨线程传送或共享的
+Windows 适配器，构造不调用平台 API。显式 apply 只调一次，失败返回系统错误；
+已成功启用的适配器析构时尽力清除，这是未来宿主的额外安全清理，不称官方等价。
+调用者必须使用同一个专用系统线程，不能在共享线程上覆盖其他组件的请求。
+
+本地 Node VM 执行 M/473 的原始效果体及 M/4 的桥接函数，核对十条合成观察、
+重复依赖抑制和 macOS 不调用；Rust 冻结同样的状态/请求测试及 Windows 标志测试。
+本批未接设置、引导、IPC、生产宿主、实验刷新或 Linux 休眠抑制；没有调用 Windows
+原生接口或在物理机上验证休眠。正式接线前仍需验证原始模型信号的完整映射、宿主
+线程寿命、设置读写及休眠回归。没有账号读写或外部服务请求。

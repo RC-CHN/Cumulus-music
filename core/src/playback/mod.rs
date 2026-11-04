@@ -9,6 +9,7 @@ pub use constraint::PlaybackConstraint;
 pub mod engine;
 pub mod failure;
 pub mod intelligence;
+pub mod keep_awake;
 pub mod output;
 pub mod preferences;
 pub mod preflight;
