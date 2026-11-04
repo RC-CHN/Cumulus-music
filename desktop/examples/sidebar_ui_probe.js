@@ -75,6 +75,29 @@
       b = scroll().getBoundingClientRect();
     return a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
   }
+  const point = (node, offset = 0.5) => {
+    assert(node, 'drag target is mounted');
+    const b = node.getBoundingClientRect();
+    const pos = { clientX: b.left + 28, clientY: b.top + offset * b.height };
+    const viewport = scroll().getBoundingClientRect();
+    assert(pos.clientY >= viewport.top && pos.clientY <= viewport.bottom,
+      `drag point on ${node.dataset.sidebarId} is visible: ${pos.clientY} vs ${viewport.top}–${viewport.bottom}`);
+    return pos;
+  };
+  const pointer = (node, name, pos) =>
+    node.dispatchEvent(new PointerEvent(name, {
+      ...pos, pointerType: 'mouse', pointerId: 41, button: 0,
+      buttons: name === 'pointerup' ? 0 : 1, bubbles: true, cancelable: true,
+    }));
+  async function dragTo(source, target, offset, label) {
+    pointer(row(source), 'pointerdown', point(row(source)));
+    const end = point(row(target), offset);
+    pointer(document, 'pointermove', end);
+    await wait(() => one('.sidebar-drop-line'), 'visible insertion marker');
+    if (label) await capture(label);
+    pointer(document, 'pointerup', end);
+    await wait(() => !one('.sidebar-row-dragging'), 'drag released');
+  }
   let count = 0,
     maxRows = 0,
     step = "startup",
@@ -417,6 +440,68 @@
     await expanded("created", false);
     await capture("reduced_motion");
     window.__motionProof.system(false);
+    await expanded('created', true);
+    await top('created');
+    const base = await fixture('success');
+    assert(base.writes === 0, 'no preexisting reorder writes');
+
+    // Both adjacent boundaries of the source row are no-ops. Move into the
+    // subscribed group before releasing; the original pointer remains owned.
+    await dragTo('2', '2', 0.12);
+    pointer(row('3'), 'pointerdown', point(row('3')));
+    pointer(document, 'pointermove', point(row('2'), 0.12));
+    await wait(() => one('.sidebar-drop-line'), 'active created drag');
+    await top('subscribed');
+    const cross = point(row('1201'), 0.12);
+    pointer(document, 'pointermove', cross);
+    await wait(() => !one('.sidebar-drop-line'), 'other group hides marker');
+    pointer(document, 'pointerup', cross);
+    assert((await fixture('success')).writes === 0, 'no-op and cross group do not write');
+    await capture('drag_other_group_cancelled');
+
+    await top('created');
+    const startScroll = scroll().scrollTop;
+    pointer(row('3'), 'pointerdown', point(row('3')));
+    const box = scroll().getBoundingClientRect();
+    const edge = { clientX: point(row('3')).clientX, clientY: box.bottom - 4 };
+    pointer(document, 'pointermove', edge);
+    await wait(() => scroll().scrollTop > startScroll + 520 && !row('3'), 'edge scroll recycles source');
+    assert(one('.sidebar-drop-line'), 'marker survives recycling');
+    await capture('drag_edge_scroll');
+    key(document.body, 'Escape');
+    await wait(() => !one('.sidebar-drop-line'), 'escape removes marker');
+    pointer(document, 'pointerup', edge);
+    assert((await fixture('success')).writes === 0, 'escape does not write');
+
+    await top('created');
+    await fixture('stale_order');
+    await dragTo('4', '2', 0.12);
+    await wait(() => one('[data-sidebar-order-notice]')?.textContent.includes('歌单列表已变化'),
+      'changed remote order is rejected');
+    assert((await fixture('success')).writes === 0, 'stale drop does not write');
+    await capture('drag_stale_order');
+
+    await top('created');
+    await dragTo('3', '2', 0.12, 'drag_created_marker');
+    await wait(() => row('3')?.dataset.sidebarIndex === '0', 'created readback');
+    assert((await fixture('success')).createdOrder.join() === '1,3,2,4,5', 'favorite retained');
+    await capture('drag_created_confirmed');
+    await top('created');
+    await dragTo('3', '2', 0.88);
+    await wait(() => row('2')?.dataset.sidebarIndex === '0', 'created original restored');
+    await expanded('created', false);
+    step = 'drag_subscribed_setup';
+    await top('subscribed');
+    await wait(() => row('1201') && row('1202'), 'subscribed first rows mounted');
+    await dragTo('1202', '1201', 0.12, 'drag_subscribed_marker');
+    await wait(() => row('1202')?.dataset.sidebarIndex === '0', 'subscribed readback');
+    assert((await fixture('success')).subscribedOrder.join() === '1202,1201,1203,1204,1205',
+      'subscribed permutation');
+    await capture('drag_subscribed_confirmed');
+    await top('subscribed');
+    await wait(() => row('1201') && row('1202'), 'subscribed reordered rows mounted');
+    await dragTo('1202', '1201', 0.88);
+    await wait(() => row('1201')?.dataset.sidebarIndex === '0', 'subscribed original restored');
     await fixture("expired");
     await click(button("刷新当前页面"));
     await wait(() => one(".welcome"), "session expired");
@@ -435,6 +520,7 @@
       realAccountWrites: 0,
       focusRecovery: true,
       foldingVerified: true,
+      reorderVerified: true,
     });
   } catch (error) {
     await emit("failed", {

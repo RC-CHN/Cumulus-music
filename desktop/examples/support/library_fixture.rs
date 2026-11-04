@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock};
 struct State {
     mode: String,
     order: Vec<u64>,
+    subscribed_order: Vec<u64>,
     reads: u64,
     writes: u64,
     removed: Vec<u64>,
@@ -32,7 +33,7 @@ pub fn control(value: &Value) {
 }
 pub fn report() -> Value {
     let s = state().lock().unwrap();
-    json!({"reads":s.reads,"writes":s.writes,"detailReads":s.detail_reads,"removed":s.removed,"added":s.added,"trackWrites":s.track_writes})
+    json!({"reads":s.reads,"writes":s.writes,"detailReads":s.detail_reads,"removed":s.removed,"added":s.added,"trackWrites":s.track_writes,"createdOrder":s.order.iter().take(5).collect::<Vec<_>>(),"subscribedOrder":s.subscribed_order.iter().take(5).collect::<Vec<_>>()})
 }
 fn observed(s: &State, id: u64) -> Value {
     let mut value = playlist(id);
@@ -133,10 +134,21 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 })
                     .collect(),
             };
-            if !s.order.is_empty() && s.mode != "shrink" && s.mode != "empty" {
-                let rest: Vec<_> = ids.into_iter().filter(|id| !s.order.contains(id)).collect();
+            if (!s.order.is_empty() || !s.subscribed_order.is_empty())
+                && s.mode != "shrink"
+                && s.mode != "empty"
+            {
+                let ordered: std::collections::HashSet<_> =
+                    s.order.iter().chain(&s.subscribed_order).copied().collect();
+                let rest: Vec<_> = ids.into_iter().filter(|id| !ordered.contains(id)).collect();
                 ids = s.order.clone();
+                ids.extend(&s.subscribed_order);
                 ids.extend(rest);
+            }
+            if s.mode == "stale_order" {
+                let a = ids.iter().position(|id| *id == 2).unwrap();
+                let b = ids.iter().position(|id| *id == 3).unwrap();
+                ids.swap(a, b);
             }
             ids.retain(|id| !s.removed.contains(id));
             for id in &s.added {
@@ -229,10 +241,19 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         _ => {
             let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
             let ids: Vec<u64> = ids.iter().map(id).collect();
-            assert_eq!(ids.len(), 60);
-            assert_eq!(ids[0], 1);
-            assert!(ids.iter().all(|id| (1..=60).contains(id)));
-            s.order = ids;
+            let sidebar = std::env::var_os("CUMULUS_SIDEBAR_UI_PROOF").is_some();
+            let max_owned = if sidebar { 1200 } else { 60 };
+            assert_eq!(ids.len(), max_owned as usize);
+            let unique: std::collections::HashSet<_> = ids.iter().copied().collect();
+            assert_eq!(unique.len(), ids.len());
+            if ids[0] <= max_owned {
+                assert_eq!(ids[0], 1);
+                assert!(ids.iter().all(|id| (1..=max_owned).contains(id)));
+                s.order = ids;
+            } else {
+                assert!(sidebar && ids.iter().all(|id| (1201..=2400).contains(id)));
+                s.subscribed_order = ids;
+            }
             s.writes += 1;
             Ok(json!({"code":200}))
         }

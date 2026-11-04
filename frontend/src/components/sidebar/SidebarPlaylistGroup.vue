@@ -3,6 +3,8 @@ import { computed, nextTick, ref, watch } from 'vue';
 import type { PlaylistView } from '../../services/contracts';
 import type { MenuItem } from '../../services/menu';
 import { useOuterVirtualRows } from '../../composables/useOuterVirtualRows';
+import { useSidebarPlaylistDrag } from '../../composables/useSidebarPlaylistDrag';
+import type { SidebarPlaylistMove } from '../../services/sidebar';
 import Icon from '../Icon.vue';
 import ActionMenu from '../ActionMenu.vue';
 import SidebarPlaylistRow from './SidebarPlaylistRow.vue';
@@ -10,6 +12,7 @@ const props = defineProps<{
   group: 'created' | 'subscribed';
   playlists: PlaylistView[];
   expanded: boolean;
+  orderDisabled: boolean;
   scroller?: HTMLElement;
   selectedId?: string;
   playingId?: string;
@@ -20,6 +23,7 @@ const emit = defineEmits<{
   create: [];
   open: [list: PlaylistView];
   action: [list: PlaylistView, key: string];
+  reorder: [move: SidebarPlaylistMove];
 }>();
 const title = computed(() => (props.group === 'created' ? '创建的歌单' : '收藏的歌单'));
 const { container, start, end, update } = useOuterVirtualRows(
@@ -27,6 +31,15 @@ const { container, start, end, update } = useOuterVirtualRows(
   46,
   () => props.scroller,
 );
+const drag = useSidebarPlaylistDrag({
+  group: () => props.group,
+  playlists: () => props.playlists,
+  root: () => props.scroller,
+  list: () => container.value,
+  disabled: () => props.orderDisabled || !props.expanded,
+  commit: (move) => emit('reorder', move),
+});
+const { boundary, dragging } = drag;
 const active = ref(0);
 const heading = ref<HTMLButtonElement>();
 const menu = ref<InstanceType<typeof ActionMenu>>();
@@ -153,6 +166,7 @@ async function context(event: MouseEvent | KeyboardEvent, list: PlaylistView) {
         :id="`sidebar-${group}`"
         ref="container"
         class="sidebar-playlist-list"
+        :class="{ 'sidebar-dragging': dragging }"
         :tabindex="active < start || active >= end ? 0 : -1"
         :aria-label="title"
         @keydown="keyboard"
@@ -162,7 +176,10 @@ async function context(event: MouseEvent | KeyboardEvent, list: PlaylistView) {
           v-for="(list, offset) in playlists.slice(start, end)"
           :key="list.id"
           class="playlist-nav"
-          :class="{ selected: selectedId === list.id }"
+          :class="{
+            selected: selectedId === list.id,
+            'sidebar-row-dragging': dragging === list.id,
+          }"
           :data-sidebar-id="list.id"
           :data-sidebar-index="start + offset"
           :tabindex="active === start + offset ? 0 : -1"
@@ -171,7 +188,9 @@ async function context(event: MouseEvent | KeyboardEvent, list: PlaylistView) {
           :data-tooltip="list.name"
           aria-haspopup="menu"
           @focus="active = start + offset"
-          @click="emit('open', list)"
+          @pointerdown="drag.start($event, list.id)"
+          @dragstart.prevent
+          @click="($event.detail === 0 || !drag.suppressClick()) && emit('open', list)"
           @contextmenu="context($event, list)"
           @keydown="context($event, list)"
         >
@@ -182,6 +201,12 @@ async function context(event: MouseEvent | KeyboardEvent, list: PlaylistView) {
           />
         </button>
         <div :style="{ height: `${(playlists.length - end) * 46}px` }" aria-hidden="true" />
+        <div
+          v-if="boundary !== undefined"
+          class="sidebar-drop-line"
+          :style="{ top: `${4 + boundary * 46}px` }"
+          aria-hidden="true"
+        />
       </div>
     </Transition>
     <ActionMenu

@@ -4,7 +4,11 @@ import type { Page } from '../../composables/useMusic';
 import type { PlaylistView } from '../../services/contracts';
 import type { HistoryKind } from '../../services/history';
 import type { MenuItem } from '../../services/menu';
-import { sidebarPreferences, saveSidebarPreferences } from '../../services/sidebar';
+import {
+  sidebarPreferences,
+  saveSidebarPreferences,
+  type SidebarPlaylistMove,
+} from '../../services/sidebar';
 import SidebarPlaylistGroup from './SidebarPlaylistGroup.vue';
 import Icon from '../Icon.vue';
 import '../../styles/sidebar.css';
@@ -15,6 +19,8 @@ const props = defineProps<{
   initializing: boolean;
   loading: boolean;
   error: string;
+  orderDisabled: boolean;
+  orderNotice: string;
   playingId?: string;
   items: (list: PlaylistView) => MenuItem[];
 }>();
@@ -24,6 +30,7 @@ const emit = defineEmits<{
   create: [];
   refresh: [];
   action: [list: PlaylistView, key: string];
+  reorder: [move: SidebarPlaylistMove];
 }>();
 const scroller = ref<HTMLElement>();
 const preferences = ref(sidebarPreferences());
@@ -138,6 +145,9 @@ function refresh() {
       </nav>
       <div class="sidebar-playlists">
         <p v-if="preferenceError" class="sidebar-status" role="status">{{ preferenceError }}</p>
+        <p v-if="orderNotice" class="sidebar-status" role="status" data-sidebar-order-notice>
+          {{ orderNotice }}
+        </p>
         <div v-if="error" class="sidebar-status" role="alert">
           <p>{{ error }}</p>
           <button class="text-button" :aria-disabled="loading" @click="refresh">
@@ -150,6 +160,7 @@ function refresh() {
           :playlists="own"
           :expanded="preferences.created"
           :scroller="scroller"
+          :order-disabled="orderDisabled"
           :selected-id="page.kind === 'playlist' ? page.id : undefined"
           :playing-id="playingId"
           :items="items"
@@ -157,6 +168,7 @@ function refresh() {
           @create="emit('create')"
           @open="emit('navigate', { kind: 'playlist', id: $event.id })"
           @action="(list, key) => emit('action', list, key)"
+          @reorder="emit('reorder', $event)"
         />
         <SidebarPlaylistGroup
           v-if="collected.length"
@@ -164,12 +176,14 @@ function refresh() {
           :playlists="collected"
           :expanded="preferences.subscribed"
           :scroller="scroller"
+          :order-disabled="orderDisabled"
           :selected-id="page.kind === 'playlist' ? page.id : undefined"
           :playing-id="playingId"
           :items="items"
           @toggle="toggle('subscribed')"
           @open="emit('navigate', { kind: 'playlist', id: $event.id })"
           @action="(list, key) => emit('action', list, key)"
+          @reorder="emit('reorder', $event)"
         />
       </div>
     </div>

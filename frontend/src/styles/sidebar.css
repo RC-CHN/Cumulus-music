@@ -108,6 +108,26 @@
   outline-offset: -2px;
   border-radius: 4px;
 }
+.sidebar-dragging {
+  user-select: none;
+}
+.sidebar-row-dragging {
+  opacity: 0.55;
+}
+.sidebar-drop-line {
+  position: absolute;
+  z-index: 100;
+  height: 1px;
+  inset-inline: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--text-secondary) 11.3%,
+    var(--text-secondary) 88.7%,
+    transparent
+  );
+  pointer-events: none;
+}
 .sidebar-scroll:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;

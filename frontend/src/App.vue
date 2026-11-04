@@ -40,6 +40,7 @@ import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
 import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
+import type { SidebarPlaylistMove } from './services/sidebar';
 import { libraryView } from './services/playlistLibrary';
 import DailyHeading from './components/DailyHeading.vue';
 import DailyBatchPage from './components/DailyBatchPage.vue';
@@ -1789,6 +1790,11 @@ watch(
   { flush: 'post' },
 );
 const favorite = computed(() => playlists.value.find((p) => p.favorite && p.owned));
+const sidebarOrderNotice = ref('');
+watch(
+  () => account.value.epoch,
+  () => (sidebarOrderNotice.value = ''),
+);
 const playlistActions = ref<InstanceType<typeof PlaylistActions>>();
 const searchKnownPlaylistIds = computed(() =>
   signedIn.value && !music.resourcesLoading.value && !music.playlistError.value
@@ -1814,6 +1820,14 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
   else if (key === 'up' || key === 'down')
     void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
   else playlistActions.value?.show(list, key);
+}
+async function reorderSidebar(move: SidebarPlaylistMove) {
+  const epoch = account.value.epoch;
+  sidebarOrderNotice.value = '';
+  const change = await playlistManager.reorderSidebar(move, favorite.value?.id);
+  if (account.value.epoch !== epoch) return;
+  if (playlistManager.error.value || (change && !playlistSaved(change.phase)))
+    sidebarOrderNotice.value = playlistManager.error.value || change!.message;
 }
 watch(
   () => player.view.value?.track?.voiceId,
@@ -2522,6 +2536,14 @@ onUnmounted(() => {
       :initializing="initializing"
       :loading="music.resourcesLoading.value"
       :error="music.playlistError.value"
+      :order-disabled="
+        !signedIn ||
+        initializing ||
+        music.resourcesLoading.value ||
+        !!music.playlistError.value ||
+        playlistManager.busy.value
+      "
+      :order-notice="sidebarOrderNotice"
       :playing-id="libraryPlaying ? currentPlaylistId : undefined"
       :items="playlistMenu"
       @navigate="music.navigate"
@@ -2529,6 +2551,7 @@ onUnmounted(() => {
       @refresh="refreshLibrary"
       @create="signedIn ? (playlistDialog = { kind: 'create' }) : (loginOpen = true)"
       @action="playlistAction"
+      @reorder="reorderSidebar"
     />
     <header class="topbar" data-tauri-drag-region>
       <button

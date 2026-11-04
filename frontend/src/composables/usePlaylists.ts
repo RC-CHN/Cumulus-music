@@ -7,6 +7,7 @@ import {
 } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import { coverTerminal, type CoverTask } from '../services/playlistCover.ts';
+import { sidebarMoveOrder, type SidebarPlaylistMove } from '../services/sidebar.ts';
 import {
   playlistSaved,
   type PlaylistCommand,
@@ -241,6 +242,23 @@ export function usePlaylists(
       return core.mutatePlaylist(e, { kind: 'order', group, revision: value.value.revision, ids });
     });
   }
+  async function reorderSidebar(move: SidebarPlaylistMove, favoriteId?: string) {
+    const desired = sidebarMoveOrder(move);
+    if (!desired) return;
+    return run(async (e) => {
+      const value = await core.playlistOrderView(e);
+      if (value.epoch !== e || epoch !== e) throw { code: 'stale', message: '账号已切换' };
+      const { group } = move;
+      const native = value.value[group];
+      const fixed = group === 'created' ? favoriteId : undefined;
+      const visible = native.filter((id) => id !== fixed);
+      if (visible.length !== move.ids.length || visible.some((id, index) => id !== move.ids[index]))
+        throw { code: 'snapshot_changed', message: '歌单列表已变化，请刷新后重新拖动' };
+      let index = 0;
+      const ids = native.map((id) => (id === fixed ? id : desired[index++]!));
+      return core.mutatePlaylist(e, { kind: 'order', group, revision: value.value.revision, ids });
+    });
+  }
   return {
     editor,
     operations,
@@ -265,6 +283,7 @@ export function usePlaylists(
     tracks,
     addTracks,
     move,
+    reorderSidebar,
     saved: playlistSaved,
   };
 }

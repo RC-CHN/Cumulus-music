@@ -28,7 +28,7 @@ export function playlistSubscribeMenuItem(
 }
 
 /** Official 622.js playlist menu conditions. Batch branches are tracked
- * separately; reorder is a named community extension until drag/drop exists. */
+ * separately; the up/down actions provide an alternative to pointer drag. */
 export function playlistMenuItems(
   list: PlaylistView,
   scene: PlaylistMenuScene,
