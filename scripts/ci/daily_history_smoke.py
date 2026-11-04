@@ -55,6 +55,7 @@ def main():
     assert complete['ok'] and complete['stageCount'] == stages and complete['dailyPlayback'] and complete['stylePlayback']
     assert complete['styleWrite'] is args.style_write
     assert complete['stickyRecommendations']
+    assert complete['styleStickyToggle']
     assert complete['dailyBatch']
     assert complete['dailyCache'] and complete['dailyBirthday'] is args.birthday
     prefix = '/api/discovery/recommend/songs/history/'
@@ -86,6 +87,7 @@ def main():
                       'dailyBirthday': args.birthday,
                       'dailyBatch': True,
                       'stickyRecommendations': True,
+                      'styleStickyToggle': True,
                       'realAccountWrites': 0}))
 
 

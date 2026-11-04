@@ -879,6 +879,56 @@ const recommendationScrollScope = computed(() => {
     ? `${music.account.value.epoch}:${kind}:${revision}`
     : undefined;
 });
+const recommendationPlayAction = computed(() => {
+  const current = player.view.value;
+  const kind = music.page.value.kind;
+  if (
+    !recommendationScrollScope.value ||
+    !player.loaded.value ||
+    !current?.playId ||
+    current.epoch !== music.account.value.epoch ||
+    current.fm ||
+    current.intelligence ||
+    current.recommendationOrigin?.kind !== (kind === 'daily' ? 'daily' : 'style') ||
+    current.recommendationOrigin.revision !== music.result.value?.revision
+  )
+    return 'start';
+  return player.playing.value ? 'pause' : 'resume';
+});
+const recommendationPlayKey = computed(() => {
+  const current = player.view.value;
+  return JSON.stringify([
+    recommendationScrollScope.value,
+    current?.playId,
+    current?.queueRevision,
+    recommendationPlayAction.value,
+  ]);
+});
+const recommendationPlayText = computed(() =>
+  recommendationPlayAction.value === 'pause'
+    ? '暂停'
+    : recommendationPlayAction.value === 'resume'
+      ? '继续播放'
+      : '播放全部',
+);
+async function playRecommendations(event: MouseEvent) {
+  const target = event.currentTarget as HTMLButtonElement;
+  if (target.dataset.recommendationPlay !== recommendationPlayKey.value) return;
+  if (recommendationPlayAction.value === 'start') return play(0);
+  const ownsFocus = document.activeElement === target;
+  const scope = recommendationScrollScope.value;
+  await player.toggleSource();
+  await nextTick();
+  if (
+    ownsFocus &&
+    recommendationScrollScope.value === scope &&
+    document.activeElement === document.body &&
+    target.isConnected &&
+    target.getClientRects().length &&
+    !target.disabled
+  )
+    target.focus({ preventScroll: true });
+}
 const scrolledRecommendation = ref<string>();
 const recommendationStickyVisible = computed(
   () =>
@@ -907,17 +957,15 @@ function recommendationScrollEdge(scope: string, scrolled: boolean, overflow: nu
     scrolledRecommendation.value = scope;
     if (active instanceof HTMLElement && active.closest('.track-actions,.page-heading-actions')) {
       const target = active.matches('.style-queue-all')
-        ? '添加全部推荐歌曲至播放列表'
-        : '播放全部推荐歌曲';
+        ? '[aria-label="添加全部推荐歌曲至播放列表"]'
+        : '[data-recommendation-play]';
       void nextTick(() => {
         if (
           recommendationScrollScope.value === scope &&
           (document.activeElement === document.body || document.activeElement === active)
         )
           document
-            .querySelector<HTMLElement>(
-              `.recommendation-sticky [aria-label="${target}"]:not(:disabled)`,
-            )
+            .querySelector<HTMLElement>(`.recommendation-sticky ${target}:not(:disabled)`)
             ?.focus({ preventScroll: true });
       });
     }
@@ -925,7 +973,7 @@ function recommendationScrollEdge(scope: string, scrolled: boolean, overflow: nu
   }
   const restore =
     active instanceof HTMLElement && active.closest('.recommendation-sticky')
-      ? active.getAttribute('aria-label') === '播放全部推荐歌曲'
+      ? active.hasAttribute('data-recommendation-play')
         ? '.track-actions .primary'
         : current === 'daily'
           ? '.daily-more .menu-trigger'
@@ -2800,9 +2848,12 @@ onUnmounted(() => {
                   <button
                     class="primary"
                     :disabled="!result?.tracks.length || !player.ready.value || player.busy.value"
-                    @click="play(0)"
+                    :data-recommendation-play="recommendationPlayKey"
+                    @click="playRecommendations"
                   >
-                    <Icon name="play" />播放全部
+                    <Icon :name="recommendationPlayAction === 'pause' ? 'pause' : 'play'" />{{
+                      recommendationPlayText
+                    }}
                   </button>
                   <button
                     class="download-button"
@@ -2911,11 +2962,12 @@ onUnmounted(() => {
                     <button
                       class="icon-button"
                       type="button"
-                      aria-label="播放全部推荐歌曲"
+                      :aria-label="`${recommendationPlayText}推荐歌曲`"
                       :disabled="!player.ready.value || player.busy.value || loading"
-                      @click="play(0)"
+                      :data-recommendation-play="recommendationPlayKey"
+                      @click="playRecommendations"
                     >
-                      <Icon name="play" />
+                      <Icon :name="recommendationPlayAction === 'pause' ? 'pause' : 'play'" />
                     </button>
                     <button
                       class="icon-button"

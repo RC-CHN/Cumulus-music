@@ -253,6 +253,25 @@
     click(one('.playerbar [aria-label="暂停"]'));
     await wait(()=>bar().dataset.state==='paused','pause recovered song');
   }
+  async function verifyRecommendationToggle() {
+    const bar=()=>one('.playerbar');
+    const button=()=>one('.daily-track-actions [data-recommendation-play]');
+    const text=()=>button()?.textContent.trim();
+    const {playId,trackId,position}=bar().dataset;
+    await wait(()=>text()==='继续播放'&&!button().disabled,'same recommendation resumes from the header');
+    click(button());
+    await wait(()=>text()==='暂停'&&bar().dataset.state==='playing'&&!button().disabled,'header resumes existing recommendation playback');
+    assert(bar().dataset.playId===playId&&bar().dataset.trackId===trackId&&Number(bar().dataset.position)>=Number(position)-.1,'resume keeps the current track and position');
+    click(button());
+    await wait(()=>text()==='继续播放'&&bar().dataset.state==='paused'&&!button().disabled,'header pauses existing recommendation playback');
+    await wait(()=>document.activeElement===button(),'header toggle preserves keyboard focus');
+    assert(bar().dataset.playId===playId,'pause keeps the same play ID');
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_daily_play_toggle`,{playId,trackId,button:text()});
+    await sleep(800);
+    click(one('[aria-label="刷新当前页面"]'));
+    await wait(()=>text()==='播放全部'&&!button().disabled,'new recommendation snapshot exposes start action');
+    assert(bar().dataset.playId===playId&&bar().dataset.state==='paused','refresh leaves the paused queue intact');
+  }
   try {
     await wait(()=>all('.track-row').length>2,'daily');
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
@@ -298,9 +317,9 @@
     }
     click(one('[aria-label="收起播放详情"]'));await wait(()=>!one('.lyrics-panel'),'details close');await sleep(300);
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
-    if(!window.__playerLayoutBaseline) await verifyAudioOutputRecovery();
+    if(!window.__playerLayoutBaseline) { await verifyRecommendationToggle(); await verifyAudioOutputRecovery(); }
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

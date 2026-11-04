@@ -243,11 +243,14 @@ impl MusicClient {
                         .put(owner, CACHE_KIND, CACHE_KEY, &projected);
                 }
             }
-            let revision = match source {
-                RecommendationSource::Daily => format!("daily-{request}"),
-                RecommendationSource::Style => format!("style-{request}"),
-                RecommendationSource::SeededStyle => format!("seeded-style-{request}"),
+            // Queue origins survive app restarts; an in-memory counter alone
+            // cannot distinguish their snapshots from new recommendations.
+            let prefix = match source {
+                RecommendationSource::Daily => "daily",
+                RecommendationSource::Style => "style",
+                RecommendationSource::SeededStyle => "seeded-style",
             };
+            let revision = format!("{prefix}-{request}-{}", uuid::Uuid::new_v4().simple());
             state.latest = Some(Snapshot {
                 token: token.clone(),
                 revision: revision.clone(),

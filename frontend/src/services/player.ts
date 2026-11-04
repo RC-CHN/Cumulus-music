@@ -48,6 +48,7 @@ export type BoundParametricStatus = 'deferred' | 'configured' | 'detach_required
 export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   origin?: PlayerOrigin | null;
+  recommendationOrigin?: { kind: 'daily' | 'style'; revision: string } | null;
   fm: boolean;
   intelligence?: 'seeded' | 'active' | 'fallback' | null;
   intelligenceOperation?: string | null;

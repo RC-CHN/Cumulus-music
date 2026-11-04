@@ -27,6 +27,8 @@ pub struct PlayerView {
     pub entry_id: Option<String>,
     pub track: Option<TrackView>,
     pub origin: Option<PlayerOrigin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recommendation_origin: Option<RecommendationOrigin>,
     pub position: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buffered_through: Option<f64>,
@@ -72,6 +74,13 @@ pub enum PlayerOrigin {
     Album { id: String },
     Artist { id: String },
     Podcast { id: String },
+}
+/// Public identity of the recommendation snapshot that created this entry.
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RecommendationOrigin {
+    Daily { revision: String },
+    Style { revision: String },
 }
 #[derive(Clone, Serialize)]
 pub struct EqualizerView {

@@ -227,6 +227,10 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .selected
             .as_ref()
             .and_then(|i| origin::project(&i.source)),
+        recommendation_origin: value
+            .selected
+            .as_ref()
+            .and_then(|i| origin::recommendation(&i.source)),
         position: value.position,
         buffered_through: value.buffered_through,
         timeline: value.timeline.clone(),

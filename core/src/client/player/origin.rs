@@ -1,4 +1,4 @@
-use super::PlayerOrigin;
+use super::{PlayerOrigin, RecommendationOrigin};
 use crate::protocol::api::identifier;
 use serde_json::Value;
 
@@ -13,6 +13,23 @@ pub(super) fn project(source: &Value) -> Option<PlayerOrigin> {
         },
         _ => return None,
     })
+}
+
+pub(super) fn recommendation(source: &Value) -> Option<RecommendationOrigin> {
+    let revision = source["revision"].as_str()?;
+    let (prefix, id) = revision.rsplit_once('-')?;
+    uuid::Uuid::parse_str(id).ok()?;
+    let (kind, request) = prefix.rsplit_once('-')?;
+    request.parse::<u64>().ok()?;
+    match (source["kind"].as_str()?, kind) {
+        ("daily_recommendations", "daily") => Some(RecommendationOrigin::Daily {
+            revision: revision.to_owned(),
+        }),
+        ("style_recommendations", "style" | "seeded-style") => Some(RecommendationOrigin::Style {
+            revision: revision.to_owned(),
+        }),
+        _ => None,
+    }
 }
 
 #[cfg(test)]

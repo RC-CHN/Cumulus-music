@@ -110,6 +110,18 @@
     }
     if (player?.track?.id !== '71' || player.queueLen !== 20 || player.state !== 'playing' || player.position <= 0.15)
       throw new Error('style songs did not reach ordinary native playback');
+    const stylePlayId = player.playId;
+    const stylePause = await wait(() => sticky()?.querySelector('[aria-label="暂停推荐歌曲"]:not(:disabled)'), 'style sticky pause');
+    stylePause.click();
+    const styleResume = await wait(() => sticky()?.querySelector('[aria-label="继续播放推荐歌曲"]:not(:disabled)'), 'style sticky resume');
+    const pausedStyle = await invoke('player_snapshot', { epoch });
+    if (pausedStyle.playId !== stylePlayId || pausedStyle.state !== 'paused')
+      throw new Error('style sticky pause replaced playback');
+    styleResume.click();
+    await wait(() => sticky()?.querySelector('[aria-label="暂停推荐歌曲"]:not(:disabled)'), 'style sticky resumed');
+    const resumedStyle = await invoke('player_snapshot', { epoch });
+    if (resumedStyle.playId !== stylePlayId || resumedStyle.state !== 'playing')
+      throw new Error('style sticky resume replaced playback');
     styleScroll.scrollTop = 0;
     await wait(() => !sticky(), 'style toolbar hides at list start');
     const tagEntry = one('.style-tags-entry');
@@ -236,7 +248,7 @@
     await wait(() => bar().dataset.trackId === '1' && bar().dataset.state === 'playing', 'append all starts empty queue');
     if ((await invoke('player_queue', { epoch })).tracks.length !== 40) throw new Error('empty queue did not load all daily tracks');
     await emit('ux_09_daily_empty_queue');
-    await emit('complete', { ok: true, stageCount: styleWrite ? 13 : 11, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true, dailyBatch: true, stickyRecommendations: true, styleWrite });
+    await emit('complete', { ok: true, stageCount: styleWrite ? 13 : 11, dailyPlayback: true, dailyCache: true, dailyBirthday: birthday, stylePlayback: true, styleStickyToggle: true, dailyBatch: true, stickyRecommendations: true, styleWrite });
   } catch (error) {
     await emit('failed', { message: String(error), body: document.body.innerText.slice(-2200) });
   }
