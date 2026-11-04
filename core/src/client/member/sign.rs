@@ -168,30 +168,6 @@ fn reward_summary(list: &Value, month_total: Option<u64>) -> (bool, Option<SignR
     (claimed, next)
 }
 
-#[cfg(test)]
-mod reward_tests {
-    use super::*;
-
-    #[test]
-    fn footer_keeps_the_official_last_milestone_and_distinct_claimed_state() {
-        let mixed = json!([
-            {"day":14,"prizeShowName":"最后一档","showSubTitle":"3天"},
-            {"day":3,"prizeShowName":"已领取","userPrizeRecordId":"PRIVATE"},
-            {"day":7,"prizeShowName":"下一档"},
-        ]);
-        let (claimed, next) = reward_summary(&mixed, Some(5));
-        assert!(!claimed);
-        let next = next.unwrap();
-        assert_eq!((next.days_to_go, next.title.as_str()), (2, "下一档"));
-        let (claimed, last) = reward_summary(&mixed, Some(16));
-        assert!(!claimed);
-        let last = last.unwrap();
-        assert_eq!((last.days_to_go, last.title.as_str()), (0, "最后一档"));
-        assert!(reward_summary(&json!([{"day":3,"userPrizeRecordId":8}]), Some(4)).0);
-        assert!(reward_summary(&Value::Null, None).0);
-    }
-}
-
 impl MusicClient {
     pub async fn member_sign_detail(
         &self,
@@ -223,5 +199,29 @@ impl MusicClient {
                 value: detail(&response["data"], sign_time)?,
             })
         })
+    }
+}
+
+#[cfg(test)]
+mod reward_tests {
+    use super::*;
+
+    #[test]
+    fn footer_keeps_the_official_last_milestone_and_distinct_claimed_state() {
+        let mixed = json!([
+            {"day":14,"prizeShowName":"最后一档","showSubTitle":"3天"},
+            {"day":3,"prizeShowName":"已领取","userPrizeRecordId":"PRIVATE"},
+            {"day":7,"prizeShowName":"下一档"},
+        ]);
+        let (claimed, next) = reward_summary(&mixed, Some(5));
+        assert!(!claimed);
+        let next = next.unwrap();
+        assert_eq!((next.days_to_go, next.title.as_str()), (2, "下一档"));
+        let (claimed, last) = reward_summary(&mixed, Some(16));
+        assert!(!claimed);
+        let last = last.unwrap();
+        assert_eq!((last.days_to_go, last.title.as_str()), (0, "最后一档"));
+        assert!(reward_summary(&json!([{"day":3,"userPrizeRecordId":8}]), Some(4)).0);
+        assert!(reward_summary(&Value::Null, None).0);
     }
 }
