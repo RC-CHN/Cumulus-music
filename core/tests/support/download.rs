@@ -19,10 +19,18 @@ use std::{
     },
 };
 
+#[derive(Default)]
+pub struct PlaybackGate {
+    pub entered: tokio::sync::Notify,
+    pub release: tokio::sync::Notify,
+}
+
 pub struct Server {
     pub resource: Mutex<Value>,
     pub song: Mutex<Value>,
     pub lyric: Mutex<Result<Value>>,
+    pub play: Mutex<Result<Value>>,
+    pub play_gate: Mutex<Option<Arc<PlaybackGate>>>,
     pub calls: Mutex<Vec<(String, Value)>>,
 }
 impl Server {
@@ -37,6 +45,10 @@ impl Server {
             lyric: Mutex::new(Ok(
                 json!({"code":200,"lrc":{"lyric":"[00:00.00]fixture lyrics\n"}}),
             )),
+            play: Mutex::new(Ok(json!({"code":200,"data":[{"id":123,"code":200,
+                "url":"https://m.test.music.126.net/online?auth=fixture","md5":"fixture",
+                "level":"standard","expi":120}]}))),
+            play_gate: Mutex::new(None),
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -61,6 +73,17 @@ impl Api for Server {
                 "/api/song/enhance/download/url/v1" => {
                     assert_eq!(payload["immerseType"], "c51");
                     json!({"code":200,"data":self.resource.lock().unwrap().clone()})
+                }
+                "/api/song/enhance/player/url/v1" => {
+                    let gate = self.play_gate.lock().unwrap().clone();
+                    if let Some(gate) = gate {
+                        gate.entered.notify_one();
+                        gate.release.notified().await;
+                    }
+                    match &*self.play.lock().unwrap() {
+                        Ok(value) => value.clone(),
+                        Err(_) => return Err(Error::Transport("synthetic online failure".into())),
+                    }
                 }
                 "/api/v3/song/detail" => {
                     json!({"code":200,"songs":[self.song.lock().unwrap().clone()]})

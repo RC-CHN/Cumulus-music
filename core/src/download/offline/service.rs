@@ -118,6 +118,25 @@ impl OfflineLibrary {
     ) -> Result<Option<OfflineRecord>> {
         self.read(token, &path_id(&path.as_ref().canonicalize()?)?)
     }
+    /// Only for an already verified managed parent plus recorded leaf.
+    /// A missing leaf cannot be canonicalized, and an arbitrary input path
+    /// must never be used to look up an offline record through this helper.
+    pub(in crate::download) fn record_at_verified_path(
+        &self,
+        token: &SessionToken,
+        path: &Path,
+    ) -> Result<Option<OfflineRecord>> {
+        let id = path_id(path)?;
+        let _lock = self.lock(token, &id)?;
+        let record = self.read(token, &id)?;
+        if record
+            .as_ref()
+            .is_some_and(|record| record.id != id || record.path != path)
+        {
+            return Err(Error::State("offline record identity mismatch"));
+        }
+        Ok(record)
+    }
     /// Removes only the exact ledger revision. Never deletes the media file.
     pub fn forget(&self, token: &SessionToken, record: &OfflineRecord) -> Result<()> {
         let _lock = self.lock(token, &record.id)?;

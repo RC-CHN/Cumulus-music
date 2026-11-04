@@ -59,6 +59,8 @@ pub enum Error {
     Json(#[from] serde_json::Error),
     #[error("local file operation failed")]
     Io(#[from] std::io::Error),
+    #[error("the completed catalog download file is missing")]
+    DownloadedFileMissing,
     #[error("state lock is poisoned")]
     LockPoisoned,
     #[error("invalid protocol data: {0}")]

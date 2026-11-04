@@ -412,6 +412,7 @@ impl From<Error> for ClientError {
                 }
                 Error::Playback { .. }
                 | Error::Service { .. }
+                | Error::DownloadedFileMissing
                 | Error::Response("no playback resource for requested track") => {
                     if let Some(failure) = PlaybackFailure::classify(&error) {
                         return Self::from(failure);
@@ -444,6 +445,11 @@ impl From<PlaybackFailure> for ClientError {
                 "playback_source_temporary",
                 "音源服务暂时不可用，请稍后重试",
                 true,
+            ),
+            PlaybackFailure::DownloadedFileMissing => (
+                "playback_download_missing",
+                "下载文件已找不到，可选择在线播放",
+                false,
             ),
             PlaybackFailure::SessionExpired => ("session_expired", "登录已失效，请重新登录", false),
             PlaybackFailure::Network => ("network", "网络请求失败，请稍后重试", true),

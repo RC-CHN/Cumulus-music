@@ -2,11 +2,14 @@
 //! reads. Signed URLs live in memory only. Local resolution uses LocalLibrary.
 mod cache;
 mod fetch;
+#[cfg(test)]
+mod fresh_tests;
 mod loudness;
 use super::{Timeline, engine::MediaInput};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
+    download::service::{DownloadService, MissingCatalogDownload},
     library::{LocalLibrary, LocalResource},
     membership::Quality,
     protocol::api::identifier,
@@ -56,6 +59,36 @@ impl SourceResolver {
         token: &SessionToken,
     ) -> Result<Option<f64>> {
         crate::podcast::progress::position(&self.session, token, resource).await
+    }
+    pub(crate) async fn missing_catalog_download(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+    ) -> Result<Option<MissingCatalogDownload>> {
+        let Some(task) = resource["download_task_id"].as_str() else {
+            return Ok(None);
+        };
+        if resource.get("local_id").is_some()
+            || !resource["cloud_song_id"].is_null()
+            || !resource["voice_id"].is_null()
+            || !resource["song"]["voice_id"].is_null()
+            || resource.get("download_ledger").is_some()
+            || !resource["playback_constraint"].is_null()
+        {
+            return Ok(None);
+        }
+        let (Some(path), Some(song)) = (resource["path"].as_str(), resource["id"].as_str()) else {
+            return Ok(None);
+        };
+        let path = std::path::PathBuf::from(path);
+        let (task, song) = (task.to_owned(), song.to_owned());
+        let session = self.session.clone();
+        let token = token.clone();
+        tokio::task::spawn_blocking(move || {
+            DownloadService::new(session)?.missing_catalog_playback(&token, &task, &path, &song)
+        })
+        .await
+        .map_err(|_| Error::State("missing download check worker stopped"))?
     }
     pub(crate) fn now(&self) -> Duration {
         self.clock.now()
@@ -183,9 +216,19 @@ impl SourceResolver {
             if task.playback_target()? != path {
                 return Err(Error::State("download reference changed"));
             }
-            let check = crate::download::offline::OfflineLibrary::new(self.session.clone())?
+            let check = match crate::download::offline::OfflineLibrary::new(self.session.clone())?
                 .check(token, path, false)
-                .await?;
+                .await
+            {
+                Err(error @ Error::Io(_)) if matches!(&error, Error::Io(e) if e.kind() == std::io::ErrorKind::NotFound) => {
+                    match self.missing_catalog_download(&resource, token).await {
+                        Ok(Some(_)) => return Err(Error::DownloadedFileMissing),
+                        Err(Error::StaleResponse) => return Err(Error::StaleResponse),
+                        _ => return Err(error),
+                    }
+                }
+                other => other?,
+            };
             if check.record.task_id != id || !check.access.can_play || !check.integrity_verified {
                 return Err(Error::State("download is unavailable for this account"));
             }
@@ -294,6 +337,26 @@ impl SourceResolver {
         if resource.get("local_id").is_some() || resource.get("path").is_some() {
             return self.local(resource.clone(), token).await;
         }
+        self.resolve_online(resource, token, false).await
+    }
+    pub(crate) async fn resolve_fresh_online(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+    ) -> Result<Arc<ResolvedSource>> {
+        if resource.get("local_id").is_some() || resource.get("path").is_some() {
+            return Err(Error::InvalidInput(
+                "fresh authorization requires online media",
+            ));
+        }
+        self.resolve_online(resource, token, true).await
+    }
+    async fn resolve_online(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        fresh: bool,
+    ) -> Result<Arc<ResolvedSource>> {
         let key = self.key(resource, token)?;
         let (pending, mut receiver, owner) = {
             let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
@@ -301,30 +364,36 @@ impl SourceResolver {
             state
                 .cache
                 .retain(|k, v| k.token == *token && v.deadline > now);
+            let pending = PendingKey {
+                revision: state.revision,
+                key: key.clone(),
+            };
+            if fresh {
+                state.cache.remove(&key);
+                if let Some(previous) = state.pending.remove(&pending) {
+                    previous.send_replace(Some(Err(Arc::new(Error::StaleResponse))));
+                }
+            }
             if let Some(cached) = state.cache.get(&key) {
                 let value = cached.value.clone();
                 drop(state);
                 self.session.with_token(token, |_| Ok(()))?;
                 return Ok(value);
             }
-            let pending = PendingKey {
-                revision: state.revision,
-                key: key.clone(),
-            };
             if let Some(sender) = state.pending.get(&pending) {
-                (pending, sender.subscribe(), false)
+                (pending, sender.subscribe(), None)
             } else {
                 let (sender, receiver) = tokio::sync::watch::channel(None);
-                state.pending.insert(pending.clone(), sender);
-                (pending, receiver, true)
+                state.pending.insert(pending.clone(), sender.clone());
+                (pending, receiver, Some(sender))
             }
         };
-        if owner {
-            let guard = Owner::new(self.state.clone(), pending.clone());
+        if let Some(owner) = owner {
+            let guard = Owner::new(self.state.clone(), pending.clone(), owner);
             let result = self.fetch(resource, &key).await.and_then(|value| {
                 self.session.with_token(token, |_| Ok(()))?;
-                if self.state.lock().map_err(|_| Error::LockPoisoned)?.revision != pending.revision
-                {
+                let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+                if !guard.current(&state) {
                     return Err(Error::StaleResponse);
                 }
                 Ok(Arc::new(value))
@@ -343,7 +412,7 @@ impl SourceResolver {
                     let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
                     // Invalidation must win even after the fetch consistency
                     // check, before publication into the shared cache.
-                    if state.revision != pending.revision {
+                    if !guard.current(&state) {
                         return Err(Error::StaleResponse);
                     }
                     if state.cache.len() >= 128

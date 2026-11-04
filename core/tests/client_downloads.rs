@@ -97,6 +97,217 @@ fn options() -> DownloadOptions {
         ..Default::default()
     }
 }
+fn online_missing(view: &PlayerView) -> PlayerAction {
+    PlayerAction::PlayMissingDownloadOnline {
+        play_id: view.play_id.clone().unwrap(),
+        expected_queue_revision: view.queue_revision.clone(),
+    }
+}
+
+#[tokio::test]
+async fn a_missing_published_file_only_uses_fresh_online_rights_after_explicit_action() {
+    use cumulus_core::playback::controller::PlaybackStatus;
+    const URL_API: &str = "/api/song/enhance/player/url/v1";
+    let f = Fixture::new();
+    let (id, completed) = f.completed().await;
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    fs::remove_file(&path).unwrap();
+    let failure = f.client.play_downloads("1", vec![id.clone()], 0).await;
+    assert!(matches!(
+        failure.err().unwrap().root(),
+        Error::DownloadedFileMissing
+    ));
+    let view = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(view.state, PlaybackStatus::Error);
+    assert_eq!(view.error_code, Some("playback_download_missing"));
+    assert_eq!(view.error_retryable, Some(false));
+    assert_eq!(view.download_task_id.as_deref(), Some(id.as_str()));
+    assert!(view.entry_id.is_some());
+    assert_eq!(f.api.count(URL_API), 0);
+    assert!(
+        f.client
+            .player_action("0", online_missing(&view))
+            .await
+            .is_err()
+    );
+    assert!(
+        f.client
+            .player_action("1", PlayerAction::Refresh)
+            .await
+            .is_err()
+    );
+    assert_eq!(f.api.count(URL_API), 0);
+    let view = f.client.player_snapshot("1").await.unwrap();
+    *f.api.play.lock().unwrap() = Ok(json!({"code":200,"data":[{"id":123,"code":403}]}));
+    let denied = f.client.player_action("1", online_missing(&view)).await;
+    assert!(denied.err().unwrap().is_service_code(403));
+    let still = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(still.play_id, view.play_id);
+    assert_eq!(still.entry_id, view.entry_id);
+    assert_eq!(still.queue_revision, view.queue_revision);
+    assert_eq!(still.error_code, view.error_code);
+    assert_eq!(f.api.count(URL_API), 1);
+
+    *f.api.play.lock().unwrap() = Ok(json!({"code":200,"data":[{"id":123,"code":200,
+        "url":"https://m.test.music.126.net/trial?auth=fixture","md5":"fixture","expi":120,
+        "level":"standard","freeTrialInfo":{"start":0.2,"end":0.8}}]}));
+    let online = f
+        .client
+        .player_action("1", online_missing(&still))
+        .await
+        .unwrap();
+    assert_eq!(online.state, PlaybackStatus::Playing);
+    assert_eq!(online.entry_id, still.entry_id);
+    assert_ne!(online.play_id, still.play_id);
+    assert_eq!(online.download_task_id, None);
+    assert!(online.can_change_quality);
+    let timeline = online.timeline.unwrap();
+    assert_eq!(timeline.start, 0.2);
+    assert!((timeline.end.unwrap() - 0.8).abs() < 1e-8);
+    assert_eq!(online.position, Some(0.2));
+    let calls = f.api.calls.lock().unwrap();
+    let online: Vec<_> = calls.iter().filter(|(p, _)| p == URL_API).collect();
+    assert_eq!(online.len(), 2);
+    assert!(online.iter().all(|(_, p)| p["level"] == "standard"));
+    let record = f.store.values("1", "download_tasks_v1").unwrap();
+    assert!(record.contains_key(&id));
+    assert_eq!(f.store.values("1", "offline_music_v1").unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn restored_or_corrupt_files_and_missing_parent_are_not_online_fallbacks() {
+    const URL_API: &str = "/api/song/enhance/player/url/v1";
+    let f = Fixture::new();
+    let (id, completed) = f.completed().await;
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let saved = path.with_extension("held");
+    fs::rename(&path, &saved).unwrap();
+    assert!(
+        f.client
+            .play_downloads("1", vec![id.clone()], 0)
+            .await
+            .is_err()
+    );
+    let missing = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(missing.error_code, Some("playback_download_missing"));
+    fs::rename(&saved, &path).unwrap();
+    assert!(
+        f.client
+            .player_action("1", online_missing(&missing))
+            .await
+            .is_err()
+    );
+    fs::write(&path, b"corrupt replacement").unwrap();
+    assert!(
+        f.client
+            .play_downloads("1", vec![id.clone()], 0)
+            .await
+            .is_err()
+    );
+    let corrupt = f.client.player_snapshot("1").await.unwrap();
+    assert_ne!(corrupt.error_code, Some("playback_download_missing"));
+    assert!(
+        f.client
+            .player_action("1", online_missing(&corrupt))
+            .await
+            .is_err()
+    );
+
+    let parent = path.parent().unwrap();
+    let moved = parent.with_extension("moved");
+    fs::rename(parent, &moved).unwrap();
+    assert!(f.client.play_downloads("1", vec![id], 0).await.is_err());
+    let absent_parent = f.client.player_snapshot("1").await.unwrap();
+    assert_ne!(absent_parent.error_code, Some("playback_download_missing"));
+    assert_eq!(f.api.count(URL_API), 0);
+}
+
+#[tokio::test]
+async fn an_explicit_missing_download_reply_cannot_undo_a_new_stop() {
+    use cumulus_core::playback::controller::PlaybackStatus;
+    let f = Fixture::new();
+    let (id, completed) = f.completed().await;
+    fs::remove_file(completed.tasks[0].path.as_ref().unwrap()).unwrap();
+    assert!(
+        f.client
+            .play_downloads("1", vec![id.clone()], 0)
+            .await
+            .is_err()
+    );
+    let view = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(view.error_code, Some("playback_download_missing"));
+    let gate = Arc::new(support::download::PlaybackGate::default());
+    *f.api.play_gate.lock().unwrap() = Some(gate.clone());
+    let fallback = f.client.player_action("1", online_missing(&view));
+    let stop = async {
+        tokio::time::timeout(Duration::from_secs(5), gate.entered.notified())
+            .await
+            .unwrap();
+        let stopped = f
+            .client
+            .player_action("1", PlayerAction::Stop)
+            .await
+            .unwrap();
+        gate.release.notify_one();
+        stopped
+    };
+    let (fallback, stopped) = tokio::join!(fallback, stop);
+    assert!(matches!(
+        fallback.err().unwrap().root(),
+        Error::Cancelled | Error::StaleResponse
+    ));
+    let current = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(current.state, PlaybackStatus::Idle);
+    assert_eq!(current.entry_id, view.entry_id);
+    assert_eq!(current.download_task_id.as_deref(), Some(id.as_str()));
+    assert_eq!(current.queue_revision, stopped.queue_revision);
+    assert_eq!(f.api.count("/api/song/enhance/player/url/v1"), 1);
+}
+
+#[tokio::test]
+async fn restoring_the_exact_file_during_online_authorization_keeps_the_download_selection() {
+    use cumulus_core::playback::controller::PlaybackStatus;
+    let f = Fixture::new();
+    let (id, completed) = f.completed().await;
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let saved = path.with_extension("held");
+    fs::rename(&path, &saved).unwrap();
+    assert!(
+        f.client
+            .play_downloads("1", vec![id.clone()], 0)
+            .await
+            .is_err()
+    );
+    let failed = f.client.player_snapshot("1").await.unwrap();
+    let gate = Arc::new(support::download::PlaybackGate::default());
+    *f.api.play_gate.lock().unwrap() = Some(gate.clone());
+    let authorization = f.client.player_action("1", online_missing(&failed));
+    let restore = async {
+        tokio::time::timeout(Duration::from_secs(5), gate.entered.notified())
+            .await
+            .unwrap();
+        fs::rename(&saved, &path).unwrap();
+        gate.release.notify_one();
+    };
+    let (authorization, ()) = tokio::join!(authorization, restore);
+    assert!(matches!(
+        authorization.err().unwrap().root(),
+        Error::StaleResponse
+    ));
+    let current = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(current.state, PlaybackStatus::Error);
+    assert_eq!(current.play_id, failed.play_id);
+    assert_eq!(current.queue_revision, failed.queue_revision);
+    let restored = f
+        .client
+        .play_downloads("1", vec![id.clone()], 0)
+        .await
+        .unwrap();
+    assert_eq!(restored.state, PlaybackStatus::Playing);
+    assert_eq!(restored.download_task_id.as_deref(), Some(id.as_str()));
+    assert_eq!(f.api.count("/api/song/enhance/player/url/v1"), 1);
+}
+
 #[tokio::test]
 async fn downloaded_sidecar_fills_missing_lyrics_without_leaking_into_other_selections() {
     use cumulus_core::playback::PlaybackQueue;

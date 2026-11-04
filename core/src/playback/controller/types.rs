@@ -191,6 +191,13 @@ pub enum PlaybackCommand {
     Suspend,
     Restore,
     RefreshSource,
+    /// Explicit authenticated online authorization for the failed download
+    /// entry. The actor accepts this only with a private client guard.
+    UseMissingDownloadOnline {
+        resource: Value,
+        source: std::sync::Arc<super::super::source::ResolvedSource>,
+        preference_revision: String,
+    },
     Quality(Quality),
     /// Native trial provenance; the actor derives the fallback from its own
     /// preference and verifies the durable active journal at commit time.

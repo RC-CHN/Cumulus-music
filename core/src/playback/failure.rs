@@ -6,6 +6,7 @@ use crate::Error;
 pub enum PlaybackFailure {
     SourceUnavailable,
     SourceServiceTemporary,
+    DownloadedFileMissing,
     SessionExpired,
     Network,
     Runtime,
@@ -32,6 +33,7 @@ impl PlaybackFailure {
                 }
             }
             Error::Response("no playback resource for requested track") => Self::SourceUnavailable,
+            Error::DownloadedFileMissing => Self::DownloadedFileMissing,
             Error::Playback {
                 operation: "library" | "library unavailable" | "ABI",
                 ..

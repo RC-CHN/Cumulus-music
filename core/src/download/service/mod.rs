@@ -5,6 +5,7 @@ mod control;
 pub(super) mod files;
 mod lyrics;
 mod manager;
+mod missing_playback;
 mod mv;
 mod prepare;
 mod publish;
@@ -14,6 +15,7 @@ mod scheduler;
 mod voice;
 pub use manager::DownloadService;
 pub(super) use manager::{CONTROL as TASK_CONTROL, KIND as TASKS};
+pub(crate) use missing_playback::MissingCatalogDownload;
 pub use records::{
     DownloadAction, DownloadDestination, DownloadOptions, DownloadOrigin, DownloadPhase,
     DownloadStatus, DownloadTask, LyricsStatus, OutputContainer,

@@ -67,6 +67,7 @@ enum Message {
 pub struct PlaybackController {
     sender: mpsc::UnboundedSender<Message>,
     view: watch::Receiver<PlaybackSnapshot>,
+    resolver: Arc<SourceResolver>,
     shutdown: Arc<AtomicBool>,
     relay: Option<Arc<crate::relay::publisher::player::Runtime>>,
     quality_trials: tokio::task::JoinHandle<()>,
@@ -104,7 +105,7 @@ impl PlaybackController {
         let mut actor = Actor::new(
             session.clone(),
             store,
-            resolver,
+            resolver.clone(),
             Arc::new(Mutex::new(engine)),
             sender.clone(),
             shutdown.clone(),
@@ -126,6 +127,7 @@ impl PlaybackController {
         Ok(Self {
             sender,
             view,
+            resolver,
             shutdown,
             relay,
             quality_trials,
@@ -136,6 +138,9 @@ impl PlaybackController {
     }
     pub fn snapshot(&self) -> PlaybackSnapshot {
         self.view.borrow().clone()
+    }
+    pub(crate) fn source_resolver(&self) -> &SourceResolver {
+        &self.resolver
     }
     pub fn subscribe(&self) -> watch::Receiver<PlaybackSnapshot> {
         self.view.clone()

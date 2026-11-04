@@ -4,6 +4,7 @@ mod dto;
 mod identity;
 mod intelligence;
 mod lyrics;
+mod missing_download;
 mod mode;
 mod next_play;
 mod origin;
@@ -365,6 +366,20 @@ impl MusicClient {
         }
         if matches!(action, PlayerAction::Startup) {
             return self.startup_player(epoch).await;
+        }
+        if let PlayerAction::PlayMissingDownloadOnline {
+            play_id,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "online download fallback needs an explicit action",
+                ));
+            }
+            return self
+                .play_missing_download_online(epoch, &play_id, &expected_queue_revision)
+                .await;
         }
         if let PlayerAction::StepLoading {
             play_id,
@@ -992,6 +1007,9 @@ impl MusicClient {
         }
         let command = match action {
             PlayerAction::Startup => unreachable!("handled before user transport commands"),
+            PlayerAction::PlayMissingDownloadOnline { .. } => {
+                unreachable!("handled before user transport commands")
+            }
             PlayerAction::NextPlay { .. }
             | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }

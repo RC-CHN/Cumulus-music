@@ -420,6 +420,10 @@ pub enum PlayerAction {
         play_id: String,
         expected_queue_revision: String,
     },
+    PlayMissingDownloadOnline {
+        play_id: String,
+        expected_queue_revision: String,
+    },
     Quality {
         level: Quality,
     },

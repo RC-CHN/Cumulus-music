@@ -38,24 +38,39 @@ pub(super) struct CacheState {
 pub(super) struct Owner {
     state: Arc<Mutex<CacheState>>,
     key: Option<PendingKey>,
+    sender: watch::Sender<Option<Outcome>>,
 }
 impl Owner {
-    pub fn new(state: Arc<Mutex<CacheState>>, key: PendingKey) -> Self {
+    pub fn new(
+        state: Arc<Mutex<CacheState>>,
+        key: PendingKey,
+        sender: watch::Sender<Option<Outcome>>,
+    ) -> Self {
         Self {
             state,
             key: Some(key),
+            sender,
         }
+    }
+    pub fn current(&self, state: &CacheState) -> bool {
+        self.key.as_ref().is_some_and(|key| {
+            key.revision == state.revision
+                && state
+                    .pending
+                    .get(key)
+                    .is_some_and(|sender| self.sender.same_channel(sender))
+        })
     }
     pub fn finish(mut self, mut value: Outcome) -> Result<Outcome> {
         let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-        if self
-            .key
-            .as_ref()
-            .is_some_and(|key| key.revision != state.revision)
-        {
+        if !self.current(&state) {
             value = Err(Arc::new(Error::StaleResponse));
         }
         if let Some(key) = self.key.take()
+            && state
+                .pending
+                .get(&key)
+                .is_some_and(|sender| self.sender.same_channel(sender))
             && let Some(sender) = state.pending.remove(&key)
         {
             sender.send_replace(Some(value.clone()));
@@ -67,6 +82,10 @@ impl Drop for Owner {
     fn drop(&mut self) {
         if let Some(key) = self.key.take()
             && let Ok(mut state) = self.state.lock()
+            && state
+                .pending
+                .get(&key)
+                .is_some_and(|sender| self.sender.same_channel(sender))
             && let Some(sender) = state.pending.remove(&key)
         {
             sender.send_replace(Some(Err(Arc::new(Error::Cancelled))));

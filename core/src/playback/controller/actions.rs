@@ -24,6 +24,14 @@ impl Actor {
             self.reply(request.reply, Err(Error::StaleResponse));
             return;
         }
+        if matches!(
+            request.command,
+            PlaybackCommand::UseMissingDownloadOnline { .. }
+        ) && request.guard.is_none()
+        {
+            self.reply(request.reply, Err(Error::StaleResponse));
+            return;
+        }
         if matches!(request.command, PlaybackCommand::Queue) {
             let _ = request.reply.send(Ok(Reply {
                 state: self.snapshot(),
@@ -371,6 +379,41 @@ impl Actor {
                     }
                 } else {
                     Err(Error::State("queue is empty"))
+                }
+            }
+            PlaybackCommand::UseMissingDownloadOnline {
+                resource,
+                source,
+                preference_revision,
+            } => {
+                if self.state != PlaybackStatus::Error
+                    || self.queue.is_fm()
+                    || self.queue.intelligence_context().is_some()
+                    || !matches!(
+                        self.error,
+                        Some(crate::playback::failure::PlaybackFailure::DownloadedFileMissing)
+                    )
+                    || self.quality_preferences.preferences.revision != preference_revision
+                {
+                    Err(Error::StaleResponse)
+                } else if let Some(entry) = self.queue.selected().filter(|entry| {
+                    entry.resource["download_task_id"].is_string()
+                        && entry.resource["id"] == resource["id"]
+                }) {
+                    self.session
+                        .with_token(&self.token, |_| {
+                            self.queue.update_resource(&entry.entry_id, resource)
+                        })
+                        .map(|_| {
+                            options = Some(LoadOptions {
+                                position: Some(0.0),
+                                relative: true,
+                                source: Some(source),
+                                ..Default::default()
+                            });
+                        })
+                } else {
+                    Err(Error::StaleResponse)
                 }
             }
             PlaybackCommand::Snapshot | PlaybackCommand::SyncQueue => Ok(()),
