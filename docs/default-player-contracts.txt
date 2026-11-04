@@ -123,5 +123,6 @@ Debian 桌面候选验证使用 scripts/ci/linux_file_candidate_smoke.py --deb �
 候选和默认应用，并启动同一个包内桌面入口，观察冷启动解码、普通菜单启动
 恢复、暖启动多个含中文/引号/百分号的路径及其实际 PCM。验证前后既有两种
 默认值和 mimeapps.list 字节一致，WAV 和网络 URI 不在候选范围。
+合成进程使用原生身份模式，成功报告前审计数据库，发现设备身份记录即失败。
 这是隔离 Linux GIO 行为证明；不代表所有文件管理器的菜单外观、物理声卡、
 Windows 暖转交/Explorer 或服务登录。

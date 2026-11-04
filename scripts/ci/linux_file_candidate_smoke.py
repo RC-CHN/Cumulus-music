@@ -13,6 +13,7 @@ import sqlite3
 import subprocess
 import time
 
+from diagnostics import verify_proof_databases
 from installed_linux_audio import (
     Input, isolated_audio, private_pipewire_stream, read_playback, sink_tone, start_accessibility,
     stop, wait_for,
@@ -177,6 +178,7 @@ def main():
     os.environ.update(xdg)
     os.environ['PATH'] = os.pathsep.join((str(binary.parent), os.environ['PATH']))
     env = os.environ.copy()
+    env['CUMULUS_DEVICE_IDENTITY'] = 'native'
     import gi
     gi.require_version('Gio', '2.0')
     from gi.repository import Gio, GLib
@@ -286,7 +288,9 @@ def main():
         assert final['amplitude10000Hz'] > 200 and final['amplitude440Hz'] < initial['amplitude440Hz'] * .1
         verify_candidates()
 
+    verify_proof_databases([root])
     result = dict(ok=True, extractedDebianDesktopEntry=True, realGioFileActivation=True,
+                  syntheticDatabaseIdentityAuditPassed=True,
                   onlyMp3AndFlacCandidates=True, existingDefaultsPreservedByteForByte=True,
                   ordinaryNoFileLauncherRestoredAutoplay=True, ordinaryDuplicateDidNotTransfer=True,
                   coldNativeUnicodeFile=True,
