@@ -27,6 +27,9 @@ export function useVerticalZone(
   const loading = ref(false);
   const error = ref('');
   const viewports = new Map<string, ZoneViewport>();
+  // In-memory navigation has no URL to rewrite. Canonicalize the specific
+  // history entry so Back uses the server's real key without matching names again.
+  let canonicalKeys = new WeakMap<VerticalZoneLocation, string>();
   let owner: string | undefined;
   let menuSerial = 0,
     pageSerial = 0;
@@ -72,13 +75,17 @@ export function useVerticalZone(
     loading.value = true;
     error.value = '';
     try {
+      const effectiveKey = canonicalKeys.get(location) ?? location.tabKey;
       const response = await core.verticalZonePage(
         epoch,
         location.pageCode,
-        location.tabKey,
-        location.from === 'searchHotExplain' && !location.tabKey ? location.tabKeyName : undefined,
+        effectiveKey,
+        location.from === 'searchHotExplain' && !effectiveKey ? location.tabKeyName : undefined,
       );
       if (current() && response.epoch === epoch) {
+        if (response.value.layout === 'tabs' && response.value.activeTab)
+          canonicalKeys.set(location, response.value.activeTab.key);
+        else if (effectiveKey) canonicalKeys.set(location, 'default');
         data.value = response.value;
         if (response.value.layout !== 'fallback' || response.value.tabs.length)
           tabs.value = response.value.tabs;
@@ -104,6 +111,7 @@ export function useVerticalZone(
         loading.value = false;
         error.value = '';
         viewports.clear();
+        canonicalKeys = new WeakMap();
       }
       if (visible) void loadMenu();
     },
