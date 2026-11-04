@@ -77,8 +77,16 @@ impl HttpBackend for Wire {
                         .get("2", "external-playlist-import-v1", "latest")?
                         .unwrap();
                     assert_eq!(row["phase"]["state"], "unknown");
-                    assert_eq!(row.as_object().unwrap().len(), 2);
+                    assert_eq!(row.as_object().unwrap().len(), 3);
                     let n = self.sends.fetch_add(1, Ordering::AcqRel);
+                    assert_eq!(
+                        row["destination"],
+                        match n {
+                            0 | 2 => "favorite_songs",
+                            1 => "new_playlist",
+                            _ => panic!("unexpected import replay"),
+                        }
+                    );
                     self.requests.lock().unwrap().push("submit".into());
                     Ok(reply(
                         match n {

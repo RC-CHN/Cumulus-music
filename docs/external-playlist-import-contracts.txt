@@ -31,7 +31,7 @@
   每项 {name,type:"",url:encodeURI(提取结果)}，保持输入次序。默认名称为「导入音乐 」加
   本地时间 `YYYY/M/D HH:mm:ss`，也是每项的 name（H5 Ws0M:464–470）。固定桌面入口的
   query 仅给 appBizName，createBusinessCode 和 extParam 均为 undefined，WEAPI JSON 中省略；
-  taskIdForLog 是空字符串。importStarPlaylist 默认 false，属于另一个可选目标。
+  taskIdForLog 是空字符串。importStarPlaylist 的初始值和勾选值见下节。
   桌面 rqRefer 取 window.rqRefer，无值时用空字符串（H5:7211–7228）。
   文字分支复用接口。H5:3839–3874,4445–4465,4544–4550,4590–4652 的单一文本框只检查非空；
   `rows:1000` 是显示参数，未恢复官方字节数、歌曲数或行数限制。固定桌面跳过自动剪贴板
@@ -86,8 +86,36 @@
   渲染；PrivateItem.jsx:103–175 和 TalkItem.jsx:123–190,304–327 未见该导入专用的
   消息类型、固定发送者 ID 或 taskId 与消息/歌单的绑定。不能按标题、时间或昵称自动归因。
 - 丢失创建回包时没有任务编号可查，空 taskIdForLog 也没有可证明的幂等语义；
-  不能自动重发、改走其他协议或宣称任务失败/完成。以下 Cumulus 实现移植链接和文字任务创建；
-  图片、红心目标及服务端任务回查没有接入。
+  不能自动重发、改走其他协议或宣称任务失败/完成。以下 Cumulus 实现移植链接和文字任务创建，
+  包括这两种方式的红心目标；图片及服务端任务回查没有接入。
+
+「导入我喜欢的音乐」：固定 PC 入口的可选目标
+- 固定 query 只有 appBizName=pc_externa_playlist，不需要 checkStar、createBusinessCode、
+  initPage 或其他开关才能显示红心控件。H5:6322–6392 默认进入链接，第二标签切文字；
+  H5:3822–3830、4692–4700 都无条件传 showStar=true，公共页脚 H5:2512–2564 只按此
+  值渲染「导入我喜欢的音乐」，不按 PC、业务活动或登录状态另行过滤。
+- 初次打开时，如果没有 checkStar 与已存值，目标为 JSON 布尔 false（新建「导入音乐 …」）。
+  H5:3401、3546–3548、4417、4545–4547：有 checkStar 则采用该 query，否则采用
+  module_sort_import_to_starPl_checked；H5:7783–7789 的存取函数直接读写 localStorage。
+  H5:2522–2525、2548–2559 点击在字符串 "true"/"false" 间切换并存值；只有严格等于
+  "true" 才画已勾选。单击「开始导入」调用 H5:3618–3689 / 4590–4655 的创建处理器，
+  没有官方二次确认。按原代码，提交闭包的依赖仅为 [y,c]（链接禁用态/输入）或
+  [h,l]（文字禁用态/输入），未列目标；最后只切目标可能继续发送旧值，重做输入才刷新。
+- 勾选后且闭包采用新目标时，原接口 /weapi/playlist/import/name/task/create 的
+  importStarPlaylist 为 JSON 字符串 "true"，不是布尔 true。playlistName、songs 内
+  每项的 name、taskIdForLog 和 rqRefer 保持原格式，未传 playlistId，也没有先调用
+  红心歌单 ID 或直接逐首收藏的请求。回执仍是 taskId 后接 PC bridge 与关闭；固定 PC
+  的通用提示只提「创建的歌单」，不能据此否定 H5 的目的地或证明真实服务已完成。
+- scripts/research/external_import_destination.mjs 可离线复核固定哈希官方脚本：取对应
+  footer 和两个提交回调放入无网络 VM，代入合成输入和桥，得到两条分支的目的地序列
+  [false, "true", "false"] 及每次 create → bridge → return 顺序。使用锁定的前端
+  Prettier babel 格式并校验原始和格式化文件 SHA-256；不运行完整 H5 或加载页面资源。
+- Cumulus 保留相同勾选与两种输入，首次开窗默认新建歌单，不跨窗口或账号记住勾选。
+  选择绑定到本机准备回执，改输入或目的地即销毁旧确认，提交仅接受回执不能临时指定目标。
+  确认明示将尝试修改「我喜欢的音乐」或创建指定歌单；默认焦点仍在取消。实际加密参数
+  对红心用官方字符串 "true"，新建沿用首次打开的布尔 false。不会扩大 Interface
+  同 UID 授权或访问 MP；本机账本按账号保存目标枚举，已有旧账本按原来唯一的新建目标
+  读取。缺回执时无论选什么目标或输入类型都不允许重发。没有真实歌单/红心写入验证。
 
 图片导入：已恢复的链路与授权缺口
 - H5 k7Bb:873–880,941–1008,1260–1313,1419–1448,1529–1542,5611–5621：本地多选
@@ -200,3 +228,8 @@ Cumulus 链接、文字任务与独立扫码授权
   以及缺 taskId 时在读回和重开后保持「结果未知」。共三次明确确认的合成派发
   （链接受理、文字受理、文字缺回执），重开零次，无真实请求。报告在
   `.build/external-import-text-evidence/verified-layout-final/report.json`。
+- 加入红心目的地后，真实 Linux WebKit 在 zh_CN.UTF-8 下通过 15 个检查点并留下 15 张
+  截图。覆盖最后改选作废旧确认、取消优先焦点、链接红心受理、重开恢复默认新建、文字新建
+  受理，以及文字红心缺回执后重启仍按目的地提示且不重发。合成传输只有三次经确认的派发；
+  重新打开进程零请求，没有真实账号写入或服务端完成证据。报告在
+  `.build/external-import-destination-proof/webview-x11/report.json`。

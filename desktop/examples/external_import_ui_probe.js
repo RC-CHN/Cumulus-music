@@ -23,6 +23,7 @@
   });
   const snap = (name) => send(`ux_${name}`, { visible: document.visibilityState === 'visible' });
   const observe = (state) => one(`[data-import-state="${state}"]`);
+  const favorite = () => one('.external-import-destination input[type=checkbox]', dialog());
   const textarea = () => one('[data-import-text]', dialog());
   const setText = (text) => {
     textarea().value = text;
@@ -55,6 +56,8 @@
     await open();
     if (window.__externalImportReopen) {
       await wait(() => observe('unknown'), 'unknown receipt survives process reopen');
+      assert(observe('unknown').textContent.includes('我喜欢的音乐') && !favorite(),
+        'unknown favorites receipt survives reopen without enabling either destination');
       await preview('https://www.kuwo.cn/synthetic/another');
       assert(!button('授权并导入…') && !button('提交导入…'), 'reopen forbids resubmission');
       click(button('文字导入'));
@@ -83,19 +86,38 @@
     await wait(() => dialog()?.textContent.includes('已扫码，请在网易云音乐 App 确认'), 'confirmation step');
     await snap('scanned');
     await wait(() => button('提交导入…') && !button('提交导入…').disabled, 'same owner authorized');
+    assert(favorite() && !favorite().checked, 'new dialog defaults to creating a playlist');
     click(button('提交导入…'));
     await wait(() => observe('confirm') && document.activeElement === button('取消提交'), 'safe confirm focus');
+    assert(observe('confirm').dataset.importDestination === 'new_playlist' &&
+      observe('confirm').textContent.includes('将尝试创建'), 'default confirmation names its destination');
     await snap('confirm');
     click(button('取消提交'));
     await wait(() => !observe('confirm'), 'confirmation cancelled');
     await snap('cancelled');
 
     click(button('提交导入…'));
-    await wait(() => button('确认提交导入'), 'new confirmation');
+    await wait(() => observe('confirm') && !favorite().disabled, 'new confirmation');
+    click(favorite());
+    await wait(() => !observe('confirm') && favorite().checked && proceed() && !proceed().disabled,
+      'switching destination after final input revokes the existing confirmation');
+    await snap('destination_changed');
+    click(proceed());
+    await wait(() => observe('confirm')?.dataset.importDestination === 'favorite_songs' &&
+      document.activeElement === button('取消提交') && hittable(button('确认提交导入')),
+      'favorites confirmation binds the new destination, defaults to cancel focus, and stays visible');
+    assert(observe('confirm').textContent.includes('我喜欢的音乐') &&
+      !observe('confirm').textContent.includes('将尝试创建'), 'favorites confirmation explains the library change');
+    await snap('favorite_confirm');
     click(button('确认提交导入'));
     await wait(() => observe('accepted'), 'receipt says accepted only');
+    assert(observe('accepted').textContent.includes('我喜欢的音乐'), 'receipt names favorites');
     assert(!dialog().textContent.includes('fixture-task-id'), 'native task id is private');
     await snap('accepted');
+    click(button('关闭'));
+    await wait(() => !dialog(), 'close import after accepted receipt');
+    await open();
+    await wait(() => favorite() && !favorite().checked, 'reopening resets the destination selection');
     const linksTab = button('链接导入');
     linksTab.focus();
     linksTab.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
@@ -125,10 +147,15 @@
 
     setText('未知回执的合成文字');
     await wait(() => proceed() && !proceed().disabled, 'new text input');
+    click(favorite());
     click(proceed());
-    await wait(() => observe('confirm')?.dataset.importSource === 'text', 'next explicit text confirmation');
+    await wait(() => observe('confirm')?.dataset.importSource === 'text' &&
+      observe('confirm')?.dataset.importDestination === 'favorite_songs',
+      'next explicit text confirmation binds favorites too');
+    await snap('text_favorite_confirm');
     click(button('确认提交导入'));
     await wait(() => observe('unknown'), 'missing task id is unknown');
+    assert(observe('unknown').textContent.includes('我喜欢的音乐'), 'unknown receipt names submitted destination');
     await snap('unknown');
     assert(!button('提交导入…'), 'unknown blocks submitting again');
     click(button('核对本机回执'));

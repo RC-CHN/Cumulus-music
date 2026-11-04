@@ -14,6 +14,7 @@ use std::{
     time::Duration,
 };
 use uuid::Uuid;
+use wire::ExternalImportDestination;
 
 const JOURNAL: &str = "external-playlist-import-v1";
 const LATEST: &str = "latest";
@@ -22,10 +23,20 @@ const LATEST: &str = "latest";
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ExternalImportAction {
     Inspect,
-    Prepare { inputs: Vec<String> },
-    PrepareText { text: String },
-    Cancel { receipt: String },
-    Submit { receipt: String },
+    Prepare {
+        inputs: Vec<String>,
+        destination: ExternalImportDestination,
+    },
+    PrepareText {
+        text: String,
+        destination: ExternalImportDestination,
+    },
+    Cancel {
+        receipt: String,
+    },
+    Submit {
+        receipt: String,
+    },
 }
 
 #[derive(Serialize)]
@@ -40,14 +51,21 @@ pub struct ExternalImportView {
 #[serde(tag = "state", rename_all = "snake_case")]
 enum ExternalImportOutcome {
     Ready,
-    Unknown { operation: String },
-    Accepted { operation: String },
+    Unknown {
+        operation: String,
+        destination: ExternalImportDestination,
+    },
+    Accepted {
+        operation: String,
+        destination: ExternalImportDestination,
+    },
 }
 
 #[derive(Serialize)]
 struct ExternalImportPreview {
     receipt: String,
     name: String,
+    destination: ExternalImportDestination,
     source: wire::SourcePreview,
 }
 
@@ -56,6 +74,8 @@ struct ExternalImportPreview {
 struct Record {
     operation: String,
     phase: Phase,
+    #[serde(default)]
+    destination: ExternalImportDestination,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -79,9 +99,11 @@ impl Record {
         match self.phase {
             Phase::Unknown => ExternalImportOutcome::Unknown {
                 operation: self.operation,
+                destination: self.destination,
             },
             Phase::Accepted { .. } => ExternalImportOutcome::Accepted {
                 operation: self.operation,
+                destination: self.destination,
             },
         }
     }
@@ -99,7 +121,12 @@ fn parse(raw: Option<serde_json::Value>) -> Result<Option<Record>> {
         .transpose()
 }
 
-fn begin(store: &StateStore, uid: &str, operation: &str) -> Result<Option<Record>> {
+fn begin(
+    store: &StateStore,
+    uid: &str,
+    operation: &str,
+    destination: ExternalImportDestination,
+) -> Result<Option<Record>> {
     if !valid_receipt(operation) {
         return Err(Error::InvalidInput("invalid external import operation"));
     }
@@ -121,6 +148,7 @@ fn begin(store: &StateStore, uid: &str, operation: &str) -> Result<Option<Record
             &serde_json::to_value(Record {
                 operation: operation.into(),
                 phase: Phase::Unknown,
+                destination,
             })?,
         )?;
         Ok(previous)
@@ -137,6 +165,7 @@ fn abandon_unsent(
         Some(Record {
             operation: current,
             phase: Phase::Unknown,
+            ..
         }) if current == operation => {
             if let Some(previous) = previous {
                 tx.put(uid, JOURNAL, LATEST, &serde_json::to_value(previous)?)
@@ -149,19 +178,19 @@ fn abandon_unsent(
 }
 
 fn settle(store: &StateStore, uid: &str, operation: &str, task_id: String) -> Result<()> {
-    let accepted = Record {
-        operation: operation.into(),
-        phase: Phase::Accepted { task_id },
-    }
-    .validate()?;
-    store.transaction(|tx| match parse(tx.get(uid, JOURNAL, LATEST)?)? {
-        Some(Record {
-            operation: current,
-            phase: Phase::Unknown,
-        }) if current == operation => {
-            tx.put(uid, JOURNAL, LATEST, &serde_json::to_value(accepted)?)
-        }
-        _ => Err(Error::State("external import journal no longer matches")),
+    store.transaction(|tx| {
+        let mut record = parse(tx.get(uid, JOURNAL, LATEST)?)?
+            .filter(|record| {
+                record.operation == operation && matches!(record.phase, Phase::Unknown)
+            })
+            .ok_or(Error::State("external import journal no longer matches"))?;
+        record.phase = Phase::Accepted { task_id };
+        tx.put(
+            uid,
+            JOURNAL,
+            LATEST,
+            &serde_json::to_value(record.validate()?)?,
+        )
     })
 }
 
@@ -169,6 +198,7 @@ struct Draft {
     token: SessionToken,
     name: String,
     receipt: String,
+    destination: ExternalImportDestination,
     batch: wire::TaskBatch,
 }
 
@@ -213,6 +243,7 @@ impl MusicClient {
         &self,
         token: &SessionToken,
         store: &StateStore,
+        destination: ExternalImportDestination,
         source: impl FnOnce() -> Result<(wire::TaskBatch, wire::SourcePreview)>,
     ) -> Result<ExternalImportPreview> {
         if self.external_import_credentials(token)?.is_none() {
@@ -235,11 +266,13 @@ impl MusicClient {
                 token: token.clone(),
                 name: name.clone(),
                 receipt: receipt.clone(),
+                destination,
                 batch,
             });
             Ok(ExternalImportPreview {
                 receipt,
                 name,
+                destination,
                 source,
             })
         })
@@ -264,13 +297,24 @@ impl MusicClient {
                     Ok(())
                 })?;
             }
-            ExternalImportAction::Prepare { inputs } => {
-                prepared =
-                    Some(self.prepare_external_import(&token, &store, || wire::links(&inputs))?);
+            ExternalImportAction::Prepare {
+                inputs,
+                destination,
+            } => {
+                prepared = Some(self.prepare_external_import(
+                    &token,
+                    &store,
+                    destination,
+                    || wire::links(&inputs),
+                )?);
             }
-            ExternalImportAction::PrepareText { text } => {
-                prepared =
-                    Some(self.prepare_external_import(&token, &store, || wire::text(&text))?);
+            ExternalImportAction::PrepareText { text, destination } => {
+                prepared = Some(self.prepare_external_import(
+                    &token,
+                    &store,
+                    destination,
+                    || wire::text(&text),
+                )?);
             }
             ExternalImportAction::Cancel { receipt } => {
                 self.session.with_token(&token, |_| {
@@ -296,8 +340,9 @@ impl MusicClient {
                         .as_ref()
                         .filter(|draft| draft.receipt == receipt)
                         .ok_or(Error::State("external import confirmation expired"))?;
-                    let plan = wire::request(&credentials, &draft.batch, &draft.name)?;
-                    let previous = begin(&store, uid, &operation)?;
+                    let plan =
+                        wire::request(&credentials, &draft.batch, &draft.name, draft.destination)?;
+                    let previous = begin(&store, uid, &operation, draft.destination)?;
                     *slot = None;
                     Ok((plan, uid.to_owned(), previous))
                 })?;
@@ -345,17 +390,18 @@ mod tests {
 
     #[test]
     fn unknown_intent_survives_reopen_and_is_never_displaced_by_another_attempt() {
+        use ExternalImportDestination::{FavoriteSongs, NewPlaylist};
         let root = tempfile::tempdir().unwrap();
         let id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
         let other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
         {
             let store = StateStore::open(root.path()).unwrap();
-            begin(&store, "42", id).unwrap();
-            assert!(begin(&store, "42", other).is_err());
-            begin(&store, "43", other).unwrap();
+            begin(&store, "42", id, FavoriteSongs).unwrap();
+            assert!(begin(&store, "42", other, NewPlaylist).is_err());
+            begin(&store, "43", other, NewPlaylist).unwrap();
         }
         let store = StateStore::open(root.path()).unwrap();
-        assert!(begin(&store, "42", other).is_err());
+        assert!(begin(&store, "42", other, NewPlaylist).is_err());
         assert!(settle(&store, "42", other, "task-99".into()).is_err());
         settle(&store, "42", id, "task-42".into()).unwrap();
         let accepted = parse(store.get("42", JOURNAL, LATEST).unwrap())
@@ -363,14 +409,16 @@ mod tests {
             .unwrap();
         let visible = serde_json::to_string(&accepted.outcome()).unwrap();
         assert!(visible.contains("accepted"));
+        assert!(visible.contains("favorite_songs"));
         assert!(!visible.contains("task-42"));
-        let previous = begin(&store, "42", other).unwrap();
+        let previous = begin(&store, "42", other, NewPlaylist).unwrap();
         assert!(abandon_unsent(&store, "42", id, None).is_err());
         abandon_unsent(&store, "42", other, previous).unwrap();
         let restored = parse(store.get("42", JOURNAL, LATEST).unwrap())
             .unwrap()
             .unwrap();
         assert_eq!(restored.operation, id);
+        assert_eq!(restored.destination, FavoriteSongs);
         assert!(matches!(restored.phase, Phase::Accepted { .. }));
         assert!(matches!(
             parse(store.get("43", JOURNAL, LATEST).unwrap())
@@ -379,5 +427,25 @@ mod tests {
                 .phase,
             Phase::Unknown
         ));
+    }
+
+    #[test]
+    fn legacy_unknown_receipt_retains_the_original_destination_and_fence() {
+        let root = tempfile::tempdir().unwrap();
+        let store = StateStore::open(root.path()).unwrap();
+        let id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        store
+            .put(
+                "42",
+                JOURNAL,
+                LATEST,
+                &serde_json::json!({"operation":id,"phase":{"state":"unknown"}}),
+            )
+            .unwrap();
+        let record = parse(store.get("42", JOURNAL, LATEST).unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.destination, ExternalImportDestination::NewPlaylist);
+        assert!(begin(&store, "42", id, ExternalImportDestination::FavoriteSongs).is_err());
     }
 }

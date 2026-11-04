@@ -105,6 +105,7 @@ pub use crate::fm::discovery::{FmDiscoveryQuery, SavedFmDiscovery};
 pub use crate::fm::{FmReason, FmReasons, FmSource};
 pub use crate::history::HistoryKind;
 pub use crate::playlist::cover::{CoverCrop, CoverImage, CoverTaskView};
+pub use crate::playlist::external_import::ExternalImportDestination;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize)]

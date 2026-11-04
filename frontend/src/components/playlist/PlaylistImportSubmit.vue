@@ -6,6 +6,7 @@ import type {
   ExternalImportAuthAction,
   ExternalImportAuthState,
   ExternalImportAuthView,
+  ExternalImportDestination,
   ExternalImportInput,
   ExternalImportView,
 } from '../../services/externalPlaylistImport';
@@ -21,11 +22,17 @@ const authShown = ref(false);
 const error = ref('');
 const cancelButton = ref<HTMLButtonElement>();
 const proceedButton = ref<HTMLButtonElement>();
+const destination = ref<ExternalImportDestination>('new_playlist');
 let timer: ReturnType<typeof setTimeout> | undefined;
 let alive = true;
 let inputVersion = 0;
 const canSubmit = computed(() => value.value?.outcome.state !== 'unknown' && props.ready);
 const authAvailable = computed(() => value.value?.authorized === true);
+const resultDestination = computed(() =>
+  value.value?.outcome.state !== 'ready' && value.value?.outcome.destination === 'favorite_songs'
+    ? '我喜欢的音乐'
+    : '创建的歌单',
+);
 watch(
   () => authShown.value && !authAvailable.value,
   (shown) => emit('authorizationPanel', shown),
@@ -201,12 +208,20 @@ function proceed() {
     if (canBegin.value) void authorize({ kind: 'begin' });
     else schedule();
   } else if (props.input.kind === 'text') {
-    void command({ kind: 'prepare_text', text: props.input.text });
-  } else void command({ kind: 'prepare', inputs: [...props.input.inputs] });
+    void command({ kind: 'prepare_text', text: props.input.text, destination: destination.value });
+  } else
+    void command({
+      kind: 'prepare',
+      inputs: [...props.input.inputs],
+      destination: destination.value,
+    });
 }
 
 watch(
-  () => (props.input.kind === 'links' ? props.input.inputs.slice() : props.input.text),
+  [
+    destination,
+    () => (props.input.kind === 'links' ? props.input.inputs.slice() : props.input.text),
+  ],
   () => {
     inputVersion++;
     discard();
@@ -253,14 +268,14 @@ onBeforeUnmount(() => {
   <section class="external-import-submit" aria-label="外部歌单导入">
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="value?.outcome.state === 'unknown'" role="status" data-import-state="unknown">
-      导入结果未知。请在「创建的歌单」和小秘书私信查看；此客户端不会重发。
+      导入结果未知。请在「{{ resultDestination }}」和小秘书私信查看；此客户端不会重发。
     </p>
     <p
       v-if="value?.outcome.state === 'accepted' && !value.prepared"
       role="status"
       data-import-state="accepted"
     >
-      歌单正在导入。任务已受理，可在「创建的歌单」和小秘书私信查看结果。
+      任务已受理，可在「{{ resultDestination }}」和小秘书私信查看结果。
     </p>
     <button
       v-if="value?.outcome.state === 'unknown' || (!value && !busy)"
@@ -301,16 +316,34 @@ onBeforeUnmount(() => {
         重新扫码
       </button>
     </div>
+    <label
+      v-if="value && value.outcome.state !== 'unknown' && (!authShown || authAvailable)"
+      class="external-import-destination"
+    >
+      <input
+        v-model="destination"
+        type="checkbox"
+        true-value="favorite_songs"
+        false-value="new_playlist"
+        :disabled="busy || authBusy"
+      />
+      导入我喜欢的音乐
+    </label>
     <div
       v-if="value?.prepared"
       class="external-import-confirm"
       data-import-state="confirm"
       :data-import-source="value.prepared.source.kind"
+      :data-import-destination="value.prepared.destination"
     >
       <p>
         将把{{
           value.prepared.source.kind === 'text' ? '输入的文字' : '已识别的链接'
-        }}交给网易云音乐，服务端将尝试创建「{{ value.prepared.name }}」。
+        }}交给网易云音乐，{{
+          value.prepared.destination === 'favorite_songs'
+            ? '服务端将尝试把匹配到的歌曲加入「我喜欢的音乐」。'
+            : `服务端将尝试创建「${value.prepared.name}」。`
+        }}
       </p>
       <button ref="cancelButton" type="button" class="secondary" @click="discard(true)">
         取消提交
@@ -346,6 +379,17 @@ onBeforeUnmount(() => {
 .external-import-submit {
   display: grid;
   gap: 8px;
+}
+.external-import-destination {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+}
+.external-import-destination input {
+  width: auto;
+  accent-color: var(--accent);
 }
 .external-import-auth,
 .external-import-confirm {

@@ -7,15 +7,17 @@ export type ExternalImportInput =
   | { kind: 'links'; inputs: readonly string[] }
   | { kind: 'text'; text: string };
 
+export type ExternalImportDestination = 'new_playlist' | 'favorite_songs';
+
 export type ExternalImportAction =
   | { kind: 'inspect' }
-  | { kind: 'prepare'; inputs: string[] }
-  | { kind: 'prepare_text'; text: string }
+  | { kind: 'prepare'; inputs: string[]; destination: ExternalImportDestination }
+  | { kind: 'prepare_text'; text: string; destination: ExternalImportDestination }
   | { kind: 'cancel' | 'submit'; receipt: string };
 
 export type ExternalImportOutcome =
   | { state: 'ready' }
-  | { state: 'unknown' | 'accepted'; operation: string };
+  | { state: 'unknown' | 'accepted'; operation: string; destination: ExternalImportDestination };
 
 export interface ExternalImportView {
   authorized: boolean;
@@ -23,6 +25,7 @@ export interface ExternalImportView {
   prepared: {
     receipt: string;
     name: string;
+    destination: ExternalImportDestination;
     source: { kind: 'links'; links: ExternalPlaylistInput[] } | { kind: 'text'; bytes: number };
   } | null;
 }

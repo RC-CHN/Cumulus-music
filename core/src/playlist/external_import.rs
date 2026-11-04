@@ -13,7 +13,7 @@ use crate::{
         wire::{serialization::encode_component, weapi},
     },
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -21,6 +21,24 @@ pub(crate) const TASK_CREATE: &str = "/api/playlist/import/name/task/create";
 const PAGE_ORIGIN: &str = "https://mp.music.163.com";
 const TEXT_PREFIX: &str = "rpc://playlist/import?text=";
 const MAX_TEXT_BYTES: usize = 16 * 1024;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExternalImportDestination {
+    #[default]
+    NewPlaylist,
+    FavoriteSongs,
+}
+
+impl ExternalImportDestination {
+    fn wire_value(self) -> Value {
+        match self {
+            Self::NewPlaylist => Value::Bool(false),
+            // The H5 checkbox stores and sends the string, not a JSON boolean.
+            Self::FavoriteSongs => Value::String("true".into()),
+        }
+    }
+}
 
 pub(crate) struct TaskBatch {
     encoded: Vec<String>,
@@ -96,7 +114,11 @@ pub(crate) fn text(raw: &str) -> Result<(TaskBatch, SourcePreview)> {
 }
 
 impl TaskBatch {
-    pub(crate) fn payload(&self, name: &str) -> Result<Value> {
+    pub(crate) fn payload(
+        &self,
+        name: &str,
+        destination: ExternalImportDestination,
+    ) -> Result<Value> {
         let songs = self
             .encoded
             .iter()
@@ -105,7 +127,7 @@ impl TaskBatch {
         Ok(json!({
             "playlistName":name,
             "taskIdForLog":"",
-            "importStarPlaylist":false,
+            "importStarPlaylist":destination.wire_value(),
             "rqRefer":"",
             "songs":serde_json::to_string(&songs)?,
         }))
@@ -141,13 +163,14 @@ pub(crate) fn request(
     credentials: &Credentials,
     batch: &TaskBatch,
     name: &str,
+    destination: ExternalImportDestination,
 ) -> Result<PreparedRequest> {
     let cookie = scoped_credentials(credentials)?;
     let csrf = credentials.external_import_document_csrf(&cookie.revision)?;
     let plan = encode(
         &cookie,
         csrf.as_deref(),
-        batch.payload(name)?,
+        batch.payload(name, destination)?,
         weapi::encrypt,
     )?;
     Ok(PreparedRequest {
@@ -298,7 +321,9 @@ mod tests {
         let plan = encode(
             &cookie,
             Some(csrf),
-            batch.payload(name).unwrap(),
+            batch
+                .payload(name, ExternalImportDestination::NewPlaylist)
+                .unwrap(),
             |payload| {
                 assert_eq!(payload, &vector["payload"]);
                 weapi::encrypt_with_key(
@@ -333,7 +358,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(crate::storage::StateStore::open(dir.path()).unwrap());
         let wrong = Credentials::open(store, ApiOrigin::Pc).unwrap();
-        assert!(request(&wrong, &batch, name).is_err());
+        assert!(
+            request(
+                &wrong,
+                &batch,
+                name,
+                ExternalImportDestination::FavoriteSongs
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -364,12 +397,24 @@ mod tests {
             "__csrf=shared-httponly; Domain=music.163.com; Path=/; Secure; HttpOnly",
         ]);
         let (batch, _) = links(&["https://y.qq.com/playlist/fixture".into()]).unwrap();
-        let native = request(&interface, &batch, "合成歌单").unwrap();
+        let native = request(
+            &interface,
+            &batch,
+            "合成歌单",
+            ExternalImportDestination::FavoriteSongs,
+        )
+        .unwrap();
         assert!(native.plan.headers["Cookie"].contains("interface-only"));
         assert!(native.plan.headers["Cookie"].contains("shared-httponly"));
         assert!(native.plan.url.query().is_none());
         set(&["__csrf=page-visible; Domain=music.163.com; Path=/; Secure"]);
-        let native = request(&interface, &batch, "合成歌单").unwrap();
+        let native = request(
+            &interface,
+            &batch,
+            "合成歌单",
+            ExternalImportDestination::FavoriteSongs,
+        )
+        .unwrap();
         assert_eq!(native.plan.url.query(), Some("csrf_token=page-visible"));
         assert!(native.plan.headers["Cookie"].contains("interface-only"));
         assert!(native.revalidate(&interface).is_ok());
@@ -421,7 +466,12 @@ mod tests {
             serde_json::to_value(preview).unwrap(),
             json!({"kind":"text","bytes":44})
         );
-        let payload = batch.payload("导入音乐 2026/11/4 12:34:56").unwrap();
+        let payload = batch
+            .payload(
+                "导入音乐 2026/11/4 12:34:56",
+                ExternalImportDestination::NewPlaylist,
+            )
+            .unwrap();
         // Frozen from Node's encodeURI over H5:4605, with the full original text.
         let expected = "rpc://playlist/import?text=%20%20%E7%AC%AC%E4%B8%80%E9%A6%96%20/%20A&B=#?+%2050%25%0D%0ASecond%20%F0%9F%8E%B5%09%E5%B0%BE%20%20";
         let songs: Value = serde_json::from_str(payload["songs"].as_str().unwrap()).unwrap();
@@ -434,5 +484,27 @@ mod tests {
         assert!(text(" \n").is_ok(), "official only checks nonempty input");
         assert!(text(&"x".repeat(MAX_TEXT_BYTES)).is_ok());
         assert!(text(&"歌".repeat(MAX_TEXT_BYTES / 3 + 1)).is_err());
+    }
+
+    #[test]
+    fn favorite_destination_changes_only_the_exact_h5_json_field() {
+        let (links, _) = links(&["https://y.qq.com/fixture".into()]).unwrap();
+        let (text, _) = text("合成文字\n").unwrap();
+        for batch in [links, text] {
+            let name = "导入音乐 2026/11/4 12:34:56";
+            let mut expected = batch
+                .payload(name, ExternalImportDestination::NewPlaylist)
+                .unwrap();
+            // Frozen by scripts/research/external_import_destination.mjs running
+            // the selected official checkbox state through both PC handlers.
+            expected["importStarPlaylist"] = json!("true");
+            assert_eq!(
+                batch
+                    .payload(name, ExternalImportDestination::FavoriteSongs)
+                    .unwrap(),
+                expected
+            );
+            assert!(expected.get("playlistId").is_none());
+        }
     }
 }

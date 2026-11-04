@@ -55,7 +55,7 @@
 - [听歌识曲](song-recognition-contracts.txt)已确认官方 PC 采集、时序、原生请求和 UI 状态；官方合成向量与 Rust 的默认峰值封包、AES 和 Base64 一致。完整声学前端、生产回采和真实识别仍未验收。
 - [社区话题](community-topic-contracts.txt)从笔记内的 #话题# 进入，独立读取同一话题的热门笔记和全部笔记，恢复原游标及返回位置。前台新笔记提示不会自行刷新；参与和分享不在此入口。
 - [本人笔记删除](community-note-delete-contracts.txt)只在同一账号拥有的卡片/详情显示，确认后发一次；明确回执移除对应列表条目，回包不明可显式读取同一原生详情。404 不确认删除，原生墓碑与提交回执分别记录。只用封闭合成账号验证。
-- [外部歌单导入](external-playlist-import-contracts.txt)支持链接和粘贴文字；提交前单独在 Interface 域扫码核对同一账号。服务任务受理与导入完成分开，未知回包及重开不重发。图片、红心目标和服务端完成查询仍按契约追踪。
+- [外部歌单导入](external-playlist-import-contracts.txt)支持链接和粘贴文字，可新建歌单或导入「我喜欢的音乐」；提交前单独在 Interface 域扫码核对同一账号并确认目的地。服务任务受理与导入完成分开，未知回包及重开不重发。图片和服务端完成查询仍按契约追踪。
 - [歌手 MV](artist-mv-discovery-contracts.txt)按官方 MV 数量门槛显示页签，用原游标续页和重试。Linux 合成桌面验证精确评论线程、原生视频画面和返回焦点；普通视频与全站 MV 发现没有用歌手列表冒充。
 - [识曲峰值选择](song-recognition-signal-contracts.txt)及[可选 zlib 封包](song-recognition-contracts.txt)有官方原生合成对照。峰值阶段接受已中心化矩阵，不接设备采集、FFT 或真实服务。
 - [经典发现首页](discovery-home-contracts.txt)接通 11 类可确认的官方区块。首页与目录详情往返保留横向和纵向位置及焦点，隐私关闭时不继续请求个性化推荐；游客和实验布局按独立证据追踪。
