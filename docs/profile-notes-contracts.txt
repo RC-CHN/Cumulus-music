@@ -32,3 +32,6 @@
 - 第一轮通过 Linux 笔记 8 态、关注动态回归 12 态（各有截图），13 次已核对合成请求。
   失效前后、未到达笔记接口、数值游标原位重试、匿名/错配过滤、详情和返回焦点均覆盖。
   .build/ui-proof/profile-notes-cee48f77/{notes,community}/report.json。Rust 专项 8/8。
+- 合并候选 1fe892af 再次通过笔记 8 态，详情返回原卡片且同级页签不额外增加
+  返回历史；关注编辑器及详情 15 态独立通过。新报告：
+  .build/ui-proof/product-phase7/{notes,community}/report.json。

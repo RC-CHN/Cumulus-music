@@ -342,3 +342,17 @@ Linux 合成桌面硬断网：已发布下载 → 离线播放
   证据保留在 `.build/ui-proof/production-current-linux-private-bus-20261104/run/`，包括
   可执行文件 SHA-256、监测数据及启动、导入、播放、暂停截图。本机验证用调试构建的正式
   入口；不等同发行包、真实账号或实体声卡验证。Windows 仍需其独立原生 CI/实机证据。
+
+2026-11-04 合并版 Linux 完整主流程（1fe892af）
+
+  同一套生产 Vue、Tauri IPC、SQLite、真实 libmpv 和封闭合成服务，
+  通过账号恢复、推荐/搜索、私密合成歌单管理、回环 HTTPS 播放、
+  暂停恢复及自然切歌、下载和硬断网后的本地播放。19 个检查点和
+  18 张截图；HTTPS 媒体 GET 顺序为第 1、2 首。下载文件校验、
+  继续、移除及既有合成资源回读通过。断回环后原有 TCP、建立新 TCP
+  与 HTTPS 均被拒绝，随后才允许本地播放。无真实请求或账号写入。
+  回执 .build/ui-proof/product-phase7/main-flow/{report,https-receipt}.json。
+  同批普通 Linux 二进制以非 C locale 在私有 X11/PipeWire 启动，
+  验证实际 PCM 有声、暂停为零；回执
+  .build/ui-proof/product-phase7/ordinary-verified/report.json。
+  这些结果覆盖合成主流程与虚拟音频输出，真实账号与 Windows 实测另列。
