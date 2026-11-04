@@ -10,7 +10,22 @@ use std::sync::Arc;
 impl Actor {
     pub(super) async fn replace_follow_latest(
         &mut self,
+        resources: Vec<serde_json::Value>,
+        first_download: Option<Arc<ResolvedSource>>,
+    ) -> Result<Option<LoadOptions>> {
+        self.replace_collection_preserving_song(
+            resources,
+            serde_json::json!({"kind":"follow_latest","scene":"album","href":"/newSongPublish",
+                "resourceType":"track","originalResourceType":"album"}),
+            first_download,
+        )
+        .await
+    }
+
+    pub(super) async fn replace_collection_preserving_song(
+        &mut self,
         mut resources: Vec<serde_json::Value>,
+        source: serde_json::Value,
         first_download: Option<Arc<ResolvedSource>>,
     ) -> Result<Option<LoadOptions>> {
         if self.queue.is_fm() || self.quality_task.is_some() {
@@ -19,7 +34,7 @@ impl Actor {
         let first = resources
             .first()
             .filter(|item| item["id"].is_string())
-            .ok_or(Error::InvalidInput("missing first latest release"))?;
+            .ok_or(Error::InvalidInput("missing first collection song"))?;
         let first_id = first["id"].as_str().expect("checked first ID");
         // M/308 replaces the list, then retains or resumes the decoder when
         // that same authorized source was already current. A downloaded
@@ -62,8 +77,7 @@ impl Actor {
         self.queue.replace_with_selected_identity(
             resources,
             0,
-            serde_json::json!({"kind":"follow_latest","scene":"album","href":"/newSongPublish",
-                "resourceType":"track","originalResourceType":"album"}),
+            source,
             retained.as_ref().map(|(entry_id, _)| entry_id.clone()),
         )?;
         if retained.is_none() {

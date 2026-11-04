@@ -41,6 +41,8 @@ pub struct PlayerView {
     pub track: Option<TrackView>,
     pub origin: Option<PlayerOrigin>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_rank_playlist_uid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub recommendation_origin: Option<RecommendationOrigin>,
     pub position: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -175,6 +177,10 @@ pub enum SongRowSelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    ProfileRankPlaylist {
+        uid: Option<String>,
+        quality: Quality,
+    },
     FollowLatest {
         revision: String,
         quality: Quality,

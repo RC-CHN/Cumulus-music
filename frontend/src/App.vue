@@ -1637,6 +1637,27 @@ function openProfilePlayRecord() {
     period: 'week',
   });
 }
+const profileRankTransport = computed<'playing' | 'paused' | null>(() => {
+  const profile = playlistCreator.profile.value;
+  const view = player.view.value;
+  if (!profile || view?.profileRankPlaylistUid !== profile.id) return null;
+  if (view.state === 'paused') return 'paused';
+  return view.state === 'playing' || view.state === 'buffering' ? 'playing' : null;
+});
+function playProfileRankPlaylist() {
+  const profile = playlistCreator.profile.value;
+  if (
+    !profile?.listeningRank ||
+    page.value.kind !== 'playlist_creator' ||
+    page.value.id !== profile.id
+  )
+    return;
+  void player.select({
+    kind: 'profile_rank_playlist',
+    uid: profile.listeningRank.isSelf ? null : profile.id,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  });
+}
 function playProfileRank(tracks: TrackView[], index: number) {
   const track = tracks[index];
   if (!track) return;
@@ -3309,6 +3330,9 @@ onUnmounted(() => {
                 :model="playlistCreator"
                 :checking-relations="profileRelations.checking.value"
                 :relation-notice="profileRelations.entryNotice.value"
+                :rank-playable="player.ready.value && !player.busy.value"
+                :rank-transport="profileRankTransport"
+                @play-rank="playProfileRankPlaylist"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
                 @relations="openProfileRelations"
                 @rank="openProfilePlayRecord"

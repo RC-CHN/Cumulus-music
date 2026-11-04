@@ -210,6 +210,7 @@ impl Api for Library {
             if let Some(result) = queue_collection_fixture::response(path, &args) {
                 return result;
             }
+            profile_play_record_fixture::observe_playback(path, &args);
             if let Some(result) = profile_play_record_fixture::response(path, &args, cached) {
                 profile_play_record_fixture::hold_response(path, &args).await;
                 return result;
@@ -685,6 +686,9 @@ fn main() {
                     return;
                 }
                 value["profileRankCalls"] = json!(profile_play_record_fixture::report());
+                if profile_play_record_fixture::play_card_enabled() {
+                    value["profileRankPlaybackCalls"] = json!(profile_play_record_fixture::playback_calls());
+                }
             }
             if profile_relations_fixture::enabled() {
                 value["profileRelationCalls"] = json!(profile_relations_fixture::report());
@@ -895,6 +899,7 @@ fn main() {
                 }
                 if shortcut_proof {media_shortcuts::observe(&handle,&mut value);}
                 let stage = stage.to_owned(); let handle=handle.clone(); let output=output.clone();
+                let rank_source_store=proof_store.clone();let rank_source_session=fixture_session.clone();
                 tauri::async_runtime::spawn(async move {
                     let client=handle.state::<MusicClient>(); let epoch=client.account().unwrap().epoch;
                     if fm_feedback_fixture::enabled() {
@@ -908,6 +913,12 @@ fn main() {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
                         if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
+                        }
+                        if profile_play_record_fixture::play_card_enabled() {
+                            let owner=rank_source_session.token().unwrap().uid.unwrap();
+                            if let Some(queue)=rank_source_store.get(&owner,"playback","queue").unwrap() {
+                                value["nativeRankSources"]=json!(queue["items"].as_array().unwrap().iter().map(|item| &item["source"]).collect::<Vec<_>>());
+                            }
                         }
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();

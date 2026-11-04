@@ -52,17 +52,6 @@ struct LatestSelection {
     first_playable: bool,
 }
 
-fn online_playable(row: &Value) -> bool {
-    // Official M21 maps pl to maxPlayBr, then M23.Z accepts positive pl
-    // or trial flag bit 10. Never treat fee or a download entitlement as pl.
-    // Absent privilege is left to the normal authoritative source resolver.
-    !row["privilege"].is_object()
-        || row["privilege"]["pl"].as_i64().is_some_and(|pl| pl > 0)
-        || row["privilege"]["flag"]
-            .as_i64()
-            .is_some_and(|flag| flag & (1 << 10) != 0)
-}
-
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FollowNewSongPage {
@@ -298,11 +287,12 @@ impl MusicClient {
                     return Err(Error::Response("oversized latest followed songs"));
                 }
                 let first = songs.first().and_then(track);
-                let first_playable = songs.first().is_some_and(online_playable) && first.is_some();
+                let first_playable =
+                    songs.first().is_some_and(mapping::online_play_all_eligible) && first.is_some();
                 let mut seen = HashSet::new();
                 let playable = songs
                     .iter()
-                    .filter(|row| online_playable(row))
+                    .filter(|row| mapping::online_play_all_eligible(row))
                     .filter_map(track)
                     .filter(|song| seen.insert(song.id.clone()))
                     .collect();

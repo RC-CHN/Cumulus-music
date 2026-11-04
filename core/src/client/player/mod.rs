@@ -242,6 +242,11 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .selected
             .as_ref()
             .and_then(|i| origin::project(&i.source)),
+        profile_rank_playlist_uid: value
+            .selected
+            .as_ref()
+            .and_then(|entry| crate::playback::profile_rank::uid(&entry.source))
+            .map(str::to_owned),
         recommendation_origin: value
             .selected
             .as_ref()

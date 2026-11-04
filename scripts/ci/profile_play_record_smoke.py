@@ -14,18 +14,23 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    parser.add_argument('--removal', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--removal', action='store_true')
+    mode.add_argument('--play-card', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    probe = 'profile_rank_removal_ui_probe.js' if args.removal else 'profile_play_record_ui_probe.js'
+    probe = ('profile_rank_removal_ui_probe.js' if args.removal else
+             'profile_rank_play_card_ui_probe.js' if args.play_card else 'profile_play_record_ui_probe.js')
     source = Path(__file__).resolve().parents[2] / 'desktop/examples' / probe
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_PLAYLIST_CREATOR_PROOF='1', CUMULUS_PROFILE_PLAY_RECORD_PROOF='1',
                CUMULUS_UX_SCRIPT=str(source))
     if args.removal:
         env['CUMULUS_PROFILE_RANK_REMOVAL_PROOF'] = '1'
+    if args.play_card:
+        env['CUMULUS_PROFILE_RANK_PLAY_CARD_PROOF'] = '1'
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         folder = root / 'os-profile' / key
@@ -43,6 +48,9 @@ def main():
     assert code == 0, f'probe exited {code}'
     if args.removal:
         verify_removal(root, output, args.screenshots)
+        return
+    if args.play_card:
+        verify_play_card(root, output, args.screenshots)
         return
 
     names = ['missing_guest', 'hidden_guest', 'guest_header', 'guest_week', 'guest_play',
@@ -139,6 +147,74 @@ def verify_removal(root, output, screenshots):
               'noOptimisticRemoval': True, 'unknownReplyReadbackOnly': True}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
+
+
+def verify_play_card(root, output, screenshots):
+    names = ['hidden_guest', 'guest_available', 'guest_first_play', 'guest_next',
+             'guest_paused', 'guest_resumed', 'owner_playing', 'owner_title_opens', 'guest_revoked']
+
+    def read(stage):
+        return json.loads((output / f'{stage}.json').read_text(encoding='utf-8'))
+
+    stages = {name: read(f'ux_{index:02d}_{name}') for index, name in enumerate(names, 1)}
+    complete = read('complete')
+    assert complete['ok'] and complete['stageCount'] == len(stages)
+    assert len(list(output.glob('ux_*.png'))) == (len(stages) if screenshots else 0)
+
+    def detail(uid):
+        return {'path': f'/api/w/v1/user/detail/{uid}', 'args': {'all': True, 'userId': uid}, 'cached': False}
+
+    def rank(uid):
+        return {'path': '/api/v1/play/record',
+                'args': {'offset': 0, 'total': True, 'limit': 120, 'uid': uid, 'type': 1},
+                'cached': False}
+
+    assert stages['hidden_guest']['profileRankCalls'] == [detail('5')]
+    header = [detail('5'), detail('3')]
+    assert stages['guest_available']['profileRankCalls'] == header
+    guest = header + [detail('3'), rank('3')]
+    for name in names[2:6]:
+        assert stages[name]['profileRankCalls'] == guest
+        assert [row['track']['id'] for row in stages[name]['nativeQueue']['tracks']] == ['82', '87']
+        assert stages[name]['nativeRankSources'] == [source('3')] * 2
+    owner = guest + [detail('2'), rank('2')]
+    assert stages['owner_playing']['profileRankCalls'] == owner
+    assert stages['owner_playing']['nativeRankSources'] == [source('2')]
+    assert stages['owner_title_opens']['profileRankCalls'] == owner + [rank('2')]
+    assert complete['profileRankCalls'] == owner + [rank('2'), detail('3'), detail('3')]
+
+    paused = stages['guest_paused']['nativePlayer']
+    resumed = stages['guest_resumed']['nativePlayer']
+    assert paused['playId'] == resumed['playId'] == stages['guest_next']['nativePlayer']['playId']
+    assert paused['queueRevision'] == resumed['queueRevision']
+    assert paused['state'] == 'paused' and resumed['state'] == 'playing'
+    assert resumed['position'] > paused['position']
+    assert stages['guest_revoked']['nativePlayer']['playId'] == stages['owner_playing']['nativePlayer']['playId']
+
+    calls = complete['profileRankPlaybackCalls']
+    ids = [str(song) for call in calls if call['path'] == '/api/song/enhance/player/url/v1'
+           for song in json.loads(call['args']['ids'])]
+    metadata = {str(row['id']) for call in calls if call['path'] == '/api/v3/song/detail'
+                for row in json.loads(call['args']['c'])}
+    assert not metadata & {'81', '82', '84', '87'}, 'only navigation fixtures read song details'
+    assert ids == ['82', '87', '84']
+    report = {'ok': True, 'actualWebView': True, 'states': len(stages),
+              'screenshots': len(stages) if screenshots else 0,
+              'nativePlayback': 'libmpv/null', 'physicalAudioVerified': False,
+              'nativeStreamIds': ids, 'realMusicRequests': 0, 'realAccountWrites': 0}
+    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(report))
+
+
+def source(uid):
+    return {
+        'kind': 'profile_rank_playlist', 'period': 'week', 'scene': 'unknown', 'href': '',
+        'resourceType': 'track', 'originalResourceType': 'hostPlayRankPlaylist',
+        'computeSourceResourceType': 'hostPlayRankPlaylist', 'pldScene': 'playlist',
+        'sourceData': {'id': 'hostPlayRankPlaylist', 'userId': uid,
+                       'name': '我的听歌排行' if uid == '2' else 'TA的听歌排行',
+                       'toDetailUrlPath': f'/userDetail/user/{uid}/recentWeekRecord'},
+    }
 
 
 if __name__ == '__main__':

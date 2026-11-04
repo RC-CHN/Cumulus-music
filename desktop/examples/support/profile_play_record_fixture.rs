@@ -6,6 +6,29 @@ use std::sync::{
 };
 
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static PLAY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+
+pub fn play_card_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_PROFILE_RANK_PLAY_CARD_PROOF").is_some()
+}
+
+pub fn observe_playback(path: &str, args: &Value) {
+    if play_card_enabled()
+        && matches!(
+            path,
+            "/api/v3/song/detail" | "/api/song/enhance/player/url/v1"
+        )
+    {
+        PLAY_CALLS
+            .lock()
+            .unwrap()
+            .push(json!({"path":path,"args":args}));
+    }
+}
+
+pub fn playback_calls() -> Vec<Value> {
+    PLAY_CALLS.lock().unwrap().clone()
+}
 static GUEST_REVOKED: AtomicBool = AtomicBool::new(false);
 static WEEK_84_REMOVED: AtomicBool = AtomicBool::new(false);
 static WEEK_86_REMOVED: AtomicBool = AtomicBool::new(false);
@@ -158,6 +181,14 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         };
         let field = if kind == 1 { "weekData" } else { "allData" };
         return Some(Ok(json!({"code":200, (field): rows})));
+    }
+    if play_card_enabled() && uid == "3" && kind == 1 {
+        let mut first = rank_row(81, "无权首曲", 654321);
+        first["song"]["privilege"] = json!({"pl":0,"flag":0});
+        return Some(Ok(
+            json!({"code":200,"weekData":[first,rank_row(82,"访客周榜可播首曲",654322),
+            rank_row(87,"访客周榜可播次曲",654323)]}),
+        ));
     }
     Some(Ok(match (uid, kind) {
         ("3", 1) => {

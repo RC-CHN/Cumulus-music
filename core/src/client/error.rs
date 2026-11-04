@@ -251,6 +251,19 @@ impl From<Error> for ClientError {
                 ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::State("listening rank playback is private") => {
+                    ("profile_rank_private", "此听歌排行不可查看或播放", false)
+                }
+                Error::State("listening rank has no playable songs") => (
+                    "profile_rank_empty",
+                    "此听歌排行暂时没有可播放的歌曲",
+                    false,
+                ),
+                Error::State("listening rank requires ordinary playback") => (
+                    "profile_rank_requires_ordinary",
+                    "退出私人 FM 或一起听后再播放排行",
+                    false,
+                ),
                 Error::State("the latest release's first song is unavailable") => (
                     "follow_latest_first_unavailable",
                     "最新列表的第一首暂不可播放，已保留当前队列",

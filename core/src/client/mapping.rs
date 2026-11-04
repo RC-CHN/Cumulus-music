@@ -93,6 +93,17 @@ pub(super) fn track(value: &Value) -> Result<TrackView> {
     })
 }
 
+pub(super) fn online_play_all_eligible(row: &Value) -> bool {
+    // Official M21 maps pl to maxPlayBr, then M23.Z accepts positive pl
+    // or trial flag bit 10. Never treat fee or a download entitlement as pl.
+    // Absent privilege is left to the normal authoritative source resolver.
+    !row["privilege"].is_object()
+        || row["privilege"]["pl"].as_i64().is_some_and(|pl| pl > 0)
+        || row["privilege"]["flag"]
+            .as_i64()
+            .is_some_and(|flag| flag & (1 << 10) != 0)
+}
+
 /// Queue metadata uses the same whitelist as public track cards. The raw song
 /// response may contain signed media links, which do not belong in the queue.
 pub(super) fn song_metadata(value: &Value) -> Result<Value> {

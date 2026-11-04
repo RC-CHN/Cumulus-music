@@ -35,6 +35,7 @@ impl Actor {
             request.command,
             PlaybackCommand::UseMissingDownloadOnline { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
+                | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
@@ -168,6 +169,7 @@ impl Actor {
             request.command,
             PlaybackCommand::Replace { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
+                | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::Select(_)
                 | PlaybackCommand::Next
                 | PlaybackCommand::Previous
@@ -212,6 +214,10 @@ impl Actor {
                 first_download,
             } => self
                 .replace_follow_latest(resources, first_download)
+                .await
+                .map(|value| options = value),
+            PlaybackCommand::ReplaceProfileRankPlaylist { resources, source } => self
+                .replace_collection_preserving_song(resources, source, None)
                 .await
                 .map(|value| options = value),
             PlaybackCommand::RestoreFm(value) => {

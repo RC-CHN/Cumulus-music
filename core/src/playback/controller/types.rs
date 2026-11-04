@@ -173,6 +173,10 @@ pub enum PlaybackCommand {
         resources: Vec<Value>,
         first_download: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
     },
+    ReplaceProfileRankPlaylist {
+        resources: Vec<Value>,
+        source: Value,
+    },
     RestoreFm(FmRestore),
     Intelligence(IntelligenceUpdate),
     ApplyRemote(RemotePlayback),

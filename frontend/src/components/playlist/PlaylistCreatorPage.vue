@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { ProfileRelationMode } from '../../services/profileRelations';
 import type { usePlaylistCreator } from '../../composables/usePlaylistCreator';
+import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import Icon from '../Icon.vue';
 import PlaylistCard from '../PlaylistCard.vue';
 
@@ -9,13 +10,29 @@ const props = defineProps<{
   model: ReturnType<typeof usePlaylistCreator>;
   checkingRelations: boolean;
   relationNotice: string;
+  rankPlayable: boolean;
+  rankTransport: 'playing' | 'paused' | null;
 }>();
 const emit = defineEmits<{
   open: [id: string];
   relations: [kind: ProfileRelationMode];
   rank: [];
+  playRank: [];
 }>();
 const root = ref<HTMLElement>();
+const rankShell = ref<HTMLElement>();
+let rankFocusTarget: string | undefined;
+const rankFocus = usePlaybackTriggerFocus(
+  () => props.rankPlayable,
+  rankShell,
+  () =>
+    props.model.profile.value?.id === rankFocusTarget &&
+    !rankShell.value?.closest('.page-leave-active'),
+);
+function playRankCard() {
+  rankFocusTarget = props.model.profile.value?.id;
+  rankFocus.start(() => emit('playRank'));
+}
 const failedAvatar = ref(false);
 const rankEntry = computed(() =>
   props.model.group.value === 'created' && props.model.page.value === 0
@@ -145,26 +162,40 @@ function open(id: string) {
         </button>
       </div>
       <div v-if="rankEntry || model.cards.value.length" class="playlist-grid">
-        <button
+        <div
           v-if="rankEntry"
-          class="playlist-card creator-rank-entry"
-          type="button"
-          data-profile-rank-entry
-          @click="
-            model.openedRank.value = true;
-            emit('rank');
-          "
+          ref="rankShell"
+          class="playlist-shell creator-rank-shell"
+          :class="{ 'library-current': rankTransport !== null }"
         >
-          <span class="card-cover creator-rank-cover" aria-hidden="true">
-            <Icon name="list" />
-          </span>
-          <span class="library-card-copy">
-            <span class="card-title">{{ rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}</span>
-            <small v-if="rankEntry.listenSongs !== null"
-              >累计听歌{{ rankEntry.listenSongs }}首</small
-            >
-          </span>
-        </button>
+          <button
+            class="playlist-card creator-rank-entry"
+            type="button"
+            data-profile-rank-entry
+            @click="
+              model.openedRank.value = true;
+              emit('rank');
+            "
+          >
+            <span class="card-cover creator-rank-cover" aria-hidden="true">
+              <Icon name="list" />
+            </span>
+            <span class="library-card-copy">
+              <span class="card-title">{{ rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}</span>
+              <small v-if="rankEntry.listenSongs !== null">累计听歌{{ rankEntry.listenSongs }}首</small>
+            </span>
+          </button>
+          <button
+            class="library-card-play"
+            type="button"
+            data-profile-rank-play
+            :aria-label="`${rankTransport === 'playing' ? '暂停' : rankTransport === 'paused' ? '继续播放' : '播放'}${rankEntry.isSelf ? '我的' : 'TA的'}最近一周听歌排行`"
+            :disabled="!rankPlayable"
+            @click="playRankCard"
+          >
+            <Icon :name="rankTransport === 'playing' ? 'pause' : 'play'" />
+          </button>
+        </div>
         <PlaylistCard
           v-for="list in model.cards.value"
           :key="list.id"
@@ -236,8 +267,12 @@ function open(id: string) {
   font-weight: 600;
   background: var(--surface-alt);
 }
-.creator-rank-entry {
+.creator-rank-shell {
+  position: relative;
   align-self: start;
+}
+.creator-rank-entry {
+  width: 100%;
 }
 .creator-rank-cover {
   color: var(--accent);

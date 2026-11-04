@@ -63,6 +63,7 @@ export interface DeviceParametricView {
 export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   origin?: PlayerOrigin | null;
+  profileRankPlaylistUid?: string;
   recommendationOrigin?: { kind: 'daily' | 'style'; revision: string } | null;
   fm: boolean;
   intelligence?: 'seeded' | 'active' | 'fallback' | null;
@@ -299,6 +300,7 @@ export type PlaySelection =
   | { kind: 'search_chart'; ids: string[]; quality: Quality }
   | { kind: 'songs'; ids: string[]; index: number; quality: Quality }
   | { kind: 'follow_latest'; revision: string; quality: Quality }
+  | { kind: 'profile_rank_playlist'; uid: string | null; quality: Quality }
   | {
       kind: 'daily_recommendations' | 'style_recommendations';
       revision: string;

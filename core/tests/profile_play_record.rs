@@ -1,3 +1,6 @@
+#[allow(dead_code)]
+#[path = "support/playback/mod.rs"]
+mod playback_support;
 mod support;
 
 use cumulus_core::{
@@ -5,8 +8,13 @@ use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::{
         MusicClient,
-        dto::{ProfilePlayRecordPeriod as Period, ProfilePlayRecordRemovalAction as RankAction},
+        dto::{
+            PlaySelection, PlayerAction, PlayerView, ProfilePlayRecordPeriod as Period,
+            ProfilePlayRecordRemovalAction as RankAction,
+        },
     },
+    membership::Quality,
+    playback::controller::PlaybackStatus,
     protocol::http::ApiOrigin,
 };
 use serde_json::{Value, json, to_value};
@@ -35,7 +43,13 @@ fn fixture(
         .adopt(api.clone(), json!({"userId":9}), &session.token().unwrap())
         .unwrap();
     let epoch = session.token().unwrap().generation.to_string();
-    let client = Arc::new(MusicClient::with_session(session.clone(), registry));
+    let client = Arc::new(
+        MusicClient::with_session(session.clone(), registry).with_audio_factory(|| {
+            Ok(playback_support::audio_engine(Arc::new(
+                playback_support::Device::default(),
+            )))
+        }),
+    );
     (dir, api, session, client, epoch)
 }
 
@@ -408,4 +422,133 @@ async fn canonical_business_rejection_requires_another_explicit_selection() {
         .unwrap();
     assert_eq!(to_value(outcome).unwrap()["value"], "removed");
     assert_eq!(api.calls().len(), 3);
+}
+
+const SOURCE: &str = "/api/song/enhance/player/url/v1";
+
+fn denied_head() -> Value {
+    json!({"song":{"id":72,"name":"无权首曲","dt":1000,"privilege":{"pl":0,"flag":0}}})
+}
+fn playable_rank() -> Value {
+    json!({"code":200,"weekData":[denied_head(), rows()[0].clone()]})
+}
+fn sound() -> Value {
+    json!({"code":200,"data":[{"id":71,"code":200,"url":"https://m.test.music.126.net/rank?auth=private",
+        "md5":"fixture","level":"standard","expi":120}]})
+}
+async fn play_rank(
+    client: &MusicClient,
+    epoch: &str,
+    uid: Option<&str>,
+) -> cumulus_core::Result<PlayerView> {
+    client
+        .play_selection(
+            epoch,
+            PlaySelection::ProfileRankPlaylist {
+                uid: uid.map(str::to_owned),
+                quality: Quality::Standard,
+            },
+        )
+        .await
+}
+
+#[tokio::test]
+async fn profile_card_defaults_to_week_and_only_the_exact_source_toggles() {
+    let (dir, api, _, client, epoch) = fixture([
+        playable_rank().into(),
+        sound().into(),
+        detail(Some(false)).into(),
+        detail(Some(true)).into(),
+        playable_rank().into(),
+    ]);
+    let own = play_rank(&client, &epoch, None).await.unwrap();
+    assert_eq!(own.profile_rank_playlist_uid.as_deref(), Some("9"));
+    assert_eq!(own.state, PlaybackStatus::Playing);
+    assert_eq!(own.track.as_ref().unwrap().id, "71");
+    let paused = play_rank(&client, &epoch, Some("9")).await.unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.play_id, own.play_id);
+    assert_eq!(paused.queue_revision, own.queue_revision);
+    let resumed = play_rank(&client, &epoch, None).await.unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.play_id, own.play_id);
+    assert_eq!(api.calls().len(), 2);
+    assert!(matches!(
+        play_rank(&client, &epoch, Some(GUEST)).await,
+        Err(Error::State("listening rank playback is private"))
+    ));
+    let unchanged = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(unchanged.play_id, resumed.play_id);
+    assert_eq!(unchanged.queue_revision, resumed.queue_revision);
+    let guest = play_rank(&client, &epoch, Some(GUEST)).await.unwrap();
+    assert_eq!(guest.profile_rank_playlist_uid.as_deref(), Some(GUEST));
+    assert_eq!(
+        guest.play_id, resumed.play_id,
+        "same authorized song does not restart"
+    );
+    assert_ne!(
+        guest.queue_revision, resumed.queue_revision,
+        "guest rank replaces the source"
+    );
+    let queue = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store()
+        .get("9", "playback", "queue")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        queue["items"][0]["source"],
+        json!({
+            "kind":"profile_rank_playlist","period":"week","scene":"unknown","href":"",
+            "resourceType":"track","originalResourceType":"hostPlayRankPlaylist",
+            "computeSourceResourceType":"hostPlayRankPlaylist","pldScene":"playlist",
+            "sourceData":{"id":"hostPlayRankPlaylist","userId":GUEST,"name":"TA的听歌排行",
+                "toDetailUrlPath":format!("/userDetail/user/{GUEST}/recentWeekRecord")}
+        })
+    );
+    let calls = api.calls();
+    assert_eq!(
+        calls.iter().map(|c| c.path.as_str()).collect::<Vec<_>>(),
+        [RECORD, SOURCE, DETAIL, DETAIL, RECORD]
+    );
+    assert_eq!(
+        calls[0].payload,
+        json!({"offset":0,"total":true,"limit":120,"uid":"9","type":1})
+    );
+    assert_eq!(
+        calls[4].payload,
+        json!({"offset":0,"total":true,"limit":120,"uid":GUEST,"type":1})
+    );
+}
+
+#[tokio::test]
+async fn a_delayed_profile_rank_cannot_override_a_newer_stop() {
+    let (pending, reply) = gate();
+    let (_dir, api, _, client, epoch) = fixture([
+        playable_rank().into(),
+        sound().into(),
+        detail(Some(true)).into(),
+        pending,
+    ]);
+    let own = play_rank(&client, &epoch, None).await.unwrap();
+    let task = {
+        let client = client.clone();
+        let epoch = epoch.clone();
+        tokio::spawn(async move { play_rank(&client, &epoch, Some(GUEST)).await })
+    };
+    api.wait_for_calls(4).await;
+    let stopped = client
+        .player_action(&epoch, PlayerAction::Stop)
+        .await
+        .unwrap();
+    reply.send(Ok(playable_rank())).unwrap();
+    assert!(matches!(task.await.unwrap(), Err(Error::StaleResponse)));
+    let current = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(current.state, PlaybackStatus::Idle);
+    assert_eq!(current.queue_revision, stopped.queue_revision);
+    assert_eq!(
+        current.profile_rank_playlist_uid,
+        own.profile_rank_playlist_uid
+    );
+    assert_eq!(api.calls().len(), 4);
 }

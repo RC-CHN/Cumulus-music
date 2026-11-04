@@ -43,6 +43,10 @@ impl MusicClient {
     }
     pub async fn play_selection(&self, epoch: &str, input: PlaySelection) -> Result<PlayerView> {
         match input {
+            PlaySelection::ProfileRankPlaylist { uid, quality } => {
+                self.play_profile_rank_playlist(epoch, uid.as_deref(), quality)
+                    .await
+            }
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
@@ -512,6 +516,7 @@ impl MusicClient {
                     )),
                     PlaySelection::SongRowDoubleClick { .. }
                     | PlaySelection::FollowLatest { .. }
+                    | PlaySelection::ProfileRankPlaylist { .. }
                     | PlaySelection::Cloud { .. }
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }
