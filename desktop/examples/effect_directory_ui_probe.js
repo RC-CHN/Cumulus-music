@@ -308,6 +308,13 @@
           value.deviceParametric.activationId === activeDevice.activationId &&
           currentTuning()?.dataset.deviceTuning === 'configured';
       }, 'local comparison reapplies verified tuning to the same source');
+      // The clock may still consume audio buffered before the graph changed.
+      // Wait for PCM from this exact new attachment before proving its output.
+      await wait(async () => {
+        if (window.__headphonePcmReady) return true;
+        await emit('effect-device-comparison-pcm');
+        return false;
+      }, 'new headphone processor has handled native PCM');
       assert(await rejects(localCommand(activeDevice, true)), 'the first receipt cannot be replayed after two changes');
       assert(document.activeElement === button(currentTuning(), '暂时停用调音'), 'resuming keeps focus on the same action');
       await capture('10b_headphones_comparison_wet');

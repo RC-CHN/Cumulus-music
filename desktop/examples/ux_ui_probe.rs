@@ -591,6 +591,12 @@ fn main() {
                 value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());
             }
             let stage=value["stage"].as_str().unwrap_or("");
+            if device_peq_proof && stage=="effect-device-comparison-pcm" {
+                let stats=&value["nativePeq"];
+                let ready=stats["nativeAttached"]==true && stats["attaches"]==3 &&
+                    stats["processedSamples"].as_u64().is_some_and(|n|n>0) && stats["failedBlocks"]==0;
+                handle.get_webview_window("main").unwrap().eval(format!("window.__headphonePcmReady={ready};")).unwrap();return;
+            }
             if stage=="effect-peq-fail-runtime" && effect_peq_fixture::inject_runtime_fault() {
                 handle.get_webview_window("main").unwrap().eval("window.__peqRuntimeFaultArmed=true;").unwrap();return;
             }
