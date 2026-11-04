@@ -182,8 +182,11 @@ impl Api for Library {
     }
 }
 pub fn wave(root: &Path) -> Result<PathBuf> {
+    wave_seconds(root, 30)
+}
+pub fn wave_seconds(root: &Path, seconds: u32) -> Result<PathBuf> {
     let path = root.join("relay-synthetic.wav");
-    let samples = 48000_u32 * 30;
+    let samples = 48000_u32 * seconds;
     let bytes = samples * 2;
     let mut out = Vec::with_capacity(bytes as usize + 44);
     out.extend_from_slice(b"RIFF");

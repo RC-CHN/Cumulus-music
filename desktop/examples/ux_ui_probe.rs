@@ -600,6 +600,7 @@ fn main() {
         "queue recommendations require the isolated native player and queue capture"
     );
     assert!(!message_fixture::enabled() || motion_proof);
+    assert!(!queue_more_fixture::tip_enabled() || queue_more_fixture::enabled());
     let peq_proof = effect_peq_fixture::enabled();
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
     assert!(!device_peq_proof || (!peq_proof && effect_directory_fixture::enabled()));
@@ -725,7 +726,7 @@ fn main() {
             let count=factory_count.clone();
             let card_control=card_audio.clone();
             let wave = root.join("relay-synthetic.wav");
-            let wave = if wave.exists() { wave } else { relay_fixture::wave(&root)? };
+            let wave = if wave.exists() { wave } else if queue_more_fixture::tip_enabled() { relay_fixture::wave_seconds(&root,45)? } else { relay_fixture::wave(&root)? };
             let download_directory = download_page_fixture::enabled().then(||root.join("media"));
             client = client.with_audio_factory(move || {
                 let start = std::time::Instant::now();
@@ -772,6 +773,22 @@ fn main() {
                     });
                     return;
                 }
+            }
+            if queue_more_fixture::tip_enabled() {
+                let main=handle.get_webview_window("main").unwrap();
+                if value["stage"]=="queue-more-tip-focus" {
+                    let helper=handle.get_webview_window("queue-tip-focus-helper").unwrap();
+                    if value["focus"]==true { helper.hide().unwrap(); main.set_focus().unwrap(); }
+                    else {helper.show().unwrap(); helper.set_focus().unwrap();}
+                    let sequence=value["sequence"].as_u64().unwrap();
+                    main.eval(format!("window.__queueTipFocusAck={sequence};")).unwrap();
+                    return;
+                }
+                let owner=fixture_session.token().unwrap().uid.unwrap_or_default();
+                value["syntheticQueueTip"]=json!({
+                    "nativeFocused":main.is_focused().unwrap(),"nativeVisible":main.is_visible().unwrap(),
+                    "seen":proof_store.get(&owner,"queue-more-v1","tip-seen").unwrap()==Some(json!(true))
+                });
             }
             if queue_more_fixture::enabled() {
                 value["syntheticQueueMore"]=queue_more_fixture::report();
@@ -1131,6 +1148,11 @@ fn main() {
         let mut builder=tauri::WebviewWindowBuilder::from_config(app, &window_config)?.data_directory(root.join("webview"));
         if motion_proof { builder=builder.initialization_script(include_str!("motion_environment.js")); }
         builder.build()?;
+        if queue_more_fixture::tip_enabled() {
+            tauri::WebviewWindowBuilder::new(app,"queue-tip-focus-helper",tauri::WebviewUrl::External("about:blank".parse()?))
+                .title("Synthetic native focus control").visible(false).position(1150.0,32.0)
+                .inner_size(180.0,100.0).data_directory(root.join("focus-helper-webview")).build()?;
+        }
         if media_proof {cumulus_desktop::system_media::install(app.handle());}
         if shortcut_proof {cumulus_desktop::shortcuts::install(app.handle());}
         Ok(())

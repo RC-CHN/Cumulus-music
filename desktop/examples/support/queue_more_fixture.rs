@@ -27,6 +27,10 @@ pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_QUEUE_MORE_UI_PROOF").is_some()
 }
 
+pub fn tip_enabled() -> bool {
+    std::env::var_os("CUMULUS_QUEUE_MORE_TIP_PROOF").is_some()
+}
+
 pub fn groups() -> Result<PcExperimentGroups> {
     let group = if std::env::var_os("CUMULUS_QUEUE_MORE_CONTROL").is_some() {
         "c"
@@ -65,7 +69,7 @@ pub fn report() -> Value {
 
 fn song(id: u64) -> Value {
     json!({"id":id,"name":format!("合成歌曲 {id}"),"ar":[{"id":7,"name":"合成歌手"}],
-           "al":{"id":8,"name":"合成专辑"},"dt":30000,"fee":0})
+           "al":{"id":8,"name":"合成专辑"},"dt":if tip_enabled() {45000} else {30000},"fee":0})
 }
 
 pub async fn response(path: &str, args: &Value, cache: bool) -> Option<Result<Value>> {
