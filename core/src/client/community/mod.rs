@@ -1,5 +1,6 @@
 pub mod composer;
 pub mod new_song_notice;
+mod profile;
 mod project;
 
 use super::{MusicClient, comments, dto::AccountData};
@@ -36,6 +37,8 @@ pub struct CommunityFeedPage {
     cards: Vec<CommunityCard>,
     continuation: Option<String>,
     replace: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    unavailable: bool,
 }
 
 #[derive(Serialize)]
@@ -142,6 +145,7 @@ struct CardLease {
 #[derive(Default)]
 struct State {
     generation: Option<u64>,
+    profile: Option<String>,
     pending: Option<Uuid>,
     continuation: Option<(Uuid, Value)>,
     cards: VecDeque<CardLease>,
@@ -249,6 +253,17 @@ impl ReadLease<'_> {
             Some(next)
         };
 
+        self.settle_rows(token, raw, next, replace, None)
+    }
+
+    fn settle_rows(
+        &self,
+        token: &SessionToken,
+        raw: &[Value],
+        next: Option<Value>,
+        replace: bool,
+        owner: Option<&str>,
+    ) -> Result<CommunityFeedPage> {
         let mut state = self.host.state(token)?;
         if state.pending != Some(self.request) {
             return Err(Error::StaleResponse);
@@ -269,7 +284,16 @@ impl ReadLease<'_> {
             state.visited.insert(key);
         }
         let mut cards: Vec<CommunityCard> = Vec::new();
-        for (event, locator, mut card) in raw.iter().filter_map(|row| project::card(row, true)) {
+        for (event, locator, mut card) in raw
+            .iter()
+            .filter(|row| {
+                owner.is_none_or(|uid| {
+                    row["anonymityInfo"].is_null()
+                        && project::id(&row["user"]["userId"]).as_deref() == Some(uid)
+                })
+            })
+            .filter_map(|row| project::card(row, true))
+        {
             let record = match state.cards.iter_mut().find(|r| r.event == event) {
                 Some(record) => {
                     if record.locator != locator {
@@ -310,6 +334,7 @@ impl ReadLease<'_> {
             cards,
             continuation: state.continuation.as_ref().map(|(key, _)| key.to_string()),
             replace,
+            unavailable: false,
         })
     }
 }
@@ -325,6 +350,20 @@ fn comment(value: Comment) -> CommunityComment {
 }
 
 impl MusicClient {
+    fn community_host_for(&self, token: &SessionToken, key: Uuid) -> Result<&CommunityHost> {
+        for host in [&self.community, &self.profile_notes] {
+            if host
+                .state(token)?
+                .cards
+                .iter()
+                .any(|record| record.key == key)
+            {
+                return Ok(host);
+            }
+        }
+        Err(Error::StaleResponse)
+    }
+
     pub async fn community_feed(
         &self,
         epoch: &str,
@@ -357,8 +396,11 @@ impl MusicClient {
         let token = self.playlist_token(epoch)?;
         let key = handle(detail)?;
         let detail_read = Uuid::new_v4();
+        let host = self
+            .session
+            .with_token(&token, |_| self.community_host_for(&token, key))?;
         let locator = self.session.with_token(&token, |_| {
-            let mut state = self.community.state(&token)?;
+            let mut state = host.state(&token)?;
             let record = state
                 .cards
                 .iter_mut()
@@ -386,7 +428,7 @@ impl MusicClient {
             })
             .await?;
         self.session.with_token(&token, |_| {
-            let mut state = self.community.state(&token)?;
+            let mut state = host.state(&token)?;
             let record = state
                 .cards
                 .iter_mut()
@@ -430,9 +472,12 @@ impl MusicClient {
     ) -> Result<AccountData<CommunityCommentPage>> {
         let token = self.playlist_token(epoch)?;
         let key = handle(detail)?;
+        let host = self
+            .session
+            .with_token(&token, |_| self.community_host_for(&token, key))?;
         let (locator, receipt) = self
             .session
-            .with_token(&token, |_| self.community.comments_receipt(&token, key))?;
+            .with_token(&token, |_| host.comments_receipt(&token, key))?;
         let resource = locator.comments();
         let query = CommentQuery {
             offset,
@@ -445,7 +490,7 @@ impl MusicClient {
             })
             .await?;
         self.session.with_token(&token, |_| {
-            if self.community.comments_receipt(&token, key)? != (locator, receipt) {
+            if host.comments_receipt(&token, key)? != (locator, receipt) {
                 return Err(Error::StaleResponse);
             }
             Ok(AccountData {

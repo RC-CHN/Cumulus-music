@@ -17,6 +17,7 @@ pub struct PlaylistCreatorProfile {
     pub signature: String,
     pub following_count: Option<u64>,
     pub followers_count: Option<u64>,
+    pub notes_count: Option<u64>,
     pub listening_rank: Option<ListeningRankEntry>,
     pub created: Vec<PlaylistView>,
     pub collected: Vec<PlaylistView>,
@@ -119,6 +120,8 @@ impl MusicClient {
                         .collect(),
                     following_count: relation_count(&profile["follows"]),
                     followers_count: relation_count(&profile["followeds"]),
+                    notes_count: (viewer == uid || profile["inBlacklist"].as_bool() != Some(true))
+                        .then(|| relation_count(&profile["eventCount"]).unwrap_or_default()),
                     listening_rank: super::profile_play_record::allowed(&response, viewer == uid)
                         .then(|| ListeningRankEntry {
                             is_self: viewer == uid,

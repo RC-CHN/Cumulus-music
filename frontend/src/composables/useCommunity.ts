@@ -11,7 +11,11 @@ import type {
 const GROUP_SIZE = 24;
 const MAX_CARDS = 440;
 
-export function useCommunity(core: CommunityClient, expired: () => void) {
+export function useCommunity(
+  core: Pick<CommunityClient, 'communityFeed' | 'communityDetail' | 'communityComments'>,
+  expired: () => void,
+  feedFailure = '暂时无法读取关注动态。',
+) {
   let epoch: string | null = null;
   let feedVersion = 0;
   let detailVersion = 0;
@@ -19,6 +23,7 @@ export function useCommunity(core: CommunityClient, expired: () => void) {
   const continuation = ref<string | null>(null);
   const loaded = ref(false);
   const pending = ref(false);
+  const unavailable = ref(false);
   const feedError = ref('');
   const group = ref(0);
   const scrollTop = ref(0);
@@ -51,7 +56,7 @@ export function useCommunity(core: CommunityClient, expired: () => void) {
     into.value =
       issue.code === 'service_rejected'
         ? into === feedError
-          ? '暂时无法读取关注动态。'
+          ? feedFailure
           : into === detailError
             ? '暂时无法读取这条动态。'
             : '暂时无法读取评论。'
@@ -81,6 +86,7 @@ export function useCommunity(core: CommunityClient, expired: () => void) {
     cards.value = [];
     continuation.value = null;
     loaded.value = false;
+    unavailable.value = false;
     pending.value = false;
     feedError.value = '';
     group.value = 0;
@@ -99,6 +105,7 @@ export function useCommunity(core: CommunityClient, expired: () => void) {
       const reply = await core.communityFeed(owner, action);
       if (ticket !== feedVersion || reply.epoch !== owner) return;
       const result = reply.value;
+      unavailable.value = result.unavailable === true;
       const openKey = handle.value;
       if (
         openKey &&
@@ -210,6 +217,7 @@ export function useCommunity(core: CommunityClient, expired: () => void) {
     loaded,
     pending,
     feedError,
+    unavailable,
     autoMore,
     scrollTop,
     opener,

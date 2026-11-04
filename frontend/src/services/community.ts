@@ -36,6 +36,7 @@ export interface CommunityFeedPage {
   cards: CommunityCard[];
   continuation: string | null;
   replace: boolean;
+  unavailable?: boolean;
 }
 
 export interface CommunityDetail {
@@ -80,6 +81,13 @@ export type ComposerDraftAction =
   | { kind: 'read' }
   | { kind: 'save'; revision: string | null; text: string; attachment: ComposerAttachmentEdit }
   | { kind: 'discard'; revision: string };
+export interface ProfileNotesClient {
+  profileNotes(
+    epoch: string,
+    uid: string,
+    action: CommunityFeedAction,
+  ): Promise<AccountData<CommunityFeedPage>>;
+}
 
 export interface CommunityClient {
   communityComposerSearch(

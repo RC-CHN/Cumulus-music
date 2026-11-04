@@ -11,7 +11,7 @@ import type { DownloadClient, SongDownloadState } from './downloads';
 import type { CloudClient } from './cloud';
 import type { MvClient } from './mv';
 import type { CommentClient } from './comments';
-import type { CommunityClient, CommunityNoticeClient } from './community';
+import type { CommunityClient, CommunityNoticeClient, ProfileNotesClient } from './community';
 import type { CommentResourceClient } from './commentResource';
 import type { CommentWriteClient } from './commentWrites';
 import type { CommentFloorClient } from './commentFloor';
@@ -101,6 +101,7 @@ export interface CoreClient
     CommentClient,
     MessageClient,
     CommunityClient,
+    ProfileNotesClient,
     CommunityNoticeClient,
     CommentResourceClient,
     CommentWriteClient,
@@ -233,6 +234,7 @@ export interface PlaylistCreatorProfile {
   nickname: string;
   avatarUrl: string | null;
   signature: string;
+  notesCount?: number | null;
   listeningRank?: { isSelf: boolean; listenSongs: number | null } | null;
   followingCount?: number | null;
   followersCount?: number | null;

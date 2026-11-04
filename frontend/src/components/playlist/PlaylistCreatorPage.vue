@@ -2,9 +2,10 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { ProfileRelationMode } from '../../services/profileRelations';
 import type { usePlaylistCreator } from '../../composables/usePlaylistCreator';
-import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import Icon from '../Icon.vue';
 import PlaylistCard from '../PlaylistCard.vue';
+
+import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 
 const props = defineProps<{
   model: ReturnType<typeof usePlaylistCreator>;
@@ -12,12 +13,14 @@ const props = defineProps<{
   relationNotice: string;
   rankPlayable: boolean;
   rankTransport: 'playing' | 'paused' | null;
+  notes?: boolean;
 }>();
 const emit = defineEmits<{
   open: [id: string];
   relations: [kind: ProfileRelationMode];
   rank: [];
   playRank: [];
+  section: [value: 'playlists' | 'notes'];
 }>();
 const root = ref<HTMLElement>();
 const rankShell = ref<HTMLElement>();
@@ -45,6 +48,12 @@ onMounted(async () => {
   await nextTick();
   if (!root.value?.isConnected || root.value.closest('[inert]')) return;
   if (document.activeElement !== document.body && document.activeElement !== origin) return;
+  if (props.notes) {
+    root.value
+      .querySelector<HTMLElement>('.creator-page-tabs [aria-pressed="true"]')
+      ?.focus({ preventScroll: true });
+    return;
+  }
   const card = Array.from(
     root.value.querySelectorAll<HTMLButtonElement>('[data-library-open]'),
   ).find((node) => node.dataset.libraryOpen === props.model.opened.value);
@@ -143,91 +152,116 @@ function open(id: string) {
     </p>
     <p v-else-if="model.profile.value === null" class="muted">用户不存在</p>
     <template v-else-if="model.profile.value">
-      <div class="creator-page-groups" role="group" aria-label="公开歌单">
+      <nav
+        v-if="model.profile.value.notesCount != null"
+        class="creator-page-tabs"
+        aria-label="用户主页分类"
+      >
         <button
           class="text-button"
           type="button"
-          :aria-pressed="model.group.value === 'created'"
-          @click="model.select('created')"
+          :aria-pressed="!notes"
+          @click="notes && emit('section', 'playlists')"
         >
-          创建的歌单 {{ model.profile.value.created.length }}
+          歌单
         </button>
         <button
           class="text-button"
           type="button"
-          :aria-pressed="model.group.value === 'collected'"
-          @click="model.select('collected')"
+          :aria-pressed="!!notes"
+          @click="!notes && emit('section', 'notes')"
         >
-          收藏的歌单 {{ model.profile.value.collected.length }}
-        </button>
-      </div>
-      <div v-if="rankEntry || model.cards.value.length" class="playlist-grid">
-        <div
-          v-if="rankEntry"
-          ref="rankShell"
-          class="playlist-shell creator-rank-shell"
-          :class="{ 'library-current': rankTransport !== null }"
-        >
-          <button
-            class="playlist-card creator-rank-entry"
-            type="button"
-            data-profile-rank-entry
-            @click="
-              model.openedRank.value = true;
-              emit('rank');
-            "
-          >
-            <span class="card-cover creator-rank-cover" aria-hidden="true">
-              <Icon name="list" />
-            </span>
-            <span class="library-card-copy">
-              <span class="card-title">{{
-                rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行'
-              }}</span>
-              <small v-if="rankEntry.listenSongs !== null"
-                >累计听歌{{ rankEntry.listenSongs }}首</small
-              >
-            </span>
-          </button>
-          <button
-            class="library-card-play"
-            type="button"
-            data-profile-rank-play
-            :aria-label="`${rankTransport === 'playing' ? '暂停' : rankTransport === 'paused' ? '继续播放' : '播放'}${rankEntry.isSelf ? '我的' : 'TA的'}最近一周听歌排行`"
-            :disabled="!rankPlayable"
-            @click="playRankCard"
-          >
-            <Icon :name="rankTransport === 'playing' ? 'pause' : 'play'" />
-          </button>
-        </div>
-        <PlaylistCard
-          v-for="list in model.cards.value"
-          :key="list.id"
-          :playlist="list"
-          :items="[]"
-          open-only
-          @open="open(list.id)"
-        />
-      </div>
-      <p v-else class="muted">暂无公开歌单</p>
-      <nav v-if="model.pages.value > 1" aria-label="公开歌单分页">
-        <button
-          class="text-button"
-          type="button"
-          :disabled="model.page.value === 0"
-          @click="model.page.value--"
-        >
-          上一页
-        </button>
-        <button
-          class="text-button"
-          type="button"
-          :disabled="model.page.value + 1 >= model.pages.value"
-          @click="model.page.value++"
-        >
-          下一页
+          笔记 {{ count.format(model.profile.value.notesCount) }}
         </button>
       </nav>
+      <slot v-if="notes" />
+      <template v-else>
+        <div class="creator-page-groups" role="group" aria-label="公开歌单">
+          <button
+            class="text-button"
+            type="button"
+            :aria-pressed="model.group.value === 'created'"
+            @click="model.select('created')"
+          >
+            创建的歌单 {{ model.profile.value.created.length }}
+          </button>
+          <button
+            class="text-button"
+            type="button"
+            :aria-pressed="model.group.value === 'collected'"
+            @click="model.select('collected')"
+          >
+            收藏的歌单 {{ model.profile.value.collected.length }}
+          </button>
+        </div>
+        <div v-if="rankEntry || model.cards.value.length" class="playlist-grid">
+          <div
+            v-if="rankEntry"
+            ref="rankShell"
+            class="playlist-shell creator-rank-shell"
+            :class="{ 'library-current': rankTransport !== null }"
+          >
+            <button
+              class="playlist-card creator-rank-entry"
+              type="button"
+              data-profile-rank-entry
+              @click="
+                model.openedRank.value = true;
+                emit('rank');
+              "
+            >
+              <span class="card-cover creator-rank-cover" aria-hidden="true">
+                <Icon name="list" />
+              </span>
+              <span class="library-card-copy">
+                <span class="card-title">{{
+                  rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行'
+                }}</span>
+                <small v-if="rankEntry.listenSongs !== null"
+                  >累计听歌{{ rankEntry.listenSongs }}首</small
+                >
+              </span>
+            </button>
+            <button
+              class="library-card-play"
+              type="button"
+              data-profile-rank-play
+              :aria-label="`${rankTransport === 'playing' ? '暂停' : rankTransport === 'paused' ? '继续播放' : '播放'}${rankEntry.isSelf ? '我的' : 'TA的'}最近一周听歌排行`"
+              :disabled="!rankPlayable"
+              @click="playRankCard"
+            >
+              <Icon :name="rankTransport === 'playing' ? 'pause' : 'play'" />
+            </button>
+          </div>
+          <PlaylistCard
+            v-for="list in model.cards.value"
+            :key="list.id"
+            :playlist="list"
+            :items="[]"
+            open-only
+            @open="open(list.id)"
+          />
+        </div>
+        <p v-else class="muted">暂无公开歌单</p>
+        <nav v-if="model.pages.value > 1" aria-label="公开歌单分页">
+          <button
+            class="text-button"
+            type="button"
+            :disabled="model.page.value === 0"
+            @click="model.page.value--"
+          >
+            上一页
+          </button>
+          <button
+            class="text-button"
+            type="button"
+            :disabled="model.page.value + 1 >= model.pages.value"
+            @click="model.page.value++"
+          >
+            下一页
+          </button>
+        </nav>
+      </template>
     </template>
   </section>
 </template>
@@ -262,6 +296,16 @@ function open(id: string) {
   gap: 12px;
   margin-top: 8px;
 }
+.creator-page-tabs {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+.creator-page-tabs [aria-pressed='true'] {
+  border-bottom: 2px solid var(--accent);
+  font-weight: 600;
+}
 .creator-page-groups {
   display: flex;
   gap: 12px;
@@ -271,12 +315,8 @@ function open(id: string) {
   font-weight: 600;
   background: var(--surface-alt);
 }
-.creator-rank-shell {
-  position: relative;
-  align-self: start;
-}
 .creator-rank-entry {
-  width: 100%;
+  align-self: start;
 }
 .creator-rank-cover {
   color: var(--accent);
@@ -284,5 +324,9 @@ function open(id: string) {
 .creator-rank-cover .icon {
   width: 34%;
   height: 34%;
+}
+.creator-rank-shell {
+  position: relative;
+  align-self: start;
 }
 </style>

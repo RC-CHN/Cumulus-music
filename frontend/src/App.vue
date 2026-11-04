@@ -59,6 +59,7 @@ import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
 import PlaylistEssentialPage from './components/playlist/PlaylistEssentialPage.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
+import ProfileNotes from './components/profile/ProfileNotes.vue';
 import ProfilePlayRecordPage from './components/profile/ProfilePlayRecordPage.vue';
 import ProfileRelationsPage from './components/profile/ProfileRelationsPage.vue';
 import { useProfileRelations } from './composables/useProfileRelations';
@@ -1611,11 +1612,61 @@ const {
   signedIn,
 } = music;
 const playlistCreator = usePlaylistCreator(core);
+let notesUid: string | null = null;
+const profileNotes = useCommunity(
+  {
+    communityFeed: (epoch, action) => {
+      if (!notesUid) return Promise.reject(new Error('profile notes unavailable'));
+      return core.profileNotes(epoch, notesUid, action);
+    },
+    communityDetail: core.communityDetail,
+    communityComments: core.communityComments,
+  },
+  () => void music.bootstrap(false),
+  '暂时无法读取用户笔记。',
+);
+watch(
+  [page, () => account.value.epoch, () => account.value.status],
+  ([target, epoch, status]) => {
+    const current = target.kind === 'profile_notes' ? target.id : null;
+    if (status !== 'authenticated') {
+      profileNotes.connect(null);
+      notesUid = null;
+      return;
+    }
+    if (current !== null && current !== notesUid) {
+      profileNotes.connect(null);
+      notesUid = current;
+    }
+    profileNotes.connect(epoch);
+    if (current !== null) void profileNotes.ensure();
+  },
+  { immediate: true, flush: 'sync' },
+);
+function openProfileSection(section: 'playlists' | 'notes') {
+  const source = page.value;
+  if (source.kind !== 'playlist_creator' && source.kind !== 'profile_notes') return;
+  const kind = section === 'notes' ? 'profile_notes' : 'playlist_creator';
+  if (source.kind === kind) return;
+  if (kind === 'profile_notes') {
+    profileNotes.connect(null);
+    notesUid = null;
+  }
+  music.replace({ kind, id: source.id });
+}
+function openProfileNote(handle: string) {
+  if (page.value.kind !== 'profile_notes') return;
+  profileNotes.opener.value = handle;
+  music.navigate({ kind: 'community_detail', handle });
+}
 watch(
   [
     () => account.value.epoch,
     () => account.value.status,
-    () => (page.value.kind === 'playlist_creator' ? page.value.id : null),
+    () =>
+      page.value.kind === 'playlist_creator' || page.value.kind === 'profile_notes'
+        ? page.value.id
+        : null,
   ],
   ([epoch, status, uid]) => {
     void playlistCreator.enter(status === 'authenticated' ? epoch : '', uid);
@@ -1678,7 +1729,10 @@ let relationVisit = 0;
 watch(
   [
     () => account.value.epoch,
-    () => (page.value.kind === 'playlist_creator' ? page.value.id : null),
+    () =>
+      page.value.kind === 'playlist_creator' || page.value.kind === 'profile_notes'
+        ? page.value.id
+        : null,
   ],
   () => profileRelations.clearGate(),
   { flush: 'sync' },
@@ -1702,7 +1756,12 @@ watch(profileRelations.denied, (message) => {
 async function openProfileRelations(mode: ProfileRelationMode) {
   const source = page.value;
   const profile = playlistCreator.profile.value;
-  if (source.kind !== 'playlist_creator' || profile?.id !== source.id || !signedIn.value) return;
+  if (
+    (source.kind !== 'playlist_creator' && source.kind !== 'profile_notes') ||
+    profile?.id !== source.id ||
+    !signedIn.value
+  )
+    return;
   const owner = account.value.epoch;
   const allowed = await profileRelations.check(owner, source.id);
   if (!allowed || page.value !== source || account.value.epoch !== owner || !signedIn.value) return;
@@ -3327,7 +3386,7 @@ onUnmounted(() => {
                 @play="(voice) => playSearchCard({ kind: 'voice', voice })"
               />
               <PlaylistCreatorPage
-                v-else-if="page.kind === 'playlist_creator'"
+                v-else-if="page.kind === 'playlist_creator' || page.kind === 'profile_notes'"
                 :model="playlistCreator"
                 :checking-relations="profileRelations.checking.value"
                 :relation-notice="profileRelations.entryNotice.value"
@@ -3336,8 +3395,18 @@ onUnmounted(() => {
                 @play-rank="playProfileRankPlaylist"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
                 @relations="openProfileRelations"
+                :notes="page.kind === 'profile_notes'"
                 @rank="openProfilePlayRecord"
-              />
+                @section="openProfileSection"
+              >
+                <ProfileNotes
+                  v-if="page.kind === 'profile_notes'"
+                  :model="profileNotes"
+                  :playable="player.ready.value && !player.busy.value"
+                  @open="openProfileNote"
+                  @resource="openCommunityResource"
+                />
+              </PlaylistCreatorPage>
               <ProfilePlayRecordPage
                 v-else-if="page.kind === 'profile_play_record'"
                 :target="page"

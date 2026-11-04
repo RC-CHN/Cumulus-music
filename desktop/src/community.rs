@@ -78,3 +78,16 @@ pub async fn community_comments(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn profile_notes(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    uid: String,
+    action: CommunityFeedAction,
+) -> Result<AccountData<CommunityFeedPage>, ClientError> {
+    client
+        .profile_notes(&epoch, &uid, action)
+        .await
+        .map_err(Into::into)
+}

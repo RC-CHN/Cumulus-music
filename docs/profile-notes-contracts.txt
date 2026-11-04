@@ -1,0 +1,34 @@
+用户主页「笔记」：Windows PC 3.1.42.205594
+
+官方路由与接口
+- ui-recovery 的 pages/user-detail/views/user/DetailTabs.tsx 和 EventTab.tsx：
+  用户主页保留页头；「笔记」使用 /userDetail/user/{uid}/event，数量来自资料页
+  profile.eventCount，水瀑按服务顺序放动态卡片。进入页签发送首批。
+- page:userDetail M/2264:632–682 的 fetchEventList 调 M/15.dc（1206–1222），
+  POST /api/event/get/{uid}，{offset:0,limit:20,getcounts:true,time:-1}。
+  成功读顶层 events、more、lasttime、size。续批把 lasttime 转成数值后
+  作为 time 回送；保留 offset=0、limit=20。这和关注页 /api/event/pc/history/feed/get
+  的 cursor 字符串/数值原样回传是两种契约，不可互换。
+- M/3088 普通资料页在 profile.inBlacklist 时不展示资料页签。Cumulus 在访客的
+  每批读取前以当前登录上下文读取 /api/w/v1/user/detail/{uid}，校验 profile.userId，
+  明确被屏蔽时不请求笔记，HTTP/业务 403/404 显示不可查看。本人按认证 uid 读取。
+  会话或资料目标改变时旧回包不能进入新的视图。网络错误保持同一页游标可重试。
+- 只投影目标作者的卡片；错配和匿名对象丢弃，避免仅靠个人主页上下文关联匿名身份。
+  不传原始 event、userId 或 CDN 授权。Rust 为续页和详情生成独立句柄，拒绝不推进、
+  跨账号及跨主页续页。服务明确撤权时清除本主页卡片和句柄；关注流状态独立。
+- 卡片重用社区投影和详情链，/api/v1/event/{uid}/{id} 核对归属；评论只接受
+  详情中与目标身份严格匹配的 threadId。详情返回保留原笔记批次，重新定位并聚焦原详情入口。
+  资料主页的歌单、关注和粉丝仍可进入。按 DetailTabs.tsx 的 history.replace 切换同级页签，笔记详情才另进返回历史。
+- 本批实现只读笔记与详情；未从该页自动点赞、评论、公开发布、删除内容或触发推荐。
+  原始 A/B「音乐」名称、该资料页的独立播客页签和写操作是其它分支。
+
+复现与边界
+- cargo test --locked -p cumulus-core --test profile_notes --test community_read
+- 使用生产前端、独立本机账号和封闭合成 transport 的实际 Linux WebView。
+  合成权限和隐藏分支不代表真实账号或 Windows 实机已核对。
+- cargo build --locked -p cumulus-desktop --example community_ui_probe --features custom-protocol
+- LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py
+    --profile-notes --binary /absolute/community_ui_probe --root /absolute/new-proof --screenshots
+- 第一轮通过 Linux 笔记 8 态、关注动态回归 12 态（各有截图），13 次已核对合成请求。
+  失效前后、未到达笔记接口、数值游标原位重试、匿名/错配过滤、详情和返回焦点均覆盖。
+  .build/ui-proof/profile-notes-cee48f77/{notes,community}/report.json。Rust 专项 8/8。

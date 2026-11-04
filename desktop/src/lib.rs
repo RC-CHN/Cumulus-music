@@ -300,6 +300,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 community::community_feed,
                 community::community_composer_search,
                 community::community_composer_draft,
+                community::profile_notes,
                 community::community_new_song_notice,
                 community::community_detail,
                 community::community_comments,
