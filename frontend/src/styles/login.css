@@ -861,22 +861,24 @@ ol.sms-tips {
   width: 194px;
   height: 194px;
 }
-.qr-expired {
+.qr-terminal {
   align-self: stretch;
   justify-self: stretch;
   display: grid;
   place-content: center;
   justify-items: center;
   gap: 10px;
+  padding: 12px;
   border-radius: inherit;
   background: var(--surface-alt);
+  text-align: center;
   color: var(--text);
   font-size: 14px;
 }
-.qr-expired > p {
+.qr-terminal > p {
   margin: 0;
 }
-.qr-expired > .primary {
+.qr-terminal > .primary {
   width: 100px;
   height: 34px;
   min-height: 34px;

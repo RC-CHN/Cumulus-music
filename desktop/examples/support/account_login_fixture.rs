@@ -545,6 +545,7 @@ impl HttpBackend for Service {
                 return Ok(match mode.as_str() {
                     "qr_scanned" => auth::reply(json!({"code":802}), None),
                     "qr_expired" => auth::reply(json!({"code":800}), None),
+                    "qr_poll_error" => auth::reply(json!({"code":500}), None),
                     "qr_authorized" | "qr_identity_recovery" => {
                         auth::reply(json!({"code":803}), Some(2))
                     }

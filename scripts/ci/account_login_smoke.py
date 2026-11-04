@@ -61,7 +61,7 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (8 if args.active_switch else 7 if args.quick_login or args.account_detail else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.device_removal else 2 if args.baseline else 30)
+    assert len(states) == (8 if args.active_switch else 7 if args.quick_login or args.account_detail else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.device_removal else 2 if args.baseline else 33)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
@@ -239,6 +239,17 @@ def main():
         assert by_name['late_login_cancelled_dark']['nativeAccount']['status'] != 'authenticated'
         assert by_name['logout_failed_small_light']['nativeAccount']['status'] == 'authenticated'
         assert by_name['local_logout_light']['nativeAccount']['status'] != 'authenticated'
+        unikey, poll = '/api/login/qrcode/unikey', '/api/login/qrcode/client/login'
+        error, still, poll_error, generated = (by_name[name] for name in (
+            'qr_error_small_dark', 'qr_error_still_small_dark', 'qr_poll_error_small_dark',
+            'qr_retry_small_dark'))
+        assert error['fixture']['paths'] == still['fixture']['paths'], 'failed generation never retries itself'
+        assert poll_error['fixture']['paths'][unikey] == still['fixture']['paths'][unikey] + 1
+        assert poll_error['fixture']['paths'][poll] == still['fixture']['paths'].get(poll, 0) + 1
+        assert generated['fixture']['paths'][unikey] == poll_error['fixture']['paths'][unikey] + 1
+        current = by_name['qr_error_keeps_current_dark']
+        assert current['nativeAccount']['epoch'] == by_name['account_closed_dark']['nativeAccount']['epoch']
+        assert current['sessionRenewal']['state'] != 'login_in_progress'
         before, retry, adopted = (by_name[name] for name in (
             'qr_identity_pending_light', 'qr_identity_retry_light', 'qr_authenticated_light'))
         assert before['nativeAccount']['epoch'] == retry['nativeAccount']['epoch']

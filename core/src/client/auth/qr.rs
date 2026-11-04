@@ -7,6 +7,20 @@ use crate::{
 use qrcodegen::{QrCode, QrCodeEcc};
 use std::sync::Arc;
 
+/// The renderer cannot cancel a QR attempt until it has received its ID.
+struct UnpublishedQr<'a> {
+    client: &'a MusicClient,
+    id: &'a str,
+    published: bool,
+}
+impl Drop for UnpublishedQr<'_> {
+    fn drop(&mut self) {
+        if !self.published {
+            let _ = self.client.cancel_qr(self.id);
+        }
+    }
+}
+
 impl MusicClient {
     pub fn account(&self) -> Result<AccountView> {
         let snapshot = self.session.snapshot()?;
@@ -89,6 +103,11 @@ impl MusicClient {
             view: LoginChallengeView::default(),
             captcha: Default::default(),
         })?;
+        let mut unpublished = UnpublishedQr {
+            client: self,
+            id: &id,
+            published: false,
+        };
         let key = flow.begin().await?;
         let mut link = url::Url::parse("https://music.163.com/login")
             .map_err(|_| Error::Protocol("QR URL"))?;
@@ -100,6 +119,8 @@ impl MusicClient {
             .collect();
         // A new start/cancel may have replaced this operation during the await.
         self.qr_flow(&id)?;
+        unpublished.published = true;
+        drop(unpublished);
         Ok(QrView {
             operation_id: id,
             status: QrStatus::WaitingScan,

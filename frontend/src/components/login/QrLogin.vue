@@ -8,6 +8,8 @@ const core = useCore();
 const qr = ref<QrView>();
 const status = ref<QrStatus>('creating');
 const error = ref('');
+const qrIssue = ref('');
+const serverError = '服务端异常，请稍后再试';
 const documentError = ref('');
 const openingDocument = ref(false);
 const captchaBusy = ref(false);
@@ -19,6 +21,7 @@ let disposed = false;
 const frame = ref<HTMLElement>();
 const downloadButton = ref<HTMLButtonElement>();
 const captchaButton = ref<HTMLButtonElement>();
+const retryButton = ref<HTMLButtonElement>();
 function deactivate() {
   if (disposed) return;
   disposed = true;
@@ -35,8 +38,11 @@ watch([status, recovery], async () => {
     active === downloadButton.value ||
     active === captchaButton.value;
   await nextTick();
-  if (!disposed && owned && document.activeElement === document.body)
-    frame.value?.focus({ preventScroll: true });
+  if (disposed || !owned) return;
+  if (document.activeElement === document.body)
+    (retryButton.value ?? frame.value)?.focus({ preventScroll: true });
+  else if (active === frame.value && document.activeElement === frame.value)
+    retryButton.value?.focus({ preventScroll: true });
 });
 const path = computed(
   () =>
@@ -63,6 +69,24 @@ async function cancel(id: string) {
     /* Operation can already be terminal. */
   }
 }
+function setQrIssue(issue: unknown) {
+  const { code, message } = failure(issue);
+  qrIssue.value = [
+    'network',
+    'service_rejected',
+    'session_expired',
+    'unavailable',
+    'connection',
+  ].includes(code)
+    ? serverError
+    : message;
+  status.value = 'error';
+}
+function retry() {
+  if (disposed || recovery.value || (status.value !== 'error' && status.value !== 'expired'))
+    return;
+  void begin();
+}
 async function begin() {
   const current = ++generation;
   captchaBusy.value = false;
@@ -70,6 +94,7 @@ async function begin() {
   reconciling.value = false;
   clearTimeout(timer);
   error.value = '';
+  qrIssue.value = '';
   documentError.value = '';
   openingDocument.value = false;
   status.value = 'creating';
@@ -88,8 +113,7 @@ async function begin() {
     timer = setTimeout(() => poll(current), value.pollAfterMs ?? 2000);
   } catch (e) {
     if (!disposed && current === generation) {
-      error.value = failure(e).message;
-      status.value = 'error';
+      setQrIssue(e);
     }
   }
 }
@@ -107,8 +131,7 @@ async function poll(current: number) {
       timer = setTimeout(() => poll(current), qr.value?.pollAfterMs ?? 2000);
   } catch (e) {
     if (!disposed && current === generation) {
-      error.value = failure(e).message;
-      status.value = 'error';
+      setQrIssue(e);
       await checkIdentityPending();
     }
   }
@@ -225,9 +248,15 @@ onBeforeUnmount(deactivate);
       <path :d="path" fill="#111" />
     </svg>
     <span v-else-if="status === 'creating'" class="spinner" />
-    <div v-else-if="status === 'expired'" class="qr-expired">
-      <p role="status">二维码已失效</p>
-      <button type="button" class="primary" @click="begin">点击重试</button>
+    <div
+      v-else-if="status === 'expired' || status === 'error'"
+      class="qr-terminal"
+      :class="status === 'expired' ? 'qr-expired' : 'qr-error'"
+    >
+      <p :role="status === 'expired' ? 'status' : 'alert'">
+        {{ status === 'expired' ? '二维码已失效' : qrIssue || serverError }}
+      </p>
+      <button ref="retryButton" type="button" class="primary" @click="retry">点击重试</button>
     </div>
     <button v-else class="primary" @click="begin">重新生成二维码</button>
   </div>
@@ -258,7 +287,11 @@ onBeforeUnmount(deactivate);
   <p v-else-if="recovery === 'identity' && error" class="login-status" role="alert">
     {{ error }}
   </p>
-  <p v-else-if="!recovery && status !== 'expired'" class="login-status" role="status">
+  <p
+    v-else-if="!recovery && status !== 'expired' && status !== 'error'"
+    class="login-status"
+    role="status"
+  >
     {{ error || (status === 'waiting_confirmation' ? '' : labels[status]) }}
   </p>
   <p v-if="status === 'waiting_scan' && documentError" class="login-status" role="alert">

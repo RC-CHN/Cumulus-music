@@ -176,6 +176,59 @@ async fn interrupted_captcha_provider_releases_slot_and_same_challenge_can_retry
 }
 
 #[tokio::test]
+async fn failed_or_aborted_qr_ticket_creation_releases_undisclosed_candidate() {
+    use cumulus_core::client::dto::RenewalState;
+
+    for aborted in [false, true] {
+        let (held, sender) = gate();
+        let first = if aborted {
+            held
+        } else {
+            HttpResponse::Ready(Err(Error::Transport("synthetic QR error".into())))
+        };
+        let w = World::new([
+            first,
+            json!({"code":200,"unikey":"synthetic-fresh-ticket"}).into(),
+        ])
+        .await;
+        let epoch = w.epoch();
+        let before = w.client.session_renewal(&epoch).unwrap().state;
+        assert_ne!(before, RenewalState::LoginInProgress);
+        if aborted {
+            let client = w.client.clone();
+            let task = tokio::spawn(async move { client.begin_qr().await });
+            w.http.wait(2).await;
+            assert_eq!(
+                w.client.session_renewal(&epoch).unwrap().state,
+                RenewalState::LoginInProgress
+            );
+            task.abort();
+            assert!(matches!(task.await, Err(error) if error.is_cancelled()));
+            assert!(sender.is_closed());
+        } else {
+            assert!(w.client.begin_qr().await.is_err());
+        }
+        assert_eq!(w.epoch(), epoch);
+        assert_eq!(w.client.session_renewal(&epoch).unwrap().state, before);
+        assert_eq!(
+            w.http.calls().len(),
+            2,
+            "no automatic replay or identity request"
+        );
+
+        let qr = w.client.begin_qr().await.unwrap();
+        assert_eq!(qr.status, cumulus_core::account::QrStatus::WaitingScan);
+        assert_eq!(
+            w.http.calls().len(),
+            3,
+            "one explicit request for a fresh ticket"
+        );
+        w.client.cancel_qr(&qr.operation_id).unwrap();
+        assert_eq!(w.client.session_renewal(&epoch).unwrap().state, before);
+    }
+}
+
+#[tokio::test]
 async fn qr_captcha_keeps_original_key_and_adopts_only_after_identity_read() {
     let w = World::new([
         json!({"code":200,"unikey":"challenge-qr-key"}).into(),

@@ -928,15 +928,25 @@
     );
     await closeLogin();
     await stage("closed_returns_focus_dark", { expectGuest: true });
+    const qrError = () => one(".qr-frame .qr-error [role='alert']")?.textContent.trim() ===
+      "服务端异常，请稍后再试" && button("点击重试")?.closest(".qr-error") &&
+      !one('.qr-frame svg[role="img"]');
     await mode("qr_error");
     await open();
-    await wait(
-      () => one(".login-status")?.textContent.includes("失败"),
-      "QR creation failure",
-    );
+    await wait(qrError, "QR creation service error in the original QR frame");
     await stage("qr_error_small_dark", { expectGuest: true });
+    await sleep(1150);
+    await stage("qr_error_still_small_dark", { expectGuest: true });
+    await mode("qr_poll_error");
+    const createRetry = button("点击重试");
+    click(createRetry);
+    createRetry.click(); // Same event turn: the request guard rejects the duplicate.
+    await wait(() => one('.qr-frame svg[role="img"]'), "explicit QR retry");
+    await wait(qrError, "unknown QR status shows the same service error");
+    assert(document.activeElement === button("点击重试"), "retry focus returns after the QR stops");
+    await stage("qr_poll_error_small_dark", { expectGuest: true });
     await mode("normal");
-    click(button("重新生成二维码"));
+    click(button("点击重试"));
     await wait(() => one('.qr-frame svg[role="img"]'), "QR retry");
     await stage("qr_retry_small_dark", { expectGuest: true });
     await mode("qr_scanned");
@@ -1009,7 +1019,7 @@
     );
     const checkQrIdentity = () => button("核对登录状态");
     await wait(() => one('[data-qr-recovery="identity"]') && checkQrIdentity(), "acknowledged QR awaiting identity");
-    assert(!one(".qr-frame svg") && !button("重新生成二维码"), "acknowledged QR cannot be replayed");
+    assert(!one(".qr-frame svg") && !button("点击重试") && !button("重新生成二维码"), "acknowledged QR cannot be replayed");
     checkQrIdentity().focus();
     await stage("qr_identity_pending_light", { expectGuest: true });
     click(checkQrIdentity());
@@ -1036,6 +1046,13 @@
     await wait(() => !one("dialog"), "chooser closed");
     await settle();
     await stage("account_closed_dark", { expectNickname: "邮箱验证账号" });
+    await mode("qr_error");
+    await chooser();
+    click(button("＋ 添加账号"));
+    await wait(qrError, "failed QR attempt never leaves the signed-in account pending");
+    await stage("qr_error_keeps_current_dark", { expectNickname: "邮箱验证账号" });
+    await mode("normal");
+    await closeLogin();
     await chooser();
     click(button("＋ 添加账号"));
     await wait(() => one(".login-methods"), "add phone account");
