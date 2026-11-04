@@ -65,17 +65,26 @@ fn composer(path: &str, body: &Value, attempt: usize) -> Value {
 pub struct Library {
     calls: Mutex<Vec<(String, Value)>>,
     fallback: super::catalog_fixture::Library,
+    profile_notes: super::profile_notes_fixture::Library,
 }
 impl Library {
+    pub fn block_profile_notes(&self) {
+        self.profile_notes.block();
+    }
+
     pub fn report(&self) -> Value {
         let calls = self.calls.lock().unwrap();
-        json!({"feed": calls.iter().filter(|(path, _)|path==FEED).map(|(_,body)|body).collect::<Vec<_>>(),
+        let mut report = json!({"feed": calls.iter().filter(|(path, _)|path==FEED).map(|(_,body)|body).collect::<Vec<_>>(),
             "notice": calls.iter().filter(|(path, _)|path==NOTICE).map(|(_,body)|body).collect::<Vec<_>>(),
             "releaseReads": calls.iter().filter(|(path, _)|path==RELEASES||path==LATEST).count(),
             "composer": calls.iter().filter(|(path, _)|COMPOSER.contains(&path.as_str())).collect::<Vec<_>>(),
             "details":calls.iter().filter(|(path, _)|path==DETAIL).count(),
             "unavailable":calls.iter().filter(|(path, _)|path==UNAVAILABLE).count(),
-            "commentOffsets":calls.iter().filter(|(path, _)|path==COMMENTS).map(|(_,body)|&body["offset"]).collect::<Vec<_>>()})
+            "commentOffsets":calls.iter().filter(|(path, _)|path==COMMENTS).map(|(_,body)|&body["offset"]).collect::<Vec<_>>()});
+        if super::profile_notes_fixture::Library::enabled() {
+            report["profileNotesCalls"] = self.profile_notes.report();
+        }
+        report
     }
 }
 fn row(id: u64, label: &str, anonymous: bool) -> Value {
@@ -95,6 +104,9 @@ fn comment(id: u64, label: &str) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self.profile_notes.request(path, &payload, cache) {
+                return result;
+            }
             if ![
                 FEED,
                 DETAIL,

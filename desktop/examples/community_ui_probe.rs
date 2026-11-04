@@ -8,6 +8,8 @@ mod capture_ack;
 mod catalog_fixture;
 #[path = "support/community_fixture.rs"]
 mod community_fixture;
+#[path = "support/profile_notes_fixture.rs"]
+mod profile_notes_fixture;
 
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
@@ -46,6 +48,12 @@ fn main() {
                 if stage == "resize" {
                     handle.get_webview_window("main").unwrap()
                         .set_size(tauri::LogicalSize::new(760.0, 540.0)).unwrap();
+                    return;
+                }
+                if stage == "profile-notes-deny" && profile_notes_fixture::Library::enabled() {
+                    api.block_profile_notes();
+                    handle.get_webview_window("main").unwrap()
+                        .eval("window.__profileNotesBlocked = true;").unwrap();
                     return;
                 }
                 if !(["complete", "failed"].contains(&stage.as_str())
