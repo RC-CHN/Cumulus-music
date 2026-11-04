@@ -79,7 +79,7 @@ function selectGroup(key: string | null) {
     (key === null
       ? active.hasAttribute('data-local-all-groups')
       : active.dataset.localGroupKey === key);
-  props.model.filter({ groupKey: key });
+  search.refine({ groupKey: key });
   groupFocus = focused ? { key, queryKey: localQueryKey(query.value) } : undefined;
 }
 watch(
@@ -601,7 +601,7 @@ function status(root: LocalRoot) {
         ><input
           type="checkbox"
           :checked="query.includeMissing"
-          @change="model.filter({ includeMissing: ($event.target as HTMLInputElement).checked })"
+          @change="search.refine({ includeMissing: ($event.target as HTMLInputElement).checked })"
         />显示不可用文件</label
       >
     </div>

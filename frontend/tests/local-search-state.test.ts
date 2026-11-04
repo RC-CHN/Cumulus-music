@@ -137,3 +137,23 @@ test('sorting folds a pending search into one native read without sending partia
   await turn();
   assert.deepEqual([f.reads.at(-1)?.keyword, f.reads.at(-1)?.sort], ['雨声', 'title']);
 });
+test('selecting a named group or changing availability folds a pending search into the same read', async (t) => {
+  const f = fixture();
+  t.after(() => f.dispose());
+  f.search.group('artist');
+  await turn();
+  const before = f.reads.length;
+  f.search.input('归途');
+  f.search.refine({ groupKey: '上海' });
+  await settle();
+  assert.equal(f.reads.length, before + 1);
+  assert.deepEqual([f.reads.at(-1)?.keyword, f.reads.at(-1)?.groupKey], ['归途', '上海']);
+  f.search.input('其他');
+  f.search.refine({ includeMissing: true });
+  await settle();
+  assert.equal(f.reads.length, before + 2);
+  assert.deepEqual(
+    [f.reads.at(-1)?.keyword, f.reads.at(-1)?.groupKey, f.reads.at(-1)?.includeMissing],
+    ['其他', '上海', true],
+  );
+});

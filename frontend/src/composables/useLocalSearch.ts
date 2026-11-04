@@ -40,7 +40,9 @@ export function useLocalSearch(model: LocalModel) {
     keyword.value = '';
     flush();
   }
-  function refine(value: Pick<LocalQuery, 'sort' | 'descending'>) {
+  function refine(
+    value: Partial<Pick<LocalQuery, 'sort' | 'descending' | 'groupKey' | 'includeMissing'>>,
+  ) {
     if (!alive || !owns()) return;
     stop();
     model.filter(composing ? value : { ...value, keyword: keyword.value });

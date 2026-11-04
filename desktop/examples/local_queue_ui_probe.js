@@ -80,10 +80,15 @@
       click(await wait(() => groupTab(label), 'group tab: ' + label));
       await wait(() => namedGroups().map(node => node.title).join(',') === '北京,上海,其他',
         'pinyin order and trailing unnamed group: ' + label);
-      click(await wait(() => namedGroups().find(node => node.title === '上海'), 'Shanghai group: ' + label));
+      const shanghai = await wait(() => namedGroups().find(node => node.title === '上海'), 'Shanghai group: ' + label);
+      const groupedSearch = one('[aria-label="搜索本地音乐"]');
+      groupedSearch.value = '归途';
+      groupedSearch.dispatchEvent(new Event('input', { bubbles: true }));
+      click(shanghai);
       await wait(() => trackRows().length === 1 && trackRows()[0].textContent.includes('归途') &&
-        document.activeElement === namedGroups().find(node => node.title === '上海'),
-        'group selection preserves native identity and focus: ' + label);
+        groupedSearch.value === '归途' && document.activeElement === namedGroups().find(node => node.title === '上海'),
+        'group selection preserves native identity, pending search and focus: ' + label);
+      await filter('', 1);
       const allGroups = () => one('[data-local-all-groups]');
       click(await wait(allGroups, 'all groups control: ' + label));
       await wait(() => trackRows().length === 5 && document.activeElement === allGroups(),
