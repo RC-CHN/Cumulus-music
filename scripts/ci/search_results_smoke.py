@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import stat
 from threading import Event
 import time
 from motion_smoke import launch
@@ -50,6 +51,25 @@ def drag_playlist_column(output, cancelled, capture):
         x11.XSync(display, 0)
     finally:
         x11.XCloseDisplay(display)
+
+
+def verify_voice_download_file(path, directory):
+    """Check the real descendant even if Windows spells the same drive two ways."""
+    # The intended scratch directory must itself be real; never permit a
+    # symlink or Windows junction to make an outside directory the fixture root.
+    root = directory.lstat()
+    assert (stat.S_ISDIR(root.st_mode)
+            and not getattr(root, 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT), (
+                'voice download destination is not an ordinary directory')
+    target = Path(path).resolve(strict=True)
+    expected = directory.resolve(strict=True)
+    # Rust persists extended-length Windows paths. CPython retains that prefix
+    # if the stored input has it, so lexical is_relative_to can reject the same
+    # physical directory. Compare filesystem identity after following links.
+    assert any(parent.samefile(expected) for parent in target.parents), 'voice download escaped its destination'
+    assert target.suffix == '.mp3', 'voice download has the wrong format'
+    state = target.stat()
+    assert stat.S_ISREG(state.st_mode) and state.st_size > 0, 'voice download is not a nonempty file'
 
 
 def main():
@@ -448,8 +468,7 @@ def main():
                 "SELECT value FROM state WHERE owner='2' AND kind='download_tasks_v1'"))
         assert task['origin'] == {'kind': 'voice', 'voice_id': '401'} and task['song_id'] == '1'
         assert task['status'] == 'complete' and task['authorization_count'] == 1
-        target = Path(task['target']).resolve(strict=True)
-        assert target.is_relative_to(root / 'voice-media') and target.suffix == '.mp3' and target.stat().st_size > 0
+        verify_voice_download_file(task['target'], root / 'voice-media')
         summary = dict(ok=True, actualWebView=True, voiceId='401', mediaId='1', stageCount=6,
                        nativePublished=True, privateSyntheticMedia=True, requestCounts=complete['voiceDownloadService'])
         (root / 'report.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
