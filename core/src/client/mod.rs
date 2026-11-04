@@ -65,6 +65,7 @@ mod rankings;
 mod recognition_results;
 mod recommendations;
 mod relay;
+mod remote_skins;
 mod report_receipt;
 mod scene_fm;
 mod search;
@@ -96,6 +97,7 @@ pub struct MusicClient {
     external_import: external_import::ExternalImportHost,
     external_import_sidebar: bool,
     member_welfare: member::MemberWelfareHost,
+    remote_skins: remote_skins::RemoteSkinHost,
     session: Arc<AccountSession>,
     registry: Arc<ProfileRegistry>,
     auth: auth::AuthHost,
@@ -262,6 +264,7 @@ impl MusicClient {
             external_import: Default::default(),
             external_import_sidebar: false,
             member_welfare: Default::default(),
+            remote_skins: Default::default(),
             playlist_cover: playlist_cover::CoverHost::default(),
             artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),

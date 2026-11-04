@@ -82,6 +82,7 @@ pub use super::relay::{
     RelayPublicationReceipt, RelayPublicationView, RelaySettingCommand, RelaySettingOperationView,
     RelaySettingsView, RelayView,
 };
+pub use super::remote_skins::{RemoteSkinCatalog, RemoteSkinImage};
 pub use super::scene_fm::{SceneFmCategoryView, SceneFmCommand, SceneFmView};
 pub use super::search::{
     ReasonTarget, SearchCategory, SearchHistoryCommand, SearchItem, SearchReasonPage,

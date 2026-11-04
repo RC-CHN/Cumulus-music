@@ -2,6 +2,7 @@ import type { LocalNetworkReport } from './networkDiagnostics';
 import type { PackageVerification, UpdateCheck } from './updates';
 import type { ExternalPlaylistImportClient } from './externalPlaylistImport';
 import type { MemberWelfareClient } from './memberWelfare';
+import type { RemoteSkinClient } from './remoteSkins';
 import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
 import type { ArtistOnboardingClient } from './artistOnboarding';
@@ -114,6 +115,7 @@ export interface CoreClient
     PlaylistClient,
     ExternalPlaylistImportClient,
     MemberWelfareClient,
+    RemoteSkinClient,
     PlaylistCoverClient,
     DownloadClient,
     ColdOfflineClient,

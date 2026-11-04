@@ -51,6 +51,7 @@ mod rankings;
 )]
 mod recognition_capture;
 mod relay;
+mod remote_skins;
 pub mod renewal;
 mod search;
 mod settings;
@@ -383,6 +384,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 member::member_sign_card,
                 member::member_welfare_available,
                 member::member_welfare_list,
+                remote_skins::remote_skin_catalog,
+                remote_skins::remote_skin_image,
                 member::member_sign_detail,
                 member::member_sign_command,
                 member::open_member_link,

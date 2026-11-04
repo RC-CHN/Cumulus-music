@@ -139,6 +139,9 @@ export function createTauriClient(): CoreClient {
     memberRights: (epoch, refresh) => invoke('member_rights', { epoch, refresh }),
     memberWelfareAvailable: (epoch) => invoke('member_welfare_available', { epoch }),
     memberWelfareList: (epoch) => invoke('member_welfare_list', { epoch }),
+    remoteSkinCatalog: (epoch) => invoke('remote_skin_catalog', { epoch }),
+    remoteSkinImage: (epoch, revision, key, kind) =>
+      invoke('remote_skin_image', { epoch, revision, key, kind }),
     memberPortalQr: () => invoke('member_portal_qr'),
     memberCardOfferQr: (epoch, revision) => invoke('member_card_offer_qr', { epoch, revision }),
     memberCardOffer: (epoch, refresh) => invoke('member_card_offer', { epoch, refresh }),

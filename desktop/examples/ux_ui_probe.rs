@@ -64,6 +64,8 @@ mod queue_collection_fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
+#[path = "support/remote_skin_fixture.rs"]
+mod remote_skin_fixture;
 #[path = "support/search_fixture.rs"]
 mod search_fixture;
 #[path = "support/search_mv_fixture.rs"]
@@ -153,6 +155,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(reply) = remote_skin_fixture::response(path, &args, cached).await {
+                return reply;
+            }
             if let Some(reply) = member_welfare_fixture::response(path, &args, cached).await {
                 return reply;
             }
@@ -621,6 +626,10 @@ fn main() {
             client=client.with_official_external_import_sidebar()
                 .with_login_providers(Some(Arc::new(external_import_fixture::OfflineLogin)),None);
         }
+        if remote_skin_fixture::enabled() {
+            client = client.with_remote_skin_images(Arc::new(remote_skin_fixture::Media))
+                .with_login_providers(Some(Arc::new(external_import_fixture::OfflineLogin)),None);
+        }
         if member_welfare_fixture::enabled() {
             client=client.with_official_member_welfare()
                 .with_login_providers(Some(Arc::new(external_import_fixture::OfflineLogin)),None);
@@ -683,6 +692,9 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if let Some(wire) = external_import.as_ref() { value["externalImport"] = wire.report(); }
             if external_import_fixture::sidebar_mode().is_some() { value["externalImportSidebarReads"] = json!(external_import_fixture::sidebar_reads()); }
+            if remote_skin_fixture::enabled() {
+                value["remoteSkinFixture"] = remote_skin_fixture::report();
+            }
             if member_welfare_fixture::enabled() {
                 value["memberWelfareFixture"] = member_welfare_fixture::report();
                 if value["stage"]=="member-welfare-fixture" {

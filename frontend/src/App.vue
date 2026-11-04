@@ -3372,7 +3372,7 @@ onUnmounted(() => {
                 @play="playLocal"
                 @comments="(id, title) => openComments({ kind: 'track', id }, title)"
               />
-              <SkinCenter v-else-if="page.kind === 'decoration'" />
+              <SkinCenter v-else-if="page.kind === 'decoration'" :account="account" />
               <div v-else-if="initializing" class="empty-state" role="status">
                 <span class="spinner" />
                 <p>正在连接你的音乐…</p>

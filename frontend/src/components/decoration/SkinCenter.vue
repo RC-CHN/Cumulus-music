@@ -3,6 +3,9 @@ import { nextTick, onMounted, ref } from 'vue';
 import { useAppearance } from '../../composables/useAppearance';
 import Icon from '../Icon.vue';
 import CustomSkinDialog from './CustomSkinDialog.vue';
+import RemoteSkinCatalogue from './RemoteSkinCatalogue.vue';
+import type { AccountView } from '../../services/contracts';
+defineProps<{ account: AccountView }>();
 
 const { preference, select, customColor, saved } = useAppearance();
 const title = ref<HTMLElement>();
@@ -24,48 +27,50 @@ async function closeCustom() {
 <template>
   <section class="skin-center" aria-labelledby="skin-center-title">
     <h1 id="skin-center-title" ref="title" tabindex="-1">个性皮肤</h1>
-    <h2>官方</h2>
-    <div class="skin-cards">
-      <button
-        v-for="card in cards"
-        :key="card.id"
-        type="button"
-        class="skin-card"
-        :data-skin="card.id"
-        :aria-pressed="preference === card.id"
-        @click="select(card.id)"
-      >
-        <span class="skin-art" aria-hidden="true">
-          <span class="skin-mini">
-            <span class="skin-mini-nav"><i /><i /><i /></span>
-            <span class="skin-mini-body"><i /><i /><i /><i /></span>
-            <span class="skin-mini-player"><Icon name="play" /></span>
+    <RemoteSkinCatalogue :account="account">
+      <h2 data-skin-section="official" tabindex="-1">官方</h2>
+      <div class="skin-cards">
+        <button
+          v-for="card in cards"
+          :key="card.id"
+          type="button"
+          class="skin-card"
+          :data-skin="card.id"
+          :aria-pressed="preference === card.id"
+          @click="select(card.id)"
+        >
+          <span class="skin-art" aria-hidden="true">
+            <span class="skin-mini">
+              <span class="skin-mini-nav"><i /><i /><i /></span>
+              <span class="skin-mini-body"><i /><i /><i /><i /></span>
+              <span class="skin-mini-player"><Icon name="play" /></span>
+            </span>
           </span>
-        </span>
-        <span class="skin-card-name">{{ card.label }}</span>
-        <span v-if="preference === card.id" class="skin-selected" aria-label="使用中">
-          <Icon name="check" />
-        </span>
-      </button>
-      <button
-        ref="customCard"
-        type="button"
-        class="skin-card"
-        data-skin="custom"
-        aria-haspopup="dialog"
-        :aria-pressed="preference === 'custom'"
-        :style="customColor ? { '--skin-choice': customColor } : undefined"
-        @click="customOpen = true"
-      >
-        <span class="skin-art skin-color-art" aria-hidden="true">
-          <Icon name="palette" />
-        </span>
-        <span class="skin-card-name">按钮颜色自定义</span>
-        <span v-if="preference === 'custom'" class="skin-selected" aria-label="使用中">
-          <Icon name="check" />
-        </span>
-      </button>
-    </div>
+          <span class="skin-card-name">{{ card.label }}</span>
+          <span v-if="preference === card.id" class="skin-selected" aria-label="使用中">
+            <Icon name="check" />
+          </span>
+        </button>
+        <button
+          ref="customCard"
+          type="button"
+          class="skin-card"
+          data-skin="custom"
+          aria-haspopup="dialog"
+          :aria-pressed="preference === 'custom'"
+          :style="customColor ? { '--skin-choice': customColor } : undefined"
+          @click="customOpen = true"
+        >
+          <span class="skin-art skin-color-art" aria-hidden="true">
+            <Icon name="palette" />
+          </span>
+          <span class="skin-card-name">按钮颜色自定义</span>
+          <span v-if="preference === 'custom'" class="skin-selected" aria-label="使用中">
+            <Icon name="check" />
+          </span>
+        </button>
+      </div>
+    </RemoteSkinCatalogue>
     <p v-if="!saved" class="catalog-error" role="status">主题已应用，但暂时无法保存到本机。</p>
     <CustomSkinDialog v-if="customOpen" @close="closeCustom" />
   </section>
