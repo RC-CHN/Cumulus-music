@@ -77,6 +77,7 @@ export interface PlayerView {
   revision: string;
   queueRevision: string;
   queueMoreAvailable?: boolean;
+  queueMoreTipEligible?: boolean;
   state: PlaybackStatus;
   pendingPaused?: boolean;
   playId: string | null;
@@ -594,6 +595,10 @@ export interface IntelligenceEligibility {
   canEnter: boolean;
   likedPlaylistId: string | null;
 }
+export type QueueMoreTipAction =
+  | { kind: 'begin'; play_id: string }
+  | { kind: 'seen'; ticket: string };
+
 export interface PlayerClient {
   playerSnapshot(epoch: string): Promise<PlayerView>;
   playerIntelligence(epoch: string, command: IntelligenceCommand): Promise<PlayerView>;
@@ -615,6 +620,7 @@ export interface PlayerClient {
   playerQualityDetails(epoch: string, playId: string): Promise<QualityDetailsView>;
   playerQualityTrial(epoch: string, command: QualityTrialCommand): Promise<QualityTrialOutcome>;
   playerQueue(epoch: string): Promise<QueueView>;
+  queueMoreTip(epoch: string, action: QueueMoreTipAction): Promise<string | null>;
   playerQueueCollection(epoch: string, revision: string): Promise<QueueCollectionView>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;

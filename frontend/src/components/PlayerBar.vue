@@ -25,6 +25,7 @@ import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/see
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
 import { usePlaybackCommentCount } from '../composables/usePlaybackCommentCount';
 import { usePlaybackDownloadState } from '../composables/usePlaybackDownloadState';
+import { useQueueMoreTip } from '../composables/useQueueMoreTip';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 import PlayerTrackActions from './PlayerTrackActions.vue';
 const equalizerOpen = ref(false);
@@ -70,6 +71,11 @@ const {
   loadingStepBusy,
 } = props.player;
 const chorusMarker = usePlaybackChorus(view, loaded);
+const showQueueMoreTip = useQueueMoreTip(
+  view,
+  () => props.account.epoch,
+  () => props.account.status === 'authenticated' && !props.togetherActive,
+);
 const commentCount = usePlaybackCommentCount(view, loaded, () => props.account.epoch);
 const commentBadge = computed(() => formatPlaybackCommentCount(commentCount.value));
 const commentDescription = useId();
@@ -691,15 +697,22 @@ async function seek(event: Event) {
         >
       </button>
       <span :id="equalizerDescription" class="sr-only">{{ effectEntry.label }}</span>
-      <button
-        class="queue-toggle icon-button"
-        aria-label="播放队列"
-        :aria-pressed="player.queueOpen.value"
-        :disabled="!ready"
-        @click="player.toggleQueue"
-      >
-        <Icon name="list" /><small>{{ view?.queueLen ?? 0 }}</small>
-      </button>
+      <div class="queue-more-tip-anchor">
+        <button
+          class="queue-toggle icon-button"
+          aria-label="播放队列"
+          :aria-pressed="player.queueOpen.value"
+          :disabled="!ready"
+          @click="player.toggleQueue"
+        >
+          <Icon name="list" /><small>{{ view?.queueLen ?? 0 }}</small>
+        </button>
+        <Transition name="queue-more-tip">
+          <span v-if="showQueueMoreTip" class="queue-more-tip" data-queue-more-tip role="status">
+            列表播完已自动推荐，↓点击去设置
+          </span>
+        </Transition>
+      </div>
       <button
         v-if="view?.track && !view.track.local"
         class="icon-button player-comment"

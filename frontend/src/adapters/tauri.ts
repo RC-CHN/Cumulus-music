@@ -385,6 +385,7 @@ export function createTauriClient(): CoreClient {
       invoke('player_intelligence_eligibility', { epoch, revision }),
     playerSnapshot: (epoch) => invoke('player_snapshot', { epoch }),
     playerQueue: (epoch) => invoke('player_queue', { epoch }),
+    queueMoreTip: (epoch, action) => invoke('queue_more_tip', { epoch, action }),
     playerQueueCollection: (epoch, revision) =>
       invoke('player_queue_collection', { epoch, revision }),
     playerChorus: (epoch, playId) => invoke('player_chorus', { epoch, playId }),

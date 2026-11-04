@@ -398,6 +398,60 @@ input[type='range'] {
   font-size: 9px;
   margin-left: -4px;
 }
+.queue-more-tip-anchor {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.queue-more-tip {
+  position: absolute;
+  z-index: 2;
+  inset-block-end: calc(100% + 8px);
+  inset-inline-end: -12px;
+  inline-size: max-content;
+  max-inline-size: min(270px, calc(100vw - 24px));
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 8%);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 19px;
+  pointer-events: none;
+  transform-origin: right bottom;
+}
+.queue-more-tip::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 100%;
+  inset-inline-end: 14px;
+  inline-size: 24px;
+  block-size: 8px;
+  background: inherit;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+.queue-more-tip-enter-active {
+  transition:
+    opacity 300ms cubic-bezier(0.45, 0.6, 0.58, 0.97),
+    transform 300ms cubic-bezier(0.45, 0.6, 0.58, 0.97);
+}
+.queue-more-tip-leave-active {
+  transition:
+    opacity 200ms cubic-bezier(0.45, 0.6, 0.58, 0.97),
+    transform 200ms cubic-bezier(0.45, 0.6, 0.58, 0.97);
+}
+.queue-more-tip-enter-from,
+.queue-more-tip-leave-to {
+  opacity: 0;
+  transform: scale(0.8);
+}
+@media (prefers-reduced-motion: reduce) {
+  .queue-more-tip-enter-active,
+  .queue-more-tip-leave-active {
+    transition: none;
+  }
+}
 .player-tools .player-comment {
   position: relative;
 }
