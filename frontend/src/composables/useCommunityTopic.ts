@@ -27,6 +27,7 @@ function visit(name: string) {
     unavailable: false,
     refreshing: false,
     hasNew: false,
+    noticeRevision: 0,
     hot: slice(),
     all: slice(),
     continuation: null as string | null,
@@ -42,6 +43,7 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
   const visits = new Map<number, TopicVisit>();
   let owner = '';
   let generation = 0;
+  let routeRevision = 0;
 
   function report(error: unknown) {
     const code = failure(error).code;
@@ -59,18 +61,18 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
   async function read(state: TopicVisit, group: TopicGroup, action: CommunityTopicAction) {
     const lane = state[group];
     if (!owner || active.value !== state || !state.meta || state.unavailable || lane.pending)
-      return;
+      return false;
     const version = generation;
     lane.last = action;
     lane.pending = true;
     lane.error = '';
     try {
       const reply = await core.communityTopicSlice(owner, state.meta.handle, action);
-      if (!allowed(state, version) || reply.epoch !== owner || state.unavailable) return;
+      if (!allowed(state, version) || reply.epoch !== owner || state.unavailable) return false;
       const value = reply.value;
       if (value.unavailable) {
         clear(state);
-        return;
+        return false;
       }
       const patches = new Map(value.cards.map((card) => [card.key, card]));
       const merged = new Map((value.replace ? [] : lane.cards).map((card) => [card.key, card]));
@@ -88,10 +90,13 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
         else if (value.retired.length)
           state.group = Math.max(0, state.group - Math.floor(value.retired.length / 20));
       }
+      return true;
     } catch (error) {
-      if (!allowed(state, version) || state.unavailable) return;
-      report(error);
-      lane.error = group === 'hot' ? '暂时无法读取热门笔记。' : '暂时无法读取全部笔记。';
+      if (allowed(state, version) && !state.unavailable) {
+        report(error);
+        lane.error = group === 'hot' ? '暂时无法读取热门笔记。' : '暂时无法读取全部笔记。';
+      }
+      return false;
     } finally {
       if (allowed(state, version)) lane.pending = false;
     }
@@ -121,6 +126,7 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
     }
   }
   function enter(epoch: string, target: { name: string; visit: number } | null) {
+    routeRevision++;
     if (epoch !== owner) {
       owner = epoch;
       generation++;
@@ -141,24 +147,43 @@ export function useCommunityTopic(core: CommunityTopicClient, expired: () => voi
   async function refresh() {
     const state = active.value;
     if (!state || state.refreshing || state.all.pending || state.hot.pending) return;
+    const route = routeRevision;
+    state.noticeRevision++;
     state.refreshing = true;
     try {
-      await read(state, 'all', { kind: 'refresh' });
-      if (!state.unavailable) await read(state, 'hot', { kind: 'hot' });
-      if (!state.all.error && !state.hot.error) state.hasNew = false;
+      const all = await read(state, 'all', { kind: 'refresh' });
+      if (route !== routeRevision || state.unavailable) return;
+      const hot = await read(state, 'hot', { kind: 'hot' });
+      if (route === routeRevision && all && hot) state.hasNew = false;
     } finally {
       state.refreshing = false;
     }
   }
   async function notice(state: TopicVisit, current: () => boolean) {
-    if (!owner || !state.meta || state.unavailable || active.value !== state || !current()) return;
+    if (
+      !owner ||
+      !state.meta ||
+      state.unavailable ||
+      state.refreshing ||
+      active.value !== state ||
+      !current()
+    )
+      return;
     const version = generation;
+    const route = routeRevision;
+    const noticeRevision = state.noticeRevision;
+    const currentNotice = () =>
+      allowed(state, version) &&
+      active.value === state &&
+      !state.unavailable &&
+      route === routeRevision &&
+      noticeRevision === state.noticeRevision &&
+      current();
     try {
       const reply = await core.communityTopicNotice(owner, state.meta.handle);
-      if (allowed(state, version) && active.value === state && current() && reply.epoch === owner)
-        state.hasNew = reply.value;
+      if (currentNotice() && reply.epoch === owner) state.hasNew = reply.value;
     } catch (error) {
-      if (allowed(state, version) && active.value === state && current()) report(error);
+      if (currentNotice()) report(error);
     }
   }
   function retry(group?: TopicGroup) {

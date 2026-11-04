@@ -64,6 +64,7 @@ async function restore() {
 let timer: ReturnType<typeof setTimeout> | undefined;
 let polling = false;
 let mounted = false;
+let foregroundRevision = 0;
 const foreground = () => mounted && document.visibilityState === 'visible' && document.hasFocus();
 function scheduleNotice() {
   if (timer !== undefined) clearTimeout(timer);
@@ -73,26 +74,31 @@ function scheduleNotice() {
     timer = undefined;
     if (!foreground()) return;
     polling = true;
+    const revision = foregroundRevision;
     try {
-      await props.model.notice(props.state, foreground);
+      await props.model.notice(props.state, () => revision === foregroundRevision && foreground());
     } finally {
       polling = false;
       scheduleNotice();
     }
   }, 20_000);
 }
+function foregroundChanged() {
+  foregroundRevision++;
+  scheduleNotice();
+}
 onMounted(() => {
   mounted = true;
-  document.addEventListener('visibilitychange', scheduleNotice);
-  window.addEventListener('focus', scheduleNotice);
-  window.addEventListener('blur', scheduleNotice);
+  document.addEventListener('visibilitychange', foregroundChanged);
+  window.addEventListener('focus', foregroundChanged);
+  window.addEventListener('blur', foregroundChanged);
   scheduleNotice();
 });
 onUnmounted(() => {
   mounted = false;
-  document.removeEventListener('visibilitychange', scheduleNotice);
-  window.removeEventListener('focus', scheduleNotice);
-  window.removeEventListener('blur', scheduleNotice);
+  document.removeEventListener('visibilitychange', foregroundChanged);
+  window.removeEventListener('focus', foregroundChanged);
+  window.removeEventListener('blur', foregroundChanged);
   scheduleNotice();
 });
 watch([() => props.state.meta, () => props.state.unavailable], scheduleNotice);
