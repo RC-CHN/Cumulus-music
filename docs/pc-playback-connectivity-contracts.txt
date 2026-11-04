@@ -1,0 +1,65 @@
+PC 3.1.42.205594 播放队列联网判定
+
+M/119:13–50 初始化取 navigator.onLine，经 distinctUntilChanged 与 shareReplay(1)
+发布；M/119.b 返回最新有效值，M/23.Z 每次调用会重新读取它。app 模型也订阅 M/119.a，
+并派发 setIsOnline（recovered-client/docs/product/models/app.txt:2289–2296）。
+M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求或网卡存在推断。
+
+原始信号和请求边界
+
+* M/4 Network.subscribe 通过 os.isOnLine、app.onnetstatus、os.onisonline（native-contracts.txt:
+  520–526）。M/119:26–28 原文把 native true 和 false 都推给 p，随后与 window.online
+  合并为 triggerOnline；window.offline 则进入 triggerOffline。v 未收到这个回调。
+* M/12:297–329 在请求返回真值后、格式化数据之前派发 musicFeOnline。catch 除
+  responseError、fetchFrontEndEncryptError 外派发 musicFeOffline；同步格式化错误可能
+  先后产生两个事件。JSON 非成功业务码在 M/12:174–194 被包装为 responseError。
+  单次 URL 拒绝、缺资源、解码失败或只看 HTTP 数字都不能替代该观察位置。
+* M/119:50 四类信号分别做首个立即生效的 100ms throttleTime；native 和浏览器的
+  triggerOnline 共享这一窗口。有效在线值变化会重新订阅并清空四类节流。
+
+状态、定时与返回
+
+* Online 遇 triggerOffline 只设 5 秒定时器；遇 businessOffline 才进入 PreOffline
+  并记录首次时间。PreOffline 内再次 businessOffline 且经过严格大于 5000ms 才
+  确认离线；恰好 5000ms 维持有效在线并再等 5 秒。triggerOnline 或 businessOnline
+  在 PreOffline 直接取消当前探测，不另发一次 online。已处于 Online 的普通成功事件
+  不取消先前仅由 triggerOffline 排定的探测。
+* Offline 遇 triggerOnline 进入 PreOnline 并在 1 秒后探测；真实业务成功才确认在线。
+  PreOnline 遇 triggerOffline 或 businessOffline 回 Offline 并改为 5 秒。
+  初始 Offline 不会凭初始化值立即启动探测。
+* 探测到时看当下 navigator.onLine：为真调用 M/236.start(true)，其先清除旧消息
+  轮询定时器再以 0ms 调用 M/15.Ce 的 POST /api/pl/count（没有业务实参）；
+  为假则派发 musicFeOffline(mock)，通过同一 businessOffline 节流。
+  M/119 不是另开一个和消息并发的周期请求器。
+* M/119:76–94 中 g.next(false) 同步替换 RxJS switchMap 的内层订阅，旧分支随后
+  仍设一次 5 秒探测。真实恢复只取消新订阅持有的定时器；原探测仍会执行。
+  安装包 RxJS 回放确认此点（先在 5200ms 确认离线，5400ms 确认在线，
+  10200ms 仍探测）。
+
+Rust 边界与验证
+
+core/src/pc_connectivity.rs 是无 I/O 的四态模型；宿主提交已区分的通知和请求观察，
+按单调时钟喂给模型，并消费“立即重启消息计数轮询”或“有效联网状态变化”的效果。
+使用单调时间避免宿主系统时钟调校使等待倒退；未声称复刻浏览器墙钟倒跳行为。
+模型不会访问服务、读取账号或切换歌曲；也未接入生产 IPC、播放器或跨平台事件订阅。
+现有网络诊断的默认路由、WebView navigator 初值、已验证的本地下载，均不能独自
+作为跳歌所需的在线授权证据。生产接入还需在实际 native/web/请求宿主串联这些来源，
+令 M/236 探测与既有消息轮询合用，并独立验证 app 状态发布和账号切换。
+
+scripts/research/official_connectivity_oracle.mjs 在本机无外联 Node VM 执行解包的
+hybrid_app.chunk.1482700000000.js/119.js 与原始 vendors-rudio.pc-new.production.js，
+以虚拟时钟替代系统定时器，只记录 M/236 调用和联网通知。源 SHA256 分别是
+4977cb7be0f99c94e9c471375a87719fc82f2d5f4702f246129cb78578f1dd46、
+583f5bfa240e453ecbc233e4c2767bce0af27482c50aa1c69c31fda37f107451。
+core/tests/fixtures/official_pc_connectivity_3_1_42.jsonl 仅冻结合成事件、样本、状态
+通知和探测时刻；公开测试不需安装包，不执行线上探测。
+
+PH-PC-skipSongs2 仍未接通
+
+M/147:1812–1824 的默认 expGroupName 为空。2890–2974 取得全部打开的前端实验
+名，再拼接 M/34.n 的原生 App.getABTestKeys()；M/15.Rf/fa 声明 GET
+/api/rtrs/abt/front/expinfo/list，expNames 为逗号连接，读取 data；M/12 的设备签名和
+加密分支可在实际 API 传输强制 POST，不能仅凭逻辑动词推断抓包方法。成功时先匹配
+实验名再取首项，缺项复位默认；失败保留旧分组（另复位情绪音效）。M/147:3055–3065
+每 30 分钟刷新，也有账号变化触发。原生键列表、与登录态的合并时序、真实 t1 分配
+和曝光均未由本批复刻；未把搜索实验的精简查询当作此分配的等价证明。

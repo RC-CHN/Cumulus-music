@@ -22,6 +22,7 @@ pub mod media;
 pub mod membership;
 pub mod mv;
 pub mod network_diagnostics;
+pub mod pc_connectivity;
 pub mod playback;
 pub mod playlist;
 pub mod podcast;
