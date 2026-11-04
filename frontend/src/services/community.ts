@@ -69,3 +69,17 @@ export interface CommunityClient {
     offset: number,
   ): Promise<AccountData<CommunityCommentPage>>;
 }
+
+export interface CommunityNoticeCard {
+  style: 'artists' | 'musicians';
+  text: string;
+  avatars: string[];
+  cover: string | null;
+}
+
+export interface CommunityNoticeClient {
+  communityNewSongNotice(
+    epoch: string,
+    mode: 'badge' | 'visit',
+  ): Promise<AccountData<{ showDot: boolean; card: CommunityNoticeCard | null }>>;
+}

@@ -1,3 +1,4 @@
+pub mod new_song_notice;
 mod project;
 
 use super::{MusicClient, comments, dto::AccountData};

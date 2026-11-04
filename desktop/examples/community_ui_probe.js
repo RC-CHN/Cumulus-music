@@ -51,6 +51,7 @@
   }
   try {
     await wait(() => button('关注') && !button('关注').disabled, 'application ready');
+    await wait(() => one('.sidebar-new-song-dot'), 'account-scoped new song indicator');
     await emit('resize');
     await wait(() => innerWidth === 760, 'narrow window');
     click(one('[aria-label="外观主题"]'));
@@ -59,6 +60,7 @@
     await wait(() => document.documentElement.dataset.theme === 'light', 'light theme');
     click(button('关注'));
     await wait(() => one('.community-page [role=alert]'), 'first feed failure');
+    await wait(() => one('.new-song-notice') && !one('.sidebar-new-song-dot'), 'visit loads card and clears indicator');
     assert(feedCount() === 0 && !body().includes('暂无关注动态'), 'failure disguised as empty');
     await capture('first_error');
     click(button('重试', page()));
@@ -67,7 +69,14 @@
     const first = one('[aria-label="查看 合成作者 11 的动态详情"]');
     assert(first && body().includes('合成动态专辑'), 'first row and attachment');
     await capture('feed');
-    click(first);
+    click(one('.new-song-notice'));
+    await wait(() => one('.follow-release-page')?.textContent.includes('关注的歌手最近没有发布内容'),
+      'new song notice opens the actual followed-release route');
+    click(back());
+    await wait(() => feedCount() === 5 && document.activeElement?.matches('.new-song-notice'),
+      'return restores the notice card and its focus');
+    await capture('notice_return');
+    click(one('[aria-label="查看 合成作者 11 的动态详情"]'));
     await wait(() => one('.community-heading h1')?.textContent === '动态详情' && one('.community-page [role=alert]'), 'detail error');
     await capture('detail_error');
     click(button('重试', page()));
@@ -104,6 +113,7 @@
     await capture('next_recovered');
     click(button('关注'));
     await wait(() => body().includes('暂无关注动态'), 'sidebar reselect refresh empty');
+    await wait(() => !one('.new-song-notice'), 'no replacement notice on the second visit');
     await capture('empty');
     await emit('complete', { ok: true, stageCount: count, realMusicRequests: 0, remoteWrites: 0 });
   } catch (error) {

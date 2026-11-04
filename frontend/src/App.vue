@@ -45,6 +45,7 @@ import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
 import CommunityPage from './components/community/CommunityPage.vue';
 import { useCommunity } from './composables/useCommunity';
+import { useCommunityNotice } from './composables/useCommunityNotice';
 import type { CommunityResource } from './services/community';
 import type { SidebarPlaylistMove } from './services/sidebar';
 import { libraryView } from './services/playlistLibrary';
@@ -251,11 +252,13 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 const community = useCommunity(core, () => void music.bootstrap(false));
+const communityNotice = useCommunityNotice(core, () => void music.bootstrap(false));
 const communityPage = ref<InstanceType<typeof CommunityPage>>();
 watch(
   [music.page, () => music.account.value.epoch, () => music.account.value.status],
   ([location, epoch, status]) => {
     community.connect(status === 'authenticated' ? epoch : null);
+    communityNotice.connect(status === 'authenticated' ? epoch : null);
     if (status !== 'authenticated') return;
     if (location.kind === 'community_detail') {
       if (community.handle.value !== location.handle) void community.openDetail(location.handle);
@@ -269,6 +272,7 @@ watch(
 function navigateSidebar(target: Page) {
   if (target.kind === 'community') {
     if (!music.signedIn.value) loginOpen.value = true;
+    else void communityNotice.visit();
     if (music.page.value.kind === 'community') {
       communityPage.value?.refresh();
       return;
@@ -2711,6 +2715,7 @@ onUnmounted(() => {
         playlistManager.busy.value
       "
       :order-notice="sidebarOrderNotice"
+      :new-song-dot="communityNotice.dot.value"
       :playing-id="libraryPlaying ? currentPlaylistId : undefined"
       :items="playlistMenu"
       @navigate="navigateSidebar"
@@ -2943,10 +2948,12 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'community' || page.kind === 'community_detail'"
                 ref="communityPage"
                 :model="community"
+                :notice="communityNotice"
                 :playable="player.ready.value && !player.busy.value"
                 :detail-key="page.kind === 'community_detail' ? page.handle : undefined"
                 @open="(handle) => music.navigate({ kind: 'community_detail', handle })"
                 @resource="openCommunityResource"
+                @open-new-songs="music.navigate({ kind: 'follow_new_song' })"
                 @back="music.back()"
               />
               <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />

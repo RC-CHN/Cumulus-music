@@ -21,6 +21,7 @@ const props = defineProps<{
   error: string;
   orderDisabled: boolean;
   orderNotice: string;
+  newSongDot: boolean;
   playingId?: string;
   items: (list: PlaylistView) => MenuItem[];
 }>();
@@ -142,10 +143,18 @@ function refresh() {
           class="nav-item"
           :class="{ selected: selected(item.page) }"
           :aria-current="selected(item.page) ? 'page' : undefined"
+          :aria-description="
+            item.page.kind === 'community' && newSongDot ? '有新歌发布' : undefined
+          "
           :disabled="initializing && item.page.kind !== 'local'"
           @click="item.page.kind === 'rankings' ? emit('ranking') : emit('navigate', item.page)"
         >
           <Icon :name="item.icon" /><span>{{ item.title }}</span>
+          <span
+            v-if="item.page.kind === 'community' && newSongDot"
+            class="sidebar-new-song-dot"
+            aria-hidden="true"
+          />
         </button>
       </nav>
       <div class="sidebar-playlists">

@@ -24,6 +24,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sidebar-new-song-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  align-self: flex-start;
+  margin-inline-start: -3px;
+}
 .sidebar-mine-heading {
   height: 36px;
   display: flex;

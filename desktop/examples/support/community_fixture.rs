@@ -10,6 +10,9 @@ const DETAIL: &str = "/api/v1/event/73/11";
 const UNAVAILABLE: &str = "/api/v1/event/73/15";
 const COMMENTS: &str = "/api/v1/resource/comments/A_EV_2_11_73";
 const CURSOR: &str = "90071992547409933331";
+const NOTICE: &str = "/api/user/friend/new/song/notice/web/get";
+const RELEASES: &str = "/api/sub/artist/new/works/song-mv/list/v2";
+const LATEST: &str = "/api/sub/artist/new/works/song/playall";
 
 #[derive(Default)]
 pub struct Library {
@@ -20,6 +23,8 @@ impl Library {
     pub fn report(&self) -> Value {
         let calls = self.calls.lock().unwrap();
         json!({"feed": calls.iter().filter(|(path, _)|path==FEED).map(|(_,body)|body).collect::<Vec<_>>(),
+            "notice": calls.iter().filter(|(path, _)|path==NOTICE).map(|(_,body)|body).collect::<Vec<_>>(),
+            "releaseReads": calls.iter().filter(|(path, _)|path==RELEASES||path==LATEST).count(),
             "details":calls.iter().filter(|(path, _)|path==DETAIL).count(),
             "unavailable":calls.iter().filter(|(path, _)|path==UNAVAILABLE).count(),
             "commentOffsets":calls.iter().filter(|(path, _)|path==COMMENTS).map(|(_,body)|&body["offset"]).collect::<Vec<_>>()})
@@ -42,7 +47,17 @@ fn comment(id: u64, label: &str) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            if ![FEED, DETAIL, UNAVAILABLE, COMMENTS].contains(&path) {
+            if ![
+                FEED,
+                DETAIL,
+                UNAVAILABLE,
+                COMMENTS,
+                NOTICE,
+                RELEASES,
+                LATEST,
+            ]
+            .contains(&path)
+            {
                 // Closed catalogue fixture; it has no network implementation.
                 return self.fallback.request(path, payload, cache).await;
             }
@@ -56,6 +71,20 @@ impl Api for Library {
             };
             assert!(!cache);
             Ok(match path {
+                NOTICE if payload == json!({}) => json!({"code":200,"data":{
+                    "style":"all-normal","time":1700000000000_u64,"text":"合成关注歌手发布了新歌"}}),
+                NOTICE
+                    if payload.as_object().is_some_and(|object| object.len() == 1)
+                        && payload["time"]
+                            .as_u64()
+                            .is_some_and(|time| time > 1700000000000) =>
+                {
+                    json!({"code":200,"data":{"style":"musician-empty"}})
+                }
+                RELEASES if payload["firstRequest"] == true && payload["sourceType"] == 1 => {
+                    json!({"code":200,"data":{"newWorks":[],"hasMore":false}})
+                }
+                LATEST if payload == json!({}) => json!({"code":200,"data":{"songList":[]}}),
                 FEED if payload == json!({"cursor":"-1"}) => {
                     if attempt == 1 {
                         json!({"code":503})

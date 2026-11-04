@@ -296,6 +296,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 catalog::followed_new_song_latest,
                 catalog::release_notification,
                 community::community_feed,
+                community::community_new_song_notice,
                 community::community_detail,
                 community::community_comments,
                 catalog::artist_gallery,

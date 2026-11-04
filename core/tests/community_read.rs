@@ -1,7 +1,10 @@
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
-    client::{MusicClient, dto::CommunityFeedAction},
+    client::{
+        MusicClient,
+        dto::{CommunityFeedAction, CommunityNoticeMode},
+    },
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -18,6 +21,7 @@ const FEED: &str = "/api/event/pc/history/feed/get";
 const DETAIL: &str = "/api/v1/event/73/908000000000000001";
 const COMMENTS: &str = "/api/v1/resource/comments/A_EV_2_908000000000000001_73";
 const CURSOR: &str = "90071992547409938888";
+const NOTICE: &str = "/api/user/friend/new/song/notice/web/get";
 
 fn event(anonymous: bool) -> Value {
     json!({"id":"908000000000000001","type":18,"eventTime":1700000000000_u64,
@@ -37,6 +41,7 @@ struct Fixture {
     calls: Mutex<Vec<(String, Value)>>,
     detail_mode: AtomicUsize,
     next_count: AtomicUsize,
+    notice_mode: AtomicUsize,
     hold: AtomicBool,
     hold_comment: AtomicBool,
     started: Notify,
@@ -54,6 +59,17 @@ impl Api for Fixture {
                 self.release.notified().await;
             }
             match path {
+                NOTICE => Ok(match self.notice_mode.load(Ordering::SeqCst) {
+                    1 => json!({"code":503}),
+                    2 => {
+                        json!({"code":200,"data":{"time":1700000000000_u64,"style":"musician-empty"}})
+                    }
+                    3 => json!({"code":200,"data":{"style":"musician-normal","text":"乐人新歌"}}),
+                    _ => json!({"code":200,"data":{"time":1700000000000_u64,"style":"all-normal",
+                        "text":"合成新歌提示","leftIcons":[{"url":"https://p1.music.126.net/art.jpg?PRIVATE=1"},
+                        {"url":"https://invalid.example/PRIVATE"},{"url":"https://p1.music.126.net/ignored.jpg"}],
+                        "rightIcons":[{"url":"https://p1.music.126.net/cover.jpg?token=PRIVATE"}]}}),
+                }),
                 FEED if body == json!({"cursor":"-1"}) => Ok(json!({"code":200,"data":{
                     "cursor":CURSOR,"more":true,"events":[event(false),
                         {"id":9082,"type":21,"user":{"userId":8,"nickname":"不支持作者"},"json":"{\"msg\":\"PRIVATE\"}"},
@@ -108,6 +124,103 @@ fn next(continuation: &str) -> CommunityFeedAction {
     CommunityFeedAction::Next {
         continuation: continuation.into(),
     }
+}
+
+#[tokio::test]
+async fn community_new_song_badge_and_visit_keep_the_official_distinct_read_and_account_clock() {
+    use CommunityNoticeMode::{Badge, Visit};
+    let (root, session, api, client) = fixture();
+    let epoch = session.token().unwrap().generation.to_string();
+    let store = ProfileRegistry::open(root.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let saved = || {
+        store
+            .get("1", "community-new-song-visit-v1", "last_view_ms")
+            .unwrap()
+    };
+    let project = |value| serde_json::to_value(value).unwrap();
+    let badge = project(
+        client
+            .community_new_song_notice(&epoch, Badge)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(badge["value"], json!({"showDot":true,"card":null}));
+    assert!(saved().is_none());
+    let visit = project(
+        client
+            .community_new_song_notice(&epoch, Visit)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(visit["value"]["showDot"], false);
+    assert_eq!(
+        visit["value"]["card"]["avatars"],
+        json!(["https://p1.music.126.net/art.jpg?param=320y320"])
+    );
+    assert!(!visit.to_string().contains("PRIVATE"));
+    let viewed = saved().unwrap().as_u64().unwrap();
+    let badge = project(
+        client
+            .community_new_song_notice(&epoch, Badge)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(badge["value"]["showDot"], false);
+    api.notice_mode.store(1, Ordering::SeqCst);
+    assert!(
+        client
+            .community_new_song_notice(&epoch, Visit)
+            .await
+            .is_err()
+    );
+    assert_eq!(saved(), Some(json!(viewed)));
+    api.notice_mode.store(3, Ordering::SeqCst);
+    let visit = project(
+        client
+            .community_new_song_notice(&epoch, Visit)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(visit["value"]["card"]["style"], "musicians");
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(_, args)| args.clone())
+            .collect::<Vec<_>>(),
+        [
+            json!({}),
+            json!({}),
+            json!({}),
+            json!({"time":viewed}),
+            json!({"time":viewed})
+        ]
+    );
+    session
+        .adopt(api.clone(), json!({"userId":2}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(
+        client.community_new_song_notice(&epoch, Visit).await,
+        Err(Error::StaleResponse)
+    ));
+    let current = session.token().unwrap().generation.to_string();
+    api.notice_mode.store(2, Ordering::SeqCst);
+    let badge = project(
+        client
+            .community_new_song_notice(&current, Badge)
+            .await
+            .unwrap(),
+    );
+    assert_eq!(badge["value"]["showDot"], false);
+    assert!(
+        store
+            .get("2", "community-new-song-visit-v1", "last_view_ms")
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]

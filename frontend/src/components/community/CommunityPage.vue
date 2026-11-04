@@ -1,16 +1,24 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue';
 import type { useCommunity } from '../../composables/useCommunity';
+import type { useCommunityNotice } from '../../composables/useCommunityNotice';
 import type { CommunityResource } from '../../services/community';
 import CommunityEventCard from './CommunityEventCard.vue';
+import CommunityNewSongNotice from './CommunityNewSongNotice.vue';
 import Icon from '../Icon.vue';
 
 const props = defineProps<{
   model: ReturnType<typeof useCommunity>;
+  notice: ReturnType<typeof useCommunityNotice>;
   detailKey?: string;
   playable: boolean;
 }>();
-const emit = defineEmits<{ open: [id: string]; resource: [value: CommunityResource]; back: [] }>();
+const emit = defineEmits<{
+  open: [id: string];
+  resource: [value: CommunityResource];
+  back: [];
+  openNewSongs: [];
+}>();
 const model = props.model;
 const {
   visible,
@@ -76,6 +84,10 @@ function open(id: string) {
   model.opener.value = id;
   emit('open', id);
 }
+function openNewSongs() {
+  model.opener.value = 'new-song-notice';
+  emit('openNewSongs');
+}
 function rememberScroll() {
   if (!props.detailKey && surface.value) model.scrollTop.value = surface.value.scrollTop;
 }
@@ -127,6 +139,25 @@ async function commentPage(value: number, prior = false) {
         <Icon name="refresh" />
       </button>
     </header>
+    <template v-if="!detailKey">
+      <CommunityNewSongNotice
+        v-if="notice.card.value"
+        :card="notice.card.value"
+        @open="openNewSongs"
+      />
+      <p v-if="notice.error.value" class="muted community-notice-error" role="status">
+        新歌提示读取失败。
+        <button
+          class="text-button"
+          type="button"
+          aria-label="重试读取新歌提示"
+          :disabled="notice.pending.value"
+          @click="notice.visit()"
+        >
+          重试
+        </button>
+      </p>
+    </template>
 
     <template v-if="detailKey">
       <p v-if="detailPending" class="muted" role="status">正在读取动态…</p>
