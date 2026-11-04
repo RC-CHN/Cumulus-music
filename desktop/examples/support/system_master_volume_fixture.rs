@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use tauri::Manager;
 
 static MODE: AtomicU8 = AtomicU8::new(0);
 static READS: AtomicUsize = AtomicUsize::new(0);
@@ -12,7 +13,21 @@ pub fn enabled() -> bool {
     std::env::var("CUMULUS_SYSTEM_MASTER_VOLUME_PROOF").as_deref() == Ok("synthetic")
 }
 
-pub fn read() -> Option<(f32, bool)> {
+pub fn install<R: tauri::Runtime>(app: &tauri::App<R>) {
+    match std::env::var("CUMULUS_SYSTEM_MASTER_VOLUME_PROOF") {
+        Ok(mode) if mode == "synthetic" => {
+            assert!(
+                app.manage(cumulus_desktop::audio_diagnostics::SystemMasterVolumeProbe::new(read)),
+                "the sealed synthetic endpoint must be installed before opening a proof WebView"
+            );
+        }
+        Ok(mode) if mode == "unsupported" && cfg!(target_os = "linux") => {}
+        Err(std::env::VarError::NotPresent) => {}
+        _ => panic!("invalid system master volume probe mode for this platform"),
+    }
+}
+
+fn read() -> Option<(f32, bool)> {
     READS.fetch_add(1, Ordering::Relaxed);
     match MODE.load(Ordering::Relaxed) {
         0 => Some((0.374, false)),

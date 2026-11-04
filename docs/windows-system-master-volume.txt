@@ -43,3 +43,23 @@ Cumulus
   原生返回 unsupported，页面隐藏。真实 libmpv/null 同一暂停曲目的 ID 和
   时间不变；两个进程只调整 LC_NUMERIC=C，系统语言保留非 C。6 个状态和
   6 张截图；没有读取 Windows 实体设备或修改系统音量。
+
+Windows CI 与实际端点边界
+- Windows x64 上用相同已嵌入生产前端的 ux_ui_probe.exe，需已安装标准
+  WebView2 runtime。包构建阶段准备好 .build/package-stage/windows-x64/native
+  后运行（Windows 不带 GTK 截图参数）：
+    cargo build -p cumulus-desktop --example ux_ui_probe --features custom-protocol --locked
+    python scripts/ci/system_master_volume_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-system-master-volume-windows --runtime .build/package-stage/windows-x64/native
+  只跑五个合成端点状态；不在 Windows 执行 Linux unsupported 流程。探针在
+  创建 WebView 前强制安装合成 reader，记录每次调用。驱动用绝对运行时路径，
+  拒绝探针旁 DLL 覆盖指定包，记录所选 libmpv 文件名和 SHA-256。隔离
+  APPDATA、LOCALAPPDATA、TEMP/TMP 和显式 WebView 用户数据目录，不继承
+  外部 WEBVIEW2_* 或 MPV_DLL_DIR_CUMULUS 覆盖。没有实际 Windows 音量读写。
+- 另做 Windows runner 的真实只读 COM 诊断时，不能用本功能 UI 的 unavailable
+  推断「无设备」：仅在 GetDefaultAudioEndpoint(eRender,eMultimedia) 返回
+  E_NOTFOUND（HRESULT_FROM_WIN32(ERROR_NOT_FOUND)，0x80070490）时报告该
+  默认端点不存在。若已经返回 IMMDevice，后续激活/标量/静音读取失败应报告
+  「端点存在但不可读」，保留失败阶段和 HRESULT；若初始化、枚举器创建、音频
+  服务或端点查找因其他错误失败，则存在性未证实。纯读取成功只记有效范围已验证，
+  不记录实际音量、静音值或设备名称/ID，不安装驱动或改变默认端点。建议独立
+  有超时的可选探针；Windows runner 不保证音频端点，发行 CI 只依赖合成流程。

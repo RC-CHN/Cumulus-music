@@ -758,11 +758,7 @@ fn main() {
             });
         }
         app.manage(cumulus_desktop::effect_activation::Host::new(&app.path().resource_dir()?));
-        if system_master_volume_fixture::enabled() {
-            app.manage(cumulus_desktop::audio_diagnostics::SystemMasterVolumeProbe::new(
-                system_master_volume_fixture::read,
-            ));
-        }
+        system_master_volume_fixture::install(app);
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         if message_fixture::enabled() {
             cumulus_desktop::start_message_count_polling(app.handle())?;

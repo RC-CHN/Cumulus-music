@@ -86,6 +86,12 @@
       click(one('input[name="settings-theme"][value="dark"]'));
       await wait(() => document.documentElement.dataset.theme === 'dark', 'dark theme');
       await emit('resize', {width:760, height:540});
+      await sleep(150);
+      if (innerWidth !== 760 || innerHeight !== 540) {
+        // Compare CSS viewport sizes even if the desktop is running at a
+        // different window scaling. The production window still owns resize.
+        await emit('resize', {width:760 * 760 / innerWidth, height:540 * 540 / innerHeight});
+      }
       await wait(() => innerWidth === 760, 'compact settings viewport');
       await readFixture('recovered', '84%');
       await capture('recovered');
