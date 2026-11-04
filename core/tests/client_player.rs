@@ -24,6 +24,7 @@ struct Backend {
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
     deny_url_id: AtomicU64,
+    unavailable_url_id: AtomicU64,
     deny_voice: std::sync::atomic::AtomicBool,
     started: Notify,
     release: Notify,
@@ -169,6 +170,12 @@ impl Api for Backend {
                         return Ok(json!({"code":200,"data":[{"id":ids[0],"code":403,
                             "url":"https://secret.invalid/denied?token=SECRET","md5":"SECRET"}]}));
                     }
+                    if ids[0].as_u64().or_else(|| ids[0].as_str()?.parse().ok())
+                        == Some(self.unavailable_url_id.load(Ordering::SeqCst))
+                    {
+                        return Ok(json!({"code":200,"data":[{"id":ids[0],"code":"503",
+                            "url":"https://secret.invalid/transient?token=SECRET","md5":"SECRET"}]}));
+                    }
                     json!({"code":200,"data":[{"id":ids[0],"code":if payload["level"]=="jymaster"&&self.quality_url_denied.load(Ordering::SeqCst)>0 {403}else{200},"url":"https://m1.music.126.net/a.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard",
                         "freeTrialInfo": if self.quality_trial_source.load(Ordering::SeqCst) {json!({"start":20,"end":40})} else {Value::Null}
                     }]})
@@ -285,6 +292,60 @@ async fn rejected_online_selection_projects_no_source_and_allows_a_different_son
     let playing = client.play_selection("1", songs("2")).await.unwrap();
     assert_eq!(playing.state, PlaybackStatus::Playing);
     assert!(playing.error.is_none());
+}
+
+#[tokio::test]
+async fn a_temporary_url_service_failure_keeps_the_queue_for_an_explicit_same_song_retry() {
+    use cumulus_core::{client::ClientError, playback::controller::PlaybackStatus};
+    let (_dir, api, _session, client, _) = fixture();
+    api.unavailable_url_id.store(1, Ordering::SeqCst);
+    let error = client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["1".into(), "2".into()],
+                index: 0,
+                quality: Quality::Lossless,
+            },
+        )
+        .await
+        .err()
+        .unwrap();
+    let diagnostic = ClientError::from(error);
+    assert_eq!(diagnostic.code, "playback_source_temporary");
+    assert!(diagnostic.retryable);
+    let failed = client.player_snapshot("1").await.unwrap();
+    assert_eq!(failed.state, PlaybackStatus::Error);
+    assert_eq!(failed.error_code, Some(diagnostic.code));
+    assert_eq!(failed.error_retryable, Some(true));
+    assert_eq!(failed.track.as_ref().unwrap().id, "1");
+    assert_eq!(failed.queue_len, 2);
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| path.as_str() == "/api/song/enhance/player/url/v1")
+            .count(),
+        1,
+        "the failed selection does not retry or skip on its own"
+    );
+    api.unavailable_url_id.store(0, Ordering::SeqCst);
+    let restored = client
+        .player_action(
+            "1",
+            PlayerAction::RefreshFor {
+                play_id: failed.play_id.unwrap(),
+                expected_queue_revision: failed.queue_revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(restored.state, PlaybackStatus::Playing);
+    assert_eq!(restored.track.as_ref().unwrap().id, "1");
+    assert_eq!(restored.entry_id, failed.entry_id);
+    assert_eq!(restored.queue_revision, failed.queue_revision);
+    assert!(restored.error.is_none());
 }
 
 #[tokio::test]

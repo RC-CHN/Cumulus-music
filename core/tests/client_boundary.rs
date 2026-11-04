@@ -322,6 +322,7 @@ async fn old_account_results_and_expired_identity_cannot_cross_boundary() {
 fn playback_rejection_is_safe_and_not_a_retryable_transport_failure() {
     let endpoint = "/api/song/enhance/player/url/v1";
     for error in [
+        Error::service(endpoint, json!(403), json!({})),
         Error::service(
             endpoint,
             json!(404),
@@ -347,6 +348,27 @@ fn playback_rejection_is_safe_and_not_a_retryable_transport_failure() {
             .unwrap()
             .contains("secret.invalid")
     );
+}
+
+#[test]
+fn only_transient_json_service_codes_from_the_source_endpoint_allow_source_retry() {
+    let endpoint = "/api/song/enhance/player/url/v1";
+    for code in [json!(429), json!(500), json!("503"), json!(599)] {
+        let failure = ClientError::from(Error::service(
+            endpoint,
+            code,
+            json!({"url":"https://secret.invalid/signed","md5":"DO_NOT_EXPORT"}),
+        ));
+        assert_eq!(failure.code, "playback_source_temporary");
+        assert!(failure.retryable);
+        let wire = serde_json::to_string(&failure).unwrap();
+        assert!(!wire.contains(endpoint));
+        assert!(!wire.contains("secret.invalid"));
+        assert!(!wire.contains("DO_NOT_EXPORT"));
+    }
+    let unrelated = ClientError::from(Error::service("/api/unrelated", json!(503), json!({})));
+    assert_eq!(unrelated.code, "service_rejected");
+    assert!(!unrelated.retryable);
 }
 
 #[test]

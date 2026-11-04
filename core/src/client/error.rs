@@ -440,6 +440,11 @@ impl From<PlaybackFailure> for ClientError {
                 "当前歌曲暂无可用音源，请选择其他歌曲",
                 false,
             ),
+            PlaybackFailure::SourceServiceTemporary => (
+                "playback_source_temporary",
+                "音源服务暂时不可用，请稍后重试",
+                true,
+            ),
             PlaybackFailure::SessionExpired => ("session_expired", "登录已失效，请重新登录", false),
             PlaybackFailure::Network => ("network", "网络请求失败，请稍后重试", true),
             PlaybackFailure::Runtime => (

@@ -5,6 +5,7 @@ use crate::Error;
 #[derive(Clone, Copy, Debug)]
 pub enum PlaybackFailure {
     SourceUnavailable,
+    SourceServiceTemporary,
     SessionExpired,
     Network,
     Runtime,
@@ -19,8 +20,16 @@ impl PlaybackFailure {
     pub(crate) fn classify(error: &Error) -> Option<Self> {
         Some(match error.root() {
             _ if error.is_service_code(301) => Self::SessionExpired,
-            Error::Service { endpoint, .. } if endpoint == "/api/song/enhance/player/url/v1" => {
-                Self::SourceUnavailable
+            Error::Service { endpoint, code, .. }
+                if endpoint == "/api/song/enhance/player/url/v1" =>
+            {
+                // The endpoint can return service codes both in the envelope
+                // and in the matching resource row. Neither throttling nor
+                // backend failure is a decision about this song's rights.
+                match code.as_i64().or_else(|| code.as_str()?.parse().ok()) {
+                    Some(429 | 500..=599) => Self::SourceServiceTemporary,
+                    _ => Self::SourceUnavailable,
+                }
             }
             Error::Response("no playback resource for requested track") => Self::SourceUnavailable,
             Error::Playback {
