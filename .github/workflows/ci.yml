@@ -419,6 +419,7 @@ jobs:
           python scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-qr-identity-recovery-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-direct-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-drawer-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-polling-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-deletion-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-reply-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-latest-releases-windows --runtime .build/package-stage/windows-x64/native
@@ -770,6 +771,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-qr-identity-recovery-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-drawer-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --polling --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-polling-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --deletion --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-deletion-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-reply-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-latest-releases-linux
