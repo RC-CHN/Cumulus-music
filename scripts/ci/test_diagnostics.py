@@ -6,6 +6,7 @@ import tarfile
 import tempfile
 import traceback
 import unittest
+from unittest.mock import patch
 
 from diagnostics import archive
 
@@ -125,6 +126,35 @@ class ProofArchive(unittest.TestCase):
                 self.assertEqual(saved.extractfile(proof.relative_to(root).as_posix()).read(), b'synthetic')
                 self.assertNotIn('private-session', saved.getnames())
                 self.assertEqual(saved.extractfile('ci-engine-roundtrip-windows-x64.log').read(), b'stage engine_start')
+
+    def test_webview2_lock_does_not_truncate_neighboring_failure_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            locked = root / 'ci-main-flow-windows/run/first/webview/EBWebView/lockfile'
+            locked.parent.mkdir(parents=True)
+            locked.touch()
+            retained = [
+                'ci-main-flow-windows/run/first/failed.json',
+                'ci-main-flow-windows/run/first/webview/EBWebView/synthetic.log',
+                'ci-main-flow-windows/run/first/lockfile',
+                'ci-native-audio-windows.json',
+            ]
+            for name in retained:
+                (root / name).write_text('synthetic evidence', encoding='utf-8')
+            original = tarfile.bltn_open
+
+            def open_with_windows_lock(name, *args, **kwargs):
+                if Path(name) == locked:
+                    raise PermissionError('synthetic WebView2 lock')
+                return original(name, *args, **kwargs)
+
+            target = root / 'diagnostics/proofs.tar.gz'
+            with patch('tarfile.bltn_open', side_effect=open_with_windows_lock):
+                self.assertEqual(archive(root, target), 2)
+            with tarfile.open(target) as saved:
+                self.assertNotIn(locked.relative_to(root).as_posix(), saved.getnames())
+                for name in retained:
+                    self.assertEqual(saved.extractfile(name).read(), b'synthetic evidence')
 
     def test_every_literal_workflow_smoke_root_and_neighboring_log_is_retained(self):
         repository = Path(__file__).resolve().parents[2]

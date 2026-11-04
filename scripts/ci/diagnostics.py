@@ -111,13 +111,21 @@ def verify_proof_databases(paths):
         raise ValueError('Refusing diagnostics archive: proof databases could not be verified.') from None
 
 
+def archive_member(member):
+    # WebView2 can still hold this synchronization file open after the
+    # inspected app exits. It has no evidence and can truncate the whole tar.
+    if member.isfile() and PurePosixPath(member.name).parts[-2:] == ('EBWebView', 'lockfile'):
+        return None
+    return member
+
+
 def archive(build: Path, destination: Path):
     paths = proof_paths(build)
     verify_proof_databases(paths)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(destination, 'w:gz', dereference=False) as output:
         for path in paths:
-            output.add(path, arcname=path.relative_to(build).as_posix())
+            output.add(path, arcname=path.relative_to(build).as_posix(), filter=archive_member)
     return len(paths)
 
 
