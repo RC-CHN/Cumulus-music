@@ -26,6 +26,7 @@ type Destination =
   | { kind: 'artist_gallery' }
   | { kind: 'discovery_home' }
   | { kind: 'ordinary_essential' }
+  | ({ kind: 'vertical_zone' } & import('../services/verticalZone').VerticalZoneLocation)
   | { kind: 'follow_new_song' }
   | {
       kind: 'latest_releases';

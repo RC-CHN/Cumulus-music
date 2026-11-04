@@ -279,6 +279,13 @@ export type SongRowDoubleClickSelection =
     }
   | { kind: 'playlist'; id: string; start_id: string; revision: string | null; quality: Quality };
 export type PlaySelection =
+  | {
+      kind: 'vertical_zone_playlist';
+      id: string;
+      view_id: string;
+      card_key: string;
+      quality: Quality;
+    }
   | { kind: 'song_row_double_click'; selection: SongRowDoubleClickSelection }
   | { kind: 'message_track'; id: string; quality: Quality }
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }

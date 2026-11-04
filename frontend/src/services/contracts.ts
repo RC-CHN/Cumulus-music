@@ -49,6 +49,7 @@ import type { SceneFmClient } from './sceneFm';
 import type { MemberClient, MemberPortalClient } from './member';
 import type { CatalogClient } from './catalog';
 import type { OrdinaryEssentialClient } from './ordinaryEssential';
+import type { VerticalZoneClient } from './verticalZone';
 import type { DiscoveryHomeClient } from './discoveryHome';
 import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
 import type { LatestReleaseClient } from './latestReleases';
@@ -112,6 +113,7 @@ export interface CoreClient
     SearchClient,
     SearchResultsClient,
     DiscoveryHomeClient,
+    VerticalZoneClient,
     OrdinaryEssentialClient,
     LikeRecoveryClient,
     NativeLikesClient,

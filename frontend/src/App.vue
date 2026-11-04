@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import OrdinaryEssentialPage from './components/OrdinaryEssentialPage.vue';
 import ChoiceTabs from './components/ChoiceTabs.vue';
+import VerticalZonePage from './components/VerticalZonePage.vue';
+import { useVerticalZone } from './composables/useVerticalZone';
+import type { VerticalZoneCard, VerticalZoneLocation } from './services/verticalZone';
 import { useOrdinaryEssential } from './composables/useOrdinaryEssential';
 import {
   essentialPlaylistMenu,
@@ -274,6 +277,46 @@ const discoveryHome = useDiscoveryHome(
 );
 const discoveryHomePage = ref<InstanceType<typeof DiscoveryHomePage>>();
 const essentialPage = ref<InstanceType<typeof OrdinaryEssentialPage>>();
+const verticalZonePage = ref<InstanceType<typeof VerticalZonePage>>();
+const verticalZoneRoute = () => {
+  const route = music.page.value;
+  return route.kind === 'vertical_zone' ? route : undefined;
+};
+const verticalZone = useVerticalZone(
+  core,
+  () => music.account.value,
+  () => music.page.value.kind === 'ordinary_essential' || !!music.page.value.choice,
+  verticalZoneRoute,
+  () => void music.bootstrap(false),
+);
+const verticalZoneViewport = computed(() => {
+  const route = verticalZoneRoute();
+  return route ? verticalZone.viewport(route) : undefined;
+});
+const verticalZoneName = computed(() => {
+  const menu = verticalZone.menu.value;
+  return (
+    [...(menu?.defaultZoneTags ?? []), ...(menu?.moreZoneTags ?? [])].find(
+      (zone) => zone.pageCode === verticalZoneRoute()?.pageCode,
+    )?.name ?? '音乐专区'
+  );
+});
+function selectVerticalZoneTab(tabKey: string) {
+  const route = verticalZoneRoute();
+  if (!route) return;
+  const next = {
+    kind: 'vertical_zone' as const,
+    pageCode: route.pageCode,
+    tabKey,
+    choice: true as const,
+  };
+  verticalZone.viewport(next).focus = `tab:${tabKey}`;
+  music.navigate(next);
+}
+function goToVerticalZone(location: VerticalZoneLocation) {
+  music.navigate({ kind: 'vertical_zone', ...location, choice: true });
+}
+
 const essential = useOrdinaryEssential(
   core,
   () => music.account.value,
@@ -654,6 +697,104 @@ function openSearchChartRadio(id: string) {
 const fm = useFm(undefined, () => {
   void music.bootstrap(false);
 });
+function openVerticalZoneCard(card: VerticalZoneCard) {
+  if (!verticalZoneRoute() || !music.signedIn.value) return;
+  const target = card.target;
+  switch (target.kind) {
+    case 'playlist':
+      music.navigate({ kind: 'playlist', id: target.id });
+      break;
+    case 'album':
+    case 'artist':
+      openCatalog({ kind: target.kind, id: target.id });
+      break;
+    case 'user':
+      music.navigate({ kind: 'playlist_creator', id: target.id });
+      break;
+    case 'podcast':
+      openSceneRadio(target.id);
+      break;
+    case 'fm':
+      void verticalZoneFm(card, false);
+      break;
+    case 'song':
+    case 'voice':
+      playVerticalZoneCard(card);
+      break;
+  }
+}
+async function verticalZoneFm(card: VerticalZoneCard, play: boolean) {
+  const route = verticalZoneRoute();
+  const epoch = music.account.value.epoch;
+  if (!route || !music.signedIn.value || card.target.kind !== 'fm' || fm.busy.value) return;
+  const source = {
+    kind: 'zone' as const,
+    rule_id: card.target.id,
+    trial_mode: card.target.personalized ? 121 : null,
+  };
+  const current = () => verticalZoneRoute() === route && music.account.value.epoch === epoch;
+  const selected = await fm.select(source, card.title ?? `${verticalZoneName.value}漫游`);
+  if (!selected || !current()) return;
+  if (play) {
+    const result = await fm.command({
+      kind: 'start',
+      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    });
+    if (!result?.ok || !current()) return;
+  }
+  music.navigate({ kind: 'fm' });
+}
+function playVerticalZoneCard(card: VerticalZoneCard) {
+  if (!verticalZoneRoute() || !music.signedIn.value || !player.ready.value || player.busy.value)
+    return;
+  const target = card.target;
+  switch (target.kind) {
+    case 'playlist': {
+      const viewId = verticalZone.data.value?.viewId;
+      if (viewId) {
+        if (
+          player.loaded.value &&
+          player.view.value?.origin?.kind === 'playlist' &&
+          player.view.value.origin.id === target.id
+        )
+          void player.toggleSource();
+        else
+          void player.select({
+            kind: 'vertical_zone_playlist',
+            id: target.id,
+            view_id: viewId,
+            card_key: card.cardKey,
+            quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+          });
+      }
+      break;
+    }
+    case 'album':
+      playResourceCard({ kind: 'album', id: target.id });
+      break;
+    case 'song': {
+      const current = visibleTrackToggle.value;
+      if (current?.trackId === target.id) void toggleVisibleTrack(current);
+      else
+        void player.select({
+          kind: 'songs',
+          ids: [target.id],
+          index: 0,
+          quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+        });
+      break;
+    }
+    case 'voice':
+      if (player.loaded.value && currentVoiceId.value === target.id) void player.toggleSource();
+      else void player.select({ kind: 'voice', id: target.id });
+      break;
+    case 'fm':
+      void verticalZoneFm(card, true);
+      break;
+    default:
+      openVerticalZoneCard(card);
+  }
+}
 const rankings = useRankings(undefined, () => {
   void music.bootstrap(false);
 });
@@ -1659,6 +1800,7 @@ function mainPageEntered() {
   if (music.page.value.kind === 'artist_gallery') artistGalleryPage.value?.restore();
   if (music.page.value.kind === 'discovery_home') void discoveryHomePage.value?.restore();
   if (music.page.value.kind === 'ordinary_essential') void essentialPage.value?.restore();
+  if (music.page.value.kind === 'vertical_zone') void verticalZonePage.value?.restore();
   if (music.page.value.kind === 'community') void communityPage.value?.restore();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
@@ -3762,6 +3904,7 @@ onUnmounted(() => {
               <ChoiceTabs
                 v-if="!initializing && (page.kind === 'ordinary_essential' || page.choice)"
                 :page="page"
+                :zones="verticalZone.menu.value"
                 @navigate="music.navigate"
               />
               <LocalPage
@@ -3850,6 +3993,19 @@ onUnmounted(() => {
                 @play="playEssential"
                 @playlist-action="choicePlaylistAction"
                 @voice-action="choiceVoiceAction"
+              />
+              <VerticalZonePage
+                v-else-if="page.kind === 'vertical_zone' && signedIn && verticalZoneViewport"
+                ref="verticalZonePage"
+                :name="verticalZoneName"
+                :model="verticalZone"
+                :viewport="verticalZoneViewport"
+                :selected-tab="page.tabKey"
+                :playable="player.ready.value && !player.busy.value"
+                @tab="selectVerticalZoneTab"
+                @open="openVerticalZoneCard"
+                @play="playVerticalZoneCard"
+                @privacy="openSettingsSection(account.epoch, 'settings-privacy')"
               />
               <AccountWelcome
                 v-else-if="!signedIn"

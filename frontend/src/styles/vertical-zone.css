@@ -1,0 +1,194 @@
+.vertical-zone {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 14px clamp(24px, 3.3vw, 48px) 34px;
+  outline: none;
+  --zone-rail-cols: 4;
+}
+.vertical-zone.zone-cards-small {
+  --zone-rail-cols: 5;
+}
+.vertical-zone.zone-cards-mini {
+  --zone-rail-cols: 6;
+}
+.vertical-zone-subtabs {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  overflow-x: auto;
+  margin-bottom: 18px;
+}
+.vertical-zone-subtabs button {
+  flex: none;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.vertical-zone-subtabs button[aria-current='page'] {
+  color: var(--accent);
+  background: var(--panel-soft);
+}
+.vertical-zone-module + .vertical-zone-module {
+  margin-top: 24px;
+}
+.vertical-zone-heading {
+  min-height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.vertical-zone-heading h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 40px;
+}
+.vertical-zone-arrows {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+.vertical-zone-next svg {
+  transform: rotate(180deg);
+}
+.vertical-zone-items {
+  display: grid;
+  gap: 16px;
+}
+.vertical-zone-horizontal .vertical-zone-items,
+.vertical-zone-carousel .vertical-zone-items {
+  grid-auto-flow: column;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  scrollbar-width: thin;
+  padding-block: 4px;
+}
+.vertical-zone-horizontal .vertical-zone-items {
+  grid-auto-columns: max(92px, calc((100% + 16px) / var(--zone-rail-cols) - 16px));
+}
+.vertical-zone-carousel .vertical-zone-items {
+  grid-auto-columns: max(176px, calc((100% - 32px) / 3));
+}
+.vertical-zone-grid .vertical-zone-items {
+  grid-template-columns: repeat(auto-fill, minmax(max(112px, calc((100% - 128px) / 9)), 1fr));
+}
+.vertical-zone-ranking .vertical-zone-items {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+.vertical-zone-card {
+  min-width: 0;
+  scroll-snap-align: start;
+}
+.vertical-zone-picture {
+  position: relative;
+}
+.vertical-zone-cover {
+  position: relative;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  padding: 0;
+  border: none;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text-muted);
+}
+.vertical-zone-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  inset: 0;
+}
+.vertical-zone-carousel .vertical-zone-cover {
+  aspect-ratio: 2.7;
+}
+.vertical-zone-ranking .vertical-zone-card {
+  display: grid;
+  grid-template-columns: minmax(68px, 30%) 1fr;
+  align-items: center;
+  gap: 12px;
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 10px;
+}
+.vertical-zone-play {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: var(--accent);
+  border: 0;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 150ms;
+}
+.vertical-zone-picture:is(:hover, :focus-within) .vertical-zone-play {
+  opacity: 1;
+}
+.vertical-zone-fm-mask {
+  position: absolute;
+  inset: 0 0 auto;
+  padding: 6px;
+  color: white;
+  background: linear-gradient(#000a, transparent);
+}
+.vertical-zone-card-copy {
+  min-width: 0;
+  padding-top: 5px;
+}
+.vertical-zone-card-title {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+.vertical-zone-previews {
+  padding-left: 20px;
+  margin: 5px 0 0;
+  font-size: 12px;
+}
+.vertical-zone-previews li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vertical-zone-previews small {
+  color: var(--text-muted);
+  margin-left: 5px;
+}
+.vertical-zone-privacy {
+  padding: 24px 0 36px;
+  text-align: center;
+  color: var(--text-muted);
+}
+.vertical-zone-privacy p {
+  margin-bottom: 12px;
+}
+@media (hover: none) {
+  .vertical-zone-play {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vertical-zone-play {
+    transition: none;
+  }
+}
