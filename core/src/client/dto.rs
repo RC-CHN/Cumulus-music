@@ -20,8 +20,8 @@ pub use super::login_device_removal::{
 pub use super::login_devices::{LoginDeviceLimitsView, LoginDeviceView, LoginDevicesView};
 pub use super::media_preferences::{SystemMediaPreferencesCommand, SystemMediaPreferencesView};
 pub use super::member::{
-    MemberCard, MemberContent, MemberEntitlement, MemberModule, MemberPage, MemberPageView,
-    MemberQuery, MemberRanking, MemberRightsView, MemberSignAction, MemberSignCard,
+    MemberCard, MemberCardOffer, MemberContent, MemberEntitlement, MemberModule, MemberPage,
+    MemberPageView, MemberQuery, MemberRanking, MemberRightsView, MemberSignAction, MemberSignCard,
     MemberSignCommand, MemberSignDetail, MemberSignOutcome, MemberSignPhase, MemberTarget,
 };
 pub use super::mv::{

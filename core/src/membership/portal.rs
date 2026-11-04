@@ -4,7 +4,8 @@ use qrcodegen::{QrCode, QrCodeEcc, QrSegment, Version};
 use serde::Serialize;
 
 // Recovered PC TrackSignInCard/Modal.tsx, QRCodeCloundShell.
-const MEMBER_PORTAL: &str = "https://music.163.com/g/vip-portal?nm_style=sbt&scene=pc_viptab_scan";
+pub(crate) const MEMBER_PORTAL: &str =
+    "https://music.163.com/g/vip-portal?nm_style=sbt&scene=pc_viptab_scan";
 
 #[derive(Serialize)]
 pub struct MemberPortalQr {

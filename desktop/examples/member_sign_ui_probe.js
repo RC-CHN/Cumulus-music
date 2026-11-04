@@ -20,9 +20,9 @@
   const member = () => [...document.querySelectorAll('.sidebar button:not(:disabled)')].find((node) => node.textContent.trim() === '会员中心');
   const portalTrigger = () => one('.member-portal-trigger');
   const portalDialog = () => one('.member-portal-dialog[open]');
-  async function portal(stage, cancel) {
-    portalTrigger().focus();
-    portalTrigger().click();
+  async function portal(stage, cancel, trigger = portalTrigger()) {
+    trigger.focus();
+    trigger.click();
     const qr = await wait(() => portalDialog()?.querySelector('svg[role="img"]'), 'public member portal QR');
     const modal = portalDialog();
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -36,7 +36,7 @@
     await emit(stage, {qrBounds:qr.getBoundingClientRect().toJSON()});
     if (cancel) modal.dispatchEvent(new Event('cancel', {cancelable:true}));
     else modal.querySelector('[aria-label="关闭会员中心二维码"]').click();
-    await wait(() => !portalDialog() && document.activeElement === portalTrigger(), 'member portal restores card focus');
+    await wait(() => !portalDialog() && document.activeElement === trigger, 'member portal restores exact trigger focus');
   }
   let step = 'entry';
   try {
@@ -81,7 +81,11 @@
     (await wait(() => [...document.querySelectorAll('.action-menu button')].find((node) => node.textContent.trim() === '深色'), 'dark mode choice')).click();
     await wait(() => document.documentElement.dataset.theme === 'dark', 'dark theme');
     step = 'portal-dark';
-    await portal('ux_06_member_portal_dark', true);
+    const offer = await wait(() => {
+      const node = one('.member-card-offer');
+      return node?.textContent.trim() === '查看合成会员优惠' && node;
+    }, 'official delivery label appears on the separate offer');
+    await portal('ux_06_member_portal_dark', true, offer);
     step = 'late';
     past().click();
     await wait(() => dialog()?.querySelector('[role="status"]'), 'held native detail is pending');
@@ -100,13 +104,18 @@
     step = 'refresh';
     one('[aria-label="刷新会员内容"]').click();
     await wait(() => message()?.textContent.includes('正在显示上次读取'), 'refresh failure preserves card');
+    await wait(() => one('.member-card-offer')?.textContent.includes('在 App 开通 VIP'),
+      'protected redirect falls back to the official App guide');
+    if (document.body.textContent.includes('不能显示的合成优惠') ||
+        one('.member-card-offer').getAttribute('aria-haspopup') !== 'dialog')
+      throw Error('unsafe offer was promoted or made actionable');
     if (!past() || !one('.sign-today')) throw Error('good card disappeared on refresh failure');
     await emit('ux_08_member_sign_cached');
     message().querySelector('button').click();
     await wait(() => card()?.textContent.includes('今日未打卡'), 'updated card shows unsigned today');
     if (one('.sign-today') || card().querySelector('[aria-label="查看今天乐签"]')) throw Error('unsigned today can start a mutation');
     await emit('ux_09_member_sign_unsigned');
-    await emit('complete', {ok:true, stageCount:9, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true, memberPortalQr:true});
+    await emit('complete', {ok:true, stageCount:9, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true, memberPortalQr:true, memberOfferVerified:true});
   } catch (error) {
     await emit('failed', {step, message:error.message, card:card()?.textContent, dialog:dialog()?.textContent, focus:document.activeElement?.outerHTML.slice(0,260)});
   }

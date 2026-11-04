@@ -89,4 +89,11 @@ export interface MemberClient {
 }
 export interface MemberPortalClient {
   memberPortalQr(): Promise<{ modules: boolean[][] }>;
+  memberCardOffer(epoch: string, refresh: boolean): Promise<AccountData<MemberCardOffer>>;
+  openMemberCardOffer(epoch: string, revision: string): Promise<void>;
+}
+export interface MemberCardOffer {
+  mode: 'app' | 'qr' | 'browser';
+  label: string | null;
+  revision: string;
 }

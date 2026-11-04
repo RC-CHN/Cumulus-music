@@ -1,4 +1,4 @@
-//! Fixed native browser targets; no renderer-supplied URLs or credentials.
+//! Browser handoffs for fixed or native-validated public targets.
 use cumulus_core::account::login::presentation::LoginDocument;
 use cumulus_core::{Error, Result};
 use std::sync::Arc;
@@ -34,7 +34,7 @@ pub async fn open_login_document(
         .map_err(|_| Error::State("browser worker stopped"))?
 }
 #[cfg(target_os = "linux")]
-fn launch(url: &str) -> Result<()> {
+pub(crate) fn launch(url: &str) -> Result<()> {
     launch_with(std::ffi::OsStr::new("xdg-open"), url)
 }
 #[cfg(target_os = "linux")]
@@ -64,7 +64,7 @@ fn launch_with(program: &std::ffi::OsStr, url: &str) -> Result<()> {
     Ok(())
 }
 #[cfg(windows)]
-fn launch(url: &str) -> Result<()> {
+pub(crate) fn launch(url: &str) -> Result<()> {
     let target = std::ffi::OsString::from(url);
     std::thread::Builder::new()
         .name("browser-shell".into())
@@ -76,7 +76,7 @@ fn launch(url: &str) -> Result<()> {
         .map_err(|_| Error::State("browser shell stopped"))?
 }
 #[cfg(not(any(target_os = "linux", windows)))]
-fn launch(_: &str) -> Result<()> {
+pub(crate) fn launch(_: &str) -> Result<()> {
     Err(Error::State("browser opening unavailable"))
 }
 #[cfg(all(test, target_os = "linux"))]

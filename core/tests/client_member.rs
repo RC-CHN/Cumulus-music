@@ -91,6 +91,58 @@ fn song(id: u64) -> Value {
 }
 
 #[tokio::test]
+async fn member_card_offer_uses_exact_delivery_slot_and_invalidates_old_actions() {
+    const SLOT: &str = "/api/delivery/deliver";
+    const PORTAL: &str = "https://music.163.com/g/vip-portal?nm_style=sbt&scene=pc_viptab_scan";
+    let (_dir, api, session, client) = fixture();
+    let response = |link: &str| {
+        json!({"code":200,"data":{"resourceData":{
+            "text":"查看合成优惠", "pcSideDisplay":"4", "jumpUrl":link
+        },"logContext":"PRIVATE"}})
+    };
+    api.responses
+        .lock()
+        .unwrap()
+        .insert(SLOT.into(), response(PORTAL));
+    let offer = serde_json::to_value(client.member_card_offer("1", false).await.unwrap()).unwrap();
+    let revision = offer["value"]["revision"].as_str().unwrap();
+    assert_eq!(offer["value"]["mode"], "browser");
+    assert_eq!(offer["value"]["label"], "查看合成优惠");
+    assert!(!offer.to_string().contains("PRIVATE"));
+    assert!(!offer.to_string().contains(PORTAL));
+    assert_eq!(
+        serde_json::to_value(client.member_card_offer("1", false).await.unwrap()).unwrap(),
+        offer
+    );
+    assert_eq!(
+        client.member_card_external_url("1", revision).unwrap(),
+        format!("{PORTAL}&source=pc")
+    );
+    assert_eq!(
+        *api.calls.lock().unwrap(),
+        [(SLOT.into(), json!({"positionId":65}))]
+    );
+    api.responses
+        .lock()
+        .unwrap()
+        .insert(SLOT.into(), response(&format!("{PORTAL}&sso=PRIVATE")));
+    let blocked = serde_json::to_value(client.member_card_offer("1", true).await.unwrap()).unwrap();
+    assert_eq!(blocked["value"]["mode"], "app");
+    assert!(blocked["value"]["label"].is_null());
+    assert!(matches!(
+        client.member_card_external_url("1", revision),
+        Err(Error::StaleResponse)
+    ));
+    *api.hold.lock().unwrap() = Some(SLOT.into());
+    let pending = tokio::spawn(async move { client.member_card_offer("1", true).await });
+    api.started.notified().await;
+    session.detach().unwrap();
+    api.release.notify_one();
+    assert!(matches!(pending.await.unwrap(), Err(Error::StaleResponse)));
+    assert_eq!(api.count(SLOT), 3);
+}
+
+#[tokio::test]
 async fn member_sign_uses_recorded_ids_and_rejects_late_account_history() {
     const CARD: &str = "/api/vipnewcenter/app/minidesk/music/sign/pc";
     const HISTORY: &str = "/api/vipnewcenter/app/level/user/checkin/history/list";

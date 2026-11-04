@@ -9,11 +9,14 @@ import MemberCards from './MemberCards.vue';
 import MemberSignCard from './MemberSignCard.vue';
 import MemberPortalDialog from './MemberPortalDialog.vue';
 import ModalTransition from './ModalTransition.vue';
+import { useMemberOffer } from '../composables/useMemberOffer';
+import { useCore } from '../services/core';
 import TrackTable from './TrackTable.vue';
 const props = defineProps<{
   model: ReturnType<typeof useMember>;
   nickname: string | null;
   accountEpoch: string;
+  signedIn: boolean;
   playable: boolean;
   liked: Set<string>;
   busyLikes: Set<string>;
@@ -30,6 +33,9 @@ const emit = defineEmits<{
 }>();
 const page = computed(() => props.model.view.value?.page);
 const portalOpen = ref(false);
+const promotion = useMemberOffer(useCore(), () =>
+  props.signedIn && props.model.query.value.kind === 'home' ? props.accountEpoch : undefined,
+);
 watch(
   [() => props.accountEpoch, () => props.model.query.value.kind],
   () => (portalOpen.value = false),
@@ -48,6 +54,44 @@ const primary = computed(() => {
     rights?.find((e) => e.active)
   );
 });
+const currentTier = computed(() => {
+  const rights = props.model.rights.value?.entitlements;
+  const find = (kind: string) => rights?.find((right) => right.kind === kind);
+  const plus = find('plus'),
+    vinyl = find('vinyl'),
+    musicPackage = find('music_package');
+  if (plus?.active) return 'plus';
+  if (vinyl?.active) return 'vinyl';
+  if (musicPackage?.active) return 'music_package';
+  if ((plus?.expiresAt ?? 0) > 0) return 'plus_expired';
+  if ((vinyl?.expiresAt ?? 0) > 0) return 'vinyl_expired';
+  return rights ? 'none' : 'unknown';
+});
+watch(currentTier, (tier, previous) => {
+  if (tier !== 'unknown' && previous !== 'unknown') void promotion.load(true);
+});
+const offerLabel = computed(() => {
+  if (promotion.offer.value?.label) return promotion.offer.value.label;
+  const titles = {
+    plus: '在 App 续费 SVIP',
+    vinyl: '在 App 升级 SVIP',
+    music_package: '在 App 升级 VIP',
+    plus_expired: '在 App 续费 SVIP',
+    vinyl_expired: '在 App 续费 VIP',
+    none: '在 App 开通 VIP',
+    unknown: '在 App 查看会员权益',
+  };
+  return titles[currentTier.value];
+});
+function openOffer() {
+  if (promotion.opening.value) return;
+  if (promotion.offer.value?.mode === 'browser') void promotion.openBrowser();
+  else portalOpen.value = true;
+}
+function refresh() {
+  void props.model.refresh();
+  void promotion.load(true);
+}
 function date(ms: number) {
   return ms > 0 ? new Date(ms).toLocaleDateString('zh-CN') : '';
 }
@@ -66,7 +110,7 @@ function hasContent(content: MemberContent) {
         class="icon-button"
         aria-label="刷新会员内容"
         :disabled="model.loading.value"
-        @click="model.refresh"
+        @click="refresh"
       >
         <Icon name="refresh" />
       </button>
@@ -105,13 +149,31 @@ function hasContent(content: MemberContent) {
             ><small v-else-if="model.rights.value">当前没有生效中的会员权益</small>
             <span class="member-portal-chevron" aria-hidden="true">›</span>
           </button>
-          <button
-            class="member-rights-refresh"
-            :disabled="model.rightsLoading.value"
-            @click="model.loadRights(true)"
-          >
-            {{ model.rightsLoading.value ? '正在更新…' : '刷新权益' }}
-          </button>
+          <div class="member-rights-actions">
+            <button
+              class="member-rights-refresh"
+              :disabled="model.rightsLoading.value"
+              @click="model.loadRights(true)"
+            >
+              {{ model.rightsLoading.value ? '正在更新…' : '刷新权益' }}
+            </button>
+            <button
+              type="button"
+              class="member-card-offer"
+              :aria-haspopup="promotion.offer.value?.mode === 'browser' ? undefined : 'dialog'"
+              :title="promotion.offer.value?.mode === 'browser' ? '在系统浏览器中打开' : undefined"
+              :aria-disabled="promotion.opening.value"
+              @click="openOffer"
+            >
+              {{ offerLabel }}
+            </button>
+          </div>
+          <p v-if="promotion.issue.value" class="member-offer-error" role="status">
+            {{ promotion.issue.value }}
+            <button type="button" class="text-button" @click="promotion.load(true)">
+              重读优惠
+            </button>
+          </p>
         </div>
         <MemberSignCard
           :model="model.sign"
@@ -447,6 +509,25 @@ function hasContent(content: MemberContent) {
   padding: 6px 16px;
   font-size: 12px;
   cursor: pointer;
+}
+.member-rights-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: auto;
+}
+.member-card-offer {
+  border: 1px solid currentColor;
+  border-radius: 20px;
+  background: transparent;
+  color: inherit;
+  padding: 5px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.member-offer-error {
+  font-size: 12px;
 }
 .member-history-intro {
   padding: 20px;

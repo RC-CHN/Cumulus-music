@@ -1,4 +1,5 @@
 mod dto;
+mod offer;
 mod project;
 mod sign;
 use super::{MusicClient, dto::AccountData, mapping};
@@ -8,6 +9,8 @@ use crate::{
     membership::{MembershipManager, Quality, center::MemberCenter},
 };
 pub use dto::*;
+pub use offer::MemberCardOffer;
+pub(super) use offer::MemberOfferHost;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 pub use sign::{

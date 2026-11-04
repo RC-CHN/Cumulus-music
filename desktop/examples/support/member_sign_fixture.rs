@@ -15,6 +15,7 @@ static CARD_READS: AtomicUsize = AtomicUsize::new(0);
 static PAST_READS: AtomicUsize = AtomicUsize::new(0);
 static WRITE_CALLS: AtomicUsize = AtomicUsize::new(0);
 static REVEALED: AtomicBool = AtomicBool::new(false);
+static OFFER_READS: AtomicUsize = AtomicUsize::new(0);
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_MEMBER_SIGN_PROOF").is_some()
@@ -95,6 +96,16 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
     }
+    if path == "/api/delivery/deliver" {
+        assert_eq!(*args, json!({"positionId":65}));
+        let refresh = OFFER_READS.fetch_add(1, Ordering::AcqRel) > 0;
+        let portal = "https://music.163.com/g/vip-portal?nm_style=sbt&scene=pc_viptab_scan";
+        return Some(Ok(json!({"code":200,"data":{"resourceData":{
+            "text": if refresh {"不能显示的合成优惠"} else {"查看合成会员优惠"},
+            "pcSideDisplay": if refresh {"4"} else {"3"},
+            "jumpUrl": if refresh {format!("{portal}&sso=PRIVATE")} else {portal.into()}
+        },"logContext":"PRIVATE"}})));
+    }
     let suffix = path.strip_prefix(ROOT).unwrap_or(path);
     if suffix.starts_with("level/user/checkin/")
         || suffix == "minidesk/music/sign/pc"
@@ -157,4 +168,8 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
 
 pub fn calls() -> Vec<Value> {
     CALLS.lock().unwrap().clone()
+}
+
+pub fn offer_reads() -> usize {
+    OFFER_READS.load(Ordering::Acquire)
 }

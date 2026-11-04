@@ -2763,6 +2763,7 @@ onUnmounted(() => {
                 :model="member"
                 :nickname="account.nickname"
                 :account-epoch="account.epoch"
+                :signed-in="signedIn"
                 :playable="player.ready.value && !player.busy.value"
                 :liked="liked"
                 :busy-likes="busyLikes"

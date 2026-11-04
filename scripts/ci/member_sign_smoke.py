@@ -90,12 +90,14 @@ def main():
         return
     complete = run('first', {}, 9)
     assert complete['stageCount'] == 9 and complete['memberPortalQr']
+    assert complete['memberOfferVerified'] and complete['memberOfferReads'] == 2
     assert complete['historyPlayback'] == '2' and complete['nativeModalFocus'] and complete['noLateDetail']
     assert complete['memberSignCalls'] == [card, card, history, past, history, past,
                                            history, past, history, today, card, card]
     print(json.dumps({'ok': True, 'actualWebView': True, 'stages': 9, 'signReads': 12,
                       'historyPlayback': True, 'nativeModalFocus': True,
-                      'cachedRefresh': True, 'memberPortalQr': True, 'realAccountWrites': 0}))
+                      'cachedRefresh': True, 'memberPortalQr': True, 'memberOfferVerified': True,
+                      'realAccountWrites': 0}))
 
 
 if __name__ == '__main__':

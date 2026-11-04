@@ -593,7 +593,10 @@ fn main() {
             }
             if peq_proof || device_peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
-            if member_sign_fixture::enabled() {value["memberSignCalls"]=json!(member_sign_fixture::calls());}
+            if member_sign_fixture::enabled() {
+                value["memberSignCalls"]=json!(member_sign_fixture::calls());
+                value["memberOfferReads"]=json!(member_sign_fixture::offer_reads());
+            }
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
