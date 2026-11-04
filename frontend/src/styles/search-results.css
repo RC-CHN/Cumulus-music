@@ -363,28 +363,28 @@
   grid-column: 1 / -1;
   pointer-events: none;
 }
-.search-playlist-table {
+.search-collection-table {
   container-type: inline-size;
   min-width: 0;
 }
-.search-playlist-table .search-playlist-grid {
+.search-collection-table .search-collection-grid {
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
-.search-playlist-panel {
+:is(.search-playlist-panel, .search-album-panel) {
   overflow-anchor: none;
 }
-.search-playlist-table .search-playlist-virtual {
+.search-collection-table .search-collection-virtual {
   position: relative;
   display: block;
 }
-.search-playlist-virtual > .search-grid-cell {
+.search-collection-virtual > .search-grid-cell {
   position: absolute;
   inset-inline: 0;
 }
-.search-playlist-table :is(.search-playlist-columns, .search-playlist-row) {
+.search-collection-table :is(.search-collection-columns, .search-collection-row) {
   display: grid;
-  grid-template-columns: var(--search-playlist-tracks);
+  grid-template-columns: var(--search-collection-tracks);
   grid-template-rows: minmax(0, 1fr);
   align-items: center;
   column-gap: 0;
@@ -392,7 +392,7 @@
   min-width: 0;
   box-sizing: border-box;
 }
-.search-playlist-columns {
+.search-collection-columns {
   position: sticky;
   top: 0;
   z-index: 4;
@@ -401,66 +401,68 @@
   background: var(--surface);
   font-size: 12px;
 }
-.search-playlist-columns > span,
-.search-playlist-number,
+.search-collection-columns > span,
+.search-collection-number,
 .search-playlist-track-count,
 .search-playlist-creator-cell,
-.search-playlist-play-count {
+.search-playlist-play-count,
+.search-album-author-cell,
+.search-album-time-cell {
   min-width: 0;
   padding-inline: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.search-playlist-columns > span {
+.search-collection-columns > span {
   position: relative;
   display: flex;
   align-items: center;
   align-self: stretch;
   padding-inline-end: 10px;
 }
-.search-playlist-columns > span > span:first-child {
+.search-collection-columns > span > span:first-child {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.search-playlist-column-resizer {
+.search-collection-column-resizer {
   position: absolute;
   inset: 0 0 0 auto;
   width: 8px;
   cursor: e-resize;
   touch-action: none;
 }
-.search-playlist-column-resizer::before {
+.search-collection-column-resizer::before {
   position: absolute;
   inset: 8px 3px;
   border-inline-start: 1px solid currentColor;
   content: '';
   opacity: 0.35;
 }
-.search-playlist-column-resizer:is(:hover, :focus-visible)::before {
+.search-collection-column-resizer:is(:hover, :focus-visible)::before {
   color: var(--accent);
   opacity: 1;
 }
-.search-playlist-column-resizer:focus-visible {
+.search-collection-column-resizer:focus-visible {
   outline-offset: -1px;
 }
-.search-playlist-table .search-playlist-row {
+.search-collection-table .search-collection-row {
   height: 64px;
   padding: 0;
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
 }
-.search-playlist-striped {
+.search-collection-striped {
   background: var(--surface-alt);
 }
-.search-playlist-number,
+.search-collection-number,
 .search-playlist-track-count,
 .search-playlist-play-count {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
-.search-playlist-title-cell {
+.search-collection-title-cell {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) 30px;
   gap: 8px;
@@ -468,14 +470,14 @@
   padding-inline: 8px;
   min-width: 0;
 }
-.search-playlist-row .search-result-art {
+.search-collection-row .search-result-art {
   grid-row: auto;
   width: 48px;
   height: 48px;
   margin: 0;
   border-radius: 6px;
 }
-.search-playlist-row .search-card-open {
+.search-collection-row .search-card-open {
   position: static;
   display: block;
   width: 100%;
@@ -491,12 +493,12 @@
   white-space: nowrap;
   cursor: pointer;
 }
-.search-playlist-row .search-card-play {
+.search-collection-row .search-card-play {
   inset: auto 7px 7px auto;
   width: 34px;
   height: 34px;
 }
-.search-playlist-row .search-card-menu {
+.search-collection-row .search-card-menu {
   position: static;
 }
 .search-playlist-creator-cell > * {
@@ -505,6 +507,40 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.search-album-number {
+  position: relative;
+  display: grid;
+  align-items: center;
+  align-self: stretch;
+}
+.search-album-row .search-album-number .search-card-play {
+  inset: calc(50% - 13.5px) auto auto calc(50% - 13.5px);
+  transform: none;
+  width: 27px;
+  height: 27px;
+  color: var(--accent);
+  background: var(--surface);
+}
+.search-album-row .search-album-number .search-card-play .icon {
+  width: 16px;
+  height: 16px;
+}
+.search-album-row:is(:hover, :focus-within, .search-card-current)
+  .search-album-number:has(.search-card-play:not(:disabled))
+  > span {
+  opacity: 0;
+}
+.search-album-table-alias {
+  flex: 0 2 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--muted);
+}
+.search-album-time-cell {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 @container (max-width: 544px) {
   .search-playlist-table :is(.search-playlist-columns, .search-playlist-row) {
@@ -517,7 +553,7 @@
   .search-playlist-play-count {
     padding-inline: 5px;
   }
-  .search-playlist-title-cell {
+  .search-playlist-table .search-collection-title-cell {
     grid-template-columns: 42px minmax(0, 1fr) 30px;
     gap: 5px;
     padding-inline: 5px;
@@ -528,6 +564,26 @@
   }
   .search-playlist-row .search-card-play {
     inset: auto 4px 4px auto;
+  }
+}
+@container (max-width: 501px) {
+  .search-album-table :is(.search-album-columns, .search-album-row) {
+    grid-template-columns: 32px minmax(0, 2fr) minmax(0, 1fr) 86px;
+  }
+  .search-album-table .search-collection-title-cell {
+    grid-template-columns: 42px minmax(0, 1fr) 30px;
+    gap: 5px;
+    padding-inline: 5px;
+  }
+  .search-album-row .search-result-art {
+    width: 42px;
+    height: 42px;
+  }
+  .search-album-columns > span,
+  .search-album-number,
+  .search-album-author-cell,
+  .search-album-time-cell {
+    padding-inline: 5px;
   }
 }
 .search-load-more {
@@ -616,7 +672,9 @@
 /* Keep the first card's caption visible above the player in short windows. */
 @media (max-height: 620px) {
   .search-result-section:not(.search-best-section)
-    .search-result-grid:not(.search-video-grid):not(.search-voice-grid):not(.search-playlist-grid) {
+    .search-result-grid:not(.search-video-grid):not(.search-voice-grid):not(
+      .search-collection-grid
+    ) {
     grid-template-columns: repeat(auto-fill, minmax(max(148px, calc((100% - 100px) / 6)), 1fr));
   }
 }

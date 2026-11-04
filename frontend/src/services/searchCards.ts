@@ -8,6 +8,7 @@ import {
 } from './player.ts';
 import type { SearchItem } from './search.ts';
 import { albumCredits, catalogResourceSelection } from './catalogCards.ts';
+import { searchLiteral } from './searchMatch.ts';
 
 export function searchCardKey(item: SearchItem): string {
   switch (item.kind) {
@@ -42,6 +43,15 @@ function linkedCredits(artists: ArtistReference[]) {
 }
 export function searchAlbumCredits(item: SearchItem) {
   return item.kind === 'album' ? linkedCredits(albumCredits(item.album)) : [];
+}
+export function searchAlbumAlias(item: SearchItem, keyword: string) {
+  if (item.kind !== 'album') return '';
+  const names = [...item.album.translations, ...item.album.aliases]
+    .map((name) => name.trim())
+    .filter(Boolean);
+  const literal = searchLiteral(keyword);
+  const pattern = literal ? new RegExp(literal, 'iu') : undefined;
+  return names.find((name) => pattern?.test(name)) || names[0] || '';
 }
 export function searchVideoCredits(item: SearchItem) {
   return item.kind === 'mv' && searchMvPlaybackTarget(item) ? linkedCredits(item.mv.artists) : [];

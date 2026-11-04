@@ -3,14 +3,12 @@ import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue
 import type { SearchItem } from '../../services/search';
 import { searchCardKey } from '../../services/searchCards';
 import {
-  initialPlaylistShares,
-  playlistBaseWidth,
-  readPlaylistColumnShares,
-  resizePlaylistColumns,
-  searchPlaylistColumns,
-  writePlaylistColumnShares,
-  type PlaylistColumnHandle,
-} from '../../services/searchPlaylistColumns';
+  readSearchColumnShares,
+  resizeSearchColumns,
+  searchTableLayouts,
+  writeSearchColumnShares,
+  type SearchTableKind,
+} from '../../services/searchTableColumns';
 import { rowWindow } from '../../services/virtualWindow';
 import SearchPreviewCarousel from './SearchPreviewCarousel.vue';
 const props = defineProps<{
@@ -19,64 +17,62 @@ const props = defineProps<{
   virtual?: boolean;
   preview?: boolean;
   carousel?: { label: string; compact: boolean; position: number };
-  playlistTable?: boolean;
+  table?: SearchTableKind;
 }>();
 const emit = defineEmits<{ position: [index: number] }>();
-const PLAYLIST_ROW_HEIGHT = 64;
-const positionedRows = computed(() => props.playlistTable && props.virtual);
+const TABLE_ROW_HEIGHT = 64;
+const layout = computed(() => (props.table ? searchTableLayouts[props.table] : undefined));
+const positionedRows = computed(() => !!layout.value && props.virtual);
 const grid = ref<HTMLElement>();
 const heading = ref<HTMLElement>();
-const playlistWidth = ref(0);
-const playlistShares = shallowRef(initialPlaylistShares);
+const tableWidth = ref(0);
+const shares = shallowRef<readonly number[]>([]);
 watch(
-  () => props.playlistTable,
-  (enabled) => {
-    if (enabled) playlistShares.value = readPlaylistColumnShares();
+  () => props.table,
+  (kind) => {
+    shares.value = kind ? readSearchColumnShares(kind) : [];
   },
   { immediate: true },
 );
-const playlistSurplus = computed(() => Math.max(0, playlistWidth.value - playlistBaseWidth));
-const playlistTracks = computed(() =>
-  searchPlaylistColumns
-    .map(({ width }, index) =>
-      index
-        ? `calc(${width}px + (100% - ${playlistBaseWidth}px) * ${playlistShares.value[index - 1]})`
-        : `${width}px`,
-    )
-    .join(' '),
+const surplus = computed(() =>
+  layout.value ? Math.max(0, tableWidth.value - layout.value.baseWidth) : 0,
 );
+const tracks = computed(() => {
+  const config = layout.value;
+  return config?.columns
+    .map(({ width, share }) =>
+      share === undefined
+        ? `${width}px`
+        : `calc(${width}px + (100% - ${config.baseWidth}px) * ${shares.value[share]})`,
+    )
+    .join(' ');
+});
 let drag:
   | {
-      index: PlaylistColumnHandle;
+      index: number;
       pointer: number;
       last: number;
       pending: number;
-      before: typeof initialPlaylistShares;
+      before: readonly number[];
     }
   | undefined;
 let dragFrame = 0;
-function columnWidth(index: PlaylistColumnHandle, max = false) {
-  const base = searchPlaylistColumns[index + 1]!.width;
+function columnWidth(base: number, index: number, max = false) {
   const share = max
-    ? playlistShares.value.slice(index).reduce((sum, value) => sum + value, 0)
-    : playlistShares.value[index];
-  return Math.round(base + share * playlistSurplus.value);
+    ? shares.value.slice(index).reduce((sum, value) => sum + value, 0)
+    : (shares.value[index] ?? 0);
+  return Math.round(base + share * surplus.value);
 }
-function resizePlaylistColumn(index: PlaylistColumnHandle, pixels: number) {
-  playlistShares.value = resizePlaylistColumns(
-    playlistShares.value,
-    index,
-    pixels,
-    playlistSurplus.value,
-  );
+function resizeColumn(index: number, pixels: number) {
+  shares.value = resizeSearchColumns(shares.value, index, pixels, surplus.value);
 }
 function applyDrag() {
   if (!drag) return;
-  resizePlaylistColumn(drag.index, drag.pending - drag.last);
+  resizeColumn(drag.index, drag.pending - drag.last);
   drag.last = drag.pending;
 }
-function beginResize(event: PointerEvent, index: PlaylistColumnHandle) {
-  if (event.button !== 0 || !event.isPrimary || drag || !playlistSurplus.value) return;
+function beginResize(event: PointerEvent, index: number) {
+  if (event.button !== 0 || !event.isPrimary || drag || !surplus.value) return;
   const handle = event.currentTarget as HTMLElement;
   handle.focus({ preventScroll: true });
   handle.setPointerCapture(event.pointerId);
@@ -85,7 +81,7 @@ function beginResize(event: PointerEvent, index: PlaylistColumnHandle) {
     pointer: event.pointerId,
     last: event.clientX,
     pending: event.clientX,
-    before: playlistShares.value,
+    before: shares.value,
   };
 }
 function moveResize(event: PointerEvent) {
@@ -104,28 +100,29 @@ function finishResize(event: PointerEvent) {
   if (event.type === 'pointerup') {
     drag.pending = event.clientX;
     applyDrag();
-    if (playlistShares.value !== drag.before) writePlaylistColumnShares(playlistShares.value);
+    if (props.table && shares.value !== drag.before)
+      writeSearchColumnShares(props.table, shares.value);
   } else {
-    playlistShares.value = drag.before;
+    shares.value = drag.before;
   }
   drag = undefined;
 }
-function keyResize(event: KeyboardEvent, index: PlaylistColumnHandle) {
+function keyResize(event: KeyboardEvent, index: number) {
   const delta =
     event.key === 'ArrowLeft'
       ? -12
       : event.key === 'ArrowRight'
         ? 12
         : event.key === 'Home'
-          ? -playlistSurplus.value
+          ? -surplus.value
           : event.key === 'End'
-            ? playlistSurplus.value
+            ? surplus.value
             : 0;
   if (!delta || drag) return;
   event.preventDefault();
-  const before = playlistShares.value;
-  resizePlaylistColumn(index, delta);
-  if (playlistShares.value !== before) writePlaylistColumnShares(playlistShares.value);
+  const before = shares.value;
+  resizeColumn(index, delta);
+  if (props.table && shares.value !== before) writeSearchColumnShares(props.table, shares.value);
 }
 const columns = ref(1),
   pitch = ref(260);
@@ -168,7 +165,7 @@ function update(measure = false) {
     document.activeElement instanceof HTMLElement && grid.value.contains(document.activeElement)
       ? document.activeElement.closest<HTMLElement>('[data-grid-index]')
       : null;
-  columns.value = props.playlistTable
+  columns.value = props.table
     ? 1
     : Math.max(1, getComputedStyle(grid.value).gridTemplateColumns.split(' ').length);
   if (props.preview) {
@@ -193,7 +190,7 @@ function update(measure = false) {
     before = Math.max(0, scroller.scrollTop - offset);
   const anchor = Math.floor(before / oldPitch) * oldColumns;
   const card = grid.value.querySelector<HTMLElement>('.search-result-card');
-  if (props.playlistTable) pitch.value = PLAYLIST_ROW_HEIGHT;
+  if (props.table) pitch.value = TABLE_ROW_HEIGHT;
   else if (card) pitch.value = card.getBoundingClientRect().height + 20;
   if (
     measure &&
@@ -220,23 +217,16 @@ function scroll() {
 }
 watch(
   () =>
-    [
-      grid.value,
-      heading.value,
-      props.scroller,
-      props.virtual,
-      props.preview,
-      props.playlistTable,
-    ] as const,
+    [grid.value, heading.value, props.scroller, props.virtual, props.preview, props.table] as const,
   () => {
     scroller?.removeEventListener('scroll', scroll);
     observer?.disconnect();
     scroller = props.scroller;
-    playlistWidth.value = heading.value?.clientWidth ?? 0;
-    if (!grid.value || (!props.virtual && !props.preview && !props.playlistTable)) return;
+    tableWidth.value = heading.value?.clientWidth ?? 0;
+    if (!grid.value || (!props.virtual && !props.preview && !props.table)) return;
     if (props.virtual) scroller?.addEventListener('scroll', scroll, { passive: true });
     observer = new ResizeObserver(() => {
-      playlistWidth.value = heading.value?.clientWidth ?? 0;
+      tableWidth.value = heading.value?.clientWidth ?? 0;
       update(true);
     });
     if (heading.value) observer.observe(heading.value);
@@ -267,7 +257,7 @@ async function focusItem(index: number, last = false, primary = false) {
     ?.querySelector(`[data-grid-index="${index}"]`)
     ?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
   const opener =
-    primary && props.playlistTable
+    primary && props.table
       ? [...(buttons ?? [])].find((button) => button.matches('.search-card-open'))
       : undefined;
   (opener ?? (last ? buttons?.[buttons.length - 1] : buttons?.[0]))?.focus({
@@ -327,42 +317,42 @@ defineExpose({ reconcileViewport: () => update() });
   </SearchPreviewCarousel>
   <div
     v-else
-    :class="{ 'search-playlist-table': playlistTable }"
-    :style="playlistTable ? { '--search-playlist-tracks': playlistTracks } : undefined"
-    :role="playlistTable ? 'table' : undefined"
-    :aria-label="playlistTable ? '搜索歌单结果' : undefined"
-    :aria-rowcount="playlistTable ? items.length + 1 : undefined"
+    :class="table ? ['search-collection-table', `search-${table}-table`] : undefined"
+    :style="layout ? { '--search-collection-tracks': tracks } : undefined"
+    :role="layout ? 'table' : undefined"
+    :aria-label="layout?.name"
+    :aria-rowcount="layout ? items.length + 1 : undefined"
   >
     <div
-      v-if="playlistTable"
+      v-if="layout"
       ref="heading"
-      class="search-playlist-columns"
+      :class="['search-collection-columns', `search-${table}-columns`]"
       role="row"
       aria-rowindex="1"
     >
       <span
-        v-for="column in searchPlaylistColumns"
-        :key="column.name"
+        v-for="column in layout.columns"
+        :key="column.id"
         role="columnheader"
-        :aria-label="'label' in column ? column.label : undefined"
+        :aria-label="column.label"
       >
         <span>{{ column.name }}</span>
         <span
-          v-if="'resizer' in column && playlistSurplus > 0"
-          class="search-playlist-column-resizer"
+          v-if="column.share !== undefined && column.share < shares.length - 1 && surplus > 0"
+          :class="['search-collection-column-resizer', `search-${table}-column-resizer`]"
           role="separator"
           aria-orientation="vertical"
           :aria-label="`调整${column.name}列宽`"
           :aria-valuemin="column.width"
-          :aria-valuemax="columnWidth(column.resizer, true)"
-          :aria-valuenow="columnWidth(column.resizer)"
+          :aria-valuemax="columnWidth(column.width, column.share, true)"
+          :aria-valuenow="columnWidth(column.width, column.share)"
           tabindex="0"
-          @pointerdown.prevent="beginResize($event, column.resizer)"
+          @pointerdown.prevent="beginResize($event, column.share)"
           @pointermove="moveResize"
           @pointerup="finishResize"
           @pointercancel="finishResize"
           @lostpointercapture="finishResize"
-          @keydown="keyResize($event, column.resizer)"
+          @keydown="keyResize($event, column.share)"
         />
       </span>
     </div>
@@ -370,15 +360,15 @@ defineExpose({ reconcileViewport: () => update() });
       ref="grid"
       class="search-result-grid"
       :class="{
-        'search-playlist-grid': playlistTable,
-        'search-playlist-virtual': positionedRows,
+        'search-collection-grid': layout,
+        'search-collection-virtual': positionedRows,
         'search-person-grid': items.every((i) => i.kind === 'artist' || i.kind === 'user'),
         'search-related-grid': items.every((i) => i.kind === 'related'),
         'search-video-grid': items.every((i) => i.kind === 'mv'),
         'search-voice-grid': items.every((i) => i.kind === 'voice'),
       }"
-      :role="playlistTable ? 'rowgroup' : undefined"
-      :style="positionedRows ? { height: `${items.length * PLAYLIST_ROW_HEIGHT}px` } : undefined"
+      :role="layout ? 'rowgroup' : undefined"
+      :style="positionedRows ? { height: `${items.length * TABLE_ROW_HEIGHT}px` } : undefined"
       :data-loaded-count="items.length"
       :data-preview="preview || undefined"
       @keydown="keydown"
@@ -393,9 +383,9 @@ defineExpose({ reconcileViewport: () => update() });
         v-for="(item, i) in visible"
         :key="searchCardKey(item)"
         class="search-grid-cell"
-        :role="playlistTable ? 'presentation' : undefined"
+        :role="layout ? 'presentation' : undefined"
         :data-grid-index="start + i"
-        :style="positionedRows ? { top: `${(start + i) * PLAYLIST_ROW_HEIGHT}px` } : undefined"
+        :style="positionedRows ? { top: `${(start + i) * TABLE_ROW_HEIGHT}px` } : undefined"
       >
         <slot :item="item" :index="start + i" />
       </div>

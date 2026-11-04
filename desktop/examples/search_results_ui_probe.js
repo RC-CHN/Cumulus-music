@@ -246,17 +246,27 @@
     }
     if(window.__cumulusSearchAlbumArtistProof){
       await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
       await fixture('album_artist_search');
       const provides=one('#app').__vue_app__._context.provides;
       const core=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];
       const read=core.searchResults;
       core.searchResults=async (...args)=>{
         const response=await read(...args);
+        const query=args[1];
+        if(query.category==='albums'&&query.keyword==='合成专辑续页'&&query.offset===10)
+          response.value.more=false; // The proof reaches the last row of a finite, two-page list.
         for(const section of response.value.sections){
+          // Simulate relevance order that is neither ID nor date order.
+          if(query.category==='albums'&&query.keyword==='合成'&&section.items.length>=3){
+            [section.items[1],section.items[2]]=[section.items[2],section.items[1]];
+          }
           for(const item of section.items){
             if(item.kind==='album'&&item.album.id==='201'){
               item.album.publishedAt=new Date(2020,5,17,12).getTime();
               item.album.explicit=true;
+              item.album.translations=['首个译名','合成译名'];
+              item.album.aliases=['合成别名'];
             }
           }
         }
@@ -282,6 +292,13 @@
       const menu=()=>one('.action-menu[role="menu"]:not([inert])');
       const share=()=>one('.track-share-dialog[open]:not([inert])');
       const membership=()=>one('.album-membership-dialog[open]:not([inert])');
+      const table=()=>one('.search-album-table[role="table"]');
+      const headers=()=>[...table().querySelectorAll('[role="columnheader"]')];
+      const measures=nodes=>nodes.map(node=>node.getBoundingClientRect().width);
+      const aligned=row=>measures(headers()).every((width,index)=>
+        Math.abs(row.children[index].getBoundingClientRect().width-width)<1);
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
       async function albumMenu(anchor){
         anchor.scrollIntoView({block:'nearest'});
         anchor.focus({preventScroll:true});
@@ -307,12 +324,40 @@
           explicit.getBoundingClientRect().right<=title.parentElement.getBoundingClientRect().right+1,
           'explicit indicator stays visible within the title row');
         assert(date?.dateTime==='2020-06-17'&&date.textContent==='2020-06-17'&&
-          date.getBoundingClientRect().right<=date.closest('.search-card-credit').getBoundingClientRect().right+1,
+          date.getBoundingClientRect().right<=date.closest('.search-album-time-cell,.search-card-credit').getBoundingClientRect().right+1,
           'album date stays visible in local calendar format');
         const unknown=one('[data-result-key="album:202"]');
         assert(unknown&&!unknown.querySelector('.search-album-explicit,.search-album-date'),
           'albums without fields show neither fabricated badge nor date');
         const anchor=card().querySelector('.search-card-open');
+        if(category==='all'){
+          assert(!table()&&card().classList.contains('search-cover-card')&&!card().querySelector('.search-album-table-alias'),
+            'comprehensive albums remain square cards');
+        }else{
+          const alias=card().querySelector('.search-album-table-alias');
+          assert(headers().map(node=>node.textContent.trim()).join(',')==='#,标题,作者,时间'&&
+            card().getAttribute('role')==='row'&&card().getAttribute('aria-rowindex')==='2'&&
+            Math.abs(card().getBoundingClientRect().height-64)<1&&
+            Math.abs(card().querySelector('.search-result-art').getBoundingClientRect().width-48)<1&&aligned(card()),
+            'album category uses four aligned columns, 64px rows, and 48px cover art');
+          assert(alias?.textContent.includes('合成译名')&&alias.querySelector('mark')?.textContent==='合成'&&
+            date.closest('.search-album-time-cell')&&target.closest('.search-album-author-cell'),
+            'alias match, artist link, and release date stay in separate official cells');
+          const byIndex=index=>table().querySelector(`[data-grid-index="${index}"] .search-album-row`);
+          assert([0,1,2].map(index=>byIndex(index)?.dataset.resultKey).join(',')==='album:201,album:203,album:202',
+            'album rows follow returned relevance order');
+          anchor.focus({preventScroll:true});key(anchor,'ArrowDown');
+          await wait(()=>document.activeElement===byIndex(1).querySelector('.search-card-open'),
+            'Down moves to the next album row, not to another grid column');
+          const handles=all('.search-album-column-resizer');
+          assert(handles.length===1,'only the useful title divider is actionable');
+          const before=measures(headers());
+          handles[0].focus({preventScroll:true});key(handles[0],'ArrowLeft');
+          await wait(()=>Math.abs(measures(headers())[1]-before[1]+12)<1&&aligned(card()),
+            'title divider gives width to the author without breaking row alignment');
+          assert(Math.abs(measures(headers())[3]-128)<1,'publication date column stays fixed');
+          await capture('album_table_columns');
+        }
         await albumMenu(anchor);
         click(button('分享…',menu()));
         await wait(()=>share()?.querySelector('[aria-label="专辑分享链接"]')?.value===link,
@@ -352,6 +397,23 @@
         await wait(()=>ready()&&one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&
           document.activeElement===artist(),'Back restores the exact credited artist button');
         await capture('album_artist_'+category);
+        if(category==='albums'){
+          const play=()=>card().querySelector('.search-album-number .search-card-play');
+          click(play());
+          await wait(()=>one('.playerbar')?.dataset.state==='playing','index plays through the native album action');
+          const native=await invoke('player_snapshot',{epoch});
+          assert(native.origin?.kind==='album'&&native.origin.id==='201'&&native.queueLen>0,
+            'album index plays the selected album, not its search preview or an artist');
+          const center=node=>{const r=node.getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2];};
+          assert(center(play()).every((value,index)=>
+            Math.abs(value-center(play().parentElement)[index])<1),
+            'album play stays centered over the index while focused and playing');
+          await capture('album_table_playing');
+          click(play());
+          await wait(()=>one('.playerbar')?.dataset.state==='paused','the same album index pauses playback');
+          assert((await invoke('player_snapshot',{epoch})).playId===native.playId,
+            'the album index pauses without starting a new queue');
+        }
       }
       assert(copies.length===2&&copies.every(value=>value===link),'clipboard receives only canonical album URLs');
       await theme(760,540,'dark');
@@ -361,20 +423,29 @@
       const narrowDate=narrow?.querySelector('.search-album-date time');
       assert(narrowBadge?.getBoundingClientRect().width===12&&
         narrowBadge.getBoundingClientRect().right<=narrow.querySelector('.search-album-name').getBoundingClientRect().right+1&&
-        narrowDate?.getBoundingClientRect().right<=narrow.querySelector('.search-card-credit').getBoundingClientRect().right+1,
-        'narrow album cards keep their badge and date inside the card');
-      core.searchResults=read;
+        narrowDate?.getBoundingClientRect().right<=narrow.querySelector('.search-album-time-cell').getBoundingClientRect().right+1&&aligned(narrow),
+        'narrow album rows keep their badge and date in the corresponding cells');
       const results=()=>one('.search-result-panel');
       const grid=()=>results()?.querySelector('.search-result-grid');
-      const tail=()=>grid()?.querySelector('[data-grid-index="10"] .search-card-open');
+      const tailRow=()=>grid()?.querySelector('[data-grid-index="19"] .search-album-row');
+      const tail=()=>tailRow()?.querySelector('.search-card-open');
       assert(grid()?.dataset.loadedCount==='10'&&!one('.search-result-pagination')&&
         JSON.stringify(albumReads)==='[[0,10]]','album results begin with one ten-item waterfall page');
+      hold('albums','合成专辑续页');
       results().scrollTop=results().scrollHeight;
       results().dispatchEvent(new Event('scroll'));
-      await wait(()=>grid()?.dataset.loadedCount==='20'&&tail(),'scrolling appends the next album page');
-      assert(JSON.stringify(albumReads)==='[[0,10],[10,10]]'&&all('.search-result-card').length<=20,
-        'native offsets advance by ten and the card window stays bounded');
-      tail().scrollIntoView({block:'nearest'});
+      await wait(()=>held&&one('.search-load-more')?.getAttribute('aria-busy')==='true'&&
+        grid()?.dataset.loadedCount==='10','pending continuation keeps the first ten rows');
+      await capture('album_table_loading');
+      release();
+      await wait(()=>grid()?.dataset.loadedCount==='20','scrolling appends the next album page');
+      const visibleOpen=grid().querySelector('.search-card-open');
+      visibleOpen.focus({preventScroll:true});key(visibleOpen,'End');
+      await wait(()=>tail()&&document.activeElement===tail(),'End focuses the last virtual album row');
+      assert(JSON.stringify(albumReads)==='[[0,10],[10,10]]'&&all('.search-result-card').length<20&&
+        tailRow().getAttribute('aria-rowindex')==='21'&&tailRow().querySelector('.search-album-number').textContent.trim()==='20'&&
+        one('.search-load-more').textContent.includes('没有更多可显示的结果')&&aligned(tailRow()),
+        'native offsets advance by ten and the bounded table reaches row twenty');
       const rect=tail().getBoundingClientRect();
       assert(tail().contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
         'appended album is visibly reachable');
@@ -388,7 +459,8 @@
         Math.abs(results().scrollTop-scrolled)<=1,'Back restores appended results, scroll and focused album');
       assert(JSON.stringify(albumReads)==='[[0,10],[10,10]]','Back does not replay album page requests');
       await capture('album_waterfall_back');
-      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,searchAlbumCollectVerified:true,searchAlbumMetadataVerified:true,searchAlbumWaterfallVerified:true,albumReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      core.searchResults=read;
+      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,searchAlbumCollectVerified:true,searchAlbumMetadataVerified:true,searchAlbumWaterfallVerified:true,searchAlbumTableVerified:true,albumReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchCollectionNextProof){

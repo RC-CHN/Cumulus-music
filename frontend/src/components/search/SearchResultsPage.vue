@@ -633,6 +633,7 @@ onBeforeUnmount(() => {
           'search-song-panel': category === 'songs',
           'search-lyrics-panel': lyrics,
           'search-playlist-panel': category === 'playlists',
+          'search-album-panel': category === 'albums',
         }"
         tabindex="0"
         @scroll.capture.passive="scroll"
@@ -850,15 +851,19 @@ onBeforeUnmount(() => {
               :virtual="gridWaterfall"
               :preview="oneRowPreview(section)"
               :carousel="carousel(section)"
-              :playlist-table="category === 'playlists'"
+              :table="
+                category === 'playlists' ? 'playlist' : category === 'albums' ? 'album' : undefined
+              "
               @position="previewPosition(section, $event)"
               v-slot="{ item, index }"
             >
               <SearchResultCard
                 :item="item"
                 :category="category"
-                :playlist-row="
-                  category === 'playlists' ? { index, number: offset + index + 1 } : undefined
+                :table-row="
+                  category === 'playlists' || category === 'albums'
+                    ? { index, number: offset + index + 1 }
+                    : undefined
                 "
                 :match-keyword="matchKeyword"
                 :playable="playable"

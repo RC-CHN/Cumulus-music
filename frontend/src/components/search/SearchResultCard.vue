@@ -12,11 +12,13 @@ import { time } from '../../services/player';
 import { playlistCoverCount, playlistTableCount } from '../../services/playlistHeader';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
+import SearchArtistCredits from './SearchArtistCredits.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
 import { artistCardMenu, type ArtistCardRequest } from '../../services/artistCards';
 import { albumCardDate, albumLink, type AlbumCardRequest } from '../../services/catalogCards';
 import {
+  searchAlbumAlias,
   searchAlbumCredits,
   searchCardCanPlay,
   searchCardCanQueue,
@@ -31,7 +33,7 @@ import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFoc
 const props = defineProps<{
   item: SearchItem;
   category: SearchCategory;
-  playlistRow?: { index: number; number: number };
+  tableRow?: { index: number; number: number };
   matchKeyword: string;
   playable: boolean;
   queueable: boolean;
@@ -93,6 +95,9 @@ const canQueue = computed(
   () => props.queueable && (props.item.kind !== 'playlist' || !props.item.knownEmpty),
 );
 const albumArtists = computed(() => searchAlbumCredits(props.item));
+const albumAlias = computed(() =>
+  props.tableRow ? searchAlbumAlias(props.item, props.matchKeyword) : '',
+);
 const albumPublished = computed(() =>
   props.item.kind === 'album' ? albumCardDate(props.item.album.publishedAt) : '',
 );
@@ -120,7 +125,7 @@ const playlistCount = computed(() =>
     : null,
 );
 const rowPlayCount = computed(() =>
-  props.playlistRow && props.item.kind === 'playlist'
+  props.tableRow && props.item.kind === 'playlist'
     ? playlistTableCount(props.item.playlist.playCount, props.item.playlist.private)
     : null,
 );
@@ -274,7 +279,7 @@ function doubleClick(event: MouseEvent) {
 }
 function activateRow(event: MouseEvent) {
   if (
-    props.playlistRow &&
+    props.tableRow &&
     !event.defaultPrevented &&
     event.target instanceof Element &&
     !event.target.closest('button, a, .action-menu-host')
@@ -383,20 +388,21 @@ watch(
 </script>
 <template>
   <component
-    :is="playlistRow ? 'div' : 'article'"
+    :is="tableRow ? 'div' : 'article'"
     ref="element"
     class="search-result-card"
-    :role="playlistRow ? 'row' : undefined"
-    :aria-rowindex="playlistRow ? playlistRow.index + 2 : undefined"
+    :role="tableRow ? 'row' : undefined"
+    :aria-rowindex="tableRow ? tableRow.index + 2 : undefined"
     :data-result-key="searchCardKey(item)"
     :class="{
       'search-person-card': card.round,
       'search-related-word': item.kind === 'related',
       'search-video-card': item.kind === 'mv',
-      'search-cover-card':
-        !playlistRow && ['playlist', 'album', 'podcast', 'mv'].includes(item.kind),
-      'search-playlist-row': playlistRow,
-      'search-playlist-striped': playlistRow && playlistRow.index % 2 === 0,
+      'search-cover-card': !tableRow && ['playlist', 'album', 'podcast', 'mv'].includes(item.kind),
+      'search-collection-row': tableRow,
+      'search-playlist-row': tableRow && item.kind === 'playlist',
+      'search-album-row': tableRow && item.kind === 'album',
+      'search-collection-striped': tableRow && tableRow.index % 2 === 0,
       'search-voice-card': item.kind === 'voice',
       'search-card-current': current,
       'search-card-unavailable': unavailable && !canPlay,
@@ -406,11 +412,27 @@ watch(
     @click="activateRow"
     @dblclick="doubleClick"
   >
-    <template v-if="playlistRow && item.kind === 'playlist'">
-      <span class="search-playlist-number" role="cell">{{
-        String(playlistRow.number).padStart(2, '0')
-      }}</span>
-      <div class="search-playlist-title-cell" role="cell">
+    <template v-if="tableRow && (item.kind === 'playlist' || item.kind === 'album')">
+      <div
+        class="search-collection-number"
+        :class="item.kind === 'playlist' ? 'search-playlist-number' : 'search-album-number'"
+        role="cell"
+      >
+        <span>{{ String(tableRow.number).padStart(2, '0') }}</span>
+        <button
+          v-if="item.kind === 'album' && canPlay"
+          type="button"
+          class="search-card-play"
+          data-result-action="play"
+          :disabled="!playable"
+          :aria-label="`${current && playing ? '暂停' : '播放'} ${card.name}`"
+          @click.stop="action('play')"
+          @dblclick.stop
+        >
+          <Icon :name="current && playing ? 'pause' : 'play'" />
+        </button>
+      </div>
+      <div class="search-collection-title-cell" role="cell">
         <span class="search-result-art">
           <img
             v-if="card.cover && !failedCover"
@@ -422,9 +444,13 @@ watch(
             @error="failedCover = true"
           />
           <Icon v-else name="music" />
-          <span v-if="canPlay" class="search-card-mask" aria-hidden="true" />
+          <span
+            v-if="item.kind === 'playlist' && canPlay"
+            class="search-card-mask"
+            aria-hidden="true"
+          />
           <button
-            v-if="canPlay"
+            v-if="item.kind === 'playlist' && canPlay"
             type="button"
             class="search-card-play"
             data-result-action="play"
@@ -437,13 +463,28 @@ watch(
         </span>
         <button
           type="button"
-          class="search-card-open search-playlist-title"
+          class="search-card-open"
           data-result-action="open"
           :aria-label="`查看 ${card.name}`"
           :data-tooltip="card.name"
           @click.stop="action('open')"
         >
-          <SearchMatchText :text="card.name" :keyword="matchKeyword" />
+          <span v-if="item.kind === 'album'" class="search-album-name">
+            <span class="search-album-title-copy">
+              <SearchMatchText :text="card.name" :keyword="matchKeyword" />
+            </span>
+            <span
+              v-if="item.album.explicit"
+              class="search-track-explicit search-album-explicit"
+              role="img"
+              aria-label="含成人内容"
+              >E</span
+            >
+            <span v-if="albumAlias" class="search-album-table-alias">
+              （<SearchMatchText :text="albumAlias" :keyword="matchKeyword" />）
+            </span>
+          </span>
+          <SearchMatchText v-else :text="card.name" :keyword="matchKeyword" />
         </button>
         <ActionMenu
           ref="menu"
@@ -453,33 +494,52 @@ watch(
           @select="action"
         />
       </div>
-      <span class="search-playlist-track-count" role="cell">{{ playlistTrackCount || '—' }}</span>
-      <div class="search-playlist-creator-cell" role="cell">
-        <button
-          v-if="playlistCreator"
-          type="button"
-          class="search-playlist-creator"
-          data-result-action="creator"
-          :aria-label="`查看创建者 ${playlistCreator.name} 的主页`"
-          :data-tooltip="playlistCreator.name"
-          @click.stop="emit('creator', playlistCreator.id)"
-        >
-          {{ playlistCreator.name }}
-        </button>
-        <span
-          v-else
-          class="search-playlist-creator-text"
-          :data-tooltip="item.playlist.creator || undefined"
-          >{{ item.playlist.creator || '—' }}</span
-        >
-      </div>
-      <span class="search-playlist-play-count" role="cell" :data-tooltip="rowPlayCount?.label">
-        <template v-if="rowPlayCount"
-          ><span aria-hidden="true">{{ rowPlayCount.text }}</span
-          ><span class="sr-only">{{ rowPlayCount.label }}</span></template
-        >
-        <template v-else>—</template>
-      </span>
+      <template v-if="item.kind === 'playlist'">
+        <span class="search-playlist-track-count" role="cell">{{ playlistTrackCount || '—' }}</span>
+        <div class="search-playlist-creator-cell" role="cell">
+          <button
+            v-if="playlistCreator"
+            type="button"
+            class="search-playlist-creator"
+            data-result-action="creator"
+            :aria-label="`查看创建者 ${playlistCreator.name} 的主页`"
+            :data-tooltip="playlistCreator.name"
+            @click.stop="emit('creator', playlistCreator.id)"
+          >
+            {{ playlistCreator.name }}
+          </button>
+          <span
+            v-else
+            class="search-playlist-creator-text"
+            :data-tooltip="item.playlist.creator || undefined"
+            >{{ item.playlist.creator || '—' }}</span
+          >
+        </div>
+        <span class="search-playlist-play-count" role="cell" :data-tooltip="rowPlayCount?.label">
+          <template v-if="rowPlayCount"
+            ><span aria-hidden="true">{{ rowPlayCount.text }}</span
+            ><span class="sr-only">{{ rowPlayCount.label }}</span></template
+          >
+          <template v-else>—</template>
+        </span>
+      </template>
+      <template v-else>
+        <div class="search-album-author-cell search-card-credit" role="cell">
+          <SearchArtistCredits
+            v-if="albumArtists.length"
+            :artists="albumArtists"
+            :keyword="matchKeyword"
+            @artist="emit('artist', $event)"
+          />
+          <span v-else>—</span>
+        </div>
+        <div class="search-album-time-cell" role="cell">
+          <span v-if="albumPublished" class="search-album-date">
+            <time :datetime="albumPublished">{{ albumPublished }}</time>
+          </span>
+          <span v-else>—</span>
+        </div>
+      </template>
     </template>
     <template v-else>
       <button
@@ -595,24 +655,11 @@ watch(
         v-else-if="cardArtists.length || albumPublished"
         class="search-result-sub search-card-credit"
       >
-        <template v-for="(artist, index) in cardArtists" :key="index">
-          <span v-if="index" class="search-card-credit-separator" aria-hidden="true">/</span>
-          <button
-            v-if="artist.id"
-            type="button"
-            class="search-card-artist"
-            :data-result-action="`artist:${artist.id}:${index}`"
-            :aria-label="`查看歌手 ${artist.name}`"
-            :data-tooltip="artist.name"
-            @click.stop="emit('artist', artist.id)"
-            @dblclick.stop
-          >
-            <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
-          </button>
-          <span v-else class="search-card-artist-text">
-            <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
-          </span>
-        </template>
+        <SearchArtistCredits
+          :artists="cardArtists"
+          :keyword="matchKeyword"
+          @artist="emit('artist', $event)"
+        />
         <span v-if="albumPublished" class="search-album-date"
           ><span v-if="cardArtists.length" aria-hidden="true">· </span
           ><time :datetime="albumPublished">{{ albumPublished }}</time></span
