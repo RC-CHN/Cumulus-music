@@ -129,7 +129,13 @@ onUnmounted(() => {
           <path :d="path" fill="#000" />
         </svg>
         <p>请打开网易云音乐 App 扫码</p>
-        <p class="muted">在手机上完成设置后，可返回刷新绑定信息。</p>
+        <p class="muted">
+          {{
+            purpose === 'password'
+              ? '请在手机上完成密码修改。'
+              : '在手机上完成设置后，可返回刷新绑定信息。'
+          }}
+        </p>
       </template>
     </div>
   </dialog>
