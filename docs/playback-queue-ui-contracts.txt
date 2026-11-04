@@ -11,7 +11,8 @@
   displayOrder排序、按当前资源定位、Delete/Backspace忽略按键重复、空态发现入口。
 - components/TrackViewer/CurPlayingListTrackViewer.tsx，SHA256
   dcb7d9326d97dff8134424851cf611b79792335b562b66d53d050da31af9a682：
-  无列表表头、普通行64px、推荐分隔行74px。当前只使用普通64px行。
+  无列表表头、普通行64px、推荐分隔行74px。推荐开关及分隔另见
+  queue-more-recommendations.txt。
 未使用YesPlayMusic。未获得同状态官方运行截图，不声称像素一致。
 
 本次正式行为
@@ -54,7 +55,8 @@ player_queue为本地IPC读取。排序、移除其他条目、清空普通本�
 一起听附着时仍经既有房间协调/后台队列处理，未以本次普通/FM场景验证房间清空或
 双端同步；房间身份绑定的清空/自动退出与恢复入口已有后续专项，见
 playback-queue-room-contracts.txt。多选/批量移除/普通队列内拖动有后续24态专项，
-见playback-queue-selection-contracts.txt；推荐分隔等仍待审计，不能标为整个队列完成。
+见playback-queue-selection-contracts.txt；更多推荐的队列来源、读取和分隔
+见queue-more-recommendations.txt，不能标为整个队列完成。
 收藏全部及空态发现已有后续专项，见
 playback-queue-collection-contracts.txt，原28态记录仍只证明先前控制专项。
 
