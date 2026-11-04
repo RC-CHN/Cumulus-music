@@ -43,6 +43,13 @@
    for(const mode of ['single_loop','random','sequential','order_loop']){click(one('.transport-controls button'));await wait(()=>bar().dataset.mode===mode,'native mode '+mode);await capture('mode_'+mode);}
    await set(100);await capture('maximum');for(let i=0;i<2;i++)popup().dispatchEvent(new WheelEvent('wheel',{deltaY:120,bubbles:true,cancelable:true}));await wait(()=>Number(bar().dataset.volume)===94,'3 percent per wheel event');await capture('wheel');await set(0);await capture('zero');popup().dispatchEvent(new WheelEvent('wheel',{deltaY:-120,bubbles:true,cancelable:true}));await wait(()=>Number(bar().dataset.volume)===3,'wheel from zero');await capture('wheel_up');
    const provides=one('#app').__vue_app__._context.provides;const client=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];const currentEpoch=(await invoke('account_snapshot')).epoch;
+   const nativeVolume=value=>invoke('player_action',{epoch:currentEpoch,action:{kind:'volume',value}});
+   const percent=()=>slider()?.getAttribute('aria-valuetext');
+   await nativeVolume(.2);await wait(()=>Number(bar().dataset.volume)===.2&&percent()==='1%'&&slider().value==='1','nonzero fractional value displays 1%');await capture('fractional_low');
+   click(trigger());await wait(()=>Number(bar().dataset.volume)===0&&Number(bar().dataset.unmuteVolume)===.2&&percent()==='0%','mute preserves the tiny original volume');
+   click(trigger());await wait(()=>Number(bar().dataset.volume)===.2&&percent()==='1%','unmute restores exact tiny volume');
+   popup().dispatchEvent(new WheelEvent('wheel',{deltaY:-120,bubbles:true,cancelable:true}));await wait(()=>Number(bar().dataset.volume)===3.2&&percent()==='3%','wheel adds three without rounding away the fraction');await capture('fractional_wheel');
+   await nativeVolume(99.9);await wait(()=>Number(bar().dataset.volume)===99.9&&percent()==='99%'&&slider().value==='99','99.9% is not shown as maximum');await capture('fractional_high');
    await invoke('player_action',{epoch:currentEpoch,action:{kind:'volume',value:63}});await invoke('player_action',{epoch:currentEpoch,action:{kind:'volume',value:0}});await wait(()=>Number(bar().dataset.volume)===0&&Number(bar().dataset.unmuteVolume)===63,'external volume update');await capture('external_muted');click(trigger());await wait(()=>Number(bar().dataset.volume)===63,'external unmute');await capture('external_unmuted');
    const original=client.playerAction;let release,held=true,writes=0;
    client.playerAction=async(...args)=>{if(args[1].kind==='volume'){writes++;if(held){held=false;await new Promise(r=>release=r);}}return original(...args);};

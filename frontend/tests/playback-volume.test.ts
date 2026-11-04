@@ -199,3 +199,24 @@ test('unmute uses the native durable value after an external zero-volume update'
   assert.equal(f.model.value.value, 27);
   f.stop();
 });
+test('fractional native volume survives mute and wheel while its label reserves true endpoints', async () => {
+  const f = fixture();
+  f.view.value = { ...f.view.value, volume: 0.2, unmuteVolume: 0.2 };
+  assert.equal(f.model.percent.value, 1);
+  f.model.toggleMute();
+  await turn();
+  assert.equal(f.model.percent.value, 0);
+  f.model.toggleMute();
+  await turn();
+  assert.equal(f.view.value.volume, 0.2);
+  f.model.wheel(-1);
+  await turn();
+  assert.equal(f.view.value.volume, 3.2);
+  f.view.value = { ...f.view.value, volume: 99.9 };
+  assert.equal(f.model.percent.value, 99);
+  f.model.wheel(-1);
+  await turn();
+  assert.equal(f.model.percent.value, 100);
+  assert.deepEqual(f.calls, [0, 0.2, 3.2, 100]);
+  f.stop();
+});

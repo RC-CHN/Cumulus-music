@@ -15,6 +15,13 @@ export function usePlaybackVolume(player: VolumeControls) {
     issue = ref<CoreFailure>();
   const native = computed(() => player.view.value?.volume ?? 100);
   const value = computed(() => draft.value ?? native.value);
+  const percent = computed(() =>
+    value.value <= 0
+      ? 0
+      : value.value >= 100
+        ? 100
+        : Math.min(99, Math.max(1, Math.round(value.value))),
+  );
   let generation = 0,
     alive = true,
     requested: number | undefined,
@@ -66,7 +73,7 @@ export function usePlaybackVolume(player: VolumeControls) {
   }
   function set(input: number) {
     if (!alive || !player.ready.value || !Number.isFinite(input)) return;
-    const target = Math.max(0, Math.min(100, Math.round(input)));
+    const target = Math.max(0, Math.min(100, input));
     if (target > 0) restore = target;
     draft.value = target;
     issue.value = undefined;
@@ -96,5 +103,18 @@ export function usePlaybackVolume(player: VolumeControls) {
     alive = false;
     reset();
   });
-  return { value, pending, dragging, issue, canRetry, set, toggleMute, wheel, begin, end, retry };
+  return {
+    value,
+    percent,
+    pending,
+    dragging,
+    issue,
+    canRetry,
+    set,
+    toggleMute,
+    wheel,
+    begin,
+    end,
+    retry,
+  };
 }

@@ -22,7 +22,7 @@ def main():
     if args.runtime:env['PATH']=str(args.runtime.resolve())+os.pathsep+env.get('PATH','')
     if args.frontend_dist:env['CUMULUS_PROOF_FRONTEND_DIST']=str(args.frontend_dist.resolve())
     labels=[f'{stage}_{width}_{theme}' for width,theme in [(1120,'light'),(760,'light'),(760,'dark'),(1120,'dark')] for stage in ['hover','changed','muted','unmuted','keyboard']]
-    labels+=['mode_single_loop','mode_random','mode_sequential','mode_order_loop','maximum','wheel','zero','wheel_up','external_muted','external_unmuted','pending','coalesced','save_failed','save_retried','persist_muted']
+    labels+=['mode_single_loop','mode_random','mode_sequential','mode_order_loop','maximum','wheel','zero','wheel_up','fractional_low','fractional_wheel','fractional_high','external_muted','external_unmuted','pending','coalesced','save_failed','save_retried','persist_muted']
     source=Path(__file__).resolve().parents[2]/'desktop/examples/volume_ui_probe.js'
     reports=[]
     for reopened,name,stages in [(False,'first',labels),(True,'reopen',['reopened_muted','reopened_unmuted','reopened_remuted'])]:
@@ -44,6 +44,10 @@ def main():
             assert native['volume']==row['volume'] and native['unmuteVolume']==row['unmuteVolume']
             assert native['playId']==row['playId'] and native['mode']==row['mode']
             if row['popup']:assert row['popup']['sliderHit']
+            if label in ('fractional_low','fractional_wheel','fractional_high'):
+                volume, displayed = {'fractional_low': (.2, 1), 'fractional_wheel': (3.2, 3),
+                                     'fractional_high': (99.9, 99)}[label]
+                assert native['volume']==volume and row['popup']['displayed']==displayed
             if args.screenshots:assert path.with_suffix('.png').is_file()
         reports.append({'ok':True,'actualWebView':True,'volumeUiVerified':True,'states':len(stages),'reopened':reopened,'screenshots':len(stages) if args.screenshots else 0,'realAccountWrites':0,'realMusicRequests':0,'physicalAudioOutputVerified':False,'physicalDisplayVerified':False})
     (root/'audit.json').write_text(json.dumps(reports,indent=2)+'\n',encoding='utf-8');print(json.dumps(reports))

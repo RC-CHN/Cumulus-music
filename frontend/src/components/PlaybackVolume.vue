@@ -92,7 +92,7 @@ onUnmounted(() => {
       ref="trigger"
       class="icon-button volume-trigger"
       :aria-label="model.value.value === 0 ? '取消静音' : '静音'"
-      :title="`${model.value.value === 0 ? '取消静音' : '静音'} · 音量 ${model.value.value}%`"
+      :title="`${model.value.value === 0 ? '取消静音' : '静音'} · 音量 ${model.percent.value}%`"
       :aria-controls="opened ? id : undefined"
       :aria-expanded="opened"
       :disabled="!player.ready.value"
@@ -115,12 +115,12 @@ onUnmounted(() => {
             ref="slider"
             aria-label="音量"
             aria-orientation="vertical"
-            :aria-valuetext="`${model.value.value}%`"
+            :aria-valuetext="`${model.percent.value}%`"
             type="range"
             min="0"
             max="100"
             step="1"
-            :value="model.value.value"
+            :value="model.percent.value"
             :style="{ '--volume-percent': `${model.value.value}%` }"
             :disabled="!player.ready.value"
             @pointerdown="begin"
@@ -132,7 +132,7 @@ onUnmounted(() => {
             @blur="model.end"
           />
         </div>
-        <output class="volume-percentage">{{ model.value.value }}%</output>
+        <output class="volume-percentage">{{ model.percent.value }}%</output>
         <div v-if="model.issue.value" class="volume-feedback">
           <p role="alert">{{ model.issue.value.message }}</p>
           <button
