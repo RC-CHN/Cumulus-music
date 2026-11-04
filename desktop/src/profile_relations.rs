@@ -93,3 +93,16 @@ pub async fn profile_blacklist(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn profile_report(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    uid: String,
+    command: cumulus_core::client::dto::ProfileReportCommand,
+) -> Result<AccountData<cumulus_core::client::dto::ProfileReportView>, ClientError> {
+    client
+        .profile_report(&epoch, &uid, command)
+        .await
+        .map_err(Into::into)
+}

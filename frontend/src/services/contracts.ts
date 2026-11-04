@@ -34,6 +34,7 @@ import type {
   PodcastSearchClient,
 } from './podcast';
 import type { ProfileBlacklistClient, ProfileBlacklistHeader } from './profileBlacklist';
+import type { ProfileReportClient } from './profileReport';
 import type { ProfileFollowClient, ProfileFollowView } from './profileFollow';
 import type { ProfilePodcastClient } from './profilePodcasts';
 import type { TogetherClient } from './together';
@@ -135,6 +136,7 @@ export interface CoreClient
     ProfilePodcastClient,
     ProfileFollowClient,
     ProfileBlacklistClient,
+    ProfileReportClient,
     TogetherClient,
     AuthClient,
     RankingClient,

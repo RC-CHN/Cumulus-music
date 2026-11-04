@@ -167,6 +167,7 @@ function open(id: string) {
           <ProfileBlacklistControl
             :epoch="accountEpoch"
             :uid="model.profile.value?.id"
+            :nickname="model.profile.value?.nickname"
             :header="model.profile.value?.blacklist"
             @updated="(id, result) => emit('blacklistUpdated', id, result)"
             @expired="emit('expired')"

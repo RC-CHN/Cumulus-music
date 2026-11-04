@@ -239,3 +239,7 @@ required-features = ["custom-protocol"]
 [[example]]
 name = "network_diagnostics_ui_probe"
 required-features = ["custom-protocol"]
+
+[[example]]
+name = "profile_report_ui_probe"
+required-features = ["custom-protocol"]

@@ -54,6 +54,7 @@ mod profile_blacklist;
 mod profile_follow;
 mod profile_play_record;
 mod profile_relations;
+mod profile_report;
 mod quality_experiment;
 mod rankings;
 mod recommendations;
@@ -116,6 +117,7 @@ pub struct MusicClient {
     playlist_square: playlist_square::PlaylistSquareHost,
     playlist_essential: playlist_essential::PlaylistEssentialHost,
     profile_relations: profile_relations::ProfileRelationHost,
+    profile_report: profile_report::ProfileReportHost,
     profile_rank_removal: profile_play_record::RemovalHost,
     message_deletion: messages::DeletionHost,
     message_reply: messages::ReplyHost,
@@ -262,6 +264,7 @@ impl MusicClient {
             published_notes: Default::default(),
             playlist_essential: Default::default(),
             profile_relations: Default::default(),
+            profile_report: Default::default(),
             profile_rank_removal: Default::default(),
             message_deletion: Default::default(),
             message_reply: Default::default(),

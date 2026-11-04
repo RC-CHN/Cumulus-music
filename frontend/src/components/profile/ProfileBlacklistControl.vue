@@ -5,11 +5,14 @@ import type {
   ProfileBlacklistHeader,
   ProfileBlacklistResult,
 } from '../../services/profileBlacklist';
+import { profileReportChoices, type ProfileReportChoice } from '../../services/profileReport';
 import Icon from '../Icon.vue';
+import ProfileReportDialog from './ProfileReportDialog.vue';
 
 const props = defineProps<{
   epoch?: string;
   uid?: string;
+  nickname?: string;
   header?: ProfileBlacklistHeader | null;
 }>();
 const emit = defineEmits<{
@@ -24,12 +27,17 @@ const shown = shallowRef(props.header);
 const container = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const menuItem = ref<HTMLButtonElement>();
+const reportItem = ref<HTMLButtonElement>();
+const reasons = ref<HTMLElement>();
 const menu = ref(false);
+const submenu = ref(false);
+const reportChoice = ref<ProfileReportChoice | null>(null);
 watch(
   () => [props.uid, props.epoch],
   () => {
     model.reset();
-    menu.value = false;
+    closeMenu();
+    reportChoice.value = null;
     shown.value = props.header;
   },
   { flush: 'sync' },
@@ -38,12 +46,17 @@ watch(
   () => props.header,
   (value) => {
     shown.value = value;
+    if (!value?.canAdd || value.blocked) {
+      closeMenu();
+      reportChoice.value = null;
+    }
   },
   { flush: 'sync' },
 );
 
 function closeMenu(restore = false) {
   menu.value = false;
+  submenu.value = false;
   if (restore) trigger.value?.focus({ preventScroll: true });
 }
 async function openMenu() {
@@ -60,7 +73,50 @@ function escape(event: KeyboardEvent) {
   if (!menu.value) return;
   event.preventDefault();
   event.stopPropagation();
+  if (submenu.value && reasons.value?.contains(document.activeElement)) {
+    submenu.value = false;
+    reportItem.value?.focus({ preventScroll: true });
+    return;
+  }
   closeMenu(true);
+}
+async function openReasons(focus = true) {
+  submenu.value = true;
+  if (focus) {
+    await nextTick();
+    reasons.value?.querySelector('button')?.focus({ preventScroll: true });
+  }
+}
+function menuKeys(event: KeyboardEvent) {
+  if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key))
+    return;
+  const fromReason = reasons.value?.contains(document.activeElement);
+  if (event.key === 'ArrowLeft' && fromReason) {
+    event.preventDefault();
+    submenu.value = false;
+    reportItem.value?.focus({ preventScroll: true });
+  } else if (event.key === 'ArrowRight' && document.activeElement === reportItem.value) {
+    event.preventDefault();
+    void openReasons();
+  } else if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    event.preventDefault();
+    const items = fromReason
+      ? Array.from(reasons.value?.querySelectorAll('button') ?? [])
+      : [menuItem.value, reportItem.value];
+    const i = items.findIndex((item) => item === document.activeElement);
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (i + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus({ preventScroll: true });
+  }
+}
+function selectReason(choice: ProfileReportChoice) {
+  if (!props.epoch || !props.uid || !shown.value?.canAdd || shown.value.blocked) return;
+  closeMenu(true);
+  reportChoice.value = choice;
 }
 function left(event: FocusEvent) {
   if (!(event.relatedTarget instanceof Node) || !container.value?.contains(event.relatedTarget))
@@ -126,10 +182,48 @@ async function change(reconcile = false) {
       >
         <Icon name="more" />
       </button>
-      <div v-if="menu" class="profile-blacklist-popup" role="menu" aria-label="用户操作">
+      <div
+        v-if="menu"
+        class="profile-blacklist-popup"
+        role="menu"
+        aria-label="用户操作"
+        @keydown="menuKeys"
+      >
         <button ref="menuItem" class="text-button" type="button" role="menuitem" @click="change()">
           加黑名单
         </button>
+        <div class="profile-report-menu" role="none">
+          <button
+            ref="reportItem"
+            class="text-button"
+            type="button"
+            role="menuitem"
+            aria-haspopup="menu"
+            :aria-expanded="submenu"
+            @click="openReasons()"
+            @pointerenter="openReasons(false)"
+          >
+            举报 <span aria-hidden="true">›</span>
+          </button>
+          <div
+            v-if="submenu"
+            ref="reasons"
+            class="profile-blacklist-popup profile-report-reasons"
+            role="menu"
+            aria-label="举报原因"
+          >
+            <button
+              v-for="[choice, label] in profileReportChoices"
+              :key="choice"
+              class="text-button"
+              type="button"
+              role="menuitem"
+              @click="selectReason(choice)"
+            >
+              {{ label }} <span v-if="choice === 'other'" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
     <button
@@ -144,6 +238,15 @@ async function change(reconcile = false) {
     <span v-if="shown?.busyWithAnother" class="muted">请在设置中核对尚未确认的黑名单操作</span>
     <span v-if="model.issue.value" role="alert">{{ model.issue.value }}</span>
     <span v-else-if="model.notice.value" role="status">{{ model.notice.value }}</span>
+    <ProfileReportDialog
+      :epoch="epoch"
+      :uid="uid"
+      :nickname="nickname"
+      :choice="reportChoice"
+      :return-focus="() => trigger ?? null"
+      @close="reportChoice = null"
+      @expired="emit('expired')"
+    />
   </div>
 </template>
 
@@ -168,5 +271,25 @@ async function change(reconcile = false) {
   border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
+}
+.profile-blacklist-popup button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 5px 8px;
+  color: var(--text);
+  text-align: start;
+}
+.profile-blacklist-popup button:hover,
+.profile-blacklist-popup button:focus-visible {
+  background: var(--surface-alt);
+}
+.profile-report-menu {
+  position: relative;
+}
+.profile-report-reasons {
+  inset: 0 auto auto 100%;
 }
 </style>

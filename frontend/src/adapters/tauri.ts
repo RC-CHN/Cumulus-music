@@ -39,6 +39,7 @@ export function createTauriClient(): CoreClient {
     profileFollow: (epoch, uid, command) => invoke('profile_follow', { epoch, uid, command }),
     profileBlacklist: (epoch, uid, command) => invoke('profile_blacklist', { epoch, uid, command }),
     profileBlacklistList: (epoch) => invoke('profile_blacklist_list', { epoch }),
+    profileReport: (epoch, uid, command) => invoke('profile_report', { epoch, uid, command }),
     profileNotes: (epoch, uid, action) => invoke('profile_notes', { epoch, uid, action }),
     communityTopic: (epoch, name) => invoke('community_topic', { epoch, name }),
     communityTopicNotice: (epoch, topic) => invoke('community_topic_notice', { epoch, topic }),

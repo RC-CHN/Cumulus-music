@@ -1,0 +1,62 @@
+用户主页举报（官方 Windows PC 3.1.42.205594）
+===============================================
+
+恢复的官方逻辑
+- x86/x64 的 package/orpheus.ntpk 同为 SHA256
+  170413b1675708e87a9e89c2d122a8643a51e86b5b5ae1c6260cfeaf25b19be4。
+  下述 M* 指恢复的 hybrid_app.chunk.1482700000000.js 中对应模块。M622 SHA256
+  347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0；M55
+  SHA256 ae5201ea4d17dd5ee366573b0d844ea6473fb10b6b433cb23794a0a21f296654。
+- M622:1068–1126，场景 userProfile：更多菜单「加黑名单」后接「举报」子菜单。
+  顺序是「广告或营销信息」「恶意人身攻击」「色情、低俗或有害内容」
+  「政治敏感言论」「其他原因 >」。前四项将对应中文原文作为 reason；其他项没有
+  预置 reason。不是评论/歌曲举报，也不发送黑名单、关注或私信请求。
+- M3088:2244–2253 将当前用户资料传给该菜单，M21:429–481 将 userId 投影成
+  String(userId)。M55:18–48,285–359，M15:3647：已登录时调用普通 PC
+  POST /api/report/reportuser，JSON 为 {"userid":"目标用户的数字 ID 字符串",
+  "reason":"所选原因原文"}。200 成功，-1 重复，-2 官方账号不能举报，其余失败。
+  匿名流程先等待登录；仍无身份时不发送。未发现该对象独立的远端状态读取或撤销。
+- M12:277–313 的字符串定义默认 POST 且不缓存；M402:377–450 根据 PC 全局环境
+  封包。该动作没有 forceXeapi 或专门路由。Cumulus 使用现有 PC EAPI 路径
+  https://interfacepc.music.163.com/eapi/report/reportuser；如果官方原生的全局
+  XEAPI 已启用，它会选择 /xeapi/，这个分支没有在本功能里复刻或实测。
+- 原客户端的预设原因点击即提交。其他原因打开居中、可关闭、无可见遮罩、
+  无默认页脚的弹窗，自动聚焦文本框（占位「举报原因：」）；只有 trim() 非空时
+  可点确认，提交使用未 trim 的原文，确认后关闭并用消息显示结果；取消不发请求
+  （M55:117–156,285–359）。恢复的该层未发现描述长度上限。
+
+Cumulus 实现和边界
+- 用户资料当前是经过认证的普通访客资料时才显示入口；目标用户为本人、注销、
+  任一方向的黑名单限制时不发送。进入匿名资料不会新开登录弹窗或续发举报，
+  可先通过现有登录入口验证账号。四项预设均额外要求明确确认。其他原因沿用
+  文字原样发送；确认前以和 JS trim 一致的空白集校验，并额外限制 4096 UTF-8 字节。
+- desktop/src/profile_relations.rs 的 profile_report 只接受当前 epoch、用户 UID 和
+  类型化动作。Inspect 只读本机状态；Prepare 仅在内存生成 120 秒一次性凭据，
+  绑定账号代次、目标和原始原因；Cancel 只释放匹配凭据；Submit 消费该凭据。
+  WebView 不持有 PC Cookie、签名密钥或完整授权 URL。切换资料、账号、关闭弹窗
+  时清除前端草稿，旧响应不能更新新窗口。菜单支持方向键和 Escape，取消恢复
+  主页「更多用户操作」按钮焦点。
+- core/src/client/profile_report.rs 先按当前账号与目标串行处理，并和该对象的关注/
+  拉黑共用关系锁；提交重新读取 /api/w/v1/user/detail/{uid}，只接受目标身份匹配且
+  可用的用户资料。实际写入前持久化账号+目标的 uncertain 状态，写接口仅调用一次。
+  持久层不保存原因、请求体、错误体或凭据。只有明确的 RequestNotSent 可移除
+  状态并允许用户重新确认；HTTP 成功且业务码 200、明确 -1/-2 和未知结果都不再提交。
+  原客户端也读非成功 HTTP 的错误体；Cumulus 只认可其中的明确 -1/-2，不把其中
+  的 200 当作成功。异常、模糊响应
+  或崩溃后保留保守状态，重新打开弹窗仍生效。「核对本机回执」只读本机状态，
+  不表示远端已收到。已确认/未知结果保留在弹窗内，用户可自行关闭。
+- 不使用第三方客户端证据，也未触发真实举报。合成断网测试验证界面、请求体和
+  恢复行为，不据此声称真实上游或 Windows WebView 验证通过。
+
+复现
+- cargo test -p cumulus-core --locked --test profile_report
+- npm --prefix frontend run build；cargo build -p cumulus-desktop --locked
+  --features custom-protocol --example profile_report_ui_probe
+- Linux 在 en_US.UTF-8 和独立 Xvfb/DBus 会话内，用断网命名空间运行
+  scripts/ci/profile_report_smoke.py --binary <example> --frontend-dist frontend/dist
+  --root <新目录> --screenshots。验证菜单顺序/键盘返回、取消焦点、原文/空白/字节
+  校验、接受回执及丢失回执重开。关闭夹具固定两次明确的合成提交，取消、重开
+  和核对均无新增写入。
+- 本机断网 WebView 验证通过 7 个场景并留存 7 张截图。报告在
+  .build/profile-report-evidence/layout-final/report.json。Rust 回归另覆盖账号切换中断、
+  所有预设原因、重复/官方账号应答、确认凭据范围和持久化后账号隔离。

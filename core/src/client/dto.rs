@@ -72,6 +72,7 @@ pub use super::profile_play_record::{
 pub use super::profile_relations::{
     ProfileRelationAccess, ProfileRelationEntry, ProfileRelationKind, ProfileRelationPage,
 };
+pub use super::profile_report::{ProfileReportCommand, ProfileReportReason, ProfileReportView};
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
 pub use super::relay::{
     RelayAlertView, RelayCommand, RelayOperationView, RelayPublicationCommand,
