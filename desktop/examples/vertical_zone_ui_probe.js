@@ -88,7 +88,9 @@
         return rect.width > 0 && rect.height > 0 &&
           entry.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
       }, 'More entry can be seen and clicked');
-      await capture('menu_open', { focus: document.activeElement.dataset.choiceZone });
+      const background = getComputedStyle(menu('JAZZ').closest('.choice-zone-panel')).backgroundColor;
+      assert(/^rgb\(/.test(background), 'More menu has an opaque themed background');
+      await capture('menu_open', { focus: document.activeElement.dataset.choiceZone, background });
       menu('JAZZ').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
       await wait(() => more().getAttribute('aria-expanded') === 'false' && document.activeElement === more(), 'More escape restores focus');
       await capture('menu', { focus: document.activeElement.textContent.trim() });
