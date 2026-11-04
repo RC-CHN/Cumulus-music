@@ -127,46 +127,109 @@
   读取。缺回执时无论选什么目标或输入类型都不允许重发。没有真实歌单/红心写入验证。
 
 图片导入：已恢复的链路与授权缺口
-- H5 k7Bb:873–880,941–1008,1260–1313,1419–1448,1529–1542,5611–5621：本地多选
-  `image/*` 或主动粘贴，只允许文件名后缀 JPG、JPEG、PNG、BMP（忽略大小写）；GIF 不通过。
-  一次最多八张，按已有文件名剔除重复并截到剩余名额，超过 20 MiB 拒绝，等于 20 MiB 可提交。
-  待上传、完成、失败分别为 1、2、3；删除本地项停止后续上传步骤，最终只取完成项的对象 key。
-- 固定哈希 vendors/13t5 的 I、E、W、z：先求原图 MD5。H5 传入 bucket=yyimgs、type=image、
-  bizKey=64e97e4d、encrypt=true；该调用不传替代 host 或 fetch。由相同网页来源直接 XHR
-  POST https://mp.music.163.com/api/nos/token/whalealloc，查询是 filename、fileSize、type、
-  bucket、bizKey、md5、encryptFlag=1；无请求正文，credentials=include，绕过通用 WEAPI
-  主机改写。分配响应取 data 或 result，其中 objectKey、token 必需，另带 bucket、docId、
-  resourceId、outerUrl。不是本项目封面和云盘附件使用的 /api/nos/token/alloc。
-- 13t5 的 F、A、z：同一个对象按 offset、complete、version=1.0 和已获得的 context 分片；
-  初始 256 KiB。直接 POST https://nosup-hz1.127.net/yyimgs/<objectKey>；备选为
-  https://music.163.com/web/proxy/nosupload，查询 objectkey=yyimgs/<objectKey>。使用
-  x-nos-token、文件 MIME 和全文件十六进制 Content-MD5，不转发主站 Cookie；回包读取
-  context、offset。浏览器以 MD5、大小、bucket、taskType 存上传续点，但键没有账号绑定，
-  不能把该浏览器缓存或用户提供的任意 key 当作本机可信上传回执。续点命中时用同一个对象
-  和令牌查询 `uploadContext=&context=…&version=1.0`；分片失败时原脚本会在两个固定入口间
-  有界重试。对象分片续传不等于重放歌单任务创建。
-- H5:5417–5467,5523–5534,5750–5766,7874–7888 先读 /api/nuser/account/get，以账号 ID 并行取
-  /api/user/playlist/create {userId,limit:100} 与 /api/user/playlist {uid,limit:1}，前置
-  后者首项；经通用包装器后仍为 Interface WEAPI。Windows 选新建时先 POST
-  /api/user/binding/cellphone（H5:7926–7928），code=302 提示登录，bind 非真提示先绑手机。
-  通过后 H5:5558–5579 调 nm.baseplaylist.createPlaylist；M290:443–469 的同步确认不等于创建成功，
-  M3160:484–550 与 M232:720–745 以 PC UID 调 /api/playlist/create {uid,name,privacy}，
-  未传 isPrivate 时 privacy=0（公开，M66:15）。实际结果经 M17:430–435、M3142:33–66
-  唤起 H5:5273–5295 的回调。
-- H5:5359–5407,7835–7845 只在选定目标、存在成功上传时调用 Interface
-  POST /weapi/playlist/import/create，{playlistId,picIds,rqRefer}；picIds 是按上传选择顺序的
-  `yyimgs/<objectKey>` JSON 数组字符串，不用 docId。与链接/文字相同，只有有效 taskId
-  表示已受理；缺回执不得重放。以后原生实现须锁定同一账号代次、目标歌单与已完成对象回执，
-  禁止把旧账号或未知上传的对象交给任务服务。
-- 现有 Interface 域扫码未证明具备 MP 同源分配授权，不能拷贝 PC/Interface 主机专属 Cookie、
-  替换分配接口或以合成上传冒充真实 OCR。本次不访问 MP、对象服务或歌单写接口，也不自动
-  新建公开歌单或修改既有歌单。
-- 进一步追踪固定入口：hybrid_app/128.js:514–527 → 31.js:147–164 → 397.js:773–793
-  → 1384.js:3273–3286,3342–3363 将 MP URL 原样作为 miniProgram 页面，3142.js:161–174,
-  286–292 设为 iframe src；没有在这条固定打开路径申请 SSO。17.js:279–303 的可选
-  iframe 覆盖值来自独立 routeWindow.url。290.js:55–68 → 3077.js:131–140 → 73.js:19–39
-  的 /api/sso/login/token 属于 H5 另发的外部浏览器打开动作，不能由此推断固定 iframe
-  有 MP 专属会话或把通用票据当作 whalealloc 授权。这仍是静态分支边界，未实服尝试。
+- 固定 PC 页第 3 标签是「图片导入」，两个步骤是「上传歌单截图」和
+  「选择要导入的歌单」，底部才是「开始导入」；没有链接/文字的红心复选框。
+  H5:5602–5633,5685–5737,6322–6327,6381–6391。H5:5444–5467,5510–5513
+  挂载即尝试读取账号和目标；选图禁用时会触发 app.login 桥，
+  M290:987–996 只派发 PC 登录，未由此向 MP 分配授权。
+- H5 k7Bb:873–880,910–937,941–1008,1024–1036,1260–1313,1419–1448,
+  1529–1542,5611–5621：隐藏的浏览器多选 input 使用 accept="image/*"，
+  粘贴事件只捡 type 含 image 且 getAsFile 成功的项。picker 接收的文件
+  和 paste 项最终走同一文件名后缀与大小判断。只允许 JPG、JPEG、PNG、BMP
+  （忽略大小写）；GIF 即使在复用控件的默认 accept 中也不能通过。
+  原逻辑仅拒绝 >20 MiB，等于 20 MiB 甚至 0 字节都会过本层；不核对
+  MIME、文件头或像素，文件声明的 MIME 在对象请求中作 Content-Type。
+  最多八张；先与旧列表按文件名去重，再截断到剩余名额，然后验证每张。
+  同一批次的重复文件名没互相去重，前面的无效文件也可能占截断名额。
+- 文件选中或主动粘贴通过检查后立即 onStart(1) 并启动上传，早于选目标
+  和「开始导入」，没有独立的上传确认。原始 File 用于 MD5 和分片，
+  未见前置裁剪、压缩、重新编码或客户端加密。成功记 2，用分配响应的
+  outerUrl 显示缩略图；失败记 3。移除传 abortFileName 至任务的
+  step=-1 检查，可阻止后续步骤；已发送的 XHR 没有被此分支撤回、
+  删除本地项也不等于删除已上传对象。H5:910–914,978–1003,1420–1458,
+  1475–1494；下文 V/13t5:1696–1699,2066–2069。
+- V 指固定 SHA-256 的 vendors.f2f78b87.js 经同一 Prettier babel 规则
+  格式化后的行号（格式化 SHA-256
+  7352385d2762ca7cb355d430290efc170b158f977e3e8715806d868d6a049676）。
+  V/13t5:1626–1632,1686–1694,1716–1828,1980–2036 先按 2 MiB 读取
+  文件块求整文件 MD5，正常传 bucket=yyimgs、type=image、bizKey=64e97e4d、
+  encrypt=true，不传替代 host 或 fetch。由同一网页来源直接 XHR
+  POST https://mp.music.163.com/api/nos/token/whalealloc，查询依次为
+  filename、fileSize、type、bucket、bizKey、md5、encryptFlag=1；
+  无正文，withCredentials=true，绕过通用 WEAPI 主机改写。encryptFlag
+  是令牌分配字段，不改变送给对象端点的原始字节。分配结果读 data 或 result，
+  objectKey 和 token 必需；另可返回 bucket、docId、resourceId、outerUrl。
+  Hash 非取消错误的异常分支可走无 md5 的分配，但后续续点处理仍依赖
+  MD5，不应把它当作验证过的恢复。此接口不是封面/云盘的 /api/nos/token/alloc。
+- V/13t5:1445–1501,1593–1624,1832–1976,2017–2036 先用 256 KiB 对象分片，
+  上个分片快于 5 秒且未重试则翻倍（上限 10 MiB），慢于 30 秒则折半
+  （下限 16 KiB）并换入口。正常 POST
+  https://nosup-hz1.127.net/yyimgs/<objectKey>；备用 POST
+  https://music.163.com/web/proxy/nosupload，查询多出 objectkey=yyimgs/<objectKey>。
+  两者都传 offset、complete、version=1.0 和已有 context；只带
+  x-nos-token、文件声明 MIME 和全文件十六进制 Content-MD5；固定 MP
+  页面调用两者的 XHR 都不启用跨域凭据。每个分片最多 10 次重试（另计
+  首次发送），回包读取 context/offset。原代码用本地算出的最终分片标记
+  完成，不单独校验最终 offset 等于文件大小。
+- V/13t5:1660–1684,1716–1746,1832–1859,1913–1923,1972–1976,2012–2036：
+  MD5、文件大小、bucket、taskType 拼成浏览器续点键，没有账号绑定。
+  缓存命中且含 resourceId 才跳过分配；以同一对象和令牌 GET
+  uploadContext=&context=…&version=1.0 核对 offset。成功清缓存，失败
+  重新分配分支还有再次调用上传的机会。不能导入原浏览器的续点、
+  相信任意 objectKey 或把对象续传当歌单任务的重放依据。
+- H5:5417–5467,5750–5766,7874–7888 的逻辑方法是 GET：
+  /api/nuser/account/get 取 account.id，再并行
+  /api/user/playlist/create {userId,limit:100} 与
+  /api/user/playlist {uid,limit:1}，后者首项前置。对固定加密 PC 入口，
+  V/jA/N:48184–48246 将三条实际发为 Interface /weapi/... POST，
+  与提交共享包装，数字标量不会被 obj2str 改成字符串
+  (V/N1T3:31491–31502)。目标选取本身不是创建；「新建歌单」另触发
+  /api/user/binding/cellphone（H5:5558–5579,7926–7928），302 提示登录，
+  bind 非真提示先绑手机。通过后调用 nm.baseplaylist.createPlaylist；
+  M290:443–469 同步确认不等于成功，M3160:484–550、M232:720–745
+  用 PC UID 调 /api/playlist/create {uid,name,privacy}。默认 privacy=0
+  为公开（M66:15）。结果经 M17:430–435、M3142:33–66 到 H5:5273–5295
+  回调，选中新歌单并刷新目标；本项目无授权自动创建该公开歌单。
+- H5:5323–5327,5359–5416,5514–5534,7835–7845：至少一个成功上传且已选
+  目标才允许提交。任一当前项仍是 uploading 时，更新器保留此前的
+  成功集合；因此该版本可能在新一批未完成时提交此前快照。Cumulus
+  如实现应固定最新授权快照，保留已确认选择顺序，不使用这个残留态。
+  Interface POST /weapi/playlist/import/create 载荷为
+  {playlistId,picIds,rqRefer}；playlistId 直接使用目标 ID 的原标量，
+  picIds 是 `yyimgs/<objectKey>` JSON 数组字符串，不用 docId。
+  只有有效 taskId 才继续 nm.mine.importPlaylistTask({taskId}) 和 PC
+  startExternalPlaylist 关闭动作；桥确认不代表识别或导入完成。
+  原通用包装接受 status 或 code 介于 200–399 再取 data||原对象
+  (H5:6635–6664)，页面只查 taskId truthy；Cumulus 不应放宽已有
+  完整 HTTP 200、合法任务编号和未知回执的约束。缺任务回执不得重放。
+- MP 授权边界：hybrid_app/128.js:514–527 → 31.js:147–164 → 397.js:773–793
+  → 1384.js:3273–3286,3342–3363 将 MP URL 原样作为 miniProgram，
+  3142.js:161–174,286–292 设为 iframe src；固定打开路径没有申请 SSO。
+  17.js:279–303 的可选 iframe 覆盖来自独立 routeWindow.url；
+  290.js:55–68 → 3077.js:131–140 → 73.js:19–39 的 /api/sso/login/token
+  属于另一个外部浏览器打开动作。PC 的 CEF 登录可能通过正常 Cookie
+  Domain 匹配共享会话；M124:237–250 有通用缺省域补全，M318:14 是
+  https://music.163.com，但没有证据表明固定页独立获取了 MP 上传授权，
+  也不能把客户端通用 Cookie helper 当成这条专用授权链。Rust
+  core/src/account/credentials.rs 的 request_credentials 拒绝不同源；
+  external_import_document_csrf 仅投影 H5 文档可见 CSRF，不能给 MP
+  网络传输赋权。同 UID 的 Interface 扫码通过并不验证 MP，也不能搬运、
+  重写或放宽 PC/Interface Cookie。
+- 离线复核只执行固定哈希的 H5 选图、提交回调、V/13t5 与 WEAPI 封包分支。
+  合成 393270 字节 BMP，替身 XMLHttpRequest/FileReader/MD5/桥，无页面
+  网络或真实账号：验证上限和后缀的边界，分配无正文；用 503 触发
+  对象入口切换，重发同一 262144 字节首片，接续 131126 字节末片，
+  核对两个成功片与原图字节完全一致。提交使用 objectKey 而不是 docId；
+  有 taskId 才发桥，缺回执不发桥。私有证据
+  `.build/image-import-recovery/probe.json`。证明的是静态代码路径与
+  合成回包，不是实际 MP 授权、上传、OCR、任务受理或歌单写入。
+- 可实现边界：可先做完全离线的原生选图校验和封闭传输状态机；未来
+  产品上传应在明确同意后才分配和发送，按账号代次与同一已打开文件
+  固定大小/真实图像格式/MD5，不把 token、对象 URL 或路径交给 Vue。
+  MP 身份与现有 Interface 身份都须独立核对同 UID，目标限定当前账号
+  可写资源；严格验证分片续点和最终 offset，用有界重试处理对象分片，
+  任务创建沿用一次发送与未知回执记录。没有可验证 MP 授权前不显示
+  可提交的图片入口，也不使用已存在歌单或真实账号文件试验。
 
 当前 Cumulus 本地子集
 - 「我的歌单 → 歌单导入预览」是本地入口，明确不同于 t1 的正式侧栏入口。
