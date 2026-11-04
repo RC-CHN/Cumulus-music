@@ -1605,7 +1605,101 @@
         }
         return nativeDownloadCommand(...args);
       };
-      click(play);
+      if(window.__cumulusSearchVoicePendingProof){
+        step='voice pending load';
+        window.__cardSourceAck={};
+        let command=0;
+        async function audioGate(mode){
+          const id=++command;
+          await emit('card-source-fixture',{id,mode});
+          await wait(()=>window.__cardSourceAck[id],'native voice load fixture acknowledgement');
+          const reply=window.__cardSourceAck[id];
+          assert(!reply.error,'native voice fixture accepted '+mode);
+          return reply;
+        }
+        async function voiceSnapshot(predicate,label){
+          for(let i=0;i<180;i++){
+            const value=await invoke('player_snapshot',{epoch});
+            if(value.resourceKind==='voice'&&value.track?.voiceId==='401'&&predicate(value))return value;
+            await sleep(65);
+          }
+          throw Error(label);
+        }
+        const voiceButton=id=>one(`[data-result-key="voice:${id}"] .search-card-play`);
+        const playLabel=(button,pause)=>!button?.disabled&&button?.getAttribute('aria-label')
+          .startsWith(pause?'暂停 ':'播放 ');
+        const firstRequest=core.playSelection;
+        const nativePlayerAction=core.playerAction;
+        const selections=[], actions=[];
+        core.playSelection=(...args)=>{selections.push(args);return firstRequest(...args);};
+        core.playerAction=(...args)=>{actions.push(args);return nativePlayerAction(...args);};
+        try{
+          assert((await audioGate('hold-load')).loads===0,'voice proof starts with unopened native decoder');
+          click(play);
+          const pending=await voiceSnapshot(value=>value.state==='loading'&&value.pendingPaused===false,
+            'voice identity published while native decoder is held');
+          assert(pending.playId&&pending.entryId&&pending.queueLen===1,'pending voice owns a real queue entry');
+          const sameSelection=value=>['epoch','playId','entryId','queueRevision'].every(key=>value[key]===pending[key]);
+          let loader;
+          for(let i=0;i<40;i++){
+            loader=await audioGate('read');
+            if(loader.loads===1)break;
+          }
+          assert(loader?.loads===1&&loader.holdingLoad,'exact native load reached the gate');
+          await wait(()=>playLabel(voiceButton('401'),true),'voice row exposes pause during native load');
+          assert(voiceButton('402')?.disabled,'another episode cannot start during this native load');
+          click(voiceButton('401'));
+          const paused=await voiceSnapshot(value=>value.state==='loading'&&value.pendingPaused===true,
+            'same pending voice paused from its search row');
+          assert(sameSelection(paused),'row pause preserves exact episode selection');
+          await wait(()=>playLabel(voiceButton('401'),false)&&document.activeElement===voiceButton('401'),
+            'pending row shows resume and retains keyboard focus');
+          await capture('voice_row_paused_while_loading');
+          await choose('all');
+          const cover=voiceButton('401');
+          const song=one('[data-result-key="song:1"] .search-track-cover');
+          cover?.scrollIntoView({block:'center',behavior:'instant'});
+          await wait(()=>{
+            const bounds=cover?.getBoundingClientRect();
+            return bounds?.top>one('#search-result-panel').getBoundingClientRect().top&&
+              bounds.bottom<one('.playerbar').getBoundingClientRect().top;
+          },'pending voice cover is in the visible panel');
+          assert(cover&&!cover.closest('[role="row"]')&&playLabel(cover,false),
+            'same pending episode is resumable from its comprehensive cover');
+          assert(song?.disabled&&song.getAttribute('aria-label').startsWith('播放 '),
+            'backing catalog song cannot control pending episode');
+          click(cover);
+          const resumed=await voiceSnapshot(value=>value.state==='loading'&&value.pendingPaused===false,
+            'same pending voice resumed from comprehensive cover');
+          assert(sameSelection(resumed),'cover resume preserves exact episode selection');
+          await wait(()=>playLabel(cover,true),'resumed pending cover exposes pause');
+          await capture('voice_cover_resumed_while_loading');
+          click(cover);
+          await voiceSnapshot(value=>value.state==='loading'&&value.pendingPaused===true,
+            'second cover pause recorded before decoder release');
+          const released=await audioGate('release-load');
+          assert(released.loads===1&&!released.holdingLoad,'unblock the single original native load');
+          const decoded=await voiceSnapshot(value=>value.state==='paused'&&value.pendingPaused===undefined,
+            'first decoded snapshot remains paused');
+          assert(sameSelection(decoded)&&decoded.position<.2,'pending pause wins at first native decode');
+          assert(selections.length===1&&selections[0][0]===epoch&&selections[0][1].id==='401'&&
+            selections[0][1].kind==='search_result_voice','three pending gestures never reselect the episode');
+          assert(actions.length===3&&actions.every(([owner,input],index)=>owner===epoch&&input.kind==='pause_for'&&
+            input.play_id===pending.playId&&input.expected_queue_revision===pending.queueRevision&&
+            input.paused===(index!==1)),'all pending transport commands target the original epoch/play/revision');
+          await capture('voice_first_decode_paused');
+          await choose('voices');
+          await wait(()=>playLabel(voiceButton('401'),false),'loaded row can resume the exact paused voice');
+          click(voiceButton('401'));
+          const active=await voiceSnapshot(value=>value.state==='playing'&&value.position>.2,
+            'loaded resume advances actual native clock');
+          assert(sameSelection(active)&&(await audioGate('read')).loads===1,
+            'explicit loaded resume uses the originally decoded episode');
+        }finally{
+          core.playSelection=firstRequest;
+          core.playerAction=nativePlayerAction;
+        }
+      }else click(play);
       let first;
       for(let i=0;i<200;i++){
         const view=await invoke('player_snapshot',{epoch});
@@ -1678,7 +1772,7 @@
       const oldTicket=await invoke('prepare_play_selection',{
         epoch,expectedQueueRevision:first.queueRevision,expectedPlayId:first.playId,
       });
-      click(card.querySelector('.search-card-play'));
+      click(one('[data-result-key="voice:401"] .search-card-play'));
       await wait(()=>one('.playerbar').dataset.state==='paused','same episode pauses from the search card');
       const paused=await invoke('player_snapshot',{epoch});
       assert(paused.playId===first.playId&&paused.queueLen===1,'same episode and single-entry native queue');
@@ -1718,7 +1812,7 @@
       assert(voiceReads.length===2&&!downloadCommands,'catalog switch does not reread or write the previous voice');
       await capture('catalog_song_not_episode');
       await emit('complete',{ok:true,voiceDirectVerified:true,preparedTicketFenceVerified:true,
-        searchSongNamespaceVerified:true,voiceDownloadVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+        searchSongNamespaceVerified:true,voiceDownloadVerified:true,voicePendingTransportVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchV3Proof){

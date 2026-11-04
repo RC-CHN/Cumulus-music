@@ -28,6 +28,7 @@ import {
   searchPlaylistCreator,
   searchVideoCredits,
   searchVideoCoverStats,
+  type SearchPendingVoiceToggle,
   type SearchQueueRequest,
 } from '../../services/searchCards';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
@@ -43,6 +44,7 @@ const props = defineProps<{
   albumSubscribed?: boolean | null;
   podcastFollow?: PodcastSearchFollow;
   current: boolean;
+  pendingVoiceToggle?: SearchPendingVoiceToggle;
   playing: boolean;
 }>();
 const emit = defineEmits<{
@@ -53,6 +55,7 @@ const emit = defineEmits<{
   albumAction: [request: AlbumCardRequest];
   podcastFollow: [state: PodcastSearchFollow];
   play: [item: SearchItem];
+  togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queue: [request: SearchQueueRequest];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
@@ -249,6 +252,18 @@ function actionAnchor() {
   return active instanceof HTMLElement && element.value?.contains(active)
     ? active
     : (element.value?.querySelector<HTMLElement>('.search-card-open') ?? null);
+}
+const playButtonPauses = computed(
+  () => props.pendingVoiceToggle?.pause ?? (props.current && props.playing),
+);
+const playButtonDisabled = computed(() => props.pendingVoiceToggle?.disabled ?? !props.playable);
+function playButton(event: MouseEvent) {
+  const target = props.pendingVoiceToggle;
+  if (target && event.currentTarget instanceof HTMLButtonElement) {
+    if (!target.disabled) emit('togglePendingVoice', target, event.currentTarget);
+    return;
+  }
+  action('play');
 }
 function action(key: string) {
   if (key === 'play' && canPlay.value && props.playable)
@@ -451,12 +466,12 @@ watch(
           type="button"
           class="search-card-play"
           data-result-action="play"
-          :disabled="!playable"
-          :aria-label="`${current && playing ? '暂停' : '播放'} ${card.name}`"
-          @click.stop="action('play')"
+          :disabled="playButtonDisabled"
+          :aria-label="`${playButtonPauses ? '暂停' : '播放'} ${card.name}`"
+          @click.stop="playButton"
           @dblclick.stop
         >
-          <Icon :name="current && playing ? 'pause' : 'play'" />
+          <Icon :name="playButtonPauses ? 'pause' : 'play'" />
         </button>
       </div>
       <div
@@ -766,12 +781,12 @@ watch(
           v-if="canPlay"
           type="button"
           class="search-card-play"
-          :disabled="!playable"
-          :aria-label="`${current && playing ? '暂停' : '播放'} ${card.name}`"
-          @click.stop="action('play')"
+          :disabled="playButtonDisabled"
+          :aria-label="`${playButtonPauses ? '暂停' : '播放'} ${card.name}`"
+          @click.stop="playButton"
           @dblclick.stop
         >
-          <Icon :name="current && playing ? 'pause' : 'play'" />
+          <Icon :name="playButtonPauses ? 'pause' : 'play'" />
         </button>
       </span>
       <span

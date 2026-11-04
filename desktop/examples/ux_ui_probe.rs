@@ -524,7 +524,10 @@ fn main() {
         !native_stop_proof || motion_proof,
         "native stop requires closed audio"
     );
-    let audio_status_proof = card_source_proof || playback_wait_proof || native_stop_proof;
+    let search_voice_pending_proof = card_source_fixture::search_voice_pending_enabled();
+    assert!(!search_voice_pending_proof || (motion_proof && search_fixture::enabled()));
+    let audio_status_proof =
+        card_source_proof || playback_wait_proof || native_stop_proof || search_voice_pending_proof;
     assert!(
         !card_source_proof
             || (motion_proof && library_fixture::enabled() && search_fixture::enabled()),

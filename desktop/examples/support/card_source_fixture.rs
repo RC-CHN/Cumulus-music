@@ -11,12 +11,16 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
+use std::time::{Duration, Instant};
 
 pub fn enabled() -> bool {
     std::env::var("CUMULUS_CARD_SOURCE_PROOF").as_deref() == Ok("1")
 }
 pub fn native_stop_enabled() -> bool {
     std::env::var("CUMULUS_PLAYBACK_NATIVE_STOP_PROOF").as_deref() == Ok("1")
+}
+pub fn search_voice_pending_enabled() -> bool {
+    std::env::var("CUMULUS_SEARCH_VOICE_PENDING_PROOF").as_deref() == Ok("1")
 }
 static FIRST_SONG_AUTHORIZATIONS: AtomicU64 = AtomicU64::new(0);
 pub fn record_authorization(ids: &[Value]) {
@@ -31,6 +35,7 @@ pub struct Control {
     fail_resume: AtomicBool,
     fail_output: AtomicBool,
     loads: AtomicU64,
+    hold_load: AtomicBool,
     failed_resumes: AtomicU64,
     request_native_stop: AtomicBool,
     observed_native_stops: AtomicU64,
@@ -47,6 +52,12 @@ impl Control {
             "stop-in-native" if native_stop_enabled() => {
                 self.request_native_stop.store(true, Ordering::SeqCst)
             }
+            "hold-load" if search_voice_pending_enabled() => {
+                self.hold_load.store(true, Ordering::SeqCst)
+            }
+            "release-load" if search_voice_pending_enabled() => {
+                self.hold_load.store(false, Ordering::SeqCst)
+            }
             "read" => {}
             _ => return Err(Error::InvalidInput("unknown synthetic card audio mode")),
         }
@@ -55,6 +66,9 @@ impl Control {
     pub fn report(&self) -> Value {
         let mut report = json!({"loads":self.loads.load(Ordering::SeqCst),"failedResumes":self.failed_resumes.load(Ordering::SeqCst),"forcedBuffering":self.buffer.load(Ordering::SeqCst),"pendingResumeFailure":self.fail_resume.load(Ordering::SeqCst),"pendingOutputFailure":self.fail_output.load(Ordering::SeqCst)});
         report["heldSeeking"] = json!(self.seek.load(Ordering::SeqCst));
+        if search_voice_pending_enabled() {
+            report["holdingLoad"] = json!(self.hold_load.load(Ordering::SeqCst));
+        }
         if native_stop_enabled() {
             report["observedNativeStops"] =
                 json!(self.observed_native_stops.load(Ordering::SeqCst));
@@ -81,6 +95,14 @@ impl AudioEngine for Audio {
     fn load(&mut self, input: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         self.held_seek = false;
         self.control.loads.fetch_add(1, Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_secs(22);
+        while self.control.hold_load.load(Ordering::SeqCst) {
+            cancel.check()?;
+            if Instant::now() >= deadline {
+                return Err(Error::State("synthetic decoder load gate expired"));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
         if self.control.fail_output.swap(false, Ordering::SeqCst) {
             return Err(Error::Playback {
                 operation: "load ended",

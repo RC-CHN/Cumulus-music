@@ -128,6 +128,13 @@ export function searchCardIsCurrent(
   if (!origin || !['playlist', 'album', 'artist', 'podcast'].includes(item.kind)) return false;
   return searchCardKey(item) === `${origin.kind}:${origin.id}`;
 }
+export interface SearchPendingVoiceToggle {
+  voiceId: string;
+  key: string;
+  pause: boolean;
+  disabled: boolean;
+}
+
 /** A search episode always resolves its own native details, regardless of parent radio. */
 export function searchVoiceSelection(item: Extract<SearchItem, { kind: 'voice' }>) {
   return item.voice.unavailable

@@ -135,6 +135,9 @@ def main():
         prefix = 'window.__cumulusSearchCardMatchesProof = true;\n'
     if args.voice_direct or args.voice_download_submit:
         prefix = 'window.__cumulusSearchVoiceDirectProof = true;\n'
+        if args.voice_direct:
+            env['CUMULUS_SEARCH_VOICE_PENDING_PROOF'] = '1'
+            prefix += 'window.__cumulusSearchVoicePendingProof = true;\n'
         if args.voice_download_submit:
             env['CUMULUS_VOICE_DOWNLOAD_UI_PROOF'] = '1'
             prefix += 'window.__cumulusVoiceDownloadDirectory = ' + json.dumps(str(root / 'voice-media')) + ';\n'
@@ -388,7 +391,7 @@ def main():
                 'peopleCategoriesVerified' if args.people_categories else
                 'originalCorrectionVerified' if args.correction_original else
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
-        stages = 5 if args.voice_direct else 4 if args.people_categories else 3 if args.correction_original else 2
+        stages = 8 if args.voice_direct else 4 if args.people_categories else 3 if args.correction_original else 2
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
         if args.people_categories:
             assert complete['searchArtistMenuVerified']
@@ -399,10 +402,24 @@ def main():
             assert complete['categoryCorrectionPartsVerified'] and complete['staleCorrectionPartsSuppressed']
         if args.voice_direct:
             assert complete['preparedTicketFenceVerified'] and complete['searchSongNamespaceVerified']
-            assert complete['voiceDownloadVerified']
+            assert complete['voiceDownloadVerified'] and complete['voicePendingTransportVerified']
+            stages_by_label = {
+                name: json.loads(next((root / 'first').glob(f'ux_*_{name}.json')).read_text(encoding='utf-8'))
+                for name in ('voice_row_paused_while_loading', 'voice_cover_resumed_while_loading',
+                             'voice_first_decode_paused')
+            }
+            row, cover, decoded = (stage['nativePlayer'] for stage in stages_by_label.values())
+            assert row['state'] == cover['state'] == 'loading' and decoded['state'] == 'paused'
+            assert row['pendingPaused'] is True and cover['pendingPaused'] is False
+            assert all(row[key] == cover[key] == decoded[key]
+                       for key in ('epoch', 'playId', 'entryId', 'queueRevision'))
+            assert all(stage['sourceAudio']['loads'] == 1 for stage in stages_by_label.values())
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (stages if args.screenshots else 0)
-        print(json.dumps(dict(complete, actualWebView=True)))
+        report = dict(complete, actualWebView=True)
+        if args.voice_direct:
+            (root / 'report.json').write_text(json.dumps(report, indent=2), encoding='utf-8')
+        print(json.dumps(report))
         return
     verify(root, args.screenshots, args.v3)
 

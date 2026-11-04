@@ -13,6 +13,7 @@ import {
   searchCardSelection,
   searchMvPlaybackTarget,
   searchVoiceSelection,
+  type SearchPendingVoiceToggle,
   type SearchQueueRequest,
   searchCurrentSongId,
   searchCurrentVoiceId,
@@ -1823,30 +1824,65 @@ watch(
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
 const currentSearchSongId = computed(() => searchCurrentSongId(player.view.value));
+const currentSearchVoiceId = computed(() => searchCurrentVoiceId(player.view.value));
+const searchPendingTransport = computed(() => {
+  const pending = player.pendingTransport.value;
+  if (!pending || player.view.value?.epoch !== account.value.epoch) return;
+  return {
+    key: player.primaryTransportKey.value,
+    pause: !pending.paused,
+    disabled:
+      !player.ready.value ||
+      player.pendingTransportBusy.value ||
+      player.loadingStepBusy.value ||
+      !!player.view.value?.intelligence ||
+      !!together.view.value?.attached,
+  };
+});
 const searchPendingTrackToggle = computed<TrackPendingToggle | undefined>((previous) => {
   const trackId = currentSearchSongId.value;
-  const pending = player.pendingTransport.value;
-  if (!trackId || !pending || player.view.value?.epoch !== account.value.epoch) return;
-  const key = player.primaryTransportKey.value;
-  const disabled =
-    !player.ready.value ||
-    player.pendingTransportBusy.value ||
-    player.loadingStepBusy.value ||
-    !!player.view.value?.intelligence ||
-    !!together.view.value?.attached;
-  if (previous?.trackId === trackId && previous.key === key && previous.disabled === disabled)
+  const target = searchPendingTransport.value;
+  if (!trackId || !target) return;
+  if (
+    previous?.trackId === trackId &&
+    previous.key === target.key &&
+    previous.disabled === target.disabled
+  )
     return previous;
-  return { trackId, key, pause: !pending.paused, disabled };
+  return { trackId, ...target };
 });
-async function toggleSearchPendingTrack(target: TrackPendingToggle, anchor?: HTMLButtonElement) {
+const searchPendingVoiceToggle = computed<SearchPendingVoiceToggle | undefined>((previous) => {
+  const voiceId = currentSearchVoiceId.value;
+  const target = searchPendingTransport.value;
+  if (!voiceId || !target) return;
+  if (
+    previous?.voiceId === voiceId &&
+    previous.key === target.key &&
+    previous.disabled === target.disabled
+  )
+    return previous;
+  return { voiceId, ...target };
+});
+function toggleSearchPendingTrack(target: TrackPendingToggle, anchor?: HTMLButtonElement) {
+  if (searchPendingTrackToggle.value === target)
+    return toggleSearchPending(target, ['all', 'songs', 'lyrics'], anchor);
+}
+function toggleSearchPendingVoice(target: SearchPendingVoiceToggle, anchor: HTMLButtonElement) {
+  if (searchPendingVoiceToggle.value === target)
+    return toggleSearchPending(target, ['all', 'voices'], anchor);
+}
+async function toggleSearchPending(
+  target: { key: string; disabled: boolean },
+  categories: string[],
+  anchor?: HTMLButtonElement,
+) {
   const currentPage = page.value;
   const source = player.view.value;
   if (
     currentPage.kind !== 'search' ||
-    !['all', 'songs', 'lyrics'].includes(currentPage.category ?? 'all') ||
+    !categories.includes(currentPage.category ?? 'all') ||
     !source ||
     target.disabled ||
-    searchPendingTrackToggle.value !== target ||
     (anchor &&
       (!anchor.isConnected || anchor.closest('.page-leave-active,.search-results-leave-active')))
   )
@@ -2763,9 +2799,10 @@ onUnmounted(() => {
                 :current-id="currentSearchSongId"
                 :current-toggle="visibleTrackToggle"
                 :pending-track-toggle="searchPendingTrackToggle"
+                :pending-voice-toggle="searchPendingVoiceToggle"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
-                :current-voice-id="searchCurrentVoiceId(player.view.value)"
+                :current-voice-id="currentSearchVoiceId"
                 @navigate="
                   (category, pagination, correct, rewrittenKeyword) =>
                     page.kind === 'search' &&
@@ -2795,6 +2832,7 @@ onUnmounted(() => {
                 @play-track="playSearchTrack"
                 @toggle-current="toggleVisibleTrack"
                 @toggle-pending-track="toggleSearchPendingTrack"
+                @toggle-pending-voice="toggleSearchPendingVoice"
                 @play-card="playSearchCard"
                 @queue-card="queueSearchCard"
                 @playlist-download="

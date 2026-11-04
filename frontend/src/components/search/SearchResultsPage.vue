@@ -37,7 +37,11 @@ import { waitForViewportFrames } from '../../services/viewportLayout';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
 import SearchHotExplanationCard from './SearchHotExplanationCard.vue';
-import { searchCardIsCurrent, type SearchQueueRequest } from '../../services/searchCards';
+import {
+  searchCardIsCurrent,
+  type SearchPendingVoiceToggle,
+  type SearchQueueRequest,
+} from '../../services/searchCards';
 import type { PlayerOrigin, PlaybackStatus, SearchResultPlayback } from '../../services/player';
 const motion = useMotion();
 const panelTransition = createPageTransition(() => motion.reduced.value, undefined, {
@@ -63,6 +67,7 @@ const props = defineProps<{
   currentId?: string;
   currentToggle?: TrackCurrentToggle;
   pendingTrackToggle?: TrackPendingToggle;
+  pendingVoiceToggle?: SearchPendingVoiceToggle;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
   currentVoiceId?: string;
@@ -100,6 +105,7 @@ const emit = defineEmits<{
   mv: [id: string];
   expired: [];
   playCard: [item: SearchItem];
+  togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queueCard: [request: SearchQueueRequest];
   cardComments: [item: SearchItem];
   cardDownload: [item: SearchItem];
@@ -911,6 +917,11 @@ onBeforeUnmount(() => {
                     : undefined
                 "
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
+                :pending-voice-toggle="
+                  item.kind === 'voice' && item.voice.id === pendingVoiceToggle?.voiceId
+                    ? pendingVoiceToggle
+                    : undefined
+                "
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
                 @creator="emit('creator', $event)"
@@ -923,6 +934,9 @@ onBeforeUnmount(() => {
                   podcastFollow.activate(item.podcast.id, $event)
                 "
                 @play="emit('playCard', $event)"
+                @toggle-pending-voice="
+                  (target, anchor) => emit('togglePendingVoice', target, anchor)
+                "
                 @queue="emit('queueCard', $event)"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
