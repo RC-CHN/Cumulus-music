@@ -142,6 +142,14 @@ Cumulus 复用已有的有界字面匹配，保留原显示文本、浮层强调
 命中时输出空标记。未移植官方全量字形映射或分词规则。
 search_smoke.py --suggestion-matches 可验证重复命中、特殊符号和原样显示。
 
+搜索建议的鼠标与键盘接续
+官方 SearchBox/view/searchResultsItems.jsx:126–127 和 M623:363–390、694–770
+把鼠标划过的普通或推荐建议设为当前项。Cumulus 保留输入框焦点，Enter 提交
+指向的建议；方向键以该项为起点继续循环。指针离开、输入变化或建议替换时
+清掉旧项，普通 Enter 继续提交当前原词。输入法合成和 Enter 防重复不变。
+`search_smoke.py --suggestion-matches` 同时验证指针命中、焦点、Enter、离开及改词。
+Linux WebView 的悬停和原词回归均通过，截图见 .build/search-hover-enter-webview/first/。
+
 删除最后一条搜索历史
 官方 SearchBox/view/history.jsx:173–182 单独删除至空时关闭当前搜索浮层。Cumulus
 等待原生回读确认，保留删除失败及非最后一条的浮层状态；当前查询或页面已变化时，

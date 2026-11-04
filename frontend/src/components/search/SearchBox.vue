@@ -44,6 +44,8 @@ const {
 const host = ref<HTMLElement>(),
   input = ref<HTMLInputElement>(),
   panel = ref<HTMLElement>();
+const suggestionsPanel = ref<InstanceType<typeof SearchSuggestions>>();
+watch(query, () => suggestionsPanel.value?.clearPointer(), { flush: 'sync' });
 const position = ref({ left: '0px', top: '0px', width: '779px', maxHeight: '622px' });
 const confirm = ref(false);
 let suppressFocus = false;
@@ -156,9 +158,17 @@ function key(event: KeyboardEvent) {
     focusInput();
     return;
   }
-  if (event.key === 'Enter' && event.target === input.value) {
+  const pointed = open.value ? suggestionsPanel.value?.activePointer() : undefined;
+  const fromInput = event.target === input.value;
+  const fromSuggestion =
+    event.target instanceof HTMLButtonElement &&
+    event.target.hasAttribute('data-search-suggestion');
+  if (event.key === 'Enter' && (fromInput || (pointed && fromSuggestion))) {
     event.preventDefault();
-    if (!event.repeat) submit();
+    if (!event.repeat) {
+      if (pointed) pointed.click();
+      else submit();
+    }
     return;
   }
   const direction = event.key;
@@ -182,7 +192,6 @@ function key(event: KeyboardEvent) {
       (!clip || (r.top >= clip.top && r.bottom <= clip.bottom))
     );
   });
-  const fromInput = event.target === input.value;
   const target = event.target as HTMLButtonElement;
   const suggestions = controls.filter((button) => button.hasAttribute('data-search-suggestion'));
   if (
@@ -191,7 +200,12 @@ function key(event: KeyboardEvent) {
     (fromInput ? direction === 'ArrowDown' || direction === 'ArrowUp' : controls.includes(target))
   ) {
     event.preventDefault();
-    const index = searchSuggestionIndex(suggestions.length, suggestions.indexOf(target), direction);
+    const index = searchSuggestionIndex(
+      suggestions.length,
+      suggestions.indexOf(pointed ?? target),
+      direction,
+    );
+    suggestionsPanel.value?.clearPointer();
     const next = index === undefined ? undefined : suggestions[index];
     next?.focus({ preventScroll: true });
     next?.scrollIntoView({ block: 'nearest' });
@@ -313,6 +327,7 @@ onUnmounted(() => {
         >
           <SearchSuggestions
             v-if="searching"
+            ref="suggestionsPanel"
             :query="query.trim()"
             :title="suggestionTitle"
             :recommended="recommended"

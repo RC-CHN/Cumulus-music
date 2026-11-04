@@ -281,16 +281,41 @@
         assert(getComputedStyle(marks[0]).color === getComputedStyle(marks[1]).color,
           "both hits use the same color");
         await capture("suggestion_literal_matches");
+        const point=(node)=>node.dispatchEvent(new PointerEvent("pointerenter",{pointerType:"mouse"}));
+        assert(hit(row)&&hit(unmatched),"both suggestion rows accept pointer input");
+        point(row);
+        await wait(()=>row.classList.contains("search-suggestion-pointed"),"pointer activation is visible");
+        assert(document.activeElement===input(),"pointer does not steal text focus");
         key(input(), "ArrowDown");
-        assert(document.activeElement === row, "highlight markup leaves keyboard navigation intact");
-        click(row);
+        assert(document.activeElement===unmatched,"arrow navigation advances from the pointer's active row");
+        input().focus();
+        point(row);
+        await wait(()=>row.classList.contains("search-suggestion-pointed"),"hover before Enter");
+        await capture("suggestion_pointer_active");
+        key(input(),"Enter");
         await wait(() => !panel() && one(".search-heading-copy h1")?.textContent === "合成精确词",
-          "selection submits the canonical keyword");
-        assert(input().value === label, "selected input preserves the display label");
+          "Enter chooses the hovered suggestion's canonical keyword");
+        assert(input().value === label, "hover selection preserves the display label");
+        input().click();
+        type("退出悬停");
+        await wait(()=>one(".search-suggestion[title='"+noMatch+"']"),"reopen hover suggestions");
+        point(one(".search-suggestion[title='"+noMatch+"']"));
+        one(".search-suggestions").dispatchEvent(new PointerEvent("pointerleave",{pointerType:"mouse"}));
+        key(input(),"Enter");
+        await wait(()=>!panel()&&one(".search-heading-copy h1")?.textContent==="退出悬停",
+          "leaving the suggestion list restores raw Enter");
+        input().click();
+        type("第一词");
+        await wait(()=>one(".search-suggestion[title='"+noMatch+"']"),"reopen for stale pointer check");
+        point(one(".search-suggestion[title='"+noMatch+"']"));
+        type("更改后的原词");
+        key(input(),"Enter");
+        await wait(()=>!panel()&&one(".search-heading-copy h1")?.textContent==="更改后的原词",
+          "editing cannot submit a stale hovered suggestion");
       } finally {
         core.searchDiscovery = read;
       }
-      await emit("complete", { ok: true, suggestionMatchesVerified: true, stageCount: count,
+      await emit("complete", { ok: true, suggestionMatchesVerified: true, suggestionPointerVerified:true, stageCount: count,
         realMusicRequests: 0, realAccountWrites: 0 });
       return;
     }

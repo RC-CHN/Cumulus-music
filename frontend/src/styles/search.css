@@ -267,7 +267,8 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.search-suggestion:hover,
+.search-exact:hover,
+.search-suggestion-pointed,
 .search-suggestion:focus-visible {
   background: var(--surface-hover);
 }

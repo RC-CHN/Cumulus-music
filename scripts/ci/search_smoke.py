@@ -51,8 +51,10 @@ def main():
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         flag = ('historyLastVerified' if args.history_last else
                 'suggestionMatchesVerified' if args.suggestion_matches else 'exactFallbackVerified')
-        count = 1 if args.suggestion_matches else 3
+        count = 2 if args.suggestion_matches else 3
         assert complete['ok'] and complete[flag] and complete['stageCount'] == count
+        if args.suggestion_matches:
+            assert complete['suggestionPointerVerified']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (count if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, **{flag: True})))
