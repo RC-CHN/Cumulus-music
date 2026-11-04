@@ -10,6 +10,7 @@ use std::{
 };
 
 mod abi;
+mod cold_authority;
 use abi::{Api, FrameHeader, Handle};
 
 const RATE: u32 = 44_100;
@@ -417,10 +418,8 @@ fn expect_packet(packet: DecodedPacket, generation: Generation, start: u64) -> u
     pcm.len() / CHANNELS
 }
 
-#[test]
-#[ignore = "requires a trusted native libFLAC 1.5.0; no ffmpeg executable or audio device"]
-fn limiter_inprocess_flac_exact_random_seek_and_generation_eof() {
-    let sdk = std::env::var_os("CUMULUS_FLAC_PROBE_LIBRARY")
+fn sdk_path() -> PathBuf {
+    std::env::var_os("CUMULUS_FLAC_PROBE_LIBRARY")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             #[cfg(target_os = "linux")]
@@ -429,8 +428,13 @@ fn limiter_inprocess_flac_exact_random_seek_and_generation_eof() {
             }
             #[cfg(not(target_os = "linux"))]
             panic!("set CUMULUS_FLAC_PROBE_LIBRARY to the trusted libFLAC DLL");
-        });
-    let api = Api::open(&sdk).unwrap();
+        })
+}
+
+#[test]
+#[ignore = "requires a trusted native libFLAC 1.5.0; no ffmpeg executable or audio device"]
+fn limiter_inprocess_flac_exact_random_seek_and_generation_eof() {
+    let api = Api::open(&sdk_path()).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("seek.flac");
     api.encode_fixture(&file, RATE, FLAC_BLOCK, TOTAL, source_pair)

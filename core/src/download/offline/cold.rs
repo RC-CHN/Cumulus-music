@@ -24,6 +24,9 @@ use std::{
     path::PathBuf,
 };
 
+mod flac;
+pub use flac::{ColdOfflineFlacAuthority, ColdOfflineFlacReader};
+
 /// Native handle to already-opened, verified downloaded audio. No file path or
 /// account identity is exposed. A future host must stop decoding on revocation.
 pub struct ColdOfflineAudio<'a> {

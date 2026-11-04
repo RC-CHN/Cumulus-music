@@ -1,0 +1,59 @@
+Cold offline FLAC source handoff
+
+The standalone core now exposes ColdOfflineGrant::open_flac_reader on an
+owned native grant. It accepts a published task ID and the host's current
+playback/focus lease. It does not accept a path, URL, account ID or decoder
+choice from the frontend. The current cold player and ordinary libmpv paths
+have not changed, and the limiter is not enabled in production.
+
+The operation calls the existing cold download gate. That gate validates
+the selected verified profile, owner, task/ledger, file length and SHA-256,
+format, and encrypted membership before returning an already-open File.
+The new reader takes that exact File. It accepts native FLAC or wraps the
+same encrypted File in the existing strict NCM reader and requires a FLAC
+payload. It never reopens by path or writes plaintext. On both branches
+offset zero is the first byte of FLAC; seeks outside the measured payload
+and early file truncation are errors. A read exposes at most 64 KiB and
+checks authorization again before copying scratch bytes to its caller.
+Holding the original descriptor protects against pathname replacement;
+this is not an immutable snapshot against in-place edits by another handle.
+
+The returned ColdOfflineFlacAuthority is a separate owned handle. Keep one
+in the host when moving the reader into the decoder. Share its Cancellation
+with both decoder and future sink, including the path that publishes already
+buffered PCM. Fast checks include the cold AccountSession generation and
+Unknown state, explicit grant revocation, the host's playback/focus lease,
+and cached membership's wall/monotonic expiry. They do not query SQLite or
+start HTTP. Call authority.validate on the host worker before publication
+and during ordinary polling to revalidate the stored profile binding and
+membership record. A failed validation or observed expired/stale fast
+predicate latches denial for all authority clones. This reader does not
+itself stop a native device; a future owner must retire the sink and discard
+prefetched audio when that shared fence closes, using the existing cold
+rights-loss classification. The existing blocking SHA verification still
+finishes its current operation before the new lease is checked again.
+
+Routine core validation uses the actual synthetic verified profile and
+persisted task/ledger. It checks missing membership, absolute and end-
+relative payload seeks, late authority failure before copying output,
+membership cache removal via host revalidation, permanent denial, and
+the exact membership deadline with a deterministic clock. Plain FLAC
+keeps its authority when a protected track's cached entitlement expires.
+
+The opt-in Linux proof uses actual libFLAC 1.5.0 against both authorized
+plain FLAC and strict NCM-FLAC. It replaces each path after opening the
+source, proves that a new grant open rejects the substitute, and decodes
+and sample-seeks through the held original descriptor. It then detaches
+the actual cold AccountSession while both native decoders have buffered
+PCM, and verifies neither can publish the pending block. The synthetic
+HTTP backend sees only the original profile adoption, no playback I/O.
+
+    cargo test --locked -p cumulus-core --lib cold_flac_reader
+    cargo test --locked -p cumulus-core --lib limiter_inprocess_flac_cold_grant -- --ignored --nocapture
+
+Use CUMULUS_FLAC_PROBE_LIBRARY for a trusted absolute libFLAC 1.5.0 path.
+See limiter-inprocess-decoder.txt for library packaging limits and
+limiter-authorized-source-contract.txt for transport/online differences.
+No Windows native decoder, hardware output, ordinary download-path adapter,
+authorized HTTP Range source, or production engine/filter switch is proved
+by this boundary. No production dependency or bundle asset was added.

@@ -3,7 +3,9 @@
 use super::*;
 use crate::{
     account::SessionStatus,
+    download::offline::ColdOfflineFlacReader,
     membership::{ColdEntitlement, ColdMembership},
+    playback::engine::Cancellation,
 };
 
 const BINDING: &str = "cold-offline-binding-v1";
@@ -110,6 +112,15 @@ impl ProfileRegistry {
 }
 
 impl ColdOfflineGrant {
+    #[cfg(test)]
+    pub(crate) fn with_membership_clock_for_test(
+        mut self,
+        clock: Arc<dyn crate::membership::clock::MembershipClock>,
+    ) -> Self {
+        self.membership = ColdMembership::with_clock(clock);
+        self
+    }
+
     /// Hosts explicitly close their local mode before switch/logout and stop
     /// the associated decoder. Any authority change also invalidates the grant.
     pub fn revoke(&self) {
@@ -170,6 +181,31 @@ impl ColdOfflineGrant {
         task_id: &str,
     ) -> Result<crate::download::offline::ColdOfflineAudio<'_>> {
         self.open_download(task_id, Some(&self.membership))
+    }
+
+    /// Native decoder handoff for verified plain FLAC or strict NCM-FLAC.
+    /// `lease` must be the host's current playback lifetime/focus predicate.
+    /// No path, URL or separate decryption permission is accepted.
+    pub fn open_flac_reader(
+        self: &Arc<Self>,
+        task_id: &str,
+        lease: Cancellation,
+    ) -> Result<ColdOfflineFlacReader> {
+        lease.check()?;
+        let (file, entitlement) = self.open_audio(task_id)?.into_playback()?;
+        ColdOfflineFlacReader::new(self.clone(), file, entitlement, lease)
+    }
+
+    /// Callback-safe account/revocation fence. The host must also call the
+    /// blocking validation at publication and during its normal polling.
+    pub(crate) fn playback_current(&self) -> bool {
+        !self.revoked.load(Ordering::Acquire)
+            && self.online.snapshot().is_ok_and(|session| {
+                session.status == SessionStatus::Unknown
+                    && session.token.generation == self.generation
+                    && session.token.uid.is_none()
+            })
+            && !self.revoked.load(Ordering::Acquire)
     }
 
     fn open_download(

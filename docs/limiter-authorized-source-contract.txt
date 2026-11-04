@@ -118,3 +118,6 @@ changed validator/total, auth expiry and refresh on only the existing retry
 paths, and account switch with an outstanding response. A real authorized
 CDN read on each shipped runtime is a later separate proof. Nothing here
 changes source handling, dependencies, package assets or enabled effects.
+
+The later cold-offline-flac-handoff.txt contract adds and verifies the
+native-only cold source reader; the active engine remains unchanged.

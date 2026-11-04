@@ -18,8 +18,13 @@ pub(crate) struct ColdMembership {
 }
 impl Default for ColdMembership {
     fn default() -> Self {
+        Self::with_clock(Arc::new(SystemMembershipClock::default()))
+    }
+}
+impl ColdMembership {
+    pub(crate) fn with_clock(clock: Arc<dyn MembershipClock>) -> Self {
         Self {
-            clock: Arc::new(SystemMembershipClock::default()),
+            clock,
             anchored: Mutex::new(None),
         }
     }
