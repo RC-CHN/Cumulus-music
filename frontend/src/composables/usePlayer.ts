@@ -875,17 +875,23 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         expected_play_id: playId,
         before_entry_id: before,
       };
-      const row = { revision: source.revision, track_id: source.trackId };
-      return source.kind === 'local'
-        ? { kind: 'drop_local_into_queue', query: source.query, ...row, ...target }
-        : {
-            kind: 'drop_playlist_song_into_queue',
-            id: source.id,
-            track_index: source.trackIndex,
-            quality: source.quality,
-            ...row,
-            ...target,
-          };
+      if (source.kind === 'local') {
+        return {
+          kind: 'drop_local_into_queue',
+          query: source.query,
+          revision: source.revision,
+          track_id: source.trackId,
+          ...target,
+        };
+      }
+      const rows = source.rows.map(({ trackId, trackIndex }) => ({
+        track_id: trackId,
+        track_index: trackIndex,
+      }));
+      const playlist = { id: source.id, revision: source.revision, quality: source.quality };
+      return rows.length === 1
+        ? { kind: 'drop_playlist_song_into_queue', ...rows[0], ...playlist, ...target }
+        : { kind: 'drop_playlist_songs_into_queue', rows, ...playlist, ...target };
     });
   }
   async function sendQueueEdit(

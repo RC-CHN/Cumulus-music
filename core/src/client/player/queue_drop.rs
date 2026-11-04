@@ -9,7 +9,12 @@ use crate::{
     protocol::{api::identifier, wire::serialization::js_truthy},
 };
 use serde_json::{Value, json};
-use std::sync::atomic::Ordering;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::atomic::Ordering,
+};
+
+use super::{identity::collection_key, queue_playlist::QUEUE_LIMIT};
 
 pub(super) enum DropSource {
     Local {
@@ -20,8 +25,7 @@ pub(super) enum DropSource {
     Playlist {
         id: String,
         revision: String,
-        track_id: String,
-        track_index: usize,
+        rows: Vec<PlaylistDropRow>,
         quality: Quality,
     },
 }
@@ -79,7 +83,7 @@ impl MusicClient {
             None => queue.items.len(),
         };
         let attempt = self.player.selection.load(Ordering::Acquire);
-        let (resource, origin) = match source {
+        let (resources, origin) = match source {
             DropSource::Local {
                 mut query,
                 revision,
@@ -104,20 +108,21 @@ impl MusicClient {
                 })
                 .await
                 .map_err(|_| Error::State("local drop worker stopped"))??;
-                (resource, json!({"kind":"local","revision":revision}))
+                (vec![resource], json!({"kind":"local","revision":revision}))
             }
             DropSource::Playlist {
                 id,
                 revision,
-                track_id,
-                track_index,
+                rows,
                 quality,
             } => {
                 if token.uid.is_none() {
                     return Err(Error::State("playlist drops require an active account"));
                 }
+                if rows.is_empty() || rows.len() > QUEUE_LIMIT {
+                    return Err(Error::InvalidInput("invalid playlist drop selection size"));
+                }
                 let id = identifier(&json!(id))?;
-                let track_id = identifier(&json!(track_id))?;
                 let detail = self
                     .session
                     .run_for(&token, |api, _| async {
@@ -130,38 +135,52 @@ impl MusicClient {
                 if identifier(&detail["id"])? != id
                     || tracks.len() > 50_000
                     || super::playlist_batch::track_revision(&id, tracks)? != revision
-                    || !tracks.get(track_index).is_some_and(|row| {
-                        row["v"].as_i64() != Some(-1)
-                            && identifier(&row["id"]).is_ok_and(|actual| actual == track_id)
-                    })
                 {
                     return Err(Error::QueueChanged);
                 }
-                if self.player.selection.load(Ordering::Acquire) != attempt {
-                    return Err(Error::StaleResponse);
+                let mut seen = HashSet::new();
+                let mut ids = Vec::new();
+                // The ordinary viewer's selection Set is already in gesture
+                // order; resolving the source ordinals must not sort it.
+                for row in rows {
+                    let id = identifier(&json!(row.track_id))?;
+                    if !tracks.get(row.track_index).is_some_and(|track| {
+                        track["v"].as_i64() != Some(-1)
+                            && identifier(&track["id"]).is_ok_and(|actual| actual == id)
+                    }) {
+                        return Err(Error::QueueChanged);
+                    }
+                    if seen.insert(id.clone()) {
+                        ids.push(json!(id));
+                    }
                 }
-                let batch = self
-                    .session
-                    .run_for(&token, |api, _| async {
-                        CatalogApi::new(api).songs(&[json!(track_id)], 1).await
-                    })
-                    .await?;
-                let song = batch
-                    .songs
-                    .into_iter()
-                    .flatten()
-                    .next()
-                    .ok_or(Error::State("playlist drop song is unavailable"))?;
-                if js_truthy(&song["privilege"]["cs"])
-                    || batch
-                        .privileges
-                        .get(&track_id)
-                        .is_some_and(|p| js_truthy(&p["cs"]))
-                {
-                    return Err(Error::State("playlist drops do not support cloud songs"));
+                let mut resources = Vec::with_capacity(ids.len());
+                for chunk in ids.chunks(100) {
+                    if self.player.selection.load(Ordering::Acquire) != attempt {
+                        return Err(Error::StaleResponse);
+                    }
+                    let batch = self
+                        .session
+                        .run_for(&token, |api, _| async {
+                            CatalogApi::new(api).songs(chunk, 100).await
+                        })
+                        .await?;
+                    for (song, id) in batch.songs.into_iter().zip(chunk) {
+                        let song = song.ok_or(Error::State("playlist drop song is unavailable"))?;
+                        if js_truthy(&song["privilege"]["cs"])
+                            || id
+                                .as_str()
+                                .and_then(|id| batch.privileges.get(id))
+                                .is_some_and(|p| js_truthy(&p["cs"]))
+                        {
+                            return Err(Error::State("playlist drops do not support cloud songs"));
+                        }
+                        resources.push(super::queue_playlist::catalog_queue_resource(
+                            &song, quality,
+                        )?);
+                    }
                 }
-                let resource = super::queue_playlist::catalog_queue_resource(&song, quality)?;
-                (resource, json!({"kind":"playlist","id":id}))
+                (resources, json!({"kind":"playlist","id":id}))
             }
         };
         self.session.check_generation(&token)?;
@@ -179,7 +198,7 @@ impl MusicClient {
         {
             return Err(Error::State("drops require ordinary playback"));
         }
-        insert_drop(&mut queue, resource, origin, boundary)?;
+        insert_drop(&mut queue, &resources, &origin, boundary)?;
         let expected = before.fence();
         let value = controller
             .command_guarded(
@@ -200,49 +219,64 @@ impl MusicClient {
 
 fn insert_drop(
     queue: &mut QueueSnapshot,
-    resource: Value,
-    source: Value,
-    mut boundary: usize,
+    resources: &[Value],
+    source: &Value,
+    boundary: usize,
 ) -> Result<()> {
-    let key = super::identity::collection_key(&resource, false)
-        .ok_or(Error::State("drop resource has no queue identity"))?;
-    let matches =
-        |entry: &QueueEntry| super::identity::collection_key(&entry.resource, false) == Some(key);
-    let mut duplicates = queue.items.iter().filter(|entry| matches(entry));
-    let first = duplicates.next();
-    let current = first
-        .filter(|entry| queue.current.as_ref() == Some(&entry.entry_id))
-        .or_else(|| duplicates.find(|entry| queue.current.as_ref() == Some(&entry.entry_id)));
-    let inserted = if let Some(current) = current {
-        // Moving the active duplicate keeps its exact loaded bytes and play ID.
-        current.clone()
-    } else if let Some(first) = first {
-        QueueEntry {
-            entry_id: first.entry_id.clone(),
-            resource: resource.clone(),
-            source,
+    let mut keys = HashSet::new();
+    let distinct = resources
+        .iter()
+        .map(|resource| {
+            let key = collection_key(resource, false)
+                .ok_or(Error::State("drop resource has no queue identity"))?;
+            Ok((key, resource))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let distinct = distinct
+        .into_iter()
+        .filter(|(key, _)| keys.insert(*key))
+        .collect::<Vec<_>>();
+    let mut duplicates = HashMap::new();
+    let mut removed = 0;
+    let mut prefix_removed = 0;
+    for (index, entry) in queue.items.iter().enumerate() {
+        if let Some(key) = collection_key(&entry.resource, false).filter(|key| keys.contains(key)) {
+            removed += 1;
+            prefix_removed += usize::from(index < boundary);
+            let first = duplicates.entry(key).or_insert(entry);
+            if queue.current.as_ref() == Some(&entry.entry_id) {
+                *first = entry;
+            }
         }
-    } else {
-        if queue.items.len() >= super::queue_playlist::QUEUE_LIMIT {
-            return Err(Error::State("drop would exceed queue capacity"));
-        }
-        QueueEntry {
-            entry_id: uuid::Uuid::new_v4().to_string(),
-            resource: resource.clone(),
-            source,
-        }
-    };
-    let mut index = 0;
-    let original_boundary = boundary;
+    }
+    if queue.items.len() - removed + distinct.len() > QUEUE_LIMIT {
+        return Err(Error::State("drop would exceed queue capacity"));
+    }
+    let inserted = distinct
+        .into_iter()
+        .map(|(key, resource)| {
+            let prior = duplicates.get(&key);
+            if let Some(prior) =
+                prior.filter(|entry| queue.current.as_ref() == Some(&entry.entry_id))
+            {
+                // Moving the active duplicate keeps its exact loaded bytes and play ID.
+                return (**prior).clone();
+            }
+            QueueEntry {
+                entry_id: prior.map_or_else(
+                    || uuid::Uuid::new_v4().to_string(),
+                    |entry| entry.entry_id.clone(),
+                ),
+                resource: resource.clone(),
+                source: source.clone(),
+            }
+        })
+        .collect::<Vec<_>>();
     queue.items.retain(|entry| {
-        let duplicate = matches(entry);
-        if duplicate && index < original_boundary {
-            boundary -= 1;
-        }
-        index += 1;
-        !duplicate
+        !collection_key(&entry.resource, false).is_some_and(|key| keys.contains(&key))
     });
-    queue.items.insert(boundary, inserted);
+    let split = boundary - prefix_removed;
+    queue.items.splice(split..split, inserted);
     queue.order = queue
         .items
         .iter()

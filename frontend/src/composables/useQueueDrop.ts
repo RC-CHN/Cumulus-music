@@ -8,19 +8,21 @@ function suppressReleasedClick(owner: Element, pointerId: number) {
     if (!(event.target instanceof Element) || !row!.contains(event.target)) return;
     event.preventDefault();
     event.stopImmediatePropagation();
-    release();
+    setTimeout(release, 0);
   }
   function up(event: PointerEvent) {
     if (event.pointerId === pointerId) setTimeout(release, 0);
   }
   function release() {
     document.removeEventListener('click', click, true);
+    document.removeEventListener('dblclick', click, true);
     document.removeEventListener('pointerup', up, true);
     document.removeEventListener('pointercancel', up, true);
     document.removeEventListener('pointerdown', release, true);
     window.removeEventListener('blur', release);
   }
   document.addEventListener('click', click, true);
+  document.addEventListener('dblclick', click, true);
   document.addEventListener('pointerup', up, true);
   document.addEventListener('pointercancel', up, true);
   document.addEventListener('pointerdown', release, true);
@@ -44,6 +46,7 @@ export function useQueueDrop(options: {
 }) {
   const boundary = ref<number>();
   const dragging = ref(false);
+  const itemCount = ref(0);
   const marker = computed(() =>
     boundary.value === undefined ? undefined : boundary.value * options.rowHeight,
   );
@@ -107,6 +110,7 @@ export function useQueueDrop(options: {
       window.removeEventListener('blur', cancel);
       stop = undefined;
       dragging.value = false;
+      itemCount.value = 0;
       boundary.value = undefined;
     }
     function move(e: PointerEvent) {
@@ -116,6 +120,7 @@ export function useQueueDrop(options: {
       y = e.clientY;
       if (!dragging.value && Math.hypot(x - event.clientX, y - event.clientY) >= 6) {
         dragging.value = true;
+        itemCount.value = source.kind === 'playlist' ? source.rows.length : 1;
         // Preserve cancellation even if the pointer returns to the title
         // after Escape and WebView dispatches its compatibility click.
         if (owner instanceof Element) suppressReleasedClick(owner, event.pointerId);
@@ -165,5 +170,5 @@ export function useQueueDrop(options: {
     () => stop?.(),
   );
   onBeforeUnmount(() => stop?.());
-  return { begin, dragging, marker };
+  return { begin, dragging, marker, itemCount };
 }

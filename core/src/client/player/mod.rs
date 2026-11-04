@@ -483,8 +483,36 @@ impl MusicClient {
                         DropSource::Playlist {
                             id,
                             revision,
-                            track_id,
-                            track_index,
+                            rows: vec![PlaylistDropRow {
+                                track_id,
+                                track_index,
+                            }],
+                            quality,
+                        },
+                        DropTarget {
+                            expected_queue_revision,
+                            expected_play_id,
+                            before_entry_id,
+                        },
+                    )
+                    .await;
+            }
+            PlayerAction::DropPlaylistSongsIntoQueue {
+                id,
+                revision,
+                rows,
+                quality,
+                expected_queue_revision,
+                expected_play_id,
+                before_entry_id,
+            } => {
+                return self
+                    .drop_into_queue(
+                        epoch,
+                        DropSource::Playlist {
+                            id,
+                            revision,
+                            rows,
                             quality,
                         },
                         DropTarget {
@@ -1094,6 +1122,7 @@ impl MusicClient {
             | PlayerAction::QueueLocal { .. }
             | PlayerAction::DropLocalIntoQueue { .. }
             | PlayerAction::DropPlaylistSongIntoQueue { .. }
+            | PlayerAction::DropPlaylistSongsIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
             | PlayerAction::QueueCloudBatch { .. } => {
                 unreachable!("handled before user transport commands")

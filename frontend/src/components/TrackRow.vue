@@ -23,6 +23,7 @@ const props = defineProps<{
   pendingToggle?: TrackPendingToggle;
   toggleBusy?: boolean;
   navigable?: boolean;
+  selection?: boolean;
 }>();
 const emit = defineEmits<{
   like: [track: TrackView];
@@ -33,6 +34,7 @@ const emit = defineEmits<{
   artist: [id: string];
   album: [id: string];
 }>();
+const cellRole = computed(() => (props.selection === undefined ? 'cell' : 'gridcell'));
 const shownToggle = computed(() => props.pendingToggle ?? props.currentToggle);
 function primary(event: MouseEvent) {
   const anchor = event.currentTarget as HTMLButtonElement;
@@ -62,10 +64,11 @@ function duration(ms: number) {
     @contextmenu.prevent.stop="more"
     @keydown.shift.f10.prevent.stop="more"
     role="row"
+    :aria-selected="selection"
     :aria-rowindex="index + 2"
     :data-track-id="track.id"
   >
-    <span class="track-index" role="cell"
+    <span class="track-index" :role="cellRole"
       ><button
         class="track-play icon-button"
         data-result-action="play"
@@ -90,7 +93,7 @@ function duration(ms: number) {
           "
         /></button
     ></span>
-    <div class="track-title" role="cell">
+    <div class="track-title" :role="cellRole">
       <img
         v-if="track.coverUrl"
         :src="artworkAt(track.coverUrl, 120)"
@@ -145,7 +148,7 @@ function duration(ms: number) {
         </small>
       </div>
     </div>
-    <span class="track-album ellipsis" role="cell" :data-tooltip="track.album"
+    <span class="track-album ellipsis" :role="cellRole" :data-tooltip="track.album"
       ><button
         v-if="navigable && track.albumId"
         class="track-album-link ellipsis"
@@ -159,7 +162,7 @@ function duration(ms: number) {
       <SearchMatchText v-else-if="matchKeyword" :text="track.album" :keyword="matchKeyword" />
       <template v-else>{{ track.album }}</template></span
     >
-    <span role="cell"
+    <span :role="cellRole"
       ><button
         class="icon-button like-button"
         data-result-action="like"
@@ -172,7 +175,7 @@ function duration(ms: number) {
       >
         <Icon name="heart" /></button
     ></span>
-    <span class="track-time-actions" role="cell"
+    <span class="track-time-actions" :role="cellRole"
       ><span class="track-duration">{{ track.missing ? '—' : duration(track.durationMs) }}</span
       ><button
         class="icon-button track-more"

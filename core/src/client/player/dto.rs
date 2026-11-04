@@ -330,6 +330,12 @@ pub enum QueueEdit {
     Clear,
 }
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlaylistDropRow {
+    pub track_id: String,
+    pub track_index: usize,
+}
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
     QueueFor {
@@ -358,6 +364,15 @@ pub enum PlayerAction {
         revision: String,
         track_id: String,
         track_index: usize,
+        quality: Quality,
+        expected_queue_revision: String,
+        expected_play_id: Option<String>,
+        before_entry_id: Option<String>,
+    },
+    DropPlaylistSongsIntoQueue {
+        id: String,
+        revision: String,
+        rows: Vec<PlaylistDropRow>,
         quality: Quality,
         expected_queue_revision: String,
         expected_play_id: Option<String>,

@@ -2493,18 +2493,27 @@ const playlistTrackSearch = computed(() =>
       : '',
   ),
 );
+const playlistSelectionScope = computed(() =>
+  signedIn.value &&
+  page.value.kind === 'playlist' &&
+  playlistSongsActive.value &&
+  result.value?.playlist?.id === page.value.id &&
+  result.value.revision
+    ? `${account.value.epoch}:${page.value.id}:${result.value.revision}`
+    : undefined,
+);
 const canDropPlaylistSong = computed(
   () =>
-    signedIn.value &&
+    !!playlistSelectionScope.value &&
     player.queueOpen.value &&
     queuePanel.value?.canDrop === true &&
-    page.value.kind === 'playlist' &&
-    playlistSongsActive.value &&
-    result.value?.playlist?.id === page.value.id &&
-    !!result.value.revision &&
     !loading.value,
 );
-function startPlaylistQueueDrop(event: PointerEvent, track: TrackView, index: number) {
+function startPlaylistQueueDrop(
+  event: PointerEvent,
+  rows: { track: TrackView; index: number }[],
+  selectionCurrent: () => boolean,
+) {
   const route = page.value;
   const snapshot = result.value;
   if (route.kind !== 'playlist' || !snapshot?.revision || !canDropPlaylistSong.value) return;
@@ -2512,22 +2521,30 @@ function startPlaylistQueueDrop(event: PointerEvent, track: TrackView, index: nu
   const revision = snapshot.revision;
   const epoch = account.value.epoch;
   const keyword = playlistKeyword.value;
-  const ordinal = playlistTrackSearch.value.positions?.[index] ?? index;
+  const position = playlistTrackSearch.value.positions;
+  const ordinals = rows.map(({ track, index }) => ({
+    trackId: track.id,
+    trackIndex: position?.[index] ?? index,
+  }));
   const current = () =>
     canDropPlaylistSong.value &&
+    selectionCurrent() &&
     page.value === route &&
     account.value.epoch === epoch &&
     playlistKeyword.value === keyword &&
     result.value?.revision === revision &&
-    result.value.tracks[ordinal]?.id === track.id &&
-    playlistTrackSearch.value.tracks[index]?.id === track.id;
-  if (!current()) return;
+    result.value.tracks === snapshot.tracks &&
+    playlistTrackSearch.value.positions === position;
+  if (
+    !current() ||
+    !ordinals.every(({ trackId, trackIndex }) => snapshot.tracks[trackIndex]?.id === trackId)
+  )
+    return;
   queuePanel.value?.beginDrop(event, {
     kind: 'playlist',
     id,
     revision,
-    trackId: track.id,
-    trackIndex: ordinal,
+    rows: ordinals,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
     current,
   });
@@ -4596,6 +4613,7 @@ onUnmounted(() => {
                     navigable
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"
+                    :playlist-selection-scope="playlistSelectionScope"
                     :queue-drop-enabled="canDropPlaylistSong"
                     @queue-drag="startPlaylistQueueDrop"
                     :tracks="playlistTrackSearch.tracks"

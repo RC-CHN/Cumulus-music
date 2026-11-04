@@ -241,8 +241,7 @@ export type PlaylistQueueDropSource = {
   kind: 'playlist';
   id: string;
   revision: string;
-  trackId: string;
-  trackIndex: number;
+  rows: { trackId: string; trackIndex: number }[];
   quality: Quality;
   current: () => boolean;
 };
@@ -389,6 +388,16 @@ export type PlayerAction =
       revision: string;
       track_id: string;
       track_index: number;
+      quality: Quality;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
+    }
+  | {
+      kind: 'drop_playlist_songs_into_queue';
+      id: string;
+      revision: string;
+      rows: { track_id: string; track_index: number }[];
       quality: Quality;
       expected_queue_revision: string;
       expected_play_id: string | null;

@@ -713,7 +713,12 @@ async function confirmClear(event: Event) {
         正在移动 {{ dragging.size }} 项 · Esc 取消
       </div>
       <div v-else-if="externalDrop.dragging.value" class="queue-drag-hint" role="status">
-        正在添加歌曲 · Esc 取消
+        {{
+          externalDrop.itemCount.value > 1
+            ? `正在添加 ${externalDrop.itemCount.value} 首歌曲`
+            : '正在添加歌曲'
+        }}
+        · Esc 取消
       </div>
     </div>
     <ModalTransition

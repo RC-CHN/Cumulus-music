@@ -129,17 +129,17 @@
     click(button('播放队列'));
     await wait(()=>one('.queue-scroll')?.querySelectorAll('.queue-row').length>=2,'ordinary drop destination');
     await sleep(350);
-    function startDrop() {
-      const source=one('.track-scroll [data-track-id="507"] .track-row-title-text');
-      const viewport=one('.queue-scroll');
+    const sourceTitle=(id)=>one(`.track-scroll [data-track-id="${id}"] .track-row-title-text`);
+    const pointer=(node,type,clientX,clientY,mods={})=>node.dispatchEvent(new PointerEvent(type,{
+      bubbles:true,cancelable:true,pointerId:57,pointerType:'mouse',button:0,buttons:type==='pointerup'?0:1,clientX,clientY,...mods,
+    }));
+    function startDrop(id='507') {
+      const source=sourceTitle(id), viewport=one('.queue-scroll');
       viewport.scrollTop=0;
       const a=source.getBoundingClientRect(), b=viewport.getBoundingClientRect();
       const x=a.left+4, y=a.top+a.height/2, X=b.left+b.width/2, Y=b.top+72;
       assert(source.contains(document.elementFromPoint(x,y)) &&
         viewport.contains(document.elementFromPoint(X,Y)),'source and destination are both pointer reachable');
-      const pointer=(node,type,clientX,clientY)=>node.dispatchEvent(new PointerEvent(type,{
-        bubbles:true,cancelable:true,pointerId:57,pointerType:'mouse',button:0,buttons:type==='pointerup'?0:1,clientX,clientY,
-      }));
       pointer(source,'pointerdown',x,y); pointer(viewport,'pointermove',X,Y);
       return ()=>pointer(viewport,'pointerup',X,Y);
     }
@@ -168,9 +168,50 @@
     assert(after.state==='paused' && after.playId===before.playId && after.entryId===before.entryId &&
       Math.abs(after.position-before.position)<.05 && !one('.playback-message'),'retains native playback and avoids an audio error');
     await capture('playlist_drop_done',{inserted:'507',at:1});
+    step='ordered multi-selection drop';
+    field.value=''; field.dispatchEvent(new Event('input',{bubbles:true}));
+    await wait(()=>all('.track-scroll [data-track-id]').length===4,'full native playlist rows');
+    const selected=()=>all('.track-scroll [aria-selected="true"]').map(node=>node.dataset.trackId);
+    const row=(id)=>sourceTitle(id).closest('[role="row"]');
+    function selectRow(id,mods={}) {
+      const target=sourceTitle(id), box=target.getBoundingClientRect(), x=box.left+4,y=box.top+box.height/2;
+      pointer(target,'pointerdown',x,y,mods); pointer(target,'pointerup',x,y,mods);
+      target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,...mods}));
+    }
+    selectRow('508'); selectRow('506',{shiftKey:true});
+    await wait(()=>selected().join(',')==='506,507,508','Shift selects the displayed range');
+    assert(row('506').closest('[role="grid"]').getAttribute('aria-multiselectable')==='true',
+      'playlist grid exposes its multiselect state');
+    key(row('506'),'a',{ctrlKey:true});
+    await wait(()=>selected().length===4,'keyboard selects loaded rows');
+    key(row('506'),'ArrowDown');
+    await wait(()=>selected().join(',')==='508' && document.activeElement===row('508'),
+      'keyboard down selects and focuses the row after the lower selection edge');
+    selectRow('506',{ctrlKey:true});
+    await wait(()=>selected().join(',')==='506,508','both reverse-clicked rows are selected in the grid');
+    const dropSelected=startDrop('506');
+    await wait(()=>one('.queue-drop-marker')?.style.top==='64px' &&
+      one('.queue-drag-hint')?.textContent.includes('正在添加 2 首歌曲'),'group insertion marker');
+    const marker=one('.queue-drop-marker'), bounds=marker.getBoundingClientRect();
+    await capture('playlist_multi_drop_boundary',{screenX,screenY,ratio:devicePixelRatio,
+      paintSamples:[{x:bounds.left+8,y:bounds.top+1,color:getComputedStyle(marker).backgroundColor}]});
+    dropSelected();
+    const batchExpected=queueIds(inserted); batchExpected.splice(1,0,'508','506');
+    let batchResult;
+    for(let i=0;i<200;i++) {
+      const observed=await invoke('player_queue',{epoch});
+      if(queueIds(observed).join(',')===batchExpected.join(',')){batchResult=observed;break;}
+      await sleep(30);
+    }
+    assert(batchResult && batchResult.revision!==inserted.revision,
+      'group inserted in Ctrl selection order instead of display order');
+    const unchanged=await invoke('player_snapshot',{epoch});
+    assert(unchanged.state==='paused' && unchanged.playId===before.playId && unchanged.entryId===before.entryId &&
+      Math.abs(unchanged.position-before.position)<.05,'group drop retains native transport');
+    await capture('playlist_multi_drop_done',{inserted:['508','506'],at:1});
     click(button('关闭播放队列')); await wait(()=>!one('.queue-panel'),'close drop destination');
     await library();
     await fixture('expired_detail'); await open(7); await choose('下一首播放'); await wait(()=>button('重新登录') || button('点击登录'),'expired account'); await capture('expired');
-    await emit('complete',{ok:true,playlistQueueUi:true,onlinePlaylistDrop:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,playlistQueueUi:true,onlinePlaylistDrop:true,onlinePlaylistMultiDrop:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
   } catch(error) { await emit('failed',{step,message:String(error),stack:error.stack,stageCount:count}); }
 })();
