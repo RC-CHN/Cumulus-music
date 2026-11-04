@@ -609,6 +609,13 @@ const podcastHome = usePodcastHome(
     void music.bootstrap(false);
   },
 );
+watch(
+  settings.personalServiceObservation,
+  (value) => {
+    if (value) podcastHome.observePersonalService(value);
+  },
+  { flush: 'sync' },
+);
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
 }
@@ -1071,7 +1078,7 @@ watch(
 function mainPageEntered() {
   miniFmFocus.complete();
   restoreDailyMenuFocus();
-  focusAudioOutput();
+  focusSettingsSection();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
   if (document.activeElement !== document.body) return;
@@ -1173,37 +1180,46 @@ function backFromPage() {
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
-let outputFocus: { epoch: string; route: Page } | undefined;
-function focusAudioOutput() {
-  if (outputFocus?.route !== music.page.value || outputFocus.epoch !== music.account.value.epoch)
+let settingsFocus: { epoch: string; route: Page; section: string } | undefined;
+function focusSettingsSection() {
+  if (
+    settingsFocus?.route !== music.page.value ||
+    settingsFocus.epoch !== music.account.value.epoch
+  )
     return;
-  const heading = document.querySelector<HTMLElement>('#settings-audio-output');
+  const heading = document.getElementById(settingsFocus.section);
   if (!heading || heading.closest('.page-leave-active')) return;
-  outputFocus = undefined;
+  settingsFocus = undefined;
   heading.scrollIntoView({ block: 'start', behavior: 'instant' });
   heading.focus({ preventScroll: true });
 }
-function revealAudioOutput() {
+function revealSettingsSection() {
   player.lyricsOpen.value = false;
   player.queueOpen.value = false;
-  void nextTick(focusAudioOutput);
+  void nextTick(focusSettingsSection);
 }
-function openAudioOutput(epoch: string) {
+function openSettingsSection(epoch: string, section: 'settings-audio-output' | 'settings-privacy') {
   if (epoch !== music.account.value.epoch) return;
   const current = music.page.value;
   if (current.kind === 'settings' && !current.accountDetail) {
-    outputFocus = { epoch, route: current };
-    revealAudioOutput();
+    settingsFocus = { epoch, route: current, section };
+    revealSettingsSection();
     return;
   }
   const route: Page = { kind: 'settings' };
-  outputFocus = { epoch, route };
+  settingsFocus = { epoch, route, section };
   music.navigate(route);
 }
+function openAudioOutput(epoch: string) {
+  openSettingsSection(epoch, 'settings-audio-output');
+}
+function openPodcastPrivacy() {
+  openSettingsSection(music.account.value.epoch, 'settings-privacy');
+}
 watch(music.page, (next) => {
-  if (outputFocus?.route === next && outputFocus.epoch === music.account.value.epoch)
-    revealAudioOutput();
-  else outputFocus = undefined;
+  if (settingsFocus?.route === next && settingsFocus.epoch === music.account.value.epoch)
+    revealSettingsSection();
+  else settingsFocus = undefined;
 });
 function openCurrentDownload(epoch: string, playId: string, trackId: string) {
   const current = currentCatalogTrack(player.view.value);
@@ -2649,7 +2665,7 @@ onUnmounted(() => {
                 :playing="player.playing.value"
                 @open="openSceneRadio"
                 @play="(voice) => playSearchCard({ kind: 'voice', voice })"
-                @settings="music.navigate({ kind: 'settings' })"
+                @settings="openPodcastPrivacy"
                 @category="(id) => music.navigate({ kind: 'podcast_category', id })"
               />
               <PlaylistCreatorPage

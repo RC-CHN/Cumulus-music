@@ -42,6 +42,46 @@ function deferred<T>() {
   const promise = new Promise<T>((r) => (resolve = r));
   return { promise, resolve };
 }
+test('recommendation policy is exposed only from fresh observation, not cached settings', async () => {
+  const disabled = page();
+  disabled.fields = [{ key: 'personalServiceSetting', value: 2, state: 'available' }];
+  const fresh = deferred<ReturnType<typeof reply>>();
+  const model = useSettings(
+    backend({
+      accountSettingsPage: async (_epoch, refresh) => (refresh ? fresh.promise : reply(disabled)),
+      accountSettingsCommand: async (epoch, command) => {
+        assert.equal(command.kind, 'change');
+        const observed = page();
+        observed.revision = 'b'.repeat(64);
+        observed.fields = [{ key: 'personalServiceSetting', value: 0, state: 'available' }];
+        observed.operations = [
+          {
+            id: command.id,
+            change: command.change,
+            before: 2,
+            observed: 0,
+            phase: 'confirmed',
+            createdAt: 1,
+            lastReadAt: 2,
+            readRevision: observed.revision,
+          },
+        ];
+        return reply(observed, epoch);
+      },
+    }),
+  );
+  model.connect(account);
+  const opening = model.open();
+  await Promise.resolve();
+  assert.equal(model.personalServiceObservation.value, undefined);
+  fresh.resolve(reply(disabled));
+  await opening;
+  assert.deepEqual(model.personalServiceObservation.value, { epoch: '1', value: 2 });
+  assert.equal(await model.change({ key: 'personalServiceSetting', value: 0 }), true);
+  assert.deepEqual(model.personalServiceObservation.value, { epoch: '1', value: 0 });
+  model.connect({ ...account, epoch: '2' });
+  assert.equal(model.personalServiceObservation.value, undefined);
+});
 test('settings preserves cached values offline and blocks editing until a successful refresh', async () => {
   let offline = false;
   const model = useSettings(

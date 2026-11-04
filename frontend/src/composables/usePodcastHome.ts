@@ -1,10 +1,13 @@
 import { ref, shallowRef, watch } from 'vue';
-import { failure, type AccountView } from '../services/contracts';
-import { useCore } from '../services/core';
-import type { PodcastHomeBlock } from '../services/podcast';
+import { failure, type AccountView, type CoreClient } from '../services/contracts.ts';
+import { useCore } from '../services/core.ts';
+import type { PodcastHomeBlock } from '../services/podcast.ts';
 
-export function usePodcastHome(account: () => AccountView, expired: () => void) {
-  const core = useCore();
+export function usePodcastHome(
+  account: () => AccountView,
+  expired: () => void,
+  core: Pick<CoreClient, 'podcastHome'> = useCore(),
+) {
   const blocks = shallowRef<PodcastHomeBlock[]>([]);
   const pending = ref(false);
   const error = ref('');
@@ -26,6 +29,15 @@ export function usePodcastHome(account: () => AccountView, expired: () => void) 
     pages = 0;
   }
   watch(() => [account().epoch, account().status], clear, { flush: 'sync' });
+  function disableRecommendations() {
+    clear();
+    enabled.value = false;
+  }
+  function observePersonalService(observation: { epoch: string; value: 0 | 2 }) {
+    if (account().status !== 'authenticated' || observation.epoch !== account().epoch) return;
+    if (observation.value === 2) disableRecommendations();
+    else if (enabled.value === false) clear();
+  }
   async function load(refresh = false) {
     const { epoch, status } = account();
     if (pending.value || status !== 'authenticated') return;
@@ -39,6 +51,10 @@ export function usePodcastHome(account: () => AccountView, expired: () => void) 
     try {
       const result = await core.podcastHome(epoch, continuation.value);
       if (!live() || result.epoch !== epoch) return;
+      if (!result.value.recommendationEnabled) {
+        disableRecommendations();
+        return;
+      }
       const next = result.value.continuation;
       if (next && seen.has(next)) {
         restart.value = true;
@@ -67,6 +83,16 @@ export function usePodcastHome(account: () => AccountView, expired: () => void) 
   function activate() {
     if (enabled.value === undefined && !error.value) void load();
   }
-  return { blocks, pending, error, enabled, continuation, restart, load, activate };
+  return {
+    blocks,
+    pending,
+    error,
+    enabled,
+    continuation,
+    restart,
+    load,
+    activate,
+    observePersonalService,
+  };
 }
 export type PodcastHomeModel = ReturnType<typeof usePodcastHome>;

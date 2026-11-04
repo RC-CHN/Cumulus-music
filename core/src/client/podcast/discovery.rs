@@ -107,6 +107,14 @@ impl PodcastDiscoveryHost {
         });
         Ok(handle)
     }
+
+    pub(super) fn forget(&self, epoch: &str, scope: &DiscoveryScope) -> Result<()> {
+        self.0
+            .lock()
+            .map_err(|_| Error::State("podcast discovery cursors unavailable"))?
+            .retain(|row| row.epoch != epoch || &row.scope != scope);
+        Ok(())
+    }
 }
 
 fn valid_category_id(id: &str) -> bool {

@@ -24,6 +24,7 @@ struct Backend {
     liked: Mutex<Vec<u64>>,
     lost: AtomicBool,
     offline: AtomicBool,
+    personalization_disabled: AtomicBool,
 }
 fn program(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"djPlayRecordVo":{"listenLocation":15000,"isListened":false},"cookie":"SECRET"})
@@ -39,6 +40,16 @@ impl Api for Backend {
                 return Err(Error::State("fixture offline"));
             }
             Ok(match path {
+                "/api/user/setting" => json!({"code":200,"setting":{"personalServiceSetting":
+                    if self.personalization_disabled.load(Ordering::SeqCst) {2} else {0}}}),
+                "/api/voice/homepage/block/page" => {
+                    assert!(!self.personalization_disabled.load(Ordering::SeqCst));
+                    assert_eq!(p["cursor"], "");
+                    json!({"code":200,"data":{"cursor":"PRIVATE_FIXTURE_CURSOR","hasMore":true,
+                        "blocks":[{"showType":"VOICE_HOMEPAGE_FIXED_VOICELIST",
+                            "uiElement":{"mainTitle":{"title":"Fixture radio"}},
+                            "creatives":[{"creativeExtInfoVO":{"radio":radio()}}]}]}})
+                }
                 "/api/djradio/v3/get" => json!({"code":200,"data":radio()}),
                 "/api/v6/dj/program/byradio" => {
                     let count = self.count.load(Ordering::SeqCst);
@@ -123,6 +134,37 @@ fn scope() -> PodcastScope {
         id: "7".into(),
         ascending: true,
     }
+}
+#[tokio::test]
+async fn podcast_continuation_checks_opt_out_and_retires_old_cursor() {
+    let (_dir, api, _, client) = fixture();
+    let first = serde_json::to_value(client.podcast_home("1", None).await.unwrap()).unwrap();
+    let handle = first["value"]["continuation"].as_str().unwrap();
+    assert!(!handle.contains("PRIVATE_FIXTURE_CURSOR"));
+    api.personalization_disabled.store(true, Ordering::SeqCst);
+    let revoked =
+        serde_json::to_value(client.podcast_home("1", Some(handle)).await.unwrap()).unwrap();
+    assert_eq!(
+        revoked["value"],
+        json!({"recommendationEnabled":false,"blocks":[],"continuation":null})
+    );
+    api.personalization_disabled.store(false, Ordering::SeqCst);
+    assert!(matches!(
+        client.podcast_home("1", Some(handle)).await,
+        Err(Error::StaleResponse)
+    ));
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/user/setting",
+            "/api/voice/homepage/block/page",
+            "/api/user/setting"
+        ]
+    );
 }
 #[tokio::test]
 async fn podcast_quality_still_uses_voice_authorization_without_changing_song_preferences() {

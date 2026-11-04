@@ -288,7 +288,7 @@ function accept(op: SettingsOperation) {
         </div>
       </section>
       <section class="settings-section" aria-labelledby="settings-privacy">
-        <h2 id="settings-privacy">消息与隐私</h2>
+        <h2 id="settings-privacy" tabindex="-1">消息与隐私</h2>
         <div class="settings-section-content">
           <p v-if="account.status !== 'authenticated'" class="settings-note">
             登录后可查看和修改账号的消息与隐私设置。

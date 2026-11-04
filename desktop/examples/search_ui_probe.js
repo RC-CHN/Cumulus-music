@@ -783,17 +783,26 @@
     click(button("返回上一页"));
     await wait(() => homeRadio(305) && homeRadio(306), "detail Back restores already loaded homepage blocks");
     await capture("podcast_more_back");
-    await fixture("podcast_home_disabled");
     click(button("刷新播客发现", podcastHome()));
+    await wait(() => homeRadio(305) && !homeRadio(306) && button("加载更多播客", podcastHome()),
+      "refresh starts a new recommendation feed");
+    await fixture("podcast_home_disabled");
+    click(button("加载更多播客", podcastHome()));
     await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭") && button("前往设置", podcastHome()),
-      "disabled personalization stops the recommendation request and shows Settings");
+      "disabled personalization stops a retained continuation and shows Settings");
     assert(!homeRadio(305) && !homeVoice(404) && !button("加载更多播客", podcastHome()), "old personalized content is cleared");
+    assert(!await invoke("podcast_home", { epoch, continuation: homeHandle }).then(() => true, () => false),
+      "the native continuation is retired after opt-out");
     await capture("podcast_more_disabled");
+    click(button("前往设置", podcastHome()));
+    await wait(() => document.activeElement?.id === "settings-privacy", "Settings opens the focused privacy section");
+    click(button("返回上一页"));
+    await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭"), "Back keeps recommendations disabled");
     const categoryStrip = () => one(".podcast-category-strip");
     await wait(() => categoryStrip() && button("音乐播客", categoryStrip()) && button("更多分类", categoryStrip()), "ordinary categories remain when personalized feed is disabled");
     const taxonomy = await invoke("podcast_catalogue", { epoch, query: { kind: "categories" } });
     const ordered = taxonomy.value.categories.map((category) => category.id);
-    const stripItems = [...categoryStrip().querySelectorAll("button:not(.category-more)")];
+    const stripItems = [...categoryStrip().querySelectorAll("button[data-category-id]:not(.category-more)")];
     const firstHidden = ordered[stripItems.length];
     assert(stripItems.map((node) => node.dataset.categoryId).join(",") === ordered.slice(0, stripItems.length).join(",") &&
       stripItems.every((node) => Math.abs(node.getBoundingClientRect().height - 40) < 1) &&

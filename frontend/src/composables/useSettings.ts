@@ -10,6 +10,7 @@ import {
 } from '../services/settings.ts';
 export function useSettings(core: SettingsClient = useCore(), expired = () => {}) {
   const page = shallowRef<AccountSettingsPage>(),
+    personalServiceObservation = shallowRef<{ epoch: string; value: 0 | 2 }>(),
     loading = ref(false),
     busy = ref(false),
     error = ref('');
@@ -34,15 +35,23 @@ export function useSettings(core: SettingsClient = useCore(), expired = () => {}
     epoch = owner;
     serial++;
     page.value = undefined;
+    personalServiceObservation.value = undefined;
     loading.value = false;
     busy.value = false;
     error.value = '';
     unknown.value = undefined;
   }
-  function accept(result: AccountData<AccountSettingsPage>, owner: string) {
+  function accept(result: AccountData<AccountSettingsPage>, owner: string, observed = false) {
     if (result.epoch !== owner)
       throw { code: 'invalid_response', message: '账号设置响应不匹配，请重新读取' };
     page.value = result.value;
+    if (observed) {
+      const setting = result.value.fields.find(
+        (field) => field.key === 'personalServiceSetting' && field.state === 'available',
+      );
+      if (setting?.value === 0 || setting?.value === 2)
+        personalServiceObservation.value = { epoch: owner, value: setting.value };
+    }
     if (unknown.value && result.value.operations.some((op) => op.id === unknown.value?.id))
       unknown.value = undefined;
   }
@@ -51,6 +60,7 @@ export function useSettings(core: SettingsClient = useCore(), expired = () => {}
     error.value = issue.message;
     if (['session_expired', 'profile_changed', 'stale'].includes(issue.code)) {
       page.value = undefined;
+      personalServiceObservation.value = undefined;
       unknown.value = undefined;
       epoch = undefined;
       busy.value = false;
@@ -78,7 +88,7 @@ export function useSettings(core: SettingsClient = useCore(), expired = () => {}
       }
       if (!active()) return;
       const result = await core.accountSettingsPage(owner, refresh);
-      if (active()) accept(result, owner);
+      if (active()) accept(result, owner, refresh);
     } catch (e) {
       if (active()) failed(e);
     } finally {
@@ -96,7 +106,12 @@ export function useSettings(core: SettingsClient = useCore(), expired = () => {}
     try {
       const result = await core.accountSettingsCommand(owner, command);
       if (!active()) return false;
-      accept(result, owner);
+      const operation = result.value.operations.find((item) => item.id === command.id);
+      accept(
+        result,
+        owner,
+        operation?.lastReadAt != null && operation.readRevision === result.value.revision,
+      );
       return true;
     } catch (e) {
       if (!active() || failed(e)) return false;
@@ -134,10 +149,12 @@ export function useSettings(core: SettingsClient = useCore(), expired = () => {}
     disposed = true;
     serial++;
     page.value = undefined;
+    personalServiceObservation.value = undefined;
     unknown.value = undefined;
   }
   return {
     page,
+    personalServiceObservation,
     loading,
     busy,
     error,

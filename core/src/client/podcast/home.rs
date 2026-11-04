@@ -2,12 +2,18 @@
 use super::{EpisodeView, MusicClient, PodcastApi, PodcastCard, discovery::DiscoveryScope, view};
 use crate::{
     Result,
+    account::AccountApi,
     client::dto::AccountData,
     podcast::{Episode, Radio},
-    protocol::api::identifier,
+    protocol::api::{Api, identifier},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
+use std::sync::Arc;
+
+pub(super) async fn podcast_recommendations_enabled(api: Arc<dyn Api>) -> Result<bool> {
+    Ok(AccountApi::new(api).settings().await?["personalServiceSetting"] != 2)
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,23 +114,26 @@ impl MusicClient {
         let result = self
             .session
             .run_for(&token, |api, _| async {
-                if cursor.is_empty() {
-                    let result = api
-                        .call("/api/user/setting", json!({}), false, &[200])
-                        .await?;
-                    if result["setting"]["personalServiceSetting"] == 2 {
-                        return Ok(None);
-                    }
+                // A continuation may outlive a settings change on this or
+                // another desktop. Recheck before any personalized request.
+                if !podcast_recommendations_enabled(api.clone()).await? {
+                    return Ok(None);
                 }
                 PodcastApi::new(api).home(&cursor).await.map(Some)
             })
             .await?;
         let value = match result {
-            None => PodcastHomePage {
-                recommendation_enabled: false,
-                blocks: Vec::new(),
-                continuation: None,
-            },
+            None => {
+                self.session.with_token(&token, |_| {
+                    self.podcast_discovery
+                        .forget(epoch, &DiscoveryScope::PodcastHome)
+                })?;
+                PodcastHomePage {
+                    recommendation_enabled: false,
+                    blocks: Vec::new(),
+                    continuation: None,
+                }
+            }
             Some(page) => PodcastHomePage {
                 recommendation_enabled: true,
                 blocks: page.records.iter().take(24).filter_map(block).collect(),
