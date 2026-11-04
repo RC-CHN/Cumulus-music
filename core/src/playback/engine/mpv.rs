@@ -704,6 +704,73 @@ impl AudioEngine for MpvEngine {
         self.load_pinned(Box::new(reader), format, authority, cancel)
     }
 
+    fn supports_cold_limiter(&self) -> bool {
+        self.native.is_some()
+    }
+
+    fn load_cold_limiter(
+        &mut self,
+        wave: super::ColdLimiterWave,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        if self.entry.is_some() || self.pinned_authority.is_some() {
+            return Err(Error::State("cold limiter requires an idle sink"));
+        }
+        wave.authority.validate()?;
+        let source = wave.authority.cancellation();
+        let media = self.load_pinned(
+            Box::new(std::io::Cursor::new(wave.data)),
+            "wav",
+            source,
+            cancel,
+        )?;
+        let result = wave
+            .authority
+            .validate()
+            .and_then(|()| cancel.check())
+            .and_then(|()| {
+                if media.codec.as_deref() != Some("pcm_f32le") {
+                    return Err(Error::Media(
+                        "cold limiter native PCM format was not confirmed",
+                    ));
+                }
+                self.confirm_cold_position(
+                    media.entry_id,
+                    0.0,
+                    Instant::now() + Duration::from_secs(3),
+                    cancel,
+                )?;
+                Ok(media)
+            });
+        if result.is_err() {
+            self.retire_pinned();
+        }
+        result
+    }
+
+    fn load_cold_stock_flac(
+        &mut self,
+        reader: crate::download::offline::ColdOfflineFlacReader,
+        position: f64,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        if position == 0.0 {
+            if self.entry.is_some() || self.pinned_authority.is_some() {
+                return Err(Error::State("cold FLAC fallback requires an idle sink"));
+            }
+            let authority = reader.authority();
+            authority.validate()?;
+            let media =
+                self.load_pinned(Box::new(reader), "flac", authority.cancellation(), cancel)?;
+            if let Err(error) = authority.validate().and_then(|()| cancel.check()) {
+                self.retire_pinned();
+                return Err(error);
+            }
+            return Ok(media);
+        }
+        self.resume_cold_flac_native(reader, position, true, cancel)
+    }
+
     fn pause(&mut self, paused: bool) -> Result<()> {
         self.control_authorized(&["set", "pause", if paused { "yes" } else { "no" }])
     }

@@ -1,26 +1,35 @@
-//! Test-only in-process FLAC producer; no child or new Cargo dependency.
-use super::{DecodedPacket, DecoderPayload, Generation, LimiterSegment, SegmentRead};
+//! Bounded in-process FLAC producer; no child or new Cargo dependency.
+use super::{DecodedPacket, DecoderPayload, Generation};
+#[cfg(test)]
+use super::{LimiterSegment, SegmentRead};
 use crate::playback::engine::{Cancellation, PinnedReader};
+#[cfg(test)]
+use std::path::PathBuf;
 use std::{
     ffi::{c_int, c_void},
     io::{self, SeekFrom},
     panic::{AssertUnwindSafe, catch_unwind},
-    path::PathBuf,
     ptr::NonNull,
 };
 
 mod abi;
+mod cold;
+#[cfg(test)]
 mod cold_authority;
-#[cfg(windows)]
+#[cfg(all(test, windows))]
 mod windows_runtime;
 use abi::{Api, FrameHeader, Handle};
+pub use cold::ColdLimiterWave;
+pub(crate) use cold::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
 
 const RATE: u32 = 44_100;
 const CHANNELS: usize = 2;
 const FLAC_BLOCK: u32 = 1024;
+#[cfg(test)]
 const TOTAL: u64 = 1_048_633;
 const BYTE_BUDGET: usize = 128 * 1024;
 const SCRATCH: usize = 8192;
+const MAX_COMPRESSED: u64 = 16 * 1024 * 1024;
 
 #[derive(Clone, Copy, Default)]
 struct Stats {
@@ -266,8 +275,8 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
         let mut magic = [0; 4];
         input.read_exact(&mut magic)?;
         input.rewind()?;
-        if &magic != b"fLaC" || !(42..=16 * 1024 * 1024).contains(&size) {
-            return Err(io::Error::other("unsupported pinned FLAC proof source"));
+        if &magic != b"fLaC" || !(42..=MAX_COMPRESSED).contains(&size) {
+            return Err(io::Error::other("unsupported pinned FLAC source"));
         }
         authority.check().map_err(io::Error::other)?;
         // SAFETY: the loaded SDK function allocates a new opaque decoder.
@@ -323,7 +332,7 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
         // SAFETY: reading STREAMINFO value after processing metadata.
         result.total = unsafe { (api.total)(handle.as_ptr()) };
         if result.total == 0 {
-            return Err(io::Error::other("FLAC proof needs a known frame count"));
+            return Err(io::Error::other("FLAC needs a known frame count"));
         }
         Ok(result)
     }
@@ -423,6 +432,7 @@ impl Drop for Decoder<'_, '_> {
     }
 }
 
+#[cfg(test)]
 fn source_pair(frame: u64) -> [i32; 2] {
     let word = (frame as u32)
         .wrapping_mul(0x9e3779b1)
@@ -431,6 +441,7 @@ fn source_pair(frame: u64) -> [i32; 2] {
     [left, -left / 8]
 }
 
+#[cfg(test)]
 fn expect_packet(packet: DecodedPacket, generation: Generation, start: u64) -> usize {
     assert_eq!(packet.generation, generation);
     assert_eq!(packet.first_source_frame, start);
@@ -446,6 +457,7 @@ fn expect_packet(packet: DecodedPacket, generation: Generation, start: u64) -> u
     pcm.len() / CHANNELS
 }
 
+#[cfg(test)]
 fn sdk_path() -> PathBuf {
     std::env::var_os("CUMULUS_FLAC_PROBE_LIBRARY")
         .map(PathBuf::from)

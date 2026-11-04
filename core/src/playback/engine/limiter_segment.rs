@@ -1,4 +1,4 @@
-//! Disabled transport prototype between a decoder and the recovered limiter.
+//! Source-frame transport between a decoder and the recovered limiter.
 //! It knows only interleaved PCM; processes, libmpv and GUI state live outside.
 use crate::effects::dsp::Format;
 use crate::{
@@ -7,8 +7,12 @@ use crate::{
 };
 
 mod inprocess_flac;
+#[cfg(test)]
 mod native_decoder;
+#[cfg(test)]
 mod probe_wav;
+pub use inprocess_flac::ColdLimiterWave;
+pub(crate) use inprocess_flac::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Generation(u64);
@@ -22,11 +26,13 @@ struct DecodedPacket {
 enum DecoderPayload {
     Samples(Vec<f32>),
     End, // verified successful decoder EOF
+    #[cfg(test)]
     Failed(std::io::Error),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum SegmentRead {
+    #[cfg(test)]
     Paused,
     Pending,
     Audio {
@@ -51,6 +57,7 @@ struct LimiterSegment {
     source_end: u64,
     next_decoder_frame: u64,
     next_rendered_frame: u64,
+    #[cfg(test)]
     paused: bool,
     decoder_end: bool,
     failed: bool,
@@ -69,6 +76,7 @@ impl LimiterSegment {
             source_end: 0,
             next_decoder_frame: 0,
             next_rendered_frame: 0,
+            #[cfg(test)]
             paused: false,
             decoder_end: false,
             failed: false,
@@ -77,6 +85,7 @@ impl LimiterSegment {
 
     /// Logical transport seek (or first load). Call before accepting any PCM
     /// from the replacement decoder. Pause is independent of discontinuities.
+    #[cfg(test)]
     fn start(&mut self, first: u64, end: u64) -> Result<Generation> {
         let next = Generation(
             self.generation
@@ -117,6 +126,7 @@ impl LimiterSegment {
             .map(|ms| ms as u32)
     }
 
+    #[cfg(test)]
     fn pause(&mut self, paused: bool) {
         self.paused = paused;
     }
@@ -125,6 +135,7 @@ impl LimiterSegment {
         if packet.generation != self.generation {
             return Ok(());
         }
+        #[cfg(test)]
         if let DecoderPayload::Failed(error) = packet.payload {
             return Err(error.into());
         }
@@ -174,6 +185,7 @@ impl LimiterSegment {
                 "limiter read needs whole output frames",
             ));
         }
+        #[cfg(test)]
         if self.paused {
             return Ok(SegmentRead::Paused);
         }

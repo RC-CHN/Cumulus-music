@@ -77,7 +77,7 @@ impl MpvEngine {
         result
     }
 
-    fn confirm_cold_position(
+    pub(super) fn confirm_cold_position(
         &mut self,
         entry: i64,
         target: f64,

@@ -85,6 +85,7 @@ pub struct MusicClient {
     output: Arc<crate::playback::output::OutputRuntime>,
     downloads: downloads::DownloadHost,
     cold_offline: Arc<cold_offline::Host>,
+    cold_limiter: Option<Arc<crate::playback::engine::ColdLimiterConfig>>,
     cloud: cloud::CloudHost,
     mv: mv::MvHost,
     focus: Arc<focus::MediaFocus>,
@@ -259,6 +260,7 @@ impl MusicClient {
             local: local::LocalHost::new(registry.store()),
             cloud: cloud::CloudHost::new(session.clone()),
             cold_offline: Arc::default(),
+            cold_limiter: None,
             downloads: downloads::DownloadHost::new(session.clone(), registry.store()),
             player: player::PlayerHost::new(
                 session.clone(),

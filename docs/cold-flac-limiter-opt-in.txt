@@ -1,0 +1,65 @@
+Native opt-in final limiter for cold offline FLAC
+
+The native Rust host may opt one MusicClient into the recovered final
+limiter with with_native_cold_offline_limiter(absolute_libflac_path,
+material_limiter_plan). The path must come from trusted host config.
+This is an isolated final node with the recovered material parameters;
+it is not the whole official material graph and does not obtain rights
+or select an upstream effect. There is no renderer IPC, CLI environment
+switch, package dependency or default activation.
+
+Cold playback is owned by MusicClient's cold Mode/Playing host, separate
+from the authenticated queue. It performs its existing published task and
+ledger verification, holds the original opened File, claims native focus
+and validates persisted account and cached membership. Only the exact
+verified plain FLAC or strict NCM-FLAC payload may enter the optional
+decoder. Missing/incompatible libFLAC, disabled material, unavailable
+engine support or non-FLAC keeps the existing native load. A valid FLAC
+outside the optional limits uses the stock native decoder over the same
+held reader.
+
+This first production seam is deliberately bounded. It admits known
+44.1 kHz, stereo, 16-bit FLAC with 16–1024-frame STREAMINFO block bounds,
+at most 16 MiB of compressed input and 30 seconds of source audio.
+The format is checked again on each actual decoder callback. Each
+libFLAC operation may read at most 128 KiB and perform at most 32 byte
+seeks. A render allocates at most 10,584,044 bytes including the RIFF
+header, and checks a cooperative two-second elapsed budget before pulling
+more PCM. The timeout is not an interruption of a blocking OS file read.
+During a seek one old and one replacement PCM buffer can coexist. Larger
+or different media stay stock. No decrypted temp file is written.
+
+The bit-exact recovered PCM node runs through the same generation,
+FIFO, and verified EOF transport as the native probes. The output is an
+immutable, in-memory stereo float WAV staged paused through libmpv's
+authorized one-shot stream. The public clock is the native position
+plus the segment's original source start, capped at source duration to
+exclude the recovered EOF sentinel. The cold host rechecks focus, grant,
+and persisted entitlement before unpause and in its ongoing poll.
+
+Native callers can pause or seek by current cold task ID. A seek checks
+the requested item and range, pauses the old sink while the exact source
+sample and fresh limiter segment are prepared, and retires the old sink
+before publishing another. If the compressed seek hits the typed read
+limit or render deadline, the same held reader moves to stock libmpv;
+the stock seek must settle within 10 ms of the desired source position.
+The original paused/playing intent is restored only after validation.
+The effect remains off for the rest of that stock entry. Errors unrelated
+to the bounded optional capability do not reopen paths, acquire new
+rights, silently restart at zero or change the online queue. The native
+view includes limiterActive only while the limited output is active.
+
+Verification command:
+
+    cargo test --locked -p cumulus-core --lib limiter_cold_flac_production_controller -- --include-ignored --nocapture
+
+It exercises the actual cold MusicClient and native libmpv null output,
+not a replacement controller: default and missing runtime, AAC and
+48 kHz fallback, indexed seeks, running and paused unindexed fallback,
+replacement of the verified NCM pathname, and persisted cached-rights
+revocation without account or queue mutation. The fixtures are synthetic.
+Windows native CI and physical sound output must be reported separately.
+
+FLAC metadata: https://www.rfc-editor.org/rfc/rfc9639.html#section-8.2
+Recovered kernel/native host evidence: cold-flac-native-sink-proof.txt
+and cold-flac-native-fallback.txt.

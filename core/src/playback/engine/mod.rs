@@ -3,7 +3,6 @@
 mod bmff;
 mod ffi;
 mod frames;
-#[cfg(test)]
 mod limiter_segment;
 mod mpv;
 mod output;
@@ -12,6 +11,8 @@ mod types;
 mod video;
 use crate::Result;
 pub use frames::{VideoFrame, VideoFrames};
+pub use limiter_segment::ColdLimiterWave;
+pub(crate) use limiter_segment::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
 pub use mpv::{MpvConfig, MpvEngine};
 pub use output::{OutputDevice, OutputDevices};
 pub use runtime::MpvRuntime;
@@ -138,6 +139,22 @@ pub trait AudioEngine: Send {
         _: &Cancellation,
     ) -> Result<LoadedMedia> {
         Err(crate::Error::State("pinned NCM playback is unavailable"))
+    }
+    /// Optional native backend for the internally authorized cold limiter.
+    /// Existing engines keep their ordinary pinned decoder.
+    fn supports_cold_limiter(&self) -> bool {
+        false
+    }
+    fn load_cold_limiter(&mut self, _: ColdLimiterWave, _: &Cancellation) -> Result<LoadedMedia> {
+        Err(crate::Error::State("cold limiter playback is unavailable"))
+    }
+    fn load_cold_stock_flac(
+        &mut self,
+        _: crate::download::offline::ColdOfflineFlacReader,
+        _: f64,
+        _: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        Err(crate::Error::State("cold FLAC handoff is unavailable"))
     }
     fn pause(&mut self, paused: bool) -> Result<()>;
     fn seek(&mut self, seconds: f64) -> Result<()>;

@@ -1,10 +1,11 @@
 //! Pinned public libFLAC 1.5.0 ABI; no private decoder layout is used.
 use libloading::Library;
+#[cfg(test)]
+use std::{ffi::CString, ptr::NonNull};
 use std::{
-    ffi::{CStr, CString, c_char, c_int, c_void},
+    ffi::{CStr, c_char, c_int, c_void},
     io,
     path::Path,
-    ptr::NonNull,
 };
 
 pub(super) type Handle = *mut c_void;
@@ -16,6 +17,7 @@ pub(super) type Write =
     unsafe extern "C" fn(Handle, *const FrameHeader, *const *const i32, Handle) -> c_int;
 type Metadata = unsafe extern "C" fn(Handle, *const c_void, Handle);
 pub(super) type Fault = unsafe extern "C" fn(Handle, c_int, Handle);
+#[cfg(test)]
 type Progress = unsafe extern "C" fn(Handle, u64, u64, u32, u32, Handle);
 
 pub(super) const OK: c_int = 0;
@@ -156,6 +158,7 @@ impl Api {
     }
 
     /// Encode only the synthetic fixture in-process, with the same SDK.
+    #[cfg(test)]
     pub(super) fn encode_fixture(
         &self,
         path: &Path,
@@ -167,6 +170,7 @@ impl Api {
         self.encode_fixture_with_index(path, rate, blocksize, frames, None, sample)
     }
 
+    #[cfg(test)]
     pub(super) fn encode_fixture_with_index(
         &self,
         path: &Path,

@@ -192,7 +192,10 @@ impl ColdOfflineGrant {
         lease: Cancellation,
     ) -> Result<ColdOfflineFlacReader> {
         lease.check()?;
-        let (file, entitlement) = self.open_audio(task_id)?.into_playback()?;
+        let (file, entitlement, format) = self.open_audio(task_id)?.into_playback()?;
+        if format != "flac" {
+            return Err(Error::InvalidInput("cold offline FLAC payload required"));
+        }
         ColdOfflineFlacReader::new(self.clone(), file, entitlement, lease)
     }
 
@@ -214,7 +217,7 @@ impl ColdOfflineGrant {
         membership: Option<&ColdMembership>,
     ) -> Result<crate::download::offline::ColdOfflineAudio<'_>> {
         self.require()?;
-        let (file, quality, entitlement) = crate::download::offline::open_audio(
+        let (file, quality, entitlement, format) = crate::download::offline::open_audio(
             &self.registry.store,
             &self.binding.uid,
             task_id,
@@ -226,6 +229,7 @@ impl ColdOfflineGrant {
             file,
             quality,
             entitlement,
+            format,
         ))
     }
 

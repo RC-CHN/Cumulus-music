@@ -34,6 +34,7 @@ pub struct ColdOfflineAudio<'a> {
     file: File,
     quality: Quality,
     entitlement: Option<ColdEntitlement>,
+    format: &'static str,
 }
 impl<'a> ColdOfflineAudio<'a> {
     pub(crate) fn new(
@@ -41,12 +42,14 @@ impl<'a> ColdOfflineAudio<'a> {
         file: File,
         quality: Quality,
         entitlement: Option<ColdEntitlement>,
+        format: &'static str,
     ) -> Self {
         Self {
             grant,
             file,
             quality,
             entitlement,
+            format,
         }
     }
 
@@ -58,9 +61,9 @@ impl<'a> ColdOfflineAudio<'a> {
         Ok(&self.file)
     }
 
-    pub(crate) fn into_playback(self) -> Result<(File, Option<ColdEntitlement>)> {
+    pub(crate) fn into_playback(self) -> Result<(File, Option<ColdEntitlement>, &'static str)> {
         self.file()?;
-        Ok((self.file, self.entitlement))
+        Ok((self.file, self.entitlement, self.format))
     }
 
     pub fn quality(&self) -> Quality {
@@ -179,14 +182,13 @@ fn text(value: &Value) -> String {
         .collect()
 }
 
-fn check_format(file: &mut File, encrypted: bool) -> Result<()> {
+fn check_format(file: &mut File, encrypted: bool) -> Result<&'static str> {
     if encrypted {
         let mut reader = NcmReader::new(file, HeaderPolicy::Strict)?;
-        pinned_ncm_format(&mut reader)?;
+        pinned_ncm_format(&mut reader)
     } else {
-        pinned_audio_format(file)?;
+        pinned_audio_format(file)
     }
-    Ok(())
 }
 
 pub(crate) fn list_audio(
@@ -287,7 +289,7 @@ pub(crate) fn open_audio(
     owner: &str,
     task_id: &str,
     membership: Option<&ColdMembership>,
-) -> Result<(File, Quality, Option<ColdEntitlement>)> {
+) -> Result<(File, Quality, Option<ColdEntitlement>, &'static str)> {
     if !valid_id(task_id) {
         return Err(Error::InvalidInput(
             "invalid cold offline download identifier",
@@ -331,7 +333,7 @@ pub(crate) fn open_audio(
         return Err(Error::Media("cold offline file changed"));
     }
     file.seek(SeekFrom::Start(0))?;
-    check_format(&mut file, record.encrypted)?;
+    let format = check_format(&mut file, record.encrypted)?;
     file.seek(SeekFrom::Start(0))?;
     if let Some(entitlement) = &entitlement {
         entitlement.validate(store, owner)?;
@@ -339,5 +341,5 @@ pub(crate) fn open_audio(
     if !unchanged(store, owner, task_id, &raw, &ledger_id, &ledger)? {
         return Err(Error::StaleResponse);
     }
-    Ok((file, record.quality, entitlement))
+    Ok((file, record.quality, entitlement, format))
 }

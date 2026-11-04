@@ -45,6 +45,7 @@ const FLAC: &[u8] = include_bytes!(concat!(
 ));
 
 mod fallback;
+mod production;
 mod sink;
 mod worker;
 
