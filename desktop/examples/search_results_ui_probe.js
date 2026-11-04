@@ -1102,6 +1102,29 @@
     await fixture('unavailable');await fresh('合成不可用结果');await choose('voices');assert(one('.search-result-card .search-card-play')&&!one('.search-voice-radio'),'missing radio does not disable episode playback');await capture('voice_unavailable');await choose('mvs');assert(one('.search-card-open').disabled,'non-MV target disabled');await capture('mv_unavailable');await fixture('good');
     await choose('all');
     const playingTrack=id=>one('.playerbar')?.dataset.state==='playing'&&one('.now-playing')?.textContent.includes('合成歌曲 '+id+' ·');
+    const native=(command,args)=>window.__TAURI_INTERNALS__.invoke(command,args);
+    const {epoch: playbackEpoch}=await native('account_snapshot');
+    async function toggleCurrentRow(id,label) {
+      const row=()=>one(`.track-row[data-track-id="${id}"] .track-play`);
+      await wait(()=>row()?.getAttribute('aria-label').startsWith('暂停 ')&&!row().disabled&&Number(one('.playerbar').dataset.position)>.2,'current result row offers pause');
+      row().scrollIntoView({block:'center'});
+      await wait(()=>{
+        const target=row();
+        if(!target) return false;
+        const rect=target.getBoundingClientRect();
+        return target.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
+      },'current result row is visibly reachable');
+      const before=await native('player_snapshot',{epoch:playbackEpoch});
+      click(row());
+      await wait(()=>row()?.getAttribute('aria-label').startsWith('继续播放 ')&&!row().disabled&&document.activeElement===row(),'current result row pauses and retains focus');
+      const paused=await native('player_snapshot',{epoch:playbackEpoch});
+      assert(paused.state==='paused'&&paused.playId===before.playId&&paused.queueRevision===before.queueRevision&&paused.position>=before.position-.1,'result row pause retains native selection and position');
+      await capture(label);
+      click(row());
+      await wait(()=>playingTrack(id)&&!row().disabled,'current result row resumes');
+      const resumed=await native('player_snapshot',{epoch:playbackEpoch});
+      assert(resumed.playId===before.playId&&resumed.position>=paused.position-.1,'result row resume retains native selection and position');
+    }
     await fixture('result_play_default');click(button('播放全部搜索单曲'));
     await wait(()=>playingTrack(1),'comprehensive header play uses default trial');
     await fixture('result_play_trial');click(all('.search-track-cover')[1]);
@@ -1110,14 +1133,16 @@
     await wait(()=>playingTrack(1),'song tab play all uses search trial');await capture('play');
     await choose('lyrics');click(one('.track-row[data-track-id="3"] .track-play'));
     await wait(()=>playingTrack(3),'lyric row uses search trial');
+    await toggleCurrentRow(3,'current_lyric_paused');
     await choose('songs');click(one('.track-row[data-track-id="2"] .track-play'));
     await wait(()=>playingTrack(2),'song row uses search trial');
+    await toggleCurrentRow(2,'current_song_paused');
     await fresh('合成搜索受限');
     await wait(()=>one('#search-result-panel .empty-state p')?.textContent==='部分结果暂不可展示'&&!button('重新加载'),'service explanation without generic retry');
     await capture('service_empty');
     await fresh('合成搜索结果');
     await wait(()=>one('.search-result-section')&&!one('#search-result-panel')?.textContent.includes('部分结果暂不可展示'),'next search clears explanation');
     await fixture('expired');click(one('[data-category="albums"]'));await wait(()=>button('重新登录')&&!one('.search-results-page'),'expired account');await capture('expired');
-    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchMatchHighlightVerified:true,searchServiceEmptyVerified:true,searchCategoryWithoutFramesVerified:true,searchKeywordRaceVerified:true,searchProfileWithoutFramesVerified:profileWithoutFrames,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,stageCount:count,responseTimingInjected:true,shortPageOffsetsVerified:true,searchResultPlaybackVerified:true,searchCurrentRowsVerified:true,searchMatchHighlightVerified:true,searchServiceEmptyVerified:true,searchCategoryWithoutFramesVerified:true,searchKeywordRaceVerified:true,searchProfileWithoutFramesVerified:profileWithoutFrames,realMusicRequests:0,realAccountWrites:0});
   }catch(error){await emit('failed',{step,message:String(error),stack:error?.stack,stageCount:count,body:document.body.innerText.slice(0,3500)});}
 })();

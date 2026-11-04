@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TrackMenuRequest } from '../../services/trackMenu';
+import type { TrackCurrentToggle, TrackMenuRequest } from '../../services/trackMenu';
 import type { ArtistCardRequest } from '../../services/artistCards';
 import type { AlbumCardRequest } from '../../services/catalogCards';
 import type { PlaylistLinkAction } from '../../services/playlistMenu';
@@ -53,6 +53,7 @@ const props = defineProps<{
   knownPlaylistIds?: ReadonlySet<string>;
   observedAlbumMembership: ReadonlyMap<string, boolean>;
   currentId?: string;
+  currentToggle?: TrackCurrentToggle;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
   currentVoiceId?: string;
@@ -73,6 +74,7 @@ const emit = defineEmits<{
   creator: [id: string];
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   playTrack: [track: TrackView, toggleCurrent: boolean];
+  toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   downloadTrack: [track: TrackView];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
@@ -683,9 +685,17 @@ onBeforeUnmount(() => {
                     :liked="liked.has(item.track.id)"
                     :busy="busyLikes.has(item.track.id)"
                     :current-id="currentId"
+                    :current-toggle="
+                      !item.track.missing &&
+                      !item.track.local &&
+                      currentToggle?.trackId === item.track.id
+                        ? currentToggle
+                        : undefined
+                    "
                     :playable="playable"
                     navigable
                     @play="(_index, gesture) => playTrack(item.track, gesture === 'double_click')"
+                    @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
                     @like="emit('like', $event)"
                     @more="showTrackMenu"
                     @artist="emit('artist', $event)"
@@ -752,10 +762,12 @@ onBeforeUnmount(() => {
               :busy="busyLikes"
               :playable="playable"
               :current-id="currentId"
+              :current-toggle="currentToggle"
               navigable
               @play="
                 (index, gesture) => playTrack(tracks(section)[index], gesture === 'double_click')
               "
+              @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
               @like="emit('like', $event)"
               @more="showTrackMenu"
               @artist="emit('artist', $event)"

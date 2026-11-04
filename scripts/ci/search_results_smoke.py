@@ -226,6 +226,7 @@ def verify(root, capture, v3=False):
         return
     assert complete['ok'] and complete['responseTimingInjected'] and complete['shortPageOffsetsVerified']
     assert complete['searchResultPlaybackVerified'] and complete['searchMatchHighlightVerified']
+    assert complete['searchCurrentRowsVerified']
     assert complete['searchCategoryWithoutFramesVerified'] and complete['searchServiceEmptyVerified']
     assert complete['searchKeywordRaceVerified']
     before_profile = json.loads((root / 'first/ux_01_all_1120_light.json').read_text(encoding='utf-8'))
@@ -235,7 +236,11 @@ def verify(root, capture, v3=False):
         {'all': True, 'userId': '501'},
         {'uid': '501', 'offset': 0, 'limit': 1000},
     ]
-    assert complete['stageCount'] == 69 and complete['syntheticSearchCalls'] > 40
+    assert complete['stageCount'] == 71 and complete['syntheticSearchCalls'] > 40
+    for suffix, song in (('_current_lyric_paused', '3'), ('_current_song_paused', '2')):
+        path, = [p for p in (root / 'first').glob('ux_*.json') if p.stem.endswith(suffix)]
+        player = json.loads(path.read_text(encoding='utf-8'))['nativePlayer']
+        assert player['state'] == 'paused' and player['track']['id'] == song and player['position'] > .15
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
     if capture:
