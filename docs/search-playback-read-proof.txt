@@ -100,3 +100,11 @@
   .build/bounded-search-v3-live-summary.json，临时会话、WebView 数据和日志已删除。
   该结果验证真实 API 与 Linux 原生播放的衔接，仍是独立固定 WebView 与 null
   输出，不能替代生产 Vue 布局、Windows 原生环境或实体声卡听感。
+
+  2026-11-04 当前复验（b7909e4，Linux）：重新构建同一 Rust 探针，用已授权
+  PC 会话的关闭副本仅运行一次 `--live-search-experiment`。服务再次返回 v3，
+  综合页得到 9 个可展示区块，单曲页得到 6 首。固定查询选中同一首后，标准音质
+  经原生 libmpv 普通 URL 路径播放，时钟推进并停止。没有申请新二维码、续期、
+  上报播放历史或修改真实账号资源；原始会话数据库字节未变。临时副本、WebView
+  状态及日志均已清理，只保留匿名结果。此次运行仍只覆盖独立固定 WebView、
+  已授权的一首曲目与 null 输出，不覆盖生产 Vue、Windows、会员音质或物理声卡。
