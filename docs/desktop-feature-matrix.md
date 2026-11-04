@@ -41,6 +41,7 @@
 - [消息中心](message-drawer-contracts.txt)已接通私信、评论、@我、通知及会话历史的按需读取；仅有合成桌面证据，没有发送、删除、清除未读或后台轮询。[新歌发布](follow-new-song-contracts.txt)可从关注歌手页读取发布流，独立播放官方最新列表；取消新歌通知走单独确认与持久化回执。限幅流的[离线重置](core-effects-material-routing.txt)已与官方原生对照，实际桌面播放跳转不使用这条音效链。
 - [关注动态](community-read-contracts.txt)提供只读列表、详情及评论分页；[用户关注和粉丝](profile-relations-ui-contracts.txt)区分本人、访客以及隐私拒绝；[艺人偏好引导](artist-onboarding-contracts.txt)只从官方登录入口或符合时限的原账号记录触发。这些路径以各专项实际桌面和封闭合成服务为证；不表示已完成社交发布、真实账号写入、Windows 实机或所有官方实验分支。
 - 关注页的[新歌提示](community-read-contracts.txt)使用独立接口和账号访问时间；[已确认类型的消息附件](message-drawer-contracts.txt)可排入当前播放列表、打开资料页或定位评论，返回保留抽屉位置。未确认归属的云盘歌曲、普通外链和社区私密动态不猜测授权。
-- [普通视频恢复审计](ordinary-video-pc-recovery.txt)复现了官方 PC 从卡片走入 MV 默认路由的行为，未找到可独立授权的普通视频播放链。[限幅器输出宿主](limiter-stream-host-proof.txt)与[解码交接实验](limiter-decoder-boundary.txt)分别验证 libmpv 的可变帧/EOF 和解码端的暂停、跳转、旧数据隔离；两端尚未联成正式实时播放路径。
+- [普通视频恢复审计](ordinary-video-pc-recovery.txt)复现了官方 PC 从卡片走入 MV 默认路由的行为，未找到可独立授权的普通视频播放链。[限幅器联合实验](limiter-native-pipeline-proof.txt)已在 Linux 跑通真实解码、有限缓冲、恢复限幅器和同一 libmpv 实例，验证跳转换代、尾帧及自然 EOF；正式播放器尚未启用该路径。
+- [搜索歌单](search-results-ui-contracts.txt)按官方标题下的第二行展示接口推荐理由；[播放最新](follow-new-song-contracts.txt)保留重复选中首曲时的原进度，并在首曲不可播时保留原队列。[动态会员扫码](desktop-member-contracts.txt)使用独立窗口和当前投放凭据，旧版本无法生成二维码；未验证真实开通、支付或礼券。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
