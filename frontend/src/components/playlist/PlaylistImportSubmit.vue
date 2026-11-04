@@ -386,6 +386,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   width: fit-content;
+  margin: 2px 0;
 }
 .external-import-destination input {
   width: auto;

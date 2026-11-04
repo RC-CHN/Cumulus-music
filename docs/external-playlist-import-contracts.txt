@@ -231,5 +231,6 @@ Cumulus 链接、文字任务与独立扫码授权
 - 加入红心目的地后，真实 Linux WebKit 在 zh_CN.UTF-8 下通过 15 个检查点并留下 15 张
   截图。覆盖最后改选作废旧确认、取消优先焦点、链接红心受理、重开恢复默认新建、文字新建
   受理，以及文字红心缺回执后重启仍按目的地提示且不重发。合成传输只有三次经确认的派发；
-  重新打开进程零请求，没有真实账号写入或服务端完成证据。报告在
-  `.build/external-import-destination-proof/webview-x11/report.json`。
+  重新打开进程零请求，没有真实账号写入或服务端完成证据。复选框收紧间距后，
+  单个链接的确认截图中两个标签和提交按钮均完整可见。报告在
+  `.build/external-import-destination-proof/webview-layout/report.json`。
