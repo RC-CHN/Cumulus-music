@@ -32,5 +32,6 @@
 - 本机普通 Linux 可执行文件证据：`0e136bd` 的 `.build/target-main-integration/debug/cumulus`；`.build/current-linux-product.DAbXMB/isolated-ordinary/report.json` 记录真实窗口、隔离无外网、合成音频播放进度、暂停、PipeWire 虚拟输出中的 PCM 与静音。它是已核对的开发构建记录，并非 `4c07fc7` 的发行附件；后续构建可能覆盖可执行文件。
 - `4c07fc7` 有 Linux 合成桌面增量证据：`.build/search-podcast-home-webview/audit.json`、`.build/queue-explicit-current-verified/audit.json`、`.build/lyric-two-way-proof.WwRw3Y/after/report.json`。主流程的最新报告版本及独立账号权限见 [桌面主流程](desktop-main-flow-proof.txt)。本机证据目录不随公开仓库分发，契约中保留复现入口。
 - 后续开发主线的专项证据见 [播放、音效与搜索](playback-search-priority.txt)：暂停倒拖、耳机调音对比、音效故障时保留播放、声音和播客分类、播客行内收藏、跨分类的搜索纠正。音效恢复仅在原生确认拆除故障滤镜时继续，已验证耳机型号的独立 PEQ 不代表完整的官方效果图。各项证据仍按相应提交、平台和运行条件读取。
+- `e0099f1` 的合并版在 Linux 实际 WebView 验证 [歌手发现](artist-gallery-contracts.txt) 的官方筛选和跨批分页、[本地单曲菜单](local-resource-ui-contracts.txt) 的播放与下一首、[播放栏播客单集下载](desktop-player-contracts.txt) 的资源身份和显式确认。12 张截图及回执在 `.build/ui-proof/local-gallery-voice-e0099f1/`。歌手页跨过 200 条后仍按服务位置续读；本地菜单保持当前 CUE 条目的暂停位置；单集确认框打开和取消均未提交下载。它们分别使用只读合成服务或本地合成文件验证，不能替代实服权益或 Windows 实机验证。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
