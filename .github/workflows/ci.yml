@@ -506,6 +506,7 @@ jobs:
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           python scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-rankings-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-ordinary-essential-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-album-windows --runtime .build/package-stage/windows-x64/native --album
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-album-batch-windows --runtime .build/package-stage/windows-x64/native --album-batch
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-windows --runtime .build/package-stage/windows-x64/native --artist
@@ -860,6 +861,7 @@ jobs:
           cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/rankings_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-rankings-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --ordinary-essential --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-ordinary-essential-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-album-linux --album
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-album-batch-linux --album-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-linux --artist
