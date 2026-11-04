@@ -242,18 +242,18 @@ impl MusicClient {
         card_key: &str,
         id: &str,
     ) -> Result<bool> {
-        let api = self.session.native_api(token)?;
-        let revision = api
-            .verified_pc_experiment_revision()?
+        let authority = self
+            .vertical_zone_authority(&token.generation.to_string())
+            .await?
+            .filter(|authority| authority.token == *token)
             .ok_or(Error::StaleResponse)?;
+        let api = &authority.api;
         let registry = self.vertical_zone.registry.lock().await;
-        self.session.with_verified_profile(token, &api, |_, _| {
-            if api.verified_pc_experiment_revision()?.as_deref() != Some(revision.as_str()) {
-                return Err(Error::CredentialChanged);
-            }
+        self.session.with_verified_profile(token, api, |_, _| {
+            authority.check_revision()?;
             let current = registry
                 .as_ref()
-                .filter(|entry| entry.owner.matches(token, &api, &revision))
+                .filter(|entry| authority.matches(&entry.owner))
                 .ok_or(Error::StaleResponse)?;
             self.vertical_zone
                 .playlist_trial(&current.owner, view, card_key, id, |page| {
@@ -412,9 +412,10 @@ impl MusicClient {
         }
         let authority = &authority;
         let (owner, bound) = (&authority.token, &authority.api);
-        let sequence = self
-            .vertical_zone
-            .enter(owner, bound, &authority.revision)?;
+        let sequence = self.session.with_verified_profile(owner, bound, |_, _| {
+            authority.check_revision()?;
+            self.vertical_zone.enter(owner, bound, &authority.revision)
+        })?;
         let groups = &authority.groups;
         let assigned = groups.group("PH-PC-zhuanquTab") == Some("t1");
         let mut changes = self.session.subscribe()?;
