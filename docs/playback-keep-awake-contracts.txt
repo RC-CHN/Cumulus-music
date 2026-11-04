@@ -90,3 +90,7 @@ Cumulus 设置、权限与状态
   格式、814 项前端测试和生产构建通过。Windows GNU 工作区全目标严格 Clippy
   与新增原生夹具的交叉检查通过，不能代替 Windows MSVC 打包、WebView2 实测
   或 Win32 电源请求。Windows CI 的合成 WebView2 夹具不持有真实休眠请求。
+- Windows CI 41930821747 的初次 WebView2 夹具在「播放中关闭」捕捉到下一次
+  开启后的 SQLite/电源记录，界面同帧为已关闭。原因是无 PNG 模式的 JS 没等异步
+  Rust 快照完成。夹具现对每个阶段等待 JSON 落盘及可选 PNG 回执，断言未放宽；
+  这不是实际系统电源调用失败。修正后还需由精确提交的 Windows CI 验收。
