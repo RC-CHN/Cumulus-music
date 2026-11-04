@@ -3,6 +3,7 @@
 mod account_avatar;
 mod account_binding_qr;
 mod account_profile;
+pub mod artist_onboarding;
 mod auth;
 pub use auth::LoginCaptchaProvider;
 mod catalog;
@@ -77,6 +78,7 @@ pub struct MusicClient {
     session: Arc<AccountSession>,
     registry: Arc<ProfileRegistry>,
     auth: auth::AuthHost,
+    artist_onboarding: artist_onboarding::Host,
     player: player::PlayerHost,
     output: Arc<crate::playback::output::OutputRuntime>,
     downloads: downloads::DownloadHost,
@@ -222,6 +224,7 @@ impl MusicClient {
         let output = crate::playback::output::OutputRuntime::new(registry.store());
         Self {
             playlist_cover: playlist_cover::CoverHost::default(),
+            artist_onboarding: Default::default(),
             account_avatar: account_avatar::AvatarHost::default(),
             effect_material_backend: None,
             login_device_rows: login_devices::DeviceRows::default(),

@@ -1,0 +1,66 @@
+登录后艺人兴趣选择：网易云音乐 PC 3.1.42.205594
+================================================================
+
+入口和边界
+M/198:1106–1128（恢复 host 模型的 1047–1062）把 loginExtData.actionParam.targetUrl
+只映射到两个完全相等的值：
+  orpheus://appModal?comName=NewUserFavorModal -> NEW_USER
+  orpheus://appModal?comName=RecallUserFavorModal -> RECALL_USER
+M/3137:207–250 的扫码先取 803，再调用 M/15 的 Wi（/api/w/nuser/account/get），
+从其完整回包拿 profile 和 loginExtData；不是读取 803 本身的扩展。原生在这次
+既有身份读取中提取类型化引导，验证并提交账号后才释放；不会增加身份请求。账号
+口令等凭据应答的 200 则参考 M/2993:210–241、M/2994:158–187，只从本次认可的
+凭据应答取该字段，再以账号身份读回为准；若两个回包都报 UID，则要求一致。
+通用账号读取或账户切换不会把同名字段当作引导，也不导航目标 URL。
+没有邀请码或同账号有效的本地继续记录时不打扰普通账号。已核对的恢复记录由
+本机账号 UID 隔离。首次在选择阶段跳过，记录场景和时间；同一 UID 后续登录、
+或首个验证的冷恢复，可在七天（604800 秒）内再进入一次。本机在领取第二次
+入口时消费记录，过期清除；同一账号代际关闭后不再弹。非此批接入的独立安全、
+快速登录或注册完成变体仍沿用原账号流程；不伪造该事件。
+
+读、保存和推荐顺序
+M/3168:17–85,212–337、M/15:4590–4723、API-0240–0243/0317–0319：
+  NEW_USER 候选 /api/newuser/favor/rcmd-artists {} -> data[]
+  RECALL 候选   /api/recall/user/favor/rcmd-artists {}
+                -> data.usedListenedArtists 之后接 recentHotArtists；按 ID 去重
+  NEW_USER 相似 /api/newuser/favor/similar-rcmd-artists {artistId:Number} -> data[]
+  RECALL 相似   /api/recall/user/favor/similar-rcmd-artists {artistId:Number}
+                -> data.similarRcmdArtists[]
+  保存（两类）  /api/newuser/favor/rcmd-artists/save {artistIds:Number[]}
+  NEW_USER 推荐 /api/new/user/favor/artist/song {artistIds:Number[]}
+                -> data[].songData 及 privilege
+  RECALL 推荐   /api/recall/user/favor/artist/song {artistIds:Number[]}
+                -> data.sortedSongIds -> /api/v3/song/detail，恢复服务给定顺序
+M/2111 的 27 个固定候选用于远端初次读取为空或非认证错误时的后备。名字/头像
+按原始字段和 M/15 回退字段投影，真实图片仅走已有公开图床规则。相似请求只由
+首次选中触发；按 M/3168:167–181 把尚未存在的结果插入触发艺人之后。取消和再
+选不重读。FavorSelect.tsx:123,212–222、ArtistCard.tsx:104–120：至少两位、至多
+50 位；保留用户选择顺序并原生验证候选归属。选择和浏览不写服务。
+
+用户确认“完成”才发送一次保存，再取该批推荐。发送前原子记录不确定标记；
+有 200 才移除，回执未知、进程退出或切换账户不会自动或隐式重放。已知未知的
+保存明确提示，当前引导仍能读取同一批推荐；没有已确认的读回接口，不将未知
+称为已保存。推荐失败时保留选择，只能重试推荐读；官方此时直接返回首页并写
+本地异常记录，本实现保留当前对话，不自动重开一次已经提交过的选择。不会提交
+空选择或从跳过动作自动保存。没有真实账号验证，不推断服务端其它登录分支会
+下发邀请码。
+
+结果与播放
+FavorResult.tsx:91–131,169–218 有立即收听及稍后再听，使用 Scene.artistRcmd
+和已展示的列表；M/308:1792–1827 在 AddToPlayList 分支首次插入时保持暂停。
+立即收听使用原生普通播放控制及同一推荐 ID 顺序，实际取源仍经过原有权限/试听
+约束；稍后再听将同一结果按当前条目后的顺序加入本地队列，保持已有播放或暂停，
+空队列保持停止、不打开解码。两者都校验账户、引导和显示的队列版本，
+不接管 FM、心动或一起听。官方十秒倒计时会自动启动“立即收听”；社区保留用户显式
+播放，避免仅确认偏好时自动打开音频。关闭返回当前页面，不跳任意服务端链接。
+UI 使用恢复的选艺人、处理中、结果三个阶段及官方首选阈值，适应本机主题及窗口。
+
+验证入口
+core artist_onboarding 测试固定扫码账号回包来源、URL 白名单、同 UID 和七天恢复、
+精确保存数据、未知结果不可再次提交及推荐顺序。
+scripts/ci/artist_onboarding_smoke.py 基于真正的 Tauri WebView、生产 IPC、隔离二维码
+EAPI 密文和原生媒体，含 recall 与 new-uncertain 两个合成场景：前者读失败后仅重试读
+并安静入队，后者保存回执丢失仍读建议、显式播放。无真实网络账号/媒体请求。
+Linux 隔离实测报告和选艺人/结果等截图见
+`.build/ui-proof/artist-onboarding-822b04f/`。Windows 两个场景已接入 CI，
+本轮未在 Windows 执行。合成解码使用 null 输出，不代表真实声卡听感。

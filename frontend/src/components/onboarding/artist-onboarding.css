@@ -1,0 +1,140 @@
+.artist-favor-dialog {
+  width: min(816px, calc(100vw - 32px));
+  max-height: min(720px, calc(100vh - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--text);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow);
+}
+.artist-favor-dialog::backdrop {
+  background: var(--overlay);
+}
+.artist-favor-panel {
+  min-height: 320px;
+  max-height: min(718px, calc(100vh - 34px));
+  display: flex;
+  flex-direction: column;
+}
+.artist-favor-panel > header,
+.artist-favor-panel > footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+}
+.artist-favor-panel > header {
+  justify-content: space-between;
+}
+.artist-favor-panel > footer {
+  border-top: 1px solid var(--line);
+}
+.artist-favor-panel > footer > span {
+  margin-inline-end: auto;
+  color: var(--muted);
+}
+.artist-favor-panel h2 {
+  font-size: clamp(16px, 3vw, 24px);
+  margin: 0;
+}
+.artist-favor-scroll {
+  flex: 1;
+  min-height: 120px;
+  overflow: auto;
+  padding: 0 24px 14px;
+  scrollbar-gutter: stable;
+}
+.artist-favor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+}
+.artist-favor-grid button {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border-radius: 8px;
+  width: 100%;
+}
+.artist-favor-grid button:hover:not(:disabled),
+.artist-favor-grid button[aria-pressed='true'] {
+  background: var(--surface-hover);
+}
+.artist-favor-art {
+  display: grid;
+  place-items: center;
+  width: min(78px, 100%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  position: relative;
+  background: var(--art-bg);
+  color: var(--art-color);
+}
+.artist-favor-art img {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+.artist-favor-check {
+  position: absolute;
+  inset: auto 0 0 auto;
+  border-radius: 50%;
+  width: 20px;
+  line-height: 20px;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+.artist-favor-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.artist-favor-status {
+  text-align: center;
+  color: var(--muted);
+  margin: 24px 0;
+}
+.artist-favor-warning {
+  margin: 0 24px 8px;
+  color: var(--warning);
+}
+.artist-favor-subtitle {
+  margin: 0 0 4px;
+  color: var(--muted);
+}
+.artist-favor-secondary {
+  color: var(--text-secondary);
+  padding: 7px 12px;
+  white-space: nowrap;
+}
+.artist-favor-secondary:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.artist-favor-songs {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.artist-favor-songs li {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.artist-favor-songs small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.artist-favor-index {
+  color: var(--muted);
+}

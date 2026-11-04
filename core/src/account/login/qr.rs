@@ -68,9 +68,14 @@ impl QrAuthentication {
     }
     async fn identity(&self, operation: &Operation<'_>) -> Result<()> {
         operation.check()?;
-        let response = self.candidate.api().account().await;
+        // M/3137 consumes loginExtData from the verified account/get
+        // packet after 803, not from the QR status packet.
+        let api = self.candidate.api();
+        let identity = crate::account::artist_onboarding::qr_identity(&*api).await;
         let mut state = operation.lock()?;
-        self.candidate.adopt(&self.session, &self.base, response?)?;
+        let (profile, offer) = identity?;
+        self.candidate
+            .adopt_with_artist_login(&self.session, &self.base, profile, Some(offer))?;
         state.status = LoginStatus::Authenticated;
         Ok(())
     }

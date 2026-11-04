@@ -4,7 +4,7 @@
 mod invalidation;
 mod legacy_api;
 mod policy;
-use super::login_policy::LoginNotice;
+use super::{artist_onboarding::ArtistLogin, login_policy::LoginNotice};
 use crate::{
     Error, Result,
     protocol::api::{Api, identifier},
@@ -47,6 +47,7 @@ struct SessionState {
     status: SessionStatus,
     login_notice: Option<LoginNotice>,
     initial_restore_generation: Option<u64>,
+    artist_login: Option<ArtistLogin>,
     changes: tokio::sync::watch::Sender<SessionToken>,
 }
 
@@ -69,6 +70,7 @@ impl SessionState {
         self.generation = next_generation(self.generation)?;
         self.uid = None;
         self.profile = None;
+        self.artist_login = None;
         self.status = status;
         if status != SessionStatus::Expired {
             self.login_notice = None;
@@ -105,6 +107,7 @@ impl AccountSession {
                 status: SessionStatus::Unknown,
                 login_notice: None,
                 initial_restore_generation: None,
+                artist_login: None,
                 changes,
             }),
             store,
@@ -310,10 +313,20 @@ impl AccountSession {
         state.generation = generation;
         state.uid = None;
         state.profile = None;
+        state.artist_login = None;
         state.status = SessionStatus::SignedOut;
         state.login_notice = None;
         state.changes.send_replace(state.token());
         Ok(())
+    }
+
+    pub(crate) fn artist_login(&self, token: &SessionToken) -> Result<Option<ArtistLogin>> {
+        let state = self.lock()?;
+        state.require(token)?;
+        Ok(state.artist_login.or_else(|| {
+            (token.uid.is_some() && state.initial_restore_generation == Some(token.generation))
+                .then_some(ArtistLogin { scene: None })
+        }))
     }
 
     pub fn snapshot(&self) -> Result<SessionSnapshot> {
@@ -340,7 +353,7 @@ impl AccountSession {
         profile: Value,
         expected: &SessionToken,
     ) -> Result<Value> {
-        self.adopt_inner(api, profile, expected, None, |_| Ok(()))
+        self.adopt_inner(api, profile, expected, None, None, |_| Ok(()))
     }
 
     pub(crate) fn adopt_registered(
@@ -349,9 +362,10 @@ impl AccountSession {
         profile: Value,
         expected: &SessionToken,
         registry: &Arc<StateStore>,
+        artist_login: Option<ArtistLogin>,
         select: impl FnOnce(&mut StateTransaction<'_>) -> Result<()>,
     ) -> Result<Value> {
-        self.adopt_inner(api, profile, expected, Some(registry), select)
+        self.adopt_inner(api, profile, expected, Some(registry), artist_login, select)
     }
 
     fn adopt_inner(
@@ -360,6 +374,7 @@ impl AccountSession {
         profile: Value,
         expected: &SessionToken,
         registry: Option<&Arc<StateStore>>,
+        artist_login: Option<ArtistLogin>,
         select: impl FnOnce(&mut StateTransaction<'_>) -> Result<()>,
     ) -> Result<Value> {
         if let Some(registry) = registry
@@ -384,6 +399,7 @@ impl AccountSession {
         }
         state.generation = generation;
         state.api = api;
+        state.artist_login = artist_login;
         state.uid = Some(uid);
         state.profile = Some(profile.clone());
         state.status = SessionStatus::Authenticated;
@@ -450,6 +466,9 @@ impl AccountSession {
         }
         if token.generation == 0 && state.status == SessionStatus::Unknown && token.uid.is_none() {
             state.initial_restore_generation = Some(generation);
+        }
+        if generation != state.generation {
+            state.artist_login = None;
         }
         state.generation = generation;
         state.uid = Some(uid);

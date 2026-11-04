@@ -254,6 +254,16 @@ impl LoginCandidate {
         expected: &SessionToken,
         profile: Value,
     ) -> Result<Value> {
+        self.adopt_with_artist_login(session, expected, profile, None)
+    }
+
+    pub(crate) fn adopt_with_artist_login(
+        &self,
+        session: &AccountSession,
+        expected: &SessionToken,
+        profile: Value,
+        artist_login: Option<super::artist_onboarding::ArtistLogin>,
+    ) -> Result<Value> {
         self.registry.profile_path(&self.id)?;
         let uid = crate::protocol::api::identifier(&profile["userId"])?;
         if self
@@ -290,6 +300,7 @@ impl LoginCandidate {
             profile,
             expected,
             &self.registry.store,
+            artist_login,
             |tx| {
                 removal::available(tx, &self.id)?;
                 if let Some(value) = tx.get(OWNER, saved::KIND, &uid)? {

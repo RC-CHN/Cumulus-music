@@ -165,6 +165,8 @@ impl CredentialLogin {
                     self.candidate.remember(remember);
                 }
                 state.pending = Some(request.clone());
+                state.artist_login = None;
+                state.artist_login_uid = None;
             }
         }
         if login && let Some(guardian) = &self.guardian {
@@ -199,6 +201,13 @@ impl CredentialLogin {
             // returned below without storing request bodies in diagnostics.
             if let Some(response) = response.filter(|v| v.is_object()) {
                 let code = response["code"].as_i64();
+                if login && code == Some(200) {
+                    state.artist_login = Some(
+                        crate::account::artist_onboarding::ArtistLogin::from_reply(response),
+                    );
+                    state.artist_login_uid =
+                        crate::protocol::api::identifier(&response["profile"]["userId"]).ok();
+                }
                 let result = classify(response);
                 state.code = code;
                 state.status = if login {
@@ -325,7 +334,17 @@ impl CredentialLogin {
         }
         let profile = self.candidate.api().account().await;
         let mut state = operation.lock()?;
-        self.candidate.adopt(&self.session, &self.base, profile?)?;
+        let profile = profile?;
+        let offer = state.artist_login.filter(|_| {
+            state.artist_login_uid.as_ref().is_none_or(|expected| {
+                crate::protocol::api::identifier(&profile["userId"])
+                    .as_ref()
+                    .ok()
+                    == Some(expected)
+            })
+        });
+        self.candidate
+            .adopt_with_artist_login(&self.session, &self.base, profile, offer)?;
         state.pending = None;
         state.challenge = None;
         state.verification = None;

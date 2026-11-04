@@ -218,7 +218,10 @@ impl Api for Service {
                     json!({"code":200,"data":{"totalCount":1,"resources":[{"song":song(),"lyrics":"合成主流程歌词"}],"hasMore":false}})
                 }
                 "/api/v3/song/detail" => {
-                    if self.multi_song_queue() {
+                    if self.multi_song_queue()
+                        || super::artist_onboarding_fixture::Mode::active()
+                            == Some(super::artist_onboarding_fixture::Mode::Recall)
+                    {
                         let packed = p["c"]
                             .as_str()
                             .ok_or(Error::InvalidInput("missing synthetic song IDs"))?;

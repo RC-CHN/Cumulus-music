@@ -1,4 +1,6 @@
 //! A single production WebView/IPC flow against a closed synthetic server.
+#[path = "support/artist_onboarding_fixture.rs"]
+mod artist_onboarding_fixture;
 #[path = "support/assets.rs"]
 mod assets;
 #[path = "support/capture_ack.rs"]
@@ -182,6 +184,7 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let ordinary_https = fixture::ordinary_https();
+    let artist_proof = artist_onboarding_fixture::Mode::active();
     let retry_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_RETRY").as_deref() == Ok("1");
     let retry_with_play =
         std::env::var("CUMULUS_MAIN_FLOW_HTTPS_RETRY_WITH_PLAY").as_deref() == Ok("1");
@@ -234,6 +237,9 @@ fn main() {
         .setup(move |app| {
             let store = Arc::new(StateStore::open(root.join("state"))?);
             let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https, retry_https, eof_https, loading_step));
+            if artist_proof.is_some() {
+                fixture.release_loading_seek();
+            }
             let wire = Arc::new(if reopen {
                 wire::Wire::reopen(fixture.clone())
             } else {
@@ -320,12 +326,14 @@ fn main() {
                 }
                 let ordinary_stage = ["ux_reopened","ux_guest","ux_qr_pending","ux_login_adopted","ux_recovered","ux_daily","ux_search","ux_search_loading_cover","ux_search_loading_rows","ux_playback","ux_playlist_created","ux_playlist_edited","ux_playlist_song_added","ux_playlist_song_removed","ux_playlist_cleaned","ux_download_paused","ux_download_complete","ux_local_offline_playback","ux_download_disposed","complete","failed"].contains(&stage.as_str());
                 if !(ordinary_stage || retry_https && stage == "ux_https_failure" || eof_https && stage == "ux_https_before_eof"
-                    || missing_download && ["ux_download_missing", "ux_download_online"].contains(&stage.as_str())) { return; }
+                    || missing_download && ["ux_download_missing", "ux_download_online"].contains(&stage.as_str())
+                    || artist_proof.is_some() && stage.starts_with("ux_artist_") && stage.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) { return; }
                 let client = handle.state::<MusicClient>();
                 let account = client.account().unwrap();
                 value["authenticated"] = json!(account.status == SessionStatus::Authenticated);
                 value["nativeEpoch"] = json!(account.epoch);
                 value["wire"] = wire.facts();
+                if artist_proof.is_some() { value["artistCalls"] = json!(artist_onboarding_fixture::calls()); }
                 let audit = match stage.as_str() {
                     "ux_login_adopted" | "ux_reopened" => client.saved_accounts(&account.epoch).and_then(|records| {
                         if records.value.len() != 1 || !records.value[0].current || !records.value[0].auto_login {
@@ -383,6 +391,9 @@ fn main() {
         .on_page_load(move |webview, payload| {
             if payload.event()==PageLoadEvent::Finished {
                 webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};window.__mainFlowHttpsRetryWithPlay={retry_with_play};window.__mainFlowHttpsEof={eof_https};window.__mainFlowLoadingStep={loading_step};window.__mainFlowMissingDownload={missing_download};")).unwrap();
+                if let Some(mode) = artist_proof {
+                    webview.eval(format!("window.__cumulusArtistProof={};", json!(mode.name()))).unwrap();
+                }
                 let source = if reopen {
                     include_str!("main_flow_reopen_probe.js")
                 } else {

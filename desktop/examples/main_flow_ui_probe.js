@@ -86,6 +86,51 @@
     }, "QR login adopted by the app");
     await stage("login_adopted", { epoch: account.epoch, previousEpoch: guest.epoch, status: account.status });
     const epoch = account.epoch;
+    if (window.__cumulusArtistProof) {
+      const recall = window.__cumulusArtistProof === "recall";
+      const panel = () => one(".artist-favor-dialog[open]");
+      const save = () => one("[data-favor-save]");
+      const card = id => one(`[data-favor-artist="${id}"]`);
+      const catalog = () => all("[data-favor-artist]").map(node => node.dataset.favorArtist);
+      const titles = () => all("[data-favor-song]").map(node => node.dataset.favorSong);
+      const native = () => invoke("player_snapshot", { epoch });
+      await wait(() => panel()?.dataset.favorScene === (recall ? "recall_user" : "new_user") && card(701), "typed offer after native identity adoption");
+      check(catalog().join(",") === (recall ? "701,702,704" : "701,702") && save().disabled, "ordered and deduplicated candidates before choice");
+      await stage("artist_candidates", { ids: catalog() });
+      await click(() => card(701), "first artist");
+      await wait(() => card(703), "similar artist inserted");
+      check(catalog().join(",") === (recall ? "701,703,702,704" : "701,703,702"), "same-row recommendation insertion");
+      check(save().disabled, "one artist cannot save");
+      await click(() => card(701), "remove first artist");
+      await click(() => card(701), "reselect first artist without another similar read");
+      await click(() => card(703), "second artist");
+      await wait(() => !save()?.disabled, "minimum reached");
+      await stage("artist_selection", { ids: catalog(), selected: all('[data-favor-artist][aria-pressed="true"]').length });
+      await click(save, "explicit save");
+      if (recall) {
+        await wait(() => button("重试读取歌曲", panel()), "recommendation failure can be retried as read");
+        await stage("artist_preview_failure", {});
+        await click(() => button("重试读取歌曲", panel()), "repeat only the recommendation read");
+      }
+      await wait(() => panel()?.dataset.favorStep === "result", "visible recommendation list");
+      check(titles().join(",") === (recall ? "2,1" : "1"), "preserve exact recommendation order");
+      check(recall || panel().textContent.includes("保存结果无法确认"), "unknown save is visible");
+      const before = await native();
+      check(before.state === "idle" && before.queueLen === 0, "recommendation does not auto-start");
+      await stage("artist_result", { ids: titles(), uncertain: !recall });
+      if (recall) {
+        await click(() => button("稍后再听", panel()), "explicit park in player");
+        await wait(async () => { const view = await native(); return !panel() && view.queueLen === 2 && view.state === "idle"; }, "later queues while retaining stopped player");
+      } else {
+        await click(() => button("立即收听", panel()), "explicit listen now");
+        await wait(async () => { const view = await native(); return !panel() && view.state === "playing" && view.track?.id === "1"; }, "native engine advances requested result");
+      }
+      const result = await native();
+      await stage("artist_transport", { state: result.state, queueLen: result.queueLen });
+      await stage("complete", { ok: true, artistOnboarding: window.__cumulusArtistProof, realAccountWrites: 0, realMusicRequests: 0 });
+      return;
+    }
+
     const playlists = async () => (await invoke("account_playlists")).value;
     const baseline = (await playlists()).map(p => p.id);
     check(baseline.length === 1, "unexpected playlist baseline");

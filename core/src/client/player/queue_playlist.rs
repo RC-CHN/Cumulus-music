@@ -24,6 +24,10 @@ use std::{
 const QUEUE_LIMIT: usize = 10_000;
 
 pub(super) enum QueueCollection {
+    ArtistFavor {
+        ids: Vec<String>,
+        quality: Quality,
+    },
     DailyRecommendations {
         revision: String,
         indices: Option<Vec<usize>>,
@@ -67,6 +71,85 @@ pub(super) enum QueueCollection {
 }
 
 impl MusicClient {
+    pub(in crate::client) async fn queue_artist_favor(
+        &self,
+        epoch: &str,
+        ids: Vec<String>,
+        quality: Quality,
+        expected: String,
+    ) -> Result<PlayerView> {
+        self.queue_collection(
+            epoch,
+            QueueCollection::ArtistFavor { ids, quality },
+            expected,
+        )
+        .await
+    }
+
+    pub(in crate::client) async fn play_artist_favor(
+        &self,
+        epoch: &str,
+        ids: Vec<String>,
+        quality: Quality,
+        expected: String,
+    ) -> Result<PlayerView> {
+        let token = self.player_token(epoch)?;
+        let controller = self.player.controller().await?;
+        let (before, queue) = controller.queue_with_state(&token).await?;
+        if before.queue_revision.to_string() != expected {
+            return Err(Error::QueueChanged);
+        }
+        if before.fm || queue.intelligence.is_some() || self.together_attached(&token, None)? {
+            return Err(Error::State(
+                "artist recommendations require ordinary playback",
+            ));
+        }
+        let focus = self.focus.snapshot()?;
+        let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
+        let ids = ids.into_iter().map(Value::from).collect::<Vec<_>>();
+        let resources = self
+            .online_queue_resources(&token, &ids, quality, attempt)
+            .await?;
+        if resources.is_empty() {
+            return Err(Error::State("artist recommendations have no online tracks"));
+        }
+        self.session.check_generation(&token)?;
+        let _ordinary_room = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        if self.together_attached(&token, None)? {
+            return Err(Error::State(
+                "artist recommendations require ordinary playback",
+            ));
+        }
+        let lease = self
+            .claim_native_media(&token, super::super::focus::Owner::Audio, focus)
+            .await?;
+        let selection = self.player.selection.clone();
+        let focus = self.focus.clone();
+        let result = controller
+            .command_guarded(
+                &token,
+                PlaybackCommand::Replace {
+                    resources,
+                    index: 0,
+                    source: json!({"kind":"songs","scene":"artistRcmd"}),
+                },
+                before.fence(),
+                Cancellation::new(move || {
+                    selection.load(Ordering::Acquire) == attempt
+                        && focus
+                            .check(lease, super::super::focus::Owner::Audio)
+                            .is_ok()
+                }),
+            )
+            .await?;
+        self.session.check_generation(&token)?;
+        project(&result, &token)
+    }
+
     async fn playlist_queue_resources(
         &self,
         token: &SessionToken,
@@ -158,12 +241,13 @@ impl MusicClient {
         let local = matches!(collection, QueueCollection::Local { .. });
         let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
         let album_batch = matches!(collection, QueueCollection::AlbumBatch { .. });
-        let ordinary = daily || style || local || artist || album_batch;
+        let artist_favor = matches!(collection, QueueCollection::ArtistFavor { .. });
+        let ordinary = daily || style || local || artist || album_batch || artist_favor;
         let special_queue = if daily {
             "daily recommendations require ordinary playback"
         } else if style {
             "style recommendations require ordinary playback"
-        } else if artist {
+        } else if artist || artist_favor {
             "artist songs require ordinary playback"
         } else if album_batch {
             "album batch requires ordinary playback"
@@ -199,6 +283,20 @@ impl MusicClient {
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let (resources, source, downloaded) = match collection {
+            QueueCollection::ArtistFavor { ids, quality } => {
+                let ids = ids.into_iter().map(Value::from).collect::<Vec<_>>();
+                let resources = self
+                    .online_queue_resources(&token, &ids, quality, attempt)
+                    .await?;
+                if resources.is_empty() {
+                    return Err(Error::State("artist recommendations have no online tracks"));
+                }
+                (
+                    resources,
+                    json!({"kind":"songs","scene":"artistRcmd"}),
+                    false,
+                )
+            }
             QueueCollection::DailyRecommendations {
                 revision, quality, ..
             }
@@ -414,7 +512,7 @@ impl MusicClient {
         } else {
             None
         };
-        if start {
+        if start && !artist_favor {
             self.claim_native_media(&token, super::super::focus::Owner::Audio, focus)
                 .await?;
             if self.player.selection.load(Ordering::Acquire) != attempt {
@@ -425,7 +523,7 @@ impl MusicClient {
         let command = PlaybackCommand::UpdateQueue(QueueUpdate {
             expected: expected.clone(),
             queue,
-            transport: start.then_some(QueueTransport {
+            transport: (start && !artist_favor).then_some(QueueTransport {
                 position: None,
                 paused: false,
             }),

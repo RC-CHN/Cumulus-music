@@ -1,5 +1,5 @@
 //! Closed EAPI transport for the synthetic main-flow QR and business requests.
-use super::fixture::Service;
+use super::{artist_onboarding_fixture, fixture::Service};
 use cumulus_core::{
     Error, Result,
     protocol::{
@@ -277,7 +277,21 @@ impl HttpBackend for Wire {
                 }
                 _ => {}
             }
-            reply(self.service.request(&path, data, false).await?, false)
+            let artist_mode = artist_onboarding_fixture::Mode::active();
+            if authenticated
+                && let Some(mode) = artist_mode
+                && let Some(response) = artist_onboarding_fixture::response(mode, &path, &data)
+            {
+                return reply(response?, false);
+            }
+            let mut body = self.service.request(&path, data, false).await?;
+            if authenticated
+                && path == ACCOUNT
+                && let Some(mode) = artist_mode
+            {
+                mode.extend_identity(&mut body);
+            }
+            reply(body, false)
         })
     }
 }

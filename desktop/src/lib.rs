@@ -1,4 +1,5 @@
 mod account_avatar;
+mod artist_onboarding;
 pub use account_avatar::AccountAvatarPicker;
 mod browser;
 pub use browser::LoginDocumentBrowser;
@@ -238,6 +239,12 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 local::local_match_view,
                 local::local_match_command,
                 commands::account_snapshot,
+                artist_onboarding::artist_onboarding_offer,
+                artist_onboarding::artist_onboarding_candidates,
+                artist_onboarding::artist_onboarding_save,
+                artist_onboarding::artist_onboarding_preview,
+                artist_onboarding::artist_onboarding_close,
+                artist_onboarding::artist_onboarding_result,
                 commands::account_profile_detail,
                 account_avatar::account_avatar_tasks,
                 account_avatar::account_avatar_image,

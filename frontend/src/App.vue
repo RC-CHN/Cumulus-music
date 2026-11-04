@@ -72,6 +72,7 @@ import PlaylistActions from './components/playlist/PlaylistActions.vue';
 import PlaylistBatchPage from './components/playlist/PlaylistBatchPage.vue';
 import TrackActions from './components/TrackActions.vue';
 import ModalTransition from './components/ModalTransition.vue';
+import ArtistOnboarding from './components/onboarding/ArtistOnboarding.vue';
 import { useModalOrigin } from './composables/useModalOrigin';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
@@ -3708,6 +3709,14 @@ onUnmounted(() => {
         "
       />
     </Transition>
+    <ArtistOnboarding
+      :account="account"
+      :enabled="signedIn && !initializing && !loginOpen"
+      :player-ready="player.ready.value && !player.busy.value"
+      :queue-revision="player.view.value?.queueRevision"
+      :quality="player.view.value?.qualityPreferences.quality ?? 'standard'"
+      @transport="player.syncPlayback()"
+    />
     <ModalTransition
       :restore-focus="!initializing && lyricReport.ownerEpoch.value === account.epoch"
       ><LyricReportDialog v-if="lyricReport.open.value" :model="lyricReport"

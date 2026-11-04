@@ -1,4 +1,5 @@
 import type { MessageClient } from './messages';
+import type { ArtistOnboardingClient } from './artistOnboarding';
 import type { SearchClient, SearchResultsClient } from './search';
 import type { NativeLikesClient } from './nativeLikes';
 import type { LikeRecoveryClient } from './likeRecovery';
@@ -83,7 +84,8 @@ export interface StyleTagOperation {
 
 /** UI-facing use cases; no Tauri types or raw HTTP API in this interface. */
 export interface CoreClient
-  extends SearchClient,
+  extends ArtistOnboardingClient,
+    SearchClient,
     SearchResultsClient,
     LikeRecoveryClient,
     NativeLikesClient,
