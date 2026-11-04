@@ -32,23 +32,41 @@
   let step = 'startup', epoch, count = 0;
   const queue = () => invoke('player_queue', { epoch });
   const settings = () => invoke('queue_click_preferences', { epoch });
-  const playing = () => one('.playerbar')?.dataset.state === 'playing';
+  const bar = () => one('.playerbar');
   const ids = (value) => value.tracks.map((entry) => entry.track.id);
   const selected = (value) => value.tracks.find((entry) => entry.entryId === value.current)?.track.id;
   const choice = (value) => one('[data-queue-click-choice="' + value + '"]');
   const settled = () => !one('.page-enter-active,.page-leave-active');
   async function waitPlayback(id, length) {
+    let settled;
     await wait(async () => {
-      if (!playing()) return false;
+      if (bar()?.dataset.state !== 'playing') return false;
       const value = await queue();
-      return value.tracks.length === length && selected(value) === id;
+      const player = await invoke('player_snapshot', { epoch });
+      if (value.tracks.length !== length || selected(value) !== id ||
+          player.state !== 'playing' || player.track?.id !== id ||
+          player.queueRevision !== value.revision || player.queueLen !== length ||
+          player.entryId !== value.current ||
+          player.playId !== bar()?.dataset.playId || !(player.position > .2)) return false;
+      settled = { queue: value, playId: player.playId, position: player.position };
+      return true;
     }, step);
-    return queue();
+    return settled;
   }
-  async function stage(label) {
-    await emit('ux_' + String(++count).padStart(2, '0') + '_' + label, {
+  async function stage(label, settled) {
+    const name = 'ux_' + String(++count).padStart(2, '0') + '_' + label;
+    window.__queueClickRecorded = null;
+    await emit(name, {
       preference: (await settings()).value.replaceQueue,
+      ...(settled && { observedPlayback: {
+        playId: settled.playId, queueRevision: settled.queue.revision,
+        entryId: settled.queue.current, position: settled.position,
+      } }),
+      // Deliberately deschedule the native observer while the next action is
+      // ready to run. The probe must still save this stage before advancing.
+      ...(label === 'catalog_added' && { deferQueueClickObservation: true }),
     });
+    await wait(() => window.__queueClickRecorded === name, name + ' native evidence saved');
   }
   async function openSettings() {
     click(button('打开设置'));
@@ -100,8 +118,8 @@
     step = 'playlist replaces by default';
     doubleClick('3');
     const replaced = await waitPlayback('3', 40);
-    assert(!ids(replaced).includes('51'), 'default replaces old source list');
-    await stage('default_replaced');
+    assert(!ids(replaced.queue).includes('51'), 'default replaces old source list');
+    await stage('default_replaced', replaced);
 
     await openSettings();
     click(choice('add'));
@@ -113,19 +131,19 @@
     step = 'playlist adds selected song and keeps queue';
     doubleClick('3');
     const appended = await waitPlayback('3', 3);
-    retained(before, appended);
-    await stage('playlist_added');
+    retained(before.queue, appended.queue);
+    await stage('playlist_added', appended);
 
-    const original = appended.current;
-    const first = appended.tracks.find((entry) => entry.track.id === '51').entryId;
+    const original = appended.queue.current;
+    const first = appended.queue.tracks.find((entry) => entry.track.id === '51').entryId;
     await invoke('player_action', { epoch, action: { kind: 'select', entry_id: first } });
     await waitPlayback('51', 3);
     step = 'duplicate song is selected without insertion';
     doubleClick('3');
     const duplicate = await waitPlayback('3', 3);
-    assert(duplicate.current === original && ids(duplicate).filter((id) => id === '3').length === 1,
+    assert(duplicate.queue.current === original && ids(duplicate.queue).filter((id) => id === '3').length === 1,
       'reuse original queue entry');
-    await stage('duplicate_selected');
+    await stage('duplicate_selected', duplicate);
 
     step = 'open the exact album search result';
     const input = one('[aria-label="搜索音乐"]');
@@ -150,15 +168,15 @@
     step = 'catalog double click adds just selected song';
     doubleClick('4', albumSongs());
     const catalog = await waitPlayback('4', 4);
-    retained(duplicate, catalog);
-    await stage('catalog_added');
+    retained(duplicate.queue, catalog.queue);
+    await stage('catalog_added', catalog);
 
     step = 'explicit album Play All replaces independent of add preference';
     click(button('播放全部', albumPage()));
     const all = await waitPlayback('1', 11);
-    assert(!ids(all).includes('51') && (await settings()).value.replaceQueue === false,
+    assert(!ids(all.queue).includes('51') && (await settings()).value.replaceQueue === false,
       'explicit Play All replaces; preference remains enabled');
-    await stage('explicit_replace');
+    await stage('explicit_replace', all);
     await emit('complete', { ok: true, count, reopened: false, realMusicRequests: 0 });
   } catch (error) {
     await emit('failed', { ok: false, step, message: String(error) });

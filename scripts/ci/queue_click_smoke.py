@@ -26,7 +26,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
-               CUMULUS_QUEUE_UI_PROOF='1', CUMULUS_SEARCH_UI_PROOF='1')
+               CUMULUS_QUEUE_UI_PROOF='1', CUMULUS_QUEUE_CLICK_PROOF='1', CUMULUS_SEARCH_UI_PROOF='1')
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -62,8 +62,20 @@ def main():
             if label in EXPECTED:
                 target, count = EXPECTED[label]
                 queue, player = stage['nativeQueue'], stage['nativePlayer']
-                assert player['state'] == 'playing' and player['queueLen'] == len(queue['tracks']) == count
-                assert player['track']['id'] == target
+                current = next((item for item in queue['tracks'] if item['entryId'] == queue['current']), None)
+                observed = stage['observedPlayback']
+                actual = {'state': player['state'], 'track': (player['track'] or {}).get('id'),
+                          'queueLength': player['queueLen'], 'queueRows': len(queue['tracks']),
+                          'playId': player['playId'], 'position': player['position'],
+                          'playerRevision': player['queueRevision'], 'queueRevision': queue['revision'],
+                          'playerEntryId': player['entryId'], 'entryId': queue['current'],
+                          'selectedTrack': current and current['track']['id']}
+                detail = (label, {'track': target, 'queueLength': count}, observed, actual)
+                assert actual['state'] == 'playing' and actual['queueLength'] == actual['queueRows'] == count, detail
+                assert actual['track'] == actual['selectedTrack'] == target, detail
+                assert actual['playerRevision'] == actual['queueRevision'] == observed['queueRevision'], detail
+                assert actual['playId'] == observed['playId'] and actual['playerEntryId'] == actual['entryId'] == observed['entryId'], detail
+                assert observed['position'] > .2 and actual['position'] >= observed['position'] - .05, detail
             if args.screenshots:
                 assert path.with_suffix('.png').is_file()
     with sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:

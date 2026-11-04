@@ -571,6 +571,9 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    let queue_ui_proof = std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some();
+    let queue_click_proof = std::env::var_os("CUMULUS_QUEUE_CLICK_PROOF").is_some();
+    assert!(!queue_click_proof || (queue_ui_proof && motion_proof));
     assert!(!message_fixture::enabled() || motion_proof);
     let peq_proof = effect_peq_fixture::enabled();
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
@@ -1014,9 +1017,17 @@ fn main() {
                         }
                         value["syntheticFmFeedback"]=fm_feedback_fixture::report();
                     }
-                    if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
+                    if queue_click_proof && value["deferQueueClickObservation"]==true && stage=="ux_06_catalog_added" {
+                        tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+                    }
+                    let player = if queue_click_proof {
+                        client.player_snapshot(&epoch).await
+                    } else {
+                        client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
+                    };
+                    if let Ok(snapshot)=player {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() {
+                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                         if profile_play_record_fixture::play_card_enabled() {
@@ -1028,6 +1039,9 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    if queue_click_proof && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__queueClickRecorded={};",serde_json::json!(stage))).unwrap();
+                    }
                     if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled() || intelligence_start_fixture::enabled() || fm_feedback_fixture::enabled()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();
                     }
