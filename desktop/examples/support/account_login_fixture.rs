@@ -610,8 +610,9 @@ impl HttpBackend for Service {
                     ));
                 }
                 if self.bindings_proof && path.contains("/bindings/") {
+                    let expected_uid = uid.to_string();
                     if path != format!("/api/w/v1/user/bindings/{uid}")
-                        || data["userId"] != uid.to_string()
+                        || data["userId"].as_str() != Some(expected_uid.as_str())
                         || data.as_object().is_none_or(|fields| {
                             fields
                                 .keys()
