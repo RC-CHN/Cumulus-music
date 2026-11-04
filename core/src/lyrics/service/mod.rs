@@ -138,7 +138,26 @@ impl LyricsService {
         })
     }
     pub fn set_preferences(&self, preferences: LyricPreferences) -> Result<LyricSnapshot> {
+        self.set_preferences_inner(None, preferences)
+    }
+    /// Apply a preference gesture only while its displayed lyric is current.
+    /// The persisted preference is still account-wide.
+    pub fn set_target_preferences(
+        &self,
+        target: &LyricTarget,
+        preferences: LyricPreferences,
+    ) -> Result<LyricSnapshot> {
+        self.set_preferences_inner(Some(&request::key(target)?), preferences)
+    }
+    fn set_preferences_inner(
+        &self,
+        expected: Option<&str>,
+        preferences: LyricPreferences,
+    ) -> Result<LyricSnapshot> {
         self.with_state(|state, uid| {
+            if let Some(expected) = expected {
+                require_document(state, expected)?;
+            }
             self.store.put(
                 uid,
                 "lyric_preferences",
@@ -168,10 +187,21 @@ impl LyricsService {
         })
     }
     pub fn adjust_offset(&self, gain: f64) -> Result<LyricSnapshot> {
+        self.adjust_offset_inner(None, gain)
+    }
+    /// Unlike a change to whichever lyric happens to be loaded, a gesture
+    /// from either desktop window always names the displayed resource.
+    pub fn adjust_target_offset(&self, target: &LyricTarget, gain: f64) -> Result<LyricSnapshot> {
+        self.adjust_offset_inner(Some(&request::key(target)?), gain)
+    }
+    fn adjust_offset_inner(&self, expected: Option<&str>, gain: f64) -> Result<LyricSnapshot> {
         if !gain.is_finite() {
             return Err(Error::InvalidInput("lyric offset gain must be finite"));
         }
-        let (key, sidecar_key) = self.with_state(|state, _| {
+        let (key, sidecar_key, attempt) = self.with_state(|state, _| {
+            if let Some(expected) = expected {
+                require_document(state, expected)?;
+            }
             Ok((
                 state
                     .view
@@ -179,15 +209,14 @@ impl LyricsService {
                     .clone()
                     .ok_or(Error::State("no selected lyrics"))?,
                 state.sidecar_key.clone(),
+                state.attempt,
             ))
         })?;
         let storage_key = sidecar_key.as_deref().unwrap_or(&key);
         let _lock = self.resource_lock(storage_key)?;
         self.with_state(|state, uid| {
-            if state.view.resource_key.as_ref() != Some(&key)
-                || state.sidecar_key != sidecar_key
-                || state.view.is_loading
-            {
+            require_document(state, &key)?;
+            if state.attempt != attempt || state.sidecar_key != sidecar_key {
                 return Err(Error::StaleResponse);
             }
             if !state.view.lyric.scrollable {
@@ -352,5 +381,13 @@ impl LyricsService {
             };
             Ok(state.view.clone())
         })
+    }
+}
+
+fn require_document(state: &State, expected: &str) -> Result<()> {
+    if state.view.resource_key.as_deref() == Some(expected) && !state.view.is_loading {
+        Ok(())
+    } else {
+        Err(Error::StaleResponse)
     }
 }

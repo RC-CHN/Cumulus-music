@@ -446,18 +446,41 @@ async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
         .find(|r| r.track.name == "Second")
         .unwrap();
     assert!(second.cue);
-    let view = client
-        .play_selection(
-            "0",
-            PlaySelection::Local {
-                query: LocalQuery::default(),
-                revision: page.revision,
-                start_id: Some(second.track.id.clone()),
-            },
-        )
-        .await
+    let device = Arc::new(support::Device::default());
+    device.hold_load.store(true, Ordering::SeqCst);
+    let client = Arc::new(client.with_audio_factory({
+        let device = device.clone();
+        move || Ok(support::audio_engine(device.clone()))
+    }));
+    let loading = tokio::spawn({
+        let client = client.clone();
+        let input = PlaySelection::Local {
+            query: LocalQuery::default(),
+            revision: page.revision,
+            start_id: Some(second.track.id.clone()),
+        };
+        async move { client.play_selection("0", input).await }
+    });
+    let early = tokio::time::timeout(Duration::from_secs(4), async {
+        device.started.notified().await;
+        let pending = client.player_snapshot("0").await?;
+        let play_id = pending
+            .play_id
+            .as_deref()
+            .ok_or(Error::State("missing pending CUE play ID"))?;
+        let lyrics = client.player_lyrics("0", play_id).await?;
+        Ok::<_, Error>((pending.timeline, lyrics))
+    })
+    .await;
+    device.hold_load.store(false, Ordering::SeqCst);
+    let (pending_timeline, early_lyrics) = early
+        .expect("lyrics while decoder is still loading")
         .unwrap();
+    let view = loading.await.unwrap().unwrap();
+    assert!(pending_timeline.is_none());
+    assert_eq!(early_lyrics.lines[1].time, Some(5.0));
     let play_id = view.play_id.unwrap();
+    assert_eq!(early_lyrics.play_id, play_id);
     let timeline = view.timeline.unwrap();
     assert_eq!((timeline.media_start, timeline.total), (30.0, Some(90.0)));
     let lyrics = client.player_lyrics("0", &play_id).await.unwrap();

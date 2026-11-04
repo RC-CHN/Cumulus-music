@@ -280,10 +280,8 @@ impl MusicClient {
             from_sidecar: value.from_sidecar,
             from_embedded: value.from_embedded,
         };
-        if let Some(timeline) = &player.timeline
-            && timeline.mode == crate::playback::TimelineMode::Cue
-        {
-            segment::apply(&mut result, timeline.media_start, timeline.length);
+        if let Some((start, length)) = segment::bounds(&player)? {
+            segment::apply(&mut result, start, length);
         }
         result.from_sidecar &= !result.lines.is_empty();
         result.from_embedded &= !result.lines.is_empty();
@@ -351,10 +349,7 @@ impl MusicClient {
             forgotten_entry,
             ..
         } = self.lyric_context(epoch, play_id).await?;
-        if service.snapshot()?.resource_key.as_deref() != Some(&target.resource_key()?) {
-            return Err(Error::StaleResponse);
-        }
-        let value = service.set_preferences(preferences)?;
+        let value = service.set_target_preferences(&target, preferences)?;
         self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
             .await
     }
@@ -366,10 +361,7 @@ impl MusicClient {
             forgotten_entry,
             ..
         } = self.lyric_context(epoch, play_id).await?;
-        if service.snapshot()?.resource_key.as_deref() != Some(&target.resource_key()?) {
-            return Err(Error::StaleResponse);
-        }
-        let value = service.adjust_offset(gain)?;
+        let value = service.adjust_target_offset(&target, gain)?;
         self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
             .await
     }

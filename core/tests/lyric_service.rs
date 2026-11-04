@@ -117,6 +117,66 @@ async fn old_selection_cancellation_and_account_switch_cannot_publish_late_lyric
 }
 
 #[tokio::test]
+async fn old_window_adjustment_cannot_change_a_new_lyric_with_the_same_numeric_id() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(tmp.path()).unwrap());
+    let (pending, send) = gate();
+    let (_, api, service) = setup(
+        store.clone(),
+        [response("[00:01]ordinary song").into(), pending],
+    )
+    .await;
+    let old_target = LyricTarget::Song("1".into());
+    let new_target = LyricTarget::Cloud("1".into());
+    service.fetch(request(old_target.clone())).await.unwrap();
+    let new_read = tokio::spawn({
+        let (service, target) = (service.clone(), new_target.clone());
+        async move { service.fetch(request(target)).await }
+    });
+    api.wait_for_calls(3).await;
+    let preferences = LyricPreferences {
+        translation_enable: false,
+        roma_enable: false,
+    };
+    let reject_old_window = || {
+        assert!(matches!(
+            service.adjust_target_offset(&old_target, 1.0),
+            Err(Error::StaleResponse)
+        ));
+        assert!(matches!(
+            service.set_target_preferences(&old_target, preferences),
+            Err(Error::StaleResponse)
+        ));
+    };
+    reject_old_window();
+    send.send(Ok(json!({"code":200,"lrc":"[00:01]cloud song"})))
+        .unwrap();
+    new_read.await.unwrap().unwrap();
+    reject_old_window();
+    assert!(
+        store
+            .get("1", "lyric_preferences", "state")
+            .unwrap()
+            .is_none()
+    );
+    let adjusted = service.adjust_target_offset(&new_target, -1.0).unwrap();
+    assert_eq!(adjusted.lyric.offset, -0.5);
+    assert_eq!(adjusted.lyric.lyric_lines[0].time, Some(1.5));
+    assert_eq!(
+        store.get("1", "lyrics_v1", "song:1").unwrap().unwrap()["response"]["lrc"]["offset"],
+        0.5
+    );
+    assert_eq!(
+        service
+            .set_target_preferences(&new_target, preferences)
+            .unwrap()
+            .preferences,
+        preferences
+    );
+    assert_eq!(api.calls().len(), 3);
+}
+
+#[tokio::test]
 async fn abort_releases_loading_and_cross_instance_resource_lock_without_replay() {
     let tmp = tempfile::tempdir().unwrap();
     let store = Arc::new(StateStore::open(tmp.path()).unwrap());

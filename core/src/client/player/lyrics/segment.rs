@@ -1,7 +1,44 @@
 //! CUE is a view over one album file. Clip every lyric channel using the
 //! original row identity, and translate word clocks into clip-relative time.
 use super::*;
-use crate::lyrics::{LyricLine, WordLine};
+use crate::{
+    library::LocalRevision,
+    lyrics::{LyricLine, WordLine},
+    playback::{Timeline, TimelineMode, controller::PlaybackSnapshot},
+};
+
+pub(super) fn bounds(player: &PlaybackSnapshot) -> Result<Option<(f64, Option<f64>)>> {
+    if let Some(timeline) = &player.timeline {
+        return Ok(
+            (timeline.mode == TimelineMode::Cue).then_some((timeline.media_start, timeline.length))
+        );
+    }
+    // An open lyric panel can read faster than the decoder initializes. The
+    // selected resource already carries the index-checked CUE bounds. Use the
+    // same timeline validation as the decoder, without the duration observation.
+    let Some(revision) = player
+        .selected
+        .as_ref()
+        .filter(|entry| entry.resource["local_id"].is_string())
+        .and_then(|entry| entry.resource.get("local_revision"))
+        .filter(|revision| revision["kind"] == "cue")
+    else {
+        return Ok(None);
+    };
+    let LocalRevision::Cue {
+        offset, duration, ..
+    } = serde_json::from_value(revision.clone())?
+    else {
+        return Ok(None);
+    };
+    let timeline = Timeline::from_source(
+        &serde_json::json!({"segment": {"start": offset, "duration": duration}}),
+        None,
+    )?
+    .snapshot();
+    Ok(Some((timeline.media_start, timeline.length)))
+}
+
 fn indices(times: &[Option<f64>], start: f64, length: Option<f64>) -> Vec<usize> {
     let previous = times
         .iter()
