@@ -182,6 +182,39 @@ impl PodcastApi {
             .await?;
         Ok(())
     }
+    /// M/15:3511 and M/3160:1688. Treat capped or malformed snapshots as
+    /// unknown; omission must never be read as "not subscribed" on a partial list.
+    pub async fn search_subscribed_ids(&self, uid: &str) -> Result<Option<Vec<String>>> {
+        const LIMIT: usize = 1_000;
+        let result = self
+            .api
+            .call(
+                "/api/djradio/get/subed",
+                json!({"targetUserId":identifier(&json!(uid))?, "limit":LIMIT}),
+                false,
+                &[200],
+            )
+            .await?;
+        let Some(radios) = result["djRadios"].as_array() else {
+            return Ok(None);
+        };
+        if radios.len() >= LIMIT
+            || result["hasMore"] != false
+            || result["count"].as_u64() != Some(radios.len() as u64)
+        {
+            return Ok(None);
+        }
+        let mut ids = BTreeSet::new();
+        for radio in radios {
+            let Ok(id) = identifier(&radio["id"]) else {
+                return Ok(None);
+            };
+            if !ids.insert(id) {
+                return Ok(None);
+            }
+        }
+        Ok(Some(ids.into_iter().collect()))
+    }
     pub async fn like(&self, id: &Value, desired: bool) -> Result<()> {
         self.api
             .call(

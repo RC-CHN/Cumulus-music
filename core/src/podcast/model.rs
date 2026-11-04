@@ -62,6 +62,24 @@ impl Radio {
         value["programCount"] = json!(self.program_count);
         value
     }
+    pub(crate) fn search_creator_id(&self) -> Option<String> {
+        let creator = if self.raw["dj"].is_object() {
+            &self.raw["dj"]
+        } else {
+            &self.raw["creator"]
+        };
+        let status = &creator["accountStatus"];
+        let unavailable = status.as_i64().or_else(|| status.as_str()?.parse().ok());
+        if matches!(unavailable, Some(30 | 40))
+            || self.raw["grayDisplay"] == true
+            || self.raw["underShelf"] == true
+        {
+            return None;
+        }
+        identifier(&creator["userId"])
+            .ok()
+            .map(|id| id.trim_start_matches('0').to_owned())
+    }
 }
 
 /// M/21 W. Collection/history cards may omit mainSong; only detail/permission

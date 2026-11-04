@@ -23,6 +23,7 @@ import {
 } from '../../services/search';
 import { useLyricWindow } from '../../composables/useLyricWindow';
 import { SEARCH_PLAYBACK_ROW_LIMIT, useSearchResults } from '../../composables/useSearchResults';
+import { useSearchPodcastFollow } from '../../composables/useSearchPodcastFollow';
 import { useMotion } from '../../composables/useMotion';
 import { createPageTransition } from '../../services/pageTransition';
 import { useCore } from '../../services/core';
@@ -100,7 +101,8 @@ const emit = defineEmits<{
   cardComments: [item: SearchItem];
   cardDownload: [item: SearchItem];
 }>();
-const model = useSearchResults(useCore(), () => emit('expired'), props.memory);
+const core = useCore();
+const model = useSearchResults(core, () => emit('expired'), props.memory);
 const { view, loading, error, loadingMore, moreError, manualMore } = model;
 const category = computed(() => props.category ?? 'all'),
   offset = computed(() => props.pagination?.offset ?? 0);
@@ -111,6 +113,12 @@ const tableCategories: Partial<Record<SearchCategory, SearchTableKind>> = {
   podcasts: 'podcast',
 };
 const tableKind = computed(() => tableCategories[category.value]);
+const podcastFollow = useSearchPodcastFollow(
+  core,
+  () => props.account,
+  () => category.value === 'podcasts',
+  () => emit('expired'),
+);
 const nextPage = computed(() =>
   view.value?.more ? advanceSearchPage(props.pagination, view.value.nextOffset) : undefined,
 );
@@ -654,6 +662,9 @@ onBeforeUnmount(() => {
           <button ref="retryButton" type="button" class="secondary" @click="retry">重新加载</button>
         </div>
         <template v-else-if="view">
+          <p v-if="podcastFollow.status.value" class="search-result-notice" role="status">
+            {{ podcastFollow.status.value }}
+          </p>
           <p v-if="explanation.notice" class="search-result-notice" role="status">
             {{ explanation.notice }}
           </p>
@@ -879,6 +890,11 @@ onBeforeUnmount(() => {
                 :album-subscribed="
                   item.kind === 'album' ? observedAlbumMembership.get(item.album.id) : undefined
                 "
+                :podcast-follow="
+                  item.kind === 'podcast' && item.table?.subscriptionEligible
+                    ? podcastFollow.control(item.podcast.id)
+                    : undefined
+                "
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
@@ -886,6 +902,11 @@ onBeforeUnmount(() => {
                 @artist="emit('artist', $event)"
                 @artist-action="emit('artistAction', $event)"
                 @album-action="emit('albumAction', $event)"
+                @podcast-follow="
+                  item.kind === 'podcast' &&
+                  item.table?.subscriptionEligible &&
+                  podcastFollow.activate(item.podcast.id, $event)
+                "
                 @play="emit('playCard', $event)"
                 @queue="emit('queueCard', $event)"
                 @playlist-download="emit('playlistDownload', $event)"

@@ -7,7 +7,7 @@ use super::MusicClient;
 use crate::{
     Error, Result,
     account::SessionToken,
-    podcast::{PodcastApi, PodcastLibrary, PodcastScope, PodcastService},
+    podcast::{PodcastAction, PodcastApi, PodcastLibrary, PodcastScope, PodcastService},
     protocol::api::identifier,
 };
 pub(super) use discovery::PodcastDiscoveryHost;
@@ -21,6 +21,34 @@ pub use rankings::{
 use serde_json::{Value, json};
 
 impl MusicClient {
+    pub async fn podcast_search_membership(
+        &self,
+        epoch: &str,
+    ) -> Result<super::dto::AccountData<PodcastSearchMembership>> {
+        let token = self.podcast_token(epoch)?;
+        let subscribed_ids = self
+            .session
+            .run_for(&token, |api, uid| async move {
+                PodcastApi::new(api).search_subscribed_ids(&uid).await
+            })
+            .await
+            .unwrap_or(None);
+        let pending_ids = PodcastService::new(self.session.clone())?
+            .operations_for(&token)?
+            .into_iter()
+            .filter(|operation| {
+                operation.action == PodcastAction::Subscribe && operation.phase.pending()
+            })
+            .map(|operation| operation.id)
+            .collect();
+        Ok(super::dto::AccountData {
+            epoch: epoch.into(),
+            value: PodcastSearchMembership {
+                subscribed_ids,
+                pending_ids,
+            },
+        })
+    }
     pub async fn podcast_state(
         &self,
         epoch: &str,
@@ -117,6 +145,11 @@ impl MusicClient {
         let token = self.podcast_token(epoch)?;
         let service = PodcastService::new(self.session.clone())?;
         let operation = match command {
+            PodcastCommand::ChangeSearchSubscription { id, expected } => {
+                service
+                    .change_search_subscription_for(&token, &identifier(&json!(id))?, expected)
+                    .await?
+            }
             PodcastCommand::Change {
                 action,
                 id,

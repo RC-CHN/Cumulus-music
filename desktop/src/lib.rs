@@ -227,6 +227,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 podcast::scene_fm_view,
                 podcast::scene_fm_command,
                 podcast::podcast_state,
+                podcast::podcast_search_membership,
                 podcast::podcast_command,
                 local::local_page,
                 local::local_command,

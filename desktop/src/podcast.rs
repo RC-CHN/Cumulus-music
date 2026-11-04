@@ -22,6 +22,16 @@ pub async fn scene_fm_command(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn podcast_search_membership(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<PodcastSearchMembership>, ClientError> {
+    client
+        .podcast_search_membership(&epoch)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn podcast_state(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

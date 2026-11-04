@@ -326,6 +326,7 @@ jobs:
           python scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-qr-identity-recovery-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-direct-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --voice-queue --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-voice-queue-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --podcast-follow --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-podcast-follow-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --mv-play --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-mv-play-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --playlist-creator --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-playlist-creator-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --collection-next --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-collection-next-windows --runtime .build/package-stage/windows-x64/native
@@ -623,6 +624,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/qr_captcha_focus_smoke.py --identity-recovery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-qr-identity-recovery-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-direct --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-direct-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --voice-queue --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-voice-queue-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --podcast-follow --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-podcast-follow-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --mv-play --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-mv-play-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --playlist-creator --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-playlist-creator-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --collection-next --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-collection-next-linux

@@ -894,6 +894,70 @@
       await emit('complete',{ok:true,searchMvVerified:true,searchMvArtistVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusSearchPodcastFollowProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
+      const row=id=>one(`[data-result-key="podcast:${id}"].search-podcast-row`);
+      const follow=id=>row(id)?.querySelector('.search-podcast-follow');
+      let snapshots=0, releaseFirst;
+      const firstReply=new Promise(resolve=>{releaseFirst=resolve;});
+      const request=window.fetch;
+      window.fetch=async function(url,options){
+        const response=await request.call(window,url,options);
+        if(String(url).endsWith('/podcast_search_membership')){
+          if(snapshots===0)await firstReply;
+          snapshots++;
+        }
+        return response;
+      };
+      async function enter(mode,expected){
+        if(one('[data-category="podcasts"]')?.getAttribute('aria-selected')==='true')await choose('all');
+        await fixture(mode);
+        await choose('podcasts');
+        await wait(()=>snapshots===expected&&row(301),'one account snapshot settles for the podcast category');
+      }
+      await fixture('podcast_follow');await fresh('合成播客收藏');
+      assert(!one('.search-podcast-follow')&&snapshots===0,'comprehensive does not load the follow map');
+      await choose('podcasts');
+      assert(row(301)&&!follow(301)&&snapshots===0,'results paint while the optional follow reply is held');
+      releaseFirst();
+      await wait(()=>snapshots===1,'the first membership snapshot settles');
+      await wait(()=>follow(301)?.getAttribute('aria-pressed')==='false','complete list yields an explicit Follow action');
+      assert(!follow(302)&&!follow(303),'own and unknown-creator rows expose no follow action');
+      const trigger=follow(301);
+      trigger.focus({preventScroll:true});
+      await wait(()=>Number(getComputedStyle(trigger).opacity)>.99,'keyboard reveals inline follow');
+      const box=trigger.getBoundingClientRect();
+      assert(trigger.contains(document.elementFromPoint(box.x+box.width/2,box.y+box.height/2)),
+        'inline follow is an actual interactive hit target');
+      click(trigger);
+      await wait(()=>snapshots===2&&follow(301)?.getAttribute('aria-pressed')==='true'&&
+        follow(301).getAttribute('aria-disabled')==='false','confirmed native detail wins the immediate stale list read');
+      assert(document.activeElement===trigger,'the original inline button keeps keyboard focus');
+      await wait(()=>one('.content-tooltip')?.textContent.trim()==='取消收藏','focused follow tooltip reflects confirmation');
+      await capture('podcast_follow_confirmed');
+      await enter('podcast_follow_incomplete',3);
+      assert(!follow(301),'a paginated snapshot cannot drive a Follow or Unfollow action');
+      await capture('podcast_follow_partial');
+      await enter('podcast_follow_failed',4);
+      assert(!follow(301),'a failed snapshot remains unknown');
+      await capture('podcast_follow_failed_read');
+      await enter('podcast_follow_lost',5);
+      await wait(()=>follow(301)?.getAttribute('aria-pressed')==='true','new visit observes confirmed follow');
+      click(follow(301));
+      await wait(()=>snapshots===6&&follow(301)?.getAttribute('aria-label').startsWith('核对收藏')&&
+        follow(301).getAttribute('aria-disabled')==='false','lost unfollow acknowledgement exposes read-only reconciliation');
+      assert(!follow(301).hasAttribute('aria-pressed'),'unresolved write never projects a confirmed state');
+      await wait(()=>one('.content-tooltip')?.textContent.trim()==='核对收藏','focused pending tooltip reflects read-only action');
+      await capture('podcast_follow_pending');
+      click(follow(301));
+      await wait(()=>snapshots===7&&follow(301)?.getAttribute('aria-pressed')==='false'&&
+        follow(301).getAttribute('aria-disabled')==='false','read-only reconciliation confirms the unsubscribed state');
+      await capture('podcast_follow_reconciled');
+      window.fetch=request;
+      await emit('complete',{ok:true,podcastSearchFollowVerified:true,snapshots,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchVoiceQueueProof){
       await wait(()=>one('.track-row'),'daily ready');
       await theme(1120,760,'light');

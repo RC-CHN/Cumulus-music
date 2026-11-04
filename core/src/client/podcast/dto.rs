@@ -9,6 +9,12 @@ pub struct PodcastState {
     pub liked_ids: Option<Vec<String>>,
     pub operations: Vec<PodcastMutationView>,
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastSearchMembership {
+    pub subscribed_ids: Option<Vec<String>>,
+    pub pending_ids: Vec<String>,
+}
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PodcastQuery {
@@ -76,6 +82,10 @@ pub struct PodcastMutationView {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PodcastCommand {
+    ChangeSearchSubscription {
+        id: String,
+        expected: bool,
+    },
     Change {
         action: PodcastAction,
         id: String,

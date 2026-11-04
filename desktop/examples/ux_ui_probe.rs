@@ -576,6 +576,7 @@ fn main() {
                 value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
                 value["audioRankDetails"] = json!(search_fixture::audio_rank_details());
                 if let Some(calls) = search_fixture::voice_queue_calls() { value["voiceQueueCalls"] = json!(calls); }
+                if let Some(calls) = search_fixture::podcast_follow_calls() { value["podcastFollowCalls"] = json!(calls); }
             }
             if search_mv_fixture::enabled() { value["searchMvCalls"]=json!(search_mv_fixture::calls()); }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }

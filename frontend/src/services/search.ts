@@ -49,6 +49,7 @@ export type PodcastSearchTable = {
   playCount?: number;
   score?: string;
   recommendation?: string;
+  subscriptionEligible?: boolean;
 };
 export type SearchItem =
   | {

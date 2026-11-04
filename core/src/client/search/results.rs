@@ -79,6 +79,8 @@ pub struct PodcastSearchTable {
     score: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     recommendation: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    subscription_eligible: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -270,9 +272,10 @@ fn podcast_count(value: &Value) -> Option<u64> {
         .or_else(|| value.as_str()?.parse().ok())
         .filter(|count| *count < (1 << 53))
 }
-fn podcast_table_item(resource: &Value) -> Result<Option<SearchItem>> {
+fn podcast_table_item(resource: &Value, uid: &str) -> Result<Option<SearchItem>> {
     let base = &resource["baseInfo"];
-    let podcast = view::card(&Radio::from_official(base)?);
+    let radio = Radio::from_official(base)?;
+    let podcast = view::card(&radio);
     // M/15 lifts the score and recommendation from the search envelope.
     // M/21 normalizes only the nested dj/creator as the account resource.
     let creator = if base["dj"].is_object() {
@@ -280,11 +283,14 @@ fn podcast_table_item(resource: &Value) -> Result<Option<SearchItem>> {
     } else {
         &base["creator"]
     };
+    let verified_creator = radio.search_creator_id();
+    let subscription_eligible = verified_creator
+        .as_deref()
+        .is_some_and(|id| id != uid.trim_start_matches('0'));
     let creator_id = creator["nickname"]
         .as_str()
         .filter(|name| !name.trim().is_empty())
-        .filter(|_| !matches!(creator["accountStatus"].as_i64(), Some(30 | 40)))
-        .and_then(|_| identifier(&creator["userId"]).ok());
+        .and(verified_creator);
     let count = podcast_count(&base["voiceCount"]);
     let program_count = count
         .filter(|count| *count > 0)
@@ -327,6 +333,7 @@ fn podcast_table_item(resource: &Value) -> Result<Option<SearchItem>> {
             play_count: podcast_count(&base["playCount"]),
             score,
             recommendation,
+            subscription_eligible,
         }),
     }))
 }
@@ -642,7 +649,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
             &Value::Null
         };
         let projected = if query.category == Podcasts {
-            podcast_table_item(resource)
+            podcast_table_item(resource, uid)
         } else {
             item(kind, base, uid, lyric, None)
         };

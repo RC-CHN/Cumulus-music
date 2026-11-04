@@ -3,7 +3,7 @@ use cumulus_core::{Error, Result, storage::StateStore};
 use serde_json::{Value, json};
 use std::sync::{
     Mutex,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
@@ -15,6 +15,9 @@ static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static AUDIOBOOK_MORE_READS: AtomicUsize = AtomicUsize::new(0);
 static PODCAST_HOME_MORE_READS: AtomicUsize = AtomicUsize::new(0);
+static PODCAST_FOLLOWED: AtomicBool = AtomicBool::new(false);
+static PODCAST_FOLLOW_MAP_STALE: AtomicBool = AtomicBool::new(false);
+static PODCAST_FOLLOW_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -65,6 +68,10 @@ pub fn control(value: &Value) {
             "song_waterfall",
             "song_waterfall_error",
             "voice_queue",
+            "podcast_follow",
+            "podcast_follow_incomplete",
+            "podcast_follow_failed",
+            "podcast_follow_lost",
             "playlist_creator_search",
             "playlist_playability",
             "album_artist_search",
@@ -76,6 +83,12 @@ pub fn control(value: &Value) {
         .contains(&mode)
     );
     *MODE.lock().unwrap() = mode.into();
+}
+pub fn podcast_follow_calls() -> Option<Vec<(String, Value)>> {
+    MODE.lock()
+        .unwrap()
+        .starts_with("podcast_follow")
+        .then(|| PODCAST_FOLLOW_CALLS.lock().unwrap().clone())
 }
 pub fn initialize(store: &StateStore) -> Result<()> {
     if enabled() {
@@ -294,6 +307,59 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
     let radio = |id| json!({"id":id,"name":format!("合成播客 {id}"),"programCount":3,"dj":{"nickname":"合成主播"}});
     let program = |id, radio_id| json!({"id":id,"name":format!("合成声音 {id}"),"mainSong":{"id":id-400,"name":format!("合成声音 {id}"),"duration":360000},"duration":360000,"radio":radio(radio_id),"dj":{"nickname":"合成主播"}});
     let configured = MODE.lock().unwrap().clone();
+    if configured.starts_with("podcast_follow")
+        && matches!(
+            path,
+            "/api/djradio/get/subed"
+                | "/api/djradio/v3/get"
+                | "/api/djradio/sub"
+                | "/api/djradio/unsub"
+        )
+    {
+        PODCAST_FOLLOW_CALLS
+            .lock()
+            .unwrap()
+            .push((path.into(), args.clone()));
+        return Some(match path {
+            "/api/djradio/get/subed" => {
+                assert_eq!(args, &json!({"targetUserId":"2","limit":1000}));
+                if configured == "podcast_follow_failed" {
+                    Err(Error::Transport("synthetic membership read failed".into()))
+                } else {
+                    let stale = PODCAST_FOLLOW_MAP_STALE.swap(false, Ordering::SeqCst);
+                    let ids = if PODCAST_FOLLOWED.load(Ordering::SeqCst) && !stale {
+                        vec![json!({"id":301})]
+                    } else {
+                        vec![]
+                    };
+                    Ok(json!({"code":200,"djRadios":ids,"count":ids.len(),
+                        "hasMore":configured == "podcast_follow_incomplete"}))
+                }
+            }
+            "/api/djradio/v3/get" => {
+                assert_eq!(args, &json!({"id":"301"}));
+                let mut value = radio(301);
+                value["dj"]["userId"] = json!(501);
+                value["subed"] = json!(PODCAST_FOLLOWED.load(Ordering::SeqCst));
+                Ok(json!({"code":200,"data":value}))
+            }
+            "/api/djradio/sub" | "/api/djradio/unsub" => {
+                assert_eq!(args, &json!({"id":"301"}));
+                PODCAST_FOLLOWED.store(path == "/api/djradio/sub", Ordering::SeqCst);
+                if path == "/api/djradio/sub" {
+                    PODCAST_FOLLOW_MAP_STALE.store(true, Ordering::SeqCst);
+                }
+                if configured == "podcast_follow_lost" {
+                    Err(Error::Transport(
+                        "synthetic subscription acknowledgement lost".into(),
+                    ))
+                } else {
+                    Ok(json!({"code":200}))
+                }
+            }
+            _ => unreachable!(),
+        });
+    }
     let mode = if configured == "podcast_top_classic" {
         "audio_ranks".into()
     } else {
@@ -742,6 +808,12 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         rows[1]["baseInfo"]["dj"] =
             json!({"userId":502,"nickname":"合成不可用主播","accountStatus":30});
         rows[1]["baseInfo"]["playCount"] = json!(0);
+    }
+    if mode.starts_with("podcast_follow") && category == "podcasts" {
+        let rows = response["data"]["resources"].as_array_mut().unwrap();
+        rows[0]["baseInfo"]["dj"] = json!({"userId":501,"nickname":"合成主播"});
+        rows[0]["baseInfo"]["subed"] = json!(false); // Search preview state is not authoritative.
+        rows[1]["baseInfo"]["dj"] = json!({"userId":2,"nickname":"当前账号主播"});
     }
     if mode == "playlist_creator_search" && matches!(category, "all" | "playlists") {
         fn creators(rows: &mut [Value]) {

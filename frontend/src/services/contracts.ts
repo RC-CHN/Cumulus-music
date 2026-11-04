@@ -19,6 +19,7 @@ import type {
   PodcastClient,
   PodcastHomeClient,
   PodcastRankingClient,
+  PodcastSearchClient,
 } from './podcast';
 import type { TogetherClient } from './together';
 import type { AuthClient } from './auth';
@@ -100,6 +101,7 @@ export interface CoreClient
     PodcastCatalogueClient,
     PodcastHomeClient,
     PodcastRankingClient,
+    PodcastSearchClient,
     TogetherClient,
     AuthClient,
     RankingClient,

@@ -66,6 +66,7 @@ def main():
     mode.add_argument('--search-next', action='store_true')
     mode.add_argument('--song-waterfall', action='store_true')
     mode.add_argument('--voice-queue', action='store_true')
+    mode.add_argument('--podcast-follow', action='store_true')
     mode.add_argument('--mv-play', action='store_true')
     mode.add_argument('--playlist-creator', action='store_true')
     mode.add_argument('--collection-next', action='store_true')
@@ -105,6 +106,8 @@ def main():
         prefix = 'window.__cumulusSearchSongWaterfallProof = true;\n'
     if args.voice_queue:
         prefix = 'window.__cumulusSearchVoiceQueueProof = true;\n'
+    if args.podcast_follow:
+        prefix = 'window.__cumulusSearchPodcastFollowProof = true;\n'
     if args.mv_play:
         prefix = 'window.__cumulusSearchMvProof = true;\n'
         env['CUMULUS_SEARCH_MV_PROOF'] = '1'
@@ -281,6 +284,24 @@ def main():
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list(first.glob('ux_*.png'))) == (7 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True, searchMvArtistVerified=True, stageCount=7)))
+        return
+    if args.podcast_follow:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['podcastSearchFollowVerified']
+        assert complete['stageCount'] == 5 and complete['snapshots'] == 7
+        calls = complete['podcastFollowCalls']
+        read = ['/api/djradio/get/subed', {'targetUserId': '2', 'limit': 1000}]
+        detail = ['/api/djradio/v3/get', {'id': '301'}]
+        assert calls == [
+            read, detail, ['/api/djradio/sub', {'id': '301'}], detail, detail, read,
+            read, read, read, detail, ['/api/djradio/unsub', {'id': '301'}], read,
+            detail, detail, read,
+        ]
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, podcastSearchFollowVerified=True,
+                              membershipReads=7, syntheticWrites=2, stageCount=5)))
         return
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))

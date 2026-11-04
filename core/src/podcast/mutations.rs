@@ -112,6 +112,25 @@ impl PodcastService {
         id: &str,
         desired: bool,
     ) -> Result<PodcastMutation> {
+        self.change_checked(token, action, id, desired, false).await
+    }
+    pub async fn change_search_subscription_for(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        expected: bool,
+    ) -> Result<PodcastMutation> {
+        self.change_checked(token, PodcastAction::Subscribe, id, !expected, true)
+            .await
+    }
+    async fn change_checked(
+        &self,
+        token: &SessionToken,
+        action: PodcastAction,
+        id: &str,
+        desired: bool,
+        search: bool,
+    ) -> Result<PodcastMutation> {
         let key = key(action, id)?;
         let owner = self
             .session
@@ -123,7 +142,28 @@ impl PodcastService {
         {
             return Err(Error::MutationUncertain);
         }
-        let before = self.state_for(token, action, id).await?;
+        let before = if search {
+            // The displayed result and membership list may have changed.
+            // Check identity/ownership inside the same operation lock as the write.
+            self.session
+                .run_for(token, |api, uid| async move {
+                    let radio = PodcastApi::new(api).radio(&json!(id)).await?;
+                    if radio
+                        .search_creator_id()
+                        .is_none_or(|id| id == uid.trim_start_matches('0'))
+                    {
+                        return Err(Error::InvalidInput(
+                            "podcast search subscription unavailable",
+                        ));
+                    }
+                    radio
+                        .subscribed
+                        .ok_or(Error::Response("podcast subscription state missing"))
+                })
+                .await?
+        } else {
+            self.state_for(token, action, id).await?
+        };
         let mut record = PodcastMutation {
             action,
             id: id.into(),

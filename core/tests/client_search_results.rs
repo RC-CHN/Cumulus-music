@@ -160,7 +160,7 @@ async fn podcast_search_projects_official_table_metadata_without_guessing() {
         items[0]["table"],
         json!({
             "creatorId":"501","programCount":24,"playCount":12345,
-            "score":"9.7","recommendation":"合成 推荐"
+            "score":"9.7","recommendation":"合成 推荐","subscriptionEligible":true
         })
     );
     assert_eq!(items[1]["table"], json!({"programCount":0,"playCount":0}));
@@ -173,6 +173,80 @@ async fn podcast_search_projects_official_table_metadata_without_guessing() {
     assert_eq!(path, "/api/search/voicelist/get");
     assert_eq!(args["offset"], 6);
     assert_eq!(args["limit"], 10);
+}
+
+#[tokio::test]
+async fn podcast_search_membership_only_accepts_complete_account_snapshots() {
+    let (_root, api, session, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    for (response, expected) in [
+        (
+            json!({"code":200,"djRadios":[{"id":301,"private":"PRIVATE"}],"hasMore":false,"count":1}),
+            json!(["301"]),
+        ),
+        (
+            json!({"code":200,"djRadios":[],"hasMore":false,"count":0}),
+            json!([]),
+        ),
+        (json!({"code":200,"djRadios":[{"id":301}]}), Value::Null),
+        (json!({"code":200,"djRadios":[],"count":0}), Value::Null),
+        (
+            json!({"code":200,"djRadios":[],"hasMore":false}),
+            Value::Null,
+        ),
+        (
+            json!({"code":200,"djRadios":[{"id":301}],"hasMore":true,"count":1}),
+            Value::Null,
+        ),
+        (
+            json!({"code":200,"djRadios":[],"hasMore":false,"count":2}),
+            Value::Null,
+        ),
+        (
+            json!({"code":200,"djRadios":[{"id":301},{"id":301}],"hasMore":false,"count":2}),
+            Value::Null,
+        ),
+        (
+            json!({"code":200,"djRadios":[{"id":"bad"}],"hasMore":false,"count":1}),
+            Value::Null,
+        ),
+        (
+            json!({"code":200,"djRadios":(1..=1000).map(|id|json!({"id":id})).collect::<Vec<_>>(),"hasMore":false,"count":1000}),
+            Value::Null,
+        ),
+        (json!({"code":503}), Value::Null),
+    ] {
+        *api.reply.lock().unwrap() = response;
+        let membership =
+            serde_json::to_value(client.podcast_search_membership(&epoch).await.unwrap()).unwrap();
+        assert_eq!(membership["value"]["subscribedIds"], expected);
+        assert!(!membership.to_string().contains("PRIVATE"));
+    }
+    assert!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|(path, payload)| path == "/api/djradio/get/subed"
+                && payload == &json!({"targetUserId":"2","limit":1000}))
+    );
+    *api.reply.lock().unwrap() =
+        json!({"code":200,"djRadios":[{"id":301}],"hasMore":false,"count":1});
+    api.hold.store(true, Ordering::SeqCst);
+    let in_flight = client.podcast_search_membership(&epoch);
+    tokio::pin!(in_flight);
+    tokio::select! {
+        _ = api.started.notified() => {}
+        result = &mut in_flight => panic!("unexpected early membership reply: {}", result.is_ok()),
+    }
+    session
+        .adopt(api.clone(), json!({"userId":3}), &session.token().unwrap())
+        .unwrap();
+    api.release.notify_one();
+    assert!(matches!(
+        in_flight.await,
+        Err(cumulus_core::Error::StaleResponse)
+    ));
 }
 
 #[tokio::test]

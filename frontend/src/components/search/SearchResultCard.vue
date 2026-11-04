@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, useId, watch } from 'vue';
+import { computed, nextTick, ref, useId, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
+import type { PodcastSearchFollow } from '../../services/podcast';
 import type { PlaylistView } from '../../services/contracts';
 import {
   playlistLinkMenuItem,
@@ -40,6 +41,7 @@ const props = defineProps<{
   playlistActionBusy: boolean;
   playlistKnown?: boolean;
   albumSubscribed?: boolean | null;
+  podcastFollow?: PodcastSearchFollow;
   current: boolean;
   playing: boolean;
 }>();
@@ -49,6 +51,7 @@ const emit = defineEmits<{
   artist: [id: string];
   artistAction: [request: ArtistCardRequest];
   albumAction: [request: AlbumCardRequest];
+  podcastFollow: [state: PodcastSearchFollow];
   play: [item: SearchItem];
   queue: [request: SearchQueueRequest];
   playlistDownload: [playlist: PlaylistView];
@@ -59,6 +62,26 @@ const emit = defineEmits<{
 }>();
 const menu = ref<InstanceType<typeof ActionMenu>>();
 const element = ref<HTMLElement>();
+const followButton = ref<HTMLButtonElement>();
+const followLabel = computed(() =>
+  props.podcastFollow?.kind === 'reconcile'
+    ? '核对收藏'
+    : props.podcastFollow?.subscribed
+      ? '取消收藏'
+      : '收藏播客',
+);
+watch(
+  () => !!props.podcastFollow,
+  (available) => {
+    if (available || document.activeElement !== followButton.value) return;
+    void nextTick(() => {
+      if (document.activeElement === document.body)
+        element.value
+          ?.querySelector<HTMLElement>('.search-card-open')
+          ?.focus({ preventScroll: true });
+    });
+  },
+);
 const identity = searchCardKey(props.item);
 const playbackFocus = usePlaybackTriggerFocus(
   () => props.playable,
@@ -438,7 +461,10 @@ watch(
       </div>
       <div
         class="search-collection-title-cell"
-        :class="{ 'search-voice-title-cell': item.kind === 'voice' }"
+        :class="{
+          'search-voice-title-cell': item.kind === 'voice',
+          'search-podcast-follow-cell': item.kind === 'podcast' && podcastFollow,
+        }"
         role="cell"
       >
         <span class="search-result-art">
@@ -560,6 +586,32 @@ watch(
             @dblclick.stop
           >
             <Icon name="comment" />
+          </button>
+          <ActionMenu
+            ref="menu"
+            class="search-card-menu"
+            :label="`更多操作：${card.name}`"
+            :items="items"
+            @select="action"
+          />
+        </div>
+        <div
+          v-else-if="item.kind === 'podcast' && podcastFollow"
+          class="search-podcast-title-actions"
+        >
+          <button
+            ref="followButton"
+            type="button"
+            class="icon-button search-podcast-follow"
+            data-result-action="podcast-follow"
+            :aria-label="`${followLabel}：${card.name}`"
+            :data-tooltip="followLabel"
+            :aria-disabled="podcastFollow.busy"
+            :aria-pressed="podcastFollow.kind === 'toggle' ? podcastFollow.subscribed : undefined"
+            @click.stop="!podcastFollow.busy && emit('podcastFollow', podcastFollow)"
+            @dblclick.stop
+          >
+            <Icon :name="podcastFollow.kind === 'reconcile' ? 'refresh' : 'star'" />
           </button>
           <ActionMenu
             ref="menu"

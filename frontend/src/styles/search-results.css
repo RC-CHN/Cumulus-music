@@ -624,6 +624,35 @@
 .search-podcast-title > .search-result-name {
   font-size: 13px;
 }
+.search-collection-title-cell.search-podcast-follow-cell {
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+}
+.search-podcast-title-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.search-podcast-follow {
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms;
+}
+.search-podcast-row:is(:hover, :focus-within) .search-podcast-follow {
+  opacity: 1;
+  pointer-events: auto;
+}
+.search-podcast-row .search-podcast-follow[aria-disabled='true'] {
+  opacity: 0.5;
+}
+.search-podcast-follow[aria-pressed='true'] {
+  color: var(--accent);
+}
+.search-podcast-follow[aria-pressed='true'] .icon {
+  fill: currentColor;
+}
 .search-podcast-recommendation {
   color: var(--muted);
   font-size: 12px;
@@ -711,6 +740,9 @@
     grid-template-columns: 42px minmax(0, 1fr) 30px;
     gap: 5px;
     padding-inline: 5px;
+  }
+  .search-podcast-table .search-podcast-follow-cell {
+    grid-template-columns: 42px minmax(0, 1fr) auto;
   }
   .search-podcast-row .search-result-art {
     width: 42px;
@@ -1157,12 +1189,14 @@
   .search-card-play,
   .search-card-menu,
   .search-card-download,
-  .search-voice-title-actions {
+  .search-voice-title-actions,
+  .search-podcast-follow {
     opacity: 1;
     transform: none;
   }
   .search-card-download,
-  .search-voice-title-actions {
+  .search-voice-title-actions,
+  .search-podcast-follow {
     pointer-events: auto;
   }
 }
@@ -1172,7 +1206,8 @@
   .search-card-mask,
   .search-card-menu,
   .search-card-download,
-  .search-voice-title-actions {
+  .search-voice-title-actions,
+  .search-podcast-follow {
     transition: none;
   }
 }
@@ -1181,7 +1216,8 @@
 :root[data-motion='reduced'] .search-card-mask,
 :root[data-motion='reduced'] .search-card-menu,
 :root[data-motion='reduced'] .search-card-download,
-:root[data-motion='reduced'] .search-voice-title-actions {
+:root[data-motion='reduced'] .search-voice-title-actions,
+:root[data-motion='reduced'] .search-podcast-follow {
   transition: none;
 }
 .search-card-play .icon {

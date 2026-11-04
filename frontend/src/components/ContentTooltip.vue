@@ -8,11 +8,14 @@ const text = ref(''),
   box = ref<HTMLElement>();
 let anchor: HTMLElement | undefined,
   timer: ReturnType<typeof setTimeout> | undefined,
+  observer: MutationObserver | undefined,
   serial = 0;
 function hide() {
   serial++;
   if (timer) clearTimeout(timer);
   timer = undefined;
+  observer?.disconnect();
+  observer = undefined;
   anchor = undefined;
   text.value = '';
   positioned.value = false;
@@ -25,20 +28,30 @@ function enter(event: Event) {
   if (!target?.dataset.tooltip) return;
   anchor = target;
   const generation = serial;
+  async function update() {
+    if (generation !== serial || !target?.isConnected) return;
+    if (!target.dataset.tooltip) {
+      hide();
+      return;
+    }
+    text.value = target.dataset.tooltip;
+    await nextTick();
+    if (generation !== serial || !box.value) return;
+    const r = target.getBoundingClientRect(),
+      tip = box.value.getBoundingClientRect();
+    left.value = Math.max(12, Math.min(r.left, innerWidth - tip.width - 12));
+    top.value =
+      r.bottom + 8 + tip.height <= innerHeight - 12
+        ? r.bottom + 8
+        : Math.max(12, r.top - tip.height - 8);
+    positioned.value = true;
+  }
   timer = setTimeout(
-    async () => {
+    () => {
       if (generation !== serial || !target.isConnected) return;
-      text.value = target.dataset.tooltip ?? '';
-      await nextTick();
-      if (generation !== serial || !box.value) return;
-      const r = target.getBoundingClientRect(),
-        tip = box.value.getBoundingClientRect();
-      left.value = Math.max(12, Math.min(r.left, innerWidth - tip.width - 12));
-      top.value =
-        r.bottom + 8 + tip.height <= innerHeight - 12
-          ? r.bottom + 8
-          : Math.max(12, r.top - tip.height - 8);
-      positioned.value = true;
+      observer = new MutationObserver(() => void update());
+      observer.observe(target, { attributes: true, attributeFilter: ['data-tooltip'] });
+      void update();
     },
     event.type === 'focusin' ? 0 : 450,
   );

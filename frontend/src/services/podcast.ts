@@ -79,6 +79,7 @@ export interface PodcastPage {
   operations: PodcastMutation[];
 }
 export type PodcastCommand =
+  | { kind: 'change_search_subscription'; id: string; expected: boolean }
   | { kind: 'change'; action: PodcastAction; id: string; desired: boolean }
   | { kind: 'reconcile'; action: PodcastAction; id: string };
 export interface PodcastState {
@@ -90,6 +91,16 @@ export interface PodcastClient {
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }
+export interface PodcastSearchMembership {
+  subscribedIds: string[] | null;
+  pendingIds: string[];
+}
+export interface PodcastSearchClient {
+  podcastSearchMembership(epoch: string): Promise<AccountData<PodcastSearchMembership>>;
+}
+export type PodcastSearchFollow =
+  | { kind: 'toggle'; subscribed: boolean; busy: boolean }
+  | { kind: 'reconcile'; busy: boolean };
 
 export const AUDIOBOOK_CATEGORY = '10001';
 export type PodcastCatalogueQuery =

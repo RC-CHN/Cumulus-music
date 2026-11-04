@@ -25,6 +25,7 @@ struct Backend {
     lost: AtomicBool,
     offline: AtomicBool,
     personalization_disabled: AtomicBool,
+    search_creator: AtomicUsize,
 }
 fn program(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"djPlayRecordVo":{"listenLocation":15000,"isListened":false},"cookie":"SECRET"})
@@ -50,7 +51,13 @@ impl Api for Backend {
                             "uiElement":{"mainTitle":{"title":"Fixture radio"}},
                             "creatives":[{"creativeExtInfoVO":{"radio":radio()}}]}]}})
                 }
-                "/api/djradio/v3/get" => json!({"code":200,"data":radio()}),
+                "/api/djradio/v3/get" => {
+                    let mut value = radio();
+                    if self.search_creator.load(Ordering::SeqCst) > 0 {
+                        value["dj"] = json!({"userId":self.search_creator.load(Ordering::SeqCst)});
+                    }
+                    json!({"code":200,"data":value})
+                }
                 "/api/v6/dj/program/byradio" => {
                     let count = self.count.load(Ordering::SeqCst);
                     let offset = p["offset"].as_u64().unwrap() as usize;
@@ -135,6 +142,31 @@ fn scope() -> PodcastScope {
         ascending: true,
     }
 }
+#[tokio::test]
+async fn podcast_search_write_rechecks_creator_and_never_repeats_already_applied_state() {
+    let (_root, api, _, client) = fixture();
+    let command = || PodcastCommand::ChangeSearchSubscription {
+        id: "7".into(),
+        expected: false,
+    };
+    for creator in [0, 9] {
+        api.search_creator.store(creator, Ordering::SeqCst);
+        assert!(matches!(
+            client.podcast_command("1", command()).await,
+            Err(Error::InvalidInput(_))
+        ));
+    }
+    api.search_creator.store(501, Ordering::SeqCst);
+    let result = client.podcast_command("1", command()).await.unwrap();
+    assert_eq!(
+        serde_json::to_value(result.value).unwrap()["phase"],
+        "unchanged"
+    );
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(calls.len(), 3);
+    assert!(calls.iter().all(|(path, _)| path == "/api/djradio/v3/get"));
+}
+
 #[tokio::test]
 async fn podcast_continuation_checks_opt_out_and_retires_old_cursor() {
     let (_dir, api, _, client) = fixture();
