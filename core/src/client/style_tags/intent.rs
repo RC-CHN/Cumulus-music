@@ -281,6 +281,9 @@ impl MusicClient {
         };
         self.session.with_token(&token, |uid| {
             self.style_preference_at(&token, expected_revision)?;
+            if !unchanged {
+                self.invalidate_style_back_pages(&token)?;
+            }
             self.store_style_tag(uid, &op)
         })?;
         if !unchanged {
@@ -395,6 +398,12 @@ impl MusicClient {
         };
         op.observed = Some(observed);
         self.session.with_token(token, |uid| {
+            if matches!(
+                op.phase,
+                StyleTagPhase::Confirmed | StyleTagPhase::AcceptedCurrentState
+            ) {
+                self.invalidate_style_back_pages(token)?;
+            }
             self.store_style_tag(uid, &op)?;
             Ok(AccountData {
                 epoch: epoch.into(),

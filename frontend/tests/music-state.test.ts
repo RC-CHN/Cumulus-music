@@ -73,6 +73,7 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     likedIds: async () => data([]),
     dailySongs: async () => data(page),
     styleRecommendations: async () => data(page),
+    restoreStyleRecommendations: async () => null,
     styleHomeSeeds: unused,
     seededStyleRecommendations: unused,
     styleRecommendationCategories: async () => data([]),

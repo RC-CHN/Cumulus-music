@@ -332,6 +332,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 search::search_history,
                 commands::daily_songs,
                 commands::style_recommendations,
+                commands::restore_style_recommendations,
                 commands::style_home_seeds,
                 commands::seeded_style_recommendations,
                 style_tags::style_recommendation_categories,

@@ -309,6 +309,18 @@ pub async fn style_recommendations(
 }
 
 #[tauri::command]
+pub async fn restore_style_recommendations(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    seed: Option<cumulus_core::client::style_home::StyleSeedHandle>,
+) -> Result<Option<AccountData<TrackPage>>, ClientError> {
+    client
+        .restore_style_recommendations(&epoch, &revision, seed.as_ref())
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn style_home_seeds(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

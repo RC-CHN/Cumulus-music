@@ -7,13 +7,13 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StyleTag {
     pub id: String,
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StyleCategory {
     pub id: String,
     pub name: String,

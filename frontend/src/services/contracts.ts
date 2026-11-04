@@ -227,6 +227,11 @@ export interface CoreClient
   searchSongs(keyword: string, page: PageRequest): Promise<AccountData<TrackPage>>;
   dailySongs(): Promise<AccountData<TrackPage>>;
   styleRecommendations(epoch: string): Promise<AccountData<TrackPage>>;
+  restoreStyleRecommendations(
+    epoch: string,
+    revision: string,
+    seed: StyleSeedHandle | null,
+  ): Promise<AccountData<TrackPage> | null>;
   styleHomeSeeds(epoch: string): Promise<AccountData<StyleSeedPage>>;
   seededStyleRecommendations(epoch: string, seed: StyleSeedHandle): Promise<AccountData<TrackPage>>;
   styleRecommendationCategories(epoch: string): Promise<AccountData<StyleCategory[]>>;

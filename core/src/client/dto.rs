@@ -241,7 +241,7 @@ pub struct TrackView {
     pub local: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TrackPage {
     pub revision: Option<String>,
@@ -256,7 +256,7 @@ pub struct TrackPage {
     pub style_tags: Option<super::style_tags::StyleCategory>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DailyRecommendationState {
     pub cached: bool,

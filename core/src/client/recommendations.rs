@@ -9,11 +9,14 @@ use crate::{
 };
 use chrono::{DateTime, Datelike, Local, TimeZone};
 use serde_json::{Value, json};
+use std::collections::VecDeque;
 
 const CACHE_KIND: &str = "daily-recommendations";
 const CACHE_KEY: &str = "tracks-v1";
 const MAX_CACHE_BYTES: usize = 256 * 1024;
 const MAX_TRACKS: usize = 500;
+const MAX_STYLE_BACK_ENTRIES: usize = 8;
+const MAX_STYLE_BACK_BYTES: usize = 1024 * 1024;
 
 /// Use the same OS time zone for the historical birth date and today's date.
 /// A February 29 birthday is only marked on an actual February 29.
@@ -34,6 +37,31 @@ fn birthday_today<Tz: TimeZone>(birthday_ms: Option<i64>, now: DateTime<Tz>) -> 
 pub(super) struct RecommendationSnapshot {
     started: u64,
     latest: Option<Snapshot>,
+    retained: VecDeque<Snapshot>,
+}
+
+impl RecommendationSnapshot {
+    fn start(&mut self) -> Result<u64> {
+        self.started = self
+            .started
+            .checked_add(1)
+            .ok_or(Error::State("recommendation revision exhausted"))?;
+        Ok(self.started)
+    }
+
+    fn replace(&mut self, snapshot: Snapshot) {
+        self.retained.retain(|prior| prior.token == snapshot.token);
+        if let Some(prior) = self.latest.take()
+            && prior.token == snapshot.token
+            && prior.style_back.is_some()
+        {
+            self.retained.push_back(prior);
+        }
+        if self.retained.len() > MAX_STYLE_BACK_ENTRIES {
+            self.retained.pop_front();
+        }
+        self.latest = Some(snapshot);
+    }
 }
 
 struct Snapshot {
@@ -41,6 +69,12 @@ struct Snapshot {
     revision: String,
     ids: Vec<Value>,
     style_preference: Option<super::style_tags::StylePreference>,
+    style_back: Option<StyleBackPage>,
+}
+
+struct StyleBackPage {
+    seed: Option<StyleSeedHandle>,
+    page: TrackPage,
 }
 
 #[derive(Clone, Copy)]
@@ -51,6 +85,15 @@ pub(super) enum RecommendationSource {
 }
 
 impl RecommendationSource {
+    fn revision(self, request: u64) -> String {
+        let prefix = match self {
+            Self::Daily => "daily",
+            Self::Style => "style",
+            Self::SeededStyle => "seeded-style",
+        };
+        format!("{prefix}-{request}-{}", uuid::Uuid::new_v4().simple())
+    }
+
     pub(super) fn style_for_revision(revision: &str) -> Self {
         if revision.starts_with("seeded-style-") {
             Self::SeededStyle
@@ -114,11 +157,7 @@ impl MusicClient {
             .recommendation_state(source)
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
-        state.started = state
-            .started
-            .checked_add(1)
-            .ok_or(Error::State("recommendation revision exhausted"))?;
-        Ok(state.started)
+        state.start()
     }
 
     pub async fn daily_songs(&self) -> Result<AccountData<TrackPage>> {
@@ -245,15 +284,18 @@ impl MusicClient {
             }
             // Queue origins survive app restarts; an in-memory counter alone
             // cannot distinguish their snapshots from new recommendations.
-            let prefix = match source {
-                RecommendationSource::Daily => "daily",
-                RecommendationSource::Style => "style",
-                RecommendationSource::SeededStyle => "seeded-style",
-            };
-            let revision = format!("{prefix}-{request}-{}", uuid::Uuid::new_v4().simple());
-            state.latest = Some(Snapshot {
+            let revision = source.revision(request);
+            value.revision = Some(revision.clone());
+            let style_back = (!matches!(source, RecommendationSource::Daily)
+                && serde_json::to_vec(&value)
+                    .is_ok_and(|bytes| bytes.len() <= MAX_STYLE_BACK_BYTES))
+            .then(|| StyleBackPage {
+                seed: seed.cloned(),
+                page: value.clone(),
+            });
+            state.replace(Snapshot {
                 token: token.clone(),
-                revision: revision.clone(),
+                revision,
                 ids: value.tracks.iter().map(|row| json!(row.id)).collect(),
                 style_preference: if matches!(source, RecommendationSource::Style) {
                     value
@@ -263,13 +305,91 @@ impl MusicClient {
                 } else {
                     None
                 },
+                style_back,
             });
-            value.revision = Some(revision);
             Ok(AccountData {
                 epoch: token.generation.to_string(),
                 value,
             })
         })
+    }
+
+    /// Restore only a page this account actually received. A restored previous
+    /// page receives a fresh active playback revision; stale rows stay stale.
+    pub fn restore_style_recommendations(
+        &self,
+        epoch: &str,
+        revision: &str,
+        seed: Option<&StyleSeedHandle>,
+    ) -> Result<Option<AccountData<TrackPage>>> {
+        if revision.is_empty() || revision.len() > 96 {
+            return Err(Error::InvalidInput("invalid style recommendation revision"));
+        }
+        let token = self.player_token(epoch)?;
+        let source = if seed.is_some() {
+            RecommendationSource::SeededStyle
+        } else {
+            RecommendationSource::Style
+        };
+        self.session.with_token(&token, |_| {
+            let mut state = self
+                .recommendation_state(source)
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?;
+            let matches = |snapshot: &Snapshot| {
+                snapshot.token == token
+                    && snapshot.revision == revision
+                    && snapshot
+                        .style_back
+                        .as_ref()
+                        .is_some_and(|value| value.seed.as_ref() == seed)
+            };
+            let value = if let Some(page) = state
+                .latest
+                .as_ref()
+                .filter(|snapshot| matches(snapshot))
+                .and_then(|snapshot| snapshot.style_back.as_ref())
+                .map(|value| value.page.clone())
+            {
+                // Back is more recent than a previously started style read.
+                state.start()?;
+                page
+            } else if let Some(index) = state.retained.iter().position(matches) {
+                let request = state.start()?;
+                let mut snapshot = state.retained.remove(index).ok_or(Error::StaleResponse)?;
+                let back = snapshot.style_back.as_mut().ok_or(Error::StaleResponse)?;
+                snapshot.revision = source.revision(request);
+                back.page.revision = Some(snapshot.revision.clone());
+                let page = back.page.clone();
+                state.replace(snapshot);
+                page
+            } else {
+                return Ok(None);
+            };
+            Ok(Some(AccountData {
+                epoch: token.generation.to_string(),
+                value,
+            }))
+        })
+    }
+
+    /// The caller holds the session fence. Preference mutations invalidate
+    /// only unseeded back pages, while the visible queue can still play.
+    pub(super) fn invalidate_style_back_pages(&self, token: &SessionToken) -> Result<()> {
+        let mut state = self
+            .recommendation_state(RecommendationSource::Style)
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        state.start()?;
+        state.retained.clear();
+        if let Some(active) = state
+            .latest
+            .as_mut()
+            .filter(|active| active.token == *token)
+        {
+            active.style_back = None;
+        }
+        Ok(())
     }
 
     /// Caller already holds the session fence when using this for a write.

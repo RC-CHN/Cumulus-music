@@ -122,6 +122,7 @@ export function useMusic(
   const history: Page[] = [];
   const historyLength = ref(0);
   const playlistPrefixes = new Map<Page, TrackPage>();
+  const styleBackRevisions = new Map<Page, string>();
   let request = 0;
   let searchId = 0;
   let downloadVisit = 0;
@@ -203,7 +204,12 @@ export function useMusic(
       if (revision === likeRevision && account.value.epoch === epoch) handleLike(error);
     }
   }
-  async function load(more = false, retainDailyCache = false, prefix?: TrackPage) {
+  async function load(
+    more = false,
+    retainDailyCache = false,
+    prefix?: TrackPage,
+    styleBack?: string,
+  ) {
     const current = ++request;
     error.value = '';
     loading.value = true;
@@ -255,8 +261,19 @@ export function useMusic(
         target.kind === 'comments'
       )
         return;
+      const restored =
+        target.kind === 'style_recommendations' && styleBack
+          ? await core.restoreStyleRecommendations(
+              account.value.epoch,
+              styleBack,
+              target.seed ?? null,
+            )
+          : null;
+      // Do not request a new style list after this Back navigation was replaced.
+      if (current !== request) return;
       const data =
-        target.kind === 'daily' || target.kind === 'daily_batch'
+        restored ??
+        (target.kind === 'daily' || target.kind === 'daily_batch'
           ? await core.dailySongs()
           : target.kind === 'style_recommendations'
             ? target.seed
@@ -266,7 +283,7 @@ export function useMusic(
                 offset,
                 limit: 100,
                 revision: more ? result.value?.revision : null,
-              });
+              }));
       if (current !== request) return;
       const value = accept(data);
       if (!value) {
@@ -323,6 +340,7 @@ export function useMusic(
       if (next.epoch !== account.value.epoch) {
         history.length = 0;
         playlistPrefixes.clear();
+        styleBackRevisions.clear();
         historyLength.value = 0;
         if (
           [
@@ -389,6 +407,15 @@ export function useMusic(
         if (playlistPrefixes.size > 20)
           playlistPrefixes.delete(playlistPrefixes.keys().next().value!);
       }
+      if (
+        from.kind === 'style_recommendations' &&
+        !loading.value &&
+        shown?.revision?.startsWith(from.seed ? 'seeded-style-' : 'style-')
+      ) {
+        styleBackRevisions.set(from, shown.revision);
+        if (styleBackRevisions.size > 20)
+          styleBackRevisions.delete(styleBackRevisions.keys().next().value!);
+      }
       history.push(from);
       historyLength.value = history.length;
       page.value =
@@ -415,8 +442,11 @@ export function useMusic(
       if (previous) {
         page.value = previous;
         const prefix = playlistPrefixes.get(previous);
+        const styleBack = styleBackRevisions.get(previous);
         playlistPrefixes.delete(previous);
-        if (!initializing.value || previous.kind === 'local') void load(false, false, prefix);
+        styleBackRevisions.delete(previous);
+        if (!initializing.value || previous.kind === 'local')
+          void load(false, false, prefix, styleBack);
       }
     }, page.value.kind === 'local');
   }
