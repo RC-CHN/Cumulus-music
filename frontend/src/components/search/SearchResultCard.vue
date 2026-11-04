@@ -129,6 +129,9 @@ const rowPlayCount = computed(() =>
     ? playlistTableCount(props.item.playlist.playCount, props.item.playlist.private)
     : null,
 );
+const podcastPlayCount = computed(() =>
+  props.item.kind === 'podcast' ? playlistTableCount(props.item.table?.playCount, false) : null,
+);
 const markedTitle = computed(
   () =>
     ['playlist', 'podcast', 'voice', 'mv'].includes(props.item.kind) ||
@@ -404,6 +407,7 @@ watch(
       'search-playlist-row': tableRow && item.kind === 'playlist',
       'search-album-row': tableRow && item.kind === 'album',
       'search-voice-row': tableRow && item.kind === 'voice',
+      'search-podcast-row': tableRow && item.kind === 'podcast',
       'search-collection-striped': tableRow && tableRow.index % 2 === 0,
       'search-voice-card': !tableRow && item.kind === 'voice',
       'search-card-current': current,
@@ -414,11 +418,13 @@ watch(
     @click="activateRow"
     @dblclick="doubleClick"
   >
-    <template v-if="tableRow && ['playlist', 'album', 'voice'].includes(item.kind)">
+    <template v-if="tableRow && ['playlist', 'album', 'voice', 'podcast'].includes(item.kind)">
       <div class="search-collection-number" :class="`search-${item.kind}-number`" role="cell">
         <span>{{ String(tableRow.number).padStart(2, '0') }}</span>
         <button
-          v-if="(item.kind === 'album' || item.kind === 'voice') && canPlay"
+          v-if="
+            (item.kind === 'album' || item.kind === 'voice' || item.kind === 'podcast') && canPlay
+          "
           type="button"
           class="search-card-play"
           data-result-action="play"
@@ -467,6 +473,7 @@ watch(
           v-if="item.kind !== 'voice'"
           type="button"
           class="search-card-open"
+          :class="{ 'search-podcast-title': item.kind === 'podcast' }"
           data-result-action="open"
           :aria-label="`查看 ${card.name}`"
           :data-tooltip="card.name"
@@ -487,6 +494,18 @@ watch(
               （<SearchMatchText :text="albumAlias" :keyword="matchKeyword" />）
             </span>
           </span>
+          <template v-else-if="item.kind === 'podcast'">
+            <span class="search-result-name" :data-tooltip="card.name">
+              <SearchMatchText :text="card.name" :keyword="matchKeyword" />
+            </span>
+            <span
+              v-if="item.table?.recommendation"
+              class="search-podcast-recommendation"
+              :data-tooltip="item.table.recommendation"
+            >
+              {{ item.table.recommendation }}
+            </span>
+          </template>
           <SearchMatchText v-else :text="card.name" :keyword="matchKeyword" />
         </button>
         <div v-else class="search-voice-title-copy">
@@ -611,6 +630,42 @@ watch(
         </span>
         <span class="search-voice-duration search-voice-stat-cell" role="cell">
           {{ voiceDuration || '—' }}
+        </span>
+      </template>
+      <template v-else-if="item.kind === 'podcast'">
+        <div class="search-podcast-creator-cell" role="cell">
+          <button
+            v-if="item.table?.creatorId && item.podcast.creator"
+            type="button"
+            class="search-podcast-creator"
+            data-result-action="creator"
+            :aria-label="`查看主播 ${item.podcast.creator} 的主页`"
+            :data-tooltip="item.podcast.creator"
+            @click.stop="emit('creator', item.table.creatorId)"
+            @dblclick.stop
+          >
+            <SearchMatchText :text="item.podcast.creator" :keyword="matchKeyword" />
+          </button>
+          <span v-else>
+            <SearchMatchText :text="item.podcast.creator || '—'" :keyword="matchKeyword" />
+          </span>
+        </div>
+        <span class="search-podcast-stat search-podcast-program-count" role="cell">
+          {{ item.table?.programCount == null ? '—' : `${item.table.programCount} 个` }}
+        </span>
+        <span
+          class="search-podcast-stat search-podcast-play-count"
+          role="cell"
+          :data-tooltip="podcastPlayCount?.label"
+        >
+          <template v-if="podcastPlayCount">
+            <span aria-hidden="true">{{ podcastPlayCount.text }}</span>
+            <span class="sr-only">{{ podcastPlayCount.label }}</span>
+          </template>
+          <template v-else>—</template>
+        </span>
+        <span class="search-podcast-stat search-podcast-score" role="cell">
+          {{ item.table?.score ? `${item.table.score} 分` : '—' }}
         </span>
       </template>
     </template>

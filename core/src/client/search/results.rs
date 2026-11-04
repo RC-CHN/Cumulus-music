@@ -53,6 +53,8 @@ pub enum SearchItem {
     },
     Podcast {
         podcast: PodcastCard,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        table: Option<PodcastSearchTable>,
     },
     Mv {
         mv: CatalogVideoCard,
@@ -63,6 +65,20 @@ pub enum SearchItem {
     Related {
         keyword: String,
     },
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PodcastSearchTable {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    creator_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    program_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    play_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    score: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recommendation: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -248,6 +264,72 @@ fn voice_listener_count(value: &Value) -> Option<u64> {
         first
     })
 }
+fn podcast_count(value: &Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_str()?.parse().ok())
+        .filter(|count| *count < (1 << 53))
+}
+fn podcast_table_item(resource: &Value) -> Result<Option<SearchItem>> {
+    let base = &resource["baseInfo"];
+    let podcast = view::card(&Radio::from_official(base)?);
+    // M/15 lifts the score and recommendation from the search envelope.
+    // M/21 normalizes only the nested dj/creator as the account resource.
+    let creator = if base["dj"].is_object() {
+        &base["dj"]
+    } else {
+        &base["creator"]
+    };
+    let creator_id = creator["nickname"]
+        .as_str()
+        .filter(|name| !name.trim().is_empty())
+        .filter(|_| !matches!(creator["accountStatus"].as_i64(), Some(30 | 40)))
+        .and_then(|_| identifier(&creator["userId"]).ok());
+    let count = podcast_count(&base["voiceCount"]);
+    let program_count = count
+        .filter(|count| *count > 0)
+        .or_else(|| podcast_count(&base["programCount"]))
+        .or(count);
+    let raw_score = &resource["extInfo"]["scoreDto"]["score"];
+    let score = raw_score
+        .as_str()
+        .map(str::trim)
+        .map(str::to_owned)
+        .or_else(|| raw_score.as_number().map(ToString::to_string))
+        .filter(|text| {
+            text.len() <= 12
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || byte == b'.')
+                && text
+                    .parse::<f64>()
+                    .is_ok_and(|value| value.is_finite() && value > 0.0)
+        });
+    let recommendation = resource["uiElement"]["desc"]["title"]
+        .as_str()
+        .filter(|value| !value.contains("://"))
+        .map(|value| {
+            clean(value)
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ")
+                .chars()
+                .filter(|ch| !ch.is_control())
+                .take(160)
+                .collect::<String>()
+        })
+        .filter(|value| !value.is_empty());
+    Ok(Some(SearchItem::Podcast {
+        podcast,
+        table: Some(PodcastSearchTable {
+            creator_id,
+            program_count,
+            play_count: podcast_count(&base["playCount"]),
+            score,
+            recommendation,
+        }),
+    }))
+}
 fn song_mv(value: &Value) -> Option<String> {
     if [&value["st"], &value["status"], &value["privilege"]["st"]]
         .into_iter()
@@ -341,6 +423,7 @@ fn item(
         },
         "voicelist" => SearchItem::Podcast {
             podcast: view::card(&Radio::from_official(v)?),
+            table: None,
         },
         "mv" => {
             let mut v = v.clone();
@@ -558,7 +641,12 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
         } else {
             &Value::Null
         };
-        match item(kind, base, uid, lyric, None) {
+        let projected = if query.category == Podcasts {
+            podcast_table_item(resource)
+        } else {
+            item(kind, base, uid, lyric, None)
+        };
+        match projected {
             Ok(Some(item)) => section.items.push(item),
             Ok(None) | Err(_) => result.unavailable_count += 1,
         }

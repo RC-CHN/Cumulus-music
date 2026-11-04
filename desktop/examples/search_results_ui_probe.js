@@ -915,6 +915,8 @@
       await fresh('合成声音队列');
       assert(one('.search-voice-card .search-voice-footer')&&!one('.search-voice-table'),
         'comprehensive keeps compact voice cards');
+      assert(one('[data-result-key="podcast:301"].search-cover-card')&&!one('.search-podcast-table'),
+        'comprehensive keeps square podcast cards');
       await choose('voices');
       const card=()=>one('[data-result-key="voice:401"]');
       const play=()=>card()?.querySelector('.search-card-play');
@@ -983,7 +985,46 @@
       assert(afterComments.playId===resumed.playId&&afterComments.queueRevision===resumed.queueRevision,
         'comment navigation leaves the voice and queue intact');
       await choose('podcasts');
-      click(one('[data-result-key="podcast:301"] .search-card-play'));
+      const podcast=()=>one('[data-result-key="podcast:301"].search-podcast-row');
+      const host=()=>podcast()?.querySelector('.search-podcast-creator');
+      const podcastHeaders=()=>all('.search-podcast-table [role="columnheader"]');
+      const podcastAligned=row=>widths(podcastHeaders()).every((width,index)=>
+        Math.abs(row.children[index].getBoundingClientRect().width-width)<1);
+      const restricted=one('[data-result-key="podcast:302"].search-podcast-row');
+      assert(podcastHeaders().map(node=>node.textContent.trim()).join(',')==='#,标题,主播,声音数,播放量,评分'&&
+        podcast().getAttribute('aria-rowindex')==='2'&&podcastAligned(podcast())&&
+        Math.abs(podcast().getBoundingClientRect().height-64)<1&&
+        Math.abs(podcast().querySelector('.search-result-art').getBoundingClientRect().width-48)<1,
+        'podcast search uses six official aligned columns and 64px rows');
+      assert(podcast().querySelector('.search-podcast-program-count').textContent.trim()==='24 个'&&
+        podcast().querySelector('.search-podcast-play-count [aria-hidden="true"]').textContent==='12345'&&
+        podcast().querySelector('.search-podcast-score').textContent.trim()==='9.7 分'&&
+        podcast().querySelector('.search-podcast-recommendation').textContent.trim()==='合成播客推荐',
+        'native search envelope supplies count, rating, and a separate recommendation');
+      assert(host()?.getAttribute('aria-label')==='查看主播 合成主播 的主页'&&
+        restricted.querySelector('.search-podcast-creator-cell').textContent.trim()==='合成不可用主播'&&
+        !restricted.querySelector('.search-podcast-creator')&&
+        restricted.querySelector('.search-podcast-play-count [aria-hidden="true"]').textContent==='0'&&
+        restricted.querySelector('.search-podcast-score').textContent.trim()==='—',
+        'an unavailable creator is plain and a known zero remains distinct from an unknown score');
+      const podcastHandles=all('.search-podcast-column-resizer'), initialPodcastWidths=widths(podcastHeaders());
+      assert(podcastHandles.length===4,'only the four effective podcast separators are exposed');
+      podcastHandles[0].focus({preventScroll:true});key(podcastHandles[0],'ArrowLeft');
+      await wait(()=>Math.abs(widths(podcastHeaders())[2]-initialPodcastWidths[2]-12)<1&&podcastAligned(podcast()),
+        'podcast title transfers width to the host column');
+      const podcastWidths=widths(podcastHeaders());
+      await capture('search_podcast_table_columns');
+      click(host());
+      await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成用户主页 501'&&
+        one('.playlist-creator-page [data-library-open="30"]'),'podcast host opens the verified public profile');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&document.activeElement===host()&&podcastAligned(podcast())&&
+        widths(podcastHeaders()).every((width,index)=>Math.abs(width-podcastWidths[index])<1),
+        'Back restores the podcast host control and adjusted column widths');
+      const afterHost=await invoke('player_snapshot',{epoch});
+      assert(afterHost.playId===resumed.playId&&afterHost.queueRevision===resumed.queueRevision,
+        'podcast host navigation does not change the voice queue');
+      click(podcast().querySelector('.search-card-play'));
       await playing(state=>state.track?.voiceId==='401'&&state.origin?.kind==='podcast');
       const radio=await readQueue();
       assert(radio.tracks.map(row=>row.track.voiceId).join(',')==='401,402,403','explicit podcast card still plays its episode list');
@@ -1026,6 +1067,11 @@
           const row=opener().closest('.search-voice-row');
           assert(aligned(row)&&row.getAttribute('aria-rowindex')==='12'&&all('.search-voice-row').length<20,
             'late narrow voice row keeps aligned columns, ordinal and bounded rendering');
+        }else{
+          const row=opener().closest('.search-podcast-row');
+          assert(podcastAligned(row)&&row.getAttribute('aria-rowindex')==='12'&&
+            all('.search-podcast-row').length<20&&!one('.search-podcast-column-resizer'),
+            'compact podcast table keeps the late row aligned without ineffective resize handles');
         }
         opener().scrollIntoView({block:'nearest'});
         const rect=opener().getBoundingClientRect(), position=panel().scrollTop;
@@ -1041,7 +1087,7 @@
           'appending or opening details cannot alter the existing native queue');
         await capture('search_'+category+'_waterfall_back');
       }
-      await emit('complete',{ok:true,voiceQueueVerified:true,voiceTableVerified:true,audioWaterfallVerified:true,audioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,voiceQueueVerified:true,voiceTableVerified:true,podcastTableVerified:true,audioWaterfallVerified:true,audioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchSongWaterfallProof){

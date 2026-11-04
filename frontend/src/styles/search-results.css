@@ -371,7 +371,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
-:is(.search-playlist-panel, .search-album-panel, .search-voice-panel) {
+:is(.search-playlist-panel, .search-album-panel, .search-voice-panel, .search-podcast-panel) {
   overflow-anchor: none;
 }
 .search-collection-table .search-collection-virtual {
@@ -408,7 +408,9 @@
 .search-playlist-play-count,
 .search-album-author-cell,
 .search-album-time-cell,
-.search-voice-stat-cell {
+.search-voice-stat-cell,
+.search-podcast-creator-cell,
+.search-podcast-stat {
   min-width: 0;
   padding-inline: 8px;
   overflow: hidden;
@@ -509,13 +511,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-:is(.search-album-number, .search-voice-number) {
+:is(.search-album-number, .search-voice-number, .search-podcast-number) {
   position: relative;
   display: grid;
   align-items: center;
   align-self: stretch;
 }
-.search-collection-row :is(.search-album-number, .search-voice-number) .search-card-play {
+.search-collection-row
+  :is(.search-album-number, .search-voice-number, .search-podcast-number)
+  .search-card-play {
   inset: calc(50% - 13.5px) auto auto calc(50% - 13.5px);
   transform: none;
   width: 27px;
@@ -523,12 +527,17 @@
   color: var(--accent);
   background: var(--surface);
 }
-.search-collection-row :is(.search-album-number, .search-voice-number) .search-card-play .icon {
+.search-collection-row
+  :is(.search-album-number, .search-voice-number, .search-podcast-number)
+  .search-card-play
+  .icon {
   width: 16px;
   height: 16px;
 }
 .search-collection-row:is(:hover, :focus-within, .search-card-current)
-  :is(.search-album-number, .search-voice-number):has(.search-card-play:not(:disabled))
+  :is(.search-album-number, .search-voice-number, .search-podcast-number):has(
+    .search-card-play:not(:disabled)
+  )
   > span {
   opacity: 0;
 }
@@ -607,6 +616,30 @@
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+.search-podcast-title > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-podcast-title > .search-result-name {
+  font-size: 13px;
+}
+.search-podcast-recommendation {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 17px;
+}
+.search-podcast-creator-cell > * {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-podcast-stat {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 @container (max-width: 544px) {
   .search-playlist-table :is(.search-playlist-columns, .search-playlist-row) {
     grid-template-columns: 30px minmax(100px, 4fr) 52px minmax(64px, 1fr) 56px;
@@ -668,6 +701,26 @@
   .search-voice-number,
   .search-voice-stat-cell {
     padding-inline: 4px;
+  }
+}
+@container (max-width: 572px) {
+  .search-podcast-table :is(.search-podcast-columns, .search-podcast-row) {
+    grid-template-columns: 32px minmax(0, 3fr) minmax(0, 1.2fr) 52px 64px 45px;
+  }
+  .search-podcast-table .search-collection-title-cell {
+    grid-template-columns: 42px minmax(0, 1fr) 30px;
+    gap: 5px;
+    padding-inline: 5px;
+  }
+  .search-podcast-row .search-result-art {
+    width: 42px;
+    height: 42px;
+  }
+  .search-podcast-columns > span,
+  .search-podcast-number,
+  .search-podcast-creator-cell,
+  .search-podcast-stat {
+    padding-inline: 5px;
   }
 }
 .search-load-more {
@@ -1064,7 +1117,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.search-playlist-creator,
+:is(.search-playlist-creator, .search-podcast-creator),
 .search-card-artist {
   position: relative;
   z-index: 2;
@@ -1083,8 +1136,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.search-playlist-creator:hover,
-.search-playlist-creator:focus-visible,
+:is(.search-playlist-creator, .search-podcast-creator):hover,
+:is(.search-playlist-creator, .search-podcast-creator):focus-visible,
 .search-card-artist:hover,
 .search-card-artist:focus-visible {
   color: var(--accent);

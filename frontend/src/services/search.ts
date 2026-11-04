@@ -43,6 +43,13 @@ export type SearchReasonTarget =
   | { kind: 'city'; chartCode: string; targetId: string; targetType: string };
 export type SearchReasonTag = { label: string; target?: SearchReasonTarget };
 export type SearchReasonPage = { title: string; playCount: number | null; tracks: TrackView[] };
+export type PodcastSearchTable = {
+  creatorId?: string;
+  programCount?: number;
+  playCount?: number;
+  score?: string;
+  recommendation?: string;
+};
 export type SearchItem =
   | {
       kind: 'song';
@@ -59,7 +66,7 @@ export type SearchItem =
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
   | { kind: 'voice'; voice: EpisodeView; listenerCount?: number }
-  | { kind: 'podcast'; podcast: PodcastCard }
+  | { kind: 'podcast'; podcast: PodcastCard; table?: PodcastSearchTable }
   | { kind: 'mv'; mv: CatalogVideoCard }
   | { kind: 'user'; user: FollowUser }
   | { kind: 'related'; keyword: string };

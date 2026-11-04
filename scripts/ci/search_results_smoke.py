@@ -285,7 +285,7 @@ def main():
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['voiceQueueVerified'] and complete['audioWaterfallVerified']
-        assert complete['voiceTableVerified'] and complete['stageCount'] == 7
+        assert complete['voiceTableVerified'] and complete['podcastTableVerified'] and complete['stageCount'] == 8
         assert complete['audioReads'] == [['voices', 0, 10], ['voices', 10, 10],
                                           ['podcasts', 0, 10], ['podcasts', 10, 10]]
         first = root / 'first'
@@ -294,10 +294,14 @@ def main():
         assert set(played['voiceQueueCalls']) == {'/api/dj/program/detail'}
         assert paused['voiceQueueCalls'] == played['voiceQueueCalls']
         assert '/api/v6/dj/program/byradio' in complete['voiceQueueCalls']
+        assert complete['searchProfileCalls'] == [
+            {'all': True, 'userId': '501'}, {'uid': '501', 'offset': 0, 'limit': 1000},
+        ]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list((root / 'first').glob('ux_*.png'))) == (7 if args.screenshots else 0)
+        assert len(list((root / 'first').glob('ux_*.png'))) == (8 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, voiceQueueVerified=True,
-                              voiceTableVerified=True, audioWaterfallVerified=True, stageCount=7)))
+                              voiceTableVerified=True, podcastTableVerified=True,
+                              audioWaterfallVerified=True, stageCount=8)))
         return
     if args.song_waterfall:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))

@@ -47,6 +47,14 @@ export const searchTableLayouts = {
     { id: 'listenerCount', name: '播放量', width: 79, grow: 0, resizable: true },
     { id: 'duration', name: '时长', width: 64, grow: 0, resizable: true },
   ]),
+  podcast: tableLayout('搜索播客结果', [
+    { id: 'num', name: '#', label: '序号', width: 45, grow: 0 },
+    { id: 'title', name: '标题', width: 200, grow: 8, resizable: true },
+    { id: 'creator', name: '主播', width: 102, grow: 1, resizable: true },
+    { id: 'programCount', name: '声音数', width: 80, grow: 1, resizable: true },
+    { id: 'playCount', name: '播放量', width: 92, grow: 1, resizable: true },
+    { id: 'score', name: '评分', width: 53, grow: 1, resizable: true },
+  ]),
 };
 export type SearchTableKind = keyof typeof searchTableLayouts;
 

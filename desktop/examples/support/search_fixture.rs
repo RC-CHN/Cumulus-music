@@ -733,6 +733,16 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             {"id":100,"name":"合成主艺人"}
         ]);
     }
+    if mode == "voice_queue" && category == "podcasts" {
+        let rows = response["data"]["resources"].as_array_mut().unwrap();
+        rows[0]["baseInfo"]["dj"] = json!({"userId":501,"nickname":"合成主播"});
+        rows[0]["baseInfo"]["playCount"] = json!(12345);
+        rows[0]["extInfo"] = json!({"scoreDto":{"score":9.7}});
+        rows[0]["uiElement"] = json!({"desc":{"title":"合成播客推荐"}});
+        rows[1]["baseInfo"]["dj"] =
+            json!({"userId":502,"nickname":"合成不可用主播","accountStatus":30});
+        rows[1]["baseInfo"]["playCount"] = json!(0);
+    }
     if mode == "playlist_creator_search" && matches!(category, "all" | "playlists") {
         fn creators(rows: &mut [Value]) {
             for row in rows {

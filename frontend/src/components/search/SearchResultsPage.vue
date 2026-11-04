@@ -7,6 +7,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { advanceSearchPage, type SearchPageStep } from '../../services/searchPagination';
 import type { SearchViewportMemory } from '../../services/searchViewport';
 import SearchCardGrid from './SearchCardGrid.vue';
+import type { SearchTableKind } from '../../services/searchTableColumns';
 import SearchTrackCard from './SearchTrackCard.vue';
 import type { AccountView, PlaylistView, TrackView } from '../../services/contracts';
 import {
@@ -103,6 +104,13 @@ const model = useSearchResults(useCore(), () => emit('expired'), props.memory);
 const { view, loading, error, loadingMore, moreError, manualMore } = model;
 const category = computed(() => props.category ?? 'all'),
   offset = computed(() => props.pagination?.offset ?? 0);
+const tableCategories: Partial<Record<SearchCategory, SearchTableKind>> = {
+  playlists: 'playlist',
+  albums: 'album',
+  voices: 'voice',
+  podcasts: 'podcast',
+};
+const tableKind = computed(() => tableCategories[category.value]);
 const nextPage = computed(() =>
   view.value?.more ? advanceSearchPage(props.pagination, view.value.nextOffset) : undefined,
 );
@@ -635,6 +643,7 @@ onBeforeUnmount(() => {
           'search-playlist-panel': category === 'playlists',
           'search-album-panel': category === 'albums',
           'search-voice-panel': category === 'voices',
+          'search-podcast-panel': category === 'podcasts',
         }"
         tabindex="0"
         @scroll.capture.passive="scroll"
@@ -852,26 +861,14 @@ onBeforeUnmount(() => {
               :virtual="gridWaterfall"
               :preview="oneRowPreview(section)"
               :carousel="carousel(section)"
-              :table="
-                category === 'playlists'
-                  ? 'playlist'
-                  : category === 'albums'
-                    ? 'album'
-                    : category === 'voices'
-                      ? 'voice'
-                      : undefined
-              "
+              :table="tableKind"
               @position="previewPosition(section, $event)"
               v-slot="{ item, index }"
             >
               <SearchResultCard
                 :item="item"
                 :category="category"
-                :table-row="
-                  category === 'playlists' || category === 'albums' || category === 'voices'
-                    ? { index, number: offset + index + 1 }
-                    : undefined
-                "
+                :table-row="tableKind ? { index, number: offset + index + 1 } : undefined"
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"

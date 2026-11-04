@@ -129,6 +129,53 @@ async fn categories_use_official_shapes_and_only_public_card_fields_cross_ipc() 
     }
 }
 #[tokio::test]
+async fn podcast_search_projects_official_table_metadata_without_guessing() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"resources":[
+        {"baseInfo":{"id":301,"name":"完整播客","voiceCount":24,"playCount":12345,
+                     "score":99,"dj":{"userId":501,"nickname":"主播","signature":"PRIVATE_DJ"}},
+         "extInfo":{"scoreDto":{"score":"9.7","private":"PRIVATE_SCORE"}},
+         "uiElement":{"desc":{"title":" <em>合成</em>  推荐 "}}},
+        {"baseInfo":{"id":302,"name":"不可用主播","programCount":0,"playCount":0,
+                     "creator":{"userId":502,"nickname":"不可用","accountStatus":30}},
+         "extInfo":{"scoreDto":{"score":"PRIVATE_NOT_SCORE"}},
+         "uiElement":{"desc":{"title":"https://private.invalid/PRIVATE_URL"}}},
+        {"baseInfo":{"id":303,"name":"缺失字段","userId":503,"creatorName":"未核验",
+                     "playCount":9007199254740992_u64},
+         "extInfo":{"scoreDto":{"score":0}}},
+        {"baseInfo":{"id":"invalid","name":"坏结果"}}
+    ],"totalCount":14,"hasMore":true}});
+    let mut query = query(C::Podcasts);
+    query.offset = 6;
+    query.limit = 10;
+    let result = client.search_results(&epoch, query).await.unwrap().value;
+    assert!(result.more);
+    assert_eq!(result.next_offset, 10);
+    assert_eq!(result.unavailable_count, 1);
+    let view = serde_json::to_value(result).unwrap();
+    let items = view["sections"][0]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 3);
+    assert_eq!(
+        items[0]["table"],
+        json!({
+            "creatorId":"501","programCount":24,"playCount":12345,
+            "score":"9.7","recommendation":"合成 推荐"
+        })
+    );
+    assert_eq!(items[1]["table"], json!({"programCount":0,"playCount":0}));
+    assert_eq!(items[2]["table"], json!({}));
+    assert_eq!(items[1]["podcast"]["creator"], "不可用");
+    assert_eq!(items[2]["podcast"]["creator"], "未核验");
+    assert!(!view.to_string().contains("PRIVATE"));
+    let calls = api.calls.lock().unwrap();
+    let (path, args) = calls.last().unwrap();
+    assert_eq!(path, "/api/search/voicelist/get");
+    assert_eq!(args["offset"], 6);
+    assert_eq!(args["limit"], 10);
+}
+
+#[tokio::test]
 async fn playlist_search_distinguishes_empty_from_missing_track_evidence() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;
