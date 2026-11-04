@@ -70,31 +70,40 @@ watch(canResizeGroups, async (enabled) => {
   (selected ?? searchInput.value)?.focus({ preventScroll: true });
 });
 const expandedFolders = shallowRef(new Set<string>());
-let folderFocus: string | undefined;
-function selectFolder(key: string) {
-  if (
-    document.activeElement instanceof HTMLElement &&
-    document.activeElement.dataset.localFolderKey === key
-  )
-    folderFocus = key;
+let groupFocus: { key: string | null; queryKey: string } | undefined;
+function selectGroup(key: string | null) {
+  const active = document.activeElement;
+  const focused =
+    active instanceof HTMLButtonElement &&
+    browser.value?.contains(active) &&
+    (key === null
+      ? active.hasAttribute('data-local-all-groups')
+      : active.dataset.localGroupKey === key);
   props.model.filter({ groupKey: key });
+  groupFocus = focused ? { key, queryKey: localQueryKey(query.value) } : undefined;
 }
 watch(
   [view, readError, query],
   () => {
-    if (folderFocus === undefined) return;
-    const key = folderFocus;
-    if (query.value.group !== 'folder' || query.value.groupKey !== key) {
-      folderFocus = undefined;
+    const restore = groupFocus;
+    if (!restore) return;
+    if (restore.queryKey !== localQueryKey(query.value)) {
+      groupFocus = undefined;
       return;
     }
     if (!view.value && !readError.value) return;
-    folderFocus = undefined;
+    groupFocus = undefined;
     if (!ownsVisit() || document.activeElement !== document.body) return;
+    const group =
+      restore.key === null
+        ? browser.value?.querySelector<HTMLButtonElement>('[data-local-all-groups]')
+        : Array.from(
+            browser.value?.querySelectorAll<HTMLButtonElement>('[data-local-group-key]') ?? [],
+          ).find((node) => node.dataset.localGroupKey === restore.key);
     const target =
-      Array.from(
-        pageRoot.value?.querySelectorAll<HTMLButtonElement>('[data-local-folder-key]') ?? [],
-      ).find((node) => node.dataset.localFolderKey === key) ?? searchInput.value;
+      group ??
+      pageRoot.value?.querySelector<HTMLButtonElement>('[data-local-read-error] button') ??
+      searchInput.value;
     target?.focus({ preventScroll: true });
     target?.scrollIntoView({ block: 'nearest' });
   },
@@ -654,7 +663,11 @@ function status(root: LocalRoot) {
         @contextmenu="openGroupMenu"
         @keydown="openGroupMenu"
       >
-        <button :aria-pressed="query.groupKey === null" @click="model.filter({ groupKey: null })">
+        <button
+          data-local-all-groups
+          :aria-pressed="query.groupKey === null"
+          @click="selectGroup(null)"
+        >
           全部
         </button>
         <LocalFolderGroups
@@ -663,7 +676,7 @@ function status(root: LocalRoot) {
           :groups="view?.groups ?? []"
           :selected="query.groupKey"
           :searching="!!query.keyword.trim()"
-          @select="selectFolder"
+          @select="selectGroup"
         />
         <template v-else>
           <button
@@ -675,7 +688,7 @@ function status(root: LocalRoot) {
             aria-expanded="false"
             aria-keyshortcuts="Shift+F10"
             :title="group.key ? group.name : '其他'"
-            @click="model.filter({ groupKey: group.key })"
+            @click="selectGroup(group.key)"
           >
             <span>{{ group.key ? group.name : '其他' }}</span
             ><small>{{ group.count }}</small>

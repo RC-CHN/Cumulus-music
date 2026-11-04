@@ -81,8 +81,13 @@
       await wait(() => namedGroups().map(node => node.title).join(',') === '北京,上海,其他',
         'pinyin order and trailing unnamed group: ' + label);
       click(await wait(() => namedGroups().find(node => node.title === '上海'), 'Shanghai group: ' + label));
-      await wait(() => trackRows().length === 1 && trackRows()[0].textContent.includes('归途'),
-        'pinyin presentation preserves native group identity: ' + label);
+      await wait(() => trackRows().length === 1 && trackRows()[0].textContent.includes('归途') &&
+        document.activeElement === namedGroups().find(node => node.title === '上海'),
+        'group selection preserves native identity and focus: ' + label);
+      const allGroups = () => one('[data-local-all-groups]');
+      click(await wait(allGroups, 'all groups control: ' + label));
+      await wait(() => trackRows().length === 5 && document.activeElement === allGroups(),
+        'all groups restores focus after native read: ' + label);
     }
     click(button('文件夹'));
     const toggle = () => one('.local-folder-toggle');
