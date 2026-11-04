@@ -79,6 +79,19 @@
       'filtered index maps to source album track');
     assert(queue.tracks.map(row => row.track.id).join(',') === '1,2,3,4,5,6,7,8,9,10,11',
       'filtered row preserves full native album queue');
+    const currentRow = () => tableRows()[0]?.querySelector('.track-play');
+    await wait(() => currentRow()?.getAttribute('aria-label').startsWith('暂停 ') && !currentRow().disabled, 'filtered current row offers pause');
+    click(currentRow());
+    await wait(() => currentRow()?.getAttribute('aria-label').startsWith('继续播放 ') && !currentRow().disabled, 'filtered current row paused');
+    await wait(() => document.activeElement === currentRow(), 'filtered current row retains focus');
+    const paused = await invoke('player_snapshot', { epoch });
+    assert(paused.state === 'paused' && paused.playId === player.playId &&
+      paused.queueRevision === player.queueRevision, 'album row pause preserves session and queue');
+    click(currentRow());
+    await wait(() => playing() && !currentRow().disabled, 'filtered current row resumed');
+    const resumed = await invoke('player_snapshot', { epoch });
+    assert(resumed.playId === player.playId && resumed.position >= paused.position - .1,
+      'filtered current row resumes without resetting the native position');
     click(one('[aria-label="停止播放"]'));
     await wait(() => one('.playerbar').dataset.state !== 'playing', 'stop filtered playback');
 
@@ -161,7 +174,7 @@
     assert(one('[aria-label="评论内容"]').value === '', 'another album inherited draft');
     click(button('播放全部', one('.album-actions'))); await wait(playing, 'native playback from comments');
     await capture('comments_playing_other_album', true);
-    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, albumSearch: true, playbackVerified: true, decoder: 'libmpv', audioOutput: 'null', draftIsolation: true, mediaSubstitution: 'exact synthetic CDN URL to generated PCM' });
+    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, albumSearch: true, currentRowToggle: true, playbackVerified: true, decoder: 'libmpv', audioOutput: 'null', draftIsolation: true, mediaSubstitution: 'exact synthetic CDN URL to generated PCM' });
   } catch (error) {
     await emit('failed', { ok: false, stageCount, error: String(error), stack: error.stack });
   }

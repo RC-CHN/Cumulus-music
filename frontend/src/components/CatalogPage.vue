@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import BoundedPanelTransition from './BoundedPanelTransition.vue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
-import type { TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
+import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from '../services/trackMenu';
 import type { AccountView, TrackView } from '../services/contracts';
 import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../services/catalog';
 import type { AlbumCard, ArtistCard } from '../services/catalog';
@@ -31,6 +31,7 @@ const props = defineProps<{
   liked: Set<string>;
   busyLikes: Set<string>;
   currentId?: string;
+  currentToggle?: TrackCurrentToggle;
   origin?: PlayerOrigin | null;
   playing: boolean;
   queueable: boolean;
@@ -40,6 +41,7 @@ const emit = defineEmits<{
   open: [resource: CatalogResource];
   profile: [id: string];
   play: [pages: CatalogSelectionPage[], index: number, gesture?: TrackPlayGesture];
+  toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
   download: [tracks: TrackView[]];
@@ -408,9 +410,11 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         :busy-likes="busyLikes"
         :playable="playable && !playBusy"
         :current-id="currentId"
+        :current-toggle="currentToggle"
         @choose="emit('albumTab', $event)"
         @enter="restore"
         @play="play"
+        @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @like="emit('like', $event)"
         @more="emit('more', $event)"
         @open="emit('open', $event)"
@@ -493,7 +497,9 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
               :busy="busyLikes"
               :playable="playable && !playBusy"
               :current-id="currentId"
+              :current-toggle="currentToggle"
               @play="play"
+              @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
               @like="emit('like', $event)"
               @more="emit('more', $event)"
               @artist="emit('open', { kind: 'artist', id: $event })"

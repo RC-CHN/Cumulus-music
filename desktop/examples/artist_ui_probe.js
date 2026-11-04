@@ -87,7 +87,22 @@
       assert(document.activeElement === tab('concerts'), 'tab keyboard focus');
       await capture(`concerts_${width}_${color}`);
       await pick('songs'); await wait(() => !button('播放全部', one('.artist-actions')).disabled, 'hot play ready');
-      click(button('播放全部', one('.artist-actions'))); await wait(playing, 'hot playback'); await capture(`hot_playing_${width}_${color}`, 50); await stop();
+      click(button('播放全部', one('.artist-actions'))); await wait(playing, 'hot playback');
+      if (width === 1120 && color === 'light') {
+        const bar = () => one('.playerbar');
+        const { playId, trackId, position } = bar().dataset;
+        const row = () => one(`.track-row[data-track-id="${trackId}"] .track-play`);
+        await wait(() => row()?.getAttribute('aria-label').startsWith('暂停 ') && !row().disabled, 'artist row offers pause');
+        click(row());
+        await wait(() => state() === 'paused' && !row().disabled && row().getAttribute('aria-label').startsWith('继续播放 '), 'artist row paused');
+        await wait(() => document.activeElement === row(), 'artist row retains focus');
+        assert(bar().dataset.playId === playId && Number(bar().dataset.position) >= Number(position) - .1,
+          'artist row pause preserves identity and position');
+        click(row());
+        await wait(() => playing() && !row().disabled, 'artist row resumed');
+        assert(bar().dataset.playId === playId, 'artist row resume keeps native identity');
+      }
+      await capture(`hot_playing_${width}_${color}`, 50); await stop();
       await allSongs();
       assert(!one('.artist-header') && !one('.artist-tabs'), 'all-songs page uses separate controls');
       await wait(() => button('加载更多') && !button('加载更多').disabled, 'all songs first page');
@@ -130,7 +145,7 @@
     await mode('artist-long'); await artist(); await wait(() => one('.artist-header h1')?.textContent.startsWith('长名称'), 'long artist'); await capture('long_artist');
     await emit('resize', { width:760, height:540 }); await wait(() => innerWidth === 760 && innerHeight === 540 && performance.now() - resizedAt >= 500, 'long small resize settled'); await capture('long_artist_small');
     click(button('播放全部', one('.artist-actions'))); await wait(playing, 'long artist playback'); await capture('long_artist_playing', 50);
-    await emit('complete', { ok:true, stageCount:count, realMusicRequests:0, playbackVerified:true, decoder:'libmpv', audioOutput:'null', preservedPrefixes:true, mediaSubstitution:'exact synthetic CDN URL to generated PCM' });
+    await emit('complete', { ok:true, stageCount:count, realMusicRequests:0, playbackVerified:true, currentRowToggle:true, decoder:'libmpv', audioOutput:'null', preservedPrefixes:true, mediaSubstitution:'exact synthetic CDN URL to generated PCM' });
   } catch(error) {
     const grid = one('.catalog-card-scroll');
     await emit('failed', { ok:false, stageCount:count, message:String(error), stack:error.stack,

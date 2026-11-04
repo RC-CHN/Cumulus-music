@@ -3,7 +3,11 @@ import BoundedPanelTransition from '../BoundedPanelTransition.vue';
 import { computed, ref, useId } from 'vue';
 import type { AccountView, TrackView } from '../../services/contracts';
 import type { AlbumCard, CatalogResource } from '../../services/catalog';
-import type { TrackMenuRequest, TrackPlayGesture } from '../../services/trackMenu';
+import type {
+  TrackCurrentToggle,
+  TrackMenuRequest,
+  TrackPlayGesture,
+} from '../../services/trackMenu';
 import type { CatalogSession } from '../../composables/useCatalogSession';
 import type { AlbumTab } from '../../services/catalogNavigation';
 import TrackTable from '../TrackTable.vue';
@@ -19,9 +23,11 @@ const props = defineProps<{
   busyLikes: Set<string>;
   playable: boolean;
   currentId?: string;
+  currentToggle?: TrackCurrentToggle;
 }>();
 const emit = defineEmits<{
   play: [index: number, gesture?: TrackPlayGesture];
+  toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
   open: [resource: CatalogResource];
@@ -140,7 +146,9 @@ function keydown(event: KeyboardEvent, index: number) {
             :busy="busyLikes"
             :playable="playable"
             :current-id="currentId"
+            :current-toggle="currentToggle"
             @play="play"
+            @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
             @like="emit('like', $event)"
             @more="emit('more', $event)"
             @artist="emit('open', { kind: 'artist', id: $event })"

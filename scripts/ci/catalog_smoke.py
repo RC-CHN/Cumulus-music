@@ -190,6 +190,7 @@ def main():
         return
     if args.artist:
         assert complete['ok'] and complete['stageCount'] == 50 and complete['preservedPrefixes']
+        assert complete['currentRowToggle']
         assert complete['realMusicRequests'] == 0 and complete['playbackVerified']
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
         stages = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
@@ -220,6 +221,7 @@ def main():
         return
     if args.album:
         assert complete['ok'] and complete['stageCount'] == 30 and complete['playbackVerified']
+        assert complete['currentRowToggle']
         assert complete['albumSearch'] is True
         assert complete['realMusicRequests'] == 0 and complete['draftIsolation']
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
