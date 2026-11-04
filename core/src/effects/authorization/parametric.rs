@@ -225,6 +225,41 @@ impl EffectAuthorizations {
         self.seal_parametric(library, token, Box::new(preflight.0), observation)
     }
 
+    /// Rebind the exact acknowledged non-trial registration selected in the
+    /// host. Unlike registration, an absent or superseded lease can never
+    /// fall through to a new auth/set request.
+    /// A running host must hold the native-use fence around this observation.
+    pub async fn bind_preflighted_registration_for(
+        &self,
+        library: &EffectsLibrary,
+        token: &SessionToken,
+        preflight: StandaloneParametric,
+        receipt: &super::NativeEffectReleaseReceipt,
+    ) -> Result<BoundParametric> {
+        if !Arc::ptr_eq(&self.session, &library.session) || preflight.effect() != receipt.effect() {
+            return Err(Error::StaleResponse);
+        }
+        let owner = self.owner(token)?;
+        let _lock = self.lock(&owner)?;
+        let lease = self.check_preflighted_registration(token, receipt)?;
+        library.validate_parametric_preflight_for(token, &preflight)?;
+        let observation = self.observe_locked(token, &owner, lease).await?;
+        self.seal_parametric(library, token, Box::new(preflight.0), observation)
+    }
+
+    pub(crate) fn check_preflighted_registration(
+        &self,
+        token: &SessionToken,
+        receipt: &super::NativeEffectReleaseReceipt,
+    ) -> Result<EffectLease> {
+        let owner = self.owner(token)?;
+        self.get(&owner, receipt.effect())?
+            .filter(|lease| {
+                registered_non_trial(lease) && receipt.matches(&self.session, token, lease)
+            })
+            .ok_or(Error::StaleResponse)
+    }
+
     /// Read fresh rights under the owner authorization lock, then bind one
     /// enabled PEQ-only material to the exact acknowledged observation.
     /// Additional routed sections, including off sections, are not treated as

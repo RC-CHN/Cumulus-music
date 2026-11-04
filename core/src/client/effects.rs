@@ -1,6 +1,7 @@
 use super::MusicClient;
 use crate::{
     Error, Result,
+    account::SessionToken,
     download::transfer::{MediaBackend, RunOptions},
     effects::{
         authorization::{
@@ -16,7 +17,7 @@ use crate::{
             StandaloneParametricPreflight,
         },
     },
-    playback::controller::{ParametricApplication, ParametricBindingStatus},
+    playback::controller::{ParametricApplication, ParametricBindingStatus, PlaybackController},
 };
 use std::sync::Arc;
 
@@ -24,15 +25,28 @@ use std::sync::Arc;
 /// dispatch begins, its exact target is available even after cancellation.
 pub struct NativeParametricActivationAttempt {
     effect: EffectId,
-    receipt: Option<Box<StandaloneParametric>>,
+    source: Option<ParametricActivationSource>,
     submitted_target: Option<BoundParametricTarget>,
+}
+
+enum ParametricActivationSource {
+    Preflight(Box<StandaloneParametric>),
+    Existing,
 }
 
 impl NativeParametricActivationAttempt {
     pub fn new(receipt: Box<StandaloneParametric>) -> Self {
         Self {
             effect: receipt.effect(),
-            receipt: Some(receipt),
+            source: Some(ParametricActivationSource::Preflight(receipt)),
+            submitted_target: None,
+        }
+    }
+
+    pub fn existing(effect: EffectId) -> Self {
+        Self {
+            effect,
+            source: Some(ParametricActivationSource::Existing),
             submitted_target: None,
         }
     }
@@ -110,19 +124,83 @@ impl MusicClient {
         let library = EffectsLibrary::new(self.session.clone())?;
         let authorization = EffectAuthorizations::new(self.session.clone())?;
         let _lock = authorization.activation_lock_for(&token)?;
-        let receipt = attempt
-            .receipt
-            .take()
-            .ok_or(Error::State("parametric activation attempt already used"))?;
+        let Some(ParametricActivationSource::Preflight(receipt)) = attempt.source.take() else {
+            return Err(Error::State("parametric activation attempt unavailable"));
+        };
         library.validate_parametric_preflight_for(&token, &receipt)?;
         let controller = self.player.controller().await?;
         let binding = authorization
             .register_preflighted_parametric_for(&library, &token, *receipt)
             .await?;
+        self.submit_effect_binding(controller, &token, attempt, binding)
+            .await
+    }
+
+    /// Explicit resume: bind only the exact old registration; never register
+    /// or release on a missing, changed or uncertain receipt.
+    pub async fn resume_native_effect_parametric(
+        &self,
+        epoch: &str,
+        attempt: &mut NativeParametricActivationAttempt,
+        existing: &NativeEffectReleaseReceipt,
+    ) -> Result<NativeParametricActivation> {
+        let token = self.player_token(epoch)?;
+        let library = self.effect_material_library()?;
+        let authorization = EffectAuthorizations::new(self.session.clone())?;
+        let _activation = authorization.activation_lock_for(&token)?;
+        if !matches!(
+            attempt.source.take(),
+            Some(ParametricActivationSource::Existing)
+        ) || attempt.effect != existing.effect()
+        {
+            return Err(Error::StaleResponse);
+        }
+        let controller = self.player.controller().await?;
+        let binding = {
+            // Do not advance a registration revision still in use elsewhere.
+            // The actor takes its own fence under the same activation lock.
+            let _unused = authorization.acquire_bound_use_fence_for(&token)?;
+            if authorization
+                .native_pending_for(&token)?
+                .iter()
+                .any(|entry| entry.id != attempt.effect)
+            {
+                return Err(Error::MutationBusy);
+            }
+            authorization.check_preflighted_registration(&token, existing)?;
+            let receipt = match library
+                .preflight_parametric_activation_for(&token, attempt.effect, Default::default())
+                .await?
+            {
+                StandaloneParametricPreflight::Ready(receipt) => receipt,
+                StandaloneParametricPreflight::Pending { .. } => {
+                    return Err(Error::State("effect material is not ready"));
+                }
+                StandaloneParametricPreflight::Unsupported => {
+                    return Err(Error::State(
+                        "effect is not a standalone enabled PEQ material",
+                    ));
+                }
+            };
+            authorization
+                .bind_preflighted_registration_for(&library, &token, *receipt, existing)
+                .await?
+        };
+        self.submit_effect_binding(controller, &token, attempt, binding)
+            .await
+    }
+
+    async fn submit_effect_binding(
+        &self,
+        controller: &PlaybackController,
+        token: &SessionToken,
+        attempt: &mut NativeParametricActivationAttempt,
+        binding: BoundParametric,
+    ) -> Result<NativeParametricActivation> {
         let target = binding.target();
         attempt.submitted_target = Some(target);
-        let result = controller.apply_bound_parametric(&token, binding).await;
-        self.session.check_generation(&token)?;
+        let result = controller.apply_bound_parametric(token, binding).await;
+        self.session.check_generation(token)?;
         match result? {
             ParametricApplication::Configured => Ok(NativeParametricActivation::Configured(target)),
             ParametricApplication::DeferredUntilLoaded => {

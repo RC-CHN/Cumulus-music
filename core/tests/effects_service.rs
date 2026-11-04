@@ -997,6 +997,85 @@ async fn preflighted_registration_seals_its_exact_observation_or_leaves_an_uncer
 }
 
 #[tokio::test]
+async fn rebind_keeps_the_registration_and_rejects_its_old_revision_without_network() {
+    use cumulus_core::effects::{
+        authorization::{EffectAuthorizations, LeasePhase},
+        service::StandaloneParametricPreflight,
+    };
+    let temp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(temp.path()).unwrap());
+    let (bytes, _) = sample("first");
+    let official = sound(&bytes, URL);
+    let api = Arc::new(ScriptApi::new(
+        pair(&official, true)
+            .into_iter()
+            .chain([
+                auth(true),
+                json!({"code":200,"data":true}).into(),
+                auth(true),
+                nontrial_recycle(false),
+            ])
+            .chain(pair(&official, true))
+            .chain([auth(true), nontrial_recycle(false)])
+            .chain(pair(&official, true)),
+    ));
+    let session = world(api.clone(), store);
+    let token = session.token().unwrap();
+    let library =
+        EffectsLibrary::with_backend(session.clone(), Arc::new(Origin::new(bytes))).unwrap();
+    let authorization = EffectAuthorizations::new(session).unwrap();
+    let preflight = || async {
+        let StandaloneParametricPreflight::Ready(receipt) = library
+            .preflight_parametric_activation_for(&token, id(), RunOptions::default())
+            .await
+            .unwrap()
+        else {
+            panic!("standalone fixture must be eligible");
+        };
+        receipt
+    };
+    authorization
+        .register_preflighted_parametric_for(&library, &token, *preflight().await)
+        .await
+        .unwrap();
+    let old = authorization.record_for(&token, id()).unwrap().unwrap();
+    let existing = authorization
+        .native_release_receipt_for(&token, id())
+        .unwrap()
+        .unwrap();
+    let rebound = authorization
+        .bind_preflighted_registration_for(&library, &token, *preflight().await, &existing)
+        .await
+        .unwrap();
+    let current = authorization.record_for(&token, id()).unwrap().unwrap();
+    assert_eq!(current.phase, LeasePhase::Registered);
+    assert_eq!(current.operation, old.operation);
+    assert!(current.revision > old.revision && current.start_acknowledged);
+    authorization
+        .validate_bound_parametric_for(&library, &token, &rebound)
+        .unwrap();
+
+    let stale = *preflight().await;
+    let before = api.calls().len();
+    assert!(matches!(
+        authorization
+            .bind_preflighted_registration_for(&library, &token, stale, &existing)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    let calls = api.calls();
+    assert_eq!(calls.len(), before);
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.path.ends_with("/set"))
+            .count(),
+        1
+    );
+    assert!(!calls.iter().any(|call| call.path.ends_with("/stop")));
+}
+
+#[tokio::test]
 async fn removed_material_during_registration_read_never_records_or_sends_start() {
     use cumulus_core::effects::{
         authorization::EffectAuthorizations, service::StandaloneParametricPreflight,

@@ -63,6 +63,7 @@ pub struct View {
     registration: Option<LeasePhase>,
     release: Option<String>,
     can_stop: bool,
+    can_resume: bool,
     stop_needs_retry: bool,
     active_id: Option<EffectId>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -159,6 +160,7 @@ impl State {
             Phase::Idle
         };
         let mut attempt_ticket = None;
+        let mut can_resume = can_release && registration == Some(LeasePhase::Registered);
         if let Some((_, work)) = self.work.as_ref().filter(|(owner, _)| *owner == id) {
             match work {
                 Work::Preparing if !can_release => phase = Phase::Preparing,
@@ -168,18 +170,18 @@ impl State {
                     attempt_ticket = Some(ticket.clone());
                 }
                 Work::Submitted { attempt, .. } if registration == Some(LeasePhase::Registered) => {
-                    phase = match attempt.submitted_target() {
-                        Some(target) => match client
+                    if let Some(target) = attempt.submitted_target() {
+                        let status = client
                             .inspect_native_bound_parametric(epoch, target)
-                            .await?
-                        {
+                            .await?;
+                        can_resume = status == ParametricBindingStatus::Absent;
+                        phase = match status {
                             ParametricBindingStatus::Configured => Phase::Configured,
                             ParametricBindingStatus::Deferred => Phase::Deferred,
                             ParametricBindingStatus::Absent
                             | ParametricBindingStatus::DetachRequired => Phase::RecoveryRequired,
-                        },
-                        None => Phase::RecoveryRequired,
-                    };
+                        };
+                    }
                 }
                 _ => {}
             }
@@ -198,6 +200,7 @@ impl State {
             attempt: attempt_ticket,
             registration,
             can_stop: release.is_some(),
+            can_resume: can_resume && release.is_some() && active_id == Some(id),
             release,
             stop_needs_retry: stop_needs_retry(registration),
             active_id,
@@ -334,10 +337,16 @@ pub async fn effect_peq_activate<R: tauri::Runtime>(
     epoch: String,
     id: EffectId,
     attempt: String,
+    resume_existing: Option<bool>,
 ) -> std::result::Result<View, ClientError> {
     authorize(&window, &client, &epoch)?;
     let mut state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
     state.select_epoch(&epoch);
+    if resume_existing.unwrap_or(false) {
+        return resume_registered(&host, &client, &mut state, &epoch, id, &attempt)
+            .await
+            .map_err(Into::into);
+    }
     if !matches!(&state.work, Some((owner, Work::Prepared { ticket, .. })) if *owner == id && ticket == &attempt)
     {
         return Err(Error::StaleResponse.into());
@@ -381,6 +390,60 @@ pub async fn effect_peq_activate<R: tauri::Runtime>(
         .view(&client, &epoch, id, true)
         .await
         .map_err(Into::into)
+}
+
+async fn resume_registered(
+    host: &Host,
+    client: &MusicClient,
+    state: &mut State,
+    epoch: &str,
+    id: EffectId,
+    ticket: &str,
+) -> Result<View> {
+    if !state.release.as_ref().is_some_and(|entry| {
+        entry.ticket == ticket
+            && entry.receipt.effect() == id
+            && entry.receipt.phase() == LeasePhase::Registered
+    }) {
+        return Err(Error::StaleResponse);
+    }
+    if client
+        .native_effect_pending(epoch)?
+        .iter()
+        .any(|entry| entry.id != id)
+    {
+        return Err(Error::MutationBusy);
+    }
+    if let Some((owner, Work::Submitted { attempt })) = &state.work
+        && *owner == id
+        && let Some(target) = attempt.submitted_target()
+        && client
+            .inspect_native_bound_parametric(epoch, target)
+            .await?
+            != ParametricBindingStatus::Absent
+    {
+        return Err(Error::MutationBusy);
+    }
+    host.check_adapter()?;
+    let entry = state.release.take().ok_or(Error::StaleResponse)?;
+    state.issue = None;
+    let work = state.work.insert((
+        id,
+        Work::Submitted {
+            attempt: NativeParametricActivationAttempt::existing(id),
+        },
+    ));
+    let Work::Submitted { attempt } = &mut work.1 else {
+        unreachable!("resume state was just installed");
+    };
+    let result = client
+        .resume_native_effect_parametric(epoch, attempt, &entry.receipt)
+        .await;
+    client.validate_player_epoch(epoch)?;
+    if let Err(error) = result {
+        state.note(id, error);
+    }
+    state.view(client, epoch, id, true).await
 }
 
 #[tauri::command]

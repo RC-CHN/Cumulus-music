@@ -70,12 +70,44 @@
     await capture('02_configured');
 
     if (window.__cumulusPeqPlayerStop) {
+      const selectedEffect = { epoch, id: 300 };
+      if (window.__cumulusPeqResume) {
+        const active = await invoke('effect_peq_status', selectedEffect);
+        assert(!active.canResume && !action('resume'), 'bound effect must not offer another resume');
+        let duplicate;
+        try {
+          await invoke('effect_peq_activate', { ...selectedEffect, attempt: active.release, resumeExisting: true });
+        } catch (issue) { duplicate = issue; }
+        assert(duplicate?.code === 'busy', 'native layer rejects a duplicate resume of the active binding');
+      }
       stage = 'player-stop';
       const stopped = await invoke('player_action', { epoch, action: { kind: 'stop' } });
       assert(stopped.state === 'idle' && !stopped.boundParametric, 'ordinary stop clears the local PEQ');
       await wait(() => phase('recovery_required') && enabled(action('stop')) &&
-        controls().textContent.includes('仍有登记待清理'), 'visible PEQ details update after ordinary stop');
+        controls().textContent.includes('仍有登记待'), 'visible PEQ details update after ordinary stop');
       await capture('03_player_stopped');
+      if (window.__cumulusPeqResume) {
+        stage = 'resume-existing';
+        const detached = await invoke('effect_peq_status', selectedEffect);
+        assert(detached.canResume && detached.registration === 'registered', 'only an acknowledged lease can resume');
+        click(await wait(() => enabled(action('resume')), 'resume the existing registration'));
+        await wait(() => phase('configured') && !action('resume'), 'same registration configured again');
+        let stale;
+        try {
+          await invoke('effect_peq_activate', { ...selectedEffect, attempt: detached.release, resumeExisting: true });
+        } catch (issue) { stale = issue; }
+        assert(stale?.code === 'stale', 'a spent resume receipt cannot be reused');
+        await invoke('play_selection', { epoch, selection: {
+          kind: 'songs', ids: ['1'], index: 0, quality: 'standard',
+        } });
+        await wait(async () => {
+          const current = await player();
+          return current.state === 'playing' && current.boundParametric === 'configured' && current.position > 0.35;
+        }, 'real playback advances through the resumed PEQ');
+        await capture('04_resumed_registration');
+        await emit('complete', { ok: true, stageCount: 4, resumedRegistrationVerified: true });
+        return;
+      }
       click(action('stop'));
       await wait(() => phase('recovery_required') && enabled(action('stop')) &&
         action('stop').textContent.includes('未确认'), 'explicit cleanup response is uncertain');

@@ -26,6 +26,23 @@ impl NativeEffectReleaseReceipt {
     pub fn phase(&self) -> LeasePhase {
         self.phase
     }
+
+    pub(super) fn matches(
+        &self,
+        session: &std::sync::Arc<crate::account::AccountSession>,
+        token: &SessionToken,
+        lease: &EffectLease,
+    ) -> bool {
+        &self.token == token
+            && self
+                .session
+                .upgrade()
+                .is_some_and(|owner| std::sync::Arc::ptr_eq(&owner, session))
+            && self.effect == lease.effect
+            && self.operation == lease.operation
+            && self.revision == lease.revision
+            && self.phase == lease.phase
+    }
 }
 
 /// Local restart recovery projection. The actual release still needs

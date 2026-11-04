@@ -48,6 +48,7 @@ export interface EffectPeqView {
   release: string | null;
   registration: EffectRegistration | null;
   canStop: boolean;
+  canResume?: boolean;
   stopNeedsRetry: boolean;
   activeId?: number | null;
   issue?: string | null;
@@ -63,6 +64,7 @@ export interface EffectDirectoryClient {
   effectPeqStatus(epoch: string, id: number): Promise<EffectPeqView>;
   effectPeqPrepare(epoch: string, id: number): Promise<EffectPeqView>;
   effectPeqActivate(epoch: string, id: number, attempt: string): Promise<EffectPeqView>;
+  effectPeqResume(epoch: string, id: number, release: string): Promise<EffectPeqView>;
   effectPeqStop(
     epoch: string,
     id: number,

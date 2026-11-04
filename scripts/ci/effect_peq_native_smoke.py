@@ -16,15 +16,20 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    parser.add_argument('--player-stop', action='store_true', help='stop ordinary playback before explicit PEQ cleanup')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--player-stop', action='store_true', help='stop ordinary playback before explicit PEQ cleanup')
+    mode.add_argument('--resume-after-stop', action='store_true', help='resume the exact old PEQ registration')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_peq_native_ui_probe.js'
-    if args.player_stop:
+    player_stop = args.player_stop or args.resume_after_stop
+    if player_stop:
         script = root / 'player-stop.js'
-        script.write_text('window.__cumulusPeqPlayerStop = true;\n' + source.read_text(encoding='utf-8'),
+        script.write_text('window.__cumulusPeqPlayerStop = true;\n' +
+                          ('window.__cumulusPeqResume = true;\n' if args.resume_after_stop else '') +
+                          source.read_text(encoding='utf-8'),
                           encoding='utf-8')
         source = script
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_UX_SCRIPT=str(source), CUMULUS_MOTION_PROOF='1',
@@ -49,48 +54,75 @@ def main():
         return json.loads((output / (name + '.json')).read_text(encoding='utf-8'))
 
     complete = read('complete')
-    stages = 4 if args.player_stop else 5
+    stages = 4 if player_stop else 5
     assert complete['ok'] and complete['stageCount'] == stages
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
     assert prepared['materialGets'] == 1 and prepared['starts'] == prepared['attaches'] == 0
     assert configured['starts'] == configured['attaches'] == 1 and configured['nativeAttached']
     assert configured['processedSamples'] > 0 and configured['failedBlocks'] == 0
-    if args.player_stop:
-        assert complete['playerStopStatusVerified']
+    if player_stop:
         player_stopped = read('ux_03_player_stopped')['nativePeq']
         assert player_stopped['stops'] == 0 and player_stopped['detaches'] == 1
         assert not player_stopped['nativeAttached'] and player_stopped['calls'] == configured['calls']
-        released = read('ux_04_player_stop_released')['nativePeq']
+        if args.resume_after_stop:
+            assert complete['resumedRegistrationVerified']
+            final = read('ux_04_resumed_registration')['nativePeq']
+        else:
+            assert complete['playerStopStatusVerified']
+            final = read('ux_04_player_stop_released')['nativePeq']
     else:
         assert complete['sameNativePlayback'] and complete['directManagementVerified']
         assert complete['scopedBypassVerified'] and complete['lateStopVerified']
         uncertain = read('ux_03_stop_uncertain')['nativePeq']
         reconciled = read('ux_04_reconciled')['nativePeq']
-        released = read('ux_05_released')['nativePeq']
+        final = read('ux_05_released')['nativePeq']
         assert uncertain['stops'] == uncertain['detaches'] == 1 and not uncertain['nativeAttached']
         assert uncertain['calls'] == configured['calls'] + [
             {'path': '/api/usertool/sound/queryAllSound', 'result': 'ack'},
             {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
         ]
         assert reconciled == uncertain
-    assert released == complete['nativePeq']
-    assert released['stops'] == 2 and released['detaches'] == 1 and not released['nativeAttached']
-    assert released['failedBlocks'] == 0
-    writes = [call for call in released['calls'] if call['path'].endswith(('/set', '/stop'))]
-    assert writes == [
-        {'path': '/api/vipauth/app/interests/auth/set', 'result': 'ack'},
-        {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
-        {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'ack'},
-    ]
-    assert all(call['result'] != 'unexpected' for call in released['calls'])
-    assert [call['path'] for call in released['calls'] if not call['path'].endswith(('/set', '/stop'))] == [
+    if args.resume_after_stop:
+        # A running filter keeps processing between the capture and completion.
+        active = complete['nativePeq']
+        assert active['processedSamples'] > final['processedSamples']
+        assert {k: v for k, v in active.items() if k != 'processedSamples'} == {
+            k: v for k, v in final.items() if k != 'processedSamples'
+        }
+        final = active
+    else:
+        assert final == complete['nativePeq']
+    assert final['starts'] == final['materialGets'] == final['detaches'] == 1
+    assert final['failedBlocks'] == 0
+    writes = [call for call in final['calls'] if call['path'].endswith(('/set', '/stop'))]
+    initial_write = {'path': '/api/vipauth/app/interests/auth/set', 'result': 'ack'}
+    if args.resume_after_stop:
+        assert final['attaches'] == 2 and final['stops'] == 0 and final['nativeAttached']
+        assert final['processedSamples'] > 0 and writes == [initial_write]
+    else:
+        assert final['stops'] == 2 and not final['nativeAttached']
+        assert writes == [
+            initial_write,
+            {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'lost'},
+            {'path': '/api/vipauth/app/interests/auth/stop', 'result': 'ack'},
+        ]
+    assert all(call['result'] != 'unexpected' for call in final['calls'])
+    reads = [
         '/api/usertool/sound/queryAllSound',
         '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
         '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
         '/api/vipauth/app/interests/auth/query', '/api/vipauth/app/interests/auth/query',
         '/api/vipauth/app/interests/recyclequery',
-    ] + ([] if args.player_stop else ['/api/usertool/sound/queryAllSound'])
+    ]
+    if args.resume_after_stop:
+        reads += [
+            '/api/usertool/home/sound/info', '/api/vipauth/app/interests/auth/query',
+            '/api/vipauth/app/interests/auth/query', '/api/vipauth/app/interests/recyclequery',
+        ]
+    elif not player_stop:
+        reads += ['/api/usertool/sound/queryAllSound']
+    assert [call['path'] for call in final['calls'] if not call['path'].endswith(('/set', '/stop'))] == reads
 
     # Audit the completed synthetic profile independently of the renderer and
     # Rust trace; do not export the opaque registration record.
@@ -101,14 +133,20 @@ def main():
         ).fetchall()
     assert len(rows) == 1 and rows[0][:2] == ('2', '300')
     lease = json.loads(rows[0][2])
-    assert lease['phase'] == 'released' and lease['start_acknowledged'] and lease['stop_acknowledged']
+    assert lease['start_acknowledged']
+    assert lease['phase'] == ('registered' if args.resume_after_stop else 'released')
+    assert lease['stop_acknowledged'] is not args.resume_after_stop
     assert len(list(output.glob('ux_*.png'))) == (stages if args.screenshots else 0)
-    checks = {'playerStopStatusVerified': True} if args.player_stop else {
-        'scopedBypassVerified': True, 'lateStopVerified': True,
-    }
+    if args.resume_after_stop:
+        checks = {'resumedRegistrationVerified': True}
+    elif args.player_stop:
+        checks = {'playerStopStatusVerified': True}
+    else:
+        checks = {'scopedBypassVerified': True, 'lateStopVerified': True}
     print(json.dumps(dict(ok=True, actualWebView=True, actualNativePcm=True, nullOutput=True,
-                          processedSamples=released['processedSamples'], syntheticStarts=1,
-                          syntheticStops=2, durableReleased=True, realAccountWrites=0, **checks)))
+                          processedSamples=final['processedSamples'], syntheticStarts=1,
+                          syntheticStops=final['stops'], durableReleased=not args.resume_after_stop,
+                          realAccountWrites=0, **checks)))
 
 
 if __name__ == '__main__':

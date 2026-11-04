@@ -42,7 +42,9 @@ const phaseLabel = computed(() => {
     current.registration === 'registered' &&
     !props.bindingStatus
   )
-    return '此音效未在播放器中应用，仍有登记待清理。';
+    return current.canResume
+      ? '此音效未在播放器中应用，仍有登记待处理。可以恢复或清理。'
+      : '此音效未在播放器中应用，仍有登记待清理。';
   return labels[current.phase];
 });
 const mayPrepare = computed(
@@ -163,6 +165,11 @@ function activate() {
   if (mayActivate.value && attempt)
     void run(() => core.effectPeqActivate(props.epoch, props.effectId, attempt), true);
 }
+function resume() {
+  const state = view.value;
+  if (!another.value && state?.canResume && state.release)
+    void run(() => core.effectPeqResume(props.epoch, props.effectId, state.release!), true);
+}
 async function stop() {
   const state = view.value;
   if (busy.value || !state?.canStop || !state.release) return;
@@ -220,6 +227,15 @@ onBeforeUnmount(() => {
         @click="activate"
       >
         启用独立参数均衡
+      </button>
+      <button
+        v-if="!another && view?.canResume && !confirmation"
+        type="button"
+        data-peq-action="resume"
+        :aria-disabled="busy"
+        @click="resume"
+      >
+        恢复独立参数均衡
       </button>
       <button
         v-if="view?.canStop && !confirmation"
