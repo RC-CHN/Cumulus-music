@@ -346,7 +346,7 @@ async fn client(root: &Path, scenario: &OsStr) -> io::Result<u8> {
     let identity = Identity::current()?;
     let address = identity.address(root)?;
     if scenario == "restricted-acl" {
-        return restricted_probe::child(&identity, &address).await;
+        return Ok(restricted_probe::child(&identity, &address).await);
     }
     let mut pipe = match open(&address) {
         Ok(pipe) => pipe,

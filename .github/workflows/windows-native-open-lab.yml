@@ -72,7 +72,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Restricted-token ACL proof failed' }
           $report = Get-Content -Raw $proof | ConvertFrom-Json
           foreach ($key in @('ok','nativeWindowsNamedPipe','actualChildProcess','logonOnlyDaclObserved',
-                            'effectiveThreadTokenRestricted','sameUserAndLogonLuid','kernelAccessDenied',
+                            'effectiveThreadTokenRestricted','sameUserAndLogonLuid',
+                            'enabledLogonGroupObserved','kernelAccessDenied',
                             'samePipeRestoredTokenControl','sameUserAndLogonBothDirections',
                             'noFrameQueuedBeforeReady')) {
             if ($report.$key -ne $true) { throw "Missing proof: $key" }

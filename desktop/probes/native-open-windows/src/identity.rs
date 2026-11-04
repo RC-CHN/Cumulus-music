@@ -3,7 +3,7 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::OpenOptions,
     io,
-    mem::size_of,
+    mem::{offset_of, size_of},
     os::windows::{
         fs::OpenOptionsExt,
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
@@ -14,9 +14,9 @@ use std::{
 use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE, WAIT_TIMEOUT},
     Security::{
-        GetTokenInformation, IsValidSid, PSID, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_QUERY,
-        TOKEN_STATISTICS, TOKEN_USER, TokenLogonSid, TokenRestrictedSids, TokenStatistics,
-        TokenUser,
+        GetTokenInformation, IsValidSid, PSID, SID_AND_ATTRIBUTES, TOKEN_GROUPS,
+        TOKEN_INFORMATION_CLASS, TOKEN_QUERY, TOKEN_STATISTICS, TOKEN_USER, TokenGroups,
+        TokenLogonSid, TokenRestrictedSids, TokenStatistics, TokenUser,
     },
     Storage::FileSystem::{
         FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_INFO, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
@@ -24,7 +24,7 @@ use windows_sys::Win32::{
     },
     System::{
         Pipes::{GetNamedPipeClientProcessId, GetNamedPipeServerProcessId},
-        SystemServices::SE_GROUP_LOGON_ID,
+        SystemServices::{SE_GROUP_ENABLED, SE_GROUP_LOGON_ID, SE_GROUP_USE_FOR_DENY_ONLY},
         Threading::{
             GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
             WaitForSingleObject,
@@ -64,29 +64,47 @@ impl Identity {
         Self::for_token(token.as_raw_handle())
     }
 
-    pub(super) fn for_token(token: HANDLE) -> io::Result<Self> {
-        let user = TokenBuffer::query(token, TokenUser)?;
-        let logon = TokenBuffer::query(token, TokenLogonSid)?;
-        if user.len < size_of::<TOKEN_USER>() || logon.len < size_of::<TOKEN_GROUPS>() {
-            return Err(denied());
-        }
-        // SAFETY: Win32 initialized the correctly aligned headers, lengths checked.
-        let (user_sid, groups) = unsafe {
-            (
-                (*user.words.as_ptr().cast::<TOKEN_USER>()).User.Sid,
-                &*logon.words.as_ptr().cast::<TOKEN_GROUPS>(),
-            )
-        };
-        let group = groups.Groups[0];
-        if groups.GroupCount != 1
-            || group.Attributes & SE_GROUP_LOGON_ID as u32 != SE_GROUP_LOGON_ID as u32
-        {
-            return Err(denied());
-        }
+    fn for_token(token: HANDLE) -> io::Result<Self> {
         Ok(Self {
-            user: user.sid(user_sid)?,
-            logon: logon.sid(group.Sid)?,
+            user: user_sid(token)?,
+            logon: logon_sid(token)?,
         })
+    }
+
+    pub(super) fn token_user_matches(&self, token: HANDLE) -> io::Result<bool> {
+        Ok(user_sid(token)? == self.user)
+    }
+
+    pub(super) fn token_logon_matches(&self, token: HANDLE) -> io::Result<bool> {
+        if logon_sid(token)? != self.logon {
+            return Ok(false);
+        }
+        // The logon SID must still count for ordinary allow ACEs. Compare
+        // TokenLogonSid independently from the enabled group attributes.
+        let groups = TokenBuffer::query(token, TokenGroups)?;
+        let offset = offset_of!(TOKEN_GROUPS, Groups);
+        let available = groups.len.checked_sub(offset).ok_or_else(denied)?;
+        // SAFETY: the checked header contains the aligned GroupCount field.
+        let count = unsafe { *groups.words.as_ptr().cast::<u32>() } as usize;
+        if count > available / size_of::<SID_AND_ATTRIBUTES>() {
+            return Err(denied());
+        }
+        // SAFETY: offset is the Windows ABI's aligned array start; the count
+        // fits inside the returned token buffer and all records were initialized.
+        let groups_ptr = unsafe { groups.words.as_ptr().cast::<u8>().add(offset) };
+        let records =
+            unsafe { std::slice::from_raw_parts(groups_ptr.cast::<SID_AND_ATTRIBUTES>(), count) };
+        let logon_flag = SE_GROUP_LOGON_ID as u32;
+        let mut entries = records
+            .iter()
+            .filter(|group| group.Attributes & logon_flag == logon_flag);
+        let Some(entry) = entries.next() else {
+            return Ok(false);
+        };
+        let access_flags = (SE_GROUP_ENABLED | SE_GROUP_USE_FOR_DENY_ONLY) as u32;
+        Ok(entries.next().is_none()
+            && entry.Attributes & access_flags == SE_GROUP_ENABLED as u32
+            && groups.sid(entry.Sid)? == self.logon)
     }
 
     pub fn verify_peer(&self, pipe: HANDLE, client_is_peer: bool) -> io::Result<()> {
@@ -178,17 +196,38 @@ impl Identity {
     }
 }
 
-pub(super) fn authentication_id(token: HANDLE) -> io::Result<(u32, i32)> {
+fn user_sid(token: HANDLE) -> io::Result<Vec<u8>> {
+    let user = TokenBuffer::query(token, TokenUser)?;
+    if user.len < size_of::<TOKEN_USER>() {
+        return Err(denied());
+    }
+    // SAFETY: token information returned the aligned and length-checked header.
+    user.sid(unsafe { (*user.words.as_ptr().cast::<TOKEN_USER>()).User.Sid })
+}
+
+fn logon_sid(token: HANDLE) -> io::Result<Vec<u8>> {
+    let logon = TokenBuffer::query(token, TokenLogonSid)?;
+    if logon.len < size_of::<TOKEN_GROUPS>() {
+        return Err(denied());
+    }
+    // SAFETY: token information returned the aligned and length-checked header.
+    let groups = unsafe { &*logon.words.as_ptr().cast::<TOKEN_GROUPS>() };
+    let group = groups.Groups[0];
+    if groups.GroupCount != 1
+        || group.Attributes & SE_GROUP_LOGON_ID as u32 != SE_GROUP_LOGON_ID as u32
+    {
+        return Err(denied());
+    }
+    logon.sid(group.Sid)
+}
+
+pub(super) fn token_statistics(token: HANDLE) -> io::Result<TOKEN_STATISTICS> {
     let statistics = TokenBuffer::query(token, TokenStatistics)?;
     if statistics.len < size_of::<TOKEN_STATISTICS>() {
         return Err(denied());
     }
     // SAFETY: TokenStatistics returned the aligned and length-checked header.
-    let value = unsafe { &*statistics.words.as_ptr().cast::<TOKEN_STATISTICS>() };
-    Ok((
-        value.AuthenticationId.LowPart,
-        value.AuthenticationId.HighPart,
-    ))
+    Ok(unsafe { *statistics.words.as_ptr().cast::<TOKEN_STATISTICS>() })
 }
 
 pub(super) fn only_restricting_sid(token: HANDLE, expected: &[u8]) -> io::Result<bool> {

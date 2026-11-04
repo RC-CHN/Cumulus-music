@@ -2,11 +2,11 @@
 //! and never contacts the pipe under an impersonated token after denial.
 
 use super::{
-    HANDSHAKE, READY, at, demand, expect_open_error, fail, open, open_handle, read_code, receipt,
-    spawn, verify_acl, wait, wide, with_logon_security,
+    HANDSHAKE, READY, at, demand, expect_open_error, open, open_handle, read_code, receipt, spawn,
+    verify_acl, wait, wide, with_logon_security,
 };
 use crate::{
-    identity::{Identity, authentication_id, only_restricting_sid},
+    identity::{Identity, only_restricting_sid, token_statistics},
     stable::{Server, Stop},
 };
 use std::{
@@ -22,7 +22,8 @@ use windows_sys::Win32::{
     Security::{
         CreateRestrictedToken, CreateWellKnownSid, DISABLE_MAX_PRIVILEGE, ImpersonateLoggedOnUser,
         IsTokenRestricted, RevertToSelf, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES,
-        TOKEN_DUPLICATE, TOKEN_QUERY, WinRestrictedCodeSid,
+        SecurityImpersonation, TOKEN_DUPLICATE, TOKEN_QUERY, TokenImpersonation, TokenPrimary,
+        WinRestrictedCodeSid,
     },
     System::{
         Pipes::PeekNamedPipe,
@@ -152,55 +153,93 @@ impl Drop for ThreadImpersonation {
     }
 }
 
-fn require_kernel_acl_denial(identity: &Identity, address: &str) -> io::Result<()> {
-    demand(thread_token()?.is_none(), "child already impersonating")?;
-    let original = original_token()?;
-    let origin_session = authentication_id(original.as_raw_handle())?;
+#[derive(Clone, Copy)]
+#[repr(u8)]
+enum ChildFailure {
+    Setup = 33,
+    ThreadToken = 34,
+    ThreadUser = 35,
+    ThreadLogonSid = 36,
+    ThreadStatistics = 37,
+    RestrictingSids = 38,
+    KernelDenial = 39,
+    RevertReadback = 40,
+    PositiveControl = 41,
+}
+
+impl ChildFailure {
+    fn map<T>(self, value: io::Result<T>) -> Result<T, Self> {
+        value.map_err(|_| self)
+    }
+
+    fn require(self, value: bool) -> Result<(), Self> {
+        value.then_some(()).ok_or(self)
+    }
+}
+
+fn require_kernel_acl_denial(identity: &Identity, address: &str) -> Result<(), ChildFailure> {
+    use ChildFailure as Stage;
+
+    Stage::Setup.require(Stage::Setup.map(thread_token())?.is_none())?;
+    let original = Stage::Setup.map(original_token())?;
+    let original_stats = Stage::Setup.map(token_statistics(original.as_raw_handle()))?;
+    Stage::Setup.require(original_stats.TokenType == TokenPrimary)?;
     let mut sid = Restriction([0; SECURITY_MAX_SID_SIZE as usize]);
-    let (restricted, len) = restricted_token(&original, &mut sid)?;
-    let mut guard = ThreadImpersonation::apply(&restricted)?;
+    let (restricted, len) = Stage::Setup.map(restricted_token(&original, &mut sid))?;
+    let mut guard = Stage::Setup.map(ThreadImpersonation::apply(&restricted))?;
     let result = (|| {
-        let effective_token =
-            thread_token()?.ok_or_else(|| fail("child has no effective token"))?;
+        let effective_token = Stage::ThreadToken
+            .map(thread_token())?
+            .ok_or(Stage::ThreadToken)?;
         let effective = effective_token.as_raw_handle();
+        Stage::ThreadUser
+            .require(Stage::ThreadUser.map(identity.token_user_matches(effective))?)?;
+        Stage::ThreadLogonSid
+            .require(Stage::ThreadLogonSid.map(identity.token_logon_matches(effective))?)?;
+        let stats = Stage::ThreadStatistics.map(token_statistics(effective))?;
+        Stage::ThreadStatistics.require(
+            stats.TokenType == TokenImpersonation
+                && stats.ImpersonationLevel >= SecurityImpersonation
+                && stats.AuthenticationId.LowPart == original_stats.AuthenticationId.LowPart
+                && stats.AuthenticationId.HighPart == original_stats.AuthenticationId.HighPart,
+        )?;
         // SAFETY: the queried thread token handle remains live during the call.
-        demand(
-            unsafe { IsTokenRestricted(effective) } != 0,
-            "thread token is not restricted",
-        )?;
-        demand(
-            Identity::for_token(effective)? == *identity
-                && authentication_id(effective)? == origin_session,
-            "restricted token changed user or logon",
-        )?;
-        demand(
-            only_restricting_sid(effective, &sid.0[..len])?,
-            "unexpected effective restricting SID list",
-        )?;
+        Stage::RestrictingSids.require(unsafe { IsTokenRestricted(effective) } != 0)?;
+        Stage::RestrictingSids
+            .require(Stage::RestrictingSids.map(only_restricting_sid(effective, &sid.0[..len]))?)?;
         // Only the raw CreateFileW error can pass the proof. Do not call any
         // runtime registration or attempt a pipe read/write in this context.
-        expect_open_error(
+        Stage::KernelDenial.map(expect_open_error(
             "kernel did not deny the restricted pipe open",
             open_handle(address),
             &[ERROR_ACCESS_DENIED],
-        )
+        ))
     })();
     guard.restore();
-    demand(thread_token()?.is_none(), "child thread token not restored")?;
+    Stage::RevertReadback.require(Stage::RevertReadback.map(thread_token())?.is_none())?;
     result
 }
 
-pub(super) async fn child(identity: &Identity, address: &str) -> io::Result<u8> {
+pub(super) async fn child(identity: &Identity, address: &str) -> u8 {
     // Synchronous, before any .await or bytes on the pipe.
-    require_kernel_acl_denial(identity, address)?;
-    let mut pipe = open(address)?;
-    identity.verify_peer(pipe.as_raw_handle(), false)?;
-    demand(
-        read_code(&mut pipe).await? == READY,
-        "restricted control readiness missing",
-    )?;
-    // The allowed control sends zero client bytes and never opens a path.
-    Ok(RESTRICTED_CONTROL_OK)
+    if let Err(failure) = require_kernel_acl_denial(identity, address) {
+        return failure as u8;
+    }
+    let result = async {
+        let mut pipe = open(address)?;
+        identity.verify_peer(pipe.as_raw_handle(), false)?;
+        demand(
+            read_code(&mut pipe).await? == READY,
+            "restricted control readiness missing",
+        )
+    }
+    .await;
+    if result.is_ok() {
+        // The allowed control sends zero client bytes and never opens a path.
+        RESTRICTED_CONTROL_OK
+    } else {
+        ChildFailure::PositiveControl as u8
+    }
 }
 
 fn no_client_bytes(server: &Server) -> io::Result<()> {
@@ -240,10 +279,18 @@ pub(super) async fn run() -> io::Result<()> {
         "spawn restricted ACL child",
         spawn(root.path(), "restricted-acl"),
     )?;
-    at(
+    if let Err(error) = at(
         "accept only the restored-token control",
         server.connect(Instant::now() + HANDSHAKE),
-    )?;
+    ) {
+        // When the child failed before connecting, preserve only its fixed
+        // exit category. Its stdout and stderr stay discarded.
+        let _ = at(
+            "restricted child exit after failed accept",
+            wait(child, RESTRICTED_CONTROL_OK).await,
+        );
+        return Err(error);
+    }
     at(
         "verify restored child primary identity",
         identity.verify_peer(server.as_raw_handle(), true),
@@ -264,7 +311,8 @@ pub(super) async fn run() -> io::Result<()> {
     println!(concat!(
         "{{\"ok\":true,\"nativeWindowsNamedPipe\":true,\"actualChildProcess\":true,",
         "\"logonOnlyDaclObserved\":true,\"effectiveThreadTokenRestricted\":true,",
-        "\"sameUserAndLogonLuid\":true,\"kernelAccessDenied\":true,",
+        "\"sameUserAndLogonLuid\":true,\"enabledLogonGroupObserved\":true,",
+        "\"kernelAccessDenied\":true,",
         "\"samePipeRestoredTokenControl\":true,\"sameUserAndLogonBothDirections\":true,",
         "\"noFrameQueuedBeforeReady\":true,\"clientBytesSent\":0,",
         "\"distinctLogonVerified\":false,",

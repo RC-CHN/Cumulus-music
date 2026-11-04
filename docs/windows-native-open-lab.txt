@@ -92,6 +92,11 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
   创建受限令牌，再调用 ImpersonateLoggedOnUser。不创建账号、不接受密码，
   不提升权限、不改系统/注册表。OpenThreadToken 回读限制 SID 列表、用户 SID、
   登录 SID 及 TokenStatistics.AuthenticationId，要求限制生效且原身份不变。
+  TokenStatistics 也要求回读的是至少 SecurityImpersonation 级别的线程模拟
+  令牌；OpenThreadToken 的 OpenAsSelf 仅改变句柄查询的权限判断。缺失/不符的
+  TokenLogonSid 直接失败，不退回进程令牌或以 AuthenticationId 代替。另在
+  TokenGroups 确认同一登录 SID 仍为 SE_GROUP_ENABLED 且不是 deny-only，
+  避免把普通 SID 被停用造成的拒绝算成限制 SID 的第二轮检查。
 - 在受限线程上用正常客户端相同的原始 CreateFileW 权限尝试一次，只有内核
   ERROR_ACCESS_DENIED (5) 算拒绝；Tokio 注册、忙碌或地址不存在均不能冒充拒绝。
   Microsoft 规定限制 SID 非空时 DACL 有两次访问检查，常规登录 SID 可通过
@@ -100,7 +105,10 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
   DACL/管道上正常连接，双向验证内核 PID 对应的用户和登录，服务端在 READY
   前确认无客户端帧；控制分支只接收 READY，不发送路径或其它字节。恢复失败
   立即结束该合成子进程，不继续尝试。报告只保留布尔和固定数字，不输出 SID、
-  LUID、账户名、目录或管道名。
+  LUID、账户名、目录或管道名。失败时父进程只记录固定子进程退出类别：
+  32 为 RevertToSelf 失败；33–41 依次为令牌准备、有效线程令牌、用户 SID、
+  登录 SID、令牌类型/级别/认证 LUID、限制 SID、原始 ACL 拒绝、还原回读、
+  正常握手。子进程 stdout/stderr 保持丢弃。
 - 这证明的是同一个 Windows 登录的受限线程触发内核 ACL 拒绝；管道双方的
   正常身份核验仍读进程主令牌。不能把受限 SID、不同 TokenId 或不同进程
   当成第二个登录。CreateProcessWithLogonW 的 LOGON_NETCREDENTIALS_ONLY
@@ -121,6 +129,8 @@ https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellex
 https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights
 https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-createrestrictedtoken
 https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-impersonateloggedonuser
+https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-token_information_class
+https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_groups
 https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw
 https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
 https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions
