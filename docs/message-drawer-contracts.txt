@@ -158,3 +158,8 @@ Cumulus 流程与边界
   无真实消息服务调用。Linux 9 个实测状态及校验像素的截图见
   `.build/ui-proof/message-delete-cee48f77-verified/`；同批 7 个读取状态及
   9 个附件状态通过。Windows 可使用同一夹具，当前未实跑。
+
+合并版 9554210e 的 Linux WebView 再验收：私信删除 9 态、普通读取 7 态、附件
+9 态，均使用实际 Tauri 和封闭合成 transport，零真实账号写入。分别保存在
+.build/ui-proof/product-phase8/{deletion,read,attachments}/。专项 Rust 6/6，
+前端格式/787 项/类型构建通过。Linux、Windows CI 各自运行私信删除验收。
