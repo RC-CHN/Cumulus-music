@@ -8,6 +8,7 @@ mod facts;
 mod service;
 pub use codec::{STORAGE_KEY, decode_record, encode_record, storage_transform};
 pub use compatibility::{WINDOWS_COMPATIBILITY_DESCRIPTION, WindowsBrowserIdentity};
+pub(crate) use composition::client_sign_with_separator;
 pub use composition::{client_sign, derive_persistent_id, valid_persistent_id};
 pub use container::{
     DeviceRecordSummary, ID_RECORD_KEY, MARKER, MARKER_RECORD_KEY, MAX_CONTAINER_BYTES,

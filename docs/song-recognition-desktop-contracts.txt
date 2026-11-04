@@ -99,16 +99,14 @@ song-recognition-host-contracts.txt、song-recognition-request-proof.txt
   否则 3377D0 路径尝试初始化，失败返回空串。这里不是新的登录会话、
   账号硬件凭据或 Cookie 跨域许可。应用只能给可信最终 HTTPS origin/path
   绑定本次账号代际内已有授权 Cookie；游客资格、风控和实际服务未验。
-- 加密 JSON 的 deviceId 来自 SystemHelper 32B770（现有恢复 asm
-  含 localware、neteasecloudmusic、Device ID 日志），不是此路径从扫码
-  凭据 DTO 读取；clientSign 来自 32D5C0→32DA30→CEE370 的 mask=15
-  设备标识入口，314967–31497B 用 CP_UTF8=65001 转窄串。日志
-  “Get AD ID Failed.” 单独不能作为 Windows 广告 ID 的依据。
-  314651 取的 OS 版本缓存不进入已见五字段 header；保留 appver、
-  os、deviceId、clientSign、每次 GetTickCount 的十进制 requestId。
-  设备身份、会话 UUID、URL 签名、账号/风控是不同概念。当前 Rust
-  fixture 只接受受限可打印 ASCII；未来使用真实身份需另证编码、
-  转义、作用域和资格，不直接复用凭据 deviceId 或伪造默认值。
+- 加密 JSON 的 deviceId 来自 SystemHelper 32B770 的独立缓存 /
+  TokenUser SID-or-literal 的 SHA-1 大写值加独立适配器后缀；clientSign
+  来自 32D5C0→32DA30→CEE370 的 mask=15 入口，识曲特定分隔符是 @@@，
+  314967–31497B 用 CP_UTF8=65001。精确字段、算法和原生合成对照见
+  song-recognition-native-identity.txt。普通 ClientProfile 的单 @ 拼接、
+  登录 Credentials.deviceId 与 Windows Advertising ID 均不能替代。
+  314651 取的 OS 版本缓存不进入五字段 header。Rust 仅有明确输入的
+  离线 fixture builder，没有真实 Windows 来源、Cookie 扩权或生产传输。
 - 默认 Content-Type 已从下层确认：2FFE90 的 3000B3 初始化 +0x180=1，
   +0x2E8 默认空（30023A–300243）；识曲路径设置普通 POST、无附件，
   314EED 设置原始 params=... 正文。3033DE–30340F 选 CURLOPT_POST，

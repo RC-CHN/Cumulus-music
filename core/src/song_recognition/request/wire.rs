@@ -1,4 +1,7 @@
-use super::{MAX_SONG_IDS, Receipt, SealedFingerprint};
+use super::{
+    MAX_SONG_IDS, Receipt, SealedFingerprint,
+    identity::{MAX_NATIVE_IDENTITY_BYTES, NativeClientSign, NativeDeviceId},
+};
 use crate::{Error, Result, protocol::wire::eapi::encrypt_json};
 use serde::Serialize;
 use serde_json::Value;
@@ -9,6 +12,7 @@ pub const DEFAULT_POST_URL: &str = "https://music.163.com/eapi/music/audio/match
 pub const USER_AGENT: &str = "Windows_Curl;";
 pub const REFERER: &str = "music.163.com";
 pub const OS: &str = "pc";
+const NATIVE_APP_VERSION: &str = "3.1.42.205594";
 
 const MAX_FINGERPRINT_BYTES: usize = 256 * 1024;
 const MAX_RESPONSE_BYTES: usize = 256 * 1024;
@@ -47,10 +51,10 @@ pub struct RequestContext {
 
 impl RequestContext {
     pub fn new(app_version: &str, device_id: &str, client_sign: &str) -> Result<Self> {
-        if [app_version, device_id, client_sign]
-            .iter()
-            .any(|field| field.len() > 512 || !field.bytes().all(|b| (b' '..=b'~').contains(&b)))
-            || app_version.is_empty()
+        if [app_version, device_id, client_sign].iter().any(|field| {
+            field.len() > MAX_NATIVE_IDENTITY_BYTES
+                || !field.bytes().all(|b| (b' '..=b'~').contains(&b))
+        }) || app_version.is_empty()
         {
             return Err(Error::InvalidInput("invalid recognition fixture context"));
         }
@@ -59,6 +63,16 @@ impl RequestContext {
             device_id: device_id.into(),
             client_sign: client_sign.into(),
         })
+    }
+
+    /// Version-pinned offline header context; no collector, credential profile,
+    /// cached account deviceId, cookies, or HTTP authority can be inferred.
+    pub fn from_native_identity(client_sign: NativeClientSign, device_id: NativeDeviceId) -> Self {
+        Self {
+            app_version: NATIVE_APP_VERSION.into(),
+            device_id: device_id.into_wire(),
+            client_sign: client_sign.into_wire(),
+        }
     }
 }
 

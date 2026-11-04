@@ -4,6 +4,8 @@
 //! Time is injected in monotonic milliseconds. The consumer owns each one-shot
 //! prepared request; repository tests use only an in-memory transport.
 
+mod identity;
+pub use identity::{NativeClientSign, NativeDeviceId};
 mod wire;
 pub use wire::{
     CANONICAL_PATH, DEFAULT_POST_URL, FixtureRequest, OS, REFERER, RequestContext, SessionUuid,

@@ -37,6 +37,8 @@ HardwareFacts/DeviceIdentity刻意不实现Debug或Serialize；诊断使用只�
 CEDF80按mask低四位依次处理四段。只要当前累计输出非空，就先追加@，再追加本段，
 即使本段空也保留分隔符。MAC/空/空/ID得到MAC@@@ID，不能过滤空项后join。
 正常宿主mask15；纯算法同时支持其他掩码。收集器负责规范化，组合器不模拟Windows枚举。
+识曲的32DA30使用同一底层组合器但明确传入三个@作为分隔，且设备ID来自独立
+SystemHelper；见song-recognition-native-identity.txt。普通ClientProfile组合仍为单@。
 CF1940的hardwareBytes是窄编码MAC+磁盘，hostBytes为主机说明；不包含主板序列号。
 first=lowercase_hex(MD5(hardwareBytes||hostBytes))；
 id=first||lowercase_hex(MD5(ASCII(first)))。

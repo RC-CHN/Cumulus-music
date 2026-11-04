@@ -14,6 +14,14 @@ pub fn derive_persistent_id(hardware_bytes: &[u8], host_info_bytes: &[u8]) -> St
 /// CEDF80 enabled parts, preserving its accumulated-output separator rule.
 /// This consumes normalized collector values, not Windows enumeration itself.
 pub fn client_sign(parts: [&str; 4], mask: u8) -> Result<String> {
+    client_sign_with_separator(parts, mask, "@")
+}
+
+pub(crate) fn client_sign_with_separator(
+    parts: [&str; 4],
+    mask: u8,
+    separator: &str,
+) -> Result<String> {
     if parts
         .iter()
         .any(|v| v.len() > 4096 || v.contains(['\r', '\n', '\0']))
@@ -24,7 +32,7 @@ pub fn client_sign(parts: [&str; 4], mask: u8) -> Result<String> {
     for (i, part) in parts.iter().enumerate() {
         if mask & (1 << i) != 0 {
             if !output.is_empty() {
-                output.push('@');
+                output.push_str(separator);
             }
             output.push_str(part);
         }

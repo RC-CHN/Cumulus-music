@@ -1,0 +1,117 @@
+听歌识曲原生请求身份：PC 3.1.42.205594 x64
+
+范围：官方 cloudmusic.dll，PE x86_64，SHA-256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+下面地址均为 RVA，映像首选基址 0x180000000。只复核解包文件，未启动
+官方宿主、读取真实账号/设备或请求服务。不借用别的客户端。
+
+识曲请求的两个身份字段
+
+识曲发送例程 314698–3146CE 依次读取 SystemHelper 32B770 的 deviceId、
+32D5C0 的 clientSign 和此版本字面量 appver。314936、3149BD 装入
+加密内层 JSON；deviceId 与 clientSign 同时存在，互不派生。Header 仍
+用固定 os="pc" 和 GetTickCount 的十进制字符串 requestId，UUID 与
+EAPI 封装是独立步骤。原位置：
+references/netease-3.1.42.205594-analysis/protocol/core/regions/00314510.asm。
+
+1. clientSign：确切分隔、值和编码
+
+- native-pc-profile/regions/0032d5c0.asm：32D5F6–32D607 在缓存
+  0x2205C48 非空时直接返回。空时调用 32DA30；不成功时
+  32D628–32D636 写回空宽串，输出不是 Windows Advertising ID。
+- protocol/core-crypto/regions/0032da30.asm：32DA4B 装同一输出缓存，
+  32DA52 的第二参数实际指向 1A051A8：
+  40 00 40 00 40 00 00 00，即 UTF-16LE 字面量 @@@。32DA59
+  装十进制 15。CEE370 只清 r9d 后跳 CEDF80。
+  32DA63–32DA7D 将 CEDF80 返回 0 映射为成功；不是二次哈希。
+- protocol/core-more/regions/00cedf80.asm：低四位按顺序选
+  CEF5E0（MAC）、CEF440（磁盘）、CEEFF0（主板/BIOS）、
+  CF1350 + CF1C80（持久 ID，r9d=0）。第一个启用段覆盖缓存；
+  其后每个启用段只在已有累计宽串非空时先追加整个 @@@，再追加值。
+  已有非空值以后，空段也保留其三个 @；前导空段不产生分隔。
+  四段均非空是 MAC@@@DISK@@@BOARD@@@ID，只有 MAC 和 ID 是
+  MAC@@@@@@@@@ID。不能把旧通用组合里恰好出现的 MAC@@@ID 当成
+  此路的“每段一个 @”或对已有 ClientProfile 字符串替换分隔符。
+- CF1C80:1E4E–1E9D 的 r9d=0 分支优先读有效的既有 64 字节主记录；
+  CF1940:1979–1AAC 才拼实际窄字节硬件 MAC+磁盘和主机说明，
+  其记录派生为 lowerhex(MD5(bytes)) || lowerhex(MD5(前 32 个 ASCII))。
+  主板不进这两轮 MD5，分隔后的全串也不再做 MD5。
+  精确收集/窄编码及持久化已分列于 core-device-identity-contracts.txt、
+  windows-hardware-collector-plan.txt；不能反向由通用签名恢复缺失事实。
+- 314967–31497B 传入 0xFDE9 (CP_UTF8)。完整 61D2D0 先计算长度再
+  写入，两次 WideCharToMultiByte 均 flags=0，按显式 UTF-16 长度，
+  不包含 NUL，不回到 CP_ACP。D42300→D44200→D41680 写 JSON 字符串；
+  后者保留 UTF-8 高位字节，双引号和反斜线按 JSON 转义。
+  本项目只接受良构 UTF-16/无控制字符、64 个小写十六进制字符的持久值，
+  限结果 UTF-8 512 字节；不仿造原版失效后空 header 或异常宽串替换。
+
+2. deviceId：32B770 独立缓存与纯计算分支
+
+- 32B816–32B827 非空进程缓存 0x2205C68 先返回。否则 31C720(0)
+  经 31E9B0 解析产品本地目录（已有目录覆盖优先，默认
+  SHGetFolderPathW 的 CSIDL_LOCAL_APPDATA=0x1C 与 NetEase\\CloudMusic），
+  在 32B841–32B87A 拼 localware。32B8A5–32B9A5 用
+  32E2C0(..., 0x25, 0x40) 打开，145E00/13DA70 测长度并按字节读到缓存。
+  此文件分支未观察到 32D830 的逐字符校验，不能将历史文件都宣称十六进制。
+- 32B9B1–32BA2B：文件未给出非空缓存才尝试 D880C0→D88300
+  旧读取；32D830→32B260 接受 ASCII 0–9/A–F/a–f。校验不通过清空，
+  并经 D888C0 触及 DeleteFileW。此批不复刻旧存储接口、文件覆盖、
+  删除、迁入或默认读取官方用户目录。
+- 32BA42–32BB64 缓存仍为空才生成。631EC0 调 GetCurrentProcess、
+  OpenProcessToken、GetTokenInformation(TokenUser=1) 取 SID，
+  ConvertSidToStringSidW，6106C0→610710 转 UTF-8；SID 成功时替换
+  默认种子，失败则保留 ASCII 字面量 neteasecloudmusic。634820→
+  6345C0/6340A0 是 SHA-1，返回 20 个原始摘要字节；62CE60 使用
+  固定 0123456789ABCDEF 转成 40 个大写字符。输入按长度，未计 NUL。
+- 32BB64–32BB7A 再追加 32BD50 的独立适配器后缀。32BD50 两次用
+  GetAdaptersAddresses(AF_INET=2, GAA_FLAG_INCLUDE_PREFIX=0x10)，
+  初始缓冲 0x1C0；第一次返回 ERROR_BUFFER_OVERFLOW (111) 则按报告的
+  长度重分配，第二次查询失败后返回空后缀。链表按返回顺序取首个
+  PhysicalAddressLength==6，62CE60 转 12 个大写十六进制字符，无冒号。
+  没有另一个 clientSign MAC 收集器的匹配地址、虚拟网卡或全零过滤；
+  无合格条目仅返回 SHA-1 的 40 字符。后缀与 SID 不是拼在一起再哈希。
+- 32BC2A–32BCAB 生成后交旧存储层 D881E0，并尝试 localware 写出
+  (0x22, 0x40)。只证明源、内容和顺序，不为此读写本机真实文件。
+
+3. 当前 Rust 能做与还不能做
+
+core/src/song_recognition/request/identity.rs：
+- NativeClientSign::from_wide 只组合调用者明确提供的四段已观察宽串。
+  旧 identity::client_sign 保持单 @、存储/登录/兼容模式不变。
+- NativeDeviceId::from_cache_miss 只接受明确已观察到的 cache miss、
+  SID 或已观察到的 SID 失败、Windows 原序适配器数组；独立实现上述
+  SHA-1+十六进制。from_observed_cache 保留明确传入十六进制文本的原
+  大小写，作为受限可用子集；不模仿未验证缓存文本或迁移行为。
+- RequestContext::from_native_identity 固定版本，把二者写入离线
+  fixture 加密封装；没有 Cookie、网络、收集、持久化或权限获取。
+  不允许从普通 ClientProfile / 登录 Credentials 自动转换。Linux
+  profile 只具备兼容声明和 Linux 实际事实，不含 Windows TokenUser、
+  Windows collector 原序或原生 localware；Windows 默认 profile 也
+  没有完成等价 collectors。账号 Credentials.deviceId 属于登录体系，
+  本地 64 字符持久 ID 属于 clientSign 第四段，都不能替换此 deviceId。
+  不因为缺真实数据调用种子回落来伪造完整 Windows 上下文。真实 Windows
+  缓存/收集状态、该服务身份资格、登录 Cookie 作用域仍须独立验证。
+
+4. 合成与原生对照
+
+core/tests/fixtures/song-recognition-native-identity.json：六组宽串、原
+UTF-8/带引号字节；四组 SHA-1、适配器顺序和重分配调用向量。合成输入
+涵盖前导空项、已有内容后的空项、补充平面、引号/反斜线、SID 失败、错误长度
+adapter、全零 MAC 与无 adapter。原生输出两次完全一致，冻结 JSON SHA-256：
+d5f39059375aa7fce1a47bc0e7c6defa391a7b01df61667c52c03e6015ce093e。
+
+私有本地重现（解包 DLL 和 reverse-tools 不进 CI）：
+  unshare -Urn .build/reverse-tools/bin/python \
+    .build/recognition-identity-private/oracle.py
+只将 PE 映射到 Unicorn 的受控只读/可执行区域，不初始化模块或解析系统
+imports。实际执行 32DA30→CEE370→CEDF80、61D2D0、D41680 的引号
+分支、32BA42–32BB7F、634820→6345C0→6340A0、62CE60、32BD50。
+用合成数据替换各 collector、SID 观察及适配器 API；Windows CP_UTF8 API
+接缝逐次断言参数并以独立编码结果响应，低层堆及 std::string 操作由有界
+宿主 shim 实现。不是官方完整进程、真实 Windows API/设备或服务证据。
+另用 Python hashlib 的 SHA-1 和 JSON 严格比对输出。
+
+Rust：cargo test --offline --locked -p cumulus-core --lib recognition
+另执行 cargo test --offline --locked -p cumulus-core --test device_identity
+以覆盖旧单 @ 行为、原持久化、不同设备上下文。离线加密往返测试核对精确
+路径、五字段、非 ASCII UTF-8 和 JSON 转义；没有运输或授权动作。
