@@ -36,6 +36,7 @@ pub mod native_media;
 mod player;
 mod playlist_cover;
 mod playlist_creator;
+mod playlist_essential;
 mod playlist_square;
 mod playlist_tags_browse;
 mod playlists;
@@ -91,6 +92,7 @@ pub struct MusicClient {
     search: search::experiment::SearchHost,
     podcast_discovery: podcast::PodcastDiscoveryHost,
     playlist_square: playlist_square::PlaylistSquareHost,
+    playlist_essential: playlist_essential::PlaylistEssentialHost,
     member_offer: member::MemberOfferHost,
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_home: style_home::StyleHome,
@@ -223,6 +225,7 @@ impl MusicClient {
             search: search::experiment::SearchHost::default(),
             podcast_discovery: Default::default(),
             playlist_square: Default::default(),
+            playlist_essential: Default::default(),
             member_offer: Default::default(),
             daily_recommendations: Default::default(),
             style_home: Default::default(),

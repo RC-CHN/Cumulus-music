@@ -18,6 +18,25 @@ pub enum PlaylistTagQuery {
 pub struct PlaylistTagPage {
     pub items: Vec<PlaylistTagCard>,
     pub remaining_ids: Vec<String>,
+    pub essential: Option<PlaylistEssentialPromo>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaylistEssentialPromo {
+    name: String,
+    cover_url: Option<String>,
+}
+
+fn essential_promo(value: &Value) -> Option<PlaylistEssentialPromo> {
+    let name = value["name"].as_str()?.trim();
+    if name.is_empty() || name.chars().count() > 200 || name.chars().any(char::is_control) {
+        return None;
+    }
+    Some(PlaylistEssentialPromo {
+        name: name.into(),
+        cover_url: mapping::artwork(&value["picUrl"]),
+    })
 }
 
 #[derive(Serialize)]
@@ -43,7 +62,7 @@ struct PlaylistCatalogueTag {
     display_name: Option<String>,
 }
 
-fn safe_label(label: &str) -> bool {
+pub(super) fn safe_label(label: &str) -> bool {
     !label.is_empty()
         && label.trim() == label
         && label.chars().count() <= 80
@@ -180,6 +199,10 @@ impl MusicClient {
                 ) {
                     return Err(Error::Response("duplicate category playlist"));
                 }
+                let essential = requested
+                    .is_none()
+                    .then(|| essential_promo(&response["highQuality"]))
+                    .flatten();
                 let remaining_ids = if let Some(requested) = requested {
                     if items.iter().any(|item| !requested.contains(&item.id)) {
                         return Err(Error::Response("foreign category playlist"));
@@ -202,6 +225,7 @@ impl MusicClient {
                 Ok(PlaylistTagPage {
                     items,
                     remaining_ids,
+                    essential,
                 })
             })
             .await?;

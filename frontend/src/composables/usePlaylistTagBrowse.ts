@@ -8,6 +8,8 @@ export function usePlaylistTagBrowse(client: Pick<CoreClient, 'playlistTagPage'>
   const busy = ref(false);
   const failed = ref(false);
   const offset = ref(0);
+  const firstEssential = shallowRef<PlaylistTagPage['essential']>();
+  const essential = computed(() => (offset.value === 0 ? firstEssential.value : undefined));
   const lastOpened = ref('');
   const remaining = shallowRef<string[]>([]);
   const canNext = computed(() => offset.value < remaining.value.length);
@@ -44,6 +46,7 @@ export function usePlaylistTagBrowse(client: Pick<CoreClient, 'playlistTagPage'>
       if (target === 0) {
         first = reply.value.items;
         remaining.value = reply.value.remainingIds;
+        firstEssential.value = reply.value.essential;
       }
       items.value = reply.value.items;
       offset.value = target;
@@ -64,6 +67,7 @@ export function usePlaylistTagBrowse(client: Pick<CoreClient, 'playlistTagPage'>
       tag = category ?? '';
       items.value = null;
       first = [];
+      firstEssential.value = undefined;
       remaining.value = [];
       offset.value = requested = 0;
       lastOpened.value = '';
@@ -76,6 +80,7 @@ export function usePlaylistTagBrowse(client: Pick<CoreClient, 'playlistTagPage'>
     busy,
     failed,
     offset,
+    essential,
     canNext,
     lastOpened,
     enter,

@@ -50,6 +50,7 @@ export type Page =
   | { kind: 'comments'; resource: CommentResource; title: string }
   | { kind: 'playlist'; id: string; subscriberReturn?: number }
   | { kind: 'playlist_tag'; tag: string }
+  | { kind: 'playlist_essential'; tag: string }
   | {
       kind: 'search_reason';
       label: string;
@@ -191,6 +192,7 @@ export function useMusic(
         target.kind === 'search_reason' ||
         target.kind === 'library' ||
         target.kind === 'playlist_tag' ||
+        target.kind === 'playlist_essential' ||
         target.kind === 'playlist_creator' ||
         target.kind === 'history' ||
         target.kind === 'settings' ||
@@ -278,6 +280,7 @@ export function useMusic(
           [
             'playlist',
             'playlist_tag',
+            'playlist_essential',
             'playlist_creator',
             'comments',
             'catalog',

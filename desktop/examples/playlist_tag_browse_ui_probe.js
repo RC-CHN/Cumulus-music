@@ -36,10 +36,14 @@
     click(one('.playlist-hero-tags button'));
     await wait(() => cards().length === 24, 'first bounded page');
     assert(one('.playlist-tag-browse').textContent.includes('轻音乐'), 'tag preserved');
+    const promo = () => one('.playlist-essential-promo');
+    assert(promo()?.textContent.includes('合成精品入口') && promo() === one('.playlist-tag-cards button'),
+      'high-quality promotion is the first category card');
     assert(document.activeElement === one('.playlist-tag-browse h1'), 'category focus');
     await emit('ux_02_first');
     click(button('下一页'));
     await wait(() => cards().join(',') === '3,4', 'authoritative continuation order');
+    assert(!promo(), 'ordinary continuation has no essential promotion');
     await emit('ux_03_next');
     click(one('[data-tag-playlist-id="3"]'));
     await wait(() => one('.playlist-hero h1')?.textContent === '合成歌单 3', 'selected playlist detail');
@@ -48,6 +52,47 @@
     await wait(() => document.activeElement === one('[data-tag-playlist-id="3"]'), 'back restores card focus');
     click(button('上一页'));
     await wait(() => cards().length === 24, 'back to cached first page');
+    click(promo());
+    const essential = () => one('.playlist-essential-page');
+    const essentialCards = () => [...document.querySelectorAll('[data-essential-card]')];
+    const essentialTitle = () => one('.playlist-essential-current')?.textContent;
+    const moreCategories = () => button('更多分类', essential());
+    await wait(() => essential() && essentialTitle() === '轻音乐' && essentialCards().length === 36,
+      'promotion opens current category even with catalogue failure');
+    click(moreCategories());
+    await wait(() => button('重试分类', essential()), 'category error has independent retry');
+    await emit('ux_09_essential_initial');
+    click(button('重试分类', essential()));
+    await wait(() => button('全部分类', essential()) && button('轻音乐精选', essential()), 'official category names');
+    assert(button('轻音乐精选', essential()).getAttribute('aria-pressed') === 'true', 'selected raw category');
+    await emit('ux_10_essential_categories');
+    one('#playlist-essential-categories').dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
+    await wait(() => !one('#playlist-essential-categories') && document.activeElement===moreCategories(), 'category popup restores focus');
+    click(moreCategories());
+    await wait(() => one('#playlist-essential-categories'), 'reopen category popup for pointer dismissal');
+    essential().querySelector('h1').dispatchEvent(new PointerEvent('pointerdown', {bubbles:true,pointerType:'mouse'}));
+    await wait(() => !one('#playlist-essential-categories'), 'clicking outside closes the category popup');
+    button('加载更多精品歌单', essential()).scrollIntoView({block:'end'});
+    await wait(() => essentialCards().length === 36 && button('重试精品歌单', essential()), 'scroll loads exact cursor; failure keeps prior cards');
+    click(button('重试精品歌单', essential()));
+    await wait(() => essentialCards().length === 37 && !button('加载更多精品歌单', essential()), 'retry appends and respects terminal');
+    const essentialCard = () => one('[data-essential-card="3"]');
+    click(essentialCard());
+    await wait(() => one('.playlist-hero h1')?.textContent === '合成歌单 3', 'opens exact essential playlist');
+    click(button('返回上一页'));
+    await wait(() => essentialCards().length === 37 && document.activeElement === essentialCard(), 'Back restores loaded prefix and exact essential card');
+    await emit('ux_11_essential_return');
+    click(moreCategories());
+    await wait(() => button('全部分类', essential()), 'reopen category popup');
+    click(button('全部分类', essential()));
+    await wait(() => essentialTitle() === '全部分类' && essentialCards().length === 1 &&
+      one('[data-essential-card="4"]'), 'display label selects raw 全部');
+    await emit('ux_12_essential_all');
+    click(button('返回上一页'));
+    await wait(() => essentialTitle() === '轻音乐精选' && essentialCards().length === 37,
+      'category Back restores first category without another native read');
+    click(button('返回上一页'));
+    await wait(() => cards().length === 24 && document.activeElement === promo(), 'return to first ordinary category and exact promo focus');
     click(button('歌单广场', one('.sidebar')));
     const catalogue = () => one('.playlist-catalogue-panel');
     const more = () => one('.playlist-catalogue-trigger');
@@ -106,7 +151,7 @@
     assert(button('风格', catalogue()).getAttribute('aria-pressed')==='true', 'restored exact group');
     catalogue().dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
     await wait(() => !catalogue() && document.activeElement===more(), 'Escape restores trigger focus');
-    await emit('complete', { ok: true, catalogueVerified: true, recommendationVerified: true });
+    await emit('complete', { ok: true, catalogueVerified: true, recommendationVerified: true, essentialVerified: true });
   } catch (error) {
     await emit('failed', { message: String(error) });
   }

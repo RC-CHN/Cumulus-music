@@ -45,6 +45,8 @@ mod playlist_cover_layout_fixture;
 mod playlist_cover_transfer_fixture;
 #[path = "support/playlist_editor_fixture.rs"]
 mod playlist_editor_fixture;
+#[path = "support/playlist_essential_fixture.rs"]
+mod playlist_essential_fixture;
 #[path = "support/playlist_layout_fixture.rs"]
 mod playlist_layout_fixture;
 #[path = "support/playlist_square_fixture.rs"]
@@ -140,6 +142,11 @@ impl Api for Library {
         Box::pin(async move {
             if playlist_tag_browse_proof()
                 && let Some(response) = playlist_square_fixture::response(path, &args)
+            {
+                return response;
+            }
+            if playlist_tag_browse_proof()
+                && let Some(response) = playlist_essential_fixture::response(path, &args)
             {
                 return response;
             }
@@ -336,9 +343,14 @@ impl Api for Library {
                         "hotComments":[],"topComments":[],"more":false,"total":if second {8}else{12}})
                 }
                 "/api/playlist/category/list" if playlist_tag_browse_proof() => {
+                    let promo = (args["cat"] == "轻音乐").then(|| {
+                        json!({
+                            "name":"合成精品入口","cat":"不能作为路由的服务值","action":"unsafe"
+                        })
+                    });
                     PLAYLIST_TAG_CALLS.lock().unwrap().push(args);
                     json!({"code":200,"playlists":(100..124).map(|id| json!({"id":id,"name":format!("分类合成歌单 {id}")})).collect::<Vec<_>>(),
-                        "playlistIds":(100..124).chain([3,4]).collect::<Vec<_>>()})
+                        "playlistIds":(100..124).chain([3,4]).collect::<Vec<_>>(),"highQuality":promo})
                 }
                 "/api/playlist/catalogue" if playlist_tag_browse_proof() => {
                     let mut calls = PLAYLIST_CATALOGUE_CALLS.lock().unwrap();
@@ -615,6 +627,7 @@ fn main() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
                 value["playlistCatalogueCalls"] = json!(*PLAYLIST_CATALOGUE_CALLS.lock().unwrap());
                 value["playlistSquare"] = playlist_square_fixture::report();
+                value["playlistEssential"] = playlist_essential_fixture::report();
             }
             if playlist_creator_proof() {
                 value["playlistCreatorCalls"] = json!(*PLAYLIST_CREATOR_CALLS.lock().unwrap());

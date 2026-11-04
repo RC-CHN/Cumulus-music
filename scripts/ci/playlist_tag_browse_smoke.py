@@ -53,6 +53,7 @@ def main():
     assert read('ux_05_catalogue')['playlistCatalogueCalls'] == [{}, {}]
     complete = read('complete')
     assert complete['ok'] and complete['catalogueVerified'] and complete['recommendationVerified']
+    assert complete['essentialVerified']
     assert complete['playlistTagCalls'] == [first, next_page, official, selected]
     assert complete['playlistCatalogueCalls'] == [{}, {}]
     first_rcmd = {'cursor': '', 'newStyle': True}
@@ -62,10 +63,21 @@ def main():
         'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 3,
     }
     assert complete['playlistSquare'] == {'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 4}
-    assert len(list(output.glob('ux_*.png'))) == (8 if args.screenshots else 0)
+    first_essential = {'cat': '轻音乐', 'limit': 36, 'lasttime': '-1'}
+    next_essential = {'cat': '轻音乐', 'limit': 36, 'lasttime': 1_700_000_000_123}
+    all_essential = {'cat': '全部', 'limit': 36, 'lasttime': '-1'}
+    assert read('ux_09_essential_initial')['playlistEssential'] == {'pages': [first_essential], 'tags': 1}
+    assert read('ux_11_essential_return')['playlistEssential'] == {
+        'pages': [first_essential, next_essential, next_essential], 'tags': 2,
+    }
+    assert complete['playlistEssential'] == {
+        'pages': [first_essential, next_essential, next_essential, all_essential], 'tags': 2,
+    }
+    assert len(list(output.glob('ux_*.png'))) == (12 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'categoryReads': 3,
                       'continuationReads': 1, 'catalogueReads': 2, 'recommendationReads': 3,
-                      'privacyReads': 4, 'realAccountWrites': 0}))
+                      'privacyReads': 4, 'essentialReads': 4, 'essentialTagReads': 2,
+                      'realAccountWrites': 0}))
 
 
 if __name__ == '__main__':

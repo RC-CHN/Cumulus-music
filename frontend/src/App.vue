@@ -47,9 +47,11 @@ import StyleTagBrowser from './components/StyleTagBrowser.vue';
 import StyleHomeBrowser from './components/StyleHomeBrowser.vue';
 import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
+import PlaylistEssentialPage from './components/playlist/PlaylistEssentialPage.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
+import { usePlaylistEssential } from './composables/usePlaylistEssential';
 import { usePlaylistTagCatalogue } from './composables/usePlaylistTagCatalogue';
 import { usePlaylistSquare } from './composables/usePlaylistSquare';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
@@ -1487,6 +1489,16 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 const playlistTagBrowse = usePlaylistTagBrowse(core);
+const playlistEssential = usePlaylistEssential(core, () => void music.bootstrap(false));
+watch(
+  [
+    () => account.value.epoch,
+    () => account.value.status,
+    () => (page.value.kind === 'playlist_essential' ? page.value.tag : null),
+  ],
+  ([epoch, status, tag]) => playlistEssential.enter(status === 'authenticated' ? epoch : '', tag),
+  { immediate: true, flush: 'sync' },
+);
 const playlistSquare = usePlaylistSquare(
   core,
   () => account.value,
@@ -2900,8 +2912,20 @@ onUnmounted(() => {
                 :playing="player.playing.value"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
                 @category="(tag) => music.navigate({ kind: 'playlist_tag', tag })"
+                @essential="(tag) => music.navigate({ kind: 'playlist_essential', tag })"
                 @play="playRankingPlaylist"
                 @settings="openPodcastPrivacy"
+              />
+              <PlaylistEssentialPage
+                v-else-if="page.kind === 'playlist_essential'"
+                :tag="page.tag"
+                :model="playlistEssential"
+                :playable="player.ready.value && !player.busy.value"
+                :current="currentOrigin?.kind === 'playlist' ? currentOrigin.id : undefined"
+                :playing="player.playing.value"
+                @open="(id) => music.navigate({ kind: 'playlist', id })"
+                @category="(tag) => music.navigate({ kind: 'playlist_essential', tag })"
+                @play="playRankingPlaylist"
               />
               <CommentsPage
                 v-else-if="page.kind === 'comments'"

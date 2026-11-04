@@ -193,6 +193,30 @@ pub async fn playlist_creator_profile(
 }
 
 #[tauri::command]
+pub async fn playlist_essential_categories(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Vec<PlaylistEssentialCategory>>, ClientError> {
+    client
+        .playlist_essential_categories(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn playlist_essential_page(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    category: String,
+    continuation: Option<String>,
+) -> Result<AccountData<PlaylistEssentialPage>, ClientError> {
+    client
+        .playlist_essential_page(&epoch, &category, continuation.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn playlist_square_recommendations(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

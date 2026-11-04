@@ -20,6 +20,7 @@ const emit = defineEmits<{
   category: [tag: string];
   play: [id: string];
   settings: [];
+  essential: [tag: string];
 }>();
 const root = ref<HTMLElement>();
 onMounted(async () => {
@@ -30,11 +31,19 @@ onMounted(async () => {
   const card = Array.from(
     root.value.querySelectorAll<HTMLButtonElement>('[data-tag-playlist-id]'),
   ).find((button) => button.dataset.tagPlaylistId === props.model.lastOpened.value);
-  (card ?? root.value.querySelector('h1'))?.focus({ preventScroll: true });
+  const promo =
+    props.model.lastOpened.value === 'essential'
+      ? root.value.querySelector<HTMLButtonElement>('.playlist-essential-promo')
+      : null;
+  (card ?? promo ?? root.value.querySelector('h1'))?.focus({ preventScroll: true });
 });
 function open(id: string) {
   props.model.lastOpened.value = id;
   emit('open', id);
+}
+function openEssential() {
+  props.model.lastOpened.value = 'essential';
+  emit('essential', props.tag);
 }
 function missingImage(event: Event) {
   (event.currentTarget as HTMLImageElement).hidden = true;
@@ -72,8 +81,25 @@ function missingImage(event: Event) {
         <button type="button" class="text-button" @click="model.retry">重试</button>
       </p>
       <template v-if="model.items.value">
-        <p v-if="!model.items.value.length" class="muted">此页暂无歌单</p>
+        <p v-if="!model.items.value.length && !model.essential.value" class="muted">此页暂无歌单</p>
         <ul v-else class="playlist-tag-cards">
+          <li v-if="model.essential.value">
+            <button class="playlist-essential-promo" @click="openEssential">
+              <span class="playlist-tag-art">
+                <Icon name="star" />
+                <img
+                  v-if="model.essential.value.coverUrl"
+                  :src="model.essential.value.coverUrl"
+                  alt=""
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  @error="missingImage"
+                />
+                <strong>精品歌单</strong>
+              </span>
+              <span class="ellipsis">{{ model.essential.value.name }}</span>
+            </button>
+          </li>
           <li v-for="item in model.items.value" :key="item.id">
             <button
               type="button"
@@ -152,6 +178,15 @@ function missingImage(event: Event) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.playlist-essential-promo strong {
+  z-index: 1;
+  align-self: start;
+  margin-top: 12px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  color: white;
+  background: rgb(0 0 0 / 65%);
 }
 .playlist-tag-browse nav {
   display: flex;
