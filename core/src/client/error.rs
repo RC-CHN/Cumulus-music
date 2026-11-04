@@ -38,6 +38,16 @@ impl From<Error> for ClientError {
                         true,
                     )
                 }
+                Error::State("start playback before restoring headphone tuning") => (
+                    "headphone_restore_needs_playback",
+                    "请先播放或暂停一段音频，再恢复耳机调音",
+                    false,
+                ),
+                Error::State("invalid remembered headphone selection") => (
+                    "headphone_selection_damaged",
+                    "上次使用的耳机记录无法读取，请浏览型号后重新启用",
+                    false,
+                ),
                 Error::State(
                     "no verified cold offline profile"
                     | "cold offline mode requires the active native profile",

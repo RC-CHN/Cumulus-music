@@ -429,6 +429,33 @@ pub async fn effect_device_apply<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn effect_device_remembered<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> std::result::Result<Option<cumulus_core::effects::RememberedHeadphone>, ClientError> {
+    authorize(&window, &client, &epoch)?;
+    client
+        .remembered_native_headphone(&epoch)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn effect_device_restore<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    host: tauri::State<'_, Host>,
+    epoch: String,
+    revision: String,
+) -> std::result::Result<(), ClientError> {
+    authorize(&window, &client, &epoch)?;
+    let _state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
+    host.check_adapter()?;
+    client.restore_native_headphone(&epoch, &revision).await?;
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn effect_device_clear<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

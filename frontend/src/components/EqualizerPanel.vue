@@ -44,6 +44,7 @@ const actionFocus = useControlFocus(
 const directoryOpen = ref(false);
 const directoryOpener = ref<HTMLButtonElement>();
 const managementOnly = ref(false);
+const headphoneManagement = ref(false);
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
 const tone = computed(() => equalizerTone(settings.value));
 const storedToneBypassed = computed(
@@ -90,8 +91,9 @@ onMounted(() => {
   }
 });
 onUnmounted(() => focused?.focus());
-function openDirectory(localOnly = false) {
+function openDirectory(localOnly = false, headphones = false) {
   managementOnly.value = localOnly;
+  headphoneManagement.value = headphones;
   directoryOpen.value = true;
 }
 function change(
@@ -245,6 +247,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
         </button>
         <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
         <button ref="directoryOpener" type="button" @click="openDirectory()">音效目录</button>
+        <button type="button" @click="openDirectory(false, true)">耳机音效</button>
       </div>
       <div v-if="parametric" class="equalizer-independent" :data-parametric-state="parametric">
         <p role="status">{{ parametricStatus[parametric] }}不受上方开关控制。</p>
@@ -389,7 +392,9 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
     :binding-status="parametric"
     :device-parametric="view?.deviceParametric"
     :initial-management-only="managementOnly"
+    :headphone-management="headphoneManagement"
     @close="directoryOpen = false"
+    @equalizer="directoryOpen = false"
     @login="emit('login')"
   />
 </template>

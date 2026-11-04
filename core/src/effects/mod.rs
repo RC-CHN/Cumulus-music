@@ -16,5 +16,7 @@ pub mod loudness;
 pub mod material;
 pub mod ncae;
 pub mod parametric;
+mod remembered_headphone;
+pub use remembered_headphone::RememberedHeadphone;
 pub mod rights;
 pub mod service;

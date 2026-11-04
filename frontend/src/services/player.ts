@@ -56,6 +56,7 @@ export interface DeviceParametricView {
   activationId: string;
   modelName?: string;
   status: BoundParametricStatus;
+  selectionSaveFailed?: boolean;
 }
 
 export interface PlayerView {

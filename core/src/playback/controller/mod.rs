@@ -7,6 +7,7 @@ mod intelligence;
 mod load;
 mod loudness;
 mod parametric;
+pub(crate) use parametric::DeviceRestoreAuthority;
 pub use parametric::{
     DeviceParametricTarget, DeviceParametricView, ParametricApplication, ParametricBindingStatus,
 };

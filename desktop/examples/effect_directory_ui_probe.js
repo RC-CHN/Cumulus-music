@@ -253,13 +253,39 @@
       click(button(currentTuning(), '关闭调音提示'));
       await wait(() => !currentTuning() && document.activeElement === button(dialog(), '浏览耳机音效'),
         'dismiss restores keyboard focus within local headphone management');
+      const saved = button(dialog(), '恢复耳机调音');
+      assert(saved && !saved.disabled && text().includes('上次使用'),
+        'explicit off or failure does not discard the remembered selection');
+      click(saved);
+      const restoring = await player();
+      await wait(async () => {
+        const value = await player();
+        return currentTuning()?.dataset.deviceTuning === 'configured' &&
+          value.deviceParametric?.status === 'configured' &&
+          value.deviceParametric.modelName === '合成耳机乙' &&
+          currentTuning().textContent.includes('合成耳机乙') && sameSong(value) &&
+          value.position > restoring.position + 0.25;
+      }, 'explicit restore revalidates the saved model without starting a new track');
+      await capture('12_headphones_restored');
       click(button(dialog(), '关闭耳机音效管理'));
       await wait(() => !dialog() && document.activeElement === launcher() &&
-        launcher()?.getAttribute('aria-label') === '均衡器', 'closing restores the footer focus');
+        launcher()?.getAttribute('aria-label') === '管理耳机音效', 'closing restores the footer focus');
+      click(button(one('.playerbar'), '停止播放'));
+      await wait(async () => (await player()).state === 'idle' &&
+        launcher()?.getAttribute('aria-label') === '均衡器', 'stop does not restore the remembered tuning');
+      click(launcher());
+      const eq = await wait(() => one('.equalizer-dialog[open]'), 'open ordinary equalizer while idle');
+      click(button(eq, '耳机音效'));
+      await wait(() => dialog()?.getAttribute('aria-label') === '耳机音效' &&
+        text().includes('上次使用'), 'remembered headphone remains reachable without active tuning');
+      click(button(dialog(), '恢复耳机调音'));
+      await wait(() => text().includes('请先播放或暂停一段音频') && !currentTuning(),
+        'an explicit restore with no current audio cannot start playback');
+      assert((await player()).state === 'idle', 'remembered record is never an autoplay instruction');
     }
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: native ? 11 : 7, artworkVerified: true,
+    await emit('complete', { ok: true, stageCount: native ? 12 : 7, artworkVerified: true,
       devicesVerified: true, deviceTuningVerified: native, deviceMaterialVerified: true,
       deviceCacheVerified: true, limitedFreeExpiryVerified: true, headphoneFooterVerified: native });
   } catch (error) {

@@ -1,8 +1,9 @@
-use super::{Message, PlaybackController, state::Actor};
+use super::{Message, PlaybackController, PlaybackFence, state::Actor};
 use crate::{
     Error, Result,
     account::SessionToken,
     effects::{
+        RememberedHeadphone,
         authorization::{
             ActiveParametricObservation, BoundParametric, BoundParametricTarget,
             EffectAuthorizations,
@@ -61,6 +62,8 @@ pub struct DeviceParametricView {
     #[serde(rename = "modelName", skip_serializing_if = "Option::is_none")]
     pub model_name: Option<String>,
     pub status: ParametricBindingStatus,
+    #[serde(rename = "selectionSaveFailed")]
+    pub selection_save_failed: bool,
 }
 
 fn serialize_device_activation<S: serde::Serializer>(
@@ -80,6 +83,11 @@ struct DeviceActivationId {
 struct DeviceActivation {
     identity: DeviceActivationId,
     model_name: Option<String>,
+}
+
+pub(crate) struct DeviceRestoreAuthority {
+    pub playback: PlaybackFence,
+    pub remembered: RememberedHeadphone,
 }
 
 pub(super) struct InspectRequest {
@@ -103,7 +111,12 @@ enum Selection {
     Plain(Option<Box<ParametricPlan>>),
     Bound(Arc<BoundParametric>),
     ClearBound(BoundParametricTarget),
-    DeviceRequest(DeviceParametricTarget, Box<ParametricPlan>, Option<String>),
+    DeviceRequest(
+        DeviceParametricTarget,
+        Box<ParametricPlan>,
+        Option<String>,
+        Option<DeviceRestoreAuthority>,
+    ),
     Device(DeviceActivation, Box<ParametricPlan>),
     ClearDevice(DeviceActivationId),
 }
@@ -121,6 +134,7 @@ pub(super) struct State {
     failed_binding: Option<(SessionToken, BoundParametricTarget)>,
     device: Option<DeviceActivation>,
     failed_device: Option<DeviceActivation>,
+    device_selection_save_failed: bool,
 }
 
 impl State {
@@ -152,6 +166,7 @@ impl State {
             activation_id: activation.identity.id,
             model_name: activation.model_name.clone(),
             status,
+            selection_save_failed: self.device_selection_save_failed,
         })
     }
 
@@ -220,10 +235,11 @@ impl PlaybackController {
         target: DeviceParametricTarget,
         plan: ParametricPlan,
         model_name: Option<String>,
+        restore: Option<DeviceRestoreAuthority>,
     ) -> Result<ParametricApplication> {
         self.request_parametric(
             token,
-            Selection::DeviceRequest(target, Box::new(plan), model_name),
+            Selection::DeviceRequest(target, Box::new(plan), model_name, restore),
         )
         .await
     }
@@ -405,6 +421,22 @@ impl Actor {
         if let Selection::ClearDevice(target) = selection {
             return self.parametric_clear_device(target).await;
         }
+        if let Selection::DeviceRequest(_, _, _, Some(expected)) = &selection {
+            // A restore should never adopt a replacement queue or start a
+            // decoder. Reload only the stored queue to verify its identity.
+            self.queue.reload()?;
+            if !self.state.active()
+                || self.pending.is_some()
+                || self.snapshot().fence() != expected.playback
+                || self
+                    .session
+                    .with_token(token, |owner| RememberedHeadphone::read(&self.store, owner))?
+                    .as_ref()
+                    != Some(&expected.remembered)
+            {
+                return Err(Error::StaleResponse);
+            }
+        }
         if self.parametric.device.is_some()
             || self.parametric.deferred_device().is_some()
             || (matches!(&selection, Selection::DeviceRequest(..))
@@ -429,7 +461,7 @@ impl Actor {
             }
         }
         let selection = match selection {
-            Selection::DeviceRequest(target, plan, model_name) => Selection::Device(
+            Selection::DeviceRequest(target, plan, model_name, _) => Selection::Device(
                 DeviceActivation {
                     identity: DeviceActivationId {
                         target,
@@ -543,6 +575,7 @@ impl Actor {
             }
             Selection::Device(target, plan) => {
                 self.parametric.failed_device = None;
+                self.parametric.device_selection_save_failed = false;
                 self.parametric.device = Some(target.clone());
                 self.parametric.possibly_attached = true;
                 let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
@@ -553,7 +586,21 @@ impl Actor {
                     }
                 })
                 .await;
-                if result.is_err() {
+                if result.is_ok() {
+                    // A local preference failure must not undo confirmed
+                    // native tuning or affect the current playback.
+                    self.parametric.device_selection_save_failed = self
+                        .session
+                        .with_token(&self.token, |owner| {
+                            RememberedHeadphone::record(
+                                &self.store,
+                                owner,
+                                target.identity.target.brand,
+                                target.identity.target.model,
+                            )
+                        })
+                        .is_err();
+                } else {
                     if let Err(cleanup) = self.parametric_reset().await {
                         let _ = self.stop(false).await;
                         return Err(cleanup);
@@ -756,6 +803,7 @@ impl Actor {
         }
         self.parametric_record_applied_clear();
         self.parametric.device = None;
+        self.parametric.device_selection_save_failed = false;
         if let Some(binding) = self.parametric.installing.take() {
             self.parametric.record_clear(&self.token, &binding);
         }

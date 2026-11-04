@@ -47,7 +47,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    stages = 11 if args.library else 7
+    stages = 12 if args.library else 7
     assert complete['ok'] and complete['stageCount'] == stages and complete['artworkVerified'] and complete['devicesVerified']
     assert complete['limitedFreeExpiryVerified'] and complete['deviceCacheVerified']
     assert complete['deviceMaterialVerified'] and complete['effectDirectoryMaterialGets'] == 1
@@ -60,11 +60,12 @@ def main():
     applies = 2 if args.library else 0
     assert [call['path'] for call in calls] == [
         catalogue, detail, rights, catalogue, detail, rights, detail, rights, catalogue,
-        brands, *[models] * (5 + applies),
+        brands, *[models] * (5 + applies + bool(args.library)),
     ]
     assert [call['args']['exposeType'] for call in calls if call['path'] == catalogue] == [5, 6, 7]
     assert [call['args'] for call in calls if call['path'] in (brands, models)] == [
         {}, *[{'deviceManagerId': 4100}] * (4 + applies), {'deviceManagerId': 4200},
+        *([{'deviceManagerId': 4100}] if args.library else []),
     ]
     db = (root / 'state' / 'core.sqlite3').resolve(strict=True)
     with closing(sqlite3.connect(db.as_uri() + '?mode=ro', uri=True)) as store:
@@ -81,7 +82,9 @@ def main():
         footer = json.loads((output / 'ux_10_headphones_footer.json').read_text(encoding='utf-8'))
         fault = json.loads((output / 'ux_11_headphones_fault.json').read_text(encoding='utf-8'))['nativePeq']
         assert footer['nativePeq']['attaches'] == 2 and footer['nativePeq']['nativeAttached']
-        assert len(footer['effectDirectoryCalls']) == len(calls)
+        reapplied = json.loads((output / 'ux_12_headphones_restored.json').read_text(encoding='utf-8'))
+        assert len(footer['effectDirectoryCalls']) == len(calls) - 1
+        assert reapplied['nativePeq']['attaches'] == 3 and reapplied['nativePeq']['nativeAttached']
         assert enabled['attaches'] == 1 and enabled['processedSamples'] > 0 and enabled['nativeAttached']
         assert disabled['detaches'] == 1 and not disabled['nativeAttached']
         assert fault['detaches'] == fault['attaches'] == 2 and fault['injectedFaults'] == 1 and not fault['nativeAttached']

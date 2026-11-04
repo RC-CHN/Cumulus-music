@@ -19,6 +19,12 @@ export interface EffectDeviceChoice {
   name: string;
 }
 
+export interface RememberedHeadphone {
+  brand: number;
+  model: number;
+  revision: string;
+}
+
 export function headphoneTuningLabel(status: BoundParametricStatus) {
   return {
     configured: '耳机调音已启用',
@@ -100,6 +106,8 @@ export interface EffectDirectoryClient {
     model: number,
   ): Promise<EffectDeviceMaterialCheck>;
   effectDeviceApply(epoch: string, brand: number, model: number): Promise<void>;
+  effectDeviceRemembered(epoch: string): Promise<RememberedHeadphone | null>;
+  effectDeviceRestore(epoch: string, revision: string): Promise<void>;
   effectDeviceClear(
     epoch: string,
     brand: number,

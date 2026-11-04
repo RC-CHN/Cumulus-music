@@ -6,6 +6,7 @@ import {
   headphoneTuningLabel,
   type EffectDeviceChoice,
   type EffectDeviceMaterialCheck,
+  type RememberedHeadphone,
 } from '../services/effectDirectory';
 import type { BoundParametricStatus, DeviceParametricView } from '../services/player';
 
@@ -28,11 +29,15 @@ const modelError = ref('');
 const material = ref<EffectDeviceMaterialCheck>();
 const materialError = ref('');
 const materialLoading = ref(false);
-const operation = ref<'apply' | 'clear'>();
+const operation = ref<'apply' | 'clear' | 'restore'>();
 const operationError = ref('');
+const remembered = ref<RememberedHeadphone>();
+const rememberedError = ref('');
+const rememberedLoading = ref(false);
 const applyButton = ref<HTMLButtonElement>();
 const clearButton = ref<HTMLButtonElement>();
 const browseButton = ref<HTMLButtonElement>();
+const restoreButton = ref<HTMLButtonElement>();
 const checkButton = ref<HTMLButtonElement>();
 const brandSelect = ref<HTMLSelectElement>();
 let actionFocus:
@@ -56,6 +61,7 @@ const materialLabels: Record<EffectDeviceMaterialCheck, string> = {
 let brandRequest = 0;
 let modelRequest = 0;
 let materialRequest = 0;
+let rememberedRequest = 0;
 let directoryGeneration = 0;
 const cachedModels = new Map<number, EffectDeviceChoice[]>();
 const modelReads = new Map<number, Promise<EffectDeviceChoice[]>>();
@@ -63,6 +69,24 @@ const modelCacheLimit = 8;
 
 function owns(epoch: string) {
   return props.account.status === 'authenticated' && props.account.epoch === epoch;
+}
+async function readRemembered() {
+  const epoch = props.account.epoch;
+  const request = ++rememberedRequest;
+  const current = () => owns(epoch) && props.managementOnly && rememberedRequest === request;
+  rememberedLoading.value = true;
+  rememberedError.value = '';
+  try {
+    const result = await core.effectDeviceRemembered(epoch);
+    if (current()) remembered.value = result ?? undefined;
+  } catch (issue) {
+    if (current()) {
+      remembered.value = undefined;
+      rememberedError.value = failure(issue).message;
+    }
+  } finally {
+    if (current()) rememberedLoading.value = false;
+  }
 }
 async function loadBrands() {
   const epoch = props.account.epoch;
@@ -189,13 +213,48 @@ async function changeTuning(action: 'apply' | 'clear', event?: MouseEvent) {
     if (current()) operation.value = undefined;
   }
 }
+async function restoreRemembered(event: MouseEvent) {
+  const source = event.currentTarget as HTMLButtonElement;
+  const choice = remembered.value;
+  if (
+    !choice ||
+    source.dataset.rememberedRevision !== choice.revision ||
+    operation.value ||
+    busyWithAnotherEffect.value ||
+    !props.managementOnly
+  )
+    return;
+  const epoch = props.account.epoch;
+  const generation = directoryGeneration;
+  const current = () => owns(epoch) && directoryGeneration === generation;
+  if (document.activeElement === source)
+    actionFocus = { action: 'apply', source, dialog: source.closest('dialog') };
+  operation.value = 'restore';
+  operationError.value = '';
+  try {
+    await core.effectDeviceRestore(epoch, choice.revision);
+    if (current()) await readRemembered();
+  } catch (issue) {
+    if (current()) {
+      operationError.value = failure(issue).message;
+      actionFocus = undefined;
+      if (failure(issue).code === 'stale') await readRemembered();
+    }
+  } finally {
+    if (current()) operation.value = undefined;
+  }
+}
 function resetReads() {
   brandRequest++;
   modelRequest++;
   directoryGeneration++;
+  rememberedRequest++;
   cachedModels.clear();
   modelReads.clear();
   operation.value = undefined;
+  remembered.value = undefined;
+  rememberedLoading.value = false;
+  rememberedError.value = '';
   actionFocus = undefined;
   resetMaterial();
 }
@@ -215,7 +274,11 @@ watch(
     const target =
       action === 'apply'
         ? clearButton.value
-        : (applyButton.value ?? checkButton.value ?? brandSelect.value ?? browseButton.value);
+        : (applyButton.value ??
+          checkButton.value ??
+          brandSelect.value ??
+          browseButton.value ??
+          restoreButton.value);
     target?.focus({ preventScroll: true });
   },
   { flush: 'post' },
@@ -229,7 +292,10 @@ watch(
     brand.value = model.value = undefined;
     brandError.value = modelError.value = '';
     brandLoading.value = modelLoading.value = false;
-    if (owns(epoch) && !props.managementOnly) void loadBrands();
+    if (owns(epoch)) {
+      if (props.managementOnly) void readRemembered();
+      else void loadBrands();
+    }
   },
   { immediate: true, flush: 'sync' },
 );
@@ -261,8 +327,28 @@ onUnmounted(resetReads);
       </button>
     </div>
     <p v-if="operationError" role="alert">{{ operationError }}</p>
+    <p v-if="applied?.selectionSaveFailed" role="status">本次调音已经启用，但无法记住此型号。</p>
     <template v-if="managementOnly">
       <p v-if="!applied" role="status">当前没有耳机调音。</p>
+      <p v-if="rememberedLoading" role="status">正在读取上次使用的耳机…</p>
+      <div v-else-if="rememberedError">
+        <p role="alert">{{ rememberedError }}</p>
+        <button type="button" @click="readRemembered">重新读取上次记录</button>
+      </div>
+      <div v-else-if="remembered" class="effect-device-remembered">
+        <p>上次使用 · 品牌 {{ remembered.brand }} · 型号 {{ remembered.model }}</p>
+        <p v-if="!applied && busyWithAnotherEffect">请先关闭正在使用的参数均衡。</p>
+        <button
+          ref="restoreButton"
+          type="button"
+          :key="remembered.revision"
+          :data-remembered-revision="remembered.revision"
+          :disabled="!!operation || busyWithAnotherEffect"
+          @click="restoreRemembered"
+        >
+          {{ operation === 'restore' ? '正在恢复…' : '恢复耳机调音' }}
+        </button>
+      </div>
       <div class="effect-device-actions">
         <button ref="browseButton" type="button" @click="emit('browse')">浏览耳机音效</button>
         <slot name="management-actions" />

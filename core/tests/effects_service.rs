@@ -167,6 +167,12 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
                 .unwrap();
             assert_eq!(pending.status, ParametricBindingStatus::Deferred);
             assert_eq!(pending.model_name.as_deref(), Some("合成耳机"));
+            assert!(
+                client
+                    .remembered_native_headphone(&epoch)
+                    .unwrap()
+                    .is_none()
+            );
             let first = pending.activation_id.simple().to_string();
             assert!(matches!(
                 client
@@ -240,9 +246,283 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
             assert_eq!(failed.activation_id, activation_id);
             assert_eq!(failed.model_name.as_deref(), Some("合成耳机"));
         }
+        assert!(
+            client
+                .remembered_native_headphone(&epoch)
+                .unwrap()
+                .is_none()
+        );
         assert_eq!(*device.parametric_at_unpause.lock().unwrap(), [false]);
         assert_eq!(api.calls().len(), if cancel_before_load { 4 } else { 3 });
     }
+}
+
+#[tokio::test]
+async fn remembered_headphone_requires_confirmed_attach_and_an_explicit_current_restore() {
+    use cumulus_core::{
+        account::profiles::ProfileRegistry,
+        client::{
+            MusicClient,
+            dto::{PlaySelection, PlayerAction},
+        },
+        membership::Quality,
+        playback::controller::{ParametricApplication, PlaybackStatus},
+        protocol::http::ApiOrigin,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
+    let temp = tempfile::tempdir().unwrap();
+    let brand = EffectId::new(7002).unwrap();
+    let (bytes, _) = sample("first");
+    let row = json!({"code":200,"data":[{"soundId":300,"soundType":2,"deviceModel":"合成恢复耳机","size":bytes.len(),
+        "soundMd5":hex::encode(Md5::digest(&bytes)),"deviceSoundUrl":URL}]});
+    let details = || json!({"code":200,"songs":[{"id":1,"name":"Synthetic","dt":30000,"ar":[],"al":{"id":1,"name":"Synthetic"}}],"privileges":[]});
+    let url = || json!({"code":200,"data":[{"id":1,"code":200,"url":"https://m1.music.126.net/fixture.mp3","md5":"abcd","expi":10,"level":"standard"}]});
+    let selection = || PlaySelection::Songs {
+        ids: vec!["1".into()],
+        index: 0,
+        quality: Quality::Standard,
+    };
+    let origin = Arc::new(Origin::new(bytes));
+    let remembered = {
+        let registry = ProfileRegistry::open(temp.path(), ApiOrigin::Pc).unwrap();
+        let api = Arc::new(ScriptApi::new([
+            details().into(),
+            url().into(),
+            row.clone().into(),
+        ]));
+        let session = world(api.clone(), registry.store());
+        let epoch = session.token().unwrap().generation.to_string();
+        let device = Arc::new(playback_support::Device::default());
+        device.hold_load.store(true, Ordering::SeqCst);
+        device.parametric_supported.store(true, Ordering::SeqCst);
+        let audio = device.clone();
+        let client = MusicClient::with_session(session, registry)
+            .with_effect_material_backend(origin.clone())
+            .with_audio_factory(move || Ok(playback_support::audio_engine(audio.clone())));
+        let tune = async {
+            device.started.notified().await;
+            assert_eq!(
+                client
+                    .apply_native_device_parametric(&epoch, brand, id())
+                    .await
+                    .unwrap(),
+                ParametricApplication::DeferredUntilLoaded
+            );
+            assert!(
+                client
+                    .remembered_native_headphone(&epoch)
+                    .unwrap()
+                    .is_none()
+            );
+            device.hold_load.store(false, Ordering::SeqCst);
+        };
+        let (played, ()) = tokio::time::timeout(Duration::from_secs(6), async {
+            tokio::join!(client.play_selection(&epoch, selection()), tune)
+        })
+        .await
+        .unwrap();
+        let applied = played.unwrap().device_parametric.unwrap();
+        assert_eq!(applied.model_name.as_deref(), Some("合成恢复耳机"));
+        let remembered = client.remembered_native_headphone(&epoch).unwrap().unwrap();
+        assert_eq!((remembered.brand, remembered.model), (brand, id()));
+        assert!(!applied.selection_save_failed);
+        client
+            .clear_native_device_parametric(
+                &epoch,
+                brand,
+                id(),
+                &applied.activation_id.simple().to_string(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            client.remembered_native_headphone(&epoch).unwrap(),
+            Some(remembered.clone())
+        );
+        client
+            .player_action(&epoch, PlayerAction::Stop)
+            .await
+            .unwrap();
+        assert_eq!(api.calls().len(), 3);
+        remembered
+    };
+
+    let registry = ProfileRegistry::open(temp.path(), ApiOrigin::Pc).unwrap();
+    let (delayed, release) = gate();
+    let api = Arc::new(ScriptApi::new([
+        details().into(),
+        url().into(),
+        delayed,
+        row.clone().into(),
+        row.clone().into(),
+    ]));
+    let session = world(api.clone(), registry.store());
+    let original_epoch = session.token().unwrap().generation.to_string();
+    let factory_calls = Arc::new(AtomicUsize::new(0));
+    let count = factory_calls.clone();
+    let device = Arc::new(playback_support::Device::default());
+    device.parametric_supported.store(true, Ordering::SeqCst);
+    let audio = device.clone();
+    let client = MusicClient::with_session(session.clone(), registry)
+        .with_effect_material_backend(origin.clone())
+        .with_audio_factory(move || {
+            count.fetch_add(1, Ordering::SeqCst);
+            Ok(playback_support::audio_engine(audio.clone()))
+        });
+    session
+        .adopt(api.clone(), json!({"userId":2}), &session.token().unwrap())
+        .unwrap();
+    let other = session.token().unwrap().generation.to_string();
+    assert!(
+        client
+            .remembered_native_headphone(&other)
+            .unwrap()
+            .is_none()
+    );
+    assert!(matches!(
+        client.remembered_native_headphone(&original_epoch),
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client
+            .restore_native_headphone(&other, &remembered.revision)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    session
+        .adopt(api.clone(), json!({"userId":1}), &session.token().unwrap())
+        .unwrap();
+    let epoch = session.token().unwrap().generation.to_string();
+    assert_eq!(
+        client.remembered_native_headphone(&epoch).unwrap(),
+        Some(remembered.clone())
+    );
+    assert!(matches!(
+        client
+            .restore_native_headphone(&epoch, &remembered.revision)
+            .await,
+        Err(Error::State(
+            "start playback before restoring headphone tuning"
+        ))
+    ));
+    assert!(api.calls().is_empty());
+    assert_eq!(factory_calls.load(Ordering::SeqCst), 0);
+    let active = client.play_selection(&epoch, selection()).await.unwrap();
+    assert!(active.device_parametric.is_none());
+    let mut subscription = client.subscribe_playback(&epoch).await.unwrap();
+    while subscription.current().unwrap().state != PlaybackStatus::Playing {
+        tokio::time::timeout(Duration::from_secs(4), subscription.changed())
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    let cancel = async {
+        api.wait_for_calls(3).await;
+        client
+            .player_action(&epoch, PlayerAction::Pause { paused: true })
+            .await
+            .unwrap();
+        release.send(Ok(row)).unwrap();
+    };
+    let (result, ()) = tokio::join!(
+        client.restore_native_headphone(&epoch, &remembered.revision),
+        cancel
+    );
+    assert!(matches!(result, Err(Error::StaleResponse)));
+    while subscription.current().unwrap().state != PlaybackStatus::Paused {
+        tokio::time::timeout(Duration::from_secs(4), subscription.changed())
+            .await
+            .unwrap()
+            .unwrap();
+    }
+    assert_eq!(
+        client.remembered_native_headphone(&epoch).unwrap(),
+        Some(remembered.clone())
+    );
+    assert!(!device.parametric_attached.load(Ordering::SeqCst));
+    assert_eq!(
+        client
+            .restore_native_headphone(&epoch, &remembered.revision)
+            .await
+            .unwrap(),
+        ParametricApplication::Configured
+    );
+    let restored = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(restored.play_id, active.play_id);
+    assert_eq!(restored.state, PlaybackStatus::Paused);
+    assert!(device.parametric_attached.load(Ordering::SeqCst));
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_ne!(
+        client
+            .remembered_native_headphone(&epoch)
+            .unwrap()
+            .unwrap()
+            .revision,
+        remembered.revision
+    );
+    assert_eq!(
+        api.calls()
+            .iter()
+            .filter(|call| call.path.ends_with("/devicesound/list"))
+            .count(),
+        2
+    );
+    assert_eq!(
+        origin.calls().len(),
+        1,
+        "restore reuses verified material bytes"
+    );
+
+    let applied = restored.device_parametric.unwrap();
+    assert_eq!(applied.model_name.as_deref(), Some("合成恢复耳机"));
+    let saved = client.remembered_native_headphone(&epoch).unwrap();
+    client
+        .clear_native_device_parametric(
+            &epoch,
+            brand,
+            id(),
+            &applied.activation_id.simple().to_string(),
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        client
+            .restore_native_headphone(&epoch, &remembered.revision)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(api.calls().len(), 4);
+    rusqlite::Connection::open(temp.path().join("core.sqlite3"))
+        .unwrap()
+        .execute_batch(
+            "CREATE TRIGGER deny_headphone_insert BEFORE INSERT ON state
+             WHEN NEW.kind='headphone-tuning-v1'
+             BEGIN SELECT RAISE(ABORT,'synthetic remembered selection write failure'); END;
+             CREATE TRIGGER deny_headphone_update BEFORE UPDATE ON state
+             WHEN NEW.kind='headphone-tuning-v1'
+             BEGIN SELECT RAISE(ABORT,'synthetic remembered selection write failure'); END;",
+        )
+        .unwrap();
+    assert_eq!(
+        client
+            .apply_native_device_parametric(&epoch, brand, id())
+            .await
+            .unwrap(),
+        ParametricApplication::Configured
+    );
+    let after_failure = client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(after_failure.play_id, active.play_id);
+    assert_eq!(after_failure.state, PlaybackStatus::Paused);
+    assert!(
+        after_failure
+            .device_parametric
+            .unwrap()
+            .selection_save_failed
+    );
+    assert!(device.parametric_attached.load(Ordering::SeqCst));
+    assert_eq!(client.remembered_native_headphone(&epoch).unwrap(), saved);
 }
 
 #[test]

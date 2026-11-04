@@ -4,6 +4,7 @@ use crate::{
     account::SessionToken,
     download::transfer::{MediaBackend, RunOptions},
     effects::{
+        RememberedHeadphone,
         authorization::{
             ActiveParametricObservation, BoundParametric, BoundParametricTarget,
             EffectAuthorizations, LeasePhase, NativeEffectReleaseReceipt,
@@ -18,7 +19,8 @@ use crate::{
         },
     },
     playback::controller::{
-        DeviceParametricTarget, ParametricApplication, ParametricBindingStatus, PlaybackController,
+        DeviceParametricTarget, DeviceRestoreAuthority, ParametricApplication,
+        ParametricBindingStatus, PlaybackController, PlaybackStatus,
     },
 };
 use std::sync::Arc;
@@ -407,34 +409,125 @@ impl MusicClient {
         model: EffectId,
     ) -> Result<ParametricApplication> {
         let token = self.player_token(epoch)?;
+        self.apply_device_parametric_for(&token, brand, model, None)
+            .await
+    }
+
+    /// This account-scoped lookup never starts a player or requests a catalogue.
+    pub fn remembered_native_headphone(&self, epoch: &str) -> Result<Option<RememberedHeadphone>> {
+        let token = self.player_token(epoch)?;
+        self.session.with_token(&token, |owner| {
+            RememberedHeadphone::read(&self.registry.store(), owner)
+        })
+    }
+
+    /// Explicitly revalidate a saved choice for the already active selection.
+    /// This does not initialize audio or start/resume playback.
+    pub async fn restore_native_headphone(
+        &self,
+        epoch: &str,
+        revision: &str,
+    ) -> Result<ParametricApplication> {
+        let token = self.player_token(epoch)?;
+        let remembered = self
+            .remembered_native_headphone(epoch)?
+            .filter(|value| value.revision == revision)
+            .ok_or(Error::StaleResponse)?;
+        let current = self
+            .player
+            .controller
+            .get()
+            .map(|player| player.snapshot())
+            .filter(|value| {
+                value.account == token
+                    && matches!(
+                        value.state,
+                        PlaybackStatus::Playing
+                            | PlaybackStatus::Paused
+                            | PlaybackStatus::Buffering
+                    )
+            })
+            .ok_or(Error::State(
+                "start playback before restoring headphone tuning",
+            ))?;
+        self.apply_device_parametric_for(
+            &token,
+            remembered.brand,
+            remembered.model,
+            Some(DeviceRestoreAuthority {
+                playback: current.fence(),
+                remembered,
+            }),
+        )
+        .await
+    }
+
+    async fn apply_device_parametric_for(
+        &self,
+        token: &SessionToken,
+        brand: EffectId,
+        model: EffectId,
+        restore: Option<DeviceRestoreAuthority>,
+    ) -> Result<ParametricApplication> {
         let authorization = EffectAuthorizations::new(self.session.clone())?;
-        let _activation = authorization.activation_lock_for(&token)?;
-        self.ensure_no_native_device_parametric(epoch).await?;
-        if !authorization.native_pending_for(&token)?.is_empty() {
+        let _activation = authorization.activation_lock_for(token)?;
+        let controller = if let Some(expected) = &restore {
+            let player = self
+                .player
+                .controller
+                .get()
+                .ok_or(Error::StaleResponse)?
+                .clone();
+            let state = player.snapshot();
+            if state.account != *token
+                || state.fence() != expected.playback
+                || self
+                    .session
+                    .with_token(token, |owner| {
+                        RememberedHeadphone::read(&self.registry.store(), owner)
+                    })?
+                    .as_ref()
+                    != Some(&expected.remembered)
+            {
+                return Err(Error::StaleResponse);
+            }
+            if state
+                .device_parametric
+                .is_some_and(|view| !view.status.is_detached())
+            {
+                return Err(Error::State(
+                    "clear headphone tuning before applying another parametric effect",
+                ));
+            }
+            player
+        } else {
+            self.ensure_no_native_device_parametric(&token.generation.to_string())
+                .await?;
+            self.player.controller().await?.clone()
+        };
+        if !authorization.native_pending_for(token)?.is_empty() {
             return Err(Error::State(
                 "stop the registered parametric effect before applying headphone tuning",
             ));
         }
         let (_, prepared) = self
             .effect_material_library()?
-            .prepare_device_parametric_for(&token, brand, model, RunOptions::default())
+            .prepare_device_parametric_for(token, brand, model, RunOptions::default())
             .await?;
         let prepared = prepared.ok_or(Error::State(
             "headphone tuning is not a verified standalone parametric effect",
         ))?;
-        self.session.check_generation(&token)?;
-        let result = self
-            .player
-            .controller()
-            .await?
+        self.session.check_generation(token)?;
+        let result = controller
             .apply_device_parametric(
-                &token,
+                token,
                 DeviceParametricTarget { brand, model },
                 prepared.plan,
                 prepared.model_name,
+                restore,
             )
             .await?;
-        self.session.check_generation(&token)?;
+        self.session.check_generation(token)?;
         Ok(result)
     }
 
