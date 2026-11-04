@@ -98,3 +98,36 @@ pub async fn podcast_command(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn profile_podcasts(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    uid: String,
+    query: ProfilePodcastQuery,
+) -> Result<AccountData<Option<ProfilePodcastPage>>, ClientError> {
+    client
+        .profile_podcasts(&epoch, &uid, query)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn open_profile_podcast_management<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    epoch: String,
+    uid: String,
+) -> Result<(), ClientError> {
+    use tauri::Manager;
+    let client = app.state::<MusicClient>();
+    let handoff = client
+        .prepare_profile_podcast_management(&epoch, &uid)
+        .await?;
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<MusicClient>()
+            .launch_profile_podcast_management(handoff, crate::browser::launch)
+    })
+    .await
+    .map_err(|_| ClientError::from(cumulus_core::Error::State("browser worker stopped")))?
+    .map_err(Into::into)
+}

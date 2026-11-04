@@ -66,6 +66,7 @@ pub struct Library {
     calls: Mutex<Vec<(String, Value)>>,
     fallback: super::catalog_fixture::Library,
     profile_notes: super::profile_notes_fixture::Library,
+    profile_podcasts: super::profile_podcasts_fixture::Library,
 }
 impl Library {
     pub fn block_profile_notes(&self) {
@@ -83,6 +84,9 @@ impl Library {
             "commentOffsets":calls.iter().filter(|(path, _)|path==COMMENTS).map(|(_,body)|&body["offset"]).collect::<Vec<_>>()});
         if super::profile_notes_fixture::Library::enabled() {
             report["profileNotesCalls"] = self.profile_notes.report();
+        }
+        if super::profile_podcasts_fixture::Library::enabled() {
+            report["profilePodcastCalls"] = self.profile_podcasts.report();
         }
         report
     }
@@ -104,6 +108,9 @@ fn comment(id: u64, label: &str) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self.profile_podcasts.request(path, &payload, cache) {
+                return result;
+            }
             if let Some(result) = self.profile_notes.request(path, &payload, cache) {
                 return result;
             }

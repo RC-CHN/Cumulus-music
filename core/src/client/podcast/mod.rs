@@ -1,6 +1,7 @@
 mod discovery;
 mod dto;
 mod home;
+pub(super) mod profile;
 mod rankings;
 pub(super) mod view;
 use super::MusicClient;

@@ -44,6 +44,7 @@ import AppearanceMenu from './components/AppearanceMenu.vue';
 import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
 import CommunityPage from './components/community/CommunityPage.vue';
+import { useProfilePodcasts } from './composables/useProfilePodcasts';
 import { useCommunity } from './composables/useCommunity';
 import { useCommunityNotice } from './composables/useCommunityNotice';
 import type { CommunityResource } from './services/community';
@@ -60,6 +61,7 @@ import PlaylistEssentialPage from './components/playlist/PlaylistEssentialPage.v
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import ProfileNotes from './components/profile/ProfileNotes.vue';
+import ProfilePodcasts from './components/profile/ProfilePodcasts.vue';
 import ProfilePlayRecordPage from './components/profile/ProfilePlayRecordPage.vue';
 import ProfileRelationsPage from './components/profile/ProfileRelationsPage.vue';
 import { useProfileRelations } from './composables/useProfileRelations';
@@ -1612,6 +1614,27 @@ const {
   signedIn,
 } = music;
 const playlistCreator = usePlaylistCreator(core);
+const profilePodcasts = useProfilePodcasts(core, () => void music.bootstrap(false));
+const profileUid = computed(() => {
+  const current = page.value;
+  return current.kind === 'playlist_creator' ||
+    current.kind === 'profile_notes' ||
+    current.kind === 'profile_podcasts'
+    ? current.id
+    : null;
+});
+watch(
+  [page, () => account.value.epoch, () => account.value.status],
+  ([target, epoch, status], previous) => {
+    if (status !== 'authenticated' || previous?.[1] !== epoch) profilePodcasts.connect('', '');
+    const uid = profileUid.value;
+    if (status === 'authenticated' && uid !== null) {
+      profilePodcasts.connect(epoch, uid);
+      if (target.kind === 'profile_podcasts') profilePodcasts.ensure();
+    }
+  },
+  { immediate: true, flush: 'sync' },
+);
 let notesUid: string | null = null;
 const profileNotes = useCommunity(
   {
@@ -1643,16 +1666,27 @@ watch(
   },
   { immediate: true, flush: 'sync' },
 );
-function openProfileSection(section: 'playlists' | 'notes') {
+function openProfileSection(section: 'playlists' | 'notes' | 'podcasts') {
   const source = page.value;
-  if (source.kind !== 'playlist_creator' && source.kind !== 'profile_notes') return;
-  const kind = section === 'notes' ? 'profile_notes' : 'playlist_creator';
+  const uid = profileUid.value;
+  if (!uid) return;
+  const kind =
+    section === 'notes'
+      ? 'profile_notes'
+      : section === 'podcasts'
+        ? 'profile_podcasts'
+        : 'playlist_creator';
   if (source.kind === kind) return;
   if (kind === 'profile_notes') {
     profileNotes.connect(null);
     notesUid = null;
   }
-  music.replace({ kind, id: source.id });
+  music.replace({ kind, id: uid });
+}
+function openProfilePodcast(id: string) {
+  if (page.value.kind !== 'profile_podcasts') return;
+  podcasts.navigate({ kind: 'radio', id, ascending: true }, false);
+  music.navigate({ kind: 'podcasts' });
 }
 function openProfileNote(handle: string) {
   if (page.value.kind !== 'profile_notes') return;
@@ -1660,14 +1694,7 @@ function openProfileNote(handle: string) {
   music.navigate({ kind: 'community_detail', handle });
 }
 watch(
-  [
-    () => account.value.epoch,
-    () => account.value.status,
-    () =>
-      page.value.kind === 'playlist_creator' || page.value.kind === 'profile_notes'
-        ? page.value.id
-        : null,
-  ],
+  [() => account.value.epoch, () => account.value.status, profileUid],
   ([epoch, status, uid]) => {
     void playlistCreator.enter(status === 'authenticated' ? epoch : '', uid);
   },
@@ -1726,17 +1753,9 @@ function playProfileRank(tracks: TrackView[], index: number) {
 }
 const profileRelations = useProfileRelations(core, () => void music.bootstrap(false));
 let relationVisit = 0;
-watch(
-  [
-    () => account.value.epoch,
-    () =>
-      page.value.kind === 'playlist_creator' || page.value.kind === 'profile_notes'
-        ? page.value.id
-        : null,
-  ],
-  () => profileRelations.clearGate(),
-  { flush: 'sync' },
-);
+watch([() => account.value.epoch, profileUid], () => profileRelations.clearGate(), {
+  flush: 'sync',
+});
 watch(
   [
     () => account.value.epoch,
@@ -1757,7 +1776,9 @@ async function openProfileRelations(mode: ProfileRelationMode) {
   const source = page.value;
   const profile = playlistCreator.profile.value;
   if (
-    (source.kind !== 'playlist_creator' && source.kind !== 'profile_notes') ||
+    (source.kind !== 'playlist_creator' &&
+      source.kind !== 'profile_notes' &&
+      source.kind !== 'profile_podcasts') ||
     profile?.id !== source.id ||
     !signedIn.value
   )
@@ -3386,7 +3407,7 @@ onUnmounted(() => {
                 @play="(voice) => playSearchCard({ kind: 'voice', voice })"
               />
               <PlaylistCreatorPage
-                v-else-if="page.kind === 'playlist_creator' || page.kind === 'profile_notes'"
+                v-else-if="profileUid !== null"
                 :model="playlistCreator"
                 :checking-relations="profileRelations.checking.value"
                 :relation-notice="profileRelations.entryNotice.value"
@@ -3395,7 +3416,16 @@ onUnmounted(() => {
                 @play-rank="playProfileRankPlaylist"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
                 @relations="openProfileRelations"
-                :notes="page.kind === 'profile_notes'"
+                :active-section="
+                  page.kind === 'profile_notes'
+                    ? 'notes'
+                    : page.kind === 'profile_podcasts'
+                      ? 'podcasts'
+                      : 'playlists'
+                "
+                :managing-podcasts="profilePodcasts.managing.value"
+                :show-manage-podcasts="!profilePodcasts.unavailable.value"
+                @manage-podcasts="profilePodcasts.manage()"
                 @rank="openProfilePlayRecord"
                 @section="openProfileSection"
               >
@@ -3405,6 +3435,12 @@ onUnmounted(() => {
                   :playable="player.ready.value && !player.busy.value"
                   @open="openProfileNote"
                   @resource="openCommunityResource"
+                />
+                <ProfilePodcasts
+                  v-else-if="page.kind === 'profile_podcasts'"
+                  :model="profilePodcasts"
+                  :is-self="playlistCreator.profile.value?.podcasts?.isSelf === true"
+                  @open="openProfilePodcast"
                 />
               </PlaylistCreatorPage>
               <ProfilePlayRecordPage

@@ -125,12 +125,12 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       if (valid(g, e) && n === read) loading.value = false;
     }
   }
-  function navigate(scope: PodcastScope) {
-    if (scope.kind === 'radio' && query.value.scope.kind !== 'radio') {
+  function navigate(scope: PodcastScope, libraryBack = true) {
+    if (libraryBack && scope.kind === 'radio' && query.value.scope.kind !== 'radio') {
       history.push({ ...query.value });
       canBack.value = true;
     }
-    if (scope.kind !== 'radio') {
+    if (!libraryBack || scope.kind !== 'radio') {
       history = [];
       canBack.value = false;
     }

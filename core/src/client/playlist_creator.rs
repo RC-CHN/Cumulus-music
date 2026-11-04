@@ -2,6 +2,7 @@ use super::{
     MusicClient,
     dto::{AccountData, PlaylistView},
     mapping,
+    podcast::profile::{ProfilePodcastEntry, profile_podcast_count},
 };
 use crate::{Error, Result, protocol::api::identifier};
 use serde::Serialize;
@@ -18,6 +19,7 @@ pub struct PlaylistCreatorProfile {
     pub following_count: Option<u64>,
     pub followers_count: Option<u64>,
     pub notes_count: Option<u64>,
+    pub podcasts: Option<ProfilePodcastEntry>,
     pub listening_rank: Option<ListeningRankEntry>,
     pub created: Vec<PlaylistView>,
     pub collected: Vec<PlaylistView>,
@@ -38,6 +40,7 @@ impl MusicClient {
     ) -> Result<AccountData<Option<PlaylistCreatorProfile>>> {
         let token = self.playlist_token(epoch)?;
         let uid = identifier(&json!(uid))?;
+        let request_token = &token;
         let value = self
             .session
             .run_for(&token, |api, viewer| async move {
@@ -61,6 +64,17 @@ impl MusicClient {
                     .filter_map(|key| profile[*key].as_str())
                     .find(|name| !name.trim().is_empty())
                     .ok_or(Error::Response("missing profile nickname"))?;
+                let visible = viewer == uid || profile["inBlacklist"].as_bool() != Some(true);
+                let podcasts = if visible {
+                    self.session.require_api(request_token, &api)?;
+                    Some(ProfilePodcastEntry {
+                        is_self: viewer == uid,
+                        total: profile_podcast_count(api.as_ref(), &uid).await,
+                    })
+                } else {
+                    None
+                };
+                self.session.require_api(request_token, &api)?;
                 let (mut created, mut collected) = (Vec::new(), Vec::new());
                 let mut seen = HashSet::new();
                 let mut more = true;
@@ -120,8 +134,9 @@ impl MusicClient {
                         .collect(),
                     following_count: relation_count(&profile["follows"]),
                     followers_count: relation_count(&profile["followeds"]),
-                    notes_count: (viewer == uid || profile["inBlacklist"].as_bool() != Some(true))
+                    notes_count: visible
                         .then(|| relation_count(&profile["eventCount"]).unwrap_or_default()),
+                    podcasts,
                     listening_rank: super::profile_play_record::allowed(&response, viewer == uid)
                         .then(|| ListeningRankEntry {
                             is_self: viewer == uid,

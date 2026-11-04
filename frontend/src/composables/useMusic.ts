@@ -66,7 +66,7 @@ export type Page =
       label: string;
       target: import('../services/search').SearchReasonTarget;
     }
-  | { kind: 'playlist_creator' | 'profile_notes'; id: string }
+  | { kind: 'playlist_creator' | 'profile_notes' | 'profile_podcasts'; id: string }
   | ({
       kind: 'profile_play_record';
     } & import('../services/profilePlayRecord').ProfilePlayRecordTarget)
@@ -210,6 +210,7 @@ export function useMusic(
         target.kind === 'playlist_essential' ||
         target.kind === 'playlist_creator' ||
         target.kind === 'profile_notes' ||
+        target.kind === 'profile_podcasts' ||
         target.kind === 'profile_play_record' ||
         target.kind === 'profile_relations' ||
         target.kind === 'history' ||
@@ -313,6 +314,7 @@ export function useMusic(
             'playlist_essential',
             'playlist_creator',
             'profile_notes',
+            'profile_podcasts',
             'profile_play_record',
             'profile_relations',
             'comments',

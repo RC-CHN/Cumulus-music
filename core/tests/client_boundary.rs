@@ -117,6 +117,9 @@ impl Api for Backend {
                     }
                     _ => json!({"code":200,"playlist":[],"more":true}),
                 },
+                "/api/djradio/get/create/sub/count" if payload == json!({"userId":"81"}) => {
+                    json!({"code":200,"createRadioCount":2,"subRadioCount":1})
+                }
                 "/api/v6/playlist/detail" => {
                     let mut value = playlist();
                     value["id"] = payload["id"].clone();

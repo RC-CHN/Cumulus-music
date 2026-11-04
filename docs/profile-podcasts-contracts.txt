@@ -1,0 +1,43 @@
+用户主页「播客」：Windows PC 3.1.42.205594
+
+官方证据与数据流
+- ui-recovery 的 pages/user-detail/views/user/DetailTabs.tsx、AudioTab.tsx：
+  第三页签路径 /userDetail/user/{uid}/audio，显示创建数与收藏数的和；保留资料页头。
+  歌单、笔记、播客页签使用 history.replace，避免历史叠层；打开播客详情进入新的页面，
+  返回同一作者、同一分组和页码，焦点恢复到原卡片。
+- M/2264 fetchUserDetail/fetchRadioPersonCount（约 727–830）调用 M/15.Mb
+  （API-0095）POST /api/djradio/get/create/sub/count {userId}；
+  取顶层 createRadioCount、subRadioCount，失败按官方显示 0。此读取不等同于收藏状态。
+- M/2264:570–609 fetchCreateAudio → M/15.Lb（API-0094）：
+  POST /api/djradio/get/byuser/v1 {userId,offset,limit:20}，offset 为 (页码-1)*20，
+  顶层 count、djRadios，依据 count 提供翻页。切换网格与列表不改变读取参数。
+- M/2264:610–630 fetchFavAudio → M/232.n → M/15.Nb（API-0096）：
+  POST /api/djradio/get/subed {targetUserId,limit:1000}，一次读取顶层 djRadios 后本地分页；
+  服务表明还有更多或有截断迹象时明确提示。两组独立保留页码和显示方式，加载失败可
+  仅重试原分组和偏移。只在首进作者播客时发两组读取，不用「我的播客」代替访客路径。
+- 本人标题是「我创建的播客」「我收藏的播客」，访客是「Ta创建的播客」「Ta收藏的播客」。
+  每组默认网格，可独立切换为列表；列表显示订阅数（subCount），不使用播放量替代。
+  正式详情复用既有 /api/djradio/v3/get 和 /api/v6/dj/program/byradio，打开不自动播放。
+- M/3088 与资料页使用的 profile.inBlacklist 是已恢复的可见性信号。为防止旧页头授权，
+  Cumulus 在访客的每组读取前重新 POST /api/w/v1/user/detail/{uid}
+  {all:true,userId} 并验证 profile.userId；明确黑名单、HTTP/业务 403/404 显示不可查看，
+  不继续向该作者请求相应列表。本人使用当前登录身份，无访客预检。
+  已知不是目标作者的创建项丢弃；没有作者字段但其余合法的创建项仍按上游分组保留。
+  不把目标收藏关系当成当前登录账号的订阅状态，不投影原始响应或会话数据。
+- 「管理播客」只对本人提供。DetailTabs.tsx 的 Action.ossLink 经 M/3085:943–975
+  进入 M/73:23–38（API-0384），明确点击才 POST /api/sso/login/token {}。
+  返回短期 token 时，按 M/48.f 的 encodeURIComponent 规则构造同域
+  /sso/login?token=…&uid=…&url=%2Fradio%2Fmy%2F%23%2Fplist&forceReplaceLogin=true，
+  交给系统浏览器；无可用 token 时按官方回退到 https://music.163.com/radio/my/#/plist。
+  取 token 与打开前都核对当前账号；只允许该固定目标。含 token 的 URL 不进入 Vue、
+  日志、报告或持久化。登录成功后浏览器可切换到当前桌面账号，这是该明确操作的效果。
+- 本页不执行创建、发布、订阅等写入。官方共享卡片的快捷播放及菜单操作不从本页直接
+  发起，进入既有播客详情可继续其已实现的显式操作。
+
+复现
+- cargo test -p cumulus-core --test profile_podcasts --test profile_notes --test profile_play_record --test client_boundary --locked
+- cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
+- 隔离的 Linux Xvfb/DBus 和无网络命名空间内运行：
+  python3 scripts/ci/community_smoke.py --binary <community_ui_probe> --root <新目录> --screenshots --profile-podcasts
+- 合成浏览器启动器核对 SSO 目标与无 token 回退，不连接真实网页；正式报告只记录分支
+  通过，不含授权值。桌面验证不代表 Windows 实机、真实网站登录或访客隐私分支已通过。

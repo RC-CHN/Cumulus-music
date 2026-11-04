@@ -24,6 +24,7 @@ import type {
   PodcastRankingClient,
   PodcastSearchClient,
 } from './podcast';
+import type { ProfilePodcastClient } from './profilePodcasts';
 import type { TogetherClient } from './together';
 import type { AuthClient } from './auth';
 import type { RankingClient } from './rankings';
@@ -113,6 +114,7 @@ export interface CoreClient
     PodcastHomeClient,
     PodcastRankingClient,
     PodcastSearchClient,
+    ProfilePodcastClient,
     TogetherClient,
     AuthClient,
     RankingClient,
@@ -235,6 +237,7 @@ export interface PlaylistCreatorProfile {
   avatarUrl: string | null;
   signature: string;
   notesCount?: number | null;
+  podcasts?: { isSelf: boolean; total: number } | null;
   listeningRank?: { isSelf: boolean; listenSongs: number | null } | null;
   followingCount?: number | null;
   followersCount?: number | null;

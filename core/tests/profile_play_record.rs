@@ -121,6 +121,7 @@ async fn profile_entry_and_fresh_permission_are_distinct_from_an_empty_or_failed
     blocked["profile"]["inBlacklist"] = json!(true);
     let (_dir, api, _, client, epoch) = fixture([
         detail(Some(true)).into(),
+        json!({"code":200,"createRadioCount":2,"subRadioCount":3}).into(),
         json!({"code":200,"playlist":[],"more":false}).into(),
         detail(Some(false)).into(),
         detail(None).into(),
@@ -170,6 +171,7 @@ async fn profile_entry_and_fresh_permission_are_distinct_from_an_empty_or_failed
             .collect::<Vec<_>>(),
         [
             DETAIL,
+            "/api/djradio/get/create/sub/count",
             "/api/user/playlist",
             DETAIL,
             DETAIL,

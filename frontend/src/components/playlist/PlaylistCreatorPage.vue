@@ -13,14 +13,17 @@ const props = defineProps<{
   relationNotice: string;
   rankPlayable: boolean;
   rankTransport: 'playing' | 'paused' | null;
-  notes?: boolean;
+  activeSection: 'playlists' | 'notes' | 'podcasts';
+  managingPodcasts?: boolean;
+  showManagePodcasts?: boolean;
 }>();
 const emit = defineEmits<{
   open: [id: string];
   relations: [kind: ProfileRelationMode];
   rank: [];
   playRank: [];
-  section: [value: 'playlists' | 'notes'];
+  section: [value: 'playlists' | 'notes' | 'podcasts'];
+  managePodcasts: [];
 }>();
 const root = ref<HTMLElement>();
 const rankShell = ref<HTMLElement>();
@@ -48,7 +51,7 @@ onMounted(async () => {
   await nextTick();
   if (!root.value?.isConnected || root.value.closest('[inert]')) return;
   if (document.activeElement !== document.body && document.activeElement !== origin) return;
-  if (props.notes) {
+  if (props.activeSection !== 'playlists') {
     root.value
       .querySelector<HTMLElement>('.creator-page-tabs [aria-pressed="true"]')
       ?.focus({ preventScroll: true });
@@ -160,21 +163,44 @@ function open(id: string) {
         <button
           class="text-button"
           type="button"
-          :aria-pressed="!notes"
-          @click="notes && emit('section', 'playlists')"
+          :aria-pressed="activeSection === 'playlists'"
+          @click="emit('section', 'playlists')"
         >
           歌单
         </button>
         <button
           class="text-button"
           type="button"
-          :aria-pressed="!!notes"
-          @click="!notes && emit('section', 'notes')"
+          :aria-pressed="activeSection === 'notes'"
+          @click="emit('section', 'notes')"
         >
           笔记 {{ count.format(model.profile.value.notesCount) }}
         </button>
+        <button
+          v-if="model.profile.value.podcasts"
+          class="text-button"
+          type="button"
+          :aria-pressed="activeSection === 'podcasts'"
+          @click="emit('section', 'podcasts')"
+        >
+          播客 {{ count.format(model.profile.value.podcasts.total) }}
+        </button>
+        <button
+          v-if="
+            activeSection === 'podcasts' &&
+            model.profile.value.podcasts?.isSelf &&
+            showManagePodcasts
+          "
+          class="secondary creator-manage-podcasts"
+          type="button"
+          :disabled="managingPodcasts"
+          title="在浏览器中登录当前账号并打开播客管理"
+          @click="emit('managePodcasts')"
+        >
+          <Icon name="edit" />管理播客
+        </button>
       </nav>
-      <slot v-if="notes" />
+      <slot v-if="activeSection !== 'playlists'" />
       <template v-else>
         <div class="creator-page-groups" role="group" aria-label="公开歌单">
           <button
@@ -301,6 +327,17 @@ function open(id: string) {
   gap: 18px;
   margin-bottom: 14px;
   border-bottom: 1px solid var(--line);
+}
+.creator-manage-podcasts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-start: auto;
+  white-space: nowrap;
+}
+.creator-manage-podcasts :deep(svg) {
+  width: 16px;
+  height: 16px;
 }
 .creator-page-tabs [aria-pressed='true'] {
   border-bottom: 2px solid var(--accent);

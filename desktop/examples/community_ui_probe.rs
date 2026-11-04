@@ -10,6 +10,8 @@ mod catalog_fixture;
 mod community_fixture;
 #[path = "support/profile_notes_fixture.rs"]
 mod profile_notes_fixture;
+#[path = "support/profile_podcasts_fixture.rs"]
+mod profile_podcasts_fixture;
 
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
