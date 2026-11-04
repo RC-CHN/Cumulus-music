@@ -330,15 +330,20 @@ let restoring = false,
 let scrollDeadline: ReturnType<typeof setTimeout> | undefined;
 let activeCategory = '';
 let observer: ResizeObserver | undefined;
+let hotDeparture: HTMLButtonElement | undefined;
 function trackFocusKey(row?: HTMLElement | null) {
   return row?.dataset.trackId
     ? `song-row:${row.getAttribute('aria-rowindex')}:${row.dataset.trackId}`
     : undefined;
 }
-function checkpoint(focus = false) {
-  if (!panel.value || restoring || loading.value) return;
+function checkpoint(focus = false, explicit?: HTMLElement) {
+  if (!panel.value || (!explicit && (restoring || loading.value))) return;
   const active =
-    focus && document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    explicit && panel.value.contains(explicit)
+      ? explicit
+      : focus && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : undefined;
   const card = active?.closest<HTMLElement>('[data-result-key]');
   const row =
     activeCategory === 'songs'
@@ -355,6 +360,15 @@ function checkpoint(focus = false) {
     expandedLyrics: [...expandedLyrics.value],
     lyricAnchor: activeCategory === 'lyrics' ? lyricWindow.anchor() : undefined,
   });
+}
+function openHotTarget(target: SearchHotTarget, anchor: HTMLButtonElement) {
+  if (target.kind !== 'song' && target.kind !== 'voice') {
+    // A user may activate the visible CTA before scroll restoration settles.
+    // The outgoing control is more specific than the later top-bar focus.
+    hotDeparture = anchor;
+    checkpoint(true, anchor);
+  }
+  emit('hotTarget', target, anchor);
 }
 function maybeMore(songScroll?: HTMLElement) {
   const element = songWaterfall.value ? songScroll : panel.value;
@@ -556,12 +570,13 @@ watch(
   ],
   () => {
     if (activeCategory) checkpoint(true);
+    hotDeparture = undefined;
     void load(true);
   },
   { immediate: true },
 );
 onBeforeUnmount(() => {
-  checkpoint(true);
+  checkpoint(true, hotDeparture);
   loadGeneration++;
   observer?.disconnect();
   cancelAnimationFrame(frame);
@@ -718,7 +733,7 @@ onBeforeUnmount(() => {
                   : currentVoiceId === hotspot.playTarget.id))
             "
             @play="playHotTarget"
-            @open="(target, anchor) => emit('hotTarget', target, anchor)"
+            @open="openHotTarget"
           />
           <p v-if="view.unavailableCount" class="search-result-notice">
             有 {{ view.unavailableCount }} 项结果暂无法展示。
