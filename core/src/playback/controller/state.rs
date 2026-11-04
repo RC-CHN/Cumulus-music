@@ -39,10 +39,12 @@ pub(super) struct Pending {
     pub reply: Option<Response>,
     pub paused: bool,
     pub timeline: Option<Timeline>,
+    pub authorized_position: Option<f64>,
     pub seek: Option<(f64, u64, Cancellation)>,
 }
-/// Last accepted clock while refreshing the same queue entry. It is never
-/// projected as a running decoder or reused for a different selection.
+/// Last accepted clock, or the authorized initial position after a native
+/// open failed. It is never presented as a running decoder or reused for a
+/// different selection.
 pub(super) struct SourceRetryPoint {
     pub item: QueueEntry,
     pub position: f64,
@@ -387,9 +389,10 @@ impl Actor {
                             self.quality_id = None;
                         }
                     },
-                    Some(Message::Loading { generation, timeline }) => {
+                    Some(Message::Loading { generation, timeline, authorized_position }) => {
                         if generation == self.generation() && let Some(pending) = &mut self.pending {
                             pending.timeline = Some(timeline);
+                            pending.authorized_position = Some(authorized_position);
                             self.state = PlaybackStatus::Loading;
                         }
                     },

@@ -300,6 +300,42 @@ async fn play_resumes_a_failed_song_with_fresh_authorization_but_stopped_play_st
 }
 
 #[tokio::test]
+async fn play_refreshes_after_first_native_open_failure_without_inventing_progress() {
+    for (trial, beginning) in [(false, 0.0), (true, 30.0)] {
+        let f = Fixture::new();
+        f.api.trial.store(trial, Ordering::SeqCst);
+        f.device.load_failure_code.store(-15, Ordering::SeqCst);
+        let failed = f.command(replace(&[1, 2])).await;
+        assert!(matches!(
+            root(&failed.err().expect("first native open must fail")),
+            Error::Playback {
+                operation: "load ended",
+                code: -15
+            }
+        ));
+        let failed = until(&f.player, |s| s.state == Status::Error).await;
+        assert_eq!(failed.position, None);
+        assert!(failed.timeline.is_none());
+        assert_eq!(song(&failed), Some(1));
+        assert!(f.store.get("9", "playback", "position").unwrap().is_none());
+        let queue = f.player.queue(&f.token()).await.unwrap();
+        assert_eq!(f.api.count(1), 1);
+        assert_eq!(f.device.state.lock().unwrap().loads, 1);
+        f.api.url_version.store(1, Ordering::SeqCst);
+        f.device.required_url_version.store(1, Ordering::SeqCst);
+        f.device.load_failure_code.store(0, Ordering::SeqCst);
+
+        let played = f.command(Cmd::Play).await.unwrap();
+        assert_eq!(played.state, Status::Playing);
+        assert_eq!(played.position, Some(beginning));
+        assert_ne!(played.play_id, failed.play_id);
+        assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+        assert_eq!(f.api.count(1), 2);
+        assert_eq!(f.device.state.lock().unwrap().loads, 2);
+    }
+}
+
+#[tokio::test]
 async fn late_quality_authorization_cannot_restart_a_terminal_entry() {
     for reason in [EndReason::Error, EndReason::Eof] {
         let f = Fixture::new();

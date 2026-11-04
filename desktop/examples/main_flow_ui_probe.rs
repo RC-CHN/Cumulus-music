@@ -183,12 +183,15 @@ fn main() {
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let ordinary_https = fixture::ordinary_https();
     let retry_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_RETRY").as_deref() == Ok("1");
+    let retry_with_play =
+        std::env::var("CUMULUS_MAIN_FLOW_HTTPS_RETRY_WITH_PLAY").as_deref() == Ok("1");
     let eof_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_EOF").as_deref() == Ok("1");
     let loading_step = std::env::var("CUMULUS_MAIN_FLOW_LOADING_STEP").as_deref() == Ok("1");
     let missing_download =
         std::env::var("CUMULUS_MAIN_FLOW_MISSING_DOWNLOAD").as_deref() == Ok("1");
     assert!(!(retry_https || eof_https) || ordinary_https);
     assert!(!(retry_https && eof_https));
+    assert!(!retry_with_play || retry_https);
     assert!(!(loading_step && ordinary_https));
     assert!(!(missing_download && (ordinary_https || loading_step)));
     let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
@@ -379,7 +382,7 @@ fn main() {
         })
         .on_page_load(move |webview, payload| {
             if payload.event()==PageLoadEvent::Finished {
-                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};window.__mainFlowHttpsEof={eof_https};window.__mainFlowLoadingStep={loading_step};window.__mainFlowMissingDownload={missing_download};")).unwrap();
+                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};window.__mainFlowHttpsRetryWithPlay={retry_with_play};window.__mainFlowHttpsEof={eof_https};window.__mainFlowLoadingStep={loading_step};window.__mainFlowMissingDownload={missing_download};")).unwrap();
                 let source = if reopen {
                     include_str!("main_flow_reopen_probe.js")
                 } else {

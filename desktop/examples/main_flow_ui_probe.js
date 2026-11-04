@@ -183,6 +183,7 @@
         position() > .48, "same decoded entry progresses after explicit resume");
       loadingPauseVerified = true;
     }
+    let httpsRetryViaPlayVerified = false;
     if (window.__mainFlowHttpsRetry) {
       const retry = () => button("重试", one(".playback-message"));
       const openFailure = () => state() === "error" &&
@@ -195,7 +196,21 @@
       await stage("https_failure", { failedBeforeExplicitRetry: true, rawLocatorVisible:
         document.body.innerText.includes("cumulus-local-fixture.music.126.net") });
       await wait(() => window.__mainFlowHttpsFailureRecorded, "native failure receipt");
-      await click(retry, "explicit HTTPS retry");
+      if (window.__mainFlowHttpsRetryWithPlay) {
+        const failed = await invoke("player_snapshot", { epoch });
+        check(failed.playId && failed.entryId && failed.position == null,
+          "failed native open does not publish progress");
+        await click(() => button("播放", one(".playerbar")), "explicit HTTPS recovery with main Play");
+        await wait(async () => {
+          const recovered = await invoke("player_snapshot", { epoch });
+          return recovered.state === "playing" && recovered.playId !== failed.playId &&
+            recovered.entryId === failed.entryId && recovered.queueRevision === failed.queueRevision &&
+            recovered.position > .1;
+        }, "main Play retries the same queue entry and reaches a native clock");
+        httpsRetryViaPlayVerified = true;
+      } else {
+        await click(retry, "explicit HTTPS retry");
+      }
       await wait(() => !one(".playback-message"), "retry clears playback feedback");
     }
     const expectedTrack = window.__mainFlowLoadingStep ? "2" : "1";
@@ -231,7 +246,8 @@
       await wait(() => state() === "paused", "resumed native entry paused");
     }
     await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof,
-      loadingSeekVerified, loadingPauseVerified, loadingStepVerified, loadingSearchCoverVerified, output: "null" });
+      loadingSeekVerified, loadingPauseVerified, loadingStepVerified, loadingSearchCoverVerified,
+      httpsRetryViaPlayVerified, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");
 

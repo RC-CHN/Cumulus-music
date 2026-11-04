@@ -158,6 +158,7 @@ def ordinary_https(args, directory):
                     str(SCRIPT.with_name('main_flow_smoke.py')), '--ordinary-https',
                     '--binary', str(args.binary), '--root', str(args.root),
                     *(['--https-retry-once'] if args.retry_once else []),
+                    *(['--https-retry-with-play'] if args.retry_with_play else []),
                     *(['--https-eof-next'] if args.eof_next else []),
                     *(['--screenshots'] if args.screenshots else []),
                 ], check=True, timeout=360)
@@ -173,6 +174,8 @@ def ordinary_https(args, directory):
     report = dict(syntheticOnly=True, loopbackOnly=True, verifiedFixture=True,
                   exactRouteRejected=len(refused_routes), ordinaryHttpsWebView=not args.preflight, localMediaGets=counters['gets'],
                   localMediaFailedGets=counters['failedGets'], explicitRetryMode=args.retry_once)
+    if args.retry_with_play:
+        report['mainPlayRecoveredFirstHttpsOpen'] = True
     if args.eof_next:
         report['orderedTrackGets'] = [1, 2]
     if not args.preflight:
@@ -224,6 +227,7 @@ def outer(args):
             '/usr/bin/python3', str(SCRIPT), '--isolated', str(directory),
             *(['--preflight'] if args.preflight else ['--binary', str(args.binary), '--root', str(args.root)]),
             *(['--retry-once'] if args.retry_once else []),
+            *(['--retry-with-play'] if args.retry_with_play else []),
             *(['--eof-next'] if args.eof_next else []),
             *(['--screenshots'] if args.screenshots else []),
         ], check=True, timeout=390)
@@ -238,9 +242,12 @@ if __name__ == '__main__':
     special = parser.add_mutually_exclusive_group()
     special.add_argument('--retry-once', action='store_true', help='fail the first authorized HTTPS GET and require an explicit UI retry')
     special.add_argument('--eof-next', action='store_true', help='exercise real EOF into a second authorized HTTPS track')
+    parser.add_argument('--retry-with-play', action='store_true', help='exercise the main Play button with --retry-once')
     parser.add_argument('--preflight', action='store_true', help='verify only TLS and namespace policy')
     parser.add_argument('--isolated', type=Path, help=argparse.SUPPRESS)
     arguments = parser.parse_args()
+    if arguments.retry_with_play and (not arguments.retry_once or arguments.preflight):
+        parser.error('--retry-with-play requires a desktop run with --retry-once')
     if arguments.isolated:
         ordinary_https(arguments, arguments.isolated)
     else:

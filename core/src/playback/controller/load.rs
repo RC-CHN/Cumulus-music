@@ -7,6 +7,7 @@ use crate::{
     playback::{
         QueueEntry, Timeline, TimelineMode,
         engine::{LoadRequest, LoadedMedia},
+        failure::PlaybackFailure,
         source::ResolvedSource,
     },
 };
@@ -160,6 +161,7 @@ impl Actor {
             reply: reply.take(),
             paused: options.paused,
             timeline: None,
+            authorized_position: None,
             seek: None,
         });
         let resolver = self.resolver.clone();
@@ -229,6 +231,7 @@ impl Actor {
                 let _ = sender.send(Message::Loading {
                     generation,
                     timeline: loading_timeline(&source, &item, timeline),
+                    authorized_position: position,
                 });
                 let load_cancel = cancel.clone();
                 let media = super::engine(engine.clone(), cancel.clone(), move |engine| {
@@ -414,6 +417,29 @@ impl Actor {
                 let _ = self.parametric_reset().await;
                 self.state = PlaybackStatus::Error;
                 self.record_failure(&error);
+                if self.source_retry.is_none()
+                    && let Some(position) = pending.authorized_position
+                    && self.queue.selected().as_ref() == Some(&pending.item)
+                    && self.ordinary_online_song(&pending.item)
+                    && matches!(
+                        self.error,
+                        Some(
+                            PlaybackFailure::OpenMedia
+                                | PlaybackFailure::Output
+                                | PlaybackFailure::Engine
+                        )
+                    )
+                {
+                    // Source authorization succeeded, but the new native load
+                    // never became playable. Play can request a new URL for
+                    // this entry without publishing an invented media clock.
+                    self.source_retry = Some(SourceRetryPoint {
+                        item: pending.item,
+                        position,
+                        paused: pending.paused,
+                        history: pending.history,
+                    });
+                }
                 self.loaded = None;
                 self.loudness_forget_track();
                 if let Some(reply) = pending.reply {

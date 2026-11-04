@@ -27,10 +27,13 @@ def main():
     special.add_argument('--https-eof-next', action='store_true', help=argparse.SUPPRESS)
     special.add_argument('--loading-step', action='store_true')
     special.add_argument('--missing-download', action='store_true')
+    parser.add_argument('--https-retry-with-play', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
     args = parser.parse_args()
     if (args.https_retry_once or args.https_eof_next) and not args.ordinary_https:
         parser.error('HTTPS playback scenarios require --ordinary-https')
+    if args.https_retry_with_play and not args.https_retry_once:
+        parser.error('--https-retry-with-play requires --https-retry-once')
     if (args.loading_step or args.missing_download) and args.ordinary_https:
         parser.error('--loading-step and --missing-download use the synthetic decoder gate')
     stage_names = STAGES
@@ -55,6 +58,8 @@ def main():
         env['CUMULUS_MAIN_FLOW_HTTPS_PROOF'] = '1'
     if args.https_retry_once:
         env['CUMULUS_MAIN_FLOW_HTTPS_RETRY'] = '1'
+    if args.https_retry_with_play:
+        env['CUMULUS_MAIN_FLOW_HTTPS_RETRY_WITH_PLAY'] = '1'
     if args.https_eof_next:
         env['CUMULUS_MAIN_FLOW_HTTPS_EOF'] = '1'
     if args.loading_step:
@@ -119,6 +124,7 @@ def main():
         assert failed['fixture']['sourceAuthorizations'] == failed['fixture']['sourceLoadAttempts'] == 1
         assert failed['fixture']['sourceLoads'] == 0
         assert stages['playback']['fixture']['sourceAuthorizations'] == stages['playback']['fixture']['sourceLoadAttempts'] == 2
+        assert stages['playback']['httpsRetryViaPlayVerified'] == args.https_retry_with_play
     if args.https_eof_next:
         before = stages['https_before_eof']
         assert before['firstTrackPlaying'] and before['fixture']['eofHttps']
@@ -243,6 +249,8 @@ def main():
                   rejectedOfflineRelayExperimentAttempts=stages['complete']['wire']['offlineRelayExperimentAttempts'])
     if args.https_eof_next:
         report['nativeHttpsEofAdvanced'] = True
+    if args.https_retry_with_play:
+        report['mainPlayRecoveredFirstHttpsOpen'] = True
     if args.missing_download:
         report['missingDownloadPlayedOnlyAfterExplicitAction'] = True
     (root/'report.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')

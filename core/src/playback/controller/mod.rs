@@ -55,6 +55,7 @@ enum Message {
     Loading {
         generation: u64,
         timeline: super::Timeline,
+        authorized_position: f64,
     },
     Loaded {
         generation: u64,
