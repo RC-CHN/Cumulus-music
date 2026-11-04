@@ -9,7 +9,7 @@ import type {
   PlaylistSquarePage,
 } from '../src/services/contracts.ts';
 
-test('playlist square preserves a failed next batch and revokes old results on privacy change', async () => {
+test('playlist square appends all pages and revokes old results on privacy change', async () => {
   const account = shallowRef<AccountView>({
     epoch: 'a',
     status: 'authenticated',
@@ -48,7 +48,6 @@ test('playlist square preserves a failed next batch and revokes old results on p
   await model.load('first');
   await model.load('more');
   await model.load('more');
-  assert.equal(model.nextBatch.value, true);
   await model.load('more');
   assert.equal(model.error.value, '续页失败');
   assert.deepEqual(
@@ -58,7 +57,7 @@ test('playlist square preserves a failed next batch and revokes old results on p
   await model.retry();
   assert.deepEqual(
     model.groups.value.map((item) => item.title),
-    ['四'],
+    ['一', '二', '三', '四'],
   );
   const pending = model.load('more');
   model.observePersonalService({ epoch: 'a', value: 2 });

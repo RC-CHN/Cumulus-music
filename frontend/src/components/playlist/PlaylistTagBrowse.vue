@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
+import { usePlaylistWaterfall } from '../../composables/usePlaylistWaterfall';
 import Icon from '../Icon.vue';
 import type { usePlaylistTagBrowse } from '../../composables/usePlaylistTagBrowse';
 import type { usePlaylistTagCatalogue } from '../../composables/usePlaylistTagCatalogue';
@@ -25,27 +26,79 @@ const emit = defineEmits<{
   essential: [tag: string];
 }>();
 const root = ref<HTMLElement>();
+const columnCount = (width: number) => Math.max(1, Math.floor((width + 18) / 168));
+const cardCount = computed(
+  () => (props.model.items.value?.length ?? 0) + (props.model.essential.value ? 1 : 0),
+);
+const waterfall = usePlaylistWaterfall(
+  () => root.value,
+  (width) => Math.ceil(cardCount.value / columnCount(width)),
+  (width) => Math.max(150, (width - (columnCount(width) - 1) * 18) / columnCount(width)) + 42,
+  () =>
+    props.tag !== '推荐' &&
+    props.model.category.value === props.tag &&
+    props.model.canNext.value &&
+    !props.model.busy.value &&
+    !props.model.failed.value &&
+    !props.model.manual.value,
+  () => void props.model.load(),
+);
+const { list, total, rowHeight, range, width, update } = waterfall;
+const columns = computed(() => columnCount(width.value));
+const rows = computed(() =>
+  Array.from({ length: range.value.end - range.value.start }, (_, offset) => {
+    const index = range.value.start + offset;
+    const first = index * columns.value;
+    const promotion = props.model.essential.value;
+    return {
+      index,
+      cards: Array.from({ length: Math.min(columns.value, cardCount.value - first) }, (_, cell) => {
+        const itemIndex = first + cell;
+        return promotion && itemIndex === 0
+          ? ({ promo: promotion, id: 'essential' } as const)
+          : ({
+              item: props.model.items.value?.[itemIndex - (promotion ? 1 : 0)],
+              id: itemIndex,
+            } as const);
+      }),
+    };
+  }),
+);
 onMounted(async () => {
+  if (props.tag === '推荐') return;
   const origin = document.activeElement;
+  const { scroll, opener } = props.model.restore();
+  await nextTick();
+  update();
   await nextTick();
   if (!root.value?.isConnected || root.value.closest('[inert]')) return;
+  root.value.scrollTop = scroll;
+  update();
+  await nextTick();
   if (document.activeElement !== document.body && document.activeElement !== origin) return;
   const card = Array.from(
     root.value.querySelectorAll<HTMLButtonElement>('[data-tag-playlist-id]'),
-  ).find((button) => button.dataset.tagPlaylistId === props.model.lastOpened.value);
+  ).find((button) => button.dataset.tagPlaylistId === opener);
   const promo =
-    props.model.lastOpened.value === 'essential'
+    opener === 'essential'
       ? root.value.querySelector<HTMLButtonElement>('.playlist-essential-promo')
       : null;
   (card ?? promo ?? root.value.querySelector('h1'))?.focus({ preventScroll: true });
 });
 function open(id: string) {
-  props.model.lastOpened.value = id;
+  scroll();
+  props.model.remember(id);
   emit('open', id);
 }
 function openEssential() {
-  props.model.lastOpened.value = 'essential';
+  scroll();
+  props.model.remember('essential');
   emit('essential', props.tag);
+}
+function scroll() {
+  if (!root.value) return;
+  if (props.tag === '推荐') props.square.saveScroll(root.value.scrollTop);
+  else props.model.saveScroll(props.tag, root.value.scrollTop);
 }
 function missingImage(event: Event) {
   (event.currentTarget as HTMLImageElement).hidden = true;
@@ -58,6 +111,7 @@ function missingImage(event: Event) {
     class="playlist-tag-browse"
     aria-label="歌单广场"
     :aria-busy="model.busy.value"
+    @scroll.passive="scroll"
   >
     <header class="page-heading">
       <div>
@@ -77,88 +131,107 @@ function missingImage(event: Event) {
       :playable="playable"
       :current="current"
       :playing="playing"
+      :scroller="root"
       @open="emit('open', $event)"
       @play="emit('play', $event)"
       @settings="emit('settings')"
     />
     <template v-else>
-      <p v-if="model.busy.value" role="status">正在读取歌单…</p>
-      <p v-if="model.failed.value" class="error-state" role="alert">
-        无法读取此分类
-        <button type="button" class="text-button" @click="model.retry">重试</button>
-      </p>
-      <template v-if="model.items.value">
-        <p v-if="!model.items.value.length && !model.essential.value" class="muted">此页暂无歌单</p>
-        <ul v-else class="playlist-tag-cards">
-          <li v-if="model.essential.value">
-            <button class="playlist-essential-promo" @click="openEssential">
-              <span class="playlist-tag-art">
-                <Icon name="star" />
-                <img
-                  v-if="model.essential.value.coverUrl"
-                  :src="model.essential.value.coverUrl"
-                  alt=""
-                  loading="lazy"
-                  referrerpolicy="no-referrer"
-                  @error="missingImage"
-                />
-                <strong>精品歌单</strong>
-              </span>
-              <span class="ellipsis">{{ model.essential.value.name }}</span>
-            </button>
-          </li>
-          <li v-for="item in model.items.value" :key="item.id">
+      <div
+        v-if="model.items.value"
+        ref="list"
+        class="playlist-tag-window"
+        tabindex="-1"
+        :data-loaded-count="model.items.value.length"
+        :style="{ height: total + 'px' }"
+      >
+        <ul
+          v-for="row in rows"
+          :key="row.index"
+          class="playlist-tag-cards"
+          :data-playlist-window-row="row.index"
+          :style="{
+            top: row.index * rowHeight + 'px',
+            gridTemplateColumns: 'repeat(' + columns + ', minmax(0, 1fr))',
+          }"
+        >
+          <li v-for="card in row.cards" :key="card.id">
+            <template v-if="'promo' in card && card.promo">
+              <button class="playlist-essential-promo" @click="openEssential">
+                <span class="playlist-tag-art">
+                  <Icon name="star" />
+                  <img
+                    v-if="card.promo.coverUrl"
+                    :src="card.promo.coverUrl"
+                    alt=""
+                    loading="lazy"
+                    referrerpolicy="no-referrer"
+                    @error="missingImage"
+                  />
+                  <strong>精品歌单</strong>
+                </span>
+                <span class="ellipsis">{{ card.promo.name }}</span>
+              </button>
+            </template>
             <button
+              v-else-if="'item' in card && card.item"
               type="button"
-              :data-tag-playlist-id="item.id"
-              :aria-label="item.name"
-              @click="open(item.id)"
+              :data-tag-playlist-id="card.item.id"
+              :aria-label="card.item.name"
+              @click="open(card.item.id)"
             >
               <span class="playlist-tag-art">
                 <Icon name="music" />
                 <img
-                  v-if="item.coverUrl"
-                  :src="item.coverUrl"
-                  :key="item.coverUrl"
+                  v-if="card.item.coverUrl"
+                  :src="card.item.coverUrl"
+                  :key="card.item.coverUrl"
                   alt=""
                   loading="lazy"
                   referrerpolicy="no-referrer"
                   @error="missingImage"
                 />
               </span>
-              <span class="ellipsis" :title="item.name">{{ item.name }}</span>
+              <span class="ellipsis" :title="card.item.name">{{ card.item.name }}</span>
             </button>
           </li>
         </ul>
-        <nav v-if="model.offset.value || model.canNext.value" aria-label="分类歌单分页">
-          <button
-            type="button"
-            class="text-button"
-            :disabled="!model.offset.value || model.busy.value"
-            @click="model.previous"
-          >
-            上一页
-          </button>
-          <button
-            type="button"
-            class="text-button"
-            :disabled="!model.canNext.value || model.busy.value"
-            @click="model.next"
-          >
-            下一页
-          </button>
-        </nav>
-      </template>
+      </div>
+      <p v-if="model.busy.value" role="status">正在读取歌单…</p>
+      <p v-else-if="model.failed.value" class="error-state" role="alert">
+        无法读取此分类
+        <button type="button" class="text-button" @click="model.load">重试</button>
+      </p>
+      <button
+        v-else-if="model.canNext.value"
+        class="text-button playlist-tag-more"
+        @click="model.load"
+      >
+        加载更多歌单
+      </button>
+      <p v-else-if="model.items.value && !cardCount" class="muted">此分类暂无歌单</p>
     </template>
   </section>
 </template>
 
 <style scoped>
+.playlist-tag-browse {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+}
+.playlist-tag-window {
+  position: relative;
+}
 .playlist-tag-cards {
+  position: absolute;
+  inset-inline: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 150px), 1fr));
   gap: 18px;
   list-style: none;
+  margin: 0;
   padding: 0;
 }
 .playlist-tag-cards li {
@@ -195,8 +268,8 @@ function missingImage(event: Event) {
   color: white;
   background: rgb(0 0 0 / 65%);
 }
-.playlist-tag-browse nav {
-  display: flex;
-  justify-content: center;
+.playlist-tag-more {
+  display: block;
+  margin: 0 auto 6px;
 }
 </style>

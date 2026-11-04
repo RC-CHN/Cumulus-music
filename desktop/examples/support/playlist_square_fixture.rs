@@ -6,6 +6,8 @@ use std::sync::{
 };
 
 const CURSOR: &str = "{ \"next\" : \"第一页/第二页\" }";
+const CURSOR_2: &str = " continuation 2 ";
+const CURSOR_3: &str = "{\"page\":4}";
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static TOP_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static SETTINGS: AtomicUsize = AtomicUsize::new(0);
@@ -31,6 +33,18 @@ fn group(kind: &str, title: &str, ids: &[u32]) -> Value {
             "resourceExt":{"playCount":12345}
         })).collect::<Vec<_>>()}
     ]})
+}
+
+fn filler(range: std::ops::Range<u32>) -> Vec<Value> {
+    range
+        .map(|id| {
+            group(
+                "PLAYLIST_SQUARE_SINGLE_SLID",
+                &format!("合成后续分组 {id}"),
+                &[id],
+            )
+        })
+        .collect()
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
@@ -73,6 +87,8 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                     Ok(
                         json!({"code":200,"data":{"hasMore":true,"cursor":CURSOR,"blocks":[
                             group("PLAYLIST_SQUARE_SINGLE_SLID","合成推荐分组",[11,12,13,14,15,16,3].as_slice()),
+                            group("PLAYLIST_SQUARE_SINGLE_SLID","首批分组 1",&[21]),
+                            group("PLAYLIST_SQUARE_SINGLE_SLID","首批分组 2",&[22]),
                             group("unknown","不显示活动",[999].as_slice())
                         ]}}),
                     )
@@ -82,10 +98,26 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                     if calls.len() == 2 {
                         Err(Error::Transport("合成推荐续页中断".into()))
                     } else {
-                        Ok(json!({"code":200,"data":{"hasMore":false,"blocks":[
-                            group("PLAYLIST_SQUARE_MULTI_THREE_GRID","合成下一分组",[4,3].as_slice())
-                        ]}}))
+                        let mut groups = vec![group(
+                            "PLAYLIST_SQUARE_MULTI_THREE_GRID",
+                            "合成下一分组",
+                            &[4, 3],
+                        )];
+                        groups.extend(filler(101..108));
+                        Ok(
+                            json!({"code":200,"data":{"hasMore":true,"cursor":CURSOR_2,"blocks":groups}}),
+                        )
                     }
+                }
+                4 => {
+                    assert_eq!(*args, json!({"cursor":CURSOR_2,"newStyle":true}));
+                    Ok(
+                        json!({"code":200,"data":{"hasMore":true,"cursor":CURSOR_3,"blocks":filler(108..116)}}),
+                    )
+                }
+                5 => {
+                    assert_eq!(*args, json!({"cursor":CURSOR_3,"newStyle":true}));
+                    Ok(json!({"code":200,"data":{"hasMore":false,"blocks":filler(116..124)}}))
                 }
                 _ => panic!("unexpected playlist square read"),
             }

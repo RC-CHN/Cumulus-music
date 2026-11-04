@@ -1,4 +1,4 @@
-import { computed, ref, shallowRef, watch } from 'vue';
+import { ref, shallowRef, watch } from 'vue';
 import {
   failure,
   type AccountView,
@@ -6,7 +6,6 @@ import {
   type PlaylistSquarePage,
 } from '../services/contracts.ts';
 
-const BATCH_PAGES = 3;
 export function usePlaylistSquare(
   core: Pick<CoreClient, 'playlistSquareRecommendations'>,
   account: () => AccountView,
@@ -18,16 +17,12 @@ export function usePlaylistSquare(
   const pending = ref(false),
     error = ref(''),
     restart = ref(false);
-  const pages = ref(0);
-  const nextBatch = computed(
-    () =>
-      !!continuation.value &&
-      (pages.value >= BATCH_PAGES ||
-        groups.value.reduce((count, group) => count + group.items.length, 0) >= 96),
-  );
+  const manual = ref(false);
   let sequence = 0;
   let failed: 'first' | 'more' = 'first';
   let opener: string | undefined;
+  let scroll = 0;
+  const horizontal = new Map<number, number>();
   const seen = new Set<string>();
   function clear() {
     sequence++;
@@ -37,9 +32,11 @@ export function usePlaylistSquare(
     pending.value = false;
     error.value = '';
     restart.value = false;
-    pages.value = 0;
+    manual.value = false;
     seen.clear();
     opener = undefined;
+    scroll = 0;
+    horizontal.clear();
   }
   watch(() => [account().epoch, account().status], clear, { flush: 'sync' });
   function disable() {
@@ -55,7 +52,7 @@ export function usePlaylistSquare(
     const { epoch, status } = account();
     const cursor = kind === 'more' ? continuation.value : undefined;
     if (pending.value || status !== 'authenticated' || (kind === 'more' && !cursor)) return;
-    const batch = kind === 'first' || nextBatch.value;
+    const replace = kind === 'first';
     const current = ++sequence;
     const live = () =>
       current === sequence && account().epoch === epoch && account().status === 'authenticated';
@@ -81,11 +78,15 @@ export function usePlaylistSquare(
         seen.add(next);
         if (seen.size > 64) seen.delete(seen.keys().next().value!);
       }
-      groups.value = batch ? reply.value.groups : [...groups.value, ...reply.value.groups];
-      if (batch) opener = undefined;
+      groups.value = replace ? reply.value.groups : [...groups.value, ...reply.value.groups];
+      if (replace) {
+        opener = undefined;
+        scroll = 0;
+        horizontal.clear();
+      }
+      manual.value = reply.value.groups.length === 0;
       enabled.value = true;
       continuation.value = next ?? undefined;
-      pages.value = batch ? 1 : pages.value + 1;
     } catch (value) {
       if (!live()) return;
       const issue = failure(value);
@@ -102,7 +103,7 @@ export function usePlaylistSquare(
     continuation,
     pending,
     error,
-    nextBatch,
+    manual,
     load,
     observePersonalService,
     activate() {
@@ -110,10 +111,13 @@ export function usePlaylistSquare(
     },
     retry: () => load(restart.value ? 'first' : failed),
     remember: (key: string) => (opener = key),
-    takeOpener() {
-      const key = opener;
+    saveScroll: (value: number) => (scroll = value),
+    saveRail: (index: number, left: number) => horizontal.set(index, left),
+    rail: (index: number) => horizontal.get(index) ?? 0,
+    restore() {
+      const result = { scroll, opener };
       opener = undefined;
-      return key;
+      return result;
     },
   };
 }

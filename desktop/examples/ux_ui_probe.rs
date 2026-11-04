@@ -343,14 +343,20 @@ impl Api for Library {
                         "hotComments":[],"topComments":[],"more":false,"total":if second {8}else{12}})
                 }
                 "/api/playlist/category/list" if playlist_tag_browse_proof() => {
-                    let promo = (args["cat"] == "轻音乐").then(|| {
+                    let long = args["cat"] == "轻音乐";
+                    let promo = long.then(|| {
                         json!({
                             "name":"合成精品入口","cat":"不能作为路由的服务值","action":"unsafe"
                         })
                     });
+                    let mut ids = (100..124).collect::<Vec<_>>();
+                    if long {
+                        ids.extend([3, 4]);
+                        ids.extend(124..338);
+                    }
                     PLAYLIST_TAG_CALLS.lock().unwrap().push(args);
                     json!({"code":200,"playlists":(100..124).map(|id| json!({"id":id,"name":format!("分类合成歌单 {id}")})).collect::<Vec<_>>(),
-                        "playlistIds":(100..124).chain([3,4]).collect::<Vec<_>>(),"highQuality":promo})
+                        "playlistIds":ids,"highQuality":promo})
                 }
                 "/api/playlist/catalogue" if playlist_tag_browse_proof() => {
                     let mut calls = PLAYLIST_CATALOGUE_CALLS.lock().unwrap();
@@ -364,8 +370,16 @@ impl Api for Library {
                             {"name":"推荐","category":1},{"name":"民谣","category":1}]})
                 }
                 "/api/playlist/list/get" if playlist_tag_browse_proof() => {
-                    PLAYLIST_TAG_CALLS.lock().unwrap().push(args);
-                    json!({"code":200,"playlists":[{"id":4,"name":"分类续页乙"},{"id":3,"name":"分类续页甲"}]})
+                    let ids: Vec<u32> =
+                        serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
+                    assert_eq!(ids.len(), 24);
+                    let mut calls = PLAYLIST_TAG_CALLS.lock().unwrap();
+                    let first = ids.first() == Some(&3) && !calls.iter().any(|call| call == &args);
+                    calls.push(args);
+                    if first {
+                        return Err(cumulus_core::Error::Transport("合成分类续页中断".into()));
+                    }
+                    json!({"code":200,"playlists":ids.into_iter().rev().map(|id| json!({"id":id,"name":format!("分类续页 {id}")})).collect::<Vec<_>>()})
                 }
                 "/api/playlist/subscribers" if subscribers_proof() => {
                     assert_eq!(args["id"], "2");

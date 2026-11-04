@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { usePlaylistTagBrowse } from '../src/composables/usePlaylistTagBrowse.ts';
 import type { AccountData, PlaylistTagPage, PlaylistTagQuery } from '../src/services/contracts.ts';
 
-test('tag pages request only supplied continuation IDs and retain the page when returning from detail', async () => {
+test('tag pages append only supplied continuation IDs and retain the list when returning from detail', async () => {
   const requests: PlaylistTagQuery[] = [];
   const item = (id: string) => ({ id, name: id, coverUrl: null });
   const model = usePlaylistTagBrowse({
@@ -19,18 +19,21 @@ test('tag pages request only supplied continuation IDs and retain the page when 
     },
   });
   await model.enter('e1', '轻音乐');
-  await model.next();
+  await model.load();
   assert.deepEqual(requests, [
     { kind: 'category', tag: '轻音乐' },
     { kind: 'items', ids: ['25', '26'] },
   ]);
-  model.lastOpened.value = '26';
+  model.remember('26');
+  model.saveScroll('轻音乐', 1240);
   model.enter('e1', null);
   await model.enter('e1', '轻音乐');
-  assert.equal(model.items.value?.[1]?.id, '26');
-  assert.equal(model.lastOpened.value, '26');
-  await model.previous();
-  assert.equal(model.items.value?.[0]?.id, '1');
+  assert.deepEqual(
+    model.items.value?.map((item) => item.id),
+    ['1', '25', '26'],
+  );
+  assert.deepEqual(model.restore(), { opener: '26', scroll: 1240 });
+  await model.load();
   assert.equal(requests.length, 2);
 });
 

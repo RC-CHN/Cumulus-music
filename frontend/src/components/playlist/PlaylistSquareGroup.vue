@@ -8,11 +8,16 @@ import Icon from '../Icon.vue';
 const props = defineProps<{
   group: PlaylistSquarePage['groups'][number];
   index: number;
+  start: number;
   playable: boolean;
   current?: string;
   playing: boolean;
 }>();
-const emit = defineEmits<{ open: [id: string, key: string]; play: [id: string] }>();
+const emit = defineEmits<{
+  open: [id: string, key: string];
+  play: [id: string];
+  scroll: [left: number];
+}>();
 const rail = ref<HTMLElement>();
 const previous = ref(false),
   next = ref(false);
@@ -38,6 +43,7 @@ function scroll(direction: -1 | 1) {
 let observer: ResizeObserver | undefined;
 onMounted(() => {
   if (!rail.value) return;
+  rail.value.scrollLeft = props.start;
   observer = new ResizeObserver(sync);
   observer.observe(rail.value);
   sync();
@@ -53,6 +59,10 @@ watch(
 );
 function failed(event: Event) {
   (event.currentTarget as HTMLImageElement).hidden = true;
+}
+function onScroll() {
+  sync();
+  if (rail.value) emit('scroll', rail.value.scrollLeft);
 }
 </script>
 
@@ -79,7 +89,7 @@ function failed(event: Event) {
         </button>
       </div>
     </header>
-    <ul ref="rail" class="playlist-square-rail" @scroll.passive="sync">
+    <ul ref="rail" class="playlist-square-rail" @scroll.passive="onScroll">
       <li v-for="item in cards" :key="item.id">
         <button
           class="playlist-square-open"
@@ -120,7 +130,7 @@ function failed(event: Event) {
 
 <style scoped>
 .playlist-square-group {
-  margin: 0 0 16px;
+  margin: 0;
 }
 .playlist-square-group header,
 .playlist-square-group-controls {
@@ -129,6 +139,9 @@ function failed(event: Event) {
   justify-content: space-between;
   gap: 6px;
 }
+.playlist-square-group header {
+  height: 36px;
+}
 .playlist-square-group h2 {
   margin: 0;
   font-size: 18px;
@@ -136,10 +149,12 @@ function failed(event: Event) {
 .playlist-square-rail {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: clamp(122px, 19%, 180px);
+  grid-auto-columns: var(--playlist-group-card, 122px);
   gap: 16px;
   overflow: auto;
   padding: 4px 4px 10px;
+  margin: 6px 0 0;
+  min-height: calc(var(--playlist-group-card, 122px) + 48px);
   list-style: none;
   scroll-snap-type: x proximity;
 }

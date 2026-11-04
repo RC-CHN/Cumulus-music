@@ -683,7 +683,7 @@ async fn playlist_tag_browse_uses_official_first_and_continuation_reads() {
             .iter()
             .map(|row| row.id.as_str())
             .collect::<Vec<_>>(),
-        ["25", "26"]
+        ["26", "25"]
     );
     assert!(
         client
@@ -703,7 +703,7 @@ async fn playlist_tag_browse_uses_official_first_and_continuation_reads() {
     )));
     assert!(calls.contains(&(
         "/api/playlist/list/get".into(),
-        json!({"ids":["25","26"],"newStyle":true})
+        json!({"ids":"[25,26]","newStyle":true})
     )));
 }
 

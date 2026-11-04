@@ -42,31 +42,39 @@ def main():
         return json.loads((output / f'{stage}.json').read_text(encoding='utf-8'))
 
     first = {'cat': '轻音乐', 'limit': 24, 'newStyle': True}
-    next_page = {'ids': ['3', '4'], 'newStyle': True}
+    ids = [3, 4, *range(124, 338)]
+    continuations = [
+        {'ids': '[' + ','.join(map(str, ids[offset:offset + 24])) + ']', 'newStyle': True}
+        for offset in range(0, len(ids), 24)
+    ]
+    ordinary = [first, continuations[0], *continuations]
     assert read('ux_01_source')['playlistTagCalls'] == []
     assert read('ux_02_first')['playlistTagCalls'] == [first]
-    assert read('ux_03_next')['playlistTagCalls'] == [first, next_page]
+    assert read('ux_03_next')['playlistTagCalls'] == [first, continuations[0], continuations[0]]
+    assert read('ux_15_ordinary_long')['playlistTagCalls'] == ordinary
     official = {'cat': '官方', 'limit': 24, 'newStyle': True}
     selected = {'cat': '摇滚', 'limit': 24, 'newStyle': True}
     promoted = {'cat': '民谣', 'limit': 24, 'newStyle': True}
-    assert read('ux_04_square')['playlistTagCalls'] == [first, next_page, promoted, official]
+    assert read('ux_04_square')['playlistTagCalls'] == [*ordinary, promoted, official]
     assert read('ux_13_top_tags')['playlistCatalogueCalls'] == []
     assert read('ux_05_catalogue')['playlistCatalogueCalls'] == [{}, {}]
     complete = read('complete')
     assert complete['ok'] and complete['catalogueVerified'] and complete['recommendationVerified']
-    assert complete['essentialVerified'] and complete['topTagsVerified']
-    assert complete['playlistTagCalls'] == [first, next_page, promoted, official, selected]
+    assert complete['essentialVerified'] and complete['topTagsVerified'] and complete['waterfallVerified']
+    assert complete['playlistTagCalls'] == [*ordinary, promoted, official, selected]
     assert complete['playlistCatalogueCalls'] == [{}, {}]
     assert read('ux_02_first')['playlistTopTagCalls'] == [{}]
     assert read('ux_13_top_tags')['playlistTopTagCalls'] == [{}, {}]
     assert complete['playlistTopTagCalls'] == [{}, {}]
     first_rcmd = {'cursor': '', 'newStyle': True}
     next_rcmd = {'cursor': '{ "next" : "第一页/第二页" }', 'newStyle': True}
+    rcmd = [first_rcmd, next_rcmd, next_rcmd, {'cursor': ' continuation 2 ', 'newStyle': True},
+            {'cursor': '{"page":4}', 'newStyle': True}]
     assert read('ux_06_recommended')['playlistSquare'] == {'calls': [first_rcmd], 'settings': 3}
     assert read('ux_07_recommended_back')['playlistSquare'] == {
-        'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 5,
+        'calls': rcmd, 'settings': 7,
     }
-    assert complete['playlistSquare'] == {'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 7}
+    assert complete['playlistSquare'] == {'calls': rcmd, 'settings': 9}
     first_essential = {'cat': '轻音乐', 'limit': 36, 'lasttime': '-1'}
     next_essential = {'cat': '轻音乐', 'limit': 36, 'lasttime': 1_700_000_000_123}
     all_essential = {'cat': '全部', 'limit': 36, 'lasttime': '-1'}
@@ -77,10 +85,10 @@ def main():
     assert complete['playlistEssential'] == {
         'pages': [first_essential, next_essential, next_essential, all_essential], 'tags': 2,
     }
-    assert len(list(output.glob('ux_*.png'))) == (14 if args.screenshots else 0)
+    assert len(list(output.glob('ux_*.png'))) == (16 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'categoryReads': 4,
-                      'continuationReads': 1, 'catalogueReads': 2, 'recommendationReads': 3,
-                      'privacyReads': 7, 'essentialReads': 4, 'essentialTagReads': 2, 'topTagReads': 2,
+                      'continuationReads': 10, 'catalogueReads': 2, 'recommendationReads': 5,
+                      'privacyReads': 9, 'essentialReads': 4, 'essentialTagReads': 2, 'topTagReads': 2,
                       'realAccountWrites': 0}))
 
 

@@ -222,13 +222,13 @@ impl MusicClient {
                         }
                         (
                             "/api/playlist/list/get",
-                            json!({"ids":ids,"newStyle":true}),
+                            json!({"ids":format!("[{}]", ids.join(",")),"newStyle":true}),
                             Some(ids),
                         )
                     }
                 };
                 let response = api.call(path, body, false, &[200]).await?;
-                let mut items = response["playlists"]
+                let items = response["playlists"]
                     .as_array()
                     .filter(|rows| rows.len() <= LIMIT)
                     .ok_or(Error::Response("invalid category playlists"))?
@@ -262,7 +262,6 @@ impl MusicClient {
                     if items.iter().any(|item| !requested.contains(&item.id)) {
                         return Err(Error::Response("foreign category playlist"));
                     }
-                    items.sort_by_key(|item| requested.iter().position(|id| id == &item.id));
                     vec![]
                 } else {
                     let ids = response["playlistIds"]
