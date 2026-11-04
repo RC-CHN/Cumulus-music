@@ -114,8 +114,8 @@ jobs:
       - id: rust-clippy
         run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
-      - name: Verify optional song fingerprint compression
-        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib song_recognition
+      - name: Verify optional song fingerprint features
+        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
       - name: Reclaim Linux test build space before packaging
         run: |
           df -h .
@@ -256,8 +256,8 @@ jobs:
       - id: rust-clippy
         run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
-      - name: Verify optional song fingerprint compression
-        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib song_recognition
+      - name: Verify optional song fingerprint features
+        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
       - name: Build release packages and verify native media
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
@@ -366,6 +366,8 @@ jobs:
           python scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           python scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe.exe --root .build/ci-user-blacklist-windows --runtime .build/package-stage/windows-x64/native
+          cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
+          python scripts/ci/profile_report_smoke.py --binary .build/target/debug/examples/profile_report_ui_probe.exe --root .build/ci-profile-report-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example network_diagnostics_ui_probe --features custom-protocol --locked
           python scripts/ci/network_diagnostics_smoke.py --binary .build/target/debug/examples/network_diagnostics_ui_probe.exe --root .build/ci-network-diagnostics-windows
           python scripts/ci/profile_relations_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-profile-relations-windows --runtime .build/package-stage/windows-x64/native
@@ -700,6 +702,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-linux
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
+          cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_report_smoke.py --binary .build/target/debug/examples/profile_report_ui_probe --root .build/ci-profile-report-linux
           cargo build -p cumulus-desktop --example network_diagnostics_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/network_diagnostics_smoke.py --binary .build/target/debug/examples/network_diagnostics_ui_probe --root .build/ci-network-diagnostics-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/profile_relations_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-profile-relations-linux
