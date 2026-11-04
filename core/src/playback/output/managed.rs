@@ -336,6 +336,9 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     fn clear_loudness(&mut self) -> Result<()> {
         self.inner.clear_loudness()
     }
+    fn reset_track_loudness(&mut self) -> Result<()> {
+        self.inner.reset_track_loudness()
+    }
     fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
         self.inner.observe_loudness()
     }

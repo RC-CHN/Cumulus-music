@@ -30,6 +30,9 @@ impl AudioEngine for MpvVideoEngine {
     fn clear_loudness(&mut self) -> Result<()> {
         self.engine.clear_loudness()
     }
+    fn reset_track_loudness(&mut self) -> Result<()> {
+        self.engine.reset_track_loudness()
+    }
     fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
         self.engine.observe_loudness()
     }

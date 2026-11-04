@@ -42,6 +42,7 @@ pub struct MpvEngine {
     equalizer: Option<crate::effects::equalizer::EqualizerHost>,
     equalizer_reserved: bool,
     loudness: Option<crate::effects::loudness::LoudnessHost>,
+    loudness_reserved: bool,
     parametric: Option<crate::effects::parametric::ParametricHost>,
     equalizer_library: Option<PathBuf>,
     sequence: u64,
@@ -88,7 +89,9 @@ impl MpvEngine {
         }
         let host = crate::effects::equalizer::EqualizerHost::open(library, settings)?;
         let filter = effect_filter("geq", host.filter_graph());
+        let (filter, loudness) = self.with_loudness_reservation(library, filter);
         self.control(&["af", "add", &filter])?;
+        self.adopt_loudness_reservation(loudness);
         self.equalizer = Some(host);
         self.equalizer_library = Some(library.to_path_buf());
         Ok(())
@@ -114,7 +117,16 @@ impl MpvEngine {
     }
     pub fn detach_equalizer(&mut self) -> Result<()> {
         if self.equalizer.is_some() {
-            self.control(&["af", "remove", "@cumulus-geq"])?;
+            let dry_loudness = self.parametric.is_none() && self.loudness_reserved;
+            let labels = if dry_loudness {
+                "@cumulus-geq,@cumulus-loudness"
+            } else {
+                "@cumulus-geq"
+            };
+            self.control(&["af", "remove", labels])?;
+            if dry_loudness {
+                self.clear_loudness_reservation();
+            }
             self.equalizer = None;
             self.equalizer_reserved = false;
         }
@@ -165,6 +177,7 @@ impl MpvEngine {
             equalizer: None,
             equalizer_reserved: false,
             loudness: None,
+            loudness_reserved: false,
             parametric: None,
             equalizer_library: None,
             sequence: 0,
@@ -671,7 +684,13 @@ impl AudioEngine for MpvEngine {
     fn clear_loudness(&mut self) -> Result<()> {
         self.detach_loudness()
     }
+    fn reset_track_loudness(&mut self) -> Result<()> {
+        self.reset_loudness_for_load()
+    }
     fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
+        if self.loudness_reserved {
+            return Ok(None);
+        }
         self.loudness.as_ref().map(|h| h.stats()).transpose()
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {

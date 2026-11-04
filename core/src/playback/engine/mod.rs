@@ -101,6 +101,11 @@ pub trait AudioEngine: Send {
     fn clear_loudness(&mut self) -> Result<()> {
         Ok(())
     }
+    /// Called after stopping the previous source and before loading another.
+    /// A healthy fixed-frame host may keep a dry node without the old gain.
+    fn reset_track_loudness(&mut self) -> Result<()> {
+        self.clear_loudness()
+    }
     fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
         Ok(None)
     }

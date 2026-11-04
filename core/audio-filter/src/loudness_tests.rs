@@ -104,3 +104,31 @@ fn loudness_handles_reject_other_filter_settings_and_bad_updates_atomically() {
         -2
     );
 }
+
+#[test]
+fn initially_reserved_loudness_preserves_dry_sample_bits() {
+    let config = Loudness::new(false, 0.0);
+    let mut instance = Instance::new_kind(config.0, 48000, 1);
+    let pcm = [
+        0.0,
+        -0.0,
+        f32::from_bits(1),
+        f32::from_bits(0x8000_0001),
+        0.625,
+        -0.125,
+    ];
+    for inplace in [false, true] {
+        let output = instance.process(&pcm, inplace);
+        assert_eq!(
+            output
+                .iter()
+                .map(|sample| sample.to_bits())
+                .collect::<Vec<_>>(),
+            pcm.map(f32::to_bits)
+        );
+    }
+    let stats = config.stats();
+    assert_eq!(stats.instances_created, 1);
+    assert_eq!(stats.processed_samples, 12);
+    assert_eq!(stats.failed_blocks, 0);
+}

@@ -37,7 +37,9 @@ A76E0 旁路、A7600 重置、A6470 平面 PCM 处理。默认参考电平 -12�
 初始化 prev/target 为 1；设置参数/参考电平同时重置两者；旁路只更新 target；
 reset 令 prev=target。处理末尾不足四帧的标量分支从 previous 重新起算，其历史行为
 与直觉线性连续插值不同，Rust 保留该行为。只修改有效帧，不覆盖容量尾部。
-处理器 RVA 1AA50 将该节点放在效果节点之前；MpvEngine 使用 af pre 保持此顺序。
+处理器 RVA 1AA50 的顺序为响度（+0x18）→ GEQ/低高音（+0x48/+0x50）→
+附加 PEQ（+0x70）。begin 68000 → reset 1BBA0、1C590、6B0C0 保留响度外部配置。
+官方末端 +0xB0 是独立的变帧限制器，本节开关不绑定或启用它。
 
 cloudmusic.dll RVA EFFD20/EFF970 读取 gain/peak 的字典整数并除以 10000，
 worker EFAB20 转 float。恢复的 JS 只发送 gain。peak=0 的判断结合反汇编的 CEF
@@ -57,6 +59,14 @@ core/audio-filter/src/{loudness,processor_stage,processor,control,ladspa}.rs：
 独立 LADSPA descriptor 1 / ID 0x43554e；原 GEQ descriptor 0 不变；类型校验、
 配置修订、回调失败/撤销后的静音隔离；无跨线程裸指针共享。
 core/src/playback/engine/mpv/loudness.rs：加载、热更新、观察与只移除自身命名滤镜。
+已有受信适配器支持响度 ABI 时，与第一组 GEQ/PEQ 一起挂载上游关闭节点；开关和增益
+更新原有配置句柄。只用响度时仍可独立前插；缺响度 ABI 不阻断现有 EQ 初始化。
+关闭预留节点逐位保留干声，不显示为正在均衡。关闭时保留官方从当前值回到干声的过渡。
+换曲先停旧源，未激活的健康关闭节点可保留。已激活过的节点替换成全新的关闭节点：
+mpv 的 stop 返回时仍可能持有旧实例，直接发送旁路会保留旧曲增益的过渡。显式停止、
+故障回滚仍可真正移除节点。
+最后一个下游滤镜移除时顺带释放仅为它保留的关闭节点。偏好默认关闭、音源权限和会员
+音效材料的判定仍沿用原流程；未增加可由 IPC 设置的原生路径或冷播放限制器开关。
 core/src/playback/controller/loudness.rs：当前来源、最新偏好、账号代次、应用/失败恢复。
 core/src/playback/source/loudness.rs、library/matching/hints.rs：现有官方标签解析复用。
 core/src/client/player/：类型化 DTO/命令，公开字段不含完整授权 URL、Cookie 或密钥。
@@ -85,6 +95,13 @@ loudness_preferences.rs 验证双窗口 CAS、重启、损坏、缺失记录、�
 loudness_controller.rs 验证换曲、音质、解码并发、账号、持久化、重试和清理失败停止；
 loudness_sources.rs 验证普通三种标签/NCM/未标记文件、队列假值、CUE、文件修订。
 core/audio-filter 的实际 C ABI/LADSPA 回调检查处理、旁路、in-place、尾块和撤销隔离。
+初始关闭回调在同缓冲和独立缓冲两种情况下逐位保留有符号零、次正规值及普通样本。
+MpvEngine effect_order_tests（显式传受信库，需实际 libmpv）：Linux 0.41.0 的
+原实现首次热开响度令 GEQ 实例累计 2→4，PEQ 仍为 2。预留后合成双声道的 GEQ-only
+与 GEQ+PEQ 两条播放链均通过打开/关闭/再次打开；实例保持 2，处理计数和同一播放时钟
+继续前进。独立 FFmpeg astats 读出完整滤镜链下游的 PCM，测得组合链开启时相对关闭
+衰减 12.003 dB（预期 12 dB），再关闭后差 0.017 dB。该热切换测量用 Linux null
+输出；不是 Windows 原生实测或物理音频输出验证。
 core/audio-filter/examples/loudness_probe.rs：libmpv 解码→FFmpeg→LADSPA→实际 PCM 文件，
 44.1k 单声道 / 48k 双声道 / 96k 六声道，负/正增益、关闭、GEQ组合共12组；
 逐样本与恢复 DSP 对照，并验证热关闭、定位、重新开启、换曲和只移除自己。

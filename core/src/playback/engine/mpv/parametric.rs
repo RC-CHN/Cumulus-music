@@ -33,7 +33,9 @@ impl MpvEngine {
                 .unwrap_or_else(|| library.into());
             let geq = EqualizerHost::open(&path, EqualizerSettings::default())?;
             let filters = format!("{},{}", effect_filter("geq", geq.filter_graph()), peq);
+            let (filters, loudness) = self.with_loudness_reservation(&path, filters);
             self.control(&["af", "add", &filters])?;
+            self.adopt_loudness_reservation(loudness);
             self.equalizer = Some(geq);
             self.equalizer_library = Some(path);
             self.equalizer_reserved = true;
@@ -51,12 +53,18 @@ impl MpvEngine {
 
     pub fn detach_parametric_equalizer(&mut self) -> Result<()> {
         if self.parametric.is_some() {
-            let labels = if self.equalizer_reserved {
-                "@cumulus-peq,@cumulus-geq"
-            } else {
-                "@cumulus-peq"
+            let dry_loudness =
+                self.loudness_reserved && (self.equalizer_reserved || self.equalizer.is_none());
+            let labels = match (self.equalizer_reserved, dry_loudness) {
+                (true, true) => "@cumulus-peq,@cumulus-geq,@cumulus-loudness",
+                (true, false) => "@cumulus-peq,@cumulus-geq",
+                (false, true) => "@cumulus-peq,@cumulus-loudness",
+                (false, false) => "@cumulus-peq",
             };
             self.control(&["af", "remove", labels])?;
+            if dry_loudness {
+                self.clear_loudness_reservation();
+            }
             self.parametric = None;
             if self.equalizer_reserved {
                 self.equalizer = None;

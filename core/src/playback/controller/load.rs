@@ -178,7 +178,7 @@ impl Actor {
                 super::engine(engine.clone(), cancel.clone(), |engine| {
                     engine.stop()?;
                     // Discard the previous track's gain before priming a new decoder.
-                    engine.clear_loudness()
+                    engine.reset_track_loudness()
                 })
                 .await?;
                 cancel.check()?;
