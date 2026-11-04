@@ -1,6 +1,7 @@
 use cumulus_core::{
     Result,
     playback::keep_awake::{PlaybackPowerRequest, PlaybackPowerSink},
+    preferences::system_media::SystemMediaPreferences,
     protocol::pc_experiments::PcExperimentGroups,
     storage::StateStore,
 };
@@ -18,24 +19,31 @@ pub fn enabled() -> bool {
     mode().is_some()
 }
 
+pub fn power_host_available() -> bool {
+    mode().as_deref() != Some("smtc_close")
+}
+
 pub fn assignment() -> Result<Option<PcExperimentGroups>> {
     let Some(mode) = mode() else { return Ok(None) };
     READS.fetch_add(1, Ordering::Relaxed);
-    let (power, system_media) = match mode.as_str() {
-        "offer" | "enabled" => ("t1", ""),
-        "smtc" => ("t1", "t1"),
-        "control" => ("c", ""),
+    let (power, system_media, legacy) = match mode.as_str() {
+        "offer" | "enabled" => ("t1", "", ""),
+        "smtc" | "smtc_close" | "smtc_unavailable" => ("t1", "t1", ""),
+        "smtc_legacy" => ("t1", "t1", "t1"),
+        "control" => ("c", "", ""),
         _ => panic!("unknown playback guide fixture"),
     };
     PcExperimentGroups::refreshed(&json!({"data":[
         {"expName":"PH-PC-keepAwake","expGroupName":power},
-        {"expName":"PH-PC-newSMTCoff","expGroupName":system_media}
+        {"expName":"PH-PC-newSMTCoff","expGroupName":system_media},
+        {"expName":"PH-PC-SMTC","expGroupName":legacy}
     ]}))
     .map(Some)
 }
 
 pub fn initialize(store: &StateStore) -> Result<()> {
-    if mode().as_deref() == Some("enabled") {
+    let mode = mode();
+    if mode.as_deref() == Some("enabled") {
         store.put(
             "local-device",
             "playback-power-v1",
@@ -43,7 +51,33 @@ pub fn initialize(store: &StateStore) -> Result<()> {
             &Value::Bool(true),
         )?;
     }
+    if mode.as_deref() == Some("smtc") {
+        let media = SystemMediaPreferences::read(store)?;
+        if media.revision == "initial" {
+            SystemMediaPreferences::replace(store, &media.revision, false)?;
+        }
+    }
     Ok(())
+}
+
+pub fn install_media(app: &tauri::AppHandle) {
+    use std::sync::Arc;
+    use tauri::Manager;
+    if let Some(mode) = mode() {
+        if cfg!(target_os = "windows") && mode == "smtc_unavailable" {
+            return;
+        }
+        cumulus_desktop::system_media::install(app);
+        if mode != "smtc_unavailable"
+            && app
+                .try_state::<Arc<cumulus_desktop::system_media::GuideHost>>()
+                .is_none()
+        {
+            let guide = Arc::new(cumulus_desktop::system_media::GuideHost::default());
+            guide.mark_ready();
+            app.manage(guide);
+        }
+    }
 }
 
 pub fn home_response(path: &str, args: &Value) -> Option<Value> {
@@ -70,7 +104,8 @@ pub fn report(store: &StateStore) -> Result<Value> {
     Ok(json!({
         "assignmentReads":READS.load(Ordering::Relaxed),
         "powerKeeps":KEEPS.load(Ordering::Relaxed),
-        "savedPower":store.get("local-device","playback-power-v1","enabled")?
+        "savedPower":store.get("local-device","playback-power-v1","enabled")?,
+        "savedSystemMedia":store.get("local-device","system-media-preferences-v1","current")?
     }))
 }
 

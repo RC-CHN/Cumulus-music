@@ -1,5 +1,8 @@
 PC 3.1.42.205594｜首页防休眠引导
 
+本文件记录 f7077553 的首版防休眠引导。现行 SMTC 优先级、已看过后的再启动
+和共享排程见 system-media-header-guide.txt。
+
 官方 M/70:44–54、78–80、116–128 和 Header/index.jsx:676–709：顶部
 引导先等待 3 秒检查优先的 SMTC，再等待 3 秒检查防休眠。后者只在 / 或
 /homePage、非 macOS、PH-PC-keepAwake=t1、disableSystemSleep 不是 true、

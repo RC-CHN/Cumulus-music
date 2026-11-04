@@ -1,4 +1,4 @@
-"""Official keep-awake introduction in an isolated real WebView and native settings IPC."""
+"""Official prioritized header guides in an isolated real WebView and native settings IPC."""
 import argparse
 import json
 import os
@@ -6,7 +6,6 @@ from pathlib import Path
 import sys
 
 from motion_smoke import launch
-from playback_power_smoke import windows_runtime
 
 
 def main():
@@ -29,6 +28,8 @@ def main():
             if not key.upper().startswith(('CUMULUS_', 'WEBVIEW2_'))
             and key.upper() != 'MPV_DLL_DIR_CUMULUS'}
     if windows:
+        from playback_power_smoke import windows_runtime
+
         runtime, _ = windows_runtime(binary, args.runtime)
         base['MPV_DLL_DIR_CUMULUS'] = str(runtime)
     if args.frontend_dist:
@@ -36,15 +37,22 @@ def main():
     source = (Path(__file__).resolve().parents[2] /
               'desktop/examples/playback_power_guide_ui_probe.js').read_text(encoding='utf-8')
     verified = []
+    # Both CTAs mount SettingsPage, including its separate playback settings read.
+    # phase, profile, fixture, screenshots, seen markers, renderer reads
     phases = [
-        ('first', 'seen', 'offer', 3, True, 1),
-        ('reopen', 'seen', 'offer', 1, True, 0),
-        ('close', 'close', 'offer', 2, True, 1),
-        ('smtc', 'smtc', 'smtc', 1, False, 1),
-        ('enabled', 'enabled', 'enabled', 1, False, 1),
-        ('control', 'control', 'control', 1, False, 1),
+        ('first', 'seen', 'offer', 3, (True, False), (3, 2)),
+        ('reopen', 'seen', 'offer', 1, (True, False), (0, 1)),
+        ('close', 'close', 'offer', 2, (True, False), (1, 1)),
+        ('smtc', 'smtc', 'smtc', 3, (False, True), (1, 2)),
+        ('smtc_reopen', 'smtc', 'smtc', 1, (True, True), (1, 0)),
+        ('smtc_close', 'smtc_close', 'smtc_close', 3, (False, True), (0, 1)),
+        ('smtc_legacy', 'smtc_legacy', 'smtc_legacy', 1, (True, False), (1, 1)),
+        ('smtc_unavailable', 'smtc_unavailable', 'smtc_unavailable', 1, (True, False), (1, 1)),
+        ('enabled', 'enabled', 'enabled', 1, (False, False), (1, 1)),
+        ('control', 'control', 'control', 1, (False, False), (1, 1)),
     ]
-    for phase, profile, assignment, count, seen, reads in phases:
+    saved_system_media = None
+    for phase, profile, assignment, count, seen, renderer_reads in phases:
         state = root / profile
         state.mkdir(exist_ok=True)
         env = {**base, 'CUMULUS_PROOF_DIR': str(state), 'CUMULUS_MOTION_PROOF': '1',
@@ -61,9 +69,10 @@ def main():
         script.write_text(f'window.__cumulusPowerGuidePhase = {json.dumps(phase)};\n' + source,
                           encoding='utf-8')
         env['CUMULUS_UX_SCRIPT'] = str(script)
-        if phase == 'reopen':
+        reopen = phase in ('reopen', 'smtc_reopen')
+        if reopen:
             env['CUMULUS_PROOF_REOPEN'] = '1'
-        output = state / ('reopen' if phase == 'reopen' else 'first')
+        output = state / ('reopen' if reopen else 'first')
         with (state / f'{phase}.log').open('x', encoding='utf-8') as log:
             status = launch(binary, env, log, output, args.screenshots)
         failed = output / 'failed.json'
@@ -71,11 +80,19 @@ def main():
         assert status == 0, f'guide phase {phase} exited {status}'
         report = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
         assert report['ok'] and report['stageCount'] == count and report['writes'] == 0
-        assert (report['marker'] == '1') == seen
-        assert report['playbackPowerGuideFixture'] == {
-            'assignmentReads': reads, 'powerKeeps': 0,
-            'savedPower': True if phase == 'enabled' else None,
-        }, report
+        assert (report['marker'] == '1', report['smtcMarker'] == '1') == seen, report
+        observed_reads = (report['powerReads'], report['mediaReads'])
+        assert observed_reads == renderer_reads, (phase, observed_reads, renderer_reads)
+        native = report['playbackPowerGuideFixture']
+        assert native['assignmentReads'] == 1 and native['powerKeeps'] == 0, report
+        assert native['savedPower'] is (True if phase == 'enabled' else None), report
+        if phase == 'smtc':
+            saved_system_media = native['savedSystemMedia']
+            assert saved_system_media['enabled'] is False and saved_system_media['revision'] != 'initial'
+        elif phase == 'smtc_reopen':
+            assert native['savedSystemMedia'] == saved_system_media, report
+        else:
+            assert native['savedSystemMedia'] is None, report
         assert len(list(output.glob('ux_*.json'))) == count
         if args.screenshots:
             assert len(list(output.glob('ux_*.png'))) == count

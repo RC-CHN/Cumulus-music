@@ -381,6 +381,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 system_media::settings::system_media_preferences,
                 system_media::settings::system_media_preferences_command,
                 system_media::settings::system_media_status,
+                system_media::settings::system_media_guide_available,
                 shortcuts::settings::shortcut_settings,
                 shortcuts::settings::shortcut_settings_command,
                 shortcuts::settings::shortcut_status,

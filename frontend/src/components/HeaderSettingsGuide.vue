@@ -1,17 +1,18 @@
 <script setup lang="ts">
 import { nextTick, onUnmounted, ref, watch } from 'vue';
 import { useMotion } from '../composables/useMotion';
+import type { HeaderGuideKind } from '../composables/useHeaderSettingsGuide';
 import Icon from './Icon.vue';
 
-const props = defineProps<{ visible: boolean; disabled: boolean; settingsOpen: boolean }>();
-const emit = defineEmits<{ settings: []; playback: []; dismiss: [] }>();
+const props = defineProps<{ kind?: HeaderGuideKind; disabled: boolean; settingsOpen: boolean }>();
+const emit = defineEmits<{ settings: []; configure: []; dismiss: [] }>();
 const host = ref<HTMLElement>();
 const trigger = ref<HTMLButtonElement>();
 const bubble = ref<HTMLElement>();
 const motion = useMotion();
 
 function place() {
-  if (!props.visible || !host.value || !trigger.value || !bubble.value) return;
+  if (!props.kind || !host.value || !trigger.value || !bubble.value) return;
   const anchor = trigger.value.getBoundingClientRect();
   const width = bubble.value.offsetWidth;
   const center = anchor.left + anchor.width / 2;
@@ -24,9 +25,9 @@ function place() {
 }
 
 watch(
-  () => props.visible,
-  async (visible, _, onCleanup) => {
-    if (!visible) return;
+  () => props.kind,
+  async (kind, _, onCleanup) => {
+    if (!kind) return;
     let current = true;
     let resize: ResizeObserver | undefined;
     onCleanup(() => {
@@ -77,14 +78,19 @@ onUnmounted(() => window.removeEventListener('resize', place));
       @before-leave="leave"
     >
       <aside
-        v-if="visible"
+        v-if="kind"
         ref="bubble"
         class="header-playback-guide"
-        aria-label="播放设置提示"
+        :data-guide="kind"
+        :aria-label="kind === 'system_media' ? '系统媒体控制提示' : '播放设置提示'"
         @keydown.escape.stop.prevent="dismiss"
       >
-        <span class="header-playback-guide-text">功能上新，音乐播放中保持亮屏不休眠</span>
-        <button type="button" class="header-playback-guide-action" @click="emit('playback')">
+        <span class="header-playback-guide-text">{{
+          kind === 'system_media'
+            ? '已支持SMTC，将播放信息同步到系统菜单栏'
+            : '功能上新，音乐播放中保持亮屏不休眠'
+        }}</span>
+        <button type="button" class="header-playback-guide-action" @click="emit('configure')">
           去设置
         </button>
         <button

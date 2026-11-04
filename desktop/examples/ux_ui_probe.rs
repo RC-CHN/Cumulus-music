@@ -688,7 +688,9 @@ fn main() {
         let mut client=MusicClient::with_session(session,registry);
         if playback_power_guide_fixture::enabled() {
             playback_power_guide_fixture::initialize(&proof_store)?;
-            client=client.with_playback_power_sink(Arc::new(playback_power_guide_fixture::Sink));
+            if playback_power_guide_fixture::power_host_available() {
+                client=client.with_playback_power_sink(Arc::new(playback_power_guide_fixture::Sink));
+            }
         }
         if queue_more_fixture::enabled() { client=client.with_queue_recommendations(); }
         let external_import = external_import_fixture::enabled()
@@ -1193,6 +1195,7 @@ fn main() {
                 .inner_size(180.0,100.0).data_directory(root.join("focus-helper-webview")).build()?;
         }
         if media_proof {cumulus_desktop::system_media::install(app.handle());}
+        playback_power_guide_fixture::install_media(app.handle());
         if shortcut_proof {cumulus_desktop::shortcuts::install(app.handle());}
         Ok(())
     }).on_page_load(|view, payload| {

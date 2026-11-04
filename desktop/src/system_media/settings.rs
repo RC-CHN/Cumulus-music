@@ -69,3 +69,20 @@ pub async fn system_media_preferences_command<R: tauri::Runtime>(
 pub fn system_media_status<R: tauri::Runtime>(app: tauri::AppHandle<R>) -> policy::Status {
     policy::status(&app)
 }
+
+#[tauri::command]
+pub async fn system_media_guide_available<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> std::result::Result<bool, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("system media guide requires the main window").into());
+    }
+    client.validate_player_epoch(&epoch)?;
+    if !super::guide_available(window.app_handle()) {
+        return Ok(false);
+    }
+    let assigned = client.system_media_guide_assignment(&epoch).await?;
+    Ok(assigned && super::guide_available(window.app_handle()))
+}

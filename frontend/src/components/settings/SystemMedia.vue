@@ -33,7 +33,7 @@ async function read() {
     aria-labelledby="settings-system-media"
     :aria-busy="model.loading.value || model.busy.value"
   >
-    <h2 id="settings-system-media">系统媒体控制</h2>
+    <h2 id="settings-system-media" tabindex="-1">系统媒体控制</h2>
     <div class="settings-section-content">
       <div class="settings-read-status">
         <span>从系统媒体面板控制当前播放</span>
@@ -86,3 +86,11 @@ async function read() {
     </div>
   </section>
 </template>
+
+<style scoped>
+#settings-system-media:focus-visible {
+  outline: none;
+  text-decoration: underline 2px var(--accent);
+  text-underline-offset: 0.15em;
+}
+</style>

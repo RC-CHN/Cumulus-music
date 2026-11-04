@@ -3,7 +3,7 @@ mod commands;
 mod events;
 mod metadata;
 mod native;
-use super::policy;
+use super::{GuideHost, policy};
 use cumulus_core::client::{MusicClient, native_media::NativeMediaDetails};
 use std::{
     sync::{
@@ -25,6 +25,9 @@ struct Host {
     wake: mpsc::SyncSender<()>,
 }
 pub(super) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(guide) = app.try_state::<Arc<GuideHost>>() {
+        guide.mark_stopped();
+    }
     if let Some(host) = app.try_state::<Arc<Host>>() {
         host.stopped.store(true, Ordering::Release);
         host.generation.fetch_add(1, Ordering::AcqRel);
@@ -53,6 +56,8 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         wake,
     });
     app.manage(host.clone());
+    let guide = Arc::new(GuideHost::default());
+    app.manage(guide.clone());
     let app = app.clone();
     let failure_app = app.clone();
     let hwnd = window.0 as usize;
@@ -66,7 +71,9 @@ pub(super) fn install<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
                 policy::failed_to_start(&app);
                 return;
             };
+            guide.mark_ready();
             run(&app, &host, hwnd, requests);
+            guide.mark_stopped();
         })
         .is_err()
     {

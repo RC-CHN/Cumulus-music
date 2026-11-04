@@ -33,7 +33,9 @@ export interface SystemMediaStatusClient {
   systemMediaStatus(): Promise<SystemMediaStatus>;
   onSystemMediaStatus(handler: (view: SystemMediaStatus) => void): Promise<() => void>;
 }
-export interface SystemMediaClient extends SystemMediaPreferencesClient, SystemMediaStatusClient {}
+export interface SystemMediaClient extends SystemMediaPreferencesClient, SystemMediaStatusClient {
+  systemMediaGuideAvailable(epoch: string): Promise<boolean>;
+}
 export const systemMediaLabels: Record<SystemMediaPhase, string> = {
   not_installed: '此环境暂不提供系统媒体控制。',
   starting: '正在读取本机设置…',

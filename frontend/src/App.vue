@@ -16,7 +16,7 @@ import MessageDrawer from './components/messages/MessageDrawer.vue';
 import type { MessageTarget } from './services/messages';
 import { commentStartPosition } from './services/comments';
 import { useMotion } from './composables/useMotion';
-import { usePlaybackPowerGuide } from './composables/usePlaybackPowerGuide';
+import { useHeaderSettingsGuide } from './composables/useHeaderSettingsGuide';
 import { createPageTransition } from './services/pageTransition';
 import SearchResultsPage from './components/search/SearchResultsPage.vue';
 import SearchReasonPage from './components/search/SearchReasonPage.vue';
@@ -58,7 +58,7 @@ import Icon from './components/Icon.vue';
 import WindowControls from './components/WindowControls.vue';
 import WindowClosePrompt from './components/WindowClosePrompt.vue';
 import AppearanceMenu from './components/AppearanceMenu.vue';
-import HeaderPlaybackPowerGuide from './components/HeaderPlaybackPowerGuide.vue';
+import HeaderSettingsGuide from './components/HeaderSettingsGuide.vue';
 import SkinCenter from './components/decoration/SkinCenter.vue';
 import PlaylistLibraryPage from './components/playlist/PlaylistLibraryPage.vue';
 import AppSidebar from './components/sidebar/AppSidebar.vue';
@@ -1785,7 +1785,11 @@ function revealSettingsSection() {
 }
 function openSettingsSection(
   epoch: string,
-  section: 'settings-audio-output' | 'settings-playback' | 'settings-privacy',
+  section:
+    | 'settings-audio-output'
+    | 'settings-playback'
+    | 'settings-privacy'
+    | 'settings-system-media',
 ) {
   if (epoch !== music.account.value.epoch) return;
   const current = music.page.value;
@@ -2766,15 +2770,19 @@ function lyricPanelLeave(element: Element) {
   (element as HTMLElement).inert = true;
 }
 const accountsOpen = ref(false);
-const playbackPowerGuide = usePlaybackPowerGuide(
+const headerSettingsGuide = useHeaderSettingsGuide(
   core,
   () => account.value.epoch,
-  () => !initializing.value && music.accountReady.value && page.value.kind === 'discovery_home',
+  () => (!initializing.value && music.accountReady.value ? page.value : undefined),
   () => !!(loginOpen.value || accountsOpen.value || modalDepth.value),
 );
-function openPlaybackGuideSettings() {
-  const epoch = playbackPowerGuide.dismiss();
-  if (epoch !== undefined) openSettingsSection(epoch, 'settings-playback');
+function openHeaderGuideSettings() {
+  const guide = headerSettingsGuide.dismiss();
+  if (guide)
+    openSettingsSection(
+      guide.epoch,
+      guide.kind === 'system_media' ? 'settings-system-media' : 'settings-playback',
+    );
 }
 const accountFocus = useModalOrigin(
   () => loginOpen.value || accountsOpen.value,
@@ -3644,13 +3652,13 @@ onUnmounted(() => {
         :disabled="initializing"
         @open="page.kind !== 'decoration' && music.navigate({ kind: 'decoration' })"
       />
-      <HeaderPlaybackPowerGuide
-        :visible="playbackPowerGuide.visible.value"
+      <HeaderSettingsGuide
+        :kind="headerSettingsGuide.visible.value?.kind"
         :disabled="initializing"
         :settings-open="page.kind === 'settings'"
         @settings="music.navigate({ kind: 'settings' })"
-        @dismiss="playbackPowerGuide.dismiss()"
-        @playback="openPlaybackGuideSettings"
+        @dismiss="headerSettingsGuide.dismiss()"
+        @configure="openHeaderGuideSettings"
       />
       <WindowControls />
     </header>
