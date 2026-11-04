@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `7e621dfa`；总体流程及验证层级见
+本表基线为产品树 `bacec192`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -82,7 +82,7 @@
 | `page:loginPhone` (19) | `models/page_loginPhone.txt` | [已接入口](phone-entry-contracts.txt) | 手机号、密码、SMS 和已恢复的复用挑战。 |
 | `page:loginQrcode` (10) | `models/page_loginQrcode.txt` | [已接入口](refresh-token-issuance-evidence.txt) | 真实扫码下发并保存；异常可原地重试，legacy 与 JSK 的扫码后 801 分开；不证明真实刷新轮换。 |
 | `page:loginQuick` (2) | `models/page_loginQuick.txt` | [部分](server-quick-login.txt) | 有恢复、候选隔离、快捷历史许可及服务判失效后的本机清理；主动退出不保留凭据。 |
-| `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；已接账号隔离的原生未读计数与顶栏红点；无实时推送、新会话发送。 |
+| `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；已接账号隔离的原生未读计数与顶栏红点，受信 WebView 恢复可重启同一计时器；无实时推送、新会话发送。 |
 | `page:modListenToSong` (9) | `models/page_modListenToSong.txt` | [仅原型](song-recognition-authority.txt) | 实际封闭回采、指纹和请求对照；无生产采集、提交或独立域权限。 |
 | `page:musicDesktop` (0) | `models/page_musicDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 装扮桌面与歌词窗是不同宿主。 |
 | `page:myAudio` (16) | `models/page_myAudio.txt` | [已接入口](desktop-podcast-contracts.txt) | 我的播客/收藏/节目管理边界。 |
@@ -102,7 +102,7 @@
 | `page:settingPrivacy` (3) | `models/page_settingPrivacy.txt` | [已接入口](account-settings-contracts.txt) | 六项远端设置、联动与回读；系统唤起交接另验。 |
 | `page:singleIndexList` (2) | `models/page_singleIndexList.txt` | [已接入口](rankings-ui-contracts.txt) | 歌曲指数榜独立于普通歌单。 |
 | `page:sns` (2) | `models/page_sns.txt` | [仅恢复](sns-login-recovery.txt) | 微信、QQ、微博授权宿主没有正式实现。 |
-| `page:styleRecommend` (5) | `models/page_styleRecommend.txt` | [部分](style-recommendations.txt) | 风格页及种子；标签切换、保存待核。 |
+| `page:styleRecommend` (5) | `models/page_styleRecommend.txt` | [部分](style-recommendations.txt) | 风格页、种子、分类及明确保存/未决核对已接；返回时原列表恢复另验。 |
 | `page:switchAccount` (5) | `models/page_switchAccount.txt` | [已接入口](server-account-switch.txt) | 本机多账号与部分服务切换；真实双账号及 SDK 仍有限制。 |
 | `page:trashCan` (3) | `models/page_trashCan.txt` | [已接入口](fm-feedback-ui-contracts.txt) | 音乐黑名单分页、选择、恢复及未知结果核对。 |
 | `page:updateDownload` (1) | `models/page_updateDownload.txt` | [仅恢复](manual-update-contracts.txt) | Cumulus 显式读版本和校验；无官方更新下载页。 |
