@@ -124,11 +124,19 @@ Mesa llvmpipe the same fixture completed all 15 painted steps with the composito
 enabled and the shared-memory defaults above. The expected tab pixel RGB
 (204, 41, 72) was present. Adding WEBKIT_DISABLE_DMABUF_RENDERER=1 again
 produced (255, 255, 255), even though llvmpipe was still active. Disabling the
-WebKit renderer entirely is distinct from disabling DMA-BUF export. The local
-2.52.6 binary's renderer initialization reads FORCE_DMABUF_RENDERER before
-enabling its SHM flag and FORCE_SHM before its separate DMA-BUF export flag.
-These observations use synthetic data and a network namespace with no external
-routes; they do not establish hardware/Wayland fallback on every driver.
+WebKit DMA-BUF renderer is distinct from disabling DMA-BUF export. In the
+local 2.52.6 ELF, fd1de7–fd1fe1 enables the shared-memory mode when forced,
+and fd1fe8–fd2035 skips its separate DMA-BUF export flag with FORCE_SHM=1.
+
+The rebuilt desktop selected pinned software in one ready attempt, without
+creating any business SQLite files in its diagnostic profile. The ordinary
+binary then painted its 1120 × 760 window from an empty profile. The rebuilt
+application fixture, with no inherited Mesa or WebKit overrides, completed all
+15 screenshot stages. All these runs were in network namespaces with no
+external routes. Extra bubblewrap runs that mask /dev/dri showed an intermittent
+white frame on the full modal fixture; neither this result nor the passing
+runs establish physical NVIDIA/Wayland compatibility or all container setups.
+Local reports and paired screenshots: .build/ui-proof/graphics-software-c2b1bd57.
 
 The Linux ordinary-binary paint probe supports
 scripts/ci/installed_linux_smoke.py --software-rendering with its usual
