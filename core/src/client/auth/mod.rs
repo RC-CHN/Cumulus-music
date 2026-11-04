@@ -68,7 +68,7 @@ pub(super) struct AuthHost {
     pub(super) context: Option<Arc<crate::protocol::context::RequestContext>>,
     pub(super) options: RequestOptions,
     pending: Mutex<Option<PendingLogin>>,
-    backend: Option<Arc<dyn HttpBackend>>,
+    pub(super) backend: Option<Arc<dyn HttpBackend>>,
     guardian: Option<Arc<dyn LoginGuardian>>,
     device_name: Option<String>,
     cooldown: Arc<ResendCooldown>,

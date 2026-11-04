@@ -20,6 +20,10 @@ pub mod dto;
 mod effects;
 pub use effects::{NativeParametricActivation, NativeParametricActivationAttempt};
 mod error;
+mod external_import_auth;
+pub use external_import_auth::{
+    ExternalImportAuthAction, ExternalImportAuthState, ExternalImportAuthView,
+};
 mod fm;
 mod fm_discovery;
 mod focus;
@@ -81,6 +85,7 @@ pub struct MusicClient {
     session: Arc<AccountSession>,
     registry: Arc<ProfileRegistry>,
     auth: auth::AuthHost,
+    external_import_auth: external_import_auth::ExternalImportAuthHost,
     artist_onboarding: artist_onboarding::Host,
     player: player::PlayerHost,
     output: Arc<crate::playback::output::OutputRuntime>,
@@ -281,6 +286,7 @@ impl MusicClient {
             session,
             registry,
             auth: auth::AuthHost::default(),
+            external_import_auth: Default::default(),
         }
     }
 }

@@ -41,7 +41,7 @@ pub(crate) struct PlaybackDownloadRow {
 }
 
 pub struct StateStore {
-    directory: PathBuf,
+    directory: Option<PathBuf>,
     connection: Mutex<Connection>,
 }
 
@@ -79,9 +79,20 @@ impl StateStore {
         drop(file);
         let connection = Connection::open(&path)?;
         connection.busy_timeout(Duration::from_secs(5))?;
+        connection.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;")?;
+        Self::initialize(connection, Some(directory))
+    }
+
+    /// Private candidate credentials must not survive a process restart.
+    pub(crate) fn volatile_credentials() -> Result<Self> {
+        let connection = Connection::open_in_memory()?;
+        connection.execute_batch("PRAGMA temp_store=MEMORY; PRAGMA journal_mode=MEMORY;")?;
+        Self::initialize(connection, None)
+    }
+
+    fn initialize(connection: Connection, directory: Option<PathBuf>) -> Result<Self> {
         connection.execute_batch(
-            "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;
-             CREATE TABLE IF NOT EXISTS state (
+            "CREATE TABLE IF NOT EXISTS state (
                owner TEXT NOT NULL, kind TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL,
                PRIMARY KEY(owner,kind,key));",
         )?;
@@ -100,7 +111,9 @@ impl StateStore {
     }
 
     pub fn directory(&self) -> &Path {
-        &self.directory
+        self.directory
+            .as_deref()
+            .expect("volatile credentials have no filesystem directory")
     }
 
     pub fn get(&self, owner: &str, kind: &str, key: &str) -> Result<Option<Value>> {
