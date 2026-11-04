@@ -181,7 +181,15 @@ impl Actor {
             return;
         }
         let previous = self.queue_more.observation.as_ref();
-        let playing = self.state == PlaybackStatus::Playing
+        // M/308 commits Playing after rights/selection acceptance, before
+        // the native decoder finishes. Preparing has no source authority yet.
+        let authorized_start = self.state == PlaybackStatus::Loading
+            && self
+                .pending
+                .as_ref()
+                .is_some_and(|pending| !pending.paused && pending.authorized_position.is_some());
+        let playing = authorized_start
+            || self.state == PlaybackStatus::Playing
             || self.state == PlaybackStatus::Buffering
                 && previous.is_some_and(|before| before.playing && before.play_id == self.play_id);
         let observation = Observation {
@@ -322,6 +330,7 @@ impl Actor {
         if let Ok(rows) = value.rows
             && self.queue.revision() == pending.revision
             && self.play_id == pending.play_id
+            && self.state != PlaybackStatus::Error
             && self
                 .queue
                 .more_snapshot()
