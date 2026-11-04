@@ -37,3 +37,9 @@
   双页签及两次返回/焦点、权限撤回且无排行请求、本人播放量、空结果、失败与重试。
   libmpv/null 实际播访客第二首并保留队列顺序；无真实账号、外网请求或实体声卡验证。
   回执在 .build/ui-proof/profile-play-record-0805a60b/report.json。
+- 合并候选 261d62d4 的最终页面与最新探针在 Linux 实际 WebView 再过 13 态；
+  截图等待页面转场结束，访客卡片和普通歌单共用尺寸、标题及说明样式。
+  .build/ui-proof/product-phase5/rank-final/report.json 及 first/ux_03_guest_header.png。
+  同批独立验证搜索 76 态、云盘 26 态、新歌无在线权利的已下载首曲 10 态；普通 Linux
+  可执行文件（ad03256a 的应用代码）在隔离 X11 以非 C locale 启动，PipeWire 虚拟
+  设备有播放 PCM、暂停为零。已启用 Linux 与 Windows 的原生 CI 检查。
