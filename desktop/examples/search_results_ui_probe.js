@@ -1525,13 +1525,23 @@
       const nativeVoiceState=core.voiceDownloadState;
       const nativeDownloadCommand=core.downloadCommand;
       const voiceReads=[];
-      let downloadCommands=0;
-      core.voiceDownloadState=(owner,id)=>{
+      let downloadCommands=0, holdBadgeRead=false, heldBadgeRead=false, releaseBadgeRead;
+      const startCommands=[];
+      const badgeGate=new Promise(resolve=>{releaseBadgeRead=resolve;});
+      core.voiceDownloadState=async(owner,id)=>{
         voiceReads.push([owner,id]);
-        if(voiceReads.length===1) return Promise.reject({code:'state',message:'synthetic local read failure'});
+        if(voiceReads.length===1) throw {code:'state',message:'synthetic local read failure'};
+        if(holdBadgeRead){heldBadgeRead=true; await badgeGate;}
         return nativeVoiceState(owner,id);
       };
-      core.downloadCommand=(...args)=>{downloadCommands++; return nativeDownloadCommand(...args);};
+      core.downloadCommand=(...args)=>{
+        downloadCommands++;
+        if(window.__cumulusVoiceDownloadDirectory&&args[1].kind==='start_voice'){
+          startCommands.push(args[1]);
+          holdBadgeRead=true;
+        }
+        return nativeDownloadCommand(...args);
+      };
       click(play);
       let first;
       for(let i=0;i<200;i++){
@@ -1561,6 +1571,47 @@
       const afterDownload=await invoke('player_snapshot',{epoch});
       assert(!downloadCommands&&afterDownload.playId===first.playId&&afterDownload.queueRevision===first.queueRevision,
         'cancel never submits and playback selection is unchanged');
+      if(window.__cumulusVoiceDownloadDirectory){
+        click(badge());
+        await wait(()=>one('.download-dialog[open]'),'reopen exact episode confirmation');
+        const directory=one('.download-dialog [aria-label="下载目录"]');
+        directory.value=window.__cumulusVoiceDownloadDirectory;
+        directory.dispatchEvent(new Event('input',{bubbles:true}));
+        const cover=[...all('.download-dialog .download-checkboxes label')]
+          .find(label=>label.textContent.includes('嵌入专辑封面')).querySelector('input');
+        if(cover.checked) click(cover);
+        const submit=()=>one('.download-dialog form .primary');
+        await wait(()=>submit()&&!submit().disabled,'synthetic download directory accepted');
+        click(submit());
+        await wait(()=>heldBadgeRead&&!one('.download-dialog'),'native submit succeeded and footer read is held');
+        assert(startCommands.length===1&&startCommands[0].voice_ids.join(',')==='401'&&
+          startCommands[0].options.container==='audio'&&!startCommands[0].options.lyrics,
+          'native submit uses exact voice ID and permitted output options');
+        assert(badge()?.disabled&&badge().dataset.downloadState==='reading',
+          'pre-command none must not allow another download while its follow-up read is held');
+        await capture('voice_download_waiting_readback');
+        holdBadgeRead=false;
+        releaseBadgeRead();
+        await wait(()=>badge()?.dataset.downloadState==='working'&&badge().disabled,
+          'native transfer keeps the current-episode action unavailable');
+        await capture('voice_download_native_working');
+        await emit('voice-download-release');
+        await wait(()=>badge()?.dataset.downloadState==='complete'&&!badge().disabled,
+          'published native file completes the episode badge');
+        click(badge());
+        await wait(()=>one('.player-download-notice')?.textContent.trim()==='该声音已下载',
+          'completed episode displays status instead of another confirmation');
+        assert(!one('.download-dialog')&&startCommands.length===1&&downloadCommands===2,
+          'status click did not open confirmation or create another task');
+        const current=await invoke('player_snapshot',{epoch});
+        assert(current.state==='playing'&&current.playId===first.playId&&
+          current.queueRevision===first.queueRevision&&current.position>afterDownload.position,
+          'same episode keeps playing during and after download');
+        await capture('voice_download_native_complete',{playId:current.playId,submitted:1});
+        await emit('complete',{ok:true,voiceDownloadSubmitVerified:true,stageCount:count,
+          realMusicRequests:0,realAccountWrites:0});
+        return;
+      }
       const oldTicket=await invoke('prepare_play_selection',{
         epoch,expectedQueueRevision:first.queueRevision,expectedPlayId:first.playId,
       });

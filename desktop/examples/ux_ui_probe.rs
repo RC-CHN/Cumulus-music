@@ -63,6 +63,8 @@ mod settings_fixture;
 mod style_home_fixture;
 #[path = "support/style_recommendations_fixture.rs"]
 mod style_recommendations_fixture;
+#[path = "support/voice_download_fixture.rs"]
+mod voice_download_fixture;
 #[path = "support/volume_fixture.rs"]
 mod volume_fixture;
 use cumulus_core::{
@@ -166,6 +168,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(result) = playback_quality_fixture::metadata(path, &args) {
+                return result;
+            }
+            if let Some(result) = voice_download_fixture::response(path, &args) {
                 return result;
             }
             if let Some(result) = download_page_fixture::response(path, &args) {
@@ -517,6 +522,9 @@ fn main() {
         }
         if download_page.is_some() { client=client.with_download_backend(Arc::new(download_page_fixture::NoNetwork))
             .with_video_factory(Arc::new(|| Ok(Box::new(cumulus_core::playback::engine::MpvVideoEngine::open(cumulus_core::playback::engine::MpvConfig {null_output:true,..Default::default()},640,360)?)))); }
+        if voice_download_fixture::enabled() {
+            client=client.with_download_backend(Arc::new(voice_download_fixture::Media));
+        }
         if let Some(fixture)=transfer.as_ref() { client=client.with_playlist_cover_backend(fixture.clone()); }
         else if playlist_cover_layout_fixture::enabled() {
             client=client.with_playlist_cover_backend(Arc::new(playlist_cover_layout_fixture::NoNetwork));
@@ -591,7 +599,11 @@ fn main() {
                 value["playlistCommentThreads"]=json!(*PLAYLIST_COMMENT_THREADS.lock().unwrap());
                 value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());
             }
+            if voice_download_fixture::enabled() { value["voiceDownloadService"]=voice_download_fixture::report(); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if voice_download_fixture::enabled() && stage=="voice-download-release" {
+                voice_download_fixture::release();return;
+            }
             if device_peq_proof && stage=="effect-device-comparison-pcm" {
                 let stats=&value["nativePeq"];
                 let ready=stats["nativeAttached"]==true && stats["attaches"]==3 &&

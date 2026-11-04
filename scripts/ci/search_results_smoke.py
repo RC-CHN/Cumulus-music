@@ -1,9 +1,11 @@
 """Search result categories and interactions via production IPC and an isolated in-memory backend."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 import json
 import os
 from pathlib import Path
+import sqlite3
 from threading import Event
 import time
 from motion_smoke import launch
@@ -60,6 +62,7 @@ def main():
     mode.add_argument('--carousel', action='store_true')
     mode.add_argument('--hot-card', action='store_true')
     mode.add_argument('--voice-direct', action='store_true')
+    mode.add_argument('--voice-download-submit', action='store_true')
     mode.add_argument('--card-matches', action='store_true')
     mode.add_argument('--correction-original', action='store_true')
     mode.add_argument('--artist-gallery', action='store_true')
@@ -130,8 +133,11 @@ def main():
         prefix = 'window.__cumulusArtistGalleryProof = true;\n'
     if args.card_matches:
         prefix = 'window.__cumulusSearchCardMatchesProof = true;\n'
-    if args.voice_direct:
+    if args.voice_direct or args.voice_download_submit:
         prefix = 'window.__cumulusSearchVoiceDirectProof = true;\n'
+        if args.voice_download_submit:
+            env['CUMULUS_VOICE_DOWNLOAD_UI_PROOF'] = '1'
+            prefix += 'window.__cumulusVoiceDownloadDirectory = ' + json.dumps(str(root / 'voice-media')) + ';\n'
     if args.v3:
         env['CUMULUS_SEARCH_V3_PROOF'] = '1'
         prefix = 'window.__cumulusSearchV3Proof = true;\n'
@@ -355,6 +361,24 @@ def main():
         print(json.dumps(dict(ok=True, actualWebView=True, artistGalleryVerified=True,
                               artistGalleryBatchesVerified=True, stageCount=5,
                               nativeArtistGalleryReads=20, realAccountWrites=0)))
+        return
+    if args.voice_download_submit:
+        complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['voiceDownloadSubmitVerified'] and complete['stageCount'] == 6
+        assert complete['voiceDownloadService'] == {'rights': 1, 'urls': 1, 'gets': 1}
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        assert len(list((root / 'first').glob('ux_*.png'))) == (6 if args.screenshots else 0)
+        with closing(sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True)) as db:
+            task, = (json.loads(value) for value, in db.execute(
+                "SELECT value FROM state WHERE owner='2' AND kind='download_tasks_v1'"))
+        assert task['origin'] == {'kind': 'voice', 'voice_id': '401'} and task['song_id'] == '1'
+        assert task['status'] == 'complete' and task['authorization_count'] == 1
+        target = Path(task['target']).resolve(strict=True)
+        assert target.is_relative_to(root / 'voice-media') and target.suffix == '.mp3' and target.stat().st_size > 0
+        summary = dict(ok=True, actualWebView=True, voiceId='401', mediaId='1', stageCount=6,
+                       nativePublished=True, privateSyntheticMedia=True, requestCounts=complete['voiceDownloadService'])
+        (root / 'report.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
+        print(json.dumps(summary))
         return
     if args.voice_direct or args.card_matches or args.correction_original or args.people_categories or args.search_next:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))

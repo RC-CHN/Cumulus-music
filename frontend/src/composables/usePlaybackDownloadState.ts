@@ -17,7 +17,9 @@ export function usePlaybackDownloadState(
   watch(
     [key, changing, attempt],
     ([identity, busy], _previous, onCleanup) => {
-      if (result.value?.key !== identity) result.value = undefined;
+      // A download command can create or remove a task. Do not reveal a
+      // pre-command "none" while the follow-up SQLite read is in flight.
+      if (busy || result.value?.key !== identity) result.value = undefined;
       if (!identity || busy) return;
       const current = target.value;
       if (!current) return;
@@ -35,13 +37,8 @@ export function usePlaybackDownloadState(
             : core.songDownloadState(selected.epoch, selected.id));
           if (active && key.value === selected.key) result.value = { key: selected.key, state };
         } catch {
-          // An unread voice status offers a local read retry instead of a new task.
-          // Keep the existing song shortcut behavior.
           if (active && key.value === selected.key && !result.value)
-            result.value = {
-              key: selected.key,
-              state: selected.kind === 'voice' ? 'unknown' : 'none',
-            };
+            result.value = { key: selected.key, state: 'unknown' };
         }
         if (
           active &&
@@ -56,7 +53,7 @@ export function usePlaybackDownloadState(
   );
   const state = computed(() => {
     const value = result.value;
-    return value?.key === key.value ? value?.state : undefined;
+    return !changing() && value?.key === key.value ? value?.state : undefined;
   });
   function retry() {
     if (state.value !== 'unknown') return;
