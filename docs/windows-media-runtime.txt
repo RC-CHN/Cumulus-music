@@ -273,8 +273,12 @@ uninstalls in a private directory, compares the installed media files with
 the portable runtime, runs installed ffprobe against generated PCM, and
 launches the installed binary's graphics-only startup from a separate
 working directory. Logs and a bounded JSON receipt go under NEW_DIRECTORY.
-The current-user uninstall registration and installed runtime files must
-be absent afterward. This script assumes an offline disposable Windows
-runner with WebView2 already present; it does not configure network
-isolation. Windows execution and ordinary installed GUI playback are still
-unverified by this diagnostic and it is not a release or CI gate.
+The diagnostic requires preinstalled WebView2, verifies that the uninstall
+registration identifies the scratch installation, and checks that both
+registration and installed runtime files are gone after uninstall. The
+manual .github/workflows/windows-installed-diagnostic.yml runs it only on
+a disposable GitHub-hosted Windows x64 runner, after verifying exact CI
+source and package identities. It uploads diagnostic reports only. The
+workflow has not been run here; it does not establish network isolation,
+ordinary installed playback, or physical output, and is not a release or
+CI gate. See docs/windows-installed-runner-plan.txt for invocation.

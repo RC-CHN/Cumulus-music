@@ -1,11 +1,14 @@
 """Synthetic provenance/layout checks for the opt-in actual NSIS diagnostic."""
 import hashlib
 import json
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 import tempfile
 import unittest
 
-from windows_nsis_smoke import PLATFORM, installed_media_matches, nsis_command, verified_installer
+from windows_nsis_smoke import (
+    PLATFORM, clean_environment, existing_webview_version, installed_media_matches, nsis_command,
+    require_scratch_registration, verified_installer,
+)
 
 
 class WindowsNsisProof(unittest.TestCase):
@@ -54,6 +57,44 @@ class WindowsNsisProof(unittest.TestCase):
             setup = root / 'bundled installer.exe'
             self.assertTrue(nsis_command(setup, destination).endswith(f' /S /D={destination}'))
             self.assertTrue(nsis_command(setup, destination, remove=True).endswith(f' /S _?={destination}'))
+
+
+    def test_scratch_registry_requires_exact_current_user_install_and_uninstaller(self):
+        directory = PureWindowsPath(r'C:\runner\scratch directory\installed application')
+        row = dict(Key='Cumulus', DisplayName='Cumulus', DisplayVersion='0.1.0',
+                   InstallLocation=f'"{directory}"', UninstallString=f'"{directory / "uninstall.exe"}"')
+        require_scratch_registration([row], directory, '0.1.0')
+        for changed in (
+            row | {'InstallLocation': r'"C:\Users\fixture\AppData\Local\Cumulus"'},
+            row | {'UninstallString': row['UninstallString'] + ' /unexpected'},
+            row | {'DisplayVersion': '0.2.0'},
+        ):
+            with self.assertRaisesRegex(AssertionError, 'exact scratch'):
+                require_scratch_registration([changed], directory, '0.1.0')
+        with self.assertRaisesRegex(AssertionError, 'ambiguous'):
+            require_scratch_registration([row, row], directory, '0.1.0')
+
+    def test_webview_runtime_preflight_refuses_bootstrap_or_wrong_registry_data(self):
+        self.assertEqual(existing_webview_version('143.0.4.2', None), '143.0.4.2')
+        self.assertEqual(existing_webview_version('', '143.0.4.2'), '143.0.4.2')
+        for machine, user in ((None, None), ('0.0.0.0', '143.0.4.2'),
+                              ('not-a-version', None), (None, '143.0')):
+            with self.subTest(machine=machine, user=user):
+                with self.assertRaisesRegex(AssertionError, 'not preinstalled'):
+                    existing_webview_version(machine, user)
+
+    def test_installer_children_do_not_inherit_browser_overrides_or_credential_environment(self):
+        with tempfile.TemporaryDirectory() as folder:
+            system = Path(folder)
+            temp = system / 'scratch'
+            inherited = {'SystemRoot': str(system), 'pAtH': 'ambient-dll-path', 'gH_ToKeN': 'token',
+                         'CUMULUS_SESSION_DIR': 'unrelated-state', 'WEBVIEW2_USER_DATA_FOLDER': 'browser',
+                         'ACTIONS_ID_TOKEN_REQUEST_TOKEN': 'runtime-token', 'tEmp': 'ambient-temp'}
+            env = clean_environment(inherited, temp)
+            self.assertEqual(set(env), {'SystemRoot', 'PATH', 'TEMP', 'TMP', 'PYTHONUTF8'})
+            self.assertEqual(env['TEMP'], str(temp))
+            self.assertEqual(env['TMP'], str(temp))
+            self.assertNotIn('ambient', env['PATH'])
 
 
 if __name__ == '__main__':

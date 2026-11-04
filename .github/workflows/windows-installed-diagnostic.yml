@@ -1,0 +1,95 @@
+name: Windows installed package diagnostic
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full SHA of the successful main CI source
+        type: string
+        required: true
+      source_run:
+        description: Successful CI run ID
+        type: string
+        required: true
+      source_attempt:
+        description: Exact current successful CI run attempt
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  installed:
+    name: Verify the Windows NSIS package on a fresh runner
+    if: github.repository == 'RC-CHN/Cumulus-music' && github.ref == 'refs/heads/main'
+    runs-on: windows-2022
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out the trusted diagnostic driver
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ github.sha }}
+          path: driver
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Verify source CI and select its exact Windows artifact
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+          SOURCE_ATTEMPT: ${{ inputs.source_attempt }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          python -E driver/scripts/ci/windows_installed_source.py --run-id "$env:SOURCE_RUN" --attempt "$env:SOURCE_ATTEMPT" --commit "$env:SOURCE_COMMIT" select
+      - name: Check out the exact CI source commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ steps.source.outputs.commit }}
+          path: source
+          persist-credentials: false
+      - name: Download only the selected source artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ steps.source.outputs.artifact }}
+          repository: RC-CHN/Cumulus-music
+          run-id: ${{ steps.source.outputs.run }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/cumulus-installed-source-packages
+          merge-multiple: true
+      - name: Recheck source and verify package manifest and contents
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN: ${{ steps.source.outputs.run }}
+          SOURCE_ATTEMPT: ${{ steps.source.outputs.attempt }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+          SOURCE_ARTIFACT: ${{ steps.source.outputs.artifact }}
+        run: |
+          python -E driver/scripts/ci/windows_installed_source.py --run-id "$env:SOURCE_RUN" --attempt "$env:SOURCE_ATTEMPT" --commit "$env:SOURCE_COMMIT" confirm --artifact-id "$env:SOURCE_ARTIFACT" --source source --packages "$env:RUNNER_TEMP/cumulus-installed-source-packages"
+      - name: Install, verify native layout and graphics, and uninstall
+        id: diagnostic
+        env:
+          SOURCE_RUN: ${{ steps.source.outputs.run }}
+          SOURCE_ATTEMPT: ${{ steps.source.outputs.attempt }}
+          SOURCE_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          python -E driver/scripts/ci/windows_nsis_smoke.py --disposable-runner --hosted-runner --packages "$env:RUNNER_TEMP/cumulus-installed-source-packages" --commit "$env:SOURCE_COMMIT" --ci-run "$env:SOURCE_RUN" --ci-attempt "$env:SOURCE_ATTEMPT" --root "$env:RUNNER_TEMP/cumulus-installed-diagnostics"
+      - name: Preserve diagnostic reports only
+        if: always() && !cancelled() && (steps.diagnostic.outcome == 'success' || steps.diagnostic.outcome == 'failure')
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-installed-diagnostic
+          path: |
+            ${{ runner.temp }}/cumulus-installed-diagnostics/report.json
+            ${{ runner.temp }}/cumulus-installed-diagnostics/install.log
+            ${{ runner.temp }}/cumulus-installed-diagnostics/uninstall.log
+            ${{ runner.temp }}/cumulus-installed-diagnostics/graphics/[0-2].json
+            ${{ runner.temp }}/cumulus-installed-diagnostics/graphics/[0-2].log
+          if-no-files-found: error
+          retention-days: 14
