@@ -91,6 +91,8 @@
         click(button('不接收此歌手的通知'));
         await wait(() => one('dialog[open]')?.textContent.includes('后续将屏蔽') ||
           one('dialog[open]')?.textContent.includes('未收到确认'), 'notification confirmation');
+        await wait(() => ['取消', '关闭'].includes(document.activeElement?.textContent.trim()),
+          'safe initial focus for notification dialog');
       }
       await confirmation(1);
       click(button('取消', one('dialog[open]')));

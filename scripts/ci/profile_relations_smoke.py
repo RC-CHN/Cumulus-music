@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     args = parser.parse_args()
@@ -28,6 +29,8 @@ def main():
                                   'desktop/examples/profile_relations_ui_probe.js')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
+    if args.runtime:
+        env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     output = root / 'first'
     with (root / 'first.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, output, args.screenshots)
