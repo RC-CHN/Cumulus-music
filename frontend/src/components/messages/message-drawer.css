@@ -1,3 +1,15 @@
+.message-drawer-trigger {
+  position: relative;
+}
+.message-drawer-unread-dot {
+  position: absolute;
+  inset: calc(50% - 8px) calc(50% - 9px) auto auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff3853;
+  pointer-events: none;
+}
 .message-drawer {
   position: fixed;
   z-index: 50;

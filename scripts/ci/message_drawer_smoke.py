@@ -18,6 +18,7 @@ def main():
     mode.add_argument('--attachments', action='store_true')
     mode.add_argument('--deletion', action='store_true')
     mode.add_argument('--reply', action='store_true')
+    mode.add_argument('--polling', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -41,6 +42,11 @@ def main():
         injected.write_text('window.__cumulusMessageReplyProof = true;\n' +
                             script.read_text(encoding='utf-8'), encoding='utf-8')
         env.update(CUMULUS_UX_SCRIPT=str(injected), CUMULUS_MESSAGE_REPLY_PROOF='1')
+    if args.polling:
+        injected = root / 'polling-probe.js'
+        injected.write_text('window.__cumulusMessagePollProof = true;\n' +
+                            script.read_text(encoding='utf-8'), encoding='utf-8')
+        env.update(CUMULUS_UX_SCRIPT=str(injected), CUMULUS_MESSAGE_POLL_PROOF='1')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         profile = root / 'os-profile' / key
@@ -57,6 +63,18 @@ def main():
     assert not failure.exists(), failure.read_text(encoding='utf-8') if failure.exists() else ''
     assert code == 0
     report = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.polling:
+        assert report['ok'] and report['messagePollingVerified'] and report['count'] == 4
+        assert report['realAccountWrites'] == report['realMusicRequests'] == 0
+        assert not report['messageRequests']['blockedWrite'] and report['hiddenCount'] == 4
+        requests = report['messageRequests']['requests']
+        assert [args for path, args in requests if path == '/api/pl/count'] == [{}] * 8
+        assert [path for path, _ in requests if path != '/api/pl/count'] == ['/api/msg/private/users'] * 2
+        assert len(list(output.glob('ux_*.png'))) == (4 if args.screenshots else 0)
+        report['actualWebView'] = True
+        (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+        print(json.dumps(report, ensure_ascii=False))
+        return
     if args.reply:
         verify_reply(report, output, args.screenshots)
         report['actualWebView'] = True
@@ -85,7 +103,7 @@ def main():
     for path, request in report['messageRequests']['requests']:
         reads.setdefault(path, []).append(request)
     assert reads == {
-        '/api/pl/count': [{}, {}, {}],
+        '/api/pl/count': [{}, {}, {}, {}, {}],
         '/api/msg/private/users': [
             dict(limit=15, offset=0, time=-1),
             dict(limit=15, offset=0, time=t-14),

@@ -30,6 +30,9 @@ mod local;
 mod login_device;
 mod member;
 mod messages;
+pub use messages::counts::{
+    start_message_count_polling, window_visibility as message_count_window_visibility,
+};
 pub mod mini;
 mod mv;
 mod network_diagnostics;
@@ -82,6 +85,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(watchman::collection::lifecycle())
         .plugin(shortcuts::lifecycle())
+        .plugin(messages::counts::lifecycle())
         .manage(cumulus_core::Application)
         .manage(updates::UpdateGate::default())
         .manage(mini::Host::default())
@@ -90,6 +94,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .manage(player::PlayerStreams::default())
         .manage(together::CloseCoordinator::default())
         .manage(renewal::RenewalPump::default())
+        .manage(messages::counts::Host::default())
         .manage(watchman::EventHost::default())
         .manage(watchman::collection::MeasurementBridge::default())
         .on_window_event(|window, event| {
@@ -107,6 +112,14 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
             if window.label() == "main" && matches!(event, tauri::WindowEvent::Focused(true)) {
                 renewal::wake(window.app_handle());
             }
+            if window.label() == "main"
+                && matches!(
+                    event,
+                    tauri::WindowEvent::Focused(_) | tauri::WindowEvent::Resized(_)
+                )
+            {
+                messages::counts::window_visibility(window.app_handle(), false);
+            }
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 if window.label() == "main" {
                     #[cfg(target_os = "linux")]
@@ -120,6 +133,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                     system_media::stop(window.app_handle());
                     shortcuts::stop(window.app_handle());
                     renewal::stop(window.app_handle());
+                    messages::counts::stop(window.app_handle());
                     for (label, child) in window.app_handle().webview_windows() {
                         if label.starts_with("captcha-") {
                             let _ = child.destroy();
@@ -478,7 +492,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 mv::video_snapshot,
                 mv::video_action,
                 mv::video_frame,
-                messages::message_counts,
+                messages::counts::watch_message_counts,
+                messages::counts::message_count_action,
                 messages::message_page,
                 messages::pending_message_deletions,
                 messages::delete_message,
@@ -568,6 +583,7 @@ pub fn run() {
             let client = configure_native_audio(client, &resources, false);
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
+            start_message_count_polling(app.handle())?;
             app.manage(file_open);
             lifecycle::install(app.handle())?;
             launch.finish(app.handle());

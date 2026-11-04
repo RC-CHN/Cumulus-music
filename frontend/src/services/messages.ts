@@ -8,6 +8,17 @@ export type MessageQuery =
   | { tab: 'thread'; cursor: number | null; peerId: string };
 
 export type MessageCounts = Record<MessageTab, number | null>;
+export interface MessageCountView {
+  epoch: string;
+  counts: MessageCounts | null;
+  refreshing: boolean;
+  failed: boolean;
+}
+export interface MessageCountStream {
+  visibility(epoch: string, sequence: number, visible: boolean): Promise<void>;
+  refresh(epoch: string): Promise<void>;
+  close(): void;
+}
 export type MessageTarget =
   | { kind: 'play_track' | 'play_voice' | 'playlist' | 'album' | 'artist' | 'mv'; id: string }
   | { kind: 'comment'; resource: CommentResource; commentId: string };
@@ -53,7 +64,7 @@ export type MessageReplyView = { receipt: string } & (
 );
 export interface MessageClient {
   messageReply(epoch: string, action: MessageReplyAction): Promise<AccountData<MessageReplyView>>;
-  messageCounts(epoch: string): Promise<AccountData<MessageCounts>>;
+  watchMessageCounts(update: (view: MessageCountView) => void): Promise<MessageCountStream>;
   messagePage(epoch: string, query: MessageQuery): Promise<AccountData<MessagePage>>;
   pendingMessageDeletions(epoch: string): Promise<AccountData<MessagePendingDeletion[]>>;
   deleteMessage(

@@ -714,6 +714,9 @@ fn main() {
         }
         app.manage(cumulus_desktop::effect_activation::Host::new(&app.path().resource_dir()?));
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
+        if message_fixture::enabled() {
+            cumulus_desktop::start_message_count_polling(app.handle())?;
+        }
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
         let cover_root=root.clone();
@@ -826,6 +829,30 @@ fn main() {
                 let report=message_fixture::control(value["mode"].as_str().unwrap_or(""));
                 let id=value["id"].as_u64().expect("message probe sequence");
                 handle.get_webview_window("main").unwrap().eval(format!("window.__messageFixtureAck[{id}]={report};")).unwrap();
+                return;
+            }
+            if stage=="message-poll-hide" && message_fixture::polling() {
+                let window=handle.get_webview_window("main").unwrap();
+                let baseline=message_fixture::count_calls();
+                window.hide().unwrap();
+                cumulus_desktop::message_count_window_visibility(&handle,true);
+                let handle=handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(32)).await;
+                    let hidden=message_fixture::count_calls();
+                    let window=handle.get_webview_window("main").unwrap();
+                    assert!(!window.is_visible().unwrap());
+                    window.show().unwrap();
+                    cumulus_desktop::message_count_window_visibility(&handle,false);
+                    window.eval(format!("window.__messagePollRevealed={{baseline:{baseline},hidden:{hidden}}};")).unwrap();
+                });
+                return;
+            }
+            if stage=="message-poll-switch" && message_fixture::polling() {
+                use tauri::Emitter;
+                message_fixture::control("poll-hold");
+                fixture_session.adopt(Arc::new(Library), json!({"userId":3,"nickname":"合成第二账号"}), &fixture_session.token().unwrap()).unwrap();
+                handle.emit_to("main","cumulus:account-changed",handle.state::<MusicClient>().account().unwrap()).unwrap();
                 return;
             }
             if stage=="effect-peq-fail-runtime" && effect_peq_fixture::inject_runtime_fault() {

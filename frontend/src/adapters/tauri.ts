@@ -8,11 +8,35 @@ import type { WindowLifecycleView } from '../services/window';
 import type { SystemMediaStatus } from '../services/systemMedia';
 import type { ShortcutStatus } from '../services/shortcuts';
 import type { SessionRenewalView } from '../services/renewal';
+import type { MessageCountView } from '../services/messages';
 
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
-    messageCounts: (epoch) => invoke('message_counts', { epoch }),
+    async watchMessageCounts(update) {
+      const streamId = crypto.randomUUID();
+      const onUpdate = new Channel<MessageCountView>();
+      let active = true;
+      onUpdate.onmessage = (view) => {
+        if (active) update(view);
+      };
+      await invoke('watch_message_counts', { streamId, onUpdate });
+      return {
+        visibility: (epoch, sequence, visible) =>
+          invoke('message_count_action', {
+            streamId,
+            action: { kind: 'visibility', epoch, sequence, visible },
+          }),
+        refresh: (epoch) =>
+          invoke('message_count_action', { streamId, action: { kind: 'refresh', epoch } }),
+        close: () => {
+          active = false;
+          void invoke('message_count_action', { streamId, action: { kind: 'detach' } }).catch(
+            () => {},
+          );
+        },
+      };
+    },
     messagePage: (epoch, query) => invoke('message_page', { epoch, query }),
     messageReply: (epoch, action) => invoke('message_reply', { epoch, action }),
     pendingMessageDeletions: (epoch) => invoke('pending_message_deletions', { epoch }),

@@ -1,19 +1,12 @@
+pub(crate) mod counts;
 use cumulus_core::client::{
     ClientError, MusicClient,
     dto::AccountData,
     messages::{
-        MessageCounts, MessageDeleteAction, MessageDeleteOutcome, MessagePage,
-        MessagePendingDeletion, MessageQuery, MessageReplyAction, MessageReplyView,
+        MessageDeleteAction, MessageDeleteOutcome, MessagePage, MessagePendingDeletion,
+        MessageQuery, MessageReplyAction, MessageReplyView,
     },
 };
-
-#[tauri::command]
-pub async fn message_counts(
-    client: tauri::State<'_, MusicClient>,
-    epoch: String,
-) -> Result<AccountData<MessageCounts>, ClientError> {
-    client.message_counts(&epoch).await.map_err(Into::into)
-}
 
 #[tauri::command]
 pub async fn message_page(

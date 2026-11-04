@@ -159,6 +159,7 @@ fn reveal<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
         let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
+        crate::messages::counts::window_visibility(app, false);
     }
 }
 pub fn show<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {

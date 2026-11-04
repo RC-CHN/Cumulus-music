@@ -203,6 +203,7 @@ async fn hide<R: tauri::Runtime>(app: &tauri::AppHandle<R>, operation: u64) {
         fail(app, operation, "无法隐藏到托盘，主窗口已保留。".into());
         return;
     }
+    crate::messages::counts::window_visibility(app, true);
     // Native calls acknowledge submission, not the window manager's state.
     // Poll at most 500ms and recheck the host/operation before accepting hide.
     for _ in 0..10 {

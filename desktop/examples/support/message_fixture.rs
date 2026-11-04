@@ -18,6 +18,9 @@ static REPLY_BINDINGS: AtomicUsize = AtomicUsize::new(0);
 static REPLY_SENDS: AtomicUsize = AtomicUsize::new(0);
 static HOLD_REPLY: AtomicBool = AtomicBool::new(false);
 static REPLY_HELD: AtomicBool = AtomicBool::new(false);
+static COUNT_MODE: AtomicUsize = AtomicUsize::new(0);
+static HOLD_COUNT: AtomicBool = AtomicBool::new(false);
+static COUNT_HELD: AtomicBool = AtomicBool::new(false);
 
 const REPLY_PATH: &str = "/api/msg/private/send";
 const REPLY_GATE: &str = "/api/w/v1/user/bindings/2";
@@ -37,6 +40,18 @@ fn sent_row() -> Value {
 
 pub fn enabled() -> bool {
     std::env::var("CUMULUS_MESSAGE_DRAWER_PROOF").as_deref() == Ok("1")
+}
+pub fn polling() -> bool {
+    std::env::var("CUMULUS_MESSAGE_POLL_PROOF").as_deref() == Ok("1")
+}
+
+pub fn count_calls() -> usize {
+    REQUESTS
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(path, _)| path == "/api/pl/count")
+        .count()
 }
 
 fn attachments() -> bool {
@@ -64,6 +79,11 @@ pub fn control(mode: &str) -> Value {
         "deletion-omit" if deletion() => OMIT_UNKNOWN.store(true, Ordering::SeqCst),
         "reply-hold" if reply_mode() => HOLD_REPLY.store(true, Ordering::SeqCst),
         "reply-release" if reply_mode() => HOLD_REPLY.store(false, Ordering::SeqCst),
+        "poll-positive" if polling() => COUNT_MODE.store(0, Ordering::SeqCst),
+        "poll-zero" if polling() => COUNT_MODE.store(1, Ordering::SeqCst),
+        "poll-fail" if polling() => COUNT_MODE.store(2, Ordering::SeqCst),
+        "poll-hold" if polling() => HOLD_COUNT.store(true, Ordering::SeqCst),
+        "poll-release" if polling() => HOLD_COUNT.store(false, Ordering::SeqCst),
         "read" => {}
         _ => panic!("unknown message fixture command"),
     }
@@ -72,7 +92,8 @@ pub fn control(mode: &str) -> Value {
 
 pub fn report() -> Value {
     json!({"requests":*REQUESTS.lock().unwrap(),"blockedWrite":WRITE_ATTEMPT.load(Ordering::SeqCst),
-        "noticeHeld":NOTICE_HELD.load(Ordering::SeqCst),"replyHeld":REPLY_HELD.load(Ordering::SeqCst)})
+        "noticeHeld":NOTICE_HELD.load(Ordering::SeqCst),"replyHeld":REPLY_HELD.load(Ordering::SeqCst),
+        "countHeld":COUNT_HELD.load(Ordering::SeqCst)})
 }
 
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
@@ -187,7 +208,18 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     REQUESTS.lock().unwrap().push((path.into(), args.clone()));
     let res = match path {
         "/api/pl/count" if args == &json!({}) => {
-            json!({"code":200,"msg":3,"comment":2,"forward":1,"notice":4})
+            if HOLD_COUNT.load(Ordering::SeqCst) {
+                COUNT_HELD.store(true, Ordering::SeqCst);
+                while HOLD_COUNT.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                }
+                COUNT_HELD.store(false, Ordering::SeqCst);
+            }
+            match COUNT_MODE.load(Ordering::SeqCst) {
+                1 => json!({"code":200,"msg":0,"comment":0,"forward":0,"notice":0}),
+                2 => json!({"code":503}),
+                _ => json!({"code":200,"msg":3,"comment":2,"forward":1,"notice":4}),
+            }
         }
         "/api/msg/private/users" if args == &json!({"limit":15,"offset":0,"time":-1}) => {
             let rows = (0..15).filter(|idx| !deletion() || *idx != 0 || !REMOVED_CONVERSATION.load(Ordering::SeqCst)).map(|idx| json!({"fromUser":{"userId":501+idx,"nickname":format!("合成联系人 {:02}",idx+1)},

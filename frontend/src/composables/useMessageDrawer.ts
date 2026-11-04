@@ -1,9 +1,10 @@
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../services/contracts';
 import {
   messageTabs,
   type MessageClient,
-  type MessageCounts,
+  type MessageCountStream,
+  type MessageCountView,
   type MessageQuery,
   type MessageRow,
   type MessageTab,
@@ -38,9 +39,57 @@ export function useMessageDrawer(
   });
   const thread = ref(createList());
   const current = computed(() => (peer.value ? thread.value : lists[tab.value]));
-  const counts = ref<MessageCounts>();
-  const countsBusy = ref(false);
-  const countsError = ref(false);
+  const nativeCounts = shallowRef<MessageCountView>();
+  const currentCounts = computed(() => {
+    const owner = account();
+    return owner.status === 'authenticated' && owner.epoch === nativeCounts.value?.epoch
+      ? nativeCounts.value
+      : undefined;
+  });
+  const counts = computed(() => currentCounts.value?.counts);
+  const refreshing = ref<string>();
+  const streamFailure = ref<string>();
+  const countsBusy = computed(
+    () => currentCounts.value?.refreshing || refreshing.value === account().epoch,
+  );
+  const countsError = computed(
+    () => currentCounts.value?.failed || streamFailure.value === account().epoch,
+  );
+  let countStream: MessageCountStream | undefined;
+  let disposed = false;
+  let countVisibility = false;
+  let sequence = 0;
+
+  function syncCountVisibility() {
+    const owner = account();
+    if (!countStream || owner.status !== 'authenticated') return;
+    void countStream.visibility(owner.epoch, ++sequence, countVisibility).catch(() => {});
+  }
+
+  function setCountVisibility(visible: boolean) {
+    if (countVisibility === visible) return;
+    countVisibility = visible;
+    syncCountVisibility();
+  }
+
+  onMounted(async () => {
+    try {
+      const stream = await core.watchMessageCounts((view) => {
+        if (disposed) return;
+        nativeCounts.value = view;
+        if (!view.failed) streamFailure.value = undefined;
+      });
+      if (disposed) return stream.close();
+      countStream = stream;
+      syncCountVisibility();
+    } catch {
+      if (!disposed && account().status === 'authenticated') streamFailure.value = account().epoch;
+    }
+  });
+  onBeforeUnmount(() => {
+    disposed = true;
+    countStream?.close();
+  });
   let visit = 0;
   let threadVisit = 0;
 
@@ -52,27 +101,21 @@ export function useMessageDrawer(
     thread.value = createList();
     tab.value = 'private';
     for (const key of messageTabs) lists[key] = createList();
-    counts.value = undefined;
-    countsBusy.value = countsError.value = false;
   }
   watch(() => [account().epoch, account().status] as const, close, { flush: 'sync' });
 
   async function readCounts() {
     if (!shown.value || countsBusy.value || account().status !== 'authenticated') return;
     const epoch = account().epoch;
-    const generation = visit;
-    countsBusy.value = true;
-    countsError.value = false;
+    refreshing.value = epoch;
+    streamFailure.value = undefined;
     try {
-      const result = await core.messageCounts(epoch);
-      if (generation === visit && result.epoch === epoch && account().epoch === epoch)
-        counts.value = result.value;
-    } catch (error) {
-      if (generation !== visit || account().epoch !== epoch) return;
-      countsError.value = true;
-      if ((error as { code?: string })?.code === 'session_expired') expired();
+      if (!countStream) throw new Error('message count stream unavailable');
+      await countStream.refresh(epoch);
+    } catch {
+      if (account().epoch === epoch) streamFailure.value = epoch;
     } finally {
-      if (generation === visit) countsBusy.value = false;
+      if (refreshing.value === epoch) refreshing.value = undefined;
     }
   }
 
@@ -133,7 +176,6 @@ export function useMessageDrawer(
   function open() {
     if (shown.value || account().status !== 'authenticated') return;
     shown.value = true;
-    void readCounts();
     void load();
   }
   function select(next: MessageTab) {
@@ -160,6 +202,7 @@ export function useMessageDrawer(
     counts,
     countsBusy,
     countsError,
+    setCountVisibility,
     open,
     close,
     readCounts,

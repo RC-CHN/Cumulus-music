@@ -4,8 +4,8 @@
   const all = (selector) => [...document.querySelectorAll(selector)];
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (condition, detail) => { if (!condition) throw Error(detail); };
-  const wait = async (predicate, detail) => {
-    for (let i = 0; i < 220; i++) {
+  const wait = async (predicate, detail, attempts = 220) => {
+    for (let i = 0; i < attempts; i++) {
       const result = await predicate();
       if (result) return result;
       await sleep(50);
@@ -25,6 +25,7 @@
   const drawer = () => one('.message-drawer');
   const scroller = () => one('.message-drawer-scroll');
   const trigger = () => one('.message-drawer-trigger');
+  const dot = () => trigger()?.querySelector('.message-drawer-unread-dot');
   const ready = () => scroller()?.getAttribute('aria-busy') === 'false';
   const contains = (text) => drawer()?.textContent.includes(text);
   const pick = (tab) => click(one(`[data-message-tab="${tab}"]`));
@@ -37,6 +38,8 @@
     await emit('message-fixture', { mode, id });
     return wait(() => window.__messageFixtureAck[id], 'native message fixture acknowledgement');
   }
+  const countCalls = async () => (await fixture()).requests
+    .filter(([path]) => path === '/api/pl/count').length;
   async function capture(label) {
     stage = label;
     // WebKit's Web Animations list can settle before the transformed fixed
@@ -81,6 +84,19 @@
         }],
       };
     }
+    if (window.__cumulusMessagePollProof) {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const indicator = dot();
+      const rect = indicator?.getBoundingClientRect();
+      paint = { ratio: devicePixelRatio, screenX, screenY, paintSamples: [{
+        x: bounds.left + 4, y: bounds.top + 35,
+        color: getComputedStyle(drawer()).backgroundColor,
+      }] };
+      if (rect) paint.paintSamples.push({
+        x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
+        color: getComputedStyle(indicator).backgroundColor,
+      });
+    }
     await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, {
       label, dark: document.documentElement.dataset.theme === 'dark',
       rows: all('.message-drawer-item').length,
@@ -90,13 +106,15 @@
   }
   try {
     await wait(() => trigger() && !trigger().disabled && one('.track-row'), 'authenticated initial page');
-    assert((await fixture()).requests.length === 0, 'no background unread or message reads');
+    await wait(() => dot(), 'header unread dot before opening messages');
+    assert((await fixture()).requests.length === 1 && await countCalls() === 1,
+      'authenticated startup reads only message counts, once');
     const account = await invoke('account_snapshot');
     assert(account.status === 'authenticated', 'isolated account active');
     const stale = await invoke('message_page', {
       epoch: account.epoch + '0', query: { tab: 'notices', cursor: null },
     }).then(() => null, (error) => error);
-    assert(stale?.code === 'stale' && (await fixture()).requests.length === 0,
+    assert(stale?.code === 'stale' && (await fixture()).requests.length === 1,
       'wrong account generation is rejected before contacting the service');
     click(trigger());
     await wait(() => ready() && contains('私信预览 1') && contains('私信预览 15')
@@ -104,7 +122,40 @@
     'private inbox and server unread counts');
     assert(!contains('一键全读') && !drawer().querySelector('textarea'),
       'read-only drawer has no mark-all or compose controls');
+    await wait(async () => await countCalls() === 2, 'visible drawer rearmed exactly once');
     await capture('private');
+    if (window.__cumulusMessagePollProof) {
+      await fixture('poll-zero');
+      await wait(async () => !dot() && await countCalls() === 3, 'real 30-second native interval', 950);
+      assert(!one('[data-message-tab="notices"] .message-drawer-badge'), 'zero hides tab badges and header dot');
+      await capture('poll_zero');
+      await fixture('poll-positive');
+      await emit('message-poll-hide');
+      const reveal = await wait(() => window.__messagePollRevealed, 'native window hide then reveal', 1100);
+      assert(reveal.baseline === 3 && reveal.hidden === 4,
+        'window hiding rearmed once and suppressed the next 30-second read');
+      await wait(async () => dot() && await countCalls() === 5, 'window reveal returns the drawer to fast cadence');
+      await capture('poll_foreground');
+      await fixture('poll-fail');
+      await wait(() => !button('刷新消息')?.disabled, 'current poll settled before manual refresh');
+      click(button('刷新消息'));
+      await wait(() => contains('未读数暂不可用') && dot(), 'failed read keeps previous header dot');
+      assert(await countCalls() === 6, 'explicit message refresh uses the same count poller');
+      await capture('poll_retry');
+      await fixture('poll-positive');
+      click(one('.message-drawer-count-error button'));
+      await wait(() => !contains('未读数暂不可用') && dot(), 'explicit counter retry recovers without a new drawer');
+      assert(await countCalls() === 7, 'counter retry read once');
+      await emit('message-poll-switch');
+      await wait(async () => !drawer() && !dot() && (await fixture()).countHeld,
+        'switch hides old counts while the new account read is held');
+      assert((await invoke('account_snapshot')).epoch !== account.epoch, 'native generation actually changed');
+      await fixture('poll-release');
+      await wait(async () => dot() && await countCalls() === 8, 'one new account read supplies the header dot');
+      await emit('complete', { ok: true, messagePollingVerified: true, count,
+        hiddenCount: reveal.hidden, realAccountWrites: 0, realMusicRequests: 0 });
+      return;
+    }
     if (window.__cumulusMessageReplyProof) {
       const textarea = () => one('[aria-label="私信正文"]');
       const notice = () => one('[data-message-reply-status]')?.textContent.trim();
@@ -434,6 +485,7 @@
     drawer().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     await Promise.resolve();
     assert(!drawer() && document.activeElement === trigger(), 'Escape purges private DOM immediately and restores focus');
+    await wait(async () => await countCalls() === 4, 'closing returns the same poller to normal cadence');
     click(trigger());
     await wait(() => ready() && contains('私信预览 1'), 'new private list session');
     await fixture('release');
@@ -442,6 +494,7 @@
     await wait(() => ready() && contains('合成歌单'), 'fresh notification tab after reopen');
     assert(!contains('旧面板数据不能显示'), 'old drawer response is ignored');
     await capture('reopened');
+    await wait(async () => await countCalls() === 5, 'reopening rearmed once');
     const result = await fixture();
     assert(!result.blockedWrite, 'native service observed no clear/send/delete request');
     await emit('complete', { ok: true, count, staleVisitDiscarded: true, realAccountWrites: 0, realMusicRequests: 0 });

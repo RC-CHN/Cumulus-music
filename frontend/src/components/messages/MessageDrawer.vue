@@ -255,6 +255,11 @@ const suspended = shallowRef<{
   top: number;
 }>();
 const visible = computed(() => shown.value && !suspended.value);
+const unread = computed(() => messageTabs.some((option) => (counts.value?.[option] ?? 0) > 0));
+function reportCountVisibility() {
+  model.setCountVisibility(visible.value && document.visibilityState === 'visible');
+}
+watch(visible, reportCountVisibility, { flush: 'post' });
 let restoringScroll: HTMLElement | undefined;
 const attachmentLabels: Record<MessageTarget['kind'], string> = {
   play_track: '播放单曲',
@@ -364,8 +369,14 @@ function outside(event: PointerEvent) {
   )
     close(false);
 }
-onMounted(() => document.addEventListener('pointerdown', outside, true));
-onBeforeUnmount(() => document.removeEventListener('pointerdown', outside, true));
+onMounted(() => {
+  document.addEventListener('pointerdown', outside, true);
+  document.addEventListener('visibilitychange', reportCountVisibility);
+});
+onBeforeUnmount(() => {
+  document.removeEventListener('pointerdown', outside, true);
+  document.removeEventListener('visibilitychange', reportCountVisibility);
+});
 
 async function select(next: MessageTab) {
   const list = scroller.value;
@@ -457,12 +468,14 @@ function refresh() {
     class="icon-button message-drawer-trigger"
     aria-label="消息"
     title="消息"
+    :aria-description="unread ? '有未读消息' : undefined"
     aria-haspopup="dialog"
     :aria-expanded="visible"
     :disabled="initializing"
     @click="toggle"
   >
     <Icon name="mail" />
+    <span v-if="unread" class="message-drawer-unread-dot" aria-hidden="true" />
   </button>
   <Teleport to="body">
     <section

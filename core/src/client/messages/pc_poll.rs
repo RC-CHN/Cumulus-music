@@ -1,5 +1,5 @@
-//! Native, opt-in executor for M/119 and the shared M/236 playlist-count
-//! poller. No desktop or renderer initializes it implicitly.
+//! Native executor for M/236's playlist count poller. M/119 connectivity
+//! remains a separate opt-in mode; desktop production starts counts only.
 use super::{MessageCounts, MusicClient, read_counts};
 use crate::{
     Error, Result,
@@ -44,6 +44,7 @@ pub struct PcMessageConnectivityView {
     pub online: bool,
     pub counts: Option<MessageCounts>,
     pub last_count_read_failed: bool,
+    pub count_read_in_flight: bool,
 }
 
 enum Command {
@@ -68,6 +69,18 @@ impl MusicClient {
         &self,
         initial_navigator_online: bool,
     ) -> Result<PcMessageConnectivity> {
+        self.start_pc_message_poll(Some(initial_navigator_online))
+    }
+
+    /// Official message counter cadence without using any connectivity inputs.
+    pub fn start_pc_message_count_polling(&self) -> Result<PcMessageConnectivity> {
+        self.start_pc_message_poll(None)
+    }
+
+    fn start_pc_message_poll(
+        &self,
+        initial_navigator_online: Option<bool>,
+    ) -> Result<PcMessageConnectivity> {
         let guard = self.message_poll.0.clone();
         if guard.swap(true, Ordering::AcqRel) {
             return Err(Error::MutationBusy);
@@ -79,7 +92,7 @@ impl MusicClient {
 impl PcMessageConnectivity {
     fn start(
         session: Arc<AccountSession>,
-        initial_navigator_online: bool,
+        initial_navigator_online: Option<bool>,
         lease: Lease,
     ) -> Result<Self> {
         let runtime = tokio::runtime::Handle::try_current()
@@ -88,17 +101,19 @@ impl PcMessageConnectivity {
         let token = accounts.borrow().clone();
         let initial = PcMessageConnectivityView {
             epoch: token.generation.to_string(),
-            online: initial_navigator_online,
+            online: initial_navigator_online.unwrap_or(false),
             counts: None,
             last_count_read_failed: false,
+            count_read_in_flight: false,
         };
         let (tx, rx) = mpsc::channel(32);
         let (publisher, view) = watch::channel(initial.clone());
         let mut state = State {
             session,
             token,
-            navigator: initial_navigator_online,
-            connectivity: PcConnectivity::new(initial_navigator_online, Duration::ZERO),
+            navigator: initial_navigator_online.unwrap_or(false),
+            connectivity: initial_navigator_online
+                .map(|online| PcConnectivity::new(online, Duration::ZERO)),
             drawer: false,
             due: None,
             read: None,
@@ -150,6 +165,22 @@ impl PcMessageConnectivity {
         self.send(Command::RefreshCounts(generation)).await
     }
 
+    /// Synchronous native window lifecycle callback, sharing the same mailbox.
+    pub fn try_drawer_visible(&self, generation: u64, visible: bool) -> Result<()> {
+        self.try_send(Command::DrawerVisible(generation, visible))
+    }
+
+    pub fn try_refresh_counts(&self, generation: u64) -> Result<()> {
+        self.try_send(Command::RefreshCounts(generation))
+    }
+
+    fn try_send(&self, command: Command) -> Result<()> {
+        self.tx.try_send(command).map_err(|error| match error {
+            mpsc::error::TrySendError::Full(_) => Error::MutationBusy,
+            mpsc::error::TrySendError::Closed(_) => Error::Cancelled,
+        })
+    }
+
     async fn send(&self, command: Command) -> Result<()> {
         self.tx.send(command).await.map_err(|_| Error::Cancelled)
     }
@@ -177,7 +208,7 @@ struct State {
     session: Arc<AccountSession>,
     token: SessionToken,
     navigator: bool,
-    connectivity: PcConnectivity,
+    connectivity: Option<PcConnectivity>,
     drawer: bool,
     due: Option<Duration>,
     read: Option<InFlight>,
@@ -196,7 +227,11 @@ impl State {
             let wake = self
                 .due
                 .into_iter()
-                .chain(self.connectivity.next_probe_at())
+                .chain(
+                    self.connectivity
+                        .as_ref()
+                        .and_then(PcConnectivity::next_probe_at),
+                )
                 .min();
             tokio::select! {
                 biased;
@@ -253,6 +288,7 @@ impl State {
             notices: Some(0),
         });
         self.view.last_count_read_failed = false;
+        self.view.count_read_in_flight = false;
     }
 
     fn is_current_account(&self, generation: u64) -> bool {
@@ -265,7 +301,9 @@ impl State {
         if let Signal::BrowserNotification { online } = signal {
             self.navigator = online;
         }
-        if let Ok(Some(effect)) = self.connectivity.signal(now, signal) {
+        if let Some(model) = self.connectivity.as_mut()
+            && let Ok(Some(effect)) = model.signal(now, signal)
+        {
             self.apply(effect, now);
         }
     }
@@ -282,7 +320,9 @@ impl State {
     }
 
     fn timer(&mut self, now: Duration) {
-        if let Ok(Some(effect)) = self.connectivity.poll_probe(now, self.navigator) {
+        if let Some(model) = self.connectivity.as_mut()
+            && let Ok(Some(effect)) = model.poll_probe(now, self.navigator)
+        {
             self.apply(effect, now);
         }
         if self.due.is_some_and(|deadline| deadline <= now) {
@@ -297,6 +337,7 @@ impl State {
         }
         let token = self.token.clone();
         let session = self.session.clone();
+        self.view.count_read_in_flight = true;
         self.read = Some(Box::pin(async move {
             let result = tokio::time::timeout(REQUEST_TIMEOUT, read_counts(&session, &token))
                 .await
@@ -310,6 +351,7 @@ impl State {
         if token != self.token || self.session.check_generation(&token).is_err() {
             return;
         }
+        self.view.count_read_in_flight = false;
         match result {
             Ok(counts) => {
                 self.view.counts = Some(counts);

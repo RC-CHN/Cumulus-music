@@ -285,6 +285,7 @@ async fn destroying_the_host_discards_pending_work_and_releases_its_single_execu
     let mut view = host.subscribe();
     settle().await;
     assert_eq!(f.api.times(), [0]);
+    assert!(view.borrow_and_update().count_read_in_flight);
     drop(host);
     assert!(view.changed().await.is_err());
     assert!(response.send(()).is_err());
@@ -323,5 +324,29 @@ async fn browser_offline_uses_mock_failure_and_recovery_probes_the_same_counter(
     step(1).await;
     assert_eq!(f.api.times(), [0, 16100]);
     assert!(view.borrow().online);
+    host.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn production_count_only_mode_ignores_connectivity_and_tracks_read_in_flight() {
+    let f = Fixture::new(true);
+    let release = f.api.hold_next();
+    let host = f.client.start_pc_message_count_polling().unwrap();
+    let view = host.subscribe();
+    settle().await;
+    assert!(view.borrow().count_read_in_flight);
+    host.observe_request(1, Request::OtherWrapperRejection)
+        .await
+        .unwrap();
+    settle().await;
+    release.send(()).unwrap();
+    settle().await;
+    assert!(!view.borrow().count_read_in_flight);
+    assert_eq!(view.borrow().counts.as_ref().unwrap().private, Some(7));
+    step(5001).await;
+    assert_eq!(f.api.times(), [0], "production does not run an M/119 probe");
+    host.try_drawer_visible(1, true).unwrap();
+    settle().await;
+    assert_eq!(f.api.times(), [0, 5001]);
     host.shutdown().await;
 }
