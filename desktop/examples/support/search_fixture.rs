@@ -18,6 +18,8 @@ static PODCAST_HOME_MORE_READS: AtomicUsize = AtomicUsize::new(0);
 static PODCAST_FOLLOWED: AtomicBool = AtomicBool::new(false);
 static PODCAST_FOLLOW_MAP_STALE: AtomicBool = AtomicBool::new(false);
 static PODCAST_FOLLOW_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
+static ARTIST_GALLERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static ARTIST_GALLERY_FAILED: AtomicBool = AtomicBool::new(false);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -75,6 +77,7 @@ pub fn control(value: &Value) {
             "playlist_creator_search",
             "playlist_playability",
             "album_artist_search",
+            "artist_gallery",
             "preview",
             "lyrics",
             "empty",
@@ -89,6 +92,10 @@ pub fn podcast_follow_calls() -> Option<Vec<(String, Value)>> {
         .unwrap()
         .starts_with("podcast_follow")
         .then(|| PODCAST_FOLLOW_CALLS.lock().unwrap().clone())
+}
+pub fn artist_gallery_calls() -> Option<Vec<Value>> {
+    (MODE.lock().unwrap().as_str() == "artist_gallery")
+        .then(|| ARTIST_GALLERY_CALLS.lock().unwrap().clone())
 }
 pub fn initialize(store: &StateStore) -> Result<()> {
     if enabled() {
@@ -141,6 +148,41 @@ fn subscribable_playlist() -> Value {
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if enabled()
+        && MODE.lock().unwrap().as_str() == "artist_gallery"
+        && path == "/api/v1/artist/list"
+    {
+        let filters = [
+            args["area"].as_i64(),
+            args["type"].as_i64(),
+            args["initial"].as_i64(),
+        ];
+        let offset = args["offset"].as_u64().unwrap();
+        assert_eq!(args["limit"], 20);
+        ARTIST_GALLERY_CALLS.lock().unwrap().push(args.clone());
+        let (start, count, more) = match (filters, offset) {
+            ([Some(-1), Some(-1), Some(-1)], 0) => (201, 20, false),
+            ([Some(7), Some(-1), Some(-1)], 0) => (401, 4, false),
+            ([Some(7), Some(2), Some(-1)], 0) => (501, 4, false),
+            ([Some(7), Some(2), Some(65)], 0) => (101, 20, true),
+            ([Some(7), Some(2), Some(65)], 20) => {
+                if !ARTIST_GALLERY_FAILED.swap(true, Ordering::SeqCst) {
+                    return Some(Err(Error::Transport("合成歌手续页中断".into())));
+                }
+                (7, 1, false)
+            }
+            ([Some(7), Some(2), Some(0)], 0) => (0, 0, false),
+            _ => {
+                return Some(Err(Error::InvalidInput(
+                    "unexpected synthetic artist filters",
+                )));
+            }
+        };
+        let artists = (start..start + count)
+            .map(|id| json!({"id":id,"name":format!("合成歌手{id}"),"musicSize":id}))
+            .collect::<Vec<_>>();
+        return Some(Ok(json!({"code":200,"artists":artists,"more":more})));
+    }
     if enabled() && MODE.lock().unwrap().as_str() == "album_artist_search" {
         match path {
             "/api/album/sub" => {

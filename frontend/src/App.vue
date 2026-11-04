@@ -20,6 +20,8 @@ import {
 import { catalogResourceSelection, type AlbumCardRequest } from './services/catalogCards';
 import AlbumActions from './components/catalog/AlbumActions.vue';
 import ArtistActions from './components/catalog/ArtistActions.vue';
+import ArtistGalleryPage from './components/catalog/ArtistGalleryPage.vue';
+import { useArtistGallery } from './composables/useArtistGallery';
 import type { ArtistCardRequest } from './services/artistCards';
 import { computed, onMounted, onUnmounted, watch, ref, shallowRef, nextTick } from 'vue';
 import { onDesktopLyricChanged, onDesktopLyricOpen } from './adapters/desktopLyrics';
@@ -195,6 +197,12 @@ const music = useMusic(undefined, (commit) => {
   else if (settingsPage.value) settingsPage.value.requestLeave(proceed);
   else proceed();
 });
+const artistGallery = useArtistGallery(
+  core,
+  () => music.account.value,
+  () => void music.bootstrap(false),
+);
+const artistGalleryPage = ref<InstanceType<typeof ArtistGalleryPage>>();
 const catalogWorkspace = useCatalogWorkspace(
   core,
   () => {
@@ -1104,6 +1112,7 @@ function mainPageEntered() {
   miniFmFocus.complete();
   restoreDailyMenuFocus();
   focusSettingsSection();
+  if (music.page.value.kind === 'artist_gallery') artistGalleryPage.value?.restore();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
   if (document.activeElement !== document.body) return;
@@ -2477,6 +2486,17 @@ onUnmounted(() => {
                 @retry="music.bootstrap()"
               />
               <MvCollection v-else-if="page.kind === 'mvs'" :model="mv" @open="openMv" />
+              <ArtistGalleryPage
+                v-else-if="page.kind === 'artist_gallery'"
+                ref="artistGalleryPage"
+                :model="artistGallery"
+                :playable="player.ready.value && !player.busy.value"
+                :current-id="currentOrigin?.kind === 'artist' ? currentOrigin.id : undefined"
+                :playing="player.playing.value"
+                @open="openCatalog"
+                @play="playResourceCard({ kind: 'artist', id: $event.id })"
+                @action="artistAction"
+              />
               <CollectionsPage
                 ref="collectionsPageRef"
                 v-else-if="page.kind === 'collections'"

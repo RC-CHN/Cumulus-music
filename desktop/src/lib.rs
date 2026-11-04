@@ -275,6 +275,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 style_tags::accept_current_style_tag,
                 rankings::ranking_page,
                 catalog::catalog_page,
+                catalog::artist_gallery,
                 collections::collection_page,
                 history::history_page,
                 history::history_command,

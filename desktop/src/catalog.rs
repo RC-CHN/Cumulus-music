@@ -1,6 +1,18 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 
 #[tauri::command]
+pub async fn artist_gallery(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    query: ArtistGalleryQuery,
+) -> Result<AccountData<ArtistGalleryPage>, ClientError> {
+    client
+        .artist_gallery(&epoch, query)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn catalog_membership(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

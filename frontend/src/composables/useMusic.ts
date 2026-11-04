@@ -20,6 +20,7 @@ export type Page =
       collectionVisit?: number;
     }
   | ({ kind: 'catalog' } & import('../services/catalogNavigation').CatalogLocation)
+  | { kind: 'artist_gallery' }
   | { kind: 'scene_fm' }
   | { kind: 'member' }
   | { kind: 'fm' }
@@ -207,6 +208,7 @@ export function useMusic(
         target.kind === 'scene_fm' ||
         target.kind === 'member' ||
         target.kind === 'catalog' ||
+        target.kind === 'artist_gallery' ||
         target.kind === 'collections' ||
         target.kind === 'mv' ||
         target.kind === 'comments'

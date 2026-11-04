@@ -1308,6 +1308,45 @@
       await emit('complete',{ok:true,peopleCategoriesVerified:true,searchArtistMenuVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusArtistGalleryProof){
+      await wait(()=>one('.track-row'),'daily ready');await fixture('artist_gallery');
+      const gallery=()=>one('.artist-gallery');
+      const control=(group,label)=>button(label,one(`.artist-gallery-filters [aria-label="${group}"]`));
+      const cards=()=>all('.artist-gallery .catalog-artist-card');
+      const state=(count,first)=>cards().length===count&&
+        (!first||cards()[0].querySelector('.catalog-artist-name').textContent===first)&&
+        one('.artist-gallery-results')?.getAttribute('aria-busy')==='false';
+      click(button('歌手',one('.sidebar')));
+      await wait(()=>state(20,'合成歌手201'),'default all regions, all types, popular');
+      assert(control('首字母','热门').getAttribute('aria-pressed')==='true','popular is selected');
+      await capture('artist_gallery_popular');
+      click(control('地区','华语'));
+      await wait(()=>state(4,'合成歌手401'),'selected region');
+      click(control('类型','女歌手'));
+      await wait(()=>state(4,'合成歌手501'),'selected artist type');
+      click(control('首字母','A'));
+      await wait(()=>cards().length===20&&button('加载更多',gallery()),'selected initial and loaded prefix');
+      assert(button('加载更多',gallery()).tabIndex===0,'manual continuation can be reached by keyboard');
+      one('.artist-gallery-more').scrollIntoView({block:'end'});
+      await wait(()=>state(20,'合成歌手101')&&button('重新加载',gallery()),'scroll triggers continuation; error preserves prefix');
+      click(button('重新加载',gallery()));
+      await wait(()=>state(21,'合成歌手101'),'exact continuation succeeds on retry');
+      gallery().querySelector('header').scrollIntoView({block:'start'});
+      await capture('artist_gallery_filtered');
+      const detail=()=>one('.artist-gallery [data-catalog-key="artist:7"]');
+      click(detail());
+      await wait(()=>!gallery()&&one('.catalog-heading h1')?.textContent==='相似歌手 7','opens exact native artist detail');
+      click(button('返回上一页'));
+      await wait(()=>state(21,'合成歌手101')&&document.activeElement===detail(),'Back restores filters, results and artist button focus');
+      assert(control('首字母','A').getAttribute('aria-pressed')==='true','Back keeps selected initial');
+      click(control('首字母','#'));
+      await wait(()=>state(0)&&gallery().textContent.includes('没有找到歌手'),'non-letter empty result');
+      await capture('artist_gallery_empty');
+      click(control('首字母','A'));
+      await wait(()=>state(21,'合成歌手101'),'prior filter retains its complete prefix');
+      await emit('complete',{ok:true,artistGalleryVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchOriginalCorrectionProof){
       await wait(()=>one('.track-row'),'daily ready');await fixture('correction_parts');
       const provides=one('#app').__vue_app__._context.provides;

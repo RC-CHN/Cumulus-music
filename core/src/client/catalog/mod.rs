@@ -1,5 +1,6 @@
 pub(super) mod cards;
 mod dto;
+mod gallery;
 mod membership;
 mod project;
 mod selection;
@@ -9,6 +10,7 @@ use crate::{
     catalog::details::{CatalogDetails, CatalogQuery},
 };
 pub use dto::*;
+pub use gallery::{ArtistGalleryPage, ArtistGalleryQuery};
 pub use membership::{
     CatalogMembershipAction, CatalogMembershipOperation, CatalogMembershipView, CatalogResource,
 };

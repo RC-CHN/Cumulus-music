@@ -22,6 +22,16 @@ export interface ArtistCard {
   albumCount: number;
   mvCount: number | null;
 }
+export interface ArtistGalleryFilter {
+  area: number;
+  type: number;
+  initial: number;
+}
+export interface ArtistGalleryPage {
+  artists: ArtistCard[];
+  nextOffset: number | null;
+  capped: boolean;
+}
 export interface AlbumCard {
   id: string;
   name: string;
@@ -103,6 +113,10 @@ export interface CatalogView {
   page: CatalogPage;
 }
 export interface CatalogClient {
+  artistGallery(
+    epoch: string,
+    query: ArtistGalleryFilter & { offset: number },
+  ): Promise<AccountData<ArtistGalleryPage>>;
   catalogMembership(
     epoch: string,
     resource: CatalogResource,
