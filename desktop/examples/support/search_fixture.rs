@@ -877,11 +877,14 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                     Some(3) => {
                         entry["userId"] = json!(501);
                         entry["creator"] = json!({"userId":501,"nickname":"合成匹配作者"});
+                        entry["recommendText"] = json!("  <em>合成作者入口</em>  推荐理由 <片段> ");
                     }
                     Some(4) => {
                         entry["userId"] = json!(501);
                         entry["creator"] = json!({"userId":502,"nickname":"合成不匹配作者"});
                         entry["privacy"] = json!(10);
+                        entry["recommendText"] = json!("  <b></b> \t ");
+                        entry["description"] = json!("详情描述不是搜索推荐理由");
                     }
                     Some(5) => {
                         entry["id"] = json!(31);

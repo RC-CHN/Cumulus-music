@@ -337,9 +337,7 @@ const unavailable = computed(() =>
       : props.item.kind === 'user' && props.item.user.unavailable,
 );
 const playlistRecommendation = computed(() =>
-  props.category === 'all' && props.item.kind === 'playlist'
-    ? props.item.recommendation
-    : undefined,
+  props.item.kind === 'playlist' ? props.item.recommendation : undefined,
 );
 const compactVoiceCount = new Intl.NumberFormat('zh-CN', {
   notation: 'compact',
@@ -514,9 +512,13 @@ watch(
           v-if="item.kind !== 'voice'"
           type="button"
           class="search-card-open"
-          :class="{ 'search-podcast-title': item.kind === 'podcast' }"
+          :class="{
+            'search-podcast-title': item.kind === 'podcast',
+            'search-playlist-table-title': item.kind === 'playlist',
+          }"
           data-result-action="open"
           :aria-label="`查看 ${card.name}`"
+          :aria-description="playlistRecommendation"
           :data-tooltip="card.name"
           @click.stop="action('open')"
         >
@@ -535,6 +537,18 @@ watch(
               （<SearchMatchText :text="albumAlias" :keyword="matchKeyword" />）
             </span>
           </span>
+          <template v-else-if="item.kind === 'playlist'">
+            <span class="search-playlist-table-name">
+              <SearchMatchText :text="card.name" :keyword="matchKeyword" />
+            </span>
+            <span
+              v-if="playlistRecommendation"
+              class="search-playlist-table-recommendation"
+              :data-tooltip="playlistRecommendation"
+            >
+              <SearchMatchText :text="playlistRecommendation" :keyword="matchKeyword" />
+            </span>
+          </template>
           <template v-else-if="item.kind === 'podcast'">
             <span class="search-result-name" :data-tooltip="card.name">
               <SearchMatchText :text="card.name" :keyword="matchKeyword" />

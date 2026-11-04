@@ -496,6 +496,21 @@
   white-space: nowrap;
   cursor: pointer;
 }
+.search-playlist-table-title > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-playlist-table-name {
+  font-size: 16px;
+  line-height: 20px;
+}
+.search-playlist-table-recommendation {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 17px;
+}
 .search-collection-row .search-card-play {
   inset: auto 7px 7px auto;
   width: 34px;

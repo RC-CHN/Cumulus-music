@@ -405,8 +405,8 @@ fn item(
         "playlist" => SearchItem::Playlist {
             playlist: mapping::playlist(v, uid)?,
             known_empty: api::playlist_known_empty(v),
-            recommendation: comprehensive
-                .and_then(|_| v["recommendText"].as_str())
+            recommendation: v["recommendText"]
+                .as_str()
                 .map(|value| {
                     clean(value)
                         .split_whitespace()

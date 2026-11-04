@@ -678,6 +678,8 @@
         const action=creator(), bad=card(4);
         if(category==='all'){
           assert(!one('.search-playlist-table'),'comprehensive playlist preview stays a card');
+          assert(card(3).querySelector('.search-playlist-recommendation mark')?.textContent===
+            '合成作者入口','comprehensive card retains its highlighted reason');
         }else{
           const table=one('.search-playlist-table[role="table"]');
           const row=card(3);
@@ -689,6 +691,13 @@
             row.querySelector('.search-playlist-play-count [aria-hidden="true"]').textContent==='12345'&&
             bad.querySelector('.search-playlist-play-count').textContent.trim()==='—',
             'row keeps visible counts separate and does not imply a private playlist count');
+          const reason=row.querySelector('.search-playlist-table-recommendation');
+          assert(reason?.textContent.trim()==='合成作者入口 推荐理由 <片段>'&&
+            reason.querySelector('mark')?.textContent==='合成作者入口'&&
+            !reason.querySelector('em, b, script')&&
+            row.querySelector('.search-card-open').getAttribute('aria-description')===reason.textContent.trim()&&
+            !bad.querySelector('.search-playlist-table-recommendation'),
+            'playlist classification shows and announces the plain-text highlighted reason without a description fallback');
           await wait(()=>handles().length===3,'only title, song count and creator have resize handles');
           const [title,trackCount,owner]=handles();
           initialWidths=widths();
