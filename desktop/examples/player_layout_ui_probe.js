@@ -95,6 +95,10 @@
     await wait(()=>visibility()==='visible'&&preview.textContent.trim()===`${timeText(original)} / 00:30`,'hover shows current and full time');
     rail.dispatchEvent(new PointerEvent('pointerleave',{pointerType:'mouse'}));
     await wait(()=>visibility()==='hidden','leaving the seek rail hides the hover preview');
+    assert(Math.abs(Number(input.step)-.03)<.0000001,'30-second track uses duration divided by 1000');
+    input.value='15';
+    input.stepUp();
+    assert(Math.abs(Number(input.value)-15.03)<.00001,'native range steps by the scaled interval');
     input.value='29';
     input.dispatchEvent(new Event('input',{bubbles:true}));
     await wait(()=>visibility()==='visible'&&preview.textContent.trim()==='00:29 / 00:30','drag previews target before commit');
@@ -105,6 +109,11 @@
     input.dispatchEvent(new PointerEvent('pointercancel',{pointerType:'touch'}));
     await wait(()=>visibility()==='hidden'&&Math.abs(Number(input.value)-original)<.11,'cancel clears the pending preview');
     assert(Number(one('.playerbar').dataset.position)===original,'cancel leaves native playback untouched');
+    input.value='2.40';
+    input.stepUp();
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>Math.abs(Number(one('.playerbar').dataset.position)-2.43)<.015,'native seek uses the scaled target');
   }
   async function verifySlowPlayback() {
     window.__cardSourceAck = {};
@@ -268,6 +277,6 @@
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

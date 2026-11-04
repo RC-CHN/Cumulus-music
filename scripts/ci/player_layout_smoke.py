@@ -49,7 +49,7 @@ def main():
     assert args.baseline or all(complete[key] for key in (
         'layoutPassed', 'lyricFollowVerified', 'lyricTimelineVerified', 'lyricFontVerified',
         'lyricModesVerified', 'chorusMarkerVerified', 'seekTimePreviewVerified',
-        'slowPlaybackWaitVerified'))
+        'slowPlaybackWaitVerified', 'seekStepVerified'))
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if not args.baseline:

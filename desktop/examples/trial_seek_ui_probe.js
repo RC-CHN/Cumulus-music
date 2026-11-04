@@ -47,6 +47,7 @@
     await wait(() => one('.playerbar')?.dataset.state === 'paused' && !input()?.disabled,
       'paused native trial');
     assert(input().min === '0' && input().max === '100', 'rail uses full song duration');
+    assert(Number(input().step) === .1, 'trial uses the full visible clock for its step');
     assert(input().getAttribute('aria-valuetext').includes('可试听 00:20 至 00:40'),
       'announces authorized trial span');
     const lane = one('.trial-seek-track').getBoundingClientRect();

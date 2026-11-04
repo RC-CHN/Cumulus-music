@@ -106,6 +106,10 @@ const seekHovered = ref(false);
 const seekInFlight = shallowRef<{ key: string }>();
 const outsideTrial = ref(false);
 const rail = computed(() => seekRail(view.value?.timeline));
+const seekStep = computed(() => {
+  const length = rail.value.max - rail.value.min;
+  return Number.isFinite(length) && length > 0 ? length / 1000 : 0.1;
+});
 const seekValue = computed(() => draft.value ?? view.value?.position ?? rail.value.min);
 const seekTotalText = computed(() => {
   const total = view.value?.timeline?.total;
@@ -428,7 +432,7 @@ async function seek(event: Event) {
             type="range"
             :min="rail.min"
             :max="rail.max"
-            step="0.1"
+            :step="seekStep"
             :value="seekValue"
             :disabled="!loaded || !view?.timeline?.end || pending"
             @input="scrubInput"
