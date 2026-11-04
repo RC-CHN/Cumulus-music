@@ -37,8 +37,12 @@ CASES = {
 
 
 def direct_winsock_imports(binary):
+    return fixed_network_imports(binary, "ws2_32.dll", WINSOCK, OTHER_NETWORK_DLLS, "WinSock")
+
+
+def fixed_network_imports(binary, library, expected, disallowed, label):
     # Read only PE metadata. This is an import-boundary check, not an OS
-    # firewall or a claim about the Windows NLA service's own activity.
+    # firewall or a claim about the Windows service's own activity.
     with Path(binary).open("rb") as stream:
         image = stream.read(MAX_IMAGE + 1)
     if len(image) > MAX_IMAGE or image[:2] != b"MZ":
@@ -85,16 +89,16 @@ def direct_winsock_imports(binary):
         descriptor = offset_at(import_rva + index * 20, 20)
         original, stamp, chain, name_rva, first = struct.unpack_from("<5I", image, descriptor)
         if not any((original, stamp, chain, name_rva, first)):
-            if found == WINSOCK:
+            if found == expected:
                 return sorted(found)
-            raise ValueError("unexpected WinSock imports")
+            raise ValueError(f"unexpected {label} imports")
         dll = name_at(name_rva).lower()
-        if dll in OTHER_NETWORK_DLLS or dll.startswith("api-ms-win-net"):
+        if dll in disallowed or dll.startswith("api-ms-win-net"):
             raise ValueError("unexpected networking library")
-        if dll != "ws2_32.dll":
+        if dll != library:
             continue
         if found is not None:
-            raise ValueError("duplicate WinSock imports")
+            raise ValueError(f"duplicate {label} imports")
         found = set()
         for thunk in range(32):
             address = offset_at((original or first) + thunk * 8, 8)
@@ -102,13 +106,13 @@ def direct_winsock_imports(binary):
             if not symbol:
                 break
             if symbol >= 1 << 32:
-                raise ValueError("unexpected WinSock ordinal import")
+                raise ValueError(f"unexpected {label} ordinal import")
             name = name_at(symbol + 2)
-            if name not in WINSOCK or name in found:
-                raise ValueError("unexpected WinSock API")
+            if name not in expected or name in found:
+                raise ValueError(f"unexpected {label} API")
             found.add(name)
         else:
-            raise ValueError("unterminated WinSock imports")
+            raise ValueError(f"unterminated {label} imports")
     raise ValueError("unterminated PE import descriptors")
 
 
@@ -161,6 +165,16 @@ def verified_runtime(report):
     )
 
 
+def run_local_probe(binary, prefix):
+    system_root = os.environ["SystemRoot"]
+    env = {"SystemRoot": system_root, "WINDIR": system_root}
+    with tempfile.TemporaryDirectory(prefix=prefix) as workdir:
+        return subprocess.run(
+            [str(binary)], cwd=workdir, env=env, stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, encoding="ascii", timeout=10, check=False,
+        )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -171,13 +185,7 @@ def main():
     try:
         binary = args.binary.resolve(strict=True)
         imports = direct_winsock_imports(binary)
-        system_root = os.environ["SystemRoot"]
-        env = {"SystemRoot": system_root, "WINDIR": system_root}
-        with tempfile.TemporaryDirectory(prefix="cumulus-nla-") as workdir:
-            result = subprocess.run(
-                [str(binary)], cwd=workdir, env=env, stdin=subprocess.DEVNULL,
-                capture_output=True, text=True, encoding="ascii", timeout=10, check=False,
-            )
+        result = run_local_probe(binary, "cumulus-nla-")
         if result.stderr:
             raise ValueError("unexpected probe diagnostics")
         report = categorical_report(result.stdout)

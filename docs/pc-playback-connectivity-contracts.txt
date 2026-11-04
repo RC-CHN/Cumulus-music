@@ -118,13 +118,23 @@ M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求�
   手动重置事件，每次确认上一请求终止后复位，用非阻塞 GetOverlappedResult
   核对信号。调用方传入的单次等待上限 500ms，
   与尚未接入的原版重试定时不是同一回事。关闭请求后至多等待一次 250ms，
-  仅在重叠操作明确完成或取消后释放；若无法确认，保留唯一注册槽、事件和
-  存储至进程退出，防止系统仍持有的指针失效。上限针对显式等待，不能限制
+  若未获事件，只再读一次非阻塞完成状态；仅在重叠操作明确完成或取消后释放。
+  若无法确认，保留唯一注册槽、事件和存储至进程退出，防止系统仍持有的指针
+  失效。上限针对显式等待，不能限制
   原生 API 自身耗时，不应从 UI 线程调用。替身测试覆盖重挂失败/重试、
   取消和完成竞态、等待超限及未确认取消，Windows x64 交叉编译通过；
   `cargo run --locked --manifest-path desktop/probes/windows-address-watch/Cargo.toml
   --example lifecycle` 可在 Windows 手动核对独占、注销及重开，仅输出布尔结果。
-  Windows 实机地址事件及注销均未验收；该探针不是完整四路 app watcher。
+  手动 workflow `Windows IPv4 watcher runtime proof` 在正常 Windows Server
+  x64 runner 单独以 MSVC 构建该探针。验证两次实际 ERROR_IO_PENDING 注册，
+  关闭前即时等待为 idle、独占拒绝并发注册、CancelIPChangeNotify 已接受、
+  GetOverlappedResult 返回 ERROR_OPERATION_ABORTED，以及注销后重新注册并
+  再次注销。与取消竞态的正常完成可以安全释放，但不能计为取消通过。
+  同 NLA 手动验证一样，进程用隔离临时目录、清空继承环境、10 秒超时和
+  固定字段报告；二进制网络导入只允许两个 IP Helper 观察 API。不读取或
+  记录地址、接口、SSID、DNS 或账号，不改网络配置，不访问服务。未派发此
+  workflow；Windows 实机地址变化派发需另用可控实验环境，未纳入该证明。
+  该探针不是完整四路 app watcher，也不接入生产。
 
 状态、定时与返回
 

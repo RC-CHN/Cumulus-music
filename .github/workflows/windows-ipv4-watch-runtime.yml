@@ -1,0 +1,53 @@
+name: Windows IPv4 watcher runtime proof
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-ipv4-watch:
+    name: Passive IPv4 registration and cancellation
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Check isolated fixtures and build the MSVC probe
+        run: |
+          if ($env:RUNNER_OS -ne 'Windows' -or $env:RUNNER_ARCH -ne 'X64') {
+            throw 'A native Windows x64 runner is required'
+          }
+          $manifest = 'desktop/probes/windows-address-watch/Cargo.toml'
+          $targetDir = Join-Path $env:RUNNER_TEMP 'cumulus-windows-ipv4-target'
+          $platform = 'x86_64-pc-windows-msvc'
+          cargo fmt --manifest-path $manifest -- --check
+          if ($LASTEXITCODE -ne 0) { throw 'Probe formatting failed' }
+          cargo clippy --manifest-path $manifest --target-dir $targetDir --target $platform --locked --all-targets -- -D warnings
+          if ($LASTEXITCODE -ne 0) { throw 'Probe Clippy failed' }
+          cargo test --manifest-path $manifest --target-dir $targetDir --target $platform --locked
+          if ($LASTEXITCODE -ne 0) { throw 'Lifecycle fixtures failed' }
+          python -B -m unittest discover -s scripts/ci -p test_windows_ipv4_runtime.py
+          if ($LASTEXITCODE -ne 0) { throw 'Categorical report fixtures failed' }
+          cargo build --manifest-path $manifest --target-dir $targetDir --target $platform --locked --release --example lifecycle
+          if ($LASTEXITCODE -ne 0) { throw 'Probe build failed' }
+      - name: Require terminal cancellation before reopening
+        run: |
+          $targetDir = Join-Path $env:RUNNER_TEMP 'cumulus-windows-ipv4-target'
+          $binary = Join-Path $targetDir 'x86_64-pc-windows-msvc/release/examples/lifecycle.exe'
+          $proof = Join-Path $env:RUNNER_TEMP 'cumulus-windows-ipv4-runtime.json'
+          python -B scripts/ci/windows_ipv4_runtime.py --binary $binary --report $proof
+          if ($LASTEXITCODE -ne 0) { throw 'Native IPv4 watcher proof failed' }
+      - name: Preserve categorical evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-ipv4-watch-runtime-proof
+          path: ${{ runner.temp }}/cumulus-windows-ipv4-runtime.json
+          if-no-files-found: warn
+          retention-days: 7

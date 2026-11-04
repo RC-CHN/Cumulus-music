@@ -107,32 +107,34 @@ impl Registration for Native {
         // SAFETY: event remains open while the request is pending.
         match unsafe { WaitForSingleObject(self.event, milliseconds) } {
             WAIT_TIMEOUT => Ok(Completion::Idle),
-            WAIT_OBJECT_0 => {
-                let mut bytes = 0;
-                // SAFETY: the API permits use of the borrowed file with its
-                // OVERLAPPED. No returned address/record data is read.
-                if unsafe {
-                    GetOverlappedResult(self.borrowed_file, self.overlap.get(), &mut bytes, 0)
-                } != 0
-                {
-                    return Ok(Completion::Changed);
-                }
-                // SAFETY: immediately after the failed call on this thread.
-                let error = unsafe { GetLastError() };
-                match error {
-                    ERROR_OPERATION_ABORTED => Ok(Completion::Cancelled),
-                    ERROR_IO_INCOMPLETE => Ok(Completion::Idle),
-                    _ => Err(NativeError::Completion(error)),
-                }
-            }
+            WAIT_OBJECT_0 => self.completion(),
             _ => Err(NativeError::Wait(unsafe { GetLastError() })),
         }
     }
 
-    fn request_cancel(&mut self) {
+    fn request_cancel(&mut self) -> bool {
         // SAFETY: this is the outstanding request's exact OVERLAPPED pointer.
         // Return alone is not used as proof that its storage can be reclaimed.
-        unsafe { CancelIPChangeNotify(self.overlap.get()) };
+        unsafe { CancelIPChangeNotify(self.overlap.get()) != 0 }
+    }
+
+    fn completion(&mut self) -> Result<Completion, NativeError> {
+        let mut bytes = 0;
+        // SAFETY: the API permits use of the borrowed file with its live
+        // OVERLAPPED. This call is nonblocking even when the event did not
+        // signal. No returned address/record data is read.
+        if unsafe { GetOverlappedResult(self.borrowed_file, self.overlap.get(), &mut bytes, 0) }
+            != 0
+        {
+            return Ok(Completion::Changed);
+        }
+        // SAFETY: immediately after the failed call on this thread.
+        let error = unsafe { GetLastError() };
+        match error {
+            ERROR_OPERATION_ABORTED => Ok(Completion::Cancelled),
+            ERROR_IO_INCOMPLETE => Ok(Completion::Idle),
+            _ => Err(NativeError::Completion(error)),
+        }
     }
 
     fn retain(self) {
