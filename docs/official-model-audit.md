@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `bacec192`；总体流程及验证层级见
+本表基线为产品树 `cfa0c2bb`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -102,7 +102,7 @@
 | `page:settingPrivacy` (3) | `models/page_settingPrivacy.txt` | [已接入口](account-settings-contracts.txt) | 六项远端设置、联动与回读；系统唤起交接另验。 |
 | `page:singleIndexList` (2) | `models/page_singleIndexList.txt` | [已接入口](rankings-ui-contracts.txt) | 歌曲指数榜独立于普通歌单。 |
 | `page:sns` (2) | `models/page_sns.txt` | [仅恢复](sns-login-recovery.txt) | 微信、QQ、微博授权宿主没有正式实现。 |
-| `page:styleRecommend` (5) | `models/page_styleRecommend.txt` | [部分](style-recommendations.txt) | 风格页、种子、分类及明确保存/未决核对已接；返回时原列表恢复另验。 |
+| `page:styleRecommend` (5) | `models/page_styleRecommend.txt` | [部分](style-recommendations.txt) | 风格页、种子、分类、明确保存/未决核对及 Back 恢复已接；快照失效按原路线读取。 |
 | `page:switchAccount` (5) | `models/page_switchAccount.txt` | [已接入口](server-account-switch.txt) | 本机多账号与部分服务切换；真实双账号及 SDK 仍有限制。 |
 | `page:trashCan` (3) | `models/page_trashCan.txt` | [已接入口](fm-feedback-ui-contracts.txt) | 音乐黑名单分页、选择、恢复及未知结果核对。 |
 | `page:updateDownload` (1) | `models/page_updateDownload.txt` | [仅恢复](manual-update-contracts.txt) | Cumulus 显式读版本和校验；无官方更新下载页。 |
@@ -112,7 +112,7 @@
 | `page:vinylEffect` (10) | `models/page_vinylEffect.txt` | [部分](effects-directory-desktop.txt) | 音效目录、已支持的控制和授权；各材料与链路不同。 |
 | `page:vinylPage` (24) | `models/page_vinylPage.txt` | [部分](desktop-member-contracts.txt) | 会员权益、部分动态开通；无原生收银台/兑换。 |
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
-| `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、列表与移除；未对真实用户设备执行删除。 |
+| `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、原地展开/收起、详情和移除；未对真实用户设备执行删除。 |
 | `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；普通歌曲来源预判、底栏跳歌命令及队尾规则有对照；未由正式播放器自动触发。 |
 | `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作、本地单行和普通在线歌单多选拖入；可显式重读过期歌单。同步、特殊队列和其他来源另验。 |
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | 设置逐项证据，系统相关和音效部分未完成。 |
