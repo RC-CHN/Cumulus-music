@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import time
 
+from diagnostics import verify_proof_databases
 from installed_linux_audio import Input, focus_installed_control, start_accessibility, stop, wait_for
 
 
@@ -30,6 +31,9 @@ def startup(args, root, env, items, watcher, wait, call, menu):
 
     access = start_accessibility()
     env.pop('CUMULUS_PROOF_DIR')
+    # A real executable in a synthetic profile must not collect or retain the
+    # runner's hardware identity. Preserve the failure-archive guard as well.
+    env['CUMULUS_DEVICE_IDENTITY'] = 'native'
     env['CUMULUS_DATA_DIR'] = str(root / 'state')
     env['HOME'] = str(root / 'home')
     Path(env['HOME']).mkdir(mode=0o700)
@@ -370,8 +374,9 @@ def startup(args, root, env, items, watcher, wait, call, menu):
             screenshot('autostart-external-preserved')
             finish(child)
 
+    verify_proof_databases([root / 'state'])
     report = dict(ok=True, productionBinary=True, actualWebView=True, actualTauriTray=True,
-                  syntheticPanelHost=True, isolatedLoopbackOnly=True, successfulMusicServiceRequests=0,
+                  syntheticDatabaseIdentityAuditPassed=True, syntheticPanelHost=True, isolatedLoopbackOnly=True, successfulMusicServiceRequests=0,
                   windowsShellVerified=False, physicalPanelVerified=False, **states)
     (root / 'startup-report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
