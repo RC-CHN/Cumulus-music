@@ -9,6 +9,7 @@ mod privileges;
 pub mod queue_more;
 pub mod rankings;
 pub mod search;
+pub mod vertical_zone;
 pub use album::{AlbumDetailSource, AlbumDetails, AlbumReadState};
 pub use api::{
     CatalogApi, DailyRecommendationEndpoint, DailyRecommendationReply, PlayOptions, SearchOptions,

@@ -1,0 +1,30 @@
+官方 PC 垂直专区：内容请求与模块投影
+
+来源：网易云音乐 Windows 3.1.42.205594，recovered-js 中 hybrid_22
+的 M/2986:146–302、M/1211:64–116,162–245，hybrid_app M/15:4993–5007、
+M/437:18–86、M/400:141–166，hybrid_40 M/3089:3447–3500,3670–3930,4020–4108；
+恢复的 PageVerticalZone.tsx 与 M/485:15–25。没有使用第三方客户端。
+
+- 普通专区 /choice/verticalZone/:pageCode/:tabKey? 按精确
+  PH-PC-zhuanquTab=t1 决定链路。缺失、关闭和对照组只 POST
+  /api/zone/get {pageCode}，取 data 的首项，不用 URL tabKey 多请求一次。
+- t1 才 POST /api/zone/tab/get {pageCode,tabKey}；空 key 用 default。
+  普通入口必须匹配回包的 tabKey。仅 searchHotExplain 且无显式 key
+  可以用精确 tabKeyName：先查 default，首个同名 tabMeta 如果不是回包当前
+  tab 就用其真实 key 重读一次，再核对回包名称。拒绝或不匹配降级经典端点，
+  账号失效、取消或凭据变化不降级。默认空内容和读取失败分开。
+- 四种模块顺序与回包一致。轮播只投影 M/437 确认的站内资源动作，不开放
+  广告、外链、直播或 M/437 无法区别资源种类的视频入口。横排接受歌单、
+  专辑与独立专区 FM；按原版在过滤后不足六张时不展示。榜单只接受
+  PLAYLIST 和 singleRow/doubleRow，展示前三名，以 tracks 的对位文字优先。
+  网格只接受歌单。图片 URL 限制公共音乐 CDN 并去掉上游 query；不输出授权 URL。
+- M/3089 的 PersonalityContainer 在个性化关闭后把整组替换为说明和
+  「去设置页重新开启」；保留标题，不投影该组数据。未标记横排、网格还会
+  在单卡粒度过滤。标记的横排 FM 或歌单需要原生接已有 MGC 试听场景；
+  不把标记写成已有播放授权，不扩展到普通网格。
+- 当前代码 core/src/catalog/vertical_zone 是两条真实 Rust 请求及有界的
+  类型化投影，仍未接 MusicClient/主窗 IPC、原版账号/页面缓存、
+  精选导航和搜索入口、实际卡片动作或 UI。既有专区 FM 不改。
+- cargo test -p cumulus-core --test vertical_zone --locked：封闭夹具核对
+  请求先后及精确实参、四类模块/个性化关闭、tabName 单次重查、不同
+  tabKey 降级，以及 301 终止；没有真实账号/服务或 WebView 声明。
