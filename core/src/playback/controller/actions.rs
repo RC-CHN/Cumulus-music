@@ -280,7 +280,7 @@ impl Actor {
                 } else if self.state.active() {
                     Ok(())
                 } else {
-                    options = Some(self.resume_failed_song().unwrap_or_else(|| {
+                    options = Some(self.resume_interrupted_song().unwrap_or_else(|| {
                         if matches!(request.command, PlaybackCommand::PlayFromStart) {
                             LoadOptions {
                                 position: Some(0.0),
@@ -441,34 +441,44 @@ impl Actor {
             self.reply(request.reply, result);
         }
     }
-    fn resume_failed_song(&self) -> Option<LoadOptions> {
-        if self.state != PlaybackStatus::Error
-            || !matches!(
-                self.error,
-                Some(
-                    PlaybackFailure::Engine
-                        | PlaybackFailure::OpenMedia
-                        | PlaybackFailure::Output
-                        | PlaybackFailure::Network
-                        | PlaybackFailure::SourceServiceTemporary
-                )
-            )
-        {
-            return None;
-        }
+    fn resume_interrupted_song(&self) -> Option<LoadOptions> {
+        let source = match self.state {
+            // Only an unsolicited native stop leaves a retry point in Idle.
+            // It doesn't invalidate a still-authorized URL.
+            PlaybackStatus::Idle => LoadSource::CurrentPreference,
+            PlaybackStatus::Error
+                if matches!(
+                    self.error,
+                    Some(
+                        PlaybackFailure::Engine
+                            | PlaybackFailure::OpenMedia
+                            | PlaybackFailure::Output
+                            | PlaybackFailure::Network
+                            | PlaybackFailure::SourceServiceTemporary
+                    )
+                ) =>
+            {
+                LoadSource::FreshOnline
+            }
+            _ => return None,
+        };
         let retry = self.source_retry.as_ref()?;
-        if self.queue.selected().as_ref() != Some(&retry.item)
-            || !self.ordinary_online_song(&retry.item)
-        {
+        let can_resume = if self.state == PlaybackStatus::Idle {
+            self.independent_transport(&retry.item)
+        } else {
+            self.ordinary_online_song(&retry.item)
+        };
+        if self.queue.selected().as_ref() != Some(&retry.item) || !can_resume {
             return None;
         }
-        // Play is explicit consent to resume, even if the failed load was
+        // Play is explicit consent to resume, even if the interrupted load was
         // paused. Retry keeps the previous pause intent instead.
         Some(LoadOptions {
             position: Some(retry.position),
             recover: true,
             retain_source_retry: true,
-            source: LoadSource::FreshOnline,
+            restart_at_end: self.state == PlaybackStatus::Idle,
+            source,
             ..Default::default()
         })
     }

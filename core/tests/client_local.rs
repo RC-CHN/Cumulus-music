@@ -511,6 +511,31 @@ async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
         .await
         .unwrap();
     let original = client.player_queue("0").await.unwrap().current;
+    let native = device.state.lock().unwrap().view.entry_id.unwrap();
+    support::event(
+        &device,
+        native,
+        cumulus_core::playback::engine::EndReason::Stop,
+    );
+    tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            if client.player_snapshot("0").await.unwrap().state == PlaybackStatus::Idle {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let resumed = client.player_action("0", PlayerAction::Play).await.unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.position, Some(23.0));
+    assert_eq!(resumed.entry_id, original);
+    assert_eq!(resumed.timeline.unwrap().media_start, 30.0);
+    client
+        .player_action("0", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
     drop(client);
     tokio::time::sleep(Duration::from_millis(150)).await;
     let (_, reopened, _) = self::client(&state, Arc::new(Probe::default()));

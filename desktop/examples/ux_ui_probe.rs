@@ -386,6 +386,7 @@ impl Api for Library {
                         return value;
                     }
                     let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap())?;
+                    card_source_fixture::record_authorization(&ids);
                     let mut row = json!({"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav","code":200,"md5":"fixture","level":"standard","expi":120});
                     if trial_seek_proof() && (ids[0] == 1 || ids[0] == "1") {
                         row["freeTrialInfo"] = json!({"start":20,"end":40});
@@ -468,7 +469,12 @@ fn main() {
             || (motion_proof && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()),
         "playback wait proof requires isolated layout/audio fixtures"
     );
-    let audio_status_proof = card_source_proof || playback_wait_proof;
+    let native_stop_proof = card_source_fixture::native_stop_enabled();
+    assert!(
+        !native_stop_proof || motion_proof,
+        "native stop requires closed audio"
+    );
+    let audio_status_proof = card_source_proof || playback_wait_proof || native_stop_proof;
     assert!(
         !card_source_proof
             || (motion_proof && library_fixture::enabled() && search_fixture::enabled()),

@@ -153,10 +153,15 @@ impl Actor {
         // Native events can share a poll (including ones drained by a
         // transport command). A dead engine or current-entry failure cannot
         // be converted into successful EOF or a fresh load by another event.
-        let failure = if events
-            .iter()
-            .any(|event| matches!(event, EngineEvent::Shutdown))
-        {
+        let failure = if events.iter().any(|event| match event {
+            EngineEvent::Shutdown => true,
+            EngineEvent::Ended {
+                entry_id,
+                reason: EndReason::Quit,
+                ..
+            } => *entry_id == loaded.media.entry_id,
+            _ => false,
+        }) {
             Some(PlaybackFailure::Engine)
         } else {
             events.iter().rev().find_map(|event| match event {
@@ -199,7 +204,15 @@ impl Actor {
             };
             return self.begin(options, uuid::Uuid::new_v4().simple().to_string(), None).await;
         }
+        // A matching native stop is terminal even when the player didn't
+        // issue Stop itself. Never treat it as successful completion.
+        let stopped = failure.is_none()
+            && events.iter().any(|event| {
+                matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Stop, .. }
+                if *entry_id == loaded.media.entry_id)
+            });
         let ended = failure.is_none()
+            && !stopped
             && events.iter().any(|event| {
                 matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, .. }
                 if *entry_id == loaded.media.entry_id)
@@ -236,6 +249,24 @@ impl Actor {
             if !was_paused || !view.paused || !self.position.is_some_and(|p| observed < p) {
                 self.position = Some(observed);
             }
+        }
+        if stopped {
+            let retry = self
+                .position
+                .filter(|_| self.independent_transport(&loaded.item))
+                .map(|position| SourceRetryPoint {
+                    item: loaded.item.clone(),
+                    position,
+                    paused: was_paused,
+                    history: loaded.history.clone(),
+                });
+            // Save the accepted clock as stopped, not as a completed track,
+            // then release the old decoder and its transport identity.
+            self.state = PlaybackStatus::Idle;
+            self.stop(true).await?;
+            self.error = None;
+            self.source_retry = retry;
+            return Ok(());
         }
         self.buffered_through = if !ended && current_position.is_some() {
             view.buffered_through

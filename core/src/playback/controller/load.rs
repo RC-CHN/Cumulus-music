@@ -57,14 +57,18 @@ fn loading_timeline(source: &ResolvedSource, item: &QueueEntry, timeline: Timeli
 }
 
 impl Actor {
-    pub(super) fn ordinary_online_song(&self, item: &QueueEntry) -> bool {
+    pub(super) fn independent_transport(&self, item: &QueueEntry) -> bool {
         !self.queue.is_fm()
             && self.queue.intelligence_context().is_none()
             && item.source["kind"] != "listen_together"
+            && item.resource["playback_constraint"].is_null()
+    }
+
+    pub(super) fn ordinary_online_song(&self, item: &QueueEntry) -> bool {
+        self.independent_transport(item)
             && item.resource["cloud_song_id"].is_null()
             && item.resource["download_task_id"].is_null()
             && super::quality::song_resource(&item.resource)
-            && item.resource["playback_constraint"].is_null()
     }
 
     pub async fn begin(

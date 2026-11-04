@@ -156,11 +156,21 @@ async fn removing_a_paused_entry_cannot_resume_after_audio_ownership_is_revoked(
 }
 
 #[tokio::test]
-async fn fatal_native_event_in_eof_batch_cannot_advance_or_reload_playback() {
+async fn fatal_native_event_in_terminal_batch_cannot_advance_or_reload_playback() {
     use cumulus_core::playback::failure::PlaybackFailure;
 
     for (first, second) in [
         (EngineEvent::Shutdown, EndReason::Eof),
+        (EngineEvent::Shutdown, EndReason::Stop),
+        (EngineEvent::Shutdown, EndReason::Quit),
+        (
+            EngineEvent::Ended {
+                entry_id: 1,
+                reason: EndReason::Quit,
+                error: 0,
+            },
+            EndReason::Stop,
+        ),
         (EngineEvent::OutputReload { entry_id: 1 }, EndReason::Error),
     ] {
         for reverse in [false, true] {
@@ -192,15 +202,136 @@ async fn fatal_native_event_in_eof_batch_cannot_advance_or_reload_playback() {
             assert_eq!(saved["seconds"], 12.0);
             assert_eq!(saved["state"], "error");
             assert_eq!(song(&failed), Some(1));
-            if matches!(first, EngineEvent::Shutdown) {
-                assert!(matches!(failed.error, Some(PlaybackFailure::Engine)));
-            } else {
+            if matches!(first, EngineEvent::OutputReload { .. }) {
                 assert!(matches!(failed.error, Some(PlaybackFailure::Output)));
+            } else {
+                assert!(matches!(failed.error, Some(PlaybackFailure::Engine)));
             }
             assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
             assert_eq!(f.device.state.lock().unwrap().loads, 1);
             assert_eq!(f.api.count(2), prefetched);
         }
+    }
+}
+
+#[tokio::test]
+async fn podcast_native_stop_resumes_through_its_normal_voice_resolver() {
+    let f = Fixture::new();
+    f.command(Cmd::Replace {
+        resources: vec![json!({"id":2,"voice_id":"22"})],
+        index: 0,
+        source: json!({"kind":"podcast"}),
+    })
+    .await
+    .unwrap();
+    f.command(Cmd::Seek(22.0)).await.unwrap();
+    let native = f.device.state.lock().unwrap().view.entry_id.unwrap();
+    event(&f.device, native, EndReason::Stop);
+    until(&f.player, |s| s.state == Status::Idle).await;
+    let view = f.command(Cmd::PlayFromStart).await.unwrap();
+    assert_eq!(view.state, Status::Playing);
+    assert_eq!(view.position, Some(22.0));
+    assert_eq!(view.selected.unwrap().resource["voice_id"], "22");
+}
+
+#[tokio::test]
+async fn a_stop_at_the_authorized_preview_end_restarts_that_preview() {
+    let f = Fixture::new();
+    f.api.trial.store(true, Ordering::SeqCst);
+    let playing = f.command(replace(&[1, 2])).await.unwrap();
+    assert_eq!(playing.timeline.unwrap().mode, TimelineMode::Trial);
+    f.command(Cmd::Seek(60.0)).await.unwrap();
+    let native = f.device.state.lock().unwrap().view.entry_id.unwrap();
+    event(&f.device, native, EndReason::Stop);
+    until(&f.player, |s| s.state == Status::Idle).await;
+    let resumed = f.command(Cmd::PlayFromStart).await.unwrap();
+    assert_eq!(resumed.state, Status::Playing);
+    assert_eq!(resumed.position, Some(30.0));
+    assert_eq!(song(&resumed), Some(1));
+}
+
+#[tokio::test]
+async fn only_current_native_stop_retires_transport_and_play_resumes_its_saved_clock() {
+    for also_reported_eof in [false, true] {
+        let f = Fixture::new();
+        f.command(replace(&[1, 2])).await.unwrap();
+        let old_native = f.device.state.lock().unwrap().view.entry_id.unwrap();
+        f.command(Cmd::Next).await.unwrap();
+        let current = f.command(Cmd::Seek(37.0)).await.unwrap();
+        let queue = f.player.queue(&f.token()).await.unwrap();
+        until(&f.player, |s| s.prefetch.state == "ready").await;
+        let loads = f.device.state.lock().unwrap().loads;
+        let calls = f.api.count(2);
+
+        event(&f.device, old_native, EndReason::Stop);
+        let after_stale = until(&f.player, |s| {
+            s.revision > current.revision && f.device.state.lock().unwrap().view.events.is_empty()
+        })
+        .await;
+        assert_eq!(after_stale.state, Status::Playing);
+        assert_eq!(after_stale.play_id, current.play_id);
+        assert_eq!(after_stale.position, Some(37.0));
+
+        {
+            let mut native = f.device.state.lock().unwrap();
+            let entry_id = native.view.entry_id.take().unwrap();
+            native.view.position = None;
+            if also_reported_eof {
+                native.view.events.push(EngineEvent::Ended {
+                    entry_id,
+                    reason: EndReason::Eof,
+                    error: 0,
+                });
+            }
+            native.view.events.push(EngineEvent::Ended {
+                entry_id,
+                reason: EndReason::Stop,
+                error: 0,
+            });
+        }
+        let stopped = until(&f.player, |s| s.state == Status::Idle).await;
+        assert!(stopped.play_id.is_none());
+        assert!(stopped.error.is_none());
+        assert!(stopped.timeline.is_none());
+        assert_eq!(song(&stopped), Some(2));
+        assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+        assert_eq!(f.device.state.lock().unwrap().loads, loads);
+        assert_eq!(f.api.count(2), calls);
+        let saved = f.store.get("9", "playback", "position").unwrap().unwrap();
+        assert_eq!(saved["seconds"], 37.0);
+        assert_eq!(saved["state"], "idle");
+
+        if also_reported_eof {
+            f.api.url_version.store(1, Ordering::SeqCst);
+            f.device.required_url_version.store(1, Ordering::SeqCst);
+            f.clock.0.store(11, Ordering::SeqCst);
+        }
+        let resume = || {
+            if also_reported_eof {
+                Cmd::PlayFromStart
+            } else {
+                Cmd::Play
+            }
+        };
+        let resumed = f.command(resume()).await.unwrap();
+        assert_eq!(resumed.state, Status::Playing);
+        assert_eq!(resumed.position, Some(37.0));
+        assert_ne!(resumed.play_id, current.play_id);
+        assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+        assert_eq!(
+            f.api.count(2),
+            calls + usize::from(also_reported_eof),
+            "only expired authorization requires another read"
+        );
+        assert_eq!(f.device.state.lock().unwrap().loads, loads + 1);
+
+        let native = f.device.state.lock().unwrap().view.entry_id.unwrap();
+        event(&f.device, native, EndReason::Stop);
+        until(&f.player, |s| s.state == Status::Idle).await;
+        f.command(Cmd::Stop).await.unwrap();
+        let restarted = f.command(resume()).await.unwrap();
+        assert_eq!(restarted.position, Some(0.0));
+        assert_eq!(song(&restarted), Some(2));
     }
 }
 
