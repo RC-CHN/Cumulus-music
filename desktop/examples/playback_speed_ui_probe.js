@@ -78,8 +78,12 @@
     click(one('.track-row .track-play:not(:disabled)'));
     await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decoding');
     click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','native pause');
-    const seek=one('.playerbar [aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
-    await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!button().disabled,'native seek');
+    const seek=one('.playerbar [aria-label="播放进度"]'),seekPlay=bar().dataset.playId;
+    seek.value='16';seek.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>Math.abs(Number(bar().dataset.position)-16)<.2&&!button().disabled,'native forward seek while paused');
+    seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!button().disabled,'native rewind while paused');
+    assert(bar().dataset.state==='paused'&&bar().dataset.playId===seekPlay,'rewind keeps the same paused native play');
     const provides=one('#app').__vue_app__._context.provides;
     const core=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];
     const playerAction=core.playerAction;
