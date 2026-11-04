@@ -211,6 +211,7 @@ impl Api for Library {
                 return result;
             }
             if let Some(result) = profile_play_record_fixture::response(path, &args, cached) {
+                profile_play_record_fixture::hold_response(path, &args).await;
                 return result;
             }
             if let Some(result) = profile_relations_fixture::response(path, &args) {
@@ -667,6 +668,17 @@ fn main() {
                 value["playlistEssential"] = playlist_essential_fixture::report();
             }
             if profile_play_record_fixture::enabled() {
+                if profile_play_record_fixture::removal_enabled() {
+                    if value["stage"] == "profile-rank-release-delete" {
+                        profile_play_record_fixture::release_remove();
+                        return;
+                    }
+                    if value["stage"] == "profile-rank-displace-row" {
+                        profile_play_record_fixture::remove_all_row_externally();
+                        handle.get_webview_window("main").unwrap().eval("window.__profileRankDisplaced=true;").unwrap();
+                        return;
+                    }
+                }
                 if value["stage"] == "profile-rank-revoke" {
                     profile_play_record_fixture::revoke_guest();
                     handle.get_webview_window("main").unwrap().eval("window.__profileRankRevoked=true;").unwrap();

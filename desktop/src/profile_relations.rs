@@ -41,3 +41,18 @@ pub async fn profile_play_record(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn remove_profile_play_record(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    period: cumulus_core::client::dto::ProfilePlayRecordPeriod,
+    song_id: String,
+    revision: String,
+    action: cumulus_core::client::dto::ProfilePlayRecordRemovalAction,
+) -> Result<AccountData<cumulus_core::client::dto::ProfilePlayRecordRemovalOutcome>, ClientError> {
+    client
+        .remove_profile_play_record(&epoch, period, &song_id, &revision, action)
+        .await
+        .map_err(Into::into)
+}

@@ -14,14 +14,18 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--removal', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    source = Path(__file__).resolve().parents[2] / 'desktop/examples/profile_play_record_ui_probe.js'
+    probe = 'profile_rank_removal_ui_probe.js' if args.removal else 'profile_play_record_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop/examples' / probe
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_PLAYLIST_CREATOR_PROOF='1', CUMULUS_PROFILE_PLAY_RECORD_PROOF='1',
                CUMULUS_UX_SCRIPT=str(source))
+    if args.removal:
+        env['CUMULUS_PROFILE_RANK_REMOVAL_PROOF'] = '1'
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
                 'APPDATA', 'LOCALAPPDATA'):
         folder = root / 'os-profile' / key
@@ -37,6 +41,9 @@ def main():
     failed = output / 'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.removal:
+        verify_removal(root, output, args.screenshots)
+        return
 
     names = ['missing_guest', 'hidden_guest', 'guest_header', 'guest_week', 'guest_play',
              'guest_all', 'guest_week_restored', 'guest_return', 'guest_revoked',
@@ -86,6 +93,50 @@ def main():
               'nativePlayback': 'libmpv/null', 'physicalAudioVerified': False,
               'guestRowsHidePlayCounts': True, 'guestRevocationBlockedBeforeRankRead': True,
               'realMusicRequests': 0, 'realAccountWrites': 0}
+    (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(report))
+
+
+def verify_removal(root, output, screenshots):
+    names = ['guest_no_removal', 'owner_context', 'awaiting_ack', 'confirmed_week',
+             'keyboard_ignored', 'keyboard_confirmed', 'uncertain_all',
+             'reentered_pending', 'readback_present', 'readback_absent']
+
+    def read(stage):
+        return json.loads((output / f'{stage}.json').read_text(encoding='utf-8'))
+
+    stages = {name: read(f'ux_{index:02d}_{name}') for index, name in enumerate(names, 1)}
+    complete = read('complete')
+    assert complete['ok'] and complete['stageCount'] == len(stages)
+    assert len(list(output.glob('ux_*.png'))) == (len(stages) if screenshots else 0)
+    path = '/api/play/record/empty'
+
+    def writes(receipt):
+        return [call['args'] for call in receipt['profileRankCalls'] if call['path'] == path]
+
+    menu = {'type': '1', 'songId': '84'}
+    keyboard = {'type': '1', 'songId': '86'}
+    ambiguous = {'type': '0', 'songId': '85'}
+    assert writes(stages['guest_no_removal']) == writes(stages['owner_context']) == []
+    assert writes(stages['confirmed_week']) == writes(stages['keyboard_ignored']) == [menu]
+    assert writes(stages['keyboard_confirmed']) == [menu, keyboard]
+    assert all(writes(stages[name]) == [menu, keyboard, ambiguous] for name in names[6:])
+    assert writes(complete) == [menu, keyboard, ambiguous]
+    assert all(not call['cached'] for call in complete['profileRankCalls'])
+
+    def readbacks(receipt):
+        return [call['args'] for call in receipt['profileRankCalls']
+                if call['path'] == '/api/v1/play/record' and call['args']['uid'] == '2'
+                and call['args']['type'] == 0]
+
+    assert len(readbacks(stages['uncertain_all'])) == 1
+    assert len(readbacks(stages['reentered_pending'])) == 2
+    assert len(readbacks(stages['readback_present'])) == 3
+    assert len(readbacks(stages['readback_absent'])) == 4
+    report = {'ok': True, 'actualWebView': True, 'states': len(stages),
+              'screenshots': len(stages) if screenshots else 0,
+              'syntheticRemovalRequests': writes(complete), 'realAccountWrites': 0,
+              'noOptimisticRemoval': True, 'unknownReplyReadbackOnly': True}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

@@ -7,6 +7,29 @@ use std::sync::{
 
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static GUEST_REVOKED: AtomicBool = AtomicBool::new(false);
+static WEEK_84_REMOVED: AtomicBool = AtomicBool::new(false);
+static WEEK_86_REMOVED: AtomicBool = AtomicBool::new(false);
+static ALL_85_ABSENT: AtomicBool = AtomicBool::new(false);
+static DELETE_RELEASE: tokio::sync::Notify = tokio::sync::Notify::const_new();
+const REMOVE: &str = "/api/play/record/empty";
+
+pub fn removal_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_PROFILE_RANK_REMOVAL_PROOF").is_some()
+}
+
+pub fn release_remove() {
+    DELETE_RELEASE.notify_one();
+}
+
+pub fn remove_all_row_externally() {
+    ALL_85_ABSENT.store(true, Ordering::Release);
+}
+
+pub async fn hold_response(path: &str, args: &Value) {
+    if removal_enabled() && path == REMOVE && args == &json!({"type":"1","songId":"84"}) {
+        DELETE_RELEASE.notified().await;
+    }
+}
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_PROFILE_PLAY_RECORD_PROOF").is_some()
@@ -45,7 +68,7 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         "/api/w/v1/user/detail/3" => Some(3),
         "/api/w/v1/user/detail/4" => Some(4),
         "/api/w/v1/user/detail/5" => Some(5),
-        "/api/v1/play/record" => None,
+        "/api/v1/play/record" | REMOVE => None,
         "/api/user/playlist" if matches!(args["uid"].as_str(), Some("2" | "4" | "5")) => {
             return Some(Ok(json!({"code":200,"more":false,"playlist":[]})));
         }
@@ -76,6 +99,22 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
         }
         return Some(Ok(detail));
     }
+    if path == REMOVE {
+        if !removal_enabled() {
+            return Some(Err(Error::Response("unexpected synthetic rank removal")));
+        }
+        return Some(if args == &json!({"type":"1","songId":"84"}) {
+            WEEK_84_REMOVED.store(true, Ordering::Release);
+            Ok(json!({"code":200}))
+        } else if args == &json!({"type":"1","songId":"86"}) {
+            WEEK_86_REMOVED.store(true, Ordering::Release);
+            Ok(json!({"code":200}))
+        } else if args == &json!({"type":"0","songId":"85"}) {
+            Err(Error::Transport("synthetic rank removal reply lost".into()))
+        } else {
+            Err(Error::Response("unexpected synthetic rank removal body"))
+        });
+    }
     let kind = args["type"].as_u64().unwrap_or(u64::MAX);
     let uid = args["uid"].as_str().unwrap_or_default();
     if args != &json!({"offset":0,"total":true,"limit":120,"uid":uid,"type":kind})
@@ -87,7 +126,8 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
             "wrong or unapproved synthetic rank request",
         )));
     }
-    if uid == "2"
+    if !removal_enabled()
+        && uid == "2"
         && kind == 0
         && calls
             .iter()
@@ -96,6 +136,28 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
             == 1
     {
         return Some(Err(Error::Transport("synthetic rank tab failed".into())));
+    }
+    if removal_enabled() && uid == "2" {
+        let rows = if kind == 1 {
+            [
+                (!WEEK_84_REMOVED.load(Ordering::Acquire)).then(|| rank_row(84, "本人周榜", 4321)),
+                (!WEEK_86_REMOVED.load(Ordering::Acquire))
+                    .then(|| rank_row(86, "本人周榜第二", 4322)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+        } else {
+            [
+                Some(rank_row(84, "同期总榜同一首", 8764)),
+                (!ALL_85_ABSENT.load(Ordering::Acquire)).then(|| rank_row(85, "本人总榜", 8765)),
+            ]
+            .into_iter()
+            .flatten()
+            .collect()
+        };
+        let field = if kind == 1 { "weekData" } else { "allData" };
+        return Some(Ok(json!({"code":200, (field): rows})));
     }
     Some(Ok(match (uid, kind) {
         ("3", 1) => {
