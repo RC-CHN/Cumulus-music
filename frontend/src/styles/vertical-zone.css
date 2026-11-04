@@ -30,7 +30,7 @@
 }
 .vertical-zone-subtabs button[aria-current='page'] {
   color: var(--accent);
-  background: var(--panel-soft);
+  background: var(--surface-alt);
 }
 .vertical-zone-module + .vertical-zone-module {
   margin-top: 24px;
@@ -96,7 +96,7 @@
   border: none;
   overflow: hidden;
   border-radius: 8px;
-  background: var(--panel-soft);
+  background: var(--surface-alt);
   color: var(--text-muted);
 }
 .vertical-zone-cover img {
@@ -115,7 +115,7 @@
   align-items: center;
   gap: 12px;
   border-radius: 8px;
-  background: var(--panel-soft);
+  background: var(--surface-alt);
   padding: 10px;
 }
 .vertical-zone-play {

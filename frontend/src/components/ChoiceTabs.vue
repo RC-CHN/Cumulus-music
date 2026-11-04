@@ -152,7 +152,7 @@ button[aria-current='page'] {
   padding: 24px 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: var(--panel);
+  background: var(--surface-raised);
   box-shadow: 0 8px 24px #0002;
 }
 .choice-zone-panel button {
@@ -162,7 +162,7 @@ button[aria-current='page'] {
   padding-inline: 6px;
   border: 0;
   border-radius: 16px;
-  background: var(--panel-soft);
+  background: var(--surface-alt);
 }
 .choice-zone-panel button[aria-current='page'] {
   color: var(--accent);
