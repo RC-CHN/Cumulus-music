@@ -202,6 +202,9 @@ impl Fixture {
         }
     }
     fn client(&self) -> MusicClient {
+        self.client_with_chunk_size(3)
+    }
+    fn client_with_chunk_size(&self, chunk_size: usize) -> MusicClient {
         MusicClient::with_session(
             self.session.clone(),
             ProfileRegistry::open(self.root.path(), ApiOrigin::Pc).unwrap(),
@@ -211,7 +214,7 @@ impl Fixture {
             oss: self.oss.clone(),
             probe: Arc::new(support::Probe),
             clock: self.clock.clone(),
-            chunk_size: 3,
+            chunk_size,
             oss_part_size: support::oss::PART,
             oss_concurrency: 3,
         })

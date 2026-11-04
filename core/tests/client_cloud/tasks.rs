@@ -274,12 +274,18 @@ async fn encoding_retry_only_rechecks_the_known_song_then_publishes_once_even_if
 #[tokio::test]
 async fn blocked_text_omission_is_scoped_durable_and_never_resumes_the_upload() {
     use cumulus_core::cloud::AttachmentKind;
+    // This test exercises text allocation/omission through the real worker,
+    // not multi-chunk transfer. Three-byte chunks would turn even this 1×1
+    // PNG into dozens of synchronous journal writes before any text work.
+    const FIXTURE_CHUNK_SIZE: usize = 4 * 1024;
     let f = Fixture::new(0);
     let mut input = f.input();
     let cover = f.root.path().join("cover.png");
     image::RgbaImage::from_pixel(1, 1, image::Rgba([2, 4, 6, 255]))
         .save(&cover)
         .unwrap();
+    let cover_bytes = std::fs::read(&cover).unwrap();
+    assert!(cover_bytes.len() <= FIXTURE_CHUNK_SIZE);
     input.cover = Some(cover);
     let lyric = f.root.path().join("input.lrc");
     let cue = f.root.path().join("input.cue");
@@ -287,7 +293,7 @@ async fn blocked_text_omission_is_scoped_durable_and_never_resumes_the_upload() 
     std::fs::write(&cue, b"FILE \"input.flac\" WAVE\n").unwrap();
     input.lyric = Some(lyric.clone());
     input.cue = Some(cue.clone());
-    let mut client = f.client();
+    let mut client = f.client_with_chunk_size(FIXTURE_CHUNK_SIZE);
     let id = client
         .cloud_command("1", CloudCommand::Upload { files: vec![input] })
         .await
@@ -305,13 +311,16 @@ async fn blocked_text_omission_is_scoped_durable_and_never_resumes_the_upload() 
         // schedule record without competing with a tight SQLite read loop.
         let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
         let choice = loop {
-            let mut row = client
+            let mut page = client
                 .cloud_page("1", query(CloudTab::Uploading), false)
                 .await
-                .unwrap()
-                .uploads
-                .pop()
                 .unwrap();
+            assert!(
+                page.worker_error.is_none(),
+                "upload worker stopped before {attachment:?} omission: {:?}",
+                page.worker_error
+            );
+            let mut row = page.uploads.pop().unwrap();
             if let Some(choice) = row.omittable_attachment.take() {
                 assert!(!row.can_resume);
                 break choice;
@@ -375,7 +384,7 @@ async fn blocked_text_omission_is_scoped_durable_and_never_resumes_the_upload() 
         assert!(file.exists());
         std::fs::remove_file(file).unwrap();
         drop(client);
-        client = f.client();
+        client = f.client_with_chunk_size(FIXTURE_CHUNK_SIZE);
         let mut page = client
             .cloud_page("1", query(CloudTab::Uploading), false)
             .await
@@ -400,6 +409,10 @@ async fn blocked_text_omission_is_scoped_durable_and_never_resumes_the_upload() 
         );
     }
     let _ = wait_done(&client).await;
+    let cover_calls = f.objects.object("cover").calls();
+    assert_eq!(cover_calls.len(), 1);
+    assert!(cover_calls[0].complete && !cover_calls[0].query);
+    assert_eq!(cover_calls[0].body, cover_bytes);
     let calls = f.api.calls.lock().unwrap();
     for path in [
         support::CHECK,
