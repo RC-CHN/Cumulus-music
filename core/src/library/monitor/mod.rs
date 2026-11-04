@@ -71,7 +71,7 @@ impl LibraryMonitor {
         self.inner.unwatch(id)
     }
     pub fn run_once(&self) -> Result<Vec<WatchRoot>> {
-        self.inner.run_once()
+        Ok(self.inner.run_once()?.unwrap_or_default())
     }
     /// Wake the existing worker without spawning competing scans.
     pub fn rescan(&self) -> Result<()> {
@@ -160,7 +160,8 @@ impl Inner {
                 // A competing library mutation can defer a scan. Once it
                 // releases the index, don't wait a whole monitoring period
                 // to process the pending request.
-                Ok(roots) if roots.iter().any(|root| root.status == WatchStatus::Pending) => {
+                Ok(None) => self.interval.min(Duration::from_secs(1)),
+                Ok(Some(roots)) if roots.iter().any(|root| root.status == WatchStatus::Pending) => {
                     self.interval.min(Duration::from_secs(1))
                 }
                 Ok(_) => self.interval,

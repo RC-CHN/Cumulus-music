@@ -6,10 +6,12 @@ use std::{
 };
 
 impl Inner {
-    pub(super) fn run_once(&self) -> Result<Vec<WatchRoot>> {
+    /// None means a competing process owns the monitoring pass. A completed
+    /// pass can legitimately return no roots, so distinguish the two.
+    pub(super) fn run_once(&self) -> Result<Option<Vec<WatchRoot>>> {
         let _lock = match OperationLock::acquire(self.store.directory(), OWNER, "library-monitor") {
             Ok(lock) => lock,
-            Err(Error::MutationBusy) => return Ok(vec![]),
+            Err(Error::MutationBusy) => return Ok(None),
             Err(error) => return Err(error),
         };
         let mut results = Vec::new();
@@ -104,6 +106,6 @@ impl Inner {
                 results.push(root);
             }
         }
-        Ok(results)
+        Ok(Some(results))
     }
 }

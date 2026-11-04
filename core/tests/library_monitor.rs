@@ -172,6 +172,25 @@ fn pending_scan_retries_after_index_contention_before_normal_poll() {
     assert_eq!(library.list(ListOptions::default()).unwrap().len(), 1);
     monitor.stop().unwrap();
 }
+
+#[test]
+fn background_scan_retries_when_another_monitor_owns_the_pass() {
+    let (_tmp, root, store, library, _) = setup();
+    std::fs::write(root.join("initial.wav"), "3").unwrap();
+    let monitor = LibraryMonitor::new(library.clone(), Duration::from_secs(30)).unwrap();
+    monitor.watch(&root).unwrap();
+    assert_eq!(monitor.run_once().unwrap()[0].status, WatchStatus::Ready);
+    std::fs::write(root.join("while-busy.wav"), "4").unwrap();
+    let held = OperationLock::acquire(store.directory(), "local", "library-monitor").unwrap();
+    assert!(monitor.run_once().unwrap().is_empty());
+    monitor.start().unwrap();
+    // Keep the competing pass held while the worker attempts its initial scan.
+    thread::sleep(Duration::from_millis(250));
+    assert_eq!(library.list(ListOptions::default()).unwrap().len(), 1);
+    drop(held);
+    wait_until(|| library.list(ListOptions::default()).unwrap().len() == 2);
+    monitor.stop().unwrap();
+}
 #[test]
 fn background_polling_start_stop_restart_and_bounded_events_converge() {
     let (_tmp, root, _, library, monitor) = setup();
