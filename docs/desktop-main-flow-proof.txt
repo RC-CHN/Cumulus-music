@@ -356,3 +356,13 @@ Linux 合成桌面硬断网：已发布下载 → 离线播放
   验证实际 PCM 有声、暂停为零；回执
   .build/ui-proof/product-phase7/ordinary-verified/report.json。
   这些结果覆盖合成主流程与虚拟音频输出，真实账号与 Windows 实测另列。
+
+2026-11-04 合并版 Linux 回归（add75f05）
+
+  带本人头像入口、主页播客与社区发布的实际 Tauri 构建再次通过
+  19 个主流程检查点及 18 张截图。回环 HTTPS 的两个媒体 GET 按序；
+  关掉回环后，已建 TCP、新建 TCP 和 HTTPS 均失败，实际 libmpv 仍可
+  播放已完成下载。零真实服务请求和账号写入，见
+  .build/ui-proof/product-phase9/main-flow/{report,https-receipt}.json。
+  同一构建的本人入口 5 态、主页播客 10 态、笔记 8 态、社区草稿/读取
+  15 态与发布 7 态均使用独立封闭夹具通过，报告在该目录相应子目录。
