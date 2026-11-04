@@ -561,27 +561,43 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   const runSelection = (operation: PlaybackOperation) => run(operation, operation, true);
   const select = (input: PlaySelection) => runSelection((e) => core.playSelection(e, input));
-  function seekDisplayed(
+  async function seekDisplayed(
     target: Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>,
     seconds: number,
   ) {
     const current = view.value;
+    const loading =
+      current?.state === 'loading' &&
+      !current.fm &&
+      current.timeline?.end != null &&
+      current.timeline.end > current.timeline.start;
     if (
       !ready.value ||
-      busy.value ||
-      !loaded.value ||
+      (!loading && (busy.value || !loaded.value)) ||
       !target.playId ||
       target.epoch !== current?.epoch ||
       target.playId !== current.playId ||
       target.queueRevision !== current.queueRevision
     )
       return;
-    return action({
+    const input = {
       kind: 'seek_for',
       play_id: target.playId,
       expected_queue_revision: target.queueRevision,
       seconds,
-    });
+    } as const;
+    if (!loading) return action(input);
+    // The original selection still owns busy/retry until its decoder
+    // finishes. A seek changes its initial clock, not its request identity.
+    const captured = epoch;
+    const session = connection;
+    try {
+      const next = await core.playerAction(captured, input);
+      if (session === connection && captured === epoch) accept(next);
+    } catch (e) {
+      if (session === connection && captured === epoch)
+        handle(e, sameSelection(current, view.value));
+    }
   }
   function togglePrimaryTransport(displayedKey: string | undefined) {
     const current = view.value;

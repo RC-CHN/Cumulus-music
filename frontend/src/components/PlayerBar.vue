@@ -191,6 +191,14 @@ const buffered = computed(() =>
 const layeredSeek = computed(
   () => view.value?.timeline?.end != null && rail.value.max > rail.value.min,
 );
+const canSeek = computed(
+  () =>
+    ready.value &&
+    layeredSeek.value &&
+    !seekInFlight.value &&
+    ((loaded.value && !busy.value) ||
+      (view.value?.state === 'loading' && !view.value.fm && !props.togetherActive)),
+);
 const seekPlayed = computed(() => {
   const { span, min, max } = rail.value;
   if (max <= min) return 0;
@@ -313,7 +321,7 @@ async function seek(event: Event) {
   const input = event.currentTarget as HTMLInputElement;
   const current = view.value;
   const key = scrubKey.value;
-  if (!current || input.dataset.scrubKey !== key) return;
+  if (!canSeek.value || !current || input.dataset.scrubKey !== key) return;
   const seconds = Number(input.value);
   if (!insidePlayableTrial(current.timeline, seconds)) {
     outsideTrial.value = current.timeline?.mode === 'trial';
@@ -509,7 +517,7 @@ async function seek(event: Event) {
             :max="rail.max"
             :step="seekStep"
             :value="seekValue"
-            :disabled="!loaded || !view?.timeline?.end || pending"
+            :disabled="!canSeek"
             @input="scrubInput"
             @pointercancel="cancelScrub"
             @change="seek"

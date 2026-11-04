@@ -66,6 +66,7 @@ pub struct Service {
     eof_https: bool,
     source_authorizations: AtomicUsize,
     source_load_attempts: AtomicUsize,
+    loading_seek_released: AtomicBool,
     offline: AtomicBool,
     local_loads: AtomicUsize,
     source_loads: AtomicUsize,
@@ -86,6 +87,7 @@ impl Service {
             eof_https,
             source_authorizations: Default::default(),
             source_load_attempts: Default::default(),
+            loading_seek_released: Default::default(),
             calls: Default::default(),
             playlist: Default::default(),
             offline: Default::default(),
@@ -138,6 +140,9 @@ impl Service {
         self.eof_https
             && self.source_authorizations.load(Ordering::Acquire) == 2
             && self.source_load_attempts.load(Ordering::Acquire) == 1
+    }
+    pub fn release_loading_seek(&self) {
+        self.loading_seek_released.store(true, Ordering::Release);
     }
     pub fn offline(&self) {
         self.offline.store(true, Ordering::Release);
@@ -405,9 +410,16 @@ impl AudioEngine for Audio {
             }
         };
         if !local {
-            self.fixture
+            let attempt = self
+                .fixture
                 .source_load_attempts
                 .fetch_add(1, Ordering::AcqRel);
+            if attempt == 0 && !self.fixture.ordinary_https {
+                while !self.fixture.loading_seek_released.load(Ordering::Acquire) {
+                    cancel.check()?;
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+            }
         }
         let loaded = self.inner.load(request, cancel)?;
         if self.fixture.ordinary_https && !local && loaded.codec.as_deref() != Some("aac") {

@@ -236,6 +236,106 @@ async fn old_seek_does_not_seek_the_replacement_and_current_seek_preserves_playb
 }
 
 #[tokio::test]
+async fn seek_during_decode_uses_the_latest_position_without_replacing_the_load() {
+    for (decoded_duration, expected, reset, trial) in [
+        (120.0, 45.0, false, false),
+        (20.0, 0.0, true, false),
+        (20.0, 35.0, false, true),
+    ] {
+        let device = Arc::new(support::Device::default());
+        device.state.lock().unwrap().duration = decoded_duration;
+        device.hold_load.store(true, Ordering::SeqCst);
+        let (_dir, api, _, client, _) = fixture_with_device(device.clone());
+        api.quality_trial_source.store(trial, Ordering::SeqCst);
+        let loading_client = client.clone();
+        let load = tokio::spawn(async move {
+            // Search's retained row owns the room policy gate during decode.
+            loading_client
+                .play_selection(
+                    "1",
+                    PlaySelection::SearchResultTrack {
+                        id: "1".into(),
+                        quality: Quality::Standard,
+                        toggle_current: false,
+                    },
+                )
+                .await
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(5), device.started.notified())
+            .await
+            .unwrap();
+        let loading = client.player_snapshot("1").await.unwrap();
+        assert_eq!(loading.state, PlaybackStatus::Loading);
+        let timeline = loading.timeline.as_ref().unwrap();
+        assert_eq!(timeline.start, if trial { 20.0 } else { 0.0 });
+        assert_eq!(timeline.end, Some(if trial { 40.0 } else { 120.0 }));
+        let seek = |seconds, revision| PlayerAction::SeekFor {
+            play_id: loading.play_id.clone().unwrap(),
+            expected_queue_revision: revision,
+            seconds,
+        };
+        assert!(matches!(
+            client.player_action("1", seek(75.0, "0".into())).await,
+            Err(Error::StaleResponse)
+        ));
+        assert!(matches!(
+            client
+                .player_action(
+                    "1",
+                    seek(
+                        if trial { 15.0 } else { 125.0 },
+                        loading.queue_revision.clone()
+                    )
+                )
+                .await,
+            Err(Error::InvalidInput(_))
+        ));
+        for position in if trial { [25.0, 35.0] } else { [15.0, 45.0] } {
+            let staged = client
+                .player_action("1", seek(position, loading.queue_revision.clone()))
+                .await
+                .unwrap();
+            assert_eq!(staged.play_id, loading.play_id);
+            assert_eq!(staged.state, PlaybackStatus::Loading);
+            assert_eq!(staged.position, Some(position));
+        }
+        assert_eq!(device.state.lock().unwrap().loads, 0);
+        device.hold_load.store(false, Ordering::SeqCst);
+        let playing = tokio::time::timeout(std::time::Duration::from_secs(5), load)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(playing.play_id, loading.play_id);
+        assert_eq!(playing.queue_revision, loading.queue_revision);
+        assert_eq!(playing.state, PlaybackStatus::Playing);
+        assert_eq!(playing.position, Some(expected));
+        assert_eq!(playing.position_reset, reset);
+        assert_eq!(
+            playing.timeline.unwrap().end,
+            Some(if trial { 40.0 } else { decoded_duration })
+        );
+        {
+            let native = device.state.lock().unwrap();
+            assert_eq!(native.loads, 1);
+            assert_eq!(
+                native.view.position,
+                Some(if trial { 15.0 } else { expected })
+            );
+        }
+        assert_eq!(
+            api.calls
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|path| path.as_str() == "/api/song/enhance/player/url/v1")
+                .count(),
+            1
+        );
+    }
+}
+
+#[tokio::test]
 async fn failed_source_refresh_is_fenced_to_the_error_entry() {
     let (_dir, api, _, client, _) = fixture();
     let device = Arc::new(support::Device::default());

@@ -20,6 +20,7 @@ use crate::{
     playback::{
         PlaybackMode,
         controller::{PlaybackCommand, PlaybackController},
+        engine::Cancellation,
     },
     storage::StateStore,
 };
@@ -54,7 +55,7 @@ impl Drop for Runtime {
 #[derive(Default)]
 pub(super) struct TogetherHost {
     pub(super) gate: Arc<AsyncMutex<()>>,
-    runtime: Mutex<Option<Runtime>>,
+    runtime: Arc<Mutex<Option<Runtime>>>,
     error: Arc<Mutex<Option<String>>>,
     factory: Option<Arc<dyn crate::listen_together::transport::ImFactory>>,
     cleanup_uncertain: Arc<Mutex<bool>>,
@@ -138,6 +139,18 @@ impl MusicClient {
                     && !r.worker.is_finished()
                     && room.is_none_or(|id| id == r.room_id)
             }))
+    }
+    pub(super) fn together_detached_guard(&self, token: &SessionToken) -> Cancellation {
+        let runtime = Arc::downgrade(&self.together.runtime);
+        let token = token.clone();
+        Cancellation::new(move || {
+            runtime.upgrade().is_some_and(|runtime| {
+                runtime.lock().is_ok_and(|slot| {
+                    slot.as_ref()
+                        .is_none_or(|r| r.token != token || r.worker.is_finished())
+                })
+            })
+        })
     }
     pub(super) fn together_signal(&self, token: &SessionToken, kind: Option<CommandKind>) {
         self.together_notify(token, runtime::Signal::Player(kind));

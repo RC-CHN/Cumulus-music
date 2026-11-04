@@ -1776,3 +1776,38 @@ test('a displayed seek cannot target a replacement song or account', async () =>
   ]);
   f.player.dispose();
 });
+
+test('a seek during decode changes the same pending playback without taking over its request', async () => {
+  const selected = deferred<PlayerView>();
+  const reply = deferred<PlayerView>();
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: (_epoch, action) => {
+      actions.push(action);
+      return action.kind === 'play' ? selected.promise : reply.promise;
+    },
+  });
+  await f.player.connect(account());
+  const start = f.player.action({ kind: 'play' });
+  const loading: PlayerView = {
+    ...state('3', '1', 'decoding'),
+    state: 'loading',
+    timeline: { mode: 'full', start: 0, end: 120, length: 120, total: 120, mediaStart: 0 },
+  };
+  f.emit(loading);
+  await f.player.seekDisplayed({ ...loading, playId: 'previous' }, 20);
+  const seek = f.player.seekDisplayed(loading, 35);
+  assert.deepEqual(actions, [
+    { kind: 'play' },
+    { kind: 'seek_for', play_id: 'decoding', expected_queue_revision: '1', seconds: 35 },
+  ]);
+  reply.resolve({ ...loading, revision: '4', position: 35 });
+  await seek;
+  assert.equal(f.player.view.value?.position, 35);
+  assert.equal(f.player.busy.value, true);
+  selected.resolve({ ...loading, revision: '5', state: 'playing', position: 35 });
+  assert.equal((await start)?.playId, 'decoding');
+  assert.equal(f.player.view.value?.state, 'playing');
+  assert.equal(f.player.busy.value, false);
+  f.player.dispose();
+});

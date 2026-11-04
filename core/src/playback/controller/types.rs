@@ -178,6 +178,8 @@ pub enum PlaybackCommand {
     PlayFromStart,
     Pause(bool),
     Seek(f64),
+    /// Fenced seek while preparing the already authorized ordinary source.
+    SeekDuringLoad(f64),
     Volume(f64),
     Speed(f64),
     Next,

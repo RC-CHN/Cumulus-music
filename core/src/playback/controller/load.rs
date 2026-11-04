@@ -31,6 +31,21 @@ pub(super) struct Prepared {
     pub reset: bool,
 }
 
+fn loading_timeline(source: &ResolvedSource, item: &QueueEntry, timeline: Timeline) -> Timeline {
+    if timeline.display_end().is_some() {
+        return timeline;
+    }
+    let resource = &item.resource;
+    let seconds = resource["metadata"]["duration"].as_f64();
+    let millis = resource["dt"]
+        .as_f64()
+        .or_else(|| resource["song"]["dt"].as_f64());
+    seconds
+        .or_else(|| millis.map(|ms| ms / 1000.0))
+        .and_then(|duration| source.timeline(Some(duration)).ok())
+        .unwrap_or(timeline)
+}
+
 impl Actor {
     pub async fn begin(
         &mut self,
@@ -125,6 +140,8 @@ impl Actor {
             item: item.clone(),
             reply: reply.take(),
             paused: options.paused,
+            timeline: None,
+            seek: None,
         });
         let resolver = self.resolver.clone();
         let token = self.token.clone();
@@ -175,7 +192,10 @@ impl Actor {
                 if matches!(snapshot.mode, TimelineMode::Cue | TimelineMode::Trial) {
                     load.end = timeline.media_end();
                 }
-                let _ = sender.send(Message::Loading(generation));
+                let _ = sender.send(Message::Loading {
+                    generation,
+                    timeline: loading_timeline(&source, &item, timeline),
+                });
                 let load_cancel = cancel.clone();
                 let media = super::engine(engine.clone(), cancel.clone(), move |engine| {
                     engine.load(load, &load_cancel)
@@ -242,6 +262,7 @@ impl Actor {
             let _ = self.stop(false).await;
             return;
         }
+        let mut applied_seek = None;
         let result = match result {
             Ok(mut prepared) => {
                 if prepared.item.entry_id == pending.item.entry_id
@@ -276,6 +297,19 @@ impl Actor {
                     }
                     return;
                 }
+                if let Some((position, revision, authority)) = pending.seek
+                    && !authority.is_cancelled()
+                {
+                    if prepared.timeline.to_media(position).is_ok() {
+                        prepared.position = position;
+                        prepared.reset = false;
+                        applied_seek = Some(revision);
+                    } else {
+                        // A catalog estimate is not decoder evidence. Retain
+                        // the original authorized start when it disagrees.
+                        prepared.reset = true;
+                    }
+                }
                 let target = prepared.timeline.to_media(prepared.position);
                 let prefs = self.prefs;
                 let paused = pending.paused;
@@ -309,6 +343,9 @@ impl Actor {
             Ok(prepared) => {
                 self.source_retry = None;
                 self.position = Some(prepared.position);
+                if let Some(revision) = applied_seek {
+                    self.seek_revision = revision;
+                }
                 self.reset = prepared.reset;
                 self.state = if pending.paused {
                     PlaybackStatus::Paused

@@ -27,7 +27,7 @@ use crate::{
     library::LocalLibrary,
     lyrics::LyricsService,
     playback::{
-        controller::{PlaybackCommand, PlaybackController, PlaybackSnapshot},
+        controller::{PlaybackCommand, PlaybackController, PlaybackSnapshot, PlaybackStatus},
         engine::{AudioEngine, Cancellation, MpvConfig, MpvEngine},
         source::SourceResolver,
     },
@@ -650,12 +650,42 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         // A stale card must not cancel another selection or claim media focus.
         let source_guard = if let Some((play_id, revision)) = &source_target {
-            let current = self
-                .player
-                .controller()
-                .await?
+            let selection = self.player.selection.clone();
+            let observed = selection.load(std::sync::atomic::Ordering::Acquire);
+            let controller = self.player.controller().await?;
+            let current = controller
                 .command(&token, PlaybackCommand::Snapshot)
                 .await?;
+            if let PlayerAction::Seek { seconds } = action
+                && current.state == PlaybackStatus::Loading
+            {
+                source_control::validate_identity(&current, play_id, revision)?;
+                if current.fm || self.together_attached(&token, None)? {
+                    return Err(Error::State("loading seek requires ordinary playback"));
+                }
+                let focus = self.focus.clone();
+                let owner = focus.snapshot()?;
+                if owner.owner != Some(super::focus::Owner::Audio) {
+                    return Err(Error::StaleResponse);
+                }
+                let room = self.together_detached_guard(&token);
+                // This clock change belongs to the in-flight selection. It
+                // must not reserve a new selection or cancel its decoder.
+                let state = controller
+                    .command_guarded(
+                        &token,
+                        PlaybackCommand::SeekDuringLoad(seconds),
+                        current.fence(),
+                        Cancellation::new(move || {
+                            selection.load(std::sync::atomic::Ordering::Acquire) == observed
+                                && focus.check_snapshot(owner).is_ok()
+                                && !room.is_cancelled()
+                        }),
+                    )
+                    .await?;
+                self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
             source_control::validate(
                 &current,
                 play_id,

@@ -113,6 +113,21 @@
       await click(() => one(".search-result-actions .primary"), "search play all for the EOF queue");
     else
       await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
+    let loadingSeekVerified = false;
+    if (!window.__mainFlowOrdinaryHttps) {
+      const slider = await wait(() => {
+        const range = one('.playerbar input[aria-label="播放进度"]');
+        return state() === "loading" && range && !range.disabled && range;
+      }, "authorized loading progress accepts a seek");
+      const id = one(".playerbar")?.dataset.playId;
+      input(slider, ".45", "change");
+      await wait(() => state() === "loading" && position() >= .45,
+        "native actor accepted position while decode is gated");
+      await emit("release_loading_seek");
+      await wait(() => state() === "playing" && one(".playerbar")?.dataset.playId === id &&
+        position() >= .45, "same decoded playback starts at the accepted position");
+      loadingSeekVerified = true;
+    }
     if (window.__mainFlowHttpsRetry) {
       const retry = () => button("重试", one(".playback-message"));
       const openFailure = () => state() === "error" &&
@@ -159,7 +174,8 @@
       await click(() => button("暂停", one(".playerbar")), "pause resumed online playback");
       await wait(() => state() === "paused", "resumed native entry paused");
     }
-    await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof, output: "null" });
+    await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof,
+      loadingSeekVerified, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");
 

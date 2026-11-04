@@ -38,6 +38,8 @@ pub(super) struct Pending {
     pub item: QueueEntry,
     pub reply: Option<Response>,
     pub paused: bool,
+    pub timeline: Option<Timeline>,
+    pub seek: Option<(f64, u64, Cancellation)>,
 }
 /// Last accepted clock while refreshing the same queue entry. It is never
 /// projected as a running decoder or reused for a different selection.
@@ -220,9 +222,17 @@ impl Actor {
                 .and_then(|l| l.source.actual_quality())
                 .map(str::to_owned),
             selected,
-            position: self.position,
+            position: self.position.or_else(|| {
+                let (position, _, authority) = self.pending.as_ref()?.seek.as_ref()?;
+                (!authority.is_cancelled()).then_some(*position)
+            }),
             buffered_through: self.buffered_through.filter(|_| self.state.active()),
-            timeline: self.loaded.as_ref().map(|l| l.timeline.snapshot()),
+            timeline: self
+                .loaded
+                .as_ref()
+                .map(|l| l.timeline)
+                .or_else(|| self.pending.as_ref()?.timeline)
+                .map(|timeline| timeline.snapshot()),
             volume: self.prefs.volume,
             unmute_volume: self.prefs.unmute_volume,
             speed: self.prefs.speed,
@@ -377,8 +387,9 @@ impl Actor {
                             self.quality_id = None;
                         }
                     },
-                    Some(Message::Loading(generation)) => {
-                        if generation == self.generation() {
+                    Some(Message::Loading { generation, timeline }) => {
+                        if generation == self.generation() && let Some(pending) = &mut self.pending {
+                            pending.timeline = Some(timeline);
                             self.state = PlaybackStatus::Loading;
                         }
                     },

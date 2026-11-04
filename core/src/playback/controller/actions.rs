@@ -283,6 +283,15 @@ impl Actor {
             }
             PlaybackCommand::Pause(paused) => self.pause(paused).await,
             PlaybackCommand::Seek(seconds) => self.seek(seconds).await,
+            PlaybackCommand::SeekDuringLoad(seconds) => {
+                if let Some((_, authority)) = request.guard {
+                    self.seek_during_load(seconds, authority).await
+                } else {
+                    Err(Error::InvalidInput(
+                        "loading seek requires a playback fence",
+                    ))
+                }
+            }
             PlaybackCommand::Volume(value) => self.preference(value, true).await,
             PlaybackCommand::Speed(value) => self.preference(value, false).await,
             PlaybackCommand::Next
@@ -445,6 +454,26 @@ impl Actor {
         self.buffered_through = None;
         self.seek_revision = self.control_revision;
         self.persist_transport().await
+    }
+    async fn seek_during_load(
+        &mut self,
+        seconds: f64,
+        authority: crate::playback::engine::Cancellation,
+    ) -> Result<()> {
+        if self.queue.is_fm() {
+            return Err(Error::State("FM queue requires its coordinator"));
+        }
+        let Some(pending) = &mut self.pending else {
+            // The decoder may complete after the client captured the fence.
+            return self.seek(seconds).await;
+        };
+        let timeline = pending
+            .timeline
+            .filter(|timeline| timeline.display_end().is_some())
+            .ok_or(Error::State("loading source has no playable duration"))?;
+        timeline.to_media(seconds)?;
+        pending.seek = Some((seconds, self.control_revision, authority));
+        Ok(())
     }
     pub(super) async fn persist_transport(&mut self) -> Result<()> {
         if let Err(error) = self.save_position() {

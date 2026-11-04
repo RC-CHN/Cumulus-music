@@ -1,4 +1,6 @@
 //! A single production WebView/IPC flow against a closed synthetic server.
+#[path = "support/assets.rs"]
+mod assets;
 #[path = "support/capture_ack.rs"]
 mod capture_ack;
 #[path = "support/main_flow_fixture.rs"]
@@ -161,7 +163,7 @@ fn main() {
         fs::write(&seed, fixture::media::DATA).unwrap();
     }
     let path = serde_json::to_string(&downloads).unwrap();
-    let mut context = tauri::generate_context!();
+    let mut context = assets::context();
     let window_config = context.config().app.windows[0].clone();
     context.config_mut().app.windows[0].create = false;
     use tauri::utils::config::Csp;
@@ -208,6 +210,10 @@ fn main() {
                         fs::write(out.join("failed.json"), br#"{"stage":"approve_login","ok":false}"#).unwrap();
                         handle.exit(1);
                     }
+                    return;
+                }
+                if !ordinary_https && stage == "release_loading_seek" {
+                    fixture.release_loading_seek();
                     return;
                 }
                 if eof_https && stage == "wait_https_prefetch" {

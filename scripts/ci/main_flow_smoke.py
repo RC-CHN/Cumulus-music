@@ -19,6 +19,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--ordinary-https', action='store_true', help=argparse.SUPPRESS)
     special = parser.add_mutually_exclusive_group()
@@ -38,6 +39,8 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_PROOF_DIR'] = str(root/'run')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve())
     if args.ordinary_https:
         env['CUMULUS_MAIN_FLOW_HTTPS_PROOF'] = '1'
     if args.https_retry_once:
@@ -82,6 +85,7 @@ def main():
     assert stages['playback']['fixture']['sourceLoads'] == expected_source_loads
     assert stages['playback']['fixture']['ordinaryHttps'] == args.ordinary_https
     assert stages['playback']['resumedSameEntry'] == args.ordinary_https
+    assert stages['playback']['loadingSeekVerified'] == (not args.ordinary_https)
     if args.https_retry_once:
         failed = stages['https_failure']
         assert failed['failedBeforeExplicitRetry'] and not failed['rawLocatorVisible']

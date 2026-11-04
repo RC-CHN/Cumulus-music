@@ -217,6 +217,24 @@ player_layout_smoke 通过正式前端/IPC 和合成 API 检查标记比例、�
 显示「—」，不会把试听终点误作整首时长。没有扩展试听权限或修改 MV 独立时钟。
 player_layout_smoke 验证悬停/离开、拖动不触发原生定位、右端位置、取消和可访问文本。
 
+首次加载时定位
+--------------
+官方 M/308:1474–1525 的 setPlayingPosition 在首次加载时保存 loadingSeekDuration，
+由当前资源加载流程继续使用；PlayProgress.tsx 在拖动结束提交这一动作。Cumulus 底栏
+在普通队列的音源已授权、解码仍在加载且范围已知时，可设置首次播放位置。授权请求
+仍使用既有音源接口；定位使用现有 player_action/seek_for，无新增上游请求。未知范围、
+授权尚未返回、FM 或附着一起听时仍不开放这条加载定位。
+同账号、播放 ID、队列版本和原生控制围栏绑定当前加载，定位不会替换原请求。
+Rust 用可试听或 CUE 范围校验；普通曲目的目录时长只供滑块和初筛，解码后再次
+验证。多次提交取最后一个合法位置；实际音源较短而越界时保留原本合法起点，
+显示进度重置信息。切歌、换号、失败或停止不会把暂存的位置带入另一资源。
+main_flow_smoke 的本地合成音源分支在真正加载 libmpv 前保持解码门，实际 WebView
+拖动后核对原生 Loading 状态接受的位置，再释放门核对同一播放 ID 从该位置开始。
+该流程使用合成 FLAC 和 null 输出；Windows 实测以对应 CI 结果为准。
+本机 Linux 非 C locale 的主流程验证通过 18 个检查点（17 张截图）；原生记录
+同一播放 ID、一条音源授权和一次实际加载。见
+.build/loading-seek-webview-v2/run/first/ux_playback.json。
+
 持续等待的进度滑块提示
 ----------------------
 官方 PlayProgress.tsx 订阅 isSeekOrLoadingState$；同一次连续等待超过三秒后

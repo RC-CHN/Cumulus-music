@@ -52,7 +52,10 @@ enum Message {
     InspectParametric(parametric::InspectRequest),
     Cancel(String),
     Shutdown,
-    Loading(u64),
+    Loading {
+        generation: u64,
+        timeline: super::Timeline,
+    },
     Loaded {
         generation: u64,
         result: Result<load::Prepared>,
