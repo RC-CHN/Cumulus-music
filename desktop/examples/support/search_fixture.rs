@@ -9,6 +9,7 @@ static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -102,7 +103,34 @@ pub fn voice_queue_calls() -> Option<Vec<String>> {
         .then(|| VOICE_QUEUE_CALLS.lock().unwrap().clone())
 }
 
+fn subscribable_playlist() -> Value {
+    let mut playlist = super::playlist(31);
+    playlist["privacy"] = json!(0);
+    playlist["name"] = json!("可收藏的合成歌单");
+    playlist
+}
+
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if enabled() && MODE.lock().unwrap().as_str() == "playlist_creator_search" {
+        match path {
+            "/api/playlist/subscribe" => {
+                assert_eq!(*args, json!({"id":"31"}));
+                assert_eq!(PLAYLIST_SUBSCRIPTIONS.fetch_add(1, Ordering::SeqCst), 0);
+                return Some(Ok(json!({"code":200})));
+            }
+            "/api/v6/playlist/detail" if args["id"] == "31" => {
+                return Some(Ok(json!({"code":200,"playlist":subscribable_playlist()})));
+            }
+            "/api/user/playlist"
+                if args["uid"] == "2" && PLAYLIST_SUBSCRIPTIONS.load(Ordering::SeqCst) != 0 =>
+            {
+                let mut rows = (1..=24).map(super::playlist).collect::<Vec<_>>();
+                rows.push(subscribable_playlist());
+                return Some(Ok(json!({"code":200,"more":false,"playlist":rows})));
+            }
+            _ => {}
+        }
+    }
     if enabled()
         && let Some(result) = podcast_response(path, args)
     {
@@ -412,6 +440,12 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                         entry["userId"] = json!(501);
                         entry["creator"] = json!({"userId":502,"nickname":"合成不匹配作者"});
                         entry["privacy"] = json!(10);
+                    }
+                    Some(5) => {
+                        entry["id"] = json!(31);
+                        entry["name"] = json!("可收藏的合成歌单");
+                        entry["userId"] = json!(3);
+                        entry["creator"] = json!({"userId":3,"nickname":"合成歌单作者"});
                     }
                     _ => {}
                 }

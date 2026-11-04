@@ -17,6 +17,15 @@ export function playlistLinkMenuItem(list: PlaylistView, key: PlaylistLinkAction
     hint: list.private ? '私密歌单不能分享' : undefined,
   };
 }
+export function playlistSubscribeMenuItem(
+  list: PlaylistView,
+  known: boolean | undefined,
+  busy: boolean,
+): MenuItem | undefined {
+  return known === false && !list.owned
+    ? { key: 'subscribe', label: '收藏', icon: 'star', disabled: busy }
+    : undefined;
+}
 
 /** Official 622.js playlist menu conditions. Batch branches are tracked
  * separately; reorder is a named community extension until drag/drop exists. */
@@ -55,8 +64,8 @@ export function playlistMenuItems(
       queueAction,
       { key: 'resource-divider', label: '', separator: true },
     );
-    if (!known && !list.owned)
-      items.push({ key: 'subscribe', label: '收藏', icon: 'star', disabled: state.busy });
+    const subscribe = playlistSubscribeMenuItem(list, known, state.busy);
+    if (subscribe) items.push(subscribe);
   }
   items.push(playlistLinkMenuItem(list, 'share'));
   if (scene === 'detail')

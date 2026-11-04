@@ -2,7 +2,11 @@
 import { computed, ref, useId, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
 import type { PlaylistView } from '../../services/contracts';
-import { playlistLinkMenuItem, type PlaylistLinkAction } from '../../services/playlistMenu';
+import {
+  playlistLinkMenuItem,
+  playlistSubscribeMenuItem,
+  type PlaylistLinkAction,
+} from '../../services/playlistMenu';
 import { artworkAt } from '../../services/artwork';
 import { time } from '../../services/player';
 import { playlistCoverCount } from '../../services/playlistHeader';
@@ -29,7 +33,8 @@ const props = defineProps<{
   matchKeyword: string;
   playable: boolean;
   queueable: boolean;
-  playlistDownloadBusy: boolean;
+  playlistActionBusy: boolean;
+  playlistKnown?: boolean;
   current: boolean;
   playing: boolean;
 }>();
@@ -42,6 +47,7 @@ const emit = defineEmits<{
   queue: [request: SearchQueueRequest];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
+  playlistSubscribe: [playlist: PlaylistView];
   comments: [item: SearchItem];
   download: [item: SearchItem];
 }>();
@@ -84,6 +90,11 @@ const cardArtists = computed(() =>
   props.item.kind === 'mv' ? searchVideoCredits(props.item) : albumArtists.value,
 );
 const playlistCreator = computed(() => searchPlaylistCreator(props.item));
+const playlistSubscribe = computed(() =>
+  props.item.kind === 'playlist'
+    ? playlistSubscribeMenuItem(props.item.playlist, props.playlistKnown, props.playlistActionBusy)
+    : undefined,
+);
 const canPlayMv = computed(() => !!searchMvPlaybackTarget(props.item));
 const videoStats = computed(() => searchVideoCoverStats(props.item));
 const videoStatsId = useId();
@@ -130,13 +141,14 @@ const items = computed<MenuItem[]>(() => {
       : []),
     ...(props.item.kind === 'playlist'
       ? [
+          ...(playlistSubscribe.value ? [playlistSubscribe.value] : []),
           playlistLinkMenuItem(props.item.playlist, 'share'),
           playlistLinkMenuItem(props.item.playlist, 'copy'),
           {
             key: 'download-playlist',
             label: '下载全部',
             icon: 'download',
-            disabled: props.playlistDownloadBusy || props.item.playlist.trackCount <= 0,
+            disabled: props.playlistActionBusy || props.item.playlist.trackCount <= 0,
           },
         ]
       : []),
@@ -180,6 +192,12 @@ function action(key: string) {
   } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
     emit('queue', { item: props.item, anchor: actionAnchor() });
   } else if (
+    key === 'subscribe' &&
+    props.item.kind === 'playlist' &&
+    playlistSubscribe.value?.disabled === false
+  ) {
+    emit('playlistSubscribe', props.item.playlist);
+  } else if (
     (key === 'share' || key === 'copy') &&
     props.item.kind === 'playlist' &&
     !playlistLinkMenuItem(props.item.playlist, key).disabled
@@ -188,7 +206,7 @@ function action(key: string) {
   } else if (
     key === 'download-playlist' &&
     props.item.kind === 'playlist' &&
-    !props.playlistDownloadBusy &&
+    !props.playlistActionBusy &&
     props.item.playlist.trackCount > 0
   ) {
     emit('playlistDownload', props.item.playlist);

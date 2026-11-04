@@ -250,14 +250,16 @@
       const card=id=>one(`[data-result-key="playlist:${id}"]`);
       const creator=()=>card(3)?.querySelector('.search-playlist-creator');
       const link='https://music.163.com/#/playlist?id=3';
-      const clipboard=[];
+      const clipboard=[], mutations=[];
       const fetchIPC=window.fetch;
       window.fetch=function(url,options){
         if(String(url).endsWith('/copy_text'))clipboard.push(JSON.parse(options.body).text);
+        if(String(url).endsWith('/mutate_playlist'))mutations.push(JSON.parse(options.body).command);
         return fetchIPC.call(window,url,options);
       };
       const menu=()=>one('.action-menu[role="menu"]:not([inert])');
       const share=()=>one('.track-share-dialog[open]:not([inert])');
+      const collect=()=>one('.playlist-mutation-dialog[open]:not([inert])');
       const menuItem=key=>menu()?.querySelector(`[data-menu-key="${key}"]`);
       async function playlistMenu(id){
         const anchor=card(id)?.querySelector('.search-card-open');
@@ -282,6 +284,7 @@
         await wait(()=>!menu()&&document.activeElement===privateAnchor,'private menu returns focus');
         const publicAnchor=await playlistMenu(3);
         assert(!menuItem('share').disabled&&!menuItem('copy')?.disabled,'public nonempty playlist can use links');
+        assert(!menuItem('subscribe'),'playlist already in the current collection cannot be collected again');
         click(menuItem('share'));
         await wait(()=>share()?.querySelector('[aria-label="歌单分享链接"]')?.value===link,'share dialog uses the canonical public URL');
         await capture('playlist_search_share_'+category);
@@ -292,6 +295,27 @@
         const feedback=()=>one('.playlist-action-feedback:not([inert])');
         await wait(()=>feedback()?.textContent.includes('链接已复制'),'playlist menu copies the canonical URL via native clipboard');
         assert(document.activeElement===publicAnchor,'copy feedback leaves focus on the original card');
+        const collectAnchor=await playlistMenu(31);
+        assert(menuItem('subscribe')?.textContent.trim()==='收藏'&&!menuItem('subscribe').disabled,
+          'foreign playlist outside the current collection can be collected');
+        click(menuItem('subscribe'));
+        const confirm=()=>collect()?.querySelector('footer .primary[aria-disabled="false"]');
+        await wait(()=>confirm()&&collect()?.textContent.includes('可收藏的合成歌单'),'account-bound playlist confirmation');
+        assert(mutations.length===0,'opening confirmation does not mutate the account');
+        await capture('playlist_search_collect_'+category);
+        click(category==='all'?button('取消',collect()):confirm());
+        await wait(()=>!collect()&&document.activeElement===collectAnchor,'collection dialog returns to the same result');
+        if(category==='all'){
+          assert(mutations.length===0,'cancel must not send any mutation');
+        }else{
+          assert(mutations.length===1&&mutations[0].kind==='subscribe'&&
+            mutations[0].id==='31'&&mutations[0].subscribed===true,
+            'explicit confirmation sends one subscription command for the selected playlist');
+          await playlistMenu(31);
+          assert(!menuItem('subscribe'),'native readback removes the duplicate collect action');
+          key(document.activeElement,'Escape');
+          await wait(()=>!menu()&&document.activeElement===collectAnchor,'updated menu returns to the same card');
+        }
         click(action);
         await wait(()=>one('.playlist-creator-page h1')?.textContent==='合成用户主页 501'&&
           one('.playlist-creator-page [data-library-open="30"]'),'creator profile and public playlists');
@@ -303,7 +327,7 @@
       click(card(3).querySelector('.search-card-open'));
       await wait(()=>!one('.playlist-creator-page')&&one('.playlist-hero h1')?.textContent.trim()==='合成歌单 3'&&one('.track-row'),'playlist card still opens playlist');
       assert(clipboard.length===2&&clipboard.every(text=>text===link),'no private or unexpected URL reaches the clipboard');
-      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchMvProof){

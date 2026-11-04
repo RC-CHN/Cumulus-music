@@ -1402,6 +1402,11 @@ watch(
 );
 const favorite = computed(() => playlists.value.find((p) => p.favorite && p.owned));
 const playlistActions = ref<InstanceType<typeof PlaylistActions>>();
+const searchKnownPlaylistIds = computed(() =>
+  signedIn.value && !music.resourcesLoading.value && !music.playlistError.value
+    ? new Set(playlists.value.map((playlist) => playlist.id))
+    : undefined,
+);
 function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection') {
   return playlistMenuItems(list, scene, {
     lists: playlists.value,
@@ -2212,9 +2217,10 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
                 :queueable="searchCollectionQueueable"
-                :playlist-download-busy="
+                :playlist-action-busy="
                   playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
                 "
+                :known-playlist-ids="searchKnownPlaylistIds"
                 :current-id="currentSearchSongId"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
@@ -2250,6 +2256,12 @@ onUnmounted(() => {
                 @playlist-link="
                   (list, action) =>
                     page.kind === 'search' && signedIn && playlistAction(list, action)
+                "
+                @playlist-subscribe="
+                  (list) =>
+                    page.kind === 'search' &&
+                    searchKnownPlaylistIds?.has(list.id) === false &&
+                    playlistAction(list, 'subscribe')
                 "
                 @download-track="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
                 @card-comments="searchCardComments"

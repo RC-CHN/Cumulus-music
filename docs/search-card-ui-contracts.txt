@@ -176,3 +176,13 @@ M/622:135–146、203–207、245–247 给普通歌单的分享和复制动作�
 `search_results_smoke.py --playlist-creator` 验证两种分类下的公开地址、私密限制、
 原生剪贴板调用和焦点恢复，并回归歌单创建者与独立详情入口。
 Linux WebView 四个检查点和截图：.build/search-playlist-links-webview/first/。
+
+搜索歌单菜单的「收藏」
+M/622:185–202 在普通歌单卡片菜单提供 favorite；自建、已收藏和详情页不显示。
+Cumulus 使用原生投影的所有权和当前账号已读的完整歌单列表，列表正在刷新或
+读取失败时暂不显示收藏。点击打开既有确认窗口，确认才走 `mutate_playlist` 的
+`subscribe` 命令（`/api/playlist/subscribe`，`id` 为目标歌单），并按原生写入
+日志和列表回读更新菜单。搜索没有加入取消收藏或其他管理动作。
+`search_results_smoke.py --playlist-creator` 核对已有歌单不重复显示、综合页取消无
+写入、歌单分类确认后只有一次合成写入，回读后收藏动作消失。没有真实账号写入。
+Linux WebView 六个检查点和截图：.build/search-playlist-subscribe-webview/first/。

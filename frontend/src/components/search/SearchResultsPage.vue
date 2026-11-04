@@ -48,7 +48,8 @@ const props = defineProps<{
   busyLikes: Set<string>;
   playable: boolean;
   queueable: boolean;
-  playlistDownloadBusy: boolean;
+  playlistActionBusy: boolean;
+  knownPlaylistIds?: ReadonlySet<string>;
   currentId?: string;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
@@ -73,6 +74,7 @@ const emit = defineEmits<{
   downloadTrack: [track: TrackView];
   playlistDownload: [playlist: PlaylistView];
   playlistLink: [playlist: PlaylistView, action: PlaylistLinkAction];
+  playlistSubscribe: [playlist: PlaylistView];
   collect: [tracks: TrackView[]];
   more: [request: TrackMenuRequest];
   like: [track: TrackView];
@@ -770,7 +772,10 @@ onBeforeUnmount(() => {
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"
-                :playlist-download-busy="playlistDownloadBusy"
+                :playlist-action-busy="playlistActionBusy"
+                :playlist-known="
+                  item.kind === 'playlist' ? knownPlaylistIds?.has(item.playlist.id) : undefined
+                "
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
@@ -781,6 +786,7 @@ onBeforeUnmount(() => {
                 @queue="emit('queueCard', $event)"
                 @playlist-download="emit('playlistDownload', $event)"
                 @playlist-link="(list, action) => emit('playlistLink', list, action)"
+                @playlist-subscribe="emit('playlistSubscribe', $event)"
                 @comments="emit('cardComments', $event)"
                 @download="emit('cardDownload', $event)"
               />
