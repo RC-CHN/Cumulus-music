@@ -2,6 +2,13 @@
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import type { SearchItem } from '../../services/search';
 import { searchCardKey } from '../../services/searchCards';
+import {
+  initialPlaylistShares,
+  playlistBaseWidth,
+  resizePlaylistColumns,
+  searchPlaylistColumns,
+  type PlaylistColumnHandle,
+} from '../../services/searchPlaylistColumns';
 import { rowWindow } from '../../services/virtualWindow';
 import SearchPreviewCarousel from './SearchPreviewCarousel.vue';
 const props = defineProps<{
@@ -17,6 +24,81 @@ const PLAYLIST_ROW_HEIGHT = 64;
 const positionedRows = computed(() => props.playlistTable && props.virtual);
 const grid = ref<HTMLElement>();
 const heading = ref<HTMLElement>();
+const playlistWidth = ref(0);
+const playlistShares = shallowRef(initialPlaylistShares);
+const playlistSurplus = computed(() => Math.max(0, playlistWidth.value - playlistBaseWidth));
+const playlistTracks = computed(() =>
+  searchPlaylistColumns
+    .map(({ width }, index) =>
+      index
+        ? `calc(${width}px + (100% - ${playlistBaseWidth}px) * ${playlistShares.value[index - 1]})`
+        : `${width}px`,
+    )
+    .join(' '),
+);
+let drag:
+  | { index: PlaylistColumnHandle; pointer: number; last: number; pending: number }
+  | undefined;
+let dragFrame = 0;
+function columnWidth(index: PlaylistColumnHandle, max = false) {
+  const base = searchPlaylistColumns[index + 1]!.width;
+  const share = max
+    ? playlistShares.value.slice(index).reduce((sum, value) => sum + value, 0)
+    : playlistShares.value[index];
+  return Math.round(base + share * playlistSurplus.value);
+}
+function resizePlaylistColumn(index: PlaylistColumnHandle, pixels: number) {
+  playlistShares.value = resizePlaylistColumns(
+    playlistShares.value,
+    index,
+    pixels,
+    playlistSurplus.value,
+  );
+}
+function applyDrag() {
+  if (!drag) return;
+  resizePlaylistColumn(drag.index, drag.pending - drag.last);
+  drag.last = drag.pending;
+}
+function beginResize(event: PointerEvent, index: PlaylistColumnHandle) {
+  if (event.button !== 0 || !event.isPrimary || drag || !playlistSurplus.value) return;
+  const handle = event.currentTarget as HTMLElement;
+  handle.focus({ preventScroll: true });
+  handle.setPointerCapture(event.pointerId);
+  drag = { index, pointer: event.pointerId, last: event.clientX, pending: event.clientX };
+}
+function moveResize(event: PointerEvent) {
+  if (!drag || event.pointerId !== drag.pointer) return;
+  drag.pending = event.clientX;
+  if (!dragFrame)
+    dragFrame = requestAnimationFrame(() => {
+      dragFrame = 0;
+      applyDrag();
+    });
+}
+function finishResize(event: PointerEvent) {
+  if (!drag || event.pointerId !== drag.pointer) return;
+  if (event.type === 'pointerup') drag.pending = event.clientX;
+  cancelAnimationFrame(dragFrame);
+  dragFrame = 0;
+  applyDrag();
+  drag = undefined;
+}
+function keyResize(event: KeyboardEvent, index: PlaylistColumnHandle) {
+  const delta =
+    event.key === 'ArrowLeft'
+      ? -12
+      : event.key === 'ArrowRight'
+        ? 12
+        : event.key === 'Home'
+          ? -playlistSurplus.value
+          : event.key === 'End'
+            ? playlistSurplus.value
+            : 0;
+  if (!delta) return;
+  event.preventDefault();
+  resizePlaylistColumn(index, delta);
+}
 const columns = ref(1),
   pitch = ref(260);
 const range = shallowRef({ start: 0, end: 5 });
@@ -109,16 +191,31 @@ function scroll() {
     });
 }
 watch(
-  () => [grid.value, props.scroller, props.virtual, props.preview, props.playlistTable] as const,
+  () =>
+    [
+      grid.value,
+      heading.value,
+      props.scroller,
+      props.virtual,
+      props.preview,
+      props.playlistTable,
+    ] as const,
   () => {
     scroller?.removeEventListener('scroll', scroll);
     observer?.disconnect();
     scroller = props.scroller;
-    if (!grid.value || !scroller || (!props.virtual && !props.preview)) return;
-    if (props.virtual) scroller.addEventListener('scroll', scroll, { passive: true });
-    observer = new ResizeObserver(() => update(true));
-    observer.observe(grid.value);
-    observer.observe(scroller);
+    playlistWidth.value = heading.value?.clientWidth ?? 0;
+    if (!grid.value || (!props.virtual && !props.preview && !props.playlistTable)) return;
+    if (props.virtual) scroller?.addEventListener('scroll', scroll, { passive: true });
+    observer = new ResizeObserver(() => {
+      playlistWidth.value = heading.value?.clientWidth ?? 0;
+      update(true);
+    });
+    if (heading.value) observer.observe(heading.value);
+    if (props.virtual || props.preview) {
+      observer.observe(grid.value);
+      if (scroller) observer.observe(scroller);
+    }
     update();
   },
   { flush: 'post' },
@@ -186,6 +283,7 @@ onBeforeUnmount(() => {
   scroller?.removeEventListener('scroll', scroll);
   observer?.disconnect();
   cancelAnimationFrame(frame);
+  cancelAnimationFrame(dragFrame);
 });
 defineExpose({ reconcileViewport: () => update() });
 </script>
@@ -202,6 +300,7 @@ defineExpose({ reconcileViewport: () => update() });
   <div
     v-else
     :class="{ 'search-playlist-table': playlistTable }"
+    :style="playlistTable ? { '--search-playlist-tracks': playlistTracks } : undefined"
     :role="playlistTable ? 'table' : undefined"
     :aria-label="playlistTable ? '搜索歌单结果' : undefined"
     :aria-rowcount="playlistTable ? items.length + 1 : undefined"
@@ -213,11 +312,31 @@ defineExpose({ reconcileViewport: () => update() });
       role="row"
       aria-rowindex="1"
     >
-      <span role="columnheader" aria-label="序号">#</span>
-      <span role="columnheader">标题</span>
-      <span role="columnheader">歌曲数</span>
-      <span role="columnheader">创建者</span>
-      <span role="columnheader">播放量</span>
+      <span
+        v-for="column in searchPlaylistColumns"
+        :key="column.name"
+        role="columnheader"
+        :aria-label="'label' in column ? column.label : undefined"
+      >
+        <span>{{ column.name }}</span>
+        <span
+          v-if="'resizer' in column && playlistSurplus > 0"
+          class="search-playlist-column-resizer"
+          role="separator"
+          aria-orientation="vertical"
+          :aria-label="`调整${column.name}列宽`"
+          :aria-valuemin="column.width"
+          :aria-valuemax="columnWidth(column.resizer, true)"
+          :aria-valuenow="columnWidth(column.resizer)"
+          tabindex="0"
+          @pointerdown.prevent="beginResize($event, column.resizer)"
+          @pointermove="moveResize"
+          @pointerup="finishResize"
+          @pointercancel="finishResize"
+          @lostpointercapture="finishResize"
+          @keydown="keyResize($event, column.resizer)"
+        />
+      </span>
     </div>
     <div
       ref="grid"

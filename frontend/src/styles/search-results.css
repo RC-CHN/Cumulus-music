@@ -384,7 +384,7 @@
 }
 .search-playlist-table :is(.search-playlist-columns, .search-playlist-row) {
   display: grid;
-  grid-template-columns: 45px minmax(200px, 4fr) minmax(79px, 1fr) minmax(128px, 1fr) 92px;
+  grid-template-columns: var(--search-playlist-tracks);
   grid-template-rows: minmax(0, 1fr);
   align-items: center;
   column-gap: 0;
@@ -411,6 +411,38 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.search-playlist-columns > span {
+  position: relative;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding-inline-end: 10px;
+}
+.search-playlist-columns > span > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.search-playlist-column-resizer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 8px;
+  cursor: e-resize;
+  touch-action: none;
+}
+.search-playlist-column-resizer::before {
+  position: absolute;
+  inset: 8px 3px;
+  border-inline-start: 1px solid currentColor;
+  content: '';
+  opacity: 0.35;
+}
+.search-playlist-column-resizer:is(:hover, :focus-visible)::before {
+  color: var(--accent);
+  opacity: 1;
+}
+.search-playlist-column-resizer:focus-visible {
+  outline-offset: -1px;
 }
 .search-playlist-table .search-playlist-row {
   height: 64px;
@@ -474,7 +506,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-@container (max-width: 555px) {
+@container (max-width: 544px) {
   .search-playlist-table :is(.search-playlist-columns, .search-playlist-row) {
     grid-template-columns: 30px minmax(100px, 4fr) 52px minmax(64px, 1fr) 56px;
   }

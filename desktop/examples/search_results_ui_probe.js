@@ -15,7 +15,7 @@
   const fixture=async mode=>{window.__searchFixtureAck=false;await emit('search-fixture',{mode});await wait(()=>window.__searchFixtureAck,'fixture acknowledgement');};
   const ready=()=>one('#search-result-panel')?.getAttribute('aria-busy')==='false' && !one('.search-results-leave-active');
   async function choose(category){click(one(`[data-category="${category}"]`));await wait(()=>one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&ready()&&(one('.search-result-section')||one('.search-result-panel .empty-state')),'category '+category);await sleep(180);}
-  async function capture(label){
+  async function capture(label,extra={}){
     step=label;await wait(()=>all('.search-result-panel,dialog').every(n=>n.getAnimations().every(a=>a.playState!=='running'&&!a.pending)),'settled animation');await sleep(160);
     const panel=one('.search-result-panel');
     const info={label,theme:document.documentElement.dataset.theme,width:innerWidth,height:innerHeight,noOverflow:document.documentElement.scrollWidth<=innerWidth,panelNoOverflow:!panel||panel.scrollWidth<=panel.clientWidth+1,cardCount:all('.search-result-card').length,renderedTracks:all('.track-row').length};
@@ -23,7 +23,7 @@
     if(one('[data-category="all"]')?.getAttribute('aria-selected')==='true') { assert(!one('.search-result-panel .track-table'),'comprehensive songs use cards'); assert(all('.search-track-card').length<=6,'bounded song previews');if(one('.search-result-tracks'))assert(one('.search-track-card'),'ready song section has previews'); }
     const first=one('.search-result-name'),category=one('[data-category][aria-selected="true"]')?.dataset.category;if(first&&category!=='all'&&panel.scrollTop===0&&!one('dialog[open]')) assert(first.getBoundingClientRect().bottom<=one('.playerbar').getBoundingClientRect().top,'first caption above player');
     for(const n of all('.search-result-actions button')){const r=n.getBoundingClientRect();assert(Math.abs(r.width-94)<1&&Math.abs(r.height-40)<1,'official 94x40 result action');}
-    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,info);await sleep(500);
+    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{...info,...extra});await sleep(500);
   }
   async function theme(w,h,t){await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'window resize');click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(t==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu')&&document.documentElement.dataset.theme===t,'theme');}
   const submit=word=>{const input=one('[aria-label="搜索音乐"]');input.value=word;input.dispatchEvent(new Event('input',{bubbles:true}));input.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));};
@@ -504,6 +504,7 @@
     }
     if(window.__cumulusSearchPlaylistCreatorProof){
       await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
       await fixture('playlist_creator_search');await fresh('合成作者入口');
       const card=id=>one(`[data-result-key="playlist:${id}"]`);
       const creator=()=>card(3)?.querySelector('.search-playlist-creator');
@@ -523,6 +524,17 @@
       const share=()=>one('.track-share-dialog[open]:not([inert])');
       const collect=()=>one('.playlist-mutation-dialog[open]:not([inert])');
       const menuItem=key=>menu()?.querySelector(`[data-menu-key="${key}"]`);
+      const columns=()=>one('.search-playlist-columns');
+      const handles=()=>[...columns().querySelectorAll('.search-playlist-column-resizer')];
+      const widths=()=>[...columns().children].map(node=>node.getBoundingClientRect().width);
+      const sameWidths=(left,right)=>left.every((value,index)=>Math.abs(value-right[index])<1);
+      let initialWidths, trustedPointer=false;
+      function assertAligned(row,expected){
+        assert(sameWidths([...row.children].map(node=>node.getBoundingClientRect().width),expected),
+          'header and visible virtual body use the same widths');
+        assert(Math.abs(row.getBoundingClientRect().height-64)<1,
+          'resizing keeps the recovered row height');
+      }
       async function playlistMenu(id){
         const anchor=card(id)?.querySelector('.search-card-open');
         assert(anchor&&!anchor.disabled,'playlist card available');
@@ -548,6 +560,44 @@
             row.querySelector('.search-playlist-play-count [aria-hidden="true"]').textContent==='12345'&&
             bad.querySelector('.search-playlist-play-count').textContent.trim()==='—',
             'row keeps visible counts separate and does not imply a private playlist count');
+          await wait(()=>handles().length===3,'only title, song count and creator have resize handles');
+          const [title,trackCount,owner]=handles();
+          initialWidths=widths();
+          assertAligned(row,initialWidths);
+          assert(handles().map(node=>node.getAttribute('aria-label')).join(',')===
+            '调整标题列宽,调整歌曲数列宽,调整创建者列宽'&&handles().every(node=>node.tabIndex===0)&&
+            title.getAttribute('aria-valuemin')==='200'&&title.getAttribute('aria-orientation')==='vertical',
+            'three resize handles have keyboard focus and expose their width');
+          let pointer;
+          if(window.__cumulusSearchTrustedPlaylistPointer){
+            const rect=title.getBoundingClientRect(), ratio=devicePixelRatio;
+            pointer={x:Math.floor((screenX+rect.left+rect.width/2)*ratio),
+              y:Math.floor((screenY+rect.top+rect.height/2)*ratio),ratio};
+            title.addEventListener('pointerdown',event=>{trustedPointer=event.isTrusted;},{once:true});
+          }
+          await capture('playlist_table_columns',{pointer});
+          if(pointer){
+            await wait(()=>trustedPointer&&Math.abs(widths()[1]-initialWidths[1]-24)<1,
+              'trusted pointer moves title boundary 24 px after leaving the handle');
+            assertAligned(row,widths());
+          }
+          trackCount.focus({preventScroll:true});
+          const beforeKeys=widths();
+          key(trackCount,'ArrowRight');
+          await wait(()=>Math.abs(widths()[2]-beforeKeys[2]-12)<1,'keyboard grows song count');
+          assert(Math.abs(widths()[3]-beforeKeys[3]+12)<1&&document.activeElement===trackCount,
+            'right keyboard resize takes width from the next eligible column and keeps focus');
+          assertAligned(row,widths());
+          owner.focus({preventScroll:true});key(owner,'Home');
+          await wait(()=>Math.abs(widths()[3]-128)<1&&widths()[4]>92,'creator can transfer its surplus to play count');
+          title.focus({preventScroll:true});key(title,'End');
+          await wait(()=>sameWidths(widths().slice(2),[79,128,92]),'title takes surplus across all right-side columns');
+          assert(Number(title.getAttribute('aria-valuenow'))===Number(title.getAttribute('aria-valuemax')),
+            'separator updates the accessible current width at the right clamp');
+          key(title,'Home');
+          await wait(()=>Math.abs(widths()[1]-200)<1&&widths()[2]>79,'left clamp restores the minimum title width');
+          assertAligned(row,widths());
+          await capture('playlist_columns_resized');
           const opener=row.querySelector('.search-card-open');
           opener.focus({preventScroll:true});key(opener,'ArrowDown');
           await wait(()=>document.activeElement===bad.querySelector('.search-card-open'),'Down moves exactly one table row');
@@ -556,7 +606,6 @@
           await wait(()=>menuItem('share'),'inline title-cell menu uses shared playlist commands');
           key(document.activeElement,'Escape');
           await wait(()=>!menu()&&document.activeElement===menuTrigger,'inline menu returns focus');
-          await capture('playlist_table_columns');
         }
         assert(action?.getAttribute('aria-label')==='查看创建者 合成匹配作者 的主页','typed creator action');
         assert(card(3).querySelector('.search-card-open')&&card(3).querySelector('.search-card-play'),'playlist open and playback remain separate');
@@ -607,14 +656,25 @@
         click(button('返回上一页'));
         await wait(()=>ready()&&one(`[data-category="${category}"]`)?.getAttribute('aria-selected')==='true'&&
           document.activeElement===creator(),'Back restores creator button, not the card opener');
+        if(category==='playlists'){
+          await wait(()=>sameWidths(widths(),initialWidths),'a new playlist table restores default column widths');
+          assertAligned(card(3),initialWidths);
+        }
         await capture('playlist_creator_'+category);
       }
-      click(card(3).querySelector('.search-card-open'));
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const beforeLink=await invoke('player_snapshot',{epoch});
+      card(3).querySelector('.search-playlist-number').click();
       await wait(()=>!one('.playlist-creator-page')&&one('.playlist-hero h1')?.textContent.trim()==='合成歌单 3'&&one('.track-row'),'playlist card still opens playlist');
+      const afterLink=await invoke('player_snapshot',{epoch});
+      assert(afterLink.queueRevision===beforeLink.queueRevision&&afterLink.playId===beforeLink.playId,
+        'plain row activation opens details without starting playback');
       assert(clipboard.length===2&&clipboard.every(text=>text===link),'no private or unexpected URL reaches the clipboard');
       await theme(760,540,'dark');
       await fixture('short_pages');await fresh('合成歌单续页');await choose('playlists');
       const panel=()=>one('.search-result-panel'), grid=()=>panel()?.querySelector('.search-result-grid');
+      assert(!handles().length,'compact window has no ineffective keyboard or pointer resize handles');
       const scrollBottom=()=>{
         panel().scrollTop=panel().scrollHeight;
         panel().dispatchEvent(new Event('scroll'));
@@ -657,7 +717,7 @@
         });
       assert(JSON.stringify(playlistWaterfallReads)==='[[0,10],[18,10],[29,10]]','Back reuses the loaded table, not a new request');
       await capture('playlist_table_late_row_back');
-      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,searchPlaylistTableVerified:true,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,searchPlaylistTableVerified:true,searchPlaylistResizeVerified:true,searchPlaylistTrustedPointer:trustedPointer,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchMvProof){

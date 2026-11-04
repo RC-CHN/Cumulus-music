@@ -1,9 +1,53 @@
 """Search result categories and interactions via production IPC and an isolated in-memory backend."""
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import json
 import os
 from pathlib import Path
+from threading import Event
+import time
 from motion_smoke import launch
+
+
+def drag_playlist_column(output, cancelled, capture):
+    """Optional X11 pointer injection; the portable probe always checks keyboard input."""
+    import ctypes
+    from ctypes import c_char_p, c_int, c_uint, c_ulong, c_void_p
+
+    stage = output / 'ux_04_playlist_table_columns.json'
+    deadline = time.monotonic() + 60
+    while not cancelled.is_set() and time.monotonic() < deadline:
+        try:
+            if not capture or stage.with_suffix('.captured').exists():
+                point = json.loads(stage.read_text(encoding='utf-8'))['pointer']
+                break
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+        cancelled.wait(.1)
+    else:
+        raise AssertionError('missing playlist pointer target')
+
+    x11, xtest = ctypes.CDLL('libX11.so.6'), ctypes.CDLL('libXtst.so.6')
+    x11.XOpenDisplay.argtypes, x11.XOpenDisplay.restype = [c_char_p], c_void_p
+    x11.XSync.argtypes = [c_void_p, c_int]
+    x11.XCloseDisplay.argtypes = [c_void_p]
+    xtest.XTestFakeMotionEvent.argtypes = [c_void_p, c_int, c_int, c_int, c_ulong]
+    xtest.XTestFakeButtonEvent.argtypes = [c_void_p, c_uint, c_int, c_ulong]
+    display = x11.XOpenDisplay(None)
+    assert display, 'trusted pointer proof requires an isolated X11 display'
+    try:
+        x, y, ratio = point['x'], point['y'], point['ratio']
+        assert xtest.XTestFakeMotionEvent(display, -1, x, y, 0)
+        assert xtest.XTestFakeButtonEvent(display, 1, 1, 0)
+        x11.XSync(display, 0)
+        time.sleep(.1)
+        assert xtest.XTestFakeMotionEvent(display, -1, x + round(24 * ratio), y + round(80 * ratio), 0)
+        x11.XSync(display, 0)
+        time.sleep(.1)
+        assert xtest.XTestFakeButtonEvent(display, 1, 0, 0)
+        x11.XSync(display, 0)
+    finally:
+        x11.XCloseDisplay(display)
 
 
 def main():
@@ -30,7 +74,11 @@ def main():
     mode.add_argument('--filtered-pagination', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--trusted-playlist-pointer', action='store_true',
+                        help='also drag a resize handle using XTest under isolated Xvfb')
     args = parser.parse_args()
+    if args.trusted_playlist_pointer and (not args.playlist_creator or not os.environ.get('DISPLAY')):
+        parser.error('--trusted-playlist-pointer requires --playlist-creator under isolated Xvfb')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
@@ -62,6 +110,8 @@ def main():
         env['CUMULUS_SEARCH_MV_PROOF'] = '1'
     if args.playlist_creator:
         prefix = 'window.__cumulusSearchPlaylistCreatorProof = true;\n'
+        if args.trusted_playlist_pointer:
+            prefix += 'window.__cumulusSearchTrustedPlaylistPointer = true;\n'
     if args.collection_next:
         prefix = 'window.__cumulusSearchCollectionNextProof = true;\n'
     if args.filtered_pagination:
@@ -90,7 +140,18 @@ def main():
     env['CUMULUS_UX_SCRIPT'] = str(script)
     env['CUMULUS_SEARCH_USER_PROFILE_PROOF'] = '1'
     with (root / 'host.log').open('x', encoding='utf-8') as log:
-        code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
+        if args.trusted_playlist_pointer:
+            cancelled = Event()
+            with ThreadPoolExecutor(max_workers=1) as workers:
+                drag = workers.submit(drag_playlist_column, root / 'first', cancelled, args.screenshots)
+                try:
+                    code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
+                finally:
+                    cancelled.set()
+                if code == 0 and not (root / 'first/failed.json').exists():
+                    drag.result()
+        else:
+            code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
@@ -168,17 +229,20 @@ def main():
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['searchPlaylistCreatorVerified']
         assert complete['searchPlaylistLinksVerified'] and complete['searchPlaylistSubscribeVerified']
-        assert complete['searchPlaylistWaterfallVerified'] and complete['searchPlaylistTableVerified'] and complete['stageCount'] == 10
+        assert complete['searchPlaylistWaterfallVerified'] and complete['searchPlaylistTableVerified']
+        assert complete['searchPlaylistResizeVerified'] and complete['stageCount'] == 11
+        assert complete['searchPlaylistTrustedPointer'] == args.trusted_playlist_pointer
         assert complete['playlistWaterfallReads'] == [[0, 10], [18, 10], [29, 10]]
         calls = complete['searchProfileCalls']
         profile_reads = [{'all': True, 'userId': '501'}, {'uid': '501', 'offset': 0, 'limit': 1000}]
         assert calls in (profile_reads, profile_reads * 2)
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (10 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (11 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchPlaylistCreatorVerified=True,
                               searchPlaylistLinksVerified=True, searchPlaylistSubscribeVerified=True,
                               searchPlaylistWaterfallVerified=True, searchPlaylistTableVerified=True,
-                              stageCount=10)))
+                              searchPlaylistResizeVerified=True,
+                              trustedPointer=args.trusted_playlist_pointer, stageCount=11)))
         return
     if args.mv_play:
         first = root / 'first'
