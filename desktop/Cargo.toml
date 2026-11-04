@@ -14,6 +14,7 @@ path = "src/main.rs"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+recognition-monitor-lab = []
 
 [[example]]
 name = "ui_probe"

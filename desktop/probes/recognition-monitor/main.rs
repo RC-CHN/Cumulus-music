@@ -2,7 +2,10 @@
 use cumulus_core::song_recognition::{
     FingerprintPcm8k, ResamplerLibraries, StereoPcmFormat, StereoPcmPacket, StereoSampleRate,
 };
-use pulse::{CaptureExtent, Format, Fragment, PrivateEndpoint, ProbeError};
+use pulse::{
+    CaptureExtent, Format, Fragment, PrivateServer, ProbeError,
+    selection::{Consent, OutputChoice},
+};
 use roundtrip::RoundTrip;
 use std::{
     env,
@@ -13,6 +16,7 @@ use std::{
     time::Duration,
 };
 
+#[path = "../../src/recognition_capture/mod.rs"]
 mod pulse;
 mod roundtrip;
 
@@ -39,7 +43,7 @@ fn run() -> pulse::Result<()> {
     let args: Vec<_> = env::args_os().skip(1).collect();
     if args.len() != 7 {
         return Err(ProbeError::Rejected(
-            "expected: runtime peer-pid sink source stock-dir i16|f32 capture|cancel|roundtrip|cancel-in-flight",
+            "expected: runtime peer-pid sink source stock-dir i16|f32 discover|review|capture|cancel|roundtrip|cancel-in-flight",
         ));
     }
     let text = |i: usize| {
@@ -50,14 +54,51 @@ fn run() -> pulse::Result<()> {
     let pid = text(1)?
         .parse()
         .map_err(|_| ProbeError::Rejected("invalid fixture peer pid"))?;
-    let endpoint = PrivateEndpoint::new(Path::new(&args[0]), pid, text(2)?, text(3)?)?;
+    let stop = AtomicBool::new(false);
+    let options = PrivateServer::new(Path::new(&args[0]), pid)?.discover(&stop)?;
+    if text(6)? == "discover" {
+        let outputs: Vec<_> = options
+            .choices()
+            .map(|(_, sink, source)| [sink.to_string_lossy(), source.to_string_lossy()])
+            .collect();
+        println!("{{\"outputs\":{outputs:?}}}");
+        return Ok(());
+    }
+    let choice: OutputChoice = options
+        .choices()
+        .find(|(_, sink, source)| {
+            sink.to_bytes() == args[2].as_encoded_bytes()
+                && source.to_bytes() == args[3].as_encoded_bytes()
+        })
+        .map(|(choice, _, _)| choice)
+        .ok_or(ProbeError::Rejected(
+            "not the expected private output monitor",
+        ))?;
+    let consent = if text(6)? == "review" {
+        println!("selection-ready");
+        let _ = io::stdout().flush();
+        let mut decision = String::new();
+        io::stdin()
+            .read_line(&mut decision)
+            .map_err(|_| ProbeError::Rejected("private capture confirmation unavailable"))?;
+        if decision.trim() == "confirm" {
+            Consent::Confirmed
+        } else {
+            Consent::Declined
+        }
+    } else {
+        // The explicitly invoked synthetic modes have their own trusted,
+        // non-interactive approval; the application never calls this probe.
+        Consent::Confirmed
+    };
+    let permit = options.decide(choice, consent, &stop)?;
     let (format, native_format) = match text(5)? {
         "i16" => (Format::I16, StereoPcmFormat::I16),
         "f32" => (Format::F32, StereoPcmFormat::F32),
         _ => return Err(ProbeError::Rejected("unsupported test sample format")),
     };
     let mode = match text(6)? {
-        "capture" => Mode::Capture,
+        "capture" | "review" => Mode::Capture,
         "cancel" => Mode::Cancel,
         "roundtrip" => Mode::RoundTrip,
         "cancel-in-flight" => Mode::CancelInFlight,
@@ -83,10 +124,9 @@ fn run() -> pulse::Result<()> {
         .map_err(|_| ProbeError::Rejected("stock converter initialization failed"))?;
     let mut output = Vec::with_capacity(output_limit);
     let mut input_frames = 0;
-    let stop = AtomicBool::new(false);
     let captured = thread::scope(|scope| {
         pulse::capture(
-            &endpoint,
+            permit,
             format,
             extent,
             &stop,

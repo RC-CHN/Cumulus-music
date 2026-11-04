@@ -182,8 +182,10 @@ song-recognition-host-contracts.txt、song-recognition-request-proof.txt
   和服务器实例绑定，不能把名字包含 .monitor 当成证明，也不查默认
   source。没有权限、选定输出消失/改变、服务切换、格式不可支持时
   停止；不移流、不改默认 sink、不重建播放引擎、不切麦克风。
-- 现有私有探针证明本机显式 Pulse monitor + DONT_MOVE 和每次读前
-  核对可用。生产的用户级 Unix 音频服务需要独立的可信发现（权限、
+- 私有 Linux desktop 边界已用同一 Pulse context 证明只读双向设备枚举、
+  一次性确认许可、确认前无录音流、同名输出重建失效及 DONT_MOVE 后的
+  实际监控流校验，见 song-recognition-monitor-proof.txt。生产的用户级
+  Unix 音频服务仍需要独立的可信发现（权限、
   本机连接及服务器生命周期），不能照抄仅在私有目录/PID 启动的
   合成条件，也不能使用 pactl/parec 子进程代替生产适配。纯 ALSA、
   独占设备或未知 monitor 关系当前保留不可用状态。

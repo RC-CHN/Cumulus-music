@@ -114,8 +114,8 @@ def private_audio(root):
             LC_ALL="C",
         )
 
-        def spawn(name):
-            log = stack.enter_context((root / f"{name}.log").open("xb"))
+        def spawn(name, suffix=""):
+            log = stack.enter_context((root / f"{name}{suffix}.log").open("xb"))
             child = subprocess.Popen([name], env=env, stdout=log, stderr=log)
             stack.callback(stop, child)
             return child
@@ -147,7 +147,19 @@ def private_audio(root):
         sources = json.loads(pulse(["--format=json", "list", "sources"], env).stdout)
         names = {row["name"]: row for row in sources}
         assert {f"{SINK}.monitor", f"{DECOY}.monitor", NON_MONITOR} <= names.keys()
-        yield runtime, server.pid, env, modules
+        def restart_pulse():
+            nonlocal server
+            old_pid = server.pid
+            stop(server)
+            wait("old private Pulse socket removed", lambda: not (runtime / "pulse/native").exists())
+            server = spawn("pipewire-pulse", "-restarted")
+            wait("restarted private Pulse server", lambda: server.poll() is None
+                 and (runtime / "pulse/native").is_socket()
+                 and pulse(["info"], env, False).returncode == 0)
+            assert server.pid != old_pid
+            return server.pid
+
+        yield runtime, server.pid, env, modules, restart_pulse
 
 
 def waveform(decoy=False, recognition=False):
@@ -197,7 +209,7 @@ def run_proof(args):
     interfaces = {line.split(":", 1)[0].strip()
                   for line in Path("/proc/net/dev").read_text().splitlines()[2:]}
     assert interfaces == {"lo"}, "unexpected network interface in private fixture"
-    with private_audio(root) as (runtime, pid, env, modules):
+    with private_audio(root) as (runtime, pid, env, modules, restart_pulse):
         assert os.readlink(f"/proc/{pid}/ns/net") == namespace
         # Deliberately give the probe a bad inherited server. Only its verified
         # explicit socket may be used. Playback commands keep the true endpoint.
@@ -233,15 +245,60 @@ def run_proof(args):
                 for row in rows
             ) for sink in (SINK, DECOY))
 
+        def command(fmt, mode):
+            return [*prefix, str(pid), SINK, f"{SINK}.monitor", str(args.stock), fmt, mode]
+
+        discovery = subprocess.run(
+            command("i16", "discover"), env=probe_env, text=True,
+            capture_output=True, timeout=8, check=True,
+        )
+        assert json.loads(discovery.stdout) == {
+            "outputs": [[sink, f"{sink}.monitor"] for sink in sorted((SINK, DECOY))]
+        }
+        assert no_streams()
+
+        def wait_for_review(probe):
+            assert os.readlink(f"/proc/{probe.pid}/ns/net") == namespace
+            assert select.select([probe.stdout], [], [], 8)[0], "selection did not appear"
+            assert probe.stdout.readline().strip() == "selection-ready"
+            assert no_streams(), "enumeration or review opened a record stream"
+            assert not select.select([probe.stdout], [], [], .15)[0], "confirmation was bypassed"
+            assert no_streams(), "capture opened before approval"
+
+        @contextmanager
+        def awaiting_decision():
+            probe = subprocess.Popen(
+                command("i16", "review"), env=probe_env, text=True, stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            try:
+                wait_for_review(probe)
+                yield probe
+            finally:
+                stop(probe)
+                probe.stdin.close()
+                probe.stdout.close()
+                probe.stderr.close()
+
+        with awaiting_decision() as denied:
+            out, err = denied.communicate("decline\n", timeout=3)
+            assert denied.returncode == 1 and not out, err
+            assert "private capture was not confirmed" in err
+            assert no_streams()
+
         def capture_case(fmt, mode, pcm):
             with play(decoy, DECOY, env) as other, play(pcm, SINK, env) as player:
                 wait("two test tone streams on their explicit sinks", playing_both, 3)
                 start = time.monotonic()
                 probe = subprocess.Popen(
-                    [*prefix, str(pid), SINK, f"{SINK}.monitor", str(args.stock), fmt, mode],
-                    env=probe_env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    command(fmt, mode), env=probe_env, text=True, stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 )
                 try:
+                    if mode == "review":
+                        wait_for_review(probe)
+                        probe.stdin.write("confirm\n")
+                        probe.stdin.flush()
                     assert os.readlink(f"/proc/{probe.pid}/ns/net") == namespace
                     assert select.select([probe.stdout], [], [], 8)[0], "capture never became ready"
                     assert probe.stdout.readline().strip() == "monitor-ready"
@@ -253,13 +310,14 @@ def run_proof(args):
                     result["elapsedMs"] = round((time.monotonic() - start) * 1000)
                 finally:
                     stop(probe)
+                    probe.stdin.close()
                     probe.stdout.close()
                     probe.stderr.close()
                 wait("record stream removal", no_streams, 3)
                 return {"format": fmt, **result}
 
         for fmt in ("i16", "f32"):
-            result = capture_case(fmt, "capture", signal)
+            result = capture_case(fmt, "review" if fmt == "i16" else "capture", signal)
             assert result["status"] == "captured" and result["frames"] == 192000
             assert result["produced"] >= 24_000
             captured.append(result)
@@ -312,6 +370,25 @@ def run_proof(args):
         # Removing the selected sink must never turn a live monitor capture
         # into a capture of the still-playing, now only default decoy.
         pulse(["unload-module", str(modules[NON_MONITOR])], env)
+        def load_selected():
+            return int(pulse([
+                "load-module", "module-null-sink", f"sink_name={SINK}",
+                "rate=48000", "channels=2", "channel_map=front-left,front-right",
+            ], env).stdout.strip())
+
+        with awaiting_decision() as stale:
+            pulse(["unload-module", str(modules[SINK])], env)
+            modules[SINK] = load_selected()
+            replacements = {
+                row["name"]: row["index"]
+                for row in json.loads(pulse(["--format=json", "list", "sinks"], env).stdout)
+            }
+            assert SINK in replacements and replacements[SINK] != sinks[SINK]
+            out, err = stale.communicate("confirm\n", timeout=3)
+            assert stale.returncode == 1 and not out, err
+            assert "confirmed private output changed" in err
+            assert no_streams()
+        assert pulse(["get-default-sink"], env).stdout.strip() == DECOY
         with play(decoy, DECOY, env):
             lost = subprocess.Popen(
                 [*prefix, str(pid), SINK, f"{SINK}.monitor", str(args.stock), "i16", "capture"],
@@ -338,9 +415,27 @@ def run_proof(args):
                 lost.stderr.close()
             wait("removed source stream cleanup", no_streams, 3)
 
+        load_selected()
+        with awaiting_decision() as stale_server:
+            new_pid = restart_pulse()
+            load_selected()
+            new_discovery = subprocess.run(
+                [*prefix, str(new_pid), SINK, f"{SINK}.monitor", str(args.stock), "i16", "discover"],
+                env=probe_env, text=True, capture_output=True, timeout=8, check=True,
+            )
+            assert [SINK, f"{SINK}.monitor"] in json.loads(new_discovery.stdout)["outputs"]
+            out, err = stale_server.communicate("confirm\n", timeout=3)
+            assert stale_server.returncode == 1 and not out, err
+            assert "private Pulse server identity mismatch" in err
+            assert no_streams()
+
     report = {
         "captures": captured, "roundTrips": roundtrips, "cancelledInFlight": cancelled_in_flight,
         "onlyLoopbackInterface": True, "rejections": 4, "unisolatedRefused": True,
+        "discoveryListedOnlyReciprocalOutputs": True,
+        "noRecordStreamBeforeConfirmation": True, "declineRefused": True,
+        "sameNameReplacementRefused": True, "defaultOutputUnchanged": True,
+        "restartedServerRefused": True,
         "cancelled": True, "cancelElapsedMs": round(elapsed * 1000),
         "monitorRemovalRefusedFallback": True, "monitorRemovalResult": removal,
         "monitorRemovalElapsedMs": round(removal_elapsed * 1000),

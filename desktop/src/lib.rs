@@ -40,6 +40,16 @@ mod playlists;
 mod podcast;
 mod profile_relations;
 mod rankings;
+#[cfg(all(
+    target_os = "linux",
+    target_arch = "x86_64",
+    feature = "recognition-monitor-lab"
+))]
+#[allow(
+    dead_code,
+    reason = "private Linux recognition lab has no application command"
+)]
+mod recognition_capture;
 mod relay;
 pub mod renewal;
 mod search;

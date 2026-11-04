@@ -42,6 +42,37 @@ monitor 后不切向仍在播放的默认干扰 sink。PipeWire 1.6.2 / libpulse
 Linux 不同音频服务器版本与 Windows WASAPI 接入均未验证。这个探针
 不构成上线的识曲或采集能力。
 
+Linux 桌面设备发现和确认边界：
+
+- desktop/src/recognition_capture 复用上述 libpulse 采集实现，由私有 probe
+  和 Linux x86_64 的 recognition-monitor-lab 特性编译。默认应用不注册
+  IPC、入口或依赖；它不使用 pactl/parec 子进程，外层验证驱动才用 pactl
+  构建和观察合成设备。没有系统默认 source/sink 的查询或采样回退。
+- 使用 PulseAudio 17.0 的公开 pa_sink_info / pa_source_info ABI 前缀。
+  pa_context_get_sink_info_list / pa_context_get_source_info_list 各限 256
+  条，只在一个已经校验的显式本地连接查询。sink 声明的 monitor 名称与索引
+  均须对应 source，source 反向指向同一 sink 名称与索引；仅有 .monitor
+  后缀不成立，重复标识、竞争声明、不完整查询不会授予候选权限。
+  ABI：https://raw.githubusercontent.com/pulseaudio/pulseaudio/v17.0/src/pulse/introspect.h
+- 仅接受隔离 netns、只有 lo、无 /dev/snd、权限 0700 的专用运行目录。
+  连接前后用 Linux SO_PEERCRED 和套接字 dev/ino 核对同一服务器实例，
+  且服务器属于同一网络 namespace；一直使用同一个 Pulse context，
+  不重新连接。选择键只在本次设备枚举有效。30 秒内用户可以显式确认
+  或拒绝，拒绝不建立流；确认再核对原 sink/source，生成仅可消费一次、
+  3 秒内可用的本地许可。许可不持久化，也不作为通用设备授权。
+- 打开时同时设置 START_CORKED 和 DONT_MOVE。在确认、准备打开、实际
+  录音路由准备好以后分别核对设备；只有实际名称、索引、格式和互认关系
+  一致才解除暂停，输出消失、关系不明、取消或超时即释放。采集中每次
+  处理前核对实际流，约 250ms 复查拓扑；不改默认设备、移动其他应用
+  音流或读取任一麦克风。流 ABI：
+  https://raw.githubusercontent.com/pulseaudio/pulseaudio/v17.0/src/pulse/stream.h
+- 私有 PipeWire 验证要求只枚举两个已构造的实际输出，排除名字带 .monitor
+  的非 monitor source。发现、等待确认和拒绝全过程没有实际录音流；
+  同名输出重建（索引变化）或同一套接字路径的音频服务器重启后，原确认
+  必须失败；实际确认后的 440/880Hz
+  来自所选输出，1760Hz 默认干扰不进入，默认输出保持原位。真实用户
+  桌面设备发现、GUI 可信同意、生产服务资格和指纹提交仍未接入。
+
 合成识曲往返（同一私有输出，独立于上述音量/路由检查）：
 
 - 驱动在 440 Hz 左声道和 880 Hz 右声道之外注入短促的合成频段，
@@ -71,6 +102,9 @@ Linux 不同音频服务器版本与 Windows WASAPI 接入均未验证。这个�
 
 复验（仓库根目录，使用已有的可信本地 stock 库，见重采样对照文档）：
   mkdir -p .build/recognition-monitor-evidence
+  rustc --edition 2024 --test -D warnings desktop/src/recognition_capture/mod.rs \
+    -o .build/recognition-monitor-evidence/selection-unit
+  .build/recognition-monitor-evidence/selection-unit
   LIBZ_SYS_STATIC=1 VCPKGRS_DISABLE=1 \
     CARGO_TARGET_DIR="$PWD/.build/recognition-monitor-evidence/target" \
     cargo build --locked --offline -p cumulus-core \
