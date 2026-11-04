@@ -196,7 +196,8 @@
     input('评论内容','合成草稿：只检查保留，不发送。');one('[aria-label="评论内容"]').focus();
     await wait(()=>one('[data-group="page"] [data-comment-id="101"] .comment-avatar:not(img)'),'avatar fallback');const cardText=one('[data-comment-id="101"] .comment-content');
     const quote=one('[data-comment-id="102"] .comment-quote');
-    assert(cardText.textContent==='提到合成曲目 [大笑]'&&!cardText.children.length,'safe official rich comment projection');
+    const inlineEmoji=cardText.querySelector('.comment-inline-emoji');
+    assert(cardText.textContent==='提到合成曲目 😄'&&cardText.children.length===1&&inlineEmoji?.getAttribute('aria-label')==='大笑'&&inlineEmoji?.getAttribute('role')==='img'&&!cardText.querySelector('img, a'),'safe official rich comment projection with labelled emoji');
     assert(quote.textContent.includes('引用合成引用曲目')&&!quote.textContent.includes('private-reply-key'),'quoted rich text projection');
     await capture('initial_light',{stickyComposer:await verifyStickyComposer(),richCommentText:true});page().scrollTop=0;
     await mode('fail-next');await read(button('下一页',pagination()),()=>ready()&&one('.comment-read-error'),'next failed');assert(ids()[0]==='101','failed next retains page');assert(fullControl(button('重试',pagination())),'pagination error retry fully visible');await capture('next_failed_light');

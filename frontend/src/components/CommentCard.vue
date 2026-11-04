@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import type { CommentItem } from '../services/comments';
 import Icon from './Icon.vue';
+import CommentText from './CommentText.vue';
 function timestamp(time: number): string | undefined {
   const date = new Date(time);
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
@@ -52,10 +53,10 @@ const emit = defineEmits<{
       <div class="comment-author">
         {{ item.author?.name || '云音乐用户' }}<small v-if="item.owned">我</small>
       </div>
-      <p class="comment-content">{{ item.content }}</p>
+      <p class="comment-content"><CommentText :text="item.content" /></p>
       <div v-for="(reply, index) in item.replies" :key="index" class="comment-quote">
         <span>{{ reply.author?.name || '云音乐用户' }}：</span
-        >{{ reply.content ?? '原评论暂不可见' }}
+        ><CommentText :text="reply.content ?? '原评论暂不可见'" />
         <button v-if="reply.id" class="text-button" @click="emit('locate', reply.id)">
           查看原评论
         </button>
