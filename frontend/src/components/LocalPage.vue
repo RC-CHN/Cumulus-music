@@ -32,6 +32,15 @@ const emit = defineEmits<{
   comments: [id: string, title: string];
 }>();
 const { view, query, loading, busy, error, readError, notice } = props.model;
+const groupCollator = new Intl.Collator('zh-CN-u-co-pinyin');
+const namedGroups = computed(() => {
+  const groups = view.value?.groups ?? [];
+  return [...groups].sort((a, b) => {
+    if (!a.key) return b.key ? 1 : 0;
+    if (!b.key) return -1;
+    return groupCollator.compare(a.name, b.name);
+  });
+});
 const search = useLocalSearch(props.model);
 const { keyword } = search;
 const searchInput = ref<HTMLInputElement>();
@@ -658,17 +667,17 @@ function status(root: LocalRoot) {
         />
         <template v-else>
           <button
-            v-for="group in view?.groups"
+            v-for="group in namedGroups"
             :key="group.key"
             :aria-pressed="query.groupKey === group.key"
             :data-local-group-key="group.key"
             aria-haspopup="menu"
             aria-expanded="false"
             aria-keyshortcuts="Shift+F10"
-            :title="group.name"
+            :title="group.key ? group.name : '其他'"
             @click="model.filter({ groupKey: group.key })"
           >
-            <span>{{ group.name }}</span
+            <span>{{ group.key ? group.name : '其他' }}</span
             ><small>{{ group.count }}</small>
           </button>
         </template>

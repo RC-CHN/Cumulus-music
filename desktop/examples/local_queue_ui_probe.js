@@ -73,6 +73,17 @@
     click(button('音乐标题'));
     await wait(() => sorted().length === 1 && direction() === 'ascending' &&
       sorted()[0].textContent.includes('音乐标题') && trackRows().length === 5, 'return to title order');
+    const groupTab = label => [...document.querySelectorAll('.local-tabs button')]
+      .find(node => node.textContent.trim() === label);
+    const namedGroups = () => [...document.querySelectorAll('.local-groups [data-local-group-key]')];
+    for (const label of ['歌手', '专辑']) {
+      click(await wait(() => groupTab(label), 'group tab: ' + label));
+      await wait(() => namedGroups().map(node => node.title).join(',') === '北京,上海,其他',
+        'pinyin order and trailing unnamed group: ' + label);
+      click(await wait(() => namedGroups().find(node => node.title === '上海'), 'Shanghai group: ' + label));
+      await wait(() => trackRows().length === 1 && trackRows()[0].textContent.includes('归途'),
+        'pinyin presentation preserves native group identity: ' + label);
+    }
     click(button('文件夹'));
     const toggle = () => one('.local-folder-toggle');
     const nested = () => [...document.querySelectorAll('[data-local-folder-key]')]
@@ -147,8 +158,8 @@
     }, 'play replaces queue with clicked folder only');
     assert(document.documentElement.scrollWidth <= innerWidth &&
       one('.local-page').scrollWidth <= one('.local-page').clientWidth + 1, 'no horizontal clipping');
-    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, localSort: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
+    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, localSort: true, groupPinyinOrder: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
   } catch (error) {
-    await emit('failed', { message: String(error) });
+    await emit('failed', { message: String(error), stack: error?.stack });
   }
 })();

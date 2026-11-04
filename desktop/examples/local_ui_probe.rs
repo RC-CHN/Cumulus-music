@@ -79,7 +79,7 @@ impl Api for Offline {
         })
     }
 }
-fn fixtures(root: &Path, cue_only: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn fixtures(root: &Path, cue_only: bool, queue: bool) -> Result<(), Box<dyn std::error::Error>> {
     let media = root.join("media");
     fs::create_dir(&media)?;
     let samples = 8000u32 * 120;
@@ -100,9 +100,16 @@ fn fixtures(root: &Path, cue_only: bool) -> Result<(), Box<dyn std::error::Error
     file.write_all(&vec![0; size as usize])?;
     drop(file);
     fs::copy(media.join("album.wav"), media.join("雨声.wav"))?;
+    let (cue_album, cue_artist) = if queue {
+        ("北京", "北京")
+    } else {
+        ("夜行集", "Cumulus")
+    };
     fs::write(
         media.join("album.cue"),
-        "TITLE \"夜行集\"\nPERFORMER \"Cumulus\"\nFILE \"album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"夜行 · 上篇\"\nINDEX 01 00:00:00\nTRACK 02 AUDIO\nTITLE \"夜行 · 下篇\"\nINDEX 01 00:30:00\n",
+        format!(
+            "TITLE \"{cue_album}\"\nPERFORMER \"{cue_artist}\"\nFILE \"album.wav\" WAVE\nTRACK 01 AUDIO\nTITLE \"夜行 · 上篇\"\nINDEX 01 00:00:00\nTRACK 02 AUDIO\nTITLE \"夜行 · 下篇\"\nINDEX 01 00:30:00\n"
+        ),
     )?;
     fs::write(
         media.join("album.lrc"),
@@ -131,12 +138,17 @@ fn fixtures(root: &Path, cue_only: bool) -> Result<(), Box<dyn std::error::Error
     if !status.success() {
         return Err("generate FLAC failed".into());
     }
+    let (ncm_album, ncm_artist) = if queue {
+        ("上海", "上海")
+    } else {
+        ("离线练习", "Cumulus")
+    };
     cumulus_core::media::ncm::write_file(
         root.join("source.flac"),
         media.join("归途.ncm"),
         cumulus_core::media::ncm::NcmWriteOptions {
             metadata: Some(
-                &json!({"musicName":"归途","album":"离线练习","artist":[["Cumulus",0]],"duration":60000,"format":"flac"}),
+                &json!({"musicName":"归途","album":ncm_album,"artist":[[ncm_artist,0]],"duration":60000,"format":"flac"}),
             ),
             ..Default::default()
         },
@@ -160,7 +172,7 @@ fn main() {
     );
     if !reopen {
         fs::create_dir(&root).expect("new proof root");
-        fixtures(&root, cold).expect("generated local fixtures");
+        fixtures(&root, cold, queue).expect("generated local fixtures");
         if queue {
             let media = root.join("media");
             fs::create_dir(media.join("Bonus")).expect("synthetic nested directory");

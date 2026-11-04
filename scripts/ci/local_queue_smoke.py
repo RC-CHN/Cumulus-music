@@ -43,6 +43,7 @@ def main():
     assert complete['ok'] and complete['retainedPlayback'] and complete['realMusicRequests'] == 0
     assert complete['folderTree'] is True and complete['groupMenu'] is True
     assert complete['localSort'] is True
+    assert complete['groupPinyinOrder'] is True
     if args.small:
         assert complete['width'] == 760
     assert complete['audioOutput'] == 'null' and complete['queue'] == ['夜行 · 下篇', '雨声', '夜行 · 上篇']
