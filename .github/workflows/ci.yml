@@ -376,6 +376,7 @@ jobs:
           python scripts/ci/queue_click_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-click-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/intelligence_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-intelligence-ui-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/intelligence_start_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-intelligence-start-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/queue_more_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-more-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/intelligence_cycle_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-intelligence-cycle-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-queue-collection-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
@@ -730,6 +731,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_click_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-click-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/intelligence_ui_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-intelligence-ui-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/intelligence_start_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-intelligence-start-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_more_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-more-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/intelligence_cycle_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-intelligence-cycle-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/queue_collection_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-queue-collection-linux
           cargo build -p cumulus-desktop --example queue_room_ui_probe --features custom-protocol --locked
