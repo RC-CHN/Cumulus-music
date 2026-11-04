@@ -174,6 +174,7 @@ async function load() {
   min-width: 0;
   gap: 0.625rem;
   text-align: start;
+  color: var(--text);
   align-items: center;
 }
 .rank-cover {

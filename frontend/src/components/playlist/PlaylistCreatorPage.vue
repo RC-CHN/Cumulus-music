@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { ProfileRelationMode } from '../../services/profileRelations';
 import type { usePlaylistCreator } from '../../composables/usePlaylistCreator';
 import Icon from '../Icon.vue';
@@ -17,6 +17,12 @@ const emit = defineEmits<{
 }>();
 const root = ref<HTMLElement>();
 const failedAvatar = ref(false);
+const rankEntry = computed(() =>
+  props.model.group.value === 'created' && props.model.page.value === 0
+    ? props.model.profile.value?.listeningRank
+    : undefined,
+);
+
 onMounted(async () => {
   const origin = document.activeElement;
   await nextTick();
@@ -138,29 +144,25 @@ function open(id: string) {
           收藏的歌单 {{ model.profile.value.collected.length }}
         </button>
       </div>
-      <button
-        v-if="
-          model.group.value === 'created' &&
-          model.page.value === 0 &&
-          model.profile.value.listeningRank
-        "
-        class="text-button creator-rank-entry"
-        type="button"
-        data-profile-rank-entry
-        @click="
-          model.openedRank.value = true;
-          emit('rank');
-        "
-      >
-        <Icon name="music" />
-        <span>
-          {{ model.profile.value.listeningRank.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}
-          <small v-if="model.profile.value.listeningRank.listenSongs !== null" class="muted">
-            累计听歌{{ model.profile.value.listeningRank.listenSongs }}首
+      <div v-if="rankEntry || model.cards.value.length" class="playlist-grid">
+        <button
+          v-if="rankEntry"
+          class="playlist-card creator-rank-entry"
+          type="button"
+          data-profile-rank-entry
+          @click="
+            model.openedRank.value = true;
+            emit('rank');
+          "
+        >
+          <span class="card-cover creator-rank-cover" aria-hidden="true">
+            <Icon name="list" />
+          </span>
+          <span>{{ rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}</span>
+          <small v-if="rankEntry.listenSongs !== null" class="muted">
+            累计听歌{{ rankEntry.listenSongs }}首
           </small>
-        </span>
-      </button>
-      <div v-if="model.cards.value.length" class="playlist-grid">
+        </button>
         <PlaylistCard
           v-for="list in model.cards.value"
           :key="list.id"
@@ -233,13 +235,13 @@ function open(id: string) {
   background: var(--surface-alt);
 }
 .creator-rank-entry {
-  display: flex;
-  align-items: center;
-  text-align: start;
-  gap: 0.75rem;
-  margin-block-end: 0.75rem;
+  align-self: start;
 }
-.creator-rank-entry small {
-  display: block;
+.creator-rank-cover {
+  color: var(--accent);
+}
+.creator-rank-cover .icon {
+  width: 34%;
+  height: 34%;
 }
 </style>
