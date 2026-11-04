@@ -50,6 +50,60 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchCarouselProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
+      await fresh('合成轮播');
+      const carousel=()=>one('.search-carousel[aria-label="歌单预览"]');
+      const artist=()=>one('.search-carousel[aria-label="歌手预览"]');
+      const current=()=>Number(carousel()?.dataset.previewStart);
+      const columns=()=>Number(carousel()?.dataset.previewColumns);
+      const visible=()=>[...carousel().querySelectorAll('[data-grid-index]:not([inert])')].map(node=>Number(node.dataset.gridIndex));
+      const next=()=>button('歌单预览下一页',carousel());
+      const previous=()=>button('歌单预览上一页',carousel());
+      const reveal=()=>carousel().scrollIntoView({block:'center'});
+      const settled=()=>carousel().querySelector('.search-carousel-rail').getAnimations().every(a=>a.playState!=='running'&&!a.pending);
+      assert(carousel()?.querySelectorAll('[data-grid-index]').length===10&&artist()&&columns()===6,'dense carousel keeps at most ten rows and uses official columns');
+      assert(current()===0&&previous().getAttribute('aria-disabled')==='true'&&visible().join(',')==='0,1,2,3,4,5','first carousel page is bounded');
+      reveal();
+      await capture('carousel_first');
+      click(next());
+      await wait(()=>current()===4&&settled(),'last page aligns the partial tail');
+      assert(visible().join(',')==='4,5,6,7,8,9'&&artist().dataset.previewStart==='0','adjacent carousel is independent');
+      const offscreen=carousel().querySelector('[data-grid-index="0"] .search-card-open');
+      offscreen.focus({preventScroll:true});
+      assert(document.activeElement===next()&&next().getAttribute('aria-disabled')==='true','clipped controls are inert and end button retains focus');
+      const firstVisible=carousel().querySelector('[data-grid-index="4"]').getBoundingClientRect();
+      const finalVisible=carousel().querySelector('[data-grid-index="9"]').getBoundingClientRect();
+      const viewport=carousel().querySelector('.search-carousel-viewport').getBoundingClientRect();
+      assert(Math.abs(firstVisible.left-viewport.left)<1&&Math.abs(finalVisible.right-viewport.right)<1,'carousel rail actually reveals the requested window');
+      await capture('carousel_final');
+      const findSource=()=>carousel()?.querySelector('[data-result-key="playlist:28"] .search-card-open');
+      const top=one('.search-result-panel').scrollTop;
+      click(findSource());
+      await wait(()=>one('.playlist-hero h1')?.textContent.includes('合成歌单 28'),'later carousel card opens its playlist');
+      click(button('返回上一页'));
+      await wait(()=>current()===4&&findSource()===document.activeElement&&Math.abs(one('.search-result-panel').scrollTop-top)<=1,'Back restores exact section, page, scroll, and later-card focus');
+      await capture('carousel_back_focus');
+      await theme(760,540,'dark');
+      await wait(()=>columns()<6,'narrow carousel measures resized viewport');
+      reveal();
+      for(let attempt=0;attempt<10&&next().getAttribute('aria-disabled')!=='true';attempt++) { click(next()); await sleep(40); }
+      await wait(settled,'narrow rail settles');
+      assert(current()===10-columns()&&visible().at(-1)===9,'narrow last page shows the final item');
+      await capture('carousel_narrow_dark');
+      const last=current();
+      click(previous());
+      await wait(()=>current()<last&&settled(),'previous arrow returns to prior group');
+      const preserved=current();
+      click(button('查看全部歌单',carousel().closest('section')));
+      await wait(()=>ready()&&one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true'&&!one('.search-carousel'),'section heading opens regular complete category');
+      click(button('返回上一页'));
+      await wait(()=>current()===preserved&&settled(),'category Back restores the carousel independently of network');
+      await capture('carousel_category_back');
+      await emit('complete',{ok:true,searchCarouselVerified:true,stageCount:count,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchFilteredPaginationProof){
       await wait(()=>one('.track-row'),'daily ready');
       const provides=one('#app').__vue_app__._context.provides;

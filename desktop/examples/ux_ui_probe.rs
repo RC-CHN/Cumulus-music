@@ -502,7 +502,7 @@ fn main() {
             client = client.with_effect_material_backend(Arc::new(effect_peq_fixture::Material));
         }
         if daily_history_fixture::enabled() { client=client.with_official_daily_experiment(); }
-        if search_fixture::v3_enabled() { client=client.with_official_search_experiment(); }
+        if search_fixture::v3_enabled() || search_fixture::carousel_enabled() { client=client.with_official_search_experiment(); }
         if search_mv_fixture::enabled() {
             let path=search_mv_fixture::create(&root)?;
             client=client.with_video_factory(Arc::new(move || Ok(Box::new(search_mv_fixture::NativeVideo::open(path.clone())?))));
@@ -564,6 +564,7 @@ fn main() {
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
                 if search_fixture::v3_enabled() { value["syntheticV3Calls"] = json!(search_fixture::v3_calls()); }
+                if search_fixture::carousel_enabled() { value["searchCarouselCalls"] = json!(search_fixture::carousel_calls()); }
                 value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
                 value["audioRankDetails"] = json!(search_fixture::audio_rank_details());
                 if let Some(calls) = search_fixture::voice_queue_calls() { value["voiceQueueCalls"] = json!(calls); }

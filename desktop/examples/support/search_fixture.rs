@@ -8,6 +8,8 @@ use std::sync::{
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
+const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
+static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -21,6 +23,12 @@ pub fn v3_calls() -> usize {
 }
 pub fn v3_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_V3_PROOF").is_some()
+}
+pub fn carousel_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_CAROUSEL_PROOF").is_some()
+}
+pub fn carousel_calls() -> Vec<Value> {
+    CAROUSEL_CALLS.lock().unwrap().clone()
 }
 pub fn control(value: &Value) {
     let mode = value["mode"].as_str().unwrap();
@@ -505,6 +513,39 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
 }
 
 fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if carousel_enabled() {
+        let response = match path {
+            "/api/rtrs/abt/front/expinfo/list"
+                if *args == json!({"expNames":SEARCH_EXPERIMENTS}) =>
+            {
+                Some(json!({"code":200,"data":[
+                    {"expName":"PH-PC-searchHot","expGroupName":"c"},
+                    {"expName":"PH-PC-searchMore2","expGroupName":"t1"},
+                    {"expName":"PH-PC-searchPageEfficiency","expGroupName":"t1"}
+                ]}))
+            }
+            "/api/search/pc/complex/page"
+                if *args
+                    == json!({"keyword":"合成轮播","scene":"normal","needCorrect":true,"channel":"typing","cursor":"{\"page\":0,\"ignoreBlocks\":[],\"traceId\":\"\"}","bizQueryInfo":""}) =>
+            {
+                let playlist = |id| json!({"type":"playlist","baseInfo":{"id":id,"userId":3,"name":format!("合成轮播歌单 {id}"),"trackCount":40,"creator":{"userId":3,"nickname":"合成作者"}}});
+                let artist = |id| json!({"type":"artist","baseInfo":{"id":id,"name":format!("合成轮播歌手 {id}")}});
+                Some(json!({"code":200,"data":{"blocks":[
+                    {"blockCode":"search_block_best_match","resources":[playlist(28)]},
+                    {"blockCode":"search_block_playlist","uiElement":{"mainTitle":{"title":"歌单"}},"resources":(20..32).map(playlist).collect::<Vec<_>>()},
+                    {"blockCode":"search_block_artist","uiElement":{"mainTitle":{"title":"歌手"}},"resources":(100..110).map(artist).collect::<Vec<_>>()}
+                ]}}))
+            }
+            _ => None,
+        };
+        if let Some(response) = response {
+            CAROUSEL_CALLS
+                .lock()
+                .unwrap()
+                .push(json!({"path":path,"args":args}));
+            return Some(Ok(response));
+        }
+    }
     if v3_enabled() {
         let tag = match path {
             "/api/homepage/rcmd/tag/songs"
@@ -534,7 +575,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
         let response = match path {
             "/api/rtrs/abt/front/expinfo/list"
-                if args == &json!({"expNames":"PH-PC-searchHot"}) =>
+                if args == &json!({"expNames":SEARCH_EXPERIMENTS}) =>
             {
                 Some(json!({"code":200,"data":[{"expName":"PH-PC-searchHot","expGroupName":"t1"}]}))
             }

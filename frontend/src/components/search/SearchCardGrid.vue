@@ -3,12 +3,15 @@ import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue
 import type { SearchItem } from '../../services/search';
 import { searchCardKey } from '../../services/searchCards';
 import { rowWindow } from '../../services/virtualWindow';
+import SearchPreviewCarousel from './SearchPreviewCarousel.vue';
 const props = defineProps<{
   items: SearchItem[];
   scroller?: HTMLElement;
   virtual?: boolean;
   preview?: boolean;
+  carousel?: { label: string; compact: boolean; position: number };
 }>();
+const emit = defineEmits<{ position: [index: number] }>();
 const grid = ref<HTMLElement>();
 const columns = ref(1),
   pitch = ref(260);
@@ -170,7 +173,17 @@ onBeforeUnmount(() => {
 });
 </script>
 <template>
+  <SearchPreviewCarousel
+    v-if="carousel"
+    :items="items"
+    v-bind="carousel"
+    @position="emit('position', $event)"
+    v-slot="{ item, index }"
+  >
+    <slot :item="item" :index="index" />
+  </SearchPreviewCarousel>
   <div
+    v-else
     ref="grid"
     class="search-result-grid"
     :class="{

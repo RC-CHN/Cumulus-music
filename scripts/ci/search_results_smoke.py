@@ -13,6 +13,7 @@ def main():
     parser.add_argument('--runtime', type=Path)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--v3', action='store_true')
+    mode.add_argument('--carousel', action='store_true')
     mode.add_argument('--voice-direct', action='store_true')
     mode.add_argument('--card-matches', action='store_true')
     mode.add_argument('--correction-original', action='store_true')
@@ -77,6 +78,9 @@ def main():
     if args.v3:
         env['CUMULUS_SEARCH_V3_PROOF'] = '1'
         prefix = 'window.__cumulusSearchV3Proof = true;\n'
+    if args.carousel:
+        env['CUMULUS_SEARCH_CAROUSEL_PROOF'] = '1'
+        prefix = 'window.__cumulusSearchCarouselProof = true;\n'
     script.write_text(prefix + source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
     env['CUMULUS_SEARCH_USER_PROFILE_PROOF'] = '1'
@@ -85,6 +89,18 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.carousel:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['searchCarouselVerified'] and complete['stageCount'] == 5
+        calls = complete['searchCarouselCalls']
+        assert [call['path'] for call in calls] == ['/api/rtrs/abt/front/expinfo/list', '/api/search/pc/complex/page']
+        assert calls[0]['args']['expNames'] == 'PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency'
+        assert complete['realAccountWrites'] == 0
+        assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, searchCarouselVerified=True,
+                              stageCount=5, nativeAssignmentAndResultReads=2, realAccountWrites=0)))
+        return
     if args.filtered_pagination:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))

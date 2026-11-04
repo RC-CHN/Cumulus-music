@@ -47,6 +47,7 @@ const ACCOUNT: &str = "/api/w/nuser/account/get";
 const ALL: &str = "/api/search/pc/complex/page";
 const ASSIGNMENT: &str = "/api/rtrs/abt/front/expinfo/list";
 const EXPERIMENT: &str = "PH-PC-searchHot";
+const EXPERIMENT_QUERY: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
 const TABS: &str = "/api/search/pc/result/tab";
 const ALL_V3: &str = "/api/search/pc/complex/page/v3";
 const PAGE_LIMIT: usize = 6;
@@ -139,7 +140,7 @@ impl Reads {
             ASSIGNMENT
                 if self.experiment.enabled()
                     && count("account") == 1
-                    && *payload == json!({"expNames":EXPERIMENT}) =>
+                    && *payload == json!({"expNames":EXPERIMENT_QUERY}) =>
             {
                 "search_assignment"
             }

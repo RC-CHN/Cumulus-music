@@ -160,9 +160,24 @@ function previewItems(section: SearchSection) {
   const items = section.items.filter((i) => i.kind !== 'song');
   if (category.value !== 'all') return items;
   if (bestMatch(section)) return items.slice(0, 2);
+  if (carousel(section)) return items.slice(0, 10);
   return section.category && !['voices', 'all'].includes(section.category)
     ? items.slice(0, 6)
     : items;
+}
+const previewPositions = ref<Record<string, number>>({});
+function carousel(section: SearchSection) {
+  const layout = view.value?.previewLayout;
+  if (!layout || !oneRowPreview(section)) return;
+  return {
+    label: section.title,
+    compact: layout === 'compact_carousel',
+    position: previewPositions.value[section.id] ?? 0,
+  };
+}
+function previewPosition(section: SearchSection, index: number) {
+  previewPositions.value[section.id] = index;
+  checkpoint();
 }
 function oneRowPreview(section: SearchSection) {
   return (
@@ -275,7 +290,9 @@ function checkpoint(focus = false) {
     top: panel.value.scrollTop,
     tracks: panel.value.querySelector('.track-scroll')?.scrollTop ?? 0,
     focus: key,
+    focusSection: card?.closest<HTMLElement>('[data-result-section]')?.dataset.resultSection,
     focusAction: active?.dataset.resultAction,
+    previewPositions: { ...previewPositions.value },
     expandedLyrics: [...expandedLyrics.value],
     lyricAnchor: activeCategory === 'lyrics' ? lyricWindow.anchor() : undefined,
   });
@@ -353,6 +370,7 @@ async function restore() {
     return;
   const generation = loadGeneration;
   expandedLyrics.value = new Set(model.position.value.expandedLyrics ?? []);
+  previewPositions.value = { ...model.position.value.previewPositions };
   await nextTick();
   await waitForViewportFrames(2);
   if (
@@ -372,8 +390,15 @@ async function restore() {
   await waitForViewportFrames(2);
   if (generation !== loadGeneration || !panel.value) return;
   if (position.focus) {
+    const section = position.focusSection
+      ? [...panel.value.querySelectorAll<HTMLElement>('[data-result-section]')].find(
+          (node) => node.dataset.resultSection === position.focusSection,
+        )
+      : undefined;
     const card = [
-      ...panel.value.querySelectorAll<HTMLElement>('[data-result-key], .track-row[data-track-id]'),
+      ...(section ?? panel.value).querySelectorAll<HTMLElement>(
+        '[data-result-key], .track-row[data-track-id]',
+      ),
     ].find(
       (node) =>
         node.dataset.resultKey === position.focus ||
@@ -398,6 +423,7 @@ async function load(reuse = false) {
   frame = 0;
   const generation = ++loadGeneration;
   activeCategory = category.value;
+  previewPositions.value = {};
   await model.open(
     {
       keyword: requestKeyword.value,
@@ -625,6 +651,7 @@ onBeforeUnmount(() => {
             v-for="section in view.sections"
             :key="section.id"
             class="search-result-section"
+            :data-result-section="section.id"
             :class="{
               'search-result-tracks': section.items.some((i) => i.kind === 'song'),
               'search-best-section': bestMatch(section),
@@ -794,6 +821,8 @@ onBeforeUnmount(() => {
               :scroller="panel"
               :virtual="gridWaterfall"
               :preview="oneRowPreview(section)"
+              :carousel="carousel(section)"
+              @position="previewPosition(section, $event)"
               v-slot="{ item }"
             >
               <SearchResultCard

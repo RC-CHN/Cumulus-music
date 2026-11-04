@@ -82,6 +82,12 @@ pub struct SearchHotExplanation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picture_url: Option<String>,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchPreviewLayout {
+    Carousel,
+    CompactCarousel,
+}
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResultView {
@@ -101,6 +107,8 @@ pub struct SearchResultView {
     pub tabs: Option<Vec<SearchCategory>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hot_explanation: Option<SearchHotExplanation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_layout: Option<SearchPreviewLayout>,
 }
 impl MusicClient {
     /// Enabled by the production desktop host. Test/research hosts opt in
@@ -120,14 +128,20 @@ impl MusicClient {
         let value = self
             .session
             .run_for(token, |api, uid| async move {
-                let (endpoint, tabs, raw) = if query.category == SearchCategory::All {
+                let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
+                {
                     // Validate before any optional experiment or tab request.
                     api::validate_query(&query)?;
-                    if self
+                    let flags = self
                         .search
-                        .enabled_for(&self.session, token, api.as_ref())
-                        .await?
-                    {
+                        .assignment_for(&self.session, token, api.as_ref())
+                        .await?;
+                    let layout = flags.expanded.then_some(if flags.dense {
+                        SearchPreviewLayout::CompactCarousel
+                    } else {
+                        SearchPreviewLayout::Carousel
+                    });
+                    if flags.v3 {
                         let tabs = self
                             .search
                             .tabs_for(&self.session, token, api.as_ref(), &query.keyword)
@@ -135,17 +149,19 @@ impl MusicClient {
                         (
                             api::v3::PATH,
                             Some(tabs),
+                            layout,
                             api::v3::request(api.as_ref(), &query).await,
                         )
                     } else {
                         (
                             api::COMPREHENSIVE_PATH,
                             None,
+                            layout,
                             api::request(api.as_ref(), &query).await,
                         )
                     }
                 } else {
-                    ("", None, api::request(api.as_ref(), &query).await)
+                    ("", None, None, api::request(api.as_ref(), &query).await)
                 };
                 let mut view = match raw {
                     Ok(raw) => {
@@ -178,6 +194,7 @@ impl MusicClient {
                     },
                 };
                 view.tabs = tabs;
+                view.preview_layout = preview_layout;
                 Ok(view)
             })
             .await?;
@@ -353,6 +370,7 @@ impl SearchResultView {
             empty_title: None,
             tabs: None,
             hot_explanation: None,
+            preview_layout: None,
         }
     }
 }

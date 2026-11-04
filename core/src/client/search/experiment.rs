@@ -9,8 +9,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const EXPERIMENT: &str = "PH-PC-searchHot";
+const EXPERIMENTS: [&str; 3] = [
+    "PH-PC-searchHot",
+    "PH-PC-searchMore2",
+    "PH-PC-searchPageEfficiency",
+];
 const NAMESPACE: &str = "search-experiment-v1";
+const ASSIGNMENT_KEY: &str = "assignment-v2";
 const REFRESH_SECONDS: u64 = 30 * 60;
 
 #[derive(Default)]
@@ -19,19 +24,33 @@ pub(crate) struct SearchHost {
     gate: tokio::sync::Mutex<()>,
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize, Default)]
+#[serde(default)]
+pub(super) struct SearchFlags {
+    pub(super) v3: bool,
+    pub(super) expanded: bool,
+    pub(super) dense: bool,
+}
+
 #[derive(Deserialize, Serialize, Default)]
 struct Assignment {
     attempted_at: u64,
-    v3: bool,
+    #[serde(flatten)]
+    flags: SearchFlags,
 }
 
-fn assignment(value: &Value) -> Option<bool> {
+fn assignment(value: &Value) -> Option<SearchFlags> {
     let rows = value["data"].as_array().filter(|rows| rows.len() <= 4096)?;
-    Some(
+    let enabled = |experiment: &str| {
         rows.iter()
-            .find(|row| row["expName"] == EXPERIMENT)
-            .is_some_and(|row| row["expGroupName"] == "t1"),
-    )
+            .find(|row| row["expName"] == experiment)
+            .is_some_and(|row| row["expGroupName"] == "t1")
+    };
+    Some(SearchFlags {
+        v3: enabled(EXPERIMENTS[0]),
+        expanded: enabled(EXPERIMENTS[1]),
+        dense: enabled(EXPERIMENTS[2]),
+    })
 }
 
 fn parse_tabs(value: &Value) -> Option<Vec<SearchCategory>> {
@@ -53,50 +72,67 @@ fn parse_tabs(value: &Value) -> Option<Vec<SearchCategory>> {
 }
 
 impl SearchHost {
-    pub(super) async fn enabled_for(
+    pub(super) async fn assignment_for(
         &self,
         session: &AccountSession,
         token: &SessionToken,
         api: &dyn Api,
-    ) -> Result<bool> {
+    ) -> Result<SearchFlags> {
         if !self.enabled {
-            return Ok(false);
+            return Ok(SearchFlags::default());
         }
         let _lock = self.gate.lock().await;
         let store = session.persistent_store()?;
         let old: Assignment = session.with_token(token, |owner| {
-            Ok(store
-                .get(owner, NAMESPACE, "assignment")?
-                .and_then(|value| serde_json::from_value(value).ok())
-                .unwrap_or_default())
+            let current = store
+                .get(owner, NAMESPACE, ASSIGNMENT_KEY)?
+                .and_then(|value| serde_json::from_value(value).ok());
+            if let Some(current) = current {
+                return Ok(current);
+            }
+            // The old key knew only the endpoint experiment. Preserve that
+            // assignment on a failed refresh without delaying the new lookup.
+            let previous = store.get(owner, NAMESPACE, "assignment")?;
+            Ok(Assignment {
+                flags: SearchFlags {
+                    v3: previous.as_ref().is_some_and(|value| value["v3"] == true),
+                    ..SearchFlags::default()
+                },
+                ..Assignment::default()
+            })
         })?;
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|elapsed| elapsed.as_secs())
             .unwrap_or_default();
         if now >= old.attempted_at && now - old.attempted_at < REFRESH_SECONDS {
-            return Ok(old.v3);
+            return Ok(old.flags);
         }
         let response = api
-            .call(AB_PATH, json!({"expNames":EXPERIMENT}), false, &[200])
+            .call(
+                AB_PATH,
+                json!({"expNames":EXPERIMENTS.join(",")}),
+                false,
+                &[200],
+            )
             .await;
         let updated = Assignment {
             attempted_at: now,
-            v3: response
+            flags: response
                 .as_ref()
                 .ok()
                 .and_then(assignment)
-                .unwrap_or(old.v3),
+                .unwrap_or(old.flags),
         };
         session.with_token(token, |owner| {
             store.put(
                 owner,
                 NAMESPACE,
-                "assignment",
+                ASSIGNMENT_KEY,
                 &serde_json::to_value(&updated)?,
             )
         })?;
-        Ok(updated.v3)
+        Ok(updated.flags)
     }
 
     pub(super) async fn tabs_for(

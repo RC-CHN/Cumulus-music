@@ -9,7 +9,7 @@ ui-recovery/sources/packages/pc/src/pages/SearchResults/index.jsx：关键词页
 同目录 components/tab.jsx：分类导航，单曲页“播放全部/收藏全部”，94×40，图标20，
   操作间距10、右距21，导航上距10/下距12；分类路由保留关键词。
 components/recommend.jsx：最佳匹配、歌曲、歌单、歌手、专辑、播客、声音、视频、
-  用户等区块；旧版最佳匹配两列。当前固定旧版分支，不宣称 AB 新版一致。
+  用户等区块。最佳匹配仍沿用旧版两列；六个普通资源区块已对照接入独立轮播实验。
 components/artist.jsx、mv.tsx：歌手/用户 WaterfallGrid span=3、请求13项；MV span=4。
 以下共用卡片路径相对 ui-recovery/sources/packages/pc/src/：
 components/ArtistMetaCard/index.jsx：最佳匹配横排84高，头像72，文字间距16，名称18/26。
@@ -71,7 +71,7 @@ SearchResultsClient → desktop/search.rs search_results → MusicClient::search
   M2245 和 M3001 的综合页面没有续页，点区块进入分类后才有完整列表。
   M2245 对旧接口服务码 405 取 msg/message，M3001 传给综合空态标题。
   当前只在该接口的结构化服务码 405 使用有界纯文本；其它错误仍可重试。
-  v3 由原生宿主读取 /api/rtrs/abt/front/expinfo/list {expNames:"PH-PC-searchHot"}，
+  v3 由原生宿主从 /api/rtrs/abt/front/expinfo/list 的 `PH-PC-searchHot` 分组确定，
   只在精确 t1 使用 /api/search/pc/complex/page/v3，keyword/scene/needCorrect/channel/
   bizQueryInfo 同旧版但无 cursor。分配结果按账号缓存，失败保留有效上次值，首次缺失
   默认旧版；搜索分类不触发额外实验请求。不会在 v3 失败时静默重发旧接口。
@@ -94,6 +94,23 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
   algTabs 优先于 defaultTabs。失败/无法映射时回落账号上次有效顺序或默认次序。
   旧版保持固定次序（不额外请求未被消费的算法顺序）。前端按账号代次与搜索 ID
   保留页签用于分类切换和返回，始终保留综合与当前分类入口。
+
+综合预览轮播：恢复 recommend.jsx:584–945、1034–1037 及 M/3095:2056–2405。
+  综合预览的 `PH-PC-searchMore2=t1` 独立于 `PH-PC-searchHot`（选择 v1/v3 端点）；
+  原生与 `PH-PC-searchPageEfficiency` 一起合并读取分配，按账号保存，失败保留该账号的
+  上次结果。旧缓存中的 searchHot 分组在首次合并读取失败时仍有效。只给前端传布局枚举。
+  歌单、歌手、专辑、播客、MV 和用户各使用同一返回区块最多十张卡片。
+  栅格沿用官方 GridCarousel 的 66 像素基准和 18/span 上限；常规 gap 20、span 3，
+  效率组 gap 16、span 2，MV 保留 span 3。最后不足一页时对齐尾部；区块之间独立。
+  翻页只移动已返回的资源，不请求综合续页、不跳分类。区块标题仍打开完整分类。
+  社区版的键盘焦点、隐藏页不可交互、从资源详情或分类 Back 恢复横向位置与原卡片焦点，
+  均不依赖新的线上请求。窗口缩放尽量保持原卡片组，官方 GridCarousel 在缩放时回到第一页。
+  减少动态效果设置关闭滑动动画；本项未接新版最佳匹配第三张和其他效率实验样式。
+  Linux `search_results_smoke.py --carousel` 实测旧接口 + 新布局组合，五阶段与截图验证首尾、
+  独立区块、后排卡片详情、同 ID 最佳匹配不抢焦点、760×540 深色及完整分类返回。
+  批次仅有一次实验读取和一次综合读取，无真实账号写入。图片复核使用默认 WebView 合成路径：
+  `.build/ui-proof/search-carousel-20261104-b`；强制禁用合成的早期截图存在旧画面，未采作视觉证据。
+  既有 v3 搜索九阶段及独立合成 v3 原生播放时钟回归通过；新布局的真实账号分桶与 Windows 实机未验。
 
 热搜词来源：SearchBox/view/searchRankCard.tsx 和恢复 M/623 按条目的 tabId
   （不是榜单本身的 ID）给 HOT_SEARCH_SONG#@# 设置 hotquery。M/2245 将来源传给
@@ -146,7 +163,7 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
   完整用户主页仍待补齐；播放场景search的完整
   来源参数；当前复用歌曲播放入口不代表官方搜索试听分支全同态。
 - 歌手/用户/MV连续加载、分类与详情返回的位置恢复及默认旧版单行预览已专项实现。
-  专辑连续加载已接入；其余分类加载方式、新版轮播、v3 推广动作和官方全部滚动分支仍待对照。
+  专辑连续加载和六类综合资源轮播已接入；其余分类加载方式、v3 推广动作和全部滚动分支仍待对照。
 - 分类纠正提示分段、命中词着色与官方全部排布状态仍待对照；歌词正文已补三行/展开/复制专项，
   连续加载及歌词表完整菜单仍待对照；单曲/歌词表标题命中已实现。
 - 热门解释/活动/运营和AB资源卡片，算法页签、追踪上下文来源、所有可用性标记。

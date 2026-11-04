@@ -73,6 +73,7 @@ export interface SearchResultView {
   query: SearchResultQuery;
   tabs?: SearchCategory[];
   hotExplanation?: { title?: string; text?: string; pictureUrl?: string };
+  previewLayout?: 'carousel' | 'compact_carousel';
   sections: SearchSection[];
   total: number | null;
   more: boolean;

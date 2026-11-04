@@ -44,11 +44,13 @@ fn query() -> SearchResultQuery {
         channel: None,
     }
 }
-fn assign(group: &str) -> Expected {
+fn assign(group: &str, expanded: &str, dense: &str) -> Expected {
     (
         EXP,
-        json!({"expNames":"PH-PC-searchHot"}),
-        json!({"code":200,"data":[{"expName":"PH-PC-searchHot","expGroupName":group}]}),
+        json!({"expNames":"PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency"}),
+        json!({"code":200,"data":[{"expName":"PH-PC-searchHot","expGroupName":group},
+          {"expName":"PH-PC-searchMore2","expGroupName":expanded},
+          {"expName":"PH-PC-searchPageEfficiency","expGroupName":dense}]}),
     )
 }
 fn tabs(response: Value) -> Expected {
@@ -74,7 +76,7 @@ async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_rec
     let root = tempfile::tempdir().unwrap();
     let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
     let api = Arc::new(Script(Mutex::new(VecDeque::from([
-        assign("t1"),
+        assign("t1", "c", "t1"),
         tabs(
             json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"视频"},{"title":"单曲"},{"title":"unknown"}]}}),
         ),
@@ -82,7 +84,7 @@ async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_rec
         tabs(json!({"code":500})),
         v3(json!({"code":405,"msg":"综合说明"})),
         // A second owner must not reuse the first owner's t1 assignment or tabs.
-        assign("t2"),
+        assign("t2", "t1", "t1"),
         legacy(),
     ]))));
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -98,6 +100,7 @@ async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_rec
     };
     assert!(client.search_results(&epoch, invalid).await.is_err());
     let first = client.search_results(&epoch, query()).await.unwrap().value;
+    assert!(first.preview_layout.is_none());
     assert_eq!(
         first.tabs,
         Some(vec![
@@ -119,5 +122,9 @@ async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_rec
         .unwrap()
         .value;
     assert!(second.tabs.is_none());
+    assert_eq!(
+        serde_json::to_value(second).unwrap()["previewLayout"],
+        "compact_carousel"
+    );
     assert!(api.0.lock().unwrap().is_empty());
 }

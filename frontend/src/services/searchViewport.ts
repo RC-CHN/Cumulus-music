@@ -6,9 +6,11 @@ export interface SearchPosition {
   top: number;
   tracks: number;
   focus?: string;
+  focusSection?: string;
   focusAction?: string;
   expandedLyrics?: string[];
   lyricAnchor?: LyricAnchor;
+  previewPositions?: Record<string, number>;
 }
 interface Snapshot {
   view: SearchResultView;
