@@ -9,6 +9,28 @@ use std::{
 };
 
 const NAME: &str = "io.cumulus.music.desktop";
+
+struct DirectoryLock(fs::File);
+
+impl DirectoryLock {
+    fn acquire(directory: &Path) -> io::Result<Self> {
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
+            .open(directory)?;
+        file.try_lock().map_err(io::Error::from)?;
+        Ok(Self(file))
+    }
+}
+
+impl Drop for DirectoryLock {
+    fn drop(&mut self) {
+        // A parallel fork can briefly hold the same open description until exec.
+        // Release the lock explicitly instead of waiting for its last fd to close.
+        let _ = self.0.unlock();
+    }
+}
+
 pub(super) struct Registration {
     directory: PathBuf,
     other_directories: Vec<PathBuf>,
@@ -117,11 +139,7 @@ impl Registration {
             }
             fs::create_dir_all(&self.directory)?;
         }
-        let lock = OpenOptions::new()
-            .read(true)
-            .custom_flags(libc::O_NOFOLLOW | libc::O_DIRECTORY)
-            .open(&self.directory)?;
-        lock.try_lock().map_err(io::Error::from)?;
+        let lock = DirectoryLock::acquire(&self.directory)?;
         if self.status()? != expected {
             return Err(invalid("autostart entry changed"));
         }
@@ -134,7 +152,7 @@ impl Registration {
         } else {
             self.remove_owned(&path)?;
         }
-        lock.sync_all()
+        lock.0.sync_all()
     }
 
     fn remove_owned(&self, path: &Path) -> io::Result<()> {
@@ -181,6 +199,23 @@ fn restore_without_replace(source: &Path, target: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn directory_lock_releases_even_with_a_shared_descriptor() {
+        let directory = tempfile::tempdir().unwrap();
+        let lock = DirectoryLock::acquire(directory.path()).unwrap();
+        let shared = lock.0.try_clone().unwrap();
+        assert_eq!(
+            DirectoryLock::acquire(directory.path())
+                .err()
+                .unwrap()
+                .kind(),
+            io::ErrorKind::WouldBlock
+        );
+        drop(lock);
+        let _next = DirectoryLock::acquire(directory.path()).unwrap();
+        drop(shared);
+    }
 
     #[test]
     fn only_exact_user_entry_is_written_or_removed_and_system_entry_is_preserved() {
