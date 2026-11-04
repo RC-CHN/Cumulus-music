@@ -55,7 +55,7 @@
 | `page:audio` (20) | `models/page_audio.txt` | [已接入口](desktop-podcast-contracts.txt) | 播客和有声书列表；付费权益及全部推荐布局待核。 |
 | `page:audioDetail` (24) | `models/page_audioDetail.txt` | [已接入口](desktop-podcast-contracts.txt) | 节目详情/权限/播放；下载及续播有独立证据。 |
 | `page:banners` (9) | `models/page_banners.txt` | [部分](discovery-home-contracts.txt) | 首页已证实的轮播；广告、跟踪和第三方回填未复刻。 |
-| `page:bind` (2) | `models/page_bind.txt` | [部分](account-settings-contracts.txt) | 绑定摘要与 App 交接；不等于客户端完成解绑、改密。 |
+| `page:bind` (2) | `models/page_bind.txt` | [已接入口](account-binding-settings.txt) | 设置快捷标识、独立绑定页、按注册方式分组和官方 App 扫码交接；不接上游动态第三方地址，不在客户端内执行解绑、改密。 |
 | `page:cloudDisk` (1) | `models/page_cloudDisk.txt` | [已接入口](desktop-cloud-contracts.txt) | 实际云盘页面；手动重新匹配没有证据。 |
 | `page:comments` (3) | `models/page_comments.txt` | [已接入口](core-comments-contracts.txt) | 分页、楼层、赞和回读；富文本及平台差异待核。 |
 | `page:community` (0) | `models/page_community.txt` | [已接入口](community-read-contracts.txt) | 关注动态、列表和详情；不等于全部社区平台入口。 |
@@ -97,7 +97,7 @@
 | `page:searchResults` (20) | `models/page_searchResults.txt` | [已接入口](search-results-ui-contracts.txt) | 分类、综合、分页、热点播放及受版权约束的替代 MV；其他特殊资源和实验另列。 |
 | `page:setting` (0) | `models/page_setting.txt` | [已接入口](settings-mapping.json) | 独立子项证据；页面存在不等于所有设置已实现。 |
 | `page:settingAbout` (1) | `models/page_settingAbout.txt` | [部分](settings-support-contracts.txt) | 本机诊断与版本；无官方客服和自动日志上传。 |
-| `page:settingAccount` (1) | `models/page_settingAccount.txt` | [已接入口](account-feature-audit.txt) | 账号资料、登录设备和绑定摘要；各真实写操作分开。 |
+| `page:settingAccount` (1) | `models/page_settingAccount.txt` | [已接入口](account-feature-audit.txt) | 账号资料、登录设备、绑定入口和海外注册手机号的扫码改密交接；各真实写操作分开。 |
 | `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](desktop-autostart-contracts.txt) | 启动窗口、本机自启动及 Debian 候选已接；未修改系统默认。 |
 | `page:settingPrivacy` (3) | `models/page_settingPrivacy.txt` | [已接入口](account-settings-contracts.txt) | 六项远端设置、联动与回读；系统唤起交接另验。 |
 | `page:singleIndexList` (2) | `models/page_singleIndexList.txt` | [已接入口](rankings-ui-contracts.txt) | 歌曲指数榜独立于普通歌单。 |
