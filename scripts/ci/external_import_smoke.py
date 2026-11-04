@@ -14,6 +14,7 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--software-rendering', action='store_true', help='exercise the native software renderer policy')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -21,6 +22,8 @@ def main():
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_EXTERNAL_IMPORT_PROOF='1', CUMULUS_UX_SCRIPT=str(source))
+    if args.software_rendering:
+        env['CUMULUS_RENDERER'] = 'software'
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:

@@ -21,7 +21,28 @@
   const send = (stage, extra = {}) => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
     event: 'ux-proof', payload: { stage, ...extra },
   });
-  const snap = (name) => send(`ux_${name}`, { visible: document.visibilityState === 'visible' });
+  async function snap(name) {
+    const state = { visible: document.visibilityState === 'visible' };
+    if (window.__CUMULUS_PROOF_INVOKE__) {
+      await wait(() => dialog() && getComputedStyle(dialog()).opacity === '1', 'import dialog is opaque');
+      await Promise.race([
+        new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+        new Promise((resolve) => setTimeout(resolve, 220)),
+      ]);
+      const panel = dialog();
+      const style = getComputedStyle(panel);
+      const tab = one('[role="tab"][aria-selected="true"]', panel);
+      const rect = tab?.getBoundingClientRect();
+      const paintSamples = rect?.width && rect.height
+        ? [{ x: rect.x + rect.width / 2, y: rect.bottom - 1,
+          color: getComputedStyle(tab).borderBottomColor }]
+        : [];
+      Object.assign(state, { screenX, screenY, ratio: devicePixelRatio, paintSamples,
+        dialogs: [{ open: true, opacity: style.opacity, background: style.backgroundColor,
+          rect: panel.getBoundingClientRect().toJSON() }] });
+    }
+    return send(`ux_${name}`, state);
+  }
   const observe = (state) => one(`[data-import-state="${state}"]`);
   const favorite = () => one('.external-import-destination input[type=checkbox]', dialog());
   const textarea = () => one('[data-import-text]', dialog());
