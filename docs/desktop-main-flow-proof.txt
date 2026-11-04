@@ -327,3 +327,18 @@ Linux 合成桌面硬断网：已发布下载 → 离线播放
   后由外部控制器先关闭新转发、再关闭既有隧道，确认不能重连后才发 GUI 回执。
   真服务运行还需隔离宿主代理和 Unix socket；本节合成驱动不证明该接线已存在。
   不借这一权限开启歌单写入。真实私密歌单验证需独立意图、回读及清理许可。
+
+当前正式 Linux 可执行文件空白启动（2026-11-04）
+
+  从产品源码 5f75dd0 构建正式 `cumulus` 入口。锁定依赖，先将前端生产构建写到
+  `frontend/dist`，再运行 `cargo build --locked -p cumulus-desktop --bin cumulus --features custom-protocol`。
+  运行 `scripts/ci/installed_linux_smoke.py --binary <cumulus> --commit <构建SHA>
+  --root <新的报告目录> --verify-local-playback --verify-monitor-pcm`；隔离设置见脚本开头。
+  本机使用 bwrap 私有网络、PID 和 IPC、空 HOME/XDG、私有 Xvfb 和 PipeWire null sink，
+  隐藏宿主 `/run` 与声卡；Xvfb 使用 Mesa 软件渲染。当前主机的默认 D-Bus 在只读隔离内
+  查询 AppArmor 失败，因此给私有测试会话使用独立配置；未修改宿主 D-Bus 或图形设置。
+  未读取真实账号数据，无外部网络路由。正式窗口绘制 1120×760；通过界面导入合成 FLAC，
+  本地播放的原生位置推进，私有输出测到 60/440/10000 Hz 信号，暂停后采样均为零。
+  证据保留在 `.build/ui-proof/production-current-linux-private-bus-20261104/run/`，包括
+  可执行文件 SHA-256、监测数据及启动、导入、播放、暂停截图。本机验证用调试构建的正式
+  入口；不等同发行包、真实账号或实体声卡验证。Windows 仍需其独立原生 CI/实机证据。

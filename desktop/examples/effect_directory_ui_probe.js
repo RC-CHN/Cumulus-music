@@ -88,14 +88,18 @@
       assert((await invoke('effect_device_remembered', { epoch: account.epoch })).revision === stored.revision,
         'restoring the same selection does not rewrite the remembered choice');
       await capture('02_configured_idle');
-      await invoke('play_selection', { epoch: account.epoch, selection: {
-        kind: 'songs', ids: ['1'], index: 0, quality: 'standard',
-      } });
+      click(button(dialog(), '关闭耳机音效管理'));
+      await wait(() => !dialog(), 'close the local manager');
+      click(button(eq, '关闭均衡器'));
+      await wait(() => !one('.equalizer-dialog[open]'), 'return to the ordinary music list');
+      click(await wait(() => one('.track-row .track-play:not(:disabled)'), 'daily music play button'));
       await wait(async () => {
         const current = await player();
         return current.state === 'playing' && current.position > 0.35 &&
           current.deviceParametric?.activationId === configured.deviceParametric.activationId;
       }, 'only explicit Play starts audio with the same tuning');
+      click(launcher());
+      await wait(() => text().includes('合成耳机乙'), 'footer reports the playing configured model');
       await capture('03_explicit_play');
       await emit('complete', { ok: true, rememberedAcrossProcesses: true, stageCount: 3 });
       return;
