@@ -113,26 +113,29 @@ def prepare(msys):
     print(f'Prepared {key}, baseline FFmpeg {version}', flush=True)
 
 
-def download(url, path, expected):
+def download(url, path, expected, *, mirror=None):
     if path.exists():
         raise FileExistsError(path)
-    for attempt in range(3):
+    sources = (url, mirror, url, mirror) if mirror else (url,) * 3
+    for attempt, source_url in enumerate(sources):
         # Partial transfers never become recipe inputs. Each attempt owns only
         # its temporary file and retains the same pinned SHA-256 requirement.
         with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + '.', suffix='.part', delete=False) as stream:
             temporary = Path(stream.name)
         try:
-            with urllib.request.urlopen(url, timeout=60) as response, temporary.open('wb') as destination:
+            with urllib.request.urlopen(source_url, timeout=60) as response, temporary.open('wb') as destination:
                 shutil.copyfileobj(response, destination)
-            assert sha256(temporary) == expected, f'source checksum mismatch: {path.name}'
+            if sha256(temporary) != expected:
+                raise ValueError(f'source checksum mismatch: {path.name}')
             temporary.rename(path)
             return
         except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead) as error:
             if isinstance(error, urllib.error.HTTPError) and error.code not in {429, 500, 502, 503, 504}:
                 raise
-            if attempt == 2:
+            if attempt + 1 == len(sources):
                 raise
-            print(f'Retrying source transfer {path.name} ({attempt + 2}/3)', flush=True)
+            next_source = 'mirror' if mirror and sources[attempt + 1] == mirror else 'primary'
+            print(f'Retrying source transfer {path.name} ({attempt + 2}/{len(sources)}, {next_source})', flush=True)
             time.sleep(2 ** attempt)
         finally:
             temporary.unlink(missing_ok=True)
@@ -176,7 +179,7 @@ def install(msys):
         shutil.copy2(HERE / 'ffmpeg-ladspa-windows.patch', cache / 'ffmpeg-ladspa-windows.patch')
         (cache / 'PKGBUILD').write_text(patch_recipe((cache / 'PKGBUILD').read_text(encoding='utf-8')), encoding='utf-8', newline='\n')
         source = lock['source']
-        download(source['url'], cache / source['name'], source['sha256'])
+        download(source['url'], cache / source['name'], source['sha256'], mirror=source.get('mirror'))
         env = {**os.environ, 'MSYSTEM': 'UCRT64', 'CHERE_INVOKING': '1', 'MINGW_ARCH': 'ucrt64'}
         script = output([msys / 'usr/bin/cygpath.exe', '-u', HERE / 'windows_media_build.sh']).strip()
         print('Building complete UCRT64 FFmpeg with LADSPA; progress is retained in .build/windows-media/build.log', flush=True)

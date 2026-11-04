@@ -30,7 +30,11 @@ https://www.msys2.org/dev/new-package/
 
 scripts/ci/windows_media.lock.json pins the recipe commit, every recipe/helper
 checksum, the FFmpeg 9.0.2 archive checksum and the expected stock/custom
-package versions. Source authentication uses those reviewed SHA256 values;
+package versions. The FFmpeg source fetch tries ffmpeg.org first; a transient
+transport failure can switch to the OmniOS project mirror for the same archive.
+Both hosts must supply bytes matching the one locked SHA256. A checksum failure
+ends the job, and a partial download is never made visible to the build.
+Source authentication uses those reviewed SHA256 values;
 the modified recipe removes the separate .asc download instead of fetching
 keys from an external keyserver or bypassing a failed signature check.
 

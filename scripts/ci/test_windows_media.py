@@ -4,10 +4,12 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
+import urllib.error
 import contextlib
 import io
 
-from windows_media import HERE, configuration, patch_recipe, sha256, verify_cache, native_pcm_report
+from windows_media import HERE, configuration, patch_recipe, sha256, verify_cache, native_pcm_report, download
 
 RECIPE = '''pkgrel=2
 depends=("${MINGW_PACKAGE_PREFIX}-aom")
@@ -36,6 +38,32 @@ package() {
   for _variant in -static -shared; do :; done
 }
 '''
+
+
+class WindowsSourceFallback(unittest.TestCase):
+    def test_network_timeout_uses_mirror_with_exact_same_digest(self):
+        primary = 'https://primary.invalid/source.tar.xz'
+        mirror = 'https://mirror.invalid/source.tar.xz'
+        source = b'synthetic locked archive'
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()), \
+                patch('windows_media.time.sleep'), patch('windows_media.urllib.request.urlopen') as open_url:
+            target = Path(directory) / 'source.tar.xz'
+            open_url.side_effect = [urllib.error.URLError(TimeoutError('synthetic TLS timeout')), io.BytesIO(source)]
+            download(primary, target, hashlib.sha256(source).hexdigest(), mirror=mirror)
+            self.assertEqual([call.args[0] for call in open_url.call_args_list], [primary, mirror])
+            self.assertEqual(target.read_bytes(), source)
+            self.assertEqual(list(Path(directory).iterdir()), [target])
+
+    def test_mirror_bytes_with_wrong_digest_are_not_published_or_retried(self):
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()), \
+                patch('windows_media.time.sleep'), patch('windows_media.urllib.request.urlopen') as open_url:
+            target = Path(directory) / 'source.tar.xz'
+            open_url.side_effect = [TimeoutError('synthetic TLS timeout'), io.BytesIO(b'wrong source')]
+            with self.assertRaisesRegex(ValueError, 'source checksum mismatch'):
+                download('https://primary.invalid/source.tar.xz', target,
+                         hashlib.sha256(b'locked source').hexdigest(), mirror='https://mirror.invalid/source.tar.xz')
+            self.assertEqual(open_url.call_count, 2)
+            self.assertEqual(list(Path(directory).iterdir()), [])
 
 
 class WindowsRuntimeIntegrity(unittest.TestCase):

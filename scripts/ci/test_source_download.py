@@ -35,7 +35,7 @@ class SourceDownload(unittest.TestCase):
         self.assertEqual(list(self.target.parent.iterdir()), [])
 
     def test_checksum_mismatch_and_http_not_found_are_not_retried(self):
-        for response, error in [(io.BytesIO(b'corrupt source'), AssertionError), (urllib.error.HTTPError('https://example.invalid/source', 404, 'missing', {}, None), urllib.error.HTTPError)]:
+        for response, error in [(io.BytesIO(b'corrupt source'), ValueError), (urllib.error.HTTPError('https://example.invalid/source', 404, 'missing', {}, None), urllib.error.HTTPError)]:
             with patch('windows_media.urllib.request.urlopen', side_effect=response if isinstance(response, Exception) else None, return_value=response) as network:
                 with self.assertRaises(error):
                     download('https://example.invalid/source', self.target, self.expected)
