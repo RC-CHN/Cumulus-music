@@ -102,6 +102,10 @@ impl MusicClient {
                 };
                 (input, keep_queue.then_some(RetainedRow::Catalog))
             }
+            input @ PlaySelection::PodcastRecent { double_click, .. } => {
+                let replace = double_click && self.replace_queue_on_double_click(&token)?;
+                (input, (!replace).then_some(RetainedRow::SearchVoice))
+            }
             input @ (PlaySelection::SearchResultTrack { .. }
             | PlaySelection::MessageTrack { .. }) => (input, Some(RetainedRow::SearchSong)),
             input @ (PlaySelection::SearchResultVoice { .. }
@@ -293,6 +297,43 @@ impl MusicClient {
                         prepared.as_ref(),
                     )
                     .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+            PlaySelection::PodcastRecent { revision, id, .. } => {
+                let mut selection = self
+                    .podcast_recent_resources(&token, &revision, &id, preserve.is_none())
+                    .await?;
+                let source = json!({
+                    "kind":"podcast_recent",
+                    "scene":"myRecentUpdateVoice",
+                    "href":"/myAudio/recentUpdate"
+                });
+                let state = if let Some(snapshot) = preserve {
+                    self.play_retained_queue_row_with_source(
+                        &token,
+                        snapshot,
+                        (selection.resources.remove(selection.index), source),
+                        lease.ok_or(Error::StaleResponse)?,
+                        RetainedRow::SearchVoice,
+                        Some(selection.source),
+                    )
+                    .await?
+                } else {
+                    self.submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources: selection.resources,
+                            index: selection.index,
+                            source,
+                        },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
+                        Some(selection.source),
+                    )
+                    .await?
+                };
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }
@@ -537,6 +578,7 @@ impl MusicClient {
                     | PlaySelection::History { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::Podcast { .. }
+                    | PlaySelection::PodcastRecent { .. }
                     | PlaySelection::Voice { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {

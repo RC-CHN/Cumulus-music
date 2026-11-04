@@ -1,0 +1,68 @@
+我的播客：最近更新单集（官方 PC 3.1.42.205594）
+=======================================================
+
+入口和状态
+- hybrid_55/M2090:16–64 定义 /myAudio/recentUpdate，但两套菜单常量都未放入该项；
+  同模块的 hybrid_120、hybrid_165 副本相同。M3108:897–944,1000–1075
+  只在首次读取 pc_mine_pod=t1 时注册该子路由；对照组切回 /myAudio。
+  即使该项注册，M3108 不显示最近更新数。M3108:793–842 确认已存在的子页面，
+  M3150 的原文包含「最近更新单集」。Cumulus 已采用拆分收藏页，明确把这个已恢复
+  的子页面作为「最近更新单集」标签展示，不模拟实验分配，不绘制数字徽标。
+- M3150:11–45,114–174 向 M15.vg 发送首次 {}，后续只发送 {updateTime}。
+  uid 传入 M21 数据格式化上下文，不进入请求体；列表的 size=100 是表格设置，
+  不等于 HTTP limit。固定 PC 路由 POST /api/social/my/recent/update/voice/list/v1，
+  读取 data.data、data.hasMore、data.updateTime 和首屏 data.newVoiceCount。
+  续页排除旧 ID，保留既有顺序和首屏计数；首屏失败显示重试，续页失败不清除记录。
+  M3150:175–207 在 POP 恢复页面快照或重新获取。M155:302–309 配置原客户端的
+  一小时状态缓存；Cumulus 对同一进程的回退保留列表、滚动和节目来源按钮焦点，
+  新进程重新读首屏，不跨进程保存最近列表。
+- Rust 校验当前已登录账号代次，原生持有时间游标、顺序和随机快照版本。
+  Vue 无法传任意时间；保留服务端游标原有的 JSON 数值或字符串类型。过期、重复或
+  跨账号续页被拒绝，网络失败保持旧列表。
+  去除同页重复项（官方只排除已加载页的重复），拒绝无进展游标；每回包最多 200 项，
+  会话最多累积 500 项和 20 页，滚动接近底部或「加载更多」才继续。可手动刷新首屏。
+  这是客户端的有界保护，不能推断服务端最大数量。
+
+声音和播放
+- M21.W:931–979 投影节目 ID、mainSong/trackId、原始 radio、播放量、
+  djPlayRecordVo、时长及付费标志；播放量优先 listenerCount，其次 playCount、
+  adjustedPlayCount；进度记录的 listenLocation 为毫秒（M308）。
+  M3108:643–682,793–842 使用序号、标题、播放量、时长列、来源播客与播放进度。
+- M195:399–411 提供当前整个已加载表格作为动作上下文；M405:249–255 双击进入
+  action/play；M3085:180–209,243–296,309–312,399–411,532–585 按设置决定是否
+  替换队列，直接点击节目只播放该声音，已有当前声音则切换暂停/播放。Cumulus
+  根据原生版本和 voice ID 读取该表格中的记录，先解析选中节目，缺 mainSong 时
+  在组装队列阶段只对所选节目补 /api/dj/program/detail {id}；原生播放器随后按既有
+  流程再读当前节目的详情核验媒体 ID。双击默认以本次加载顺序替换，
+  保留队列设置沿用原生插入/跳转；不能把 voiceId 当作歌曲 ID。当前声音同一
+  play ID 下切换暂停，不重新申请媒体。排除已标不可播放项及没有媒体 ID 的其他行；
+  权益检查 /api/dj/play/url/check {voiceId} 通过后才用媒体 ID 申请
+  /api/song/enhance/player/url/v1。既有音频引擎和账号资源规则照常生效。
+- 当前只接入源播客跳转和播放；原生共享声音详情页处理评论、下载、点赞等既有动作。
+  最近更新不显示泛化的「播放全部」按钮。
+
+未并入该页面
+- M3008:396–484 与 M3108:944–964 的正计数清除不是普通读：官方在实际播放状态
+  进入对应声音来源或进入收藏页时分别执行每播客/全局清除。每播客写入使用
+  /api/djradio/newcount/clear/byradio {radioId}，会乐观清零同账号已缓存的收藏/有声书/
+  已购列表；首次进入收藏用 /api/djradio/newcount/clear {}。不会给最近页标签渲染该数字。
+  现有客户端未接入这个自动修改，不展示会
+  无法按官方方式清除的徽标；未发清除请求。
+- M3008:381–395、M15:3607–3617 的 /api/djradio/my/radio/recommend {} → data[]
+  虽然在官方首次进入我的播客时被调用，但 M3108:128–164,1088–1105 只在旧版合并
+  收藏页、收藏数小于 50 时绘制「为你推荐」。它不属于最近更新，也不出现在 Cumulus
+  采用的新版拆分页；这里不顺带读个性化推荐。
+- 当前仅用冻结合成数据、真实 WebView 和 libmpv null 输出验证。没有对当前账号
+  访问新端点，不能据此声称真实上游数据、Windows GUI 或声卡听感已经验收。
+
+代码和验证
+- core/src/client/podcast/recent.rs，core/src/client/player/selection.rs，
+  desktop/src/podcast.rs，frontend/src/components/PodcastRecentList.vue。
+- cargo test -p cumulus-core --locked --test client_podcast recent_podcast
+- scripts/ci/podcast_recent_smoke.py 配合 desktop/examples/podcast_recent_ui_probe.rs，
+  固定 PC 请求形状和原生媒体 ID 验证。脚本可以附带 --screenshots。
+- Linux 在隔离网络命名空间内，以 en_US.UTF-8 启动真实 WebView 和 libmpv。
+  12 个界面场景与 12 张截图均通过：首屏错误、续页失败保留及重试、重叠 ID 去重、
+  进入来源播客后恢复键盘焦点和滚动、单集播放、同一队列项暂停、双击两种队列策略、
+  空态刷新，以及权限请求和原生播放器的下一集预取。没有真实请求或账号写入。
+  本地报告：.build/podcast-recent-evidence/final/report.json。

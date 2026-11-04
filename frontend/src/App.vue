@@ -157,6 +157,7 @@ import {
 } from './services/commentResource';
 import LocalPage from './components/LocalPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
+import { usePodcastRecent } from './composables/usePodcastRecent';
 import PodcastCataloguePage from './components/PodcastCataloguePage.vue';
 import PodcastDiscoveryPage from './components/PodcastDiscoveryPage.vue';
 import PodcastRankingsPage from './components/PodcastRankingsPage.vue';
@@ -784,6 +785,10 @@ watch(
     if (player.queueOpen.value) void player.loadQueue();
   },
 );
+const podcastRecent = usePodcastRecent(
+  () => music.account.value,
+  () => void music.bootstrap(false),
+);
 const podcasts = usePodcasts(undefined, () => {
   void music.bootstrap(false);
 });
@@ -821,6 +826,20 @@ watch(
 );
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
+}
+function playRecentPodcast(revision: string, id: string, doubleClick: boolean) {
+  if (page.value.kind !== 'podcasts' || !podcasts.recentSelected.value || player.busy.value) return;
+  const current = player.view.value;
+  if (current?.playId && current.track?.voiceId === id) {
+    void player.action({
+      kind: 'pause_for',
+      play_id: current.playId,
+      expected_queue_revision: current.queueRevision,
+      paused: player.playing.value,
+    });
+    return;
+  }
+  void player.select({ kind: 'podcast_recent', revision, id, double_click: doubleClick });
 }
 function likePlaying(track: TrackView) {
   if (track.voiceId)
@@ -1469,6 +1488,7 @@ function backFromPage() {
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
   else if (cloudBatchTarget.value) cloudBatchPage.value?.requestLeave();
   else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
+  else if (music.page.value.kind === 'podcasts' && podcasts.recentReturn.value) podcasts.back();
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
@@ -3068,7 +3088,12 @@ onUnmounted(() => {
         class="back-button icon-button"
         aria-label="返回上一页"
         :disabled="
-          !historyLength && !playlistEditor && !batchTarget && !downloadBatch && !cloudBatchTarget
+          !historyLength &&
+          !playlistEditor &&
+          !batchTarget &&
+          !downloadBatch &&
+          !cloudBatchTarget &&
+          !(page.kind === 'podcasts' && podcasts.recentReturn.value)
         "
         @click="backFromPage"
       >
@@ -3622,9 +3647,12 @@ onUnmounted(() => {
               <PodcastPage
                 v-else-if="page.kind === 'podcasts'"
                 :model="podcasts"
+                :recent="podcastRecent"
+                :playing="player.playing.value"
                 :playable="player.ready.value && !player.busy.value"
                 :current-id="currentVoiceId"
                 @play="playPodcast"
+                @recent-play="playRecentPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
               />

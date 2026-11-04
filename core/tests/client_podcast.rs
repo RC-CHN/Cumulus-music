@@ -43,6 +43,19 @@ impl Api for Backend {
             Ok(match path {
                 "/api/user/setting" => json!({"code":200,"setting":{"personalServiceSetting":
                     if self.personalization_disabled.load(Ordering::SeqCst) {2} else {0}}}),
+                "/api/social/my/recent/update/voice/list/v1" => {
+                    if p == json!({}) {
+                        let mut row = program(42);
+                        row["liked"] = json!(true);
+                        row["adjustedPlayCount"] = json!(42);
+                        json!({"code":200,"data":{"data":[row,program(43)],
+                            "hasMore":1,"updateTime":"1700000000123","newVoiceCount":7}})
+                    } else {
+                        assert_eq!(p, json!({"updateTime":"1700000000123"}));
+                        json!({"code":200,"data":{"data":[program(43),program(44)],
+                            "hasMore":false,"newVoiceCount":99}})
+                    }
+                }
                 "/api/voice/homepage/block/page" => {
                     assert!(!self.personalization_disabled.load(Ordering::SeqCst));
                     assert_eq!(p["cursor"], "");
@@ -565,4 +578,99 @@ async fn native_voice_like_uses_voice_identity_and_recovers_lost_reply_readonly(
     assert_eq!(writes.len(), 2);
     assert!(writes.iter().all(|(_, p)| p["threadId"] == "A_DJ_1_2"));
     assert!(!calls.iter().any(|(path, _)| path == "/api/song/like"));
+}
+
+#[tokio::test]
+async fn recent_podcast_restores_snapshot_fences_account_and_preserves_first_count() {
+    let (_dir, api, session, client) = fixture();
+    let first = client
+        .podcast_recent("1", PodcastRecentQuery::Open)
+        .await
+        .unwrap();
+    let first = serde_json::to_value(first.value).unwrap();
+    let revision = first["revision"].as_str().unwrap().to_owned();
+    assert_eq!(first["newVoiceCount"], 7);
+    assert_eq!(first["hasMore"], true);
+    assert_eq!(first["episodes"][0]["listenerCount"], 42);
+    assert_eq!(first["episodes"][0]["listenLocationMs"], 15000);
+    assert_eq!(first["episodes"][0]["liked"], true);
+    assert!(!first.to_string().contains("SECRET"));
+    assert!(!first.to_string().contains("1700000000123"));
+    assert_eq!(
+        serde_json::to_value(
+            client
+                .podcast_recent("1", PodcastRecentQuery::Open)
+                .await
+                .unwrap()
+                .value
+        )
+        .unwrap(),
+        first
+    );
+    let next = client
+        .podcast_recent(
+            "1",
+            PodcastRecentQuery::Next {
+                revision: revision.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    let next = serde_json::to_value(next.value).unwrap();
+    assert_eq!(next["newVoiceCount"], 7);
+    assert_eq!(next["hasMore"], false);
+    assert_eq!(
+        next["episodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|row| row["id"].clone())
+            .collect::<Vec<_>>(),
+        json!(["42", "43", "44"]).as_array().unwrap().to_owned()
+    );
+    assert!(matches!(
+        client
+            .podcast_recent(
+                "1",
+                PodcastRecentQuery::Next {
+                    revision: revision.clone()
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(
+        api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| path.contains("recent/update"))
+            .map(|(_, body)| body.clone())
+            .collect::<Vec<_>>(),
+        vec![json!({}), json!({"updateTime":"1700000000123"})]
+    );
+
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(
+        client.podcast_recent("1", PodcastRecentQuery::Open).await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(matches!(
+        client
+            .podcast_recent("2", PodcastRecentQuery::Next { revision })
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    let new = serde_json::to_value(
+        client
+            .podcast_recent("2", PodcastRecentQuery::Open)
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    assert_ne!(new["revision"], first["revision"]);
+    assert_eq!(new["episodes"].as_array().unwrap().len(), 2);
 }

@@ -37,6 +37,8 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     visible = false;
   let history: PodcastQuery[] = [];
   const canBack = ref(false);
+  const recentSelected = ref(false);
+  const recentReturn = ref(false);
   function valid(g: number, e: string) {
     return generation === g && epoch.value === e && !!e;
   }
@@ -62,6 +64,8 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     busy.value = false;
     history = [];
     canBack.value = false;
+    recentSelected.value = false;
+    recentReturn.value = false;
     query.value = {
       ...query.value,
       scope: { kind: 'podcasts' },
@@ -96,7 +100,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     }
   }
   async function load(refresh = false) {
-    if (!epoch.value || busy.value) return;
+    if (!epoch.value || busy.value || recentSelected.value) return;
     const g = generation,
       e = epoch.value,
       n = ++read;
@@ -125,8 +129,25 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       if (valid(g, e) && n === read) loading.value = false;
     }
   }
+  function showRecent() {
+    if (!epoch.value) return;
+    read++;
+    history = [];
+    canBack.value = false;
+    loading.value = false;
+    notice.value = '';
+    error.value = '';
+    recentReturn.value = false;
+    recentSelected.value = true;
+  }
   function navigate(scope: PodcastScope, libraryBack = true) {
-    if (libraryBack && scope.kind === 'radio' && query.value.scope.kind !== 'radio') {
+    if (recentSelected.value) {
+      recentReturn.value = libraryBack && scope.kind === 'radio';
+      recentSelected.value = false;
+    }
+    if (!libraryBack || scope.kind !== 'radio') recentReturn.value = false;
+    if (recentReturn.value) canBack.value = true;
+    else if (libraryBack && scope.kind === 'radio' && query.value.scope.kind !== 'radio') {
       history.push({ ...query.value });
       canBack.value = true;
     }
@@ -152,6 +173,10 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     navigate({ kind: 'radio', id, ascending: true });
   }
   function back() {
+    if (recentReturn.value) {
+      showRecent();
+      return;
+    }
     const previous = history.pop();
     if (!previous) return;
     read++;
@@ -232,6 +257,9 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     error,
     notice,
     canBack,
+    recentSelected,
+    recentReturn,
+    showRecent,
     connect,
     dispose,
     show,

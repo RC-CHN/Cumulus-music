@@ -3,6 +3,7 @@ mod dto;
 mod home;
 pub(super) mod profile;
 mod rankings;
+mod recent;
 pub(super) mod view;
 use super::MusicClient;
 use crate::{
@@ -22,6 +23,8 @@ pub use rankings::{
     PodcastRankGroup, PodcastRankMenu, PodcastRankQuery, PodcastRankResource, PodcastRankRow,
     PodcastRankTab, PodcastRanks, PodcastTopLayout,
 };
+pub(super) use recent::PodcastRecentHost;
+pub use recent::{PodcastRecentPage, PodcastRecentQuery};
 use serde_json::{Value, json};
 
 impl MusicClient {

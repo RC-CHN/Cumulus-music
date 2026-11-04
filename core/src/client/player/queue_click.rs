@@ -266,6 +266,7 @@ impl MusicClient {
             before.fence(),
             snapshot.attempt,
             lease,
+            None,
         )
         .await
         .map(Some)
@@ -275,9 +276,22 @@ impl MusicClient {
         &self,
         token: &SessionToken,
         snapshot: QueueClickSnapshot,
+        resource: (Value, Value),
+        lease: u64,
+        policy: RetainedRow,
+    ) -> Result<PlaybackSnapshot> {
+        self.play_retained_queue_row_with_source(token, snapshot, resource, lease, policy, None)
+            .await
+    }
+
+    pub(super) async fn play_retained_queue_row_with_source(
+        &self,
+        token: &SessionToken,
+        snapshot: QueueClickSnapshot,
         (resource, source): (Value, Value),
         lease: u64,
         policy: RetainedRow,
+        source_guard: Option<crate::playback::engine::Cancellation>,
     ) -> Result<PlaybackSnapshot> {
         let _room = self
             .together
@@ -360,7 +374,7 @@ impl MusicClient {
                 }),
             })
         };
-        self.submit_retained_row(token, command, expected, attempt, lease)
+        self.submit_retained_row(token, command, expected, attempt, lease, source_guard)
             .await
     }
 
@@ -371,6 +385,7 @@ impl MusicClient {
         expected: PlaybackFence,
         attempt: u64,
         lease: u64,
+        source_guard: Option<crate::playback::engine::Cancellation>,
     ) -> Result<PlaybackSnapshot> {
         let selection = self.player.selection.clone();
         let focus = self.focus.clone();
@@ -384,6 +399,9 @@ impl MusicClient {
                 Cancellation::new(move || {
                     selection.load(Ordering::Acquire) == attempt
                         && focus.check(lease, Owner::Audio).is_ok()
+                        && source_guard
+                            .as_ref()
+                            .is_none_or(|source| !source.is_cancelled())
                 }),
             )
             .await

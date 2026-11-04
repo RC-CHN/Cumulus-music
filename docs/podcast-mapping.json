@@ -79,6 +79,22 @@
     {
       "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/308.js",
       "sha256": "2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_165.chunk.1482700000000.js/3150.js",
+      "sha256": "b8772b0f795828c7b456d7050b048fcbe843608a05d41e93db21fe8c31201e53"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_55.chunk.1482700000000.js/3108.js",
+      "sha256": "c01bedf89d07d49ee4dbe6de0074ab4112f15c5d6be7b4645afcb903b6a5c21f"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_73.chunk.1482700000000.js/3085.js",
+      "sha256": "121b1cc930b106acf5bb01d86305725ddd6abe2484120fee339a682301c7f0be"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_120.chunk.1482700000000.js/3008.js",
+      "sha256": "88f90449c6ac0d12eb809410c783eb4bc8f25f807aa4afd99bc2e0e585d7e0ba"
     }
   ],
   "features": [
@@ -109,6 +125,22 @@
       ],
       "test": "core/tests/podcast.rs",
       "boundary": "First authoritative radioIdList; later 20-ID requests, empty subsequent ID lists, overlap handling. Real account has 3 podcasts and 0 books."
+    },
+    {
+      "id": "my_recent_podcast_updates",
+      "official": [
+        "M/3150 fetchRecentUpdateVoice",
+        "M/15 vg",
+        "M/3108 recent update table",
+        "M/3085 play"
+      ],
+      "rust": "core/src/client/podcast/recent.rs",
+      "evidence": [
+        "S",
+        "R"
+      ],
+      "test": "core/tests/client_podcast.rs; scripts/ci/podcast_recent_smoke.py",
+      "boundary": "Authenticated timestamp waterfall and voice playback. Explicit Cumulus tab exposes a recovered experiment route without impersonating its distribution. See docs/podcast-recent-contracts.txt."
     },
     {
       "id": "created_subscribed_purchased",

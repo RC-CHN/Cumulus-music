@@ -54,8 +54,9 @@ pub use super::podcast::{
     EpisodeView, PodcastCard, PodcastCatalogue, PodcastCatalogueCard, PodcastCatalogueQuery,
     PodcastCategory, PodcastCommand, PodcastHomeBlock, PodcastHomePage, PodcastMutationView,
     PodcastPage, PodcastQuery, PodcastRankGroup, PodcastRankMenu, PodcastRankQuery,
-    PodcastRankResource, PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastSearchMembership,
-    PodcastState, PodcastSubcategory, PodcastTopLayout,
+    PodcastRankResource, PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastRecentPage,
+    PodcastRecentQuery, PodcastSearchMembership, PodcastState, PodcastSubcategory,
+    PodcastTopLayout,
 };
 pub use super::profile_follow::{
     ProfileFollowCommand, ProfileFollowRelation, ProfileFollowStatus, ProfileFollowView,

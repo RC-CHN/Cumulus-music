@@ -226,6 +226,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 together::together_statistics,
                 together::together_command,
                 podcast::podcast_page,
+                podcast::podcast_recent,
                 podcast::profile_podcasts,
                 podcast::open_profile_podcast_management,
                 podcast::podcast_catalogue,

@@ -91,6 +91,22 @@ export interface PodcastClient {
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }
+export interface PodcastRecentEpisode extends EpisodeView {
+  listenerCount: number | null;
+  listenLocationMs: number | null;
+  listened: boolean;
+}
+export interface PodcastRecentPage {
+  revision: string;
+  episodes: PodcastRecentEpisode[];
+  hasMore: boolean;
+  capped: boolean;
+  newVoiceCount: number;
+}
+export type PodcastRecentQuery = { kind: 'open' | 'refresh' } | { kind: 'next'; revision: string };
+export interface PodcastRecentClient {
+  podcastRecent(epoch: string, query: PodcastRecentQuery): Promise<AccountData<PodcastRecentPage>>;
+}
 export interface PodcastSearchMembership {
   subscribedIds: string[] | null;
   pendingIds: string[];

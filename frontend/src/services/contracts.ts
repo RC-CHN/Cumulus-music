@@ -29,6 +29,7 @@ import type {
   PodcastClient,
   PodcastHomeClient,
   PodcastRankingClient,
+  PodcastRecentClient,
   PodcastSearchClient,
 } from './podcast';
 import type { ProfileFollowClient, ProfileFollowView } from './profileFollow';
@@ -127,6 +128,7 @@ export interface CoreClient
     PodcastCatalogueClient,
     PodcastHomeClient,
     PodcastRankingClient,
+    PodcastRecentClient,
     PodcastSearchClient,
     ProfilePodcastClient,
     ProfileFollowClient,

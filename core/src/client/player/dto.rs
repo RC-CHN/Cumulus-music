@@ -197,6 +197,11 @@ pub enum PlaySelection {
     Voice {
         id: String,
     },
+    PodcastRecent {
+        revision: String,
+        id: String,
+        double_click: bool,
+    },
     Downloads {
         query: crate::client::dto::DownloadQuery,
         start_id: Option<String>,
