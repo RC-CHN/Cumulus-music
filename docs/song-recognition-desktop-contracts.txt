@@ -94,11 +94,12 @@ song-recognition-host-contracts.txt、song-recognition-request-proof.txt
   文件匹配、通用 PC 域代替地址，也不从回包接受新目的地。
 - 3146E6–3147E0 显式装外层 User-Agent: Windows_Curl;、os: pc、
   Referer: music.163.com（没有 scheme）和 Cookie。314665–314692
-  先把配置 e_url 传 3375D0→3371F0；3372AF 后比较 URL 解析所得
-  host 和管理对象配置（337306），可用本地 Cookie 回读 3369D0；
-  否则 3377D0 路径尝试初始化，失败返回空串。这里不是新的登录会话、
-  账号硬件凭据或 Cookie 跨域许可。应用只能给可信最终 HTTPS origin/path
-  绑定本次账号代际内已有授权 Cookie；游客资格、风控和实际服务未验。
+  查询配置的 base e_url；3371F0 用 host 快照或全局 CEF 的
+  VisitUrlCookies（不包含 HttpOnly）。官方入口没有登录或会员门槛，
+  但匿名 MUSIC_A、登录 MUSIC_U 和无认证 Cookie 的服务接受均未验证。
+  当前 Interface/PC 凭据不授权 music.163.com 的识曲目标；
+  详见 song-recognition-authority.txt（启动、账号切换、Cookie 作用域和
+  拒绝回归）。没有加入生产识曲发送。
 - 加密 JSON 的 deviceId 来自 SystemHelper 32B770 的独立缓存 /
   TokenUser SID-or-literal 的 SHA-1 大写值加独立适配器后缀；clientSign
   来自 32D5C0→32DA30→CEE370 的 mask=15 入口，识曲特定分隔符是 @@@，

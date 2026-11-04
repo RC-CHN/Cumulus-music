@@ -159,6 +159,52 @@ fn host_only_parent_cookie_is_not_sent_to_pc_and_external_targets_are_rejected()
 }
 
 #[test]
+fn recognition_post_has_no_authority_from_either_account_origin() {
+    use cumulus_core::song_recognition::request::{CANONICAL_PATH, DEFAULT_POST_URL};
+
+    let target = Url::parse(DEFAULT_POST_URL).unwrap();
+    for origin in [ApiOrigin::Pc, ApiOrigin::Interface] {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(tmp.path()).unwrap());
+        let credentials = Credentials::open(store, origin).unwrap();
+        let login = origin
+            .request_url(WireRoute::Eapi, "/api/login/qrcode/client/login")
+            .unwrap();
+        let guest = credentials.request_credentials(&login).unwrap();
+        assert!(guest.cookies.is_empty());
+        assert!(matches!(
+            credentials.request_credentials(&target),
+            Err(Error::InvalidInput("credential origin mismatch"))
+        ));
+
+        let broad_cookie =
+            "MUSIC_U=synthetic-recognition-scope; Domain=music.163.com; Path=/; Secure; HttpOnly";
+        // A domain match by itself would allow both hosts. The native
+        // credential profile imposes the stricter origin authorization first.
+        assert!(
+            cookie_store::Cookie::parse(broad_cookie, &login)
+                .unwrap()
+                .matches(&target)
+        );
+        credentials
+            .record_response(&login, &[broad_cookie.into()], None, &guest.revision)
+            .unwrap();
+        let signed_in = credentials.request_credentials(&login).unwrap();
+        assert!(signed_in.cookies.iter().any(|(name, _)| name == "MUSIC_U"));
+        assert!(matches!(
+            credentials.request_credentials(&target),
+            Err(Error::InvalidInput("credential origin mismatch"))
+        ));
+        assert!(matches!(
+            credentials.record_response(&target, &[], None, &signed_in.revision),
+            Err(Error::InvalidInput("credential origin mismatch"))
+        ));
+        let ordinary_route = origin.request_url(WireRoute::Eapi, CANONICAL_PATH).unwrap();
+        assert_ne!(ordinary_route, target);
+    }
+}
+
+#[test]
 fn logout_rejects_late_cookie_and_token_resurrection_in_same_or_another_instance() {
     let tmp = tempfile::tempdir().unwrap();
     let store = Arc::new(StateStore::open(tmp.path()).unwrap());

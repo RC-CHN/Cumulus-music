@@ -1,0 +1,101 @@
+听歌识曲：官方匿名/登录行为、Cookie 来源与当前授权边界
+
+证据固定为 Windows PC 3.1.42.205594 x64 的解包 JS 与 cloudmusic.dll，
+SHA-256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+以下数字地址为 RVA；M 指 recovered-js/modules 下解包模块行号。
+不使用真实设备、用户凭据或网络，不执行官方进程。本地已见记录只有
+静态恢复和合成验证，未发现本版本对该 POST 的游客/登录服务回执对照。
+
+1. 原版入口：三种状态走同一发起路径
+
+- M473:5656–5694、5966–5984 的 Windows 按钮直接导航，
+  ListeningView.jsx:162–169 提交暂停再 startRecognize；M3157:199–220
+  和 app 桥只传本轮 GUID。原生 ED1360→2FA690 入队及 313F40 /
+  314510 请求前置中未见 isAnonymous、UID、已登录、会员权益判断。
+  Windows 没有因未登录或会员状态改用另一识曲路由。旧客户端此处
+  可以发起流程，不能由此推论服务器允许命中。
+- 官方“匿名用户”和从未取到会话不是一回事。M198:645–689 创建匿名
+  用户并记录 UID，持久保存时排除 MUSIC_U；M15:1312 的匿名注册和
+  M115:106–110、218–231 的匿名状态恢复属于主宿主，不是识曲临时
+  请求。M124:173–221 启动时从配置网页和 API 两处 CEF URL 查 Cookie，
+  找到 MUSIC_U 则优先使用并清理 MUSIC_A，否则用已有 MUSIC_A；
+  原对象保留自身属性，仅为这两个原版配置 URL 重新调用 Cookie.set。
+  M318:13–16 默认网页域 music.163.com；API 域初始 interface，
+  M18:89 可改为 interfacepc。此行为不能授权第三方复制 Cookie。
+- 因此原客户端发起时可能是无认证 Cookie、匿名 MUSIC_A，或登录
+  MUSIC_U；具体值是否在识曲 Cookie 快照里还取决于 CEF 匹配、HttpOnly、
+  登录刷新时序和本地缓存。没有找到识曲自身生成 MUSIC_A、要求
+  MUSIC_U/会员、发送 login refresh token 或据 403 降级匿名重发的逻辑。
+  这三种状态的实时识曲服务接受范围均未验证。
+
+2. 原版识曲 POST 的精确 Cookie 调用
+
+- 3138A5–313977 由 e_url 构造目标，默认 POST
+  https://music.163.com/eapi/music/audio/match；签名规范路径
+  /api/music/audio/match。314665–314692 将 e_url 本身（默认
+  https://music.163.com/eapi），不是拼完的最终 URL，传 3371F0。
+  3372AF–337306 解析 URL 并比较管理对象配置的 host；匹配尝试
+  3369D0→336B40 从 +0x10 缓存读，非空返回。3358D0 初始化两个
+  Cookie map；338A40→338470 为其中 +0x10 放入独立 CEF 查询快照。
+  337384–33747B 缓存不适用时调用 3377D0，然后走 336A90 的另一 map；
+  不能把仅 host 相同当作最终 HTTPS origin/path 的授权。
+- 337935–3379CA 将配置 URL 交 DC9970（原代码名
+  GetUrlCookieAsync）。DC9A81→5B28D0→CDDE6C 确认使用
+  libcef.dll.cef_cookie_manager_get_global_manager；DC9AEA 的 C++
+  vtable +8 在 1A55970 解析为 5B32A0，转 C cookie manager +0x30 的
+  VisitUrlCookies，DC9AD9 的第三参数为 false（排除 HttpOnly）。
+  这是按 URL 的访问器，不是逐个读取登录凭据、刷新 token 或浏览器
+  全部 Cookie。3377D0 发起异步访问，返回值不能证明新快照已写到位。
+- 回调 3385C4–33866D 以名称收集项并补全 os/appver，
+  3365F0 从 0x2193380/3390 指针取 os/appver，缺少时填 pc 和
+  3.1.42.205594；0x2193398/0x21933A0 是 MUSIC_U/MUSIC_A 的存在检测，
+  336997–3369A9 转交标志，回调未按此结果阻断识曲。即使缺认证 Cookie，仍可能有基本标记。
+- 336A30 将 manager+0x88 的用户字符串和所选 map 给 337F00。
+  后者在 map 为空时先返回空串；否则有用户字符串时先放 userid=，
+  再按 map 的迭代顺序用分号连接 name=value。用户字符串由
+  M198:981–989 的 app.notifyLoginInfo 传到 EC9D48–EC9D54→339A80，
+  非空时更新 +0x88 并触发 Cookie 初始化；匿名账号也可有 UID。
+  userid 是客户端字符串，不是认证证明。快照或初始化失败可返回空，
+  314698 后仍准备 POST；空时最终线上的 Cookie header 表示未抓包。
+- 原版 3147E0 前后使用该序列化 Cookie；没有从识曲 JSON 的
+  clientSign 或 deviceId 产生账户身份。两字段算法另见
+  song-recognition-native-identity.txt。HTTP 状态、curl/native 桥码、
+  正文 code 相互独立；不能将“未匹配”、网络异常或拒绝统一解读为登录过期。
+  现有材料未给出游客、登录、会员的确切服务端拒绝码。
+
+3. 结果权限查询是后续目录动作
+
+- M3157:248–309 拿回包时的 host.uid 做曲目规范化；337–368 在结果页
+  等 500ms 后用曲目 ID 调 M15.Dg /api/song/enhance/privilege，ids
+  为字符串 JSON 数组文本，未带 trialMode，并以当前 uid 合并。ResultView
+  挂载及会员/购买变化时补读。这里没看到匿名 UID 的独立拦截，不能用
+  “has UID” 或有一条匹配结果推断已经获得正常播放权。
+- Cumulus 内部 recognition_results 现在只接当轮、认证 UID/epoch 的
+  目录读取，有明确取消和独立播放授权；该限定不等于已证明官方游客
+  权限行为。无实际来源 URL 发给结果页，无自动开播或重发。
+
+4. Cumulus 现状：没有生产识曲发送授权
+
+- ApiOrigin 只有 interface.music.163.com 和 interfacepc.music.163.com。
+  Credentials::request_credentials / record_response 先检查精确 origin，
+  再读取 Cookie jar 或写响应；同一父域、浏览器 Domain 匹配或已登录
+  都不能让旧 Profile 接受 music.163.com。把同一规范路径交给普通
+  API 客户端也只会构造 Interface/PC 另一 URL，不能冒充官方识曲。
+- 已验证的离线 RequestContext、显式设备采集许可和账户目录读分别
+  证明算法、采集意图和目录账户代际，三者都不授权新的网络目的地。
+  没有添加伪生产 authority token、目标 origin、Cookie 复制/降级、
+  HTTP adapter 或可点击产品入口。若缺经独立确认的原生身份和该目的
+  地专用会话，当前只支持关闭的合成传输。
+- 后续如果另行获得验证授权，先独立建立该目标可信凭据来源并确认
+  服务究竟接受哪类会话；用户点击还须明确同意派生指纹的发送。只将
+  同一次采集代际绑定到固定 HTTPS 目标、准确方法和最终 path；
+  凭据按最终 URL 原作用域匹配，且每轮/每次回包核对 UID/epoch、
+  取消与账号切换，拒绝重定向；不得复用现有 Interface/PC 登录材料
+  或因失败改域、重发、改用无 Cookie 模式。官方旧缓存按 base URL
+  和 host 的行为不是本项目放宽安全边界的依据。
+- 离线回归：
+  cargo test --offline --locked -p cumulus-core --test credentials
+  使用全新临时库，Interface 和 PC 的无 Cookie 状态、合成父域
+  MUSIC_U 均无法对官方识曲 URL 获得请求凭据或写入响应。用
+  Cookie::matches 对照证明合成父域 Cookie 本可匹配该 URL，
+  实际拒绝确由更严格的 Profile origin fence 生效。没有传输或日志值。
