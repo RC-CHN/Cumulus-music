@@ -2,7 +2,7 @@
 
 核对基线：`4c07fc7`（2026-11-04）。这是开发主线的核对索引；发行包能力按 [0.1.0 发行说明](releases/0.1.0.txt) 查询。支持 Linux x86_64、Windows x86_64。
 
-官方来源相对本机的 `references/recovered-client/docs/product/`（下表“报告”），界面以 `references/ui-recovery/sources/packages/pc/src/` 为主。原始材料不随应用发布；接口字段、请求顺序、失败分支和补充来源见每行的契约。已恢复实现及文件哈希另见 [来源索引](migration-source-index.json)。[分层说明](architecture.txt)、[逐页对照](ui-ux-audit.txt)、[窗口实测](ui-ux-validation.txt) 和 [Rust 验收](rust-core-validation.txt) 提供更细的证据。
+[官方模型清单](official-model-audit.md)单列每个已恢复命名空间、现有路径及未覆盖分支。官方来源相对本机的 `references/recovered-client/docs/product/`（下表“报告”），界面以 `references/ui-recovery/sources/packages/pc/src/` 为主。原始材料不随应用发布；接口字段、请求顺序、失败分支和补充来源见每行的契约。已恢复实现及文件哈希另见 [来源索引](migration-source-index.json)。[分层说明](architecture.txt)、[逐页对照](ui-ux-audit.txt)、[窗口实测](ui-ux-validation.txt) 和 [Rust 验收](rust-core-validation.txt) 提供更细的证据。
 
 “实服”指表中注明的具体授权样本；“桌面”指实际 Tauri WebView；“合成”可能包含真实 libmpv、SQLite、回环 HTTP 或虚拟音频设备，但没有访问真实账号资源。不同时间、平台或分支的证据不能合并成整项通过。
 
