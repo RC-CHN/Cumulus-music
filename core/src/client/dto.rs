@@ -51,6 +51,9 @@ pub use super::podcast::{
     PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastSearchMembership, PodcastState,
     PodcastSubcategory, PodcastTopLayout,
 };
+pub use super::profile_relations::{
+    ProfileRelationAccess, ProfileRelationEntry, ProfileRelationKind, ProfileRelationPage,
+};
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
 pub use super::relay::{
     RelayAlertView, RelayCommand, RelayOperationView, RelayPublicationCommand,

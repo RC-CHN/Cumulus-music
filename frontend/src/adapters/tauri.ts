@@ -311,6 +311,9 @@ export function createTauriClient(): CoreClient {
     playlistCollectPage: (epoch, sort, page) =>
       invoke('playlist_collect_page', { epoch, sort, page }),
     playlistCreatorProfile: (epoch, uid) => invoke('playlist_creator_profile', { epoch, uid }),
+    profileRelationAccess: (epoch, uid) => invoke('profile_relation_access', { epoch, uid }),
+    profileRelationPage: (epoch, uid, kind, continuation) =>
+      invoke('profile_relation_page', { epoch, uid, kind, continuation }),
     playlistTagPage: (epoch, query) => invoke('playlist_tag_page', { epoch, query }),
     playlistTagCatalogue: (epoch) => invoke('playlist_tag_catalogue', { epoch }),
     playlistTopTags: (epoch) => invoke('playlist_top_tags', { epoch }),

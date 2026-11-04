@@ -3,7 +3,7 @@ use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::{
         ClientError, MusicClient,
-        dto::{PageRequest, PlaylistCollectSort},
+        dto::{PageRequest, PlaylistCollectSort, ProfileRelationKind},
     },
     protocol::{
         api::{Api, ApiFuture},
@@ -47,11 +47,50 @@ impl Api for Backend {
                     json!({"code":200,"profile":{"userId":9,"nickname":"用户","avatarUrl":"https://p1.music.126.net/a.jpg?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"}})
                 }
                 "/api/w/v1/user/detail/81" => {
-                    json!({"code":200,"profile":{"userId":81,"nickname":"公开作者","signature":"签名","token":"DO_NOT_EXPORT","avatarUrl":"http://p1.music.126.net/user.png?secret=DO_NOT_EXPORT"}})
+                    json!({"code":200,"profile":{"userId":81,"nickname":"公开作者","signature":"签名","follows":21,"followeds":2,"token":"DO_NOT_EXPORT","avatarUrl":"http://p1.music.126.net/user.png?secret=DO_NOT_EXPORT"}})
                 }
                 "/api/w/v1/user/detail/82" => json!({"code":404}),
                 "/api/w/v1/user/detail/83" => {
                     json!({"code":200,"profile":{"userId":81,"nickname":"不匹配用户"}})
+                }
+                "/api/user/personal/page/info" => match payload["userId"].as_str() {
+                    Some("81") => {
+                        json!({"code":200,"data":{"userRelationDTO":{"canSeeFansOrFollows":true}}})
+                    }
+                    Some("82") => {
+                        json!({"code":200,"data":{"userRelationDTO":{"canSeeFansOrFollows":false,"fansOrFollowsToastText":"合成隐私拒绝"}}})
+                    }
+                    Some("83") => json!({"code":200,"data":{}}),
+                    _ => panic!("unexpected relationship privacy lookup"),
+                },
+                "/api/user/getfollows/81" => match payload["offset"].as_u64() {
+                    Some(0) => {
+                        json!({"code":200,"follow":[{"userId":"9007199254740993","nickname":"安全用户","remarkName":"测试备注","mutual":true,"followed":true,"avatarUrl":"http://p1.music.126.net/user.png?secret=DO_NOT_EXPORT","token":"DO_NOT_EXPORT"},{"userId":"bad/path","nickname":"DO_NOT_EXPORT"},{"userId":9,"nickname":"自己","followed":true,"mutual":true}],"size":21,"more":true})
+                    }
+                    Some(20) => {
+                        json!({"code":200,"follow":[{"userId":35,"nickname":"续页用户"}],"size":21,"more":false})
+                    }
+                    _ => panic!("unexpected relationship offset"),
+                },
+                "/api/user/getfolloweds/" => {
+                    json!({"code":200,"followeds":[],"size":0,"more":false})
+                }
+                "/api/user/follow/users/mixed/get/v2" => {
+                    match (payload["scene"].as_u64(), &payload["page"]["cursor"]) {
+                        (Some(0), cursor) if cursor == "0" => {
+                            json!({"code":200,"data":{"records":[{"artistInfo":{"id":54,"name":"混合歌手","picUrl":"https://foreign.invalid/private"},"userProfile":{"userId":81,"nickname":"绑定用户","signature":"绑定签名","avatarUrl":"http://p1.music.126.net/art.png?token=DO_NOT_EXPORT"}}],"page":{"more":true,"cursor":9007199254740993_u64}}})
+                        }
+                        (Some(0), cursor) if cursor == 9007199254740993_u64 => {
+                            json!({"code":200,"data":{"records":[{"userProfile":{"userId":81,"nickname":"混合用户"}}],"page":{"more":false}}})
+                        }
+                        (Some(1), _) => {
+                            json!({"code":200,"data":{"records":[{"artistInfo":{"id":55,"name":"歌手分类"}}],"page":{"more":false}}})
+                        }
+                        (Some(2), _) => {
+                            json!({"code":200,"data":{"records":[{"userProfile":{"userId":83,"nickname":"用户分类"}}],"page":{"more":false}}})
+                        }
+                        _ => panic!("unexpected own relationship route"),
+                    }
                 }
                 "/api/user/playlist" if payload["uid"] == "81" => {
                     if payload["offset"] == 0 {
@@ -725,6 +764,8 @@ async fn playlist_creator_profile_checks_identity_and_only_projects_public_playl
     let view = value.value.unwrap();
     assert_eq!(view.id, "81");
     assert_eq!(view.nickname, "公开作者");
+    assert_eq!(view.following_count, Some(21));
+    assert_eq!(view.followers_count, Some(2));
     assert_eq!(
         view.avatar_url.as_deref(),
         Some("https://p1.music.126.net/user.png?param=320y320")
@@ -771,5 +812,174 @@ async fn playlist_creator_profile_checks_identity_and_only_projects_public_playl
     assert_eq!(
         list_reads[1].1,
         json!({"uid":"81","offset":1000,"limit":1000})
+    );
+}
+
+#[tokio::test]
+async fn profile_relation_routes_check_guest_privacy_and_keep_native_cursor_scoped() {
+    use ProfileRelationKind as Kind;
+    let dir = tempfile::tempdir().unwrap();
+    let backend = Arc::new(Backend::default());
+    let (client, _) = client(dir.path(), backend.clone());
+    let epoch = client.restore_account().await.unwrap().epoch;
+    backend.requests.lock().unwrap().clear();
+
+    assert!(
+        client
+            .profile_relation_page("0", "81", Kind::Following, None)
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .profile_relation_access(&epoch, "bad/path")
+            .await
+            .is_err()
+    );
+    let denied = client.profile_relation_access(&epoch, "82").await.unwrap();
+    assert_eq!(
+        json!(denied.value),
+        json!({"state":"denied","message":"合成隐私拒绝"})
+    );
+    let denied = client
+        .profile_relation_page(&epoch, "82", Kind::Followers, None)
+        .await
+        .unwrap();
+    assert_eq!(json!(denied.value)["state"], "denied");
+    assert!(
+        client
+            .profile_relation_page(&epoch, "83", Kind::Following, None)
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .profile_relation_page(&epoch, "81", Kind::FollowingArtists, None)
+            .await
+            .is_err()
+    );
+    let allowed = client.profile_relation_access(&epoch, "81").await.unwrap();
+    assert_eq!(
+        json!(allowed.value),
+        json!({"state":"allowed","isSelf":false})
+    );
+    let first = json!(
+        client
+            .profile_relation_page(&epoch, "81", Kind::Following, None)
+            .await
+            .unwrap()
+            .value
+    );
+    assert_eq!(first["recordCount"], 21);
+    assert_eq!(first["items"].as_array().unwrap().len(), 2);
+    assert_eq!(first["items"][1]["id"], "9");
+    assert!(first["items"][1]["relationship"].is_null());
+    assert_eq!(
+        first["items"][0],
+        json!({
+            "id":"9007199254740993","kind":"user","name":"安全用户","remark":"测试备注",
+            "avatarUrl":"https://p1.music.126.net/user.png?param=320y320","signature":null,
+            "relationship":"mutual"
+        })
+    );
+    let next = first["continuation"].as_str().unwrap();
+    assert!(
+        client
+            .profile_relation_page(&epoch, "81", Kind::Followers, Some(next))
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .profile_relation_page(&epoch, "82", Kind::Following, Some(next))
+            .await
+            .is_err()
+    );
+    let second = json!(
+        client
+            .profile_relation_page(&epoch, "81", Kind::Following, Some(next))
+            .await
+            .unwrap()
+            .value
+    );
+    assert_eq!(second["items"][0]["id"], "35");
+    assert!(second["continuation"].is_null());
+    client
+        .profile_relation_page(&epoch, "81", Kind::Followers, None)
+        .await
+        .unwrap();
+    let own = client.profile_relation_access(&epoch, "9").await.unwrap();
+    assert_eq!(json!(own.value), json!({"state":"allowed","isSelf":true}));
+    client
+        .profile_relation_page(&epoch, "9", Kind::Followers, None)
+        .await
+        .unwrap();
+    let mixed = json!(
+        client
+            .profile_relation_page(&epoch, "9", Kind::Following, None)
+            .await
+            .unwrap()
+            .value
+    );
+    assert_eq!(mixed["items"][0]["kind"], "artist");
+    assert_eq!(mixed["items"][0]["id"], "54");
+    assert_eq!(mixed["items"][0]["signature"], "绑定签名");
+    assert!(!mixed.to_string().contains("DO_NOT_EXPORT"));
+    assert!(!mixed.to_string().contains("9007199254740993"));
+    let mixed_next = mixed["continuation"].as_str().unwrap();
+    let continued = json!(
+        client
+            .profile_relation_page(&epoch, "9", Kind::Following, Some(mixed_next))
+            .await
+            .unwrap()
+            .value
+    );
+    assert_eq!(continued["items"][0]["kind"], "user");
+    client
+        .profile_relation_page(&epoch, "9", Kind::FollowingArtists, None)
+        .await
+        .unwrap();
+    client
+        .profile_relation_page(&epoch, "9", Kind::FollowingUsers, None)
+        .await
+        .unwrap();
+    let calls = backend.requests.lock().unwrap();
+    let privacy = |id: &str| ("/api/user/personal/page/info".into(), json!({"userId":id}));
+    let follow = |offset| {
+        (
+            "/api/user/getfollows/81".into(),
+            json!({"offset":offset,"limit":20,"getcounts":true}),
+        )
+    };
+    let fans = |id: &str| {
+        (
+            "/api/user/getfolloweds/".into(),
+            json!({"userId":id,"time":0,"offset":0,"limit":20,"getcounts":true}),
+        )
+    };
+    let mixed = |scene, cursor: Value| {
+        (
+            "/api/user/follow/users/mixed/get/v2".into(),
+            json!({"page":{"size":19,"cursor":cursor},"size":19,"scene":scene,"sortType":0,"authority":false}),
+        )
+    };
+    assert_eq!(
+        *calls,
+        [
+            privacy("82"),
+            privacy("82"),
+            privacy("83"),
+            privacy("81"),
+            privacy("81"),
+            follow(0),
+            follow(20),
+            privacy("81"),
+            fans("81"),
+            fans("9"),
+            mixed(0, json!("0")),
+            mixed(0, json!(9007199254740993_u64)),
+            mixed(1, json!("0")),
+            mixed(2, json!("0")),
+        ]
     );
 }

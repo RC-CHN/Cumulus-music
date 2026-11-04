@@ -15,6 +15,8 @@ pub struct PlaylistCreatorProfile {
     pub nickname: String,
     pub avatar_url: Option<String>,
     pub signature: String,
+    pub following_count: Option<u64>,
+    pub followers_count: Option<u64>,
     pub created: Vec<PlaylistView>,
     pub collected: Vec<PlaylistView>,
 }
@@ -107,6 +109,8 @@ impl MusicClient {
                         .chars()
                         .take(512)
                         .collect(),
+                    following_count: relation_count(&profile["follows"]),
+                    followers_count: relation_count(&profile["followeds"]),
                     created,
                     collected,
                 }))
@@ -119,4 +123,10 @@ impl MusicClient {
             })
         })
     }
+}
+
+fn relation_count(value: &serde_json::Value) -> Option<u64> {
+    value
+        .as_u64()
+        .filter(|value| *value <= 9_007_199_254_740_991)
 }

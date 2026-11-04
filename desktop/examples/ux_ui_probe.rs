@@ -120,6 +120,9 @@ fn playlist_tag_browse_proof() -> bool {
 static PLAYLIST_TAG_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 static PLAYLIST_CATALOGUE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 
+#[path = "support/profile_relations_fixture.rs"]
+mod profile_relations_fixture;
+
 fn playlist_creator_proof() -> bool {
     std::env::var_os("CUMULUS_PLAYLIST_CREATOR_PROOF").is_some()
 }
@@ -205,6 +208,9 @@ impl Api for Library {
             if let Some(result) = queue_collection_fixture::response(path, &args) {
                 return result;
             }
+            if let Some(result) = profile_relations_fixture::response(path, &args) {
+                return result;
+            }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
             }
@@ -269,7 +275,7 @@ impl Api for Library {
                 }
                 "/api/w/v1/user/detail/3" if playlist_creator_proof() => {
                     PLAYLIST_CREATOR_CALLS.lock().unwrap().push(args);
-                    json!({"code":200,"profile":{"userId":3,"nickname":"合成作者 3","signature":"合成签名"}})
+                    json!({"code":200,"profile":{"userId":3,"nickname":"合成作者 3","signature":"合成签名","follows":21,"followeds":1}})
                 }
                 "/api/user/playlist" if playlist_creator_proof() && args["uid"] == "3" => {
                     PLAYLIST_CREATOR_CALLS.lock().unwrap().push(args);
@@ -653,6 +659,9 @@ fn main() {
                 value["playlistSquare"] = playlist_square_fixture::report();
                 value["playlistTopTagCalls"] = json!(playlist_square_fixture::top_calls());
                 value["playlistEssential"] = playlist_essential_fixture::report();
+            }
+            if profile_relations_fixture::enabled() {
+                value["profileRelationCalls"] = json!(profile_relations_fixture::report());
             }
             if playlist_creator_proof() {
                 value["playlistCreatorCalls"] = json!(*PLAYLIST_CREATOR_CALLS.lock().unwrap());

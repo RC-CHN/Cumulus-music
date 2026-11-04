@@ -46,6 +46,7 @@ import type { OutputClient } from './output';
 import type { EffectDirectoryClient } from './effectDirectory';
 import type { RelayClient } from './relay';
 import type { RelayPublicationClient } from './relayPublication';
+import type { ProfileRelationClient } from './profileRelations';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
 export interface AppInfo {
   name: string;
@@ -130,7 +131,8 @@ export interface CoreClient
     ShortcutsClient,
     WindowLifecycleClient,
     RelayClient,
-    RelayPublicationClient {
+    RelayPublicationClient,
+    ProfileRelationClient {
   getAppInfo(): Promise<AppInfo>;
   copyText(text: string): Promise<void>;
   songDownloadState(epoch: string, id: string): Promise<SongDownloadState>;
@@ -223,6 +225,8 @@ export interface PlaylistCreatorProfile {
   nickname: string;
   avatarUrl: string | null;
   signature: string;
+  followingCount?: number | null;
+  followersCount?: number | null;
   created: PlaylistView[];
   collected: PlaylistView[];
 }

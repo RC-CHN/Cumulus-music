@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue';
+import { nextTick, onMounted, ref, watch } from 'vue';
+import type { ProfileRelationMode } from '../../services/profileRelations';
 import type { usePlaylistCreator } from '../../composables/usePlaylistCreator';
 import Icon from '../Icon.vue';
 import PlaylistCard from '../PlaylistCard.vue';
 
-const props = defineProps<{ model: ReturnType<typeof usePlaylistCreator> }>();
-const emit = defineEmits<{ open: [id: string] }>();
+const props = defineProps<{
+  model: ReturnType<typeof usePlaylistCreator>;
+  checkingRelations: boolean;
+  relationNotice: string;
+}>();
+const emit = defineEmits<{ open: [id: string]; relations: [kind: ProfileRelationMode] }>();
 const root = ref<HTMLElement>();
 const failedAvatar = ref(false);
 onMounted(async () => {
@@ -16,8 +21,27 @@ onMounted(async () => {
   const card = Array.from(
     root.value.querySelectorAll<HTMLButtonElement>('[data-library-open]'),
   ).find((node) => node.dataset.libraryOpen === props.model.opened.value);
-  (card ?? root.value.querySelector('h1'))?.focus({ preventScroll: true });
+  (relationButton() ?? card ?? root.value.querySelector('h1'))?.focus({ preventScroll: true });
 });
+function relationButton() {
+  return root.value?.querySelector<HTMLElement>(
+    `[data-relation-entry="${props.model.openedRelation.value ?? ''}"]`,
+  );
+}
+watch(
+  () => props.model.profile.value?.id,
+  () => {
+    if (document.activeElement === root.value?.querySelector('h1'))
+      relationButton()?.focus({ preventScroll: true });
+  },
+  { flush: 'post' },
+);
+function relations(kind: ProfileRelationMode) {
+  if (props.checkingRelations) return;
+  props.model.rememberRelation(kind);
+  emit('relations', kind);
+}
+const count = new Intl.NumberFormat('zh-CN', { notation: 'compact' });
 function open(id: string) {
   props.model.opened.value = id;
   emit('open', id);
@@ -47,6 +71,35 @@ function open(id: string) {
         <p v-if="model.profile.value?.signature" class="muted">
           {{ model.profile.value.signature }}
         </p>
+        <div
+          v-if="model.profile.value"
+          class="creator-relations"
+          role="group"
+          aria-label="关注和粉丝"
+        >
+          <button
+            v-if="model.profile.value.followingCount"
+            class="text-button"
+            type="button"
+            data-relation-entry="following"
+            :aria-disabled="checkingRelations"
+            @click="relations('following')"
+          >
+            关注 {{ count.format(model.profile.value.followingCount) }}
+          </button>
+          <button
+            v-if="model.profile.value.followersCount"
+            class="text-button"
+            type="button"
+            data-relation-entry="followers"
+            :aria-disabled="checkingRelations"
+            @click="relations('followers')"
+          >
+            粉丝 {{ count.format(model.profile.value.followersCount) }}
+          </button>
+        </div>
+        <p v-if="checkingRelations" role="status">正在确认查看权限…</p>
+        <p v-if="relationNotice" role="alert" data-relation-notice>{{ relationNotice }}</p>
       </div>
     </header>
     <p v-if="model.busy.value" role="status">正在读取公开资料…</p>
@@ -131,6 +184,11 @@ function open(id: string) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.creator-relations {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
 }
 .creator-page-groups {
   display: flex;

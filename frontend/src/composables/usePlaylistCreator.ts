@@ -1,5 +1,6 @@
 import { computed, ref, shallowRef } from 'vue';
 import type { CoreClient, PlaylistCreatorProfile } from '../services/contracts';
+import type { ProfileRelationMode } from '../services/profileRelations';
 
 export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProfile'>) {
   const profile = shallowRef<PlaylistCreatorProfile | null>();
@@ -8,6 +9,8 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
   const group = ref<'created' | 'collected'>('created');
   const page = ref(0);
   const opened = ref('');
+  const openedRelation = ref<ProfileRelationMode>();
+  const relationEntries = new Map<string, ProfileRelationMode>();
   const list = computed(() => profile.value?.[group.value] ?? []);
   const cards = computed(() => list.value.slice(page.value * 24, (page.value + 1) * 24));
   const pages = computed(() => Math.max(1, Math.ceil(list.value.length / 24)));
@@ -39,9 +42,11 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
     generation++;
     busy.value = failed.value = false;
     active = !!owner && !!target;
+    if (owner !== epoch) relationEntries.clear();
     if (owner !== epoch || (target && target !== uid)) {
       epoch = owner;
       uid = target ?? '';
+      openedRelation.value = relationEntries.get(uid);
       profile.value = undefined;
       group.value = 'created';
       opened.value = '';
@@ -55,5 +60,24 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
     page.value = 0;
     opened.value = '';
   }
-  return { profile, busy, failed, group, page, pages, cards, opened, enter, load, select };
+  function rememberRelation(kind: ProfileRelationMode) {
+    openedRelation.value = kind;
+    relationEntries.set(uid, kind);
+    if (relationEntries.size > 16) relationEntries.delete(relationEntries.keys().next().value!);
+  }
+  return {
+    profile,
+    busy,
+    failed,
+    group,
+    page,
+    pages,
+    cards,
+    opened,
+    openedRelation,
+    rememberRelation,
+    enter,
+    load,
+    select,
+  };
 }

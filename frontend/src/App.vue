@@ -53,6 +53,9 @@ import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
 import PlaylistEssentialPage from './components/playlist/PlaylistEssentialPage.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
+import ProfileRelationsPage from './components/profile/ProfileRelationsPage.vue';
+import { useProfileRelations } from './composables/useProfileRelations';
+import type { ProfileRelationCard, ProfileRelationMode } from './services/profileRelations';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import { usePlaylistEssential } from './composables/usePlaylistEssential';
 import { usePlaylistTagCatalogue } from './composables/usePlaylistTagCatalogue';
@@ -1494,6 +1497,53 @@ watch(
   },
   { immediate: true, flush: 'sync' },
 );
+const profileRelations = useProfileRelations(core, () => void music.bootstrap(false));
+let relationVisit = 0;
+watch(
+  [
+    () => account.value.epoch,
+    () => (page.value.kind === 'playlist_creator' ? page.value.id : null),
+  ],
+  () => profileRelations.clearGate(),
+  { flush: 'sync' },
+);
+watch(
+  [
+    () => account.value.epoch,
+    () => account.value.status,
+    () => (page.value.kind === 'profile_relations' ? page.value : null),
+  ],
+  ([epoch, status, target]) => {
+    void profileRelations.enter(status === 'authenticated' ? epoch : '', target);
+  },
+  { immediate: true, flush: 'sync' },
+);
+watch(profileRelations.denied, (message) => {
+  if (!message || page.value.kind !== 'profile_relations' || !historyLength.value) return;
+  music.back();
+  profileRelations.entryNotice.value = message;
+});
+async function openProfileRelations(mode: ProfileRelationMode) {
+  const source = page.value;
+  const profile = playlistCreator.profile.value;
+  if (source.kind !== 'playlist_creator' || profile?.id !== source.id || !signedIn.value) return;
+  const owner = account.value.epoch;
+  const allowed = await profileRelations.check(owner, source.id);
+  if (!allowed || page.value !== source || account.value.epoch !== owner || !signedIn.value) return;
+  music.navigate({
+    kind: 'profile_relations',
+    id: source.id,
+    owner,
+    name: profile.nickname,
+    mode,
+    isSelf: allowed.isSelf,
+    relationVisit: ++relationVisit,
+  });
+}
+function openRelationCard(card: ProfileRelationCard) {
+  if (card.kind === 'artist') openCatalog({ kind: 'artist', id: card.id });
+  else music.navigate({ kind: 'playlist_creator', id: card.id });
+}
 const playlistTagBrowse = usePlaylistTagBrowse(core);
 const playlistTopTags = usePlaylistTopTags(
   core,
@@ -3083,7 +3133,16 @@ onUnmounted(() => {
               <PlaylistCreatorPage
                 v-else-if="page.kind === 'playlist_creator'"
                 :model="playlistCreator"
+                :checking-relations="profileRelations.checking.value"
+                :relation-notice="profileRelations.entryNotice.value"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
+                @relations="openProfileRelations"
+              />
+              <ProfileRelationsPage
+                v-else-if="page.kind === 'profile_relations'"
+                :model="profileRelations"
+                :target="page"
+                @open="openRelationCard"
               />
               <PlaylistTagBrowse
                 v-else-if="page.kind === 'playlist_tag'"

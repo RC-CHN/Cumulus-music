@@ -34,6 +34,7 @@ mod player;
 mod playlist_cover;
 mod playlists;
 mod podcast;
+mod profile_relations;
 mod rankings;
 mod relay;
 pub mod renewal;
@@ -265,6 +266,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::playlist_essential_categories,
                 commands::playlist_essential_page,
                 commands::playlist_creator_profile,
+                profile_relations::profile_relation_access,
+                profile_relations::profile_relation_page,
                 commands::search_songs,
                 search::search_discovery,
                 search::search_results,

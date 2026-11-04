@@ -1,0 +1,43 @@
+用户主页：关注和粉丝（官方 3.1.42.205594）
+
+入口与权限
+恢复 user-detail/views/user/Header.tsx:468–536 按资料 profile.follows / followeds
+显示非零的关注、粉丝入口。点击后访客调用 /api/user/personal/page/info
+{"userId":uid}，按 data.userRelationDTO.canSeeFansOrFollows 和
+fansOrFollowsToastText 判断。允许后分别进入 /userDetail/follows/:id 和
+/userDetail/fans/:id，带原用户昵称。本人跳过权限请求。UserFollows.tsx 与
+UserFans.tsx 的 destination effect 重新检查访客权限，拒绝时提示并返回。
+Cumulus 复用搜索、评论、歌单作者等已有用户主页；沿用当前账号访问公开主页的
+会话限制。粉丝/关注昵称沿用入口用户。为了不在权限未知时读取关系，访客入口
+失败、缺少布尔权限或目的地复查失败时暂不显示列表、允许重试；目的地明确允许后
+才请求列表。原端复查可能与列表并行，异常时可继续导航；这里采用更严格的授权边界。
+从卡片返回保留已读列表、滚动和焦点，访客先复查权限再展示；拒绝返回主页。
+账号变化丢弃待办响应、缓存及原账号续页。
+
+请求与分页
+恢复 hybrid_223.chunk.1482700000000.js/3000.js:276–388 的 page:followFanList
+和 hybrid_app.chunk.1482700000000.js/15.js:1427–1505：
+- 他人关注：/api/user/getfollows/{uid}，{"offset":页号×20,"limit":20,"getcounts":true}。
+  此调用有显式选项，不发送默认分支的 userId 或 limit=10000。读 follow / more / size。
+- 粉丝（自己和他人）：/api/user/getfolloweds/，{"userId":uid,"time":0,
+  "offset":页号×20,"limit":20,"getcounts":true}。读 followeds / more / size。
+- 自己的关注：HostFollows 与 hybrid_38/3088.js:4388–4770 的「全部／歌手／用户」
+  分别发送 /api/user/follow/users/mixed/get/v2 的 scene=0/1/2。固定 size=19、
+  sortType=0、authority=false，page={size:19,cursor:"0"} 起始。继续使用返回的
+  data.page.cursor 的原 JSON 类型，读 data.records、data.page.more / recordCount。
+  不把旧式访客接口用作本人关注。分类各自分页，切换不新建返回历史。
+- 按返回 more 继续，失败保留已加载内容并以相同位置重试。服务续页不传前端；
+  Rust 句柄绑定账号代次、主页和分类。重复游标、空续页、无效结构或超界报错。
+  缓存容量有限，失效的句柄可明确重载首页。Rust 每次访问最多 100 个服务页，
+  防止异常长游标链。短页或无法滚动时可点加载更多。
+- 访客用户卡沿用 UserMetaCard 的公开昵称、备注、签名、64px 头像及安全图片；
+  关注状态仅展示；当前登录账号自己的卡片不显示关系标记。混合记录同时含歌手和用户时打开歌手页，优先用关联用户的
+  头像和签名；只有用户则打开同一个用户主页，只有歌手则打开歌手页。用户分类
+  只显示用户。按服务顺序显示，使用有界卡片网格和响应式列数。非白名单字段、
+  签名 URL、原游标、账号会话和无效资源 ID 不返回 WebView。
+
+只读取这些接口，不提供关注/取消关注、私信、其他关系菜单或真实用户请求。
+账号切换、权限前后检查、主页入口、分页、混合分支由 Rust 边界和前端状态测试验证。
+Linux GTK WebView 的 profile_relations_smoke.py 使用闭合合成服务，8 个捕获状态通过：
+访客权限两次检查及返回复查、原续页失败后原位置重试、本人三分类与粉丝、双处拒绝，
+以及返回原列表和卡片焦点。Windows 视觉需单独验证。

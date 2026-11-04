@@ -59,6 +59,7 @@ export type Page =
       target: import('../services/search').SearchReasonTarget;
     }
   | { kind: 'playlist_creator'; id: string }
+  | ({ kind: 'profile_relations' } & import('../services/profileRelations').ProfileRelationTarget)
   | {
       kind: 'search';
       keyword: string;
@@ -197,6 +198,7 @@ export function useMusic(
         target.kind === 'playlist_tag' ||
         target.kind === 'playlist_essential' ||
         target.kind === 'playlist_creator' ||
+        target.kind === 'profile_relations' ||
         target.kind === 'history' ||
         target.kind === 'settings' ||
         target.kind === 'local' ||
@@ -295,6 +297,7 @@ export function useMusic(
             'playlist_tag',
             'playlist_essential',
             'playlist_creator',
+            'profile_relations',
             'comments',
             'catalog',
             'search',
