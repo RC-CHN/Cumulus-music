@@ -150,10 +150,14 @@
       await fixture('album_artist_search');await fresh('合成艺人');
       const card=()=>one('[data-result-key="album:201"]');
       const artist=()=>card()?.querySelector('[data-result-action="artist:101:1"]');
-      const link='https://music.163.com/album?id=201', copies=[], membershipWrites=[];
+      const link='https://music.163.com/album?id=201', copies=[], membershipWrites=[], albumReads=[];
       const fetchIPC=window.fetch;
       window.fetch=function(url,options){
         if(String(url).endsWith('/copy_text'))copies.push(JSON.parse(options.body).text);
+        if(String(url).endsWith('/search_results')){
+          const {query}=JSON.parse(options.body);
+          if(query.category==='albums'&&query.keyword==='合成专辑续页')albumReads.push([query.offset,query.limit]);
+        }
         if(String(url).endsWith('/catalog_membership')){
           const {resource,action}=JSON.parse(options.body);
           if(action.kind==='set')membershipWrites.push({resource,action});
@@ -220,7 +224,29 @@
         await capture('album_artist_'+category);
       }
       assert(copies.length===2&&copies.every(value=>value===link),'clipboard receives only canonical album URLs');
-      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,searchAlbumCollectVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await theme(760,540,'dark');
+      await fixture('good');await fresh('合成专辑续页');await choose('albums');
+      const results=()=>one('.search-result-panel');
+      const grid=()=>results()?.querySelector('.search-result-grid');
+      const tail=()=>grid()?.querySelector('[data-grid-index="10"] .search-card-open');
+      assert(grid()?.dataset.loadedCount==='10'&&!one('.search-result-pagination')&&
+        JSON.stringify(albumReads)==='[[0,10]]','album results begin with one ten-item waterfall page');
+      results().scrollTop=results().scrollHeight;
+      results().dispatchEvent(new Event('scroll'));
+      await wait(()=>grid()?.dataset.loadedCount==='20'&&tail(),'scrolling appends the next album page');
+      assert(JSON.stringify(albumReads)==='[[0,10],[10,10]]'&&all('.search-result-card').length<=20,
+        'native offsets advance by ten and the card window stays bounded');
+      const scrolled=results().scrollTop;
+      await capture('album_waterfall_appended');
+      click(tail());
+      await wait(()=>one('.album-page')||one('.album-hero')||one('.album-header h1'),
+        'appended album opens native details');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&grid()?.dataset.loadedCount==='20'&&document.activeElement===tail()&&
+        Math.abs(results().scrollTop-scrolled)<=1,'Back restores appended results, scroll and focused album');
+      assert(JSON.stringify(albumReads)==='[[0,10],[10,10]]','Back does not replay album page requests');
+      await capture('album_waterfall_back');
+      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,searchAlbumCollectVerified:true,searchAlbumWaterfallVerified:true,albumReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchCollectionNextProof){
