@@ -32,12 +32,24 @@ def stop(process):
 
 def wait_for(label, check, timeout=15):
     deadline = time.monotonic() + timeout
+    busy_reads = 0
     while time.monotonic() < deadline:
-        result = check()
-        if result:
-            return result
+        try:
+            result = check()
+        except sqlite3.OperationalError as error:
+            # We observe an unmodified app's live database through an
+            # independent read-only connection. Missing a sample while its
+            # writer owns a lock does not say anything about playback.
+            code = getattr(error, 'sqlite_errorcode', None)
+            if code is None or code & 0xff not in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                raise
+            busy_reads += 1
+        else:
+            if result:
+                return result
         time.sleep(.15)
-    raise AssertionError(f'timed out waiting for {label}')
+    contention = f' ({busy_reads} unavailable SQLite samples)' if busy_reads else ''
+    raise AssertionError(f'timed out waiting for {label}{contention}')
 
 
 @contextmanager

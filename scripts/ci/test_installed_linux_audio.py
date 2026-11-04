@@ -1,0 +1,43 @@
+"""Verify that the installed playback observer tolerates only database contention."""
+from contextlib import closing
+from pathlib import Path
+import sqlite3
+from tempfile import TemporaryDirectory
+import unittest
+
+from installed_linux_audio import read_playback, wait_for
+
+
+class PlaybackObservation(unittest.TestCase):
+    def test_real_writer_lock_is_a_missed_sample(self):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / 'core.sqlite3'
+            with closing(sqlite3.connect(path)) as writer:
+                writer.execute('CREATE TABLE state (owner, kind, key, value)')
+                writer.execute('INSERT INTO state VALUES (?, ?, ?, ?)', (
+                    'local-guest', 'playback', 'position', '{"seconds":1}',
+                ))
+                writer.commit()
+                writer.execute('BEGIN EXCLUSIVE')
+                missed = []
+
+                def sample_then_unlock():
+                    try:
+                        return read_playback(path)
+                    except sqlite3.OperationalError as error:
+                        missed.append(error.sqlite_errorcode)
+                        writer.commit()
+                        raise
+
+                self.assertEqual(wait_for('position', sample_then_unlock, 3),
+                                 {'position': {'seconds': 1}})
+                self.assertEqual(missed, [sqlite3.SQLITE_BUSY])
+
+                writer.execute('BEGIN EXCLUSIVE')
+                with self.assertRaisesRegex(AssertionError, 'unavailable SQLite samples'):
+                    wait_for('position', lambda: read_playback(path), .4)
+                writer.commit()
+                writer.execute('DROP TABLE state')
+                with self.assertRaises(sqlite3.OperationalError) as invalid:
+                    wait_for('position', lambda: read_playback(path), 3)
+                self.assertEqual(invalid.exception.sqlite_errorcode, sqlite3.SQLITE_ERROR)
