@@ -8,6 +8,9 @@ Cumulus Music
 CI 将前端检查、Linux 原生验证/打包、Windows 原生验证/打包分配到不同 runner。
 仅在目标 release commit 的 CI 全部通过后发布同一次 CI 的构建产物。
 顶栏调色盘可切换浅色/深色/跟随系统，自动记住选择；界面实测与边界见 docs/ui-ux-validation.txt。
+开发主线可用 `cumulus --play "/绝对路径/音乐.flac"` 打开本地 MP3/FLAC；
+Linux 可交给同一资料目录下已运行的窗口。系统文件关联、默认播放器和 Windows
+实测边界见 docs/default-player-contracts.txt。
 
 跨平台社区音乐客户端，采用 Tauri 2 + Rust + Vue 3 / TypeScript。
 新旧301校验、官方双实验开关和失效提示已接通；旧版明确清队列与恢复见
