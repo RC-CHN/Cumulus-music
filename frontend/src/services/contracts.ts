@@ -24,6 +24,7 @@ import type {
   PodcastRankingClient,
   PodcastSearchClient,
 } from './podcast';
+import type { ProfileFollowClient, ProfileFollowView } from './profileFollow';
 import type { ProfilePodcastClient } from './profilePodcasts';
 import type { TogetherClient } from './together';
 import type { AuthClient } from './auth';
@@ -115,6 +116,7 @@ export interface CoreClient
     PodcastRankingClient,
     PodcastSearchClient,
     ProfilePodcastClient,
+    ProfileFollowClient,
     TogetherClient,
     AuthClient,
     RankingClient,
@@ -248,6 +250,7 @@ export interface PlaylistCreatorProfile {
   followingCount?: number | null;
   followersCount?: number | null;
   playlistsVisible?: boolean;
+  follow?: ProfileFollowView | null;
   created: PlaylistView[];
   collected: PlaylistView[];
 }

@@ -89,6 +89,21 @@ def verify_profile_playlists(stages, native):
                      *groups('2'), detail('42'), detail('21'), profile('74')], calls
 
 
+def verify_profile_follow(stages, native):
+    assert set(stages) == {'guest_ready', 'followed', 'confirm', 'cancel', 'uncertain', 'readback',
+                           'own', 'target_blocked', 'closed', 'viewer_blocked'}
+    assert stages['confirm']['dialog'] and not stages['cancel']['dialog']
+    assert stages['confirm']['active'] == '继续关注' and stages['cancel']['active'] == '已互关'
+
+    def detail(uid):
+        return [f'/api/w/v1/user/detail/{uid}', {'all': True, 'userId': str(uid)}]
+
+    calls = native['profileFollowCalls']
+    assert calls == [detail(73), detail(73), ['/api/user/follow/73', {}], detail(73),
+                     detail(73), ['/api/user/delfollow/73', {}], detail(73), detail(73),
+                     detail(2), detail(74), detail(75), detail(76)], calls
+
+
 def verify_community(stages, native):
     assert set(stages) == {'first_error', 'feed', 'notice_return', 'detail_error', 'comment_error', 'comments',
                            'comment_next', 'back_to_feed', 'unavailable', 'next_error',
@@ -146,6 +161,7 @@ def main():
     mode.add_argument('--own-profile', action='store_true')
     mode.add_argument('--publication', action='store_true')
     mode.add_argument('--profile-playlists', action='store_true')
+    mode.add_argument('--profile-follow', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -154,6 +170,7 @@ def main():
               'profile_notes_ui_probe.js' if args.profile_notes else
               'profile_podcasts_ui_probe.js' if args.profile_podcasts else
               'profile_playlists_ui_probe.js' if args.profile_playlists else
+              'profile_follow_ui_probe.js' if args.profile_follow else
               'community_publication_ui_probe.js' if args.publication else 'community_ui_probe.js')
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'),
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
@@ -165,6 +182,8 @@ def main():
         env['CUMULUS_COMMUNITY_PUBLICATION_PROOF'] = '1'
     if args.profile_playlists:
         env['CUMULUS_PROFILE_PLAYLISTS_PROOF'] = '1'
+    if args.profile_follow:
+        env['CUMULUS_PROFILE_FOLLOW_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -212,6 +231,8 @@ def main():
         verify_profile_podcasts(stages, complete['native'], root)
     elif args.profile_playlists:
         verify_profile_playlists(stages, complete['native'])
+    elif args.profile_follow:
+        verify_profile_follow(stages, complete['native'])
     else:
         assert complete['composerVerified']
         verify_community(stages, complete['native'])
@@ -231,6 +252,8 @@ def main():
         report['browserHandoff'] = {'officialSso': True, 'plainFallback': True}
     elif args.profile_playlists:
         report['profilePlaylistCalls'] = complete['native']['profilePlaylistCalls']
+    elif args.profile_follow:
+        report['profileFollowCalls'] = complete['native']['profileFollowCalls']
     else:
         report['composerVerified'] = True
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

@@ -59,6 +59,7 @@ import PlaylistHero from './components/playlist/PlaylistHero.vue';
 import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
 import PlaylistEssentialPage from './components/playlist/PlaylistEssentialPage.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
+import { useProfileFollow } from './composables/useProfileFollow';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import ProfileNotes from './components/profile/ProfileNotes.vue';
 import ProfilePodcasts from './components/profile/ProfilePodcasts.vue';
@@ -1615,6 +1616,23 @@ const {
   signedIn,
 } = music;
 const playlistCreator = usePlaylistCreator(core);
+const profileFollow = useProfileFollow(
+  core,
+  () => playlistCreator.profile.value?.follow,
+  () => void music.bootstrap(false),
+  (uid, value) => {
+    const current = playlistCreator.profile.value;
+    if (current?.id === uid) {
+      playlistCreator.profile.value = {
+        ...current,
+        followersCount: value.relation?.followersCount ?? current.followersCount,
+        follow: { ...value, status: value.pending ? 'uncertain' : 'ready' },
+      };
+    }
+    if (value.relation && ['followed', 'unfollowed', 'unchanged'].includes(value.status))
+      profileRelations.observeFollow(uid, value.relation.followed, value.relation.mutual);
+  },
+);
 const profilePodcasts = useProfilePodcasts(core, () => void music.bootstrap(false));
 const profileUid = computed(() => {
   const current = page.value;
@@ -1624,6 +1642,11 @@ const profileUid = computed(() => {
     ? current.id
     : null;
 });
+watch(
+  [profileUid, () => account.value.epoch, () => account.value.status],
+  ([uid, epoch, status]) => profileFollow.connect(status === 'authenticated' ? epoch : '', uid),
+  { immediate: true, flush: 'sync' },
+);
 watch(
   [page, () => account.value.epoch, () => account.value.status],
   ([target, epoch, status], previous) => {
@@ -3428,6 +3451,7 @@ onUnmounted(() => {
               <PlaylistCreatorPage
                 v-else-if="profileUid !== null"
                 :model="playlistCreator"
+                :profile-follow="profileFollow"
                 :checking-relations="profileRelations.checking.value"
                 :relation-notice="profileRelations.entryNotice.value"
                 :rank-playable="player.ready.value && !player.busy.value"

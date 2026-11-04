@@ -1,0 +1,37 @@
+个人主页关注用户：Windows PC 3.1.42.205594
+
+官方入口、接口和状态
+- ui-recovery pages/user-detail/views/user/Header.tsx:567–574 仅访客显示 GuestOperations。
+  GuestOperations.tsx 的 blacklist=true 分支只显示解除黑名单，不渲染 FollowOperation。
+  M/3088:2084–2198 的 FollowOperation 按 followed 与 mutual 显示
+  「关注」「已关注」「已互关」。目标注销状态 30/40 时 followUser 显示错误，不发写入。
+- M/3085:1685–1747 路由 user 的 Action.followUser/unFollowUser。关注直接提交；
+  取消关注先显示「确定取消关注该好友?」，默认可「继续关注」，显式点「仍要取消」
+  才发送，关闭确认无写入。匿名态官方可先打开登录；Cumulus 本入口仅当前已认证。
+- M/232:511–595 的 g/T 与 y/P 调 M/15.dh/bh（API-0424、0423）：
+  POST /api/user/follow/{uid} {}；关注接受 200/201；
+  POST /api/user/delfollow/{uid} {}；取消仅接受 200。
+  315 隐私拒绝，316 自己已将目标拉黑，320 达到关注上限，400 自关注错误。
+  不使用 /api/artist/sub、关注列表分页或任何消息/邀请接口作为替代。
+- 官方 M/232 在成功后更新关系列表、当前账号关注数；M/2264:197–206、946–969
+  更新目标 followed、followeds。目标和关联状态来自 M/2264 fetchUserDetail 的
+  /api/w/v1/user/detail/{uid}，{all:true,userId:uid}。
+  取消回调原实现对失败未区分；Cumulus 只在最新资料回读与意图一致时更新主页关系、
+  互关标签和粉丝数，不以旧数量做 +/-1 推算。已打开过的相应关系分组使用
+  本地失效和后续重新读取；不会去猜新成员位置或改动艺人关系。
+
+失败恢复
+- 执行前用当前认证账号重读目标资料、严格核对 UID 和用户看到的 followed；
+  若状态已经改变只返回新状态，不反转别处已改的状态。本人、已知任一方黑名单、
+  注销状态和无法确定 followed 的目标不能写。拒绝的账号不得从旧主页发写。
+- 单账号/目标持久记录在原生发送前写入，跨进程互斥。明确服务拒绝释放记录并保留
+  已核对的状态；超时、无应答、HTTP 异常以及回读未变化均不自动重发。
+  页面可明确点击「核对关注状态」，只读目标资料；读到目标状态才清除未确认记录。
+  应用重开恢复原账号的待核对状态；切换账号不继续旧回读，不移交待处理操作。
+- 未执行真实关注、取消、黑名单、发信或邀请。断网合成 WebView 证明只覆盖平台
+  交互和协议组装，不声称真实服务器权限、互关关系或 Windows 实机通过。
+
+复现
+- cargo test -p cumulus-core --test profile_follow --locked
+- 生产前端与断网 Linux Xvfb/DBus，使用 closed synthetic community_ui_probe：
+  python3 scripts/ci/community_smoke.py --binary <community_ui_probe> --root <新目录> --screenshots --profile-follow

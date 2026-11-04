@@ -25,6 +25,7 @@ pub struct PlaylistCreatorProfile {
     pub podcasts: Option<ProfilePodcastEntry>,
     pub listening_rank: Option<ListeningRankEntry>,
     pub playlists_visible: bool,
+    pub follow: Option<super::profile_follow::ProfileFollowView>,
     pub created: Vec<PlaylistView>,
     pub collected: Vec<PlaylistView>,
 }
@@ -167,6 +168,7 @@ impl MusicClient {
                             ),
                         }),
                     playlists_visible: visible,
+                    follow: self.profile_follow_header(request_token, &viewer, &uid, profile)?,
                     created,
                     collected,
                 }))

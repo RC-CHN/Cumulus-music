@@ -8,6 +8,8 @@ mod capture_ack;
 mod catalog_fixture;
 #[path = "support/community_fixture.rs"]
 mod community_fixture;
+#[path = "support/profile_follow_fixture.rs"]
+mod profile_follow_fixture;
 #[path = "support/profile_notes_fixture.rs"]
 mod profile_notes_fixture;
 #[path = "support/profile_playlists_fixture.rs"]

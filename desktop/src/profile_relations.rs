@@ -56,3 +56,16 @@ pub async fn remove_profile_play_record(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn profile_follow(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    uid: String,
+    command: cumulus_core::client::dto::ProfileFollowCommand,
+) -> Result<AccountData<cumulus_core::client::dto::ProfileFollowView>, ClientError> {
+    client
+        .profile_follow(&epoch, &uid, command)
+        .await
+        .map_err(Into::into)
+}

@@ -3,12 +3,15 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import type { ProfileRelationMode } from '../../services/profileRelations';
 import type { usePlaylistCreator } from '../../composables/usePlaylistCreator';
 import Icon from '../Icon.vue';
+import ProfileFollowControl from '../profile/ProfileFollowControl.vue';
+import type { useProfileFollow } from '../../composables/useProfileFollow';
 import PlaylistCard from '../PlaylistCard.vue';
 
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 
 const props = defineProps<{
   model: ReturnType<typeof usePlaylistCreator>;
+  profileFollow: ReturnType<typeof useProfileFollow>;
   checkingRelations: boolean;
   relationNotice: string;
   rankPlayable: boolean;
@@ -40,6 +43,11 @@ function playRankCard() {
   rankFocus.start(() => emit('playRank'));
 }
 const failedAvatar = ref(false);
+const followersCount = computed(
+  () =>
+    props.profileFollow.active.value?.relation?.followersCount ??
+    props.model.profile.value?.followersCount,
+);
 const rankEntry = computed(() =>
   props.model.group.value === 'created' && props.model.page.value === 0
     ? props.model.profile.value?.listeningRank
@@ -134,16 +142,17 @@ function open(id: string) {
             关注 {{ count.format(model.profile.value.followingCount) }}
           </button>
           <button
-            v-if="model.profile.value.followersCount"
+            v-if="followersCount"
             class="text-button"
             type="button"
             data-relation-entry="followers"
             :aria-disabled="checkingRelations"
             @click="relations('followers')"
           >
-            粉丝 {{ count.format(model.profile.value.followersCount) }}
+            粉丝 {{ count.format(followersCount) }}
           </button>
         </div>
+        <ProfileFollowControl :model="profileFollow" />
         <p v-if="checkingRelations" role="status">正在确认查看权限…</p>
         <p v-if="relationNotice" role="alert" data-relation-notice>{{ relationNotice }}</p>
       </div>

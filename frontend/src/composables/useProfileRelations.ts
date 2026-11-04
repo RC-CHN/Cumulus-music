@@ -201,6 +201,37 @@ export function useProfileRelations(core: ProfileRelationClient, expired: () => 
     if (!page.loaded && !page.failed) void load();
   }
 
+  function observeFollow(uid: string, followed: boolean, mutual: boolean) {
+    const active = visit.value;
+    let refreshActive = false;
+    for (const state of cache.values()) {
+      // These two collections changed membership. Do not guess ordering,
+      // cursor or count by adding/removing a single client-side card.
+      if (state.target.isSelf && state.lists.following) {
+        refreshActive ||= state === active && state.kind === 'following';
+        delete state.lists.following;
+      }
+      if (state.target.id === uid && state.lists.followers) {
+        refreshActive ||= state === active && state.kind === 'followers';
+        delete state.lists.followers;
+      }
+      for (const page of Object.values(state.lists)) {
+        for (const item of page.items) {
+          if (item.kind === 'user' && item.id === uid)
+            item.relationship = followed ? (mutual ? 'mutual' : 'following') : null;
+        }
+      }
+    }
+    if (!active || !refreshActive) return;
+    cancel();
+    currentList(active, active.kind);
+    if (active.target.isSelf) void load();
+    else
+      void recheck().then(() => {
+        if (visit.value === active && active.permission === 'ready' && !denied.value) void load();
+      });
+  }
+
   function remember(top: number, focus?: number) {
     const page = list.value;
     if (page) {
@@ -223,5 +254,6 @@ export function useProfileRelations(core: ProfileRelationClient, expired: () => 
     load,
     select,
     remember,
+    observeFollow,
   };
 }

@@ -44,6 +44,7 @@ mod playlist_square;
 mod playlist_tags_browse;
 mod playlists;
 mod podcast;
+mod profile_follow;
 mod profile_play_record;
 mod profile_relations;
 mod quality_experiment;
