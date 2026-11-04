@@ -770,6 +770,13 @@
             'comprehensive playlist shows the bounded plain recommendation');
           const reasonMark=recommendation.querySelector('mark');
           assert(expected?reasonMark?.textContent==='合成':!reasonMark,'only matched recommendation text is marked');
+        } else if(kind==='mv'){
+          const artist=subtitle?.querySelector('.search-card-artist');
+          const artistMarks=[...(subtitle?.querySelectorAll('mark.search-match-text')??[])];
+          assert(!recommendation&&artist?.textContent.trim()==='合成歌手','MV keeps the native artist credit');
+          assert(artistMarks.length===(expected?1:0)&&
+            (!expected||(artist.contains(artistMarks[0])&&artistMarks[0].textContent==='合成')),
+            'MV marks only the matching artist credit');
         } else assert(!recommendation&&!subtitle?.querySelector('mark'),'other subtitles remain plain: '+kind);
       };
       for(const kind of ['playlist','podcast','voice','mv'])check(kind,true);
@@ -796,7 +803,7 @@
       await capture('mv_category_card_title_matches');
       await fresh('不匹配结果');
       for(const kind of ['playlist','podcast','voice','mv'])check(kind,false);
-      await emit('complete',{ok:true,cardTitleMatchesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,cardTitleMatchesVerified:true,mvArtistMatchesVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchVoiceDirectProof){

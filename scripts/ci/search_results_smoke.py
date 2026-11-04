@@ -196,6 +196,8 @@ def main():
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
         if args.people_categories:
             assert complete['searchArtistMenuVerified']
+        if args.card_matches:
+            assert complete['mvArtistMatchesVerified']
         if args.correction_original:
             assert complete['correctionPartsVerified']
         if args.voice_direct:

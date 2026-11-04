@@ -164,9 +164,11 @@ scripts/ci/search_results_smoke.py --v3 用封闭合成服务在真实 Tauri Web
 非歌曲卡片标题命中
 恢复 M3095（hybrid_41）:1085–1095、1261–1274、1386–1396、2083–2089、2122–2128
 在播客、声音、MV 和歌单标题绘制关键词。Cumulus 复用歌曲的有界字面匹配，
-综合使用原词，分类使用生效词，保持完整提示文字和独立卡片操作。副标题不加标记；
-未把相同规则扩展到未经该批证据确认的其他类型。search_results_smoke.py --card-matches
-可验证综合与分类的命中、不匹配文本及提示文字。
+综合使用原词，分类使用生效词，保持完整提示文字和独立卡片操作。普通副标题不加
+标记；已恢复的例外是综合歌单推荐理由，以及 VideoCard/index.tsx:321–328
+明确向 ArtistNames 传入关键词的 MV 歌手署名。search_results_smoke.py --card-matches
+验证综合与分类的标题命中、MV 歌手署名命中、不匹配文本及提示文字。
+Linux WebView 两个检查点通过，记录在 .build/search-card-matches-final/first/。
 
 按原词重新搜索
 官方 SearchResults/index.jsx:82–99 将“仍然搜索”的原词放回输入框，记入搜索历史，
