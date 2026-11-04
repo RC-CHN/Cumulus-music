@@ -80,6 +80,23 @@
     const baseline=await invoke('player_queue',{epoch});
     const card=one('.search-track-card');card.scrollIntoView({block:'center'});
     const cover=card.querySelector('.search-track-cover');
+    step='preview_play_focus';
+    await wait(()=>{
+      const rect=cover.getBoundingClientRect();
+      return cover.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
+    },'cover is visible after scrolling to the preview');
+    const focusTrace=[];
+    const describeFocus=()=>({
+      state:one('.playerbar')?.dataset.state,
+      connected:cover.isConnected,
+      disabled:cover.disabled,
+      coverLabel:cover.getAttribute('aria-label'),
+      active:document.activeElement===cover?'cover':document.activeElement?.tagName,
+    });
+    const record=()=>{if(focusTrace.length<20)focusTrace.push(describeFocus());};
+    const focusChanges=new MutationObserver(record);
+    focusChanges.observe(cover,{attributes:true,attributeFilter:['disabled','aria-label']});
+    record();
     const releasePlay=holdSelection();
     click(cover);
     await wait(()=>selectionReceived&&cover.disabled,'native play result is pending in the WebView');
@@ -88,8 +105,14 @@
     if(document.activeElement===cover)cover.blur();
     assert(document.activeElement===document.body,'play button lost browser focus while busy');
     releasePlay();
-    await wait(()=>card.classList.contains('current')&&!cover.disabled&&
-      cover.getAttribute('aria-label').startsWith('暂停')&&document.activeElement===cover,'play restores the exact cover');
+    try {
+      await wait(()=>card.classList.contains('current')&&!cover.disabled&&
+        cover.getAttribute('aria-label').startsWith('暂停')&&document.activeElement===cover,'play restores the exact cover');
+    } catch(error) {
+      throw Error(`${error.message}: ${JSON.stringify([...focusTrace,describeFocus()])}`);
+    } finally {
+      focusChanges.disconnect();
+    }
     await wait(()=>Number(one('.playerbar').dataset.position)>.15,'preview advances the native playback clock');
     const playing=await invoke('player_queue',{epoch});
     assert(playing.tracks.length===3&&playing.tracks[0].entryId===baseline.tracks[0].entryId&&

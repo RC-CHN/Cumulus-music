@@ -56,6 +56,9 @@ const playbackFocus = usePlaybackTriggerFocus(
   () =>
     props.track.id === identity &&
     !element.value?.closest('.page-leave-active,.search-results-leave-active'),
+  // Pending transport can enable this cover before the original selection
+  // settles, then disable it again when the native player starts.
+  () => props.playable,
 );
 function play() {
   if (!mayPlay.value) return;

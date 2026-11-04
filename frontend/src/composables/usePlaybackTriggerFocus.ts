@@ -5,13 +5,15 @@ export function usePlaybackTriggerFocus(
   ready: () => boolean,
   root: Ref<HTMLElement | undefined>,
   ownsVisit: () => boolean,
+  settled: () => boolean = ready,
 ) {
   let origin: HTMLElement | undefined;
   let generation = 0;
+  const canRestore = () => ready() && settled();
   async function restore() {
     const current = generation;
     await nextTick();
-    if (current !== generation || !ready()) return;
+    if (current !== generation || !canRestore()) return;
     const target = origin;
     origin = undefined;
     if (
@@ -45,7 +47,7 @@ export function usePlaybackTriggerFocus(
     void restore();
   }
   watch(
-    ready,
+    canRestore,
     (value) => {
       if (value) void restore();
     },
