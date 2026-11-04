@@ -45,6 +45,7 @@ impl Actor {
         let stopped = self.stop(false).await;
         // Never bind a new owner while the old native component may be live.
         self.parametric_reset().await?;
+        self.clear_parametric_failure_notice();
         let owner = token.uid.as_deref().unwrap_or("local-guest");
         // Clear the previous account even if the new account's database is
         // corrupt. An unbound actor retries loading; it cannot write a fallback.
@@ -137,7 +138,7 @@ impl Actor {
         }
         self.equalizer_observe().await?;
         self.loudness_observe().await?;
-        let view = super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await?;
+        let view = self.poll_with_parametric_recovery().await?;
         let mut events = std::mem::take(&mut self.deferred_events);
         events.extend(view.events);
         let loaded = self

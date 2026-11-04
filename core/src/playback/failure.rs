@@ -44,7 +44,7 @@ impl PlaybackFailure {
                 operation: "load ended" | "load timeout" | "unexpected playlist",
                 ..
             } => Self::OpenMedia,
-            Error::Playback { .. } => Self::Engine,
+            Error::Playback { .. } | Error::ParametricProcessorFailed => Self::Engine,
             Error::Transport(_) | Error::HttpStatus { .. } => Self::Network,
             Error::Storage(_) | Error::Io(_) => Self::Storage,
             _ => return None,

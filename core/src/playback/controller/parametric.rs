@@ -9,7 +9,7 @@ use crate::{
         },
         parametric::ParametricPlan,
     },
-    playback::engine::{AudioEngine, Cancellation},
+    playback::engine::{AudioEngine, Cancellation, EngineSnapshot},
     storage::OperationLock,
 };
 use std::{collections::VecDeque, sync::Arc};
@@ -32,6 +32,14 @@ pub enum ParametricBindingStatus {
     Deferred,
     Configured,
     DetachRequired,
+    ProcessorFailed,
+}
+
+impl ParametricBindingStatus {
+    /// Both states confirm no native component for the exact target.
+    pub fn is_detached(self) -> bool {
+        matches!(self, Self::Absent | Self::ProcessorFailed)
+    }
 }
 
 pub(super) struct InspectRequest {
@@ -67,6 +75,7 @@ pub(super) struct State {
     cleared: VecDeque<(SessionToken, BoundParametricTarget)>,
     possibly_attached: bool,
     detach_required: bool,
+    failed_binding: Option<(SessionToken, BoundParametricTarget)>,
 }
 
 impl State {
@@ -84,6 +93,8 @@ impl State {
             Some(Status::Configured)
         } else if matches!(self.deferred, Some(Selection::Bound(_))) {
             Some(Status::Deferred)
+        } else if self.failed_binding.is_some() {
+            Some(Status::ProcessorFailed)
         } else {
             None
         }
@@ -232,6 +243,9 @@ impl Actor {
             if self.parametric.installing.as_ref().is_some_and(|b| b.target() == target) {
                 return Status::DetachRequired;
             }
+            if self.parametric.failed_binding.as_ref().is_some_and(|(token, failed)| token == &request.token && *failed == target) {
+                return Status::ProcessorFailed;
+            }
             Status::Absent
         });
         let _ = request.reply.send(result);
@@ -311,6 +325,15 @@ impl Actor {
         &mut self,
         target: BoundParametricTarget,
     ) -> Result<ParametricApplication> {
+        if self
+            .parametric
+            .failed_binding
+            .as_ref()
+            .is_some_and(|(token, failed)| token == &self.token && *failed == target)
+        {
+            self.parametric.failed_binding = None;
+            return Ok(ParametricApplication::Cleared);
+        }
         if matches!(&self.parametric.deferred, Some(Selection::Bound(binding)) if binding.target() == target)
         {
             self.parametric.clear_deferred(&self.token);
@@ -373,6 +396,7 @@ impl Actor {
                 if result.is_ok() {
                     self.parametric_record_applied_clear();
                     self.parametric.applied = self.parametric.installing.take();
+                    self.parametric.failed_binding = None;
                 }
                 self.parametric_cleanup_after_failure(result).await
             }
@@ -474,6 +498,40 @@ impl Actor {
             self.parametric_reset().await?;
         }
         Ok(())
+    }
+
+    pub(super) fn clear_parametric_failure_notice(&mut self) {
+        self.parametric.failed_binding = None;
+    }
+
+    pub(super) async fn poll_with_parametric_recovery(&mut self) -> Result<EngineSnapshot> {
+        let result = super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await;
+        self.recover_parametric_poll(result).await
+    }
+
+    pub(super) async fn recover_parametric_poll(
+        &mut self,
+        result: Result<EngineSnapshot>,
+    ) -> Result<EngineSnapshot> {
+        match result {
+            Err(error)
+                if matches!(error.root(), Error::ParametricProcessorFailed)
+                    && self.parametric.possibly_attached =>
+            {
+                let target = self
+                    .parametric
+                    .applied
+                    .as_ref()
+                    .map(|binding| binding.target());
+                // A native callback may have emitted silence. Continue only
+                // when removal was actually acknowledged; the actor's usual
+                // error path stops playback if that cannot be established.
+                self.parametric_reset().await?;
+                self.parametric.failed_binding = target.map(|target| (self.token.clone(), target));
+                super::engine(self.engine.clone(), self.guard(), |engine| engine.poll()).await
+            }
+            result => result,
+        }
     }
 
     fn parametric_record_applied_clear(&mut self) {

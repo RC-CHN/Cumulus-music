@@ -67,6 +67,8 @@ pub enum Error {
     Protocol(&'static str),
     #[error("invalid media data: {0}")]
     Media(&'static str),
+    #[error("parametric equalizer processor failed")]
+    ParametricProcessorFailed,
     #[error("audio engine {operation} failed ({code})")]
     Playback { operation: &'static str, code: i32 },
     #[error("operating system random source is unavailable")]

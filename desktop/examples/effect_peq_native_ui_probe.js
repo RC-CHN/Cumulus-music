@@ -69,22 +69,29 @@
     }, 'same native playback advances through PEQ');
     await capture('02_configured');
 
-    if (window.__cumulusPeqPauseLocal) {
-      stage = 'pause-local';
+    if (window.__cumulusPeqPauseLocal || window.__cumulusPeqRuntimeFault) {
+      const fault = !!window.__cumulusPeqRuntimeFault;
+      stage = fault ? 'runtime-fault' : 'pause-local';
       const selection = { epoch, id: 300 };
       const active = await invoke('effect_peq_status', selection);
       assert(active.canPause && active.release && !active.canResume, 'active binding must have a local pause receipt');
-      click(await wait(() => enabled(action('pause')), 'local pause control'));
-      await wait(() => phase('paused_locally') && enabled(action('resume')) &&
+      if (fault) {
+        await emit('effect-peq-fail-runtime');
+        await wait(() => window.__peqRuntimeFaultArmed === true, 'native runtime fault fixture armed');
+      } else click(await wait(() => enabled(action('pause')), 'local pause control'));
+      await wait(() => phase(fault ? 'processor_failed' : 'paused_locally') && enabled(action('resume')) &&
         controls().textContent.includes('登记仍保留'), 'local pause receipt and restore control');
       const paused = await player();
       await wait(async () => {
         const current = await player();
-        return !current.boundParametric && current.state === 'playing' && current.playId === baseline.playId &&
+        return (fault ? current.boundParametric === 'processor_failed' : !current.boundParametric) &&
+          current.state === 'playing' && current.playId === baseline.playId &&
           current.entryId === baseline.entryId && current.position > paused.position + 0.25;
       }, 'the same song keeps advancing with the native filter removed');
-      assert(document.activeElement === action('resume'), 'local switch should retain keyboard focus');
-      await capture('03_paused_locally');
+      if (fault) {
+        assert(one('.equalizer-toggle')?.dataset.parametricState === 'processor_failed', 'footer reflects failed PEQ without a playback error');
+      } else assert(document.activeElement === action('resume'), 'local switch should retain keyboard focus');
+      await capture(fault ? '03_runtime_fault' : '03_paused_locally');
 
       stage = 'resume-local';
       click(action('resume'));
@@ -102,8 +109,8 @@
           current.position > resumed.position + 0.25;
       }, 'the same song keeps advancing after native PEQ restore');
       assert(document.activeElement === action('pause'), 'resuming retains keyboard focus');
-      await capture('04_resumed_locally');
-      await emit('complete', { ok: true, stageCount: 4, localPauseVerified: true });
+      await capture(fault ? '04_restored_after_fault' : '04_resumed_locally');
+      await emit('complete', { ok: true, stageCount: 4, localPauseVerified: !fault, runtimeFaultVerified: fault });
       return;
     }
 

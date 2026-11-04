@@ -110,6 +110,7 @@ pub struct Device {
     pub parametric_attached: AtomicBool,
     pub parametric_bypassed: AtomicBool,
     pub parametric_clear_fail: AtomicBool,
+    pub parametric_poll_fault: AtomicBool,
     pub parametric_at_unpause: Mutex<Vec<bool>>,
     pub equalizer_supported: AtomicBool,
     pub equalizer_fail: AtomicBool,
@@ -142,6 +143,7 @@ impl Default for Device {
             parametric_attached: AtomicBool::new(false),
             parametric_bypassed: AtomicBool::new(false),
             parametric_clear_fail: AtomicBool::new(false),
+            parametric_poll_fault: AtomicBool::new(false),
             parametric_at_unpause: Mutex::new(Vec::new()),
             equalizer_supported: AtomicBool::new(false),
             equalizer_fail: AtomicBool::new(false),
@@ -360,6 +362,12 @@ impl AudioEngine for Engine {
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
         let mut state = self.0.state.lock().unwrap();
+        if self.0.parametric_attached.load(Ordering::SeqCst)
+            && self.0.parametric_poll_fault.load(Ordering::SeqCst)
+            && !state.view.paused
+        {
+            return Err(Error::ParametricProcessorFailed);
+        }
         let view = state.view.clone();
         state.view.events.clear();
         Ok(view)

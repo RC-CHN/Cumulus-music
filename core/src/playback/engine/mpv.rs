@@ -704,9 +704,11 @@ impl AudioEngine for MpvEngine {
             ));
         }
         if let Some(parametric) = &self.parametric
-            && parametric.stats()?.failed_blocks != 0
+            && !parametric
+                .stats()
+                .is_ok_and(|stats| stats.failed_blocks == 0)
         {
-            return Err(Error::Media("parametric equalizer processing failed"));
+            return Err(Error::ParametricProcessorFailed);
         }
         let events = self.drain()?;
         Ok(EngineSnapshot {

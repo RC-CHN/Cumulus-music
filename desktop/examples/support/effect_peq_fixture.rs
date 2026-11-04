@@ -13,7 +13,10 @@ use serde_json::{Value, json};
 use std::{
     io::{Cursor, Read},
     path::PathBuf,
-    sync::Mutex,
+    sync::{
+        Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 const ID: u64 = 300;
@@ -38,13 +41,29 @@ struct Trace {
     detaches: u32,
     stats: Option<EqualizerStats>,
     native_attached: bool,
+    injected_faults: u32,
 }
 
 static TRACE: std::sync::LazyLock<Mutex<Trace>> =
     std::sync::LazyLock::new(|| Mutex::new(Trace::default()));
+static FAIL_NEXT_POLL: AtomicBool = AtomicBool::new(false);
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_PEQ_NATIVE_PROOF").is_some()
+}
+
+pub fn inject_runtime_fault() -> bool {
+    if !enabled() || std::env::var_os("CUMULUS_EFFECT_PEQ_RUNTIME_FAULT").is_none() {
+        return false;
+    }
+    let trace = TRACE.lock().unwrap();
+    if !trace.native_attached
+        || trace.stats.is_none_or(|stats| stats.processed_samples == 0)
+        || trace.injected_faults != 0
+    {
+        return false;
+    }
+    !FAIL_NEXT_POLL.swap(true, Ordering::AcqRel)
 }
 
 fn sound() -> Value {
@@ -216,6 +235,10 @@ impl AudioEngine for Audio {
         self.engine.stop()
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
+        if FAIL_NEXT_POLL.swap(false, Ordering::AcqRel) {
+            TRACE.lock().unwrap().injected_faults += 1;
+            return Err(Error::ParametricProcessorFailed);
+        }
         let view = self.engine.poll()?;
         if let Ok(stats) = self.engine.parametric_equalizer_stats() {
             TRACE.lock().unwrap().stats = Some(stats);
@@ -258,5 +281,6 @@ pub fn report() -> Value {
         "nativeAttached":trace.native_attached,
         "processedSamples":trace.stats.map(|stats| stats.processed_samples).unwrap_or(0),
         "failedBlocks":trace.stats.map(|stats| stats.failed_blocks).unwrap_or(0),
+        "injectedFaults":trace.injected_faults,
     })
 }

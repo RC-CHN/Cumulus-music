@@ -32,6 +32,7 @@ const parametricStatus = {
   configured: '播放器已配置独立参数均衡。',
   deferred: '独立参数均衡等待音频加载。',
   detach_required: '独立参数均衡需要清理。',
+  processor_failed: '独立参数均衡处理失败，已在本机停用。',
 };
 const dialog = ref<HTMLDialogElement>();
 const closeButton = ref<HTMLButtonElement>();

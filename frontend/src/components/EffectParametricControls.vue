@@ -32,6 +32,7 @@ const labels: Record<EffectPeqPhase, string> = {
   configured: '播放器已确认配置独立参数均衡',
   deferred: '等待音频加载后应用',
   paused_locally: '本机音效已暂停，登记仍保留。',
+  processor_failed: '音效处理失败，已在本机停用，登记仍保留。',
   recovery_required: '此音效有待处理的登记或本地状态',
 };
 const another = computed(() => !!view.value?.activeId && view.value.activeId !== props.effectId);
@@ -118,6 +119,7 @@ watch(
       phase !== 'configured' &&
       phase !== 'deferred' &&
       phase !== 'paused_locally' &&
+      phase !== 'processor_failed' &&
       phase !== 'recovery_required'
     )
       return;

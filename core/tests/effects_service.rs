@@ -1450,20 +1450,45 @@ async fn active_peq_observation_keeps_playing_during_reads_and_detaches_on_remot
 
 #[tokio::test]
 async fn bound_parametric_clear_cannot_remove_a_newer_binding_or_release_rights() {
-    exercise_bound_parametric_clear(false, false).await;
+    exercise_bound_parametric_clear(ClearScenario::Explicit).await;
 }
 
 #[tokio::test]
 async fn failed_bound_detach_retains_its_target_and_exclusive_use_fence() {
-    exercise_bound_parametric_clear(true, false).await;
+    exercise_bound_parametric_clear(ClearScenario::FailedExplicit).await;
 }
 
 #[tokio::test]
 async fn deferred_bound_parametric_can_be_paused_before_the_decoder_returns() {
-    exercise_bound_parametric_clear(false, true).await;
+    exercise_bound_parametric_clear(ClearScenario::Deferred).await;
 }
 
-async fn exercise_bound_parametric_clear(inject_failure: bool, deferred: bool) {
+#[tokio::test]
+async fn runtime_peq_failure_continues_same_entry_after_confirmed_detach() {
+    exercise_bound_parametric_clear(ClearScenario::Processor).await;
+}
+
+#[tokio::test]
+async fn runtime_peq_failure_stops_if_the_failed_node_cannot_be_removed() {
+    exercise_bound_parametric_clear(ClearScenario::FailedProcessorDetach).await;
+}
+
+#[tokio::test]
+async fn runtime_peq_failure_after_unpause_resamples_without_replaying_transport() {
+    exercise_bound_parametric_clear(ClearScenario::ProcessorAfterUnpause).await;
+}
+
+#[derive(PartialEq, Eq)]
+enum ClearScenario {
+    Explicit,
+    FailedExplicit,
+    Deferred,
+    Processor,
+    FailedProcessorDetach,
+    ProcessorAfterUnpause,
+}
+
+async fn exercise_bound_parametric_clear(scenario: ClearScenario) {
     use cumulus_core::{
         effects::{
             authorization::{EffectAuthorizations, TrialConsent},
@@ -1471,7 +1496,8 @@ async fn exercise_bound_parametric_clear(inject_failure: bool, deferred: bool) {
         },
         playback::{
             controller::{
-                ParametricApplication, ParametricBindingStatus, PlaybackController, PlaybackStatus,
+                ParametricApplication, ParametricBindingStatus, PlaybackCommand,
+                PlaybackController, PlaybackStatus,
             },
             source::SourceResolver,
         },
@@ -1539,7 +1565,7 @@ async fn exercise_bound_parametric_clear(inject_failure: bool, deferred: bool) {
         playback_support::audio_engine(device.clone()),
     )
     .unwrap();
-    if deferred {
+    if scenario == ClearScenario::Deferred {
         use std::time::Duration;
         device.hold_load.store(true, Ordering::SeqCst);
         let loading = player.command(&token, playback_support::replace(&[1]));
@@ -1608,7 +1634,96 @@ async fn exercise_bound_parametric_clear(inject_failure: bool, deferred: bool) {
         Err(Error::MutationBusy)
     ));
     let calls = api.calls().len();
-    if inject_failure {
+    if matches!(
+        scenario,
+        ClearScenario::Processor
+            | ClearScenario::FailedProcessorDetach
+            | ClearScenario::ProcessorAfterUnpause
+    ) {
+        let cannot_detach = scenario == ClearScenario::FailedProcessorDetach;
+        let during_unpause = scenario == ClearScenario::ProcessorAfterUnpause;
+        if during_unpause {
+            let paused = player
+                .command(&token, PlaybackCommand::Pause(true))
+                .await
+                .unwrap();
+            assert_eq!(paused.state, PlaybackStatus::Paused);
+        }
+        device
+            .parametric_clear_fail
+            .store(cannot_detach, Ordering::SeqCst);
+        let native_stops = device.state.lock().unwrap().stops;
+        let native_pauses = device.state.lock().unwrap().pauses.len();
+        device.parametric_poll_fault.store(true, Ordering::SeqCst);
+        let after = if during_unpause {
+            let snapshot = player
+                .command(&token, PlaybackCommand::Pause(false))
+                .await
+                .unwrap();
+            assert_eq!(
+                snapshot.bound_parametric,
+                Some(ParametricBindingStatus::ProcessorFailed)
+            );
+            assert_eq!(device.state.lock().unwrap().pauses.len(), native_pauses + 1);
+            snapshot
+        } else {
+            playback_support::until(&player, |snapshot| {
+                if cannot_detach {
+                    snapshot.state == PlaybackStatus::Error
+                } else {
+                    snapshot.bound_parametric == Some(ParametricBindingStatus::ProcessorFailed)
+                }
+            })
+            .await
+        };
+        assert_eq!(api.calls().len(), calls);
+        assert!(
+            authorization
+                .record_for(&token, id())
+                .unwrap()
+                .unwrap()
+                .start_acknowledged
+        );
+        if cannot_detach {
+            assert_eq!(
+                after.bound_parametric,
+                Some(ParametricBindingStatus::DetachRequired)
+            );
+            assert!(device.state.lock().unwrap().stops > native_stops);
+            assert!(authorization.acquire_bound_use_fence_for(&token).is_err());
+            device.parametric_clear_fail.store(false, Ordering::SeqCst);
+        } else {
+            assert_eq!(after.state, PlaybackStatus::Playing);
+            assert_eq!(after.play_id, playing.play_id);
+            assert_eq!(device.state.lock().unwrap().stops, native_stops);
+            assert!(!device.parametric_attached.load(Ordering::SeqCst));
+            assert_eq!(
+                player
+                    .inspect_bound_parametric(&token, target)
+                    .await
+                    .unwrap(),
+                ParametricBindingStatus::ProcessorFailed
+            );
+            assert!(authorization.acquire_bound_use_fence_for(&token).is_ok());
+            device.state.lock().unwrap().view.position = Some(4.0);
+            let advanced =
+                playback_support::until(&player, |snapshot| snapshot.position == Some(4.0)).await;
+            assert_eq!(advanced.play_id, playing.play_id);
+            assert_eq!(
+                player.clear_bound_parametric(&token, target).await.unwrap(),
+                ParametricApplication::Cleared
+            );
+            assert_eq!(
+                player
+                    .inspect_bound_parametric(&token, target)
+                    .await
+                    .unwrap(),
+                ParametricBindingStatus::Absent
+            );
+        }
+        return;
+    }
+    if scenario == ClearScenario::FailedExplicit {
         device.parametric_clear_fail.store(true, Ordering::SeqCst);
         assert!(player.clear_bound_parametric(&token, target).await.is_err());
         assert!(device.parametric_attached.load(Ordering::SeqCst));
@@ -1624,7 +1739,7 @@ async fn exercise_bound_parametric_clear(inject_failure: bool, deferred: bool) {
     );
     assert!(!device.parametric_attached.load(Ordering::SeqCst));
     assert!(authorization.acquire_bound_use_fence_for(&token).is_ok());
-    if !inject_failure {
+    if scenario == ClearScenario::Explicit {
         assert_eq!(player.snapshot().play_id, playing.play_id);
         assert_eq!(player.snapshot().state, PlaybackStatus::Playing);
     }

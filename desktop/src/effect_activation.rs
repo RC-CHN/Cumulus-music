@@ -52,6 +52,7 @@ enum Phase {
     Configured,
     Deferred,
     PausedLocally,
+    ProcessorFailed,
     RecoveryRequired,
 }
 
@@ -179,7 +180,7 @@ impl State {
                         let status = client
                             .inspect_native_bound_parametric(epoch, target)
                             .await?;
-                        can_resume = status == ParametricBindingStatus::Absent;
+                        can_resume = status.is_detached();
                         can_pause = matches!(
                             status,
                             ParametricBindingStatus::Configured | ParametricBindingStatus::Deferred
@@ -187,6 +188,7 @@ impl State {
                         phase = match status {
                             ParametricBindingStatus::Configured => Phase::Configured,
                             ParametricBindingStatus::Deferred => Phase::Deferred,
+                            ParametricBindingStatus::ProcessorFailed => Phase::ProcessorFailed,
                             ParametricBindingStatus::Absent
                             | ParametricBindingStatus::DetachRequired => Phase::RecoveryRequired,
                         };
@@ -429,17 +431,29 @@ async fn resume_registered(
     {
         return Err(Error::MutationBusy);
     }
+    host.check_adapter()?;
     if let Some((owner, Work::Submitted { attempt })) = &state.work
         && *owner == id
         && let Some(target) = attempt.submitted_target()
-        && client
-            .inspect_native_bound_parametric(epoch, target)
-            .await?
-            != ParametricBindingStatus::Absent
     {
-        return Err(Error::MutationBusy);
+        let status = client
+            .inspect_native_bound_parametric(epoch, target)
+            .await?;
+        if !status.is_detached() {
+            return Err(Error::MutationBusy);
+        }
+        if status == ParametricBindingStatus::ProcessorFailed {
+            // An explicit resume acknowledges this already detached target.
+            // Do not leave its notice behind if preparing a new binding fails.
+            if client.clear_native_bound_parametric(epoch, target).await?
+                != ParametricApplication::Cleared
+            {
+                return Err(Error::State(
+                    "PEQ failure acknowledgement was not confirmed",
+                ));
+            }
+        }
     }
-    host.check_adapter()?;
     let entry = state.release.take().ok_or(Error::StaleResponse)?;
     state.issue = None;
     let work = state.work.insert((
@@ -548,7 +562,7 @@ pub async fn effect_peq_stop<R: tauri::Runtime>(
                 if client
                     .inspect_native_bound_parametric(&epoch, target)
                     .await?
-                    == ParametricBindingStatus::Absent =>
+                    .is_detached() =>
             {
                 // A submission may have been rejected before mount. Only
                 // proceed to the core's independent cross-process absence

@@ -486,12 +486,26 @@ impl Actor {
         }
         self.require_loaded()?;
         let preserve_position = paused && self.state == PlaybackStatus::Paused;
-        let view = self
+        let observed = self
             .parametric_transport(paused, self.guard(), move |engine| {
                 engine.pause(paused)?;
-                engine.poll()
+                Ok(engine.poll())
             })
             .await?;
+        let peq_fault = observed
+            .as_ref()
+            .is_err_and(|error| matches!(error.root(), Error::ParametricProcessorFailed));
+        let view = match self.recover_parametric_poll(observed).await {
+            Err(error) if peq_fault => {
+                // The transport command already succeeded. If resampling
+                // fails, stop safely rather than showing the old pause state.
+                let _ = self.stop(false).await;
+                self.state = PlaybackStatus::Error;
+                self.record_failure(&error);
+                return Err(error);
+            }
+            result => result?,
+        };
         // Poll consumes native events even when we only need the clock.
         // The regular tick still owns their handling for this load.
         self.deferred_events.extend(view.events);

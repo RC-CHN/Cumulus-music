@@ -198,5 +198,9 @@ test('footer reports bound PEQ even while the ordinary equalizer is off', () => 
     state: 'problem',
     label: '独立参数均衡需要清理',
   });
+  assert.deepEqual(effectLauncher(view(), 'processor_failed'), {
+    state: 'problem',
+    label: '独立参数均衡处理失败，已在本机停用',
+  });
   assert.match(effectLauncher({ ...view(), damaged: true }, 'configured').label, /已配置.*损坏/);
 });

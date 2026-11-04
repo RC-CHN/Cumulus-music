@@ -131,10 +131,13 @@ export function effectLauncher(view?: EqualizerView, parametric?: BoundParametri
     configured: '独立参数均衡已配置',
     deferred: '独立参数均衡等待音频加载',
     detach_required: '独立参数均衡需要清理',
+    processor_failed: '独立参数均衡处理失败，已在本机停用',
   }[parametric];
   return {
     state:
-      parametric === 'detach_required' || equalizer.state === 'problem'
+      parametric === 'detach_required' ||
+      parametric === 'processor_failed' ||
+      equalizer.state === 'problem'
         ? 'problem'
         : equalizer.state === 'processing'
           ? 'processing'

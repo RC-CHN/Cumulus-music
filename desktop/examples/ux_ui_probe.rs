@@ -582,6 +582,9 @@ fn main() {
                 value["playlistCommentDetails"]=json!(*PLAYLIST_COMMENT_DETAILS.lock().unwrap());
             }
             let stage=value["stage"].as_str().unwrap_or("");
+            if stage=="effect-peq-fail-runtime" && effect_peq_fixture::inject_runtime_fault() {
+                handle.get_webview_window("main").unwrap().eval("window.__peqRuntimeFaultArmed=true;").unwrap();return;
+            }
             if stage=="member-sign-reveal" && member_sign_fixture::reveal_write() {
                 handle.get_webview_window("main").unwrap().eval("window.__memberSignRevealed=true;").unwrap();return;
             }

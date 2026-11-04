@@ -30,6 +30,7 @@ export type EffectPeqPhase =
   | 'configured'
   | 'deferred'
   | 'paused_locally'
+  | 'processor_failed'
   | 'recovery_required';
 
 export type EffectRegistration =

@@ -43,7 +43,11 @@ export interface Timeline {
   total: number | null;
   media_start: number;
 }
-export type BoundParametricStatus = 'deferred' | 'configured' | 'detach_required';
+export type BoundParametricStatus =
+  | 'deferred'
+  | 'configured'
+  | 'detach_required'
+  | 'processor_failed';
 
 export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;

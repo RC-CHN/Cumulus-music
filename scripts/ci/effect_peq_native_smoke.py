@@ -20,23 +20,28 @@ def main():
     mode.add_argument('--player-stop', action='store_true', help='stop ordinary playback before explicit PEQ cleanup')
     mode.add_argument('--resume-after-stop', action='store_true', help='resume the exact old PEQ registration')
     mode.add_argument('--pause-local', action='store_true', help='pause and resume PEQ without interrupting playback')
+    mode.add_argument('--runtime-fault', action='store_true', help='inject an optional PEQ failure into native polling')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, mode=0o700, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     source = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_peq_native_ui_probe.js'
     player_stop = args.player_stop or args.resume_after_stop
-    retained_registration = args.resume_after_stop or args.pause_local
-    if player_stop or args.pause_local:
+    local_recovery = args.pause_local or args.runtime_fault
+    retained_registration = args.resume_after_stop or local_recovery
+    if player_stop or local_recovery:
         script = root / 'scenario.js'
         script.write_text(('window.__cumulusPeqPlayerStop = true;\n' if player_stop else '') +
                           ('window.__cumulusPeqResume = true;\n' if args.resume_after_stop else '') +
                           ('window.__cumulusPeqPauseLocal = true;\n' if args.pause_local else '') +
+                          ('window.__cumulusPeqRuntimeFault = true;\n' if args.runtime_fault else '') +
                           source.read_text(encoding='utf-8'),
                           encoding='utf-8')
         source = script
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_UX_SCRIPT=str(source), CUMULUS_MOTION_PROOF='1',
                CUMULUS_EFFECT_PEQ_NATIVE_PROOF='1', CUMULUS_AUDIO_FILTER=str(args.library.resolve(strict=True)))
+    if args.runtime_fault:
+        env['CUMULUS_EFFECT_PEQ_RUNTIME_FAULT'] = '1'
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.runtime:
@@ -57,19 +62,21 @@ def main():
         return json.loads((output / (name + '.json')).read_text(encoding='utf-8'))
 
     complete = read('complete')
-    stages = 4 if player_stop or args.pause_local else 5
+    stages = 4 if player_stop or local_recovery else 5
     assert complete['ok'] and complete['stageCount'] == stages
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
     assert prepared['materialGets'] == 1 and prepared['starts'] == prepared['attaches'] == 0
     assert configured['starts'] == configured['attaches'] == 1 and configured['nativeAttached']
     assert configured['processedSamples'] > 0 and configured['failedBlocks'] == 0
-    if args.pause_local:
-        assert complete['localPauseVerified']
-        paused = read('ux_03_paused_locally')['nativePeq']
+    if local_recovery:
+        flag = 'runtimeFaultVerified' if args.runtime_fault else 'localPauseVerified'
+        assert complete[flag]
+        paused = read('ux_03_runtime_fault' if args.runtime_fault else 'ux_03_paused_locally')['nativePeq']
         assert paused['stops'] == 0 and paused['detaches'] == 1
         assert not paused['nativeAttached'] and paused['calls'] == configured['calls']
-        final = read('ux_04_resumed_locally')['nativePeq']
+        assert configured['injectedFaults'] == 0 and paused['injectedFaults'] == int(args.runtime_fault)
+        final = read('ux_04_restored_after_fault' if args.runtime_fault else 'ux_04_resumed_locally')['nativePeq']
     elif player_stop:
         player_stopped = read('ux_03_player_stopped')['nativePeq']
         assert player_stopped['stops'] == 0 and player_stopped['detaches'] == 1
@@ -104,6 +111,7 @@ def main():
         assert final == complete['nativePeq']
     assert final['starts'] == final['materialGets'] == final['detaches'] == 1
     assert final['failedBlocks'] == 0
+    assert final['injectedFaults'] == int(args.runtime_fault)
     writes = [call for call in final['calls'] if call['path'].endswith(('/set', '/stop'))]
     initial_write = {'path': '/api/vipauth/app/interests/auth/set', 'result': 'ack'}
     if retained_registration:
@@ -146,7 +154,9 @@ def main():
     assert lease['phase'] == ('registered' if retained_registration else 'released')
     assert lease['stop_acknowledged'] is not retained_registration
     assert len(list(output.glob('ux_*.png'))) == (stages if args.screenshots else 0)
-    if args.pause_local:
+    if args.runtime_fault:
+        checks = {'runtimeFaultVerified': True, 'injectedFaults': 1}
+    elif args.pause_local:
         checks = {'localPauseVerified': True}
     elif args.resume_after_stop:
         checks = {'resumedRegistrationVerified': True}
