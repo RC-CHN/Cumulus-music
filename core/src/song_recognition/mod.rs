@@ -1,11 +1,15 @@
 //! The recovered packet packing and sealing stages for PC song recognition.
 //!
 //! This is an offline codec. It does not record audio, extract acoustic features,
-//! choose a zlib backend, or send a recognition request.
+//! or send a recognition request. Stock zlib is an explicit optional feature.
 
 mod packing;
+#[cfg(feature = "song-recognition-zlib")]
+mod stock_zlib;
 
 pub use packing::{PeakRecord, pack_default_packet};
+#[cfg(feature = "song-recognition-zlib")]
+pub use stock_zlib::compress_packed_packet;
 
 use crate::{Result, protocol::wire::crypto::encrypt_ecb};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -100,6 +104,13 @@ mod tests {
                 case.name
             );
             let compressed = hex::decode(case.compressed_hex).unwrap();
+            #[cfg(feature = "song-recognition-zlib")]
+            assert_eq!(
+                compress_packed_packet(&packed).unwrap().unwrap(),
+                compressed,
+                "{}",
+                case.name
+            );
             let mut original_packet = Vec::new();
             let mut stream = ZlibDecoder::new(compressed.as_slice());
             stream.read_to_end(&mut original_packet).unwrap();

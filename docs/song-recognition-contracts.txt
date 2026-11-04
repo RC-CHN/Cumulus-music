@@ -2,7 +2,7 @@
 
 状态：已静态恢复入口、原生回采、进度、请求、签名和结果。已离线执行官方
 归一化与完整原生指纹处理，从三组合成 PCM 冻结了逐字节对照，并移植了 Rust
-默认二进制打包及压缩后的 AES/Base64。Rust 声学特征、原生等价压缩、设备预处理
+默认二进制打包、可选 stock zlib 压缩和 AES/Base64。Rust 声学特征、设备预处理
 及真实服务仍待验证。本次不增加生产识曲、模拟识曲界面、
 录音权限或上传；没有使用真实账号、采集或联网。
 
@@ -223,7 +223,7 @@ fixture SHA256 97c92f33df571677fcff3e8041672d5eac670928f978a92b5a211127476d38fb�
 探针与 runner 的 SHA256 见 fixture。没有官方真实 Windows 环境、非 C
 locale、设备下混或服务回包证明。
 
-Rust 已迁移的两个独立阶段：
+Rust 已迁移的封包阶段：
 - core/src/song_recognition/packing.rs 实现 D0A2C0 默认标志下的打包。
   D0C5A0 写 4 字节空标签长度、4 字节归一化 flag（默认 0）、两个
   little-endian f32（+0x28 默认 0，+0x24 为采样数/8000；见 D0AAD6–D0AAE6）。
@@ -235,23 +235,49 @@ Rust 已迁移的两个独立阶段：
   的 nativePacketHeader 与 nativePeaks（17、105、0 条），与冻结的 packed、
   zlib 和最终指纹逐层对照。core/src/song_recognition/mod.rs 的
   seal_compressed_packet 对压缩流作 AES-128-ECB/PKCS#7，空输入无指纹，
-  rawdata() 再做 Base64。两阶段不以未经证实的压缩器串接。
-  Rust 对照可执行：cargo test -p cumulus-core --lib song_recognition --locked
+  rawdata() 再做 Base64。压缩需显式启用下述功能；默认仍无生产接线。
+  默认对照：cargo test -p cumulus-core --lib song_recognition --locked
+
+可选 stock zlib 桥：
+- core 的 song-recognition-zlib feature 默认为关闭，不改变 flate2 的后端。
+  libz-sys 精确锁定 1.1.31（MIT OR Apache-2.0），启用 libc/static/stock-zlib
+  且关闭其默认 feature。crate SHA256：
+  ff20308ecabd635a2dc1dd5834a86c462cca20efba1d5d3ddab1f8aea3455cb2，
+  上游发行元数据 https://crates.io/crates/libz-sys/1.1.31 及 .cargo_vcs_info.json
+  commit 595fbb7995b2c5e15371963103d33192fd066857。其 src/zlib/zlib.h 载明
+  stock zlib 1.3.2 与 Zlib 许可证，源头 https://github.com/madler/zlib/tree/v1.3.2。
+  未复制任何官方音乐客户端二进制、专有源或 zlib C 源进本仓库。
+- Rust 使用有界的 compressBound/compress2 同步 FFI，检查版本 1.3.2、
+  C 长度转换和写出容量，空输入无流；128 KiB 是本地内存预算，不是官方
+  服务上限。D0D060–D0D0E7 原循环以 16 KiB 读/写，用 EOF 选择
+  Z_NO_FLUSH/Z_FINISH。与 one-shot compress2 的字节等价只对已测数据成立。
+- 冻结的 song-recognition-zlib-official.json 是原始 D0D770 对 10 组
+  合成任意字节的输入配方、输入 SHA、输出长度与 SHA；含 16 KiB±1、
+  32 KiB、跨多个输出缓冲和 128 KiB 预算边界。Ubuntu stock 1.3.1
+  静态链接的独立 C 探针对这 10 组及三组识曲包，one-shot 和 16 KiB 流式
+  写均匹配。通过可选 Rust 桥，捆绑的 stock 1.3.2 对 13 组也逐字节匹配。
+- 另外直接运行原指纹处理，使用同一固定 xorshift PCM 的 6/9/12/15 秒
+  前缀，捕获 218/334/447/562 条峰值；原 zlib 流长 1711/2565/3400/4249，
+  stock 1.3.2 重压都一致。不是任意流或服务兼容性的证明。
+- Linux 实测四项 Rust 对照，ELF 含本地 compress2/zlibVersion 且不依赖动态
+  libz。用相同 Rust 模块交叉链接 x86_64-pc-windows-gnu，PE 含两个符号、
+  无 zlib DLL 导入；未在 Windows 运行。libz-sys 在 Windows 仍可探测 vcpkg，
+  复验显式禁用它并要求静态构建，不将另一来源或版本冒充捆绑源码：
+  LIBZ_SYS_STATIC=1 VCPKGRS_DISABLE=1 cargo test -p cumulus-core --lib \
+    --features song-recognition-zlib song_recognition --locked
+  Windows runner 可用等价环境变量与同一组平台无关对照。没有启用真实识曲。
 
 下一阶段：
-1. 按默认参数恢复或选择可跨平台重现的压缩阶段，验证更多动态块、长输入和
-   Z_FINISH 分支，再将打包与封包串接。不能把任意 deflate 视作原生字节等价。
-2. 还原候选生成、筛选和排序、FFT 与阈值；用可区分频率、幅度、分段边界
-   和静音的合成输入收集更多官方向量，覆盖 3/6/9/12/15 秒前缀，
-   再验证 Rust 算法逐字节匹配。
-3. 追 3087B1 附近的 8000 配置与下混重采样；设备采集、输入样本转换
+1. 继续迁移原生 FFT、浮点矩阵与默认峰值筛选，按
+   docs/song-recognition-signal-contracts.txt 的精确边界用合成原生向量逐段核对。
+2. 追 3087B1 附近的 8000 配置与下混重采样；设备采集、输入样本转换
    与指纹编码需分别验证。
-4. Rust 先可移植纯状态、计时/采样单位、EAPI 固定字段、结果解析及权限补读，
+3. Rust 可移植纯状态、计时/采样单位、EAPI 固定字段、结果解析及权限补读，
    用合成 transport 比较发送次数和正文。只有得到原始指纹向量后才选择
    是否移植原生运算，逐字节比对；不要用 Chromaprint 或其他 Shazam 实现
    冒充同一编码。cloudmusic.dll 只有 16 个通用导出，没有识曲 ABI；
    neaudioaiif.dll 的 25 个导出也无匹配识曲接口，不把私有 RVA 做产品 FFI。
-5. 将来 Windows 用明确启动的 WASAPI 输出回采；Linux 需要单独验证
+4. 将来 Windows 用明确启动的 WASAPI 输出回采；Linux 需要单独验证
    PulseAudio/PipeWire 的输出 monitor 适配，不用麦克风作自动回退。
    不把测试构造结果接到用户可用入口。只有真实编码具备、合成端到端
    与隐私边界通过并有适当授权，才能单独试读服务：客户端以本次会话 GUID

@@ -5,6 +5,9 @@ edition.workspace = true
 license-file.workspace = true
 publish.workspace = true
 
+[features]
+song-recognition-zlib = ["dep:libz-sys"]
+
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 serde.workspace = true
@@ -32,6 +35,7 @@ ryu-js = "1"
 regex = "1"
 crc32fast = "1"
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+libz-sys = { version = "=1.1.31", default-features = false, features = ["libc", "static", "stock-zlib"], optional = true }
 tempfile = "3"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "gzip", "http2", "form"] }
 cookie_store = "0.22"

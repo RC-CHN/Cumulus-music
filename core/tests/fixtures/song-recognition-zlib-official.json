@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "sourceDllSha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+  "nativeFunctionRva": "0xd0d770",
+  "nativeZlibVersion": "1.2.5",
+  "rawRecipe": "For each i, advance u32 xorshift from seed 0x881234fe (x^=x<<13; x^=x>>17; x^=x<<5); noise emits the high byte. Repeated emits (i*7+i//563)%253. Mixed emits (i//29)%31 when i%771<391, else noise.",
+  "cases": [
+    {
+      "inputBytes": 1,
+      "shape": "repeated",
+      "inputSha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "compressedBytes": 9,
+      "compressedSha256": "bfd38e0d4937d7dcdabca6cd1bd39052f1ec3de43a06922920053d44e6234cef"
+    },
+    {
+      "inputBytes": 15,
+      "shape": "mixed",
+      "inputSha256": "5322fecfc92a5e3248a297a3df3eddfb9bd9049504272e4f572b87fa36d4b3bd",
+      "compressedBytes": 11,
+      "compressedSha256": "0aa28bf797561d7ba5fdb6c0f6992c5ac8e9eb0b613640703f3123e8ed1a7d8c"
+    },
+    {
+      "inputBytes": 32,
+      "shape": "noise",
+      "inputSha256": "c4cc4929e87163f38d882da492d0afff4c5ce91e3726cf220c774638c0b45ac7",
+      "compressedBytes": 43,
+      "compressedSha256": "0f2a6f71bfa10e2dbeda3a1a5c71ce5b0c543cc44fd3a46fa2f59537b93bf321"
+    },
+    {
+      "inputBytes": 16383,
+      "shape": "mixed",
+      "inputSha256": "90732ef9c87e570a6025783aa93cda0581811418325c536952aa14e3020d69a8",
+      "compressedBytes": 8273,
+      "compressedSha256": "34bb2f2facb7d6b651216cc66f9e665b556c1c4a1d2ff31bdf21bb3b488d21b8"
+    },
+    {
+      "inputBytes": 16384,
+      "shape": "mixed",
+      "inputSha256": "476a3dd47524070c70fe12f7e5c1c19d405370f2f05e9fb6d836d48ff2920602",
+      "compressedBytes": 8273,
+      "compressedSha256": "82425a7a013e369a08e41cd9a486ab2c49d0ebbb40d038aac7f1d1675389b875"
+    },
+    {
+      "inputBytes": 16385,
+      "shape": "mixed",
+      "inputSha256": "d7ff09f31354828141a592690d4cf94f76fafca14b8d9b941b96863e34e6bcbd",
+      "compressedBytes": 8273,
+      "compressedSha256": "688d0690b42cff37297ce1c0d24dc7cacd754ae7fc79fb7030a3532bf34cb619"
+    },
+    {
+      "inputBytes": 32768,
+      "shape": "repeated",
+      "inputSha256": "012c96bdda599500d1cdeab75eff957f8032549b2e24beb07835a011101e3d1e",
+      "compressedBytes": 576,
+      "compressedSha256": "0e6a0cd1cb8b6d9ae49a1012d2ead808a422b7209ad5c65063e171f757dcf6ba"
+    },
+    {
+      "inputBytes": 32805,
+      "shape": "mixed",
+      "inputSha256": "28042cd3c3fadbbe440ca6e435bd92cef9c7ca1f67e7802e5b09f39550178f9d",
+      "compressedBytes": 16427,
+      "compressedSha256": "f942d233a87dd9e0b1c4cdc9fdebffb6404856dcdcb406424c4212b3010fd741"
+    },
+    {
+      "inputBytes": 65537,
+      "shape": "noise",
+      "inputSha256": "560509e7fa44f9a57efc86049b111e2a7ec08935f6ce35b807bba0f52f994c30",
+      "compressedBytes": 65563,
+      "compressedSha256": "99a69d1582e45bd88ad5df2c2e54d5fb1aaf061ce4825638a98e082d8376e88a"
+    },
+    {
+      "inputBytes": 131072,
+      "shape": "noise",
+      "inputSha256": "9173157dda4500953aebe4c002cb91694713d6d127f863790559cf9628997dab",
+      "compressedBytes": 131118,
+      "compressedSha256": "fa46df8964cc9ce53bc23c868ba3a4864553eca56650e097c80b501a8d40531a"
+    }
+  ]
+}
