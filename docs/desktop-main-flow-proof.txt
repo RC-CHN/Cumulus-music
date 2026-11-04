@@ -268,3 +268,15 @@ Cumulus 桌面主流程验收
   断网播放下载文件及清理均有独立断言。报告 .build/goal-current-main-flow-eof/report.json；
   复跑用 scripts/ci/main_flow_https_smoke.py --eof-next。零真实账号写入；此结果不
   证明真实 CDN、安装包、物理声卡或 Windows 实机。
+
+2026-11-04 本机合成主流程复验
+  当前工作树重新构建 main_flow_ui_probe，以隔离回环 HTTPS 和 --eof-next
+  运行。19 个桌面检查点、18 张截图；生产 Vue、Tauri IPC、SQLite、libmpv
+  贯通。合成扫码确认后读取资源，搜索并播放；两次 HTTPS GET 顺序为 1、2，
+  第一首自然结束后由原生播放器推进。临时歌单创建、编辑、成员增删、清理及
+  读回通过；下载在部分文件暂停后按已核对偏移续传，并完成离线播放和文件清理。
+  新进程恢复同一合成账号。无真实账号或音乐服务请求；没有把此复验计作最新
+  Windows 门槛或实体声卡验证。
+  本机报告 .build/current-main-flow.nI6xOJ/run/report.json 和 https-receipt.json，
+  同一运行目录保留截图。复现使用 scripts/ci/main_flow_https_smoke.py
+  --eof-next --screenshots；隔离命名空间仅开放合成回环服务。
