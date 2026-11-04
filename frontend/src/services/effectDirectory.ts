@@ -1,3 +1,5 @@
+import type { BoundParametricStatus } from './player';
+
 export type EffectCatalogueKind = 'highly_recommended' | 'recommended' | 'more';
 
 export interface EffectCatalogueItem {
@@ -15,6 +17,15 @@ export type EffectAccess = 'allowed' | 'trial' | 'unavailable' | 'unknown';
 export interface EffectDeviceChoice {
   id: number;
   name: string;
+}
+
+export function headphoneTuningLabel(status: BoundParametricStatus) {
+  return {
+    configured: '耳机调音已启用',
+    deferred: '音频加载后启用耳机调音',
+    detach_required: '耳机调音尚未关闭，请重试关闭',
+    processor_failed: '耳机调音失败，已停用',
+  }[status];
 }
 export type EffectDeviceMaterialCheck =
   | 'no_material'
@@ -89,5 +100,10 @@ export interface EffectDirectoryClient {
     model: number,
   ): Promise<EffectDeviceMaterialCheck>;
   effectDeviceApply(epoch: string, brand: number, model: number): Promise<void>;
-  effectDeviceClear(epoch: string, brand: number, model: number): Promise<void>;
+  effectDeviceClear(
+    epoch: string,
+    brand: number,
+    model: number,
+    activationId: string,
+  ): Promise<void>;
 }

@@ -18,10 +18,11 @@ import EffectParametricControls from './EffectParametricControls.vue';
 const props = defineProps<{
   account: AccountView;
   initialManagementOnly?: boolean;
+  headphoneManagement?: boolean;
   bindingStatus?: BoundParametricStatus;
   deviceParametric?: DeviceParametricView;
 }>();
-const emit = defineEmits<{ close: []; login: [] }>();
+const emit = defineEmits<{ close: []; login: []; equalizer: [] }>();
 const core = useCore();
 const { effective: appearance } = useAppearance();
 const failedArtwork = ref(new Set<string>());
@@ -75,6 +76,7 @@ function scheduleTrials(rows: EffectCatalogueItem[]) {
 const selected = ref<EffectCatalogueItem>();
 const access = ref<EffectAccess>();
 const browsing = ref(!props.initialManagementOnly);
+const browsingHeadphones = ref(false);
 const pending = ref<PendingEffectRegistration[]>([]);
 const pendingError = ref('');
 const pendingLoading = ref(false);
@@ -203,17 +205,27 @@ function retryRights() {
   void inspect(selected.value);
 }
 
+async function browseHeadphoneCatalogue() {
+  browsingHeadphones.value = true;
+  await nextTick();
+  if (dialog.value?.open)
+    dialog.value.querySelector<HTMLButtonElement>('header button')?.focus({ preventScroll: true });
+}
+
 watch(
   () => [props.account.epoch, props.account.status],
   () => emit('close'),
 );
 useEffectRegistrationChanges(
   () => props.account.epoch,
-  () => void refreshPending(),
+  () => {
+    if (!props.headphoneManagement) void refreshPending();
+  },
 );
 onMounted(() => {
   previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   dialog.value?.showModal();
+  if (props.headphoneManagement) return;
   if (browsing.value) void load(kind.value);
   void refreshPending();
 });
@@ -230,23 +242,37 @@ onUnmounted(() => {
   <dialog
     ref="dialog"
     class="effect-directory"
-    aria-label="音效目录"
+    :aria-label="headphoneManagement ? '耳机音效' : '音效目录'"
     @cancel.prevent="emit('close')"
   >
     <header>
-      <h2>音效目录</h2>
-      <button class="icon-button" aria-label="关闭音效目录" @click="emit('close')">
+      <h2>{{ headphoneManagement ? '耳机音效' : '音效目录' }}</h2>
+      <button
+        class="icon-button"
+        :aria-label="headphoneManagement ? '关闭耳机音效管理' : '关闭音效目录'"
+        @click="emit('close')"
+      >
         <Icon name="close" />
       </button>
     </header>
     <div class="effect-directory-body">
-      <p class="effect-directory-note">
+      <p v-if="!headphoneManagement" class="effect-directory-note">
         查看音效介绍和账号权益。可验证的独立参数均衡组件可以单独配置。
       </p>
       <div v-if="account.status !== 'authenticated'" class="effect-directory-message">
         <p>登录后可查询音效目录和账号权益。</p>
         <button class="primary" type="button" @click="emit('login')">登录</button>
       </div>
+      <template v-else-if="headphoneManagement">
+        <EffectDeviceDirectory
+          :account="account"
+          :applied="deviceParametric"
+          :catalogue-parametric="bindingStatus"
+          :management-only="!browsingHeadphones"
+          @browse="browseHeadphoneCatalogue"
+        />
+        <button type="button" @click="emit('equalizer')">打开均衡器</button>
+      </template>
       <template v-else>
         <section
           v-if="pending.length || pendingError || !browsing"

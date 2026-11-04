@@ -53,7 +53,25 @@ pub struct DeviceParametricTarget {
 pub struct DeviceParametricView {
     #[serde(flatten)]
     pub target: DeviceParametricTarget,
+    #[serde(
+        rename = "activationId",
+        serialize_with = "serialize_device_activation"
+    )]
+    pub activation_id: uuid::Uuid,
     pub status: ParametricBindingStatus,
+}
+
+fn serialize_device_activation<S: serde::Serializer>(
+    id: &uuid::Uuid,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serializer.serialize_str(&id.simple().to_string())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct DeviceActivation {
+    target: DeviceParametricTarget,
+    id: uuid::Uuid,
 }
 
 pub(super) struct InspectRequest {
@@ -77,8 +95,9 @@ enum Selection {
     Plain(Option<Box<ParametricPlan>>),
     Bound(Arc<BoundParametric>),
     ClearBound(BoundParametricTarget),
-    Device(DeviceParametricTarget, Box<ParametricPlan>),
-    ClearDevice(DeviceParametricTarget),
+    DeviceRequest(DeviceParametricTarget, Box<ParametricPlan>),
+    Device(DeviceActivation, Box<ParametricPlan>),
+    ClearDevice(DeviceActivation),
 }
 
 #[derive(Default)]
@@ -92,12 +111,12 @@ pub(super) struct State {
     possibly_attached: bool,
     detach_required: bool,
     failed_binding: Option<(SessionToken, BoundParametricTarget)>,
-    device: Option<DeviceParametricTarget>,
-    failed_device: Option<DeviceParametricTarget>,
+    device: Option<DeviceActivation>,
+    failed_device: Option<DeviceActivation>,
 }
 
 impl State {
-    fn deferred_device(&self) -> Option<DeviceParametricTarget> {
+    fn deferred_device(&self) -> Option<DeviceActivation> {
         match &self.deferred {
             Some(Selection::Device(target, _)) => Some(*target),
             _ => None,
@@ -106,7 +125,7 @@ impl State {
 
     pub(super) fn device_status(&self) -> Option<DeviceParametricView> {
         use ParametricBindingStatus as Status;
-        let (target, status) = if let Some(target) = self.device {
+        let (activation, status) = if let Some(target) = self.device {
             (
                 target,
                 if self.detach_required {
@@ -120,7 +139,11 @@ impl State {
         } else {
             (self.failed_device?, Status::ProcessorFailed)
         };
-        Some(DeviceParametricView { target, status })
+        Some(DeviceParametricView {
+            target: activation.target,
+            activation_id: activation.id,
+            status,
+        })
     }
 
     pub(super) fn bound_status(&self) -> Option<ParametricBindingStatus> {
@@ -188,7 +211,7 @@ impl PlaybackController {
         target: DeviceParametricTarget,
         plan: ParametricPlan,
     ) -> Result<ParametricApplication> {
-        self.request_parametric(token, Selection::Device(target, Box::new(plan)))
+        self.request_parametric(token, Selection::DeviceRequest(target, Box::new(plan)))
             .await
     }
 
@@ -196,9 +219,16 @@ impl PlaybackController {
         &self,
         token: &SessionToken,
         target: DeviceParametricTarget,
+        activation_id: uuid::Uuid,
     ) -> Result<ParametricApplication> {
-        self.request_parametric(token, Selection::ClearDevice(target))
-            .await
+        self.request_parametric(
+            token,
+            Selection::ClearDevice(DeviceActivation {
+                target,
+                id: activation_id,
+            }),
+        )
+        .await
     }
 
     /// Set one explicitly selected native PEQ component for this playback
@@ -364,7 +394,7 @@ impl Actor {
         }
         if self.parametric.device.is_some()
             || self.parametric.deferred_device().is_some()
-            || (matches!(&selection, Selection::Device(..))
+            || (matches!(&selection, Selection::DeviceRequest(..))
                 && (self.parametric.possibly_attached || self.parametric.deferred.is_some()))
         {
             return Err(Error::State(
@@ -385,6 +415,16 @@ impl Actor {
                 self.parametric.bound_use = Some(fence);
             }
         }
+        let selection = match selection {
+            Selection::DeviceRequest(target, plan) => Selection::Device(
+                DeviceActivation {
+                    target,
+                    id: uuid::Uuid::new_v4(),
+                },
+                plan,
+            ),
+            other => other,
+        };
         if self.pending.is_some() {
             // Do not wait on the engine mutex held by a decoder. The latest
             // request will run in loaded(), before its first unpause.
@@ -398,7 +438,7 @@ impl Actor {
 
     async fn parametric_clear_device(
         &mut self,
-        target: DeviceParametricTarget,
+        target: DeviceActivation,
     ) -> Result<ParametricApplication> {
         if self.parametric.deferred_device() == Some(target) {
             self.parametric.deferred = None;
@@ -476,8 +516,8 @@ impl Actor {
     ) -> Result<ParametricApplication> {
         match selection {
             Selection::Plain(plan) => self.parametric_apply(plan.map(|plan| *plan)).await,
-            Selection::ClearBound(_) | Selection::ClearDevice(_) => {
-                unreachable!("clear never enters the deferred queue")
+            Selection::ClearBound(_) | Selection::ClearDevice(_) | Selection::DeviceRequest(..) => {
+                unreachable!("only accepted apply operations enter the deferred queue")
             }
             Selection::Device(target, plan) => {
                 self.parametric.failed_device = None;

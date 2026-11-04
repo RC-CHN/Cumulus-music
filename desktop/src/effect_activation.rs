@@ -436,11 +436,12 @@ pub async fn effect_device_clear<R: tauri::Runtime>(
     epoch: String,
     brand: EffectId,
     model: EffectId,
+    activation_id: String,
 ) -> std::result::Result<(), ClientError> {
     authorize(&window, &client, &epoch)?;
     let _state = host.state.try_lock().map_err(|_| Error::MutationBusy)?;
     client
-        .clear_native_device_parametric(&epoch, brand, model)
+        .clear_native_device_parametric(&epoch, brand, model, &activation_id)
         .await?;
     Ok(())
 }

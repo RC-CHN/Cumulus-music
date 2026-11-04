@@ -2,14 +2,20 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
-import type { EffectDeviceChoice, EffectDeviceMaterialCheck } from '../services/effectDirectory';
+import {
+  headphoneTuningLabel,
+  type EffectDeviceChoice,
+  type EffectDeviceMaterialCheck,
+} from '../services/effectDirectory';
 import type { BoundParametricStatus, DeviceParametricView } from '../services/player';
 
 const props = defineProps<{
   account: AccountView;
   applied?: DeviceParametricView;
   catalogueParametric?: BoundParametricStatus;
+  managementOnly?: boolean;
 }>();
+const emit = defineEmits<{ browse: [] }>();
 const core = useCore();
 const brands = ref<EffectDeviceChoice[]>([]);
 const models = ref<EffectDeviceChoice[]>([]);
@@ -26,6 +32,7 @@ const operation = ref<'apply' | 'clear'>();
 const operationError = ref('');
 const applyButton = ref<HTMLButtonElement>();
 const clearButton = ref<HTMLButtonElement>();
+const browseButton = ref<HTMLButtonElement>();
 const checkButton = ref<HTMLButtonElement>();
 const brandSelect = ref<HTMLSelectElement>();
 let actionFocus:
@@ -45,12 +52,6 @@ const materialLabels: Record<EffectDeviceMaterialCheck, string> = {
   pending: '调音材料尚未检查完，可继续检查。',
   standalone_peq: '已验证此型号的参数均衡，可以在当前播放会话中启用。',
   unsupported_graph: '已验证调音材料，当前无法应用其中的效果组合。',
-};
-const appliedLabels: Record<BoundParametricStatus, string> = {
-  configured: '耳机调音已启用',
-  deferred: '音频加载后启用耳机调音',
-  detach_required: '耳机调音尚未关闭，请重试关闭',
-  processor_failed: '耳机调音失败，已停用',
 };
 let brandRequest = 0;
 let modelRequest = 0;
@@ -155,8 +156,15 @@ async function checkMaterial() {
     if (current()) materialLoading.value = false;
   }
 }
-async function changeTuning(action: 'apply' | 'clear') {
-  const target = action === 'clear' ? props.applied : { brand: brand.value, model: model.value };
+async function changeTuning(action: 'apply' | 'clear', event?: MouseEvent) {
+  const applied = props.applied;
+  if (
+    action === 'clear' &&
+    (!applied ||
+      applied.activationId !== (event?.currentTarget as HTMLButtonElement)?.dataset.activationId)
+  )
+    return;
+  const target = action === 'clear' ? applied : { brand: brand.value, model: model.value };
   if (operation.value || target?.brand === undefined || target.model === undefined) return;
   if (action === 'apply' && (material.value !== 'standalone_peq' || busyWithAnotherEffect.value))
     return;
@@ -170,7 +178,8 @@ async function changeTuning(action: 'apply' | 'clear') {
   operationError.value = '';
   try {
     if (action === 'apply') await core.effectDeviceApply(epoch, target.brand, target.model);
-    else await core.effectDeviceClear(epoch, target.brand, target.model);
+    else if (applied)
+      await core.effectDeviceClear(epoch, target.brand, target.model, applied.activationId);
   } catch (issue) {
     if (current()) {
       operationError.value = failure(issue).message;
@@ -206,13 +215,13 @@ watch(
     const target =
       action === 'apply'
         ? clearButton.value
-        : (applyButton.value ?? checkButton.value ?? brandSelect.value);
+        : (applyButton.value ?? checkButton.value ?? brandSelect.value ?? browseButton.value);
     target?.focus({ preventScroll: true });
   },
   { flush: 'post' },
 );
 watch(
-  () => [props.account.epoch, props.account.status] as const,
+  () => [props.account.epoch, props.account.status, props.managementOnly] as const,
   ([epoch]) => {
     resetReads();
     brands.value = [];
@@ -220,7 +229,7 @@ watch(
     brand.value = model.value = undefined;
     brandError.value = modelError.value = '';
     brandLoading.value = modelLoading.value = false;
-    if (owns(epoch)) void loadBrands();
+    if (owns(epoch) && !props.managementOnly) void loadBrands();
   },
   { immediate: true, flush: 'sync' },
 );
@@ -229,27 +238,33 @@ onUnmounted(resetReads);
 
 <template>
   <section class="effect-device-directory" aria-label="耳机音效目录">
-    <p>选定型号后可检查和应用调音。启用后仍使用当前播放设备。</p>
+    <p v-if="!managementOnly">选定型号后可检查和应用调音。启用后仍使用当前播放设备。</p>
     <div v-if="applied" class="effect-device-active" :data-device-tuning="applied.status">
       <p role="status">
-        {{ appliedLabels[applied.status] }} ·
+        {{ headphoneTuningLabel(applied.status) }} ·
         {{
           brand === applied.brand
             ? (models.find((item) => item.id === applied?.model)?.name ?? `型号 ${applied.model}`)
-            : `型号 ${applied.model}`
+            : `品牌 ${applied.brand} · 型号 ${applied.model}`
         }}
       </p>
       <button
         ref="clearButton"
         type="button"
+        :key="applied.activationId"
+        :data-activation-id="applied.activationId"
         :disabled="!!operation"
-        @click="changeTuning('clear')"
+        @click="changeTuning('clear', $event)"
       >
         {{ applied.status === 'processor_failed' ? '关闭调音提示' : '关闭耳机调音' }}
       </button>
     </div>
     <p v-if="operationError" role="alert">{{ operationError }}</p>
-    <p v-if="brandLoading" role="status">正在读取耳机品牌…</p>
+    <template v-if="managementOnly">
+      <p v-if="!applied" role="status">当前没有耳机调音。</p>
+      <button ref="browseButton" type="button" @click="emit('browse')">浏览耳机音效</button>
+    </template>
+    <p v-else-if="brandLoading" role="status">正在读取耳机品牌…</p>
     <div v-else-if="brandError">
       <p role="alert">{{ brandError }}</p>
       <button type="button" @click="loadBrands">重试品牌</button>

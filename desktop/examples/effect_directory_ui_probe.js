@@ -142,10 +142,11 @@
     assert(after.state === prior.state && after.equalizer.revision === prior.equalizer.revision &&
       after.boundParametric === prior.boundParametric && !after.deviceParametric,
     'material checks do not change playback effects');
+    const currentTuning = () => one('[data-device-tuning]');
+    const sameSong = (value) => value.state === 'playing' && value.playId === prior.playId &&
+      value.entryId === prior.entryId && value.equalizer.revision === prior.equalizer.revision;
+    const launcher = () => one('.playerbar .equalizer-toggle');
     if (native) {
-      const currentTuning = () => one('[data-device-tuning]');
-      const sameSong = (value) => value.state === 'playing' && value.playId === prior.playId &&
-        value.entryId === prior.entryId && value.equalizer.revision === prior.equalizer.revision;
       const apply = async () => {
         click(button(material(), '启用耳机调音'));
         const start = await player();
@@ -160,13 +161,15 @@
       assert(document.activeElement === button(currentTuning(), '关闭耳机调音'),
         'keyboard focus follows the completed apply action');
       await capture('07_headphones_enabled');
+      const firstActivation = (await player()).deviceParametric.activationId;
+      assert(/^[a-f0-9]{32}$/.test(firstActivation), 'actor supplies a narrow opaque activation');
       const exclusive = await invoke('effect_peq_activate', {
         epoch: account.epoch, id: 300, attempt: 'closed-fixture',
       }).then(() => false, (error) => error.code === 'headphone_tuning_active');
       assert(exclusive, 'ordinary PEQ activation cannot register while headphone tuning is mounted');
       const wrong = await invoke('effect_device_clear', {
-        epoch: account.epoch, brand: 4200, model: 4102,
-      }).then(() => false, () => true);
+        epoch: account.epoch, brand: 4200, model: 4102, activationId: firstActivation,
+      }).then(() => false, (error) => error.code === 'stale');
       assert(wrong && (await player()).deviceParametric?.status === 'configured',
         'an unrelated device identity cannot clear the installed filter');
       click(button(currentTuning(), '关闭耳机调音'));
@@ -180,21 +183,18 @@
         'keyboard focus returns to applying the selected model');
       await capture('08_headphones_disabled');
       await apply();
-      await emit('effect-peq-fail-runtime');
-      const beforeFault = await player();
-      await wait(async () => {
-        const value = await player();
-        return currentTuning()?.dataset.deviceTuning === 'processor_failed' &&
-          value.deviceParametric?.status === 'processor_failed' && sameSong(value) &&
-          value.position > beforeFault.position + 0.25;
-      }, 'a verified native detach keeps the same song playing after a filter fault');
-      await capture('09_headphones_fault');
-      click(button(currentTuning(), '关闭调音提示'));
-      await wait(() => !currentTuning(), 'clear the detached filter notice');
+      const replacement = (await player()).deviceParametric;
+      assert(replacement.activationId !== firstActivation, 'reapplying the same model makes a new activation');
+      const stale = await invoke('effect_device_clear', {
+        epoch: account.epoch, brand: replacement.brand, model: replacement.model,
+        activationId: firstActivation,
+      }).then(() => false, (error) => error.code === 'stale');
+      assert(stale && (await player()).deviceParametric?.activationId === replacement.activationId,
+        'a stale clear cannot detach a new activation of the same model');
     }
     select(selects()[0], 4200);
     await wait(() => text().includes('此品牌暂无耳机型号。') && selects().length === 1, 'empty brand clears old models');
-    await capture(native ? '10_empty_headphones' : '07_empty_headphones');
+    await capture(native ? '09_empty_headphones' : '07_empty_headphones');
     select(selects()[0], 4100);
     await Promise.resolve();
     assert(selects()[1]?.textContent.includes('合成耳机乙') && selects()[1]?.value === '',
@@ -204,11 +204,41 @@
     assert(text().includes('此品牌暂无耳机型号。'), 'visited empty brand restores the empty result');
     click(button(dialog(), '关闭音效目录'));
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
+    if (native) {
+      click(button(one('.equalizer-dialog[open]'), '关闭均衡器'));
+      await wait(() => !one('.equalizer-dialog[open]') && document.activeElement === launcher() &&
+        launcher()?.getAttribute('aria-label') === '管理耳机音效' &&
+        launcher()?.dataset.headphoneState === 'configured', 'footer reports the active headphone tuning');
+      click(launcher());
+      await wait(() => dialog()?.getAttribute('aria-label') === '耳机音效' &&
+        currentTuning()?.dataset.deviceTuning === 'configured', 'direct management reflects current tuning');
+      assert(!selects().length && button(dialog(), '浏览耳机音效') && button(dialog(), '打开均衡器'),
+        'current management offers explicit browse and equalizer without loading either');
+      await capture('10_headphones_footer');
+      await emit('effect-peq-fail-runtime');
+      const beforeFault = await player();
+      await wait(async () => {
+        const value = await player();
+        return currentTuning()?.dataset.deviceTuning === 'processor_failed' &&
+          launcher()?.dataset.headphoneState === 'processor_failed' &&
+          value.deviceParametric?.status === 'processor_failed' && sameSong(value) &&
+          value.position > beforeFault.position + 0.25;
+      }, 'verified detach leaves a manageable failure notice and keeps the song playing');
+      assert((await player()).deviceParametric.activationId === beforeFault.deviceParametric.activationId,
+        'the failure notice keeps the exact activation identity');
+      await capture('11_headphones_fault');
+      click(button(currentTuning(), '关闭调音提示'));
+      await wait(() => !currentTuning() && document.activeElement === button(dialog(), '浏览耳机音效'),
+        'dismiss restores keyboard focus within local headphone management');
+      click(button(dialog(), '关闭耳机音效管理'));
+      await wait(() => !dialog() && document.activeElement === launcher() &&
+        launcher()?.getAttribute('aria-label') === '均衡器', 'closing restores the footer focus');
+    }
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: native ? 10 : 7, artworkVerified: true,
+    await emit('complete', { ok: true, stageCount: native ? 11 : 7, artworkVerified: true,
       devicesVerified: true, deviceTuningVerified: native, deviceMaterialVerified: true,
-      deviceCacheVerified: true, limitedFreeExpiryVerified: true });
+      deviceCacheVerified: true, limitedFreeExpiryVerified: true, headphoneFooterVerified: native });
   } catch (error) {
     const image = one('.effect-directory-card img');
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),

@@ -42,8 +42,8 @@ export function createTauriClient(): CoreClient {
       invoke('effect_device_material', { epoch, brand, model }),
     effectDeviceApply: (epoch, brand, model) =>
       invoke('effect_device_apply', { epoch, brand, model }),
-    effectDeviceClear: (epoch, brand, model) =>
-      invoke('effect_device_clear', { epoch, brand, model }),
+    effectDeviceClear: (epoch, brand, model, activationId) =>
+      invoke('effect_device_clear', { epoch, brand, model, activationId }),
     shortcutSettings: (epoch) => invoke('shortcut_settings', { epoch }),
     shortcutSettingsCommand: (epoch, command) =>
       invoke('shortcut_settings_command', { epoch, command }),

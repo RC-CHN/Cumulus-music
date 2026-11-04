@@ -47,7 +47,7 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    stages = 10 if args.library else 7
+    stages = 11 if args.library else 7
     assert complete['ok'] and complete['stageCount'] == stages and complete['artworkVerified'] and complete['devicesVerified']
     assert complete['limitedFreeExpiryVerified'] and complete['deviceCacheVerified']
     assert complete['deviceMaterialVerified'] and complete['effectDirectoryMaterialGets'] == 1
@@ -78,12 +78,15 @@ def main():
     if args.library:
         enabled = json.loads((output / 'ux_07_headphones_enabled.json').read_text(encoding='utf-8'))['nativePeq']
         disabled = json.loads((output / 'ux_08_headphones_disabled.json').read_text(encoding='utf-8'))['nativePeq']
-        fault = json.loads((output / 'ux_09_headphones_fault.json').read_text(encoding='utf-8'))['nativePeq']
+        footer = json.loads((output / 'ux_10_headphones_footer.json').read_text(encoding='utf-8'))
+        fault = json.loads((output / 'ux_11_headphones_fault.json').read_text(encoding='utf-8'))['nativePeq']
+        assert footer['nativePeq']['attaches'] == 2 and footer['nativePeq']['nativeAttached']
+        assert len(footer['effectDirectoryCalls']) == len(calls)
         assert enabled['attaches'] == 1 and enabled['processedSamples'] > 0 and enabled['nativeAttached']
         assert disabled['detaches'] == 1 and not disabled['nativeAttached']
         assert fault['detaches'] == fault['attaches'] == 2 and fault['injectedFaults'] == 1 and not fault['nativeAttached']
         assert fault['processedSamples'] > 0 and fault['failedBlocks'] == 0
-        assert not fault['calls'] and complete['deviceTuningVerified']
+        assert not fault['calls'] and complete['deviceTuningVerified'] and complete['headphoneFooterVerified']
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
                       'realAccountWrites': 0, 'limitedFreeExpiryVerified': True,
                       'deviceMaterialVerified': True, 'deviceTuningVerified': bool(args.library)}))

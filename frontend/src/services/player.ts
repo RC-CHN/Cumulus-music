@@ -53,6 +53,7 @@ export type BoundParametricStatus =
 export interface DeviceParametricView {
   brand: number;
   model: number;
+  activationId: string;
   status: BoundParametricStatus;
 }
 

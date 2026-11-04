@@ -438,13 +438,18 @@ impl MusicClient {
         epoch: &str,
         brand: EffectId,
         model: EffectId,
+        activation_id: &str,
     ) -> Result<ParametricApplication> {
         let token = self.player_token(epoch)?;
+        let id = uuid::Uuid::parse_str(activation_id)
+            .ok()
+            .filter(|id| id.simple().to_string() == activation_id)
+            .ok_or(Error::InvalidInput("invalid headphone activation identity"))?;
         let result = self
             .player
             .controller()
             .await?
-            .clear_device_parametric(&token, DeviceParametricTarget { brand, model })
+            .clear_device_parametric(&token, DeviceParametricTarget { brand, model }, id)
             .await?;
         self.session.check_generation(&token)?;
         Ok(result)

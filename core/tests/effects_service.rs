@@ -121,12 +121,17 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
         let temp = tempfile::tempdir().unwrap();
         let registry = ProfileRegistry::open(temp.path(), ApiOrigin::Pc).unwrap();
         let (bytes, _) = sample("first");
-        let api = Arc::new(ScriptApi::new([
+        let model_row = json!({"code":200,"data":[{"soundId":300,"soundType":2,"size":bytes.len(),
+            "soundMd5":hex::encode(Md5::digest(&bytes)),"deviceSoundUrl":URL}]});
+        let mut replies = vec![
             json!({"code":200,"songs":[{"id":1,"name":"Synthetic","dt":30000,"ar":[],"al":{"id":1,"name":"Synthetic"}}],"privileges":[]}).into(),
             json!({"code":200,"data":[{"id":1,"code":200,"url":"https://m1.music.126.net/fixture.mp3","md5":"abcd","expi":10,"level":"standard"}]}).into(),
-            json!({"code":200,"data":[{"soundId":300,"soundType":2,"size":bytes.len(),
-                "soundMd5":hex::encode(Md5::digest(&bytes)),"deviceSoundUrl":URL}]}).into(),
-        ]));
+            model_row.clone().into(),
+        ];
+        if cancel_before_load {
+            replies.push(model_row.into());
+        }
+        let api = Arc::new(ScriptApi::new(replies));
         let session = world(api.clone(), registry.store());
         let epoch = session.token().unwrap().generation.to_string();
         let device = Arc::new(playback_support::Device::default());
@@ -154,28 +159,73 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
                     .unwrap(),
                 ParametricApplication::DeferredUntilLoaded
             );
-            assert_eq!(
+            let pending = client
+                .player_snapshot(&epoch)
+                .await
+                .unwrap()
+                .device_parametric
+                .unwrap();
+            assert_eq!(pending.status, ParametricBindingStatus::Deferred);
+            let first = pending.activation_id.simple().to_string();
+            assert!(matches!(
                 client
+                    .clear_native_device_parametric("0", brand, id(), &first)
+                    .await,
+                Err(Error::StaleResponse)
+            ));
+            if cancel_before_load {
+                assert_eq!(
+                    client
+                        .clear_native_device_parametric(&epoch, brand, id(), &first)
+                        .await
+                        .unwrap(),
+                    ParametricApplication::Cleared
+                );
+                assert_eq!(
+                    client
+                        .apply_native_device_parametric(&epoch, brand, id())
+                        .await
+                        .unwrap(),
+                    ParametricApplication::DeferredUntilLoaded
+                );
+                let next = client
                     .player_snapshot(&epoch)
                     .await
                     .unwrap()
                     .device_parametric
-                    .unwrap()
-                    .status,
-                ParametricBindingStatus::Deferred
-            );
-            if cancel_before_load {
+                    .unwrap();
+                assert_ne!(next.activation_id, pending.activation_id);
+                assert!(matches!(
+                    client
+                        .clear_native_device_parametric(&epoch, brand, id(), &first)
+                        .await,
+                    Err(Error::StaleResponse)
+                ));
                 assert_eq!(
                     client
-                        .clear_native_device_parametric(&epoch, brand, id())
+                        .player_snapshot(&epoch)
+                        .await
+                        .unwrap()
+                        .device_parametric,
+                    Some(next)
+                );
+                assert_eq!(
+                    client
+                        .clear_native_device_parametric(
+                            &epoch,
+                            brand,
+                            id(),
+                            &next.activation_id.simple().to_string()
+                        )
                         .await
                         .unwrap(),
                     ParametricApplication::Cleared
                 );
             }
             device.hold_load.store(false, Ordering::SeqCst);
+            pending.activation_id
         };
-        let (result, ()) =
+        let (result, activation_id) =
             tokio::time::timeout(Duration::from_secs(6), async { tokio::join!(load, tune) })
                 .await
                 .unwrap();
@@ -185,8 +235,11 @@ async fn optional_headphone_tuning_never_blocks_first_play_after_a_safe_detach()
             view.device_parametric.map(|view| view.status),
             (!cancel_before_load).then_some(ParametricBindingStatus::ProcessorFailed)
         );
+        if let Some(failed) = view.device_parametric {
+            assert_eq!(failed.activation_id, activation_id);
+        }
         assert_eq!(*device.parametric_at_unpause.lock().unwrap(), [false]);
-        assert_eq!(api.calls().len(), 3);
+        assert_eq!(api.calls().len(), if cancel_before_load { 4 } else { 3 });
     }
 }
 

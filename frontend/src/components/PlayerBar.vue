@@ -16,6 +16,7 @@ import PlaybackVolume from './PlaybackVolume.vue';
 import PlaybackMode from './PlaybackMode.vue';
 import { artistLabel } from '../services/artistLabel';
 import { effectLauncher, equalizerLauncher } from '../services/equalizer';
+import { headphoneTuningLabel } from '../services/effectDirectory';
 import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
 import { usePlaybackCommentCount } from '../composables/usePlaybackCommentCount';
@@ -24,6 +25,8 @@ import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 import PlayerTrackActions from './PlayerTrackActions.vue';
 const equalizerOpen = ref(false);
 const effectDirectoryOpen = ref(false);
+const headphoneManagementOpen = ref(false);
+const effectLauncherButton = ref<HTMLButtonElement>();
 const effectManagementOnOpen = ref(false);
 const props = withDefaults(
   defineProps<{
@@ -68,16 +71,33 @@ const commentBadge = computed(() => formatPlaybackCommentCount(commentCount.valu
 const commentDescription = useId();
 const equalizerDescription = useId();
 const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
-const effectEntry = computed(() =>
-  effectLauncher(view.value?.equalizer, view.value?.boundParametric),
-);
+const headphone = computed(() => {
+  const current = view.value;
+  return props.account.status === 'authenticated' && current?.epoch === props.account.epoch
+    ? current.deviceParametric
+    : undefined;
+});
+const effectEntry = computed(() => {
+  const status = headphone.value?.status;
+  if (!status) return effectLauncher(view.value?.equalizer, view.value?.boundParametric);
+  return {
+    state: status === 'configured' ? 'configured' : status === 'deferred' ? 'pending' : 'problem',
+    label: headphoneTuningLabel(status),
+  };
+});
 function openEqualizer() {
+  headphoneManagementOpen.value = false;
   effectManagementOnOpen.value = !!view.value?.boundParametric;
   equalizerOpen.value = true;
+}
+function openEffectLauncher() {
+  if (headphone.value) headphoneManagementOpen.value = true;
+  else openEqualizer();
 }
 function loginFromEffects() {
   equalizerOpen.value = false;
   effectDirectoryOpen.value = false;
+  headphoneManagementOpen.value = false;
   emit('login');
 }
 const currentCatalog = computed<CurrentCatalogTrack | undefined>((previous) => {
@@ -598,23 +618,31 @@ async function seek(event: Event) {
         词
       </button>
       <button
+        ref="effectLauncherButton"
         class="icon-button equalizer-toggle"
-        :aria-label="view?.boundParametric ? '管理独立参数均衡' : '均衡器'"
+        :aria-label="
+          headphone ? '管理耳机音效' : view?.boundParametric ? '管理独立参数均衡' : '均衡器'
+        "
         aria-haspopup="dialog"
         :aria-describedby="equalizerDescription"
         :data-equalizer-state="equalizerEntry.state"
         :data-effect-state="effectEntry.state"
         :data-parametric-state="view?.boundParametric"
+        :data-headphone-state="headphone?.status"
         :title="effectEntry.label"
         :disabled="!ready"
-        @click="openEqualizer"
+        @click="openEffectLauncher"
       >
-        {{ view?.boundParametric === 'configured' ? 'PEQ' : 'EQ'
+        {{ headphone ? '耳机' : view?.boundParametric === 'configured' ? 'PEQ' : 'EQ'
         }}<span v-if="effectEntry.state === 'problem'" class="equalizer-marker" aria-hidden="true"
           >!</span
         >
         <span
-          v-else-if="effectEntry.state === 'processing' || view?.boundParametric === 'configured'"
+          v-else-if="
+            effectEntry.state === 'processing' ||
+            headphone?.status === 'configured' ||
+            view?.boundParametric === 'configured'
+          "
           class="equalizer-marker"
           aria-hidden="true"
           >•</span
@@ -738,13 +766,25 @@ async function seek(event: Event) {
       </Transition>
     </div>
   </footer>
-  <ModalTransition>
+  <ModalTransition :return-focus="() => effectLauncherButton ?? null">
     <EqualizerPanel
       v-if="equalizerOpen"
       :account="account"
       :player="player"
       :initial-effect-management="effectManagementOnOpen"
       @close="equalizerOpen = false"
+      @login="loginFromEffects"
+    />
+  </ModalTransition>
+  <ModalTransition :return-focus="() => effectLauncherButton ?? null">
+    <EffectDirectory
+      v-if="headphoneManagementOpen"
+      :account="account"
+      :binding-status="view?.boundParametric"
+      :device-parametric="headphone"
+      headphone-management
+      @close="headphoneManagementOpen = false"
+      @equalizer="openEqualizer"
       @login="loginFromEffects"
     />
   </ModalTransition>
