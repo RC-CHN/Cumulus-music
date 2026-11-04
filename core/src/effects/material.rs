@@ -2,6 +2,7 @@
 //! imply that the full native material selector would activate that fragment.
 mod controls;
 mod equalization;
+mod limiter;
 mod routing;
 use super::dsp::{Coefficients, ParametricBand, ParametricEq, ParametricKind, RotationStage};
 use crate::{Error, Result};
@@ -10,6 +11,10 @@ pub use controls::{
     compressor_calls, delay_calls, limiter_calls, speaker_spatial_calls,
 };
 pub use equalization::{EqualizationCall, bass_treble_calls, graphic_calls};
+pub use limiter::{
+    LimiterBeginCall, LimiterBlockFlow, LimiterFrameFlow, MATERIAL_BEGIN_LIMITER,
+    MaterialLimiterPlan, material_limiter_plan,
+};
 pub use routing::{Component, ComponentSection, MaterialRouting, MaterialSchema, route_sections};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};

@@ -113,3 +113,58 @@ material-dly / material-alc / material-spspatial：stdin 为该组件对象，st
   才通过，失败日志保留于 effects-routing-integrated-clippy.log，不将它记为通过。
   cargo clean 仅清理编译缓存，未删除 references、账号、下载文件或截图证据。
   当前完整业务目标仍在进行，整份材料的默认限幅、其他 DSP 节点和预设运行时未闭合。
+
+末端前瞻限幅：材料控制与帧协议
+以 3.1.42.205594 x64 的 neaudioeffects.dll 为准（上述完整 SHA256）。真实
+LookaheadLimiterProcessorImpl 虚表 23F588，构造 63900、初始化 63EB0、旁路 654A0、
+参数 654B0、PCM 入口 63B90、动态算法 63F30、状态/容量重置 64F40。图处理
+1AA50 先运行其余 DSP，再运行 B0 限幅，最后才输出格式转换（10）。
+此处无网络接口，不触发服务端授权。
+
+Rust material_limiter_plan 将两层控制明确分开：
+1. 已存在的原生处理器执行 begin 时，处理器 reset 和取消总旁路分别对末端节点
+   发送 bypass=false；随后传默认参数 0 dB、f32 5 ms attack、f32 100 ms release、
+   0 dB outputgain、infiniteRatio=true、ratio=4 和结构末尾的 true 标志。
+2. 现代 aev2.limiter 必须是对象才进入 EFA280。明确 on=true 时先提交组件参数
+   （默认 -18 dB、50 ms attack、100 ms release、0 dB、无限比、ratio=4），再开；
+   on=false 或对象里缺少/错型的 on 只提交关闭，保留刚提交的默认参数。
+   缺少组件、错型组件或旧式顶层 limiter 不派发，保留 begin 默认开启。
+3. 本次不把 end 描述成提交或启动 PCM 的动作；前文原生对照未观察到 end 的
+   处理器调用。计划记录已发送参数，不把所有值当作实际参数；例如 654B0
+   忽略非正 attack，继续用 begin 的 5 ms。非有限参数被 Rust 拒绝，不返回半份计划。
+
+新合成原生证据实际执行 x64 构造、初始化、begin、reset、末端桥、实际限幅
+节点及数学代码；只有分配/释放、有界内存操作、锁/安全 cookie 和其他处理器
+setter 使用替身。无官方 DLL 全图初始化、Windows 系统运行、声卡或账号验证。
+64F40 先以双精度把采样率乘收到的 f32 attack，再乘声道数，向零截断并向下对齐整帧；
+6533F–65351 将整帧数减一，同时作为首块扣留和 EOF 补帧预算。63B90 在 EOF
+把当前块未用容量补满到剩余预算，未排完时清除本次 EOF；64B55–64BB0 在返回
+前扣掉尚未补偿的起始前瞻。例：48 kHz 双声道、每块至多 128 帧、默认 5 ms，
+先输入 128 与 71 帧，两次均输出 0；再以两个空 EOF 块排出 89、110 帧，
+最后一次才返回 EOF。44.1 kHz 单声道的 256 帧首块输出 37 帧，扣留 219 帧。
+显式关闭则原样返回帧数和 EOF。默认双声道的同步峰值 2.0/-1.5 变为 1.0/-0.75，
+证明两声道共享增益；不能拆成互不通信的单声道节点。
+
+LimiterFrameFlow 实现初次载入后一个固定格式流的块/EOF 协议，只计算输入补帧、
+初始扣留、输出帧数和 EOF，不存储或计算 PCM。复用本机 DSP 格式限制；拒绝超出
+容量的块、攻击窗口不足一帧或超出原生缓冲分配的 100 ms 范围。运行中的重载和
+旁路切换不在本流程内。公开冻结向量 effects-limiter-pcm-official.json 包含七种
+合成输入的真实帧数、EOF 和非零样本，记录 DLL、两个生成器哈希和替身范围。
+Rust 测试比较其中的帧数和 EOF，并与 EFA280 的 207 组冻结显式控制调用联合验证；
+非零样本是待移植动态内核的对照基准，不宣称 Rust 已渲染。
+
+可执行流程：
+effect_material_read INPUT.ncae NEW.json
+effect_dsp_render material-limiter-plan < NEW.json
+effect_dsp_render material-limiter-flow 从 stdin 接收
+{"material":{},"sampleRate":48000,"channels":2,"maxFrames":128,
+ "blocks":[{"frames":128,"end":false},{"frames":71,"end":false},
+           {"frames":0,"end":true},{"frames":0,"end":true}]}
+两条新命令均明确返回 dspRendered=false。
+
+桌面差异：当前 libmpv LADSPA 回调每次返回固定帧数，无可变帧长度或 EOF 回传，
+PEQ 还按单声道实例维护历史。因此未向普通播放、独立 PEQ 或耳机调音插入该节点；
+使用近似限幅、额外补零、截掉尾音或使用独立单声道增益均会改变已证实的官方行为。
+实时接入仍需要保留可变帧数、补偿延迟及排空 EOF 的宿主、跨声道状态和真实内核。
+EOF 直接在最终输入块到达也已对照；运行中启停、采样率切换及完整图仍未验证。
+对照只在未用输入区域填合成静音，不覆盖异常缓冲；播放器外层 FIFO 也不在本批范围。

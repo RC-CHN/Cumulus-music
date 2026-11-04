@@ -1,0 +1,59 @@
+{
+  "dllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "nativeDspExecuted": true,
+  "nativeMaterialBeginConnected": true,
+  "nodeVtableRva": "0x23f588",
+  "generatorSha256": "d2d19723466fe9377be07d19ea9c323697337458a3a6ee2440ee4cf8b8167f97",
+  "controlTraceGeneratorSha256": "7e8cfa734328887f0d6dae7512ce6d8027a5fd8d872fac2c5567944d74b6c8a0",
+  "input": "Planar synthetic impulses at frames 0/3/17 and a second small impulse at frame 1; EOF capacity supplied as zero padding.",
+  "seams": ["allocator/free", "bounded memset/memcpy", "unrelated processor setters", "lock/cookie helpers"],
+  "beginEvents": [
+    {"kind": "limiter_bypass", "value": false},
+    {"kind": "limiter_bypass", "value": false},
+    {"kind": "limiter_parameters", "threshold": 0.0, "attack": 0.004999999888241291, "release": 0.10000000149011612, "outputgain": 0.0, "infiniteRatio": true, "ratio": 4.0, "flag48": true}
+  ],
+  "cases": [
+    {"lookaheadFrames": 219, "rate": 44100, "channels": 1, "maxFrames": 256, "enabled": true, "thresholdDb": 0.0, "attackSeconds": 0.005, "blocks": [
+      {"inFrames": 256, "inEnd": false, "outFrames": 37, "outEnd": false, "block": "impulse", "nonzero": [[[0, 0.25340908765792847], [3, 1.0], [17, -0.3761904835700989]]]},
+      {"inFrames": 71, "inEnd": false, "outFrames": 71, "outEnd": false, "block": "second", "nonzero": [[]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 219, "outEnd": true, "block": "drain", "nonzero": [[[149, 0.06609977036714554]]]}
+    ]},
+    {"lookaheadFrames": 238, "rate": 48000, "channels": 2, "maxFrames": 128, "enabled": true, "thresholdDb": 0.0, "attackSeconds": 0.005, "blocks": [
+      {"inFrames": 128, "inEnd": false, "outFrames": 0, "outEnd": false, "block": "impulse", "nonzero": [[], []]},
+      {"inFrames": 71, "inEnd": false, "outFrames": 0, "outEnd": false, "block": "second", "nonzero": [[], []]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 89, "outEnd": false, "block": "drain", "nonzero": [[[0, 0.25313806533813477], [3, 1.0], [17, -0.3760937452316284]], [[0, -0.12656903266906738], [3, -0.75], [17, 0.25072917342185974]]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 110, "outEnd": true, "block": "drain", "nonzero": [[[40, 0.06414062529802322]], [[40, -0.06414062529802322]]]}
+    ]},
+    {"lookaheadFrames": 0, "rate": 48000, "channels": 2, "maxFrames": 128, "enabled": false, "thresholdDb": 0.0, "attackSeconds": 0.005, "blocks": [
+      {"inFrames": 128, "inEnd": false, "outFrames": 128, "outEnd": false, "block": "impulse", "nonzero": [[[0, 0.5], [3, 2.0], [17, -0.75]], [[0, -0.25], [3, -1.5], [17, 0.5]]]},
+      {"inFrames": 71, "inEnd": false, "outFrames": 71, "outEnd": false, "block": "second", "nonzero": [[[1, 0.125]], [[1, -0.125]]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 0, "outEnd": true, "block": "drain", "nonzero": [[], []]}
+    ]},
+    {"lookaheadFrames": 2399, "rate": 48000, "channels": 1, "maxFrames": 512, "enabled": true, "thresholdDb": -18.0, "attackSeconds": 0.05, "blocks": [
+      {"inFrames": 512, "inEnd": false, "outFrames": 0, "outEnd": false, "block": "impulse", "nonzero": [[]]},
+      {"inFrames": 71, "inEnd": false, "outFrames": 0, "outEnd": false, "block": "second", "nonzero": [[]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 0, "outEnd": false, "block": "drain", "nonzero": [[]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 0, "outEnd": false, "block": "drain", "nonzero": [[]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 0, "outEnd": false, "block": "drain", "nonzero": [[]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 232, "outEnd": false, "block": "drain", "nonzero": [[[0, 0.03205821290612221], [3, 0.1258925497531891], [17, -0.04925950989127159]]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 351, "outEnd": true, "block": "drain", "nonzero": [[[281, 0.020313529297709465]]]}
+    ]},
+    {"lookaheadFrames": 238, "rate": 48000, "channels": 2, "maxFrames": 128, "enabled": true, "thresholdDb": 0.0, "attackSeconds": 0.005, "blocks": [
+      {"inFrames": 128, "inEnd": false, "outFrames": 0, "outEnd": false, "block": "impulse", "nonzero": [[], []]},
+      {"inFrames": 71, "inEnd": true, "outFrames": 18, "outEnd": false, "block": "second", "nonzero": [[[0, 0.25313806533813477], [3, 1.0], [17, -0.3760937452316284]], [[0, -0.12656903266906738], [3, -0.75], [17, 0.25072917342185974]]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 128, "outEnd": false, "block": "drain", "nonzero": [[[111, 0.06414062529802322]], [[111, -0.06414062529802322]]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 53, "outEnd": true, "block": "drain", "nonzero": [[], []]}
+    ]},
+    {"lookaheadFrames": 478, "rate": 96000, "channels": 3, "maxFrames": 256, "enabled": true, "thresholdDb": 0.0, "attackSeconds": 0.005, "blocks": [
+      {"inFrames": 256, "inEnd": false, "outFrames": 0, "outEnd": false, "block": "impulse", "nonzero": [[], [], []]},
+      {"inFrames": 71, "inEnd": true, "outFrames": 34, "outEnd": false, "block": "second", "nonzero": [[[0, 0.25156575441360474], [3, 1.0], [17, -0.3755468726158142]], [[0, -0.12578287720680237], [3, -0.75], [17, 0.2503645718097687]], [[0, -0.12578287720680237], [3, -0.75], [17, 0.2503645718097687]]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 256, "outEnd": false, "block": "drain", "nonzero": [[[223, 0.06415364891290665]], [[223, -0.06415364891290665]], [[223, -0.06415364891290665]]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 37, "outEnd": true, "block": "drain", "nonzero": [[], [], []]}
+    ]},
+    {"lookaheadFrames": 238, "rate": 48000, "channels": 1, "maxFrames": 512, "enabled": true, "thresholdDb": -18.0, "attackSeconds": 0.0, "blocks": [
+      {"inFrames": 512, "inEnd": false, "outFrames": 274, "outEnd": false, "block": "impulse", "nonzero": [[[0, 0.03729528188705444], [3, 0.1258925497531891], [17, -0.04925950989127159]]]},
+      {"inFrames": 71, "inEnd": false, "outFrames": 71, "outEnd": false, "block": "second", "nonzero": [[]]},
+      {"inFrames": 0, "inEnd": true, "outFrames": 238, "outEnd": true, "block": "drain", "nonzero": [[[168, 0.020313529297709465]]]}
+    ]}
+  ]
+}

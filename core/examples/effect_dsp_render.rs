@@ -6,7 +6,7 @@ use std::io::{Read, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).ok_or(
-        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,dly,alc,spspatial}; for NCAE PEQ use material-render-active-peq PATH",
+        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,limiter-plan,limiter-flow,dly,alc,spspatial}; for NCAE PEQ use material-render-active-peq PATH",
     )?;
     let mut input = Vec::new();
     std::io::stdin()
@@ -39,6 +39,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let routing = material::route_sections(&value)?;
                 serde_json::json!({"schema":routing.schema,"sections":routing.sections,"dspRendered":false})
             }
+            "material-limiter-plan" => {
+                serde_json::json!({"limiter": material::material_limiter_plan(&value)?, "dspRendered": false})
+            }
+            "material-limiter-flow" => describe_limiter_flow(value)?,
             "material-eq" => serde_json::to_value(material::graphic_calls(&value)?)?,
             "material-bt" => serde_json::to_value(material::bass_treble_calls(&value)?)?,
             "material-cmp" => serde_json::to_value(material::compressor_calls(&value)?)?,
@@ -61,4 +65,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         output.write_all(&value.to_le_bytes())?;
     }
     Ok(())
+}
+
+fn describe_limiter_flow(
+    input: serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    struct Request {
+        material: serde_json::Value,
+        sample_rate: u32,
+        channels: u32,
+        max_frames: u32,
+        blocks: Vec<Block>,
+    }
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Block {
+        frames: u32,
+        end: bool,
+    }
+    let input: Request = serde_json::from_value(input)?;
+    if input.blocks.len() > 16_384 {
+        return Err("too many limiter blocks".into());
+    }
+    let plan = material::material_limiter_plan(&input.material)?;
+    let mut flow = plan.frame_flow(input.sample_rate, input.channels, input.max_frames)?;
+    let blocks = input
+        .blocks
+        .into_iter()
+        .map(|block| flow.next_block(block.frames, block.end))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(
+        serde_json::json!({"lookaheadFrames":flow.lookahead_frames(), "blocks":blocks, "dspRendered":false}),
+    )
 }
