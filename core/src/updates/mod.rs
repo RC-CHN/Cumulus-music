@@ -1,9 +1,11 @@
 //! Read-only Cumulus distribution metadata. No account or updater integration.
 mod github;
+mod package;
 
 pub use github::GitHubReleases;
+pub use package::{PackageFailure, PackageFormat, PackageVerification, PublishedPackages};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashSet, fmt, future::Future, pin::Pin};
+use std::{fmt, future::Future, pin::Pin};
 
 pub const LATEST_ENDPOINT: &str =
     "https://api.github.com/repos/RC-CHN/Cumulus-music/releases/latest";
@@ -79,6 +81,7 @@ pub enum UpdateCheck {
 pub struct UpdateResult {
     pub view: UpdateCheck,
     pub release: Option<ReleasePage>,
+    pub packages: Option<PublishedPackages>,
 }
 
 pub enum LatestReleaseReply {
@@ -112,7 +115,7 @@ struct Asset {
 }
 
 fn published_repo_page(raw: &str, version: Version) -> bool {
-    let Some(parsed) = url::Url::parse(raw).ok() else {
+    let Ok(parsed) = url::Url::parse(raw) else {
         return false;
     };
     let expected = format!("v{version}");
@@ -128,40 +131,6 @@ fn published_repo_page(raw: &str, version: Version) -> bool {
             if owner.eq_ignore_ascii_case("RC-CHN") && repo.eq_ignore_ascii_case("Cumulus-music") && *tag == expected)
 }
 
-fn has_assets(assets: &[Asset], version: Version) -> bool {
-    if assets.len() > 64 {
-        return false;
-    }
-    let required = [
-        format!("Cumulus-{version}-linux-x64.deb"),
-        format!("Cumulus-{version}-linux-x64.tar.gz"),
-        format!("Cumulus-{version}-windows-x64.zip"),
-        format!("Cumulus-{version}-windows-x64-setup.exe"),
-        "manifest-linux-x64.json".into(),
-        "manifest-windows-x64.json".into(),
-        "SHA256SUMS".into(),
-        "release-provenance.json".into(),
-    ];
-    let mut seen = HashSet::new();
-    for asset in assets {
-        if required.contains(&asset.name)
-            && (!seen.insert(&asset.name)
-                || asset.state != "uploaded"
-                || asset.size == 0
-                || !asset
-                    .digest
-                    .as_deref()
-                    .and_then(|digest| digest.strip_prefix("sha256:"))
-                    .is_some_and(|hex| {
-                        hex.len() == 64 && hex.bytes().all(|byte| byte.is_ascii_hexdigit())
-                    }))
-        {
-            return false;
-        }
-    }
-    seen.len() == required.len()
-}
-
 pub async fn check_latest(
     current: &str,
     source: &dyn LatestReleaseSource,
@@ -172,6 +141,7 @@ pub async fn check_latest(
         return Ok(UpdateResult {
             view: UpdateCheck::NoPublishedRelease { current_version },
             release: None,
+            packages: None,
         });
     };
     if body.len() > github::MAX_REPLY {
@@ -191,10 +161,11 @@ pub async fn check_latest(
             .as_deref()
             .is_none_or(|date| chrono::DateTime::parse_from_rfc3339(date).is_err())
         || !published_repo_page(&release.html_url, version)
-        || !has_assets(&release.assets, version)
     {
         return Err(UpdateFailure::InvalidMetadata);
     }
+    let packages = PublishedPackages::from_assets(&release.assets, version)
+        .ok_or(UpdateFailure::InvalidMetadata)?;
     let latest_version = version.to_string();
     if version > installed {
         Ok(UpdateResult {
@@ -203,6 +174,7 @@ pub async fn check_latest(
                 latest_version,
             },
             release: Some(ReleasePage(version)),
+            packages: Some(packages),
         })
     } else {
         Ok(UpdateResult {
@@ -211,6 +183,7 @@ pub async fn check_latest(
                 latest_version,
             },
             release: None,
+            packages: Some(packages),
         })
     }
 }

@@ -211,6 +211,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::get_app_info,
                 updates::check_for_updates,
                 updates::open_update_release_page,
+                updates::verify_update_package,
                 network_diagnostics::local_network_diagnostics,
                 effect_activation::effect_peq_pending,
                 effect_activation::effect_peq_status,

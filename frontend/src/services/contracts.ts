@@ -1,5 +1,5 @@
 import type { LocalNetworkReport } from './networkDiagnostics';
-import type { UpdateCheck } from './updates';
+import type { PackageVerification, UpdateCheck } from './updates';
 import type { ExternalPlaylistImportClient } from './externalPlaylistImport';
 import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
@@ -172,6 +172,7 @@ export interface CoreClient
   getAppInfo(): Promise<AppInfo>;
   checkForUpdates(): Promise<UpdateCheck>;
   openUpdateReleasePage(): Promise<void>;
+  verifyUpdatePackage(): Promise<PackageVerification | null>;
   localNetworkDiagnostics(): Promise<LocalNetworkReport>;
   copyText(text: string): Promise<void>;
   songDownloadState(epoch: string, id: string): Promise<SongDownloadState>;

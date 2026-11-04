@@ -2,6 +2,7 @@ use cumulus_core::updates::{
     LatestReleaseReply, LatestReleaseSource, ReleaseFuture, UpdateFailure,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     sync::{
         Arc,
@@ -9,6 +10,21 @@ use std::{
     },
     time::Duration,
 };
+
+pub fn synthetic_package(name: &str) -> Vec<u8> {
+    let magic = if name.ends_with(".deb") {
+        b"!<arch>\n".as_slice()
+    } else if name.ends_with(".tar.gz") {
+        b"\x1f\x8b\x08".as_slice()
+    } else if name.ends_with(".zip") {
+        b"PK\x03\x04".as_slice()
+    } else if name.ends_with(".exe") {
+        b"MZ".as_slice()
+    } else {
+        b"manifest".as_slice()
+    };
+    [magic, b"synthetic release fixture; never run"].concat()
+}
 
 pub fn release(version: &str) -> Value {
     let assets = [
@@ -28,10 +44,14 @@ pub fn release(version: &str) -> Value {
         "published_at": "2026-10-30T13:40:00Z",
         "html_url": format!("https://github.com/RC-CHN/Cumulus-music/releases/tag/v{version}"),
         "body": "<img src=PRIVATE_PAYLOAD>",
-        "assets": assets.into_iter().map(|name| json!({
-            "name":name,"state":"uploaded","size":42,"digest":format!("sha256:{}", "a".repeat(64)),
-            "browser_download_url":"https://private.invalid/PRIVATE_DOWNLOAD"
-        })).collect::<Vec<_>>()
+        "assets": assets.into_iter().map(|name| {
+            let bytes = synthetic_package(&name);
+            json!({
+                "name":name,"state":"uploaded","size":bytes.len(),
+                "digest":format!("sha256:{}", hex::encode(Sha256::digest(&bytes))),
+                "browser_download_url":"https://private.invalid/PRIVATE_DOWNLOAD"
+            })
+        }).collect::<Vec<_>>()
     })
 }
 

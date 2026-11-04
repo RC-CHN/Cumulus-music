@@ -235,3 +235,10 @@
 .settings-update-check {
   width: min(442px, calc(100vw - 32px));
 }
+
+.settings-update-package {
+  margin-top: 14px;
+}
+.settings-update-package .settings-note {
+  overflow-wrap: anywhere;
+}

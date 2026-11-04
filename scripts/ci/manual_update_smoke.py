@@ -45,7 +45,7 @@ def main():
         capture_root = Gdk.get_default_root_window()
         assert capture_root is not None, 'no GTK display'
     captured = set()
-    stages = ('settings', 'current', 'network_error', 'available', 'absent')
+    stages = ('settings', 'current', 'network_error', 'available', 'package', 'absent')
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         process = subprocess.Popen([str(args.binary.resolve())], env=env, stdout=log, stderr=log)
         try:
@@ -75,7 +75,7 @@ def main():
     def stage(name):
         return json.loads((output / f'{name}.json').read_text(encoding='utf-8'))
 
-    assert [stage(name)['metadataReads'] for name in stages] == [0, 1, 2, 3, 4]
+    assert [stage(name)['metadataReads'] for name in stages] == [0, 1, 2, 3, 3, 4]
     complete = stage('complete')
     assert complete['ok'] and not complete['realNetwork'] and complete['metadataReads'] == 6
     assert not args.screenshots or len(captured) == len(stages)
@@ -83,7 +83,7 @@ def main():
     assert (output / 'browser.log').read_text(encoding='utf-8').splitlines() == ['1', page, '1', page]
     report = dict(ok=True, actualWebView=True, screenshots=len(captured), metadataReads=6,
                   realNetwork=False, browserHandoffConfirmed=True,
-                  nativeLauncherExercised=os.name != 'nt')
+                  nativeLauncherExercised=os.name != 'nt', offlinePackageVerified=True)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

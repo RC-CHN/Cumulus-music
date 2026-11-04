@@ -51,7 +51,7 @@
 
     click(opener);
     await wait(() => dialog()?.textContent.includes('最新公开稳定版'), 'current stable release');
-    assert(!action('查看发布页'), 'no handoff for current release');
+    assert(!action('查看发布页') && action('校验本地安装包'), 'current release can be verified without a handoff');
     await capture('current');
     click(action('知道了'));
     await wait(() => !dialog() && document.activeElement === opener, 'current acknowledgement returns focus');
@@ -71,12 +71,28 @@
     await wait(() => dialog()?.textContent.includes('无法打开系统浏览器'), 'native browser failure allows retry');
     await emit('browser', { fail: false });
     click(action('查看发布页'));
-    await wait(() => !dialog() && document.activeElement === opener, 'successful browser handoff returns focus');
+    await wait(() => dialog()?.textContent.includes('已打开 GitHub 发布页') &&
+      document.activeElement === action('校验本地安装包'), 'handoff keeps the check and focuses package verification');
     await deniedWithoutOffer();
+
+    click(action('校验本地安装包'));
+    await wait(() => dialog()?.textContent.includes('的 SHA-256 与 999.1.0 发布记录一致'), 'local package digest matches');
+    assert(!dialog().textContent.includes('/good/'), 'the selected local path is not rendered');
+    await capture('package');
+    await emit('package-mode', { mode: 1 });
+    click(action('校验本地安装包'));
+    await wait(() => dialog()?.textContent.includes('SHA-256 与发布记录不一致'), 'equal-size tampering is rejected');
+    await emit('package-mode', { mode: 2 });
+    click(action('校验本地安装包'));
+    await wait(() => action('校验本地安装包') && !action('校验本地安装包').disabled &&
+      !dialog()?.textContent.includes('请勿使用这个安装包'), 'canceled picker clears the previous result');
+    click(action('知道了'));
+    await wait(() => !dialog() && document.activeElement === opener, 'closing after verification restores About focus');
 
     await emit('mode', { mode: 4 });
     click(opener);
     await wait(() => dialog()?.textContent.includes('暂未返回'), 'no published release is distinct');
+    assert(!action('校验本地安装包'), 'no package verification without trusted metadata');
     await capture('absent');
     click(action('知道了'));
     await wait(() => !dialog(), 'absent dismissal');

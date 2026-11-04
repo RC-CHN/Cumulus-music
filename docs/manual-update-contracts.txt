@@ -32,14 +32,15 @@
   无效数据明确区分，未核验的结果不冒充最新版。
 - CD 在实际发布前执行 AGENTS.md 的唯一空发布提交、标签、精确 SHA 完整 CI gate
   和产物来源/摘要核对（release.yml、scripts/ci/publish.py）。客户端只核对
-  GitHub 公布的元数据及预期附件清单，不重新验证 CI、不读取证明或下载/比对文件、
-  不验证包的签名或真伪。不能据此宣称本机安装包已验证。升级选择、下载和安装
-  由用户在发布页独立处理；没有任何写 GitHub 或安装的 IPC。
+  GitHub 公布的元数据及预期附件清单，不重新验证 CI、不下载证明或安装包、
+  不验证代码签名。用户可选择已有文件执行下面的本机摘要比对；升级、下载和安装
+  仍由用户决定。没有写 GitHub 或安装的 IPC。
 - check_for_updates 和 open_update_release_page 无渲染层参数、仅主窗口可调用。
   只有当前检查得到更高的有效稳定版本才允许打开；固定
   https://github.com/RC-CHN/Cumulus-music/releases/tag/v{X.Y.Z} 由 Rust 构造，
-  不使用回包中的 URL 或正文。成功后消费本次打开凭据，系统浏览器失败可重试。
-  Linux 使用现有 xdg-open；Windows 使用现有 ShellExecuteW 原生适配器。关闭弹窗
+  不使用回包中的 URL 或正文。成功后消费本次打开凭据并保留检查弹窗和校验数据；
+  系统浏览器失败可重试。Linux 使用现有 xdg-open；Windows 使用现有 ShellExecuteW
+  原生适配器。关闭弹窗
   复位焦点，迟到的只读结果不会弹回窗口；已开始的读取可在超时前完成。
 
 验证
@@ -49,7 +50,8 @@
 - manual_update_ui_probe 在未登录的真实 Linux WebView 中注入封闭的更新响应，
   通过隔离 xdg-open 记录实际原生浏览器调用参数。覆盖无自动请求、当前最新版、
   网络失败和重试、新版、首次浏览器失败后重试、无发布、不完整发布、关闭等待
-  和返回焦点；无真实查询、浏览器访问、更新下载或安装。
+  和返回焦点。校验选取合成文件，覆盖成功、同尺寸篡改、取消和零额外元数据读取；
+  无真实查询、浏览器访问、更新下载或安装。
 - 构建：cargo build -p cumulus-desktop --features custom-protocol
   --example manual_update_ui_probe --locked。运行：
   python3 scripts/ci/manual_update_smoke.py --binary <probe> --root <new-dir>
@@ -59,3 +61,35 @@
 原生 WebView 回归在 Linux 使用可控的 xdg-open，核对正式启动器参数。在 Windows 使用
 隔离的桌面测试适配器，核对正式 Tauri 命令传递的固定 ReleasePage；不打开系统浏览器，
 也不把测试适配器的结果当作 Windows 实际浏览器启动验证。
+
+本机安装包完整性校验
+
+- 官方 M/3131:356–395 把整包 URL 和大写 MD5、补丁 URL/MD5、当前补丁版本、
+  目标安装版本、XML 和跟踪头送入原生 Update.startUpgrade。恢复到前端入口只证明
+  它选择并启动原生安装流程，不证明其下载器或补丁器的专有内部细节。
+  Cumulus 不复用这些路径、MD5、增量包或安装命令。
+- scripts/ci/publish.py 用同一次精确 CI 的平台 manifest 核对文件名称、字节数与
+  SHA-256，生成 SHA256SUMS 和 release-provenance.json，再逐个验证上传附件的
+  GitHub digest 和 size。来源证明记录版本/tag/SHA、CI 运行和尝试号；普通 JSON
+  与校验清单都不是代码签名。客户端不下载或验证这些独立证明，只使用本次同一
+  已验证形状的 GitHub 发布响应中四种安装包的尺寸与 SHA-256 记录。
+- 已通过一次手动检查时，“校验本地安装包”通过原生文件选择器选择已经保存的文件；
+  无需再联网。包括当前或较旧的同一次公开发行，但只能按该发行原文件名校验。
+  文件名绑定版本和平台/格式，Linux .deb/.tar.gz 与 Windows .zip/-setup.exe
+  分别检查 ar、gzip、ZIP 或 MZ 文件标记。标记只是格式筛选，不解析、解包或执行。
+  字节数必须匹配，最多 2 GiB，打开的是只读普通文件，流式比对 SHA-256。
+- Linux 阻止最终路径符号链接并避免特殊文件阻塞；Windows 拒绝非盘符路径、
+  重新解析点和离线占位文件，打开时不请求召回，并仅与其他读取者共享文件。
+  文件变化会拒绝本次结果。仍需用户从本地磁盘选择已完整下载的文件；应用不检查
+  每个系统挂载点的底层介质，也不会在校验后自动读取或执行该路径。
+- IPC verify_update_package 不收文件路径、摘要、版本或其他渲染器参数。返回仅含
+  可信元数据中的包名、版本和格式；路径和摘要留在原生，检查数据只在进程内。
+  重新检查会替换快照，失败不会沿用旧快照。取消选择不改变文件。
+- 匹配只表示实际读到的文件与 GitHub 同次公布的资产记录一致，依赖该仓库和
+  GitHub 元数据的可信性；不能证明发布者身份、签名状态、当前文件仍未变化，
+  也不能替代系统安装安全检查。不提供安装、提权或执行入口。
+  GitHub 资产元数据：
+  https://docs.github.com/en/rest/releases/assets#get-a-release-asset
+  Windows 打开标记：
+  https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+  https://learn.microsoft.com/en-us/windows/win32/fileio/file-attribute-constants

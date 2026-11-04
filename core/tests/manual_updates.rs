@@ -1,12 +1,12 @@
 #[path = "support/manual_updates.rs"]
 mod support;
 use cumulus_core::updates::{
-    LatestReleaseReply, LatestReleaseSource, ReleaseFuture, UpdateCheck, UpdateFailure,
-    check_latest,
+    LatestReleaseReply, LatestReleaseSource, PackageFailure, ReleaseFuture, UpdateCheck,
+    UpdateFailure, check_latest,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
-use support::{Fixture, release};
+use support::{Fixture, release, synthetic_package};
 
 struct Json(Value);
 impl LatestReleaseSource for Json {
@@ -120,4 +120,72 @@ async fn absence_rate_limit_and_network_failure_do_not_make_an_update_offer() {
         assert!(matches!(check_latest("0.1.0", &fixture).await, Err(actual) if actual == error));
     }
     assert_eq!(fixture.reads.load(Ordering::SeqCst), 4);
+}
+
+#[tokio::test]
+async fn package_verification_binds_bytes_to_the_checked_version_and_format() {
+    let root = tempfile::tempdir().unwrap();
+    let result = check_latest("0.2.0", &Json(release("0.2.0")))
+        .await
+        .unwrap();
+    assert!(result.release.is_none());
+    let packages = result.packages.unwrap();
+    for (suffix, format) in [
+        ("linux-x64.deb", "linux_deb"),
+        ("linux-x64.tar.gz", "linux_portable"),
+        ("windows-x64.zip", "windows_zip"),
+        ("windows-x64-setup.exe", "windows_setup"),
+    ] {
+        let name = format!("Cumulus-0.2.0-{suffix}");
+        let path = root.path().join(&name);
+        let bytes = synthetic_package(&name);
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(
+            serde_json::to_value(packages.verify(&path).unwrap()).unwrap(),
+            json!({"version":"0.2.0","filename":name,"format":format}),
+        );
+        let mut changed = bytes.clone();
+        *changed.last_mut().unwrap() ^= 1;
+        std::fs::write(&path, &changed).unwrap();
+        assert!(matches!(
+            packages.verify(&path),
+            Err(PackageFailure::DigestMismatch)
+        ));
+        changed[0] ^= 1;
+        std::fs::write(&path, &changed).unwrap();
+        assert!(matches!(
+            packages.verify(&path),
+            Err(PackageFailure::WrongFormat)
+        ));
+        std::fs::write(&path, &changed[..changed.len() - 1]).unwrap();
+        assert!(matches!(
+            packages.verify(&path),
+            Err(PackageFailure::WrongSize)
+        ));
+    }
+
+    let renamed = root.path().join("Cumulus-0.1.0-linux-x64.deb");
+    std::fs::write(&renamed, synthetic_package("Cumulus-0.2.0-linux-x64.deb")).unwrap();
+    assert!(matches!(
+        packages.verify(&renamed),
+        Err(PackageFailure::WrongName)
+    ));
+    let directory = root.path().join("folder");
+    std::fs::create_dir_all(directory.join("Cumulus-0.2.0-linux-x64.deb")).unwrap();
+    assert!(matches!(
+        packages.verify(&directory.join("Cumulus-0.2.0-linux-x64.deb")),
+        Err(PackageFailure::InvalidFile)
+    ));
+
+    #[cfg(unix)]
+    {
+        let link = root.path().join("link");
+        std::fs::create_dir(&link).unwrap();
+        let path = link.join("Cumulus-0.2.0-linux-x64.deb");
+        std::os::unix::fs::symlink(&renamed, &path).unwrap();
+        assert!(matches!(
+            packages.verify(&path),
+            Err(PackageFailure::InvalidFile)
+        ));
+    }
 }
