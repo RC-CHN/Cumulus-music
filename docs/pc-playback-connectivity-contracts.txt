@@ -14,8 +14,44 @@ M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求�
   x64 cloudmusic.dll 0x180ecc2ef 和 0x180f6a5af 分别引用 app.onnetstatus /
   os.onisonline；两者都从桥接载荷 +0x10 取布尔值。0x180f6be02 注册 isOnLine
   到 0x180f69560，派发 0x1803d50d0 工作并由 0x180f6a550 回调；工作取
-  0x180688760 的反值。后者比对一个虚表返回的连接类型整数是否为 6。尚未把这个
-  对象及另一 app 回调的观察源完整绑定到公开系统 API；仅有系统 API 导入不足以证明。
+  0x180688760 的反值。后者比对一个虚表返回的连接类型整数是否为 6。该对象
+  的实际方法与系统 API 通过虚表与 IAT 定位如下。
+  进一步的 x64 原生定位（同一 cloudmusic.dll，SHA256
+  557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493）：
+  - app 回调安装 0x180edce26 将 app.onnetstatus 的发送函数绑定给 0x1803d5ab0；
+    后者首次创建 RTTI 为 nmtp::orpheus::NetStatusWatcher 的 0x30 字节对象
+    （0x1803f43d0），构造函数在 0x1803f4aa0 注册 network、IP、DNS、连接类型
+    四类观察器并调用初次采样。由类的 MSVC RTTI、虚表、文件名 net_status_watcher.cpp
+    和四条日志交叉定位；四种通知都忽略原事件的类型值并重新读取同一原生状态。
+    重新安装回调可复用监听对象；撤销分支 0x1803d5a10 清除监听对象及回调。
+  - app 的四类回调和初次采样分别在 0x1803f50fa、0x1803f4f96、
+    0x1803f4e36、0x1803f4cca、0x1803f51ac 读取 0x180688760 并取反。
+    os.isOnLine 是一次异步请求；工作函数在 0x1803d5167 调用同一个 helper，
+    结果走 os.onisonline，不安装监听器。M/119 在 JS 里将两个来源的 true
+    与 false 都送入同一个 triggerOnline。原生采样不能代替 navigator.onLine。
+  - Windows notifier 构造在 0x1806ca880 设置主虚表 0x181a7f608；
+    0x180688773 的虚表 +8 直接调用 0x1806cae30。这版 getter 每次重新做
+    Winsock NS_NLA（15）查询，不读取缓存；无 notifier 对象时 helper 使用
+    UNKNOWN (0)。0x1806caeb8 以 LUP_RETURN_ALL 开始；Begin 失败返回
+    CONNECTION_UNKNOWN (0)。Begin 成功后只调用一次
+    WSALookupServiceNextW（LUP_RETURN_NAME，120+256 字节，0x1806caf6c），再
+    调用 End（0x1806caff6）。Next 成功或 WSAEFAULT 返回 UNKNOWN (0)；
+    无更多结果和其他 Next 错误都返回 NONE (6)，End 错误不改变该值。
+    最终布尔是 type != 6；Begin 失败因此并不等价于已证明远端可达。
+    NotifyAddrChange（0x1806cb950）及 CancelIPChangeNotify（0x1806caa7f）
+    属于另一路观察器管理；单次读不等于完整 app 监听。该 getter 没有走
+    Chromium 91 同版源码中 found_connection 后的 GetAdaptersAddresses 分支；
+    也没有调用 InternetGetConnectedState 或读取默认路由。上游对照：
+    https://raw.githubusercontent.com/chromium/chromium/91.0.4472.169/net/base/network_change_notifier_win.cc
+  - `desktop/examples/windows_nla_snapshot.rs` 只在 Windows x86_64 手动读取一次
+    本地 NLA 并输出结果类别及原始布尔，不解析或输出返回的名称、地址，也不
+    读取账号或调用请求端点。手动运行：cargo run -p cumulus-desktop --example
+    windows_nla_snapshot --locked。Winsock 初始化失败由验证工具单列为不可用。
+    Linux 本机在隔离网络命名空间只执行上述原始 getter 机器码，用固定的本地
+    WinSock 替身验证实际调用的参数、顺序和八组返回（含 End 失败），记录于
+    .build/ui-proof/official-native-connectivity-source/native-oracle.csv。Rust 冻结
+    分类测试及 Windows 交叉编译通过。Windows 原生运行及四路监听通知未验收，
+    不连接生产计数或播放。
 * M/12:297–329 在请求返回真值后、格式化数据之前派发 musicFeOnline。catch 除
   responseError、fetchFrontEndEncryptError 外派发 musicFeOffline；同步格式化错误可能
   先后产生两个事件。JSON 非成功业务码在 M/12:174–194 被包装为 responseError。
