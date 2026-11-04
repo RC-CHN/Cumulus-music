@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { usePlayer } from '../src/composables/usePlayer.ts';
 import type { CoreClient, AccountView } from '../src/services/contracts.ts';
 import {
-  currentCatalogDownload,
+  currentCatalogTrack,
   type PlayerView,
   type PlayerUpdate,
   type LyricsView,
@@ -61,7 +61,7 @@ function state(revision = '1', epoch = '1', playId: string | null = null): Playe
     historyWarning: null,
   };
 }
-test('the current-song download targets only the displayed catalog song', () => {
+test('current-song controls target only the displayed catalogue song', () => {
   const track = {
     id: '18',
     name: 'Song',
@@ -74,12 +74,12 @@ test('the current-song download targets only the displayed catalog song', () => 
     local: false,
   };
   const view: PlayerView = { ...state('2', '4', 'audible'), resourceKind: 'catalog', track };
-  assert.deepEqual(currentCatalogDownload(view), { epoch: '4', playId: 'audible', track });
+  assert.deepEqual(currentCatalogTrack(view), { epoch: '4', playId: 'audible', track });
   for (const resourceKind of ['local', 'downloaded', 'cloud', 'voice'] as const)
-    assert.equal(currentCatalogDownload({ ...view, resourceKind }), undefined);
-  assert.equal(currentCatalogDownload({ ...view, playId: null }), undefined);
-  assert.equal(currentCatalogDownload({ ...view, track: { ...track, voiceId: '18' } }), undefined);
-  assert.equal(currentCatalogDownload({ ...view, track: { ...track, missing: true } }), undefined);
+    assert.equal(currentCatalogTrack({ ...view, resourceKind }), undefined);
+  assert.equal(currentCatalogTrack({ ...view, playId: null }), undefined);
+  assert.equal(currentCatalogTrack({ ...view, track: { ...track, voiceId: '18' } }), undefined);
+  assert.equal(currentCatalogTrack({ ...view, track: { ...track, missing: true } }), undefined);
 });
 
 test('queueing a playlist uses the saved listening preference rather than current requested or actual quality', async () => {

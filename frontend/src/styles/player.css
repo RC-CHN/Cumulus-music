@@ -941,7 +941,7 @@ input[type='range'] {
 }
 @media (max-width: 1050px) {
   .playerbar {
-    grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.3fr) 265px;
+    grid-template-columns: minmax(150px, 1fr) minmax(200px, 1.3fr) max-content;
     gap: 10px;
     padding: 0 16px;
   }

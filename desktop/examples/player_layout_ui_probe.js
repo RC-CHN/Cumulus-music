@@ -15,6 +15,15 @@
   const playerComment = () => one('.player-comment');
   const commentBadge = () => one('.player-comment-count');
   const commentDescription = () => document.getElementById(playerComment()?.getAttribute('aria-describedby'));
+  const trackActionTrigger = () => one('.playerbar [aria-label="当前歌曲更多操作"]');
+  const trackActionMenu = () => one('.action-menu[aria-label="当前歌曲更多操作"]:not([inert]):not(.menu-leave-active)');
+  const trackAction = key => trackActionMenu()?.querySelector(`[data-menu-key="${key}"]`);
+  async function openTrackActions() {
+    assert(trackActionTrigger() && hit(trackActionTrigger()),'more menu trigger is hit-testable');
+    click(trackActionTrigger());
+    await wait(()=>trackAction('share')&&hit(trackAction('share')),'current song menu opens above bottom bar');
+    return trackActionMenu();
+  }
   async function capture(label) {
     await sleep(500);
     const panel=one('.lyrics-panel'), body=one('.lyrics-body'), record=one('.vinyl-record'), scroller=one('.lyric-scroll');
@@ -293,6 +302,38 @@
     await emit(`ux_${String(++stageCount).padStart(2,'0')}_current_row_toggle`,{playId,trackId});
     await sleep(800);
   }
+  async function verifyTrackActions() {
+    await emit('resize',{width:760,height:540});
+    await wait(()=>innerWidth===760&&innerHeight===540,'more menu narrow window');
+    const bar = one('.playerbar');
+    const {playId, trackId, position} = bar.dataset;
+    const menu = await openTrackActions();
+    assert(Array.from(menu.querySelectorAll('[data-menu-key]'),item=>item.dataset.menuKey).join() === 'share,artist,album,effects','uses playback-specific actions rather than the row menu');
+    assert(trackAction('artist').textContent.trim()==='歌手：测试歌手'&&trackAction('album').textContent.trim()==='专辑：测试专辑','labels use first credited artist and current album');
+    assert(inside(rect(menu),{x:0,y:0,right:innerWidth,bottom:innerHeight})&&rect(menu).bottom<=rect(trackActionTrigger()).y,'narrow menu fits above the trigger');
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_current_track_menu`,{playId,trackId,menu:true});
+    await sleep(800);
+    click(trackAction('share'));
+    await wait(()=>one('.track-share-dialog[open] [aria-label="歌曲分享链接"]')?.value===`https://music.163.com/song?id=${trackId}`,'share shows the active song link');
+    click(one('.track-share-dialog [aria-label="关闭分享"]'));
+    await wait(()=>!one('.track-share-dialog')&&document.activeElement===trackActionTrigger(),'share closes back to the playback trigger');
+    await openTrackActions();
+    click(trackAction('effects'));
+    await wait(()=>one('.effect-directory[open]')?.textContent.includes('此分类暂无音效。'),'audio effects open the existing directory and load its category');
+    click(one('.effect-directory [aria-label="关闭音效目录"]'));
+    await wait(()=>!one('.effect-directory')&&document.activeElement===trackActionTrigger(),'effect directory closes back to the playback trigger');
+    await openTrackActions();
+    click(trackAction('artist'));
+    await wait(()=>one('.artist-header h1')?.textContent==='测试歌手','the first artist route loads');
+    await openTrackActions();
+    click(trackAction('album'));
+    await wait(()=>one('.album-header h1')?.textContent.trim()==='测试专辑','the current album route loads');
+    assert(bar.dataset.playId===playId&&bar.dataset.trackId===trackId&&bar.dataset.state==='paused'&&Math.abs(Number(bar.dataset.position)-Number(position))<.1,'actions preserve the native song and paused position');
+    click(all('.sidebar button').find(node=>node.textContent.trim()==='每日推荐'));
+    await wait(()=>one('.daily-track-actions')&&!one('.catalog-page')&&all('.track-row').length>2,'restore the daily fixture for the output recovery case');
+    await emit('resize',{width:1120,height:760});
+    await wait(()=>innerWidth===1120&&innerHeight===760,'restore the output recovery viewport');
+  }
   try {
     await wait(()=>all('.track-row').length>2,'daily');
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
@@ -330,8 +371,13 @@
       one('.queue-scroll').scrollTop=one('.queue-scroll').scrollHeight;await capture(`queue_bottom_${suffix}`);
       click(one('[aria-label="关闭播放队列"]'));await wait(()=>!one('.queue-panel'),'queue close');
     }
+    if(!window.__playerLayoutBaseline) {
+      const menu = await openTrackActions();
+      assert(trackAction('artist').disabled&&trackAction('album').disabled&&menu.scrollWidth<=menu.clientWidth+1,'missing link IDs cannot navigate, and long names do not overflow');
+    }
     await play(1);
     if(!window.__playerLayoutBaseline) {
+      assert(!trackActionMenu(),'track replacement dismisses the old current-song menu');
       await wait(()=>commentBadge()?.textContent==='25'&&commentDescription()?.textContent.trim()==='25 条评论','replacement song shows its own count');
       const invoke = (command,args) => window.__TAURI_INTERNALS__.invoke(command,args);
       const {epoch} = await invoke('account_snapshot');
@@ -347,9 +393,9 @@
     }
     click(one('[aria-label="收起播放详情"]'));await wait(()=>!one('.lyrics-panel'),'details close');await sleep(300);
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
-    if(!window.__playerLayoutBaseline) { await verifyCurrentRowButton(); await verifyRecommendationToggle(); await verifyAudioOutputRecovery(); }
+    if(!window.__playerLayoutBaseline) { await verifyCurrentRowButton(); await verifyRecommendationToggle(); await verifyTrackActions(); await verifyAudioOutputRecovery(); }
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline,playerCommentCountVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline,recommendationToggleVerified:!window.__playerLayoutBaseline,currentRowToggleVerified:!window.__playerLayoutBaseline,playerCommentCountVerified:!window.__playerLayoutBaseline,currentTrackMenuVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

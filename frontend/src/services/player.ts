@@ -86,8 +86,14 @@ export interface PlayerView {
   positionReset: boolean;
 }
 
-/** Only ordinary catalog songs use the generic song-download dialog. */
-export function currentCatalogDownload(view?: PlayerView) {
+export interface CurrentCatalogTrack {
+  epoch: string;
+  playId: string;
+  track: TrackView;
+}
+
+/** Current catalogue controls cannot mistake another resource namespace for a song. */
+export function currentCatalogTrack(view?: PlayerView): CurrentCatalogTrack | undefined {
   const track = view?.track;
   const playId = view?.playId;
   if (

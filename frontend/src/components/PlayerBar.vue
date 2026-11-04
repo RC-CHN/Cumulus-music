@@ -2,11 +2,13 @@
 import { computed, ref, shallowRef, nextTick, useId, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
-import { currentCatalogDownload, time } from '../services/player';
-import type { PlayerAction } from '../services/player';
+import { currentCatalogTrack, time } from '../services/player';
+import type { CurrentCatalogTrack, PlayerAction } from '../services/player';
 import type { AccountView, TrackView } from '../services/contracts';
+import type { CatalogResource } from '../services/catalog';
 import Icon from './Icon.vue';
 import EqualizerPanel from './EqualizerPanel.vue';
+import EffectDirectory from './EffectDirectory.vue';
 import ModalTransition from './ModalTransition.vue';
 import PlaybackSpeed from './PlaybackSpeed.vue';
 import PlaybackQuality from './PlaybackQuality.vue';
@@ -18,7 +20,9 @@ import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/see
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
 import { usePlaybackCommentCount } from '../composables/usePlaybackCommentCount';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
+import PlayerTrackActions from './PlayerTrackActions.vue';
 const equalizerOpen = ref(false);
+const effectDirectoryOpen = ref(false);
 const effectManagementOnOpen = ref(false);
 const props = withDefaults(
   defineProps<{
@@ -41,6 +45,7 @@ const emit = defineEmits<{
   member: [];
   login: [];
   audioOutput: [epoch: string];
+  catalog: [resource: CatalogResource];
 }>();
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
 const chorusMarker = usePlaybackChorus(view, loaded);
@@ -58,11 +63,21 @@ function openEqualizer() {
 }
 function loginFromEffects() {
   equalizerOpen.value = false;
+  effectDirectoryOpen.value = false;
   emit('login');
 }
-const currentDownload = computed(() =>
-  props.downloadsAllowed ? currentCatalogDownload(view.value) : undefined,
-);
+const currentCatalog = computed<CurrentCatalogTrack | undefined>((previous) => {
+  const current = currentCatalogTrack(view.value);
+  if (
+    current &&
+    previous?.epoch === current.epoch &&
+    previous.playId === current.playId &&
+    previous.track.id === current.track.id
+  )
+    return previous;
+  return current;
+});
+const currentDownload = computed(() => (props.downloadsAllowed ? currentCatalog.value : undefined));
 function downloadCurrent() {
   const selection = currentDownload.value;
   if (selection) emit('download', selection.epoch, selection.playId, selection.track.id);
@@ -527,6 +542,13 @@ async function seek(event: Event) {
       <span v-if="commentBadge" :id="commentDescription" class="sr-only"
         >{{ commentCount }} 条评论</span
       >
+      <PlayerTrackActions
+        :selection="currentCatalog"
+        :account-epoch="account.epoch"
+        :effects-available="ready"
+        @catalog="(resource) => emit('catalog', resource)"
+        @effects="effectDirectoryOpen = true"
+      />
     </div>
     <div class="player-feedback-stack">
       <div v-if="message" class="playback-message" role="status">
@@ -606,6 +628,14 @@ async function seek(event: Event) {
       :player="player"
       :initial-effect-management="effectManagementOnOpen"
       @close="equalizerOpen = false"
+      @login="loginFromEffects"
+    />
+  </ModalTransition>
+  <ModalTransition>
+    <EffectDirectory
+      v-if="effectDirectoryOpen"
+      :account="account"
+      @close="effectDirectoryOpen = false"
       @login="loginFromEffects"
     />
   </ModalTransition>

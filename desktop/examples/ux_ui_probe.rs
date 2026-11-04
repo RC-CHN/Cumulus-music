@@ -86,6 +86,9 @@ fn song(id: u64) -> Value {
     if id == 1 && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() {
         return json!({"id":id,"name":"沿着海岸走到日落之后 · 用于窄窗口排版检查的长歌名（现场特别收录版本）".repeat(2),"ar":[{"name":"SyntheticArtistWithoutWordBreaks".repeat(4)}],"al":{"name":"合成专辑 · 一个很长很长的副标题与发行版本说明".repeat(4)},"dt":6_000_000,"fee":1});
     }
+    if id == 2 && std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some() {
+        return json!({"id":id,"name":"合成歌曲 2 · A quiet afternoon","ar":[{"id":12,"name":"测试歌手"},{"id":13,"name":"另一位歌手"}],"al":{"id":7,"name":"测试专辑"},"dt":235000,"fee":2});
+    }
     json!({"id":id,"name":format!("合成歌曲 {id} · A quiet afternoon"),"ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":if id==1 {6_000_000} else {235_000},"fee":id%3})
 }
 fn subscribers_proof() -> bool {
@@ -197,7 +200,26 @@ impl Api for Library {
                 }
                 return fixture::Library::default().request(path, args, false).await;
             }
+            if std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()
+                && matches!(
+                    path,
+                    "/api/artist/v3/detail"
+                        | "/api/artist/detail/dynamic"
+                        | "/api/album/v3/detail"
+                        | "/api/album/privilege"
+                        | "/api/album/detail/dynamic"
+                        | "/api/song/enhance/privilege"
+                )
+            {
+                return fixture::Library::default().request(path, args, false).await;
+            }
             Ok(match path {
+                "/api/usertool/sound/queryAllSound"
+                    if std::env::var_os("CUMULUS_PLAYER_LAYOUT_PROOF").is_some()
+                        && args == json!({"exposeType":5}) =>
+                {
+                    json!({"code":200,"data":[]})
+                }
                 "/api/rtrs/abt/front/expinfo/list" => json!({"code":200,"data":[]}),
                 "/api/relay/setting/show" => json!({"code":200,"data":{"groups":[]}}),
                 "/api/w/nuser/account/get" => {

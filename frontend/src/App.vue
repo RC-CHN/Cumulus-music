@@ -83,7 +83,7 @@ import { useIntelligence } from './composables/useIntelligence';
 import QueuePanel from './components/QueuePanel.vue';
 import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from './services/trackMenu';
 import {
-  currentCatalogDownload,
+  currentCatalogTrack,
   type QueueCollectionView,
   type SearchResultPlayback,
   type SongRowDoubleClickSelection,
@@ -1190,7 +1190,7 @@ watch(music.page, (next) => {
   else outputFocus = undefined;
 });
 function openCurrentDownload(epoch: string, playId: string, trackId: string) {
-  const current = currentCatalogDownload(player.view.value);
+  const current = currentCatalogTrack(player.view.value);
   if (
     !signedIn.value ||
     downloadDialog.value ||
@@ -3195,6 +3195,7 @@ onUnmounted(() => {
       @audio-output="openAudioOutput"
       @comments="trackComments"
       @download="openCurrentDownload"
+      @catalog="openPlaybackSource"
       @member="music.navigate({ kind: 'member' })"
       @login="loginOpen = true"
     />
