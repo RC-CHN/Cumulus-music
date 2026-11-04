@@ -498,6 +498,7 @@ pub fn run() {
     // SAFETY: desktop entry point, before the GUI runtime and worker creation.
     unsafe { prepare_graphics() };
     let launch = lifecycle::LaunchKind::from_args(std::env::args_os().skip(1));
+    let file_open = native_open::Pending::from_args(std::env::args_os().skip(1));
     let mut context = tauri::generate_context!();
     launch.prepare(&mut context);
     configure(tauri::Builder::default())
@@ -505,6 +506,16 @@ pub fn run() {
             let root = match std::env::var_os("CUMULUS_DATA_DIR") {
                 Some(value) => std::path::PathBuf::from(value),
                 None => app.path().app_data_dir()?,
+            };
+            match native_open::ProcessGuard::acquire(&root, file_open.requested()) {
+                Ok(guard) => app.manage(guard),
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    eprintln!("Cumulus is already running for this app profile; close it before opening local files.");
+                    // The Wry setup-time exit request loses its status
+                    // on Linux. No account or playback state exists yet.
+                    std::process::exit(2);
+                }
+                Err(error) => return Err(error.into()),
             };
             let existing = std::env::var_os("CUMULUS_SESSION_DIR").map(std::path::PathBuf::from);
             let profile = identity::profile(&root)?;
@@ -529,6 +540,7 @@ pub fn run() {
             let client = configure_native_audio(client, &resources, false);
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
+            app.manage(file_open);
             lifecycle::install(app.handle())?;
             launch.finish(app.handle());
             system_media::install(app.handle());
@@ -559,3 +571,4 @@ pub fn configure_native_im(
 }
 mod auth;
 mod autostart;
+mod native_open;

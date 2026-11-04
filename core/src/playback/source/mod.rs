@@ -332,7 +332,20 @@ impl SourceResolver {
             .clone()
             .ok_or(Error::State("local playback requires library"))?;
         let mut source = tokio::task::spawn_blocking(move || -> Result<ResolvedSource> {
-            if resource.get("local_id").is_some() {
+            if let Some(opened) = resource.get("native_open_file") {
+                let opened: crate::library::native_open::OpenedFile =
+                    serde_json::from_value(opened.clone())?;
+                let local: LocalResource = serde_json::from_value(resource)?;
+                opened.check_resource(&local)?;
+                Ok(ResolvedSource {
+                    input: MediaInput::NativeFile {
+                        path: opened.path,
+                        fingerprint: opened.fingerprint,
+                    },
+                    info: json!({"kind":"local","metadata":local.metadata}),
+                    expires_at: None,
+                })
+            } else if resource.get("local_id").is_some() {
                 let local: LocalResource = serde_json::from_value(resource)?;
                 let item = library.item(&local.local_id)?;
                 // A container's gain does not identify the separate CUE tracks.

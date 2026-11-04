@@ -12,6 +12,11 @@ use std::{
 #[derive(Clone)]
 pub enum MediaInput {
     File(PathBuf),
+    /// A cold native open is revalidated against its already opened handle.
+    NativeFile {
+        path: PathBuf,
+        fingerprint: crate::library::identity::FileFingerprint,
+    },
     Url(MediaUrl),
 }
 

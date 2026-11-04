@@ -23,7 +23,10 @@ fn timestamp(time: SystemTime) -> String {
 }
 
 pub fn fingerprint(path: &Path) -> Result<FileFingerprint> {
-    let metadata = fs::metadata(path)?;
+    fingerprint_metadata(fs::metadata(path)?)
+}
+
+pub(crate) fn fingerprint_metadata(metadata: fs::Metadata) -> Result<FileFingerprint> {
     if !metadata.is_file() {
         return Err(Error::InvalidInput("local source must be a regular file"));
     }

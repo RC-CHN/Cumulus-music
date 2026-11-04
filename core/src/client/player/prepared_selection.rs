@@ -94,20 +94,7 @@ impl MusicClient {
         selection: PlaySelection,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
-        let ticket = {
-            let mut slot = self
-                .player
-                .prepared_selection
-                .lock()
-                .map_err(|_| Error::LockPoisoned)?;
-            if !slot
-                .as_ref()
-                .is_some_and(|value| value.token == token && value.id == id)
-            {
-                return Err(Error::StaleResponse);
-            }
-            slot.take().ok_or(Error::StaleResponse)?
-        };
+        let ticket = self.take_prepared_selection(&token, id)?;
         if !matches!(
             selection,
             PlaySelection::Catalog { .. }
@@ -131,6 +118,101 @@ impl MusicClient {
         ticket.check(self, &current)?;
         self.play_selection_inner(epoch, selection, Some(ticket))
             .await
+    }
+
+    fn take_prepared_selection(&self, token: &SessionToken, id: &str) -> Result<PreparedSelection> {
+        let mut slot = self
+            .player
+            .prepared_selection
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        if !slot
+            .as_ref()
+            .is_some_and(|value| &value.token == token && value.id == id)
+        {
+            return Err(Error::StaleResponse);
+        }
+        slot.take().ok_or(Error::StaleResponse)
+    }
+
+    /// Trusted cold desktop launch only; no WebView command takes these paths.
+    pub async fn play_native_open_files(
+        &self,
+        epoch: &str,
+        paths: Vec<std::path::PathBuf>,
+    ) -> Result<PlayerView> {
+        use crate::{
+            library::{
+                native_open::{MAX_NATIVE_FILES, inspect_opened_file},
+                probe::Ffprobe,
+            },
+            playback::controller::PlaybackStatus,
+        };
+        let token = self.player_token(epoch)?;
+        let controller = self.player.controller().await?;
+        let current = controller
+            .command(&token, PlaybackCommand::Snapshot)
+            .await?;
+        if current.state != PlaybackStatus::Idle || current.play_id.is_some() {
+            return Err(Error::StaleResponse);
+        }
+        // Even an invalid explicit file must not accidentally start the
+        // restored online queue. Retire only this snapshot's startup latch.
+        let current = if current.startup_pending {
+            controller
+                .command(&token, PlaybackCommand::SkipStartup(current.fence()))
+                .await?
+        } else {
+            current
+        };
+        if paths.is_empty() || paths.len() > MAX_NATIVE_FILES {
+            return Err(Error::InvalidInput("no supported native local audio files"));
+        }
+        let id = self.prepare_play_selection(
+            epoch,
+            &current.queue_revision.to_string(),
+            current.play_id.as_deref(),
+        )?;
+        let ticket = self.take_prepared_selection(&token, &id)?;
+        let session = self.session.clone();
+        let worker_token = token.clone();
+        let worker = tokio::task::spawn_blocking(move || {
+            let probe = Ffprobe::for_native_open();
+            let deadline = Instant::now() + Duration::from_secs(10);
+            let mut resources = Vec::new();
+            for path in paths {
+                session.check_generation(&worker_token)?;
+                if Instant::now() >= deadline {
+                    break;
+                }
+                if let Ok(resource) = inspect_opened_file(&path, &probe) {
+                    resources.push(resource);
+                }
+            }
+            Ok::<_, Error>(resources)
+        });
+        let resources = tokio::time::timeout(Duration::from_secs(12), worker)
+            .await
+            .map_err(|_| Error::Media("native local audio probe timed out"))?
+            .map_err(|_| Error::State("native local audio worker stopped"))??;
+        if resources.is_empty() {
+            return Err(Error::InvalidInput("no supported native local audio files"));
+        }
+        let state = self
+            .submit_selection(
+                &token,
+                PlaybackCommand::Replace {
+                    resources,
+                    index: 0,
+                    source: serde_json::json!({"kind":"local", "nativeOpen":true}),
+                },
+                ticket.observed,
+                None,
+                Some(&ticket),
+            )
+            .await?;
+        self.session.check_generation(&token)?;
+        super::project(&state, &token)
     }
 
     pub(super) async fn submit_selection(

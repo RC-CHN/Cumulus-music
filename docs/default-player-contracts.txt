@@ -1,0 +1,88 @@
+默认播放器与系统文件打开：Windows 官方 3.1.42.205594 恢复
+
+原版设置、注册与入口
+- references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_64.chunk.1482700000000.js/3097.js:381–388,509–527：Windows 常规
+  设置读取默认状态，勾选/取消时分别 await registDefaultPlayer(true/false)，
+  只有桥接返回成功才更新选中态。page_settingNormal M2989:92–125 的读取
+  与开机运行分离。M473:11484–11555 还有受本地频控约束的默认播放器提示，
+  不代表启动时自动改关联。
+- hybrid_app.chunk.1482700000000.js/4.js:14205–14225 将其绑定到零参数
+  app.registerDefaultClient、app.unRegisterDefaultClient 和
+  app.isRegisterDefaultClient。没有音乐服务 HTTP 请求。
+- x64 redist_packages/cloudmusic.dll SHA-256
+  557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+  PE 注册桥处理器（以下为 RVA）：ED1980/ED199D/ED19BA 处分别关联
+  EC8550→323CF0、ED1FA0→3258C0、EE2EC0→326910。326508 引用
+  shell\open\command，3265C6 引用文件偏移 1A00C80 的参数模板，
+  双引号包住路径，接收开关 --play= 与系统文件参数 %1。325554、
+  32679C、3267D6 引用 FileAssociations、Software\RegisteredApplications
+  和原版拼写的 Software\Clients\Media\cloudmusic\Capabilites；
+  326D70 引用 OpenWithProgids，3228CA 引用 Explorer FileExts 中
+  \UserChoice。二进制还包含 Progid 与 Hash 相关数据；不移植此用户选择写入。
+- 同 DLL 的 UTF-16 后缀指针表：文件偏移 2191840 单独为 .ncm（随后
+  为空指针）；2191850–2191898 为 .aac/.ape/.cda/.flac/.m4a/.mp3/
+  .ogg/.wav/.wma/.cue（下一项为空）。RVA 33E7A8/33E8A1/33EA41
+  引用通用组 2193450，33E949 引用独立 NCM；323DB6 默认查询特判
+  .cda。不能只凭通用表把全部后缀当作本客户端经验证的系统打开格式。
+- 冷启动 M4:14632–14649 调 app.getDefaultMusicPlayPath，将值映射到
+  {path}；M3085:5325–5339 获取后派发 onPlayLocalMusic。暖启动 M4:
+  14568–14579 的 app/playlocalmusic 回调经 M377:24–34 到 M3085:
+  5915–5926。M3085:5270–5321 将单路径转成数组，按顺序读取每项原生
+  Library.getLocalMusicInfo，跳过没有元数据/投影的项，播放第一项，
+  valid group 以 selectedData 送往 localTrack 播放分支。
+  没有使用 YesPlayMusic。
+
+当前迁移：仅可信冷启动输入
+- 新启动的 Cumulus 接受 --play=ABSOLUTE_PATH 或 --play ABSOLUTE_PATH …
+  （最多 8 个）。路径保留为 OS 原生参数/PathBuf，不经过 shell、HTTP、
+  file URI 或 WebView IPC；落入现有 Rust 队列存储前要求可无损表达的 UTF-8。
+  Windows 拒绝 UNC/设备路径；相对路径和其他参数不作为打开授权。无法
+  无损解码的 --play= 仍是失败的显式打开，不退化成普通启动。
+- 同数据目录进程锁：普通打开持共享锁，冷文件打开需独占；已有实例时以 2
+  退出并提示关闭当前实例后再试，不把参数转发或打开第二套活跃播放会话。
+  旧版本不持本锁，跨版本暖启动不承诺。自动启动 --autostart 分支独立。
+- 第一条主 WebView player stream 到达有效账号代次后一次性取走原生参数；
+  它不会在后续注册或失败重试中重新消费。显式打开会抑制旧队列本次自动播放，
+  即使所有候选无效也保留旧队列和时钟。错误消息为固定本地文本，无原始路径。
+- 当前只接受普通 MP3/FLAC：原生后缀、签名、ffprobe 音频编码和指纹都必须
+  一致，按官方模式跳过无效文件、保留有效顺序。固定总等待 12 秒；
+  新代次/显式播放动作可使已准备请求失效，不用旧结果覆盖新队列。
+- 经过现有播放许可和账号代次/焦点栅栏，播放器在真正加载时检查打开句柄
+  的文件身份，使用 libmpv 的受限 pinned stream 与固定解码格式，防止把
+  伪装清单当作可联网媒体。只保存显式队列条目，不扫描或添加父目录、不创建
+  本地库记录，不转成在线 ID。渲染层只得普通本地音轨投影和状态。
+  NCM/CUE/CD 及其他普通后缀仍遵守各自现有入口，未暴露在冷启动关联流程。
+
+默认归属仍不启用
+- Cumulus 不写系统默认、Explorer UserChoice/Hash、Linux mimeapps.list，
+  不注册类型，也不展示一个不可验证的默认播放器复选框。没有自动请求关联、
+  引导弹窗或安装时修改。暖启动仍缺少保留账号和操作代次的单实例原生转发。
+- Windows：固定 Tauri CLI 2.12.4 的 NSIS installer.nsi 调 APP_ASSOCIATE，
+  FileAssociation.nsh 的 66–76 行会改写 Software\Classes\.ext 的
+  默认值，卸载还会恢复备份，可能覆盖用户后来选择，因此保持关闭。
+  后续应只装应用自有 ProgID/Capabilities/RegisteredApplications 候选和
+  OpenWithProgids，再由用户从系统 Default Apps 选择。Windows 11 的
+  ms-settings:defaultapps?registeredAppUser=… 只在候选已注册时才有意义；
+  不复刻原版私有 UserChoice 行为。实际 Windows shell 与现代用户选择未测。
+- Linux：标准方式是在安装包应用自有 .desktop 声明已验证 MIME，并接收
+  Exec 传入的本地文件参数，不写入用户 Default Applications。与真实文件管理器
+  和暖启动选择验证完成后再启用。当前 .deb/.zip/NSIS 元数据不变。
+
+平台依据：
+https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-default-apps-settings
+https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi
+https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/FileAssociation.nsh
+https://specifications.freedesktop.org/mime-apps/latest/
+
+验证入口：scripts/ci/native_file_open_smoke.py。只在隔离 X11、D-Bus、AT-SPI、
+无外网网络命名空间、隐藏宿主 /dev/snd、私有 PipeWire null sink 和临时账号
+目录运行；二进制是常规 GUI 的真实生产代码。先记录外层网络命名空间，
+在新网络命名空间仅启用 lo，并用 bwrap 隐藏宿主设备，在隔离的
+Xvfb 和 D-Bus 会话内调用：
+  python3 scripts/ci/native_file_open_smoke.py --binary /path/to/cumulus \
+    --root /path/to/fresh-proof-dir --outer-network 'net:[OUTER_NAMESPACE]'
+使用含中文、空格的合成文件名，测试跳过伪装 FLAC、按序打开、键盘暂停及
+切到第二项、私有输出实际 PCM、同资料目录拒绝重复进程，以及无效显式
+打开后不自动播放旧队列。仅记录 PCM 汇总，不保留捕获样本。
+此项不证明 OS 选择、暖启动、真实声卡、Windows Explorer 或服务登录。

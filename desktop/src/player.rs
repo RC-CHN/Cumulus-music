@@ -56,8 +56,14 @@ impl PlayerStreams {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PlayerUpdate {
-    State { value: Box<PlayerView> },
-    Error { error: ClientError },
+    State {
+        value: Box<PlayerView>,
+        #[serde(rename = "nativeOpenError", skip_serializing_if = "Option::is_none")]
+        native_open_error: Option<ClientError>,
+    },
+    Error {
+        error: ClientError,
+    },
 }
 
 #[tauri::command]
@@ -81,6 +87,18 @@ pub async fn watch_player<R: tauri::Runtime>(
     streams
         .reserve(window.label(), &stream_id, generation)
         .map_err(ClientError::from)?;
+    let native_open_error = if window.label() == "main"
+        && let Some(pending) = window.try_state::<crate::native_open::Pending>()
+        && let Some(paths) = pending.take()
+    {
+        client
+            .play_native_open_files(&epoch, paths)
+            .await
+            .err()
+            .map(crate::native_open::public_error)
+    } else {
+        None
+    };
     let mut source = client
         .subscribe_playback(&epoch)
         .await
@@ -98,6 +116,7 @@ pub async fn watch_player<R: tauri::Runtime>(
     on_update
         .send(PlayerUpdate::State {
             value: Box::new(source.current().map_err(ClientError::from)?),
+            native_open_error,
         })
         .map_err(|_| ClientError::from(Error::Cancelled))?;
     current.task = Some(tauri::async_runtime::spawn(async move {
@@ -105,6 +124,7 @@ pub async fn watch_player<R: tauri::Runtime>(
             let event = match source.changed().await {
                 Ok(value) => PlayerUpdate::State {
                     value: Box::new(value),
+                    native_open_error: None,
                 },
                 Err(error) => {
                     let _ = on_update.send(PlayerUpdate::Error {

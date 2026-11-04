@@ -324,6 +324,9 @@ impl MpvEngine {
     fn source(source: MediaInput) -> Result<CString> {
         match source {
             MediaInput::Url(url) => string(url.as_str()),
+            MediaInput::NativeFile { .. } => {
+                Err(Error::InvalidInput("native local file must be pinned"))
+            }
             MediaInput::File(path) => {
                 let path = std::fs::canonicalize(path)?;
                 if !path.is_file() {
@@ -466,7 +469,28 @@ impl MpvEngine {
     fn load_inner(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         request.validate()?;
         cancel.check()?;
-        let source = Self::source(request.source)?;
+        let source = match request.source {
+            MediaInput::NativeFile { path, fingerprint } => {
+                if request.end.is_some() {
+                    return Err(Error::InvalidInput(
+                        "native local file cannot have a segment",
+                    ));
+                }
+                let (file, format) =
+                    crate::library::native_open::checked_audio_file(&path, &fingerprint)?;
+                let loaded =
+                    self.load_pinned(Box::new(file), format, Cancellation::default(), cancel)?;
+                cancel.check()?;
+                if request.start > 0.0
+                    && let Err(error) = self.seek(request.start)
+                {
+                    self.retire_pinned();
+                    return Err(error);
+                }
+                return Ok(loaded);
+            }
+            source => Self::source(source)?,
+        };
         if self.pinned_bmff_options || self.pinned_authority.is_some() {
             self.stop()?;
             self.restore_bmff_options()?;

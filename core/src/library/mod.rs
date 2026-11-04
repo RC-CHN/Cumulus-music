@@ -6,6 +6,7 @@ pub mod identity;
 mod index;
 pub mod matching;
 pub mod monitor;
+pub(crate) mod native_open;
 pub mod probe;
 mod records;
 mod types;

@@ -220,13 +220,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queue.value = undefined;
     reported.value = undefined;
     let registered = false,
-      ended = false;
+      ended = false,
+      nativeOpenFailed = false;
     function finish() {
       // The channel's initial state and the invoke reply can arrive in
       // either order. Don't miss startup or re-run it on later snapshots.
       if (version !== connection || !registered || ended || !view.value || ready.value) return;
       ready.value = true;
-      if (restorable.value)
+      if (restorable.value && !nativeOpenFailed)
         return run(
           (e) => core.playerAction(e, { kind: 'startup' }),
           // An explicit retry prepares paused media, never repeats automatic play.
@@ -238,6 +239,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         if (version !== connection || ended) return;
         if (event.kind === 'state') {
           accept(event.value);
+          if (event.nativeOpenError) {
+            nativeOpenFailed = true;
+            handle(event.nativeOpenError);
+          }
           void finish();
         } else {
           ended = true;

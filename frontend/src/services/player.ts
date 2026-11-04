@@ -489,7 +489,7 @@ export interface LyricsView {
   fromEmbedded?: boolean;
 }
 export type PlayerUpdate =
-  | { kind: 'state'; value: PlayerView }
+  | { kind: 'state'; value: PlayerView; nativeOpenError?: CoreFailure }
   | { kind: 'error'; error: CoreFailure };
 export type QualityAvailability = 'available' | 'unavailable' | 'unknown';
 export type QualityAccess =

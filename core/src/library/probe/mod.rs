@@ -41,6 +41,13 @@ impl Default for Ffprobe {
     }
 }
 impl Ffprobe {
+    pub(crate) fn for_native_open() -> Self {
+        Self {
+            timeout: Duration::from_secs(5),
+            ..Self::default()
+        }
+    }
+
     pub fn new(executable: PathBuf, timeout: Duration) -> Result<Self> {
         if executable.as_os_str().is_empty()
             || timeout.is_zero()
