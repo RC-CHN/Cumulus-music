@@ -44,6 +44,7 @@ mod mini_preferences;
 mod mv;
 pub mod native_media;
 mod ordinary_essential;
+pub mod pc_experiments;
 mod player;
 mod playlist_cover;
 mod playlist_creator;
@@ -142,6 +143,7 @@ pub struct MusicClient {
     style_home: style_home::StyleHome,
     seeded_style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
+    pc_experiments: pc_experiments::PcExperimentHost,
     quality_experiment: quality_experiment::QualityExperiment,
     daily_experiment: daily_experiment::DailyExperiment,
     latest_releases: catalog::LatestReleasesHost,
@@ -295,6 +297,7 @@ impl MusicClient {
             style_home: Default::default(),
             seeded_style_recommendations: Default::default(),
             style_recommendations: Default::default(),
+            pc_experiments: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
             daily_experiment: daily_experiment::DailyExperiment::default(),
             latest_releases: catalog::LatestReleasesHost::default(),

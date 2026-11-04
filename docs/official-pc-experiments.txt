@@ -29,3 +29,16 @@ Rust 对照：core/src/protocol/pc_experiments.rs 纯原生只读计划，可建
 - 原生提取器与 VM 无网络、凭据或原客户端运行。Rust 锁定测试用 190 项请求
   字符串 SHA-256 对照完整顺序，并核对重复分组、tag 依赖、失败、缓存与坏回包。
   cargo test --locked -p cumulus-core --test pc_experiments；三项及严格 Clippy 通过。
+
+签名原生读取（待播放器接线）
+- MusicClient::official_pc_ordinary_skip_assignment(epoch) 只供原生调用；要求
+  当前已核实 PC 账号、同一作用域 MUSIC_U、设备 ID、PC 签名和原生 PC 配置上下文。
+  从实际会话 transport 发送一次 /eapi/rtrs/abt/front/expinfo/list，传完整 190 键。
+  只输出本次有效分组的开/关；不向 IPC 公开实验日志、配置或调用入口。
+- 同账号代次与凭据版本内保留 30 分钟内存快照，截止点需新读。切换或退出
+  取消未完成请求，未完成的登录候选不能启动或采用它。403、超时和损坏回包
+  都不产生开启，也没有明文、异域或无签名回退。按官方 O.userRelated 的隔离
+  要求，不从其他账号的缓存借分组。暂不接原版的定时调度或首屏读取。
+- 独立隔离原生 EAPI 测试解包实际线格式，核对账号域 Cookie、190 个键、
+  精确 30 分钟边界、无签名/拒绝、退出取消与迟到回包。未访问真实服务。
+  尚无生产调用者，自动跳歌状态不变；不把赋组当媒体播放授权。

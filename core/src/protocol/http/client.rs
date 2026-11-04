@@ -143,6 +143,57 @@ impl MusicHttpClient {
         Ok(issued.is_some() && self.credentials.login_credentials()?.token == issued)
     }
 
+    pub(crate) fn pc_experiment_revision(&self) -> Result<String> {
+        use crate::protocol::pc_experiments::ASSIGNMENT_PATH;
+        if self.credentials.origin() != super::ApiOrigin::Pc
+            || self.profile.user_agent != super::OFFICIAL_WINDOWS_USER_AGENT
+            || self
+                .profile
+                .client_sign
+                .as_deref()
+                .is_none_or(str::is_empty)
+            || self
+                .context
+                .as_ref()
+                .and_then(|context| context.pc_snapshot().ok().flatten())
+                .is_none()
+        {
+            return Err(Error::State("signed PC experiment request is unavailable"));
+        }
+        let target = super::ApiOrigin::Pc.request_url(WireRoute::Eapi, ASSIGNMENT_PATH)?;
+        let credentials = self.credentials.request_credentials(&target)?;
+        if credentials.device_id.is_empty() || credentials.unique_music_u().is_none() {
+            return Err(Error::State(
+                "signed PC experiment requires its original PC credentials",
+            ));
+        }
+        Ok(credentials.revision)
+    }
+
+    pub(crate) async fn pc_experiment_groups(
+        &self,
+        revision: &str,
+    ) -> Result<crate::protocol::pc_experiments::PcExperimentGroups> {
+        use crate::protocol::pc_experiments::{
+            ASSIGNMENT_PATH, PcExperimentGroups, assignment_arguments,
+        };
+        if self.pc_experiment_revision()? != revision {
+            return Err(Error::CredentialChanged);
+        }
+        let response = self
+            .execute(
+                ASSIGNMENT_PATH,
+                assignment_arguments(),
+                false,
+                Some(revision),
+                Jsk::None,
+                None,
+            )
+            .await?;
+        let response = crate::protocol::api::validate_response(ASSIGNMENT_PATH, response, &[200])?;
+        PcExperimentGroups::refreshed(&response)
+    }
+
     pub(crate) async fn request_jsk_if_revision(
         &self,
         path: &str,
