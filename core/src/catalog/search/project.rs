@@ -52,8 +52,18 @@ fn word(row: &Value) -> Option<SearchWord> {
 fn words(rows: &[Value], limit: usize) -> Vec<SearchWord> {
     rows.iter().filter_map(word).take(limit).collect()
 }
-fn audio_chart(id: &str) -> bool {
+pub(super) fn audio_chart(id: &str) -> bool {
     matches!(id, "HOT_SEARCH_DJ#@#" | "HOT_SEARCH_DJ_VOICE_BOOK#@#")
+}
+
+pub(super) fn has_audio_chart(response: &Value) -> bool {
+    response["data"]["tabInfo"]["list"]
+        .as_array()
+        .is_some_and(|rows| {
+            rows.iter().any(|row| {
+                row["id"].as_str().is_some_and(audio_chart) && text(&row["name"]).is_some()
+            })
+        })
 }
 
 fn chart_radio_id(value: &Value) -> Option<String> {
@@ -95,7 +105,11 @@ fn chart_keywords(rows: &[Value]) -> Option<Vec<String>> {
     }
     rows.iter().map(|row| text(&row["searchWord"])).collect()
 }
-pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result<SearchDiscovery> {
+pub(super) fn discovery(
+    query: SearchDiscoveryQuery,
+    response: &Value,
+    include_audio: bool,
+) -> Result<SearchDiscovery> {
     let d = &response["data"];
     if !d.is_object() {
         return Err(Error::Response("missing search data"));
@@ -124,12 +138,15 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
                 let Some(name) = text(&row["name"]) else {
                     continue;
                 };
+                let audio = audio_chart(id);
+                if audio && !include_audio {
+                    continue;
+                }
                 let rows = if d["items"][id].is_null() {
                     &[]
                 } else {
                     array(&d["items"][id])?
                 };
-                let audio = audio_chart(id);
                 let need_play = !audio && row["needPlay"] == true;
                 let items = chart_words(rows, audio);
                 if !charts.iter().any(|c: &SearchChart| c.id == id) {

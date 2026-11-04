@@ -4,7 +4,7 @@ pub mod results;
 use crate::{Error, Result, protocol::api::Api};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::Arc;
+use std::{future::Future, sync::Arc, time::Duration};
 
 #[derive(Clone, Deserialize)]
 #[serde(
@@ -95,6 +95,22 @@ pub fn keyword(value: &str) -> Result<String> {
     Ok(value.to_owned())
 }
 pub async fn discover(api: Arc<dyn Api>, query: SearchDiscoveryQuery) -> Result<SearchDiscovery> {
+    discover_for(&api, query, || async {
+        Ok(tokio::time::timeout(
+            Duration::from_secs(8),
+            api.search_audio_toplist_assignment(),
+        )
+        .await
+        .is_ok_and(|assignment| matches!(assignment, Ok(true))))
+    })
+    .await
+}
+
+pub(crate) async fn discover_for<Fut: Future<Output = Result<bool>>>(
+    api: &Arc<dyn Api>,
+    query: SearchDiscoveryQuery,
+    audio_toplist: impl FnOnce() -> Fut,
+) -> Result<SearchDiscovery> {
     let (path, args) = match &query {
         SearchDiscoveryQuery::Defaults => ("/api/search/default/keyword/get", json!({})),
         SearchDiscoveryQuery::Recommendations { last_query } => {
@@ -130,6 +146,18 @@ pub async fn discover(api: Arc<dyn Api>, query: SearchDiscoveryQuery) -> Result<
             json!({"keyword":keyword(text)?}),
         ),
     };
+    if matches!(&query, SearchDiscoveryQuery::Chart { id } if project::audio_chart(id)) {
+        if !audio_toplist().await? {
+            return Err(Error::InvalidInput("search audio chart unavailable"));
+        }
+        let response = api.call(path, args, false, &[200]).await?;
+        return project::discovery(query, &response, true);
+    }
     let response = api.call(path, args, false, &[200]).await?;
-    project::discovery(query, &response)
+    // M/623 reads chart/list before consulting the assignment. An ordinary
+    // list needs no extra lookup, and hidden rows never enter projection.
+    let include_audio = matches!(&query, SearchDiscoveryQuery::Charts)
+        && project::has_audio_chart(&response)
+        && audio_toplist().await?;
+    project::discovery(query, &response, include_audio)
 }

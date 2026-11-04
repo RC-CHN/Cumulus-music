@@ -608,6 +608,17 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn search_audio_toplist_assignment(&self) -> crate::protocol::api::ApiFuture<'_, bool> {
+        Box::pin(async {
+            let revision = self.pc_experiment_revision()?;
+            let groups = self.pc_experiment_groups(&revision).await?;
+            if self.pc_experiment_revision()? != revision {
+                return Err(Error::CredentialChanged);
+            }
+            Ok(groups.search_audio_toplist_assigned())
+        })
+    }
+
     fn playback_power_experiment(
         &self,
     ) -> crate::protocol::api::ApiFuture<

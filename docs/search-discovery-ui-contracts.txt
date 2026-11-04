@@ -115,6 +115,21 @@ core/examples/search_discovery_read.rs是显式传入已有PC配置与新私有�
   M/91 的 search 试听模式 42；实际权益和媒体可用性仍由既有原生解析判定。
 - 仅显式点击触发；读取失败不替换队列。其他榜单条件及 More 分支不在此专项。
 
+长音频榜实验分流
+- 官方 M/623:99–111 先读 /api/search/pc/chart/list {}，再在同一份有名、已知榜单
+  列表按 pc-search-audio-toplist 分组过滤。只有 expGroupName 精确为 t1 时，才
+  保留原位置的播客榜 HOT_SEARCH_DJ#@# 和听书榜 HOT_SEARCH_DJ_VOICE_BOOK#@#。
+  M/147:1347–1361 的初始分组为空；未分配、其他组和冷启动失败均隐藏这两个榜。
+  PH-PC-searchHot 是综合搜索结果的独立实验（M/3001:549），不决定下拉榜单。
+- Rust 仅在榜单响应存在这两类有名条目时查询已恢复的签名 PC 实验全量分配接口
+  /api/rtrs/abt/front/expinfo/list；普通榜单仍先读且原序保留。官方在列表响应后读
+  应用级实验状态，Cumulus 在本机首次需要时读取，至多额外等待 8 秒；成功在原生
+  内存保留 30 分钟，失败只为仍是同一账号代次和同一传输的既有结果保留 15 秒。
+  不能使用官方 PC 凭据或切换账号时不继承旧分组。前端不接收分组、Cookie 或 URL。
+- 投影在解析被隐藏的条目前过滤；控制组不会因该榜单缺条目而读 chart/detail，
+  原生也拒绝直接申请隐藏榜详情。可见榜的空列表补读、关键词/输入法和面板滚动
+  仍使用既有流程；不改普通榜的条件播放、建议请求或推荐词顺序。
+
 长音频榜条目
 SearchBox/view/searchRankCard.tsx:235–237、300–398 把播客榜/听书榜的 orpheus 条目
 解析出 id 后进入 /audioDetail/:id；普通榜条目提交搜索。Cumulus 仅在两个已知榜单内

@@ -9,6 +9,11 @@ pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
+    /// The two official search-box long-audio charts are hidden by default.
+    fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     fn playback_power_experiment(
         &self,
     ) -> ApiFuture<'_, Option<super::pc_experiments::PcExperimentGroups>> {

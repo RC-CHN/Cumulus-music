@@ -11,6 +11,7 @@ use std::{
 
 pub const ASSIGNMENT_PATH: &str = "/api/rtrs/abt/front/expinfo/list";
 const SKIP: &str = "PH-PC-skipSongs2";
+const SEARCH_AUDIO_TOPLIST: &str = "pc-search-audio-toplist";
 const EMOTION: &str = "PH-PC-qingxv";
 const TAG: &str = "PH-PC-tagT";
 const TAG_DEPENDENTS: [&str; 5] = [
@@ -119,6 +120,10 @@ impl PcExperimentGroups {
 
     pub fn group(&self, name: &str) -> Option<&str> {
         self.web.get(name).and_then(Option::as_deref)
+    }
+
+    pub fn search_audio_toplist_assigned(&self) -> bool {
+        self.group(SEARCH_AUDIO_TOPLIST) == Some("t1")
     }
 
     pub fn skip_songs_assigned(&self) -> bool {

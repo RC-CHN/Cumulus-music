@@ -8,22 +8,44 @@ use cumulus_core::{
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
+        pc_experiments::PcExperimentGroups,
     },
 };
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use tokio::sync::Notify;
 struct Backend {
     calls: Mutex<Vec<(String, Value)>>,
     invalid: AtomicBool,
+    malformed_audio: AtomicBool,
     hold: AtomicBool,
+    hold_assignment: AtomicBool,
+    assignment_calls: AtomicUsize,
+    group: Mutex<Option<&'static str>>,
     started: Notify,
     release: Notify,
 }
 impl Api for Backend {
+    fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
+        Box::pin(async move {
+            self.assignment_calls.fetch_add(1, Ordering::SeqCst);
+            let group = *self.group.lock().unwrap();
+            if self.hold_assignment.load(Ordering::SeqCst) {
+                self.started.notify_one();
+                self.release.notified().await;
+            }
+            let rows = group
+                .map(|group| json!({"expName":"pc-search-audio-toplist","expGroupName":group}));
+            Ok(PcExperimentGroups::refreshed(
+                &json!({"data": rows.into_iter().collect::<Vec<_>>()}),
+            )?
+            .search_audio_toplist_assigned())
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push((path.into(), args.clone()));
@@ -42,7 +64,12 @@ impl Api for Backend {
                     json!({"operateWords":{"first":{"keyword":"运营词"}},"algWords":[{"keyword":"推荐词","toUserWord":"推荐显示","url":"https://private.invalid"}]})
                 }
                 "/api/search/pc/chart/list" => {
-                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},{"id":"HOT_SEARCH_DJ#@#","name":"播客榜","needPlay":true},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_DJ#@#":[{"toUserWord":"合成播客","url":"orpheus://audio/detail?id=301&proof=PRIVATE"}],"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","realkeyword":"备用词","toUserWord":"长标题","iconType":1,"tabId":"HOT_SEARCH_SONG#@#","url":"PRIVATE"},{"searchWord":"普通榜词","tabId":"HOT_SEARCH_STYLE_ROCK#@#"}]}})
+                    let audio = if self.malformed_audio.load(Ordering::SeqCst) {
+                        json!({"malformed":true})
+                    } else {
+                        json!([{"toUserWord":"合成播客","url":"orpheus://audio/detail?id=301&proof=PRIVATE"}])
+                    };
+                    json!({"tabInfo":{"list":[{"id":"HOT_SEARCH_SONG#@#","name":"热搜榜","needPlay":true},{"id":"HOT_SEARCH_DJ#@#","name":"播客榜","needPlay":true},{"id":"HOT_SEARCH_DJ_VOICE_BOOK#@#","name":"听书榜"},{"id":"unknown","name":"不可用分支"}]},"items":{"HOT_SEARCH_DJ#@#":audio,"HOT_SEARCH_SONG#@#":[{"searchWord":"热词","realkeyword":"备用词","toUserWord":"长标题","iconType":1,"tabId":"HOT_SEARCH_SONG#@#","url":"PRIVATE"},{"searchWord":"普通榜词","tabId":"HOT_SEARCH_STYLE_ROCK#@#"}]}})
                 }
                 "/api/search/pc/chart/detail" if args["id"] == "HOT_SEARCH_DJ_VOICE_BOOK#@#" => {
                     json!({"itemList":[
@@ -79,7 +106,11 @@ fn fixture() -> (
     let api = Arc::new(Backend {
         calls: Mutex::default(),
         invalid: AtomicBool::new(false),
+        malformed_audio: AtomicBool::new(false),
         hold: AtomicBool::new(false),
+        hold_assignment: AtomicBool::new(false),
+        assignment_calls: AtomicUsize::new(0),
+        group: Mutex::new(None),
         started: Notify::new(),
         release: Notify::new(),
     });
@@ -115,7 +146,7 @@ async fn official_pc_search_shapes_remain_typed_and_do_not_expose_tracking_or_ur
     assert_eq!(values[0]["value"]["words"][0]["keyword"], "实际词");
     assert_eq!(values[0]["value"]["refreshMs"], 2000);
     assert_eq!(values[1]["value"]["words"].as_array().unwrap().len(), 2);
-    assert_eq!(values[2]["value"]["charts"].as_array().unwrap().len(), 2);
+    assert_eq!(values[2]["value"]["charts"].as_array().unwrap().len(), 1);
     assert_eq!(values[4]["value"]["suggestions"][0]["label"], "显示名称");
     let encoded = serde_json::to_string(&values).unwrap();
     assert!(
@@ -272,7 +303,8 @@ async fn hot_chart_play_resolves_only_ordered_song_ids_for_exact_keywords() {
 
 #[tokio::test]
 async fn audio_chart_rows_only_export_valid_internal_radio_ids() {
-    let (_r, _api, session, client, _store) = fixture();
+    let (_r, api, session, client, _store) = fixture();
+    *api.group.lock().unwrap() = Some("t1");
     let epoch = session.token().unwrap().generation.to_string();
     let list = serde_json::to_value(
         client
@@ -313,4 +345,110 @@ async fn audio_chart_rows_only_export_valid_internal_radio_ids() {
             && !encoded.contains("orpheus://")
             && !encoded.contains("private.invalid")
     );
+}
+
+#[tokio::test]
+async fn audio_toplist_is_filtered_before_projection_and_detail_io() {
+    use cumulus_core::catalog::search::SearchDiscovery;
+
+    let (_r, api, session, client, _) = fixture();
+    *api.group.lock().unwrap() = Some("c");
+    api.malformed_audio.store(true, Ordering::SeqCst);
+    let first = session.token().unwrap().generation.to_string();
+    let SearchDiscovery::Charts { charts } = client
+        .search_discovery(&first, Q::Charts)
+        .await
+        .unwrap()
+        .value
+    else {
+        panic!("expected chart list");
+    };
+    assert_eq!(
+        charts
+            .iter()
+            .map(|chart| chart.id.as_str())
+            .collect::<Vec<_>>(),
+        ["HOT_SEARCH_SONG#@#"]
+    );
+    assert_eq!(api.calls.lock().unwrap()[0].0, "/api/search/pc/chart/list");
+    for id in ["HOT_SEARCH_DJ#@#", "HOT_SEARCH_DJ_VOICE_BOOK#@#"] {
+        assert!(matches!(
+            client
+                .search_discovery(&first, Q::Chart { id: id.into() })
+                .await,
+            Err(Error::InvalidInput("search audio chart unavailable"))
+        ));
+    }
+    assert_eq!(api.calls.lock().unwrap().len(), 1);
+    assert_eq!(api.assignment_calls.load(Ordering::SeqCst), 1);
+    *api.group.lock().unwrap() = Some("t1");
+    api.malformed_audio.store(false, Ordering::SeqCst);
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    let second = session.token().unwrap().generation.to_string();
+    let SearchDiscovery::Charts { charts } = client
+        .search_discovery(&second, Q::Charts)
+        .await
+        .unwrap()
+        .value
+    else {
+        panic!("expected chart list");
+    };
+    assert_eq!(
+        charts
+            .iter()
+            .map(|chart| chart.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "HOT_SEARCH_SONG#@#",
+            "HOT_SEARCH_DJ#@#",
+            "HOT_SEARCH_DJ_VOICE_BOOK#@#"
+        ]
+    );
+    assert!(
+        client
+            .search_discovery(
+                &second,
+                Q::Chart {
+                    id: "HOT_SEARCH_DJ_VOICE_BOOK#@#".into()
+                }
+            )
+            .await
+            .is_ok()
+    );
+    assert_eq!(api.assignment_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(api.calls.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn late_toplist_assignment_never_crosses_account_generation() {
+    use cumulus_core::catalog::search::SearchDiscovery;
+
+    let (_r, api, session, client, _) = fixture();
+    *api.group.lock().unwrap() = Some("t1");
+    api.hold_assignment.store(true, Ordering::SeqCst);
+    let epoch = session.token().unwrap().generation.to_string();
+    let first = client.search_discovery(&epoch, Q::Charts);
+    tokio::pin!(first);
+    tokio::select! {v=&mut first=>panic!("unexpected completion: {}",v.is_ok()),_ = api.started.notified()=>{}}
+    assert_eq!(api.calls.lock().unwrap()[0].0, "/api/search/pc/chart/list");
+    *api.group.lock().unwrap() = None;
+    api.hold_assignment.store(false, Ordering::SeqCst);
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    api.release.notify_one();
+    assert!(first.await.is_err());
+    let new_epoch = session.token().unwrap().generation.to_string();
+    let SearchDiscovery::Charts { charts } = client
+        .search_discovery(&new_epoch, Q::Charts)
+        .await
+        .unwrap()
+        .value
+    else {
+        panic!("expected chart list");
+    };
+    assert_eq!(charts.len(), 1);
+    assert_eq!(api.assignment_calls.load(Ordering::SeqCst), 2);
 }

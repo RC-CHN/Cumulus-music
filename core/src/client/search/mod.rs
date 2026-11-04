@@ -1,3 +1,4 @@
+mod audio_toplist;
 pub(crate) mod experiment;
 mod lyrics;
 mod reason;
@@ -29,9 +30,17 @@ impl MusicClient {
         query: SearchDiscoveryQuery,
     ) -> Result<AccountData<SearchDiscovery>> {
         let token = self.player_token(epoch)?;
+        let token = &token;
         let value = self
             .session
-            .run_for(&token, |api, _| search::discover(api, query))
+            .run_for(token, |api, _| async move {
+                search::discover_for(&api, query, || {
+                    self.search
+                        .audio_toplist
+                        .assigned(&self.session, token, &api)
+                })
+                .await
+            })
             .await?;
         Ok(AccountData {
             epoch: epoch.into(),
