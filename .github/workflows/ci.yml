@@ -163,7 +163,7 @@ jobs:
             GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' \
             dbus-run-session -- /usr/bin/python3 scripts/ci/tray_protocol_smoke.py --startup \
             --screenshots --outer-network "$outer_network" --binary .build/target/release/cumulus --root .build/ci-autostart-linux
-      - name: Verify cold and warm native audio opening in the ordinary Linux application
+      - name: Verify native audio opening and Debian file candidates
         run: |
           outer_network=$(readlink /proc/self/ns/net)
           proof_home=$(mktemp -d)
@@ -180,16 +180,24 @@ jobs:
           }
           isolated_desktop /usr/bin/python3 scripts/ci/native_file_open_smoke.py \
             --outer-network "$outer_network" --binary .build/target/release/cumulus --root .build/ci-native-open-linux
-          # The nested shell expands its private HOME and owns the window manager.
-          # shellcheck disable=SC2016
-          isolated_desktop sh -ec '
-            openbox > "$HOME/openbox.log" 2>&1 &
-            manager=$!
-            cleanup() { kill "$manager" 2>/dev/null || true; }
-            trap cleanup EXIT
-            /usr/bin/python3 scripts/ci/native_warm_file_open_smoke.py \
-              --outer-network "$1" --binary .build/target/release/cumulus --root .build/ci-native-warm-open-linux
-          ' sh "$outer_network"
+          isolated_openbox() {
+            # The nested shell expands its private HOME and owns the window manager.
+            # shellcheck disable=SC2016
+            isolated_desktop sh -ec '
+              openbox > "$HOME/openbox.log" 2>&1 &
+              manager=$!
+              cleanup() { kill "$manager" 2>/dev/null || true; }
+              trap cleanup EXIT
+              "$@"
+            ' sh "$@"
+          }
+          isolated_openbox /usr/bin/python3 scripts/ci/native_warm_file_open_smoke.py \
+            --outer-network "$outer_network" --binary .build/target/release/cumulus --root .build/ci-native-warm-open-linux
+          shopt -s nullglob
+          debs=(.build/packages/linux-x64/*.deb)
+          test "${#debs[@]}" -eq 1
+          isolated_openbox /usr/bin/python3 scripts/ci/linux_file_candidate_smoke.py \
+            --outer-network "$outer_network" --deb "${debs[0]}" --root .build/ci-file-candidate-linux
       - name: Archive synthetic failure diagnostics
         if: failure()
         run: python scripts/ci/diagnostics.py
