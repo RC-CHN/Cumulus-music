@@ -64,7 +64,8 @@ async function loadMore() {
 }
 async function filter(value: Partial<DownloadQuery>, selector: string) {
   const origin = document.activeElement;
-  await props.model.filter(value);
+  const keyword = toolbar.value?.takeKeyword();
+  await props.model.filter(keyword === undefined ? value : { ...value, keyword });
   await nextTick();
   if (document.activeElement === document.body || document.activeElement === origin) {
     const target = root.value?.querySelector<HTMLElement>(

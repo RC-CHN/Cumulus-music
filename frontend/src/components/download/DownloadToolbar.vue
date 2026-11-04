@@ -17,32 +17,41 @@ const { query, view } = props.model;
 const owns = props.model.captureVisit();
 const keyword = ref(query.value.keyword),
   field = ref<HTMLInputElement>();
-let composing = false,
-  timer: ReturnType<typeof setTimeout> | undefined;
+const composing = ref(false);
+let timer: ReturnType<typeof setTimeout> | undefined;
+const searchPending = computed(
+  () => composing.value || keyword.value.trim() !== query.value.keyword,
+);
 const menu = computed<MenuItem[]>(() => [
   {
     key: 'batch',
     label: '批量操作',
     icon: 'list',
-    disabled: (!view.value?.tasks.length && !query.value.keyword) || props.locked,
+    disabled:
+      (!view.value?.tasks.length && !query.value.keyword) || props.locked || searchPending.value,
   },
   { key: 'settings', label: '下载设置', icon: 'settings' },
 ]);
 function search() {
+  const next = takeKeyword();
+  if (next !== undefined) props.model.filter({ keyword: next });
+}
+function takeKeyword() {
+  if (composing.value || !owns()) return;
   clearTimeout(timer);
   timer = undefined;
-  if (!composing && owns()) props.model.filter({ keyword: keyword.value.trim() });
+  return keyword.value.trim();
 }
 function flushSearch() {
   if (timer !== undefined) search();
 }
-defineExpose({ flushSearch });
+defineExpose({ flushSearch, takeKeyword });
 function input() {
   clearTimeout(timer);
-  if (!composing) timer = setTimeout(search, 100);
+  if (!composing.value) timer = setTimeout(search, 100);
 }
 function compositionStart() {
-  composing = true;
+  composing.value = true;
   clearTimeout(timer);
 }
 function clear() {
@@ -52,13 +61,13 @@ function clear() {
 }
 watch([() => query.value.tab, () => query.value.category], () => {
   clearTimeout(timer);
-  composing = false;
+  composing.value = false;
   keyword.value = query.value.keyword;
 });
 watch(
   () => query.value.keyword,
   (value) => {
-    if (!composing) keyword.value = value;
+    if (!composing.value) keyword.value = value;
   },
 );
 onBeforeUnmount(() => clearTimeout(timer));
@@ -89,7 +98,11 @@ onBeforeUnmount(() => clearTimeout(timer));
       </button>
     </template>
     <template v-else-if="section !== 'mv'">
-      <button class="primary download-play-all" :disabled="!canPlay" @click="emit('play')">
+      <button
+        class="primary download-play-all"
+        :disabled="!canPlay || searchPending"
+        @click="emit('play')"
+      >
         <span v-if="preparing" class="spinner" /><Icon v-else name="play" />{{
           preparing ? '准备中…' : '播放全部'
         }}

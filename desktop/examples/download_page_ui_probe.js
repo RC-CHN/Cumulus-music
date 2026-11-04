@@ -91,10 +91,23 @@
     window.__motionProof.system(false);await wait(()=>document.documentElement.dataset.motion!=='reduced','full motion restored');
     const pausePlayer=()=>click(button('暂停',one('.playerbar')));
     await select('song');assert(one('.download-continuation'),'only first window loaded');click(button('播放全部',one('.download-toolbar')));await fixture('verify_queue',{ids:Array.from({length:120},(_,i)=>i+1),current:1});pausePlayer();await capture('play_all_before_growth');
-    const search=one('.download-search input');search.focus();input(search,'单曲 01');await wait(()=>ready()&&all('[data-download-index]').length===10,'play filter');click(one('[data-download-sort="name"]'));await wait(()=>ready()&&first(),'name ascending');click(one('[data-download-sort="name"]'));await wait(()=>ready()&&first()?.textContent.includes('019'),'name descending');click(button('播放全部',one('.download-toolbar')));await fixture('verify_queue',{ids:Array.from({length:10},(_,i)=>19-i),current:19});pausePlayer();await capture('play_filtered_order');
+    const provides=one('#app').__vue_app__._context.provides;const client=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];const originalDownloads=client.downloads;
+    const sortedReads=[];
+    client.downloads=(epoch,query)=>{
+      if(query.sort==='name')sortedReads.push(query.keyword);
+      return originalDownloads(epoch,query);
+    };
+    const search=one('.download-search input');search.focus();input(search,'单曲 01');
+    await Promise.resolve();
+    assert(button('播放全部',one('.download-toolbar')).disabled,'pending search cannot play the stale full list');
+    click(one('[data-download-sort="name"]'));
+    await wait(()=>ready()&&all('[data-download-index]').length===10&&first()?.textContent.includes('010'),'sort applies pending filter');
+    assert(JSON.stringify(sortedReads)==='["单曲 01"]','sort and pending search request the native page once');
+    client.downloads=originalDownloads;
+    click(one('[data-download-sort="name"]'));await wait(()=>ready()&&first()?.textContent.includes('019'),'name descending');click(button('播放全部',one('.download-toolbar')));await fixture('verify_queue',{ids:Array.from({length:10},(_,i)=>19-i),current:19});pausePlayer();await capture('play_filtered_order');
     const chosen=all('[data-download-index]').find(n=>n.textContent.includes('合成单曲 017'));chosen.focus({preventScroll:true});key(chosen,'Enter');await fixture('verify_queue',{ids:Array.from({length:10},(_,i)=>19-i),current:17});pausePlayer();await capture('play_filtered_row');
     await select('voice');click(button('播放全部',one('.download-toolbar')));await fixture('verify_queue',{ids:Array.from({length:12},(_,i)=>121+i),current:121});pausePlayer();await capture('play_voice_all');
-    let mode='',releaseGrowth,readStarted=false;const provides=one('#app').__vue_app__._context.provides;const client=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];const originalDownloads=client.downloads;
+    let mode='',releaseGrowth,readStarted=false;
     // Only inject delay/failure at the existing typed adapter in this isolated
     // probe. Tauri's internal invoke property is intentionally read-only.
     const intercept=async(epoch,query)=>{if(query.limit>100&&mode){readStarted=true;if(mode==='hold')await new Promise(r=>releaseGrowth=r);if(mode==='fail')throw {code:'state',message:'合成后续读取失败',retryable:true};}return originalDownloads(epoch,query);};client.downloads=intercept;assert(client.downloads===intercept,'typed download fault adapter');
