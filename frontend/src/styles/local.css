@@ -204,6 +204,10 @@
   background: transparent;
   padding: 0;
 }
+.local-tracks th[aria-sort] button > span {
+  margin-inline-start: 3px;
+  color: var(--accent);
+}
 .local-tracks th:first-child {
   width: 40px;
 }

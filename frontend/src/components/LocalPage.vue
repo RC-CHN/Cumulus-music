@@ -395,12 +395,42 @@ function play(id: string | null = null) {
   )
     emit('play', { ...query.value }, view.value.revision, id);
 }
-function sort(field: LocalSort) {
+const sortColumns = [
+  { field: 'title', label: '音乐标题' },
+  { field: 'artist', label: '歌手' },
+  { field: 'album', label: '专辑' },
+  { field: 'format', label: '格式' },
+  { field: 'duration', label: '时长' },
+] as const;
+let sortFocus: { field: LocalSort; queryKey: string } | undefined;
+function sort(field: LocalSort, event: MouseEvent) {
+  const ownsFocus = document.activeElement === event.currentTarget;
   props.model.filter({
     sort: field,
     descending: query.value.sort === field ? !query.value.descending : false,
   });
+  sortFocus = ownsFocus ? { field, queryKey: localQueryKey(query.value) } : undefined;
 }
+watch(
+  [view, readError, query],
+  () => {
+    const restore = sortFocus;
+    if (!restore) return;
+    if (restore.queryKey !== localQueryKey(query.value)) {
+      sortFocus = undefined;
+      return;
+    }
+    if (!view.value && !readError.value) return;
+    sortFocus = undefined;
+    if (!ownsVisit() || document.activeElement !== document.body) return;
+    const target =
+      browser.value?.querySelector<HTMLButtonElement>(`[data-local-sort="${restore.field}"]`) ??
+      pageRoot.value?.querySelector<HTMLButtonElement>('[data-local-read-error] button') ??
+      searchInput.value;
+    target?.focus({ preventScroll: true });
+  },
+  { flush: 'post' },
+);
 function status(root: LocalRoot) {
   if (!root.enabled) return '已暂停自动扫描';
   if (root.rootMissing) return '目录暂不可用，文件记录已保留';
@@ -673,15 +703,21 @@ function status(root: LocalRoot) {
           <thead>
             <tr>
               <th>#</th>
-              <th>
-                <button @click="sort('title')">
-                  音乐标题 {{ query.sort === 'title' ? (query.descending ? '↓' : '↑') : '' }}
+              <th
+                v-for="{ field, label } in sortColumns"
+                :key="field"
+                scope="col"
+                :aria-sort="
+                  query.sort === field ? (query.descending ? 'descending' : 'ascending') : undefined
+                "
+              >
+                <button type="button" :data-local-sort="field" @click="sort(field, $event)">
+                  {{ label
+                  }}<span v-if="query.sort === field" aria-hidden="true">
+                    {{ query.descending ? '↓' : '↑' }}
+                  </span>
                 </button>
               </th>
-              <th><button @click="sort('artist')">歌手</button></th>
-              <th><button @click="sort('album')">专辑</button></th>
-              <th><button @click="sort('format')">格式</button></th>
-              <th><button @click="sort('duration')">时长</button></th>
               <th v-if="matching.ready.value">线上关联</th>
               <th class="local-track-actions" aria-label="操作" />
             </tr>

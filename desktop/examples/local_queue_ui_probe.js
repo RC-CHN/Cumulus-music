@@ -46,6 +46,23 @@
     await invoke('local_command', { command: { kind: 'watch', path: window.__localProof.root + '/media' } });
     const trackRows = () => [...document.querySelectorAll('.local-tracks tbody tr')];
     await wait(() => trackRows().length === 5, 'native file scan');
+    const sorted = () => [...document.querySelectorAll('.local-tracks th[aria-sort]')];
+    const direction = () => sorted()[0]?.getAttribute('aria-sort');
+    const durations = () => trackRows().map(row => row.cells[5].textContent.trim());
+    assert(sorted().length === 1 && sorted()[0].textContent.includes('音乐标题'), 'default active sort');
+    click(button('时长'));
+    await wait(() => direction() === 'ascending' && durations().join(',') === '00:30,01:00,01:30,02:00,02:00',
+      'native duration ascending and active header');
+    const durationHeader = sorted()[0];
+    assert(durationHeader.querySelector('[aria-hidden=true]')?.textContent.includes('↑'), 'visible ascending arrow');
+    click(durationHeader.querySelector('button'));
+    await wait(() => direction() === 'descending' && durations().join(',') === '02:00,02:00,01:30,01:00,00:30',
+      'native duration descending and active header');
+    assert(sorted().length === 1 && sorted()[0].querySelector('[aria-hidden=true]')?.textContent.includes('↓') &&
+      document.activeElement === sorted()[0].querySelector('button'), 'direction and keyboard focus');
+    click(button('音乐标题'));
+    await wait(() => sorted().length === 1 && direction() === 'ascending' &&
+      sorted()[0].textContent.includes('音乐标题') && trackRows().length === 5, 'return to title order');
     click(button('文件夹'));
     const toggle = () => one('.local-folder-toggle');
     const nested = () => [...document.querySelectorAll('[data-local-folder-key]')]
@@ -120,7 +137,7 @@
     }, 'play replaces queue with clicked folder only');
     assert(document.documentElement.scrollWidth <= innerWidth &&
       one('.local-page').scrollWidth <= one('.local-page').clientWidth + 1, 'no horizontal clipping');
-    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
+    await emit('complete', { ok: true, queue: names, retainedPlayback: true, folderTree: true, groupMenu: true, localSort: true, realMusicRequests: 0, audioOutput: 'null', width: innerWidth });
   } catch (error) {
     await emit('failed', { message: String(error) });
   }
