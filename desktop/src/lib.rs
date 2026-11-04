@@ -351,6 +351,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 settings::startup_preferences,
                 settings::queue_click_preferences,
                 settings::queue_click_preferences_command,
+                autostart::autostart_status,
+                autostart::autostart_change,
                 settings::window_preferences,
                 system_media::settings::system_media_preferences,
                 system_media::settings::system_media_preferences_command,
@@ -556,3 +558,4 @@ pub fn configure_native_im(
     }
 }
 mod auth;
+mod autostart;

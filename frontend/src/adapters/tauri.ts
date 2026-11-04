@@ -110,6 +110,9 @@ export function createTauriClient(): CoreClient {
     systemMediaStatus: () => invoke('system_media_status'),
     onSystemMediaStatus: (handler) =>
       listen<SystemMediaStatus>('cumulus:system-media', (event) => handler(event.payload)),
+    autostartStatus: () => invoke('autostart_status'),
+    autostartChange: (enabled, observed) =>
+      invoke('autostart_change', { change: { enabled, observed } }),
     windowPreferences: (epoch) => invoke('window_preferences', { epoch }),
     windowPreferencesCommand: (epoch, command) =>
       invoke('window_preferences_command', { epoch, command }),

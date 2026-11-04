@@ -21,9 +21,10 @@
 Cumulus 映射
 - Windows/Linux 一律仅认明确且单独的启动参数 --autostart；普通打开以及带
   其他参数的进程仍以普通前台窗口启动。命令参数是社区客户端自己的适配，
-  不是对原版启动命令行语法的推断。现有安装包不注册开机启动，不切换默认
-  播放器，不创建 OS 启动项；需要时由用户配置的系统启动器传入这个参数。
-  因没有系统注册开关，「窗口 → 自动启动时」直接保存两个选择并说明生效范围。
+  不是对原版启动命令行语法的推断。安装或运行客户端不自动注册启动项；
+  设置页显式开启后由系统传入此参数。读取注册状态及写入授权见
+  docs/desktop-autostart-contracts.txt。前台/最小化仅在本客户端注册有效时可改。
+  默认播放器注册仍是另一项能力。
 - Windows/Linux 共用核心 SQLite 的设备级设置和修订 CAS。旧版记录缺少该字段
   时默认 minisize，同时保留原关闭行为和提醒；已记住的关闭对话操作仅改关闭
   字段。读取失败、未知模式或损坏不会让窗口留在托盘；维修必须显式确认。
@@ -44,7 +45,8 @@ WebView。仅在私有 X11/Openbox、私有 D-Bus/AT-SPI、仅 loopback 的独�
 键盘修改设置并只读核对 SQLite；通过私有合成 StatusNotifier host 观察真正的
 libappindicator 菜单和显隐，不把它当作物理面板验证。
 在仓库根目录以非 root 用户运行（Xvfb、Openbox、X11/XTest、AT-SPI、Gio 与
-libayatana-appindicator 已安装，CUMULUS_BIN 为已构建的绝对路径）：
+libayatana-appindicator 与 desktop-file-validate 已安装，CUMULUS_BIN 为
+已构建并置于稳定目录（非 /tmp 或 /run）的绝对路径）：
 
   outer_network=$(readlink /proc/self/ns/net)
   proof_home=$(mktemp -d)
@@ -64,4 +66,4 @@ libayatana-appindicator 已安装，CUMULUS_BIN 为已构建的绝对路径）�
 没有可用托盘时限时回退、保存最小化后再次手动打开。既有关闭/托盘 WebView
 回归另有 17 个状态通过。本地回归不替代跨平台 CI。
 Windows 的编译分支复用现有 Shell_NotifyIconGetRect 托盘监测；实际 Windows
-交互桌面、Explorer 及 Linux Wayland 实机本批未测。不声称 OS 启动注册。
+交互桌面、Explorer 及 Linux Wayland 实机本批未测。XDG 启动注册测试见上述契约。

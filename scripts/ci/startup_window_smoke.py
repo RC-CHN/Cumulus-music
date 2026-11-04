@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import sqlite3
 import subprocess
@@ -25,7 +26,7 @@ def validate_environment(args):
 def startup(args, root, env, items, watcher, wait, call, menu):
     import gi
     gi.require_version('Gdk', '3.0')
-    from gi.repository import Gdk, GLib
+    from gi.repository import Gdk, Gio, GLib
 
     access = start_accessibility()
     env.pop('CUMULUS_PROOF_DIR')
@@ -33,6 +34,10 @@ def startup(args, root, env, items, watcher, wait, call, menu):
     env['HOME'] = str(root / 'home')
     Path(env['HOME']).mkdir(mode=0o700)
     env['GTK_USE_PORTAL'] = '0'
+    system_config = root / 'system-config'
+    system_config.mkdir()
+    env['XDG_CONFIG_DIRS'] = str(system_config)
+    entry = Path(env['XDG_CONFIG_HOME']) / 'autostart/io.cumulus.music.desktop'
     states = {}
     database = root / 'state/core.sqlite3'
 
@@ -73,7 +78,19 @@ def startup(args, root, env, items, watcher, wait, call, menu):
         value = subprocess.check_output(['xprop', '-root', '_NET_ACTIVE_WINDOW'], text=True, timeout=3)
         assert value.strip().endswith(window), 'main window lost native focus'
 
-    def radio(app, label):
+    def control_named(app, label, role):
+        try:
+            return find_control(app, label, role)
+        except GLib.Error as error:
+            # WebKit may replace the accessibility subtree during route
+            # changes or between app launches; never hide other errors.
+            if (error.domain, error.code, error.message) != (
+                    'atspi_error', 0, 'The application no longer exists'):
+                raise
+            assert app.poll() is None, 'ordinary app exited while locating an accessibility control'
+            return None
+
+    def find_control(app, label, role):
         desktop = access.get_desktop(0)
         for i in range(desktop.get_child_count()):
             child = desktop.get_child_at_index(i)
@@ -85,7 +102,11 @@ def startup(args, root, env, items, watcher, wait, call, menu):
                 node = pending.pop()
                 seen += 1
                 assert seen <= 1000, 'unexpectedly large startup settings accessibility tree'
-                if node.get_role() == access.Role.RADIO_BUTTON and node.get_name() == label:
+                if role is None:
+                    text = node.get_text_iface()
+                    if node.get_name() == label or (text and access.Text.get_text(text, 0, -1).strip() == label):
+                        return node
+                elif node.get_role() == role and node.get_name() == label:
                     return node
                 for index in range(node.get_child_count()):
                     child = node.get_child_at_index(index)
@@ -118,22 +139,39 @@ def startup(args, root, env, items, watcher, wait, call, menu):
                 red += r > 120 and r > 1.4 * g and r > 1.2 * b
         return red >= 25
 
-    def choose(app, inputs, window, label, expected):
+    def open_settings(app, inputs, window):
         focus_installed_control(access, app, '打开设置', (access.Role.PUSH_BUTTON, access.Role.TOGGLE_BUTTON))
         assert_focused(window)
         inputs.key('Return')
-        control = wait_for('startup setting in actual WebView', lambda: radio(app, label))
+
+    def reveal_control(app, window, label, role):
+        control = wait_for('startup setting in actual WebView', lambda: control_named(app, label, role))
         component = control.get_component_iface()
         assert component is not None and component.scroll_to(access.ScrollType.ANYWHERE), 'cannot reveal startup radio'
-        focus_installed_control(access, app, label, (access.Role.RADIO_BUTTON,))
+        focus_installed_control(access, app, label, (role,))
         assert_focused(window)
+
+    def registration_toggle(app, inputs, window, enabled):
+        reveal_control(app, window, '开机自动运行', access.Role.CHECK_BOX)
+        inputs.key('space')
+        wait_for('native autostart file state', lambda: entry.is_file() is enabled)
+
+        def observed():
+            node = control_named(app, '开机自动运行', access.Role.CHECK_BOX)
+            return node and node.get_state_set().contains(access.StateType.CHECKED) is enabled
+        wait_for('system registration rendered in WebView', observed)
+        if args.screenshots:
+            screenshot('autostart-enabled' if enabled else 'autostart-disabled')
+
+    def choose(app, inputs, window, label, expected):
+        reveal_control(app, window, label, access.Role.RADIO_BUTTON)
         inputs.key('space')
         def saved():
             record = setting()
             return record if record and record['settings']['startupMode'] == expected else None
         record = wait_for('startup setting stored by native IPC', saved)
         def checked():
-            control = radio(app, label)
+            control = control_named(app, label, access.Role.RADIO_BUTTON)
             return control and control.get_state_set().contains(access.StateType.CHECKED)
         wait_for('selected native setting', checked)
         assert record['settings']['closeBehavior'] == 'tray' and not record['settings']['rememberChoice']
@@ -147,13 +185,64 @@ def startup(args, root, env, items, watcher, wait, call, menu):
         call(item, native_path, 'com.canonical.dbusmenu', 'Event',
              GLib.Variant('(isvu)', (labels[label], 'clicked', GLib.Variant('i', 0), 0)))
 
+    class DesktopChild:
+        def __init__(self, pid):
+            self.pid, self.returncode = pid, None
+
+        def poll(self):
+            if self.returncode is None:
+                pid, status = os.waitpid(self.pid, os.WNOHANG)
+                if pid:
+                    self.returncode = os.waitstatus_to_exitcode(status)
+                    GLib.spawn_close_pid(self.pid)
+            return self.returncode
+
+        def wait(self, timeout):
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if self.poll() is not None:
+                    return self.returncode
+                time.sleep(.02)
+            raise subprocess.TimeoutExpired('XDG autostart', timeout)
+
+        def terminate(self):
+            os.kill(self.pid, signal.SIGTERM)
+
+        def kill(self):
+            os.kill(self.pid, signal.SIGKILL)
+
+    def launch_registered():
+        desktop = Gio.DesktopAppInfo.new_from_filename(str(entry))
+        assert desktop and desktop.get_commandline().endswith('" --autostart')
+        context = Gio.AppLaunchContext()
+        for key in os.environ.keys() - env.keys():
+            context.unsetenv(key)
+        for key, value in env.items():
+            context.setenv(key, value)
+        pids = []
+        assert desktop.launch_uris_as_manager([], context, GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+            None, None, lambda _app, pid, *_: pids.append(pid), None)
+        pid, = pids
+        child = DesktopChild(pid)
+        try:
+            # GDesktopAppInfo's descriptive get_executable can truncate a
+            # quoted name at its first space; verify the actual spawned process.
+            assert Path(f'/proc/{pid}/exe').resolve(strict=True) == args.binary.resolve(strict=True)
+            assert Path(f'/proc/{pid}/cmdline').read_bytes().split(b'\0') == [
+                os.fsencode(args.binary.resolve()), b'--autostart', b'']
+        except Exception:
+            stop(child)
+            raise
+        return child
+
     @contextmanager
-    def launch(name, *, automatic, host):
+    def launch(name, *, automatic, host, registered=False):
         assert not list(items), 'stale fixture tray registration'
         watcher['host'] = host
         with (root / f'{name}.log').open('x') as log:
-            child = subprocess.Popen([str(args.binary.resolve()), *(['--autostart'] if automatic else [])],
-                                     env=env, stdout=log, stderr=log)
+            child = (launch_registered() if registered else
+                     subprocess.Popen([str(args.binary.resolve()), *(['--autostart'] if automatic else [])],
+                                      env=env, stdout=log, stderr=log))
             try:
                 yield child
             except Exception:
@@ -190,16 +279,27 @@ def startup(args, root, env, items, watcher, wait, call, menu):
 
         with launch('explicit-initial', automatic=False, host=True) as child:
             window = wait(lambda: one_window(child, visible=True), 'explicit launch visible')
+            open_settings(child, inputs, window)
+            assert not entry.exists(), 'launch created an autostart registration'
+            def mode_disabled(process):
+                radio = control_named(process, '最小化显示', access.Role.RADIO_BUTTON)
+                return radio and not radio.get_state_set().contains(access.StateType.SENSITIVE)
+            wait_for('unregistered window mode is disabled', lambda: mode_disabled(child))
+            registration_toggle(child, inputs, window, True)
+            subprocess.run(['desktop-file-validate', str(entry)], check=True, timeout=4)
+            assert entry.read_text(encoding='utf-8').count(' --autostart') == 1
+            states['registrationEnabledFromUi'] = True
             states['frontRevision'] = choose(child, inputs, window, '前台显示', 'front')
             finish(child)
 
         with launch('automatic-front', automatic=True, host=True) as child:
             window = wait(lambda: one_window(child, visible=True), 'automatic front launch visible')
+            open_settings(child, inputs, window)
             states['minisizeRevision'] = choose(child, inputs, window, '最小化显示', 'minisize')
             assert states['minisizeRevision'] > states['frontRevision']
             finish(child)
 
-        with launch('automatic-minisize', automatic=True, host=True) as child:
+        with launch('automatic-minisize', automatic=True, host=True, registered=True) as child:
             wait(lambda: items, 'automatic-minisize native tray')
             # A hidden GTK toplevel may remain unrealized on X11. When it
             # has an XID, also require that native Show reuses that window.
@@ -211,6 +311,7 @@ def startup(args, root, env, items, watcher, wait, call, menu):
             wait_for('native Show focuses window', lambda: subprocess.check_output(
                 ['xprop', '-root', '_NET_ACTIVE_WINDOW'], text=True, timeout=3).strip().endswith(shown))
             states['showRestoredSameProcess'] = True
+            states['launchedThroughRegisteredXdgEntry'] = True
             wait(lambda: shell_painted(shown), 'restored WebView paints its shell', 12)
             focus_installed_control(access, child, '打开设置', (access.Role.PUSH_BUTTON, access.Role.TOGGLE_BUTTON))
             states['restoredWebViewPaintedAndAccessible'] = True
@@ -238,8 +339,25 @@ def startup(args, root, env, items, watcher, wait, call, menu):
             finish(child)
 
         with launch('explicit-saved-minisize', automatic=False, host=True) as child:
-            wait(lambda: one_window(child, visible=True), 'explicit launch ignores saved minisize')
+            window = wait(lambda: one_window(child, visible=True), 'explicit launch ignores saved minisize')
             states['explicitOpenWithSavedMinisize'] = True
+            open_settings(child, inputs, window)
+            registration_toggle(child, inputs, window, False)
+            wait_for('window choices disabled after unregistration', lambda: mode_disabled(child))
+            states['registrationDisabledFromUi'] = True
+
+            foreign = b'[Desktop Entry]\nType=Application\nName=External fixture\nExec=/bin/false\n'
+            entry.write_bytes(foreign)
+            reveal_control(child, window, '重新读取窗口设置', access.Role.PUSH_BUTTON)
+            inputs.key('Return')
+            def readback_external():
+                button = control_named(child, '开机自动运行', access.Role.CHECK_BOX)
+                message = control_named(child, '同名启动项由系统或其他程序管理，Cumulus 未修改。', None)
+                return button and message and not button.get_state_set().contains(access.StateType.SENSITIVE)
+            wait_for('external registration blocks native write', readback_external)
+            assert entry.read_bytes() == foreign
+            states['externalRegistrationPreserved'] = True
+            screenshot('autostart-external-preserved')
             finish(child)
 
     report = dict(ok=True, productionBinary=True, actualWebView=True, actualTauriTray=True,

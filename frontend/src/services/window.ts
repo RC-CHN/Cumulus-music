@@ -38,3 +38,10 @@ export interface WindowLifecycleClient {
   windowCloseCommand(command: WindowCloseCommand): Promise<WindowLifecycleView>;
   onWindowLifecycle(handler: (view: WindowLifecycleView) => void): Promise<() => void>;
 }
+
+export type AutostartStatus = 'enabled' | 'disabled' | 'external' | 'unavailable';
+export type AutostartObservation = 'enabled' | 'disabled';
+export interface AutostartClient {
+  autostartStatus(): Promise<AutostartStatus>;
+  autostartChange(enabled: boolean, observed: AutostartObservation): Promise<AutostartStatus>;
+}

@@ -1,0 +1,64 @@
+开机自动运行：官方设置与本机注册（Windows PC 3.1.42.205594）
+
+官方恢复源（不调用音乐服务）：
+- references/netease-3.1.42.205594-analysis/recovered-js/modules/
+  hybrid_64.chunk.1482700000000.js/3097.js:323–384,440–508。
+  常规页读取系统是否开机自动运行并控制「开机自动运行」复选框；
+  未开启时「最小化显示」「前台显示」未选且不可操作，已保存的偏好不会删除。
+  开启或普通关闭调用 App.setAutoRun；若音乐桌面运行中，关闭前另弹确认。
+- 同目录 hybrid_183.chunk.1482700000000.js/2989.js:92–145。
+  进入时读取 App.getAutoRunStatus，再独立读取默认播放器和展示方式；
+  展示方式持久化到本地，不负责注册开机启动。
+- 同目录 hybrid_app.chunk.1482700000000.js/4.js:14182–14200。
+  原生桥：app.getAutoRunState("cloudmusic")、
+  app.setAutoRun("cloudmusic","autorun")、app.cancelAutoRun("cloudmusic")。
+  这是原版桥接名称，不假定其实现就是下列社区平台适配。音乐桌面是未接入的
+  专有桌面装饰流程，Cumulus 当前没有会因禁用注册而被阻断的等价状态。
+  默认应用、文件关联和其他产品注册不在本实现范围。
+
+社区实现：
+- Settings → 窗口读 native autostart_status；enabled 表示识别到本客户端生成的
+  当前可执行文件的确切用户注册，disabled 表示该名称未被占用，external 表示
+  同名内容由系统或其他程序管理，unavailable 表示读取/平台位置不能确认。
+  前端仅在 enabled 时允许更改两种展示方式。设置页每次重新打开、显式刷新都
+  读系统；没有账号字段、Cookie 或本机路径经 IPC 暴露。
+- autostart_change({enabled, observed}) 仅接受当前主窗口的相反目标和同一前置
+  状态。写入前重读，写入后重新通过原生读取；失败或丢失回执只读回，不重发。
+  安装、启动、账号登录、读取设置本身均不创建/删除启动项。切换启动项不会
+  重启、隐藏当前窗口，也不重置启动展示方式。
+- Linux 使用 $XDG_CONFIG_HOME/autostart/io.cumulus.music.desktop，
+  未设则 ~/.config/autostart。校验绝对 UTF-8 路径，引用真实当前执行文件，
+  生成单参数 --autostart 和 TryExec；拒绝无法按桌面文件格式无歧义表达的
+  路径。用同目录同步及 no-clobber 发布；不覆盖已有不同字节或链接，不更改
+  $XDG_CONFIG_DIRS（默认 /etc/xdg）的同名文件，也不写 Hidden 覆盖它们。
+  删除时只移动这个名称到用户目录内的私有暂存，再确认捕获的对象是当前
+  客户端的逐字节条目才删除。如果外部同时换名，先尝试无覆盖恢复；
+  如名称已被占用，保留捕获到的文件于 .cumulus-autostart-recovery-*，
+  不删除任一外部内容。程序自身写入按目录加锁。
+- Windows 仅当前用户 HKCU\Software\Microsoft\Windows\CurrentVersion\Run
+  的 io.cumulus.music 值；REG_SZ、带引号的本地绝对执行路径及 --autostart，
+  UTF-16 命令行包含终止字符不超过 260 单元。使用注册表事务比较并设置/
+  删除单值；不同类型、不同字节或另一个安装路径不覆盖；事务失败不降级到
+  无保护写入。不接触 HKLM、RunOnce、StartupApproved 或系统策略，也不提升
+  权限。注册存在不代表 Explorer/策略允许运行，不据此报告实际登录已启动。
+- 临时执行路径（包括临时挂载 AppImage）不能注册；移动/卸载前可在原客户端
+  关闭注册。若路径变更，新的客户端不会把旧路径的注册当作自己可改的条目。
+  安装器不会修改用户手工管理的启动项；注册与展示选择是两份独立的系统状态。
+
+平台依据：
+https://specifications.freedesktop.org/autostart/latest/
+https://specifications.freedesktop.org/desktop-entry/latest/exec-variables.html
+https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys
+https://learn.microsoft.com/en-us/windows/win32/api/winreg/nf-winreg-regcreatekeytransactedw
+
+验证：
+- Linux 原生单元覆盖用户和系统同名项、链接、原子创建及错误身份保护。
+  docs/window-startup-mode-contracts.txt 的真实 GUI 驱动使用私有 XDG 和无
+  真实服务出口的网络；验证键盘开关、desktop-file-validate、Gio 读取并启动
+  真实注册项、原生托盘恢复、关闭注册和外部同名条目的保留。没有改用户宿主。
+- Windows 原生 Rust 单元只使用独立随机 HKCU 测试键，覆盖事务启用、删除与
+  外部 REG_BINARY，不读取/写入真实 Run。模块与单元交叉编译链接为 Windows
+  x86_64 PE；本机没有 Windows 桌面，未运行 HKCU 事务用例或 Explorer 登录。
+  原生 Windows 复现命令：
+    cargo test --locked -p cumulus-desktop --lib autostart::windows::tests
+  Linux 也未在个人桌面登出/登录；实际桌面策略与延迟不是本次模拟会话证据。
