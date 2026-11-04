@@ -29,6 +29,13 @@ function client(changes: Partial<MemberClient> = {}): MemberClient {
   return {
     memberPage: async () => reply(),
     memberRights: async () => ({ epoch: '1', value: rights }),
+    memberSignCard: async (epoch) => ({
+      epoch,
+      value: { title: '黑胶乐签', subtitle: '', buttonText: null, textureUrl: null, days: [] },
+    }),
+    memberSignDetail: async () => {
+      throw new Error('no sign history fixture');
+    },
     openMemberLink: async () => {},
     ...changes,
   };

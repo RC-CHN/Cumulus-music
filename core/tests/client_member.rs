@@ -91,6 +91,55 @@ fn song(id: u64) -> Value {
 }
 
 #[tokio::test]
+async fn member_sign_uses_recorded_ids_and_rejects_late_account_history() {
+    const CARD: &str = "/api/vipnewcenter/app/minidesk/music/sign/pc";
+    const HISTORY: &str = "/api/vipnewcenter/app/level/user/checkin/history/list";
+    const DETAIL: &str = "/api/vipnewcenter/app/level/user/checkin/history/detail";
+    const DATE: u64 = 1_793_318_400_000;
+    let (_dir, api, session, client) = fixture();
+    api.responses.lock().unwrap().extend([
+        (CARD.into(), json!({"code":200,"data":{"signInfoList":[
+            {"dayText":"30日","today":false,"sign":true,"signTime":DATE,"songCoverUrl":"https://p1.music.126.net/cover?PRIVATE"},
+            {"dayText":"31日","today":true,"sign":false,"signTime":DATE,"songCoverUrl":"https://bad.invalid/PRIVATE"}
+        ]}})),
+        (HISTORY.into(), json!({"code":200,"data":[{"dayTime":DATE,"recordId":"009007199254740993"}]})),
+        (DETAIL.into(), json!({"code":200,"data":{"songInfo":{"songId":"9007199254740993","songName":"合成乐签"},"private":"PRIVATE"}})),
+    ]);
+    let card = serde_json::to_value(client.member_sign_card("1").await.unwrap()).unwrap();
+    assert_eq!(card["value"]["days"][0]["signTime"], DATE);
+    assert!(card["value"]["days"][1]["signTime"].is_null());
+    assert!(!card.to_string().contains("PRIVATE"));
+    assert!(matches!(
+        client.member_sign_detail("1", DATE + 1).await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(api.count(DETAIL), 0);
+    let detail = serde_json::to_value(client.member_sign_detail("1", DATE).await.unwrap()).unwrap();
+    assert_eq!(detail["value"]["songId"], "9007199254740993");
+    assert!(!detail.to_string().contains("PRIVATE"));
+    assert!(!detail.to_string().contains("009007199254740993"));
+    assert_eq!(
+        api.calls.lock().unwrap().as_slice(),
+        &[
+            (CARD.into(), json!({"type":1})),
+            (HISTORY.into(), json!({})),
+            (HISTORY.into(), json!({})),
+            (
+                DETAIL.into(),
+                json!({"type":2,"recordId":"009007199254740993"})
+            ),
+        ]
+    );
+    *api.hold.lock().unwrap() = Some(HISTORY.into());
+    let pending = tokio::spawn(async move { client.member_sign_detail("1", DATE).await });
+    api.started.notified().await;
+    session.detach().unwrap();
+    api.release.notify_one();
+    assert!(matches!(pending.await.unwrap(), Err(Error::StaleResponse)));
+    assert_eq!(api.count(DETAIL), 1);
+}
+
+#[tokio::test]
 async fn all_official_module_shapes_become_safe_actions_and_cache_survives_reopen() {
     let (dir, api, _session, client) = fixture();
     let page = client

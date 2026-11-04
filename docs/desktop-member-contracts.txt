@@ -84,7 +84,7 @@ open_member_link {epoch,revision,key} 重读当前账号快照，核对版本后
 卡片支持横向滚动与键盘按钮；推荐歌曲按官方每列三首分组，数字专辑只展示前六张，
 空模块不渲染标题。历史日推隐藏首页权益大卡，保留列表可视空间。300秒目录缓存、
 保留旧内容的故障状态是显式工程选择。
-会员卡的官方权益推广/签到/礼券、动态开通按钮/购买承接、完整会员服务页还未接入；
+会员卡的官方权益推广/签到写操作/礼券、动态开通按钮/购买承接、完整会员服务页还未接入；
 本版显示真实五类权益与已有内容模块，不把入口接通扩大为所有会员业务完成。
 有声书实际可播放/可下载权限由既有播客授权判断；付费、NCM/文字稿等旧边界不因卡片出现消失。
 全局设备身份/易盾/凭据刷新、完整效果链与会员音效到期宿主、同账号接续继续。
@@ -149,3 +149,25 @@ python3 desktop/examples/audit_member_probe.py <proof-root> [--reopen|--links]
 原会员服务读取可用日期和对应曲目，界面沿用无权限、空数据和重试状态。
 官方的收银台分支不自动触发。daily_history_smoke.py 用合成账号验证窄窗入口、
 日期与曲目读取和返回每日推荐，未访问真实服务。
+
+黑胶乐签（VIP精选，已有记录只读）
+恢复 PageVIPEssential 将 TrackSignInCard 放在左列会员卡下方；VIPInfoCard 主卡点击打开的是
+另一个会员中心扫码说明，不能拿该弹窗当成乐签。M/15、154、198、208、616、617 和恢复的
+AppModal/dialogs/DailySign 说明读写边界、按日匹配、卡片与详情字段、播放和进度。
+- `/api/vipnewcenter/app/minidesk/music/sign/pc {type:1}` 读取会员页的最近日期、今天标记、
+  已打卡状态和公开封面；与用户菜单入口的 type:0 不混用。签过且带 signTime 的日期可以查看。
+- 选日期后 `/api/vipnewcenter/app/level/user/checkin/history/list {}` 取得本账号记录，按
+  `dayTime == signTime` 找到 `recordId`，再调用同前缀 `history/detail {type:2,recordId}`。
+  数字/字符串 ID 保留服务形状；浏览器不接触 recordId。没有匹配直接报错，不发送 type:1 详情。
+- 详情取 `songInfo.{songId,songName,artistName,cover}`、`wishWords`、`wishUserNickname`、
+  本月次数和下一奖励档位；播放以普通单曲走原生播放器。仅显示奖励描述，不领取奖励。
+- 账号代次在请求前、列表完成后和详情返回时重新验证。前端关闭/换页/切账号时忽略旧回包；
+  卡片刷新失败时保留本账号上次的页面内结果，不落盘，也不按本地日期伪造未签到状态。
+  签到写入口 `/api/vip-center-bff/task/sign`、领取、会员推广扫码弹窗、移动端用户菜单乐签
+  不在本批；真实账号的签到状态、服务奖励和写入都未用本批探针验证。
+- 2026-11-04：`client_member` + `member_center` 共 11 项，前端 756 项及类型/构建通过。
+  Linux 真 WebView 合成探针 `.build/ui-proof/member-sign-20261104-b` 七阶段七图：普通浅色
+  1120×760、窄窗深色 760×540；读取 12 次、签到/领奖写入 0。覆盖卡片/详情错误重试、焦点返回、
+  晚到结果隔离、未打卡状态和旧内容保留。记录歌曲走实际 libmpv null 输出推进时钟，非真实账号或声卡证明。
+  复现：构建 `ux_ui_probe`，用 `scripts/ci/member_sign_smoke.py --binary <probe> --root <new-dir>`，
+  Linux 在可用的非 C locale、Xvfb 下追加 `--screenshots`；可选 `--frontend-dist` 使用隔离前端产物。

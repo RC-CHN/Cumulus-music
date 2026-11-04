@@ -88,6 +88,8 @@ export function createTauriClient(): CoreClient {
       invoke('playlist_cover_command', { epoch, id, command }),
     memberPage: (epoch, query, refresh) => invoke('member_page', { epoch, query, refresh }),
     memberRights: (epoch, refresh) => invoke('member_rights', { epoch, refresh }),
+    memberSignCard: (epoch) => invoke('member_sign_card', { epoch }),
+    memberSignDetail: (epoch, signTime) => invoke('member_sign_detail', { epoch, signTime }),
     openMemberLink: (epoch, revision, key) => invoke('open_member_link', { epoch, revision, key }),
     fmView: (epoch, source, refresh) => invoke('fm_view', { epoch, source, refresh }),
     fmDiscovery: (epoch, query, refresh) => invoke('fm_discovery', { epoch, query, refresh }),

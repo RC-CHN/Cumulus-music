@@ -303,6 +303,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 catalog::catalog_membership,
                 member::member_page,
                 member::member_rights,
+                member::member_sign_card,
+                member::member_sign_detail,
                 member::open_member_link,
                 fm::fm_view,
                 fm::fm_discovery,

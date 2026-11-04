@@ -31,6 +31,8 @@ mod library_fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/member_sign_fixture.rs"]
+mod member_sign_fixture;
 #[path = "support/mode_fixture.rs"]
 mod mode_fixture;
 #[path = "support/playback_quality_fixture.rs"]
@@ -127,6 +129,9 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = member_sign_fixture::response(path, &args).await {
+                return response;
+            }
             if let Some(response) = search_mv_fixture::response(path, &args) {
                 return response;
             }
@@ -549,6 +554,7 @@ fn main() {
             }
             if peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
+            if member_sign_fixture::enabled() {value["memberSignCalls"]=json!(member_sign_fixture::calls());}
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {

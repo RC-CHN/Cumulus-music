@@ -2,6 +2,7 @@ import { ref, shallowRef } from 'vue';
 import type { MemberClient, MemberQuery, MemberRights, MemberView } from '../services/member.ts';
 import { failure, type AccountView } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
+import { useMemberSign } from './useMemberSign.ts';
 export function useMember(core: MemberClient = useCore(), expired = () => {}) {
   const view = shallowRef<MemberView>();
   const rights = shallowRef<MemberRights>();
@@ -18,6 +19,7 @@ export function useMember(core: MemberClient = useCore(), expired = () => {}) {
     disposed = false,
     visible = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  const sign = useMemberSign(core, sessionError);
   function stopTimer() {
     if (timer) clearTimeout(timer);
     timer = undefined;
@@ -38,6 +40,8 @@ export function useMember(core: MemberClient = useCore(), expired = () => {}) {
     rightsLoading.value = false;
     linkBusy.value = false;
     query.value = { kind: 'home' };
+    sign.connect(epoch);
+    sign.show(visible);
     if (visible && epoch) {
       void open(query.value);
       void loadRights();
@@ -55,6 +59,7 @@ export function useMember(core: MemberClient = useCore(), expired = () => {}) {
       linkBusy.value = false;
       view.value = undefined;
       rights.value = undefined;
+      sign.connect(undefined);
       stopTimer();
       expired();
     }
@@ -66,6 +71,7 @@ export function useMember(core: MemberClient = useCore(), expired = () => {}) {
     const owner = epoch,
       n = ++serial;
     query.value = target;
+    sign.show(visible && target.kind === 'home');
     if (!same) view.value = undefined;
     error.value = '';
     if (!owner || disposed) return;
@@ -147,6 +153,7 @@ export function useMember(core: MemberClient = useCore(), expired = () => {}) {
   }
   function show(value: boolean) {
     visible = value;
+    sign.show(visible && query.value.kind === 'home');
     stopTimer();
     if (value) {
       void open(query.value);
@@ -158,6 +165,7 @@ export function useMember(core: MemberClient = useCore(), expired = () => {}) {
     serial++;
     rightsSerial++;
     linkSerial++;
+    sign.show(false);
     stopTimer();
   }
   return {
@@ -169,12 +177,16 @@ export function useMember(core: MemberClient = useCore(), expired = () => {}) {
     error,
     rightsError,
     linkBusy,
+    sign,
     connect,
     show,
     open,
     openExternal,
     loadRights,
-    refresh: () => open(query.value, true),
+    refresh: () => {
+      void sign.load();
+      return open(query.value, true);
+    },
     dispose,
   };
 }

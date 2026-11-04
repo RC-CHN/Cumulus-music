@@ -1,0 +1,88 @@
+// Real membership UI, read-only Rust IPC, and native playback on closed synthetic data.
+(async () => {
+  const one = (selector) => document.querySelector(selector);
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const invoke = (command, args = {}) => window.__TAURI_INTERNALS__.invoke(command, args);
+  const emit = (stage, payload = {}) => invoke('plugin:event|emit', {event:'ux-proof', payload:{stage,...payload}});
+  async function wait(check, message) {
+    for (let i = 0; i < 180; i++) {
+      const found = await check();
+      if (found) return found;
+      await sleep(50);
+    }
+    throw Error(message);
+  }
+  const card = () => one('.sign-card');
+  const dialog = () => one('.sign-dialog[open]');
+  const past = () => one('[aria-label="查看30日乐签"]');
+  const close = () => one('.sign-dialog[open] [aria-label="关闭乐签"]');
+  const message = () => card()?.querySelector('.sign-notice[role="status"]');
+  const member = () => [...document.querySelectorAll('.sidebar button:not(:disabled)')].find((node) => node.textContent.trim() === '会员中心');
+  let step = 'entry';
+  try {
+    (await wait(member, 'member sidebar ready')).click();
+    await wait(() => message()?.textContent.includes('暂时无法读取乐签'), 'initial failure is separate from member content');
+    await emit('ux_01_member_sign_initial_failure');
+    message().querySelector('button').click();
+    await wait(() => past() && one('.sign-today') && card().querySelectorAll('.sign-days li').length === 3, 'card retry displays all official slots');
+    if (card().querySelector('.sign-texture') || card().querySelectorAll('.sign-days button').length !== 2)
+      throw Error('unsigned stamp is interactive or unsafe texture leaked');
+    await emit('ux_02_member_sign_card');
+
+    step = 'past';
+    past().focus();
+    past().click();
+    await wait(() => dialog()?.querySelector('[role="alert"]'), 'detail failure is visible within modal');
+    await emit('ux_03_member_sign_detail_retry');
+    dialog().querySelector('[role="alert"] button').click();
+    await wait(() => dialog()?.querySelector('h3')?.textContent === '合成历史乐签歌曲', 'historical detail retry');
+    if (!dialog().textContent.includes('合成歌手') || !dialog().textContent.includes('保持好奇') ||
+      !dialog().textContent.includes('来自合成评论者') || !dialog().textContent.includes('累计打卡 5') ||
+      !dialog().textContent.includes('再打卡 2') || !dialog().textContent.includes('1天黑胶体验') || dialog().querySelector('img'))
+      throw Error('recorded detail projection does not match official shape');
+    await emit('ux_04_member_sign_detail');
+    const {epoch} = await invoke('account_snapshot');
+    (await wait(() => dialog()?.querySelector('[aria-label="播放 合成历史乐签歌曲"]:not(:disabled)'), 'historical song can play')).click();
+    const playback = await wait(async () => {
+      const value = await invoke('player_snapshot', {epoch});
+      return value.state === 'playing' && value.track?.id === '2' && value.position > 0.15 && value;
+    }, 'record song reaches native output');
+    if (playback.queueLen !== 1) throw Error('record playback selects wrong queue');
+    close().click();
+    await wait(() => !dialog() && document.activeElement === past(), 'native close returns focus to record');
+    one('.playerbar [aria-label="停止播放"]').click();
+
+    step = 'late';
+    await emit('resize', {width:760,height:540});
+    await wait(() => innerWidth === 760 && innerHeight === 540, 'compact membership window');
+    one('[aria-label="外观主题"]').click();
+    (await wait(() => [...document.querySelectorAll('.action-menu button')].find((node) => node.textContent.trim() === '深色'), 'dark mode choice')).click();
+    await wait(() => document.documentElement.dataset.theme === 'dark', 'dark theme');
+    past().click();
+    await wait(() => dialog()?.querySelector('[role="status"]'), 'held native detail is pending');
+    await sleep(100);
+    dialog().dispatchEvent(new Event('cancel', {cancelable:true}));
+    one('.sign-today').click();
+    await wait(() => dialog()?.querySelector('h3')?.textContent === '合成今日乐签歌曲', 'today resolves through its own record');
+    await sleep(850);
+    if (dialog()?.querySelector('h3')?.textContent !== '合成今日乐签歌曲') throw Error('late historical result overwrites today');
+    const bounds = dialog().getBoundingClientRect();
+    if (bounds.x < 0 || bounds.y < 0 || bounds.right > innerWidth || bounds.bottom > innerHeight)
+      throw Error('compact dark modal is clipped');
+    await emit('ux_05_member_sign_today');
+    close().click();
+
+    step = 'refresh';
+    one('[aria-label="刷新会员内容"]').click();
+    await wait(() => message()?.textContent.includes('正在显示上次读取'), 'refresh failure preserves card');
+    if (!past() || !one('.sign-today')) throw Error('good card disappeared on refresh failure');
+    await emit('ux_06_member_sign_cached');
+    message().querySelector('button').click();
+    await wait(() => card()?.textContent.includes('今日未打卡'), 'updated card shows unsigned today');
+    if (one('.sign-today') || card().querySelector('[aria-label="查看今天乐签"]')) throw Error('unsigned today can start a mutation');
+    await emit('ux_07_member_sign_unsigned');
+    await emit('complete', {ok:true, stageCount:7, historyPlayback:playback.track.id, nativeModalFocus:true, noLateDetail:true});
+  } catch (error) {
+    await emit('failed', {step, message:error.message, card:card()?.textContent, dialog:dialog()?.textContent, focus:document.activeElement?.outerHTML.slice(0,260)});
+  }
+})();

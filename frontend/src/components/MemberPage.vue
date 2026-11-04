@@ -6,6 +6,7 @@ import type { MemberTarget, MemberContent } from '../services/member';
 import type { TrackView } from '../services/contracts';
 import Icon from './Icon.vue';
 import MemberCards from './MemberCards.vue';
+import MemberSignCard from './MemberSignCard.vue';
 import TrackTable from './TrackTable.vue';
 const props = defineProps<{
   model: ReturnType<typeof useMember>;
@@ -75,23 +76,30 @@ function hasContent(content: MemberContent) {
       </button>
     </div>
     <div v-if="model.query.value.kind === 'home'" class="member-hero">
-      <div class="member-rights-card">
-        <span class="member-brand">{{
-          primary?.name ?? (model.rights.value ? '会员权益' : '正在读取会员权益…')
-        }}</span>
-        <strong
-          >{{ nickname || '我的账号'
-          }}<span v-if="primary?.level"> Lv.{{ primary.level }}</span></strong
-        >
-        <small v-if="primary">有效期至 {{ date(primary.expiresAt) }}</small
-        ><small v-else-if="model.rights.value">当前没有生效中的会员权益</small>
-        <button
-          class="member-rights-refresh"
-          :disabled="model.rightsLoading.value"
-          @click="model.loadRights(true)"
-        >
-          {{ model.rightsLoading.value ? '正在更新…' : '刷新权益' }}
-        </button>
+      <div class="member-hero-stack">
+        <div class="member-rights-card">
+          <span class="member-brand">{{
+            primary?.name ?? (model.rights.value ? '会员权益' : '正在读取会员权益…')
+          }}</span>
+          <strong
+            >{{ nickname || '我的账号'
+            }}<span v-if="primary?.level"> Lv.{{ primary.level }}</span></strong
+          >
+          <small v-if="primary">有效期至 {{ date(primary.expiresAt) }}</small
+          ><small v-else-if="model.rights.value">当前没有生效中的会员权益</small>
+          <button
+            class="member-rights-refresh"
+            :disabled="model.rightsLoading.value"
+            @click="model.loadRights(true)"
+          >
+            {{ model.rightsLoading.value ? '正在更新…' : '刷新权益' }}
+          </button>
+        </div>
+        <MemberSignCard
+          :model="model.sign"
+          :playable="playable"
+          @play="emit('open', { kind: 'song', id: $event })"
+        />
       </div>
       <MemberCards
         v-if="model.query.value.kind === 'home' && top?.content.kind === 'banners'"
@@ -349,6 +357,12 @@ function hasContent(content: MemberContent) {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
   align-items: stretch;
+}
+.member-hero-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 .member-rights-card {
   min-height: 140px;

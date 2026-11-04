@@ -40,8 +40,35 @@ export interface MemberView {
   warning: string | null;
   page: MemberPage;
 }
+export interface MemberSignDay {
+  label: string;
+  today: boolean;
+  signed: boolean;
+  signTime: number | null;
+  coverUrl: string | null;
+}
+export interface MemberSignCard {
+  title: string;
+  subtitle: string;
+  buttonText: string | null;
+  textureUrl: string | null;
+  days: MemberSignDay[];
+}
+export interface MemberSignDetail {
+  time: number;
+  songId: string;
+  song: string;
+  artist: string | null;
+  coverUrl: string | null;
+  wish: string | null;
+  wishAuthor: string | null;
+  monthTotal: number | null;
+  nextReward: { daysToGo: number; title: string; subtitle: string | null } | null;
+}
 export interface MemberClient {
   memberRights(epoch: string, refresh: boolean): Promise<AccountData<MemberRights>>;
   memberPage(epoch: string, query: MemberQuery, refresh: boolean): Promise<AccountData<MemberView>>;
+  memberSignCard(epoch: string): Promise<AccountData<MemberSignCard>>;
+  memberSignDetail(epoch: string, signTime: number): Promise<AccountData<MemberSignDetail>>;
   openMemberLink(epoch: string, revision: string, key: string): Promise<void>;
 }
