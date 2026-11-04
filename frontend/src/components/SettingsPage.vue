@@ -16,6 +16,7 @@ import {
   type SettingsOperation,
 } from '../services/settings';
 import SettingsConfirm from './settings/SettingsConfirm.vue';
+import AboutSupport from './settings/AboutSupport.vue';
 import ModalTransition from './ModalTransition.vue';
 import Icon from './Icon.vue';
 import RelaySettings from './settings/RelaySettings.vue';
@@ -480,6 +481,7 @@ function accept(op: SettingsOperation) {
           <button class="secondary" @click="emit('downloads')">打开下载管理</button>
         </div>
       </section>
+      <AboutSupport />
     </div>
     <ModalTransition :fallback-focus="fallbackFocus"
       ><SettingsConfirm

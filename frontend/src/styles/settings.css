@@ -207,3 +207,27 @@
     display: none;
   }
 }
+
+.settings-network-diagnostics {
+  width: min(442px, calc(100vw - 32px));
+}
+.network-diagnostics-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 100px;
+}
+.network-diagnostics-results {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 9px 16px;
+  margin: 14px 0;
+}
+.network-diagnostics-results dt,
+.network-diagnostics-results dd {
+  margin: 0;
+}
+.network-diagnostics-results dd {
+  text-align: right;
+  color: var(--text-secondary);
+}

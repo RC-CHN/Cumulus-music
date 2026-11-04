@@ -32,6 +32,7 @@ mod member;
 mod messages;
 pub mod mini;
 mod mv;
+mod network_diagnostics;
 mod platform;
 mod player;
 mod playlist_cover;
@@ -205,6 +206,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 renewal::session_renewal,
                 renewal::renew_session,
                 commands::get_app_info,
+                network_diagnostics::local_network_diagnostics,
                 effect_activation::effect_peq_pending,
                 effect_activation::effect_peq_status,
                 effect_activation::effect_peq_reconcile,

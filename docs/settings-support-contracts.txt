@@ -1,0 +1,65 @@
+设置／关于：意见反馈与网络诊断（官方 PC 3.1.42.205594）
+=====================================================
+
+官方入口和动作顺序
+
+- 设置末尾 “关于网易云音乐” 的 “意见反馈” 按钮（hybrid_64/3097.js:5609–5685）
+  防止重复点击，记 DESKTOP_SOURCE=user_setting，调用 M/128.k("setting_feedback")。
+  该入口打开 542×603 的远程客服小程序，参数 appBizName=pc_kefu、
+  showPcNetDiagnos=true、desktop_kefu_position=setting_feedback；同时上报
+  setting_feedback_btn_click，并调用 M/200.c 即 uploadUserLog。
+- 官方 Windows 日志流程 M/200:19–112 选 cloudmusic.elog（原生解密）、install.log、
+  NEIM_SYS/nim_core.log。先调用 App.compressFiles，校验压缩任务 ID，接着
+  Storage.uploadFile 上传压缩包到 jdcrash，携 Cookie、os、appver、deviceId、
+  clientSign、requestId，最后调用 /api/moyi/retrieve/data/report 上报对象引用。
+  这一行为在进入客服时发生，与用户是否填写表单无关。未移植；不会查看、解密、
+  压缩或上传日志、数据库、配置文件、设备与会话信息。
+- 旧原生 “意见反馈” 表单是另一条路径；不要把它当成上述设置按钮的实际路由。
+  FeedBack.jsx:86–201 和 PureFeedBack.jsx:86–170：反馈正文不接受纯空白，200 字
+  限制；可填联系方式、选附件；离线改开诊断提示并保留草稿；有图先等待全部
+  上传成功，整理 p1.music.126.net 对象引用；失败保留内容。无图 JSON 形状为
+  {appBizName:"default",feedbackSource:1000,content,mobile:<trimmed>,
+   imgUrls:"[]",buildver:<commithash>}。
+- page:settingAbout/feedBack（hybrid_159/2990.js:19–55），以及 M/2187:13–45 的
+  独立提交助手，调用 /api/middle/feedback2/commit；仅 code 200 才执行原生
+  App.sendFeedback 到 /api/feedback/withlog/，带 sendPrivateMsg:true、Cookie、
+  title:"产品建议"、contact、content、version:"newVersion"、物理像素分辨率，
+  再显示成功并清空草稿。附件上传与实际反馈、客服小程序、自动私信不在范围；
+  Cumulus 没有设置反馈发送按钮或发送 IPC，不会假报提交成功。
+
+官方网络诊断与隐私差异
+
+- 客服离线页面可从 miniProgram/index.tsx:274–286 派发
+  app/openNetworkDiagnoseModal {type:"diagnose",refer:empty}，并关闭遮挡诊断的
+  小程序。空态、播放/音质错误、反馈离线场景亦可进入提示或诊断（app.txt:1422–1475）。
+- NetworkDiagnose.tsx:169–350：存在预置故障标题与操作时直接展示；否则进入原生
+  Network.startNetworkDiagnose(params,callback)，显示 NetConnect、NetAuth、
+  NetProxy、Domains 四阶段。输入 global 含 diagnoseId、refer、speedTestEnable、
+  httpTestEnable 和 d2.music.126.net 测速对象；默认 domains 含业务、日志、CDN、
+  外站。客服播放错误减少域名和参数。完成回调含 diagnoseInfo、basicInfo、
+  分析原因、代理、VPN、IPv4/IPv6、HTTPDNS 等，会附 uid、deviceId 上报
+  App.report2BI("mobile_monitor",...) 和 App.sendStatis()。正常但“仍有问题”
+  还会上传用户日志、进入远程客服并上报点击。没有照搬这些外部副作用，也不把
+  本地可测结果说成等价的官方云音乐连通性结论。
+
+Cumulus 的本机诊断
+
+- 设置 → 关于 Cumulus → 网络诊断。未登录也可使用；只在用户打开或点击重新诊断时
+  执行。对话框支持关闭、取消、Esc、重试；关闭后丢弃未返回的结果并回到原按钮。
+  已发出的短期本机调用可以完成，不会再次打开窗口。无后台诊断或自动复测。
+- 核心只在 127.0.0.1、::1 分别绑定动态端口并完成 TCP 握手，超时上限每项 250ms；
+  不发送应用数据，不使用 DNS、HTTP 或账号协议。Linux 从 /proc/net/route 和
+  /proc/net/ipv6_route 读取活动默认路由状态；Windows 用 IP Helper
+  GetIpForwardTable2(AF_UNSPEC) 读取同类状态，不暴露原始表。
+  只检查进程是否存在非空 HTTP/HTTPS/ALL_PROXY 环境变量，不回传值；
+  未检测到不代表系统没有代理。应用防火墙、系统代理和云音乐主站明确未检查。
+- native IPC local_network_diagnostics 无业务参数或账号态，仅主窗口可调用，同一
+  时刻只跑一轮。输出为 IPv4/IPv6 本机状态、默认路由三态、代理变量布尔值；
+  无 IP、网卡、网关、代理值、设备、凭据或原始错误，不落盘、不生成诊断包。
+- 原生 Rust 测试覆盖环回、权限错误分类、公开结果字段和 Linux 路由解析；
+  network_diagnostics_ui_probe 以隔离的未登录合成后端运行真实桌面 WebView，
+  检查关于入口、版本、可访问诊断结果、再次执行、Esc 关闭和返回焦点。
+  构建：cargo build -p cumulus-desktop --features custom-protocol
+    --example network_diagnostics_ui_probe --locked。
+  使用未占用的目录：python3 scripts/ci/network_diagnostics_smoke.py
+    --binary <probe> --root <new-directory>（Linux GTK 可加 --screenshots）。
