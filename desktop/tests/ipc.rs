@@ -55,6 +55,8 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "history_page",
             "history_command",
             "history_sync_preference",
+            "remote_skin_catalog",
+            "remote_skin_image",
             "account_settings_page",
             "account_settings_command",
             "relay_view",
