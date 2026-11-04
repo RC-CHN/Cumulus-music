@@ -27,6 +27,7 @@ const props = defineProps<{
   player: PlayerModel;
   authenticated: boolean;
   together: TogetherModel;
+  playlistSourceRefresh?: { pending: boolean };
 }>();
 const emit = defineEmits<{
   collect: [value: QueueCollectionView, trigger: HTMLElement | undefined];
@@ -34,6 +35,7 @@ const emit = defineEmits<{
   discover: [];
   together: [];
   cleared: [];
+  refreshPlaylistSource: [event: MouseEvent];
 }>();
 const client = useCore();
 const collecting = ref(false),
@@ -128,7 +130,11 @@ const externalDrop = useQueueDrop({
     void props.player.dropIntoQueue(source, displayed, playId, before);
   },
 });
-defineExpose({ beginDrop: externalDrop.begin, canDrop });
+defineExpose({
+  beginDrop: externalDrop.begin,
+  canDrop,
+  focusAfterSourceRefresh: () => closeButton.value?.focus({ preventScroll: true }),
+});
 const clearChanged = computed(
   () =>
     !!clearTicket.value &&
@@ -546,6 +552,22 @@ async function confirmClear(event: Event) {
       role="alert"
     >
       {{ queueEditError }}
+    </p>
+    <p
+      v-if="playlistSourceRefresh && !clearTicket"
+      class="queue-notice"
+      role="alert"
+      data-queue-playlist-source-changed
+      :aria-busy="playlistSourceRefresh.pending"
+    >
+      歌单歌曲已更新，播放列表未改动。
+      <button
+        class="text-button"
+        :aria-disabled="playlistSourceRefresh.pending"
+        @click="emit('refreshPlaylistSource', $event)"
+      >
+        {{ playlistSourceRefresh.pending ? '正在读取…' : '重新读取歌单' }}
+      </button>
     </p>
     <p v-if="queue?.fm" class="queue-notice" role="status">
       漫游队列由推荐更新，请使用漫游页面控制播放。

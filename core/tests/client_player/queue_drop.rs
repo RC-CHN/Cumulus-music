@@ -54,13 +54,26 @@ async fn verified_playlist_drop_inserts_at_anchor_and_retains_native_transport()
         command(&rows, &before, "4", 0, Some(first.clone())),
         command(&rows, &before, "8", 1, Some(first.clone())),
         command(&rows, &before, "7", 0, Some(first.clone())),
-        command(&rows[..2], &before, "4", 1, Some(first.clone())),
     ] {
         assert!(matches!(
             client.player_action("1", invalid).await,
-            Err(Error::QueueChanged)
+            Err(Error::InvalidInput(
+                "playlist drop row is outside the verified source"
+            ))
         ));
     }
+    let stale_source = client
+        .player_action(
+            "1",
+            command(&rows[..2], &before, "4", 1, Some(first.clone())),
+        )
+        .await
+        .err()
+        .expect("stale source must fail");
+    assert!(matches!(stale_source, Error::PlaylistDropSourceChanged));
+    let source_issue = cumulus_core::client::ClientError::from(stale_source);
+    assert_eq!(source_issue.code, "playlist_drop_source_changed");
+    assert!(!source_issue.retryable);
     assert_eq!(
         *api.calls.lock().unwrap(),
         vec!["/api/v6/playlist/detail"; 4],
@@ -92,12 +105,16 @@ async fn verified_playlist_drop_inserts_at_anchor_and_retains_native_transport()
     assert_eq!(queue.tracks[1].entry_id, first);
     assert_eq!(queue.tracks[2].entry_id, third);
     api.calls.lock().unwrap().clear();
-    assert!(matches!(
-        client
-            .player_action("1", command(&rows, &before, "4", 1, Some(third)))
-            .await,
-        Err(Error::QueueChanged)
-    ));
+    let stale_target = client
+        .player_action("1", command(&rows, &before, "4", 1, Some(third)))
+        .await
+        .err()
+        .expect("stale target must fail");
+    assert!(matches!(stale_target, Error::QueueChanged));
+    assert_eq!(
+        cumulus_core::client::ClientError::from(stale_target).code,
+        "snapshot_changed"
+    );
     assert!(api.calls.lock().unwrap().is_empty());
     let moved = client
         .player_action("1", command(&rows, &inserted, "2", 2, None))
@@ -237,7 +254,9 @@ async fn batch_drop_does_not_commit_a_prefix_after_a_late_invalid_row_or_chunk()
         client
             .player_action("1", batch_command(&rows, &before, &invalid, None))
             .await,
-        Err(Error::QueueChanged)
+        Err(Error::InvalidInput(
+            "playlist drop row is outside the verified source"
+        ))
     ));
     assert_eq!(*api.calls.lock().unwrap(), ["/api/v6/playlist/detail"]);
     api.calls.lock().unwrap().clear();

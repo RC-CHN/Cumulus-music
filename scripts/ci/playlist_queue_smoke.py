@@ -36,13 +36,13 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     result = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    assert result['ok'] and result['playlistQueueUi'] and result['onlinePlaylistDrop'] and result['onlinePlaylistMultiDrop'] and result['stageCount'] == 49
+    assert result['ok'] and result['playlistQueueUi'] and result['onlinePlaylistDrop'] and result['onlinePlaylistMultiDrop'] and result['playlistDropSourceRecovery'] and result['stageCount'] == 52
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticLibrary']['writes'] == 0
     records = sorted((root / 'first').glob('ux_*.json'))
-    assert len(records) == 49
+    assert len(records) == 52
     if args.screenshots:
-        assert len(list((root / 'first').glob('ux_*.png'))) == 49
+        assert len(list((root / 'first').glob('ux_*.png'))) == 52
     initial = json.loads(records[1].read_text(encoding='utf-8'))['nativePlayer']
     for file in records:
         data = json.loads(file.read_text(encoding='utf-8'))
@@ -58,15 +58,20 @@ def main():
         if file.name in ['ux_36_explicit_next.json','ux_40_sidebar_done.json']:
             assert player['track']['id'] == '1' and player['state'] == 'paused'
         assert len(ids) == len(set(ids)), file.name
-    stale, marker, dropped, multi_marker, multi_dropped = [
+    stale, failed, refreshed, marker, dropped, multi_marker, multi_dropped, detached = [
         json.loads(next((root / 'first').glob(f'ux_*_{name}.json')).read_text(encoding='utf-8'))
-        for name in ('playlist_drop_stale', 'playlist_drop_boundary', 'playlist_drop_done',
-                     'playlist_multi_drop_boundary', 'playlist_multi_drop_done')
+        for name in ('playlist_drop_stale', 'playlist_drop_reread_failed', 'playlist_drop_reread_done',
+                     'playlist_drop_boundary', 'playlist_drop_done', 'playlist_multi_drop_boundary',
+                     'playlist_multi_drop_done', 'playlist_drop_detached')
     ]
-    assert stale['nativeQueue']['revision'] == marker['nativeQueue']['revision']
+    for stage in (failed, refreshed, marker):
+        assert stale['nativeQueue']['revision'] == stage['nativeQueue']['revision']
+    assert refreshed['preservedFilter'] == '合成歌曲 507'
+    assert detached['actionHidden'] is True
+    assert detached['nativeQueue']['revision'] == multi_dropped['nativeQueue']['revision']
     before_ids = [row['track']['id'] for row in stale['nativeQueue']['tracks']]
     after_ids = [row['track']['id'] for row in dropped['nativeQueue']['tracks']]
-    assert after_ids == before_ids[:1] + ['507'] + before_ids[1:]
+    assert after_ids == before_ids[:1] + ['509'] + before_ids[1:]
     for key in ('playId', 'entryId', 'state', 'position'):
         assert dropped['nativePlayer'][key] == stale['nativePlayer'][key]
     assert multi_marker['nativeQueue']['revision'] == dropped['nativeQueue']['revision']

@@ -251,6 +251,11 @@ impl From<Error> for ClientError {
                 ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::PlaylistDropSourceChanged => (
+                    "playlist_drop_source_changed",
+                    "歌单歌曲已更新，请重新读取歌单",
+                    false,
+                ),
                 Error::State("listening rank playback is private") => {
                     ("profile_rank_private", "此听歌排行不可查看或播放", false)
                 }

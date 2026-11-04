@@ -132,11 +132,16 @@ impl MusicClient {
                 let tracks = detail["trackIds"]
                     .as_array()
                     .ok_or(Error::Response("missing playlist tracks"))?;
-                if identifier(&detail["id"])? != id
-                    || tracks.len() > 50_000
-                    || super::playlist_batch::track_revision(&id, tracks)? != revision
-                {
-                    return Err(Error::QueueChanged);
+                if identifier(&detail["id"])? != id {
+                    return Err(Error::Response("playlist drop source identity mismatch"));
+                }
+                if tracks.len() > 50_000 {
+                    return Err(Error::InvalidInput(
+                        "playlist drop source exceeds the read bound",
+                    ));
+                }
+                if super::playlist_batch::track_revision(&id, tracks)? != revision {
+                    return Err(Error::PlaylistDropSourceChanged);
                 }
                 let mut seen = HashSet::new();
                 let mut ids = Vec::new();
@@ -148,7 +153,9 @@ impl MusicClient {
                         track["v"].as_i64() != Some(-1)
                             && identifier(&track["id"]).is_ok_and(|actual| actual == id)
                     }) {
-                        return Err(Error::QueueChanged);
+                        return Err(Error::InvalidInput(
+                            "playlist drop row is outside the verified source",
+                        ));
                     }
                     if seen.insert(id.clone()) {
                         ids.push(json!(id));

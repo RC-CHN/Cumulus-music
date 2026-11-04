@@ -243,6 +243,7 @@ export type PlaylistQueueDropSource = {
   revision: string;
   rows: { trackId: string; trackIndex: number }[];
   quality: Quality;
+  sourceChanged: () => void;
   current: () => boolean;
 };
 export type QueueDropSource = LocalQueueDropSource | PlaylistQueueDropSource;

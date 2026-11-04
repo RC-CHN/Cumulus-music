@@ -117,8 +117,12 @@
     step='online row drop';
     await emit('resize',{width:1120,height:760}); await wait(()=>innerWidth===1120,'wide queue');
     await detail(9);
-    const field=one('[aria-label="搜索歌单歌曲"]');
-    field.value='合成歌曲 507'; field.dispatchEvent(new Event('input',{bubbles:true}));
+    const field=()=>one('[aria-label="搜索歌单歌曲"]');
+    function filter(value) {
+      const target=field();
+      target.value=value; target.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+    filter('合成歌曲 507');
     await wait(()=>all('.track-scroll [data-track-id]').length===1 &&
       one('.track-scroll [data-track-id]')?.dataset.trackId==='507','filtered source with original ordinal two');
     const {epoch}=await invoke('account_snapshot');
@@ -143,20 +147,50 @@
       pointer(source,'pointerdown',x,y); pointer(viewport,'pointermove',X,Y);
       return ()=>pointer(viewport,'pointerup',X,Y);
     }
-    await fixture('empty_detail');
+    const oldRow=sourceTitle('507');
+    const staleNotice=()=>one('[data-queue-playlist-source-changed]');
+    const refresh=()=>staleNotice() && button('重新读取歌单',staleNotice());
+    await fixture('queue_drop_revise');
     startDrop()();
-    await wait(()=>one('.queue-notice[role="alert"]')?.textContent.includes('列表已更新'),'stale playlist rejection in queue');
+    await wait(()=>staleNotice()?.textContent.includes('歌单歌曲已更新') && refresh(),
+      'source-specific stale playlist notice with explicit refresh');
     assert((await invoke('player_queue',{epoch})).revision===original.revision,'stale playlist leaves queue intact');
+    const refreshBox=refresh().getBoundingClientRect();
+    assert(refresh().contains(document.elementFromPoint(refreshBox.x+refreshBox.width/2,refreshBox.y+refreshBox.height/2)),
+      'source recovery button is pointer reachable');
     await capture('playlist_drop_stale');
+    await fixture('fail_detail');
+    click(refresh());
+    await wait(()=>!field() && refresh() && one('.page-heading')?.textContent.includes('加载失败'),
+      'failed read retains the explicit recovery');
+    assert((await invoke('player_queue',{epoch})).revision===original.revision,'failed reread leaves queue untouched');
+    await capture('playlist_drop_reread_failed');
+    const rereadBase=(await fixture('hold_detail')).detailReads;
+    click(refresh());
+    await wait(()=>staleNotice()?.getAttribute('aria-busy')==='true','source reread visibly pending');
+    const pendingRefresh=button('正在读取…',staleNotice());
+    assert(pendingRefresh?.getAttribute('aria-disabled')==='true','pending refresh cannot be submitted twice');
+    pendingRefresh.click();
     await fixture('success');
-    const drop=startDrop();
+    await wait(()=>field()?.value==='合成歌曲 507' && !staleNotice() &&
+      !sourceTitle('507') && one('.playlist-track-match')?.textContent.includes('0 首'),
+      'fresh playlist keeps filter but excludes the removed row');
+    assert(!oldRow.isConnected && (await invoke('player_queue',{epoch})).revision===original.revision,
+      'refresh detaches old source without replaying queue mutation');
+    assert((await fixture('success')).detailReads===rereadBase+1,'exactly one fresh source read without replay');
+    assert(document.activeElement===button('关闭播放队列'),'refresh restores focus inside the still-open queue');
+    await capture('playlist_drop_reread_done',{preservedFilter:field().value,detailReads:rereadBase+1});
+    filter('合成歌曲 509');
+    await wait(()=>all('.track-scroll [data-track-id]').length===1 && sourceTitle('509'),
+      'explicitly chose the newly published song');
+    const drop=startDrop('509');
     await wait(()=>one('.queue-drop-marker')?.style.top==='64px' &&
       one('.queue-drag-hint')?.textContent.includes('正在添加歌曲'),'visible insertion marker between rows');
     const line=one('.queue-drop-marker'), rect=line.getBoundingClientRect();
     await capture('playlist_drop_boundary',{screenX,screenY,ratio:devicePixelRatio,
       paintSamples:[{x:rect.left+8,y:rect.top+1,color:getComputedStyle(line).backgroundColor}]});
     drop();
-    const expected=queueIds(original); expected.splice(1,0,'507');
+    const expected=queueIds(original); expected.splice(1,0,'509');
     let inserted;
     for(let i=0;i<200;i++) {
       const observed=await invoke('player_queue',{epoch});
@@ -167,9 +201,9 @@
     const after=await invoke('player_snapshot',{epoch});
     assert(after.state==='paused' && after.playId===before.playId && after.entryId===before.entryId &&
       Math.abs(after.position-before.position)<.05 && !one('.playback-message'),'retains native playback and avoids an audio error');
-    await capture('playlist_drop_done',{inserted:'507',at:1});
+    await capture('playlist_drop_done',{inserted:'509',at:1});
     step='ordered multi-selection drop';
-    field.value=''; field.dispatchEvent(new Event('input',{bubbles:true}));
+    filter('');
     await wait(()=>all('.track-scroll [data-track-id]').length===4,'full native playlist rows');
     const selected=()=>all('.track-scroll [aria-selected="true"]').map(node=>node.dataset.trackId);
     const row=(id)=>sourceTitle(id).closest('[role="row"]');
@@ -179,7 +213,7 @@
       target.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,...mods}));
     }
     selectRow('508'); selectRow('506',{shiftKey:true});
-    await wait(()=>selected().join(',')==='506,507,508','Shift selects the displayed range');
+    await wait(()=>selected().join(',')==='506,505,508','Shift selects the displayed range');
     assert(row('506').closest('[role="grid"]').getAttribute('aria-multiselectable')==='true',
       'playlist grid exposes its multiselect state');
     key(row('506'),'a',{ctrlKey:true});
@@ -209,9 +243,20 @@
     assert(unchanged.state==='paused' && unchanged.playId===before.playId && unchanged.entryId===before.entryId &&
       Math.abs(unchanged.position-before.position)<.05,'group drop retains native transport');
     await capture('playlist_multi_drop_done',{inserted:['508','506'],at:1});
+    step='detached stale source';
+    await fixture('hold_detail');
+    startDrop('509')();
+    await wait(()=>one('.queue-panel')?.getAttribute('aria-busy')==='true','held source revision read');
+    await library();
+    await fixture('queue_drop_revise_again');
+    await wait(()=>one('.queue-panel')?.getAttribute('aria-busy')==='false','detached request completed');
+    assert(!staleNotice() && !one('.queue-notice[role="alert"]') &&
+      (await invoke('player_queue',{epoch})).revision===batchResult.revision,
+      'detached source failure cannot show an action or change the queue');
+    await capture('playlist_drop_detached',{actionHidden:true});
     click(button('关闭播放队列')); await wait(()=>!one('.queue-panel'),'close drop destination');
     await library();
     await fixture('expired_detail'); await open(7); await choose('下一首播放'); await wait(()=>button('重新登录') || button('点击登录'),'expired account'); await capture('expired');
-    await emit('complete',{ok:true,playlistQueueUi:true,onlinePlaylistDrop:true,onlinePlaylistMultiDrop:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,playlistQueueUi:true,onlinePlaylistDrop:true,onlinePlaylistMultiDrop:true,playlistDropSourceRecovery:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
   } catch(error) { await emit('failed',{step,message:String(error),stack:error.stack,stageCount:count}); }
 })();

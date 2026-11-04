@@ -21,6 +21,8 @@ pub enum Error {
     Cancelled,
     #[error("queue changed in another host; reload before retrying")]
     QueueChanged,
+    #[error("playlist source changed after the drag was prepared")]
+    PlaylistDropSourceChanged,
     #[error("this resource already has an operation in progress")]
     MutationBusy,
     #[error("previous write is unresolved; only read-only reconciliation is allowed")]

@@ -30,6 +30,20 @@ pub fn control(value: &Value) {
     if s.mode == "success" {
         s.hidden = None;
     }
+    if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() {
+        let change = match s.mode.as_str() {
+            "queue_drop_revise" => Some([509, 506, 505, 508]),
+            "queue_drop_revise_again" => Some([510, 508, 506, 505]),
+            _ => None,
+        };
+        if let Some(ids) = change {
+            // Synthetic upstream order remains changed across later reads.
+            s.tracks.insert(
+                9,
+                ids.into_iter().map(|id| json!({"id":id,"v":0})).collect(),
+            );
+        }
+    }
 }
 pub fn report() -> Value {
     let s = state().lock().unwrap();

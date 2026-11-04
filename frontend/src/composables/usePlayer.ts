@@ -873,35 +873,52 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     before: string | null,
   ) {
     if (!source.current() || (view.value?.playId ?? null) !== playId) return false;
-    return sendQueueEdit(displayed, (snapshot) => {
-      const target = {
-        expected_queue_revision: snapshot.revision,
-        expected_play_id: playId,
-        before_entry_id: before,
-      };
-      if (source.kind === 'local') {
-        return {
-          kind: 'drop_local_into_queue',
-          query: source.query,
-          revision: source.revision,
-          track_id: source.trackId,
-          ...target,
+    return sendQueueEdit(
+      displayed,
+      (snapshot) => {
+        const target = {
+          expected_queue_revision: snapshot.revision,
+          expected_play_id: playId,
+          before_entry_id: before,
         };
-      }
-      const rows = source.rows.map(({ trackId, trackIndex }) => ({
-        track_id: trackId,
-        track_index: trackIndex,
-      }));
-      const playlist = { id: source.id, revision: source.revision, quality: source.quality };
-      return rows.length === 1
-        ? { kind: 'drop_playlist_song_into_queue', ...rows[0], ...playlist, ...target }
-        : { kind: 'drop_playlist_songs_into_queue', rows, ...playlist, ...target };
-    });
+        if (source.kind === 'local') {
+          return {
+            kind: 'drop_local_into_queue',
+            query: source.query,
+            revision: source.revision,
+            track_id: source.trackId,
+            ...target,
+          };
+        }
+        const rows = source.rows.map(({ trackId, trackIndex }) => ({
+          track_id: trackId,
+          track_index: trackIndex,
+        }));
+        const playlist = { id: source.id, revision: source.revision, quality: source.quality };
+        return rows.length === 1
+          ? { kind: 'drop_playlist_song_into_queue', ...rows[0], ...playlist, ...target }
+          : { kind: 'drop_playlist_songs_into_queue', rows, ...playlist, ...target };
+      },
+      false,
+      (problem) => {
+        if (source.kind !== 'playlist') return false;
+        if (problem.code === 'playlist_drop_source_changed') {
+          source.sourceChanged();
+          return true;
+        }
+        if (problem.code === 'snapshot_changed') {
+          queueEditError.value = '播放列表已更新，请核对当前列表后重试';
+          return true;
+        }
+        return false;
+      },
+    );
   }
   async function sendQueueEdit(
     displayed: QueueView | undefined | null,
     action: (snapshot: QueueView) => PlayerAction,
     rereadOnFailure = false,
+    handleFailure?: (problem: CoreFailure) => boolean,
   ): Promise<boolean> {
     if (!ready.value || busy.value || queueBusy.value || queueEditing.value) return false;
     if (
@@ -924,7 +941,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     } catch (issue) {
       if (session === connection && captured === epoch) {
         const problem = failure(issue);
-        queueEditError.value = problem.message;
+        if (!handleFailure?.(problem)) queueEditError.value = problem.message;
         if (['session_expired', 'profile_changed'].includes(problem.code)) onSessionChanged();
         // Re-read room policy after a rejected confirmation. This never
         // retries the clear or adopts a new room as the old confirmation.

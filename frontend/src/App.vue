@@ -2562,9 +2562,83 @@ const playlistSelectionScope = computed(() =>
     ? `${account.value.epoch}:${page.value.id}:${result.value.revision}`
     : undefined,
 );
+type PlaylistDropRefresh = {
+  page: Extract<Page, { kind: 'playlist' }>;
+  epoch: string;
+  revision: string;
+  visit: number;
+};
+const stalePlaylistDrop = shallowRef<PlaylistDropRefresh>();
+const refreshingPlaylistDrop = shallowRef<PlaylistDropRefresh>();
+let playlistDropVisit = 0;
+function ownsPlaylistDrop(ticket: PlaylistDropRefresh) {
+  return (
+    ticket.visit === playlistDropVisit &&
+    page.value === ticket.page &&
+    signedIn.value &&
+    account.value.epoch === ticket.epoch &&
+    playlistSongsActive.value
+  );
+}
+const playlistDropRefresh = computed(() => {
+  const ticket = stalePlaylistDrop.value;
+  return ticket && ownsPlaylistDrop(ticket)
+    ? { pending: refreshingPlaylistDrop.value === ticket }
+    : undefined;
+});
+watch(
+  [() => page.value, () => account.value.epoch, signedIn],
+  () => {
+    ++playlistDropVisit;
+    stalePlaylistDrop.value = undefined;
+    refreshingPlaylistDrop.value = undefined;
+  },
+  { flush: 'sync' },
+);
+watch(
+  () => result.value?.revision,
+  (revision) => {
+    const ticket = stalePlaylistDrop.value;
+    if (
+      ticket &&
+      refreshingPlaylistDrop.value !== ticket &&
+      revision &&
+      revision !== ticket.revision
+    )
+      stalePlaylistDrop.value = undefined;
+  },
+);
+async function refreshPlaylistDropSource(event: MouseEvent) {
+  const ticket = stalePlaylistDrop.value;
+  if (!ticket || !ownsPlaylistDrop(ticket) || refreshingPlaylistDrop.value || loading.value) return;
+  const trigger = event.currentTarget;
+  refreshingPlaylistDrop.value = ticket;
+  try {
+    // This is a new, read-only source load. The old gesture is never retained
+    // or sent again. playlistKeyword is scoped to the route, not this read.
+    await music.load();
+    if (
+      stalePlaylistDrop.value !== ticket ||
+      !ownsPlaylistDrop(ticket) ||
+      result.value?.playlist?.id !== ticket.page.id ||
+      !result.value.revision
+    )
+      return;
+    const restore = document.activeElement === trigger;
+    stalePlaylistDrop.value = undefined;
+    if (restore) {
+      await nextTick();
+      if (ownsPlaylistDrop(ticket) && document.activeElement === document.body)
+        queuePanel.value?.focusAfterSourceRefresh();
+    }
+  } finally {
+    if (refreshingPlaylistDrop.value === ticket) refreshingPlaylistDrop.value = undefined;
+  }
+}
 const canDropPlaylistSong = computed(
   () =>
     !!playlistSelectionScope.value &&
+    !playlistDropRefresh.value &&
     player.queueOpen.value &&
     queuePanel.value?.canDrop === true &&
     !loading.value,
@@ -2580,6 +2654,7 @@ function startPlaylistQueueDrop(
   const id = route.id;
   const revision = snapshot.revision;
   const epoch = account.value.epoch;
+  const visit = playlistDropVisit;
   const keyword = playlistKeyword.value;
   const position = playlistTrackSearch.value.positions;
   const ordinals = rows.map(({ track, index }) => ({
@@ -2589,6 +2664,7 @@ function startPlaylistQueueDrop(
   const current = () =>
     canDropPlaylistSong.value &&
     selectionCurrent() &&
+    visit === playlistDropVisit &&
     page.value === route &&
     account.value.epoch === epoch &&
     playlistKeyword.value === keyword &&
@@ -2606,6 +2682,11 @@ function startPlaylistQueueDrop(
     revision,
     rows: ordinals,
     quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    sourceChanged: () => {
+      const ticket = { page: route, epoch, revision, visit };
+      if (ownsPlaylistDrop(ticket) && result.value?.revision === revision)
+        stalePlaylistDrop.value = ticket;
+    },
     current,
   });
 }
@@ -4761,6 +4842,8 @@ onUnmounted(() => {
         :player="player"
         :authenticated="signedIn"
         :together="together"
+        :playlist-source-refresh="playlistDropRefresh"
+        @refresh-playlist-source="refreshPlaylistDropSource"
         @collect="collectQueue"
         @login="loginOpen = true"
         @discover="discoverFromQueue"
