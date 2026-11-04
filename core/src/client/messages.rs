@@ -1,11 +1,15 @@
 mod deletion;
+mod pc_poll;
 mod projection;
 mod reply;
 
 use super::{MusicClient, dto::AccountData};
+use crate::account::{AccountSession, SessionToken};
 use crate::{Error, Result};
 pub(super) use deletion::DeletionHost;
 pub use deletion::{MessageDeleteAction, MessageDeleteOutcome, MessagePendingDeletion};
+pub(super) use pc_poll::PcMessagePollHost;
+pub use pc_poll::{PcMessageConnectivity, PcMessageConnectivityView};
 pub use projection::attachment::MessageTarget;
 use projection::project;
 pub(super) use reply::ReplyHost;
@@ -31,13 +35,27 @@ pub struct MessageQuery {
     pub peer_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageCounts {
     pub private: Option<u64>,
     pub comments: Option<u64>,
     pub forwards: Option<u64>,
     pub notices: Option<u64>,
+}
+
+async fn read_counts(session: &AccountSession, token: &SessionToken) -> Result<MessageCounts> {
+    session
+        .run_for(token, |api, _| async move {
+            let response = api.call("/api/pl/count", json!({}), false, &[200]).await?;
+            Ok(MessageCounts {
+                private: projection::number(&response["msg"]),
+                comments: projection::number(&response["comment"]),
+                forwards: projection::number(&response["forward"]),
+                notices: projection::number(&response["notice"]),
+            })
+        })
+        .await
 }
 
 #[derive(Debug, Serialize)]
@@ -119,18 +137,7 @@ fn endpoint(query: &MessageQuery, uid: &str) -> Result<(String, Value, usize)> {
 impl MusicClient {
     pub async fn message_counts(&self, epoch: &str) -> Result<AccountData<MessageCounts>> {
         let token = self.player_token(epoch)?;
-        let value = self
-            .session
-            .run_for(&token, |api, _| async move {
-                let response = api.call("/api/pl/count", json!({}), false, &[200]).await?;
-                Ok(MessageCounts {
-                    private: projection::number(&response["msg"]),
-                    comments: projection::number(&response["comment"]),
-                    forwards: projection::number(&response["forward"]),
-                    notices: projection::number(&response["notice"]),
-                })
-            })
-            .await?;
+        let value = read_counts(&self.session, &token).await?;
         Ok(AccountData {
             epoch: token.generation.to_string(),
             value,
