@@ -7,6 +7,7 @@ import ModalTransition from '../ModalTransition.vue';
 import Icon from '../Icon.vue';
 const props = defineProps<{
   album: AlbumCard;
+  compact?: boolean;
   digital: boolean;
   subscribed: boolean | null;
   collectDisabled: boolean;
@@ -53,27 +54,35 @@ const published = computed(() => {
 });
 </script>
 <template>
-  <header class="catalog-header album-header" :aria-busy="refreshing">
+  <header
+    class="catalog-header album-header"
+    :class="{ 'album-header-compact': compact }"
+    :aria-label="compact ? '专辑快捷操作' : undefined"
+    :aria-busy="refreshing"
+  >
     <img
-      v-if="album.coverUrl"
+      v-if="!compact && album.coverUrl"
       class="catalog-cover"
       :src="album.coverUrl"
       alt=""
       referrerpolicy="no-referrer"
       decoding="async"
     />
-    <div v-else class="catalog-cover catalog-placeholder"><Icon name="music" /></div>
+    <div v-else-if="!compact" class="catalog-cover catalog-placeholder"><Icon name="music" /></div>
     <div class="catalog-heading">
-      <h1>
+      <h2 v-if="compact" class="ellipsis" :title="album.name">
+        {{ album.name }}<span v-if="digital" class="album-digital">数字专辑</span>
+      </h2>
+      <h1 v-else>
         {{ album.name
         }}<span v-if="album.aliases.length" class="album-alias"
           >（{{ album.aliases.join(' / ') }}）</span
         >
       </h1>
-      <p v-if="album.translations.length" class="album-translation muted">
+      <p v-if="!compact && album.translations.length" class="album-translation muted">
         {{ album.translations.join(' / ') }}
       </p>
-      <div class="album-metadata">
+      <div v-if="!compact" class="album-metadata">
         <p class="catalog-credits">
           <template v-for="(credit, index) in credits" :key="index">
             <span v-if="index"> / </span>
@@ -93,20 +102,34 @@ const published = computed(() => {
         <span v-if="album.explicit" class="album-explicit" aria-label="含成人内容">E</span>
       </div>
       <div ref="actions" class="catalog-actions album-actions">
-        <button class="primary" :disabled="playDisabled" @click="emit('play')">
-          <Icon name="play" />播放全部
+        <button
+          class="primary"
+          data-album-play
+          :aria-label="compact ? '播放全部' : undefined"
+          :title="compact ? '播放全部' : undefined"
+          :disabled="playDisabled"
+          @click="emit('play')"
+        >
+          <Icon name="play" /><span v-if="!compact">播放全部</span>
         </button>
         <button
           :disabled="collectDisabled"
           :aria-pressed="subscribed ?? undefined"
+          :aria-label="compact ? (subscribed ? '取消收藏' : '收藏') : undefined"
+          :title="compact ? (subscribed ? '取消收藏' : '收藏') : undefined"
           @click="emit('collect')"
         >
-          <Icon name="star" />{{
+          <Icon name="star" /><span v-if="!compact">{{
             subscribed == null ? '收藏状态未知' : subscribed ? '已收藏' : '收藏'
-          }}
+          }}</span>
         </button>
-        <button :disabled="downloadDisabled" @click="emit('download')">
-          <Icon name="download" />下载
+        <button
+          :aria-label="compact ? '下载' : undefined"
+          :title="compact ? '下载' : undefined"
+          :disabled="downloadDisabled"
+          @click="emit('download')"
+        >
+          <Icon name="download" /><span v-if="!compact">下载</span>
         </button>
         <ActionMenu
           label="更多专辑操作"

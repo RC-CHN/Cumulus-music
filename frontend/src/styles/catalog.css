@@ -649,6 +649,35 @@
   min-width: 94px;
   padding-inline: 10px;
 }
+.album-sticky-host {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  height: 0;
+}
+.album-header.album-header-compact {
+  display: block;
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 4px 12px #0001;
+}
+.album-header-compact h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+.album-header-compact .album-actions {
+  gap: 8px;
+  margin: 0;
+}
+.album-header-compact .album-actions > button,
+.album-header-compact .album-actions > .action-menu-host > button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+}
 .album-metadata .catalog-credits .text-button {
   padding: 0;
   color: var(--link);

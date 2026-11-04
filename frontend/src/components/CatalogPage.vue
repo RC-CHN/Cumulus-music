@@ -21,6 +21,7 @@ import ArtistHeader from './catalog/ArtistHeader.vue';
 import ArtistTabs from './catalog/ArtistTabs.vue';
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
+import MenuTransition from './MenuTransition.vue';
 import CatalogTrackBatchDialog from './catalog/CatalogTrackBatchDialog.vue';
 const props = defineProps<{
   model: CatalogSession;
@@ -166,6 +167,49 @@ watch(
 const expire = () => emit('expired');
 const section = ref<HTMLElement>(),
   panel = ref<HTMLElement>();
+const regularAlbumHeader = ref<InstanceType<typeof AlbumHeader>>();
+const albumScrolled = ref(false);
+const albumSticky = computed(
+  () => !!album.value && albumTab.value === 'songs' && albumScrolled.value,
+);
+watch(
+  [section, regularAlbumHeader],
+  ([root, header], _previous, onCleanup) => {
+    albumScrolled.value = false;
+    const button = header?.$el?.querySelector('[data-album-play]') as HTMLElement | undefined;
+    if (!root || !button) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        albumScrolled.value =
+          !!entry?.rootBounds && entry.boundingClientRect.bottom <= entry.rootBounds.top;
+      },
+      { root },
+    );
+    observer.observe(button);
+    onCleanup(() => observer.disconnect());
+  },
+  { flush: 'post' },
+);
+watch(albumSticky, async (compact) => {
+  const active = document.activeElement;
+  if (
+    !(active instanceof HTMLElement) ||
+    !active.hasAttribute('data-album-play') ||
+    !section.value?.contains(active) ||
+    active.closest('.album-header')?.classList.contains('album-header-compact') === compact
+  )
+    return;
+  await nextTick();
+  if (
+    albumSticky.value !== compact ||
+    (document.activeElement !== active && document.activeElement !== document.body)
+  )
+    return;
+  const header = compact ? '.album-header-compact' : '.album-header:not(.album-header-compact)';
+  section.value
+    ?.querySelector<HTMLButtonElement>(`${header} [data-album-play]:not(:disabled)`)
+    ?.focus({ preventScroll: true });
+});
 const panelId = useId();
 const selectedPanel = computed<CatalogPanelKey>(() =>
   resource.kind === 'artist' ? `artist:${tab.value}` : `album:${albumTab.value}`,
@@ -274,6 +318,35 @@ function play(index: number, gesture?: TrackPlayGesture) {
   if (tracks.value[index] && !tracks.value[index].missing)
     emit('play', selections.value, index, gesture);
 }
+const albumControls = computed(() => ({
+  digital: auxiliary.value?.digitalAlbumTag === true,
+  subscribed: subscribed.value ?? null,
+  collectDisabled:
+    subscribed.value == null ||
+    stateReading.value ||
+    !membership.known.value ||
+    membership.busy.value ||
+    membership.pending.value,
+  playDisabled: !props.playable || props.playBusy || !tracks.value.some((track) => !track.missing),
+  downloadDisabled: props.downloadBusy || !tracks.value.some((track) => !track.missing),
+  queueDisabled: !props.queueable,
+  batchDisabled: !tracks.value.some((track) => !track.missing && !track.local),
+  refreshDisabled: detail.loading.value || membership.busy.value,
+  refreshing: detail.loading.value,
+}));
+const albumActions = {
+  open: (target: CatalogResource) => emit('open', target),
+  play: () => play(tracks.value.findIndex((track) => !track.missing)),
+  collect,
+  download: () =>
+    emit(
+      'download',
+      tracks.value.filter((track) => !track.missing),
+    ),
+  batch: openTrackBatch,
+  queue: queueCurrentAlbum,
+  refresh,
+};
 defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${resource.id}` });
 </script>
 <template>
@@ -308,37 +381,25 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
       }}
     </div>
     <template v-else>
-      <AlbumHeader
-        v-if="album"
-        :album="album"
-        :digital="auxiliary?.digitalAlbumTag === true"
-        :subscribed="subscribed ?? null"
-        :collect-disabled="
-          subscribed == null ||
-          stateReading ||
-          !membership.known.value ||
-          membership.busy.value ||
-          membership.pending.value
-        "
-        :play-disabled="!playable || playBusy || !tracks.some((t) => !t.missing)"
-        :download-disabled="downloadBusy || !tracks.some((t) => !t.missing)"
-        :queue-disabled="!queueable"
-        :batch-disabled="!tracks.some((track) => !track.missing && !track.local)"
-        :refresh-disabled="detail.loading.value || membership.busy.value"
-        :refreshing="detail.loading.value"
-        @open="emit('open', $event)"
-        @play="play(tracks.findIndex((t) => !t.missing))"
-        @collect="collect()"
-        @download="
-          emit(
-            'download',
-            tracks.filter((t) => !t.missing),
-          )
-        "
-        @batch="openTrackBatch"
-        @queue="queueCurrentAlbum"
-        @refresh="refresh"
-      />
+      <template v-if="album">
+        <div class="album-sticky-host">
+          <MenuTransition>
+            <AlbumHeader
+              v-if="albumSticky"
+              compact
+              :album="album"
+              v-bind="albumControls"
+              v-on="albumActions"
+            />
+          </MenuTransition>
+        </div>
+        <AlbumHeader
+          ref="regularAlbumHeader"
+          :album="album"
+          v-bind="albumControls"
+          v-on="albumActions"
+        />
+      </template>
       <ArtistHeader
         v-else-if="artist && tab !== 'all'"
         :artist="artist"

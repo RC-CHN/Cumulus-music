@@ -220,13 +220,13 @@ def main():
         print(json.dumps(result))
         return
     if args.album:
-        assert complete['ok'] and complete['stageCount'] == 30 and complete['playbackVerified']
-        assert complete['currentRowToggle']
+        assert complete['ok'] and complete['stageCount'] == 31 and complete['playbackVerified']
+        assert complete['currentRowToggle'] and complete['compactAlbumPlay']
         assert complete['albumSearch'] is True
         assert complete['realMusicRequests'] == 0 and complete['draftIsolation']
         assert complete['decoder'] == 'libmpv' and complete['audioOutput'] == 'null'
         stages = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
-        assert len(stages) == 30 and (not args.screenshots or captures == 30)
+        assert len(stages) == 31 and (not args.screenshots or captures == 31)
         for stage in stages:
             if stage.get('playing'):
                 player = stage['nativePlayer']
@@ -243,7 +243,8 @@ def main():
         assert recovered['selected'] == 'comments' and recovered['draft'] == failed['draft'] == '只保留草稿 3'
         assert recovered['commentIds'] == failed['commentIds'] == [str(n) for n in range(21, 26)]
         assert recovered['commentReads'] == failed['commentReads']
-        result = {'ok': True, 'actualWebView': True, 'states': 30, 'screenshots': captures,
+        result = {'ok': True, 'actualWebView': True, 'states': 31, 'screenshots': captures,
+                  'compactAlbumPlay': True,
                   'realMusicRequests': 0, 'nativeNullPlaybackVerified': True, 'physicalAudioOutputVerified': False}
         (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))

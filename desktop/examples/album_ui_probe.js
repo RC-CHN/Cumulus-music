@@ -94,6 +94,30 @@
       'filtered current row resumes without resetting the native position');
     click(one('[aria-label="停止播放"]'));
     await wait(() => one('.playerbar').dataset.state !== 'playing', 'stop filtered playback');
+    const catalog = one('.catalog-page');
+    const compact = () => one('.album-header-compact:not(.menu-leave-active)');
+    const compactPlay = () => compact()?.querySelector('[data-album-play]');
+    const regularPlay = one('.album-header:not(.album-header-compact) [data-album-play]');
+    catalog.scrollTop = 0;
+    await wait(() => !compact() && !regularPlay.disabled, 'compact album controls are absent at the top');
+    regularPlay.focus({ preventScroll: true });
+    catalog.scrollTop = catalog.scrollHeight;
+    await wait(() => compactPlay() && !compactPlay().disabled &&
+      document.activeElement === compactPlay(), 'scrolled album offers compact playback and moves focus');
+    const bounds = compactPlay().getBoundingClientRect();
+    assert(compactPlay().contains(document.elementFromPoint(bounds.x+bounds.width/2,bounds.y+bounds.height/2)), 'compact album play can be clicked');
+    click(compactPlay());
+    await wait(playing, 'compact album play starts native playback');
+    const compactPlayer = await invoke('player_snapshot', { epoch });
+    assert(compactPlayer.track?.id === '1' && compactPlayer.origin?.id === '8' &&
+      compactPlayer.queueLen === 11, 'compact button plays the full album despite the active filter');
+    await capture('compact_album_playing', true);
+    await wait(() => !compactPlay()?.disabled, 'compact playback completed');
+    compactPlay().focus({ preventScroll: true });
+    catalog.scrollTop = 0;
+    await wait(() => !compact() && document.activeElement === regularPlay, 'returning to top restores the regular play button focus');
+    click(one('[aria-label="停止播放"]'));
+    await wait(() => one('.playerbar').dataset.state !== 'playing', 'stop compact playback');
 
     setKeyword('不存在的合成词');
     await wait(() => one('[data-album-panel="songs"] .empty-state')?.textContent.includes('没有找到匹配的歌曲'),
@@ -110,7 +134,7 @@
       await openAlbum();
       if (index === 1) await verifyAlbumSearch();
       one('.catalog-page').scrollTop = 0;
-      assert(all('.album-actions > button').map(n => n.textContent.trim()).join('|') === '播放全部|收藏|下载', 'header action order');
+      assert(all('.album-header:not(.album-header-compact) .album-actions > button').map(n => n.textContent.trim()).join('|') === '播放全部|收藏|下载', 'header action order');
       await capture(`songs_${width}_${color}`);
       const first = tab('songs'); first.focus(); first.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
       await wait(() => tab('details').getAttribute('aria-selected') === 'true' && one('.album-description'), 'End selects details');
@@ -174,7 +198,7 @@
     assert(one('[aria-label="评论内容"]').value === '', 'another album inherited draft');
     click(button('播放全部', one('.album-actions'))); await wait(playing, 'native playback from comments');
     await capture('comments_playing_other_album', true);
-    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, albumSearch: true, currentRowToggle: true, playbackVerified: true, decoder: 'libmpv', audioOutput: 'null', draftIsolation: true, mediaSubstitution: 'exact synthetic CDN URL to generated PCM' });
+    await emit('complete', { ok: true, stageCount, realMusicRequests: 0, albumSearch: true, currentRowToggle: true, compactAlbumPlay: true, playbackVerified: true, decoder: 'libmpv', audioOutput: 'null', draftIsolation: true, mediaSubstitution: 'exact synthetic CDN URL to generated PCM' });
   } catch (error) {
     await emit('failed', { ok: false, stageCount, error: String(error), stack: error.stack });
   }

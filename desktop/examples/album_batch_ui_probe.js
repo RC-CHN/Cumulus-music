@@ -102,7 +102,8 @@
     async function showAddAll() {
       click(more);
       return wait(() => {
-        const item = button('添加全部至播放列表');
+        const menu = one('.action-menu:not(.menu-leave-active):not([inert])');
+        const item = menu && button('添加全部至播放列表', menu);
         return item && !item.disabled && item;
       }, 'album add-all action');
     }
@@ -176,6 +177,10 @@
       ok: true, albumBatchVerified: true, albumQueueVerified: true, albumSelectedQueueVerified: true, writesSubmitted: false,
     });
   } catch (error) {
-    await emit('failed', { error: String(error?.message ?? error) });
+    await emit('failed', { error: String(error?.message ?? error),
+      feedback: one('.album-action-feedback')?.textContent,
+      playerState: one('.playerbar')?.dataset.state,
+      currentTrack: one('.playerbar')?.dataset.trackId,
+    });
   }
 })();
