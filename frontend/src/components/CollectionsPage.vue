@@ -30,6 +30,7 @@ const emit = defineEmits<{
   open: [resource: CatalogResource];
   scope: [scope: CollectionScope];
   expired: [];
+  followNewSong: [];
   playAlbum: [album: AlbumCard];
   albumAction: [request: AlbumCardRequest];
   artistAction: [request: ArtistCardRequest];
@@ -57,6 +58,15 @@ function checkpoint() {
   if (data) props.memory.set(visit, data, keyword.value, viewport.checkpoint(), scopeRevision);
 }
 defineExpose({ checkpoint });
+function openFollowNewSong(event: MouseEvent) {
+  // This deliberate navigation takes precedence over a tab's still pending
+  // initial position. Remember the actual entry before the router checkpoints.
+  viewport.cancel();
+  if (event.currentTarget instanceof HTMLButtonElement)
+    event.currentTarget.focus({ preventScroll: true });
+  checkpoint();
+  emit('followNewSong');
+}
 const tabs: { key: CollectionScope; label: string }[] = [
   { key: 'saved_albums', label: '收藏专辑' },
   { key: 'purchased_albums', label: '已购专辑' },
@@ -243,6 +253,15 @@ onBeforeUnmount(() => {
           ×
         </button></label
       >
+      <button
+        v-if="model.scope.value === 'followed_artists'"
+        type="button"
+        class="text-button"
+        data-collection-key="control:follow-new-song"
+        @click="openFollowNewSong"
+      >
+        新歌发布
+      </button>
       <span class="muted" aria-live="polite"
         >已加载 {{ loadedCount
         }}<template v-if="model.total.value !== null"> / {{ model.total.value }}</template

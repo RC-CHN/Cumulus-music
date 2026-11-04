@@ -281,6 +281,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 style_tags::accept_current_style_tag,
                 rankings::ranking_page,
                 catalog::catalog_page,
+                catalog::followed_new_song_page,
+                catalog::followed_new_song_latest,
                 catalog::artist_gallery,
                 collections::collection_page,
                 history::history_page,

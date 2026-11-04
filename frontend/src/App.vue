@@ -78,6 +78,7 @@ import CatalogPage from './components/CatalogPage.vue';
 import { useCatalogWorkspace } from './composables/useCatalogWorkspace';
 import type { CatalogSession } from './composables/useCatalogSession';
 import CollectionsPage from './components/CollectionsPage.vue';
+import FollowNewSongPage from './components/catalog/FollowNewSongPage.vue';
 import HistoryPage from './components/HistoryPage.vue';
 import SettingsPage from './components/SettingsPage.vue';
 import { useSettings } from './composables/useSettings';
@@ -2804,6 +2805,18 @@ onUnmounted(() => {
                 @play-album="playAlbumCard"
                 @album-action="albumAction"
                 @artist-action="artistAction"
+                @follow-new-song="music.navigate({ kind: 'follow_new_song' })"
+                @expired="music.bootstrap(false)"
+              />
+              <FollowNewSongPage
+                v-else-if="page.kind === 'follow_new_song'"
+                :epoch="account.epoch"
+                :playable="player.ready.value && !player.busy.value"
+                @play="playOnlineSongs"
+                @artist="(id) => openCatalog({ kind: 'artist', id })"
+                @album="(id) => openCatalog({ kind: 'album', id })"
+                @play-album="(id) => playResourceCard({ kind: 'album', id })"
+                @mv="openMv"
                 @expired="music.bootstrap(false)"
               />
               <SearchResultsPage

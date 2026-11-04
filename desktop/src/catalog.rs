@@ -37,3 +37,26 @@ pub async fn catalog_page(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn followed_new_song_page(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    start_timestamp: Option<u64>,
+) -> Result<AccountData<FollowNewSongPage>, ClientError> {
+    client
+        .followed_new_song_page(&epoch, start_timestamp)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn followed_new_song_latest(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Vec<TrackView>>, ClientError> {
+    client
+        .followed_new_song_latest(&epoch)
+        .await
+        .map_err(Into::into)
+}

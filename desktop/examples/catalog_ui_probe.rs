@@ -17,6 +17,8 @@ mod collection_fixture;
 mod comment_read_fixture;
 #[path = "support/catalog_fixture.rs"]
 mod fixture;
+#[path = "support/follow_new_song_fixture.rs"]
+mod follow_new_song_fixture;
 #[path = "support/history_fixture.rs"]
 mod history_fixture;
 #[path = "support/catalog_live.rs"]
@@ -75,7 +77,18 @@ fn main() {
         !comment_reads || !is_live,
         "comment read proof uses synthetic services only"
     );
-    let interactive = albums || artists || rankings || album_cards || artist_cards || comment_reads;
+    let follow_new_song = std::env::var("CUMULUS_FOLLOW_NEW_SONG_PROOF").as_deref() == Ok("1");
+    assert!(
+        !follow_new_song || !is_live,
+        "followed release proof uses synthetic services only"
+    );
+    let interactive = albums
+        || artists
+        || rankings
+        || album_cards
+        || artist_cards
+        || comment_reads
+        || follow_new_song;
     let collections = std::env::var("CUMULUS_COLLECTION_PROOF").as_deref() == Ok("1");
     let collection_context =
         std::env::var("CUMULUS_COLLECTION_CONTEXT_PROOF").as_deref() == Ok("1");
@@ -104,12 +117,13 @@ fn main() {
         if artist_cards {catalog_fixture.artist_cards();}
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let comment_fixture=Arc::new(comment_read_fixture::Library::default());
+        let follow_new_song_fixture=Arc::new(follow_new_song_fixture::Library::new(collection_fixture.clone()));
         let history_fixture=Arc::new(history_fixture::Library::default());
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
         if relay_settings {relay_fixture.mode("setting-off");}
         if relay_recovery {relay_fixture.mode("publication-rejected");}
-        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
+        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if follow_new_song {follow_new_song_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
@@ -122,6 +136,10 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if follow_new_song && stage=="follow-new-song-allow-first" {
+                follow_new_song_fixture.allow_first_page();
+                return;
+            }
             if comment_reads && stage=="comment-read-fixture" {
                 let id=value["id"].as_u64().expect("comment fixture sequence");let mode=value["mode"].as_str().unwrap();
                 assert!(["read","none","fail-next","fail-hot","fail-target","fail-floor-first","fail-floor-next","hold-next","expire","empty","missing-target","resource-offline","hold-resource"].contains(&mode));
@@ -199,6 +217,7 @@ fn main() {
             let handle=handle.clone();let output=output.clone();let stage=stage.to_owned();
             let collection_report=collection_context.then(|| collection_fixture.report());
             let album_card_report=(album_cards || artist_cards).then(||catalog_fixture.report());
+            let release_report=follow_new_song.then(||follow_new_song_fixture.report());
             let comment_read_report=comment_reads.then(||comment_fixture.report());
             let publication_fixture=relay_fixture.clone();let publication=publisher.clone();let publication_session=session.clone();
             let artist_song_reads=catalog_fixture.artist_song_reads.load(std::sync::atomic::Ordering::SeqCst);
@@ -212,6 +231,7 @@ fn main() {
                 let mut value=value;
                 if let Some(report)=collection_report {value["collectionFixture"]=report;}
                 if let Some(report)=album_card_report {value["albumCardFixture"]=report;}
+                if let Some(report)=release_report {value["followNewSongFixture"]=report;}
                 if let Some(report)=comment_read_report {value["commentReadFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
                 if albums || artists {value["commentReads"]=serde_json::json!(comment_reads);}
@@ -270,7 +290,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(if relay_recovery {include_str!("relay_recovery_ui_probe.js")}else if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
+            view.eval(script.as_deref().unwrap_or(if follow_new_song {include_str!("follow_new_song_ui_probe.js")}else if relay_recovery {include_str!("relay_recovery_ui_probe.js")}else if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
                 include_str!("relay_ui_probe.js")
             } else if settings {
                 if is_live {include_str!("settings_live_probe.js")}else{include_str!("settings_ui_probe.js")}

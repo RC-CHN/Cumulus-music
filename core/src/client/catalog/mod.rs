@@ -1,5 +1,6 @@
 pub(super) mod cards;
 mod dto;
+mod follow_new_song;
 mod gallery;
 mod membership;
 mod project;
@@ -10,6 +11,7 @@ use crate::{
     catalog::details::{CatalogDetails, CatalogQuery},
 };
 pub use dto::*;
+pub use follow_new_song::FollowNewSongPage;
 pub use gallery::{ArtistGalleryPage, ArtistGalleryQuery};
 pub use membership::{
     CatalogMembershipAction, CatalogMembershipOperation, CatalogMembershipView, CatalogResource,

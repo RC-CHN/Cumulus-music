@@ -1,0 +1,58 @@
+新歌发布：关注歌手的单曲与专辑（Windows PC 3.1.42.205594）
+
+来源及入口
+- 官方 app/205.js:200–203 的 /followNewSong 是早期组件 M3130（恢复源码里的 song/album
+  仍是文字占位），使用 M3020。实际新版 M3105:378–395 的社区新歌通知点击导航到
+  /NewSongPublish 并在 host 清 hasNewSongNotice；其埋点仍写 /followNewSong（400–418）。
+- 官方 app/205.js:243–246 注册 /newSongPublish，M3115:166–256、448–679 和 734–969
+  是完整卡片、滚动、展开及最新播放，使用 M3026。M3130:88–109 显示跨 latestVisitTime
+  时的历史分隔；M3115 按天分组，不显示该分隔。Cumulus 使用完整卡片和按天分组，
+  保留已恢复的历史分隔。项目暂无社区通知页，当前从“专辑与关注 → 关注歌手 → 新歌发布”
+  进入；不宣称还原了社区通知入口或已清除服务端提示。
+- 此批使用官方资料，无 YesPlayMusic。源文件均见
+  references/netease-3.1.42.205594-analysis/recovered-js/modules/ 对应 hybrid_* 目录，
+  另有 references/recovered-client/docs/product/models/page_followNewSong.txt 动作卡。
+
+请求和状态
+- M15:1012–1014、1166–1204 与 M12:278–319：两条均 PC POST、禁用接口缓存。
+  首次进入已登录的页面，先发独立的播放列表请求
+  /api/sub/artist/new/works/song/playall {}，同时加载
+  /api/sub/artist/new/works/song-mv/list/v2
+  {startTimestamp: 本机当前毫秒,firstRequest:true,sourceType:1,limit:10}。
+  UID 用于本地身份、格式化、存储，未放进两条请求 body。Rust 复用已有原生认证传输。
+- M3026:137–192、193–246 和 M3020:98–220：仅数字 sourceType=1 且 info 存在的记录
+  参与资源与游标计算，取其中更小的 publishTime（先取游标，后按 UI blockType 过滤）。
+  后续请求固定 sourceType:1、limit:10，传同一个最早时间，firstRequest:false。
+  只按原序追加，不跨页重排。hasMore=false 停止；续页没有推进时间却仍有下一页时
+  Cumulus 显示可重试错误，避免无限滚动请求。明确失败保留已显示的记录。
+- 首次成功读取保留响应 latestVisitTime，并原生按账户保存本机最后进入时间；
+  后续页不覆盖分隔值。离开或切号释放页面状态，旧账户的回包和本机写入均拒绝。
+  页尾滚动加载并保留可键盘操作按钮；每组最多渲染 40 张卡，组间可切换；
+  一次最多展开一个资源且每组最多 24 首，避免原生 WebView 随页数增长持续膨胀。
+- 单曲默认显示首曲，可展开伴奏；专辑卡打开真实专辑、可按专辑来源播放，展开后
+  按回包原序展示曲目。M3115:120–157 的专辑曲目使用通用标题单元 M113:162–175,337，
+  M21:549 取 mv/mvid，M35:35–45 和 M358:34–37 决定普通 MV 标记及独立视频身份。
+  本客户端保留普通 MV 的十进制 ID，负版权状态不展示普通 MV；配置控制的无版权 MV 兜底
+  仍未接入本页。虽然接口路径含 song-mv，当前官方两版渲染只处理 song/album；
+  不把其他 sourceType 或 blockType 当作歌曲、专辑或独立 MV 项。
+- M3115:904–959 的“播放最新”使用 playall 数据，不使用已加载的卡片曲目；
+  失败只禁用该动作并允许单独重试。音源仍走现有播放器账户权益与原生解码。
+  官方同来源重复点击的部分队列上下文，以及歌手通知取消/独立订阅写均为下一批。
+  已知取消请求：M3026:99–136 + M15:1176–1179
+  /api/sub/artist/publish/switch {artistId,switchStatus:0}；此批未接入、未发出。
+
+复核
+- cargo test -p cumulus-core --test follow_new_song --locked：合成 first/next/playall 精确请求、
+  播放与 MV 身份、只读 DTO、账户退出/切换及最后进入时间、游标停滞。
+- frontend/tests/follow-new-song.test.ts：两条请求独立、续页错误原游标重试、晚回包隔离。
+- cargo build -p cumulus-desktop --example catalog_ui_probe --features custom-protocol --locked
+- CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a \
+    dbus-run-session -- /usr/bin/python3 scripts/ci/follow_new_song_smoke.py \
+    --binary /absolute/catalog_ui_probe --root /absolute/new-proof-root --screenshots
+- 合成目录服务与 libmpv null；不等于真实账号、Windows 实机、物理声卡或 MV 播放验证。
+- 2026-11-04 本机最终结果：Rust 专项 2/2，前端集中 779/779、格式和构建通过；
+  catalog_ui_probe 构建及 Clippy 通过。真实 Linux WebView 760×540 以浅色和深色验证
+  7 态并截图：等待首屏、独立播放列表失败重试、专辑和伴奏展开、滚动续页失败、
+  同游标重试恢复、播放队列原生前进、返回关注页并恢复原按钮焦点。合成队列歌曲 1→2，
+  服务端写入和真实网易请求均为 0。最终私有证据：
+  .build/ui-proof/follow-new-song-20261104-focus/report.json。
