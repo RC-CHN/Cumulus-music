@@ -253,6 +253,7 @@ export function useMusic(
         target.kind === 'artist_gallery' ||
         target.kind === 'discovery_home' ||
         target.kind === 'ordinary_essential' ||
+        target.kind === 'vertical_zone' ||
         target.kind === 'follow_new_song' ||
         target.kind === 'latest_releases' ||
         target.kind === 'community' ||

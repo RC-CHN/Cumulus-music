@@ -418,7 +418,7 @@ impl MusicClient {
         let groups = &authority.groups;
         let assigned = groups.group("PH-PC-zhuanquTab") == Some("t1");
         let mut changes = self.session.subscribe()?;
-        let mut value = self
+        let value = self
             .session
             .run_for(owner, |current, _| async move {
                 self.session.require_api(owner, &current)?;

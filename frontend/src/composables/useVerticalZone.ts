@@ -111,8 +111,8 @@ export function useVerticalZone(
   );
   watch(
     [route, () => account().epoch, () => account().status],
-    ([next], [previous] = []) => {
-      if (next?.pageCode !== previous?.pageCode) tabs.value = [];
+    ([next], previous) => {
+      if (next?.pageCode !== previous[0]?.pageCode) tabs.value = [];
       pageSerial++;
       data.value = undefined;
       error.value = '';
