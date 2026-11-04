@@ -126,7 +126,7 @@ impl ProfileRegistry {
         }
         let source = session.native_api(expected)?;
         // M1368:4455–4482 revalidates the history at the actual login action.
-        let (mut history, eligibility) = self.checked_quick_history(&session, expected).await?;
+        let (history, eligibility) = self.checked_quick_history(&session, expected).await?;
         let (active, device_id) = if expected.uid.is_some() {
             let current =
                 history
@@ -181,12 +181,6 @@ impl ProfileRegistry {
                 "saved account is not eligible for server quick login",
             ));
         }
-        history.entries.retain(|entry| {
-            eligibility
-                .accounts
-                .iter()
-                .any(|row| row.id == entry.saved.session_id && row.eligible)
-        });
         let target = history
             .entries
             .iter()

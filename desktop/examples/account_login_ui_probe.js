@@ -1089,9 +1089,23 @@
     click(button("切换账号列表 ›"));
     await wait(() => one(".account-dialog") && one('[data-testid="quick-login-eligibility-check"]'),
       "enabled offer opens the account list");
+    await mode("quick_offer_invalidate_current");
+    const quickCheck = () => one('[data-testid="quick-login-eligibility-check"]');
+    click(quickCheck());
+    await wait(() => one('[data-testid="quick-offers-invalidated"]') &&
+      quickCheck()?.getAttribute("aria-disabled") === "true", "invalid offer removed");
+    assert(one('.saved-account[data-current="true"]') && !one('[data-testid="active-server-switch-open"]'),
+      "offer invalidation cannot remove the signed-in account or offer service switching");
+    await stage("quick_offer_invalidated_dark", { expectNickname: "邮箱验证账号" });
     click(button("关闭账号窗口"));
     await wait(() => !one("dialog"), "account list returns to Settings");
+    await wait(() => offerBox() && !offerBox().checked && document.activeElement === offerBox(),
+      "mounted Settings reads the revoked offer and restores focus to the checkbox");
     await showOffer();
+    await mode("quick_offer");
+    click(offerBox());
+    await wait(() => offerBox()?.checked && offerBox().getAttribute("aria-disabled") === "false",
+      "a new explicit choice can enroll the account again");
     click(offerBox());
     await wait(() => !offerBox()?.checked && offerBox().getAttribute("aria-disabled") === "false",
       "offer explicitly disabled");

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, shallowRef } from 'vue';
+import { nextTick, onMounted, onUnmounted, ref, shallowRef } from 'vue';
 import type { QuickLoginOffer } from '../../services/auth';
 import { failure } from '../../services/contracts';
 import { useCore } from '../../services/core';
+import { onQuickOfferReload } from '../../composables/quickOfferReload';
 
 const props = defineProps<{ epoch: string }>();
 const emit = defineEmits<{ accounts: [] }>();
@@ -12,19 +13,42 @@ const busy = ref(false);
 const notice = ref('');
 const help = ref(false);
 const helpButton = ref<HTMLButtonElement>();
+const offerInput = ref<HTMLInputElement>();
+const accountsButton = ref<HTMLButtonElement>();
 let alive = true;
+let loadRequest = 0;
 const epoch = props.epoch;
 function current() {
   return alive && props.epoch === epoch;
 }
 async function load() {
-  const value = await core.quickLoginAccess(epoch);
-  if (current() && value.epoch === epoch) offer.value = value.value.offer ?? undefined;
+  const request = ++loadRequest;
+  try {
+    const value = await core.quickLoginAccess(epoch);
+    if (!current() || request !== loadRequest || value.epoch !== epoch) return;
+    const opener = accountsButton.value;
+    const restoreOfferFocus =
+      value.value.offer?.enabled === false && opener && document.activeElement === opener;
+    offer.value = value.value.offer ?? undefined;
+    if (restoreOfferFocus) {
+      await nextTick();
+      if (
+        current() &&
+        request === loadRequest &&
+        (document.activeElement === document.body || document.activeElement === opener)
+      )
+        offerInput.value?.focus({ preventScroll: true });
+    }
+  } catch (error) {
+    if (current() && request === loadRequest) offer.value = undefined;
+    throw error;
+  }
 }
 async function change() {
   const before = offer.value;
   if (!current() || !before || busy.value) return;
   busy.value = true;
+  loadRequest++;
   notice.value = '';
   try {
     const result = await core.setQuickLoginOffer(epoch, !before.enabled, before.revision);
@@ -47,6 +71,9 @@ function closeHelp() {
   help.value = false;
   helpButton.value?.focus({ preventScroll: true });
 }
+onQuickOfferReload(epoch, () => {
+  if (!busy.value) void load().catch(() => {});
+});
 onMounted(() => void load().catch(() => {}));
 onUnmounted(() => {
   alive = false;
@@ -59,6 +86,7 @@ onUnmounted(() => {
     <div class="quick-login-offer-actions">
       <label>
         <input
+          ref="offerInput"
           type="checkbox"
           :checked="offer.enabled"
           :aria-disabled="busy"
@@ -79,6 +107,7 @@ onUnmounted(() => {
       </button>
       <button
         v-if="offer.enabled"
+        ref="accountsButton"
         type="button"
         class="text-button"
         :disabled="busy"

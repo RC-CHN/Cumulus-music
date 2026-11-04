@@ -380,7 +380,19 @@ async fn exact_bounded_jsk_history_and_safe_projection_leave_profiles_untouched(
         .set_cookies
         .push("MUSIC_U=poison-current; Path=/; Secure".into());
     response.refresh_token = Some("poison-refresh".into());
-    let world = World::new(5, [HttpResponse::Ready(Ok(response))]).await;
+    let world = World::new(
+        5,
+        [
+            HttpResponse::Ready(Ok(response)),
+            json!({"code":200,"deleteUserIds":[]}).into(),
+        ],
+    )
+    .await;
+    let offers_before = world
+        .registry
+        .store()
+        .values("transport", OFFER_STATE)
+        .unwrap();
     let before = world.registry.selection().unwrap();
     let result = world
         .client
@@ -432,6 +444,111 @@ async fn exact_bounded_jsk_history_and_safe_projection_leave_profiles_untouched(
     let credentials = selected.credentials.login_credentials().unwrap();
     assert_eq!(credentials.token.as_deref(), Some("history-token-5"));
     assert!(credentials.refresh_token.is_none());
+
+    let reopened =
+        ProfileRegistry::open(&world.root.path().join("registry"), ApiOrigin::Pc).unwrap();
+    let offers_after = reopened.store().values("transport", OFFER_STATE).unwrap();
+    assert!(offers_after["1"]["profile"].is_null());
+    assert_ne!(
+        offers_after["1"]["revision"],
+        offers_before["1"]["revision"]
+    );
+    for uid in ["2", "3", "4", "5"] {
+        assert_eq!(offers_after[uid], offers_before[uid]);
+    }
+    let next = world
+        .client
+        .quick_login_eligibility(&world.epoch())
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(next.checked_count, 3);
+    let calls = world.backend.calls();
+    assert_eq!(calls.len(), 7);
+    let history: Value =
+        serde_json::from_str(calls[6].payload["userInfoList"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        history
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| &entry["userId"])
+            .collect::<Vec<_>>(),
+        [&json!("5"), &json!("2"), &json!("3")]
+    );
+    assert!(
+        !calls[6].payload["userInfoList"]
+            .as_str()
+            .unwrap()
+            .contains("history-token-1")
+    );
+    // Removing the history offer did not remove the dormant local credential.
+    let dormant = world
+        .registry
+        .saved_candidate_with_backend(
+            &world.ids[0],
+            Default::default(),
+            Default::default(),
+            None,
+            world.wire.clone(),
+        )
+        .unwrap();
+    assert_eq!(
+        dormant
+            .credentials()
+            .login_credentials()
+            .unwrap()
+            .token
+            .as_deref(),
+        Some("history-token-1")
+    );
+}
+
+#[tokio::test]
+async fn rejecting_current_offer_cannot_start_a_service_switch_or_revoke_authentication() {
+    let world = World::new(2, [json!({"code":200,"deleteUserIds":[2]}).into()]).await;
+    let epoch = world.epoch();
+    let selection = world.registry.selection().unwrap();
+    assert!(
+        world
+            .client
+            .begin_active_server_switch(&epoch, &world.ids[0], true)
+            .await
+            .is_err()
+    );
+    assert_eq!(world.epoch(), epoch);
+    assert_eq!(world.registry.selection().unwrap(), selection);
+    assert_eq!(world.registry.saved().unwrap().len(), 2);
+    assert!(
+        !world
+            .client
+            .quick_login_access(&epoch)
+            .await
+            .unwrap()
+            .value
+            .offer
+            .unwrap()
+            .enabled
+    );
+    assert_eq!(
+        world
+            .client
+            .quick_login_eligibility(&epoch)
+            .await
+            .unwrap()
+            .value
+            .checked_count,
+        0
+    );
+    assert_eq!(
+        world
+            .backend
+            .calls()
+            .iter()
+            .map(|row| row.path.as_str())
+            .collect::<Vec<_>>(),
+        ["/api/w/nuser/account/get", "/api/w/nuser/account/get", PATH]
+    );
 }
 
 #[tokio::test]
@@ -481,6 +598,11 @@ async fn malformed_or_foreign_invalidations_do_not_delete_or_expose_history() {
     )
     .await;
     let epoch = world.epoch();
+    let offers = world
+        .registry
+        .store()
+        .values("transport", OFFER_STATE)
+        .unwrap();
     for _ in 0..5 {
         let error = world
             .client
@@ -492,6 +614,14 @@ async fn malformed_or_foreign_invalidations_do_not_delete_or_expose_history() {
         assert!(!format!("{error:?}").contains("poison-echo"));
     }
     assert_eq!(world.registry.saved().unwrap().len(), 2);
+    assert_eq!(
+        world
+            .registry
+            .store()
+            .values("transport", OFFER_STATE)
+            .unwrap(),
+        offers
+    );
     assert_eq!(world.epoch(), epoch);
     assert_eq!(world.session.token().unwrap().uid.as_deref(), Some("2"));
 }
@@ -500,6 +630,11 @@ async fn malformed_or_foreign_invalidations_do_not_delete_or_expose_history() {
 async fn switching_account_cancels_inflight_eligibility_read() {
     let (pending, release) = gate();
     let world = World::new(2, [pending]).await;
+    let offers = world
+        .registry
+        .store()
+        .values("transport", OFFER_STATE)
+        .unwrap();
     let client = world.client.clone();
     let epoch = world.epoch();
     let operation = tokio::spawn(async move { client.quick_login_eligibility(&epoch).await });
@@ -509,8 +644,20 @@ async fn switching_account_cancels_inflight_eligibility_read() {
         operation.await.unwrap(),
         Err(Error::StaleResponse)
     ));
-    assert!(release.send(Ok(reply(json!({"code":200})))).is_err());
+    assert!(
+        release
+            .send(Ok(reply(json!({"code":200,"deleteUserIds":[1,2]}))))
+            .is_err()
+    );
     assert_eq!(world.registry.saved().unwrap().len(), 2);
+    assert_eq!(
+        world
+            .registry
+            .store()
+            .values("transport", OFFER_STATE)
+            .unwrap(),
+        offers
+    );
 }
 
 fn issued_quick_reply() -> cumulus_core::protocol::http::HttpReply {

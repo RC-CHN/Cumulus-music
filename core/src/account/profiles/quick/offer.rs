@@ -80,6 +80,21 @@ pub(in crate::account::profiles) fn confirm(
     Ok(())
 }
 
+pub(super) fn invalidate(
+    tx: &mut StateTransaction<'_>,
+    uid: &str,
+    expected: &Record,
+) -> Result<()> {
+    confirm(tx, uid, expected)?;
+    // A tombstone invalidates any open Settings switch/prepared exchange.
+    // Nothing in saved profiles, credential stores or the active selection is removed.
+    let next = Record {
+        revision: uuid::Uuid::new_v4().simple().to_string(),
+        profile: None,
+    };
+    tx.put(OWNER, OFFERS, uid, &serde_json::to_value(next)?)
+}
+
 pub(in crate::account::profiles) fn forget(tx: &mut StateTransaction<'_>, uid: &str) -> Result<()> {
     tx.delete(OWNER, OFFERS, uid)
 }

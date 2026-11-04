@@ -111,6 +111,7 @@ import ArtistOnboarding from './components/onboarding/ArtistOnboarding.vue';
 import { useModalOrigin } from './composables/useModalOrigin';
 import LoginDialog from './components/LoginDialog.vue';
 import AccountDialog from './components/AccountDialog.vue';
+import { flushQuickOfferReload } from './composables/quickOfferReload';
 import TopbarAccount from './components/account/TopbarAccount.vue';
 import AccountWelcome from './components/AccountWelcome.vue';
 import DiscoveryHomePage from './components/DiscoveryHomePage.vue';
@@ -4917,7 +4918,10 @@ onUnmounted(() => {
     <ModalTransition
       :return-focus="accountFocus.returnFocus"
       :fallback-focus="accountFocus.fallbackFocus"
-      @left="accountFocus.restoreIfUnowned()"
+      @left="
+        accountFocus.restoreIfUnowned();
+        flushQuickOfferReload();
+      "
     >
       <AccountDialog
         v-if="accountsOpen"

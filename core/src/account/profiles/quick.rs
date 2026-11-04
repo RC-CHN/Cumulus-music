@@ -137,7 +137,7 @@ impl ProfileRegistry {
             })?,
             &history.entries,
         )?;
-        let history = {
+        let mut history = {
             let (registry, target) = (self.clone(), target.clone());
             tokio::task::spawn_blocking(move || {
                 registry.check_quick_history(&history, &target)?;
@@ -147,10 +147,59 @@ impl ProfileRegistry {
             .map_err(|_| Error::State("quick history worker stopped"))??
         };
         session.require_api(expected, &api)?;
-        if native.credentials().request_credentials(&target)?.revision != revision {
-            return Err(Error::CredentialChanged);
-        }
+        // Keep the generation check and local invalidation together. The
+        // bounded transaction does not start HTTP or clear credentials.
+        session.with_local_owner(expected, |_| {
+            if native.credentials().request_credentials(&target)?.revision != revision {
+                return Err(Error::CredentialChanged);
+            }
+            self.apply_quick_invalidations(&history, &view)
+        })?;
+        history.entries.retain(|entry| {
+            view.accounts
+                .iter()
+                .any(|row| row.id == entry.saved.session_id && row.eligible)
+        });
         Ok((history, view))
+    }
+
+    fn apply_quick_invalidations(
+        &self,
+        history: &History,
+        view: &QuickLoginEligibilityView,
+    ) -> Result<()> {
+        if !view.accounts.iter().any(|row| !row.eligible) {
+            return Ok(());
+        }
+        // M1368 calls the native historical-account deletion before publishing
+        // its usable list. Our history is an offer, never the saved login store.
+        self.store.transaction(|tx| {
+            let selection = tx.get(OWNER, super::KIND, "active")?;
+            if selection
+                != history
+                    .selection
+                    .as_ref()
+                    .map(serde_json::to_value)
+                    .transpose()?
+            {
+                return Err(Error::StaleResponse);
+            }
+            for (entry, row) in history.entries.iter().zip(&view.accounts) {
+                if entry.saved.session_id != row.id {
+                    return Err(Error::StaleResponse);
+                }
+                if !row.eligible {
+                    removal::available(tx, &entry.saved.session_id)?;
+                    if tx.get(OWNER, saved::KIND, &entry.saved.uid)?
+                        != Some(serde_json::to_value(&entry.saved)?)
+                    {
+                        return Err(Error::StaleResponse);
+                    }
+                    offer::invalidate(tx, &entry.saved.uid, &entry.offer)?;
+                }
+            }
+            Ok(())
+        })
     }
 
     fn quick_history(&self, current: Option<&str>, target: &Url) -> Result<History> {

@@ -245,7 +245,15 @@ impl HttpBackend for Service {
                                 "fixture eligibility contains exchange fields",
                             ));
                         }
-                        return Ok(auth::reply(json!({"code":200,"deleteUserIds":[]}), None));
+                        let invalid = if mode == "quick_offer_invalidate_current" {
+                            json!([2])
+                        } else {
+                            json!([])
+                        };
+                        return Ok(auth::reply(
+                            json!({"code":200,"deleteUserIds":invalid}),
+                            None,
+                        ));
                     }
                     if data["targetUserId"] != "2"
                         || data["currentUserId"] != ""

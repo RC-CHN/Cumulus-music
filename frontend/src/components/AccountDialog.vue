@@ -6,6 +6,7 @@ import type { SavedAccount } from '../services/auth';
 import { useCore } from '../services/core';
 import { useLogin } from '../composables/useLogin';
 import { useQuickLoginEligibility } from '../composables/useQuickLoginEligibility';
+import { queueQuickOfferReload } from '../composables/quickOfferReload';
 import { useServerQuickLogin } from '../composables/useServerQuickLogin';
 import ServerQuickLoginPanel from './account/ServerQuickLoginPanel.vue';
 import { useSavedAccounts } from '../composables/useSavedAccounts';
@@ -55,6 +56,16 @@ const activeSwitch = useServerQuickLogin(
 const exchange = computed(() => (quickTarget.value?.mode === 'active' ? activeSwitch : quickLogin));
 const cancellingQuick = computed(() => exchange.value.cancelling.value);
 const { view: eligibility, state: eligibilityState, busy: checkingEligibility } = quick;
+const invalidatedOffers = computed(
+  () => eligibility.value?.accounts.filter((row) => !row.eligible) ?? [],
+);
+const currentQuickRevoked = computed(() => invalidatedOffers.value.some((row) => row.current));
+let mayHaveChangedOffer = false;
+function checkEligibility(event: MouseEvent) {
+  if (currentQuickRevoked.value) return;
+  mayHaveChangedOffer = true;
+  void actionFocus.run(event, quick.check);
+}
 const quickAssigned = ref(false);
 async function loadQuickAssignment() {
   try {
@@ -124,6 +135,7 @@ function showQuick(row: { id: string; name: string; eligible: boolean; current: 
   if (
     (!guestEpoch() && !activeEpoch()) ||
     !row.eligible ||
+    currentQuickRevoked.value ||
     row.current ||
     busy.value ||
     leaving.value ||
@@ -137,7 +149,10 @@ function showQuick(row: { id: string; name: string; eligible: boolean; current: 
 }
 function startQuick() {
   const target = quickTarget.value;
-  if (target) return exchange.value.start(target.id, true);
+  if (target) {
+    mayHaveChangedOffer = true;
+    return exchange.value.start(target.id, true);
+  }
 }
 function close() {
   if (quickTarget.value) {
@@ -208,7 +223,10 @@ onMounted(() => {
 onUnmounted(() => {
   focused?.focus();
 });
-onBeforeUnmount(deactivate);
+onBeforeUnmount(() => {
+  if (mayHaveChangedOffer && props.account.epoch === epoch) queueQuickOfferReload(epoch);
+  deactivate();
+});
 </script>
 <template>
   <dialog
@@ -355,7 +373,7 @@ onBeforeUnmount(deactivate);
           {{ account.status === 'authenticated' ? '服务端切换资格' : '服务端快捷登录资格' }}
         </h3>
         <p id="account-quick-eligibility-help">
-          向网易云音乐服务核对最多 3 个本机账号记录。此操作不会切换或移除账号。
+          向网易云音乐服务核对最多 3 条快速登录记录。失效记录只从快速登录中移除，本机账号保留。
         </p>
         <button
           class="secondary"
@@ -363,7 +381,8 @@ onBeforeUnmount(deactivate);
           data-testid="quick-login-eligibility-check"
           aria-describedby="account-quick-eligibility-help"
           :disabled="loading || busy || leaving || removing || checkingEligibility"
-          @click="actionFocus.run($event, quick.check)"
+          :aria-disabled="currentQuickRevoked"
+          @click="checkEligibility"
         >
           {{
             checkingEligibility
@@ -393,16 +412,21 @@ onBeforeUnmount(deactivate);
                 : `已核对 ${eligibility.checkedCount} 个账号。`
             }}
           </p>
+          <p v-if="invalidatedOffers.length" role="status" data-testid="quick-offers-invalidated">
+            {{ invalidatedOffers.length }} 个失效账号已从快速登录记录移除，本机登录记录保留。
+          </p>
+          <p v-if="currentQuickRevoked" class="muted">当前账号的快速登录已关闭。</p>
           <ul v-if="quickRows.length" aria-label="已核对的账号">
             <li v-for="item in quickRows" :key="item.id" :data-quick-eligible="item.eligible">
               <span
                 >{{ item.name
                 }}<small v-if="item.current && item.name !== '当前账号'">（当前账号）</small></span
               >
-              <span>{{ item.eligible ? '符合条件' : '不符合条件' }}</span>
+              <span>{{ item.eligible ? '符合条件' : '已移除快捷资格' }}</span>
               <button
                 v-if="
                   (isQuickGuest || account.status === 'authenticated') &&
+                  !currentQuickRevoked &&
                   item.eligible &&
                   !item.current &&
                   accounts.some((saved) => saved.id === item.id && !saved.removalPending)
