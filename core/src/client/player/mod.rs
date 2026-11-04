@@ -940,7 +940,11 @@ impl MusicClient {
         } else {
             None
         };
-        let lease = if matches!(
+        let source_resume =
+            source_guard.is_some() && matches!(action, PlayerAction::Pause { paused: false });
+        let lease = if source_resume {
+            Some(self.audio_source_resume_lease(&token).await?)
+        } else if matches!(
             action,
             PlayerAction::Play
                 | PlayerAction::Pause { paused: false }
@@ -1247,6 +1251,22 @@ impl MusicClient {
                     command,
                     target.audio(&current)?,
                     target.cancellation(self, lease, super::focus::Owner::Audio, control_intent),
+                )
+                .await?
+        } else if let (true, Some(expected), Some(lease), Some(intent)) =
+            (source_resume, source_guard.as_ref(), lease, control_intent)
+        {
+            let focus = self.focus.clone();
+            let selection = self.player.selection.clone();
+            controller
+                .command_guarded(
+                    &token,
+                    command,
+                    expected.clone(),
+                    Cancellation::new(move || {
+                        selection.load(std::sync::atomic::Ordering::Acquire) == intent
+                            && focus.check(lease, super::focus::Owner::Audio).is_ok()
+                    }),
                 )
                 .await?
         } else if let Some(expected) = quality_guard.or(queue_guard).or(source_guard) {

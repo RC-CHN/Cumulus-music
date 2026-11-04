@@ -130,6 +130,19 @@ impl MusicClient {
         self.claim_media_checked(token, owner, Some(ExpectedFocus::Native(expected)))
             .await
     }
+    /// Resuming an identity-fenced source that already owns audio does not
+    /// hand anything off. Keep ownership continuous so the native poll does
+    /// not send a protective pause during a transient unowned window.
+    pub(super) async fn audio_source_resume_lease(&self, token: &SessionToken) -> Result<u64> {
+        self.session.check_generation(token)?;
+        let current = self.focus.snapshot()?;
+        if current.owner == Some(Owner::Audio) {
+            Ok(current.generation)
+        } else {
+            self.claim_native_media(token, Owner::Audio, current).await
+        }
+    }
+
     async fn claim_media_checked(
         &self,
         token: &SessionToken,
@@ -354,6 +367,41 @@ mod tests {
             Box::pin(async { panic!("focus must not request network") })
         }
     }
+    #[tokio::test]
+    async fn exact_source_resume_does_not_enter_the_handoff_or_revoke_owned_audio() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+        let session = Arc::new(AccountSession::new(
+            Arc::new(NoNetwork),
+            Some(registry.store()),
+        ));
+        let token = session.token().unwrap();
+        let client = MusicClient::with_session(session, registry);
+        let audio = client.claim_media(&token, Owner::Audio).await.unwrap();
+
+        // A same-owner resume completes even if the handoff lane cannot run.
+        // The old implementation would revoke audio and then wait on it.
+        let handoff = client.focus.handoff.lock().await;
+        let resumed = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            client.audio_source_resume_lease(&token),
+        )
+        .await
+        .expect("same-source resume does not wait for a handoff")
+        .unwrap();
+        assert_eq!(resumed, audio);
+        client.focus.check(audio, Owner::Audio).unwrap();
+        drop(handoff);
+
+        // Real changes of owner still revoke older leases.
+        let video = client.claim_media(&token, Owner::Video).await.unwrap();
+        assert!(client.focus.check(audio, Owner::Audio).is_err());
+        let audio_again = client.audio_source_resume_lease(&token).await.unwrap();
+        assert!(audio_again > video);
+        assert!(client.focus.check(video, Owner::Video).is_err());
+        client.focus.check(audio_again, Owner::Audio).unwrap();
+    }
+
     #[tokio::test]
     async fn automatic_audio_claim_rejects_newer_video_and_same_generation_video_owner() {
         let dir = tempfile::tempdir().unwrap();
