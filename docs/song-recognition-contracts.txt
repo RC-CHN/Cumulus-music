@@ -1,8 +1,9 @@
 听歌识曲（官方 PC 3.1.42.205594）：恢复契约与实现边界
 
 状态：已静态恢复入口、原生回采、进度、请求、签名和结果。已离线执行官方
-归一化与完整原生指纹处理，从三组合成 PCM 冻结了逐字节对照。没有完成 Rust
-声学指纹移植、设备预处理或真实服务验证。本次不增加生产识曲、模拟识曲界面、
+归一化与完整原生指纹处理，从三组合成 PCM 冻结了逐字节对照，并移植了 Rust
+默认二进制打包及压缩后的 AES/Base64。Rust 声学特征、原生等价压缩、设备预处理
+及真实服务仍待验证。本次不增加生产识曲、模拟识曲界面、
 录音权限或上传；没有使用真实账号、采集或联网。
 
 来源约定
@@ -186,16 +187,22 @@ D0C0F0 的原始 UCRT count/write 分支也执行：输入 3.90625、100、4000�
 非空包，不能将“静音”“没有命中”与“空指纹”合并。
 core/tests/fixtures/song-recognition-official.json 冻结样本生成配方、PCM
 SHA256、原始 packed 字节、官方 zlib 字节、最终 Base64 和各层摘要。
-fixture SHA256 1fa1f7be24c9d1632a2b9d3cfb319067370becd15d60769623574f11a9d107a4。
+fixture SHA256 97c92f33df571677fcff3e8041672d5eac670928f978a92b5a211127476d38fb。
 内容都是合成字节；官方 DLL、映像和对照程序不入库。
 
 封包的三层边界已单独核对：
 - D0AA80 中的 D0C5A0/D0F4C0 写二进制字段，D0D770/D0CFD0 走原生
   zlib 1.2.5（版本字符串 RVA 1A065F0，D0D045 → BFDED0）。
   deflateInit 使用 level=-1（默认）、窗口 15、内存级别 8、策略 0。
-  对三组官方压缩流解压均得到对应 packed 字节，系统 Python 的 zlib 1.3.1
-  对同三组 packed 字节重压也相同；只证明这些向量，不是所有后端的
-  通用字节等价。后续用 Rust 比较压缩差异，不混入 AES 对照。
+  对三组官方压缩流解压均得到对应 packed 字节。系统 Python 的 zlib 1.3.1
+  对同三组重压也相同；这只证明这些向量。锁定的 Rust 后端单独测试：
+  two-tone 官方 156 字节，flate2 1.1.10/miniz_oxide 0.9.1 为 170，
+  zlib-rs 0.6.8 为 174；噪声官方 859，miniz 为 859 但内容不同，
+  zlib-rs 为 872；静音三者均为相同的 21 字节。两个 Rust 后端的流都能
+  解回原 packed 字节，但不作为官方压缩字节的替代接入识曲。
+  复验可将 fixture 的 packedHex 分别送入默认的 flate2::write::ZlibEncoder
+  和 zlib_rs::compress_slice(DeflateConfig::default())，与 compressedHex 比较；
+  用 zlib 解压核对三者的明文。独立比较工具在本机 .build/song-recognition-zlib-check。
 - D0ADE0 从 219B938 → 1BA1248 取十六个 ASCII 字符 074B97221F27F029；
   D0AEFF–D0AFD3 两次将首字节移到尾部，实际 AES-128 key 为
   4B97221F27F02907。这是固定二进制常量，不来自账号、设备或 EAPI 的 key。
@@ -216,12 +223,27 @@ fixture SHA256 1fa1f7be24c9d1632a2b9d3cfb319067370becd15d60769623574f11a9d107a4�
 探针与 runner 的 SHA256 见 fixture。没有官方真实 Windows 环境、非 C
 locale、设备下混或服务回包证明。
 
+Rust 已迁移的两个独立阶段：
+- core/src/song_recognition/packing.rs 实现 D0A2C0 默认标志下的打包。
+  D0C5A0 写 4 字节空标签长度、4 字节归一化 flag（默认 0）、两个
+  little-endian f32（+0x28 默认 0，+0x24 为采样数/8000；见 D0AAD6–D0AAE6）。
+  D0F4C0 继续写 219B980 的五个 NUL、4 字节空标签长度、219B9A0 的
+  ASCII Peak、4 字节候选数量、原序的 12 字节候选。两个 i32 坐标后接
+  一项原始 f32 位形；D142A0–D142B3 以两坐标索引候选矩阵。
+  不推测未验证的替代标签、布尔值、阈值和实际坐标单位。
+- 在 D0C5A0 与 D0F4C0 入口独立观察头字段和内存候选向量，记录于 fixture
+  的 nativePacketHeader 与 nativePeaks（17、105、0 条），与冻结的 packed、
+  zlib 和最终指纹逐层对照。core/src/song_recognition/mod.rs 的
+  seal_compressed_packet 对压缩流作 AES-128-ECB/PKCS#7，空输入无指纹，
+  rawdata() 再做 Base64。两阶段不以未经证实的压缩器串接。
+  Rust 对照可执行：cargo test -p cumulus-core --lib song_recognition --locked
+
 下一阶段：
-1. 以冻结对照先移植纯压缩后封包，校验三层输入输出及空输入；对实际使用
-   的 Rust 压缩后端单独冻结差异。不能把任意 deflate 实现视作原生字节等价。
-2. 还原 D0C5A0/D0F4C0 等二进制字段布局、候选选择/排序、FFT 与阈值；
-   用可区分频率、幅度、分段边界和静音的合成输入收集更多官方向量，
-   覆盖完整 3/6/9/12/15 秒前缀，再验证 Rust 算法逐字节匹配。
+1. 按默认参数恢复或选择可跨平台重现的压缩阶段，验证更多动态块、长输入和
+   Z_FINISH 分支，再将打包与封包串接。不能把任意 deflate 视作原生字节等价。
+2. 还原候选生成、筛选和排序、FFT 与阈值；用可区分频率、幅度、分段边界
+   和静音的合成输入收集更多官方向量，覆盖 3/6/9/12/15 秒前缀，
+   再验证 Rust 算法逐字节匹配。
 3. 追 3087B1 附近的 8000 配置与下混重采样；设备采集、输入样本转换
    与指纹编码需分别验证。
 4. Rust 先可移植纯状态、计时/采样单位、EAPI 固定字段、结果解析及权限补读，

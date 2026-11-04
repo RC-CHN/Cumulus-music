@@ -27,6 +27,7 @@ pub mod podcast;
 pub mod preferences;
 pub mod protocol;
 pub mod relay;
+pub mod song_recognition;
 pub mod storage;
 pub mod watchman;
 
