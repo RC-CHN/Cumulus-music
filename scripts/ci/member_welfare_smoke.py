@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -20,6 +21,8 @@ def main():
     script = source.read_text(encoding='utf-8')
     shared = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
     shared['CUMULUS_MOTION_PROOF'] = '1'
+    if args.runtime:
+        shared['PATH'] = str(args.runtime.resolve(strict=True)) + os.pathsep + shared.get('PATH', '')
     if args.frontend_dist:
         shared['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     counts = {'assigned': 5, 'reopen': 1, 'guest': 1, 'control': 1}

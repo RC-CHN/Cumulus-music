@@ -370,6 +370,8 @@ jobs:
           python scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-latest-releases-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-sidebar-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/bundled_themes_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-bundled-themes-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/member_welfare_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-member-welfare-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           python scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe.exe --root .build/ci-user-blacklist-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
@@ -714,6 +716,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-linux
           env -u LIBGL_ALWAYS_SOFTWARE -u WEBKIT_FORCE_DMABUF_RENDERER -u WEBKIT_DMABUF_RENDERER_FORCE_SHM LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-software-linux --software-rendering --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-sidebar-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1020x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/bundled_themes_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-bundled-themes-linux --screenshots
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/member_welfare_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-member-welfare-linux
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
