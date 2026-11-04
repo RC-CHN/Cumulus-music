@@ -120,6 +120,8 @@ fn playlist_tag_browse_proof() -> bool {
 static PLAYLIST_TAG_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 static PLAYLIST_CATALOGUE_CALLS: std::sync::Mutex<Vec<Value>> = std::sync::Mutex::new(Vec::new());
 
+#[path = "support/profile_play_record_fixture.rs"]
+mod profile_play_record_fixture;
 #[path = "support/profile_relations_fixture.rs"]
 mod profile_relations_fixture;
 
@@ -143,7 +145,7 @@ impl Api for Library {
         member_sign_fixture::observed_server_time_ms()
     }
 
-    fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
+    fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if playlist_tag_browse_proof()
                 && let Some(response) = playlist_square_fixture::response(path, &args)
@@ -206,6 +208,9 @@ impl Api for Library {
                 return result;
             }
             if let Some(result) = queue_collection_fixture::response(path, &args) {
+                return result;
+            }
+            if let Some(result) = profile_play_record_fixture::response(path, &args, cached) {
                 return result;
             }
             if let Some(result) = profile_relations_fixture::response(path, &args) {
@@ -328,6 +333,7 @@ impl Api for Library {
                         json!({"code":500})
                     } else {
                         let mut value = playlist(id);
+                        profile_play_record_fixture::decorate_playlist(id, &mut value);
                         if playlist_creator_proof() && matches!(id, 2 | 20) {
                             value["playCount"] = json!(12600);
                             if id == 20 {
@@ -660,6 +666,14 @@ fn main() {
                 value["playlistTopTagCalls"] = json!(playlist_square_fixture::top_calls());
                 value["playlistEssential"] = playlist_essential_fixture::report();
             }
+            if profile_play_record_fixture::enabled() {
+                if value["stage"] == "profile-rank-revoke" {
+                    profile_play_record_fixture::revoke_guest();
+                    handle.get_webview_window("main").unwrap().eval("window.__profileRankRevoked=true;").unwrap();
+                    return;
+                }
+                value["profileRankCalls"] = json!(profile_play_record_fixture::report());
+            }
             if profile_relations_fixture::enabled() {
                 value["profileRelationCalls"] = json!(profile_relations_fixture::report());
             }
@@ -880,7 +894,7 @@ fn main() {
                     }
                     if let Ok(playback)=client.subscribe_playback(&epoch).await && let Ok(snapshot)=playback.current() {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() || card_source_proof {
+                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some() || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                     } else { value["nativePlayerUnavailable"]=json!(true); }
