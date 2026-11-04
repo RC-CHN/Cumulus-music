@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为产品树 `f84398ae`；总体流程及验证层级见
+本表基线为产品树 `7e621dfa`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -21,7 +21,7 @@
 | `$$SubWindow` (15) | `models/__SubWindow.txt` | [宿主](desktop-lyrics-contracts.txt) | 浮动歌词及部分子窗；远程 H5 和桌宠不是同一链路。 |
 | `@@dva` (1) | `models/__dva.txt` | [待逐动作](architecture.txt) | 官方框架内部动作；对照业务副作用，不要求移植 DVA。 |
 | `@bff:modelForNej` (2) | `models/_bff_modelForNej.txt` | [待逐动作](architecture.txt) | 官方框架桥；尚无完整调用方和作用映射。 |
-| `abtest` (18) | `models/abtest.txt` | [部分](official-pc-experiments.txt) | 已恢复完整 PC 请求顺序和网页分组；尚未替换各业务现有分组路径。 |
+| `abtest` (18) | `models/abtest.txt` | [部分](official-pc-experiments.txt) | 完整 PC 请求、网页分组和原生签名读取有隔离证据；尚未替换各业务路径。 |
 | `app` (54) | `models/app.txt` | [部分](window-lifecycle-contracts.txt) | 本机宿主和菜单；未覆盖每个 modal、原生回调或授权交接。 |
 | `assignedAudioEffect` (10) | `models/assignedAudioEffect.txt` | [部分](effects-directory-desktop.txt) | 已接已验证材料的授权和处理反馈；逐歌、设备完整图待核。 |
 | `async:action` (20) | `models/async_action.txt` | [待逐动作](catalog-navigation-ui-contracts.txt) | 部分资源有各自类型化入口；未完成统一派发器逐动作映射。 |
@@ -113,7 +113,7 @@
 | `page:vinylPage` (24) | `models/page_vinylPage.txt` | [部分](desktop-member-contracts.txt) | 会员权益、部分动态开通；无原生收银台/兑换。 |
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
 | `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、列表与移除；未对真实用户设备执行删除。 |
-| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；官方自动跳歌只有普通歌曲的只读预判，未接正式播放器控制。 |
+| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；普通歌曲来源预判、底栏跳歌命令及队尾规则有对照；未由正式播放器自动触发。 |
 | `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作、本地单行和普通在线歌单多选拖入；可显式重读过期歌单。同步、特殊队列和其他来源另验。 |
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | 设置逐项证据，系统相关和音效部分未完成。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |
