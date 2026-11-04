@@ -30,6 +30,7 @@ pub struct Server {
     pub song: Mutex<Value>,
     pub lyric: Mutex<Result<Value>>,
     pub play: Mutex<Result<Value>>,
+    pub follow_latest: Mutex<Value>,
     pub play_gate: Mutex<Option<Arc<PlaybackGate>>>,
     pub calls: Mutex<Vec<(String, Value)>>,
 }
@@ -49,6 +50,7 @@ impl Server {
                 "url":"https://m.test.music.126.net/online?auth=fixture","md5":"fixture",
                 "level":"standard","expi":120}]}))),
             play_gate: Mutex::new(None),
+            follow_latest: Mutex::new(json!([])),
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -84,6 +86,10 @@ impl Api for Server {
                         Ok(value) => value.clone(),
                         Err(_) => return Err(Error::Transport("synthetic online failure".into())),
                     }
+                }
+                "/api/sub/artist/new/works/song/playall" => {
+                    assert_eq!(payload, json!({}));
+                    json!({"code":200,"data":{"songList":self.follow_latest.lock().unwrap().clone()}})
                 }
                 "/api/v3/song/detail" => {
                     json!({"code":200,"songs":[self.song.lock().unwrap().clone()]})

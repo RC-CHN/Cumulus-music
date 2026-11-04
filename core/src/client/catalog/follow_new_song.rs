@@ -48,6 +48,7 @@ struct LatestSelection {
     revision: String,
     /// The visible result count is independent of the official playable filter.
     playable: Vec<TrackView>,
+    first: Option<TrackView>,
     first_playable: bool,
 }
 
@@ -286,19 +287,18 @@ impl MusicClient {
                 .ok_or(Error::State("latest revision exhausted"))?;
             Ok(state.started)
         })?;
-        let (tracks, playable, first_playable) = self
+        let (tracks, playable, first, first_playable) = self
             .session
             .run_for(&token, |api, _| async move {
                 let response = api.call(PLAY_ALL, json!({}), false, &[200]).await?;
                 let Some(songs) = response["data"]["songList"].as_array() else {
-                    return Ok((Vec::new(), Vec::new(), false));
+                    return Ok((Vec::new(), Vec::new(), None, false));
                 };
                 if songs.len() > LATEST_LIMIT {
                     return Err(Error::Response("oversized latest followed songs"));
                 }
-                let first_playable = songs
-                    .first()
-                    .is_some_and(|row| track(row).is_some() && online_playable(row));
+                let first = songs.first().and_then(track);
+                let first_playable = songs.first().is_some_and(online_playable) && first.is_some();
                 let mut seen = HashSet::new();
                 let playable = songs
                     .iter()
@@ -309,6 +309,7 @@ impl MusicClient {
                 Ok((
                     songs.iter().filter_map(track).collect(),
                     playable,
+                    first,
                     first_playable,
                 ))
             })
@@ -327,6 +328,7 @@ impl MusicClient {
                 token: token.clone(),
                 revision: revision.clone(),
                 playable,
+                first,
                 first_playable,
             });
             Ok(AccountData {
@@ -345,7 +347,8 @@ impl MusicClient {
         use crate::client::focus::Owner;
 
         let token = self.playlist_token(epoch)?;
-        let resources = {
+        let unavailable = || Error::State("the latest release's first song is unavailable");
+        let (first, first_playable, mut resources) = {
             let state = self
                 .follow_latest
                 .0
@@ -356,21 +359,80 @@ impl MusicClient {
                 .as_ref()
                 .filter(|s| s.token == token && s.revision == revision)
                 .ok_or(Error::StaleResponse)?;
-            if !loaded.first_playable {
-                return Err(Error::State(
-                    "the latest release's first song is unavailable",
-                ));
-            }
-            loaded
-                .playable
-                .iter()
-                .map(|view| {
-                    json!({"id":view.id,"level":quality.as_str(),"dt":view.duration_ms,
-                    "song":mapping::projected_song_metadata(view)})
-                })
-                .collect()
+            (
+                loaded.first.clone().ok_or_else(unavailable)?,
+                loaded.first_playable,
+                loaded
+                    .playable
+                    .iter()
+                    .map(|view| {
+                        json!({"id":view.id,"level":quality.as_str(),"dt":view.duration_ms,
+                        "song":mapping::projected_song_metadata(view)})
+                    })
+                    .collect::<Vec<_>>(),
+            )
         };
         let focus = self.focus.snapshot()?;
+        let observed_selection = self.player.selection.load(Ordering::Acquire);
+        let observed_fence = self
+            .player
+            .controller
+            .get()
+            .map(|controller| controller.snapshot())
+            .filter(|state| state.account == token)
+            .map(|state| state.fence());
+        let first_download = if first_playable {
+            None
+        } else {
+            let (task, path) = self
+                .follow_latest_download(epoch, &first.id)
+                .await?
+                .ok_or_else(unavailable)?;
+            let mut head = json!({"id":first.id,"download_task_id":task,
+                "path":path,"dt":first.duration_ms,"song":mapping::projected_song_metadata(&first)});
+            // Probe rights and file integrity before touching focus or queue.
+            // Use the existing actor's resolver when present; no engine needs
+            // to be initialized for a failed offline eligibility check.
+            use crate::{library::LocalLibrary, playback::source::SourceResolver};
+            let local_resolver;
+            let resolver = if let Some(controller) = self.player.controller.get() {
+                controller.source_resolver()
+            } else {
+                local_resolver = SourceResolver::new(
+                    self.session.clone(),
+                    Some(Arc::new(LocalLibrary::new(self.registry.store())?)),
+                );
+                &local_resolver
+            };
+            let verified = resolver
+                .resolve_follow_latest_download(&head, &token, &first.id)
+                .await;
+            self.session.check_generation(&token)?;
+            let source = match verified {
+                Ok(source) => source,
+                Err(Error::StaleResponse) => return Err(Error::StaleResponse),
+                Err(error)
+                    if matches!(
+                        error.root(),
+                        Error::Io(_)
+                            | Error::Media(_)
+                            | Error::State(_)
+                            | Error::DownloadedFileMissing
+                            | Error::MutationBusy
+                            | Error::Response("membership has not been refreshed for this account")
+                    ) =>
+                {
+                    return Err(unavailable());
+                }
+                Err(error) => return Err(error),
+            };
+            if let Some(quality) = source.actual_quality() {
+                head["level"] = quality.into();
+            }
+            resources.retain(|row| row["id"].as_str() != Some(first.id.as_str()));
+            resources.insert(0, head);
+            Some(source)
+        };
         let controller = self.player.controller().await?;
         let before = controller
             .command(&token, PlaybackCommand::Snapshot)
@@ -386,7 +448,13 @@ impl MusicClient {
             return Err(Error::State("latest releases require ordinary playback"));
         }
         let fence = before.fence();
+        if observed_fence.is_some_and(|observed| observed != fence) {
+            return Err(Error::StaleResponse);
+        }
         let (lease, attempt) = self.reserve_prepared_audio(&token, focus, || {
+            if self.player.selection.load(Ordering::Acquire) != observed_selection {
+                return Err(Error::StaleResponse);
+            }
             Ok(self.player.selection.fetch_add(1, Ordering::AcqRel) + 1)
         })?;
         self.finish_media_claim(&token, Owner::Audio, lease).await?;
@@ -399,7 +467,10 @@ impl MusicClient {
         let value = controller
             .command_guarded(
                 &token,
-                PlaybackCommand::ReplaceFollowLatest(resources),
+                PlaybackCommand::ReplaceFollowLatest {
+                    resources,
+                    first_download,
+                },
                 fence,
                 Cancellation::new(move || {
                     selection.load(Ordering::Acquire) == attempt

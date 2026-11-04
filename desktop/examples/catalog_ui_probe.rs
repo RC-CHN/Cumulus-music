@@ -78,6 +78,9 @@ fn main() {
         "comment read proof uses synthetic services only"
     );
     let follow_new_song = std::env::var("CUMULUS_FOLLOW_NEW_SONG_PROOF").as_deref() == Ok("1");
+    let follow_offline_head =
+        std::env::var("CUMULUS_FOLLOW_OFFLINE_HEAD_PROOF").as_deref() == Ok("1");
+    assert!(!follow_offline_head || follow_new_song);
     assert!(
         !follow_new_song || !is_live,
         "followed release proof uses synthetic services only"
@@ -117,7 +120,7 @@ fn main() {
         if artist_cards {catalog_fixture.artist_cards();}
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let comment_fixture=Arc::new(comment_read_fixture::Library::default());
-        let follow_new_song_fixture=Arc::new(follow_new_song_fixture::Library::new(collection_fixture.clone()));
+        let follow_new_song_fixture=Arc::new(follow_new_song_fixture::Library::new(collection_fixture.clone(),follow_offline_head));
         let history_fixture=Arc::new(history_fixture::Library::default());
         let settings_fixture=Arc::new(settings_fixture::Library::default());
         let relay_fixture=Arc::new(relay_fixture::Library::default());
@@ -129,7 +132,17 @@ fn main() {
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
         let client=MusicClient::with_session(session.clone(),registry);
         let client=if relay_publication {client.with_relay_publication()}else{client};
-        let client=if (relays || interactive || histories) && !is_live {let wave=relay_fixture::wave(&root)?;client.with_audio_factory(move||Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)))}else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
+        let offline_dir=root.join("follow-offline");
+        let follow_file=offline_dir.join("published-head.wav");
+        let follow_sample=root.join("relay-synthetic.wav");
+        let client=if (relays || interactive || histories) && !is_live {
+            let wave=relay_fixture::wave(&root)?;
+            if follow_offline_head {fs::create_dir(&offline_dir)?;}
+            client.with_audio_factory(move|| {
+                let audio=relay_fixture::NativeAudio::open(wave.clone())?;
+                Ok(Box::new(if follow_offline_head {audio.allow_download_directory(offline_dir.clone())} else {audio}))
+            })
+        }else{cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true)};
         app.manage(client);
         app.add_capability(r#"{"identifier":"ux-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let handle=app.handle().clone();
@@ -138,6 +151,9 @@ fn main() {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
             if follow_new_song && stage=="follow-new-song-allow-first" {
+                if follow_offline_head {
+                    follow_new_song_fixture::Library::seed_offline_head(&session,&follow_store,&follow_sample,&follow_file).unwrap();
+                }
                 follow_new_song_fixture.allow_first_page();
                 return;
             }

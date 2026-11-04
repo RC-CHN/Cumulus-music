@@ -34,7 +34,7 @@ impl Actor {
         if matches!(
             request.command,
             PlaybackCommand::UseMissingDownloadOnline { .. }
-                | PlaybackCommand::ReplaceFollowLatest(_)
+                | PlaybackCommand::ReplaceFollowLatest { .. }
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
@@ -167,7 +167,7 @@ impl Actor {
         if matches!(
             request.command,
             PlaybackCommand::Replace { .. }
-                | PlaybackCommand::ReplaceFollowLatest(_)
+                | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::Select(_)
                 | PlaybackCommand::Next
                 | PlaybackCommand::Previous
@@ -207,8 +207,11 @@ impl Actor {
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
             }
-            PlaybackCommand::ReplaceFollowLatest(resources) => self
-                .replace_follow_latest(resources)
+            PlaybackCommand::ReplaceFollowLatest {
+                resources,
+                first_download,
+            } => self
+                .replace_follow_latest(resources, first_download)
                 .await
                 .map(|value| options = value),
             PlaybackCommand::RestoreFm(value) => {

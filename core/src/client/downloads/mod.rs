@@ -235,6 +235,39 @@ impl MusicClient {
         .await
         .map_err(|_| Error::State("cloud file association worker stopped"))?
     }
+    /// Official trackMap is keyed by catalog song ID, never by title, voice,
+    /// cloud ID or a scanned file. For this header use the newest completed
+    /// publication for that exact song, and let the source resolver verify it.
+    pub(super) async fn follow_latest_download(
+        &self,
+        epoch: &str,
+        song: &str,
+    ) -> Result<Option<(String, std::path::PathBuf)>> {
+        use crate::download::service::DownloadOrigin;
+        let context = self.downloads.inner.context(epoch)?;
+        let song = song.to_owned();
+        tokio::task::spawn_blocking(move || {
+            context.guard()?;
+            let candidate = context
+                .service
+                .list()?
+                .into_iter()
+                .filter(|task| {
+                    task.origin == DownloadOrigin::Song
+                        && task.song_id == song
+                        && task.output_integrity.is_some()
+                        && task.playback_target().is_ok()
+                })
+                .max_by_key(|task| (task.completed_ms, task.created_ms, task.id.clone()))
+                .map(|task| Ok::<_, Error>((task.id.clone(), task.playback_target()?.to_owned())))
+                .transpose()?;
+            context.guard()?;
+            Ok(candidate)
+        })
+        .await
+        .map_err(|_| Error::State("download identity worker stopped"))?
+    }
+
     pub(super) async fn download_resources(
         &self,
         epoch: &str,

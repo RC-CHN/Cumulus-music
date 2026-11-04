@@ -210,7 +210,23 @@ impl SourceResolver {
         self.session.with_token(token, |_| Ok(()))?;
         outcome.map_err(Error::Shared)
     }
-    async fn local(&self, resource: Value, token: &SessionToken) -> Result<Arc<ResolvedSource>> {
+    /// Prepare only the already published account-owned catalog file. This
+    /// does not consult online URLs, import local matches or renew membership.
+    pub(crate) async fn resolve_follow_latest_download(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        song: &str,
+    ) -> Result<Arc<ResolvedSource>> {
+        self.local(resource.clone(), token, Some(song)).await
+    }
+
+    async fn local(
+        &self,
+        resource: Value,
+        token: &SessionToken,
+        catalog_song: Option<&str>,
+    ) -> Result<Arc<ResolvedSource>> {
         if self.session.token()? != *token {
             return Err(Error::StaleResponse);
         }
@@ -219,12 +235,27 @@ impl SourceResolver {
         let mut quality = None;
         let mut downloaded_gain = None;
         let mut download_recheck = None;
+        if catalog_song.is_some_and(|song| {
+            !resource["download_task_id"].is_string()
+                || resource["id"].as_str() != Some(song)
+                || resource.get("local_id").is_some()
+                || !resource["cloud_song_id"].is_null()
+                || !resource["voice_id"].is_null()
+        }) {
+            return Err(Error::State("catalog download identity changed"));
+        }
         if let Some(id) = resource.get("download_task_id") {
             let id = id
                 .as_str()
                 .ok_or(Error::InvalidInput("invalid download task reference"))?;
             let service = crate::download::service::DownloadService::new(self.session.clone())?;
             let task = service.get(id)?;
+            if catalog_song.is_some_and(|song| {
+                task.song_id != song
+                    || task.origin != crate::download::service::DownloadOrigin::Song
+            }) {
+                return Err(Error::State("catalog download identity changed"));
+            }
             let path = std::path::Path::new(
                 resource["path"]
                     .as_str()
@@ -246,6 +277,13 @@ impl SourceResolver {
                 }
                 other => other?,
             };
+            if catalog_song.is_some_and(|song| {
+                check.record.song_id != song
+                    || task.output_integrity.as_ref() != Some(&check.record.integrity)
+                    || task.encrypted != check.record.encrypted
+            }) {
+                return Err(Error::State("catalog download identity changed"));
+            }
             if check.record.task_id != id || !check.access.can_play || !check.integrity_verified {
                 return Err(Error::State("download is unavailable for this account"));
             }
@@ -354,7 +392,7 @@ impl SourceResolver {
         token: &SessionToken,
     ) -> Result<Arc<ResolvedSource>> {
         if resource.get("local_id").is_some() || resource.get("path").is_some() {
-            return self.local(resource.clone(), token).await;
+            return self.local(resource.clone(), token, None).await;
         }
         self.resolve_online(resource, token, false).await
     }

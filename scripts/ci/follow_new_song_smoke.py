@@ -15,6 +15,7 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--notifications', action='store_true')
+    parser.add_argument('--offline-head', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -27,6 +28,8 @@ def main():
                CUMULUS_UX_SCRIPT=str(script))
     if args.notifications:
         env['CUMULUS_FOLLOW_NOTICE_PROOF'] = '1'
+    if args.offline_head:
+        env['CUMULUS_FOLLOW_OFFLINE_HEAD_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -79,6 +82,14 @@ def main():
     assert repeated['playId'] == resumed['playId'] == playback['playId']
     assert resumed['position'] > repeated['position'] > playback['position']
     assert restarted['playId'] != playback['playId'] and restarted['track']['id'] == '1'
+    if args.offline_head:
+        assert playback['downloadTaskId'] and restarted['downloadTaskId'] == playback['downloadTaskId']
+        ids = [str(song) for batch in fixture['streamReads'] for song in
+               (json.loads(batch) if isinstance(batch, str) else batch)]
+        assert '1' not in ids, 'the offline head must never try streaming'
+        assert '2' in ids, 'the next track still uses normal online authorization'
+    else:
+        assert playback.get('downloadTaskId') is None
     assert len({stages[name]['nativePlayer']['queueRevision'] for name in
                 ('play_latest', 'repeat_playing', 'repeat_paused', 'repeat_after_next')}) == 4
     if args.screenshots:
@@ -87,6 +98,7 @@ def main():
         'ok': True, 'actualWebView': True, 'states': len(stages),
         'screenshots': len(stages) if args.screenshots else 0,
         'nativePlayback': 'libmpv/null', 'physicalAudioVerified': False,
+        'publishedOfflineHead': args.offline_head,
         'realMusicRequests': 0, 'remoteAccountWrites': 0,
         'syntheticNotificationWrites': len(fixture['notificationRequests']),
     }

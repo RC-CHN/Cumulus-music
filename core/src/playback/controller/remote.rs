@@ -1,29 +1,49 @@
-use super::{PlaybackStatus, RemotePlayback, load::LoadOptions, state::Actor};
+use super::{
+    PlaybackStatus, RemotePlayback,
+    load::{LoadOptions, LoadSource},
+    state::Actor,
+};
+use crate::playback::source::ResolvedSource;
 use crate::{Error, Result};
+use std::sync::Arc;
 
 impl Actor {
     pub(super) async fn replace_follow_latest(
         &mut self,
         mut resources: Vec<serde_json::Value>,
+        first_download: Option<Arc<ResolvedSource>>,
     ) -> Result<Option<LoadOptions>> {
         if self.queue.is_fm() || self.quality_task.is_some() {
             return Err(Error::MutationBusy);
         }
-        let first_id = resources
+        let first = resources
             .first()
-            .and_then(|item| item["id"].as_str())
+            .filter(|item| item["id"].is_string())
             .ok_or(Error::InvalidInput("missing first latest release"))?;
+        let first_id = first["id"].as_str().expect("checked first ID");
         // M/308 replaces the list, then retains or resumes the decoder when
-        // that same ordinary online song was already current. Other content
-        // types can share a numeric ID but never inherit this authorization.
+        // that same authorized source was already current. A downloaded
+        // exception must never retain an online decoder just by numeric ID.
         let retained = self
             .loaded
             .as_ref()
             .filter(|loaded| {
+                use crate::playback::engine::MediaInput;
+                let same_source = if let Some(source) = &first_download {
+                    self.independent_transport(&loaded.item)
+                        && loaded.item.resource["cloud_song_id"].is_null()
+                        && loaded.item.resource["voice_id"].is_null()
+                        && loaded.item.resource["download_task_id"] == first["download_task_id"]
+                        && loaded.item.resource["path"] == first["path"]
+                        && matches!((&loaded.source.input, &source.input),
+                            (MediaInput::File(a), MediaInput::File(b)) if a == b)
+                } else {
+                    self.ordinary_online_song(&loaded.item)
+                };
                 self.pending.is_none()
                     && self.state.active()
                     && self.queue.selected().as_ref() == Some(&loaded.item)
-                    && self.ordinary_online_song(&loaded.item)
+                    && same_source
                     && crate::protocol::api::identifier(&loaded.item.resource["id"])
                         .is_ok_and(|id| id == first_id)
             })
@@ -47,7 +67,10 @@ impl Actor {
             retained.as_ref().map(|(entry_id, _)| entry_id.clone()),
         )?;
         if retained.is_none() {
-            return Ok(Some(LoadOptions::default()));
+            return Ok(Some(LoadOptions {
+                source: first_download.map(LoadSource::Retained).unwrap_or_default(),
+                ..Default::default()
+            }));
         }
         // Keep actor identity aligned with the persisted replacement while
         // keeping the actual media, timeline, history and playback ID.

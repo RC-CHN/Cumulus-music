@@ -104,6 +104,160 @@ fn online_missing(view: &PlayerView) -> PlayerAction {
     }
 }
 
+async fn followed_header(client: &MusicClient) -> impl Fn() -> PlaySelection + use<> {
+    let value = serde_json::to_value(client.followed_new_song_latest("1").await.unwrap()).unwrap();
+    let revision = value["value"]["revision"].as_str().unwrap().to_owned();
+    move || PlaySelection::FollowLatest {
+        revision: revision.clone(),
+        quality: cumulus_core::membership::Quality::Standard,
+    }
+}
+
+#[tokio::test]
+async fn followed_latest_can_use_the_exact_published_song_without_online_rights() {
+    use cumulus_core::playback::controller::PlaybackStatus;
+    let f = Fixture::new();
+    let (id, completed) = f.completed().await;
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let online = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::Songs {
+                ids: vec!["123".into()],
+                index: 0,
+                quality: cumulus_core::membership::Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(online.download_task_id, None);
+    *f.api.follow_latest.lock().unwrap() = json!([
+        {"id":123,"name":"合成已下载首曲","dt":1000,"privilege":{"pl":0,"flag":0}}
+    ]);
+    let choice = followed_header(&f.client).await;
+    let local = f.client.play_selection("1", choice()).await.unwrap();
+    assert_eq!(local.download_task_id.as_deref(), Some(id.as_str()));
+    assert_ne!(
+        local.play_id, online.play_id,
+        "old online grant was not reused"
+    );
+    assert_eq!(local.state, PlaybackStatus::Playing);
+    assert_eq!(local.actual_quality.as_deref(), Some("lossless"));
+    assert_eq!(local.track.as_ref().unwrap().name, "合成已下载首曲");
+    let paused = f
+        .client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let repeated = f.client.play_selection("1", choice()).await.unwrap();
+    assert_eq!(repeated.state, PlaybackStatus::Playing);
+    assert_eq!(repeated.play_id, local.play_id);
+    assert_eq!(repeated.entry_id, local.entry_id);
+    assert_ne!(repeated.queue_revision, paused.queue_revision);
+    let before = f
+        .client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    // A corrupt same-name file must not trigger either an online retry or the
+    // next track. The previously authorized paused decoder stays attached.
+    fs::write(&path, b"corrupt replacement").unwrap();
+    assert!(matches!(
+        f.client.play_selection("1", choice()).await,
+        Err(Error::State(
+            "the latest release's first song is unavailable"
+        ))
+    ));
+    let after = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(after.state, PlaybackStatus::Paused);
+    assert_eq!(after.play_id, before.play_id);
+    assert_eq!(after.position, before.position);
+    assert_eq!(after.queue_revision, before.queue_revision);
+    assert_eq!(f.api.count("/api/song/enhance/player/url/v1"), 1);
+}
+
+#[tokio::test]
+async fn followed_latest_requires_a_current_encrypted_download_entitlement() {
+    use cumulus_core::{
+        download::offline::{OfflineLibrary, PublishedDownload},
+        media::{
+            integrity::inspect_file,
+            ncm::{NcmWriteOptions, write_file},
+        },
+        membership::Quality,
+    };
+    let f = Fixture::new();
+    f.api.resource.lock().unwrap()["flag"] = json!(0);
+    let (plain, completed) = f.completed().await;
+    let membership = "/api/music-vip-membership/client/vip/info";
+    assert_eq!(
+        f.api.count(membership),
+        0,
+        "fixture starts without a renewal"
+    );
+    assert!(f.store.get("1", "membership", "current").unwrap().is_none());
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let encrypted = path.with_file_name("published-ncm.ncm");
+    write_file(&path, &encrypted, NcmWriteOptions::default()).unwrap();
+    let token = f.session.token().unwrap();
+    let offline = OfflineLibrary::new(f.session.clone()).unwrap();
+    let integrity = inspect_file(&encrypted).unwrap();
+    let song = json!({"id":123,"name":"合成会员下载","dt":1000,"privilege":{"fee":1,"flag":4}});
+    let resource = json!({"id":123,"level":"lossless","fee":1,"flag":4,"payed":0});
+    let record = offline
+        .register(
+            &token,
+            &PublishedDownload {
+                task_id: plain.clone(),
+                song_id: "123".into(),
+                requested_quality: Quality::Lossless,
+                target: encrypted.clone(),
+                song: song.clone(),
+                resource: resource.clone(),
+                encrypted: true,
+                integrity: integrity.clone(),
+            },
+        )
+        .unwrap();
+    let mut task = f
+        .store
+        .get("1", "download_tasks_v1", &plain)
+        .unwrap()
+        .unwrap();
+    task["target"] = json!(record.path);
+    task["encrypted"] = json!(true);
+    task["song"] = song;
+    task["resource"] = resource;
+    task["output_integrity"] = json!(integrity);
+    f.store
+        .put("1", "download_tasks_v1", &plain, &task)
+        .unwrap();
+    *f.api.follow_latest.lock().unwrap() = json!([
+        {"id":123,"name":"合成会员下载","dt":1000,"privilege":{"pl":0,"flag":0}}
+    ]);
+    let choice = followed_header(&f.client).await;
+    let denial = f
+        .client
+        .play_selection("1", choice())
+        .await
+        .err()
+        .expect("unlicensed file");
+    assert!(
+        matches!(
+            denial,
+            Error::State("the latest release's first song is unavailable")
+        ),
+        "{denial:?}"
+    );
+    assert_eq!(f.api.count(membership), 0);
+    offline.refresh_membership(&token).await.unwrap();
+    let local = f.client.play_selection("1", choice()).await.unwrap();
+    assert_eq!(local.download_task_id.as_deref(), Some(plain.as_str()));
+    assert_eq!(f.api.count(membership), 1);
+    assert_eq!(f.api.count("/api/song/enhance/player/url/v1"), 0);
+}
+
 #[tokio::test]
 async fn a_missing_published_file_only_uses_fresh_online_rights_after_explicit_action() {
     use cumulus_core::playback::controller::PlaybackStatus;

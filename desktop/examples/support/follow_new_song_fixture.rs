@@ -1,9 +1,21 @@
 use cumulus_core::{
-    Error,
+    Error, Result,
+    account::AccountSession,
+    download::{
+        offline::{OfflineLibrary, PublishedDownload},
+        service::{
+            DownloadDestination, DownloadOptions, DownloadPhase, DownloadService, DownloadStatus,
+        },
+    },
+    media::integrity::inspect_file,
     protocol::api::{Api, ApiFuture},
+    storage::StateStore,
 };
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 use tokio::sync::Notify;
 
 const LIST: &str = "/api/sub/artist/new/works/song-mv/list/v2";
@@ -16,18 +28,67 @@ pub struct Library {
     base: Arc<dyn Api>,
     calls: Mutex<Vec<(String, Value)>>,
     first_release: Notify,
+    offline_head: bool,
 }
 impl Library {
-    pub fn new(base: Arc<dyn Api>) -> Self {
+    pub fn new(base: Arc<dyn Api>, offline_head: bool) -> Self {
         Self {
             base,
             calls: Mutex::default(),
             first_release: Notify::new(),
+            offline_head,
         }
     }
     pub fn allow_first_page(&self) {
         self.first_release.notify_one();
     }
+    pub fn seed_offline_head(
+        session: &Arc<AccountSession>,
+        store: &StateStore,
+        sample: &Path,
+        target: &Path,
+    ) -> Result<()> {
+        let token = session.token()?;
+        let mut task = DownloadService::new(session.clone())?.create(
+            &json!(1),
+            DownloadDestination::Path {
+                path: target.to_owned(),
+            },
+            DownloadOptions::default(),
+        )?;
+        std::fs::copy(sample, target)?;
+        let song = song(1, "合成最新播放", 0);
+        let resource = json!({"id":1,"level":"standard"});
+        let integrity = inspect_file(target)?;
+        let record = OfflineLibrary::new(session.clone())?.register(
+            &token,
+            &PublishedDownload {
+                task_id: task.id.clone(),
+                song_id: task.song_id.clone(),
+                requested_quality: task.options.quality,
+                target: target.to_owned(),
+                song: song.clone(),
+                resource: resource.clone(),
+                encrypted: false,
+                integrity: integrity.clone(),
+            },
+        )?;
+        task.status = DownloadStatus::Complete;
+        task.phase = DownloadPhase::Complete;
+        task.target = Some(record.path);
+        task.output_integrity = Some(integrity);
+        task.song = Some(song);
+        task.resource = Some(resource);
+        let owner = token.uid.ok_or(Error::State("missing fixture account"))?;
+        store.put(
+            &owner,
+            "download_tasks_v1",
+            &task.id,
+            &serde_json::to_value(&task)?,
+        )?;
+        Ok(())
+    }
+
     pub fn report(&self) -> Value {
         let calls = self.calls.lock().unwrap();
         let first: Vec<_> = calls
@@ -40,6 +101,8 @@ impl Library {
                 .map(|(_, value)| &value["startTimestamp"]).collect::<Vec<_>>(),
             "playAllReads":calls.iter().filter(|(path, _)| path == LATEST).count(),
             "songDetailReads":calls.iter().filter(|(path, _)| path == "/api/v3/song/detail").count(),
+            "streamReads":calls.iter().filter(|(path, _)| path == "/api/song/enhance/player/url/v1")
+                .map(|(_, value)| &value["ids"]).collect::<Vec<_>>(),
             "expectedNextCursor": NEXT_TIME,
             "notificationRequests": calls.iter().filter(|(path, _)| path == SWITCH)
                 .map(|(_, value)| value).collect::<Vec<_>>(),
@@ -72,7 +135,7 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if ![LIST, LATEST, SWITCH].contains(&path) {
-                if path == "/api/v3/song/detail" {
+                if ["/api/v3/song/detail", "/api/song/enhance/player/url/v1"].contains(&path) {
                     self.calls
                         .lock()
                         .unwrap()
@@ -105,8 +168,14 @@ impl Api for Library {
                 } else {
                     let mut denied = song(5, "无权歌曲", 0);
                     denied["privilege"] = json!({"pl":0,"flag":0});
-                    json!({"code":200,"data":{"songList":[song(1,"合成最新播放",0),denied,
-                        song(2,"合成下一首",0),song(1,"重复歌曲",0)]}})
+                    let mut head = song(1, "合成最新播放", 0);
+                    if self.offline_head {
+                        head["privilege"] = json!({"pl":0,"flag":0});
+                    }
+                    json!({"code":200,"data":{"songList":[head,denied,
+                        song(2,"合成下一首",0),if self.offline_head {
+                            json!({"id":1,"name":"重复歌曲","privilege":{"pl":0,"flag":0}})
+                        } else {song(1,"重复歌曲",0)}]}})
                 });
             }
             let start = payload["startTimestamp"]

@@ -169,7 +169,10 @@ pub enum PlaybackCommand {
     RepairQuality,
     UpdateQueue(QueueUpdate),
     /// Explicit play-all with the recovered /newSongPublish first-track rule.
-    ReplaceFollowLatest(Vec<Value>),
+    ReplaceFollowLatest {
+        resources: Vec<Value>,
+        first_download: Option<std::sync::Arc<crate::playback::source::ResolvedSource>>,
+    },
     RestoreFm(FmRestore),
     Intelligence(IntelligenceUpdate),
     ApplyRemote(RemotePlayback),
