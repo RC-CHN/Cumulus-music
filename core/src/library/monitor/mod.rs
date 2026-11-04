@@ -156,11 +156,21 @@ impl Inner {
                 Ok(s) if !s.stopped => s.epoch,
                 _ => return,
             };
-            if let Err(error) = self.run_once() {
-                self.emit(WatchEvent::Error {
-                    message: error.to_string(),
-                });
-            }
+            let delay = match self.run_once() {
+                // A competing library mutation can defer a scan. Once it
+                // releases the index, don't wait a whole monitoring period
+                // to process the pending request.
+                Ok(roots) if roots.iter().any(|root| root.status == WatchStatus::Pending) => {
+                    self.interval.min(Duration::from_secs(1))
+                }
+                Ok(_) => self.interval,
+                Err(error) => {
+                    self.emit(WatchEvent::Error {
+                        message: error.to_string(),
+                    });
+                    self.interval
+                }
+            };
             let signal = match self.signal.lock() {
                 Ok(s) => s,
                 Err(_) => return,
@@ -171,7 +181,7 @@ impl Inner {
             if signal.epoch == epoch
                 && self
                     .wake
-                    .wait_timeout_while(signal, self.interval, |s| !s.stopped && s.epoch == epoch)
+                    .wait_timeout_while(signal, delay, |s| !s.stopped && s.epoch == epoch)
                     .is_err()
             {
                 return;

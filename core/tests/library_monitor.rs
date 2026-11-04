@@ -2,10 +2,10 @@ use cumulus_core::{
     Error, Result,
     library::{
         AudioMetadata, ListOptions, LocalLibrary,
-        monitor::{LibraryMonitor, WatchStatus},
+        monitor::{LibraryMonitor, WatchEvent, WatchStatus},
         probe::{AudioProbe, parse_ffprobe_response},
     },
-    storage::StateStore,
+    storage::{OperationLock, StateStore},
 };
 use serde_json::json;
 use std::{
@@ -154,6 +154,23 @@ fn wait_until(mut predicate: impl FnMut() -> bool) {
         );
         thread::sleep(Duration::from_millis(10));
     }
+}
+
+#[test]
+fn pending_scan_retries_after_index_contention_before_normal_poll() {
+    let (_tmp, root, store, library, _) = setup();
+    std::fs::write(root.join("pending.wav"), "3").unwrap();
+    let monitor = LibraryMonitor::new(library.clone(), Duration::from_secs(30)).unwrap();
+    monitor.watch(&root).unwrap();
+    let events = monitor.subscribe().unwrap();
+    let held = OperationLock::acquire(store.directory(), "local", "library-index").unwrap();
+    monitor.start().unwrap();
+    let event = events.recv_timeout(Duration::from_secs(3)).unwrap();
+    assert!(matches!(event, WatchEvent::Root { root } if root.status == WatchStatus::Pending));
+    drop(held);
+    wait_until(|| monitor.roots().unwrap()[0].status == WatchStatus::Ready);
+    assert_eq!(library.list(ListOptions::default()).unwrap().len(), 1);
+    monitor.stop().unwrap();
 }
 #[test]
 fn background_polling_start_stop_restart_and_bounded_events_converge() {
