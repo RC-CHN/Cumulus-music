@@ -31,6 +31,12 @@ async fn style_tag_intent_journals_before_send_and_reopened_client_never_replays
     let pending = client.style_tag_operations("1").unwrap().value;
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].phase, StyleTagPhase::Pending);
+    assert!(
+        client
+            .restore_style_recommendations("1", &revision, None)
+            .unwrap()
+            .is_none()
+    );
     save.abort();
     assert!(save.await.err().unwrap().is_cancelled());
 

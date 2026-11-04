@@ -170,3 +170,79 @@ async fn replacing_feed_or_account_rejects_old_seed_and_an_inflight_result() {
     ));
     assert_eq!(api.calls().len(), 3);
 }
+
+#[tokio::test]
+async fn back_reactivates_the_matching_seed_without_a_read_and_retires_old_playback_revision() {
+    let root = tempfile::tempdir().unwrap();
+    let api = Arc::new(ScriptApi::new([
+        json!({"code":200,"data":{"items":[
+            card("First","1",2,"",json!([81,82])),
+            card("Second","2",3,"",json!([91]))
+        ]}}).into(),
+        json!({"code":200,"data":{"dailySongs":[{"id":81},{"id":82}],"tags":{
+            "categoryId":1,"categoryName":"Old category","tagVOList":[{"tagId":2,"tagName":"Old tag"}]
+        }}}).into(),
+        json!({"code":200,"data":{"dailySongs":[{"id":91}]}}).into(),
+    ]));
+    let (client, session) = client(api.clone(), root.path());
+    let feed = serde_json::to_value(client.style_home_seeds("1").await.unwrap()).unwrap();
+    let a = handle(&feed["value"], 0);
+    let b = handle(&feed["value"], 1);
+    let old = client
+        .seeded_style_recommendations("1", a.clone())
+        .await
+        .unwrap()
+        .value;
+    let old_revision = old.revision.as_deref().unwrap();
+    client
+        .seeded_style_recommendations("1", b.clone())
+        .await
+        .unwrap();
+    assert!(
+        client
+            .restore_style_recommendations("1", old_revision, Some(&b))
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        client
+            .restore_style_recommendations("1", old_revision, None)
+            .unwrap()
+            .is_none()
+    );
+    let restored = client
+        .restore_style_recommendations("1", old_revision, Some(&a))
+        .unwrap()
+        .unwrap()
+        .value;
+    assert_ne!(restored.revision, old.revision);
+    assert_eq!(
+        restored
+            .tracks
+            .iter()
+            .map(|row| row.id.as_str())
+            .collect::<Vec<_>>(),
+        ["81", "82"]
+    );
+    assert_eq!(restored.style_tags.as_ref().unwrap().name, "Old category");
+    assert!(
+        client
+            .restore_style_recommendations("1", old_revision, Some(&a))
+            .unwrap()
+            .is_none()
+    );
+    session
+        .adopt(api.clone(), json!({"userId":2}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(
+        client.restore_style_recommendations("1", restored.revision.as_deref().unwrap(), Some(&a)),
+        Err(Error::StaleResponse)
+    ));
+    assert!(
+        client
+            .restore_style_recommendations("2", restored.revision.as_deref().unwrap(), Some(&a))
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(api.calls().len(), 3);
+}

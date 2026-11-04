@@ -156,3 +156,32 @@ async fn prior_epoch_is_rejected_and_pending_result_does_not_cross_logout() {
     .unwrap();
     assert!(matches!(reading.await.unwrap(), Err(Error::StaleResponse)));
 }
+
+#[tokio::test]
+async fn restoring_a_visible_version_fences_an_inflight_refresh_without_fetching() {
+    let root = tempfile::tempdir().unwrap();
+    let (pending, release) = gate();
+    let api = Arc::new(ScriptApi::new([
+        json!({"code":200,"data":{"dailySongs":[{"id":61}]}}).into(),
+        pending,
+    ]));
+    let (client, _) = client(api.clone(), root.path());
+    let original = client.style_recommendations("1").await.unwrap().value;
+    let refresh = tokio::spawn({
+        let client = client.clone();
+        async move { client.style_recommendations("1").await }
+    });
+    api.wait_for_calls(2).await;
+    let restored = client
+        .restore_style_recommendations("1", original.revision.as_deref().unwrap(), None)
+        .unwrap()
+        .unwrap()
+        .value;
+    assert_eq!(restored.revision, original.revision);
+    assert_eq!(restored.tracks[0].id, "61");
+    release
+        .send(Ok(json!({"code":200,"data":{"dailySongs":[{"id":62}]}})))
+        .unwrap();
+    assert!(matches!(refresh.await.unwrap(), Err(Error::StaleResponse)));
+    assert_eq!(api.calls().len(), 2);
+}

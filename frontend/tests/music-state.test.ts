@@ -713,3 +713,32 @@ test('seeded style routes keep the opaque seed scoped to one account and do not 
     ['seeded', '1', seed],
   ]);
 });
+
+test('late style Back lookup cannot fetch or replace another page', async () => {
+  const restored = deferred<AccountData<TrackPage> | null>();
+  const calls: string[] = [];
+  const music = useMusic(
+    backend({
+      styleRecommendations: async () => {
+        calls.push('fresh');
+        return data({ ...page, revision: 'style-1' });
+      },
+      restoreStyleRecommendations: async (epoch, revision, seed) => {
+        assert.deepEqual([epoch, revision, seed], ['1', 'style-1', null]);
+        calls.push('back');
+        return restored.promise;
+      },
+    }),
+  );
+  await music.bootstrap();
+  music.navigate({ kind: 'style_recommendations' });
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  music.navigate({ kind: 'settings' });
+  music.back();
+  music.navigate({ kind: 'daily' });
+  restored.resolve(null);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.deepEqual(calls, ['fresh', 'back']);
+  assert.deepEqual(music.page.value, { kind: 'daily' });
+  assert.equal(music.result.value?.revision, null);
+});
