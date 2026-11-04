@@ -1,0 +1,63 @@
+普通视频与 MV：官方 Windows PC 3.1.42.205594 的已恢复边界
+2026-11-04。结论：恢复了普通视频的识别、卡片和路由；本版已解包桌面路径没有
+提供一条可证明的普通视频播放授权链。现有普通视频卡片保留展示边界，未接新播放功能。
+
+资源与路由
+- recovered-js/modules/hybrid_app.chunk.1482700000000.js/15.js:3700–3717：
+  /api/mlog/artist/video 用 artistId、tab、order 和 page JSON 读歌手视频卡片；
+  响应 data.records 经 M21 V 转换，页游标来自 data.page。
+- M21:242–244,625–679：resource.mlogBaseData.type=2 是普通 video，3 是 mv；
+  输入显式 isMv 真值走 MV 优先分支。记录 ID 来自 String(c.id || "")，
+  不按数字外观推断资源种类。标题/封面/时长/计数/关联歌曲是卡片资料；
+  shareUrl 是分享地址，普通视频没有在这个转换中取得可播放授权地址。
+- hybrid_38/3088.js:2953–2959,2980–3018 将歌手“视频”数据交给 M2093；
+  hybrid_38/2093.js:141–170 以及 hybrid_41/2093.js:141–170 将普通视频标记
+  为 ResourceType.video，MV 标记为 ResourceType.mv，但两者的卡片跳转路径都为
+  /videoDetail/{id}，没有类型后缀。hybrid_73/3085.js:1037–1040 的缺省 Action.link
+  也如此。路由状态的 resourceType 不能代替路径 type。
+- M205:230–234 注册 /videoDetail/:id/:type?，挂 M3098 和 page:videoDetail M3158。
+  hybrid_49/3098.js:2533–2561、2605–2614：路径省略 type 时默认 "mv"；只有
+  type === "mv" 才 dispatch getDetail({id,type:"2"}) 并渲染 De（MV 播放器）。
+  路径显式写 /video 或 /2 不会读取详情，也不挂播放器。普通卡片默认跳转只会
+  进入 MV 分支；这本身不是普通视频授权成功。M308:5831–5859 的顶栏联动甚至
+  用十进制 /videoDetail/{id} 正则；不能据此改写普通视频的不透明 ID。
+
+详情、权限和边界
+- hybrid_153/3158.js:11–14,146–213,251–309：详情调用 M15.Qd；
+  M15:271–274,1986–2001 的 Qd 用 /api/mlog/detail/v1，且在归一化前强制设置
+  isMv:true。这里请求的字符串 type:"2" 与列表里的数字 mlogBaseData.type=2
+  是两层语义；把普通视频结果喂给 Qd 会强行投影为 MV，不能证明原资源变成 MV。
+- hybrid_49/3098.js:1569–1603,1878–1890：从 MV 详情/清晰度/收费状态选择 MV
+  播放；M3158 先处理 MV 下架、本账号完成下载，才调用 M15.Bg
+  POST /api/song/enhance/play/mv/url {id,r}。成功地址再过 getP2PUrl；
+  M4:14733–14740 仅把已经获得的地址交给 app.getP2PUrl，不根据普通视频 ID 授权。
+  M74/3120.js:253–265 的评论资源卡显式跳过 ResourceType.video；
+  M41/334.js:144–179 另一个 Qd 调用也读取 MV 下载档位和权限。
+- M15:2096–2097 的 /api/cloudvideo/video/sub、/unsub 是普通视频的收藏变更，
+  不是播放。M15:4853–4865 的 videoUrl 来自歌曲播放器的展示位资源；
+  M182:7183–7287 的 page_pc_videoplay 是无版权歌曲替代 MV；
+  hybrid_113/3083.js:6448–6475,7397 是广告视频。都不能当作普通视频授权来源。
+- 本次对已解包 pub 的静态 JS 扫描检得 cloudvideo/video/sub、unsub、mlog/artist/video、
+  mlog/detail/v1、mlog/mycollect/bytime/get、search/mlog/get；未找到独立普通视频
+  detail→play URL 连接。x86 与 x64 redist_packages/cloudmusic.exe、cloudmusic.dll 的
+  ASCII/UTF-16LE 明文端点扫描也无新的命中。这只是对指定材料的阴性扫描，
+  不排除动态计算、未解开的制品、其它客户端或服务现有普通视频链路。
+- 当前 Rust 的 core/src/catalog/metadata/media.rs 保留普通视频 ID 与种类，仅明确 MV
+  才导出十进制 mv_id；frontend/src/components/catalog/CatalogCards.vue 仅把 mv_id
+  接到 MV 播放。没有改动这两个边界，也没有用其它客户端猜测播放路径。
+
+可复现离线取证
+  node scripts/research/audit_pc_video_route.cjs \
+    references/netease-3.1.42.205594-analysis/recovered-js/modules
+
+脚本只执行已锁定 SHA-256 的恢复模块/函数片段。用合成资源重放 M21、两份
+M2093、Action.link、M3098 和 M3158：opaque ID 完整保留，同一十进制外观也不能
+改变资源类型；默认普通视频路由触发 MV 详情和播放器，显式普通后缀没有调用；
+驱动恢复的详情/播放状态机时只捕获上述两个 MV 请求。403 是明示的合成传输回包，
+不代表真实上游拒绝、授权机制破解或视频已播放。没有联网、运行官方 EXE、读取账号、
+触发收藏或把探针纳入公开 CI。2026-11-04 实际执行通过，结果：
+.build/ui-proof/ordinary-video-pc-recovery-20261104/report.json。
+
+仍需取得可归因到普通 video 的授权入口、请求 ID 规则、权限判定、回包与请求资源的
+对应关系、时效/必要请求头以及真实拒绝边界；之后才可复用与业务无关的原生解码器，
+用独立普通视频类型做无外网 GUI 合成回归。当前没有足够证据编写那个业务适配。
