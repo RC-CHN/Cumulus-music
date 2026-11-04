@@ -79,6 +79,8 @@
 - [换肤](desktop-decoration-contracts.txt)支持默认、经典红、酷炫黑及自定义按钮颜色。明确应用后跨进程恢复。登录后的在线目录只读，预览须明确点击，原始地址不进入前端；远程应用、购买、挂件和音乐桌面仍未接入。
 - [最近播放记录](play-history-contracts.txt)的设置开关在本机按账号保存，首次关闭须确认。关闭只隐藏多端记录，重新开启后可合并；开关本身不请求或删除历史。
 - [识曲原生身份构造](song-recognition-native-identity.txt)有官方合成对照。普通请求身份不会代用识曲的原生字段；未接真实授权、设备采集或生产请求。
+- [识曲请求授权](song-recognition-authority.txt)区分官方 CEF 的匿名、登录和结果权限三条链；现有 Interface/PC 凭据不扩到独立识曲域，未开启真实发送。
+- [响度标准化](loudness-contracts.txt)与已授权的 GEQ/PEQ 同时使用时，播放中开关在受信适配器上更新已有节点；换曲隔离旧增益。Linux 原生滤镜链有合成 PCM 对照，Windows 实机及物理声卡不以此代验。
 - [福利活动和 WPS](member-welfare-cooperation-audit.txt)各有官方入口、请求与写入契约。福利只读入口仅向服务分组确认且有效列表非空的当前账号显示；切号拒绝旧回包。未启用动态跳转、领取或 WPS 合作流程。
 - [Linux 图形回退](ui-rendering-validation.txt)的软件配置保留合成；X11 强制共享内存，Wayland 由宿主协商。X11 实际绘制导入弹窗，物理 Wayland 实际验证默认和 GPU/SHM 超时后成功回退。Windows 行为与设备限制不变。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
