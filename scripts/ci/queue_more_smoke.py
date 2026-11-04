@@ -136,12 +136,59 @@ def verify_stages(output, case, screenshots):
     return len(states)
 
 
+def verify_marker_reorder(output, screenshots):
+    reordered = ['1', '51', '52', '53', '2']
+    cases = [
+        ('drag_initial', APPENDED, ['51', '52', '53']),
+        ('drag_ordinary_crossed', reordered, ['51', '52', '53']),
+        ('drag_exact_divider', reordered, ['52', '53']),
+    ]
+    previous = None
+    play_id = None
+    for index, (label, expected_ids, recommendations) in enumerate(cases, 1):
+        path = output / f'ux_{index:02}_{label}.json'
+        row = read(path)
+        native, queue = row['nativePlayer'], row['nativeQueue']
+        entries = {t['track']['id']: t['entryId'] for t in queue['tracks']}
+        assert list(entries) == expected_ids and native['queueLen'] == len(entries), label
+        assert queue['current'] == native['entryId'] == entries['1'], label
+        assert queue['revision'] == native['queueRevision'] and row['model'] == queue['moreRecommendations'], label
+        assert [t['track']['id'] for t in queue['tracks'] if t['moreRecommendation']] == recommendations, label
+        assert queue['moreRecommendations']['separatorBefore'] == row['anchor'] == entries[recommendations[0]], label
+        badges = {r['entryId'] for r in row['rows'] if r['badge']}
+        assert badges == {entries[id] for id in recommendations} and row['drawerOpen'], label
+        play_id = play_id or native['playId']
+        assert native['playId'] == row['playId'] == play_id and native['state'] == 'paused', label
+        assert abs(native['position'] - 3) < .25 and not native['error'], label
+        assert row['sourceAudio']['loads'] == 1, (label, row['sourceAudio'])
+        reads = row['syntheticQueueMore']['requests']
+        assert len(reads) == 2, label
+        assert_requests(reads, 'marker_reorder')
+        actions = row['dragActions']
+        assert len(actions) == index - 1, label
+        if previous is not None:
+            edit = actions[-1]
+            assert edit['expectedRevision'] == previous and queue['revision'] != previous, label
+            moved_id, offset = ('2', 5) if index == 2 else ('51', 1)
+            assert edit['edit'] == {
+                'kind': 'move', 'entry_ids': list(entries.values()),
+                'movement': {'entry_ids': [entries[moved_id]], 'offset': offset},
+            }, label
+        previous = queue['revision']
+        if label == 'drag_exact_divider':
+            assert abs(row['dividerHitOffset']) < 2, label
+        if screenshots:
+            assert path.with_suffix('.png').is_file(), label
+    return len(cases)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--marker-reorder', action='store_true', help='run only the native divider drag cases')
     parser.add_argument('--screenshots', action='store_true', help='optional Linux GTK captures on X11')
     args = parser.parse_args()
     if args.screenshots:
@@ -157,7 +204,7 @@ def main():
     script = (Path(__file__).resolve().parents[2] / 'desktop/examples/queue_more_ui_probe.js').read_text(encoding='utf-8')
     states = 0
     locale_observed = {}
-    for name in CASES:
+    for name in (['marker_reorder'] if args.marker_reorder else CASES):
         control = name == 'control'
         case = root / name
         case.mkdir()
@@ -188,7 +235,8 @@ def main():
         complete = read(output / 'complete.json')
         assert complete['ok'] and complete['testCase'] == name
         assert complete['realMusicRequests'] == complete['accountWrites'] == 0
-        count = verify_stages(output, name, args.screenshots)
+        count = (verify_marker_reorder(output, args.screenshots) if args.marker_reorder
+                 else verify_stages(output, name, args.screenshots))
         assert complete['stageCount'] == count
         assert_requests(complete['syntheticQueueMore']['requests'], name)
         expected_reads = 4 if name == 'assigned' else 0 if control else 2
@@ -196,6 +244,8 @@ def main():
         actions = [item['kind'] for item in complete['actionCalls']]
         if name == 'assigned':
             assert actions[0] == 'queue_more_opened' and actions.count('queue_more_toggle') == 3
+        elif args.marker_reorder:
+            assert actions == ['queue_more_opened'] and len(complete['dragActions']) == 2
         else:
             assert not actions
         states += count
@@ -207,10 +257,14 @@ def main():
                 assert expected.lower() not in {'c', 'posix'}, 'run with a non-C GUI locale'
                 assert observed[key].casefold().replace('-', '') == expected.casefold().replace('-', ''), observed
             locale_observed[name] = observed
-    report = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, nativeEof=True,
-                  controlledExperiment=True, automaticTail=True, lateTailStayedEnded=True, locales=locale_observed, states=states, screenshots=states if args.screenshots else 0,
-                  syntheticApi=True, realMusicRequests=0, realAccountWrites=0,
-                  physicalDisplayVerified=False, physicalAudioOutputVerified=False)
+    report = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, locales=locale_observed,
+                  states=states, screenshots=states if args.screenshots else 0, syntheticApi=True,
+                  realMusicRequests=0, realAccountWrites=0, physicalDisplayVerified=False,
+                  physicalAudioOutputVerified=False)
+    if args.marker_reorder:
+        report.update(markerReorder=True, syntheticPointerEvents=True)
+    else:
+        report.update(nativeEof=True, controlledExperiment=True, automaticTail=True, lateTailStayedEnded=True)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

@@ -39,7 +39,7 @@
   const entryFor = (q, id) => q.tracks.find((row) => String(row.track.id) === id)?.entryId;
   const row = (entry) => all('.queue-row[data-entry-id]').find((el) => el.dataset.entryId === entry);
   let stageCount = 0, fixtureSequence = 0, last = 'startup', client, epoch, initialPlayId;
-  const actionCalls = [];
+  const actionCalls = [], dragActions = [];
   window.__queueMoreFixtureAck = {};
   async function fixture(mode) {
     const sequence = ++fixtureSequence;
@@ -88,7 +88,7 @@
     input.value = '29.2';
     input.dispatchEvent(new Event('change', { bubbles: true }));
   }
-  async function capture(label) {
+  async function capture(label, snapshot = {}) {
     last = label;
     await sleep(250);
     const p = panel();
@@ -116,7 +116,7 @@
       position: Number(bar().dataset.position), model: q.moreRecommendations,
       rows: allRows.map((n) => ({ entryId: n.dataset.entryId, height: rect(n).height, badge: !!n.querySelector('[data-queue-more-badge]') })),
       toggle: toggle()?.getAttribute('aria-checked') ?? null, anchor: anchor?.dataset.entryId ?? null,
-      actionCalls: actionCalls.slice(), initialPlayId,
+      actionCalls: actionCalls.slice(), dragActions: dragActions.slice(), initialPlayId, ...snapshot,
       captureHandshake: true,
       paintSamples: p ? [{ x: r.left + 4, y: r.top + 4, color: getComputedStyle(p).backgroundColor }] : [],
     });
@@ -135,6 +135,63 @@
       const state = await fixture('read');
       return count(state, '/rcmd/song') === recommends && count(state, '/enhance/privilege') === privileges;
     }, 'recommendation/privilege calls: ' + recommends + '/' + privileges);
+  }
+  const pointer = (node, type, x, y) => node.dispatchEvent(new PointerEvent(type, {
+    pointerId: 42, pointerType: 'mouse', button: 0, buttons: type === 'pointerup' ? 0 : 1,
+    clientX: x, clientY: y, bubbles: true, cancelable: true,
+  }));
+  async function drop(entry, targetY) {
+    const node = row(entry)?.querySelector('.queue-song');
+    assert(node && !node.disabled, 'visible drag source');
+    node.focus({ preventScroll: true });
+    const r = rect(node), x = r.left + 15;
+    pointer(node, 'pointerdown', r.left + 8, r.top + 12);
+    pointer(document, 'pointermove', x, targetY);
+    await wait(() => one('.queue-drag-hint') && one('.queue-drop-marker'), 'native queue drag preview');
+    const marker = rect(one('.queue-drop-marker'));
+    pointer(document, 'pointerup', x, targetY);
+    await wait(() => !one('.queue-drag-hint') && !button('清空', panel()).disabled, 'queue drag committed');
+    return marker;
+  }
+  const recommendationIds = (queue) => queue.tracks.filter((row) => row.moreRecommendation)
+    .map((row) => row.track.id).join(',');
+  async function markerReorder() {
+    await pause();
+    await seek(3);
+    await open();
+    await wait(async () => ids(await queue()).join(',') === '1,2,51,52,53' && !!divider(), 'drag queue initialized');
+    await waitCounts(1, 1);
+    const original = await queue();
+    assert(recommendationIds(original) === '51,52,53', 'three initial recommendations');
+    await capture('drag_initial');
+
+    const bottom = rect(row(entryFor(original, '53'))).bottom - 8;
+    await drop(entryFor(original, '2'), bottom);
+    await wait(async () => ids(await queue()).join(',') === '1,51,52,53,2', 'ordinary row moved below recommendations');
+    const reordered = await queue();
+    assert(recommendationIds(reordered) === '51,52,53', 'ordinary crossing leaves three recommendation marks');
+    assert(dragActions.length === 1, 'one fenced move for ordinary crossing');
+    await wait(() => row(entryFor(reordered, '51'))?.querySelector('[data-queue-more-badge]') && divider(),
+      'recommendation marks rendered after ordinary crossing');
+    await capture('drag_ordinary_crossed');
+
+    const anchor = divider().closest('.queue-row');
+    const first = entryFor(reordered, '51');
+    assert(anchor.dataset.entryId === first && reordered.moreRecommendations.separatorBefore === first,
+      'drag target is the current native separator for the selected recommended row');
+    const line = rect(divider()), top = rect(anchor).top;
+    const preview = await drop(first, (line.top + line.bottom) / 2);
+    assert(Math.abs(preview.top - top) < 2, 'pointer on visible divider maps to its exact insertion boundary');
+    await wait(async () => recommendationIds(await queue()) === '52,53', 'inclusive divider drop demotes only the selected row');
+    const after = await queue();
+    assert(ids(after).join(',') === ids(reordered).join(',') && after.revision !== reordered.revision,
+      'same-order move commits only the marker change');
+    await wait(() => !row(first)?.querySelector('[data-queue-more-badge]'), 'promoted row loses its visible recommendation mark');
+    assert(dragActions.length === 2 && bar().dataset.playId === initialPlayId &&
+      bar().dataset.state === 'paused' && Math.abs(Number(bar().dataset.position) - 3) < .2,
+      'both pointer edits preserve paused decoder identity and clock');
+    await capture('drag_exact_divider', { dividerHitOffset: preview.top - top });
+    await checkCounts(1, 1, 'marker edits do not fetch again');
   }
   async function tail(delayed) {
     if (delayed) {
@@ -186,6 +243,11 @@
         assert(owner === epoch && /^[0-9]+$/.test(action.expected_revision), 'action is epoch/revision-bound');
         actionCalls.push({ kind: action.kind, expectedRevision: action.expected_revision });
       }
+      if (testCase === 'marker_reorder' && action.kind === 'queue_for' &&
+        ['reorder', 'move'].includes(action.edit.kind)) {
+        assert(owner === epoch && /^[0-9]+$/.test(action.expected_queue_revision), 'move is epoch/revision-bound');
+        dragActions.push({ expectedRevision: action.expected_queue_revision, edit: action.edit });
+      }
       return nativeAction(owner, action);
     };
     await resize(1120, 760);
@@ -197,7 +259,9 @@
     initialPlayId = bar().dataset.playId;
     assert(ids(await queue()).join(',') === '1,2', 'non-tail Daily entry with two seeds');
     await checkCounts(0, 0, 'no recommendation while drawer is unopened');
-    if (testCase === 'tail' || testCase === 'late_tail') {
+    if (testCase === 'marker_reorder') {
+      await markerReorder();
+    } else if (testCase === 'tail' || testCase === 'late_tail') {
       await tail(testCase === 'late_tail');
     } else if (testCase === 'control') {
       await open();
@@ -285,11 +349,11 @@
     }
     await emit('complete', {
       ok: true, stageCount, testCase, realMusicRequests: 0,
-      accountWrites: 0, initialPlayId, actionCalls,
+      accountWrites: 0, initialPlayId, actionCalls, dragActions,
     });
   } catch (error) {
     await emit('failed', { ok: false, stageCount, last, error: String(error),
       playId: bar()?.dataset.playId, trackId: bar()?.dataset.trackId, position: bar()?.dataset.position,
-      panel: panel()?.textContent.slice(0, 1600), body: document.body.textContent.slice(-1800), actionCalls });
+      panel: panel()?.textContent.slice(0, 1600), body: document.body.textContent.slice(-1800), actionCalls, dragActions });
   }
 })();
