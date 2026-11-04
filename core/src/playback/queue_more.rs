@@ -10,6 +10,31 @@ pub(crate) const KIND: &str = "queue-more-v1";
 pub(crate) const PREFERENCE: &str = "enabled";
 pub(crate) const ROOM_BINDING: &str = "listen-together-player-v1";
 const SCENE: &str = "queue_more_recommendation";
+pub(crate) const PLAYLIST_MEMBERSHIP: &str = "queue_more_playlist_membership";
+
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum PlaylistMembership {
+    Liked,
+    Created,
+    Subscribed,
+    Other,
+    Unknown,
+}
+
+impl PlaylistMembership {
+    fn eligible(self, assignment: Option<&str>) -> bool {
+        if assignment == Some("t4") {
+            return true;
+        }
+        match self {
+            Self::Liked => assignment == Some("t3"),
+            Self::Created | Self::Unknown => false,
+            Self::Subscribed => matches!(assignment, Some("t2" | "t3")),
+            Self::Other => true,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -17,6 +42,7 @@ enum Origin {
     Daily,
     Style,
     HistoryDaily,
+    Playlist(PlaylistMembership),
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
@@ -33,6 +59,9 @@ impl QueueMoreOrigin {
             "daily_recommendations" => Origin::Daily,
             "style_recommendations" => Origin::Style,
             "member" if source["query"]["kind"] == "history" => Origin::HistoryDaily,
+            "playlist" if identifier(&source["id"]).is_ok() => {
+                Origin::Playlist(serde_json::from_value(source[PLAYLIST_MEMBERSHIP].clone()).ok()?)
+            }
             _ => return None,
         };
         Some(Self {
@@ -41,6 +70,13 @@ impl QueueMoreOrigin {
             prefetch_on_open: true,
             active: BTreeSet::new(),
         })
+    }
+
+    pub(crate) fn eligible(&self, playlist_assignment: Option<&str>) -> bool {
+        match self.origin {
+            Origin::Playlist(membership) => membership.eligible(playlist_assignment),
+            _ => true,
+        }
     }
 }
 

@@ -16,6 +16,7 @@ use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 const ASSIGNMENT: &str = "PH-PC-recommendMore";
+const PLAYLIST_ASSIGNMENT: &str = "PH-PC-recommendMore-songList";
 const DEFAULT_OFF: &str = "PH-PC-recMoreOff";
 const READ_TIMEOUT: Duration = Duration::from_secs(12);
 
@@ -71,7 +72,7 @@ impl Coordinator {
 }
 
 impl Actor {
-    pub(super) fn queue_more_available(&self) -> bool {
+    fn queue_more_assigned(&self) -> bool {
         self.queue_more.supported
             && self.queue_more.owner.as_ref() == Some(&self.token)
             && self
@@ -102,10 +103,22 @@ impl Actor {
     }
 
     pub(super) fn queue_more_view(&self) -> Option<QueueMoreView> {
-        if !self.queue_more_available() || self.queue.more_snapshot().is_none() {
+        if !self.queue_more_available() {
             return None;
         }
         self.queue.more_view(self.queue_more_enabled().ok()?)
+    }
+
+    pub(super) fn queue_more_available(&self) -> bool {
+        self.queue_more_assigned()
+            && self.queue.more_snapshot().is_some_and(|origin| {
+                origin.eligible(
+                    self.queue_more
+                        .groups
+                        .as_ref()
+                        .and_then(|groups| groups.group(PLAYLIST_ASSIGNMENT)),
+                )
+            })
     }
 
     pub(super) fn queue_more_action(&mut self, revision: u64, toggle: Option<bool>) -> Result<()> {

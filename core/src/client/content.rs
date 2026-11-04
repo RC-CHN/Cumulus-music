@@ -11,17 +11,18 @@ use sha2::{Digest, Sha256};
 
 impl MusicClient {
     pub async fn playlists(&self) -> Result<AccountData<Vec<PlaylistView>>> {
-        let (token, value) = self
+        let (token, (value, rows)) = self
             .session
             .run(|api, uid| async move {
-                PlaylistApi::new(api)
-                    .list(&json!(uid))
-                    .await?
+                let rows = PlaylistApi::new(api).list(&json!(uid)).await?;
+                let value = rows
                     .iter()
                     .map(|p| mapping::playlist(p, &uid))
-                    .collect::<Result<Vec<_>>>()
+                    .collect::<Result<Vec<_>>>()?;
+                Ok((value, rows))
             })
             .await?;
+        self.remember_queue_more_memberships(&token, &rows)?;
         self.remember_intelligence_likes(
             &token,
             value

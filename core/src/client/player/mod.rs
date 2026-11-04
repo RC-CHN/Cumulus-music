@@ -17,6 +17,7 @@ mod queue_click;
 mod queue_collection;
 mod queue_drop;
 mod queue_edit;
+mod queue_more_playlist;
 mod queue_playlist;
 mod reports;
 mod selection;
@@ -74,6 +75,7 @@ pub(super) struct PlayerHost {
     intelligence: Arc<intelligence::IntelligenceHost>,
     relay_enabled: bool,
     queue_more_enabled: bool,
+    queue_more_memberships: queue_more_playlist::MembershipCache,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     pub(super) factory: EngineFactory,
@@ -98,6 +100,7 @@ impl PlayerHost {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
             relay_enabled: false,
             queue_more_enabled: false,
+            queue_more_memberships: Default::default(),
             session,
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),

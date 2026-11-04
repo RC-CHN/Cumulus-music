@@ -484,9 +484,10 @@ impl MusicClient {
             other => other,
         };
         let selection_token = token.clone();
+        let clears_playlist = retained.is_none();
         let (ids, index, quality, source) = self
             .session
-            .run_for(&token, |api, _| async move {
+            .run_for(&token, |api, uid| async move {
                 match input {
                     PlaySelection::Catalog {
                         pages,
@@ -705,12 +706,13 @@ impl MusicClient {
                         let history = json!({"id":id,"name":detail["name"],
                             "coverImgUrl":detail["coverImgUrl"],"creator":detail["creator"],
                             "description":detail["description"],"trackCount":detail["trackCount"]});
-                        Ok((
-                            ids,
-                            index,
-                            quality,
-                            json!({"kind":"playlist","id":id,"history_resource":history}),
-                        ))
+                        let mut source = json!({"kind":"playlist","id":id,"history_resource":history});
+                        if clears_playlist {
+                            self.attach_queue_more_playlist(
+                                &selection_token, &uid, &id, &detail, &mut source,
+                            )?;
+                        }
+                        Ok((ids, index, quality, source))
                     }
                 }
             })
