@@ -58,6 +58,7 @@ export type SearchItem =
       excerpt: string[];
       excerptTruncated?: boolean;
       mvId?: string;
+      replacementMv?: boolean;
       hint?: SearchTrackHint;
       explicit?: boolean;
       originalRecording?: boolean;

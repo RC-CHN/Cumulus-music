@@ -10,6 +10,7 @@ import SearchMatchText from './SearchMatchText.vue';
 const props = defineProps<{
   track: TrackView;
   mvId?: string;
+  replacementMv?: boolean;
   hint?: SearchTrackHint;
   explicit?: boolean;
   originalRecording?: boolean;
@@ -112,7 +113,8 @@ watch(
         <button
           v-if="mvId"
           class="search-track-mv"
-          :aria-label="`播放 MV ${track.name}`"
+          data-result-action="mv"
+          :aria-label="`${replacementMv ? '查看替代 MV' : '播放 MV'} ${track.name}`"
           @click.stop="emit('mv', mvId)"
           @dblclick.stop
         >

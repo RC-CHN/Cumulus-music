@@ -5,11 +5,12 @@ use crate::{
     catalog::search::results::{self as api, reason},
     client::{MusicClient, catalog::cards, dto::*, mapping, podcast::view},
     podcast::{Episode, Radio},
-    protocol::api::identifier,
+    protocol::{api::identifier, mconfig::PcConfig, wire::serialization::js_truthy},
 };
 pub use api::{SearchCategory, SearchCorrectionPart, SearchResultQuery};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::sync::Arc;
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -18,6 +19,8 @@ pub enum SearchItem {
         track: TrackView,
         #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
         mv_id: Option<String>,
+        #[serde(rename = "replacementMv", skip_serializing_if = "std::ops::Not::not")]
+        replacement_mv: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         hint: Option<TrackHint>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -167,6 +170,27 @@ impl MusicClient {
         self
     }
 
+    /// Trusted native embedding for hosts that already supply an AccountSession.
+    /// A fixed RequestContext, an IPC flag and search response config cannot enable this policy.
+    pub fn with_native_search_preview_config(mut self, config: Arc<PcConfig>) -> Self {
+        self.search.preview_config = Some(config);
+        self
+    }
+
+    fn search_replacement_mv_enabled(&self) -> bool {
+        let snapshot = match self.auth.context.as_ref() {
+            Some(context) => context.pc_snapshot().ok().flatten(),
+            None => self
+                .search
+                .preview_config
+                .as_ref()
+                .and_then(|config| config.snapshot().ok()),
+        };
+        snapshot
+            .and_then(|snapshot| snapshot.data)
+            .is_some_and(|data| data["preload#isOpenNoCopyrightMV"].as_bool() == Some(true))
+    }
+
     pub async fn search_results(
         &self,
         epoch: &str,
@@ -221,7 +245,9 @@ impl MusicClient {
                         } else {
                             None
                         };
-                        let mut view = project(raw, query, &uid)?;
+                        let replacement_mv =
+                            endpoint == api::v3::PATH && self.search_replacement_mv_enabled();
+                        let mut view = project(raw, query, &uid, replacement_mv)?;
                         view.hot_explanation = explanation;
                         view
                     }
@@ -366,6 +392,29 @@ fn song_mv(value: &Value) -> Option<String> {
         .find(|id| id.len() <= 32)
 }
 
+/// M/21.A normalizes privilege.st to status; M/21.S checks a truthy
+/// toast before the special area restriction, and T requires exact booleans.
+fn replacement_mv(value: &Value) -> Option<(String, Option<String>)> {
+    let privilege = &value["privilege"];
+    let status = privilege["st"]
+        .as_f64()
+        .or_else(|| privilege["st"].as_str()?.trim().parse().ok())?;
+    if !status.is_finite() || status >= 0.0 || (status == -100.0 && !js_truthy(&privilege["toast"]))
+    {
+        return None;
+    }
+    let candidate = &value["noCopyrightRcmd"];
+    if candidate["type"].as_f64() != Some(3.0)
+        || candidate["expInfo"]["mvPlay"].as_bool() != Some(true)
+    {
+        return None;
+    }
+    let id = identifier(&candidate["mvInfo"]["id"])
+        .ok()
+        .filter(|id| id.len() <= 32)?;
+    Some((id, mapping::artwork(&candidate["mvInfo"]["pic16v9Url"])))
+}
+
 /// M/21 considers a nonzero song mark authoritative; otherwise only the
 /// full album (not the compact al object) provides the explicit marker.
 fn explicit_song(value: &Value) -> bool {
@@ -388,6 +437,7 @@ fn item(
     uid: &str,
     excerpt: &Value,
     comprehensive: Option<&Value>,
+    allow_replacement_mv: bool,
 ) -> Result<Option<SearchItem>> {
     Ok(Some(match kind {
         "song" => {
@@ -402,9 +452,21 @@ fn item(
             } else {
                 Vec::new()
             };
+            let mut track = mapping::track(v)?;
+            let alternative = allow_replacement_mv.then(|| replacement_mv(v)).flatten();
+            let is_replacement = alternative.is_some();
+            let mv_id = if let Some((id, cover)) = alternative {
+                if cover.is_some() {
+                    track.cover_url = cover;
+                }
+                Some(id)
+            } else {
+                comprehensive.and_then(|_| song_mv(v))
+            };
             SearchItem::Song {
-                track: mapping::track(v)?,
-                mv_id: comprehensive.and_then(|_| song_mv(v)),
+                track,
+                mv_id,
+                replacement_mv: is_replacement,
                 hint,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
@@ -512,7 +574,12 @@ fn empty_title(body: &Value) -> String {
         .unwrap_or_else(|| "暂无可展示的综合搜索结果".into())
 }
 
-fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResultView> {
+fn project(
+    raw: Value,
+    query: SearchResultQuery,
+    uid: &str,
+    allow_replacement_mv: bool,
+) -> Result<SearchResultView> {
     use SearchCategory::*;
     let mut result = SearchResultView::empty(query.clone());
     if query.category == All {
@@ -572,6 +639,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
                     uid,
                     &Value::Null,
                     Some(resource),
+                    allow_replacement_mv,
                 ) {
                     Ok(Some(item)) => section.items.push(item),
                     // A card can be unsupported or malformed independently of
@@ -662,7 +730,7 @@ fn project(raw: Value, query: SearchResultQuery, uid: &str) -> Result<SearchResu
         let projected = if query.category == Podcasts {
             podcast_table_item(resource, uid)
         } else {
-            item(kind, base, uid, lyric, None)
+            item(kind, base, uid, lyric, None, false)
         };
         match projected {
             Ok(Some(item)) => section.items.push(item),

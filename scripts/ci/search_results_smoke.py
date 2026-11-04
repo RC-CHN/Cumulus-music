@@ -73,6 +73,7 @@ def main():
     mode.add_argument('--voice-queue', action='store_true')
     mode.add_argument('--podcast-follow', action='store_true')
     mode.add_argument('--mv-play', action='store_true')
+    mode.add_argument('--mv-fallback', action='store_true')
     mode.add_argument('--playlist-creator', action='store_true')
     mode.add_argument('--collection-next', action='store_true')
     mode.add_argument('--album-artist', action='store_true')
@@ -116,6 +117,10 @@ def main():
     if args.mv_play:
         prefix = 'window.__cumulusSearchMvProof = true;\n'
         env['CUMULUS_SEARCH_MV_PROOF'] = '1'
+    if args.mv_fallback:
+        prefix = 'window.__cumulusSearchMvFallbackProof = true;\n'
+        env.update(CUMULUS_SEARCH_MV_PROOF='1', CUMULUS_SEARCH_MV_FALLBACK_PROOF='1',
+                   CUMULUS_SEARCH_V3_PROOF='1')
     if args.playlist_creator:
         prefix = 'window.__cumulusSearchPlaylistCreatorProof = true;\n'
         if args.trusted_playlist_pointer:
@@ -324,6 +329,25 @@ def main():
                               searchPlaylistWaterfallVerified=True, searchPlaylistTableVerified=True,
                               searchPlaylistResizeVerified=True, searchPlaylistResizeReopened=True,
                               trustedPointer=args.trusted_playlist_pointer, stageCount=12)))
+        return
+    if args.mv_fallback:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['searchMvFallbackVerified'] and complete['stageCount'] == 3
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        before = json.loads((first / 'ux_01_search_mv_fallback_badge.json').read_text(encoding='utf-8'))
+        assert not before['searchMvCalls']
+        calls = complete['searchMvCalls']
+        detail = {'path': '/api/mlog/detail/v1', 'args': {'id': '601', 'type': '2'}}
+        options = {'path': '/api/mlog/detail/v1', 'args': {'id': '601', 'type': '2', 'videoType': 'mp4'}}
+        authorize = {'path': '/api/song/enhance/play/mv/url', 'args': {'id': '601', 'r': 480}}
+        # The MV detail panel and native video resolver read independently.
+        assert len(calls) == 3
+        assert calls.count(detail) == calls.count(options) == calls.count(authorize) == 1
+        assert calls.index(detail) < calls.index(authorize)
+        assert len(list(first.glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True,
+                              searchMvFallbackVerified=True, stageCount=3)))
         return
     if args.mv_play:
         first = root / 'first'

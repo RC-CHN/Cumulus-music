@@ -862,6 +862,7 @@ onBeforeUnmount(() => {
                 :key="`${item.track.id}:${index}`"
                 :track="item.track"
                 :mv-id="item.mvId"
+                :replacement-mv="item.replacementMv"
                 :hint="item.hint"
                 :explicit="item.explicit"
                 :original-recording="item.originalRecording"

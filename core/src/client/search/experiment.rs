@@ -7,7 +7,10 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 const EXPERIMENTS: [&str; 3] = [
     "PH-PC-searchHot",
@@ -21,6 +24,7 @@ const REFRESH_SECONDS: u64 = 30 * 60;
 #[derive(Default)]
 pub(crate) struct SearchHost {
     pub(crate) enabled: bool,
+    pub(super) preview_config: Option<Arc<crate::protocol::mconfig::PcConfig>>,
     gate: tokio::sync::Mutex<()>,
 }
 

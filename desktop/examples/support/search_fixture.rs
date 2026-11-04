@@ -742,6 +742,19 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             {
                 Some(json!({"code":200,"data":[{"expName":"PH-PC-searchHot","expGroupName":"t1"}]}))
             }
+            "/api/search/pc/result/tab"
+                if super::search_mv_fixture::fallback_enabled()
+                    && args == &json!({"keyword":"合成替代"}) =>
+            {
+                Some(json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"单曲"}]}}))
+            }
+            "/api/search/pc/complex/page/v3"
+                if super::search_mv_fixture::fallback_enabled()
+                    && args
+                        == &json!({"keyword":"合成替代","scene":"normal","needCorrect":true,"channel":"typing","bizQueryInfo":""}) =>
+            {
+                Some(super::search_mv_fixture::fallback_results())
+            }
             "/api/search/pc/result/tab" if args == &json!({"keyword":"合成 V3"}) => Some(
                 json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"视频"},{"title":"单曲"}]}}),
             ),

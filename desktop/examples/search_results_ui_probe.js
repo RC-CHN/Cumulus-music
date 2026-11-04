@@ -982,6 +982,47 @@
       await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,searchPlaylistTableVerified:true,searchPlaylistResizeVerified:true,searchPlaylistTrustedPointer:trustedPointer,playlistWidths:savedWidths,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
+    if(window.__cumulusSearchMvFallbackProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(760,540,'dark');
+      await fresh('合成替代');
+      const card=id=>one(`.search-track-card[data-result-key="song:${id}"]`);
+      const badge=id=>card(id)?.querySelector('[data-result-action="mv"]');
+      const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
+      const {epoch}=await invoke('account_snapshot');
+      const before=await invoke('player_snapshot',{epoch});
+      assert(badge(1)?.getAttribute('aria-label')==='查看替代 MV 合成替代歌曲' &&
+        badge(4)?.getAttribute('aria-label')==='查看替代 MV 合成下架说明' &&
+        badge(5)?.getAttribute('aria-label')==='播放 MV 合成普通歌曲',
+        'only exact fallback rows gain the replacement badge; ordinary direct MV is unaffected');
+      assert(!badge(2)&&!badge(3)&&!badge(6),'region-only, malformed experiment and invalid ID have no badge');
+      assert(!card(1).outerHTML.includes('PRIVATE'),'the card cannot see upstream links or authorization');
+      badge(1).scrollIntoView({block:'nearest'}); badge(1).focus({preventScroll:true});
+      const rect=badge(1).getBoundingClientRect();
+      assert(document.activeElement===badge(1)&&badge(1).contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
+        'alternative badge is keyboard accessible and physically reachable');
+      await capture('search_mv_fallback_badge');
+      click(badge(1));
+      let native;
+      for(let i=0;i<170;i++){
+        const view=await invoke('video_snapshot',{epoch});
+        if(view.id==='601'&&view.state==='playing'&&view.position>.15&&Number(one('.video-canvas')?.dataset.renderedFrames)>1){native=view;break;}
+        await sleep(70);
+      }
+      assert(native?.actualResolution===480,'explicit click follows independent video detail and rights to native frames');
+      const canvas=one('.video-canvas');
+      const pixels=canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+      assert(pixels.some((value,index)=>index%4!==3&&value>20),'decoded video pixels reach the canvas');
+      const audio=await invoke('player_snapshot',{epoch});
+      assert(audio.playId===before.playId&&audio.queueRevision===before.queueRevision,'replacement video never selects or replaces audio queue');
+      await capture('search_mv_fallback_native');
+      click(button('关闭视频'));
+      click(button('返回上一页'));
+      await wait(()=>ready()&&badge(1)===document.activeElement,'Back restores the exact MV badge');
+      await capture('search_mv_fallback_back');
+      await emit('complete',{ok:true,searchMvFallbackVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchMvProof){
       await wait(()=>one('.track-row'),'daily ready');
       await fixture('good');await fresh('合成 MV');

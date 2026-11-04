@@ -202,9 +202,38 @@ fn song(v: &Value) -> Fields {
     );
     nested(&mut out, v, "newSongExt", song_tag);
     nested(&mut out, v, "extInfo", song_tag);
-    nested(&mut out, v, "privilege", |value| {
-        fields(value, &["st"], &[])
-    });
+    if let Some(privilege) = v.get("privilege") {
+        let projection = privilege.as_object().map(|_| {
+            let mut fields = fields(privilege, &["st"], &[]);
+            fields.insert(
+                "toast".into(),
+                json!(crate::protocol::wire::serialization::js_truthy(
+                    &privilege["toast"]
+                )),
+            );
+            fields
+        });
+        out.insert(
+            "privilege".into(),
+            projection.map_or(Value::Null, Value::Object),
+        );
+    }
+    if let Some(alternative) = v.get("noCopyrightRcmd") {
+        let projection = alternative.as_object().map(|_| {
+            let mut row = fields(alternative, &["type"], &[]);
+            nested(&mut row, alternative, "mvInfo", |mv| {
+                fields(mv, &["id"], &["pic16v9Url"])
+            });
+            nested(&mut row, alternative, "expInfo", |experiment| {
+                fields(experiment, &["mvPlay"], &[])
+            });
+            row
+        });
+        out.insert(
+            "noCopyrightRcmd".into(),
+            projection.map_or(Value::Null, Value::Object),
+        );
+    }
     for key in ["ar", "artists"] {
         credits(&mut out, v, key);
     }

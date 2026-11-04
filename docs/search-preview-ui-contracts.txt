@@ -40,7 +40,7 @@
 - 更多→现有PlaylistDialog(track)；歌手→现有CatalogPage。标题分类入口沿用搜索路由。
 
 尚未对齐/实测的范围
-- 歌曲卡片的关键词/别名/歌词命中、算法标签、无版权替代 MV 及全部音质标签、完整search试听
+- 歌曲卡片的关键词/别名/歌词命中、算法标签、全部音质标签、完整search试听
   来源和AB分支；单张预览使用已恢复的搜索试听上下文，不声称全部分支已实现。
 - 更多动作仍为现有歌曲操作对话框，完整官方上下文菜单待统一；分类卡片菜单、
   用户主页、歌词结果页仍在逐页清单。综合cursor续页不属于本项已实现范围。
@@ -55,7 +55,7 @@
 TrackMvTag/index.tsx:55–75、92–125 从歌曲读取 mvid，并独立打开视频详情；
 恢复 M21:549 将歌曲的 mv/mvid 归一化。Cumulus 综合结果保留最多 32 位
 的正十进制直接 MV ID，v3 可来自其已恢复的扩展信息合并流程。负版权状态、
-零、无效或缺失 ID 不绘制入口。未移植官方针对无版权歌曲的替代 MV 权限分支。
+零、无效或缺失 ID 不绘制普通入口。综合 V3 版权替代入口见本文末节。
 点击、键盘激活经现有 MV 路由读取 /api/mlog/detail/v1，再按实际权限调用
 /api/song/enhance/play/mv/url；搜索卡片只接收 ID，不接收地址，也不触发歌曲播放。
 --mv-play 同时验证分类 MV 卡片与单曲内 MV 入口的原生解码，--v3 验证综合扩展
@@ -143,3 +143,32 @@ Linux 实际 WebView 的四个 V3 检查点及截图通过；760×540 深色窗�
 - Linux V3 WebView 的七个检查点通过；760×540 深色单曲表中，长标题截断后
   “原唱”仍完整可见，几何命中断言避免把仅存在于 DOM 的标签计为通过。
   报告：.build/goal-search-original-final-ui/audit.json。无真实账号操作。
+
+综合 V3 单曲的版权替代 MV（PC 3.1.42.205594）
+M/247:639 默认 preload#isOpenNoCopyrightMV=false。M/21:258–277 要求 PC 配置值
+严格为 true、noCopyrightRcmd.type 为数值 3、mvInfo 有效、expInfo.mvPlay 严格为 true，
+且 M/21 的权限结果为 noCopyright。M/21.A 把 privilege.st 正规化为 status：小于零才
+可能命中；-100 且没有真值 toast 是地区限制，不开启此入口。M/21:537–579 保留替代
+材料字段，610–615 将可用 MV 的 pic16v9Url 用作卡片封面。V3 的资源、simpleSongData、
+extInfo 合并顺序仍为官方顺序；后面的 null 可覆盖前面已有的替代声明。
+
+Cumulus 只读本机现有、已验证的 PC MConfig 快照，不为搜索追加配置请求，不接受搜索
+回包、固定上下文或前端传入的开关。仅在综合 V3 单曲投影合法正十进制 MV ID、替代
+标志和白名单 CDN 封面；响应的资源对象、版权文案、视频地址和签名不下发。若未通过
+上述门控，沿用既有普通 MV 标签的显示条件，不能用缺失 ID、地区限制或无效实验值
+猜测替代目标。V1、分类页、普通音频选择均未改变。
+
+TrackMvTag/index.tsx:55–100 优先选符合条件的 mvInfo.id，单独打开 videoDetail。
+点击或键盘明确选择才进入现有 MV 入口，详情面板请求
+/api/mlog/detail/v1 {id,type:"2",videoType:"mp4"}，原生播放器独立读取
+/api/mlog/detail/v1 {id,type:"2"} 后按实际视频授权调用
+/api/song/enhance/play/mv/url {id,r:480}，不能借此播放版权受限的原歌曲。
+返回恢复原搜索标签焦点；不从 MV ID 推导音频 ID，不自动跳歌，不打开外链。
+播放队列的同音频版本、版权弹窗以及 PH-PC-skipSongs2 的整队列权利检查仍是独立路径，
+不能用本卡片实现代验。
+
+验证：search_experiment 从实际 Rust V3、MConfig 后端与账户上下文验证缺失、关闭、
+错误类型和开启；覆盖地区、下架 toast、extInfo 覆盖和任意 URL 拒绝。
+search_results_smoke.py --mv-fallback 在 Linux Tauri WebView 的深色窄窗验证无请求
+的卡片展示、独立点击后真实 libmpv 视频帧及返回焦点；--mv-play 复跑普通标签。
+仅用合成资料，无真实版权回包、账号写入或 Windows 实机视觉结论。

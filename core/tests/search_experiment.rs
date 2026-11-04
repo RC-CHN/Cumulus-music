@@ -128,3 +128,124 @@ async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_rec
     );
     assert!(api.0.lock().unwrap().is_empty());
 }
+
+struct PreviewConfig;
+impl cumulus_core::protocol::mconfig::ConfigBackend for PreviewConfig {
+    fn get<'a>(
+        &'a self,
+        url: &'a cumulus_core::protocol::mconfig::ConfigUrl,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let flag = if url.as_str().ends_with("on.data") {
+                json!(true)
+            } else if url.as_str().ends_with("malformed.data") {
+                json!("true")
+            } else {
+                json!(false)
+            };
+            Ok(json!({"preload#isOpenNoCopyrightMV":flag}))
+        })
+    }
+}
+
+#[tokio::test]
+async fn v3_replacement_mv_requires_verified_pc_config_and_exact_rights_metadata() {
+    use cumulus_core::protocol::mconfig::{APPLICATION_KEY, PcConfig};
+    use std::collections::BTreeMap;
+    let root = tempfile::tempdir().unwrap();
+    let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
+    let alt = |id, flag| {
+        json!({"type":3,"expInfo":{"mvPlay":flag},
+        "mvInfo":{"id":id,"pic16v9Url":"https://p1.music.126.net/safe.jpg?token=PRIVATE",
+          "url":"https://private.invalid/PRIVATE"}})
+    };
+    let original = |id, st, toast| {
+        json!({"type":"song","baseInfo":{"simpleSongData":{
+            "id":id,"name":"歌曲","mv":602,"privilege":{"st":st,"toast":toast},
+            "noCopyrightRcmd":alt(json!("601"), json!(true))
+        }}})
+    };
+    let mut changed = original(3, -200, "");
+    changed["extInfo"]["noCopyrightRcmd"] = alt(json!(601), json!("true"));
+    let mut invalid = original(6, -200, "");
+    invalid["extInfo"]["noCopyrightRcmd"] =
+        alt(json!("https://private.invalid/PRIVATE"), json!(true));
+    let mut cleared = original(7, -200, "");
+    cleared["extInfo"]["noCopyrightRcmd"] = Value::Null;
+    let mut cover = original(8, -200, "");
+    cover["extInfo"]["noCopyrightRcmd"] = alt(json!(601), json!(true));
+    cover["extInfo"]["noCopyrightRcmd"]["mvInfo"]["pic16v9Url"] =
+        json!("https://private.invalid/PRIVATE");
+    let response = json!({"code":200,"data":{"preload#isOpenNoCopyrightMV":true,"blocks":[
+        {"blockCode":"search_block_song","resources":[original(1,-200,""),
+          original(2,-100,""), changed, original(4,-100,"down"), original(5,0,""), invalid, cleared, cover]}
+    ]}});
+    let mut script = VecDeque::from([assign("t1", "c", "c")]);
+    for _ in 0..4 {
+        script.push_back(tabs(
+            json!({"code":200,"data":{"algTabs":[{"title":"综合"}]}}),
+        ));
+        script.push_back(v3(response.clone()));
+    }
+    let api = Arc::new(Script(Mutex::new(script)));
+    let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
+    session
+        .adopt(api.clone(), json!({"userId":2}), &session.token().unwrap())
+        .unwrap();
+    let config = PcConfig::new(registry.store(), Arc::new(PreviewConfig)).unwrap();
+    let client = MusicClient::with_session(session, registry)
+        .with_official_search_experiment()
+        .with_native_search_preview_config(config.clone());
+    let epoch = client.account().unwrap().epoch;
+    for (version, file) in [(0, ""), (1, "on"), (2, "malformed"), (3, "off")] {
+        if version != 0 {
+            config
+                .resolve(&BTreeMap::from([(
+                    "MConfig-Info".into(),
+                    json!({APPLICATION_KEY:{
+                        "os":"pc","version":version,
+                        "fullUrl":format!("https://d5.music.126.net/obj/fixture/{file}.data")
+                    }})
+                    .to_string(),
+                )]))
+                .await
+                .unwrap();
+        }
+        let view =
+            serde_json::to_value(client.search_results(&epoch, query()).await.unwrap().value)
+                .unwrap();
+        let items = view["sections"][0]["items"].as_array().unwrap();
+        assert_eq!(items.len(), 8);
+        for (index, item) in items.iter().enumerate() {
+            let replacement = version == 1 && matches!(index, 0 | 3 | 7);
+            assert_eq!(
+                item["replacementMv"] == true,
+                replacement,
+                "version {version}, row {index}"
+            );
+            assert_eq!(
+                item["mvId"].as_str(),
+                if replacement {
+                    Some("601")
+                } else if index == 4 {
+                    Some("602")
+                } else {
+                    None
+                }
+            );
+            if replacement && index != 7 {
+                assert!(
+                    item["track"]["coverUrl"]
+                        .as_str()
+                        .unwrap()
+                        .starts_with("https://p1.music.126.net/safe.jpg")
+                );
+            } else {
+                assert!(item["track"]["coverUrl"].is_null());
+            }
+        }
+        assert!(!view.to_string().contains("PRIVATE"));
+        assert!(!view.to_string().contains("noCopyrightRcmd"));
+    }
+    assert!(api.0.lock().unwrap().is_empty());
+}
