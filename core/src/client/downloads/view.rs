@@ -7,6 +7,8 @@ use crate::{
         transfer::TransferJob,
     },
 };
+use icu_collator::Collator;
+use icu_locale_core::locale;
 use serde_json::json;
 impl Host {
     pub(super) fn view(&self, context: &Context, query: DownloadQuery) -> Result<DownloadsView> {
@@ -179,13 +181,31 @@ impl Host {
                 error,
             });
         }
+        // Recovered M/127 applies the offline database's pinyin collation
+        // only to completed track and album names. Sort the whole result
+        // before slicing so the visible list and native queue agree.
+        let pinyin = if query.tab == DownloadTab::Completed
+            && matches!(query.sort, DownloadSort::Name | DownloadSort::Album)
+        {
+            Some(
+                Collator::try_new(locale!("zh-Hans-CN-u-co-pinyin").into(), Default::default())
+                    .map_err(|_| Error::State("Chinese pinyin collation data unavailable"))?,
+            )
+        } else {
+            None
+        };
+        let compare = |a: &str, b: &str| {
+            pinyin
+                .as_ref()
+                .map_or_else(|| a.cmp(b), |collator| collator.compare(a, b))
+        };
         values.sort_by(|a, b| {
             let order = match query.sort {
                 // Preserve the service listing order when the UI clears sorting.
                 DownloadSort::None => return std::cmp::Ordering::Equal,
-                DownloadSort::Name => a.track.name.cmp(&b.track.name),
+                DownloadSort::Name => compare(&a.track.name, &b.track.name),
                 DownloadSort::Artist => a.track.artists.cmp(&b.track.artists),
-                DownloadSort::Album => a.track.album.cmp(&b.track.album),
+                DownloadSort::Album => compare(&a.track.album, &b.track.album),
                 DownloadSort::Size => a.total.cmp(&b.total),
                 DownloadSort::Completed => a
                     .completed_ms

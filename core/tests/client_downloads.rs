@@ -1573,3 +1573,62 @@ async fn corrupt_download_requires_one_explicit_restart_before_redownloading_fro
         FLAC
     );
 }
+
+#[tokio::test]
+async fn completed_download_names_and_albums_use_pinyin_before_pagination() {
+    let f = Fixture::new();
+    let (original, _) = f.completed().await;
+    let seed = f
+        .store
+        .get("1", "download_tasks_v1", &original)
+        .unwrap()
+        .unwrap();
+    for (i, title, album) in [
+        (1, "上海", "北京"),
+        (2, "北京", "上海"),
+        (3, "广州", "广州"),
+    ] {
+        let id = format!("{i:032x}");
+        let mut value = seed.clone();
+        value["id"] = json!(id);
+        value["song"] = json!({"id":i,"name":format!("合成排序 {title}"),"al":{"name":album}});
+        f.store.put("1", "download_tasks_v1", &id, &value).unwrap();
+    }
+    for (sort, expected) in [
+        (DownloadSort::Name, ["2", "3", "1"]),
+        (DownloadSort::Album, ["1", "3", "2"]),
+    ] {
+        let query = DownloadQuery {
+            tab: DownloadTab::Completed,
+            category: DownloadCategory::Song,
+            keyword: "合成排序".into(),
+            sort,
+            descending: false,
+            offset: 0,
+            limit: 2,
+        };
+        for (descending, order) in [
+            (false, expected),
+            (true, [expected[2], expected[1], expected[0]]),
+        ] {
+            let mut ids = vec![];
+            for offset in [0, 2] {
+                let view = f
+                    .client
+                    .downloads(
+                        "1",
+                        DownloadQuery {
+                            descending,
+                            offset,
+                            ..query.clone()
+                        },
+                    )
+                    .await
+                    .unwrap();
+                assert_eq!(view.total, 3);
+                ids.extend(view.tasks.into_iter().map(|task| task.track.id));
+            }
+            assert_eq!(ids, order);
+        }
+    }
+}
