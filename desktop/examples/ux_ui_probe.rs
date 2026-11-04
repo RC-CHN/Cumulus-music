@@ -622,7 +622,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if search_fixture::hot_playback_enabled() {
+        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
