@@ -71,7 +71,10 @@ def isolated_audio(root, env):
         env['DBUS_SYSTEM_BUS_ADDRESS'] = f'unix:path={runtime}/no-system-bus'
         env['PIPEWIRE_RUNTIME_DIR'] = str(runtime)
         env['PULSE_SERVER'] = f'unix:{runtime}/pulse/native'
-        server_env = {**env, 'XDG_RUNTIME_DIR': str(runtime)}
+        # GTK's AT-SPI bridge creates a Unix socket below XDG_RUNTIME_DIR
+        # in the app process too. The CI checkout's proof path is too long.
+        env['XDG_RUNTIME_DIR'] = str(runtime)
+        server_env = env.copy()
         alsa = private/'alsa.conf'
         alsa.write_text('pcm.!default { type null }\n', encoding='ascii')
         env['ALSA_CONFIG_PATH'] = str(alsa)
@@ -201,14 +204,18 @@ def start_accessibility():
     return Atspi
 
 
-def focus_installed_control(atspi, pid, name, roles, dialog=None):
+def focus_installed_control(atspi, app, name, roles, dialog=None, *, reveal_sidebar=False):
+    from gi.repository import GLib
+
+    assert not (dialog and reveal_sidebar), 'sidebar reveal must target main navigation'
+
     def children(node):
         for index in range(node.get_child_count()):
             child = node.get_child_at_index(index)
             if child is not None:
                 yield child
 
-    def matching(root, label, allowed):
+    def matching(root, label, allowed, *, require_showing=True):
         pending = list(children(root))
         visited = 0
         while pending:
@@ -216,38 +223,85 @@ def focus_installed_control(atspi, pid, name, roles, dialog=None):
             visited += 1
             assert visited <= 512, 'unexpectedly large installed accessibility subtree'
             if node.get_role() in allowed and node.get_name() == label:
-                if node.get_state_set().contains(atspi.StateType.SHOWING):
+                if not require_showing or node.get_state_set().contains(atspi.StateType.SHOWING):
                     yield node
             else:
                 pending.extend(children(node))
 
-    def find():
+    def find_live_control():
         desktop = atspi.get_desktop(0)
         if desktop is None:
             return None
         for application in children(desktop):
-            if application.get_process_id() != pid:
+            if application.get_process_id() != app.pid:
                 continue
             # WebKit controls themselves belong to a subprocess. Scope them
             # through the ordinary package's own top-level application.
             root = application
-            if dialog:
+            viewport = None
+            if reveal_sidebar:
+                landmark = (atspi.Role.LANDMARK,)
+                sidebars = list(matching(root, '主导航', landmark))
+                assert len(sidebars) <= 1, 'multiple installed main sidebars'
+                if not sidebars:
+                    return None
+                groups = list(matching(sidebars[0], '我的', landmark, require_showing=False))
+                assert len(groups) <= 1, 'multiple installed personal navigation groups'
+                if not groups:
+                    return None
+                root = groups[0]
+                viewport = root.get_parent()
+                assert viewport is not None, 'installed personal navigation has no scroll viewport'
+            elif dialog:
                 dialogs = list(matching(root, dialog, (atspi.Role.DIALOG,)))
                 assert len(dialogs) <= 1, f'multiple installed dialogs named {dialog!r}'
                 if not dialogs:
                     return None
                 root = dialogs[0]
-            controls = list(matching(root, name, roles))
+            controls = list(matching(root, name, roles, require_showing=not reveal_sidebar))
             assert len(controls) <= 1, f'multiple installed controls named {name!r}'
             if controls and controls[0].get_state_set().contains(atspi.StateType.SENSITIVE):
-                return controls[0]
+                return controls[0], viewport
         return None
 
-    control = wait_for(f'installed control {name!r}', find)
+    def find():
+        assert app.poll() is None, f'installed app exited while locating {name!r}'
+        try:
+            return find_live_control()
+        except GLib.Error as error:
+            # A route change can replace the WebKit accessibility subtree
+            # while a poll is walking it. Rescan the same live app, without
+            # treating a transport error or a failed action as a missed poll.
+            if (error.domain, error.code, error.message) != (
+                    'atspi_error', 0, 'The application no longer exists'):
+                raise
+            assert app.poll() is None, f'installed app exited while locating {name!r}'
+            return None
+
+    control, viewport = wait_for(f'installed control {name!r}', find)
     component = control.get_component_iface()
-    assert component is not None and component.grab_focus(), f'cannot focus installed control {name!r}'
+    assert component is not None, f'installed control {name!r} has no component'
+    if viewport is not None:
+        viewport_component = viewport.get_component_iface()
+        assert viewport_component is not None, 'installed sidebar viewport has no component'
+        assert component.scroll_to(atspi.ScrollType.ANYWHERE), f'cannot reveal installed sidebar control {name!r}'
+
+        def visible_in_sidebar():
+            if not control.get_state_set().contains(atspi.StateType.SHOWING):
+                return False
+            bounds = viewport_component.get_extents(atspi.CoordType.SCREEN)
+            target = component.get_extents(atspi.CoordType.SCREEN)
+            center_x, center_y = target.x + target.width // 2, target.y + target.height // 2
+            return (target.width > 0 and target.height > 0
+                    and bounds.x <= center_x < bounds.x + bounds.width
+                    and bounds.y <= center_y < bounds.y + bounds.height)
+
+        wait_for(f'visible installed sidebar control {name!r}', visible_in_sidebar)
+    assert component.grab_focus(), f'cannot focus installed control {name!r}'
     wait_for(f'keyboard focus on {name!r}',
              lambda: control.get_state_set().contains(atspi.StateType.FOCUSED))
+    if viewport is not None:
+        assert visible_in_sidebar(), f'installed sidebar control {name!r} moved out of view after focus'
 
 
 def read_playback(database):
@@ -384,15 +438,15 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
     with closing(Input(x, y)) as inputs:
         assert accessibility is not None, 'installed playback proof requires a private AT-SPI session'
 
-        def activate(name, roles):
-            focus_installed_control(accessibility, app.pid, name, roles)
+        def activate(name, roles, *, reveal_sidebar=False):
+            focus_installed_control(accessibility, app, name, roles, reveal_sidebar=reveal_sidebar)
             assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
             inputs.key('Return')
 
         button_roles = (accessibility.Role.PUSH_BUTTON,)
         wait_for('installed main window focus', lambda: active_window() == window)
-        activate('本地音乐', (*button_roles, accessibility.Role.LINK))
-        focus_installed_control(accessibility, app.pid, '选择音乐目录', button_roles)
+        activate('本地音乐', (*button_roles, accessibility.Role.LINK), reveal_sidebar=True)
+        focus_installed_control(accessibility, app, '选择音乐目录', button_roles)
         screenshot('installed-local-page.png')
         assert active_window() == window, 'installed app lost keyboard focus before opening the picker'
         inputs.key('Return')
@@ -423,7 +477,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         if packaged_filter:
             inputs.click(1049, 722)  # EQ in the playback footer.
             def equalizer_key(name, roles, key):
-                focus_installed_control(accessibility, app.pid, name, roles, dialog='均衡器')
+                focus_installed_control(accessibility, app, name, roles, dialog='均衡器')
                 assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
                 inputs.key(key)
 
