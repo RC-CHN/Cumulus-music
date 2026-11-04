@@ -38,8 +38,21 @@
     if(String(value).includes('/cumulus-preview-')){images++;value=String(value).includes('-bad')?'data:image/png;base64,aW52YWxpZA==':'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160"><rect width="160" height="160" fill="#6c597b"/><circle cx="80" cy="80" r="52" fill="#e0a6b2"/></svg>');}
     source.set.call(this,value);
   }});
-  let count=0,step='startup',plays=0;
-  const fetch=window.fetch;window.fetch=async function(url,options){if(['/play_selection','/prepare_play_selection','/commit_prepared_selection','/player_action'].some(command=>String(url).endsWith(command)))plays++;return fetch.call(window,url,options);};
+  let count=0,step='startup',plays=0,selectionGate,selectionReceived=false;
+  const fetch=window.fetch;window.fetch=async function(url,options){
+    if(['/play_selection','/prepare_play_selection','/commit_prepared_selection','/player_action'].some(command=>String(url).endsWith(command)))plays++;
+    const delay=String(url).endsWith('/play_selection')&&JSON.parse(options.body).selection.kind==='search_result_track'
+      ?selectionGate:undefined;
+    const response=await fetch.call(window,url,options);
+    if(delay){selectionReceived=true;await delay;}
+    return response;
+  };
+  function holdSelection(){
+    let release;
+    selectionReceived=false;
+    selectionGate=new Promise(resolve=>{release=resolve;});
+    return ()=>{selectionGate=undefined;release();};
+  }
   async function choose(key){click(one(`[data-category="${key}"]`));await sleep(0);await wait(()=>ready()&&one(`[data-category="${key}"]`)?.getAttribute('aria-selected')==='true','category '+key);await sleep(200);}
   async function capture(label){step=label;await wait(()=>all('dialog,.search-result-panel').every(n=>n.getAnimations().every(a=>a.playState!=='running'&&!a.pending)),'animations');await sleep(180);assert(document.documentElement.scrollWidth<=innerWidth&&pane().scrollWidth<=pane().clientWidth+1,'horizontal containment');assert(!one('button button'),'no nested controls');await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,renderedSongs:all('.search-track-card').length});await sleep(420);}
   function layout(){
@@ -58,7 +71,7 @@
       await pointer(innerWidth-3,75);const download=card.querySelector('.search-track-actions button');download.focus({preventScroll:true});await waitControls(card,'keyboard');const d=download.getBoundingClientRect();assert(document.elementFromPoint(d.x+d.width/2,d.y+d.height/2)?.closest('button')===download,'keyboard control hit target');await capture(`keyboard_${w}_${t}`);
       const before=plays;download.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));assert(plays===before,'action double click does not play');click(download);await wait(()=>one('.download-dialog[open]'),'download options');await capture(`download_${w}_${t}`);click(button('关闭下载对话框'));await wait(()=>!one('.download-dialog'),'download closed');assert(document.activeElement===download,'download returns exact focus');
       const more=card.querySelector('.search-track-actions button:last-child');click(more);await wait(()=>one('.song-action-menu'),'song operations');await capture(`more_${w}_${t}`);one('.song-action-menu').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));await wait(()=>!one('.song-action-menu'),'operations closed');assert(document.activeElement===more,'operations return exact focus');
-      const link=button('查看全部歌单'),section=link.closest('.search-result-section');section.scrollIntoView({block:'start'});await sleep(200);const saved=pane().scrollTop;await capture(`playlist_preview_${w}_${t}`);click(link);await wait(()=>ready()&&one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true','all playlists');assert(all('.search-result-card').length===30,'full category retains all records');await capture(`category_${w}_${t}`);await choose('all');assert(Math.abs(pane().scrollTop-saved)<2,'return restores preview position');layout();await capture(`return_${w}_${t}`);
+      const link=button('查看全部歌单'),section=link.closest('.search-result-section');section.scrollIntoView({block:'start'});await sleep(200);const saved=pane().scrollTop;await capture(`playlist_preview_${w}_${t}`);click(link);await wait(()=>ready()&&one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true','all playlists');assert(one('.search-result-grid')?.dataset.loadedCount==='10'&&!one('.search-result-pagination'),'full category starts with ten continuous results');await capture(`category_${w}_${t}`);await choose('all');assert(Math.abs(pane().scrollTop-saved)<2,'return restores preview position');layout();await capture(`return_${w}_${t}`);
       button('查看全部MV').closest('.search-result-section').scrollIntoView({block:'start'});await capture(`video_preview_${w}_${t}`);
     }
     await emit('resize',{width:1120,height:760});await wait(()=>innerWidth===1120,'wide preview');await sleep(250);const grid=button('查看全部歌单').closest('.search-result-section').querySelector('[data-preview]');grid.scrollIntoView({block:'center'});const last=[...grid.querySelectorAll('.search-card-open')].at(-1);last.focus({preventScroll:true});await capture('before_resize');await emit('resize',{width:760,height:540});await wait(()=>innerWidth===760,'narrow preview');await sleep(250);assert(!last.isConnected&&grid.contains(document.activeElement),'resize preserves focus in visible preview');const focused=document.activeElement.getBoundingClientRect(),viewport=pane().getBoundingClientRect();assert(focused.top>=viewport.top-1&&focused.bottom<=viewport.bottom+1,'resized preview focus is fully visible');await capture('after_resize');
@@ -66,19 +79,35 @@
     await invoke('play_selection',{epoch,selection:{kind:'songs',ids:['91','92'],index:0,quality:'standard'}});
     const baseline=await invoke('player_queue',{epoch});
     const card=one('.search-track-card');card.scrollIntoView({block:'center'});
-    click(card.querySelector('.search-track-cover'));
-    await wait(()=>card.classList.contains('current')&&card.querySelector('.search-track-cover').getAttribute('aria-label').startsWith('暂停'),'play preview');
+    const cover=card.querySelector('.search-track-cover');
+    const releasePlay=holdSelection();
+    click(cover);
+    await wait(()=>selectionReceived&&cover.disabled,'native play result is pending in the WebView');
+    // WebKit drops focus on a disabled button; emulate that condition where
+    // the platform's WebView keeps focus on it.
+    if(document.activeElement===cover)cover.blur();
+    assert(document.activeElement===document.body,'play button lost browser focus while busy');
+    releasePlay();
+    await wait(()=>card.classList.contains('current')&&!cover.disabled&&
+      cover.getAttribute('aria-label').startsWith('暂停')&&document.activeElement===cover,'play restores the exact cover');
+    await wait(()=>Number(one('.playerbar').dataset.position)>.15,'preview advances the native playback clock');
     const playing=await invoke('player_queue',{epoch});
     assert(playing.tracks.length===3&&playing.tracks[0].entryId===baseline.tracks[0].entryId&&
       playing.tracks[2].entryId===baseline.tracks[1].entryId&&playing.current===playing.tracks[1].entryId,
     'one preview inserts after current and retains both baseline entries');
     await capture('playing');
-    click(card.querySelector('.search-track-cover'));
-    await wait(()=>card.querySelector('.search-track-cover').getAttribute('aria-label').startsWith('播放'),'pause preview');
+    const releasePause=holdSelection();
+    click(cover);
+    await wait(()=>selectionReceived&&cover.disabled,'native pause result is pending in the WebView');
+    const other=button('外观主题');
+    other.focus({preventScroll:true});
+    releasePause();
+    await wait(()=>!cover.disabled&&cover.getAttribute('aria-label').startsWith('播放'),'pause preview');
+    assert(document.activeElement===other,'completion must not steal newly chosen focus');
     assert((await invoke('player_queue',{epoch})).revision===playing.revision,'pause leaves queue intact');
     await capture('paused');
     const like=all('.search-track-card')[1].querySelector('.like-button');like.scrollIntoView({block:'nearest'});click(like);await wait(()=>like.getAttribute('aria-pressed')==='true'&&!like.disabled,'liked feedback');await capture('liked');click(like);await wait(()=>like.getAttribute('aria-pressed')==='false'&&!like.disabled,'unliked feedback');await capture('unliked');
     click(button('播放全部搜索单曲'));await wait(()=>one('.search-track-card.current .search-track-cover')?.getAttribute('aria-label').startsWith('暂停'),'play all preview');const allQueue=await invoke('player_queue',{epoch});assert(allQueue.tracks.length===9&&!allQueue.tracks.some(row=>baseline.tracks.some(old=>old.entryId===row.entryId)),'explicit Play All replaces the baseline');await capture('play_all');
-    assert(images>0,'image outcome injection used');await emit('complete',{ok:true,stageCount:count,previewLayouts:true,nativePointer:true,songControls:true,coverOutcomeInjected:true,realMusicRequests:0,realAccountWrites:0});
+    assert(images>0,'image outcome injection used');await emit('complete',{ok:true,stageCount:count,previewLayouts:true,nativePointer:true,songControls:true,playbackFocusVerified:true,coverOutcomeInjected:true,realMusicRequests:0,realAccountWrites:0});
   }catch(e){await emit('failed',{step,stageCount:count,message:String(e),stack:e?.stack,body:document.body.innerText.slice(0,2600)});}
 })();

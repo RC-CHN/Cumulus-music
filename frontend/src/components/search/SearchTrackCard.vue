@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../../services/contracts';
 import type { SearchTrackHint, SearchReasonTag, SearchReasonTarget } from '../../services/search';
 import { artworkAt } from '../../services/artwork';
+import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 const props = defineProps<{
@@ -34,6 +35,19 @@ const hintText = computed(() =>
     : props.hint?.text,
 );
 const failedCover = ref(false);
+const element = ref<HTMLElement>();
+const cover = ref<HTMLButtonElement>();
+const identity = props.track.id;
+const playbackFocus = usePlaybackTriggerFocus(
+  () => props.playable,
+  element,
+  () =>
+    props.track.id === identity &&
+    !element.value?.closest('.page-leave-active,.search-results-leave-active'),
+);
+function play() {
+  if (!props.track.missing) playbackFocus.start(() => emit('play'), cover.value);
+}
 watch(
   () => props.track.coverUrl,
   () => {
@@ -43,18 +57,20 @@ watch(
 </script>
 <template>
   <article
+    ref="element"
     class="search-track-card"
     :class="{ current, unavailable: track.missing }"
     :data-result-key="`song:${track.id}`"
-    @dblclick="playable && !track.missing && emit('play')"
+    @dblclick="play"
     @contextmenu.prevent="emit('more', $event)"
     @keydown.shift.f10.prevent.stop="emit('more', $event)"
   >
     <button
+      ref="cover"
       class="search-track-cover"
       :aria-label="`${current && playing ? '暂停' : '播放'} ${track.name}`"
       :disabled="!playable || track.missing"
-      @click.stop="emit('play')"
+      @click.stop="play"
       @dblclick.stop
     >
       <img

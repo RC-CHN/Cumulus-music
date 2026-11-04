@@ -11,6 +11,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
@@ -30,6 +31,8 @@ def main():
     script = root / 'search-preview.js'
     script.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     with (root / 'host.log').open('x', encoding='utf-8') as log:
         code = launch(args.binary.resolve(), env, log, root / 'first', args.screenshots)
     failed = root / 'first/failed.json'
@@ -40,7 +43,7 @@ def main():
 def verify(root, capture):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['previewLayouts'] and complete['nativePointer']
-    assert complete['songControls'] and complete['coverOutcomeInjected']
+    assert complete['songControls'] and complete['coverOutcomeInjected'] and complete['playbackFocusVerified']
     assert complete['stageCount'] == 43 and complete['syntheticSearchCalls'] >= 8
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
