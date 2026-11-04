@@ -50,6 +50,36 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchHotCardProof){
+      await wait(()=>one('.track-row'),'daily ready');
+      await theme(1120,760,'light');
+      await fresh('合成热点链接');
+      const card=()=>one('.hot-explanation');
+      const action=()=>card()?.querySelector('.hot-action');
+      assert(card()?.querySelector('h2')?.textContent==='合成热点链接'&&card().querySelector('.hot-marker')?.textContent==='热点'&&card().querySelector('.hot-value')?.textContent.trim()==='25.3万','card displays title, corner marker and official heat');
+      assert(action()?.textContent.trim()==='查看相关歌单'&&!one('#search-result-panel .empty-state'),'hot-only result is actionable without an empty result');
+      await capture('hot_explanation_action');
+      click(action());
+      await wait(()=>one('.playlist-hero h1')?.textContent.includes('合成歌单 28'),'explicit typed target takes priority over related playlist');
+      await capture('hot_explanation_target');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&action()===document.activeElement,'Back restores hotspot action focus');
+      await capture('hot_explanation_back');
+      await theme(760,540,'dark');
+      await fresh('合成热点资源');
+      const cardBounds=card().getBoundingClientRect(), actionBounds=action().getBoundingClientRect();
+      assert(actionBounds.left>cardBounds.left&&actionBounds.right<cardBounds.right&&actionBounds.bottom<=cardBounds.bottom,'narrow dark target is contained');
+      await capture('hot_explanation_related_narrow');
+      click(action());
+      await wait(()=>one('.playlist-hero h1')?.textContent.includes('合成歌单 29'),'first related resource is the typed fallback');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&action()===document.activeElement,'related target restores action focus');
+      await fresh('合成热点外链');
+      assert(card()?.querySelector('h2')?.textContent==='合成热点外链'&&!action()&&!card().querySelector('a[href]')&&!card().outerHTML.includes('PRIVATE'),'unsupported explicit URL stays inert rather than substituting the related action');
+      await capture('hot_explanation_external_inert');
+      await emit('complete',{ok:true,hotCardVerified:true,stageCount:count,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchCarouselProof){
       await wait(()=>one('.track-row'),'daily ready');
       await theme(1120,760,'light');

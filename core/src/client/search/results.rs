@@ -81,6 +81,26 @@ pub struct SearchHotExplanation {
     pub text: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub picture_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub picture_corner_marker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hot_value: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<SearchHotAction>,
+}
+#[derive(Serialize, Deserialize)]
+pub struct SearchHotAction {
+    pub label: String,
+    pub target: SearchHotTarget,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SearchHotTarget {
+    Album { id: String },
+    Artist { id: String },
+    Playlist { id: String },
+    Podcast { id: String },
+    Mv { id: String },
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

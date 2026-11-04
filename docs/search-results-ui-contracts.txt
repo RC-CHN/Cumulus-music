@@ -77,7 +77,8 @@ SearchResultsClient → desktop/search.rs search_results → MusicClient::search
   默认旧版；搜索分类不触发额外实验请求。不会在 v3 失败时静默重发旧接口。
   v3 的 599 部分区块继续展示，空 599/405 显示限定服务说明；HTTP 状态不是业务码。
   参考恢复 M/402：非 2xx 在业务码提取前抛出，故只有 HTTP 405 不进入业务说明分支。
-  v3 热点说明只展示有界标题和文字；任意动作链接、推广项和统计参数不下发/执行。
+  v3 热点说明保留有界标题、文字、公开封面、角标、热度和可识别的内部详情目标；
+  原始链接、推广项和统计参数不下发或执行。
 单曲 /api/search/song/list/page：keyword、scene、needCorrect、channel、limit、offset；
   data.resources[].baseInfo.simpleSongData → TrackView。
 歌单 /api/v1/search/playlist/get：s、queryCorrect、limit、offset；result.playlists。
@@ -112,6 +113,19 @@ MV /api/search/mlog/get：keyword、scene、limit、offset、channel=suggest、o
   `.build/ui-proof/search-carousel-20261104-b`；强制禁用合成的早期截图存在旧画面，未采作视觉证据。
   Windows CI 运行同一合成轮播探针；需等待相应提交的 WebView2 结果。
   既有 v3 搜索九阶段及独立合成 v3 原生播放时钟回归通过；新布局的真实账号分桶与 Windows 实机未验。
+
+V3 热点说明详情：恢复 M/21:1128–1227、M/32 的 `f` 计数格式和
+  components/HotExplainCard/index.tsx。`hotExplainModuleData` 与首个 `relatedResources` 进入
+  原生投影。只有 `canClick=true` 且正十进制 ID 合法时，显示站内专辑、歌手、歌单、播客或 MV
+  按钮；有效的显式 `orpheus://` 类型和 ID 优先，无显式动作时才能使用首个关联资源。
+  带外链、专区、未知类型及歌曲/声音的播放器分支保留为只读说明，不改跳其他资源；不支持的
+  URI 不下发，已识别 URI 的查询和追踪字段也不下发。封面仅走公开音乐 CDN 图像白名单。
+  没有其他结果的热点照常显示；返回恢复原热点按钮。这里只接详情 CTA，不宣称官方全卡点击、
+  全局背景取色、封面播放/暂停和商城/站外动作已经恢复。
+  `search_results_smoke.py --hot-card` 在 Linux 真实 WebView 五阶段、五图通过，覆盖站内目标优先、
+  缺少显式动作时关联回落、外链无动作、宽窗与窄窗深色布局及返回焦点；共 7 次合成 V3/实验读取。
+  证据 `.build/ui-proof/search-hot-card-20261104/first/`。既有 V3 九阶段回归及 6 项 Rust V3 测试通过。
+  未访问真实线上热点或验证 Windows 实机；没有账号写入。
 
 热搜词来源：SearchBox/view/searchRankCard.tsx 和恢复 M/623 按条目的 tabId
   （不是榜单本身的 ID）给 HOT_SEARCH_SONG#@# 设置 hotquery。M/2245 将来源传给

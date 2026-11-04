@@ -1,4 +1,5 @@
 //! The recovered PC v3 comprehensive search returns a single block preview.
+mod hot;
 use super::{SearchCategory, SearchChannel, SearchResultQuery};
 use crate::{Error, Result, error::code_matches, protocol::api::Api};
 use serde_json::{Map, Value, json};
@@ -518,18 +519,6 @@ fn rewrite(resource: &Value) -> Option<Value> {
     Some(json!({"baseInfo":base}))
 }
 
-fn hot_explanation(block: &Value) -> Option<Value> {
-    let first = block["resources"].as_array()?.first()?;
-    let data = &first["baseInfo"]["hotExplainModuleData"];
-    let title = text(&data["title"], 160)?;
-    let content = text(&data["text"], 600)?;
-    let mut result = json!({"title":title,"text":content});
-    if let Some(picture) = image(&data["pictureUrl"]) {
-        result["pictureUrl"] = picture;
-    }
-    Some(result)
-}
-
 fn normalize(data: &Value) -> Result<Value> {
     normalize_mode(data, false)
 }
@@ -551,7 +540,7 @@ fn normalize_mode(data: &Value, partial: bool) -> Result<Value> {
         };
         if code == HOT {
             if explanation.is_none() {
-                explanation = hot_explanation(block);
+                explanation = hot::explanation(block);
             }
             continue;
         }

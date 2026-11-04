@@ -69,10 +69,22 @@ export interface SearchSection {
   category: SearchCategory | null;
   items: SearchItem[];
 }
+export type SearchHotTarget = {
+  kind: 'album' | 'artist' | 'playlist' | 'podcast' | 'mv';
+  id: string;
+};
+export interface SearchHotExplanation {
+  title?: string;
+  text?: string;
+  pictureUrl?: string;
+  pictureCornerMarker?: string;
+  hotValue?: string;
+  action?: { label: string; target: SearchHotTarget };
+}
 export interface SearchResultView {
   query: SearchResultQuery;
   tabs?: SearchCategory[];
-  hotExplanation?: { title?: string; text?: string; pictureUrl?: string };
+  hotExplanation?: SearchHotExplanation;
   previewLayout?: 'carousel' | 'compact_carousel';
   sections: SearchSection[];
   total: number | null;

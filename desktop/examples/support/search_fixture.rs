@@ -30,6 +30,9 @@ pub fn carousel_enabled() -> bool {
 pub fn carousel_calls() -> Vec<Value> {
     CAROUSEL_CALLS.lock().unwrap().clone()
 }
+fn hot_card_enabled() -> bool {
+    v3_enabled() && std::env::var_os("CUMULUS_SEARCH_HOT_CARD_PROOF").is_some()
+}
 pub fn control(value: &Value) {
     let mode = value["mode"].as_str().unwrap();
     assert!(
@@ -582,6 +585,41 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             "/api/search/pc/result/tab" if args == &json!({"keyword":"合成 V3"}) => Some(
                 json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"视频"},{"title":"单曲"}]}}),
             ),
+            "/api/search/pc/result/tab"
+                if hot_card_enabled()
+                    && matches!(
+                        args["keyword"].as_str(),
+                        Some("合成热点链接" | "合成热点资源" | "合成热点外链")
+                    ) =>
+            {
+                Some(json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"歌单"}]}}))
+            }
+            "/api/search/pc/complex/page/v3"
+                if hot_card_enabled()
+                    && matches!(
+                        args["keyword"].as_str(),
+                        Some("合成热点链接" | "合成热点资源" | "合成热点外链")
+                    ) =>
+            {
+                let word = args["keyword"].as_str().unwrap();
+                if *args
+                    != json!({"keyword":word,"scene":"normal","needCorrect":true,"channel":"typing","bizQueryInfo":""})
+                {
+                    return Some(Err(Error::InvalidInput("wrong synthetic hotspot query")));
+                }
+                let action = match word {
+                    "合成热点链接" => json!("orpheus://playlist/28?trace=PRIVATE"),
+                    "合成热点外链" => json!("https://example.invalid/PRIVATE"),
+                    _ => Value::Null,
+                };
+                Some(json!({"code":200,"data":{"blocks":[
+                    {"blockCode":"search_block_hot_result_hot_explain","resources":[{
+                        "baseInfo":{"hotExplainModuleData":{"title":word,"text":"热点说明的合成资料，仅供界面验证。","textAction":action,
+                            "urlText":"查看相关歌单","canClick":true,"hotValue":253567,"pictureCornerMarker":"热点"}},
+                        "relatedResources":[{"resourceType":"playlist","baseInfo":{"pubPlaylistData":{"id":29,"name":"关联歌单"}}}]
+                    }]}
+                ]}}))
+            }
             "/api/search/pc/complex/page/v3"
                 if args
                     == &json!({"keyword":"合成 V3","scene":"normal","needCorrect":true,"channel":"typing","bizQueryInfo":""}) =>

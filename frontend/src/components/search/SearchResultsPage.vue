@@ -14,6 +14,7 @@ import {
   searchExplanation,
   type SearchCategory,
   type SearchChannel,
+  type SearchHotTarget,
   type SearchItem,
   type SearchPendingTrackToggle,
   type SearchReasonTarget,
@@ -30,6 +31,7 @@ import SearchLyricExtra from './SearchLyricExtra.vue';
 import { waitForViewportFrames } from '../../services/viewportLayout';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
+import SearchHotExplanationCard from './SearchHotExplanationCard.vue';
 import { searchCardIsCurrent, type SearchQueueRequest } from '../../services/searchCards';
 import type { PlayerOrigin, PlaybackStatus, SearchResultPlayback } from '../../services/player';
 const motion = useMotion();
@@ -73,6 +75,7 @@ const emit = defineEmits<{
   search: [keyword: string];
   searchOriginal: [keyword: string];
   open: [item: SearchItem];
+  hotTarget: [target: SearchHotTarget];
   creator: [id: string];
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   playTrack: [track: TrackView, toggleCurrent: boolean];
@@ -195,6 +198,7 @@ function playTrack(track: TrackView | undefined, toggleCurrent = false) {
 const songs = computed(() => view.value?.sections.flatMap(tracks) ?? []);
 const count = computed(() => view.value?.sections.reduce((n, s) => n + s.items.length, 0) ?? 0);
 const explanation = computed(() => searchExplanation(view.value, category.value, count.value > 0));
+const hotspot = computed(() => (category.value === 'all' ? view.value?.hotExplanation : undefined));
 const expandedLyrics = ref(new Set<string>());
 function toggleLyric(key: string) {
   const next = new Set(expandedLyrics.value);
@@ -629,13 +633,15 @@ onBeforeUnmount(() => {
           <p v-if="explanation.notice" class="search-result-notice" role="status">
             {{ explanation.notice }}
           </p>
-          <div v-if="explanation.lines.length" class="search-result-notice" role="status">
-            <p v-for="line in explanation.lines" :key="line">{{ line }}</p>
-          </div>
+          <SearchHotExplanationCard
+            v-if="hotspot"
+            :explanation="hotspot"
+            @open="emit('hotTarget', $event)"
+          />
           <p v-if="view.unavailableCount" class="search-result-notice">
             有 {{ view.unavailableCount }} 项结果暂无法展示。
           </p>
-          <div v-if="!count" class="empty-state">
+          <div v-if="!count && !hotspot" class="empty-state">
             <Icon name="search" />
             <p v-if="explanation.emptyTitle">{{ explanation.emptyTitle }}</p>
             <p v-else-if="view.more">这一页暂无可展示的结果</p>

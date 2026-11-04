@@ -14,6 +14,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--v3', action='store_true')
     mode.add_argument('--carousel', action='store_true')
+    mode.add_argument('--hot-card', action='store_true')
     mode.add_argument('--voice-direct', action='store_true')
     mode.add_argument('--card-matches', action='store_true')
     mode.add_argument('--correction-original', action='store_true')
@@ -81,6 +82,10 @@ def main():
     if args.carousel:
         env['CUMULUS_SEARCH_CAROUSEL_PROOF'] = '1'
         prefix = 'window.__cumulusSearchCarouselProof = true;\n'
+    if args.hot_card:
+        env['CUMULUS_SEARCH_V3_PROOF'] = '1'
+        env['CUMULUS_SEARCH_HOT_CARD_PROOF'] = '1'
+        prefix = 'window.__cumulusSearchHotCardProof = true;\n'
     script.write_text(prefix + source.read_text(encoding='utf-8'), encoding='utf-8')
     env['CUMULUS_UX_SCRIPT'] = str(script)
     env['CUMULUS_SEARCH_USER_PROFILE_PROOF'] = '1'
@@ -89,6 +94,15 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.hot_card:
+        first = root / 'first'
+        complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
+        assert complete['ok'] and complete['hotCardVerified'] and complete['stageCount'] == 5
+        assert complete['syntheticV3Calls'] == 7 and complete['realAccountWrites'] == 0
+        assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, hotCardVerified=True,
+                              stageCount=5, v3Reads=7, realAccountWrites=0)))
+        return
     if args.carousel:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))

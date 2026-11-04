@@ -7,7 +7,7 @@ import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
-import type { SearchItem, SearchPendingTrackToggle } from './services/search';
+import type { SearchHotTarget, SearchItem, SearchPendingTrackToggle } from './services/search';
 import {
   searchCardIsCurrent,
   searchCardSelection,
@@ -416,6 +416,13 @@ function openSearchItem(item: SearchItem) {
     if (id) openMv(id);
     else music.notice.value = '此视频暂不可打开';
   }
+}
+function openSearchHotTarget(target: SearchHotTarget) {
+  if (page.value.kind !== 'search' || !signedIn.value) return;
+  if (target.kind === 'playlist') music.navigate({ kind: 'playlist', id: target.id });
+  else if (target.kind === 'podcast') openSceneRadio(target.id);
+  else if (target.kind === 'mv') openMv(target.id);
+  else openCatalog({ kind: target.kind, id: target.id });
 }
 function playSearchChart(keywords: string[]) {
   if (account.value.status !== 'authenticated' || !player.ready.value || player.busy.value) return;
@@ -2518,6 +2525,7 @@ onUnmounted(() => {
                   (label, target) => music.navigate({ kind: 'search_reason', label, target })
                 "
                 @open="openSearchItem"
+                @hot-target="openSearchHotTarget"
                 @artist-action="artistAction"
                 @album-action="
                   (request) => page.kind === 'search' && signedIn && albumAction(request)
