@@ -17,7 +17,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::windows::named_pipe::{NamedPipeClient, NamedPipeServer, PipeMode, ServerOptions},
     process::{Child, Command},
-    time::timeout,
+    time::{sleep, timeout},
 };
 use windows_sys::Win32::{
     Foundation::{ERROR_ACCESS_DENIED, ERROR_PIPE_BUSY, INVALID_HANDLE_VALUE, LocalFree},
@@ -142,6 +142,37 @@ fn create_listener(
                 (&mut security as *mut SECURITY_ATTRIBUTES).cast(),
             )
     }
+}
+
+async fn replace_used_listener(
+    server: NamedPipeServer,
+    address: &str,
+    identity: &Identity,
+) -> io::Result<NamedPipeServer> {
+    // Mio prefetches a read after consuming the previous frame. Disconnect
+    // resets the kernel connection, but an old EOF/completion may still be
+    // cached in that Mio instance. Use a new overlapped I/O state for the next
+    // child. The old handle can remain alive until IOCP cancellation settles.
+    drop(server);
+    timeout(HANDSHAKE, async {
+        loop {
+            match listener(address, identity) {
+                Err(error)
+                    if matches!(
+                        error.raw_os_error().map(|code| code as u32),
+                        Some(ERROR_ACCESS_DENIED | ERROR_PIPE_BUSY)
+                    ) =>
+                {
+                    // Only re-arm this lab-owned listener; no client exists
+                    // yet, no request is resent, and the first-instance flag
+                    // and DACL remain in force for every create attempt.
+                    sleep(Duration::from_millis(10)).await;
+                }
+                result => return result,
+            }
+        }
+    })
+    .await?
 }
 
 fn verify_first_instance_flag(address: &str, identity: &Identity) -> io::Result<()> {
@@ -421,20 +452,36 @@ async fn run_lab() -> io::Result<()> {
     server.disconnect()?;
 
     eprintln!("native open lab: oversized frame");
-    let invalid = spawn(root.path(), "oversize")?;
-    incoming(&server, &identity).await?;
-    write_code(&mut server, READY).await?;
-    demand(
-        read_group(&mut server, HANDSHAKE)
-            .await
-            .is_err_and(|error| error.kind() == io::ErrorKind::InvalidData),
-        "oversized frame accepted",
+    let mut server = at(
+        "re-arm same address for oversized child",
+        replace_used_listener(server, &address, &identity).await,
     )?;
-    write_code(&mut server, INVALID).await?;
-    wait(invalid, INVALID).await?;
+    let invalid = at("spawn oversized child", spawn(root.path(), "oversize"))?;
+    at(
+        "authenticate oversized child",
+        incoming(&server, &identity).await,
+    )?;
+    at(
+        "send oversized child readiness",
+        write_code(&mut server, READY).await,
+    )?;
+    match read_group(&mut server, HANDSHAKE).await {
+        Err(error) if wire::is_oversized(&error) => {}
+        Err(error) => return at("oversized header not classified", Err(error)),
+        Ok(_) => return Err(fail("oversized frame accepted")),
+    }
+    at(
+        "send oversized rejection",
+        write_code(&mut server, INVALID).await,
+    )?;
+    at("oversized child receipt", wait(invalid, INVALID).await)?;
     server.disconnect()?;
 
     eprintln!("native open lab: lost receipt without replay");
+    let mut server = at(
+        "re-arm same address for lost receipt",
+        replace_used_listener(server, &address, &identity).await,
+    )?;
     let lost = spawn(root.path(), "normal")?;
     incoming(&server, &identity).await?;
     write_code(&mut server, READY).await?;

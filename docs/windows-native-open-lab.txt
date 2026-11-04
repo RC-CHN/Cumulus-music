@@ -58,6 +58,13 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
   byte pipe 没有 Unix 半关闭语义。忙时 CreateFileW 立即拒绝；发送后丢回执
   视为未确认，不重连或重发。独立子进程只继承 Windows loader 最小环境，
   工作目录也限定在对应临时目录。测试超时会清理自身子进程。
+- 原生 Runner 41910049461 已通过同登录认证、准确帧传输和忙拒绝；复用同一
+  Tokio 管道对象后的超长帧检查失败。Mio 1.2.3 会预取读取，而 DisconnectNamedPipe
+  不清除对象内已经完成或待完成的旧读取；这是从锁定依赖源码定位的可疑路径，旧
+  日志未区分读取失败与解析失败。实验改为在后续子进程启动前关闭旧对象、在相同
+  地址有界重建，只对旧句柄退场期间的 5/231 重试建立服务端，保留单实例、DACL
+  和认证。超长帧须得到明确的超长头错误及 INVALID 回执；提前 EOF 或其他读错误
+  会失败并输出脱敏阶段，不会算作正确拒绝。
 - Windows x64 实机命令：
   cargo run --locked --manifest-path desktop/probes/native-open-windows/Cargo.toml
   仓库的手动工作流 Windows native open transport lab 可运行同一程序并只保留
@@ -77,3 +84,4 @@ https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellex
 https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights
 https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
 https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions
+https://github.com/tokio-rs/mio/blob/v1.2.3/src/sys/windows/named_pipe.rs

@@ -1,10 +1,27 @@
 //! One bounded frame/receipt on an authenticated, single-use local channel.
-use std::io;
+use std::{fmt, io};
 
 pub const MAGIC: &[u8; 4] = b"CFW1";
 pub const MAX: usize = 32 * 1024;
 const MAX_PATH: usize = 4096;
 const MAX_COUNT: u8 = 8;
+
+#[derive(Debug)]
+struct OversizedHeader;
+
+impl fmt::Display for OversizedHeader {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("lab frame length exceeds limit")
+    }
+}
+impl std::error::Error for OversizedHeader {}
+
+pub fn is_oversized(error: &io::Error) -> bool {
+    error.kind() == io::ErrorKind::InvalidData
+        && error
+            .get_ref()
+            .is_some_and(|cause| cause.is::<OversizedHeader>())
+}
 
 fn invalid() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "malformed lab frame")
@@ -44,8 +61,11 @@ pub fn encode(paths: &[&str]) -> io::Result<Vec<u8>> {
 
 pub fn size(head: [u8; 8]) -> io::Result<usize> {
     let length = u32::from_be_bytes([head[4], head[5], head[6], head[7]]) as usize;
-    if &head[..4] != MAGIC || !(1..=MAX).contains(&length) {
+    if &head[..4] != MAGIC || length == 0 {
         return Err(invalid());
+    }
+    if length > MAX {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, OversizedHeader));
     }
     Ok(length)
 }
@@ -89,7 +109,12 @@ mod tests {
         assert!(encode(&["\n"]).is_err());
         let mut head = [0; 8];
         head[..4].copy_from_slice(MAGIC);
+        assert!(!is_oversized(&size(head).unwrap_err()));
+        head[4..].copy_from_slice(&(MAX as u32).to_be_bytes());
+        assert_eq!(size(head).unwrap(), MAX);
         head[4..].copy_from_slice(&((MAX + 1) as u32).to_be_bytes());
-        assert!(size(head).is_err());
+        assert!(is_oversized(&size(head).unwrap_err()));
+        head[0] ^= 1;
+        assert!(!is_oversized(&size(head).unwrap_err()));
     }
 }
