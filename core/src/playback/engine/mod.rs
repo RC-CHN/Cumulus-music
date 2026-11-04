@@ -3,6 +3,8 @@
 mod bmff;
 mod ffi;
 mod frames;
+#[cfg(test)]
+mod limiter_segment;
 mod mpv;
 mod output;
 mod runtime;

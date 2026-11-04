@@ -1,0 +1,65 @@
+Recovered limiter: isolated decoded PCM producer
+
+`core/src/playback/engine/limiter_segment.rs` is a disabled experiment. It
+accepts interleaved decoded PCM and does not depend on a child process,
+libmpv, desktop IPC, or UI. The transport remains compiled only in core
+tests. The sibling `native_decoder.rs` supplies a concrete decoder for one
+synthetic 44.1 kHz stereo lossless FLAC fixture, using a trusted FFmpeg
+executable and raw float PCM over stdout. No Python, network, account or
+private recording is used. This is not a new FFmpeg deployment dependency.
+Linux packages already depend on the FFmpeg package; the Windows package
+builder copies libmpv, ffprobe.exe and their DLL import closure, not
+ffmpeg.exe. Windows production support would require a separate choice of
+decoder and native packaging validation.
+
+Each producer message has a generation, and audio and EOF identify an
+absolute source-frame position. A logical seek starts a new generation,
+discards old DSP input, output, history and EOF, and retains the user's
+pause state. It fences late PCM, EOF and failures from old generations.
+For the active generation, gaps, invalid frames and early EOF are errors;
+only a validated decoder EOF enters the recovered limiter's terminal drain.
+In the CLI probe, EOF also requires a whole interleaved frame and a
+successful child exit. A failed generation must be explicitly reopened.
+
+The decoder uses 613-frame blocks and a queue of two packets, with at most
+one packet waiting at the producer. Pausing does not consume a packet or
+advance the rendered source clock. The decoder can fill its bounded queue
+and then blocks instead of decoding the whole song into Rust memory.
+Cancellation drops the old receiver before terminating and reaping the
+fixture decoder, so a producer blocked on either the queue or the pipe
+can finish. The limiter's own FIFO capacity is twice its 2048-frame
+quantum. Empty reads before EOF are pending; a real read can contain
+variable output and is not silently padded to the consumer's request.
+
+The absolute source clock advances as frames leave the limiter, stays at
+the requested frame until output is consumed, and clamps to the original
+end even if the official empty-FIFO EOF rule emits one additional silent
+frame. This is the rendered source cursor, not an audio-device clock:
+libmpv can decode ahead, and output time must be reconciled with its entry
+and generation, as established separately in limiter-stream-host-proof.txt.
+
+Run the external-decoder proof on a host with a trusted FFmpeg executable:
+
+    cargo test --locked -p cumulus-core --lib limiter_segment -- --ignored --nocapture
+
+`CUMULUS_LIMITER_PROBE_FFMPEG` can specify an explicit trusted executable.
+The fixture seeks with `atrim=start_sample=N`, verified by comparing every
+decoded stereo frame after the new generation to the generated source.
+The fixture decodes and discards the prefix on seek. In the Linux reference
+run (FFmpeg 8.0.1), the first pause stopped at source frame 379 with two
+queued packets and one blocked producer packet. Seeking to source frame
+40500 yielded all 57804 expected stereo frames before successful EOF.
+An invalid FLAC failed instead of draining as if complete; reopening at
+the exact end yielded the recovered single silent frame without advancing
+the source clock.
+
+The experiment does not prove bounded-time indexed seeking in long media,
+support for authorized pinned streams, sample counts for codecs with
+priming/edit lists, unknown-length sources, decoder format negotiation or
+changes, or real hardware timing. The two proofs do not yet stream the
+decoded producer and the libmpv output within one native session; they
+share the recovered DSP but exercise different boundaries.
+The remaining work includes a bounded-time decoder, an explicit audio
+sink generation swap with clock mapping, full proprietary graph routing,
+device/rate handling and real Windows/native desktop verification. Do not
+enable this prototype in normal playback.
