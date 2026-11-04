@@ -72,7 +72,7 @@ jobs:
           retention-days: 7
 
   native-linux:
-    # Keep the established required job context and package artifact name.
+    # Keep the established required job context used by the release verifier.
     name: Native (linux-x64)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
@@ -122,11 +122,73 @@ jobs:
         run: cargo test --locked -p cumulus-desktop --lib --features custom-protocol,recognition-monitor-lab recognition_capture
       - name: Verify standalone WASAPI capture policy
         run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
-      - name: Reclaim Linux test build space before packaging
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Upload synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-linux-native-checks
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve Rust downloads for the next attempt
+        if: >-
+          always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
+          steps.rust-cache.outputs.cache-hit != 'true' &&
+          (steps.rust-clippy.outcome == 'success' || steps.rust-clippy.outcome == 'failure')
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+
+  package-linux:
+    name: Package and verify (linux-x64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Linux native dependencies
         run: |
-          df -h .
-          du -sh .build/target/debug
-          cargo clean --profile dev --locked
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev patchelf libmpv-dev ffmpeg xvfb dbus-x11 python3-gi gir1.2-gtk-3.0 gir1.2-atspi-2.0 at-spi2-core libxtst6 openbox x11-utils iproute2 pipewire pipewire-pulse wireplumber pulseaudio-utils desktop-file-utils
+          sudo locale-gen en_US.UTF-8
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned toolchain
+        run: rustup show
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        id: rust-cache
+        with:
+          # Linux reuses downloads only, never a target directory.
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: |
+            rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-Linux-downloads-v2-
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
+      - name: Check Linux package build space
+        run: |
+          # This runner only builds the release profile; native tests run independently.
           test ! -d .build/target/debug
           df -h .
       - name: Build release packages and verify native media
@@ -224,17 +286,6 @@ jobs:
           path: .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           if-no-files-found: error
           retention-days: 3
-      - name: Preserve Rust downloads for the next attempt
-        if: >-
-          always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
-          steps.rust-cache.outputs.cache-hit != 'true' &&
-          (steps.rust-clippy.outcome == 'success' || steps.rust-clippy.outcome == 'failure')
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: rust-Linux-downloads-v2-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}
 
   native:
     name: Native (${{ matrix.platform }})
@@ -247,8 +298,6 @@ jobs:
             rust-cache-scheme: v1
             rust-target-cache: .build/target
     runs-on: ${{ matrix.os }}
-    # Windows' observed full run took ~120 minutes before the cache save;
-    # individual WebView probes retain their own bounded timeouts.
     timeout-minutes: 150
     defaults:
       run:
@@ -316,10 +365,96 @@ jobs:
         run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
       - name: Verify standalone WASAPI capture policy
         run: cargo test --locked --manifest-path desktop/probes/recognition-wasapi/Cargo.toml
+      - name: Archive synthetic failure diagnostics
+        if: failure()
+        run: python scripts/ci/diagnostics.py
+      - name: Preserve synthetic failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: diagnostics-windows-native-checks
+          # Archive first: path-escaping fixtures deliberately contain colons,
+          # which upload-artifact cannot accept as individual filenames.
+          include-hidden-files: true
+          path: .build/diagnostics/synthetic-proofs.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve Rust caches for the next attempt
+        if: >-
+          always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
+          steps.rust-cache.outputs.cache-hit != 'true' &&
+          (steps.rust-clippy.outcome == 'success' || steps.rust-clippy.outcome == 'failure') &&
+          hashFiles('.build/target/.rustc_info.json') != ''
+        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ matrix.rust-target-cache }}
+          key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}${{ runner.os == 'Windows' && format('-{0}', github.sha) || '' }}
+
+  package-windows:
+    name: Package and verify (windows-x64)
+    runs-on: windows-2022
+    # Packaging and GUI probes use the same verified media staging directory.
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+      - name: Windows media dependencies
+        id: msys2
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-mpv mingw-w64-ucrt-x86_64-binutils
+            mingw-w64-ucrt-x86_64-cc mingw-w64-ucrt-x86_64-autotools
+            mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-dlfcn
+            mingw-w64-ucrt-x86_64-vulkan-headers mingw-w64-ucrt-x86_64-amf-headers
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers mingw-w64-ucrt-x86_64-nasm
+            mingw-w64-ucrt-x86_64-ladspa-sdk
+      - name: Install pinned toolchain
+        run: rustup show
+      - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        id: rust-cache
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            .build/target
+          # Restore only. The Native Windows job owns Rust target cache writes.
+          key: rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          restore-keys: |
+            rust-${{ runner.os }}-v1-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}-
+            rust-${{ runner.os }}-v1-
+      - name: Build and verify Windows media runtime
+        if: runner.os == 'Windows'
+        uses: ./.github/actions/windows-media
+        with:
+          msys-root: ${{ steps.msys2.outputs.msys2-location }}
+          save-cache: 'false'
+      - run: npm --prefix frontend ci
+      - run: npm --prefix frontend run build
       - name: Build release packages and verify native media
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
-        run: python scripts/ci/package.py --platform '${{ matrix.platform }}'
+        run: python scripts/ci/package.py --platform 'windows-x64'
       - name: Verify cold FLAC seeks and held-file fallback on native Windows
         if: runner.os == 'Windows'
         env:
@@ -611,7 +746,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: diagnostics-${{ matrix.platform }}
+          name: diagnostics-windows-x64
           # Archive first: path-escaping fixtures deliberately contain colons,
           # which upload-artifact cannot accept as individual filenames.
           include-hidden-files: true
@@ -620,28 +755,15 @@ jobs:
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: packages-${{ matrix.platform }}
-          path: .build/packages/${{ matrix.platform }}/
+          name: packages-windows-x64
+          path: .build/packages/windows-x64/
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - name: Preserve Rust caches for the next attempt
-        if: >-
-          always() && !cancelled() && steps.rust-cache.outcome == 'success' &&
-          steps.rust-cache.outputs.cache-hit != 'true' &&
-          (steps.rust-clippy.outcome == 'success' || steps.rust-clippy.outcome == 'failure') &&
-          hashFiles('.build/target/.rustc_info.json') != ''
-        uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            ${{ matrix.rust-target-cache }}
-          key: rust-${{ runner.os }}-${{ matrix.rust-cache-scheme }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml') }}${{ runner.os == 'Windows' && format('-{0}', github.sha) || '' }}
 
   linux-webview:
     name: Linux WebView smoke
-    needs: [frontend, native-linux]
+    needs: [frontend, package-linux]
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     defaults:
@@ -992,7 +1114,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [frontend, native-linux, native, linux-webview, media-diagnostic, smtc-diagnostic]
+    needs: [frontend, native-linux, native, package-linux, package-windows, linux-webview, media-diagnostic, smtc-diagnostic]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -1001,6 +1123,8 @@ jobs:
           FRONTEND: ${{ needs.frontend.result }}
           NATIVE: ${{ needs.native.result }}
           LINUX_NATIVE: ${{ needs.native-linux.result }}
+          LINUX_PACKAGE: ${{ needs.package-linux.result }}
+          WINDOWS_PACKAGE: ${{ needs.package-windows.result }}
           LINUX_WEBVIEW: ${{ needs.linux-webview.result }}
           DIAGNOSTIC: ${{ needs.media-diagnostic.result }}
           DIAGNOSTIC_REQUESTED: ${{ inputs.windows_diagnostic || false }}
@@ -1010,6 +1134,8 @@ jobs:
           test "$FRONTEND" = success
           test "$NATIVE" = success
           test "$LINUX_NATIVE" = success
+          test "$LINUX_PACKAGE" = success
+          test "$WINDOWS_PACKAGE" = success
           test "$LINUX_WEBVIEW" = success
           if [ "$DIAGNOSTIC_REQUESTED" = true ]; then
             test "$DIAGNOSTIC" = success

@@ -4,6 +4,10 @@ inputs:
   msys-root:
     description: UCRT64 installation prepared with the FFmpeg build dependencies
     required: true
+  save-cache:
+    description: Save the verified dependency cache when this runner owns the cache key
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -53,7 +57,7 @@ runs:
     - uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25
       # Cache is only a source-authenticated dependency artifact. An earlier
       # runtime/PCM failure still fails the job and prevents packaging/release.
-      if: always() && steps.package-cache.outcome == 'success'
+      if: always() && inputs.save-cache == 'true' && steps.package-cache.outcome == 'success'
       with:
         path: .build/windows-media/cache
         key: ${{ steps.plan.outputs.cache-key }}
