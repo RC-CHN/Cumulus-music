@@ -17,64 +17,6 @@ pub fn fallback_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_MV_FALLBACK_PROOF").is_some()
 }
 
-pub fn fallback_config(
-    store: Arc<cumulus_core::storage::StateStore>,
-) -> Result<Arc<cumulus_core::protocol::mconfig::PcConfig>> {
-    use cumulus_core::protocol::{
-        api::ApiFuture,
-        mconfig::{APPLICATION_KEY, ConfigBackend, ConfigUrl, PcConfig},
-    };
-    struct Config;
-    impl ConfigBackend for Config {
-        fn get<'a>(&'a self, url: &'a ConfigUrl) -> ApiFuture<'a, Value> {
-            Box::pin(async move {
-                assert_eq!(
-                    url.as_str(),
-                    "https://d5.music.126.net/obj/fixture/mv-fallback.data"
-                );
-                Ok(json!({"preload#isOpenNoCopyrightMV":true}))
-            })
-        }
-    }
-    let config = PcConfig::new(store, Arc::new(Config))?;
-    tauri::async_runtime::block_on(config.resolve(&std::collections::BTreeMap::from([(
-        "MConfig-Info".into(),
-        json!({APPLICATION_KEY:{"version":1,"os":"pc","fullUrl":"https://d5.music.126.net/obj/fixture/mv-fallback.data"}}).to_string(),
-    )])))?;
-    Ok(config)
-}
-
-pub fn fallback_results() -> Value {
-    let alt = |id, flag| json!({"type":3,"expInfo":{"mvPlay":flag},"mvInfo":{"id":id,"pic16v9Url":"https://p1.music.126.net/fixture.jpg?authorization=PRIVATE","url":"https://example.invalid/PRIVATE"}});
-    let row = |id, name, status, toast, alternative| {
-        json!({
-            "type":"song","baseInfo":{"simpleSongData":{"id":id,"name":name,"mv":602}},
-            "extInfo":{"privilege":{"st":status,"toast":toast},"noCopyrightRcmd":alternative}
-        })
-    };
-    let rows = [
-        row(1, "合成替代歌曲", -200, "", alt(json!(601), json!(true))),
-        row(2, "合成地区限制", -100, "", alt(json!(601), json!(true))),
-        row(3, "合成实验未开", -200, "", alt(json!(601), json!("true"))),
-        row(
-            4,
-            "合成下架说明",
-            -100,
-            "下架",
-            alt(json!("601"), json!(true)),
-        ),
-        row(5, "合成普通歌曲", 0, "", Value::Null),
-        row(
-            6,
-            "合成无效替代",
-            -200,
-            "",
-            alt(json!("https://example.invalid/PRIVATE"), json!(true)),
-        ),
-    ];
-    json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":rows}]}})
-}
-
 pub fn calls() -> Vec<Value> {
     CALLS.lock().unwrap().clone()
 }
