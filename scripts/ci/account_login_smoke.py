@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--baseline', action='store_true')
     parser.add_argument('--account-detail', action='store_true')
+    parser.add_argument('--account-bindings', action='store_true')
     parser.add_argument('--profile-edit', action='store_true')
     parser.add_argument('--account-avatar', action='store_true')
     parser.add_argument('--device-removal', action='store_true')
@@ -24,7 +25,7 @@ def main():
     parser.add_argument('--active-switch', action='store_true')
     parser.add_argument('--qr-status', choices=['legacy', 'jsk'])
     args = parser.parse_args()
-    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal, args.quick_login, args.active_switch, bool(args.qr_status))) > 1:
+    if sum((args.baseline, args.account_detail, args.account_bindings, args.profile_edit, args.account_avatar, args.device_removal, args.quick_login, args.active_switch, bool(args.qr_status))) > 1:
         parser.error('choose one proof mode')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -36,6 +37,8 @@ def main():
         env['CUMULUS_PROOF_BASELINE'] = '1'
     if args.account_detail:
         env['CUMULUS_PROOF_ACCOUNT_DETAIL'] = '1'
+    if args.account_bindings:
+        env['CUMULUS_PROOF_ACCOUNT_BINDINGS'] = '1'
     if args.profile_edit:
         env['CUMULUS_PROOF_PROFILE_EDIT'] = '1'
     if args.account_avatar:
@@ -64,7 +67,7 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (11 if args.account_detail else 8 if args.active_switch else 7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit or args.qr_status else 6 if args.device_removal else 2 if args.baseline else 37)
+    assert len(states) == (11 if args.account_detail else 8 if args.active_switch else 7 if args.quick_login else 4 if args.account_avatar else 5 if args.profile_edit or args.qr_status else 6 if args.device_removal or args.account_bindings else 2 if args.baseline else 37)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
@@ -200,13 +203,31 @@ def main():
         assert all(marker not in raw for marker in (
             'fixture-private-key', '1234567890', 'fixture-device-binding-private', '"001234"'
         ))
+    elif args.account_bindings:
+        assert complete['accountBindings']
+        local = '/api/w/v1/user/bindings/2'
+        foreign = '/api/w/v1/user/bindings/5'
+        names = ['bindings_guest_light', 'bindings_error_light', 'bindings_ready_light',
+                 'bindings_qr_light', 'bindings_back_light', 'bindings_foreign_password_dark']
+        assert [row['stage'].split('_', 2)[2] for row in states] == names
+        assert [row['fixture']['paths'].get(local, 0) for row in states] == [0, 2, 3, 3, 3, 3]
+        assert [row['fixture']['paths'].get(foreign, 0) for row in states] == [0, 0, 0, 0, 0, 1]
+        assert [row['theme'] for row in states] == ['light'] * 5 + ['dark']
+        assert states[0]['nativeAccount']['status'] != 'authenticated'
+        assert states[1]['nativeAccount']['epoch'] == states[4]['nativeAccount']['epoch']
+        assert states[5]['nativeAccount']['epoch'] != states[4]['nativeAccount']['epoch']
+        for row in [*states, complete]:
+            assert not row['fixture']['browserDocuments']
+            assert {path for path in row['fixture']['paths'] if 'bind' in path} <= {local, foreign}
+            assert '/api/user/profile/update' not in row['fixture']['paths']
+            assert 'binding-private-' not in json.dumps(row, ensure_ascii=False)
     elif args.profile_edit:
         assert complete['profileEdit'] and complete['profileRegionsVerified']
         paths = complete['fixture']['paths']
         by_name = {state['stage'].split('_', 2)[2]: state for state in states}
         qr_paths = by_name['binding_qr_light']['fixture']['paths']
         assert qr_paths['/api/w/v1/user/detail/2'] == 1
-        assert qr_paths['/api/w/v1/user/bindings/2'] == 1
+        assert qr_paths['/api/w/v1/user/bindings/2'] == 2
         assert not any('bindaccount' in path for path in paths)
         assert paths['/api/user/profile/update'] == 2
         assert paths['/api/lbs/region/code'] == 2
@@ -244,7 +265,7 @@ def main():
         assert by_name['devices_ordinary_dark']['theme'] == 'dark'
         paths = complete['fixture']['paths']
         assert paths['/api/w/v1/user/detail/2'] == 1
-        assert paths['/api/w/v1/user/bindings/2'] == 1
+        assert paths['/api/w/v1/user/bindings/2'] == 2
         listing = '/api/middle/user/device/list'
         assert paths[listing] == 7
         assert [by_name[name]['fixture']['paths'][listing] for name in (
@@ -308,7 +329,7 @@ def main():
         assert paths.get('/api/login') == 3  # Wrong, cancelled inflight, explicit successful retry.
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(states)
-    report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, profileEdit=args.profile_edit,
+    report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, accountBindings=args.account_bindings, profileEdit=args.profile_edit,
                   accountAvatar=args.account_avatar,
                   deviceRemoval=args.device_removal, quickLogin=args.quick_login, activeSwitch=args.active_switch,
                   qrStatus=args.qr_status,

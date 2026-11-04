@@ -273,6 +273,86 @@
       click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
   }
+  async function accountBindings() {
+    const domestic = "邮箱验证账号";
+    const foreign = "短信验证账号";
+    const test = (name) => one(`[data-testid="${name}"]`);
+    const entry = () => test("account-bindings-open");
+    const foreignEntry = () => test("account-bindings-foreign-password");
+    const retry = () => test("account-bindings-retry");
+    const page = () => one(".account-bindings-page");
+    const row = (method) => page()?.querySelector(`[data-binding-method="${method}"]`);
+    const action = (method, kind) => row(method)?.querySelector(`[data-binding-action="${kind}"]`);
+    const methods = (group) =>
+      all(`[data-binding-group="${group}"] [data-binding-method]`, page()).map((node) => node.dataset.bindingMethod).join(",");
+    const modal = () => one(".account-binding-qr-dialog");
+    const back = () => button("返回设置", page());
+    const readState = () => page()?.dataset.accountReadState;
+    async function showQr(trigger, title, name, nickname) {
+      click(trigger);
+      await wait(() => modal()?.querySelector("svg[data-account-binding-qr]"), "native binding QR");
+      assert(modal().querySelector("h2").textContent.trim() === title, "official QR title");
+      assert(!modal().querySelector("a") && !modal().outerHTML.includes("orpheus:"), "only matrix leaves native");
+      await stage(name, { expectNickname: nickname });
+      click(button("关闭扫码设置", modal()));
+      await wait(() => !modal() && document.activeElement === trigger, "closed QR returns focus");
+    }
+    click(button("打开设置"));
+    await wait(() => one(".settings-scroll"), "guest settings");
+    await settle();
+    assert(!entry() && !foreignEntry(), "no binding control for guests");
+    await stage("bindings_guest_light", { expectGuest: true });
+
+    await open();
+    await email();
+    await logged(domestic);
+    await wait(() => entry() && !entry().disabled, "bound settings entry");
+    await mode("bindings_failed");
+    click(entry());
+    await wait(() => readState() === "error", "binding read failure");
+    assert(!row("email") && !action("qq", "bind"), "failure does not impersonate an empty binding list");
+    await stage("bindings_error_light", { expectNickname: domestic });
+    await mode("bindings_ok");
+    click(retry());
+    await wait(() => methods("registration") === "email" &&
+      methods("others") === "cellphone,wechat,qq,weibo", "official groups and order");
+    const contents = page().textContent;
+    assert(contents.includes("b***@e***") && contents.includes("+86 ***8000") &&
+      contents.includes("ID：合成微信昵称") && contents.includes("ID：合成微博昵称"), "masked addresses and social names");
+    for (const secret of ["binding-private", "13800138000", "tokenJsonStr", "orpheus:"]) {
+      assert(!page().outerHTML.includes(secret), "private binding data excluded");
+    }
+    assert(!action("email", "change") && action("wechat", "change")?.textContent.trim() === "解绑账号" &&
+      action("cellphone", "change")?.textContent.trim() === "更换手机号" &&
+      action("cellphone", "password")?.textContent.trim() === "设置密码", "official row actions");
+    await stage("bindings_ready_light", { expectNickname: domestic });
+    await showQr(action("qq", "bind"), "扫码设置", "bindings_qr_light", domestic);
+    click(back());
+    await wait(() => !page() && document.activeElement === entry(), "Back restores Settings opener focus");
+    await stage("bindings_back_light", { expectNickname: domestic });
+
+    await chooser();
+    click(button("＋ 添加账号"));
+    await wait(() => one(".login-methods"), "second synthetic account");
+    await tab("手机");
+    fill("登录手机号", "13800138000");
+    click(button("密码登录"));
+    await wait(() => all('[aria-label="登录密码"]').length && status() === "ready" &&
+      !one(".tab-leave-active"), "phone password ready");
+    await settle();
+    fill("登录密码", "fixture-password");
+    if (!one('[aria-label="同意登录协议"]').checked) click(one('[aria-label="同意登录协议"]'));
+    click(one(".login-submit"));
+    await logged(foreign);
+    await wait(foreignEntry, "foreign registered phone Settings route");
+    assert(!entry() && !page() && !document.body.textContent.includes("合成微信昵称"),
+      "foreign registered phone replaces binding entry, no previous account data");
+    await theme("dark");
+    await resize(880, 670);
+    await showQr(foreignEntry(), "扫码修改密码", "bindings_foreign_password_dark", foreign);
+    await emit("complete", { ok: true, accountBindings: true, stageCount: count, expectNickname: foreign });
+  }
+
   async function accountDetail() {
     const expectNickname = "邮箱验证账号";
     const profile = ".account-profile-page";
@@ -853,6 +933,10 @@
     }
     if (window.__profileEditProof) {
       await profileEdit();
+      return;
+    }
+    if (window.__accountBindingsProof) {
+      await accountBindings();
       return;
     }
     if (window.__accountDetailProof) {

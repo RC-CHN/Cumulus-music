@@ -29,6 +29,7 @@ pub struct Service {
     profiles: Mutex<BTreeMap<u64, Value>>,
     removed_devices: Mutex<BTreeSet<u64>>,
     avatar_proof: bool,
+    bindings_proof: bool,
     avatars: Mutex<Avatars>,
     qr_status: Option<String>,
 }
@@ -40,9 +41,10 @@ struct Avatars {
     objects: BTreeMap<String, Vec<u8>>,
 }
 impl Service {
-    pub fn new(avatar_proof: bool, qr_status: Option<String>) -> Self {
+    pub fn new(avatar_proof: bool, bindings_proof: bool, qr_status: Option<String>) -> Self {
         Self {
             avatar_proof,
+            bindings_proof,
             qr_status,
             ..Self::default()
         }
@@ -391,6 +393,32 @@ impl HttpBackend for Service {
                 }
                 return Ok(auth::reply(json!({"code":200,"url":url}), None));
             }
+            if self.bindings_proof && path == "/api/w/nuser/account/get" {
+                let uid = plan
+                    .headers
+                    .get("Cookie")
+                    .and_then(|cookies| {
+                        cookies
+                            .split(';')
+                            .find_map(|cookie| cookie.trim().strip_prefix("MUSIC_U=fixture"))
+                    })
+                    .and_then(|uid| uid.parse::<u64>().ok());
+                if let Some(uid @ (2 | 5)) = uid {
+                    let provider = if uid == 2 { 0 } else { 1 };
+                    let account_id = if mode == "bindings_type_unknown" {
+                        99
+                    } else {
+                        uid
+                    };
+                    return Ok(auth::reply(
+                        json!({
+                            "code":200, "profile":{"userId":uid,"nickname":auth::nickname(uid)},
+                            "account":{"id":account_id,"type":provider,"userName":"binding-private-account"}
+                        }),
+                        None,
+                    ));
+                }
+            }
             if path.starts_with("/api/w/v1/user/detail/")
                 || path.starts_with("/api/w/v1/user/bindings/")
                 || path == "/api/middle/user/device/list"
@@ -580,6 +608,61 @@ impl HttpBackend for Service {
                         }}),
                         None,
                     ));
+                }
+                if self.bindings_proof && path.contains("/bindings/") {
+                    if path != format!("/api/w/v1/user/bindings/{uid}")
+                        || data["userId"] != uid.to_string()
+                        || data.as_object().is_none_or(|fields| {
+                            fields
+                                .keys()
+                                .any(|key| !matches!(key.as_str(), "header" | "userId"))
+                        })
+                    {
+                        return Err(Error::Response("fixture binding settings scope"));
+                    }
+                    if mode == "bindings_failed" {
+                        return Ok(auth::reply(json!({"code":500}), None));
+                    }
+                    if mode == "bindings_hold" {
+                        let (sender, receiver) = oneshot::channel();
+                        *self.held.lock().unwrap() = Some(sender);
+                        receiver
+                            .await
+                            .map_err(|_| Error::Response("fixture binding release"))?;
+                        *self.completed.lock().unwrap() += 1;
+                    }
+                    let row = |kind, token: Value| {
+                        json!({
+                            "type":kind, "tokenJsonStr": token.to_string(),
+                            "url":"https://music.163.com/authorize?token=binding-private-url"
+                        })
+                    };
+                    let bindings = if uid == 2 {
+                        vec![
+                            row(
+                                10,
+                                json!({"nickname":"合成微信昵称","unionid":"binding-private-unionid"}),
+                            ),
+                            row(
+                                0,
+                                json!({"email":"binding-private@example.test","access_token":"binding-private-token"}),
+                            ),
+                            row(
+                                1,
+                                json!({"cellphone":"13800138000","countrycode":"86","hasPassword":false}),
+                            ),
+                            row(
+                                2,
+                                json!({"uid":"binding-private-weibo","screen_name":"合成微博昵称"}),
+                            ),
+                        ]
+                    } else {
+                        vec![row(
+                            1,
+                            json!({"cellphone":"1234567890","countrycode":"1242","hasPassword":true}),
+                        )]
+                    };
+                    return Ok(auth::reply(json!({"code":200,"bindings":bindings}), None));
                 }
                 if path.contains("/bindings/") && mode.starts_with("device_removal_") {
                     let bindings = if mode == "device_removal_unbound" {

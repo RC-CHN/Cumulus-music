@@ -1,0 +1,50 @@
+账号设置 /bind：绑定状态与固定扫码转交
+
+PC 3.1.42.205594 证据：
+  pages/setting/views/Account.jsx:195–228、234–239、262–319：
+    设置的账号区按当前 UID 读绑定；常规“绑定账号 >”进入 /bind。
+    只有 accountType=1，且手机号绑定中的 countrycode 非空并不同于 "86"，
+    才隐藏该入口、改为“修改密码”→标题“扫码修改密码”的固定设置二维码。
+    同页另外有微信、QQ、微博快捷图标；已绑定时可用上游 bindings[].url，
+    无 URL 或未绑定时走 /bind。Cumulus 只接直接入口，不复制动态 URL/快捷图标。
+  pages/bind/views/index.js:21–37、252–345、348–507：
+    进入后按 UID 重新读绑定。按手机、网易邮箱账号、微信、QQ、新浪微博枚举，
+    同类型的最后一条有效；与 host.accountType 匹配的单独放在“注册账号”，
+    其余在“其他登录方式”。绑定、换号、解绑和手机密码按钮全部调用同一个
+    AppModal.showQrcode，标题“扫码设置”，内容 orpheus://settings/bindaccount。
+    没有证据表明这个桌面页面发送修改或解绑请求。
+  hybrid_177 M3019:70–87 → hybrid_app M100:179–185、M15:3642–3644：
+    POST /api/w/v1/user/bindings/{uid} {userId:uid}，code=200 后取 bindings。
+  hybrid_app M198:2312–2337、2365–2392、2889–2917：
+    host.accountType 来自成功身份回包的 account.type。不是 profile.userType、
+    选择的登录方式或第一个绑定类型。
+
+Cumulus：
+  使用原有 POST /api/w/nuser/account/get {} 核验现有登录、冷启动恢复、账号
+  切换及续期。只有同一回包的 account.id 等于已核验 profile.userId 且数字
+  类型为 0/1/2/5/10 时，原生内存才保留注册类型。现有身份读取次数与候选会话、
+  UID 和代次核验不变；资料和凭据不因此多存一份。缺字段、其他类型或归属不符
+  均不猜测，显示中性“登录方式”，不提供可能属于注册账号的解绑按钮。
+  设置入口与 /bind 各读一次当前账号的绑定；返回保留设置滚动与打开按钮焦点，
+  手动刷新 /bind 重新读取。失败状态不显示空列表；旧账号的迟到响应不发布。
+  IPC account_bindings 只收当前 epoch，返回注册方式、是否已确认海外注册手机号、
+  及五种已知提供方的安全投影。不发送原始手机号、邮箱、第三方 ID、
+  tokenJsonStr、access_token、动态授权 URL。邮箱沿用本端掩码。
+  QR 复用 account_binding_qr，只返回 180px 渲染所需的固定二维码矩阵；不打开
+  外部浏览器或提交绑定。关窗还原按钮焦点，用户在官方手机 App 完成设置后可刷新。
+  实际扫码后的绑号、解绑、改密、确认及上游动态授权均由官方 App 处理。
+  不根据缺失密码字段展示“设置密码”；仅使用已明确的密码状态。
+
+验证：
+  core/tests/account_profile.rs 核对两条只读请求、顺序和同账号请求参数，
+  覆盖账号切换迟到回包、错误/空列表、账号归属不一致及私有字段裁剪；
+  frontend/tests/account-bindings.test.ts 验证没有注册类型时不会猜测或提供解绑。
+  scripts/ci/account_login_smoke.py --account-bindings 为隔离桌面合成用例，
+  Linux 和 Windows CI 配置执行。实际 Linux WebKitGTK/Xvfb + Openbox 验证
+  zh_CN.UTF-8 下的六个状态及截图：访客、失败、重试后分组、绑定扫码、
+  返回恢复焦点、切换海外注册手机号后以暗色小窗打开扫码改密。
+  绑定接口请求按 UID 分别为 3、1，无真实服务请求、绑定写入或浏览器跳转。
+  证据目录 .build/ui-proof/account-bind-8832c8af/final-linux。
+  同一原生构建的原账号登录（37 状态）、账号资料/设备（11 状态）及资料编辑
+  （5 状态）桌面回归通过。人工扫码、Windows 实机及真实服务接受行为不在
+  本次本机验证范围。

@@ -26,7 +26,12 @@ fn main() {
             .as_deref()
             .is_none_or(|branch| matches!(branch, "legacy" | "jsk"))
     );
-    let service = Arc::new(fixture::Service::new(avatar, qr_status.clone()));
+    let account_bindings = std::env::var_os("CUMULUS_PROOF_ACCOUNT_BINDINGS").is_some();
+    let service = Arc::new(fixture::Service::new(
+        avatar,
+        account_bindings,
+        qr_status.clone(),
+    ));
     let mut context = assets::context();
     if avatar {
         use tauri::utils::config::Csp;
@@ -112,6 +117,7 @@ fn main() {
             if payload.event() == PageLoadEvent::Finished {
                 webview.eval(format!("window.__accountLoginBaseline={baseline};")).unwrap();
                 webview.eval(format!("window.__accountDetailProof={account_detail};")).unwrap();
+                webview.eval(format!("window.__accountBindingsProof={account_bindings};")).unwrap();
                 webview.eval(format!("window.__profileEditProof={profile_edit};")).unwrap();
                 webview.eval(format!("window.__accountAvatarProof={avatar};")).unwrap();
                 webview.eval(format!("window.__deviceRemovalProof={device_removal};")).unwrap();
