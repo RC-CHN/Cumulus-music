@@ -583,12 +583,20 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
                         )));
                     }
                 };
-                return Some(Ok(json!({"code":200,"data":{"radioList":[radio(id)],
+                let mut item = radio(id);
+                item["score"] = match id {
+                    351 => json!(8.75),
+                    352 => json!(0),
+                    353 => json!("0"),
+                    354 => json!("https://ignored.synthetic.invalid/category-private"),
+                    _ => Value::Null,
+                };
+                return Some(Ok(json!({"code":200,"data":{"radioList":[item],
                     "page":{"cursor":next,"more":next.is_some()}}})));
             }
             match (sub, cursor) {
                 (Some("000"), Some("")) => json!({"code":200,"data":{
-                    "radioList":[{"id":302,"name":"合成有声书首批","programCount":3}],
+                    "radioList":[{"id":302,"name":"合成有声书首批","programCount":3,"score":"9.50"}],
                     "page":{"cursor":"{\"internal\":\"next\"}","more":true}}}),
                 (Some("000"), Some("{\"internal\":\"next\"}")) => {
                     if AUDIOBOOK_MORE_READS.fetch_add(1, Ordering::SeqCst) == 0 {

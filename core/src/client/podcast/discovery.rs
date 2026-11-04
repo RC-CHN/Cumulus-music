@@ -1,6 +1,11 @@
 //! Public podcast categories and scoped discovery continuations.
 use super::{MusicClient, PodcastApi, PodcastCard, view};
-use crate::{Error, Result, client::dto::AccountData, podcast::Radio};
+use crate::{
+    Error, Result,
+    client::dto::AccountData,
+    podcast::Radio,
+    protocol::wire::serialization::{js_string, js_truthy},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{collections::VecDeque, sync::Mutex};
@@ -36,13 +41,20 @@ pub struct PodcastCategory {
 }
 
 #[derive(Serialize)]
+pub struct PodcastCatalogueCard {
+    #[serde(flatten)]
+    pub card: PodcastCard,
+    pub score: Option<String>,
+}
+
+#[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PodcastCatalogue {
     Categories {
         categories: Vec<PodcastCategory>,
     },
     Radios {
-        cards: Vec<PodcastCard>,
+        cards: Vec<PodcastCatalogueCard>,
         continuation: Option<String>,
     },
 }
@@ -164,6 +176,23 @@ fn categories(rows: &[Value]) -> Result<Vec<PodcastCategory>> {
     Ok(out)
 }
 
+// M/21 Z uses score || null, then M/2169 displays a truthy value with 分.
+fn category_score(value: &Value) -> Option<String> {
+    match value {
+        Value::Number(_) if js_truthy(value) => js_string(value).ok(),
+        Value::String(text)
+            if text.len() <= 32
+                && text.bytes().all(|byte| {
+                    byte.is_ascii_digit() || matches!(byte, b'.' | b'+' | b'-' | b'e' | b'E')
+                })
+                && text.parse::<f64>().is_ok_and(f64::is_finite) =>
+        {
+            Some(text.clone())
+        }
+        _ => None,
+    }
+}
+
 impl MusicClient {
     pub async fn podcast_catalogue(
         &self,
@@ -209,7 +238,13 @@ impl MusicClient {
                 let cards = page
                     .records
                     .iter()
-                    .map(|raw| Radio::from_official(raw).map(|radio| view::card(&radio)))
+                    .map(|raw| {
+                        let radio = Radio::from_official(raw)?;
+                        Ok(PodcastCatalogueCard {
+                            card: view::card(&radio),
+                            score: category_score(&radio.raw["score"]),
+                        })
+                    })
                     .collect::<Result<Vec<_>>>()?;
                 let continuation = if page.more {
                     Some(self.session.with_token(&token, |_| {

@@ -25,6 +25,11 @@ const audiobooks = computed(() => props.parentId === AUDIOBOOK_CATEGORY);
 const items = computed<SearchItem[]>(() =>
   cards.value.map((podcast) => ({ kind: 'podcast', podcast })),
 );
+const scores = computed(() => new Map(cards.value.map((card) => [card.id, card.score])));
+function rating(id: string) {
+  const score = scores.value.get(id);
+  return score == null ? '-' : `${score}分`;
+}
 usePageEntryFocus(
   root,
   () => !pending.value && !categoriesPending.value,
@@ -88,6 +93,10 @@ function retry() {
         {{ category.label }}
       </button>
     </nav>
+    <div v-if="items.length" class="podcast-catalogue-columns">
+      <span>标题</span>
+      <span>评分</span>
+    </div>
     <SearchCardGrid v-if="items.length" :items="items" :scroller="root" virtual>
       <template #default="{ item }">
         <article
@@ -119,6 +128,9 @@ function retry() {
             >{{ item.podcast.creator || (audiobooks ? '有声书' : '播客') }} ·
             {{ item.podcast.programCount }} 集</small
           >
+          <span class="podcast-catalogue-rating" :aria-label="`评分：${rating(item.podcast.id)}`">
+            {{ rating(item.podcast.id) }}
+          </span>
         </article>
       </template>
     </SearchCardGrid>
@@ -162,12 +174,31 @@ function retry() {
 .podcast-catalogue :deep(.search-result-grid) {
   grid-template-columns: minmax(0, 1fr);
 }
-.podcast-catalogue-row {
+.podcast-catalogue-row,
+.podcast-catalogue-columns {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  grid-template-rows: 24px 24px;
+  grid-template-columns: 48px minmax(0, 1fr) 53px;
   gap: 0 12px;
   padding: 8px 12px;
+}
+.podcast-catalogue-columns {
+  font-size: 13px;
+  color: var(--muted);
+}
+.podcast-catalogue-columns span:first-child {
+  grid-column: 2;
+}
+.podcast-catalogue-row {
+  grid-template-rows: 24px 24px;
+}
+.podcast-catalogue-rating {
+  grid-area: 1 / 3 / 3;
+  align-self: center;
+  overflow: hidden;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .podcast-catalogue-row .search-result-art {
   grid-row: 1 / 3;

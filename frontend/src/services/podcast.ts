@@ -113,9 +113,12 @@ export interface PodcastSubcategory {
 export interface PodcastCategory extends PodcastSubcategory {
   children: PodcastSubcategory[];
 }
+export interface PodcastCatalogueCard extends PodcastCard {
+  score: string | null;
+}
 export type PodcastCatalogue =
   | { kind: 'categories'; categories: PodcastCategory[] }
-  | { kind: 'radios'; cards: PodcastCard[]; continuation: string | null };
+  | { kind: 'radios'; cards: PodcastCatalogueCard[]; continuation: string | null };
 export interface PodcastCatalogueClient {
   podcastCatalogue(
     epoch: string,

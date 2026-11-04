@@ -11,7 +11,10 @@ use crate::{
     protocol::api::identifier,
 };
 pub(super) use discovery::PodcastDiscoveryHost;
-pub use discovery::{PodcastCatalogue, PodcastCatalogueQuery, PodcastCategory, PodcastSubcategory};
+pub use discovery::{
+    PodcastCatalogue, PodcastCatalogueCard, PodcastCatalogueQuery, PodcastCategory,
+    PodcastSubcategory,
+};
 pub use dto::*;
 pub use home::{PodcastHomeBlock, PodcastHomePage};
 pub use rankings::{

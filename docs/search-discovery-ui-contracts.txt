@@ -201,7 +201,7 @@ Cumulus 只投影服务按钮文字和已知目标，不执行响应 URL；不�
 使用有界列表及页尾加载入口；目录最多持有 20 个后续游标，超过提示重新读取。
 按 AudioTableViewer/common/AudioTitleCell.tsx:32–43 使用 48×48 封面和 16px 标题，
 首屏同时看到标题与状态。卡片复用播客详情，返回保留本次子分类及已加载条目。
-此分类未复刻官方评分、所有上级类别和听书购买。
+此分类的评分见下文；未复刻官方六列的全部信息、所有上级类别和听书购买。
 Linux 真 WebView 通过 59 个检查点并保留 59 张截图；验证按钮、独立分类、同游标失败
 重试、跨账号及子类拒绝、打开详情和返回。实测窄窗首行封面、标题和重试同时可见。
 本机记录：.build/search-audiobook-list-webview/audit.json；未访问真实服务。
@@ -244,10 +244,19 @@ Linux 真 WebView 通过完整搜索 65 个检查点，65 张截图及 139 次�
 目录按 `/api/dj/radio/category/radio/list {parentId,subId,cursor,limit:20}` 读取，
 继续使用有界列表和重试。续页句柄同时绑定账号代次、父分类和子分类，原始游标不跨 IPC。
 关闭个性化仍可浏览普通目录；分类读取失败有独立重试，不改变推荐状态。
-分类目录评分栏仍未移植；Top/TopNew 分类实验顺序见下文。
+分类目录评分：M/15:4058–4079 将 /api/dj/radio/category/radio/list 的 radioList 项展开后交给
+M/21 Z，后者在 826 行用 score || null；Category.tsx:153–160 对播客和有声书均启用 showScore。
+M/2169:147–181 在最右评分列（基础宽 53px）显示原值加「分」，空值显示「-」；搜索的
+评分信息和排行榜 showScore 配置各自独立，不能拿 chartMetaVO 补分类目录。Rust 仅公开该项
+score：数值按 JS 显示、数值 0 留空、合规数字字符串保留文本和精度（字符串 "0" 可见），
+畸形字符串/对象留空，不推断区间、排序或分数。界面在现有紧凑目录中增加最右评分列，
+保留原有节目数摘要及虚拟化，不宣称复刻整张六列表。Top/TopNew 分类实验顺序见下文。
 Linux WebView 完整搜索回归 69 个检查点、69 张截图；实测关闭推荐后分类仍可读，
 普通分类按游标追加，父子筛选和窄窗“更多”进入正确目标。人工复核关闭推荐与分类页截图。
 本机记录 `.build/search-podcast-category-webview/audit.json`；无真实服务请求或写入。
+补齐评分后，Linux 真 WebView 完整回归 76 个检查点及 76 张截图；含 9.50 文本精度、
+普通播客的正分和数值/文本零、未知与非法值、续页和筛选后列对齐。证据
+`.build/ui-proof/podcast-category-ratings-20261104/audit.json`；仅合成目录，无真实服务读写。
 
 播客公开排行榜
 `audio/components/CategorysEntrance.tsx` 的「排行榜」进入 `audio/views/Ranklist.tsx`。

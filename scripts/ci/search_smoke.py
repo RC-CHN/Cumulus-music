@@ -74,7 +74,7 @@ def verify(root, capture):
     assert complete['immediateCompositionSubmitVerified']
     assert complete['audioRankPlaybackVerified']
     assert complete['audiobookMoreVerified'] and complete['podcastMoreVerified']
-    assert complete['podcastCategoryVerified']
+    assert complete['podcastCategoryVerified'] and complete['podcastCategoryRatingsVerified']
     assert complete['podcastRankingsVerified']
     assert complete['podcastTopUpdatedVerified']
     assert complete['audioRankDetails'] == [301, 301, 302, 304, 305]

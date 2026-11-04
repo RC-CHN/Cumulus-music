@@ -1,6 +1,6 @@
 import { computed, ref, shallowRef, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
-import type { PodcastCategory, PodcastCard } from '../services/podcast';
+import type { PodcastCategory, PodcastCatalogueCard } from '../services/podcast';
 import { useCore } from '../services/core';
 
 export function usePodcastCatalogue(account: () => AccountView, expired: () => void) {
@@ -8,7 +8,7 @@ export function usePodcastCatalogue(account: () => AccountView, expired: () => v
   const categories = shallowRef<PodcastCategory[]>([]);
   const categoriesPending = ref(false),
     categoriesError = ref('');
-  const cards = shallowRef<PodcastCard[]>([]);
+  const cards = shallowRef<PodcastCatalogueCard[]>([]);
   const parentId = ref('');
   const parent = computed(() =>
     categories.value.find((category) => category.id === parentId.value),

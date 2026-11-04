@@ -728,6 +728,14 @@
     click(button("听书榜：更多"));
     const bookPane = () => one('.podcast-catalogue[data-parent-category="10001"]');
     const book = (id) => one(`[data-category-radio="${id}"]`);
+    const categoryRating = (id) => book(id)?.querySelector('.podcast-catalogue-rating');
+    function checkRating(id, expected) {
+      const rating = categoryRating(id);
+      const heading = rating?.closest('.podcast-catalogue')?.querySelector('.podcast-catalogue-columns span:last-child');
+      assert(rating?.textContent.trim() === expected && heading?.textContent === '评分' &&
+        Math.abs(rating.getBoundingClientRect().left - heading.getBoundingClientRect().left) < 1,
+        `directory rating ${id} should render ${expected} below the column heading`);
+    }
     await wait(() => book(302) && !panel(), "More opens the public audiobook category");
     assert(button("全部", bookPane())?.getAttribute("aria-pressed") === "true" &&
       button("有声书", bookPane())?.getAttribute("aria-current") === "page" &&
@@ -738,6 +746,8 @@
       "official 48px title cell keeps the audiobook title visible in a narrow window");
     const firstBooks = await invoke("podcast_catalogue", { epoch, query: { kind: "radios", parentId: "10001", subId: "000" } });
     const handle = firstBooks.value.continuation;
+    checkRating(302, '9.50分');
+    assert(firstBooks.value.cards[0].score === '9.50', 'directory score keeps service text precision');
     assert(/^[\da-f]{32}$/.test(handle) && !JSON.stringify(firstBooks).includes("internal"), "wire cursor stays in native code");
     for (const [targetEpoch, targetParent, targetSub] of [[epoch, "10001", "3076096"], [epoch, "2", "000"], ["0", "10001", "000"]]) {
       const accepted = await invoke("podcast_catalogue", { epoch: targetEpoch, query: { kind: "radios", parentId: targetParent, subId: targetSub, continuation: handle } }).then(() => true, () => false);
@@ -751,6 +761,8 @@
     click(button("重试", bookPane()));
     await wait(() => book(303) && !button("加载更多有声书", bookPane()), "retry appends the next official page");
     assert(all('[data-category-radio="302"]').length === 1, "overlap does not duplicate cards in the directory");
+    checkRating(302, '9.50分');
+    checkRating(303, '-');
     await capture("audiobook_more_next");
     click(button("文学", bookPane()));
     await wait(() => book(304) && !book(302) && !book(303), "subcategory replaces the previous directory");
@@ -868,12 +880,17 @@
     await wait(() => catalogue()?.dataset.parentCategory === "2" && book(351), "ordinary parent loads without personalization");
     click(button("加载更多播客", catalogue()));
     await wait(() => book(351) && book(352), "non-audiobook catalogue appends its native continuation");
+    checkRating(351, '8.75分');
+    checkRating(352, '-');
     await capture("podcast_category_more");
     click(button("乐评", catalogue()));
     await wait(() => book(353) && !book(351) && !book(352), "category subtab uses its own first page");
+    checkRating(353, '0分');
     await capture("podcast_category_child");
     click(button("精品播客", catalogue()));
     await wait(() => catalogue()?.dataset.parentCategory === "0020141111" && book(354), "changing parent preserves the official leading-zero ID");
+    checkRating(354, '-');
+    assert(!catalogue().textContent.includes('category-private'), 'invalid wire score cannot enter the directory');
     await capture("podcast_category_parent");
     click(button("返回上一页"));
     await wait(() => podcastHome()?.textContent.includes("个性化推荐已关闭") && categoryStrip() &&
@@ -956,6 +973,7 @@
       audiobookMoreVerified: true,
       podcastMoreVerified: true,
       podcastCategoryVerified: true,
+      podcastCategoryRatingsVerified: true,
       podcastRankingsVerified: true,
       podcastTopUpdatedVerified: true,
       realMusicRequests: 0,

@@ -51,6 +51,22 @@ impl Api for Backend {
                             "uiElement":{"mainTitle":{"title":"Fixture radio"}},
                             "creatives":[{"creativeExtInfoVO":{"radio":radio()}}]}]}})
                 }
+                "/api/dj/radio/category/radio/list" => {
+                    assert_eq!(
+                        p,
+                        json!({"parentId":"2","subId":"000","cursor":"","limit":20})
+                    );
+                    json!({"code":200,"data":{"radioList":[
+                        {"id":"41","name":"Fractional","score":8.75,"cookie":"SECRET"},
+                        {"id":"42","name":"Explicit numeric zero","score":0},
+                        {"id":"43","name":"Explicit text zero","score":"0"},
+                        {"id":"44","name":"Retained precision","score":"9.50"},
+                        {"id":"45","name":"Missing","chartMetaVO":{"score":9.7}},
+                        {"id":"46","name":"Invalid text","score":"https://ignored.invalid/SECRET"},
+                        {"id":"47","name":"Invalid object","score":{"value":9.5,"secret":"SECRET"}},
+                        {"id":"48","name":"Signed number","score":-0.25}
+                    ],"page":{"cursor":"SECRET_CURSOR","more":true}}})
+                }
                 "/api/djradio/v3/get" => {
                     let mut value = radio();
                     if self.search_creator.load(Ordering::SeqCst) > 0 {
@@ -127,6 +143,44 @@ fn fixture() -> (
         .with_audio_factory(|| Ok(engine::audio_engine(Arc::new(engine::Device::default()))));
     (dir, api, s, c)
 }
+#[tokio::test]
+async fn category_only_projects_the_official_score_and_preserves_zero_type() {
+    let (_dir, api, _session, client) = fixture();
+    let response = client
+        .podcast_catalogue(
+            "1",
+            PodcastCatalogueQuery::Radios {
+                parent_id: "2".into(),
+                sub_id: "000".into(),
+                continuation: None,
+            },
+        )
+        .await
+        .unwrap();
+    let value = serde_json::to_value(response).unwrap();
+    assert_eq!(value["epoch"], "1");
+    assert_eq!(
+        value["value"]["cards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|card| (&card["id"], &card["score"]))
+            .collect::<Vec<_>>(),
+        [
+            (&json!("41"), &json!("8.75")),
+            (&json!("42"), &Value::Null),
+            (&json!("43"), &json!("0")),
+            (&json!("44"), &json!("9.50")),
+            (&json!("45"), &Value::Null),
+            (&json!("46"), &Value::Null),
+            (&json!("47"), &Value::Null),
+            (&json!("48"), &json!("-0.25")),
+        ]
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), 1);
+    assert!(!value.to_string().contains("SECRET"));
+}
+
 fn query(scope: PodcastScope, offset: usize) -> PodcastQuery {
     PodcastQuery {
         scope,
