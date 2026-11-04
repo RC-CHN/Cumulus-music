@@ -3,7 +3,8 @@
 Optional playback needs a private 1280x900 Xvfb display, D-Bus session and a
 network namespace with no routes. Hide host sound devices, for example:
   xvfb-run -a -s '-screen 0 1280x900x24' bwrap --unshare-user --unshare-net \
-    --die-with-parent --bind / / --dev /dev --proc /proc -- dbus-run-session -- \
+    --die-with-parent --bind / / --dev /dev --proc /proc -- \
+    env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
     /usr/bin/python3 scripts/ci/installed_linux_smoke.py [package arguments] \
     --verify-local-playback
 """
@@ -82,8 +83,11 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None, ver
     display = Gdk.Display.get_default()
     assert display is not None, 'private Xvfb display missing'
     screen = Gdk.get_default_root_window()
+    accessibility = None
     if verify_local_playback:
-        from installed_linux_audio import isolated_audio, verify_playback
+        from installed_linux_audio import isolated_audio, start_accessibility, verify_playback
+        if packaged_filter is not None:
+            accessibility = start_accessibility()
         audio = isolated_audio(root, env)
     else:
         audio = nullcontext()
@@ -113,7 +117,9 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None, ver
                                             capture = Gdk.pixbuf_get_from_window(screen, x, y, width, height)
                                             assert capture is not None
                                             assert capture.savev(str(root/name), 'png', [], [])
-                                        playback = verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter, verify_monitor_pcm)
+                                        playback = verify_playback(
+                                            root, app, window, x, y, width, height, source, env, screenshot,
+                                            packaged_filter, verify_monitor_pcm, accessibility)
                                     return width, height, playback
                 time.sleep(.2)
             raise AssertionError('packaged app never painted a normal window')

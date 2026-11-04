@@ -174,6 +174,68 @@ class Input:
         self.x11.XFlush(self.display)
 
 
+def start_accessibility():
+    # Activated services inherit the D-Bus daemon's environment, so clear
+    # caller overrides before creating the private session, not just here.
+    for key in ('AT_SPI_BUS_ADDRESS', 'AT_SPI_DISPLAY', 'NO_AT_BRIDGE'):
+        assert key not in os.environ, f'unset {key} before starting the private D-Bus session'
+    import gi
+    gi.require_version('Atspi', '2.0')
+    from gi.repository import Atspi
+
+    # Start the private session's accessibility bus before launching the app,
+    # so the ordinary GTK/WebKit process exposes its accessibility tree.
+    assert Atspi.init() == 0, 'private AT-SPI session could not initialize'
+    Atspi.set_timeout(1500, 1500)
+    return Atspi
+
+
+def focus_equalizer_control(atspi, pid, name, roles):
+    def children(node):
+        for index in range(node.get_child_count()):
+            child = node.get_child_at_index(index)
+            if child is not None:
+                yield child
+
+    def matching(root, label, allowed):
+        pending = list(children(root))
+        visited = 0
+        while pending:
+            node = pending.pop()
+            visited += 1
+            assert visited <= 512, 'unexpectedly large installed accessibility subtree'
+            if node.get_role() in allowed and node.get_name() == label:
+                if node.get_state_set().contains(atspi.StateType.SHOWING):
+                    yield node
+            else:
+                pending.extend(children(node))
+
+    def find():
+        desktop = atspi.get_desktop(0)
+        if desktop is None:
+            return None
+        for application in children(desktop):
+            if application.get_process_id() != pid:
+                continue
+            # WebKit controls themselves belong to a subprocess. Scope them
+            # through the ordinary package's own top-level application.
+            dialogs = list(matching(application, '均衡器', (atspi.Role.DIALOG,)))
+            assert len(dialogs) <= 1, 'multiple installed equalizer dialogs'
+            if not dialogs:
+                return None
+            controls = list(matching(dialogs[0], name, roles))
+            assert len(controls) <= 1, f'multiple installed equalizer controls named {name!r}'
+            if controls and controls[0].get_state_set().contains(atspi.StateType.SENSITIVE):
+                return controls[0]
+        return None
+
+    control = wait_for(f'installed equalizer control {name!r}', find)
+    component = control.get_component_iface()
+    assert component is not None and component.grab_focus(), f'cannot focus equalizer control {name!r}'
+    wait_for(f'keyboard focus on {name!r}',
+             lambda: control.get_state_set().contains(atspi.StateType.FOCUSED))
+
+
 def read_playback(database):
     with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
         rows = db.execute(
@@ -229,7 +291,7 @@ def sink_tone(env):
     return result
 
 
-def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None, verify_monitor_pcm=False):
+def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None, verify_monitor_pcm=False, accessibility=None):
     assert (width, height) == (1120, 760), 'local playback coordinates require the ordinary 1120x760 X11 layout'
     database = root/'state/core.sqlite3'
 
@@ -335,11 +397,16 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             assert baseline['amplitude440Hz'] > baseline['rms'] * 1.3, 'private sink did not receive the 440 Hz fixture'
         if packaged_filter:
             inputs.click(1049, 722)  # EQ in the playback footer.
-            time.sleep(.35)
-            for _ in range(3):  # Modal close -> master -> directory -> preset.
-                inputs.key('Tab')
-                time.sleep(.12)
-            inputs.key('Down')  # First non-flat preset from a clean profile.
+            assert accessibility is not None, 'installed equalizer proof requires a private AT-SPI session'
+
+            def equalizer_key(name, roles, key):
+                focus_equalizer_control(accessibility, app.pid, name, roles)
+                assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
+                inputs.key(key)
+
+            equalizer_key('均衡器预设', (accessibility.Role.COMBO_BOX,), 'Down')
+            master = '启用均衡器和低高音增强'
+            master_roles = (accessibility.Role.TOGGLE_BUTTON, accessibility.Role.SWITCH)
             wait_for('installed equalizer preset committed', preset_saved)
             wait_for('installed audio filter mapped by the player',
                      lambda: str(packaged_filter) in Path(f'/proc/{app.pid}/maps').read_text())
@@ -349,17 +416,14 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                 capture_tone('equalized', equalized_progress)
                 assert monitor['equalized']['amplitude440Hz'] > baseline['amplitude440Hz'] * 1.05, (
                     'installed preset did not increase the 440 Hz tone')
-                for _ in range(2):  # Preset -> directory -> master switch.
-                    inputs.key('Tab', 'Shift_L')
-                    time.sleep(.12)
-                inputs.key('space')
+                equalizer_key(master, master_roles, 'space')
                 wait_for('installed master bypass committed', lambda: preset_saved(True))
                 bypassed_progress = committed_progress('installed master bypass')
                 capture_tone('bypassed', bypassed_progress)
                 assert math.isclose(monitor['bypassed']['amplitude440Hz'],
                                     baseline['amplitude440Hz'], rel_tol=.03), (
                     'installed master bypass did not restore the original 440 Hz tone')
-                inputs.key('space')
+                equalizer_key(master, master_roles, 'space')
                 wait_for('installed master reactivation committed', preset_saved)
                 restored_progress = committed_progress('installed master reactivation')
                 capture_tone('restored', restored_progress)
