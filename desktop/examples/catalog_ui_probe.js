@@ -9,7 +9,13 @@
   let stageCount=0;
   async function capture(name){await sleep(500);assert(document.documentElement.scrollWidth<=innerWidth,'horizontal overflow');assert(!one('.catalog-page')||one('.catalog-page').getBoundingClientRect().bottom<=one('.main-content').getBoundingClientRect().bottom+1,'catalog page is clipped');assert(all('.track-row').length<=30,'unbounded song rows');assert(all('.catalog-card').length<=30,'unbounded cards');await emit(`ux_${String(++stageCount).padStart(2,'0')}_${name}`,{width:innerWidth,height:innerHeight,theme:document.documentElement.dataset.theme,rows:all('.track-row').length,cards:all('.catalog-card').length,title:one('.catalog-heading h1')?.textContent});await sleep(1300);}
   async function tab(label,selector){const keys={'专辑':'albums','MV':'videos','歌手详情':'intro','相似歌手':'similar','演出':'concerts','歌曲':'songs'};click(one('[data-catalog-tab="'+keys[label]+'"]'));await wait(()=>one(selector),'tab '+label);await sleep(300);}
-  async function collected(verb='收藏'){await wait(()=>button(verb)&&!button(verb).disabled,'collection known');click(button(verb));await wait(()=>button('已'+verb)&&!button('已'+verb).disabled,'collection confirmation');}
+  async function collected(verb='收藏'){
+    const selector=verb==='关注'?'.artist-header .catalog-actions button':'.album-header:not(.album-header-compact) .catalog-actions button';
+    const action=text=>all(selector).find(node=>node.textContent.trim()===text&&!node.disabled);
+    await wait(()=>action(verb),'collection known');
+    click(action(verb));
+    await wait(()=>action('已'+verb),'collection confirmation');
+  }
   async function theme(value='深色'){click(one('[aria-label="外观主题"]'));await wait(()=>button('深色'),'theme menu');click(button(value));await wait(()=>document.documentElement.dataset.theme===(value==='深色'?'dark':'light'),'theme change');}
   try {
     await wait(()=>one('.track-credit-links button'),'daily references');await theme('浅色');
