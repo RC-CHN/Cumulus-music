@@ -18,14 +18,20 @@ interface Snapshot {
   moreError: string;
   manualMore: boolean;
 }
+export interface SearchCorrectionReminder {
+  rewrite: string;
+  parts: NonNullable<SearchResultView['correctionParts']>;
+}
 /** Application-owned, account-isolated browsing memory; never persisted to disk. */
 export function createSearchViewportMemory(capacity = 16) {
   let owner = '';
   const entries = new Map<string, Snapshot>();
   const searchTabs = new Map<number, readonly SearchCategory[]>();
+  const reminders = new Map<string, SearchCorrectionReminder>();
   function clear() {
     entries.clear();
     searchTabs.clear();
+    reminders.clear();
   }
   return {
     connect(account: AccountView) {
@@ -73,6 +79,23 @@ export function createSearchViewportMemory(capacity = 16) {
       searchTabs.delete(session);
       searchTabs.set(session, [...tabs]);
       while (searchTabs.size > capacity) searchTabs.delete(searchTabs.keys().next().value!);
+    },
+    getReminder(session: number, keyword: string, epoch: string) {
+      if (session <= 0 || !owner || owner !== epoch) return;
+      const key = JSON.stringify([session, keyword]);
+      const value = reminders.get(key);
+      if (value) {
+        reminders.delete(key);
+        reminders.set(key, value);
+      }
+      return value;
+    },
+    setReminder(session: number, keyword: string, epoch: string, value?: SearchCorrectionReminder) {
+      if (session <= 0 || !owner || owner !== epoch) return;
+      const key = JSON.stringify([session, keyword]);
+      reminders.delete(key);
+      if (value) reminders.set(key, value);
+      while (reminders.size > capacity) reminders.delete(reminders.keys().next().value!);
     },
     clear,
   };

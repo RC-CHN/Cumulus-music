@@ -4,6 +4,7 @@ import { failure } from '../services/contracts.ts';
 import { searchCardKey } from '../services/searchCards.ts';
 import {
   createSearchViewportMemory,
+  type SearchCorrectionReminder,
   type SearchPosition,
   type SearchViewportMemory,
 } from '../services/searchViewport.ts';
@@ -27,6 +28,7 @@ export function useSearchResults(
 ) {
   const view = shallowRef<SearchResultView>(),
     tabs = shallowRef<readonly SearchCategory[]>(),
+    correctionReminder = shallowRef<SearchCorrectionReminder>(),
     loading = ref(false),
     error = ref(''),
     loadingMore = ref(false),
@@ -42,6 +44,7 @@ export function useSearchResults(
     memory.connect(next);
     view.value = undefined;
     tabs.value = undefined;
+    correctionReminder.value = undefined;
     error.value = '';
     loading.value = false;
     loadingMore.value = false;
@@ -65,13 +68,34 @@ export function useSearchResults(
         account?.epoch ?? '',
       );
   }
-  async function open(query: SearchResultQuery, reuse = false, session = 0) {
+  async function open(
+    query: SearchResultQuery,
+    reuse = false,
+    session = 0,
+    originalKeyword = query.keyword,
+  ) {
     if (account?.status !== 'authenticated') return;
     const epoch = account.epoch,
       current = ++generation;
     activeKey = memory.key(query, session);
     const cached = reuse ? memory.get(activeKey, epoch) : undefined;
     tabs.value = memory.getTabs(session, epoch);
+    const updateReminder = (view?: SearchResultView) => {
+      const reminder =
+        query.correct &&
+        view?.query.category === 'all' &&
+        view.correction &&
+        view.correctionParts?.length
+          ? { rewrite: view.correction, parts: view.correctionParts }
+          : undefined;
+      correctionReminder.value = reminder;
+      memory.setReminder(session, originalKeyword, epoch, reminder);
+    };
+    if (query.category === 'all') updateReminder(cached?.view);
+    else
+      correctionReminder.value = query.correct
+        ? memory.getReminder(session, originalKeyword, epoch)
+        : undefined;
     loadingMore.value = false;
     moreError.value = cached?.moreError ?? '';
     manualMore.value = cached?.manualMore ?? false;
@@ -90,6 +114,7 @@ export function useSearchResults(
       const result = await core.searchResults(epoch, query);
       if (current === generation && account?.epoch === epoch && result.epoch === epoch) {
         view.value = result.value;
+        if (query.category === 'all') updateReminder(result.value);
         if (
           query.category === 'all' &&
           result.value.query.category === 'all' &&
@@ -107,6 +132,7 @@ export function useSearchResults(
       if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
         memory.clear();
         tabs.value = undefined;
+        correctionReminder.value = undefined;
         expired();
       }
     } finally {
@@ -235,6 +261,7 @@ export function useSearchResults(
       if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
         memory.clear();
         tabs.value = undefined;
+        correctionReminder.value = undefined;
         expired();
       }
     } finally {
@@ -246,6 +273,7 @@ export function useSearchResults(
     account = undefined;
     view.value = undefined;
     tabs.value = undefined;
+    correctionReminder.value = undefined;
     loading.value = false;
     loadingMore.value = false;
     manualMore.value = false;
@@ -253,6 +281,7 @@ export function useSearchResults(
   return {
     view,
     tabs,
+    correctionReminder,
     loading,
     error,
     loadingMore,

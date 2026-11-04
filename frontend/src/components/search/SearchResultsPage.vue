@@ -127,9 +127,10 @@ const rewrite = computed(() =>
     ? undefined
     : (view.value?.correction ?? (category.value !== 'all' ? props.rewrittenKeyword : undefined)),
 );
-const correctionParts = computed(() =>
-  rewrite.value && category.value === 'all' ? view.value?.correctionParts : undefined,
-);
+const correctionParts = computed(() => {
+  const reminder = model.correctionReminder.value;
+  return reminder && reminder.rewrite === rewrite.value ? reminder.parts : undefined;
+});
 const requestKeyword = computed(() =>
   category.value !== 'all' && props.correct !== false
     ? (props.rewrittenKeyword ?? props.keyword)
@@ -464,6 +465,7 @@ async function load(reuse = false) {
     },
     reuse,
     props.searchId ?? 0,
+    props.keyword,
   );
   if (generation === loadGeneration) void restore();
 }

@@ -1315,6 +1315,10 @@
       const discovery=core.searchDiscovery;
       const input=one('[aria-label="搜索音乐"]');
       const label='显示标签 · 合成错词';
+      const reminder=()=>one('.search-heading-copy .search-correction-fragments');
+      const originalButton=()=>button('仍然搜索“合成错词”',reminder());
+      const exactReminder=()=>[...(reminder()?.children??[])].map(node=>node.textContent.trim()).join('|')===
+        '正在显示合成正词。<b>仍查</b>|合成错词|。';
       core.searchDiscovery=async(...args)=>{
         const result=await discovery(...args);
         if(args[1].kind!=='suggestions')return result;
@@ -1326,18 +1330,25 @@
         click(one('.search-suggestion[title="'+label+'"]'));
         await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词'),'corrected results');
         assert(input.value===label,'suggestion display text differs from canonical query');
-        const fragments=one('.search-heading-copy .search-correction-fragments');
-        assert(fragments&&[...fragments.children].map(node=>node.textContent.trim()).join('|')===
-          '正在显示合成正词。<b>仍查</b>|合成错词|。','native correction fragments retain their order and literal text');
+        const fragments=reminder();
+        assert(exactReminder(),'native correction fragments retain their order and literal text');
         assert(!fragments.querySelector('b')&&fragments.querySelectorAll('button').length===1&&
           fragments.children[1].tagName==='BUTTON'&&one('.search-heading-copy h1').classList.contains('sr-only'),
           'only the original word is interactive; plain text replaces the visible heading');
         await capture('correction_suggestion_label');
       }finally{core.searchDiscovery=discovery;}
+      await choose('playlists');
+      assert(exactReminder()&&reminder().contains(originalButton()),
+        'playlist category shares the comprehensive reminder and original action');
+      click(button('加载更多'));
+      await wait(()=>ready()&&one('.search-result-grid')?.dataset.loadedCount==='20',
+        'corrected term reaches the next playlist batch');
+      assert(exactReminder(),'append keeps the exact correction fragments');
+      await capture('correction_category_reminder');
       const {epoch}=await core.accountSnapshot();
       await core.searchHistory(epoch,{kind:'clear'});
       assert(!(await core.searchHistory(epoch,{kind:'read'})).value.length,'isolated native history empty');
-      const original=button('仍然搜索“合成错词”');
+      const original=originalButton();
       assert(original?.tabIndex===0,'original query action is in the keyboard tab order');
       click(original);original.click();
       await wait(()=>ready()&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),
@@ -1351,9 +1362,25 @@
       assert(remembered,'native history remembers the explicit original search');
       await capture('correction_original_remembered');
       click(button('返回上一页'));
-      await wait(()=>ready()&&one('.search-correction')?.textContent.includes('合成正词')&&input.value===label,
-        'Back restores prior corrected view and its display label');
-      await emit('complete',{ok:true,originalCorrectionVerified:true,correctionPartsVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await wait(()=>ready()&&exactReminder()&&input.value===label&&
+        one('[data-category="playlists"]')?.getAttribute('aria-selected')==='true'&&
+        one('.search-result-grid')?.dataset.loadedCount==='20',
+        'Back restores the playlist category, loaded results, reminder and display label');
+      const read=core.searchResults;
+      core.searchResults=async(...args)=>{
+        const result=await read(...args);
+        return args[1].category==='songs'
+          ? {...result,value:{...result.value,correction:'不同的纠正词'}}
+          : result;
+      };
+      try{
+        await choose('songs');
+        assert(!reminder()&&one('.search-correction')?.textContent.includes('不同的纠正词')&&
+          button('仍然搜索“合成错词”'),'a changed effective rewrite cannot display old reminder fragments');
+      }finally{core.searchResults=read;}
+      await emit('complete',{ok:true,originalCorrectionVerified:true,correctionPartsVerified:true,
+        categoryCorrectionPartsVerified:true,staleCorrectionPartsSuppressed:true,
+        stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchCardMatchesProof){

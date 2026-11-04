@@ -317,6 +317,46 @@ test('unmounting an old account page cannot repopulate the replacement account m
   assert.equal(memory.get(memory.key(artistQuery, 1), '2'), undefined);
 });
 
+test('a comprehensive correction reminder is confined to its original term, visit, and account', async () => {
+  const memory = createSearchViewportMemory();
+  const rewrite = '合成正词';
+  const parts = [{ text: query.keyword, highlight: true }];
+  let withReminder = true;
+  const api: SearchResultsClient = {
+    searchResults: async (epoch, q) => {
+      const result = { ...view(q), epoch };
+      if (q.category === 'all' && withReminder) {
+        result.value.correction = rewrite;
+        result.value.correctionParts = parts;
+      }
+      return result;
+    },
+  };
+  const model = useSearchResults(api, () => assert.fail('no expiry'), memory);
+  const songs = { ...query, category: 'songs' as const, keyword: rewrite };
+  model.connect(account);
+  await model.open(query, false, 7);
+  await model.open(songs, false, 7, query.keyword);
+  assert.deepEqual(model.correctionReminder.value, { rewrite, parts });
+  await model.open(songs, false, 8, query.keyword);
+  assert.equal(model.correctionReminder.value, undefined);
+  await model.open(songs, false, 7, '另一个原词');
+  assert.equal(model.correctionReminder.value, undefined);
+  await model.open({ ...songs, correct: false }, false, 7, query.keyword);
+  assert.equal(model.correctionReminder.value, undefined);
+
+  withReminder = false;
+  await model.open(query, false, 7);
+  await model.open(songs, false, 7, query.keyword);
+  assert.equal(model.correctionReminder.value, undefined);
+
+  withReminder = true;
+  await model.open(query, false, 7);
+  model.connect({ ...account, epoch: '2' });
+  await model.open(songs, false, 7, query.keyword);
+  assert.equal(model.correctionReminder.value, undefined);
+});
+
 test('hot search channel survives continuation and does not share an ordinary result cache', async () => {
   const reads: SearchResultQuery[] = [];
   const model = useSearchResults(
