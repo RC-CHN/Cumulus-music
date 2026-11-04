@@ -29,6 +29,8 @@ env:
   CARGO_PROFILE_DEV_DEBUG: '0'
   CARGO_PROFILE_TEST_DEBUG: '0'
   CARGO_BUILD_JOBS: '2'
+  # Runner logs collect redirected Python output; Windows must not use CP1252.
+  PYTHONIOENCODING: utf-8
 
 jobs:
   smtc-diagnostic:
