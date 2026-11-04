@@ -61,8 +61,14 @@ def main():
                                   'resourceType': '0', 'resourceId': '0', 'expressionPicId': '-1', 'bubbleId': '-1'}
     assert writes[1]['payload'] == {'threadId': 'R_SO_4_123', 'commentId': '102',
                                   'content': '回复：也想去看看海。', 'resourceType': '0', 'resourceId': '0'}
-    assert sum(call['lostResponse'] for call in reopened['fixture']['calls']) == 1
+    # Signed-in startup can also issue unrelated background reads. Only the
+    # intentionally dropped comment mutation proves the recovery contract.
+    dropped = [call for call in writes if call['lostResponse']]
+    assert len(dropped) == 1 and dropped[0]['path'] == '/api/resource/comments/add'
+    assert dropped[0]['payload']['content'] == '丢失回包后保留责任'
     assert sum(call['payload'].get('content') == '丢失回包后保留责任' for call in writes) == 1
+    other_comment_mutations = {'/api/report/reportcomment', '/api/v1/comment/like', '/api/v1/comment/unlike'}
+    assert not any(call['path'] in other_comment_mutations for call in reopened['fixture']['calls'])
     rows = reopened['fixture']['rows']
     assert rows['101']['content'] == '自己的原评论，保留不动。'
     assert rows['102']['content'] == '听到这里，想起了夏天的海风。'
