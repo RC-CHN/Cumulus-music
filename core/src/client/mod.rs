@@ -43,6 +43,7 @@ pub mod mini;
 mod mini_preferences;
 mod mv;
 pub mod native_media;
+mod ordinary_essential;
 mod player;
 mod playlist_cover;
 mod playlist_creator;

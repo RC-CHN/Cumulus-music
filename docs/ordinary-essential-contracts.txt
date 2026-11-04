@@ -1,0 +1,83 @@
+普通「精选」：Windows PC 3.1.42.205594 /choice（page:essential）
+
+入口和页面结构
+- M/473:8380–8399 是侧栏「精选」，区别于 M/473:8370–8378 的「推荐」。
+  ChoiceRoot（pages/choice/index.jsx:56–72,185–235 / M/3089）使用同一行标签：
+  精选、歌单广场、排行榜、歌手、VIP。普通页在 /choice；不是首页 page:homePage、
+  VIP page:vipEssential 或精选歌单分类 page:essentialPlaylist。Cumulus 保留已有侧栏
+  快捷入口，并给从「精选」标签进入的现有页面加回此标签行。PH-PC-zhuanqu=t1
+  的动态服务专区是独立模型，本页未新增；未知分组使用常规布局。
+- PageEssential.tsx:693–717 内容按官方歌单、最新音乐、精选有声书、热门播客排列。
+  歌单上限六；后三区每列三张且至少两列，丢掉不足三项的末列（:484–485、
+  :76–77、:309–311、M/2123:434+）。宽度按 GridCarousel:202–227 的普通
+  分支（20px 间距、66px 栅格单元，歌单 minNum=4、其余=2）计算。官方
+  PH-PC-jingxuanPageEfficiency=t1/t2 的五列密度与额外样式未接入。
+- 官方歌单标题进入 /choice/playlist/官方（:179–213），卡片打开对应歌单，
+  封面播放复用现有歌单播放器。最新音乐标题进入 /latestSongs（:112–140），
+  卡片播放按钮/双击传所有完整列的歌曲及选中下标（TrackCardBlock:77–84、
+  TrackCard/index.tsx:360–398,584–602），由现有歌曲授权解析后替换队列。
+  热门播客标题进入 /audio（:334–375）；单节目播放按钮/双击复用节目身份授权，
+  卡片的播单副标题打开播单详情（VoiceCard:192–230,282–307；HotVoiceCard:91–104,
+  140–146）。有声书卡片使用播单身份打开详情或按现有播单顺序准备原生节目队列；
+  特殊「听过的有声书」无播放操作，打开最近播放的有声书标签
+  （M/2123、AudioBookMetaCard/index.tsx:269–325,389–446）。更多、下载、举报等
+  卡片上下文菜单没有在此页复制；各详情页现有操作保持可用。
+- 从详情页返回保持账号代次内的页面滚动、各横向栏位置、打开控件焦点和书籍分类；
+  账号切换清空前端视图、请求与焦点。播放仅由用户触发。
+  链接后的独立流程沿用既有契约：歌单详情 /api/v6/playlist/detail；
+  最新音乐 /api/v2/discovery/new/songs；有声书 /api/djradio/v3/get、
+  /api/v6/dj/program/byradio、/api/play-record/voice/book/timeline/list。
+  音源解析仍通过 /api/v3/song/detail、/api/dj/program/detail、
+  /api/dj/play/url/check 与 /api/song/enhance/player/url/v1（按资源类型）。
+  本页没有在后台预取音源、自动播放或独立写入账号资源。
+
+请求、分区错误和缓存
+- M/3145:12–116,222–321 对相同 host.uid 并发请求以下四个读取（M/15）：
+  /api/playlist/category/list
+    {cat:"官方",limit:6,newStyle:true} -> playlists（M/15:3326–3330）
+  /api/personalized/newsong
+    {limit:12,areaId:0} -> result[].song（M/15:3331–3340）
+  /api/podcast/common/single/block/get
+    {pageCode:"PC_HOMEPAGE_PODCAST",blockCode:"PC_HOMEPAGE_VOICEBOOK_RCMD",
+     extInfo:"{\"position\":\"essential\"}"}
+    -> data.blockVOS[0].creatives；仅当 creativeType=voiceList 且无 radio 时
+    才由 creativeId 恢复播单身份（M/15:4040–4049、M/21:1026–1074、M/143:18）。
+  /api/pc/voicelist/rcmd/list
+    {limit:12} -> data.recommendVoiceVOS[].djProgram（M/15:3341–3351）。
+- 分类 0–4 为全部分类、男生小说、女生小说、有声广播剧、文学出版。
+  非零时 extInfo 字符串为
+  {"interestTypes":[{"resourceId":"typeN","resourceType":"","pubTime":0}],"position":"essential"}。
+  仅重读有声书，空回包或失败保留原分区与选择，只有有新 block 才更新；同值
+  不重复读（M/2123:386–432，PageEssential.tsx:613–621）。
+- 正文只有本会话具备 UID 才读；切页回到精选时，依官方 M/460:17–34 的缺省
+  三小时规则复用最近成功视图。未接入官方预加载下发的 choice.common TTL、
+  权益变化提前失效和首屏 SSR 数据。局部失败从同 UID 的投影缓存补对应分区，
+  成功分区按本次覆盖；有声书还按分类隔离。全部失败显示重试，登录失效不拿
+  旧数据替代（M/3145:222–321、PageEssential.tsx:626–665）。线上请求、缓存、IPC
+  均不在匿名/跨账号间复用；只把有界标题、节目/歌单/播单 ID 与白名单封面送给
+  WebView，不能传上游 alg、授权链接或随响应注入的动作。
+- 官方另有匿名创建及匿名专属横幅，PageEssential.tsx:430–470,487–598；
+  GET 名称的实际业务请求为 POST /api/v2/banner/get
+  {clientType:"pc",adextjson:"{}"}（M/15:3305–3314），按匿名在场定时三小时，
+  动作转换后可包含广告、通用 URL 和专用跳转。Cumulus 尚未接官方匿名身份注册、
+  广告 SDK、关闭广告与跟踪，因此登录前展示本地登录入口，不请求横幅或冒用登录态。
+  本轮不宣称匿名官方流、线上同接口回包、Windows WebView 或真实声卡已经通过。
+
+验证
+- npm --prefix frontend ci；npm --prefix frontend run format:check；npm --prefix frontend test；
+  npm --prefix frontend run build
+- cargo fmt --all --check；cargo clippy -p cumulus-desktop
+  --features cumulus-desktop/custom-protocol --example catalog_ui_probe --locked -- -D warnings
+- cargo build -p cumulus-desktop --features custom-protocol --example catalog_ui_probe --locked
+- scripts/ci/catalog_smoke.py --ordinary-essential --binary <catalog_ui_probe> --root <新目录>
+  [--screenshots]。合成账号，隔离网络，Linux GTK/WebKitGTK en_US.UTF-8，
+  libmpv 只读本地合成音频并输出到 null；不给真实账号发任何请求或写入。
+- 2026-11-05 实测：通过 11 个真实 Linux WebView 状态并采集 11 张图；官网歌单标题
+  与最新音乐标题分别进入相应页面，返回恢复横向位置和焦点；有声书分类失败保留旧分类，
+  切换成功后返回恢复纵向位置、焦点和类别。部分失败仅恢复本账号歌曲；换到另一账号时
+  全失败显示重试，不显示上一账号的分区；匿名不请求四个分区或横幅。
+- 实际 GTK 初始化后 LC_NUMERIC=C、LC_MESSAGES/LC_CTYPE=en_US.UTF-8；同一进程
+  libmpv 播放合成 WAV，歌曲 2 对应九首队列、声音 704 对应单期、有声书 601 对应两期
+  队列首期 701，原生时钟均前进。报告在未提交目录
+  .build/ui-proof/ordinary-essential-4f5385a4/verified/；该轮使用实际生产构建的
+  frontend/dist 本地覆盖，仅用于测试新页面资源，IPC/Rust 和原生播放器照常运行。

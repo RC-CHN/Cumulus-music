@@ -33,6 +33,7 @@ pub use super::mv::{
     MvCard, MvDownloadChoice, MvLikeView, MvMutationView, MvPage, MvQuery, MvRecommendationsView,
     MvView, VideoAction, VideoView,
 };
+pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlayerAction, PlayerOrigin, PlayerResourceKind,

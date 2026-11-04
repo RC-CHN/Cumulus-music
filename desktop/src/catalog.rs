@@ -104,3 +104,27 @@ pub async fn discovery_home_rankings(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn ordinary_essential(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    category: u8,
+) -> Result<AccountData<OrdinaryEssentialView>, ClientError> {
+    client
+        .ordinary_essential(&epoch, category)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn ordinary_essential_books(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    category: u8,
+) -> Result<AccountData<Option<EssentialBooks>>, ClientError> {
+    client
+        .ordinary_essential_books(&epoch, category)
+        .await
+        .map_err(Into::into)
+}

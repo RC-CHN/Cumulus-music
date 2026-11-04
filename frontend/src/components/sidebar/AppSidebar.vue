@@ -70,6 +70,7 @@ interface NavItem {
 }
 const discovery: NavItem[] = [
   { title: '首页', icon: 'grid', page: { kind: 'discovery_home' } },
+  { title: '精选', icon: 'star', page: { kind: 'ordinary_essential' } },
   { title: '会员中心', icon: 'star', page: { kind: 'member' } },
   { title: '私人漫游', icon: 'music', page: { kind: 'fm' } },
   { title: '排行榜', icon: 'list', page: { kind: 'rankings', query: { kind: 'home' } } },
@@ -104,7 +105,7 @@ function selected(target: Page) {
   if (target.kind === 'playlist')
     return props.page.kind === 'playlist' && props.page.id === target.id;
   return (
-    props.page.kind === target.kind ||
+    (props.page.choice ? target.kind === 'ordinary_essential' : props.page.kind === target.kind) ||
     (target.kind === 'mvs' && props.page.kind === 'mv') ||
     (target.kind === 'community' && props.page.kind === 'community_detail')
   );

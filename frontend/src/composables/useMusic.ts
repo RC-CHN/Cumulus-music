@@ -12,7 +12,7 @@ import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
 export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
-export type Page =
+type Destination =
   | { kind: 'decoration' }
   | { kind: 'settings'; accountDetail?: 'profile' | 'devices' | 'blacklist' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
@@ -24,6 +24,7 @@ export type Page =
   | ({ kind: 'catalog' } & import('../services/catalogNavigation').CatalogLocation)
   | { kind: 'artist_gallery' }
   | { kind: 'discovery_home' }
+  | { kind: 'ordinary_essential' }
   | { kind: 'follow_new_song' }
   | {
       kind: 'latest_releases';
@@ -90,6 +91,8 @@ export type Page =
       rewrittenKeyword?: string;
       searchId?: number;
     };
+
+export type Page = Destination & { choice?: true };
 
 export function useMusic(
   core: CoreClient = useCore(),
@@ -241,6 +244,7 @@ export function useMusic(
         target.kind === 'catalog' ||
         target.kind === 'artist_gallery' ||
         target.kind === 'discovery_home' ||
+        target.kind === 'ordinary_essential' ||
         target.kind === 'follow_new_song' ||
         target.kind === 'latest_releases' ||
         target.kind === 'community' ||

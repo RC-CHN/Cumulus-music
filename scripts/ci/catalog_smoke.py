@@ -77,6 +77,7 @@ def main():
     mode.add_argument('--artist-mv', action='store_true', help='artist MV continuous loading, comments and native video')
     mode.add_argument('--album', action='store_true', help='album-local tabs, draft retention, header actions and native null playback')
     mode.add_argument('--latest-releases', action='store_true')
+    mode.add_argument('--ordinary-essential', action='store_true')
     mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
     mode.add_argument('--collections', action='store_true')
     mode.add_argument('--history', action='store_true')
@@ -112,6 +113,11 @@ def main():
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
         source = 'album_batch_ui_probe.js' if args.album_batch else 'album_ui_probe.js'
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
+    if args.ordinary_essential:
+        env['CUMULUS_ORDINARY_ESSENTIAL_PROOF'] = '1'
+        env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/ordinary_essential_ui_probe.js')
+        if args.screenshots:
+            env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
     if args.latest_releases:
         env['CUMULUS_LATEST_RELEASES_PROOF'] = '1'
         env['CUMULUS_MOTION_PROOF'] = '1'
@@ -170,6 +176,49 @@ def main():
         assert play == [{'id': '601', 'r': 480}], play
         result = dict(ok=True, actualWebView=True, states=9, screenshots=captures,
                       nativeVideoVerified=True, realMusicRequests=0, realAccountWrites=0, artistMvCalls=calls)
+        (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(result))
+        return
+    if args.ordinary_essential:
+        assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        names = ('initial', 'category_failure', 'history_return', 'native_play', 'paused',
+                 'voice_play', 'book_play', 'partial_fallback', 'other_account_failure', 'retry', 'guest')
+        assert complete['states'] == list(names)
+        assert not args.screenshots or captures == len(names)
+        states = {name: json.loads((output / f'ux_{name}.json').read_text(encoding='utf-8'))
+                  for name in names}
+        assert states['history_return']['scroll'] > 0
+        native = states['native_play']['nativePlayer']
+        assert native['state'] == 'playing' and native['track']['id'] == '2'
+        assert native['position'] > .2 and native['queueLen'] == 9
+        voice = states['voice_play']['nativePlayer']
+        assert voice['state'] == 'playing' and voice['track']['voiceId'] == '704'
+        assert voice['position'] > .2 and voice['queueLen'] == 1
+        book = states['book_play']['nativePlayer']
+        assert book['state'] == 'playing' and book['track']['voiceId'] == '701'
+        assert book['position'] > .2 and book['queueLen'] == 2
+        assert book['origin'] == {'kind': 'podcast', 'id': '601'}
+        if (output / 'locale.json').is_file():
+            import locale
+            observed = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
+            assert observed['numeric'] == 'C'
+            expected = locale.normalize(os.environ.get('LC_ALL', ''))
+            if expected == 'en_US.UTF-8':
+                assert observed['messages'] == observed['characters'] == expected
+        calls = complete['essentialReads']
+        assert not any(call['owner'] == 0 for call in calls)
+        song_calls = [call for call in calls if call['path'] == '/api/personalized/newsong']
+        assert [(call['owner'], call['mode']) for call in song_calls] == [
+            (2, 'initial'), (2, 'songs-down'), (3, 'all-down'), (3, 'initial')
+        ], calls
+        book_calls = [call for call in calls if call['path'] == '/api/podcast/common/single/block/get']
+        default = '{"position":"essential"}'
+        female = '{"interestTypes":[{"resourceId":"type2","resourceType":"","pubTime":0}],"position":"essential"}'
+        assert [call['args']['extInfo'] for call in book_calls] == [
+            default, female, female, female, default, default
+        ], book_calls
+        result = dict(ok=True, actualWebView=True, states=len(names), screenshots=captures,
+                      nativeNullPlaybackVerified=True, realMusicRequests=0, realAccountWrites=0)
         (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))
         return

@@ -25,6 +25,8 @@ mod follow_new_song_fixture;
 mod history_fixture;
 #[path = "support/catalog_live.rs"]
 mod live;
+#[path = "support/ordinary_essential_fixture.rs"]
+mod ordinary_essential_fixture;
 #[path = "support/relay_contention.rs"]
 mod relay_contention;
 #[path = "support/relay_fixture.rs"]
@@ -33,6 +35,19 @@ mod relay_fixture;
 mod search_mv_fixture;
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
+#[cfg(target_os = "linux")]
+fn current_locale(category: libc::c_int) -> String {
+    // SAFETY: startup-only inspection. The returned pointer is copied before
+    // any further locale query; this does not change the native locale.
+    unsafe {
+        let value = libc::setlocale(category, std::ptr::null());
+        assert!(!value.is_null());
+        std::ffi::CStr::from_ptr(value)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 fn main() {
     // SAFETY: first operation before GTK/runtime or worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
@@ -94,7 +109,14 @@ fn main() {
         !follow_new_song || !is_live,
         "followed release proof uses synthetic services only"
     );
-    let interactive = albums
+    let ordinary_essential =
+        std::env::var("CUMULUS_ORDINARY_ESSENTIAL_PROOF").as_deref() == Ok("1");
+    assert!(
+        !ordinary_essential || !is_live,
+        "choice probe uses closed synthetic services"
+    );
+    let interactive = ordinary_essential
+        || albums
         || artists
         || artist_mv
         || rankings
@@ -123,9 +145,20 @@ fn main() {
         || relay_settings
         || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
+        #[cfg(target_os = "linux")]
+        if ordinary_essential {
+            let numeric=current_locale(libc::LC_NUMERIC);
+            let messages=current_locale(libc::LC_MESSAGES);
+            let characters=current_locale(libc::LC_CTYPE);
+            assert_eq!(numeric,"C");
+            fs::write(output.join("locale.json"),serde_json::to_vec(&serde_json::json!({
+                "numeric":numeric,"messages":messages,"characters":characters
+            }))?)?;
+        }
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let contention=Arc::new(relay_contention::Fixture::new(registry.store()));
         let catalog_fixture=Arc::new(fixture::Library::default());
+        let ordinary_essential_fixture=Arc::new(ordinary_essential_fixture::Library::new(catalog_fixture.clone()));
         let artist_mv_fixture=Arc::new(artist_mv_fixture::Library::new(catalog_fixture.clone()));
         if album_cards {catalog_fixture.album_cards();}
         if artist_cards {catalog_fixture.artist_cards();}
@@ -137,7 +170,7 @@ fn main() {
         let relay_fixture=Arc::new(relay_fixture::Library::default());
         if relay_settings {relay_fixture.mode("setting-off");}
         if relay_recovery {relay_fixture.mode("publication-rejected");}
-        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if artist_mv {artist_mv_fixture.clone()}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if follow_new_song {follow_new_song_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
+        let api:Arc<dyn Api>=if let Some(profile)=profile{Arc::new(live::Reads::open(&profile,&output)?)}else if ordinary_essential {ordinary_essential_fixture.clone()}else if artist_mv {artist_mv_fixture.clone()}else if comment_reads {comment_fixture.clone()}else if relays {relay_fixture.clone()}else if settings {settings_fixture.clone()}else if histories {history_fixture.clone()}else if follow_new_song {follow_new_song_fixture.clone()}else if collections{collection_fixture.clone()}else{catalog_fixture.clone()};
         let follow_store=registry.store();
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
         let publisher=Arc::new(cumulus_core::relay::publisher::RelayPublisher::new(session.clone())?);
@@ -165,6 +198,12 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let value:Value=serde_json::from_str(event.payload()).unwrap();
             let stage=value["stage"].as_str().unwrap_or("");
+            if ordinary_essential && stage=="essential-fixture" {
+                let id=value["id"].as_u64().expect("fixture sequence");
+                ordinary_essential_fixture.set(value["owner"].as_u64().unwrap(),value["mode"].as_str().unwrap());
+                handle.get_webview_window("main").unwrap().eval(format!("window.__essentialAck={id};")).unwrap();
+                return;
+            }
             if follow_new_song && stage=="follow-new-song-allow-first" {
                 if follow_offline_head {
                     follow_new_song_fixture::Library::seed_offline_head(&session,&follow_store,&follow_sample,&follow_file).unwrap();
@@ -250,6 +289,7 @@ fn main() {
             let collection_report=collection_context.then(|| collection_fixture.report());
             let album_card_report=(album_cards || artist_cards).then(||catalog_fixture.report());
             let release_report=follow_new_song.then(||follow_new_song_fixture.report());
+            let essential_report=ordinary_essential.then(||ordinary_essential_fixture.report());
             let artist_mv_report=artist_mv.then(||artist_mv_fixture.report());
             let follow_store=follow_store.clone();
             let comment_read_report=comment_reads.then(||comment_fixture.report());
@@ -267,6 +307,7 @@ fn main() {
                 if let Some(report)=collection_report {value["collectionFixture"]=report;}
                 if let Some(report)=album_card_report {value["albumCardFixture"]=report;}
                 if let Some(report)=release_report {value["followNewSongFixture"]=report;}
+                if let Some(report)=essential_report {value["essentialReads"]=report;}
                 if let Some(report)=artist_mv_report {value["artistMvCalls"]=serde_json::json!(report);value["nativeMvCalls"]=serde_json::json!(search_mv_fixture::calls());}
                 if let Some(report)=comment_read_report {value["commentReadFixture"]=report;}
                 if artists {value["artistSongReads"]=serde_json::json!(artist_song_reads);value["artistAlbumReads"]=serde_json::json!(artist_album_reads);}
@@ -331,7 +372,7 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
             if relay_publication {view.eval("window.__CUMULUS_PUBLICATION_PROOF__=true;").unwrap();}
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
-            view.eval(script.as_deref().unwrap_or(if follow_new_song {include_str!("follow_new_song_ui_probe.js")}else if relay_recovery {include_str!("relay_recovery_ui_probe.js")}else if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
+            view.eval(script.as_deref().unwrap_or(if ordinary_essential {include_str!("ordinary_essential_ui_probe.js")}else if follow_new_song {include_str!("follow_new_song_ui_probe.js")}else if relay_recovery {include_str!("relay_recovery_ui_probe.js")}else if relay_settings {if is_live {include_str!("relay_setting_live_probe.js")}else{include_str!("relay_setting_ui_probe.js")}}else if relays {
                 include_str!("relay_ui_probe.js")
             } else if settings {
                 if is_live {include_str!("settings_live_probe.js")}else{include_str!("settings_ui_probe.js")}

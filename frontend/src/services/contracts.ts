@@ -48,6 +48,7 @@ import type { FmClient } from './fm';
 import type { SceneFmClient } from './sceneFm';
 import type { MemberClient, MemberPortalClient } from './member';
 import type { CatalogClient } from './catalog';
+import type { OrdinaryEssentialClient } from './ordinaryEssential';
 import type { DiscoveryHomeClient } from './discoveryHome';
 import type { FollowNewSongClient, ReleaseNotificationClient } from './followNewSong';
 import type { LatestReleaseClient } from './latestReleases';
@@ -109,6 +110,7 @@ export interface CoreClient
     SearchClient,
     SearchResultsClient,
     DiscoveryHomeClient,
+    OrdinaryEssentialClient,
     LikeRecoveryClient,
     NativeLikesClient,
     PlayerClient,

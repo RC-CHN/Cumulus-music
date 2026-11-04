@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import OrdinaryEssentialPage from './components/OrdinaryEssentialPage.vue';
+import ChoiceTabs from './components/ChoiceTabs.vue';
+import { useOrdinaryEssential } from './composables/useOrdinaryEssential';
+import type { EssentialCard, EssentialRail } from './services/ordinaryEssential';
 import CommunityDeleteDialog from './components/community/CommunityDeleteDialog.vue';
 import CommunityReportDialog from './components/community/CommunityReportDialog.vue';
 import { communityReportKey, useCommunityReport } from './composables/useCommunityReport';
@@ -257,6 +261,70 @@ const discoveryHome = useDiscoveryHome(
   () => void music.bootstrap(false),
 );
 const discoveryHomePage = ref<InstanceType<typeof DiscoveryHomePage>>();
+const essentialPage = ref<InstanceType<typeof OrdinaryEssentialPage>>();
+const essential = useOrdinaryEssential(
+  core,
+  () => music.account.value,
+  () => music.page.value.kind === 'ordinary_essential',
+  () => void music.bootstrap(false),
+);
+function openEssentialSection(rail: EssentialRail) {
+  if (rail === 'playlists') music.navigate({ kind: 'playlist_tag', tag: '官方', choice: true });
+  else if (rail === 'songs') music.navigate({ kind: 'latest_releases', tab: 'songs' });
+  else if (rail === 'voices') music.navigate({ kind: 'podcast_discovery' });
+}
+function openEssentialCard(rail: EssentialRail, card: EssentialCard) {
+  if (rail === 'playlists') music.navigate({ kind: 'playlist', id: card.id });
+  else if (card.history) music.navigate({ kind: 'history', scope: 'audiobook' });
+  else if (card.radioId) openSceneRadio(card.radioId);
+}
+function playEssential(rail: EssentialRail, card: EssentialCard, ids: string[]) {
+  if (
+    music.page.value.kind !== 'ordinary_essential' ||
+    !music.signedIn.value ||
+    !player.ready.value ||
+    player.busy.value
+  )
+    return;
+  if (rail === 'playlists') {
+    playRankingPlaylist(card.id);
+  } else if (rail === 'songs') {
+    const current = visibleTrackToggle.value;
+    if (current?.trackId === card.id) {
+      void toggleVisibleTrack(current);
+      return;
+    }
+    const index = ids.indexOf(card.id);
+    if (index >= 0)
+      void player.select({
+        kind: 'songs',
+        ids,
+        index,
+        quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+      });
+  } else if (rail === 'voices') {
+    if (player.loaded.value && currentVoiceId.value === card.id) void player.toggleSource();
+    else void player.select({ kind: 'voice', id: card.id });
+  } else if (card.radioId) {
+    const scope = { kind: 'radio' as const, id: card.radioId, ascending: true };
+    const origin = player.view.value?.origin;
+    if (player.loaded.value && origin?.kind === 'podcast' && origin.id === scope.id) {
+      void player.toggleSource();
+      return;
+    }
+    void player.prepareSelection(async (epoch) => {
+      const response = await core.podcastPage(
+        epoch,
+        { scope, limit: 1, offset: 0, keyword: '', revision: null },
+        true,
+      );
+      if (response.epoch !== epoch || music.page.value.kind !== 'ordinary_essential')
+        throw { code: 'stale', message: '有声书播放已失效', retryable: false };
+      return { kind: 'podcast', scope, revision: response.revision, start_id: null };
+    });
+  }
+}
+
 const artistGallery = useArtistGallery(
   core,
   () => music.account.value,
@@ -1415,6 +1483,7 @@ function mainPageEntered() {
   focusSettingsSection();
   if (music.page.value.kind === 'artist_gallery') artistGalleryPage.value?.restore();
   if (music.page.value.kind === 'discovery_home') void discoveryHomePage.value?.restore();
+  if (music.page.value.kind === 'ordinary_essential') void essentialPage.value?.restore();
   if (music.page.value.kind === 'community') void communityPage.value?.restore();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
@@ -3355,6 +3424,11 @@ onUnmounted(() => {
             @after-enter="mainPageEntered"
           >
             <div class="page-view" :key="pageKey">
+              <ChoiceTabs
+                v-if="!initializing && (page.kind === 'ordinary_essential' || page.choice)"
+                :page="page"
+                @navigate="music.navigate"
+              />
               <LocalPage
                 ref="localPageRef"
                 v-if="page.kind === 'local'"
@@ -3418,6 +3492,22 @@ onUnmounted(() => {
                   登录账号
                 </button>
               </div>
+              <OrdinaryEssentialPage
+                v-else-if="page.kind === 'ordinary_essential'"
+                ref="essentialPage"
+                :model="essential"
+                :authenticated="signedIn"
+                :playable="player.ready.value && !player.busy.value"
+                :playing="player.playing.value"
+                :track="currentVoiceId ? undefined : currentTrackId"
+                :playlist="currentPlaylistId"
+                :voice="currentVoiceId"
+                :radio="currentOrigin?.kind === 'podcast' ? currentOrigin.id : undefined"
+                @login="loginOpen = true"
+                @section="openEssentialSection"
+                @open="openEssentialCard"
+                @play="playEssential"
+              />
               <AccountWelcome
                 v-else-if="!signedIn"
                 :account="account"
@@ -3879,7 +3969,9 @@ onUnmounted(() => {
                 :current="currentOrigin?.kind === 'playlist' ? currentOrigin.id : undefined"
                 :playing="player.playing.value"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
-                @category="(tag) => music.navigate({ kind: 'playlist_tag', tag })"
+                @category="
+                  (tag) => music.navigate({ kind: 'playlist_tag', tag, choice: page.choice })
+                "
                 @essential="(tag) => music.navigate({ kind: 'playlist_essential', tag })"
                 @play="playRankingPlaylist"
                 @settings="openPodcastPrivacy"

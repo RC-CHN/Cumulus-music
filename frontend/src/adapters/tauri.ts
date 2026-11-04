@@ -157,6 +157,9 @@ export function createTauriClient(): CoreClient {
     fmTrash: (epoch, page, cursor) => invoke('fm_trash', { epoch, page, cursor }),
     rankingPage: (epoch, query, refresh) => invoke('ranking_page', { epoch, query, refresh }),
     catalogPage: (epoch, query, refresh) => invoke('catalog_page', { epoch, query, refresh }),
+    ordinaryEssential: (epoch, category) => invoke('ordinary_essential', { epoch, category }),
+    ordinaryEssentialBooks: (epoch, category) =>
+      invoke('ordinary_essential_books', { epoch, category }),
     discoveryHome: (epoch) => invoke('discovery_home', { epoch }),
     discoveryHomeRankings: (epoch) => invoke('discovery_home_rankings', { epoch }),
     artistGallery: (epoch, query) => invoke('artist_gallery', { epoch, query }),
