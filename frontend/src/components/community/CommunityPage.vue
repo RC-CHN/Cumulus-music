@@ -86,6 +86,10 @@ function open(id: string) {
   model.opener.value = id;
   emit('open', id);
 }
+function openPublished(detail: string) {
+  model.opener.value = 'composer';
+  emit('open', detail);
+}
 function openNewSongs() {
   model.opener.value = 'new-song-notice';
   emit('openNewSongs');
@@ -131,7 +135,7 @@ async function commentPage(value: number, prior = false) {
         {{ detailKey ? '动态详情' : '关注' }}
       </h1>
       <div v-if="!detailKey" class="community-heading-actions">
-        <CommunityComposer :epoch="accountEpoch" />
+        <CommunityComposer :epoch="accountEpoch" @published-detail="openPublished" />
         <button
           class="icon-button"
           type="button"

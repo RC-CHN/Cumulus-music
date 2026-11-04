@@ -1,12 +1,12 @@
-//! Source-backed attachment search and durable local drafts. No publish call.
+//! Source-backed attachment search and durable local drafts.
 use super::{AccountData, MusicClient, handle, project};
 use crate::{Error, Result, client::mapping, podcast::Radio};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-const DRAFT_KIND: &str = "community-composer-draft-v1";
-const DRAFT_KEY: &str = "current";
+pub(super) const DRAFT_KIND: &str = "community-composer-draft-v1";
+pub(super) const DRAFT_KEY: &str = "current";
 const SEARCH_SIZE: usize = 8;
 const SEARCH_LIMIT: usize = SEARCH_SIZE * 64;
 const MAX_RECEIPTS: usize = 256;
@@ -61,9 +61,9 @@ impl ComposerKind {
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Attachment {
-    kind: ComposerKind,
-    id: String,
+pub(super) struct Attachment {
+    pub(super) kind: ComposerKind,
+    pub(super) id: String,
     title: String,
     subtitle: Option<String>,
     cover_url: Option<String>,
@@ -118,9 +118,9 @@ pub enum ComposerDraftAction {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ComposerDraft {
-    revision: String,
-    text: String,
-    attachment: Option<Attachment>,
+    pub(super) revision: String,
+    pub(super) text: String,
+    pub(super) attachment: Option<Attachment>,
 }
 
 fn sub(value: &Value) -> Option<String> {
@@ -195,7 +195,7 @@ fn project_attachment(kind: ComposerKind, raw: &Value) -> Option<Attachment> {
     })
 }
 
-fn validate_text(text: &str) -> Result<()> {
+pub(super) fn validate_text(text: &str) -> Result<()> {
     if text.encode_utf16().count() > 1000
         || text
             .chars()
@@ -295,6 +295,9 @@ impl MusicClient {
                     _ => None,
                 };
                 store.transaction(|tx| {
+                    if super::publish::submission_unresolved(tx, owner)? {
+                        return Err(Error::MutationBusy);
+                    }
                     let old: Option<ComposerDraft> = tx
                         .get(owner, DRAFT_KIND, DRAFT_KEY)?
                         .map(serde_json::from_value)

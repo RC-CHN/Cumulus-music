@@ -1,4 +1,4 @@
-"""Run the actual community read surface against a closed synthetic desktop API."""
+"""Run community surfaces against a closed synthetic desktop API."""
 import argparse
 import json
 import os
@@ -87,6 +87,21 @@ def verify_community(stages, native):
     assert [body['offset'] for _, body in native['composer']] == [0, 8, 8, 0, 0, 0, 0]
 
 
+def verify_publication(stages, native):
+    assert set(stages) == {'publication_confirm', 'publication_cancel', 'publication_phone',
+                           'publication_ack', 'publication_detail', 'publication_unknown',
+                           'publication_reopened'}
+    calls = native['publication']
+    assert [path for path, _ in calls] == [
+        '/api/w/v1/user/bindings/2', '/api/w/v1/user/bindings/2',
+        '/api/share/friends/resource', '/api/v1/event/2/9007199254740997',
+        '/api/w/v1/user/bindings/2', '/api/share/friends/resource',
+    ], calls
+    assert calls[2][1]['type'] == 'album' and calls[5][1]['type'] == 'djradio'
+    assert calls[2][1]['uuid'] != calls[5][1]['uuid']
+    assert len(native['feed']) == 2, native['feed']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -98,19 +113,23 @@ def main():
     mode.add_argument('--profile-notes', action='store_true')
     mode.add_argument('--profile-podcasts', action='store_true')
     mode.add_argument('--own-profile', action='store_true')
+    mode.add_argument('--publication', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     script = ('own_profile_navigation_ui_probe.js' if args.own_profile else
               'profile_notes_ui_probe.js' if args.profile_notes else
-              'profile_podcasts_ui_probe.js' if args.profile_podcasts else 'community_ui_probe.js')
+              'profile_podcasts_ui_probe.js' if args.profile_podcasts else
+              'community_publication_ui_probe.js' if args.publication else 'community_ui_probe.js')
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'),
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
     if args.profile_notes:
         env['CUMULUS_PROFILE_NOTES_PROOF'] = '1'
     if args.own_profile:
         env['CUMULUS_OWN_PROFILE_PROOF'] = '1'
+    if args.publication:
+        env['CUMULUS_COMMUNITY_PUBLICATION_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -149,6 +168,9 @@ def main():
             '/api/w/v1/user/detail/2', '/api/event/get/2',
             '/api/user/follow/users/mixed/get/v2', '/api/user/getfolloweds/',
         ], calls
+    elif args.publication:
+        assert complete['publicationVerified']
+        verify_publication(stages, complete['native'])
     elif args.profile_notes:
         verify_profile_notes(stages, complete['native'])
     elif args.profile_podcasts:
@@ -163,6 +185,8 @@ def main():
               'realMusicRequests': 0, 'remoteAccountWrites': 0}
     if args.own_profile:
         report['ownProfileVerified'] = True
+    elif args.publication:
+        report['publicationVerified'] = True
     elif args.profile_notes:
         report['profileNotesCalls'] = complete['native']['profileNotesCalls']
     elif args.profile_podcasts:

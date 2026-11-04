@@ -81,6 +81,16 @@ export type ComposerDraftAction =
   | { kind: 'read' }
   | { kind: 'save'; revision: string | null; text: string; attachment: ComposerAttachmentEdit }
   | { kind: 'discard'; revision: string };
+export type ComposerPublishAction = { kind: 'status' } | { kind: 'submit'; revision: string };
+export type ComposerPublication =
+  | { status: 'ready' | 'phone_required' | 'preflight_unavailable' }
+  | { status: 'uncertain'; revision: string }
+  | {
+      status: 'rejected';
+      revision: string;
+      reason: 'cannot_share' | 'private_cloud' | 'purchase_required' | 'not_sent';
+    }
+  | { status: 'published'; revision: string; eventId: string; detail: string };
 export interface ProfileNotesClient {
   profileNotes(
     epoch: string,
@@ -100,6 +110,10 @@ export interface CommunityClient {
     epoch: string,
     action: ComposerDraftAction,
   ): Promise<AccountData<ComposerDraft | null>>;
+  communityComposerPublish(
+    epoch: string,
+    action: ComposerPublishAction,
+  ): Promise<AccountData<ComposerPublication>>;
   communityFeed(
     epoch: string,
     action: CommunityFeedAction,

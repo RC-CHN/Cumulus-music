@@ -78,7 +78,7 @@
     click(trigger);
     await wait(() => composer()?.querySelector('textarea') === document.activeElement, 'draft text receives focus');
     input(composer().querySelector('textarea'), '这是本机合成草稿');
-    assert(!button('发布', composer()), 'draft must not publish');
+    await wait(() => button('发布笔记', composer())?.disabled, 'text-only draft must not publish');
     await capture('composer_draft');
     click(button('添加音乐附件', composer()));
     await wait(() => one('[aria-label="搜索音乐附件"]') === document.activeElement, 'attachment query receives focus');

@@ -2,6 +2,7 @@ pub mod composer;
 pub mod new_song_notice;
 mod profile;
 mod project;
+pub mod publish;
 
 use super::{MusicClient, comments, dto::AccountData};
 use crate::{
@@ -351,7 +352,7 @@ fn comment(value: Comment) -> CommunityComment {
 
 impl MusicClient {
     fn community_host_for(&self, token: &SessionToken, key: Uuid) -> Result<&CommunityHost> {
-        for host in [&self.community, &self.profile_notes] {
+        for host in [&self.community, &self.profile_notes, &self.published_notes] {
             if host
                 .state(token)?
                 .cards

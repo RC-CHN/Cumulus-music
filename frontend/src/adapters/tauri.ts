@@ -30,6 +30,8 @@ export function createTauriClient(): CoreClient {
       invoke('community_composer_search', { epoch, kind, keyword, offset }),
     communityComposerDraft: (epoch, action) =>
       invoke('community_composer_draft', { epoch, action }),
+    communityComposerPublish: (epoch, action) =>
+      invoke('community_composer_publish', { epoch, action }),
     profilePodcasts: (epoch, uid, query) => invoke('profile_podcasts', { epoch, uid, query }),
     openProfilePodcastManagement: (epoch, uid) =>
       invoke('open_profile_podcast_management', { epoch, uid }),

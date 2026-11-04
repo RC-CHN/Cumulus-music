@@ -91,3 +91,15 @@ pub async fn profile_notes(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn community_composer_publish(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    action: ComposerPublishAction,
+) -> Result<AccountData<ComposerPublication>, ClientError> {
+    client
+        .community_composer_publish(&epoch, action)
+        .await
+        .map_err(Into::into)
+}

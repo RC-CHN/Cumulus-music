@@ -5,6 +5,20 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::Mutex;
 
+const PUBLISH: &str = "/api/share/friends/resource";
+const BINDINGS: &str = "/api/w/v1/user/bindings/2";
+const PUBLISHED_DETAIL: &str = "/api/v1/event/2/9007199254740997";
+
+pub fn publication_enabled() -> bool {
+    std::env::var("CUMULUS_COMMUNITY_PUBLICATION_PROOF").as_deref() == Ok("1")
+}
+
+fn published_event(uuid: &Value) -> Value {
+    json!({"id":"9007199254740997","type":19,"eventTime":1700000000000_u64,
+        "user":{"userId":2,"nickname":"合成发布者"},"uuid":uuid,
+        "json":json!({"msg":"公开发布的合成正文","album":{"id":92,"name":"合成附件专辑"}}).to_string(),
+        "pics":[]})
+}
 const FEED: &str = "/api/event/pc/history/feed/get";
 const DETAIL: &str = "/api/v1/event/73/11";
 const UNAVAILABLE: &str = "/api/v1/event/73/15";
@@ -82,6 +96,17 @@ impl Library {
             "details":calls.iter().filter(|(path, _)|path==DETAIL).count(),
             "unavailable":calls.iter().filter(|(path, _)|path==UNAVAILABLE).count(),
             "commentOffsets":calls.iter().filter(|(path, _)|path==COMMENTS).map(|(_,body)|&body["offset"]).collect::<Vec<_>>()});
+        if publication_enabled() {
+            report["publication"] = json!(
+                calls
+                    .iter()
+                    .filter(|(path, _)| matches!(
+                        path.as_str(),
+                        BINDINGS | PUBLISH | PUBLISHED_DETAIL
+                    ))
+                    .collect::<Vec<_>>()
+            );
+        }
         if super::profile_notes_fixture::Library::enabled()
             || super::profile_notes_fixture::Library::own_enabled()
         {
@@ -108,10 +133,61 @@ fn comment(id: u64, label: &str) -> Value {
         "user":{"userId":91,"nickname":"合成评论作者","signature":"SYNTHETIC_PRIVATE"}})
 }
 impl Api for Library {
+    fn local_device_id(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(publication_enabled().then(|| "SYNTHETIC/设备".into()))
+    }
+
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if let Some(result) = self.profile_podcasts.request(path, &payload, cache) {
                 return result;
+            }
+            if publication_enabled() && matches!(path, PUBLISH | BINDINGS | PUBLISHED_DETAIL) {
+                assert!(!cache);
+                let attempt = {
+                    let mut calls = self.calls.lock().unwrap();
+                    calls.push((path.into(), payload.clone()));
+                    calls
+                        .iter()
+                        .filter(|(candidate, _)| candidate == path)
+                        .count()
+                };
+                return match (path, attempt) {
+                    (BINDINGS, n) if (1..=3).contains(&n) && payload == json!({"userId":"2"}) => {
+                        Ok(
+                            json!({"code":200,"bindings":if n == 1 {json!([])} else {json!([{"type":1}])}}),
+                        )
+                    }
+                    (PUBLISH, n @ (1 | 2)) => {
+                        let uuid = payload["uuid"].as_str().unwrap();
+                        assert_eq!(uuid.len(), 32);
+                        assert!(
+                            uuid.bytes()
+                                .all(|ch| ch.is_ascii_hexdigit() && !ch.is_ascii_uppercase())
+                        );
+                        assert_eq!(
+                            payload,
+                            if n == 1 {
+                                json!({"id":"92","msg":"公开发布的合成正文","type":"album","uuid":uuid,"active":0,"pics":"[]"})
+                            } else {
+                                json!({"id":"94","msg":"结果未知的合成正文","type":"djradio","uuid":uuid,"active":0,"pics":"[]"})
+                            }
+                        );
+                        if n == 1 {
+                            Ok(json!({"code":200,"event":published_event(&payload["uuid"])}))
+                        } else {
+                            Err(Error::Transport(
+                                "synthetic lost publication response".into(),
+                            ))
+                        }
+                    }
+                    (PUBLISHED_DETAIL, 1) if payload == json!({}) => {
+                        Ok(json!({"code":200,"event":published_event(&Value::Null)}))
+                    }
+                    _ => Err(Error::InvalidInput(
+                        "unexpected synthetic publication request",
+                    )),
+                };
             }
             if let Some(result) = self.profile_notes.request(path, &payload, cache) {
                 return result;
