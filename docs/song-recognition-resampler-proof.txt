@@ -102,4 +102,31 @@ windres --preprocessor=cat -J rc -O coff 生成对应 .o，未改运算源码。
   累加、SIMD/FMA 浮点舍入及尾部状态。平均左右声道、一次性重采样、
   或仅比较 RMS/时长都不足以宣称样本级兼容。默认硬件标志目前只实测
   0x1fd3db；更早 CPU、实际 Windows 运行与输入设备变更均需另测。
-- 本批没有添加生产依赖或运行时 API；回采宿主、授权与真实服务另行验证。
+- 原生对照批次不添加部署依赖；回采宿主、授权与真实服务另行验证。
+
+可选 Rust 离线适配器
+
+- core 的 song-recognition-resampler feature 默认关闭，支持 Linux x64
+  glibc 与 Windows x64。没有新链接依赖或包内 DLL/SO。调用者显式向
+  unsafe ResamplerLibraries::load_local 提供绝对、可信且不可修改的目录；
+  固定文件名 Linux 为 libswresample.so.3/libavutil.so.56，Windows 为
+  swresample-3.dll/avutil-56.dll。仅在可信目录执行 native initializer，
+  不能用运行时版本替代来源验证。加载后严格核对 3.7.100 与 56.51.100。
+- Linux 为库对建立独立 glibc loader namespace，核对 swresample 实际
+  解析的 avutil_version 地址以及两库版本符号所属文件。Windows 仅用
+  指定目录和系统目录的 LoadLibraryEx 搜索规则；对同名 DLL 在加载
+  前后做有界进程模块检查，有重名、绑定歧义或无法检查则拒绝。
+  不设置 PATH、系统搜索目录、全局 CPU flags 或音频设备。
+- stream 创建并拥有两层 C 上下文。上下文和库句柄由 RAII 回收；
+  按同一采样率和格式复用至流结束，并复用原生逻辑的增长式输出缓冲。
+  两端只接收交错双声道 44.1/48k 的 i16 或有限 f32（安全边界 ±4），
+  每包最多 144,250 帧、每流至多 16 秒。返回借用的实际产出 8k mono
+  i16，空包与销毁不 flush。格式变化须新建流，部分处理失败后该实例
+  拒绝继续或重放。没有设备、账户、上传或调度接线。
+- 可选回归只认调用者提供的 stock 目录；默认会标为 ignored。示例：
+  CUMULUS_RECOGNITION_SWR_TEST_DIR=/绝对路径/stock-pair \
+    cargo test --locked -p cumulus-core --lib \
+      --features song-recognition-resampler song_recognition::resampler -- --include-ignored
+  CUMULUS_RECOGNITION_SWR_TEST_MODE=scalar 选择 scalar fixture，需要
+  对应构建/CPU 分支；不改变载入库的 CPU flags。测试使用现有原生
+  冻结值对照输入、mono、输出、每包延迟与仅在测试中读取的尾部。

@@ -1,16 +1,31 @@
 //! Recovered offline stages for PC song recognition.
 //!
 //! Accepts already-converted 8 kHz mono PCM or centered matrices, and supports
-//! peak selection, packet packing, and sealing. It does not acquire, resample,
-//! or downmix audio, or send a request. Stock zlib is an explicit optional feature.
+//! peak selection, packet packing, and sealing. Explicit optional features
+//! add stock zlib and local stock stereo conversion. No path acquires audio
+//! from a device or sends a request.
 
 mod packing;
+#[cfg(all(
+    feature = "song-recognition-resampler",
+    target_arch = "x86_64",
+    any(windows, all(target_os = "linux", target_env = "gnu"))
+))]
+mod resampler;
 mod selection;
 mod signal;
 #[cfg(feature = "song-recognition-zlib")]
 mod stock_zlib;
 
 pub use packing::{PeakRecord, pack_default_packet};
+#[cfg(all(
+    feature = "song-recognition-resampler",
+    target_arch = "x86_64",
+    any(windows, all(target_os = "linux", target_env = "gnu"))
+))]
+pub use resampler::{
+    RecognitionResampler, ResamplerLibraries, StereoPcmFormat, StereoPcmPacket, StereoSampleRate,
+};
 pub use selection::{CenteredPeakMatrix, select_default_peaks};
 pub use signal::{
     FingerprintLogMode, FingerprintPcm8k, FingerprintSpectrum, centered_default_spectrum,
