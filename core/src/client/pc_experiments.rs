@@ -38,6 +38,16 @@ impl MusicClient {
         &self,
         epoch: &str,
     ) -> Result<OrdinarySkipAssignment> {
+        self.verified_pc_experiment_groups(epoch)
+            .await
+            .map(|groups| assignment(&groups))
+    }
+
+    /// The full signed PC groups are only exposed to native use cases.
+    pub(super) async fn verified_pc_experiment_groups(
+        &self,
+        epoch: &str,
+    ) -> Result<PcExperimentGroups> {
         let session = self.session.snapshot()?;
         let token = session.token;
         if epoch != token.generation.to_string() {
@@ -66,7 +76,7 @@ impl MusicClient {
         }) {
             return self
                 .session
-                .with_verified_profile(&token, &api, |_, _| Ok(assignment(&current.groups)));
+                .with_verified_profile(&token, &api, |_, _| Ok(current.groups.clone()));
         }
         let refresh = tokio::time::timeout(TIMEOUT, native.pc_experiment_groups(&credentials));
         let groups = tokio::select! {
@@ -78,14 +88,14 @@ impl MusicClient {
             return Err(Error::StaleResponse);
         }
         self.session.with_verified_profile(&token, &api, |_, _| {
-            let decision = assignment(&groups);
+            let result = groups.clone();
             *cached = Some(Assigned {
                 token: token.clone(),
                 credentials,
                 fetched: Instant::now(),
                 groups,
             });
-            Ok(decision)
+            Ok(result)
         })
     }
 }

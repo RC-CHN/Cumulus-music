@@ -21,6 +21,7 @@ pub mod discovery_home;
 mod downloads;
 pub mod dto;
 mod effects;
+mod vertical_zone;
 pub use effects::{NativeParametricActivation, NativeParametricActivationAttempt};
 mod error;
 mod external_import_auth;
@@ -144,6 +145,7 @@ pub struct MusicClient {
     seeded_style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     pc_experiments: pc_experiments::PcExperimentHost,
+    vertical_zone: vertical_zone::ZoneHost,
     quality_experiment: quality_experiment::QualityExperiment,
     daily_experiment: daily_experiment::DailyExperiment,
     latest_releases: catalog::LatestReleasesHost,
@@ -299,6 +301,7 @@ impl MusicClient {
             seeded_style_recommendations: Default::default(),
             style_recommendations: Default::default(),
             pc_experiments: Default::default(),
+            vertical_zone: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
             daily_experiment: daily_experiment::DailyExperiment::default(),
             latest_releases: catalog::LatestReleasesHost::default(),

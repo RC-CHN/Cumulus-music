@@ -20,7 +20,20 @@ pub enum ZoneEntry<'a> {
     SearchTabName(&'a str),
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+impl ZoneEntry<'_> {
+    pub fn validate(&self) -> Result<()> {
+        let value = match self {
+            Self::Tab(value) | Self::SearchTabName(value) => *value,
+        };
+        if value.is_empty() || valid_tab(value) {
+            Ok(())
+        } else {
+            Err(Error::InvalidInput("invalid vertical zone tab entry"))
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ZoneLayout {
     Classic,
@@ -28,14 +41,14 @@ pub enum ZoneLayout {
     Fallback,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneTab {
     pub key: String,
     pub name: String,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VerticalZonePage {
     pub layout: ZoneLayout,
@@ -44,7 +57,7 @@ pub struct VerticalZonePage {
     pub blocks: Vec<ZoneBlock>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ZoneBlockKind {
     Carousel,
@@ -53,7 +66,7 @@ pub enum ZoneBlockKind {
     Grid,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneBlock {
     pub kind: ZoneBlockKind,
@@ -62,7 +75,7 @@ pub struct ZoneBlock {
     pub cards: Vec<ZoneCard>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneCard {
     pub title: Option<String>,
@@ -71,7 +84,7 @@ pub struct ZoneCard {
     pub previews: Vec<ZoneRankPreview>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ZoneTarget {
     Song { id: String },
@@ -84,7 +97,7 @@ pub enum ZoneTarget {
     Fm { id: String, personalized: bool },
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ZoneRankPreview {
     pub title: String,
@@ -100,14 +113,8 @@ pub async fn read(
     page_code: &str,
     entry: ZoneEntry<'_>,
 ) -> Result<VerticalZonePage> {
-    if page_code.is_empty()
-        || page_code.len() > 128
-        || !page_code
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-    {
-        return Err(Error::InvalidInput("invalid vertical zone page code"));
-    }
+    validate_page_code(page_code)?;
+    entry.validate()?;
     if groups.and_then(|groups| groups.group("PH-PC-zhuanquTab")) != Some("t1") {
         return classic(api, page_code, ZoneLayout::Classic, recommendation_enabled).await;
     }
@@ -134,6 +141,18 @@ pub async fn read(
         }
         Err(_) => classic(api, page_code, ZoneLayout::Fallback, recommendation_enabled).await,
     }
+}
+
+pub fn validate_page_code(page_code: &str) -> Result<()> {
+    if page_code.is_empty()
+        || page_code.len() > 128
+        || !page_code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+    {
+        return Err(Error::InvalidInput("invalid vertical zone page code"));
+    }
+    Ok(())
 }
 
 pub(super) fn valid_tab(value: &str) -> bool {
