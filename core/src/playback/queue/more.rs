@@ -128,11 +128,7 @@ mod tests {
             .unwrap();
         let snapshot = queue.snapshot();
         assert_eq!(
-            snapshot
-                .items
-                .iter()
-                .map(|item| seed(item))
-                .collect::<Vec<_>>(),
+            snapshot.items.iter().map(seed).collect::<Vec<_>>(),
             vec![
                 Some("1".into()),
                 None,
