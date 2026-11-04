@@ -68,7 +68,18 @@ impl PlaybackQueue {
             .collect::<Vec<_>>();
         next.items.splice(index..index, rows);
         if next.mode == PlaybackMode::Random {
-            next.order.extend(ids);
+            let after = next
+                .current
+                .as_ref()
+                .and_then(|current| next.order.iter().position(|id| id == current))
+                .map_or(next.order.len(), |index| index + 1);
+            let mut ids = ids.into_iter();
+            if let Some(first) = ids.next() {
+                // M/1384 setRandomNextInPlayingList singles out the first
+                // added recommendation; the others remain in the new tail.
+                next.order.insert(after, first);
+                next.order.extend(ids);
+            }
         } else {
             next.order = next
                 .items
@@ -198,5 +209,35 @@ mod tests {
         assert!(queue.insert_more(vec![song("3")], 2).is_err());
         assert_eq!(queue.snapshot(), before);
         assert_eq!(store.get("123", KIND, PREFERENCE).unwrap(), None);
+    }
+
+    #[test]
+    fn random_queue_places_only_the_first_recommendation_next() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temporary.path()).unwrap());
+        let mut queue = PlaybackQueue::new(Some(store), "123").unwrap();
+        queue
+            .replace(
+                vec![track(1), track(2), track(3)],
+                0,
+                json!({"kind":"daily_recommendations"}),
+            )
+            .unwrap();
+        queue.set_mode(PlaybackMode::Random).unwrap();
+        let before = queue.snapshot();
+        queue.select(&before.order[0]).unwrap();
+        queue.insert_more(vec![song("4"), song("5")], 3).unwrap();
+        let after = queue.snapshot();
+        let inserted = &after.items[3..];
+        assert_eq!(
+            after.order,
+            vec![
+                before.order[0].clone(),
+                inserted[0].entry_id.clone(),
+                before.order[1].clone(),
+                before.order[2].clone(),
+                inserted[1].entry_id.clone(),
+            ]
+        );
     }
 }
