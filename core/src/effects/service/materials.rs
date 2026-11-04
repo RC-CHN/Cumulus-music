@@ -8,7 +8,11 @@ use crate::{
     download::transfer::{
         CreateTransfer, RunOptions, TransferDirective, TransferJob, TransferStatus,
     },
-    effects::{api::EffectsApi, catalog::EffectId, rights::known_non_trial},
+    effects::{
+        api::EffectsApi,
+        catalog::{EffectId, MaterialDescriptor},
+        rights::known_non_trial,
+    },
 };
 use std::sync::Arc;
 
@@ -29,7 +33,7 @@ impl EffectsLibrary {
         &self,
         token: &SessionToken,
         effect: EffectId,
-        mut options: RunOptions,
+        options: RunOptions,
         require_non_trial: bool,
     ) -> Result<MaterialOutcome> {
         if options.byte_budget == Some(0) {
@@ -63,7 +67,28 @@ impl EffectsLibrary {
             .parameter_material()?
             .ok_or(Error::Response("sound has no parameter material"))?;
         let handle = MaterialHandle::new(effect, sound_type, &descriptor);
-        let mut record = self.record(token, &handle)?.unwrap_or_else(|| Record {
+        let (transfer_id, bytes, material) = self
+            .acquire_descriptor_locked(token, &owner, &handle, descriptor, options)
+            .await?;
+        Ok(MaterialOutcome {
+            handle,
+            sound,
+            authorization,
+            transfer_id,
+            bytes,
+            material,
+        })
+    }
+
+    pub(super) async fn acquire_descriptor_locked(
+        &self,
+        token: &SessionToken,
+        owner: &str,
+        handle: &MaterialHandle,
+        descriptor: MaterialDescriptor,
+        mut options: RunOptions,
+    ) -> Result<(String, u64, Option<super::records::VerifiedMaterial>)> {
+        let mut record = self.record(token, handle)?.unwrap_or_else(|| Record {
             handle: handle.clone(),
             descriptor: descriptor.clone(),
             attempt: attempt(),
@@ -87,9 +112,9 @@ impl EffectsLibrary {
         record.phase = MaterialPhase::Pending;
         record.plain_sha256 = None;
         self.save(token, &record)?;
-        let manager = self.transfers(&owner)?;
+        let manager = self.transfers(owner)?;
         let root = self.session.with_token(token, |_| {
-            files::root(self.store.directory(), &owner, &record)
+            files::root(self.store.directory(), owner, &record)
         })?;
         let mut child = manager
             .list()?
@@ -114,7 +139,7 @@ impl EffectsLibrary {
                 manager.create(CreateTransfer {
                     resource: record.descriptor.resource(),
                     target: files::target(&root, &record.attempt),
-                    resource_id: Some(resource_id(&handle)),
+                    resource_id: Some(resource_id(handle)),
                     id: Some(record.attempt.clone()),
                 })
             })?);
@@ -162,14 +187,7 @@ impl EffectsLibrary {
             None
         };
         self.session.check_generation(token)?;
-        Ok(MaterialOutcome {
-            handle,
-            sound,
-            authorization,
-            transfer_id: child.id,
-            bytes: child.bytes,
-            material,
-        })
+        Ok((child.id, child.bytes, material))
     }
 
     /// Remove only the recorded attempt's owned files. The durable Removing

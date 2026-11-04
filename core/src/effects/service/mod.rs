@@ -1,7 +1,8 @@
 //! Account-scoped effect reads and resumable parameter-material acquisition.
-//! Catalogues describe products; only a fresh positive auth response permits
-//! this service to fetch or return a material. Trial occupancy is a separate
-//! activation lifecycle and is not silently started here.
+//! Catalogue effects require fresh authorization; the separate headphone
+//! directory supplies its own device material descriptor. Nothing here starts
+//! a trial or applies a material to playback.
+mod device;
 mod files;
 mod materials;
 mod parametric;
@@ -17,6 +18,7 @@ use crate::{
     download::transfer::{MediaBackend, ReqwestMediaBackend, TransferManager},
     storage::{OperationLock, StateStore},
 };
+pub use device::DeviceMaterialCheck;
 pub use parametric::{
     ParametricPreparation, PreparedParametric, StandaloneParametric, StandaloneParametricPreflight,
 };

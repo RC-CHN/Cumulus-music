@@ -1,3 +1,4 @@
+use super::effect_peq_fixture;
 use cumulus_core::{Error, Result};
 use serde_json::{Value, json};
 use std::sync::Mutex;
@@ -45,8 +46,10 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             if args == &json!({"deviceManagerId":4100}) =>
         {
             json!([
-                {"soundId":4101,"deviceModel":"合成耳机甲","soundMd5":"private-sentinel","soundUrl":"https://example.invalid/model-material-sentinel"},
-                {"soundId":"4102","deviceModel":"合成耳机乙"}
+                {"soundId":4101,"soundType":2,"deviceModel":"合成耳机甲"},
+                {"soundId":"4102","soundType":2,"deviceModel":"合成耳机乙",
+                 "size":effect_peq_fixture::NCAE.len()/2,"soundMd5":effect_peq_fixture::MD5,
+                 "deviceSoundUrl":effect_peq_fixture::URL}
             ])
         }
         "/api/usertool/home/soundeffect/devicesound/list"

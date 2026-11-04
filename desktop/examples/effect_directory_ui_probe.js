@@ -111,7 +111,28 @@
     select(selects()[0], 4100);
     await wait(() => selects()[1]?.textContent.includes('合成耳机乙'), 'brand-specific models');
     select(selects()[1], 4102);
+    const material = () => one('.effect-device-material');
+    const state = () => material()?.dataset.materialCheck;
+    assert(!state(), 'choosing a model does not fetch its material');
+    const player = () => window.__TAURI_INTERNALS__.invoke('player_snapshot', { epoch: account.epoch });
+    const prior = await player();
+    click(button(material(), '检查调音材料'));
+    await wait(() => state() === 'standalone_peq' && material().textContent.includes('尚未启用耳机调音'),
+      'exact model material is verified and previewed without applying it');
+    assert(!/synthetic-bound-peq|[a-f0-9]{32}/.test(material().innerHTML),
+      'the material URL and digest stay native');
     await capture('06_headphones');
+    select(selects()[1], 4101);
+    await wait(() => !state(), 'selecting a different model clears the old result');
+    click(button(material(), '检查调音材料'));
+    await wait(() => state() === 'no_material', 'model without a descriptor is unavailable');
+    select(selects()[1], 4102);
+    await wait(() => !state(), 'restoring the first model requires an explicit check');
+    click(button(material(), '检查调音材料'));
+    await wait(() => state() === 'standalone_peq', 'revalidated model reuses its verified material');
+    const after = await player();
+    assert(after.state === prior.state && after.equalizer.revision === prior.equalizer.revision &&
+      after.boundParametric === prior.boundParametric, 'material checks do not change playback effects');
     select(selects()[0], 4200);
     await wait(() => text().includes('此品牌暂无耳机型号。') && selects().length === 1, 'empty brand clears old models');
     await capture('07_empty_headphones');
@@ -126,7 +147,8 @@
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true, deviceCacheVerified: true, limitedFreeExpiryVerified: true });
+    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true,
+      deviceMaterialVerified: true, deviceCacheVerified: true, limitedFreeExpiryVerified: true });
   } catch (error) {
     const image = one('.effect-directory-card img');
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),

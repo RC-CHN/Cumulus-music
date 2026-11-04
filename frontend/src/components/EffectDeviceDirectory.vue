@@ -2,7 +2,7 @@
 import { onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
-import type { EffectDeviceChoice } from '../services/effectDirectory';
+import type { EffectDeviceChoice, EffectDeviceMaterialCheck } from '../services/effectDirectory';
 
 const props = defineProps<{ account: AccountView }>();
 const core = useCore();
@@ -14,8 +14,18 @@ const brandLoading = ref(false);
 const modelLoading = ref(false);
 const brandError = ref('');
 const modelError = ref('');
+const material = ref<EffectDeviceMaterialCheck>();
+const materialError = ref('');
+const materialLoading = ref(false);
+const materialLabels: Record<EffectDeviceMaterialCheck, string> = {
+  no_material: '此型号暂无可检查的调音材料。',
+  pending: '调音材料尚未检查完，可继续检查。',
+  standalone_peq: '已验证材料包含单独的参数均衡。本客户端尚未启用耳机调音。',
+  unsupported_graph: '已验证调音材料，当前无法应用其中的效果组合。',
+};
 let brandRequest = 0;
 let modelRequest = 0;
+let materialRequest = 0;
 let directoryGeneration = 0;
 const cachedModels = new Map<number, EffectDeviceChoice[]>();
 const modelReads = new Map<number, Promise<EffectDeviceChoice[]>>();
@@ -45,6 +55,7 @@ async function loadModels(id?: number) {
   const current = () => owns(epoch) && request === modelRequest;
   brand.value = id;
   model.value = undefined;
+  resetMaterial();
   models.value = [];
   modelError.value = '';
   modelLoading.value = id !== undefined;
@@ -87,6 +98,32 @@ function chooseBrand(event: Event) {
 function chooseModel(event: Event) {
   const value = (event.currentTarget as HTMLSelectElement).value;
   model.value = models.value.find((item) => String(item.id) === value)?.id;
+  resetMaterial();
+}
+function resetMaterial() {
+  materialRequest++;
+  material.value = undefined;
+  materialError.value = '';
+  materialLoading.value = false;
+}
+async function checkMaterial() {
+  if (materialLoading.value || brand.value === undefined || model.value === undefined) return;
+  const epoch = props.account.epoch;
+  const request = ++materialRequest;
+  const current = () => owns(epoch) && request === materialRequest;
+  materialError.value = '';
+  materialLoading.value = true;
+  try {
+    const result = await core.effectDeviceMaterial(epoch, brand.value, model.value);
+    if (current()) material.value = result;
+  } catch (issue) {
+    if (current()) {
+      material.value = undefined;
+      materialError.value = failure(issue).message;
+    }
+  } finally {
+    if (current()) materialLoading.value = false;
+  }
 }
 function resetReads() {
   brandRequest++;
@@ -94,6 +131,7 @@ function resetReads() {
   directoryGeneration++;
   cachedModels.clear();
   modelReads.clear();
+  resetMaterial();
 }
 watch(
   () => [props.account.epoch, props.account.status] as const,
@@ -113,7 +151,7 @@ onUnmounted(resetReads);
 
 <template>
   <section class="effect-device-directory" aria-label="耳机音效目录">
-    <p>可查看品牌和型号。选择型号不会更改播放设备或应用耳机调音。</p>
+    <p>选定型号后可检查调音材料。检查可能下载材料，不会更改播放设备或启用音效。</p>
     <p v-if="brandLoading" role="status">正在读取耳机品牌…</p>
     <div v-else-if="brandError">
       <p role="alert">{{ brandError }}</p>
@@ -141,6 +179,24 @@ onUnmounted(resetReads);
           <option v-for="item in models" :key="item.id" :value="item.id">{{ item.name }}</option>
         </select>
       </label>
+      <div
+        v-if="model !== undefined"
+        class="effect-device-material"
+        :data-material-check="material"
+      >
+        <button type="button" :disabled="materialLoading" @click="checkMaterial">
+          {{
+            material === 'pending'
+              ? '继续检查材料'
+              : materialError
+                ? '重试检查材料'
+                : '检查调音材料'
+          }}
+        </button>
+        <p v-if="materialLoading" role="status">正在检查所选型号的调音材料…</p>
+        <p v-else-if="materialError" role="alert">{{ materialError }}</p>
+        <p v-else-if="material" role="status">{{ materialLabels[material] }}</p>
+      </div>
     </template>
   </section>
 </template>

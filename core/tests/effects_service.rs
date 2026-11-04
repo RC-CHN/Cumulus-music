@@ -60,6 +60,52 @@ fn transfer(store: Arc<StateStore>, backend: Arc<Origin>) -> TransferManager {
 }
 const URL: &str = "https://m.test.music.126.net/material?lease=first";
 
+#[tokio::test]
+async fn headphone_material_uses_only_the_exact_brand_model_and_verifies_the_graph() {
+    use cumulus_core::effects::service::DeviceMaterialCheck;
+    let brand = EffectId::new(7002).unwrap();
+    for (sample_name, expected) in [
+        ("first", DeviceMaterialCheck::StandalonePeq),
+        ("replacement", DeviceMaterialCheck::UnsupportedGraph),
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temp.path()).unwrap());
+        let (bytes, _) = sample(sample_name);
+        let row = json!({"soundId":"300","soundType":2,"deviceModel":"Synthetic",
+            "size":bytes.len(),"soundMd5":hex::encode(Md5::digest(&bytes)),"deviceSoundUrl":URL});
+        let response = |records: Vec<Value>| json!({"code":200,"data":records}).into();
+        let api = Arc::new(ScriptApi::new([
+            response(vec![row.clone()]),
+            response(vec![row.clone()]),
+            response(vec![row.clone(), row.clone()]),
+            response(vec![row.clone()]),
+        ]));
+        let session = world(api.clone(), store);
+        let token = session.token().unwrap();
+        let origin = Arc::new(Origin::new(bytes));
+        let library = EffectsLibrary::with_backend(session, origin.clone()).unwrap();
+        let check =
+            |model| library.check_device_material_for(&token, brand, model, RunOptions::default());
+        assert!(matches!(
+            check(EffectId::new(301).unwrap()).await,
+            Err(Error::Response(_))
+        ));
+        assert!(origin.calls().is_empty());
+        assert_eq!(check(id()).await.unwrap(), expected);
+        assert!(matches!(
+            check(id()).await,
+            Err(Error::Response("duplicate effect device identity"))
+        ));
+        assert_eq!(check(id()).await.unwrap(), expected);
+        assert_eq!(origin.calls().len(), 1);
+        let calls = api.calls();
+        assert_eq!(calls.len(), 4);
+        assert!(calls.iter().all(|call| call.path
+            == "/api/usertool/home/soundeffect/devicesound/list"
+            && call.payload == json!({"deviceManagerId":7002})));
+    }
+}
+
 #[test]
 fn five_hundred_twelve_official_authorization_decisions() {
     let fixture: Value =

@@ -4,6 +4,7 @@ use cumulus_core::{
         catalog::{CatalogueKind, EffectId},
         device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
+        service::DeviceMaterialCheck,
     },
     playback::engine::{MpvConfig, MpvEngine},
 };
@@ -99,6 +100,26 @@ pub async fn effect_device_models(
 ) -> Result<Vec<EffectDeviceRow>, ClientError> {
     client
         .effect_device_models(&epoch, brand)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn effect_device_material<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    brand: EffectId,
+    model: EffectId,
+) -> Result<DeviceMaterialCheck, ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput(
+            "device material check requires the main window",
+        )
+        .into());
+    }
+    client
+        .effect_device_material(&epoch, brand, model)
         .await
         .map_err(Into::into)
 }

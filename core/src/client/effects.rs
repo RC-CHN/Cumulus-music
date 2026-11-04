@@ -13,8 +13,8 @@ use crate::{
         device_directory::EffectDeviceRow,
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
         service::{
-            EffectsLibrary, ParametricPreparation, PreparedParametric, StandaloneParametric,
-            StandaloneParametricPreflight,
+            DeviceMaterialCheck, EffectsLibrary, ParametricPreparation, PreparedParametric,
+            StandaloneParametric, StandaloneParametricPreflight,
         },
     },
     playback::controller::{ParametricApplication, ParametricBindingStatus, PlaybackController},
@@ -379,6 +379,18 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         EffectsLibrary::new(self.session.clone())?
             .device_models_for(&token, brand)
+            .await
+    }
+
+    pub async fn effect_device_material(
+        &self,
+        epoch: &str,
+        brand: EffectId,
+        model: EffectId,
+    ) -> Result<DeviceMaterialCheck> {
+        let token = self.player_token(epoch)?;
+        self.effect_material_library()?
+            .check_device_material_for(&token, brand, model, RunOptions::default())
             .await
     }
 }

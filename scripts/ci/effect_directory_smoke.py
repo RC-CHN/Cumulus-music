@@ -3,6 +3,8 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sqlite3
+from contextlib import closing
 
 from motion_smoke import launch
 
@@ -39,6 +41,7 @@ def main():
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['stageCount'] == 7 and complete['artworkVerified'] and complete['devicesVerified']
     assert complete['limitedFreeExpiryVerified'] and complete['deviceCacheVerified']
+    assert complete['deviceMaterialVerified'] and complete['effectDirectoryMaterialGets'] == 1
     catalogue = '/api/usertool/sound/queryAllSound'
     detail = '/api/usertool/home/sound/info'
     rights = '/api/vipauth/app/interests/auth/query'
@@ -47,15 +50,24 @@ def main():
     calls = complete['effectDirectoryCalls']
     assert [call['path'] for call in calls] == [
         catalogue, detail, rights, catalogue, detail, rights, detail, rights, catalogue,
-        brands, models, models,
+        brands, models, models, models, models, models,
     ]
     assert [call['args']['exposeType'] for call in calls if call['path'] == catalogue] == [5, 6, 7]
     assert [call['args'] for call in calls if call['path'] in (brands, models)] == [
-        {}, {'deviceManagerId': 4100}, {'deviceManagerId': 4200},
+        {}, *[{'deviceManagerId': 4100}] * 4, {'deviceManagerId': 4200},
     ]
+    db = (root / 'state' / 'core.sqlite3').resolve(strict=True)
+    with closing(sqlite3.connect(db.as_uri() + '?mode=ro', uri=True)) as store:
+        materials = store.execute("SELECT owner,value FROM state WHERE kind='effects-materials-v1'").fetchall()
+        assert not store.execute("SELECT 1 FROM state WHERE kind='effect-authorizations-v1'").fetchall()
+    assert len(materials) == 1 and materials[0][0] == '2'
+    record = json.loads(materials[0][1])
+    assert record['phase'] == 'ready' and record['handle']['sound_type'] == 2
+    assert record['handle']['effect'] == 4102
     assert len(list(output.glob('ux_*.png'))) == (7 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'syntheticReadCalls': len(calls),
-                      'realAccountWrites': 0, 'limitedFreeExpiryVerified': True}))
+                      'realAccountWrites': 0, 'limitedFreeExpiryVerified': True,
+                      'deviceMaterialVerified': True}))
 
 
 if __name__ == '__main__':

@@ -37,6 +37,8 @@ export function createTauriClient(): CoreClient {
     effectPeqReconcile: (epoch, id) => invoke('effect_peq_reconcile', { epoch, id }),
     effectDeviceBrands: (epoch) => invoke('effect_device_brands', { epoch }),
     effectDeviceModels: (epoch, brand) => invoke('effect_device_models', { epoch, brand }),
+    effectDeviceMaterial: (epoch, brand, model) =>
+      invoke('effect_device_material', { epoch, brand, model }),
     shortcutSettings: (epoch) => invoke('shortcut_settings', { epoch }),
     shortcutSettingsCommand: (epoch, command) =>
       invoke('shortcut_settings_command', { epoch, command }),

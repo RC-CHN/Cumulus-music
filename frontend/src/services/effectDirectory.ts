@@ -16,6 +16,11 @@ export interface EffectDeviceChoice {
   id: number;
   name: string;
 }
+export type EffectDeviceMaterialCheck =
+  | 'no_material'
+  | 'pending'
+  | 'standalone_peq'
+  | 'unsupported_graph';
 
 export type EffectPeqPhase =
   | 'idle'
@@ -74,4 +79,9 @@ export interface EffectDirectoryClient {
   effectPeqReconcile(epoch: string, id: number): Promise<EffectPeqView>;
   effectDeviceBrands(epoch: string): Promise<EffectDeviceChoice[]>;
   effectDeviceModels(epoch: string, brand: number): Promise<EffectDeviceChoice[]>;
+  effectDeviceMaterial(
+    epoch: string,
+    brand: number,
+    model: number,
+  ): Promise<EffectDeviceMaterialCheck>;
 }

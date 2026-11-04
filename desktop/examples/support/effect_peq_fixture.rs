@@ -17,10 +17,11 @@ use std::{
 };
 
 const ID: u64 = 300;
-const URL: &str = "https://m.test.music.126.net/synthetic-bound-peq.ncae";
+pub(super) const URL: &str = "https://m.test.music.126.net/synthetic-bound-peq.ncae";
+pub(super) const MD5: &str = "3d7172c914c75c5b32df037f967142a9";
 const AUDIO_URL: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
 // Same frozen, synthetic NCAE as the independent bound PEQ probe.
-const NCAE: &str = concat!(
+pub(super) const NCAE: &str = concat!(
     "4e4341454f000000000000000100010009020100076352515057924ea58f1ff3ec",
     "1c3887235c6c92bd5a53ca960d2d51ed640714dece76e313f9e42a644e1e1ed9",
     "4e0ec25f14c3085cab80dc7d6188e5d87472637298cd3ae778afb67376e9a909",
@@ -48,7 +49,7 @@ pub fn enabled() -> bool {
 
 fn sound() -> Value {
     json!({"id":ID,"name":"合成参数均衡音效","subTitle":"封闭夹具","soundType":3,
-        "soundMaterialList":[{"type":1,"size":NCAE.len()/2,"md5":"3d7172c914c75c5b32df037f967142a9","link":URL}]})
+        "soundMaterialList":[{"type":1,"size":NCAE.len()/2,"md5":MD5,"link":URL}]})
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {

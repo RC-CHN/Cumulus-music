@@ -489,6 +489,9 @@ fn main() {
         let download_page=download_page_fixture::enabled().then(||Arc::new(download_page_fixture::Fixture::new(session.clone(),proof_store.clone(),root.clone())));
         let fixture_session=session.clone();
         let mut client=MusicClient::with_session(session,registry);
+        if effect_directory_fixture::enabled() {
+            client = client.with_effect_material_backend(Arc::new(effect_peq_fixture::Material));
+        }
         if daily_history_fixture::enabled() { client=client.with_official_daily_experiment(); }
         if search_fixture::v3_enabled() { client=client.with_official_search_experiment(); }
         if search_mv_fixture::enabled() {
@@ -540,7 +543,10 @@ fn main() {
         app.listen("ux-proof",move |event| {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if intelligence_start_fixture::enabled() {value["syntheticIntelligenceStart"]=intelligence_start_fixture::report();}
-            if effect_directory_fixture::enabled() {value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());}
+            if effect_directory_fixture::enabled() {
+                value["effectDirectoryCalls"]=json!(effect_directory_fixture::calls());
+                value["effectDirectoryMaterialGets"]=effect_peq_fixture::report()["materialGets"].clone();
+            }
             if peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
