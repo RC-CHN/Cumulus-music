@@ -5,6 +5,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+mod local_sidecars;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LocalLyricSource {
@@ -56,25 +57,26 @@ impl LocalLyrics for LibraryLyrics {
         audio: &'a Path,
     ) -> ApiFuture<'a, Option<(String, LocalLyricSource)>> {
         Box::pin(async move {
-            let sidecar_error = match self.read(audio).await {
-                Ok(Some(text)) if !text.trim().is_empty() => {
-                    return Ok(Some((text, LocalLyricSource::Sidecar)));
-                }
-                Ok(_) => None,
-                Err(error) => Some(error),
-            };
             let audio = audio.to_owned();
-            let embedded = tokio::task::spawn_blocking(move || {
-                super::embedded::read(&audio, LIMIT).map(|text| (text, LocalLyricSource::Embedded))
+            tokio::task::spawn_blocking(move || {
+                let sidecar_error = match local_sidecars::read(&audio) {
+                    Ok(Some(text)) if !text.trim().is_empty() => {
+                        return Ok(Some((text, LocalLyricSource::Sidecar)));
+                    }
+                    Ok(_) => None,
+                    Err(error) => Some(error),
+                };
+                let embedded = super::embedded::read(&audio, LIMIT)
+                    .map(|text| (text, LocalLyricSource::Embedded));
+                // A damaged first sidecar can still fall back to a valid text
+                // tag. It must not reveal a lower-priority sidecar instead.
+                match (embedded, sidecar_error) {
+                    (None, Some(error)) => Err(error),
+                    (embedded, _) => Ok(embedded),
+                }
             })
             .await
-            .map_err(|_| Error::State("embedded lyric worker stopped"))?;
-            // An optional damaged sidecar should not hide valid embedded text.
-            // Without a fallback, keep reporting the original read/parse error.
-            match (embedded, sidecar_error) {
-                (None, Some(error)) => Err(error),
-                (embedded, _) => Ok(embedded),
-            }
+            .map_err(|_| Error::State("local lyric worker stopped"))?
         })
     }
 }
@@ -145,13 +147,21 @@ pub(crate) fn read_published_sidecar(audio: &Path) -> Result<Option<String>> {
 }
 
 fn decode_sidecar(file: File) -> Result<Option<String>> {
+    decode_text(&read_sidecar_bytes(file)?).map(Some)
+}
+
+fn read_sidecar_bytes(file: File) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     file.take((LIMIT + 1) as u64).read_to_end(&mut bytes)?;
     if bytes.len() > LIMIT {
         return Err(Error::InvalidInput("lyric file exceeds size limit"));
     }
-    let text = if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
-        if bytes.len() % 2 != 0 {
+    Ok(bytes)
+}
+
+fn decode_text(bytes: &[u8]) -> Result<String> {
+    if bytes.starts_with(&[0xff, 0xfe]) || bytes.starts_with(&[0xfe, 0xff]) {
+        if !bytes.len().is_multiple_of(2) {
             return Err(Error::InvalidInput("truncated UTF-16 lyric"));
         }
         let little = bytes[0] == 0xff;
@@ -165,11 +175,10 @@ fn decode_sidecar(file: File) -> Result<Option<String>> {
                 }
             })
             .collect();
-        String::from_utf16(&units).map_err(|_| Error::InvalidInput("invalid UTF-16 lyric"))?
+        String::from_utf16(&units).map_err(|_| Error::InvalidInput("invalid UTF-16 lyric"))
     } else {
-        let data = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(&bytes);
+        let data = bytes.strip_prefix(&[0xef, 0xbb, 0xbf]).unwrap_or(bytes);
         String::from_utf8(data.to_vec())
-            .map_err(|_| Error::InvalidInput("lyric text requires UTF-8 or UTF-16 BOM"))?
-    };
-    Ok(Some(text))
+            .map_err(|_| Error::InvalidInput("lyric text requires UTF-8 or UTF-16 BOM"))
+    }
 }

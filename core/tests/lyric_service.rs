@@ -1,3 +1,5 @@
+#[path = "support/lyric_wave.rs"]
+mod lyric_wave;
 mod support;
 use cumulus_core::{Error, account::AccountSession, lyrics::*, storage::StateStore};
 use serde_json::{Value, json};
@@ -332,6 +334,123 @@ async fn local_lyric_tags_are_read_without_network_and_never_used_as_download_fa
     assert!(!missing.from_embedded && !missing.from_sidecar);
     assert!(missing.lyric.lyric_lines.is_empty());
     assert_eq!(api.calls().len(), 2);
+}
+
+#[tokio::test]
+async fn local_lyrics_follow_the_official_path_order_without_expanding_download_fallback() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let store = Arc::new(StateStore::open(root.join("state")).unwrap());
+    let (_, api, service) = setup(store, [json!({"code":200}).into()]).await;
+    std::fs::create_dir_all(root.join("lyric/lrc")).unwrap();
+    std::fs::create_dir(root.join("lrc")).unwrap();
+    let audio = root.join("合成.session.mp3");
+    let seed = include_bytes!("fixtures/tag_audio/seed.mp3");
+    std::fs::write(&audio, seed).unwrap();
+    let candidates = [
+        ("合成.session.lrc", "adjacent LRC"),
+        ("合成.session.krc", "adjacent text KRC"),
+        ("lyric/合成.session.lrc", "first folder LRC"),
+        ("lyric/合成.session.krc", "first folder text KRC"),
+        ("lyric/lrc/合成.session.lrc", "nested LRC"),
+        ("lyric/lrc/合成.session.krc", "nested text KRC"),
+    ];
+    for (name, text) in candidates {
+        std::fs::write(root.join(name), format!("[00:01.250]{text}")).unwrap();
+    }
+    std::fs::write(root.join("lrc/合成.session.lrc"), "[00:01]wrong sibling").unwrap();
+    let local = request(LyricTarget::Local(audio.clone()));
+    for (name, expected) in candidates {
+        service.clear().unwrap();
+        let result = service.fetch(local.clone()).await.unwrap();
+        assert!(result.from_sidecar && !result.from_embedded);
+        assert_eq!(result.lyric.lyric_lines[0].lyric, expected);
+        assert_eq!(result.lyric.lyric_lines[0].time, Some(1.25));
+        std::fs::remove_file(root.join(name)).unwrap();
+    }
+    service.clear().unwrap();
+    let result = service.fetch(local).await.unwrap();
+    assert!(result.from_embedded && !result.from_sidecar);
+    assert_eq!(result.lyric.lyric_lines[0].lyric, "保留歌词");
+    assert_eq!(api.calls().len(), 1);
+    assert_eq!(std::fs::read(&audio).unwrap(), seed);
+
+    std::fs::write(root.join(candidates[4].0), "[00:01]local only").unwrap();
+    let mut download = song("1");
+    download.downloaded_audio = Some(audio);
+    let result = service.fetch(download).await.unwrap();
+    assert!(!result.from_embedded && !result.from_sidecar);
+    assert!(result.lyric.lyric_lines.is_empty());
+    assert_eq!(api.calls().len(), 2);
+}
+
+#[tokio::test]
+async fn local_first_candidate_rejects_binary_or_directory_without_skipping_to_nested_text() {
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let store = Arc::new(StateStore::open(root.join("state")).unwrap());
+    let (_, api, service) = setup(store, []).await;
+    let audio = root.join("fixture.wav");
+    std::fs::write(&audio, lyric_wave::wave(3)).unwrap();
+    std::fs::create_dir_all(root.join("lyric/lrc")).unwrap();
+    std::fs::write(root.join("lyric/lrc/fixture.lrc"), "[00:01]nested").unwrap();
+    let local = request(LyricTarget::Local(audio.clone()));
+    let bad = audio.with_extension("krc");
+    std::fs::write(&bad, b"krc1\x00\xff\x12\x01").unwrap();
+    assert!(matches!(
+        service.fetch(local.clone()).await,
+        Err(Error::InvalidInput("binary KRC lyrics are unsupported"))
+    ));
+    std::fs::remove_file(&bad).unwrap();
+    std::fs::create_dir(&bad).unwrap();
+    service.clear().unwrap();
+    assert!(service.fetch(local.clone()).await.is_err());
+    std::fs::remove_dir(bad).unwrap();
+    service.clear().unwrap();
+    let result = service.fetch(local).await.unwrap();
+    assert!(result.from_sidecar);
+    assert_eq!(result.lyric.lyric_lines[0].lyric, "nested");
+    assert_eq!(api.calls().len(), 1);
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn local_lyrics_reject_redirected_new_folders_and_leaf() {
+    use std::os::unix::fs::symlink;
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    let store = Arc::new(StateStore::open(root.join("state")).unwrap());
+    let (_, api, service) = setup(store, []).await;
+    let outside = root.join("outside");
+    let library = root.join("library");
+    std::fs::create_dir(&library).unwrap();
+    std::fs::create_dir(&outside).unwrap();
+    let audio = library.join("fixture.wav");
+    std::fs::write(&audio, lyric_wave::wave(3)).unwrap();
+    let unrelated = outside.join("fixture.lrc");
+    std::fs::write(&unrelated, "[00:01]must not read").unwrap();
+    let local = request(LyricTarget::Local(audio));
+    let first = library.join("lyric");
+    symlink(&outside, &first).unwrap();
+    assert!(service.fetch(local.clone()).await.is_err());
+    std::fs::remove_file(&first).unwrap();
+    std::fs::create_dir(&first).unwrap();
+    let nested = first.join("lrc");
+    symlink(&outside, &nested).unwrap();
+    service.clear().unwrap();
+    assert!(service.fetch(local.clone()).await.is_err());
+    std::fs::remove_file(&nested).unwrap();
+    std::fs::create_dir(&nested).unwrap();
+    let leaf = nested.join("fixture.lrc");
+    symlink(unrelated, &leaf).unwrap();
+    service.clear().unwrap();
+    assert!(service.fetch(local.clone()).await.is_err());
+    std::fs::remove_file(&leaf).unwrap();
+    std::fs::write(leaf, "[00:01]owned folder").unwrap();
+    service.clear().unwrap();
+    let result = service.fetch(local).await.unwrap();
+    assert_eq!(result.lyric.lyric_lines[0].lyric, "owned folder");
+    assert_eq!(api.calls().len(), 1);
 }
 
 #[tokio::test]

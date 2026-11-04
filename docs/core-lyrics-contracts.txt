@@ -31,12 +31,18 @@ translationEnable/romaEnable 默认true，按账号保存；偏移按 0.5*gain �
 的旧偏移或显示偏好指令返回过期，不改变当前歌词缓存或账号偏好。
 
 本地文件
-LocalLyrics 是本地来源接口。阻塞工作线程优先读取非空的相邻 .lrc，支持
-UTF-8 BOM 及带 BOM 的 UTF-16，4MiB 上限；旁挂文件编码错误仍明确返回失败。
-无旁挂文件或文件为空时，从普通本地文件读取 MP3 ID3v2 USLT、FLAC Vorbis
-LYRICS 或 M4A ©lyr 文本标签。标签解析不读取封面或计算音频属性，空、超限
+LocalLyrics 是本地来源接口。LibraryLyrics 的阻塞工作线程按官方顺序查找
+同目录、`lyric/`、`lyric/lrc/`，每处 `.lrc` 先于 `.krc`；固定路径数，不扫描目录。
+只读取普通文件，4MiB 上限，支持 UTF-8（含 BOM）及带 BOM 的 UTF-16。
+`.krc` 只接受同类文本，经现有 LRC 解析，不解压或解密二进制 KRC，也不解释其按字时钟。
+首个候选存在但为空、读取失败或编码错误时不读取低优先级旁挂，仍可回退到本机适配的
+MP3 ID3v2 USLT、FLAC Vorbis LYRICS 或 M4A ©lyr 文本标签；没有有效内嵌且读旁挂出错
+时保留原错误。标签解析不读取封面或计算音频属性，空、超限
 或不可解析的标签不作为歌词。沿用 LRC 时间与纯文本规则，界面区分本地/网络来源；
 IPC 的 fromEmbedded 与 fromSidecar 分开。不访问网络或修改音频，正文变化重置旧偏移。
+Linux 从选中音频父目录的文件描述符逐层 `openat`，对子目录和叶文件使用 `O_NOFOLLOW`；
+Windows 检查子目录/叶文件的重解析属性，查找过程中持有不共享删除的目录句柄。
+两平台都拒绝新增查找路径上的链接及非普通文件；不扫描其他目录或按在线 ID 猜文件。
 远端和缓存均无歌词时可读取显式提供的 downloaded_audio 邻近 .lrc。
 官方恢复 async_lyric.txt 的同分支先用远端/缓存正文，再由下载路径派生 .lrc。
 桌面只给当前选中的已完成歌曲/云盘下载启用这个回退：账号、任务/歌曲、文件位置、
@@ -46,10 +52,41 @@ IPC 的 fromEmbedded 与 fromSidecar 分开。不访问网络或修改音频，�
 忘记下载保留的队列项也可回退：必须在有界范围内找到同账号已完成的Forget日志，
 确认原任务和发布记录已移除，核对原目录、文件身份、完整摘要及离线权益；不会续期。
 仍在发布中的心动内嵌记录不能靠内嵌字段授权此分支。播放选择或文件变化时拒绝旧附件结果。
-官方恢复的 3081.js（local 分支）证明将原生路径交给 orpheus://localmusic/lyric
-并消费文本；具体标签与优先级未证实。上述文件选择是本客户端适配规则；
-不含二进制 SYLT、其他格式内嵌或 NCM 内嵌。下载回退仍只读取受保护的 .lrc。
+Windows 3.1.42.205594 的本地路由静态证据
+恢复的 hybrid_200 M/3081:242–272 在本地场景且无在线 resource ID 时，取
+`localTrack.filename`，fetch `orpheus://localmusic/lyric?<filename>` 并调用 `text()`；
+有在线 ID 时走线上分支。结果只包装为 LRC（version=-1、关闭上传/翻译权限），没有
+SYLT 帧内容、MPEG 帧时钟换算、歌词语言选择或 NCM 元数据字段。M/3081:405 用
+同一 filename 去重。M/163 的 CUE 起点/长度是传给音频播放桥的另一组参数；此歌词
+fetch 不传 cueFile/offset/duration，不能从这条链推导官方的 CUE 界面时间轴处理。
+
+cloudmusic.dll，SHA256：x64 `557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493`；
+x86 `b080a1c8c90cce1e2eefe93d992f81dc4db02dee7bc8c3b681e69e55a001cace`。
+x64 `/lyric` 比较 RVA E056B6 → E05761 调 E0A170；x86 对应 1BAE83 → 1BAEB7 调
+1BC490。三个候选是音频所在目录、该目录的 `lyric/`、以及 `lyric/lrc/`；各自保留
+原音频文件名。第二次候选的路径通过 E0A2DF 的赋值写回，第三次 E0A39A/E0A3C2
+从已经更新的路径取 basename/dirname，再追加 `lrc`（不是音频目录的 `lrc/`）。
+x86 对应 1BC4E4–1BC538、1BC581–1BC5D5 的同样两次构造及赋值。
+每个候选都先换扩展名为 `.lrc`、再为 `.krc`：x64 E0A520 引用 UTF-16LE 字符串
+1BD09E0/1BD09E8，613410 调 GetFileAttributesW，614850 以 `rb` 读取。x86 1BBFE0
+在 1BC025/1BC25B 引用对应字符串 ADEC24/ADEC1C。首个存在的候选立即按
+text/plain 返回文件字节（含 UTF-8/UTF-16 检测及其他编码转换分支），没有检查正文
+是否为空或有时间标签，也没有 KRC 解压/解密调用。不能把探测 `.krc` 当作已证实的
+二进制 KRC 播放或按字计时支持。未执行 Windows 原客户端，也未逐项复核字符集转换。
+
+这条 `/lyric` 路由只打开旁挂文件，并未调用音频标签解析器或 NCM 解码器。
+同 DLL 的 TagLib 确有 `SynchronizedLyricsFrame` RTTI（x64 21E86E8）及 `SYLT`
+引用（137D944/137E349/13A9D49）；这只是库级证据，不能证明进入上述播放歌词路由。
+未发现该官方本地路径的 SYLT 时间戳优先级、帧单位换算或 NCM 内嵌歌词读取证据。
+当前 Cumulus 的普通音频内嵌文本属于本地适配；仍未实现 SYLT、其他内嵌格式或
+NCM 内嵌。本地 `.ncm` 仅可按原文件名查旁挂，不解开文件尝试找歌词。下载回退始终只
+读取受保护的相邻 `.lrc`，不搜索 `lyric/`、不启用 `.krc` 和内嵌标签。
 Rust 的 lyric_service 使用独立生成的三种音频验证优先级、未访问网络和未改写音频；
+六级旁挂顺序用含合成 USLT 的 MP3 测试，另验证同级 LRC/KRC 优先级、忽略兄弟 `lrc/`、
+拒绝二进制 KRC 和目录误用、Linux 链接目录/文件，以及受保护下载仍不读取嵌套旁挂。
+现有 client_local CUE 用例改用合成 PCM 音频和 `lyric/lrc/` 的原始文件时间歌词，验证
+第二轨开始第 30 秒时，第 35 秒的歌词在解码前后均落于第 5 秒。该投影是 Cumulus 现有行为，
+不冒充官方 CUE 文字时间轴运行证据。
 client_local 从真实本地库选择流程验证详情 DTO 与桌面歌词帧。后者使用合成播放引擎，
 另以 desktop_lyrics_smoke.py --embedded 启动真实 Tauri 双窗口与 libmpv：
 Linux Xvfb 实测本地索引、播放时钟、暂停后同一 playId、详情行和桌面歌词行，
@@ -100,7 +137,7 @@ core/examples/lyrics_read.rs 已用显式已有PC会话执行7项真实读取，
 
 桌面歌词增量见desktop-lyrics-contracts.txt：共享服务新增基于选中资源和版本的只读
 snapshot_if_changed，未改变的文档不克隆/重解析，空结果也不会因此自动重试HTTP。
-CUE现在同时裁切辅助行和逐字时间；实际本地文件适配仍是普通LRC sidecar，不能把
+CUE现在同时裁切辅助行和逐字时间；实际本地文件适配使用上述文本旁挂，不能把
 合成多语言CUE投影测试称为本地YRC/嵌入歌词文件已可读取。
 CUE 解码加载期间尚无原生时间轴时，先使用本地索引已核对的分轨起点
 和长度裁切；原生时间轴准备好后优先使用它。Rust 客户端回归故意挂起

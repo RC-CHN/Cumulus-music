@@ -1,5 +1,7 @@
 #[path = "client_local/lyric_reports.rs"]
 mod lyric_reports;
+#[path = "support/lyric_wave.rs"]
+mod lyric_wave;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod support;
@@ -427,10 +429,11 @@ async fn local_play_selection_publishes_embedded_lyrics_to_both_views() {
 async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
     let dir = tempfile::tempdir().unwrap();
     let media = dir.path().join("media");
-    std::fs::create_dir(&media).unwrap();
-    std::fs::write(media.join("album.wav"), "fixture").unwrap();
+    let lyrics_folder = media.join("lyric/lrc");
+    std::fs::create_dir_all(&lyrics_folder).unwrap();
+    std::fs::write(media.join("album.wav"), lyric_wave::wave(120)).unwrap();
     std::fs::write(
-        media.join("album.lrc"),
+        lyrics_folder.join("album.lrc"),
         "[00:00]Intro\n[00:35]Part two\n[00:55]Later\n[01:30]Outro",
     )
     .unwrap();
@@ -487,6 +490,7 @@ async fn cue_selection_native_bounds_sidecar_clock_offset_and_reopen() {
         assert_eq!((timeline.media_start, timeline.total), (30.0, Some(90.0)));
     }
     assert_eq!(early_lyrics.lines[1].time, Some(5.0));
+    assert!(early_lyrics.from_sidecar && !early_lyrics.from_embedded);
     let play_id = view.play_id.unwrap();
     assert_eq!(early_lyrics.play_id, play_id);
     let timeline = view.timeline.unwrap();
