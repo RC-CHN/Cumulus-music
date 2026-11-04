@@ -175,6 +175,37 @@
       await fixture('good');await fresh('合成下一首合集');
       const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
       const {epoch}=await invoke('account_snapshot');
+      const playlistReads=[];
+      let downloadCommands=0;
+      const fetchIPC=window.fetch;
+      window.fetch=function(url,options){
+        if(String(url).endsWith('/playlist_page')){
+          const {id,page}=JSON.parse(options.body);
+          playlistReads.push([id,page.offset,page.limit]);
+        }
+        if(String(url).endsWith('/download_command'))downloadCommands++;
+        return fetchIPC.call(window,url,options);
+      };
+      async function checkPlaylistDownload(category){
+        const card=one('[data-result-key="playlist:3"]'), anchor=card?.querySelector('.search-card-open');
+        assert(anchor&&!anchor.disabled,'playlist opens from search');
+        anchor.scrollIntoView({block:'nearest'});
+        anchor.focus({preventScroll:true});
+        anchor.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+        const action=()=>one('.action-menu:not([inert]) [data-menu-key="download-playlist"]');
+        await wait(()=>action(),'search playlist download action');
+        assert(action().textContent.trim()==='下载全部'&&!action().disabled,'complete download action is enabled');
+        click(action());
+        const dialog=()=>one('.download-dialog[open]:not([inert])');
+        await wait(()=>dialog()?.querySelector('h2')?.textContent.trim()==='下载 40 首歌曲',
+          'download confirmation reads all authoritative playlist tracks');
+        assert(dialog().querySelector('.download-selection')?.textContent.includes('合成歌曲 1'),
+          'confirmation uses native track details');
+        await capture('playlist_search_download_'+category);
+        click(button('关闭下载对话框',dialog()));
+        await wait(()=>!dialog()&&document.activeElement===anchor,'download cancellation restores the playlist card');
+      }
+      await checkPlaylistDownload('all');
       for(const [kind,category,id,total,feedback,done] of [
         ['playlist','all',3,40,'.playlist-action-feedback','已添加至播放列表'],
         ['album','albums',201,11,'.album-action-feedback','已设为下一首播放'],
@@ -207,7 +238,10 @@
         assert(document.activeElement===anchor,'menu returns focus to the initiating result');
         await capture(kind+'_search_next_retains_decoder');
       }
-      await emit('complete',{ok:true,searchCollectionNextVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await choose('playlists');
+      await checkPlaylistDownload('playlists');
+      assert(downloadCommands===0,'opening and cancelling the download confirmation cannot start a download');
+      await emit('complete',{ok:true,searchCollectionNextVerified:true,searchPlaylistDownloadVerified:true,playlistReads,downloadCommands,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchPlaylistCreatorProof){

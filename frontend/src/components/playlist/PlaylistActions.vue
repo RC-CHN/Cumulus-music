@@ -56,6 +56,7 @@ onBeforeUnmount(() => {
 });
 const fallback = () =>
   document.querySelector<HTMLElement>('.playlist-library-page .page-heading button') ??
+  document.querySelector<HTMLElement>('.search-results-page [role="tab"][aria-selected="true"]') ??
   document.querySelector<HTMLElement>('.sidebar-navigation [aria-current="page"]') ??
   document.querySelector<HTMLElement>('.sidebar-scroll');
 const target = () => returnFocus;

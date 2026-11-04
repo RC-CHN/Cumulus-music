@@ -6,7 +6,7 @@ import { advanceSearchPage, type SearchPageStep } from '../../services/searchPag
 import type { SearchViewportMemory } from '../../services/searchViewport';
 import SearchCardGrid from './SearchCardGrid.vue';
 import SearchTrackCard from './SearchTrackCard.vue';
-import type { AccountView, TrackView } from '../../services/contracts';
+import type { AccountView, PlaylistView, TrackView } from '../../services/contracts';
 import {
   displayedSearchCategories,
   searchExplanation,
@@ -47,6 +47,7 @@ const props = defineProps<{
   busyLikes: Set<string>;
   playable: boolean;
   queueable: boolean;
+  playlistDownloadBusy: boolean;
   currentId?: string;
   playbackOrigin?: PlayerOrigin | null;
   playbackState?: PlaybackStatus;
@@ -69,6 +70,7 @@ const emit = defineEmits<{
   play: [tracks: TrackView[], index: number, context: SearchResultPlayback];
   playTrack: [track: TrackView, toggleCurrent: boolean];
   downloadTrack: [track: TrackView];
+  playlistDownload: [playlist: PlaylistView];
   collect: [tracks: TrackView[]];
   more: [request: TrackMenuRequest];
   like: [track: TrackView];
@@ -766,6 +768,7 @@ onBeforeUnmount(() => {
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"
+                :playlist-download-busy="playlistDownloadBusy"
                 :current="searchCardIsCurrent(item, playbackOrigin, currentVoiceId)"
                 :playing="playbackState === 'playing' || playbackState === 'buffering'"
                 @open="open"
@@ -774,6 +777,7 @@ onBeforeUnmount(() => {
                 @artist-action="emit('artistAction', $event)"
                 @play="emit('playCard', $event)"
                 @queue="emit('queueCard', $event)"
+                @playlist-download="emit('playlistDownload', $event)"
                 @comments="emit('cardComments', $event)"
                 @download="emit('cardDownload', $event)"
               />

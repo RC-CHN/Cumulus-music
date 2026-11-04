@@ -157,3 +157,13 @@ VideoCard/index.tsx:321–328 把 video.artists 交给 ArtistNames，按原顺�
 `search_results_smoke.py --people-categories` 同时检查实际 WebView 的右键及
 键盘入口、复制反馈、收藏确认与取消后的焦点恢复；使用隔离剪贴板和合成账号。
 Linux WebView 通过四个检查点，记录与截图在 .build/search-artist-context-final/first/。
+
+搜索歌单菜单的「下载全部」
+官方 M/622:248–251 在普通歌单卡片菜单提供 downloadAll（歌单详情、每日推荐有
+各自的入口）。Cumulus 在综合和歌单分类复用现有完整歌单下载：按歌单 ID 读取
+原生 `playlist_page`，通过列表版本连续读取全部歌曲，略过无效或本地条目，
+再显示既有目录、音质和开始下载确认。预览只提供歌单 ID，不用它的内容代替
+权威歌曲列表。会话变化或读取失败不会启动下载；结果为空和下载繁忙时禁用入口。
+`search_results_smoke.py --collection-next` 同时核对两个分类入口、原生歌单
+分页读取、完整确认曲目及取消焦点。打开和取消确认均不会发出下载命令；该用例不访问真实账号或媒体。
+Linux WebView 四个检查点和截图：.build/search-playlist-download-webview/first/。

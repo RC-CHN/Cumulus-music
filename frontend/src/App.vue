@@ -2212,6 +2212,9 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
                 :queueable="searchCollectionQueueable"
+                :playlist-download-busy="
+                  playlistManager.busy.value || downloads.busy.value || !!playlistActions?.busy
+                "
                 :current-id="currentSearchSongId"
                 :playback-origin="currentOrigin"
                 :playback-state="playbackState"
@@ -2241,6 +2244,9 @@ onUnmounted(() => {
                 @play-track="playSearchTrack"
                 @play-card="playSearchCard"
                 @queue-card="queueSearchCard"
+                @playlist-download="
+                  (list) => page.kind === 'search' && signedIn && playlistAction(list, 'download')
+                "
                 @download-track="(track) => (downloadDialog = { kind: 'start', tracks: [track] })"
                 @card-comments="searchCardComments"
                 @card-download="

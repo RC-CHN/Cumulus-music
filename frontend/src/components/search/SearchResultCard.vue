@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, useId, watch } from 'vue';
 import type { SearchCategory, SearchItem } from '../../services/search';
+import type { PlaylistView } from '../../services/contracts';
 import { artworkAt } from '../../services/artwork';
 import { time } from '../../services/player';
 import { playlistCoverCount } from '../../services/playlistHeader';
@@ -27,6 +28,7 @@ const props = defineProps<{
   matchKeyword: string;
   playable: boolean;
   queueable: boolean;
+  playlistDownloadBusy: boolean;
   current: boolean;
   playing: boolean;
 }>();
@@ -37,6 +39,7 @@ const emit = defineEmits<{
   artistAction: [request: ArtistCardRequest];
   play: [item: SearchItem];
   queue: [request: SearchQueueRequest];
+  playlistDownload: [playlist: PlaylistView];
   comments: [item: SearchItem];
   download: [item: SearchItem];
 }>();
@@ -123,6 +126,16 @@ const items = computed<MenuItem[]>(() => {
     ...(searchCardCanQueue(props.item)
       ? [{ key: 'next', label: '下一首播放', icon: 'next', disabled: !canQueue.value }]
       : []),
+    ...(props.item.kind === 'playlist'
+      ? [
+          {
+            key: 'download-playlist',
+            label: '下载全部',
+            icon: 'download',
+            disabled: props.playlistDownloadBusy || props.item.playlist.trackCount <= 0,
+          },
+        ]
+      : []),
     ...(['playlist', 'album', 'voice', 'mv'].includes(props.item.kind)
       ? [
           {
@@ -162,6 +175,13 @@ function action(key: string) {
     emit('artistAction', { artist: props.item.artist, action: key, anchor: actionAnchor() });
   } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
     emit('queue', { item: props.item, anchor: actionAnchor() });
+  } else if (
+    key === 'download-playlist' &&
+    props.item.kind === 'playlist' &&
+    !props.playlistDownloadBusy &&
+    props.item.playlist.trackCount > 0
+  ) {
+    emit('playlistDownload', props.item.playlist);
   } else if (key === 'comments') emit('comments', props.item);
   else if (key === 'download' && props.item.kind === 'voice' && !props.item.voice.unavailable)
     emit('download', props.item);
