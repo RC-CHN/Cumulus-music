@@ -3,7 +3,7 @@ import { computed, ref, shallowRef, watch } from 'vue';
 import { failure, type TrackView } from '../../services/contracts';
 import { useCore } from '../../services/core';
 import type { SearchReasonPage, SearchReasonTarget } from '../../services/search';
-import type { TrackMenuRequest } from '../../services/trackMenu';
+import type { TrackCurrentToggle, TrackMenuRequest } from '../../services/trackMenu';
 import TrackTable from '../TrackTable.vue';
 import ModalTransition from '../ModalTransition.vue';
 import Icon from '../Icon.vue';
@@ -17,9 +17,11 @@ const props = defineProps<{
   liked: Set<string>;
   busyLikes: Set<string>;
   playable: boolean;
+  currentToggle?: TrackCurrentToggle;
 }>();
 const emit = defineEmits<{
   play: [tracks: TrackView[], index: number];
+  toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   download: [tracks: TrackView[]];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
@@ -171,8 +173,10 @@ watch(
         :liked="liked"
         :busy="busyLikes"
         :playable="playable"
+        :current-toggle="currentToggle"
         navigable
         @play="play"
+        @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @like="emit('like', $event)"
         @more="emit('more', $event)"
         @artist="emit('artist', $event)"

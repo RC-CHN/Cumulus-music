@@ -122,6 +122,16 @@ Linux 实际 WebView 的四个 V3 检查点及截图通过；760×540 深色窗�
   选择与全选、实际原生队列播放及 760×540 深色截图。报告：
   .build/search-reason-batch-webview/audit.json。本项没有确认下载或访问真实账号。
 
+### 推荐原因详情当前曲目的行按钮
+
+- 恢复的 `pages/algPlaylist/views/index.tsx` 将「歌曲」页交给 TrackList；
+  共用的官方 `TrianglePlayButton.tsx` 对歌曲按当前资源 ID 选择暂停或继续。
+  社区版把该通用规则接到推荐原因和城市标签详情的歌曲表，已载入的普通同曲
+  走现有原生账号、playId 和队列版本校验。不同曲目、双击、播放全部和批量
+  操作仍走各自的既有路径；不对恢复材料缺失的 TrackList 样式作等价声明。
+- V3 桌面探针滚动到城市曲目并验证按钮命中，点击后检查焦点、原生播放标识、
+  队列版本和进度均保留。
+
 综合及单曲分类的原唱标签
 - 官方 M/21:126、573 保留 originCoverType；TrackCard/index.tsx:337–351 和
   TrackViewer/common/TrackTitleCell.tsx:559–570 仅在数字值严格等于 1 时显示

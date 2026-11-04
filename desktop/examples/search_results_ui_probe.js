@@ -965,6 +965,23 @@
       const queue=await invoke('player_queue',{epoch});
       assert(player.track?.id==='19'&&queue.tracks.length===1&&queue.tracks[0]?.track.id==='19','reason plays the displayed chart song, not a playlist ID');
       await capture('v3_city_tag');
+      const currentRow=()=>one('.search-reason-page .track-row');
+      const rowControl=label=>button(`${label} 合成城市曲目`,currentRow()??reasonPage);
+      currentRow().scrollIntoView({block:'center'});
+      const visibleControl=label=>{
+        const control=rowControl(label), rect=control?.getBoundingClientRect();
+        return !!rect&&rect.width>0&&control.contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2));
+      };
+      await wait(()=>visibleControl('暂停')&&Number(one('[aria-label="播放进度"]')?.value)>.25,'reason row is visible during playback');
+      click(rowControl('暂停'));
+      await wait(()=>one('.playerbar').dataset.state==='paused'&&visibleControl('继续播放')&&document.activeElement===rowControl('继续播放'),'reason row pauses and keeps focus');
+      const paused=await invoke('player_snapshot',{epoch});
+      assert(paused.playId===player.playId&&paused.queueRevision===player.queueRevision&&paused.position>.25,'reason row preserves native identity and progress');
+      await capture('v3_city_row_paused');
+      click(rowControl('继续播放'));
+      await wait(()=>one('.playerbar').dataset.state==='playing'&&visibleControl('暂停')&&document.activeElement===rowControl('暂停'),'reason row resumes and keeps focus');
+      const resumed=await invoke('player_snapshot',{epoch});
+      assert(resumed.playId===paused.playId&&resumed.queueRevision===paused.queueRevision&&resumed.position>=paused.position,'reason row resumes original media');
       click(button('返回上一页'));
       await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','Back from chart');
       await choose('songs');
@@ -978,7 +995,7 @@
         'original label remains visible beside the long narrow title');
       await capture('v3_original_recording_category');
 
-      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,v3ReasonBatchVerified:true,v3OriginalRecordingVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,v3Verified:true,v3TrackHintsVerified:true,v3ExplicitVerified:true,v3ReasonRoutesVerified:true,v3ReasonPlaybackVerified:true,v3ReasonBatchVerified:true,v3ReasonCurrentRowVerified:true,v3OriginalRecordingVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     await wait(()=>one('.track-row'),'daily ready');submit('合成搜索结果');await wait(()=>one('.search-results-page')&&ready(),'search entry');
