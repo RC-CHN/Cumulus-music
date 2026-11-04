@@ -37,13 +37,52 @@
     assert(document.activeElement === node, `wrong focus for ${name}`);
     node.dispatchEvent(new KeyboardEvent('keydown', { key: name, bubbles: true, cancelable: true }));
   }
+  async function settledContextTarget(card) {
+    let viewportSerial = 0;
+    const changed = () => { viewportSerial++; };
+    window.addEventListener('scroll', changed, true);
+    window.addEventListener('resize', changed);
+    try {
+      card.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+      const deadline = performance.now() + 5000;
+      let previous;
+      let stableFrames = 0;
+      while (performance.now() < deadline) {
+        const painted = await Promise.race([
+          new Promise((resolve) => requestAnimationFrame(() => resolve(true))),
+          sleep(250).then(() => false),
+        ]);
+        const rect = card.getBoundingClientRect();
+        const x = Math.max(1, Math.min(rect.left + 80, innerWidth - 2));
+        const y = Math.max(1, Math.min(rect.top + 20, innerHeight - 2));
+        const hit = document.elementFromPoint(x, y);
+        const animating = card.closest('.page-view')?.getAnimations().some(
+          (animation) => animation.pending || animation.playState === 'running',
+        );
+        if (!painted || animating || !card.contains(hit)) {
+          previous = undefined;
+          stableFrames = 0;
+          continue;
+        }
+        const geometry = [viewportSerial, rect.x, rect.y, rect.width, rect.height, x, y].join(',');
+        stableFrames = previous?.geometry === geometry && previous.hit === hit ? stableFrames + 1 : 0;
+        // The app dismisses menus on viewport scroll. Let a scroll queued
+        // by this fixture finish before opening the menu; do not retry clicks.
+        if (stableFrames >= 2) return { hit, x, y };
+        previous = { geometry, hit };
+      }
+      throw Error('right-click target did not settle on a painted comment');
+    } finally {
+      window.removeEventListener('scroll', changed, true);
+      window.removeEventListener('resize', changed);
+    }
+  }
   async function rightClick(card) {
-    card.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-    await sleep(90);
-    const rect = card.getBoundingClientRect();
-    card.dispatchEvent(new MouseEvent('contextmenu', {
-      bubbles: true, cancelable: true, clientX: rect.left + 80, clientY: rect.top + 20,
+    const { hit, x, y } = await settledContextTarget(card);
+    const handled = !hit.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true, cancelable: true, button: 2, buttons: 2, clientX: x, clientY: y,
     }));
+    assert(handled, 'right-click did not reach the comment handler');
     return wait(menu, 'right-click context');
   }
   let count = 0;
