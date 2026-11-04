@@ -82,8 +82,8 @@
     await emit('ux_05_style_refresh_seed_a', await play(87, [86, 87]));
 
     back();
-    await wait(() => one('.style-tags-entry') && listed(71, 72) &&
-      document.activeElement === one('.style-home-entry'), 'Back to default original 71/72 list and launcher focus');
+    await wait(() => one('.style-tags-entry') && listed(71, 72), 'Back to default original 71/72 list');
+    await wait(() => document.activeElement === one('.style-home-entry'), 'restored default launcher focus');
     await emit('ux_06_style_back_default', await play(72, [71, 72]));
 
     refresh();

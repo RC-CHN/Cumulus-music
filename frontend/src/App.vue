@@ -1612,6 +1612,7 @@ function restoreDailyMenuFocus() {
 watch([music.page, music.result], () => void nextTick(restoreDailyMenuFocus), { flush: 'post' });
 const styleHomeBrowser = ref<InstanceType<typeof StyleHomeBrowser>>();
 const styleHomeHeading = ref<HTMLHeadingElement>();
+const topbarBack = ref<HTMLButtonElement>();
 let styleHomeFocus: 'entry' | 'heading' | undefined;
 watch(
   () => music.page.value,
@@ -1636,7 +1637,10 @@ function mainPageEntered() {
   if (music.page.value.kind === 'community') void communityPage.value?.restore();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
-  if (document.activeElement !== document.body) return;
+  const active = document.activeElement;
+  // Returning from a seeded page by keyboard still owns the Back button.
+  // Leave any other control the user focused during the transition alone.
+  if (active !== document.body && !(focus === 'entry' && active === topbarBack.value)) return;
   if (focus === 'entry') styleHomeBrowser.value?.focus();
   if (focus === 'heading') styleHomeHeading.value?.focus({ preventScroll: true });
 }
@@ -3541,6 +3545,7 @@ onUnmounted(() => {
     />
     <header class="topbar" data-tauri-drag-region>
       <button
+        ref="topbarBack"
         class="back-button icon-button"
         aria-label="返回上一页"
         :disabled="
