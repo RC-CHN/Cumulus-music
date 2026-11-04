@@ -85,7 +85,7 @@
   await choose(ids[0]);song(ids[0]).dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));await wait(()=>bar().dataset.playId!==playId&&bar().dataset.state==='playing','double click plays');await prepare();phase='double_click';await capture('double_click_played');
   const current=await client.playerSnapshot(epoch);
   const doubleCurrent=()=>{const control=song(current.entryId);assert(control&&!control.disabled,'current row ready');control.focus({preventScroll:true});control.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true}));};
-  assert(song(current.entryId).title.includes('双击暂停或继续'),'current row describes transport');
+  assert(song(current.entryId).title.includes('Enter 暂停或继续'),'current row describes both activation methods');
   doubleCurrent();
   await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>10.2,'current row resumes and advances');
   let same=await client.playerSnapshot(epoch);
@@ -100,6 +100,35 @@
   const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
   await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'restore checkpoint position');
   await capture('current_double_click_toggled',{currentTransportPreserved:true});
+  const currentSong=()=>song(current.entryId);
+  const currentPlayButton=()=>row(current.entryId)?.querySelector('.queue-play');
+  const currentLabel=()=>currentPlayButton()?.getAttribute('aria-label')??'';
+  const sameCurrent=async ()=>{
+    const state=await client.playerSnapshot(epoch);
+    assert(state.entryId===current.entryId&&state.playId===current.playId&&
+      state.queueRevision===current.queueRevision&&state.position>10.2,
+      'row keyboard and inline controls preserve original playback and progress');
+  };
+  assert(currentLabel().startsWith('继续播放 ')&&hit(currentPlayButton()),'paused current inline control offers visible resume');
+  currentSong().focus({preventScroll:true});key(currentSong(),'Enter');
+  await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>10.45&&
+    currentLabel().startsWith('暂停 ')&&document.activeElement===currentSong(),'Enter resumes and keeps the song focus');
+  await sameCurrent();
+  click(currentPlayButton());
+  await wait(()=>bar().dataset.state==='paused'&&currentLabel().startsWith('继续播放 ')&&
+    document.activeElement===currentPlayButton(),'inline Pause preserves its focus');
+  await sameCurrent();
+  click(currentPlayButton());
+  await wait(()=>bar().dataset.state==='playing'&&currentLabel().startsWith('暂停 ')&&
+    document.activeElement===currentPlayButton(),'inline Resume preserves its focus');
+  await sameCurrent();
+  currentSong().focus({preventScroll:true});key(currentSong(),'Enter');
+  await wait(()=>bar().dataset.state==='paused'&&currentLabel().startsWith('继续播放 ')&&
+    document.activeElement===currentSong(),'Enter pauses without selecting again');
+  await sameCurrent();
+  seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
+  await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'restore checkpoint after explicit controls');
+  await capture('current_explicit_transport',{currentTransportPreserved:true,inlineLabel:currentLabel()});
   const playTarget=row(ids[2]).querySelector('.queue-play');click(playTarget);await wait(()=>bar().dataset.playId!==playId&&bar().dataset.state==='playing','explicit cover control plays');await prepare();phase='explicit_play';await capture('explicit_played');
   // A new queue has new entry identities; no selection leaks to replacement.
   await client.playSelection(epoch,{kind:'songs',ids:['1','2','3'],index:1,quality:'standard'});await prepare();phase='replacement';await ready();await wait(()=>!one('.queue-selection button'),'replacement selection cleared');await capture('queue_replaced');

@@ -334,13 +334,23 @@ const queueToggleFocus = useControlFocus(
   () => `${view.value?.epoch}:${view.value?.queueRevision}:${view.value?.playId}`,
   () => container.value,
 );
-function doubleClickRow(event: MouseEvent, entryId: string, missing: boolean) {
+function queuePlayLabel(entryId: string) {
+  if (entryId !== currentQueueTransport.value) return '播放';
+  return props.player.playing.value ? '暂停' : '继续播放';
+}
+async function activateRow(trigger: EventTarget | null, entryId: string, missing: boolean) {
   if (locked.value || missing) return;
   if (entryId === currentQueueTransport.value) {
     // The loaded entry already owns the decoder. Use its guarded transport
     // command instead of selecting and opening the same source again.
-    void queueToggleFocus.run(event, () => props.player.toggleSource());
-  } else void edit({ kind: 'select', entry_id: entryId });
+    const restore = queueToggleFocus.capture(trigger);
+    try {
+      await props.player.toggleSource();
+    } finally {
+      await nextTick();
+      restore();
+    }
+  } else await edit({ kind: 'select', entry_id: entryId });
 }
 function selectRow(event: MouseEvent, id: string) {
   // Pointer selection runs on down/up to preserve a group while dragging.
@@ -405,8 +415,8 @@ function keydown(event: KeyboardEvent) {
     void focusRow(next);
   } else if (event.key === 'Enter') {
     event.preventDefault();
-    if (!event.repeat && !queue.value?.tracks[index]?.track.missing)
-      void edit({ kind: 'select', entry_id: id! });
+    const item = queue.value?.tracks[index];
+    if (!event.repeat && item) void activateRow(target, item.entryId, item.track.missing);
   } else if (event.key === ' ') {
     event.preventDefault();
     if (!event.repeat) selection.select(id!, true, event.shiftKey);
@@ -615,24 +625,25 @@ async function confirmClear(event: Event) {
           <button
             class="icon-button queue-play"
             :disabled="locked || item.track.missing"
-            :aria-label="`播放 ${item.track.name}`"
-            @click="edit({ kind: 'select', entry_id: item.entryId })"
+            :aria-label="`${queuePlayLabel(item.entryId)} ${item.track.name}`"
+            @click="activateRow($event.currentTarget, item.entryId, item.track.missing)"
           >
-            <Icon :name="item.entryId === currentEntry ? 'volume' : 'play'" />
+            <Icon :name="queuePlayLabel(item.entryId) === '暂停' ? 'pause' : 'play'" />
           </button>
           <button
             class="queue-song"
             :disabled="locked"
             :aria-pressed="selected.has(item.entryId)"
+            aria-keyshortcuts="Enter"
             :title="
               currentQueueTransport === item.entryId
-                ? '单击选择，双击暂停或继续；Ctrl 多选，Shift 连选'
-                : '单击选择，双击播放；Ctrl 多选，Shift 连选'
+                ? '单击选择，双击或按 Enter 暂停或继续；Ctrl 多选，Shift 连选'
+                : '单击选择，双击或按 Enter 播放；Ctrl 多选，Shift 连选'
             "
             @pointerdown="drag.start($event, item.entryId)"
             @dragstart.prevent
             @click="selectRow($event, item.entryId)"
-            @dblclick="doubleClickRow($event, item.entryId, item.track.missing)"
+            @dblclick="activateRow($event.currentTarget, item.entryId, item.track.missing)"
           >
             <span
               ><strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong
