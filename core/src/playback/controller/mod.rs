@@ -15,6 +15,7 @@ pub use parametric::{
 };
 mod quality;
 mod queue_more;
+mod queue_more_tip;
 mod remote;
 mod skip;
 mod startup;
@@ -31,6 +32,7 @@ use crate::{
     },
     storage::StateStore,
 };
+pub use queue_more_tip::QueueMoreTipAction;
 use state::Actor;
 use std::sync::{
     Arc, Mutex,
@@ -73,6 +75,7 @@ enum Message {
     Prefetched(tick::Prefetched),
     QueueMoreGroups(queue_more::GroupsReady),
     QueueMoreRows(queue_more::RowsReady),
+    QueueMoreTip(queue_more_tip::Request),
 }
 
 pub struct PlaybackController {
@@ -84,6 +87,22 @@ pub struct PlaybackController {
     quality_trials: tokio::task::JoinHandle<()>,
 }
 impl PlaybackController {
+    pub(crate) async fn queue_more_tip(
+        &self,
+        token: &SessionToken,
+        action: QueueMoreTipAction,
+    ) -> Result<Option<String>> {
+        let (reply, receiver) = oneshot::channel();
+        self.sender
+            .send(Message::QueueMoreTip(queue_more_tip::Request {
+                token: token.clone(),
+                action,
+                reply,
+            }))
+            .map_err(|_| Error::Cancelled)?;
+        receiver.await.map_err(|_| Error::Cancelled)?
+    }
+
     pub fn start(
         session: Arc<AccountSession>,
         store: Arc<StateStore>,

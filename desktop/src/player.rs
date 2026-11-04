@@ -165,6 +165,30 @@ pub async fn player_snapshot(
     client.player_snapshot(&epoch).await.map_err(Into::into)
 }
 #[tauri::command]
+pub async fn queue_more_tip<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    action: QueueMoreTipAction,
+) -> Result<Option<String>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            Error::InvalidInput("queue recommendation cue requires the main window").into(),
+        );
+    }
+    if matches!(&action, QueueMoreTipAction::Begin { .. })
+        && (!matches!(window.is_focused(), Ok(true))
+            || !matches!(window.is_visible(), Ok(true))
+            || !matches!(window.is_minimized(), Ok(false)))
+    {
+        return Ok(None);
+    }
+    client
+        .queue_more_tip(&epoch, action)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_action(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

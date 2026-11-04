@@ -36,6 +36,7 @@ pub struct PlaybackSnapshot {
     pub startup_pending: bool,
     pub startup_autoplay: bool,
     pub queue_more_available: bool,
+    pub queue_more_tip_eligible: bool,
     pub fm: bool,
     pub intelligence: Option<crate::playback::intelligence::IntelligenceContext>,
     pub intelligence_operation: Option<String>,

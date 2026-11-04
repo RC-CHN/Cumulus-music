@@ -195,6 +195,17 @@ impl PlaybackQueue {
     pub fn selected(&self) -> Option<QueueEntry> {
         self.state.selected()
     }
+
+    pub(crate) fn current_id(&self) -> Option<&str> {
+        self.state.current.as_deref()
+    }
+
+    pub(crate) fn current_is_active_recommendation(&self) -> bool {
+        self.state
+            .more
+            .as_ref()
+            .is_some_and(|more| self.current_id().is_some_and(|id| more.active.contains(id)))
+    }
     pub fn revision(&self) -> u64 {
         self.revision
     }

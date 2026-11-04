@@ -24,6 +24,7 @@ mod selection;
 mod source_control;
 mod startup;
 use super::{MusicClient, mapping};
+pub use crate::playback::controller::QueueMoreTipAction;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
@@ -222,6 +223,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         revision: value.revision.to_string(),
         queue_revision: value.queue_revision.to_string(),
         queue_more_available: value.queue_more_available,
+        queue_more_tip_eligible: value.queue_more_tip_eligible,
         state: value.state,
         pending_paused: matches!(
             value.state,
@@ -283,6 +285,24 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     })
 }
 impl MusicClient {
+    /// The window host must check foreground before calling Begin.
+    pub async fn queue_more_tip(
+        &self,
+        epoch: &str,
+        action: QueueMoreTipAction,
+    ) -> Result<Option<String>> {
+        let token = self.player_token(epoch)?;
+        self.session.with_token(&token, |_| Ok(()))?;
+        let result = self
+            .player
+            .controller()
+            .await?
+            .queue_more_tip(&token, action)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(result)
+    }
+
     pub async fn player_snapshot(&self, epoch: &str) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
         let value = self

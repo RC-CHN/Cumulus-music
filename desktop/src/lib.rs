@@ -435,6 +435,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::prepare_play_selection,
                 player::commit_prepared_selection,
                 player::player_queue,
+                player::queue_more_tip,
                 player::player_snapshot,
                 player::intelligence::player_intelligence,
                 player::intelligence::player_intelligence_cancel,

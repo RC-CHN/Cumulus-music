@@ -75,6 +75,7 @@ pub(super) struct Actor {
     pub seek_revision: u64,
     pub queue: PlaybackQueue,
     pub queue_more: super::queue_more::Coordinator,
+    pub queue_more_tip: super::queue_more_tip::Cue,
     pub prefs: Preferences,
     pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub state: PlaybackStatus,
@@ -152,6 +153,7 @@ impl Actor {
             generation: Arc::new(AtomicU64::new(0)),
             token,
             queue_more: Default::default(),
+            queue_more_tip: Default::default(),
             bound: true,
             revision: 0,
             control_revision: 0,
@@ -232,6 +234,7 @@ impl Actor {
             startup_pending: self.startup_pending,
             startup_autoplay: self.startup_autoplay,
             queue_more_available: self.queue_more_available(),
+            queue_more_tip_eligible: self.queue_more_tip_eligible(),
             fm: self.queue.is_fm(),
             intelligence: self.queue.intelligence_context().cloned(),
             intelligence_operation: self
@@ -452,6 +455,7 @@ impl Actor {
                     Some(Message::Prefetched(value)) => self.prefetched(value),
                     Some(Message::QueueMoreGroups(value)) => self.queue_more_groups(value),
                     Some(Message::QueueMoreRows(value)) => self.queue_more_rows(value).await,
+                    Some(Message::QueueMoreTip(request)) => self.queue_more_tip_request(request).await,
                     Some(Message::Shutdown) | None => break,
                 },
                 _ = interval.tick() => {

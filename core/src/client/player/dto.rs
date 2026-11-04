@@ -30,6 +30,7 @@ pub struct PlayerView {
     pub revision: String,
     pub queue_revision: String,
     pub queue_more_available: bool,
+    pub queue_more_tip_eligible: bool,
     pub state: PlaybackStatus,
     /// Desired first presentation state while a decoder is pending.
     #[serde(skip_serializing_if = "Option::is_none")]
