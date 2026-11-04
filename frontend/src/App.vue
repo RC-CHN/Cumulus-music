@@ -2277,6 +2277,9 @@ onUnmounted(() => {
                 "
                 @open="openSearchItem"
                 @artist-action="artistAction"
+                @album-action="
+                  (request) => page.kind === 'search' && signedIn && albumAction(request)
+                "
                 @mv="openMv"
                 @creator="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @play="playSearchResults"

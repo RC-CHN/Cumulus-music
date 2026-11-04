@@ -16,6 +16,9 @@ export interface AlbumCardRequest {
   anchor: HTMLElement | null;
   selection?: { ids: string[]; revision: string };
 }
+export function albumLink(id: string): string {
+  return /^\d+$/.test(id) ? `https://music.163.com/album?id=${id}` : '';
+}
 
 /** Official AlbumCard keeps the primary artist first when present in the list. */
 export function albumCredits(album: AlbumCard): ArtistReference[] {

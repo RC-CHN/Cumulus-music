@@ -2,6 +2,7 @@
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import type { TrackView, PlaylistView } from '../services/contracts';
 import type { AlbumCard } from '../services/catalog';
+import { albumLink } from '../services/catalogCards';
 import { songLink } from '../services/trackMenu';
 import { playlistLink } from '../services/playlistMenu';
 import { useCore } from '../services/core';
@@ -9,8 +10,8 @@ import Icon from './Icon.vue';
 const props = defineProps<{ track?: TrackView; playlist?: PlaylistView; album?: AlbumCard }>();
 const kind = computed(() => (props.album ? '专辑' : props.playlist ? '歌单' : '歌曲'));
 const link = computed(() =>
-  props.album && /^\d+$/.test(props.album.id)
-    ? `https://music.163.com/album?id=${props.album.id}`
+  props.album
+    ? albumLink(props.album.id)
     : props.playlist
       ? playlistLink(props.playlist)
       : props.track

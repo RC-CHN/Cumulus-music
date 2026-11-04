@@ -150,6 +150,20 @@
       await fixture('album_artist_search');await fresh('合成艺人');
       const card=()=>one('[data-result-key="album:201"]');
       const artist=()=>card()?.querySelector('[data-result-action="artist:101:1"]');
+      const link='https://music.163.com/album?id=201', copies=[];
+      const fetchIPC=window.fetch;
+      window.fetch=function(url,options){
+        if(String(url).endsWith('/copy_text'))copies.push(JSON.parse(options.body).text);
+        return fetchIPC.call(window,url,options);
+      };
+      const menu=()=>one('.action-menu[role="menu"]:not([inert])');
+      const share=()=>one('.track-share-dialog[open]:not([inert])');
+      async function albumMenu(anchor){
+        anchor.scrollIntoView({block:'nearest'});
+        anchor.focus({preventScroll:true});
+        anchor.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+        await wait(()=>menu()?.contains(document.activeElement)&&button('分享…',menu()),'album link actions');
+      }
       for(const category of ['all','albums']){
         if(category!=='all')await choose(category);
         const target=artist();
@@ -159,6 +173,20 @@
         assert(target?.getAttribute('aria-label')==='查看歌手 合成合作艺人'&&
           card().querySelector('.search-card-artist-text')?.textContent.trim()==='合成未标识艺人',
           'credit without native identity is plain text');
+        const anchor=card().querySelector('.search-card-open');
+        await albumMenu(anchor);
+        click(button('分享…',menu()));
+        await wait(()=>share()?.querySelector('[aria-label="专辑分享链接"]')?.value===link,
+          'album share offers the official album URL');
+        await capture('album_share_'+category);
+        click(button('关闭分享',share()));
+        await wait(()=>!share()&&document.activeElement===anchor,'album share restores the exact opener');
+        await albumMenu(anchor);
+        click(button('复制链接',menu()));
+        const feedback=()=>one('.album-action-feedback:not([inert])');
+        await wait(()=>feedback()?.textContent.includes('链接已复制'),'album copies through the native clipboard');
+        click(button('关闭',feedback()));
+        await wait(()=>document.activeElement===anchor,'copy feedback restores the exact opener');
         click(target);
         await wait(()=>one('.artist-header h1')?.textContent.trim()==='相似歌手 101'&&one('.track-row'),
           'opens native details for the selected artist');
@@ -167,7 +195,8 @@
           document.activeElement===artist(),'Back restores the exact credited artist button');
         await capture('album_artist_'+category);
       }
-      await emit('complete',{ok:true,searchAlbumArtistVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      assert(copies.length===2&&copies.every(value=>value===link),'clipboard receives only canonical album URLs');
+      await emit('complete',{ok:true,searchAlbumArtistVerified:true,searchAlbumLinksVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchCollectionNextProof){

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TrackMenuRequest } from '../../services/trackMenu';
 import type { ArtistCardRequest } from '../../services/artistCards';
+import type { AlbumCardRequest } from '../../services/catalogCards';
 import type { PlaylistLinkAction } from '../../services/playlistMenu';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { advanceSearchPage, type SearchPageStep } from '../../services/searchPagination';
@@ -80,6 +81,7 @@ const emit = defineEmits<{
   like: [track: TrackView];
   artist: [id: string];
   artistAction: [request: ArtistCardRequest];
+  albumAction: [request: AlbumCardRequest];
   album: [id: string];
   mv: [id: string];
   expired: [];
@@ -782,6 +784,7 @@ onBeforeUnmount(() => {
                 @creator="emit('creator', $event)"
                 @artist="emit('artist', $event)"
                 @artist-action="emit('artistAction', $event)"
+                @album-action="emit('albumAction', $event)"
                 @play="emit('playCard', $event)"
                 @queue="emit('queueCard', $event)"
                 @playlist-download="emit('playlistDownload', $event)"

@@ -186,3 +186,12 @@ Cumulus 使用原生投影的所有权和当前账号已读的完整歌单列表
 `search_results_smoke.py --playlist-creator` 核对已有歌单不重复显示、综合页取消无
 写入、歌单分类确认后只有一次合成写入，回读后收藏动作消失。没有真实账号写入。
 Linux WebView 六个检查点和截图：.build/search-playlist-subscribe-webview/first/。
+
+搜索专辑菜单的「分享」和「复制链接」
+M/622:487–488、565–567 的专辑菜单包含分享，普通卡片也可复制链接。综合和
+专辑分类复用现有专辑动作。只按原生投影的专辑 ID 生成官方专辑地址，分享是本地
+复制窗口，直接复制走原生剪贴板。不会发消息或自动打开外链；菜单操作和艺人署名
+导航独立。未把需要数字专辑实验或权益条件的下载、购买一起开放。
+`search_results_smoke.py --album-artist` 核对两种分类下的分享窗口、剪贴板实际
+收到的地址及焦点返回，同时回归专辑署名到歌手详情。
+Linux WebView 四个检查点和截图：.build/search-album-links-webview/first/。

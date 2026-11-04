@@ -106,10 +106,12 @@ def main():
     if args.album_artist:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['searchAlbumArtistVerified'] and complete['stageCount'] == 2
+        assert complete['ok'] and complete['searchAlbumArtistVerified']
+        assert complete['searchAlbumLinksVerified'] and complete['stageCount'] == 4
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (2 if args.screenshots else 0)
-        print(json.dumps(dict(ok=True, actualWebView=True, searchAlbumArtistVerified=True, stageCount=2)))
+        assert len(list(first.glob('ux_*.png'))) == (4 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, searchAlbumArtistVerified=True,
+                              searchAlbumLinksVerified=True, stageCount=4)))
         return
     if args.collection_next:
         first = root / 'first'

@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
 import { failure, type AccountView, type TrackView } from '../../services/contracts';
 import type { CatalogMembershipListener } from '../../services/catalog';
-import type { AlbumCardRequest } from '../../services/catalogCards';
+import { albumLink, type AlbumCardRequest } from '../../services/catalogCards';
 import type { PlayerModel } from '../../composables/usePlayer';
 import { useCore } from '../../services/core';
 import MenuTransition from '../MenuTransition.vue';
@@ -87,8 +87,9 @@ async function execute() {
               : '已设为下一首播放',
         );
     } else if (target.action === 'copy') {
-      if (!/^\d+$/.test(target.album.id)) throw { code: 'invalid', message: '专辑链接暂不可用' };
-      await core.copyText(`https://music.163.com/album?id=${target.album.id}`);
+      const link = albumLink(target.album.id);
+      if (!link) throw { code: 'invalid', message: '专辑链接暂不可用' };
+      await core.copyText(link);
       if (current === sequence) feedback('链接已复制');
     } else if (target.action === 'download') {
       feedback('正在读取专辑歌曲…', false, false);
@@ -128,7 +129,9 @@ async function execute() {
 }
 defineExpose({ show, close });
 const fallbackFocus = () =>
-  document.querySelector<HTMLElement>('.collections-page h1,.catalog-heading h1');
+  document.querySelector<HTMLElement>(
+    '.search-results-page [role="tab"][aria-selected="true"],.collections-page h1,.catalog-heading h1',
+  );
 </script>
 <template>
   <ModalTransition :return-focus="() => request?.anchor ?? null" :fallback-focus="fallbackFocus"

@@ -15,6 +15,7 @@ import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
 import type { MenuItem } from '../../services/menu';
 import { artistCardMenu, type ArtistCardRequest } from '../../services/artistCards';
+import { albumLink, type AlbumCardRequest } from '../../services/catalogCards';
 import {
   searchAlbumCredits,
   searchCardCanPlay,
@@ -43,6 +44,7 @@ const emit = defineEmits<{
   creator: [id: string];
   artist: [id: string];
   artistAction: [request: ArtistCardRequest];
+  albumAction: [request: AlbumCardRequest];
   play: [item: SearchItem];
   queue: [request: SearchQueueRequest];
   playlistDownload: [playlist: PlaylistView];
@@ -152,6 +154,22 @@ const items = computed<MenuItem[]>(() => {
           },
         ]
       : []),
+    ...(props.item.kind === 'album'
+      ? [
+          {
+            key: 'share',
+            label: '分享…',
+            icon: 'share',
+            disabled: !albumLink(props.item.album.id),
+          },
+          {
+            key: 'copy',
+            label: '复制链接',
+            icon: 'copy',
+            disabled: !albumLink(props.item.album.id),
+          },
+        ]
+      : []),
     ...(['playlist', 'album', 'voice', 'mv'].includes(props.item.kind)
       ? [
           {
@@ -191,6 +209,12 @@ function action(key: string) {
     emit('artistAction', { artist: props.item.artist, action: key, anchor: actionAnchor() });
   } else if (key === 'next' && canQueue.value && searchCardCanQueue(props.item)) {
     emit('queue', { item: props.item, anchor: actionAnchor() });
+  } else if (
+    (key === 'share' || key === 'copy') &&
+    props.item.kind === 'album' &&
+    albumLink(props.item.album.id)
+  ) {
+    emit('albumAction', { album: props.item.album, action: key, anchor: actionAnchor() });
   } else if (
     key === 'subscribe' &&
     props.item.kind === 'playlist' &&
