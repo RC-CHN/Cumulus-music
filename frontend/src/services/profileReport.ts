@@ -8,16 +8,20 @@ export const profileReportChoices = [
   ['other', '其他原因'],
 ] as const;
 export type ProfileReportChoice = (typeof profileReportChoices)[number][0];
+type Presets<Choice extends string> = { [Kind in Choice]: { kind: Kind } }[Choice];
 export type ProfileReportReason =
-  | { kind: Exclude<ProfileReportChoice, 'other'> }
+  | Presets<Exclude<ProfileReportChoice, 'other'>>
   | { kind: 'other'; description: string };
+export type ReportChoice = ProfileReportChoice | 'meaningless';
+export type ReportReason = ProfileReportReason | { kind: 'meaningless' };
 export const maxReportDescriptionBytes = 4096;
 
-export type ProfileReportCommand =
+export type ReportCommand<Reason = ReportReason> =
   | { kind: 'inspect' }
-  | { kind: 'prepare'; reason: ProfileReportReason }
+  | { kind: 'prepare'; reason: Reason }
   | { kind: 'cancel' | 'submit'; receipt: string };
 
+export type ProfileReportCommand = ReportCommand<ProfileReportReason>;
 export type ProfileReportStatus =
   | 'ready'
   | 'accepted'

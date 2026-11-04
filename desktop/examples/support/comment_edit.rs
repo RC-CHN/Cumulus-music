@@ -20,6 +20,7 @@ pub struct State {
 pub struct Service {
     pub state: Mutex<State>,
     path: PathBuf,
+    report_only: bool,
 }
 fn item(id: &str, owner: &str, content: &str) -> Value {
     json!({"commentId":id,"content":content,"time":1700000000000u64,"timeStr":"模拟服务评论","liked":false,"likedCount":0,"user":{"userId":owner,"nickname":if owner=="1" {"评论验证账号"}else{"另一位听友"}},"beReplied":[],"parentCommentId":"0"})
@@ -31,7 +32,15 @@ fn number(value: &Value) -> Result<i64> {
         .ok_or(Error::State("fixture numeric parameter missing"))
 }
 impl Service {
+    #[allow(dead_code)] // The dedicated report example uses the stricter constructor.
     pub fn open(path: PathBuf, reopen: bool) -> Result<Self> {
+        Self::new(path, reopen, false)
+    }
+    #[allow(dead_code)] // The edit example uses its original constructor.
+    pub fn reporting(path: PathBuf) -> Result<Self> {
+        Self::new(path, false, true)
+    }
+    fn new(path: PathBuf, reopen: bool, report_only: bool) -> Result<Self> {
         let state = if reopen {
             serde_json::from_slice(&fs::read(&path)?)?
         } else {
@@ -62,6 +71,7 @@ impl Service {
         let service = Self {
             state: Mutex::new(state),
             path,
+            report_only,
         };
         fs::write(
             &service.path,
@@ -200,7 +210,32 @@ impl HttpBackend for Service {
             // Record semantic payloads only, never the transport identity/header.
             data.as_object_mut().unwrap().remove("header");
             let mut state = self.state.lock().unwrap();
-            let response = Self::response(&mut state, &path, &data);
+            let response = match (self.report_only, path.as_str()) {
+                (true, "/api/report/reportcomment") => {
+                    assert_eq!(
+                        plan.url.as_str(),
+                        "https://interfacepc.music.163.com/eapi/report/reportcomment"
+                    );
+                    assert_eq!(data["threadId"], "R_SO_4_123");
+                    match data["commentId"].as_str() {
+                        Some("102") => Ok(json!({"code":200})),
+                        Some("201") => {
+                            Err(Error::Transport("synthetic report response loss".into()))
+                        }
+                        Some("202") => Ok(json!({"code":-1})),
+                        _ => panic!("unexpected synthetic moderation target"),
+                    }
+                }
+                (
+                    true,
+                    "/api/resource/comments/add"
+                    | "/api/v1/resource/comments/reply"
+                    | "/api/resource/comments/delete"
+                    | "/api/v1/comment/like"
+                    | "/api/v1/comment/unlike",
+                ) => panic!("unexpected other comment mutation"),
+                _ => Self::response(&mut state, &path, &data),
+            };
             state.calls.push(json!({"path":path,"payload":data,"response":response.as_ref().ok(),"lostResponse":response.is_err()}));
             fs::write(&self.path, serde_json::to_vec_pretty(&*state)?)?;
             Ok(HttpReply {

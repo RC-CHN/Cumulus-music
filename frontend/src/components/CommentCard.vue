@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import type { CommentItem } from '../services/comments';
+import type { CommentItem, CommentResource } from '../services/comments';
 import Icon from './Icon.vue';
 import CommentText from './CommentText.vue';
+import CommentReportMenu from './CommentReportMenu.vue';
 function timestamp(time: number): string | undefined {
   const date = new Date(time);
   return Number.isFinite(date.getTime()) ? date.toISOString() : undefined;
@@ -17,10 +18,13 @@ const props = withDefaults(
     pending: boolean;
     writing?: boolean;
     showFloor?: boolean;
+    reportEpoch?: string;
+    reportResource?: CommentResource;
   }>(),
   { writing: false, showFloor: true },
 );
 const failedAvatar = ref(false);
+const reportMenu = ref<InstanceType<typeof CommentReportMenu>>();
 watch(
   () => props.item.author?.avatarUrl,
   () => {
@@ -35,10 +39,15 @@ const emit = defineEmits<{
   remove: [item: CommentItem];
   floor: [item: CommentItem, event: MouseEvent];
   author: [id: string, event: MouseEvent];
+  expired: [];
 }>();
 </script>
 <template>
-  <article class="comment-card" :data-comment-id="item.id">
+  <article
+    class="comment-card"
+    :data-comment-id="item.id"
+    @contextmenu="reportMenu?.contextMenu($event)"
+  >
     <component
       :is="item.author?.profileId ? 'button' : 'span'"
       class="comment-avatar"
@@ -99,11 +108,22 @@ const emit = defineEmits<{
           <button
             v-if="item.owned"
             class="text-button comment-delete"
+            data-own-comment-delete
             :disabled="writing || busy || pending"
             @click="emit('remove', item)"
           >
             删除
           </button>
+          <CommentReportMenu
+            v-if="reportEpoch && reportResource && (item.reportable || item.owned)"
+            ref="reportMenu"
+            :epoch="reportEpoch"
+            :resource="reportResource"
+            :item="item"
+            :can-delete="item.owned && !writing && !busy && !pending"
+            @remove="emit('remove', item)"
+            @expired="emit('expired')"
+          />
           <button
             class="text-button"
             :aria-label="`定位评论 ${item.id}`"

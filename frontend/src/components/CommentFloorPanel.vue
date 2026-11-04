@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue';
 import { useCommentReadFocus } from '../composables/useCommentReadFocus';
 import type { CommentFloorModel } from '../composables/useCommentFloor';
-import type { CommentItem, CommentOperation } from '../services/comments';
+import type { CommentItem, CommentOperation, CommentResource } from '../services/comments';
 import CommentCard from './CommentCard.vue';
 const props = defineProps<{
   model: CommentFloorModel;
@@ -10,6 +10,8 @@ const props = defineProps<{
   busy: Set<string>;
   operations: CommentOperation[];
   writing: boolean;
+  reportEpoch?: string;
+  reportResource?: CommentResource;
 }>();
 const emit = defineEmits<{
   like: [item: CommentItem];
@@ -19,6 +21,7 @@ const emit = defineEmits<{
   reconcile: [id: string];
   author: [id: string, event: MouseEvent];
   close: [];
+  expired: [];
 }>();
 const { page, query, history, loading, error } = props.model;
 const root = ref<HTMLElement>();
@@ -78,6 +81,9 @@ const groups = computed(() => [
         :pending="operations.some((v) => v.id === item.id)"
         :writing="writing"
         :show-floor="false"
+        :report-epoch="reportEpoch"
+        :report-resource="reportResource"
+        @expired="emit('expired')"
         @like="emit('like', $event)"
         @reply="emit('reply', $event)"
         @remove="emit('remove', $event)"

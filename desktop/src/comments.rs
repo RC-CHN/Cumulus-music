@@ -96,3 +96,17 @@ pub async fn comments_reconcile(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn comment_report(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    resource: CommentResource,
+    id: String,
+    command: CommentReportCommand,
+) -> Result<AccountData<CommentReportView>, ClientError> {
+    client
+        .comment_report(&epoch, resource, &id, command)
+        .await
+        .map_err(Into::into)
+}

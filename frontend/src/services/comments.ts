@@ -1,5 +1,10 @@
 import type { AccountData, LikeResult } from './contracts';
 import type { InjectionKey } from 'vue';
+import {
+  profileReportChoices,
+  type ProfileReportView,
+  type ReportCommand,
+} from './profileReport.ts';
 export interface CommentResource {
   kind: 'playlist' | 'voice' | 'event' | 'album' | 'track' | 'mv' | 'topic' | 'video';
   id: string;
@@ -50,6 +55,7 @@ export interface CommentItem {
   author: CommentAuthor | null;
   replies: CommentReply[];
   owned: boolean;
+  reportable?: boolean;
 }
 export interface CommentOperation {
   id: string;
@@ -69,6 +75,18 @@ export interface CommentPage {
   next: CommentQuery | null;
   cached: boolean;
   operations: CommentOperation[];
+}
+export const commentReportChoices = [
+  ['meaningless', '段子或者无意义的评论'],
+  ...profileReportChoices,
+] as const;
+export interface CommentReportClient {
+  commentReport(
+    epoch: string,
+    resource: CommentResource,
+    id: string,
+    command: ReportCommand,
+  ): Promise<AccountData<ProfileReportView>>;
 }
 export interface CommentClient {
   commentsPage(

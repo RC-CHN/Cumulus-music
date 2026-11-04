@@ -1,0 +1,60 @@
+评论举报（官方 Windows PC 3.1.42.205594）
+=========================================
+
+官方证据
+- x86/x64 的 package/orpheus.ntpk 同为 SHA256
+  170413b1675708e87a9e89c2d122a8643a51e86b5b5ae1c6260cfeaf25b19be4。
+  以下 M* 是 hybrid_app.chunk.1482700000000.js 的恢复模块；对应 subApp 同样
+  包含评论卡和举报分发。M439 SHA256
+  2380b8d2af2b4ae30ea7c1cffc2552d3843b46ec1fd2dbb16fce69f64a42df0a，
+  M622 SHA256 347d7d067eeb1b883dec32a290e8e9a960fdc97a8acafe7d44ebe5a1960735b0，
+  M55 SHA256 ae5201ea4d17dd5ee366573b0d844ea6473fb10b6b433cb23794a0a21f296654。
+- M439:93–121,149–174,210–244,336–352：普通评论卡直接把当前 threadId 放进
+  from.resourceIdOfScene。评论作者不是当前账号时，底部显示「举报」，点击用
+  from.leftClicks=true；右键未带该标记。M622:1903–1970 把底部点击直接展开
+  举报原因，右键先给「举报」子菜单；自己的评论右键只可删除。资源作者的旧
+  isOwn 分支还能删除他人的评论；本实现未扩展 Cumulus 的自有评论删除权限。
+- M622:1903–1940 与 M55:14–17：按顺序为「段子或者无意义的评论」「广告或营销信息」
+  「恶意人身攻击」「色情、低俗或有害内容」「政治敏感言论」「其他原因 >」。
+  五个预设提交对应中文原文；「其他原因」复用 M55:117–156,213–248 的居中、无可见
+  遮罩、可关闭弹窗，自动聚焦「举报原因：」。trim 只启用确认，发送仍保留原文。
+- M55:81–110,285–312,412–435 与 M15:2684：匿名时先走原有登录并重新验证；
+  普通卡片用当前讨论串与 M21:1075–1080 转成字符串的评论 ID。接口为
+  POST /api/report/reportcomment {"threadId":"R_SO_4_123","commentId":"102",
+  "reason":"所选原因原文"}，未传作者 userid。200=「举报成功」，-1=「重复举报」，
+  其余通用失败。M12:277–313 默认不缓存，M402:377–450 走现有全局 PC 封包，
+  Cumulus 使用 https://interfacepc.music.163.com/eapi/report/reportcomment。
+  未恢复此举报的撤销、服务端状态查询或历史列表。
+- M55:426–432 还支持通知样式的 combindId 备选解析；本次只接原生资源评论卡和
+  楼层评论，不接消息/动态通知或独立社区评论模型，不猜测其他场景的 threadId。
+
+实现边界
+- core/src/client/comments/report.rs 按类型化 CommentResource 生成讨论串，拒绝
+  非规范的数字别名；验证确有当前账号，提交时在同一讨论串按 ID 重新读取对应评论，
+  要求目标可读、非本人、作者可识别且未注销。不存在、屏蔽或已删除的评论不提交。
+  与现有评论编辑/删除/回复使用同一讨论串的写锁。IPC 不接收任意接口或授权信息。
+- core/src/client/report_receipt.rs 和用户主页举报共用一次发送的守卫。准备生成
+  120 秒的内存确认凭据，绑定当前账号代次、讨论串、评论 ID 及原因；取消不访问
+  服务。提交在请求前把 uncertain 写入账号独立本机记录；只保存状态，不保存
+  原因、评论内容、原始响应、认证材料。200 或明确 -1 标记终态；HTTP 错误体的
+  200 不当成成功。超时、未知码或崩溃都保留待确认，重开和「核对本机回执」
+  不再发送。只有明确 RequestNotSent 可以释放已写记录并由用户重新确认。
+- 相比原客户端，Cumulus 的预设同样要求明确确认，额外限制原文 4096 UTF-8 字节，
+  并在弹窗显示本机回执结果；未认证时不显示入口，由现有登录入口处理，不续发
+  登录前的举报。自填取消、Escape 和关闭恢复发起按钮焦点；右键菜单支持方向键。
+  共享的用户主页举报保持独立端点、账号/用户记录和专有 -2 处理。
+- 没有访问真实服务或报告实际用户内容。闭合合成传输证明 Linux WebView、EAPI
+  加密后精确域名/路由和解包后的字段、故障处理；Windows WebView、真实服务状态
+  和官方全局 XEAPI 切换未实测。
+
+复现
+- cargo test -p cumulus-core --locked --test comment_report --test profile_report
+- npm --prefix frontend run build；cargo build -p cumulus-desktop --locked
+  --features custom-protocol --example comment_report_ui_probe
+- Linux en_US.UTF-8、独立 Xvfb/DBus 和断网命名空间中执行
+  scripts/ci/comment_report_smoke.py --binary <example> --frontend-dist frontend/dist
+  --root <新目录> --screenshots。覆盖本人右键、他人底部和右键、确认取消与焦点、
+  楼层回复原文、回包丢失只核对本机、重复举报。测试服务拒绝其余评论写入。
+- 本机断网 WebView 通过 9 个场景，留存 9 张截图与 3 条明确的合成请求；取消、
+  重开及核对未新增发送。报告在 .build/comment-report-evidence/focus-final/report.json。
+  Rust 同时验证评论与用户主页的回执隔离、重开和过期账号边界。

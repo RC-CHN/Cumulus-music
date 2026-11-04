@@ -1,4 +1,5 @@
 mod floor;
+mod report;
 mod resource;
 mod text;
 mod writes;
@@ -13,6 +14,7 @@ use crate::{
     comments::{Comment, CommentLike, Comments},
 };
 pub use floor::CommentFloorView;
+pub use report::{CommentReportCommand, CommentReportReason, CommentReportView};
 pub use resource::{CommentResourceCard, CommentResourceView};
 use serde::Serialize;
 pub use writes::{CommentWriteAction, CommentWriteView};
@@ -30,6 +32,7 @@ pub struct CommentView {
     pub author: Option<CommentAuthorView>,
     pub replies: Vec<CommentReplyView>,
     pub owned: bool,
+    pub reportable: bool,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -81,7 +84,9 @@ fn author(value: crate::comments::CommentAuthor) -> CommentAuthorView {
     }
 }
 pub(super) fn comment(value: Comment, uid: &str) -> CommentView {
+    let reportable = report::reportable(&value, uid);
     CommentView {
+        reportable,
         id: value.id,
         parent_id: value.parent_id,
         content: text::project(&value.rich_content, Some(&value.content), value.status)

@@ -14,7 +14,7 @@ import type { ColdOfflineClient } from './coldOffline';
 import type { DownloadClient, SongDownloadState } from './downloads';
 import type { CloudClient } from './cloud';
 import type { MvClient } from './mv';
-import type { CommentClient } from './comments';
+import type { CommentClient, CommentReportClient } from './comments';
 import type {
   CommunityClient,
   CommunityDeleteClient,
@@ -117,6 +117,7 @@ export interface CoreClient
     CloudClient,
     MvClient,
     CommentClient,
+    CommentReportClient,
     MessageClient,
     CommunityClient,
     CommunityTopicClient,

@@ -34,7 +34,7 @@ const emit = defineEmits<{
   play: [card: CommentResourceCard];
   open: [destination: CommentResourceDestination];
 }>();
-const { page, query, loading, error, actionError, busy, history } = props.model;
+const { epoch, resource, page, query, loading, error, actionError, busy, history } = props.model;
 const context = props.context ?? useCommentContext(props.model);
 const { target, floor, writer } = context;
 const scroller = ref<HTMLElement>();
@@ -331,6 +331,9 @@ const missingTarget = computed(
         :busy="busy"
         :operations="page?.operations ?? []"
         :writing="writing"
+        :report-epoch="epoch"
+        :report-resource="resource"
+        @expired="model.sessionExpired"
         @like="floorLike"
         @reply="replyTo"
         @remove="composer?.requestDelete($event)"
@@ -351,6 +354,9 @@ const missingTarget = computed(
             :busy="busy.has(item.id)"
             :pending="!!page?.operations.some((op) => op.id === item.id)"
             :writing="writing"
+            :report-epoch="epoch"
+            :report-resource="resource"
+            @expired="model.sessionExpired"
             @like="model.like"
             @locate="model.locate"
             @reconcile="model.reconcile"

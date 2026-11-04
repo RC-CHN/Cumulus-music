@@ -462,6 +462,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 comments::comments_write_operations,
                 comments::comments_write_command,
                 comments::comments_floor,
+                comments::comment_report,
             ];
             handler(invoke)
         })

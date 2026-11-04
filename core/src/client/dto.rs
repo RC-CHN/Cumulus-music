@@ -316,9 +316,9 @@ pub use super::cloud::{
 };
 pub use super::comments::{
     CommentAuthorView, CommentFloorQuery, CommentFloorView, CommentOperationView, CommentPageView,
-    CommentQuery, CommentReplyView, CommentResource, CommentResourceCard, CommentResourceView,
-    CommentSort, CommentView, CommentWriteAction, CommentWriteCommand, CommentWritePhase,
-    CommentWriteView,
+    CommentQuery, CommentReplyView, CommentReportCommand, CommentReportReason, CommentReportView,
+    CommentResource, CommentResourceCard, CommentResourceView, CommentSort, CommentView,
+    CommentWriteAction, CommentWriteCommand, CommentWritePhase, CommentWriteView,
 };
 pub use super::community::composer::{
     ComposerDraft, ComposerDraftAction, ComposerKind, ComposerSearchPage, DraftAttachmentEdit,

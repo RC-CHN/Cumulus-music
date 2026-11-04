@@ -59,6 +59,7 @@ mod quality_experiment;
 mod rankings;
 mod recommendations;
 mod relay;
+mod report_receipt;
 mod scene_fm;
 mod search;
 mod settings;
@@ -117,7 +118,8 @@ pub struct MusicClient {
     playlist_square: playlist_square::PlaylistSquareHost,
     playlist_essential: playlist_essential::PlaylistEssentialHost,
     profile_relations: profile_relations::ProfileRelationHost,
-    profile_report: profile_report::ProfileReportHost,
+    profile_report: report_receipt::ReportHost,
+    comment_report: report_receipt::ReportHost,
     profile_rank_removal: profile_play_record::RemovalHost,
     message_deletion: messages::DeletionHost,
     message_reply: messages::ReplyHost,
@@ -265,6 +267,7 @@ impl MusicClient {
             playlist_essential: Default::default(),
             profile_relations: Default::default(),
             profile_report: Default::default(),
+            comment_report: Default::default(),
             profile_rank_removal: Default::default(),
             message_deletion: Default::default(),
             message_reply: Default::default(),
