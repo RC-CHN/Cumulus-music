@@ -144,3 +144,27 @@ Cumulus 在二维码原位置显示已知服务或网络故障，移除可扫描
 Rust client_auth/qr_login 共 25 项；前端格式、798 项测试和生产构建通过。
 无真实音乐请求或账号变更。Windows 待 CI 独立验证。
 证据：.build/ui-proof/login-qr-server-error-b52457ca/final/。
+
+普通扫码的轮询间隔与手机确认状态
+官方 PC 3.1.42.205594 的 pages/login/views/Qrcode.jsx:156–172 为旧链每 1000ms
+派发检查，M/1368:3670–3701 为 JSK 每次完成后 1000ms 再查。两条社区链都采用
+有界的后一种调度：同一张码只有一个在途检查，慢响应不会排队或产生并发请求。
+普通旧链请求 /api/login/qrcode/unikey {type:3}，轮询
+/api/login/qrcode/client/login {key,type:3,secureCaptcha:""}；JSK 用 type:5。
+旧链空字段见 M/3137:64–70、197–212，M/12:99–119、M/48:30–44 及 M/32:60–68
+的表单编解码保留空值。只有用户完成已有验证码步骤才用实际证明替换空字符串。
+
+旧链 M/3137:273–289 的 802 切到「请在手机上确认登录」，之后的 801 不改变该状态，
+因此不会重新显示已扫过的二维码。JSK M/1368:3742–3759、M/198:2699–2713 明确
+把 801 映射回等待，继续显示同一张码，不另取票。800 仍显示明确过期，803 仍要求
+候选身份读取后才采用账号。Cumulus 保留在用账号直到身份核对成功，原设备安全扫码
+有自己的状态机，不受此改动影响。
+
+复现：构建 account_login_ui_probe 后，分别运行 scripts/ci/account_login_smoke.py
+--qr-status legacy 或 --qr-status jsk（各用新的 --root，可选 --screenshots）。
+专项使用合成服务，三个受控响应为 802→801→800，另外对首个请求延迟回应，检查在途不并发。
+2026-11-05 用 Linux GTK/WebKitGTK 及嵌入的生产前端验证：旧版和 JSK 各 5 态、各 5 图，
+每条恰好 1 次取码、3 次轮询，无候选身份读取或账号代次变化；主账号登录回归另通过 37 态。
+Rust client_auth / qr_login / session 共 35 项通过；本地运行官方 M/3137 effect 以及 M/32、
+M/48 的表单函数也确认了无状态变更和空字段保留。无真实请求或账号变更，Windows 未实测。
+证据 .build/ui-proof/qr-ordinary-status-eeb28667/。

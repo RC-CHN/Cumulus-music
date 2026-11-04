@@ -124,11 +124,8 @@ impl MusicClient {
         Ok(QrView {
             operation_id: id,
             status: QrStatus::WaitingScan,
-            poll_after_ms: if protocol == crate::account::login::LoginProtocol::Jsk {
-                1000
-            } else {
-                2000
-            },
+            // Official ordinary PC Qrcode.jsx and M/1368 both use 1 s.
+            poll_after_ms: 1_000,
             modules,
         })
     }

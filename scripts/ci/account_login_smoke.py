@@ -22,8 +22,9 @@ def main():
     parser.add_argument('--device-removal', action='store_true')
     parser.add_argument('--quick-login', action='store_true')
     parser.add_argument('--active-switch', action='store_true')
+    parser.add_argument('--qr-status', choices=['legacy', 'jsk'])
     args = parser.parse_args()
-    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal, args.quick_login, args.active_switch)) > 1:
+    if sum((args.baseline, args.account_detail, args.profile_edit, args.account_avatar, args.device_removal, args.quick_login, args.active_switch, bool(args.qr_status))) > 1:
         parser.error('choose one proof mode')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -45,6 +46,8 @@ def main():
         env['CUMULUS_PROOF_QUICK_LOGIN'] = '1'
     if args.active_switch:
         env['CUMULUS_PROOF_ACTIVE_SWITCH'] = '1'
+    if args.qr_status:
+        env['CUMULUS_PROOF_QR_STATUS'] = args.qr_status
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache'),
                       ('XDG_RUNTIME_DIR', 'runtime'), ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
         path = root/'os-profile'/name
@@ -61,14 +64,27 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (8 if args.active_switch else 7 if args.quick_login or args.account_detail else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.device_removal else 2 if args.baseline else 37)
+    assert len(states) == (8 if args.active_switch else 7 if args.quick_login or args.account_detail else 4 if args.account_avatar else 5 if args.profile_edit or args.qr_status else 6 if args.device_removal else 2 if args.baseline else 37)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
             assert state['focused'] and state['focusValid']
         assert all(control['hit'] for control in state['controls'])
         assert state['realMusicRequests'] == 0
-    if args.active_switch:
+    if args.qr_status:
+        assert complete['qrStatus'] == args.qr_status
+        unikey, poll = '/api/login/qrcode/unikey', '/api/login/qrcode/client/login'
+        assert [row['theme'] for row in states] == ['light'] * 2 + ['dark'] * 3
+        assert [row['fixture']['paths'][poll] for row in [*states, complete]] == [1, 2, 3, 3, 3, 3]
+        assert [row['fixture']['pending'] for row in states] == [True, True, True, False, False]
+        for row in [*states, complete]:
+            assert row['nativeAccount']['status'] != 'authenticated'
+            assert row['nativeAccount']['epoch'] == states[0]['nativeAccount']['epoch']
+            assert row['fixture']['paths'][unikey] == 1
+            assert row['fixture']['paths'].get('/api/w/nuser/account/get', 0) == states[0]['fixture']['paths'].get('/api/w/nuser/account/get', 0)
+            assert row['savedAccounts']['value'] == []
+            assert 'fixture-qr-status-ticket' not in json.dumps(row)
+    elif args.active_switch:
         assert complete['activeSwitch']
         rows = {row['stage'].split('_', 2)[2]: row for row in states}
         eligibility = '/api/login/getquickloginlist'
@@ -291,6 +307,7 @@ def main():
     report = dict(ok=True, baseline=args.baseline, accountDetail=args.account_detail, profileEdit=args.profile_edit,
                   accountAvatar=args.account_avatar,
                   deviceRemoval=args.device_removal, quickLogin=args.quick_login, activeSwitch=args.active_switch,
+                  qrStatus=args.qr_status,
                   states=len(states), screenshots=len(states) if args.screenshots else 0,
                   actualWebView=True, realMusicRequests=0, realAccountWrites=0)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')

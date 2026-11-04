@@ -726,10 +726,50 @@
     assert(!one(".login-devices-page").innerHTML.includes("fixture-private-key"), "no server device key");
     await emit("complete", { ok: true, deviceRemoval: true, stageCount: count, expectNickname });
   }
+  async function ordinaryQrStatus(branch) {
+    const code = () => one('.qr-frame svg[role="img"]');
+    const waitingOnPhone = () => one(".qr-confirmation")?.textContent.includes("手机上确认");
+    const hold = () => wait(async () => {
+      await mode("inspect");
+      return window.__accountLoginPending;
+    }, "the same ticket reached its next native poll");
+    await open();
+    await wait(code, "ordinary QR rendered");
+    one(".qr-frame").focus({ preventScroll: true });
+    await hold();
+    await sleep(1100);
+    assert(code(), "an outstanding poll does not replace the current QR");
+    await stage("qr_ordinary_waiting_light", { expectGuest: true });
+    await mode("release");
+    await wait(waitingOnPhone, "802 showed the phone confirmation");
+    assert(!code(), "802 hides the QR");
+    await hold();
+    await stage("qr_ordinary_scanned_light", { expectGuest: true });
+    await mode("release");
+    await hold(); // The third request can only start after the 801 is handled.
+    if (branch === "legacy") {
+      assert(waitingOnPhone() && !code(), "legacy 801 keeps the phone confirmation and hides the code");
+    } else {
+      assert(!waitingOnPhone() && code(), "JSK 801 restores the same QR");
+    }
+    assert(document.activeElement === one(".qr-frame"), "status changes keep focus in the QR region");
+    await theme("dark");
+    await stage("qr_ordinary_after_801_dark", { expectGuest: true });
+    await mode("release");
+    await wait(() => !code() && one(".qr-expired"), "800 stopped the QR");
+    await stage("qr_ordinary_expired_dark", { expectGuest: true });
+    await closeLogin();
+    await stage("qr_ordinary_closed_dark", { expectGuest: true });
+    await emit("complete", { ok: true, qrStatus: branch, stageCount: count, expectGuest: true });
+  }
   try {
     await wait(() => ready() && one(".welcome"), "guest bootstrap");
     await theme("light");
     await resize(1120, 760);
+    if (window.__qrStatusProof) {
+      await ordinaryQrStatus(window.__qrStatusProof);
+      return;
+    }
     if (window.__activeSwitchProof) {
       await activeSwitch();
       return;

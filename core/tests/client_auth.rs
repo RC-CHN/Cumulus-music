@@ -229,6 +229,40 @@ async fn failed_or_aborted_qr_ticket_creation_releases_undisclosed_candidate() {
 }
 
 #[tokio::test]
+async fn ordinary_legacy_qr_801_keeps_phone_confirmation_on_the_same_ticket() {
+    use cumulus_core::account::QrStatus;
+    let w = World::new([
+        json!({"code":200,"unikey":"synthetic-confirmation-ticket"}).into(),
+        json!({"code":802}).into(),
+        json!({"code":801}).into(),
+        json!({"code":800}).into(),
+    ])
+    .await;
+    let before = w.client.account().unwrap();
+    let qr = w.client.begin_qr().await.unwrap();
+    assert_eq!(qr.poll_after_ms, 1_000);
+    assert_eq!(qr.status, QrStatus::WaitingScan);
+    for status in [
+        QrStatus::WaitingConfirmation,
+        QrStatus::WaitingConfirmation,
+        QrStatus::Expired,
+    ] {
+        assert_eq!(w.client.poll_qr(&qr.operation_id).await.unwrap(), status);
+    }
+    assert!(w.client.poll_qr(&qr.operation_id).await.is_err());
+    assert_eq!(w.epoch(), before.epoch);
+    let calls = w.http.calls();
+    assert_eq!(calls.len(), 5, "no identity read or new ticket");
+    assert_eq!(calls[1].path, "/api/login/qrcode/unikey");
+    for call in &calls[2..] {
+        assert_eq!(call.path, "/api/login/qrcode/client/login");
+        assert_eq!(call.payload["type"], "3");
+        assert_eq!(call.payload["key"], "synthetic-confirmation-ticket");
+        assert_eq!(call.payload["secureCaptcha"], "");
+    }
+}
+
+#[tokio::test]
 async fn qr_captcha_keeps_original_key_and_adopts_only_after_identity_read() {
     let w = World::new([
         json!({"code":200,"unikey":"challenge-qr-key"}).into(),

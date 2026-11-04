@@ -20,7 +20,13 @@ fn main() {
     let output = root.join("first");
     fs::create_dir(&output).unwrap();
     let avatar = std::env::var_os("CUMULUS_PROOF_ACCOUNT_AVATAR").is_some();
-    let service = Arc::new(fixture::Service::new(avatar));
+    let qr_status = std::env::var("CUMULUS_PROOF_QR_STATUS").ok();
+    assert!(
+        qr_status
+            .as_deref()
+            .is_none_or(|branch| matches!(branch, "legacy" | "jsk"))
+    );
+    let service = Arc::new(fixture::Service::new(avatar, qr_status.clone()));
     let mut context = assets::context();
     if avatar {
         use tauri::utils::config::Csp;
@@ -111,6 +117,7 @@ fn main() {
                 webview.eval(format!("window.__deviceRemovalProof={device_removal};")).unwrap();
                 webview.eval(format!("window.__quickLoginProof={quick_login};")).unwrap();
                 webview.eval(format!("window.__activeSwitchProof={active_switch};")).unwrap();
+                webview.eval(format!("window.__qrStatusProof={};", json!(qr_status))).unwrap();
                 let script = if std::env::var("CUMULUS_PROOF_LOGIN_ENTRY").as_deref() == Ok("1") {
                     include_str!("login_entry_ui_probe.js")
                 } else {

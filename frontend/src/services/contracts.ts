@@ -395,7 +395,7 @@ export type QrStatus =
   | 'cancelled'
   | 'error';
 export interface QrView {
-  pollAfterMs?: number;
+  pollAfterMs: number;
   operationId: string;
   status: QrStatus;
   modules: boolean[][];

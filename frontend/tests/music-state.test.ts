@@ -83,7 +83,12 @@ function backend(overrides: Partial<CoreClient> = {}): CoreClient {
     playlistPage: async () => data(page),
     searchSongs: async () => data(page),
     setLiked: async (_epoch, id, liked) => data({ id, phase: 'confirmed', observed: liked }),
-    beginQr: async () => ({ operationId: 'x', status: 'waiting_scan', modules: [] }),
+    beginQr: async () => ({
+      operationId: 'x',
+      status: 'waiting_scan',
+      pollAfterMs: 1000,
+      modules: [],
+    }),
     pollQr: async () => 'waiting_scan',
     qrIdentityPending: async () => false,
     reconcileQr: async () => {},

@@ -47,8 +47,9 @@ begin_login创建本机候选前，按官方策略读取/复用双实验分组�
 - 发送短信：/api/sms/captcha/sent；真实共享冷却由core维护，切换表单不会重置。
 - 成功授权后必须读取/api/w/nuser/account/get并核对身份才持久化、发布当前账号。
 - 二次验证/安全问题等沿用desktop-login-contracts.txt，失败只读取候选状态，不自动重发凭据/验证码。
-二维码为/api/login/qrcode/unikey→/api/login/qrcode/client/login；新版type5/1000ms轮询、旧版type3/2000ms；801/802/800/803分别对应
-等待扫码、待手机确认、过期和授权；803也必须完成原生身份核对。
+二维码为/api/login/qrcode/unikey→/api/login/qrcode/client/login；新版type5、旧版type3，
+普通扫码均按1000ms串行轮询。802进入手机确认，随后收到801时旧版保持确认、新版恢复同一张码；
+800明确过期，803仍必须完成原生身份核对。见login-entry-contracts.txt普通扫码专项。
 当前账号保留完整可读颜色，并独立显示“未开启自动登录”，不由“当前账号”标签遮掉这个选择。
 已保存账号切换使用本机候选及身份核对；移除与清理失败恢复见desktop-saved-account-removal.txt。
 退出确认可选远端/api/logout；远端失败必须保留当前会话。用户取消远端选项后可显式本机退出，

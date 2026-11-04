@@ -30,7 +30,7 @@ impl QrAuthentication {
         protocol: LoginProtocol,
     ) -> Result<Self> {
         let base = session.token()?;
-        let qr = QrLogin::with_protocol(protocol.api(candidate.client()), protocol);
+        let qr = QrLogin::ordinary(protocol.api(candidate.client()), protocol);
         Ok(Self {
             session,
             candidate,

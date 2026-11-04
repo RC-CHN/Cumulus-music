@@ -30,6 +30,7 @@ pub struct Service {
     removed_devices: Mutex<BTreeSet<u64>>,
     avatar_proof: bool,
     avatars: Mutex<Avatars>,
+    qr_status: Option<String>,
 }
 #[derive(Default)]
 struct Avatars {
@@ -39,9 +40,10 @@ struct Avatars {
     objects: BTreeMap<String, Vec<u8>>,
 }
 impl Service {
-    pub fn new(avatar_proof: bool) -> Self {
+    pub fn new(avatar_proof: bool, qr_status: Option<String>) -> Self {
         Self {
             avatar_proof,
+            qr_status,
             ..Self::default()
         }
     }
@@ -83,8 +85,64 @@ impl HttpBackend for Service {
                 .find_map(|part| part.strip_prefix("params="))
                 .ok_or(Error::Response("fixture EAPI"))?;
             let (path, data) = eapi::unwrap(params)?;
-            *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
+            let count = {
+                let mut paths = self.paths.lock().unwrap();
+                let count = paths.entry(path.clone()).or_default();
+                *count += 1;
+                *count
+            };
             let mode = self.mode.lock().unwrap().clone();
+            if self.qr_status.as_deref() == Some("legacy")
+                && path == "/api/rtrs/abt/front/expinfo/list"
+                && data["expNames"]
+                    .as_str()
+                    .is_some_and(|names| names.contains("PH-PC-loginJsk"))
+            {
+                return Ok(auth::reply(
+                    json!({"code":200,"data":[
+                        {"expName":"PH-PC-loginJsk","expGroupName":"c"},
+                        {"expName":"PH-PC-newLoginBenefit","expGroupName":"t1"}
+                    ]}),
+                    None,
+                ));
+            }
+            if let Some(protocol) = &self.qr_status
+                && matches!(
+                    path.as_str(),
+                    "/api/login/qrcode/unikey" | "/api/login/qrcode/client/login"
+                )
+            {
+                let legacy = protocol == "legacy";
+                if data["type"] != if legacy { "3" } else { "5" }
+                    || data["lastUniKey"].is_string()
+                    || !legacy && data["fromPage"] != "JSK"
+                {
+                    return Err(Error::Response("fixture ordinary QR request"));
+                }
+                if path.ends_with("/unikey") {
+                    return Ok(auth::reply(
+                        json!({"code":200,"unikey":"fixture-qr-status-ticket"}),
+                        None,
+                    ));
+                }
+                if data["key"] != "fixture-qr-status-ticket" || data["secureCaptcha"] != "" {
+                    return Err(Error::Response("fixture ordinary QR poll fields"));
+                }
+                let code = match count {
+                    1 => 802,
+                    2 => 801,
+                    3 => 800,
+                    _ => return Err(Error::Response("fixture unexpected ordinary QR poll")),
+                };
+                let (sender, receiver) = oneshot::channel();
+                if self.held.lock().unwrap().replace(sender).is_some() {
+                    return Err(Error::Response("fixture overlapping ordinary QR polls"));
+                }
+                receiver
+                    .await
+                    .map_err(|_| Error::Response("fixture QR release"))?;
+                return Ok(auth::reply(json!({"code":code}), None));
+            }
             if path == "/api/rtrs/abt/front/expinfo/list"
                 && data["expNames"] == "PH-PC-quickLoginSwitchAccountNew"
             {

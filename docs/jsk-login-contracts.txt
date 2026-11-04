@@ -50,8 +50,10 @@ M/290 verifySms 明确回 success=true、ursToken=""，M/1368 只在非空时传
 二维码：/api/login/qrcode/unikey {type:5}，随后 /api/login/qrcode/client/login
 {key,type:5,secureCaptcha:""}；原生 EAPI 的值字符串化与 M/48/M/402 一致。
 M/1368 默认 clientType=5，kernelServiceLogin 调用没有覆盖它；新版不添加 lastUniKey。
-旧链 type=3/previous-key 行为不变。QrView.pollAfterMs 返回新版1000/旧版2000；Vue串行定时轮询，
-上一请求完成才计时，取消/替换后不再接收。801/802/800/803 映射等待/手机确认/过期/授权。
+普通旧链 type=3，用户重试以新尝试请求新票，不携带设备安全码的 previous-key。
+普通 QR 的 QrView.pollAfterMs 新旧均为1000；Vue串行定时轮询，上一请求完成才计时，
+取消/替换后不再接收。802进入手机确认，801在JSK恢复同一张码；旧版保留已显示的确认。
+800/803分别为过期/授权。此节不改变独立设备安全码的时序。
 803仍要读 /api/w/nuser/account/get 核对身份、候选代次和当前账号，才能提交保存；取消后的迟到803
 不能发布账号或保存为当前账号。二维码 key 仅用于原生生成模块矩阵。
 

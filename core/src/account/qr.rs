@@ -53,12 +53,13 @@ pub struct QrSnapshot {
 pub struct QrLogin {
     api: Arc<dyn Api>,
     protocol: LoginProtocol,
+    ordinary: bool,
     state: Mutex<QrState>,
 }
 
 impl QrLogin {
     pub fn new(api: Arc<dyn Api>) -> Self {
-        Self::with_protocol(api, LoginProtocol::Legacy)
+        Self::with_protocol(api, LoginProtocol::Legacy, false)
     }
     /// Native-only legacy security tickets supplied by an acknowledged login
     /// response. Seeding renders/polls that ticket without requesting a new one.
@@ -72,10 +73,15 @@ impl QrLogin {
         }
         Ok(qr)
     }
-    pub(crate) fn with_protocol(api: Arc<dyn Api>, protocol: LoginProtocol) -> Self {
+    pub(crate) fn ordinary(api: Arc<dyn Api>, protocol: LoginProtocol) -> Self {
+        Self::with_protocol(api, protocol, true)
+    }
+
+    fn with_protocol(api: Arc<dyn Api>, protocol: LoginProtocol, ordinary: bool) -> Self {
         Self {
             api,
             protocol,
+            ordinary,
             state: Mutex::new(QrState {
                 generation: 0,
                 key: None,
@@ -180,7 +186,7 @@ impl QrLogin {
             generation,
         };
         let mut payload = json!({"key": key, "type": self.protocol.qr_type()});
-        if self.protocol == LoginProtocol::Jsk {
+        if self.ordinary || self.protocol == LoginProtocol::Jsk {
             payload["secureCaptcha"] = "".into();
         }
         if let Some(captcha) = secure_captcha {
@@ -199,6 +205,15 @@ impl QrLogin {
         }
         state.status = match response["code"].as_i64() {
             Some(800) => QrStatus::Expired,
+            // Ordinary PC legacy M/3137 ignores 801: a prior scan remains
+            // acknowledged. JSK M/198 explicitly returns to the QR.
+            Some(801)
+                if self.ordinary
+                    && self.protocol == LoginProtocol::Legacy
+                    && state.status == QrStatus::WaitingConfirmation =>
+            {
+                QrStatus::WaitingConfirmation
+            }
             Some(801) => QrStatus::WaitingScan,
             Some(802) => QrStatus::WaitingConfirmation,
             Some(803) => QrStatus::Authorized,
