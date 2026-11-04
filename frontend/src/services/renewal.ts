@@ -32,7 +32,7 @@ export function renewalMessage(state: RenewalState): string {
     expired: '登录已失效，请重新登录',
     login_in_progress: '请先完成或取消正在进行的登录',
     policy_disabled: '服务暂未为此账号启用自动续期，登录失效后需重新登录',
-    ready: '回到应用时会自动检查登录续期',
+    ready: '现在可以检查登录续期，回到应用时也会自动检查',
     checking: '正在检查登录续期…',
     missing_credentials: '当前会话未保存续期凭据，可以继续使用；登录失效后需重新登录',
     not_due: '距登录或上次成功续期不足 24 小时，暂时无需续期',

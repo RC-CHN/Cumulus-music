@@ -85,7 +85,7 @@ fn main() {
   let clock_handle=app.handle().clone();
   app.listen("renewal-clock-proof",move|event| {
    let action: String=serde_json::from_str(event.payload()).unwrap();
-   let offset=match action.as_str() {"reset"=>0,"advance"=>86401,_=>panic!("unexpected fixture clock action")};
+   let offset=match action.as_str() {"reset"=>0,"advance"=>86401,"advance_again"=>172802,_=>panic!("unexpected fixture clock action")};
    clock_offset.store(offset,Ordering::SeqCst);
    clock_handle.get_webview_window("main").unwrap().eval(format!("window.__renewalClockAck={};",json!(action))).unwrap();
   });

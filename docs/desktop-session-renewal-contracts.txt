@@ -69,7 +69,7 @@ UI IPC 丢失响应后只重新读取状态，不自动重发命令；事件/读
   npm --prefix frontend run build
   CARGO_INCREMENTAL=0 cargo build --locked --offline -p cumulus-desktop --features custom-protocol --example renewal_ui_probe
   xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 \
-    python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 7
+    python3 desktop/examples/run_auth_probe.py /absolute/new-proof-root --binary .build/target/debug/examples/renewal_ui_probe --stage-prefix renewal_ --screenshots 9
   python3 desktop/examples/audit_renewal_probe.py /absolute/new-proof-root
 桌面探针使用真实 Vue/WebView/IPC/续期 pump 与持久化，仅音乐 HTTP 为进程内合成服务。
 DOM 完成缺凭据→新登录未到期→原生测试时钟推进后检查并轮换→重复检查间隔→第二次新登录未到期→
@@ -124,3 +124,16 @@ UI“暂时无需续期”不承诺已经轮换；lastSuccess只公开已确认�
 原生注入with_session_renewal_clock仅配置宿主时钟，测试不修改系统时间；IPC没有clock或force参数。
 公开CI的session_renewal_smoke.py使用合成HTTP、真实WebView/IPC/pump，独立检查两次新登录零轮换、
 到期轮换、重复检查抑制、未决写不重放及SQLite持久化；不依赖官方私有文件或真实账号。
+
+账号弹窗中的到期状态回读（2026-11-05）
+M/1368:2292–2308 每次检查从存储读最近时间，并以当前时钟对照24小时；旧UI投影只保留
+进程内最后一次检查结果，可能重开就错误显示可查，或过了一整天还显示暂时无需续期。
+社区弹窗现以同一原生时钟和同一个24小时判定回读最近登录/已确认续期，不发送请求：
+24小时前显示「暂时无需续期」，整24小时已可检查；系统时钟回拨不提前开放。重新打开
+弹窗或收到原生通知时重读。已完成的成功回执在当前间隔内仍可显示，跨过间隔后显示可查并
+保留独立的上次成功时间。新登录只参与原生判定，不把其时间或令牌送到UI，也不冒称成功轮换。
+登录中、忙、未决写、缺凭据、禁用实验仍按原有优先级；回读到期不会自行轮换或启动新计时器。
+Rust 44 项续期/策略回归覆盖新登录、重启、恰满 24 小时、时钟回拨、策略、未决恢复及换号。
+隔离 Linux GTK/WebKitGTK 的 760×540 生产前端跑完 9 态、9 图：两次跨过间隔后重开弹窗，
+均只更新状态，无新增轮换请求；已有的两次显式合成请求与 SQLite 独立审计通过。
+证据 .build/ui-proof/renewal-readiness-f2e9a2de/small/。无真实服务请求或账号变更；Windows 未实测。

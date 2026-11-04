@@ -19,7 +19,7 @@ use cumulus_core::{
 use serde_json::json;
 use std::sync::{
     Arc,
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicU64, AtomicUsize, Ordering},
 };
 use support::http::{HttpResponse, ScriptHttp, gate, reply};
 
@@ -146,7 +146,7 @@ async fn desktop_empty_token_rotates_once_and_daily_gate_survives_reopen() {
     .await;
     let result = w.check().await.unwrap();
     assert_eq!(result.state, State::Refreshed);
-    assert!(result.last_success.is_some());
+    let success = result.last_success.unwrap();
     let calls = w.http.calls();
     assert_eq!(calls[1].path, "/api/login/token/refresh/v1");
     assert_eq!(calls[1].payload["ydDeviceToken"], "");
@@ -156,15 +156,113 @@ async fn desktop_empty_token_rotates_once_and_daily_gate_survives_reopen() {
     assert_eq!(calls[1].payload["_sign"], sign);
     assert_eq!(w.check().await.unwrap().state, State::NotDue);
     let http = Arc::new(ScriptHttp::new([identity(1)]));
-    let reopened = w.reopened(http.clone());
+    let clock = Arc::new(AtomicU64::new(success + 86_399));
+    let reopened = w.reopened(http.clone()).with_session_renewal_clock({
+        let clock = clock.clone();
+        Arc::new(move || Ok(clock.load(Ordering::SeqCst)))
+    });
     let account = reopened.restore_account().await.unwrap();
+    let before = reopened.session_renewal(&account.epoch).unwrap();
+    assert_eq!(
+        before.state,
+        State::NotDue,
+        "read the saved day before checking"
+    );
+    assert_eq!(before.last_success, Some(success));
+    assert_eq!(http.calls().len(), 1);
     let status = reopened
         .renew_session(&account.epoch, Action::Check)
         .await
         .unwrap();
     assert_eq!(status.state, State::NotDue);
     assert_eq!(status.last_success, result.last_success);
+    clock.store(success - 1, Ordering::SeqCst);
+    assert_eq!(
+        reopened.session_renewal(&account.epoch).unwrap().state,
+        State::NotDue
+    );
+    clock.store(success + 86_400, Ordering::SeqCst);
+    let due = reopened.session_renewal(&account.epoch).unwrap();
+    assert_eq!(
+        due.state,
+        State::Ready,
+        "an old NotDue result must not survive the daily boundary"
+    );
+    assert_eq!(due.last_success, Some(success));
+    assert!(due.can_check && !due.can_reconcile);
     assert_eq!(http.calls().len(), 1);
+}
+
+#[tokio::test]
+async fn fresh_jsk_login_projects_the_local_interval_before_any_renewal_check() {
+    use cumulus_core::account::profiles::ProfileRegistry;
+
+    let root = tempfile::tempdir().unwrap();
+    let http = Arc::new(ScriptHttp::new([
+        json!({"code":200,"data":[
+            {"expName":"PH-PC-loginJsk","expGroupName":"t1"},
+            {"expName":"PH-PC-newLoginBenefit","expGroupName":"t1"}
+        ]})
+        .into(),
+        rotated(),
+        identity(2),
+    ]));
+    let clock = Arc::new(AtomicU64::new(0));
+    let client = MusicClient::open_with_http_backend(root.path(), None, http.clone())
+        .unwrap()
+        .with_official_login_policy()
+        .with_session_renewal(DeviceInfo::default(), Arc::new(DesktopDeviceToken))
+        .with_session_renewal_clock({
+            let clock = clock.clone();
+            Arc::new(move || Ok(clock.load(Ordering::SeqCst)))
+        });
+    let epoch = client.account().unwrap().epoch;
+    let flow = client
+        .begin_login(&epoch, LoginMode::Email, None)
+        .await
+        .unwrap();
+    client
+        .login_command(
+            &flow.operation_id,
+            LoginCommand::Email {
+                address: "fresh@example.test".into(),
+                password: "synthetic".into(),
+                remember: true,
+            },
+        )
+        .await
+        .unwrap();
+    let at = ProfileRegistry::open(root.path(), ApiOrigin::Pc)
+        .unwrap()
+        .current(ClientProfile::default())
+        .unwrap()
+        .unwrap()
+        .credentials
+        .login_credentials()
+        .unwrap()
+        .last_login_at
+        .unwrap();
+    let epoch = client.account().unwrap().epoch;
+    for (time, expected) in [
+        (at, State::NotDue),
+        (at - 1, State::NotDue),
+        (at + 86_399, State::NotDue),
+        (at + 86_400, State::Ready),
+    ] {
+        clock.store(time, Ordering::SeqCst);
+        let view = client.session_renewal(&epoch).unwrap();
+        assert_eq!(view.state, expected);
+        assert!(
+            view.last_success.is_none(),
+            "a new login is not a successful renewal"
+        );
+        assert!(!serde_json::to_string(&view).unwrap().contains("lastLogin"));
+    }
+    assert_eq!(
+        http.calls().len(),
+        3,
+        "the read-only view performs no network I/O"
+    );
 }
 
 #[tokio::test]

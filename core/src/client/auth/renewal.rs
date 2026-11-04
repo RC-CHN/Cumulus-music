@@ -5,6 +5,7 @@ use crate::{
         SessionStatus,
         refresh::{AccountLifecycle, DeviceInfo, DeviceTokenProvider, RefreshOutcome},
     },
+    protocol::http::MusicHttpClient,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{Arc, Mutex};
@@ -69,6 +70,14 @@ impl Drop for Flight<'_> {
 }
 
 impl MusicClient {
+    fn renewal_lifecycle(&self, client: Arc<MusicHttpClient>) -> AccountLifecycle {
+        if let Some(clock) = &self.auth.renewal.clock {
+            AccountLifecycle::with_clock(self.session.clone(), client, clock.clone())
+        } else {
+            AccountLifecycle::new(self.session.clone(), client)
+        }
+    }
+
     /// Native clock injection for deterministic hosts and renewal verification.
     /// No IPC exposes a clock or a way to bypass the durable daily gate.
     pub fn with_session_renewal_clock(
@@ -131,8 +140,8 @@ impl MusicClient {
                     .native_account_client()?
                     .filter(|_| host.native.is_some())
                 {
-                    let status = AccountLifecycle::new(self.session.clone(), client.clone())
-                        .refresh_status()?;
+                    let lifecycle = self.renewal_lifecycle(client.clone());
+                    let status = lifecycle.refresh_status()?;
                     last_success = status.last_success;
                     let credentials = client.credentials().login_credentials()?;
                     let last = host
@@ -160,7 +169,17 @@ impl MusicClient {
                     } else if self.session.login_policy_enabled(&token)? == Some(false) {
                         RenewalState::PolicyDisabled
                     } else {
-                        last.unwrap_or(RenewalState::Ready)
+                        // Ready/not-due are current native clock observations,
+                        // not cached results from a previous foreground event.
+                        match lifecycle.jsk_not_due(credentials.last_login_at, status.last_success)
+                        {
+                            Ok(true) if last == Some(RenewalState::Refreshed) => {
+                                RenewalState::Refreshed
+                            }
+                            Ok(true) => RenewalState::NotDue,
+                            Ok(false) if last != Some(RenewalState::Failed) => RenewalState::Ready,
+                            Ok(false) | Err(_) => RenewalState::Failed,
+                        }
                     }
                 } else {
                     RenewalState::Unavailable
@@ -215,11 +234,7 @@ impl MusicClient {
             .ok_or(Error::State("session renewal unavailable"))?;
         let mut device = native.device.clone();
         device.device_id = client.credentials().device_id()?;
-        let lifecycle = if let Some(clock) = &host.clock {
-            AccountLifecycle::with_clock(self.session.clone(), client, clock.clone())
-        } else {
-            AccountLifecycle::new(self.session.clone(), client)
-        };
+        let lifecycle = self.renewal_lifecycle(client);
         self.session.check_generation(&token)?;
         *host.flight.lock().map_err(|_| Error::LockPoisoned)? = Some(token.clone());
         let flight = Flight(&host.flight);

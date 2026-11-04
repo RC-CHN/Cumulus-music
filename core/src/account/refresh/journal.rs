@@ -1,3 +1,4 @@
+use super::within_jsk_interval;
 use crate::{Error, Result, storage::StateStore};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -41,10 +42,7 @@ pub(super) fn begin(
             return Ok(Begin::RecoveryRequired);
         }
         let last_success = previous.and_then(|p| p.last_success);
-        // Official l && now-l < interval also skips after a backward clock
-        // adjustment. Zero is false in the inspected JS.
-        if !force && last_success.is_some_and(|last| last != 0 && now < last.saturating_add(86400))
-        {
+        if !force && within_jsk_interval(now, None, last_success) {
             return Ok(Begin::NotDue);
         }
         let intent = Intent {

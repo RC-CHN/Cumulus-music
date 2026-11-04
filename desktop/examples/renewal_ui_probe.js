@@ -9,13 +9,16 @@
  async function clock(action){window.__renewalClockAck='';await window.__TAURI_INTERNALS__.invoke('plugin:event|emit',{event:'renewal-clock-proof',payload:action});await wait(()=>window.__renewalClockAck===action,'native_clock_ack');}
  async function stage(name){await sleep(400);const d=el('dialog'),r=d?.getBoundingClientRect();if(d&&(d.scrollWidth>d.clientWidth+1||r.top<0||r.bottom>innerHeight+1))throw Error('layout_overflow');window.__authAck='';await report(name,{state:state(),overflow:false});await wait(()=>window.__authAck===name,'native_ack');await sleep(900);}
  async function open(){await click(el('.account-button'));await wait(()=>state(),'renewal_ready');}
+ async function reopen(){await click(el('.account-dialog .dialog-close'));await wait(()=>!el('dialog'),'chooser_closed');await open();}
  async function login(){await click(el('.account-add'));await wait(()=>el('.login-methods'),'login');await click(text('邮箱'));await wait(()=>el('[data-login-status]')?.dataset.loginStatus==='ready','email_ready');fill('登录邮箱','alice@example.test');fill('登录密码','fixture-password');await click(el('[aria-label="同意登录协议"]'));await click(el('.login-submit'));await wait(()=>!el('dialog'),'login_done');await open();}
  try {
   await wait(()=>el('.account-button')?.textContent.includes('邮箱验证账号'),'restored');await open();
   await wait(()=>state()==='missing_credentials','missing_credentials');await stage('renewal_missing');
   await login();await wait(()=>state()==='not_due','fresh_login_daily_gate');await stage('renewal_login');
-  await clock('advance');await click(text('检查登录续期'));await wait(()=>state()==='refreshed','due_refresh');await stage('renewal_success');
+  await clock('advance');await reopen();await wait(()=>state()==='ready','read_due_after_fresh_login');await stage('renewal_due');
+  await click(text('检查登录续期'));await wait(()=>state()==='refreshed','due_refresh');await stage('renewal_success');
   await click(text('检查登录续期'));await wait(()=>state()==='not_due','daily_gate');await stage('renewal_daily');
+  await clock('advance_again');await reopen();await wait(()=>state()==='ready','read_due_after_rotation');await stage('renewal_due_again');
   await clock('reset');await login();await wait(()=>state()==='not_due','second_fresh_login_gate');await stage('renewal_second_login');
   await clock('advance');await click(text('检查登录续期'));await wait(()=>['recovery_required','reauthentication_required'].includes(state()),'unknown_rotation');await stage('renewal_unknown');
   await click(text('核对续期结果'));await wait(()=>state()==='reauthentication_required','reconcile_only');await stage('renewal_relogin');

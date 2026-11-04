@@ -1,7 +1,7 @@
 use super::{
     DeviceInfo,
     journal::{self, Begin, Intent},
-    refresh_payload,
+    refresh_payload, within_jsk_interval,
 };
 use crate::{
     Error, Result,
@@ -113,6 +113,18 @@ impl AccountLifecycle {
         Ok(status)
     }
 
+    pub(crate) fn jsk_not_due(
+        &self,
+        last_login: Option<u64>,
+        last_success: Option<u64>,
+    ) -> Result<bool> {
+        Ok(within_jsk_interval(
+            (self.clock)()?,
+            last_login,
+            last_success,
+        ))
+    }
+
     async fn identity(&self, expected: &SessionToken) -> Result<Value> {
         self.session.require_api(expected, &self.api())?;
         let profile = self
@@ -190,17 +202,18 @@ impl AccountLifecycle {
             return Ok(RefreshOutcome::MissingCredentials);
         }
         let store = credentials.store();
-        if journal::load(&store, uid)?.is_some_and(|i| i.pending) {
+        let previous = journal::load(&store, uid)?;
+        if previous.as_ref().is_some_and(|i| i.pending) {
             return Ok(RefreshOutcome::RecoveryRequired);
         }
         let now = (self.clock)()?;
-        let last_update = journal::load(&store, uid)?
-            .and_then(|i| i.last_success)
-            .into_iter()
-            .chain(before.last_login_at)
-            .filter(|at| *at != 0)
-            .max();
-        if !force && last_update.is_some_and(|last| now < last.saturating_add(86400)) {
+        if !force
+            && within_jsk_interval(
+                now,
+                before.last_login_at,
+                previous.and_then(|i| i.last_success),
+            )
+        {
             return Ok(RefreshOutcome::NotDue);
         }
         if device.device_id != credentials.device_id()? {
