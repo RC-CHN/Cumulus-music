@@ -218,6 +218,7 @@ const retryButton = ref<HTMLButtonElement>();
 const moreButton = ref<HTMLButtonElement>(),
   moreFooter = ref<HTMLElement>();
 const searchSongTables = ref<InstanceType<typeof TrackTable>[]>([]);
+const searchCardGrids = ref<InstanceType<typeof SearchCardGrid>[]>([]);
 const lyricBody = ref<HTMLElement>();
 const lyricItems = computed(() =>
   lyrics.value ? (view.value?.sections[0]?.items.filter((item) => item.kind === 'song') ?? []) : [],
@@ -397,6 +398,8 @@ async function restore() {
     if (Number.isInteger(index)) lyricWindow.focus(index);
   }
   if (category.value === 'songs') searchSongTables.value[0]?.restoreScroll(position.tracks);
+  if (category.value === 'playlists')
+    for (const grid of searchCardGrids.value) grid.reconcileViewport();
   await waitForViewportFrames(2);
   if (generation !== loadGeneration || !panel.value) return;
   if (position.focus) {
@@ -626,7 +629,11 @@ onBeforeUnmount(() => {
         :aria-labelledby="`search-tab-${category}`"
         :aria-busy="loading"
         class="search-result-panel"
-        :class="{ 'search-song-panel': category === 'songs', 'search-lyrics-panel': lyrics }"
+        :class="{
+          'search-song-panel': category === 'songs',
+          'search-lyrics-panel': lyrics,
+          'search-playlist-panel': category === 'playlists',
+        }"
         tabindex="0"
         @scroll.capture.passive="scroll"
       >
@@ -837,17 +844,22 @@ onBeforeUnmount(() => {
             />
             <SearchCardGrid
               v-if="section.items.some((i) => i.kind !== 'song')"
+              ref="searchCardGrids"
               :items="previewItems(section)"
               :scroller="panel"
               :virtual="gridWaterfall"
               :preview="oneRowPreview(section)"
               :carousel="carousel(section)"
+              :playlist-table="category === 'playlists'"
               @position="previewPosition(section, $event)"
-              v-slot="{ item }"
+              v-slot="{ item, index }"
             >
               <SearchResultCard
                 :item="item"
                 :category="category"
+                :playlist-row="
+                  category === 'playlists' ? { index, number: offset + index + 1 } : undefined
+                "
                 :match-keyword="matchKeyword"
                 :playable="playable"
                 :queueable="queueable"

@@ -10,9 +10,13 @@ const props = defineProps<{
   virtual?: boolean;
   preview?: boolean;
   carousel?: { label: string; compact: boolean; position: number };
+  playlistTable?: boolean;
 }>();
 const emit = defineEmits<{ position: [index: number] }>();
+const PLAYLIST_ROW_HEIGHT = 64;
+const positionedRows = computed(() => props.playlistTable && props.virtual);
 const grid = ref<HTMLElement>();
+const heading = ref<HTMLElement>();
 const columns = ref(1),
   pitch = ref(260);
 const range = shallowRef({ start: 0, end: 5 });
@@ -30,10 +34,12 @@ const end = computed(() =>
 );
 const visible = computed(() => props.items.slice(start.value, end.value));
 const top = computed(() =>
-  props.virtual && range.value.start ? range.value.start * pitch.value - 20 : 0,
+  props.virtual && !positionedRows.value && range.value.start
+    ? range.value.start * pitch.value - 20
+    : 0,
 );
 const bottom = computed(() =>
-  props.virtual && range.value.end < count.value
+  props.virtual && !positionedRows.value && range.value.end < count.value
     ? (count.value - range.value.end) * pitch.value - 20
     : 0,
 );
@@ -52,7 +58,9 @@ function update(measure = false) {
     document.activeElement instanceof HTMLElement && grid.value.contains(document.activeElement)
       ? document.activeElement.closest<HTMLElement>('[data-grid-index]')
       : null;
-  columns.value = Math.max(1, getComputedStyle(grid.value).gridTemplateColumns.split(' ').length);
+  columns.value = props.playlistTable
+    ? 1
+    : Math.max(1, getComputedStyle(grid.value).gridTemplateColumns.split(' ').length);
   if (props.preview) {
     if (focused && Number(focused.dataset.gridIndex) >= columns.value) {
       void nextTick(() => {
@@ -75,7 +83,8 @@ function update(measure = false) {
     before = Math.max(0, scroller.scrollTop - offset);
   const anchor = Math.floor(before / oldPitch) * oldColumns;
   const card = grid.value.querySelector<HTMLElement>('.search-result-card');
-  if (card) pitch.value = card.getBoundingClientRect().height + 20;
+  if (props.playlistTable) pitch.value = PLAYLIST_ROW_HEIGHT;
+  else if (card) pitch.value = card.getBoundingClientRect().height + 20;
   if (
     measure &&
     before > 0 &&
@@ -100,7 +109,7 @@ function scroll() {
     });
 }
 watch(
-  () => [grid.value, props.scroller, props.virtual, props.preview] as const,
+  () => [grid.value, props.scroller, props.virtual, props.preview, props.playlistTable] as const,
   () => {
     scroller?.removeEventListener('scroll', scroll);
     observer?.disconnect();
@@ -119,11 +128,12 @@ watch(
   () => update(),
   { flush: 'post' },
 );
-async function focusItem(index: number, last = false) {
+async function focusItem(index: number, last = false, primary = false) {
   if (!scroller) return;
   const row = Math.floor(index / columns.value),
-    target = gridOffset() + row * pitch.value;
-  if (target < scroller.scrollTop) scroller.scrollTop = target;
+    target = gridOffset() + row * pitch.value,
+    headerHeight = heading.value?.offsetHeight ?? 0;
+  if (target < scroller.scrollTop + headerHeight) scroller.scrollTop = target - headerHeight;
   else if (target + pitch.value > scroller.scrollTop + scroller.clientHeight)
     scroller.scrollTop = target + pitch.value - scroller.clientHeight;
   update();
@@ -131,7 +141,13 @@ async function focusItem(index: number, last = false) {
   const buttons = grid.value
     ?.querySelector(`[data-grid-index="${index}"]`)
     ?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
-  (last ? buttons?.[buttons.length - 1] : buttons?.[0])?.focus({ preventScroll: true });
+  const opener =
+    primary && props.playlistTable
+      ? [...(buttons ?? [])].find((button) => button.matches('.search-card-open'))
+      : undefined;
+  (opener ?? (last ? buttons?.[buttons.length - 1] : buttons?.[0]))?.focus({
+    preventScroll: true,
+  });
 }
 function keydown(event: KeyboardEvent) {
   if (!props.virtual || !(event.target instanceof HTMLElement)) return;
@@ -162,7 +178,7 @@ function keydown(event: KeyboardEvent) {
     };
     if (event.key in move) {
       event.preventDefault();
-      void focusItem(Math.max(0, Math.min(props.items.length - 1, move[event.key]!)));
+      void focusItem(Math.max(0, Math.min(props.items.length - 1, move[event.key]!)), false, true);
     }
   }
 }
@@ -171,6 +187,7 @@ onBeforeUnmount(() => {
   observer?.disconnect();
   cancelAnimationFrame(frame);
 });
+defineExpose({ reconcileViewport: () => update() });
 </script>
 <template>
   <SearchPreviewCarousel
@@ -184,32 +201,63 @@ onBeforeUnmount(() => {
   </SearchPreviewCarousel>
   <div
     v-else
-    ref="grid"
-    class="search-result-grid"
-    :class="{
-      'search-person-grid': items.every((i) => i.kind === 'artist' || i.kind === 'user'),
-      'search-related-grid': items.every((i) => i.kind === 'related'),
-      'search-video-grid': items.every((i) => i.kind === 'mv'),
-      'search-voice-grid': items.every((i) => i.kind === 'voice'),
-    }"
-    :data-loaded-count="items.length"
-    :data-preview="preview || undefined"
-    @keydown="keydown"
+    :class="{ 'search-playlist-table': playlistTable }"
+    :role="playlistTable ? 'table' : undefined"
+    :aria-label="playlistTable ? '搜索歌单结果' : undefined"
+    :aria-rowcount="playlistTable ? items.length + 1 : undefined"
   >
-    <div v-if="top" aria-hidden="true" class="search-grid-spacer" :style="{ height: `${top}px` }" />
     <div
-      v-for="(item, i) in visible"
-      :key="searchCardKey(item)"
-      class="search-grid-cell"
-      :data-grid-index="start + i"
+      v-if="playlistTable"
+      ref="heading"
+      class="search-playlist-columns"
+      role="row"
+      aria-rowindex="1"
     >
-      <slot :item="item" :index="start + i" />
+      <span role="columnheader" aria-label="序号">#</span>
+      <span role="columnheader">标题</span>
+      <span role="columnheader">歌曲数</span>
+      <span role="columnheader">创建者</span>
+      <span role="columnheader">播放量</span>
     </div>
     <div
-      v-if="bottom"
-      aria-hidden="true"
-      class="search-grid-spacer"
-      :style="{ height: `${bottom}px` }"
-    />
+      ref="grid"
+      class="search-result-grid"
+      :class="{
+        'search-playlist-grid': playlistTable,
+        'search-playlist-virtual': positionedRows,
+        'search-person-grid': items.every((i) => i.kind === 'artist' || i.kind === 'user'),
+        'search-related-grid': items.every((i) => i.kind === 'related'),
+        'search-video-grid': items.every((i) => i.kind === 'mv'),
+        'search-voice-grid': items.every((i) => i.kind === 'voice'),
+      }"
+      :role="playlistTable ? 'rowgroup' : undefined"
+      :style="positionedRows ? { height: `${items.length * PLAYLIST_ROW_HEIGHT}px` } : undefined"
+      :data-loaded-count="items.length"
+      :data-preview="preview || undefined"
+      @keydown="keydown"
+    >
+      <div
+        v-if="top"
+        aria-hidden="true"
+        class="search-grid-spacer"
+        :style="{ height: `${top}px` }"
+      />
+      <div
+        v-for="(item, i) in visible"
+        :key="searchCardKey(item)"
+        class="search-grid-cell"
+        :role="playlistTable ? 'presentation' : undefined"
+        :data-grid-index="start + i"
+        :style="positionedRows ? { top: `${(start + i) * PLAYLIST_ROW_HEIGHT}px` } : undefined"
+      >
+        <slot :item="item" :index="start + i" />
+      </div>
+      <div
+        v-if="bottom"
+        aria-hidden="true"
+        class="search-grid-spacer"
+        :style="{ height: `${bottom}px` }"
+      />
+    </div>
   </div>
 </template>

@@ -9,7 +9,7 @@ import {
 } from '../../services/playlistMenu';
 import { artworkAt } from '../../services/artwork';
 import { time } from '../../services/player';
-import { playlistCoverCount } from '../../services/playlistHeader';
+import { playlistCoverCount, playlistTableCount } from '../../services/playlistHeader';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
 import ActionMenu from '../ActionMenu.vue';
@@ -31,6 +31,7 @@ import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFoc
 const props = defineProps<{
   item: SearchItem;
   category: SearchCategory;
+  playlistRow?: { index: number; number: number };
   matchKeyword: string;
   playable: boolean;
   queueable: boolean;
@@ -71,8 +72,9 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
       : null;
   const target =
     focused ??
+    element.value?.querySelector<HTMLButtonElement>('.search-card-open:not(:disabled)') ??
     element.value?.querySelector<HTMLButtonElement>(
-      '.search-card-open:not(:disabled), .search-card-play:not(:disabled), .menu-trigger',
+      '.search-card-play:not(:disabled), .menu-trigger',
     );
   const rect = target?.getBoundingClientRect() ?? element.value?.getBoundingClientRect();
   if (!rect) return;
@@ -115,6 +117,11 @@ const playlistCountId = useId();
 const playlistCount = computed(() =>
   props.category === 'all' && props.item.kind === 'playlist'
     ? playlistCoverCount(props.item.playlist.playCount, props.item.playlist.private)
+    : null,
+);
+const rowPlayCount = computed(() =>
+  props.playlistRow && props.item.kind === 'playlist'
+    ? playlistTableCount(props.item.playlist.playCount, props.item.playlist.private)
     : null,
 );
 const markedTitle = computed(
@@ -265,6 +272,15 @@ function doubleClick(event: MouseEvent) {
   )
     action('play');
 }
+function activateRow(event: MouseEvent) {
+  if (
+    props.playlistRow &&
+    !event.defaultPrevented &&
+    event.target instanceof Element &&
+    !event.target.closest('button, a, .action-menu-host')
+  )
+    action('open');
+}
 
 const unavailable = computed(() =>
   props.item.kind === 'voice'
@@ -366,200 +382,284 @@ watch(
 );
 </script>
 <template>
-  <article
+  <component
+    :is="playlistRow ? 'div' : 'article'"
     ref="element"
     class="search-result-card"
+    :role="playlistRow ? 'row' : undefined"
+    :aria-rowindex="playlistRow ? playlistRow.index + 2 : undefined"
     :data-result-key="searchCardKey(item)"
     :class="{
       'search-person-card': card.round,
       'search-related-word': item.kind === 'related',
       'search-video-card': item.kind === 'mv',
-      'search-cover-card': ['playlist', 'album', 'podcast', 'mv'].includes(item.kind),
+      'search-cover-card':
+        !playlistRow && ['playlist', 'album', 'podcast', 'mv'].includes(item.kind),
+      'search-playlist-row': playlistRow,
+      'search-playlist-striped': playlistRow && playlistRow.index % 2 === 0,
       'search-voice-card': item.kind === 'voice',
       'search-card-current': current,
       'search-card-unavailable': unavailable && !canPlay,
     }"
     @contextmenu.prevent="contextMenu"
     @keydown.shift.f10.prevent="contextMenu"
+    @click="activateRow"
     @dblclick="doubleClick"
   >
-    <button
-      v-if="item.kind !== 'voice'"
-      type="button"
-      class="search-card-open"
-      :disabled="unavailable"
-      :aria-label="`${item.kind === 'user' ? '查看用户主页' : item.kind === 'mv' ? '播放 MV' : '查看'} ${card.name}`"
-      :aria-describedby="videoStats ? videoStatsId : playlistCount ? playlistCountId : undefined"
-      :data-tooltip="[card.name, card.sub].filter(Boolean).join(' · ')"
-      @click="action('open')"
-    />
-    <span v-if="item.kind !== 'related'" class="search-result-art">
-      <img
-        v-if="card.cover && !failedCover"
-        :src="artworkAt(card.cover, 320)"
-        alt=""
-        loading="lazy"
-        decoding="async"
-        referrerpolicy="no-referrer"
-        @error="failedCover = true"
-      />
-      <Icon v-else :name="card.round ? 'user' : 'music'" />
-      <span v-if="canPlay || canPlayMv" class="search-card-mask" aria-hidden="true" />
-      <span v-if="canPlayMv" class="search-video-play-glyph" aria-hidden="true">
-        <Icon name="play" />
-      </span>
-      <template v-if="playlistCount">
-        <span class="search-playlist-count" aria-hidden="true">
-          <Icon name="play" />{{ playlistCount.text }}
-        </span>
-        <span :id="playlistCountId" class="sr-only">{{ playlistCount.label }}</span>
-      </template>
-      <template v-if="videoStats">
-        <span v-if="videoStats.count" class="search-video-count" aria-hidden="true">
-          {{ videoStats.count }}
-        </span>
-        <span v-if="videoStats.duration" class="search-video-duration" aria-hidden="true">
-          {{ videoStats.duration }}
-        </span>
-        <span :id="videoStatsId" class="sr-only">{{ videoStats.description }}</span>
-      </template>
-      <button
-        v-if="canPlay"
-        type="button"
-        class="search-card-play"
-        :disabled="!playable"
-        :aria-label="`${current && playing ? '暂停' : '播放'} ${card.name}`"
-        @click.stop="action('play')"
-        @dblclick.stop
-      >
-        <Icon :name="current && playing ? 'pause' : 'play'" />
-      </button>
-    </span>
-    <span
-      class="search-result-name"
-      :class="{ 'search-album-name': item.kind === 'album' }"
-      :data-tooltip="card.name"
-    >
-      <template v-if="item.kind === 'album'">
-        <span class="search-album-title-copy">
-          <SearchMatchText :text="card.name" :keyword="matchKeyword" />
-        </span>
-        <span
-          v-if="item.album.explicit"
-          class="search-track-explicit search-album-explicit"
-          role="img"
-          aria-label="含成人内容"
-          >E</span
-        >
-      </template>
-      <SearchMatchText v-else-if="markedTitle" :text="card.name" :keyword="matchKeyword" />
-      <template v-else>{{ card.name }}</template>
-    </span>
-    <template v-if="item.kind === 'voice'">
-      <span class="search-voice-footer">
-        <span v-if="voiceDuration" class="search-voice-duration">{{ voiceDuration }}</span>
-        <span v-if="voiceListens !== undefined" class="search-voice-listens"
-          >播放：{{ voiceListens }}</span
-        >
-        <button
-          v-if="item.voice.radioId"
-          type="button"
-          class="search-voice-radio"
-          data-result-action="voice-radio"
-          :data-tooltip="item.voice.radioName || '查看所属播客'"
-          @click.stop="emit('open', item)"
-          @dblclick.stop
-        >
-          {{ item.voice.radioName ? `播单：${item.voice.radioName}` : '查看所属播客' }}
-        </button>
-        <span v-else-if="item.voice.unavailable" class="search-result-sub">单集暂不可播放</span>
-        <span
-          v-else-if="item.voice.creator"
-          class="search-result-sub"
-          :data-tooltip="item.voice.creator"
-        >
-          {{ item.voice.creator }}
-        </span>
-      </span>
-      <button
-        type="button"
-        class="icon-button search-card-download"
-        :aria-label="`下载 ${card.name}`"
-        :disabled="item.voice.unavailable"
-        @click.stop="action('download')"
-        @dblclick.stop
-      >
-        <Icon name="download" />
-      </button>
-    </template>
-    <span
-      v-else-if="cardArtists.length || albumPublished"
-      class="search-result-sub search-card-credit"
-    >
-      <template v-for="(artist, index) in cardArtists" :key="index">
-        <span v-if="index" class="search-card-credit-separator" aria-hidden="true">/</span>
-        <button
-          v-if="artist.id"
-          type="button"
-          class="search-card-artist"
-          :data-result-action="`artist:${artist.id}:${index}`"
-          :aria-label="`查看歌手 ${artist.name}`"
-          :data-tooltip="artist.name"
-          @click.stop="emit('artist', artist.id)"
-          @dblclick.stop
-        >
-          <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
-        </button>
-        <span v-else class="search-card-artist-text">
-          <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
-        </span>
-      </template>
-      <span v-if="albumPublished" class="search-album-date"
-        ><span v-if="cardArtists.length" aria-hidden="true">· </span
-        ><time :datetime="albumPublished">{{ albumPublished }}</time></span
-      >
-    </span>
-    <span
-      v-else-if="item.kind === 'playlist' && (playlistCreator || playlistRecommendation)"
-      class="search-result-sub search-playlist-credit"
-    >
-      <span v-if="!playlistRecommendation && playlistTrackCount"
-        >{{ playlistTrackCount }}{{ playlistCreator || item.playlist.creator ? ' ·' : '' }}</span
-      >
-      <button
-        v-if="playlistCreator"
-        type="button"
-        class="search-playlist-creator"
-        data-result-action="creator"
-        :aria-label="`查看创建者 ${playlistCreator.name} 的主页`"
-        :data-tooltip="playlistCreator.name"
-        @click.stop="emit('creator', playlistCreator.id)"
-        @dblclick.stop
-      >
-        {{ playlistCreator.name }}
-      </button>
-      <span v-else-if="item.playlist.creator" class="search-playlist-creator-text">{{
-        item.playlist.creator
+    <template v-if="playlistRow && item.kind === 'playlist'">
+      <span class="search-playlist-number" role="cell">{{
+        String(playlistRow.number).padStart(2, '0')
       }}</span>
-      <span v-if="playlistRecommendation" class="search-playlist-recommendation">
-        <span v-if="playlistCreator || item.playlist.creator" aria-hidden="true">· </span>
-        <SearchMatchText :text="playlistRecommendation" :keyword="matchKeyword" />
+      <div class="search-playlist-title-cell" role="cell">
+        <span class="search-result-art">
+          <img
+            v-if="card.cover && !failedCover"
+            :src="artworkAt(card.cover, 96)"
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerpolicy="no-referrer"
+            @error="failedCover = true"
+          />
+          <Icon v-else name="music" />
+          <span v-if="canPlay" class="search-card-mask" aria-hidden="true" />
+          <button
+            v-if="canPlay"
+            type="button"
+            class="search-card-play"
+            data-result-action="play"
+            :disabled="!playable"
+            :aria-label="`${current && playing ? '暂停' : '播放'} ${card.name}`"
+            @click.stop="action('play')"
+          >
+            <Icon :name="current && playing ? 'pause' : 'play'" />
+          </button>
+        </span>
+        <button
+          type="button"
+          class="search-card-open search-playlist-title"
+          data-result-action="open"
+          :aria-label="`查看 ${card.name}`"
+          :data-tooltip="card.name"
+          @click.stop="action('open')"
+        >
+          <SearchMatchText :text="card.name" :keyword="matchKeyword" />
+        </button>
+        <ActionMenu
+          ref="menu"
+          class="search-card-menu"
+          :label="`更多操作：${card.name}`"
+          :items="items"
+          @select="action"
+        />
+      </div>
+      <span class="search-playlist-track-count" role="cell">{{ playlistTrackCount || '—' }}</span>
+      <div class="search-playlist-creator-cell" role="cell">
+        <button
+          v-if="playlistCreator"
+          type="button"
+          class="search-playlist-creator"
+          data-result-action="creator"
+          :aria-label="`查看创建者 ${playlistCreator.name} 的主页`"
+          :data-tooltip="playlistCreator.name"
+          @click.stop="emit('creator', playlistCreator.id)"
+        >
+          {{ playlistCreator.name }}
+        </button>
+        <span
+          v-else
+          class="search-playlist-creator-text"
+          :data-tooltip="item.playlist.creator || undefined"
+          >{{ item.playlist.creator || '—' }}</span
+        >
+      </div>
+      <span class="search-playlist-play-count" role="cell" :data-tooltip="rowPlayCount?.label">
+        <template v-if="rowPlayCount"
+          ><span aria-hidden="true">{{ rowPlayCount.text }}</span
+          ><span class="sr-only">{{ rowPlayCount.label }}</span></template
+        >
+        <template v-else>—</template>
       </span>
-    </span>
-    <span v-else-if="unavailable && !canPlay" class="search-result-sub">{{
-      item.kind === 'user' ? '此账号当前不可用' : '暂不可打开'
-    }}</span>
-    <span v-else-if="card.sub" class="search-result-sub" :data-tooltip="card.sub">{{
-      card.sub
-    }}</span>
-    <ActionMenu
-      v-if="item.kind !== 'related'"
-      ref="menu"
-      :context-only="item.kind !== 'voice'"
-      class="search-card-menu"
-      :label="`更多操作：${card.name}`"
-      :items="items"
-      @select="action"
-    />
-  </article>
+    </template>
+    <template v-else>
+      <button
+        v-if="item.kind !== 'voice'"
+        type="button"
+        class="search-card-open"
+        :disabled="unavailable"
+        :aria-label="`${item.kind === 'user' ? '查看用户主页' : item.kind === 'mv' ? '播放 MV' : '查看'} ${card.name}`"
+        :aria-describedby="videoStats ? videoStatsId : playlistCount ? playlistCountId : undefined"
+        :data-tooltip="[card.name, card.sub].filter(Boolean).join(' · ')"
+        @click="action('open')"
+      />
+      <span v-if="item.kind !== 'related'" class="search-result-art">
+        <img
+          v-if="card.cover && !failedCover"
+          :src="artworkAt(card.cover, 320)"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerpolicy="no-referrer"
+          @error="failedCover = true"
+        />
+        <Icon v-else :name="card.round ? 'user' : 'music'" />
+        <span v-if="canPlay || canPlayMv" class="search-card-mask" aria-hidden="true" />
+        <span v-if="canPlayMv" class="search-video-play-glyph" aria-hidden="true">
+          <Icon name="play" />
+        </span>
+        <template v-if="playlistCount">
+          <span class="search-playlist-count" aria-hidden="true">
+            <Icon name="play" />{{ playlistCount.text }}
+          </span>
+          <span :id="playlistCountId" class="sr-only">{{ playlistCount.label }}</span>
+        </template>
+        <template v-if="videoStats">
+          <span v-if="videoStats.count" class="search-video-count" aria-hidden="true">
+            {{ videoStats.count }}
+          </span>
+          <span v-if="videoStats.duration" class="search-video-duration" aria-hidden="true">
+            {{ videoStats.duration }}
+          </span>
+          <span :id="videoStatsId" class="sr-only">{{ videoStats.description }}</span>
+        </template>
+        <button
+          v-if="canPlay"
+          type="button"
+          class="search-card-play"
+          :disabled="!playable"
+          :aria-label="`${current && playing ? '暂停' : '播放'} ${card.name}`"
+          @click.stop="action('play')"
+          @dblclick.stop
+        >
+          <Icon :name="current && playing ? 'pause' : 'play'" />
+        </button>
+      </span>
+      <span
+        class="search-result-name"
+        :class="{ 'search-album-name': item.kind === 'album' }"
+        :data-tooltip="card.name"
+      >
+        <template v-if="item.kind === 'album'">
+          <span class="search-album-title-copy">
+            <SearchMatchText :text="card.name" :keyword="matchKeyword" />
+          </span>
+          <span
+            v-if="item.album.explicit"
+            class="search-track-explicit search-album-explicit"
+            role="img"
+            aria-label="含成人内容"
+            >E</span
+          >
+        </template>
+        <SearchMatchText v-else-if="markedTitle" :text="card.name" :keyword="matchKeyword" />
+        <template v-else>{{ card.name }}</template>
+      </span>
+      <template v-if="item.kind === 'voice'">
+        <span class="search-voice-footer">
+          <span v-if="voiceDuration" class="search-voice-duration">{{ voiceDuration }}</span>
+          <span v-if="voiceListens !== undefined" class="search-voice-listens"
+            >播放：{{ voiceListens }}</span
+          >
+          <button
+            v-if="item.voice.radioId"
+            type="button"
+            class="search-voice-radio"
+            data-result-action="voice-radio"
+            :data-tooltip="item.voice.radioName || '查看所属播客'"
+            @click.stop="emit('open', item)"
+            @dblclick.stop
+          >
+            {{ item.voice.radioName ? `播单：${item.voice.radioName}` : '查看所属播客' }}
+          </button>
+          <span v-else-if="item.voice.unavailable" class="search-result-sub">单集暂不可播放</span>
+          <span
+            v-else-if="item.voice.creator"
+            class="search-result-sub"
+            :data-tooltip="item.voice.creator"
+          >
+            {{ item.voice.creator }}
+          </span>
+        </span>
+        <button
+          type="button"
+          class="icon-button search-card-download"
+          :aria-label="`下载 ${card.name}`"
+          :disabled="item.voice.unavailable"
+          @click.stop="action('download')"
+          @dblclick.stop
+        >
+          <Icon name="download" />
+        </button>
+      </template>
+      <span
+        v-else-if="cardArtists.length || albumPublished"
+        class="search-result-sub search-card-credit"
+      >
+        <template v-for="(artist, index) in cardArtists" :key="index">
+          <span v-if="index" class="search-card-credit-separator" aria-hidden="true">/</span>
+          <button
+            v-if="artist.id"
+            type="button"
+            class="search-card-artist"
+            :data-result-action="`artist:${artist.id}:${index}`"
+            :aria-label="`查看歌手 ${artist.name}`"
+            :data-tooltip="artist.name"
+            @click.stop="emit('artist', artist.id)"
+            @dblclick.stop
+          >
+            <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
+          </button>
+          <span v-else class="search-card-artist-text">
+            <SearchMatchText :text="artist.name" :keyword="matchKeyword" />
+          </span>
+        </template>
+        <span v-if="albumPublished" class="search-album-date"
+          ><span v-if="cardArtists.length" aria-hidden="true">· </span
+          ><time :datetime="albumPublished">{{ albumPublished }}</time></span
+        >
+      </span>
+      <span
+        v-else-if="item.kind === 'playlist' && (playlistCreator || playlistRecommendation)"
+        class="search-result-sub search-playlist-credit"
+      >
+        <span v-if="!playlistRecommendation && playlistTrackCount"
+          >{{ playlistTrackCount }}{{ playlistCreator || item.playlist.creator ? ' ·' : '' }}</span
+        >
+        <button
+          v-if="playlistCreator"
+          type="button"
+          class="search-playlist-creator"
+          data-result-action="creator"
+          :aria-label="`查看创建者 ${playlistCreator.name} 的主页`"
+          :data-tooltip="playlistCreator.name"
+          @click.stop="emit('creator', playlistCreator.id)"
+          @dblclick.stop
+        >
+          {{ playlistCreator.name }}
+        </button>
+        <span v-else-if="item.playlist.creator" class="search-playlist-creator-text">{{
+          item.playlist.creator
+        }}</span>
+        <span v-if="playlistRecommendation" class="search-playlist-recommendation">
+          <span v-if="playlistCreator || item.playlist.creator" aria-hidden="true">· </span>
+          <SearchMatchText :text="playlistRecommendation" :keyword="matchKeyword" />
+        </span>
+      </span>
+      <span v-else-if="unavailable && !canPlay" class="search-result-sub">{{
+        item.kind === 'user' ? '此账号当前不可用' : '暂不可打开'
+      }}</span>
+      <span v-else-if="card.sub" class="search-result-sub" :data-tooltip="card.sub">{{
+        card.sub
+      }}</span>
+      <ActionMenu
+        v-if="item.kind !== 'related'"
+        ref="menu"
+        :context-only="item.kind !== 'voice'"
+        class="search-card-menu"
+        :label="`更多操作：${card.name}`"
+        :items="items"
+        @select="action"
+      />
+    </template>
+  </component>
 </template>

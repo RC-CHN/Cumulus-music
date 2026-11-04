@@ -535,6 +535,29 @@
       for(const category of ['all','playlists']){
         if(category!=='all')await choose(category);
         const action=creator(), bad=card(4);
+        if(category==='all'){
+          assert(!one('.search-playlist-table'),'comprehensive playlist preview stays a card');
+        }else{
+          const table=one('.search-playlist-table[role="table"]');
+          const row=card(3);
+          const headers=[...table.querySelectorAll('[role="columnheader"]')].map(node=>node.textContent.trim());
+          assert(headers.join(',')==='#,标题,歌曲数,创建者,播放量'&&row.getAttribute('role')==='row'&&
+            Math.abs(row.getBoundingClientRect().height-64)<1,'official five columns and fixed 64px rows');
+          assert(row.querySelector('.search-playlist-number').textContent.trim()==='01'&&
+            row.querySelector('.search-playlist-track-count').textContent.trim()==='40 首'&&
+            row.querySelector('.search-playlist-play-count [aria-hidden="true"]').textContent==='12345'&&
+            bad.querySelector('.search-playlist-play-count').textContent.trim()==='—',
+            'row keeps visible counts separate and does not imply a private playlist count');
+          const opener=row.querySelector('.search-card-open');
+          opener.focus({preventScroll:true});key(opener,'ArrowDown');
+          await wait(()=>document.activeElement===bad.querySelector('.search-card-open'),'Down moves exactly one table row');
+          const menuTrigger=row.querySelector('.menu-trigger');
+          click(menuTrigger);
+          await wait(()=>menuItem('share'),'inline title-cell menu uses shared playlist commands');
+          key(document.activeElement,'Escape');
+          await wait(()=>!menu()&&document.activeElement===menuTrigger,'inline menu returns focus');
+          await capture('playlist_table_columns');
+        }
         assert(action?.getAttribute('aria-label')==='查看创建者 合成匹配作者 的主页','typed creator action');
         assert(card(3).querySelector('.search-card-open')&&card(3).querySelector('.search-card-play'),'playlist open and playback remain separate');
         assert(bad?.textContent.includes('合成不匹配作者')&&!bad.querySelector('.search-playlist-creator'),
@@ -615,7 +638,26 @@
       assert(footer.getBoundingClientRect().bottom<=panel().getBoundingClientRect().bottom+1,
         'the terminal status and numbered fallback are reachable');
       await capture('playlist_waterfall_complete');
-      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      const lateRow=()=>grid()?.querySelector('[data-grid-index="29"] .search-playlist-row');
+      const lateOpen=()=>lateRow()?.querySelector('.search-card-open');
+      await wait(lateRow,'the virtual table keeps its late visible rows after reaching the end');
+      const lateId=lateRow()?.dataset.resultKey.split(':')[1];
+      assert(lateId&&lateRow().getAttribute('aria-rowindex')==='31'&&
+        lateRow().querySelector('.search-playlist-number').textContent.trim()==='30',
+        'virtualized table shows a later row with the correct displayed index');
+      lateOpen().scrollIntoView({block:'center'});
+      const top=panel().scrollTop;
+      click(lateOpen());
+      await wait(()=>one('.playlist-hero h1')?.textContent.includes('合成歌单 '+lateId),'late row opens actual playlist detail');
+      click(button('返回上一页'));
+      await wait(()=>ready()&&document.activeElement===lateOpen()&&Math.abs(panel().scrollTop-top)<=1,
+        'late detail Back restores exact table viewport and focus').catch(error=>{
+          throw Error(`${error.message}: ${JSON.stringify({before:top,after:panel()?.scrollTop,
+            focus:document.activeElement?.getAttribute('aria-label'),wanted:lateOpen()?.getAttribute('aria-label')})}`);
+        });
+      assert(JSON.stringify(playlistWaterfallReads)==='[[0,10],[18,10],[29,10]]','Back reuses the loaded table, not a new request');
+      await capture('playlist_table_late_row_back');
+      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,searchPlaylistTableVerified:true,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchMvProof){

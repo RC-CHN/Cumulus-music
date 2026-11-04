@@ -363,6 +363,141 @@
   grid-column: 1 / -1;
   pointer-events: none;
 }
+.search-playlist-table {
+  container-type: inline-size;
+  min-width: 0;
+}
+.search-playlist-table .search-playlist-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+.search-playlist-panel {
+  overflow-anchor: none;
+}
+.search-playlist-table .search-playlist-virtual {
+  position: relative;
+  display: block;
+}
+.search-playlist-virtual > .search-grid-cell {
+  position: absolute;
+  inset-inline: 0;
+}
+.search-playlist-table :is(.search-playlist-columns, .search-playlist-row) {
+  display: grid;
+  grid-template-columns: 45px minmax(200px, 4fr) minmax(79px, 1fr) minmax(128px, 1fr) 92px;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0;
+  row-gap: 0;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.search-playlist-columns {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 36px;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: 12px;
+}
+.search-playlist-columns > span,
+.search-playlist-number,
+.search-playlist-track-count,
+.search-playlist-creator-cell,
+.search-playlist-play-count {
+  min-width: 0;
+  padding-inline: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.search-playlist-table .search-playlist-row {
+  height: 64px;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.search-playlist-striped {
+  background: var(--surface-alt);
+}
+.search-playlist-number,
+.search-playlist-track-count,
+.search-playlist-play-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.search-playlist-title-cell {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 30px;
+  gap: 8px;
+  align-items: center;
+  padding-inline: 8px;
+  min-width: 0;
+}
+.search-playlist-row .search-result-art {
+  grid-row: auto;
+  width: 48px;
+  height: 48px;
+  margin: 0;
+  border-radius: 6px;
+}
+.search-playlist-row .search-card-open {
+  position: static;
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 0;
+  padding: 4px 0;
+  overflow: hidden;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.search-playlist-row .search-card-play {
+  inset: auto 7px 7px auto;
+  width: 34px;
+  height: 34px;
+}
+.search-playlist-row .search-card-menu {
+  position: static;
+}
+.search-playlist-creator-cell > * {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 555px) {
+  .search-playlist-table :is(.search-playlist-columns, .search-playlist-row) {
+    grid-template-columns: 30px minmax(100px, 4fr) 52px minmax(64px, 1fr) 56px;
+  }
+  .search-playlist-columns > span,
+  .search-playlist-number,
+  .search-playlist-track-count,
+  .search-playlist-creator-cell,
+  .search-playlist-play-count {
+    padding-inline: 5px;
+  }
+  .search-playlist-title-cell {
+    grid-template-columns: 42px minmax(0, 1fr) 30px;
+    gap: 5px;
+    padding-inline: 5px;
+  }
+  .search-playlist-row .search-result-art {
+    width: 42px;
+    height: 42px;
+  }
+  .search-playlist-row .search-card-play {
+    inset: auto 4px 4px auto;
+  }
+}
 .search-load-more {
   display: flex;
   justify-content: center;
@@ -449,7 +584,7 @@
 /* Keep the first card's caption visible above the player in short windows. */
 @media (max-height: 620px) {
   .search-result-section:not(.search-best-section)
-    .search-result-grid:not(.search-video-grid):not(.search-voice-grid) {
+    .search-result-grid:not(.search-video-grid):not(.search-voice-grid):not(.search-playlist-grid) {
     grid-template-columns: repeat(auto-fill, minmax(max(148px, calc((100% - 100px) / 6)), 1fr));
   }
 }
