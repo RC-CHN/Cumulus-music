@@ -55,3 +55,7 @@
   python3 scripts/ci/manual_update_smoke.py --binary <probe> --root <new-dir>
   （真实 Linux GTK 可加 --screenshots）。Windows 使用同一原生浏览器封装；
   此处不将 Linux WebView 证据当作 Windows 现场验证。
+
+原生 WebView 回归在 Linux 使用可控的 xdg-open，核对正式启动器参数。在 Windows 使用
+隔离的桌面测试适配器，核对正式 Tauri 命令传递的固定 ReleasePage；不打开系统浏览器，
+也不把测试适配器的结果当作 Windows 实际浏览器启动验证。

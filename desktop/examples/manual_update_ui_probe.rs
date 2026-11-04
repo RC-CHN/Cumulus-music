@@ -51,7 +51,32 @@ fn main() {
             let fixture = update_fixture::Fixture {
                 mode: Default::default(), reads: Default::default(), installed: env!("CARGO_PKG_VERSION"),
             };
+            #[cfg(not(target_os = "windows"))]
             app.manage(cumulus_desktop::UpdateAdapters::with_source(fixture.clone()));
+            #[cfg(target_os = "windows")]
+            {
+                // Keep the Windows CI browser closed. The real Tauri command
+                // still passes only its validated ReleasePage to this adapter.
+                use cumulus_core::updates::UpdateFailure;
+                use std::io::Write;
+                let browser_root = root.clone();
+                app.manage(cumulus_desktop::UpdateAdapters::with_adapters(
+                    fixture.clone(),
+                    move |page| {
+                        let mut log = fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(browser_root.join("browser.log"))
+                            .map_err(|_| UpdateFailure::Browser)?;
+                        writeln!(log, "1\n{}", page.url()).map_err(|_| UpdateFailure::Browser)?;
+                        if browser_root.join("browser-fail").is_file() {
+                            Err(UpdateFailure::Browser)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                ));
+            }
             app.add_capability(r#"{"identifier":"update-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
             let handle = app.handle().clone();
             let webview = root.join("webview");

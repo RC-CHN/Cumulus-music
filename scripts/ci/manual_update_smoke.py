@@ -1,4 +1,4 @@
-"""Real Linux WebView update check with synthetic HTTP and a closed browser launcher."""
+"""Real WebView update check with synthetic HTTP and a closed browser launcher."""
 import argparse
 import json
 import os
@@ -18,20 +18,21 @@ def main():
     root.mkdir(mode=0o700)
     output = root / 'run'
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME'):
+    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'APPDATA', 'LOCALAPPDATA'):
         directory = root / key
         directory.mkdir()
         env[key] = str(directory)
-    stub = root / 'bin'
-    stub.mkdir()
-    browser = stub / 'xdg-open'
-    browser.write_text(
-        '#!/bin/sh\nprintf "%s\\n" "$#" "$1" >> "$CUMULUS_PROOF_DIR/browser.log"\n'
-        'if test -f "$CUMULUS_PROOF_DIR/browser-fail"; then exit 2; fi\n',
-        encoding='utf-8',
-    )
-    browser.chmod(0o700)
-    env['PATH'] = str(stub) + os.pathsep + env.get('PATH', '')
+    if os.name != 'nt':
+        stub = root / 'bin'
+        stub.mkdir()
+        browser = stub / 'xdg-open'
+        browser.write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$#" "$1" >> "$CUMULUS_PROOF_DIR/browser.log"\n'
+            'if test -f "$CUMULUS_PROOF_DIR/browser-fail"; then exit 2; fi\n',
+            encoding='utf-8',
+        )
+        browser.chmod(0o700)
+        env['PATH'] = str(stub) + os.pathsep + env.get('PATH', '')
     env['CUMULUS_PROOF_DIR'] = str(output)
     if args.probe_script:
         env['CUMULUS_MANUAL_UPDATE_PROOF_SCRIPT'] = str(args.probe_script.resolve())
@@ -81,7 +82,8 @@ def main():
     page = 'https://github.com/RC-CHN/Cumulus-music/releases/tag/v999.1.0'
     assert (output / 'browser.log').read_text(encoding='utf-8').splitlines() == ['1', page, '1', page]
     report = dict(ok=True, actualWebView=True, screenshots=len(captured), metadataReads=6,
-                  realNetwork=False, browserHandoffConfirmed=True)
+                  realNetwork=False, browserHandoffConfirmed=True,
+                  nativeLauncherExercised=os.name != 'nt')
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
