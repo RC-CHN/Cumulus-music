@@ -140,7 +140,7 @@ def isolated_audio(root, env):
         fixture = '+'.join(f'{gain}*sin(2*PI*{frequency}*t)'
                            for frequency, gain in zip(MONITOR_TONES, (.02, .10, .02)))
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
-                        f'aevalsrc={fixture}:s=48000:d=45',
+                        f'aevalsrc={fixture}:s=48000:d=65',
                         '-metadata', f'title={TITLE}', source], check=True, timeout=20)
         yield source
 
@@ -338,12 +338,14 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         assert queue['current'] == item['entry_id'] == position['entry_id']
         return position
 
-    def preset_saved(bypassed=False, enabled=True, boost_bass=False, boost_treble=False):
+    def equalizer_preferences():
         with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
             row = db.execute("SELECT value FROM state WHERE owner='local-guest' "
                              "AND kind='equalizer-preferences-v1' AND key='current'").fetchone()
-        if row:
-            value = json.loads(row[0])
+        return json.loads(row[0]) if row else None
+
+    def preset_saved(bypassed=False, enabled=True, boost_bass=False, boost_treble=False):
+        if value := equalizer_preferences():
             settings = value['settings']
             bass, treble = settings.get('bass_db', 0), settings.get('treble_db', 0)
             return (value['preset'] == {'kind': 'built_in', 'index': 1}
@@ -455,11 +457,12 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                 assert math.isclose(monitor['restored']['amplitude440Hz'],
                                     monitor['equalized']['amplitude440Hz'], rel_tol=.03), (
                     'reactivating the installed preset did not restore the equalized 440 Hz tone')
-                inputs.click(790, 188)  # Turn off the ten-band GEQ, not the master.
+                equalizer_key('启用均衡器', master_roles, 'space')
                 wait_for('installed GEQ disabled', lambda: preset_saved(enabled=False))
-                inputs.click(440, 563)  # Boost bass near the slider's upper limit.
+                sliders = (accessibility.Role.SLIDER,)
+                equalizer_key('低音增益', sliders, 'End')
                 wait_for('installed bass adjustment committed', lambda: preset_saved(enabled=False, boost_bass=True))
-                inputs.click(665, 563)  # Boost treble near the slider's upper limit.
+                equalizer_key('高音增益', sliders, 'End')
                 wait_for('installed treble adjustment committed',
                          lambda: preset_saved(enabled=False, boost_bass=True, boost_treble=True))
                 tone = capture_tone('toneOnly', committed_progress('installed bass and treble'))
@@ -467,13 +470,54 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                     key = f'amplitude{frequency}Hz'
                     assert baseline[key] > 25 and tone[key] > baseline[key] * 1.5, (
                         f'installed tone controls did not increase {frequency} Hz with GEQ off')
-                inputs.click(789, 563)  # Reset bass and treble.
+                equalizer_key('重置低音和高音', button_roles, 'Return')
                 wait_for('installed tone reset committed', lambda: preset_saved(enabled=False))
                 reset = capture_tone('toneReset', committed_progress('installed tone reset'))
                 for frequency in MONITOR_TONES:
                     key = f'amplitude{frequency}Hz'
                     assert math.isclose(reset[key], baseline[key], rel_tol=.03), (
                         f'installed tone reset did not restore the original {frequency} Hz tone')
+
+                before_manual = equalizer_preferences()['settings']['gains']
+                assert before_manual[4] == 4, 'expected the 500 Hz band of the Pop preset'
+                manual_curve = [*before_manual]
+                manual_curve[4] = 12
+
+                def curve_saved(preset, gains, *, enabled=True, custom=False):
+                    value = equalizer_preferences()
+                    if not value:
+                        return False
+                    settings = value['settings']
+                    saved = value.get('saved_custom') or {}
+                    return (value['preset'] == preset and settings['enabled'] is enabled
+                            and not settings.get('master_bypassed', False)
+                            and settings['gains'] == gains
+                            and (not custom or saved.get('gains') == manual_curve))
+
+                equalizer_key('500 Hz 增益', sliders, 'End')
+                wait_for('installed 500 Hz band at +12 dB',
+                         lambda: curve_saved({'kind': 'manual'}, manual_curve))
+                manual = capture_tone('manualBand', committed_progress('installed 500 Hz band change'))
+                assert manual['amplitude440Hz'] > monitor['equalized']['amplitude440Hz'] * 1.1, (
+                    'changing the 500 Hz band did not increase the nearby 440 Hz tone')
+                equalizer_key('保存自定义预设', button_roles, 'Return')
+                wait_for('installed custom curve saved',
+                         lambda: curve_saved({'kind': 'saved'}, manual_curve, custom=True))
+                screenshot('installed-local-custom-equalizer.png')
+                equalizer_key('恢复平直', button_roles, 'Return')
+                wait_for('installed GEQ reset to flat',
+                         lambda: curve_saved({'kind': 'built_in', 'index': 0}, [0] * 10, custom=True))
+                flat = capture_tone('flat', committed_progress('installed GEQ flat reset'))
+                assert math.isclose(flat['amplitude440Hz'], baseline['amplitude440Hz'], rel_tol=.03), (
+                    'flat GEQ did not restore the original 440 Hz tone')
+                # The saved slot is the first selectable item; the active
+                # flat built-in preset comes after it.
+                equalizer_key('均衡器预设', (accessibility.Role.COMBO_BOX,), 'Home')
+                wait_for('installed saved curve reselected',
+                         lambda: curve_saved({'kind': 'saved'}, manual_curve, custom=True))
+                recalled = capture_tone('savedCurve', committed_progress('installed saved curve recall'))
+                assert math.isclose(recalled['amplitude440Hz'], manual['amplitude440Hz'], rel_tol=.03), (
+                    'recalling the saved curve did not restore its 440 Hz gain')
             inputs.key('Escape')
             time.sleep(.35)
         activate('暂停', button_roles)
@@ -503,6 +547,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             report['masterBypassRestoredUnfilteredPcm'] = True
             report['masterReactivationRestoredEqualizedPcm'] = True
             report['independentToneAndResetVerifiedInPcm'] = True
+            report['manualBandAndSavedCurveVerifiedInPcm'] = True
     if packaged_filter:
         report.update(equalizerPresetCommitted=True, installedFilterMapped=True,
                       sameTrackAdvancedWithEqualizer=True)
