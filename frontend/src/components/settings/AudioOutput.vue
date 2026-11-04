@@ -1,11 +1,18 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { AccountView } from '../../services/contracts';
 import type { OutputEngine } from '../../services/output';
 import { useOutputSettings } from '../../composables/useOutputSettings';
 import { useControlFocus } from '../../composables/useControlFocus';
+import { useSystemMasterVolume } from '../../composables/useSystemMasterVolume';
 const props = defineProps<{ account: AccountView }>();
 const model = useOutputSettings();
+const diagnostics = useSystemMasterVolume();
+const busy = computed(() => model.loading.value || model.busy.value || diagnostics.loading.value);
+function read() {
+  return Promise.all([model.read(), diagnostics.read()]);
+}
+onMounted(() => void diagnostics.read());
 const refresh = ref<HTMLButtonElement>();
 const pendingDevice = shallowRef<{ id: string; epoch: string }>();
 const pendingSelection = computed(() =>
@@ -73,13 +80,16 @@ watch(
   () => void model.connect(props.account),
   { immediate: true },
 );
-onUnmounted(model.dispose);
+onUnmounted(() => {
+  model.dispose();
+  diagnostics.dispose();
+});
 </script>
 <template>
   <section
     class="settings-section audio-output"
     aria-labelledby="settings-audio-output"
-    :aria-busy="model.loading.value || model.busy.value"
+    :aria-busy="busy"
   >
     <h2 id="settings-audio-output" tabindex="-1">音频输出</h2>
     <div class="settings-section-content">
@@ -89,8 +99,8 @@ onUnmounted(model.dispose);
           ref="refresh"
           class="text-button"
           aria-label="刷新音频输出设备"
-          :disabled="model.loading.value || model.busy.value"
-          @click="focus.run($event, () => model.read())"
+          :disabled="busy"
+          @click="focus.run($event, read)"
         >
           刷新
         </button>
@@ -150,10 +160,44 @@ onUnmounted(model.dispose);
         </button>
       </div>
       <p v-if="model.error.value" class="catalog-error" role="alert">{{ model.error.value }}</p>
+      <div
+        v-if="diagnostics.visible.value"
+        class="system-master-volume"
+        data-system-master-volume
+        aria-labelledby="system-master-volume-title"
+      >
+        <h3 id="system-master-volume-title">系统音量</h3>
+        <p v-if="diagnostics.loading.value" class="settings-note" role="status">
+          正在读取系统音量…
+        </p>
+        <p v-else-if="diagnostics.view.value?.kind === 'ready'" class="system-master-level">
+          <strong data-system-master-percent>{{ diagnostics.view.value.percent }}%</strong>
+          <span>（低于30%可能影响收听体验）</span>
+        </p>
+        <p v-else class="settings-note" role="status">暂时无法读取系统音量，请刷新重试。</p>
+      </div>
     </div>
   </section>
 </template>
 <style scoped>
+.system-master-volume {
+  margin-top: 20px;
+}
+.system-master-volume h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.system-master-level {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+.system-master-level span {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
 .audio-output > h2 {
   align-self: start;
   justify-self: start;

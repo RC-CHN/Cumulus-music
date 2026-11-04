@@ -144,6 +144,7 @@ export function createTauriClient(): CoreClient {
     windowCloseCommand: (command) => invoke('window_close_command', { command }),
     onWindowLifecycle: (handler) =>
       listen<WindowLifecycleView>('cumulus:window-lifecycle', (event) => handler(event.payload)),
+    systemMasterVolume: () => invoke('system_master_volume'),
     outputSettings: (epoch, refresh) => invoke('output_settings', { epoch, refresh }),
     outputCommand: (epoch, command) => invoke('output_command', { epoch, command }),
     queueClickPreferences: (epoch) => invoke('queue_click_preferences', { epoch }),

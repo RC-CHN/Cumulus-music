@@ -1,5 +1,6 @@
 mod account_avatar;
 mod artist_onboarding;
+pub mod audio_diagnostics;
 mod external_import;
 pub use account_avatar::AccountAvatarPicker;
 mod browser;
@@ -437,6 +438,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::commit_prepared_selection,
                 player::player_queue,
                 player::queue_more_tip,
+                audio_diagnostics::system_master_volume,
                 player::power::playback_power,
                 player::power::set_playback_power,
                 player::player_snapshot,

@@ -81,6 +81,8 @@ mod settings_fixture;
 mod style_home_fixture;
 #[path = "support/style_recommendations_fixture.rs"]
 mod style_recommendations_fixture;
+#[path = "support/system_master_volume_fixture.rs"]
+mod system_master_volume_fixture;
 #[path = "support/voice_download_fixture.rs"]
 mod voice_download_fixture;
 #[path = "support/volume_fixture.rs"]
@@ -660,7 +662,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() {
+        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -756,6 +758,11 @@ fn main() {
             });
         }
         app.manage(cumulus_desktop::effect_activation::Host::new(&app.path().resource_dir()?));
+        if system_master_volume_fixture::enabled() {
+            app.manage(cumulus_desktop::audio_diagnostics::SystemMasterVolumeProbe::new(
+                system_master_volume_fixture::read,
+            ));
+        }
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
         if message_fixture::enabled() {
             cumulus_desktop::start_message_count_polling(app.handle())?;
@@ -767,6 +774,17 @@ fn main() {
             let mut value:Value=serde_json::from_str(event.payload()).unwrap();
             if playback_power_guide_fixture::enabled() {
                 value["playbackPowerGuideFixture"]=playback_power_guide_fixture::report(&proof_store).unwrap();
+            }
+            if system_master_volume_fixture::enabled() {
+                if value["stage"] == "system-master-volume-fixture" {
+                    let mode = value["mode"].as_str().unwrap();
+                    system_master_volume_fixture::set(mode);
+                    handle.get_webview_window("main").unwrap().eval(format!(
+                        "window.__systemMasterVolumeFixtureAck={};", json!(mode)
+                    )).unwrap();
+                    return;
+                }
+                value["systemMasterVolumeReads"] = json!(system_master_volume_fixture::reads());
             }
             if let Some(wire) = external_import.as_ref() { value["externalImport"] = wire.report(); }
             if external_import_fixture::sidebar_mode().is_some() { value["externalImportSidebarReads"] = json!(external_import_fixture::sidebar_reads()); }

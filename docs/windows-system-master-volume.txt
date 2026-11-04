@@ -1,0 +1,45 @@
+Windows 播放设置：只读系统音量
+
+官方路径
+- 网易云音乐 Windows 3.1.42.205594，恢复的 Play.jsx:95–132、519–559；
+  hybrid_64 M/3097:1653–1670。播放设置进入时读取系统主音量，Windows 全量；
+  从诊断提示进入会滚动到输出设备（这个提示不属本次设置行）。输出设备下方
+  以 Math.round(volume * 100) 显示「系统音量」以及
+  「（低于30%可能影响收听体验）」。相邻空间音效/音频增强各自另有接口。
+- hybrid_app M/4:15372–15380 调 audioplayer.getSystemMasterVolume。
+  x64 cloudmusic.dll SHA256
+  557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493：
+  F23180–F231CB 将其绑定 F1BDC0。F1BEB5 调 1B08B0。
+  1B08F6–1B0912 以 CLSCTX=0x17 CoCreateInstance MMDeviceEnumerator；
+  1B0923–1B092D 调 IMMDeviceEnumerator 的 +0x20，eRender=0、
+  eMultimedia=1。1B0947–1B095A 激活 IAudioEndpointVolume
+  (5CDF2C82-841E-4546-9722-0CF74078229A)；1B0965–1B097E 先
+  GetMasterVolumeLevelScalar (+0x48)，再 GetMute (+0x78)。
+  F1BED4–F1BF40 对静音回报 volume=0；F1BF53–F1BFEE 另带 muted
+  和未改的 realVolume。这个诊断读取默认多媒体输出，和播放器软件音量
+  或选择的另一个应用输出端点不是同一个状态。
+- Microsoft Core Audio 的方法和标量范围：
+  https://learn.microsoft.com/en-us/windows/win32/api/mmdeviceapi/nf-mmdeviceapi-immdeviceenumerator-getdefaultaudioendpoint
+  https://learn.microsoft.com/en-us/windows/win32/api/endpointvolume/nf-endpointvolume-iaudioendpointvolume-getmastervolumelevelscalar
+  https://learn.microsoft.com/en-us/windows/win32/api/endpointvolume/nf-endpointvolume-iaudioendpointvolume-getmute
+
+Cumulus
+- desktop/audio_diagnostics 在独立阻塞任务中平衡同线程 COM 初始化和释放，
+  只读同一默认端点，不发送服务请求。主窗口 IPC system_master_volume 只返回
+  unsupported / unavailable / ready(percent)，不传设备标识、原生错误或原始标量。
+  读取有两秒 UI 截止时间，一个未返回的 OS 调用占用唯一槽位，避免请求累积。
+- 设置的音频输出区首次进入时读取，使用现有「刷新」明确重新取值；不轮询。
+  成功静音或实际零音量显示 0%；原版 JS 的真值保护有机会保留旧的非零数字，
+  本端不保留它。端点/接口读取失败或越界标量显示不可读取，避免把失败报成静音。
+  Linux 不显示此 Windows 专项，不把播放器滑条值冒充系统音量。
+- 此处没有系统音量或静音写入、设备迁移、空间音效/系统增强开关、自动恢复音量
+  或诊断弹层。淡入淡出仍受 DirectSound 限制，见 playback-fade-mute-contracts.txt。
+
+验证
+- Rust 冻结 native f32 转百分比的临界舍入、零值、静音优先及非法标量拒绝。
+- scripts/ci/system_master_volume_smoke.py 使用 ux_ui_probe 和真实 Vue/Tauri
+  WebView。合成 Windows 端点按 37% → 静音 0% → 不可读 → 84% → 重开 84%
+  返回；检查焦点、深色窄窗口及每次一次原生读取。另起未注入的 Linux 进程，
+  原生返回 unsupported，页面隐藏。真实 libmpv/null 同一暂停曲目的 ID 和
+  时间不变；两个进程只调整 LC_NUMERIC=C，系统语言保留非 C。6 个状态和
+  6 张截图；没有读取 Windows 实体设备或修改系统音量。

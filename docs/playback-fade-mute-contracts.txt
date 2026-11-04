@@ -71,3 +71,5 @@ M/1193:112–119 注册 onrecovervolume，并在启动请求 `audioplayer.isDevi
 恢复证据涉及 Windows WaveOut/WASAPI 设备与应用会话，并非 Cumulus 播放器滑条为零。
 没有完整证据把隐藏开关、原生自动检查和所有恢复写操作绑成同一触发契约；没有
 实际 Windows mixer 实验。本项目不启动自动取消静音或自动修改系统/其他应用音量。
+
+系统主音量的独立只读诊断见 windows-system-master-volume.txt；它不触发上述恢复写入。
