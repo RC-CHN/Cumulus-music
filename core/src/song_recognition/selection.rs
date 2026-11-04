@@ -1,11 +1,9 @@
-use super::PeakRecord;
+use super::{PeakRecord, signal::MAX_FRAMES};
 use crate::{Error, Result};
 use std::ops::Range;
 
-const FIRST_BIN: i32 = 25;
-const MAX_ROWS: usize = 999;
-// Up to 120,000 samples of the observed 8 kHz input, with no tail padding.
-const MAX_FRAMES: usize = (120_000 - 2_048) / 160 + 1;
+pub(super) const FIRST_BIN: usize = 25;
+pub(super) const SPECTRUM_ROWS: usize = 999;
 
 /// Finite, already centered f32 values, stored by frequency row and then time.
 /// Row zero maps to native bin 25. This type cannot construct a matrix from
@@ -21,7 +19,7 @@ impl<'a> CenteredPeakMatrix<'a> {
     /// rectangles permit clipping tests; the native upstream framing stage
     /// separately requires at least ten frames before calling the selector.
     pub fn new(rows: usize, frames: usize, values: &'a [f32]) -> Result<Self> {
-        if !(1..=MAX_ROWS).contains(&rows)
+        if !(1..=SPECTRUM_ROWS).contains(&rows)
             || !(1..=MAX_FRAMES).contains(&frames)
             || values.len() != rows * frames
         {
@@ -39,6 +37,27 @@ impl<'a> CenteredPeakMatrix<'a> {
             frames,
             values,
         })
+    }
+
+    pub(super) fn from_default_spectrum(frames: usize, values: &'a [f32]) -> Self {
+        debug_assert_eq!(values.len(), SPECTRUM_ROWS * frames);
+        Self {
+            rows: SPECTRUM_ROWS,
+            frames,
+            values,
+        }
+    }
+
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    pub fn frames(&self) -> usize {
+        self.frames
+    }
+
+    pub fn values(&self) -> &[f32] {
+        self.values
     }
 
     fn window(
@@ -120,7 +139,7 @@ pub fn select_default_peaks(matrix: &CenteredPeakMatrix<'_>) -> Vec<PeakRecord> 
         // that did not pass D14570 or D14910.
         if !matrix.has_greater(row, frame, 30, 8, center) {
             peaks.push(PeakRecord {
-                bin: row as i32 + FIRST_BIN,
+                bin: (row + FIRST_BIN) as i32,
                 frame: frame as i32,
                 value_bits: center.to_bits(),
             });

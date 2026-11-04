@@ -25,8 +25,7 @@ docs/song-recognition-contracts.txt。本次只观察合成样本的原生状态
   长度 2048 的正向混合基 FFT。默认 plan 整数头为长度 2048、inverse=0，
   因子对为 (4,512)、(4,128)、(4,32)、(4,8)、(4,2)、(2,1)。
   D16A40–D16A65 对每个输出 bin 单独 f32 平方再相加，没有除 FFT 长度；
-  原始矩阵按帧连续存 1,025 个功率 bin。尚未以 Rust 冻结 twiddle、
-  递归排序和 radix-2/4 运算的逐位等价。
+  原始矩阵按帧连续存 1,025 个功率 bin。FFT 的运算顺序和 Rust 对照见下文。
 - D13DE0 的默认配置实测分辨率 3.90625 Hz、100/4000 Hz 边界，
   使用 [25,1024) 的 999 个功率 bin。D13EA0–D13EEC 将帧优先的数据裁剪
   并转成频率优先，每行是一条频率随时间的值。D13F20–D13FB9 对功率
@@ -102,8 +101,8 @@ song-recognition-noise-centered.f32le.gz 是上述完整 999×138 合成噪声�
 
 窗口、FFT 和对数的离线差分结果
 
-以下是 Rust 选择器前面的独立标量复验。此批没有改 Rust，也没有接入
-设备输入、捕获或服务；下面的输入从冻结的 8 kHz 单声道 i16 开始。
+以下是 Rust 实现前独立完成的标量复验。输入从冻结的 8 kHz 单声道
+i16 开始，实验不涉及设备输入、捕获或服务。
 
 FFT：D179A0 的 twiddle 源角是 f64((-2π × i) / 2048)，D17A60/D17A74
 分别计算 cos/sin，D17A68/D17A7E 转 f32。2,048 个复数系数的 f32
@@ -198,6 +197,22 @@ FFT 各阶段记录：.build/song-recognition-fft-oracle-run.sh --noise --record
   unshare -Urn .build/reverse-tools/bin/python \
     .build/song-recognition-differential/signal_math.py
 
-下一步可把已恢复的 i16 → 窗 → FFT → 功率 → log → 中心化迁到独立
-离线 Rust API，显式选择 SSE/FMA 模式，并用阶段散列和包字节回归。
-设备输入下混、实机采集、上游授权和识别结果仍需单独验证。
+Rust 离线信号路径
+
+cumulus_core::song_recognition::FingerprintPcm8k 接受已转换的 8 kHz
+单声道 i16，最多 120,000 样本。centered_default_spectrum 只使用完整
+2048 样本窗，160 样本步长；少于十帧返回 None，不填补残余窗口。
+调用者显式选择 FingerprintLogMode::Sse 或 ::Fma，选择不随 CPU 改变。
+FingerprintSpectrum::matrix 和 ::peaks 分别访问中心化矩阵与排序峰值；
+仍可使用 CenteredPeakMatrix 单独验证峰值筛选。
+
+FFT/对数系数为公式生成的小端 f32，只包含数学数据。运行
+python3 scripts/research/fingerprint_coefficients.py 可核对生成与散列；
+--write 重新生成。Rust 从已冻结字节加载，不依赖运行机器的 sin/cos/ln。
+song-recognition-signal-official.json 冻结三个原生合成输入的完整阶段
+散列。三组在原生探针中均额外复验 FMA 叶；power 未变化，log 及中心化
+用各自模式的独立散列。Rust 测试还从 PCM 出发逐项比对峰、封包字节，
+启用可选 stock zlib 时再比对完整 AES/Base64 指纹。
+
+这仍是离线、固定默认配置的实现，不包含设备输入下混、实机采集、
+上游授权和识别结果；三个合成样本不能替代这些验证。

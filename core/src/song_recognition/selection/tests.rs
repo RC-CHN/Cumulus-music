@@ -154,7 +154,7 @@ fn matches_every_peak_from_complete_native_centered_matrix() {
 fn rejects_oversized_or_nonfinite_matrices_before_selection() {
     assert!(CenteredPeakMatrix::new(0, 1, &[]).is_err());
     assert!(CenteredPeakMatrix::new(1, 0, &[]).is_err());
-    assert!(CenteredPeakMatrix::new(MAX_ROWS + 1, 1, &[]).is_err());
+    assert!(CenteredPeakMatrix::new(SPECTRUM_ROWS + 1, 1, &[]).is_err());
     assert!(CenteredPeakMatrix::new(1, MAX_FRAMES + 1, &[]).is_err());
     assert!(CenteredPeakMatrix::new(usize::MAX, usize::MAX, &[]).is_err());
     assert!(CenteredPeakMatrix::new(1, 2, &[0.0]).is_err());
