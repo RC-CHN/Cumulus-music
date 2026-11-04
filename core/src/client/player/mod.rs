@@ -216,6 +216,11 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         revision: value.revision.to_string(),
         queue_revision: value.queue_revision.to_string(),
         state: value.state,
+        pending_paused: matches!(
+            value.state,
+            PlaybackStatus::Preparing | PlaybackStatus::Loading
+        )
+        .then_some(value.paused),
         play_id: value.play_id.clone(),
         entry_id: value.selected.as_ref().map(|i| i.entry_id.clone()),
         download_task_id: value
@@ -656,12 +661,20 @@ impl MusicClient {
             let current = controller
                 .command(&token, PlaybackCommand::Snapshot)
                 .await?;
-            if let PlayerAction::Seek { seconds } = action
-                && current.state == PlaybackStatus::Loading
-            {
+            let pending_action = match (current.state, &action) {
+                (
+                    PlaybackStatus::Preparing | PlaybackStatus::Loading,
+                    PlayerAction::Pause { paused },
+                ) => Some(PlaybackCommand::Pause(*paused)),
+                (PlaybackStatus::Loading, PlayerAction::Seek { seconds }) => {
+                    Some(PlaybackCommand::SeekDuringLoad(*seconds))
+                }
+                _ => None,
+            };
+            if let Some(command) = pending_action {
                 source_control::validate_identity(&current, play_id, revision)?;
                 if current.fm || self.together_attached(&token, None)? {
-                    return Err(Error::State("loading seek requires ordinary playback"));
+                    return Err(Error::State("loading controls require ordinary playback"));
                 }
                 let focus = self.focus.clone();
                 let owner = focus.snapshot()?;
@@ -669,12 +682,12 @@ impl MusicClient {
                     return Err(Error::StaleResponse);
                 }
                 let room = self.together_detached_guard(&token);
-                // This clock change belongs to the in-flight selection. It
-                // must not reserve a new selection or cancel its decoder.
+                // This control belongs to the in-flight selection. It must
+                // not reserve a new selection or cancel its decoder.
                 let state = controller
                     .command_guarded(
                         &token,
-                        PlaybackCommand::SeekDuringLoad(seconds),
+                        command,
                         current.fence(),
                         Cancellation::new(move || {
                             selection.load(std::sync::atomic::Ordering::Acquire) == observed

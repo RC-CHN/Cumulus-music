@@ -59,6 +59,7 @@ export interface PlayerView {
   revision: string;
   queueRevision: string;
   state: PlaybackStatus;
+  pendingPaused?: boolean;
   playId: string | null;
   entryId: string | null;
   downloadTaskId?: string;

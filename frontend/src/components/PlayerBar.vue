@@ -49,7 +49,17 @@ const emit = defineEmits<{
   audioOutput: [epoch: string];
   catalog: [resource: CatalogResource];
 }>();
-const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
+const {
+  view,
+  ready,
+  busy,
+  error,
+  canRetry,
+  loaded,
+  pendingTransport,
+  pendingTransportBusy,
+  primaryTransportPauses,
+} = props.player;
 const chorusMarker = usePlaybackChorus(view, loaded);
 const commentCount = usePlaybackCommentCount(view, loaded, () => props.account.epoch);
 const commentBadge = computed(() => formatPlaybackCommentCount(commentCount.value));
@@ -166,6 +176,7 @@ async function transport(event: MouseEvent, action: PlayerAction | (() => unknow
     origin.focus({ preventScroll: true });
 }
 function primaryTransport(event: MouseEvent) {
+  if (pendingTransport.value && props.togetherActive) return;
   const key = (event.currentTarget as HTMLButtonElement).dataset.primaryTransportKey;
   return transport(event, () => props.player.togglePrimaryTransport(key));
 }
@@ -197,7 +208,10 @@ const canSeek = computed(
     layeredSeek.value &&
     !seekInFlight.value &&
     ((loaded.value && !busy.value) ||
-      (view.value?.state === 'loading' && !view.value.fm && !props.togetherActive)),
+      (view.value?.state === 'loading' &&
+        !view.value.fm &&
+        !props.togetherActive &&
+        !pendingTransportBusy.value)),
 );
 const seekPlayed = computed(() => {
   const { span, min, max } = rail.value;
@@ -442,12 +456,16 @@ async function seek(event: Event) {
         </button>
         <button
           class="play-toggle"
-          :aria-label="playing ? '暂停' : '播放'"
-          :disabled="!ready || (!view?.queueLen && !view?.track) || pending"
+          :aria-label="primaryTransportPauses ? '暂停' : '播放'"
+          :disabled="
+            !ready ||
+            (!view?.queueLen && !view?.track) ||
+            (pendingTransport ? togetherActive || pendingTransportBusy : pending)
+          "
           :data-primary-transport-key="player.primaryTransportKey.value"
           @click="primaryTransport"
         >
-          <Icon :name="playing ? 'pause' : 'play'" />
+          <Icon :name="primaryTransportPauses ? 'pause' : 'play'" />
         </button>
         <button
           class="icon-button"

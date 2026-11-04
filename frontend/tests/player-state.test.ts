@@ -1792,7 +1792,7 @@ test('a seek during decode changes the same pending playback without taking over
   const loading: PlayerView = {
     ...state('3', '1', 'decoding'),
     state: 'loading',
-    timeline: { mode: 'full', start: 0, end: 120, length: 120, total: 120, mediaStart: 0 },
+    timeline: { mode: 'full', start: 0, end: 120, length: 120, total: 120, media_start: 0 },
   };
   f.emit(loading);
   await f.player.seekDisplayed({ ...loading, playId: 'previous' }, 20);
@@ -1808,6 +1808,44 @@ test('a seek during decode changes the same pending playback without taking over
   selected.resolve({ ...loading, revision: '5', state: 'playing', position: 35 });
   assert.equal((await start)?.playId, 'decoding');
   assert.equal(f.player.view.value?.state, 'playing');
+  assert.equal(f.player.busy.value, false);
+  f.player.dispose();
+});
+
+test('the footer can pause an in-flight selection and does not repeat a stale pending click', async () => {
+  const selected = deferred<PlayerView>();
+  const pause = deferred<PlayerView>();
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: (_epoch, action) => {
+      actions.push(action);
+      return action.kind === 'play' ? selected.promise : pause.promise;
+    },
+  });
+  await f.player.connect(account());
+  const start = f.player.action({ kind: 'play' });
+  const preparing: PlayerView = {
+    ...state('3', '1', 'pending'),
+    state: 'preparing',
+    pendingPaused: false,
+  };
+  f.emit(preparing);
+  assert.equal(f.player.primaryTransportPauses.value, true);
+  const oldKey = f.player.primaryTransportKey.value;
+  const pending = f.player.togglePrimaryTransport(oldKey);
+  assert.equal(f.player.pendingTransportBusy.value, true);
+  await f.player.togglePrimaryTransport(oldKey);
+  pause.resolve({ ...preparing, revision: '4', pendingPaused: true });
+  await pending;
+  assert.equal(f.player.primaryTransportPauses.value, false);
+  assert.equal(f.player.busy.value, true);
+  await f.player.togglePrimaryTransport(oldKey);
+  assert.deepEqual(actions, [
+    { kind: 'play' },
+    { kind: 'pause_for', play_id: 'pending', expected_queue_revision: '1', paused: true },
+  ]);
+  selected.resolve({ ...state('5', '1', 'pending'), state: 'paused' });
+  assert.equal((await start)?.state, 'paused');
   assert.equal(f.player.busy.value, false);
   f.player.dispose();
 });

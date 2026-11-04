@@ -114,6 +114,7 @@
     else
       await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
     let loadingSeekVerified = false;
+    let loadingPauseVerified = false;
     if (!window.__mainFlowOrdinaryHttps) {
       const slider = await wait(() => {
         const range = one('.playerbar input[aria-label="播放进度"]');
@@ -123,10 +124,21 @@
       input(slider, ".45", "change");
       await wait(() => state() === "loading" && position() >= .45,
         "native actor accepted position while decode is gated");
+      await click(() => button("暂停", one(".playerbar")), "pause control remains available during loading");
+      await wait(async () => {
+        const playback = await invoke("player_snapshot", { epoch });
+        const resume = button("播放", one(".playerbar"));
+        return playback.state === "loading" && playback.playId === id &&
+          playback.pendingPaused === true && resume && !resume.disabled;
+      }, "native actor accepted pause before decoder completion");
       await emit("release_loading_seek");
-      await wait(() => state() === "playing" && one(".playerbar")?.dataset.playId === id &&
-        position() >= .45, "same decoded playback starts at the accepted position");
+      await wait(() => state() === "paused" && one(".playerbar")?.dataset.playId === id &&
+        position() >= .45, "same decoder first presents paused at the accepted position");
       loadingSeekVerified = true;
+      await click(() => button("播放", one(".playerbar")), "resume the same decoded entry");
+      await wait(() => state() === "playing" && one(".playerbar")?.dataset.playId === id &&
+        position() > .48, "same decoded entry progresses after explicit resume");
+      loadingPauseVerified = true;
     }
     if (window.__mainFlowHttpsRetry) {
       const retry = () => button("重试", one(".playback-message"));
@@ -175,7 +187,7 @@
       await wait(() => state() === "paused", "resumed native entry paused");
     }
     await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof,
-      loadingSeekVerified, output: "null" });
+      loadingSeekVerified, loadingPauseVerified, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");
 

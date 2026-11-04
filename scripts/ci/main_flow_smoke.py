@@ -86,6 +86,7 @@ def main():
     assert stages['playback']['fixture']['ordinaryHttps'] == args.ordinary_https
     assert stages['playback']['resumedSameEntry'] == args.ordinary_https
     assert stages['playback']['loadingSeekVerified'] == (not args.ordinary_https)
+    assert stages['playback']['loadingPauseVerified'] == (not args.ordinary_https)
     if args.https_retry_once:
         failed = stages['https_failure']
         assert failed['failedBeforeExplicitRetry'] and not failed['rawLocatorVisible']

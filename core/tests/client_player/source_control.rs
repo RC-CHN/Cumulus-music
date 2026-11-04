@@ -236,6 +236,83 @@ async fn old_seek_does_not_seek_the_replacement_and_current_seek_preserves_playb
 }
 
 #[tokio::test]
+async fn pending_transport_pauses_the_same_search_load_before_audio_can_start() {
+    use std::time::Duration;
+    let device = Arc::new(support::Device::default());
+    device.hold_load.store(true, Ordering::SeqCst);
+    let (_dir, api, _, client, _) = fixture_with_device(device.clone());
+    api.hold_url_id.store(1, Ordering::SeqCst);
+    let loading_client = client.clone();
+    let load = tokio::spawn(async move {
+        loading_client
+            .play_selection(
+                "1",
+                PlaySelection::SearchResultTrack {
+                    id: "1".into(),
+                    quality: Quality::Standard,
+                    toggle_current: false,
+                },
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(5), api.url_started.notified())
+        .await
+        .unwrap();
+    let preparing = client.player_snapshot("1").await.unwrap();
+    assert_eq!(preparing.state, PlaybackStatus::Preparing);
+    assert_eq!(preparing.pending_paused, Some(false));
+    let mut stale = preparing.clone();
+    stale.play_id = Some("older-source".into());
+    assert!(matches!(
+        client.player_action("1", pause(&stale, true)).await,
+        Err(Error::StaleResponse)
+    ));
+    let preparing_paused = client
+        .player_action("1", pause(&preparing, true))
+        .await
+        .unwrap();
+    assert_eq!(preparing_paused.pending_paused, Some(true));
+    assert_eq!(preparing_paused.play_id, preparing.play_id);
+    api.url_release.notify_one();
+    tokio::time::timeout(Duration::from_secs(5), device.started.notified())
+        .await
+        .unwrap();
+    let decoding = client.player_snapshot("1").await.unwrap();
+    assert_eq!(decoding.state, PlaybackStatus::Loading);
+    assert_eq!(decoding.pending_paused, Some(true));
+    for paused in [false, true] {
+        let staged = client
+            .player_action("1", pause(&decoding, paused))
+            .await
+            .unwrap();
+        assert_eq!(staged.state, PlaybackStatus::Loading);
+        assert_eq!(staged.pending_paused, Some(paused));
+        assert_eq!(staged.play_id, preparing.play_id);
+    }
+    assert!(device.state.lock().unwrap().pauses.is_empty());
+    device.hold_load.store(false, Ordering::SeqCst);
+    let loaded = tokio::time::timeout(Duration::from_secs(5), load)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(loaded.state, PlaybackStatus::Paused);
+    assert_eq!(loaded.pending_paused, None);
+    assert_eq!(loaded.play_id, preparing.play_id);
+    assert_eq!(loaded.queue_revision, preparing.queue_revision);
+    assert_eq!(device.state.lock().unwrap().pauses, [true]);
+    let resumed = client
+        .player_action("1", pause(&loaded, false))
+        .await
+        .unwrap();
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.play_id, preparing.play_id);
+    let native = device.state.lock().unwrap();
+    assert_eq!(native.loads, 1);
+    assert_eq!(native.pauses, [true, false]);
+}
+
+#[tokio::test]
 async fn seek_during_decode_uses_the_latest_position_without_replacing_the_load() {
     for (decoded_duration, expected, reset, trial) in [
         (120.0, 45.0, false, false),

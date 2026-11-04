@@ -235,6 +235,20 @@ main_flow_smoke 的本地合成音源分支在真正加载 libmpv 前保持解�
 同一播放 ID、一条音源授权和一次实际加载。见
 .build/loading-seek-webview-v2/run/first/ux_playback.json。
 
+首次加载时暂停与继续
+--------------------
+官方 M/308:847–868 的 switchResumeOrPause 按当前播放意图派发；M/308:988–1029
+的 pause 先更新界面状态，再将已知播放 ID 或资源 ID 送给原生播放器。普通播放
+选定曲目并生成播放 ID 后，即使授权或解码仍在等待，底栏也显示可用的暂停/继续。
+通过现有 player_action/pause_for 绑定账号、播放 ID、队列版本及音频归属；Rust 修改
+当前载入的首帧意图。暂停后解码器以暂停状态完成，避免先播放再停；继续复用同一
+载入，不再次请求授权或替换队列。请求待确认时按钮防重复，旧按钮不会覆盖新曲目。
+FM 和附着一起听仍走原来的协调逻辑；仅在已有原生载入意图时开放。
+客户端回归分别拦住授权和解码；main_flow_smoke 通过实际底栏暂停未完成的解码，
+释放后核对停在之前的定位，再点击继续核对同一原生播放 ID 的时钟推进。
+Linux 非 C locale 的本机验证为 18 个检查点（17 张截图）；播放阶段记录一条授权
+和一次实际加载。见 .build/loading-pause-webview/run/first/ux_playback.json。
+
 持续等待的进度滑块提示
 ----------------------
 官方 PlayProgress.tsx 订阅 isSeekOrLoadingState$；同一次连续等待超过三秒后

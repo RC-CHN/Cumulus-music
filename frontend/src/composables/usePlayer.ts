@@ -40,6 +40,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueError = ref(''),
     queueEditError = ref(''),
     lyricError = ref('');
+  const pendingSourceCommand = shallowRef<{ source: PlayerView }>();
   const reported = shallowRef<CoreFailure>();
   const reportedRevision = ref(0);
   const error = computed(() => reported.value?.message ?? '');
@@ -68,6 +69,28 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const loaded = computed(() =>
     ['playing', 'paused', 'buffering'].includes(view.value?.state ?? ''),
   );
+  const pendingTransportBusy = computed(() => {
+    const source = pendingSourceCommand.value?.source;
+    return !!source && source.epoch === view.value?.epoch && sameSelection(source, view.value);
+  });
+  const pendingTransport = computed(() => {
+    const current = view.value;
+    if (
+      !current?.playId ||
+      current.fm ||
+      (current.state !== 'preparing' && current.state !== 'loading') ||
+      current.pendingPaused === undefined
+    )
+      return;
+    return {
+      playId: current.playId,
+      revision: current.queueRevision,
+      paused: current.pendingPaused,
+    };
+  });
+  const primaryTransportPauses = computed(
+    () => playing.value || pendingTransport.value?.paused === false,
+  );
   // Bind the rendered footer action to its selection, without letting
   // harmless clock/buffer updates invalidate the button.
   const primaryTransportKey = computed(() => {
@@ -77,7 +100,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       current?.playId,
       current?.queueRevision,
       current?.fm,
-      playing.value ? 'pause' : current?.state,
+      pendingTransport.value
+        ? pendingTransport.value.paused
+          ? 'pending-play'
+          : 'pending-pause'
+        : playing.value
+          ? 'pause'
+          : current?.state,
     ]);
   });
   // A footer click must match the failure the button actually displays.
@@ -154,6 +183,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     resetLyrics();
     ready.value = false;
     busy.value = false;
+    pendingSourceCommand.value = undefined;
     queueBusy.value = false;
     queueLoading.value = false;
     queueEditing.value = false;
@@ -561,6 +591,23 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   const runSelection = (operation: PlaybackOperation) => run(operation, operation, true);
   const select = (input: PlaySelection) => runSelection((e) => core.playSelection(e, input));
+  async function controlPendingSource(current: PlayerView, input: PlayerAction) {
+    if (pendingTransportBusy.value) return;
+    // The original selection still owns busy/retry until decode completes.
+    const captured = epoch;
+    const session = connection;
+    const command = { source: current };
+    pendingSourceCommand.value = command;
+    try {
+      const next = await core.playerAction(captured, input);
+      if (session === connection && captured === epoch) accept(next);
+    } catch (e) {
+      if (session === connection && captured === epoch)
+        handle({ ...failure(e), retryable: false }, sameSelection(current, view.value));
+    } finally {
+      if (pendingSourceCommand.value === command) pendingSourceCommand.value = undefined;
+    }
+  }
   async function seekDisplayed(
     target: Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>,
     seconds: number,
@@ -586,30 +633,20 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       expected_queue_revision: target.queueRevision,
       seconds,
     } as const;
-    if (!loading) return action(input);
-    // The original selection still owns busy/retry until its decoder
-    // finishes. A seek changes its initial clock, not its request identity.
-    const captured = epoch;
-    const session = connection;
-    try {
-      const next = await core.playerAction(captured, input);
-      if (session === connection && captured === epoch) accept(next);
-    } catch (e) {
-      if (session === connection && captured === epoch)
-        handle(e, sameSelection(current, view.value));
-    }
+    return loading ? controlPendingSource(current, input) : action(input);
   }
   function togglePrimaryTransport(displayedKey: string | undefined) {
     const current = view.value;
-    if (
-      !current ||
-      !ready.value ||
-      busy.value ||
-      displayedKey !== primaryTransportKey.value ||
-      current.state === 'preparing' ||
-      current.state === 'loading'
-    )
-      return;
+    if (!current || !ready.value || displayedKey !== primaryTransportKey.value) return;
+    const pending = pendingTransport.value;
+    if (pending)
+      return controlPendingSource(current, {
+        kind: 'pause_for',
+        play_id: pending.playId,
+        expected_queue_revision: pending.revision,
+        paused: !pending.paused,
+      });
+    if (busy.value || current.state === 'preparing' || current.state === 'loading') return;
     if (loaded.value && !current.fm) return toggleSource();
     // An inactive selection needs a new load; FM play uses its coordinator.
     return action(playing.value ? { kind: 'pause', paused: true } : { kind: 'play' });
@@ -922,6 +959,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     select,
     toggleSource,
     primaryTransportKey,
+    primaryTransportPauses,
+    pendingTransport,
+    pendingTransportBusy,
     togglePrimaryTransport,
     seekDisplayed,
     togglePlaylist,

@@ -23,6 +23,9 @@ pub struct PlayerView {
     pub revision: String,
     pub queue_revision: String,
     pub state: PlaybackStatus,
+    /// Desired first presentation state while a decoder is pending.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pending_paused: Option<bool>,
     pub play_id: Option<String>,
     pub entry_id: Option<String>,
     /// Local download task identity only; never expose the media file locator.
