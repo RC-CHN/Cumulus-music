@@ -84,7 +84,7 @@ open_member_link {epoch,revision,key} 重读当前账号快照，核对版本后
 卡片支持横向滚动与键盘按钮；推荐歌曲按官方每列三首分组，数字专辑只展示前六张，
 空模块不渲染标题。历史日推隐藏首页权益大卡，保留列表可视空间。300秒目录缓存、
 保留旧内容的故障状态是显式工程选择。
-会员卡的官方权益推广/签到写操作/礼券、动态开通按钮/购买承接、完整会员服务页还未接入；
+会员卡的官方权益推广/礼券、动态开通按钮/购买承接、完整会员服务页还未接入；
 本版显示真实五类权益与已有内容模块，不把入口接通扩大为所有会员业务完成。
 有声书实际可播放/可下载权限由既有播客授权判断；付费、NCM/文字稿等旧边界不因卡片出现消失。
 全局设备身份/易盾/凭据刷新、完整效果链与会员音效到期宿主、同账号接续继续。
@@ -150,7 +150,7 @@ python3 desktop/examples/audit_member_probe.py <proof-root> [--reopen|--links]
 官方的收银台分支不自动触发。daily_history_smoke.py 用合成账号验证窄窗入口、
 日期与曲目读取和返回每日推荐，未访问真实服务。
 
-黑胶乐签（VIP精选，已有记录只读）
+黑胶乐签（VIP精选，卡片和已有记录）
 恢复 PageVIPEssential 将 TrackSignInCard 放在左列会员卡下方；VIPInfoCard 主卡点击打开的是
 另一个会员中心扫码说明，不能拿该弹窗当成乐签。M/15、154、198、208、616、617 和恢复的
 AppModal/dialogs/DailySign 说明读写边界、按日匹配、卡片与详情字段、播放和进度。
@@ -163,11 +163,30 @@ AppModal/dialogs/DailySign 说明读写边界、按日匹配、卡片与详情�
   本月次数和下一奖励档位；播放以普通单曲走原生播放器。仅显示奖励描述，不领取奖励。
 - 账号代次在请求前、列表完成后和详情返回时重新验证。前端关闭/换页/切账号时忽略旧回包；
   卡片刷新失败时保留本账号上次的页面内结果，不落盘，也不按本地日期伪造未签到状态。
-  签到写入口 `/api/vip-center-bff/task/sign`、领取、会员推广扫码弹窗、移动端用户菜单乐签
-  不在本批；真实账号的签到状态、服务奖励和写入都未用本批探针验证。
+  会员奖励领取、会员推广扫码弹窗、移动端用户菜单乐签尚未接入；真实账号的签到状态、服务奖励
+  和写入未用合成探针验证。
 - 2026-11-04：`client_member` + `member_center` 共 11 项，前端 756 项及类型/构建通过。
   Linux 真 WebView 合成探针 `.build/ui-proof/member-sign-20261104-b` 七阶段七图：普通浅色
   1120×760、窄窗深色 760×540；读取 12 次、签到/领奖写入 0。覆盖卡片/详情错误重试、焦点返回、
   晚到结果隔离、未打卡状态和旧内容保留。记录歌曲走实际 libmpv null 输出推进时钟，非真实账号或声卡证明。
   复现：构建 `ux_ui_probe`，用 `scripts/ci/member_sign_smoke.py --binary <probe> --root <new-dir>`，
   Linux 在可用的非 C locale、Xvfb 下追加 `--screenshots`；可选 `--frontend-dist` 使用隔离前端产物。
+
+黑胶乐签的主动签到与断线恢复
+- 恢复 M/15、M/617：用户点击时 `POST /api/vip-center-bff/task/sign {}`；官方以 code 200 和
+  JS 真值 data 确认成功。随后读 `/api/vipnewcenter/app/level/user/checkin/history/detail`
+  `{type:1,signDayTime:<校准毫秒时间>}`，再刷新卡片。官方 UI 延迟约 1 秒刷新；Rust 立即回读，
+  如卡片还未同步，保留已确认状态，避免二次签到。详情不可用不改变已确认状态。
+- `member_sign_card` 的 `action` 给出 ready/signed/unknown/unavailable 和原生日键。
+  `member_sign_command {epoch,command:{kind:"check_in",dayKey}}` 重新读取卡片、检查当前账号代次和
+  日期后才允许发送；`{kind:"reconcile"}` 只读。没有可信日期、`today` 标记与日期不一致或日键已换日时不发送。
+  对应 M/47 的时钟来自绑定 HTTP transport 的 Date 和单调时钟；以 UTC+8 推导服务日，再与卡片今日日期互证。
+  UTC+8 是大陆服务日约定，实际跨时区/跨午夜行为未用真实账号验证。
+- 操作锁作用于本地账号，跨进程防止重复发出；SQLite 按账号和日键保存结果，发送前先提交 unknown 标记。
+  断线、退出、模糊失败或未确认数据保留 unknown；只读卡片/历史能确认时转 signed。
+  只有明确的 `RequestNotSent` 才清除这次标记，仍由用户再次明确操作。没有匹配记录不证明写入未发生。
+- 回读已签先找卡片 `signTime` 对应的历史项；若卡片尚未同步且没有时间提示，则只接受该服务日唯一记录。
+  记录 ID 留在原生并保留原始类型，拿到 ID 才读 `{type:2,recordId}`；已签或待确认当天不会重放签到。
+  不调用领奖、付款、分享或公开发内容接口。
+- 2026-11-04：`client_member_sign` 4 项、既有 `client_member` 7 项通过，覆盖成功后的请求顺序、
+  断线重开后的单次回读、跨账号/并发锁、发出后取消、过期日键和明确未发出。全部使用合成账号。

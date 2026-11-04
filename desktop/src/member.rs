@@ -44,6 +44,17 @@ pub async fn member_sign_detail(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn member_sign_command(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    command: MemberSignCommand,
+) -> Result<AccountData<MemberSignOutcome>, ClientError> {
+    client
+        .member_sign_command(&epoch, command)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn open_member_link<R: tauri::Runtime>(
     app: tauri::AppHandle<R>,
     epoch: String,

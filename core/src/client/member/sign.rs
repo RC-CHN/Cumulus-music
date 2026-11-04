@@ -1,6 +1,8 @@
-//! Read-only membership check-in card and recorded results (M/15, M/154, M/208, M/616).
+//! Membership check-in card and recorded results (M/15, M/154, M/208, M/616).
+mod command;
 use super::{MusicClient, mapping};
 use crate::{Error, Result, client::dto::AccountData, protocol::api::identifier};
+pub use command::{MemberSignAction, MemberSignCommand, MemberSignOutcome, MemberSignPhase};
 use serde::Serialize;
 use serde_json::{Value, json};
 
@@ -16,6 +18,7 @@ pub struct MemberSignCard {
     button_text: Option<String>,
     texture_url: Option<String>,
     days: Vec<SignDay>,
+    action: MemberSignAction,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -88,6 +91,7 @@ fn card(data: &Value) -> Result<MemberSignCard> {
         button_text: text(&data["btnText"], 32),
         texture_url: crate::protocol::artwork::original(&data["bgTexture"]),
         days,
+        action: MemberSignAction::unavailable(),
     })
 }
 
@@ -138,18 +142,6 @@ fn detail(data: &Value, sign_time: u64) -> Result<MemberSignDetail> {
 }
 
 impl MusicClient {
-    pub async fn member_sign_card(&self, epoch: &str) -> Result<AccountData<MemberSignCard>> {
-        let token = self.member_token(epoch)?;
-        let api = self.session.native_api(&token)?;
-        let response = api.call(CARD, json!({"type":1}), false, &[200]).await?;
-        self.session.with_token(&token, |_| {
-            Ok(AccountData {
-                epoch: epoch.into(),
-                value: card(&response["data"])?,
-            })
-        })
-    }
-
     pub async fn member_sign_detail(
         &self,
         epoch: &str,

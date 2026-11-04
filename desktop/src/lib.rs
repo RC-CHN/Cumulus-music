@@ -305,6 +305,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 member::member_rights,
                 member::member_sign_card,
                 member::member_sign_detail,
+                member::member_sign_command,
                 member::open_member_link,
                 fm::fm_view,
                 fm::fm_discovery,

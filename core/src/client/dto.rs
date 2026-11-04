@@ -21,7 +21,8 @@ pub use super::login_devices::{LoginDeviceLimitsView, LoginDeviceView, LoginDevi
 pub use super::media_preferences::{SystemMediaPreferencesCommand, SystemMediaPreferencesView};
 pub use super::member::{
     MemberCard, MemberContent, MemberEntitlement, MemberModule, MemberPage, MemberPageView,
-    MemberQuery, MemberRanking, MemberRightsView, MemberSignCard, MemberSignDetail, MemberTarget,
+    MemberQuery, MemberRanking, MemberRightsView, MemberSignAction, MemberSignCard,
+    MemberSignCommand, MemberSignDetail, MemberSignOutcome, MemberSignPhase, MemberTarget,
 };
 pub use super::mv::{
     MvCard, MvDownloadChoice, MvLikeView, MvMutationView, MvPage, MvQuery, MvRecommendationsView,

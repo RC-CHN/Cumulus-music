@@ -10,7 +10,10 @@ use crate::{
 pub use dto::*;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-pub use sign::{MemberSignCard, MemberSignDetail};
+pub use sign::{
+    MemberSignAction, MemberSignCard, MemberSignCommand, MemberSignDetail, MemberSignOutcome,
+    MemberSignPhase,
+};
 
 fn now() -> f64 {
     time::OffsetDateTime::now_utc().unix_timestamp_nanos() as f64 / 1e9
