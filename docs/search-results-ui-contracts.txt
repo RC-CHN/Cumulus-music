@@ -31,7 +31,7 @@ recovered-client/docs/product/models/page_searchResults.txt：页签、分类、
   综合单曲改为最多六项的双列卡片，
   分类卡片只预览一行；标题与箭头跳转分类。详见search-preview-ui-contracts.txt。
   单曲分类仍沿用有界虚拟列表。歌手/用户/MV按恢复源码以13项连续
-  加载并有界渲染；歌单与专辑按10项连续加载，仍保留歌单显式分页选项。分类与详情返回的位置恢复见
+  加载并有界渲染；歌单、专辑、声音和播客按10项连续加载，保留歌单显式分页。分类与详情返回的位置恢复见
   search-scroll-ui-contracts.txt，不声称官方完整WaterfallGrid内部算法已恢复。
 - 单曲操作为播放全部/收藏全部；收藏窗口明确显示当前页数量，选择已有自建歌单后
   才执行。准备阶段重读歌单 revision，账号切换取消写入；未决结果沿用现有核对流程。
@@ -251,3 +251,14 @@ M/3095:3213–3268 的歌单分类以十项为请求大小，滚动追加下一�
 原生偏移、无法展示的一项、终止页和可见卡片数量。
 Linux WebView 通过八个专项检查点和截图：.build/search-playlist-waterfall-final/first/。
 完整搜索回归也通过 71 项，包含显式分页以及纠错词沿用到下一批并可返回。
+
+声音与播客分类连续加载
+M/3095:3300–3350、3381–3448 的声音和播客分类使用 loadMore，续页大小为
+10；M/2245:73–113 的请求封装首批同样默认 10。两类使用有界卡片连续渲染，
+沿用 `/api/search/voice/get` 和 `/api/search/voicelist/get`，保持原生返回的
+偏移、重复项处理和失败重试。声音卡片的播放按钮支持网格方向键，
+从所属播客入口返回时恢复原按钮而不是切到播放。分类卡片的其他操作不改变队列。
+`search_results_smoke.py --voice-queue` 验证两个分类真实 WebView 的 0/10、
+10/10 读取、追加卡片、详情返回及保留原生播放条目。
+Linux WebView 五个专项检查点和截图：.build/search-audio-waterfall-webview/first/。
+完整搜索回归也通过 71 项。

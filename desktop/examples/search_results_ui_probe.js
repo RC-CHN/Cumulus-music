@@ -646,7 +646,48 @@
       const radio=await readQueue();
       assert(radio.tracks.map(row=>row.track.voiceId).join(',')==='401,402,403','explicit podcast card still plays its episode list');
       await capture('search_podcast_keeps_explicit_radio_play');
-      await emit('complete',{ok:true,voiceQueueVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      const audioReads=[], fetchIPC=window.fetch;
+      window.fetch=function(url,options){
+        if(String(url).endsWith('/search_results')){
+          const {query}=JSON.parse(options.body);
+          if(['voices','podcasts'].includes(query.category)&&query.keyword==='合成长音频续页')
+            audioReads.push([query.category,query.offset,query.limit]);
+        }
+        return fetchIPC.call(window,url,options);
+      };
+      const radioPlaying=await invoke('player_snapshot',{epoch});
+      await theme(760,540,'dark');
+      await fresh('合成长音频续页');
+      const panel=()=>one('.search-result-panel'), grid=()=>panel()?.querySelector('.search-result-grid');
+      for(const category of ['voices','podcasts']){
+        await choose(category);
+        assert(grid()?.dataset.loadedCount==='10'&&!one('.search-result-pagination'),
+          'long audio category initially displays ten continuous results');
+        if(category==='voices'){
+          const first=grid().querySelector('[data-grid-index="0"] .search-card-play');
+          first.focus({preventScroll:true});key(first,'ArrowDown');
+          await wait(()=>document.activeElement===grid()?.querySelector('[data-grid-index="1"] .search-card-play'),
+            'voice cards offer grid navigation from their play controls');
+        }
+        panel().scrollTop=panel().scrollHeight;
+        panel().dispatchEvent(new Event('scroll'));
+        const opener=()=>grid()?.querySelector(`[data-grid-index="10"] ${category==='voices'?'.search-voice-radio':'.search-card-open'}`);
+        await wait(()=>grid()?.dataset.loadedCount==='20'&&opener(),'scroll appends ten long-audio results');
+        opener().scrollIntoView({block:'nearest'});
+        const rect=opener().getBoundingClientRect(), position=panel().scrollTop;
+        assert(opener().contains(document.elementFromPoint(rect.x+rect.width/2,rect.y+rect.height/2)),
+          'appended audio result offers a visible navigation control');
+        click(opener());
+        await wait(()=>one('.podcast-cover h2')?.textContent.includes('合成播客'),'appended result opens native podcast details');
+        click(button('返回上一页'));
+        await wait(()=>ready()&&grid()?.dataset.loadedCount==='20'&&document.activeElement===opener()&&
+          Math.abs(panel().scrollTop-position)<=1,'Back restores results, scroll and exact audio result control');
+        const restored=await invoke('player_snapshot',{epoch});
+        assert(restored.playId===radioPlaying.playId&&restored.queueRevision===radioPlaying.queueRevision,
+          'appending or opening details cannot alter the existing native queue');
+        await capture('search_'+category+'_waterfall_back');
+      }
+      await emit('complete',{ok:true,voiceQueueVerified:true,audioWaterfallVerified:true,audioReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchSongWaterfallProof){

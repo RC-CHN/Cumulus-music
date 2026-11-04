@@ -122,16 +122,15 @@ const playlistWaterfall = computed(
   () => category.value === 'playlists' && props.pagination === undefined,
 );
 const firstNumberedPage: SearchPageStep = { offset: 0, number: 1, previous: undefined };
+const tenItemGrid = computed(
+  () => playlistWaterfall.value || ['albums', 'voices', 'podcasts'].includes(category.value),
+);
 const gridWaterfall = computed(
-  () => playlistWaterfall.value || ['artists', 'users', 'albums', 'mvs'].includes(category.value),
+  () => tenItemGrid.value || ['artists', 'users', 'mvs'].includes(category.value),
 );
 const waterfall = computed(() => lyrics.value || gridWaterfall.value || songWaterfall.value);
 const limit = computed(() =>
-  lyrics.value || songWaterfall.value || playlistWaterfall.value || category.value === 'albums'
-    ? 10
-    : gridWaterfall.value
-      ? 13
-      : 30,
+  lyrics.value || songWaterfall.value || tenItemGrid.value ? 10 : gridWaterfall.value ? 13 : 30,
 );
 const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, category.value));
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);

@@ -170,7 +170,10 @@ def main():
         return
     if args.voice_queue:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['voiceQueueVerified'] and complete['stageCount'] == 3
+        assert complete['ok'] and complete['voiceQueueVerified'] and complete['audioWaterfallVerified']
+        assert complete['stageCount'] == 5
+        assert complete['audioReads'] == [['voices', 0, 10], ['voices', 10, 10],
+                                          ['podcasts', 0, 10], ['podcasts', 10, 10]]
         first = root / 'first'
         played = json.loads((first / 'ux_01_search_episode_joins_ordinary_queue.json').read_text(encoding='utf-8'))
         paused = json.loads((first / 'ux_02_search_episode_pauses_in_place.json').read_text(encoding='utf-8'))
@@ -178,8 +181,9 @@ def main():
         assert paused['voiceQueueCalls'] == played['voiceQueueCalls']
         assert '/api/v6/dj/program/byradio' in complete['voiceQueueCalls']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list((root / 'first').glob('ux_*.png'))) == (3 if args.screenshots else 0)
-        print(json.dumps(dict(ok=True, actualWebView=True, voiceQueueVerified=True, stageCount=3)))
+        assert len(list((root / 'first').glob('ux_*.png'))) == (5 if args.screenshots else 0)
+        print(json.dumps(dict(ok=True, actualWebView=True, voiceQueueVerified=True,
+                              audioWaterfallVerified=True, stageCount=5)))
         return
     if args.song_waterfall:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))

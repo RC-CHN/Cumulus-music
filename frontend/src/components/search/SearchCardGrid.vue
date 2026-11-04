@@ -148,7 +148,7 @@ function keydown(event: KeyboardEvent) {
       event.preventDefault();
       void focusItem(target, event.shiftKey);
     }
-  } else if (event.target.classList.contains('search-card-open')) {
+  } else if (event.target.matches('.search-card-open, .search-voice-card .search-card-play')) {
     const move: Record<string, number> = {
       ArrowRight: index + 1,
       ArrowLeft: index - 1,

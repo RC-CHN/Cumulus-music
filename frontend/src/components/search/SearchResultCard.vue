@@ -465,6 +465,7 @@ watch(
           v-if="item.voice.radioId"
           type="button"
           class="search-voice-radio"
+          data-result-action="voice-radio"
           :data-tooltip="item.voice.radioName || '查看所属播客'"
           @click.stop="emit('open', item)"
           @dblclick.stop
