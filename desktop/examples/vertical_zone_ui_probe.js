@@ -8,10 +8,11 @@
     event: 'ux-proof', payload: { stage, ...data },
   });
   const assert = (condition, label) => { if (!condition) throw new Error(label); };
-  const wait = async (predicate, label) => {
-    for (let i = 0; i < 150; i++) {
+  const wait = async (predicate, label, interval = 65) => {
+    const deadline = performance.now() + 9750;
+    while (performance.now() < deadline) {
       if (await predicate()) return;
-      await sleep(65);
+      await sleep(interval);
     }
     throw new Error(label);
   };
@@ -27,13 +28,20 @@
   const tab = (key) => one(`[data-zone-focus="tab:${key}"]`);
   const rail = () => one('[data-zone-module="horizontal"] [data-zone-rail]');
   const back = () => click(one('[aria-label="返回上一页"]'), 'Back');
+  const hit = (entry) => {
+    if (!entry || entry.disabled) return false;
+    const rect = entry.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0 &&
+      entry.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  };
+  const settled = () => {
+    const page = one('.page-view');
+    return page && !page.matches('.page-enter-active,.page-leave-active') &&
+      getComputedStyle(page).opacity === '1';
+  };
   let count = 0;
   async function capture(name, values = {}) {
-    await wait(() => {
-      const page = one('.page-view');
-      return page && !page.matches('.page-enter-active,.page-leave-active') &&
-        getComputedStyle(page).opacity === '1';
-    }, `settled page before ${name}`);
+    await wait(settled, `settled page before ${name}`);
     // Allow the settled layout/focus to reach the compositor before the host
     // captures the actual X11 pixels. The DOM can be ready during enter.
     await sleep(100);
@@ -66,27 +74,48 @@
   try {
     const curated = () => all('.sidebar button:not(:disabled)').find((node) => node.textContent.trim() === '精选');
     await wait(curated, 'enabled sidebar');
-    click(curated(), '精选');
-    await wait(() => menu('ROCK') && more(), 'assigned zone menu');
     await emit('resize', { width: 920, height: 620 });
     await sleep(150);
     if (innerWidth !== 920 || innerHeight !== 620)
       await emit('resize', { width: 920 * 920 / innerWidth, height: 620 * 620 / innerHeight });
     await wait(() => innerWidth === 920 && innerHeight === 620, 'bounded viewport');
+    if (window.__verticalZoneCase === 'hotspot') {
+      const input = one('[aria-label="搜索音乐"]');
+      input.value = '合成专区热点';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      const action = () => one('.hot-explanation .hot-action');
+      const openingOpacity = () => Number(getComputedStyle(action().closest('.page-view')).opacity);
+      await wait(() => action()?.textContent.trim() === '查看专区' && hit(action()) &&
+        openingOpacity() > 0.05, 'first visible HotExplain action frame', 8);
+      const hotOpenOpacity = openingOpacity();
+      const hotOpenDuringEnter = action().closest('.page-view').matches('.page-enter-active');
+      assert(!one('.hot-explanation').outerHTML.includes('private-zone-source'), 'raw source not disclosed');
+      click(action(), 'HotExplain zone');
+      await wait(() => zone()?.getAttribute('aria-label') === '摇滚' &&
+        tab('1')?.getAttribute('aria-current') === 'page' && button('专区热门歌单') &&
+        !button('专区常规歌单'), 'HotExplain resolves and opens named tab');
+      await capture('hotspot_zone', { hotOpenOpacity, hotOpenDuringEnter });
+      back();
+      await wait(() => action() && document.activeElement === action() && !zone(), 'Back restores HotExplain CTA');
+      await capture('hotspot_back', { focus: document.activeElement.textContent.trim() });
+      await emit('complete', { ok: true, stageCount: count });
+      return;
+    }
+    click(curated(), '精选');
+    await wait(() => menu('ROCK') && more(), 'assigned zone menu');
     assert(all('.choice-tabs-scroll [data-choice-zone]').map((node) => node.dataset.choiceZone).join() ===
       'ROCK,FOLK,ELECTRONIC,HIPHOP,CLASSICAL', 'first five dynamic tags only');
     assert(!menu('STATIC') && !menu('JAZZ') && !one('.choice-tabs').outerHTML.includes('private=synthetic'), 'static duplicate, URL and More hidden');
 
-    if (!window.__verticalZonePrivacy) {
+    if (window.__verticalZoneCase === 'full') {
       click(more(), '更多');
       await wait(() => menu('JAZZ') && document.activeElement === menu('JAZZ'), 'More entry focus');
       await wait(() => {
         const entry = menu('JAZZ');
         const panel = entry?.closest('.choice-zone-panel');
         if (!panel || panel.matches('.menu-enter-active,.menu-leave-active')) return false;
-        const rect = entry.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0 &&
-          entry.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+        return hit(entry);
       }, 'More entry can be seen and clicked');
       const background = getComputedStyle(menu('JAZZ').closest('.choice-zone-panel')).backgroundColor;
       assert(/^rgb\(/.test(background), 'More menu has an opaque themed background');
@@ -99,7 +128,7 @@
     await wait(() => zone()?.getAttribute('aria-label') === '摇滚' && tab('default')?.getAttribute('aria-current') === 'page' &&
       all('[data-zone-module]').length === 4, 'Rock default and four module kinds');
     assert(zone().textContent.includes('专区榜单歌曲') && !zone().textContent.includes('禁止出现的远程动作'), 'rank preview and unknown target filtering');
-    if (window.__verticalZonePrivacy) {
+    if (window.__verticalZoneCase === 'privacy') {
       assert(zone().textContent.includes('个性化推荐被关闭了噢！') &&
         !button('专区合成歌单 204') && !button('仅个性化网格卡片') && button('专区常规歌单'), 'privacy hides personalized data only');
       await capture('privacy_gate');

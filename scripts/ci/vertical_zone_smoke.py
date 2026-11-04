@@ -20,6 +20,7 @@ MODULES = ["carousel", "horizontal", "ranking", "grid"]
 CASES = {
     "full": ("menu_open", "menu", "rock_modules", "album_back", "playlist_back", "playlist_play", "rock_hot", "jazz_fallback"),
     "privacy": ("privacy_gate", "privacy_settings"),
+    "hotspot": ("hotspot_zone", "hotspot_back"),
 }
 
 
@@ -34,6 +35,8 @@ def check_case(directory, case, screenshots, windows):
     calls = complete["verticalZoneCalls"]
     zone_calls = [(call["path"], call["args"]) for call in calls if call["path"] in {TAB, CLASSIC}]
     expected = [(TAB, {"pageCode": "ROCK", "tabKey": "default"})]
+    if case == "hotspot":
+        expected.append((TAB, {"pageCode": "ROCK", "tabKey": "1"}))
     if case == "full":
         expected.extend([
             (TAB, {"pageCode": "ROCK", "tabKey": "1"}),
@@ -78,9 +81,15 @@ def check_case(directory, case, screenshots, windows):
         assert playback["tracks"] == ["81", "84"] and player["track"]["id"] == "81"
         assert playback["playId"] == player["playId"] and player["position"] > 0.15
         assert player["state"] == "playing" and playback["audioFactoryCount"] == 1
-    else:
+    elif case == "privacy":
         assert rows["privacy_gate"]["modules"] == MODULES
         assert rows["privacy_settings"]["focus"] == "settings-privacy"
+        assert not any(call["path"] == PLAY for call in calls)
+    else:
+        assert rows["hotspot_zone"]["modules"] == ["grid"] and rows["hotspot_zone"]["zoneTitle"] == "摇滚"
+        assert rows["hotspot_back"]["focus"] == "查看专区"
+        assert any(call["path"] == "/api/search/pc/complex/page/v3" and
+                   call["args"]["keyword"] == "合成专区热点" for call in calls)
         assert not any(call["path"] == PLAY for call in calls)
     if not windows:
         locale = read(output / "locale.json")
@@ -121,7 +130,7 @@ def main():
         directory = root / case
         directory.mkdir()
         script = directory / "probe.js"
-        script.write_text(f"window.__verticalZonePrivacy={str(case == 'privacy').lower()};\n" + script_source,
+        script.write_text(f"window.__verticalZoneCase={json.dumps(case)};\n" + script_source,
                           encoding="utf-8")
         env = {**base_env, "CUMULUS_PROOF_DIR": str(directory), "CUMULUS_MOTION_PROOF": "1",
                "CUMULUS_VERTICAL_ZONE_PROOF": case, "CUMULUS_UX_SCRIPT": str(script)}

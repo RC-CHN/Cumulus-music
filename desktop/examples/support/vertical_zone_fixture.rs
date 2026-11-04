@@ -3,9 +3,14 @@ use serde_json::{Value, json};
 use std::sync::Mutex;
 
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+const HOT_WORD: &str = "合成专区热点";
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_VERTICAL_ZONE_PROOF").is_some()
+}
+
+pub fn hotspot() -> bool {
+    std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("hotspot")
 }
 
 pub fn groups(revision: &str) -> Result<PcExperimentGroups> {
@@ -76,6 +81,34 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     }
     observe(path, args);
     let result = match path {
+        "/api/rtrs/abt/front/expinfo/list"
+            if hotspot()
+                && *args
+                    == json!({"expNames":"PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency"}) =>
+        {
+            json!({"code":200,"data":[{"expName":"PH-PC-searchHot","expGroupName":"t1"}]})
+        }
+        "/api/search/pc/result/tab" if hotspot() && *args == json!({"keyword":HOT_WORD}) => {
+            json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"单曲"}]}})
+        }
+        "/api/search/pc/complex/page/v3" if hotspot() && args["keyword"] == HOT_WORD => {
+            assert_eq!(
+                *args,
+                json!({"keyword":HOT_WORD,"scene":"normal","needCorrect":true,
+                "channel":"typing","bizQueryInfo":""})
+            );
+            record(path, args);
+            json!({"code":200,"data":{"blocks":[
+                {"blockCode":"search_block_hot_result_hot_explain","resources":[{
+                    "baseInfo":{"hotExplainModuleData":{"title":HOT_WORD,"text":"只用于回归的专区说明。",
+                        "textAction":"orpheus://rnpage/private-id?component=cube-renderer-rn&page=ROCK&tabKey=%E7%83%AD%E9%97%A8&from=private-zone-source",
+                        "canClick":true,"urlText":"查看专区"}}
+                }]},
+                {"blockCode":"search_block_song","resources":[
+                    {"baseInfo":{"simpleSongData":{"id":81,"name":"合成热点搜索歌曲"}}}
+                ]}
+            ]}})
+        }
         "/api/secondary/tab/list" if *args == json!({}) => {
             let rows = [
                 ("feature", "精选", "STATIC"),

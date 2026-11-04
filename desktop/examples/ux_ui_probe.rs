@@ -744,7 +744,7 @@ fn main() {
             client = client.with_effect_material_backend(Arc::new(effect_peq_fixture::Material));
         }
         if daily_history_fixture::enabled() { client=client.with_official_daily_experiment(); }
-        if search_fixture::v3_enabled() || search_fixture::carousel_enabled() { client=client.with_official_search_experiment(); }
+        if search_fixture::v3_enabled() || search_fixture::carousel_enabled() || vertical_zone_fixture::hotspot() { client=client.with_official_search_experiment(); }
         if search_mv_fixture::fallback_enabled() {
             client=client.with_native_search_preview_config(search_fixture::fallback_config(proof_store.clone())?);
         }
