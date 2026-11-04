@@ -166,6 +166,10 @@ async fn limiter_cold_flac_sink_seek_eof_and_buffered_revocation() {
         )
     };
     engine.stop().unwrap();
+    assert!(
+        !original.gate.is_cancelled(),
+        "stopping one entry must not cancel the caller's lease"
+    );
     original.gate.cancel();
 
     let resumed = stage(

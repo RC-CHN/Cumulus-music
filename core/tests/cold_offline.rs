@@ -495,11 +495,15 @@ async fn verify_cold_ncm(
     use cumulus_core::{
         Result,
         media::ncm::{HeaderPolicy, NcmReader, NcmWriteOptions, write_stream},
-        playback::engine::{AudioEngine, Cancellation, EngineSnapshot, LoadRequest, LoadedMedia},
+        playback::engine::{
+            AudioEngine, Cancellation, EndReason, EngineEvent, EngineSnapshot, LoadRequest,
+            LoadedMedia,
+        },
     };
     use std::{
         fs::File,
         io::{Cursor, Read},
+        sync::atomic::AtomicBool,
         time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
@@ -507,8 +511,16 @@ async fn verify_cold_ncm(
     struct Control {
         loaded: AtomicUsize,
         stopped: tokio::sync::Notify,
+        destroyed: tokio::sync::Notify,
+        reject_stop: AtomicBool,
+        stale_snapshot: AtomicBool,
     }
     struct TestEngine(Arc<Control>);
+    impl Drop for TestEngine {
+        fn drop(&mut self) {
+            self.0.destroyed.notify_one();
+        }
+    }
     impl AudioEngine for TestEngine {
         fn load(&mut self, _: LoadRequest, _: &Cancellation) -> Result<LoadedMedia> {
             panic!("cold offline may not load paths or URLs")
@@ -561,11 +573,19 @@ async fn verify_cold_ncm(
         }
         fn stop(&mut self) -> Result<()> {
             self.0.stopped.notify_one();
-            Ok(())
+            if self.0.reject_stop.load(Ordering::Acquire) {
+                Err(Error::Playback {
+                    operation: "synthetic stop rejection",
+                    code: -1,
+                })
+            } else {
+                Ok(())
+            }
         }
         fn poll(&mut self) -> Result<EngineSnapshot> {
+            let stale = self.0.stale_snapshot.load(Ordering::Acquire);
             Ok(EngineSnapshot {
-                entry_id: Some(7),
+                entry_id: Some(if stale { 8 } else { 7 }),
                 position: Some(0.4),
                 duration: Some(1.0),
                 buffered_through: None,
@@ -576,7 +596,15 @@ async fn verify_cold_ncm(
                 speed: None,
                 audio_output: None,
                 parametric_samples: None,
-                events: vec![],
+                events: if stale {
+                    vec![EngineEvent::Ended {
+                        entry_id: 8,
+                        reason: EndReason::Eof,
+                        error: 0,
+                    }]
+                } else {
+                    vec![]
+                },
             })
         }
     }
@@ -660,6 +688,15 @@ async fn verify_cold_ncm(
     let playing = client.cold_offline_play(id.into()).await.unwrap();
     assert_eq!(serde_json::to_value(playing).unwrap()["phase"], "playing");
     assert_eq!(control.loaded.load(Ordering::SeqCst), 1);
+    control.stale_snapshot.store(true, Ordering::Release);
+    let stale = serde_json::to_value(client.cold_offline_status().await.unwrap()).unwrap();
+    assert_eq!(stale["phase"], "playing");
+    assert!(
+        stale["position"].is_null(),
+        "wrong native entry's position must not escape"
+    );
+    control.stale_snapshot.store(false, Ordering::Release);
+    control.reject_stop.store(true, Ordering::Release);
     store.delete("1", "membership", "current").unwrap();
     let expect_stopped = |view| {
         let view = serde_json::to_value(view).unwrap();
@@ -673,6 +710,10 @@ async fn verify_cold_ncm(
     tokio::time::timeout(Duration::from_secs(3), control.stopped.notified())
         .await
         .unwrap();
+    tokio::time::timeout(Duration::from_secs(3), control.destroyed.notified())
+        .await
+        .expect("the cold host must destroy its owned sink if Stop fails");
+    control.reject_stop.store(false, Ordering::Release);
     expect_stopped(client.cold_offline_status().await.unwrap());
     assert!(client.cold_offline_play(id.into()).await.is_err());
     // The native monitor also stops an invalid track with no renderer read.

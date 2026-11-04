@@ -58,6 +58,7 @@ impl Drop for Lease {
 struct Playing {
     engine: Box<dyn AudioEngine>,
     lease: Lease,
+    authority: Cancellation,
     entry: i64,
     id: String,
     entitlement: Option<ColdEntitlement>,
@@ -130,6 +131,10 @@ impl Mode {
         {
             return Ok(self.stop_for_cached_rights());
         }
+        if active.authority.is_cancelled() {
+            self.playing = None;
+            return Err(Error::Cancelled);
+        }
         let snapshot = active.engine.poll();
         // The stream can revoke its own reads while engine.poll is running.
         // Classify that stop before interpreting its decoder error or events.
@@ -139,6 +144,10 @@ impl Mode {
             .is_some_and(|rights| !rights.valid())
         {
             return Ok(self.stop_for_cached_rights());
+        }
+        if active.authority.is_cancelled() {
+            self.playing = None;
+            return Err(Error::Cancelled);
         }
         let snapshot = match snapshot {
             Ok(value) => value,
@@ -168,7 +177,9 @@ impl Mode {
         Ok(ColdOfflinePlayerView {
             phase: Phase::Playing,
             playing_id: Some(active.id.clone()),
-            position: snapshot.position.filter(|p| p.is_finite() && *p >= 0.0),
+            position: snapshot
+                .position_for(active.entry)
+                .filter(|p| p.is_finite() && *p >= 0.0),
             stop_reason: None,
         })
     }
@@ -385,9 +396,11 @@ impl MusicClient {
                     mode.grant.validate_entitlement(rights)?;
                 }
                 let fast_rights = entitlement.clone();
+                let fast_grant = mode.grant.clone();
                 let authority = Cancellation::new(move || {
                     !life.is_cancelled()
                         && focus.cold_is_current(revision)
+                        && fast_grant.playback_current()
                         && fast_rights.as_ref().is_none_or(ColdEntitlement::valid)
                 });
                 let mut engine = factory()?;
@@ -409,6 +422,7 @@ impl MusicClient {
                 mode.playing = Some(Playing {
                     engine,
                     lease,
+                    authority,
                     entry: media.entry_id,
                     id,
                     entitlement,

@@ -19,6 +19,7 @@ mod effect_order_tests;
 mod limiter_host_probe;
 mod loudness;
 mod parametric;
+mod pinned_stop;
 
 fn effect_filter(label: &str, graph: String) -> String {
     format!("@cumulus-{label}:lavfi=graph=%{}%{graph}", graph.len())
@@ -34,7 +35,7 @@ pub struct MpvConfig {
 }
 
 pub struct MpvEngine {
-    native: Native,
+    native: Option<Native>,
     // Native is destroyed first, so its filter callbacks finish before the
     // owning adapter handle/library are released.
     equalizer: Option<crate::effects::equalizer::EqualizerHost>,
@@ -46,6 +47,7 @@ pub struct MpvEngine {
     events: VecDeque<EngineEvent>,
     entry: Option<i64>,
     null_output: bool,
+    api_version: u64,
     pinned_authority: Option<Cancellation>,
     pinned_bmff_options: bool,
 }
@@ -127,25 +129,11 @@ impl MpvEngine {
     ) -> Result<(Self, super::VideoFrames)> {
         super::frames::size(width, height)?;
         let mut engine = Self::open_mode(config, true)?;
-        let frames = engine.native.start_video(width, height)?;
+        let frames = engine.native_mut()?.start_video(width, height)?;
         Ok((engine, frames))
     }
     fn open_mode(config: MpvConfig, video: bool) -> Result<Self> {
-        let native = Native::open(config.library.as_deref())?;
-        let mut engine = Self {
-            native,
-            equalizer: None,
-            equalizer_reserved: false,
-            loudness: None,
-            parametric: None,
-            equalizer_library: None,
-            sequence: 0,
-            events: VecDeque::new(),
-            entry: None,
-            null_output: config.null_output,
-            pinned_authority: None,
-            pinned_bmff_options: false,
-        };
+        let mut native = Native::open(config.library.as_deref())?;
         for (key, value) in [
             ("config", "no"),
             ("load-scripts", "no"),
@@ -162,18 +150,38 @@ impl MpvEngine {
             ("user-agent", "Cumulus/0.1"),
             ("load-unsafe-playlists", "no"),
         ] {
-            engine.native.option(&string(key)?, &string(value)?)?;
+            native.option(&string(key)?, &string(value)?)?;
         }
         // An unset ao selects the operating-system default. "auto" is not a
         // driver in the tested libmpv build (audio initialization error -14).
         if config.null_output {
-            engine.native.option(c"ao", c"null")?;
+            native.option(c"ao", c"null")?;
         }
-        engine.native.initialize()?;
-        Ok(engine)
+        native.initialize()?;
+        Ok(Self {
+            api_version: native.version(),
+            native: Some(native),
+            equalizer: None,
+            equalizer_reserved: false,
+            loudness: None,
+            parametric: None,
+            equalizer_library: None,
+            sequence: 0,
+            events: VecDeque::new(),
+            entry: None,
+            null_output: config.null_output,
+            pinned_authority: None,
+            pinned_bmff_options: false,
+        })
     }
     pub fn api_version(&self) -> u64 {
-        self.native.version()
+        self.api_version
+    }
+    fn native_mut(&mut self) -> Result<&mut Native> {
+        self.native.as_mut().ok_or(Error::Playback {
+            operation: "native sink retired",
+            code: -1,
+        })
     }
     fn sequence(&mut self) -> Result<u64> {
         self.sequence = self
@@ -200,7 +208,7 @@ impl MpvEngine {
     ) -> Result<()> {
         cancel.check()?;
         let sequence = self.sequence()?;
-        self.native.command(sequence, &args)?;
+        self.native_mut()?.command(sequence, &args)?;
         self.await_command(sequence, deadline, cancel)
     }
     fn await_command(
@@ -211,7 +219,7 @@ impl MpvEngine {
     ) -> Result<()> {
         while Instant::now() < deadline {
             cancel.check()?;
-            match self.native.event(0.05)? {
+            match self.native_mut()?.event(0.05)? {
                 Received::Reply {
                     sequence: returned,
                     error,
@@ -235,18 +243,28 @@ impl MpvEngine {
         })
     }
     fn control(&mut self, args: &[&str]) -> Result<()> {
+        self.control_with_cancel(args, &Cancellation::default())
+    }
+    fn control_with_cancel(&mut self, args: &[&str], cancel: &Cancellation) -> Result<()> {
         self.command(
             args.iter().map(string).collect::<Result<Vec<_>>>()?,
             Instant::now() + Duration::from_secs(5),
-            &Cancellation::default(),
+            cancel,
         )
+    }
+    fn control_authorized(&mut self, args: &[&str]) -> Result<()> {
+        self.require_pinned_authority()?;
+        let gate = self.pinned_authority.clone().unwrap_or_default();
+        let result = self.control_with_cancel(args, &gate);
+        self.require_pinned_authority()?;
+        result
     }
     fn devices(&mut self) -> Result<Vec<super::OutputDevice>> {
         let sequence = self.sequence()?;
-        self.native.request_devices(sequence)?;
+        self.native_mut()?.request_devices(sequence)?;
         let deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < deadline {
-            match self.native.event(0.05)? {
+            match self.native_mut()?.event(0.05)? {
                 Received::Devices {
                     sequence: returned,
                     result,
@@ -264,7 +282,7 @@ impl MpvEngine {
         })
     }
     fn property(&mut self, name: &CStr) -> Option<String> {
-        self.native.property(name)
+        self.native.as_mut()?.property(name)
     }
     fn number(&mut self, name: &CStr) -> Option<f64> {
         self.property(name)?
@@ -274,7 +292,7 @@ impl MpvEngine {
     }
     fn drain(&mut self) -> Result<Vec<EngineEvent>> {
         for _ in 0..2048 {
-            match self.native.event(0.0)? {
+            match self.native_mut()?.event(0.0)? {
                 Received::None => return Ok(self.events.drain(..).collect()),
                 Received::Event(event) => self.retain(event)?,
                 _ => (),
@@ -353,6 +371,9 @@ impl MpvEngine {
         cancel.check()?;
         self.stop()?;
         self.restore_bmff_options()?;
+        // The sink owns a per-load gate, never the caller's account/focus
+        // lifetime. Retiring this source cannot cancel another authorized one.
+        let lifetime = Cancellation::new(move || !authority.is_cancelled());
         let result = (|| {
             if format == "mov" {
                 // libmpv replaces AVFormatContext.io_open with a deny-all
@@ -366,7 +387,13 @@ impl MpvEngine {
                     "enable_drefs=0,use_absolute_path=0,protocol_whitelist=cumuluspinned",
                 ])?;
             }
-            let source = self.native.stage_pinned(reader, authority.clone())?;
+            let source = self.native_mut()?.stage_pinned(reader, lifetime.clone())?;
+            self.pinned_authority = Some(lifetime.clone());
+            let load_lifetime = lifetime.clone();
+            let load_cancel = cancel.clone();
+            let guard = Cancellation::new(move || {
+                !load_lifetime.is_cancelled() && !load_cancel.is_cancelled()
+            });
             // Use file-local demuxer settings so ordinary playback gets the
             // real defaults back. mpv 0.37 rejects an empty lavf format.
             let media = self.load_source(
@@ -375,18 +402,23 @@ impl MpvEngine {
                 0.0,
                 None,
                 Duration::from_secs(25),
-                cancel,
+                &guard,
             )?;
             if format == "mov" && media.codec.as_deref() != Some("aac") {
                 return Err(Error::InvalidInput("unsupported pinned audio format"));
             }
-            authority.check()?;
-            self.pinned_authority = Some(authority);
+            lifetime.check()?;
             Ok(media)
         })();
-        self.native.clear_staged_pinned();
+        if let Some(native) = &self.native {
+            native.clear_staged_pinned();
+        }
         if result.is_err() {
+            let cancelled = lifetime.is_cancelled() || cancel.is_cancelled();
             let _ = self.stop();
+            if cancelled {
+                return Err(Error::Cancelled);
+            }
         }
         result
     }
@@ -407,7 +439,7 @@ impl MpvEngine {
             .as_ref()
             .is_some_and(Cancellation::is_cancelled)
         {
-            let _ = self.stop();
+            self.retire_pinned();
             return Err(Error::Cancelled);
         }
         Ok(())
@@ -462,7 +494,8 @@ impl MpvEngine {
         if let Some(format) = forced_demuxer {
             cancel.check()?;
             let sequence = self.sequence()?;
-            self.native.load_with_demuxer(sequence, &source, format)?;
+            self.native_mut()?
+                .load_with_demuxer(sequence, &source, format)?;
             self.await_command(sequence, deadline, cancel)?;
         } else {
             self.command(
@@ -477,7 +510,7 @@ impl MpvEngine {
             let event = if let Some(event) = self.events.pop_front() {
                 Some(event)
             } else {
-                match self.native.event(0.05)? {
+                match self.native_mut()?.event(0.05)? {
                     Received::Event(event) => Some(event),
                     _ => None,
                 }
@@ -667,15 +700,14 @@ impl AudioEngine for MpvEngine {
     }
 
     fn pause(&mut self, paused: bool) -> Result<()> {
-        self.require_pinned_authority()?;
-        self.control(&["set", "pause", if paused { "yes" } else { "no" }])
+        self.control_authorized(&["set", "pause", if paused { "yes" } else { "no" }])
     }
     fn seek(&mut self, seconds: f64) -> Result<()> {
-        self.require_pinned_authority()?;
         if !seconds.is_finite() || seconds < 0.0 {
+            self.require_pinned_authority()?;
             return Err(Error::InvalidInput("invalid audio seek"));
         }
-        self.control(&["seek", &seconds.to_string(), "absolute+exact"])
+        self.control_authorized(&["seek", &seconds.to_string(), "absolute+exact"])
     }
     fn volume(&mut self, value: f64) -> Result<()> {
         if !value.is_finite() || !(0.0..=100.0).contains(&value) {
@@ -690,7 +722,14 @@ impl AudioEngine for MpvEngine {
         self.control(&["set", "speed", &value.to_string()])
     }
     fn stop(&mut self) -> Result<()> {
-        self.native.clear_staged_pinned();
+        if self.pinned_authority.is_some() {
+            self.retire_pinned();
+            return Ok(());
+        }
+        let Some(native) = &self.native else {
+            return Ok(()); // destruction has already completed
+        };
+        native.clear_staged_pinned();
         self.control(&["stop"])?;
         self.pinned_authority = None;
         self.entry = None;
@@ -729,7 +768,7 @@ impl AudioEngine for MpvEngine {
         let seeking_before = self.property(c"seeking").as_deref() != Some("no");
         let position = self.number(c"time-pos");
         let seeking = seeking_before || self.property(c"seeking").as_deref() != Some("no");
-        Ok(EngineSnapshot {
+        let snapshot = EngineSnapshot {
             entry_id: self.entry,
             position,
             duration: self.number(c"duration"),
@@ -745,6 +784,19 @@ impl AudioEngine for MpvEngine {
             audio_output: self.property(c"current-ao"),
             parametric_samples,
             events,
-        })
+        };
+        // Events and properties may have been collected while the authority
+        // changed. Do not let a concurrent revoke publish a stale EOF/clock.
+        self.require_pinned_authority()?;
+        if self.entry.is_some_and(|active| snapshot.events.iter().any(|event| {
+                matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof | EndReason::Stop, error: 0 } if *entry_id == active)
+            }))
+            && let Some(gate) = self.pinned_authority.take()
+        {
+            // Its terminal event was observed while still authorized. There
+            // is no pinned entry left to stop on the next ordinary load.
+            gate.cancel();
+        }
+        Ok(snapshot)
     }
 }

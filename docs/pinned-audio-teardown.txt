@@ -1,0 +1,56 @@
+Protected native playback teardown
+
+Each pinned audio load now has a private sink gate that follows the
+caller-supplied authority. Starting, stopping, or retiring a load does
+not cancel other uses of the caller's account or focus lease. The gate
+is installed when the byte stream is staged, so a revoke while libmpv is
+opening the source cannot leave an unpublished native output alive.
+The protected lifetime also participates in load, pause and seek waits;
+the engine rechecks it before publishing native position or events.
+
+When authority expires or the protected entry is stopped, the engine
+cancels its gate and clears staged input. A successful command reply is
+not sufficient to reuse the sink. The engine also requires native
+END_FILE Stop with error zero for the exact active playlist entry. The
+command and confirmation share a short deadline. An unrelated entry,
+natural EOF, nonzero error, missing confirmation, or shutdown cannot
+stand in for a successful Stop. Old clock and event state are retired;
+only a matching acknowledged Stop may be kept as an event.
+
+If Stop cannot be confirmed, or the pinned load was not yet published
+with an entry ID, the engine synchronously destroys the native handle.
+Native destruction releases renderer, decoder, audio output and stream
+callbacks before it returns; the retired engine rejects reuse and its
+Stop remains idempotent. Revocation still reports cancellation rather
+than natural EOF. A future playback session requires a new native engine.
+If playback already ended normally while authorized, that entry's gate
+is retired after its matching terminal event; later ordinary loading
+does not wait for a second end-file event for an already finished track.
+Ordinary unpinned Stop retains its existing behavior.
+
+The cold actor checks its source authority before and after polling. Its
+reported position has to belong to the current native entry. Losing
+cached membership is still reported as cached rights unavailable; an
+unrelated clock or EOF cannot close or advance the active item. The actor
+owns its engine, and drops it even when a custom engine's Stop returns
+an error, before releasing its cold focus lease.
+
+Verification includes real libmpv with a pinned FLAC reader. A native
+command rejection and a missing confirmation with a queued
+wrong-entry Stop both close the held reader and retire the native sink
+synchronously. Revocation inside the first read also closes the source
+without publishing a load, using its exact Stop if libmpv assigned an
+internal entry or destroying the native handle otherwise. The successful
+native Stop branch is covered by the cold NCM-FLAC sink probe and the
+existing pinned media example.
+The ordinary cold fixture also rejects a stale snapshot and verifies
+destruction after a failing Stop without changing rights-loss reporting.
+
+    cargo test --locked -p cumulus-core --lib pinned_stop -- --include-ignored --nocapture
+    cargo run --locked -p cumulus-core --example pinned_audio_probe
+
+The native tests use null audio output. The command wait has a deadline,
+but this does not establish a physical speaker cutoff deadline or a
+timeout on a blocked OS read during native destruction. Windows native
+execution and output hardware remain separate checks. No optional FLAC
+engine, effect, library or release asset is enabled by this change.

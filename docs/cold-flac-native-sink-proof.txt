@@ -63,9 +63,8 @@ and then emits Stop for that entry. It must not publish more input bytes,
 report a live position for the retired entry, or call this natural EOF.
 No claim is made about a sub-buffer physical output deadline: this is the
 existing native poll/stop boundary exercised with the real null AO.
-The existing authority helper attempts native stop but discards its error;
-the failure branch is not exercised. A shipping host must ensure teardown
-if native stop fails while protected PCM is queued.
+The later pinned-audio-teardown.txt change hardens the production authority
+helper and separately exercises destruction after a failed native Stop.
 
 On the reference Linux runtime, one file/decoder handled six passes and
 six actual compressed seeks, reading at most 8192 bytes per restart. At
