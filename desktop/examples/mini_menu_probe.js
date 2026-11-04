@@ -5,7 +5,7 @@
   const assert=(value,message)=>{if(!value)throw Error(message);};
   const wait=async(check,label)=>{for(let n=0;n<220;n++){if(await check())return;await sleep(70);}throw Error(label);};
   const emit=value=>invoke('plugin:event|emit',{event:'mini-proof',payload:value});
-  window.__miniAck={};let serial=0,count=0,last='startup',epoch,playId;
+  window.__miniAck={};let serial=0,count=0,last='startup',epoch,playId,lastChoice;
   async function fixture(kind,payload={}){
     const id=++serial;await emit({kind,id,...payload});await wait(()=>id in window.__miniAck,'fixture '+kind);
     const reply=window.__miniAck[id];delete window.__miniAck[id];if(reply.error)throw Error(reply.error);return reply.value??reply;
@@ -28,7 +28,10 @@
     await wait(()=>mini("return !!document.querySelector('.action-menu-host[data-lyric-context]');"),'native lyric context');
   }
   async function click(key){
-    await mini(`const n=document.querySelector('[data-menu-key=${JSON.stringify(key)}]:not(:disabled)');if(!n)throw Error('menu choice '+${JSON.stringify(key)});n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});${key==='return'||key==='exit'?'setTimeout(()=>n.click(),80)':'n.click()'};return true;`);
+    lastChoice=key;
+    const menu=key.startsWith('mode:')?child:root;
+    const selector=JSON.stringify(`[data-menu-key=${JSON.stringify(key)}]:not(:disabled)`);
+    await mini(`const active=${menu};const n=active?.querySelector(${selector});if(!n||n.closest('[inert],.menu-leave-active'))throw Error('active menu choice '+${JSON.stringify(key)});n.scrollIntoView({block:'nearest'});n.focus({preventScroll:true});${key==='return'||key==='exit'?'setTimeout(()=>n.click(),80)':'n.click()'};return true;`);
   }
   async function key(value,selector='document.activeElement'){
     await mini(`const n=${selector};if(!n)throw Error('key target');n.dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(value)},code:${JSON.stringify(value===' '?'Space':value)},bubbles:true,cancelable:true}));return true;`);
@@ -56,6 +59,7 @@
     return {windowKind:'mini',captureTitle:'Cumulus · 迷你播放器',width:innerWidth,height:innerHeight,screenX,screenY,ratio:devicePixelRatio,theme:document.documentElement.dataset.theme,visible:document.visibilityState==='visible',focused:document.hasFocus(),overflow:document.documentElement.scrollWidth>innerWidth,
       root:!!root,submenu:!!sub,menus:rows,focusFrame,activeKey:active?.dataset?.menuKey??null,menuFocus:active===document.querySelector('[aria-label=\"小窗菜单\"]'),focusInside:panels.length?panels.some(p=>p.contains(active)):true,
       pin:document.querySelector('[data-mini-pin]')?.getAttribute('aria-pressed'),mode:document.querySelector('[data-mini-mode]')?.dataset.mode,family:document.querySelector('[data-mini-mode]')?.dataset.family,
+      modeFeedback:document.querySelector('.mini-mode-feedback:not([inert])')?.textContent?.trim()??null,
       alert:document.querySelector('.mini-message[role=\"alert\"]')?.textContent?.trim()??null,notice:document.querySelector('.mini-message')?.textContent?.trim()??null,
       canTransport:!document.querySelector('.mini-play').disabled&&!document.querySelector('[aria-label=\"播放进度\"]').disabled,
       audit:window.__miniMenuLeaving??[],paintSamples:panels.length?panels.map(p=>({x:r(p).left+r(p).width/2,y:r(p).top+3,color:getComputedStyle(p).backgroundColor})):[{x:3,y:3,color:getComputedStyle(document.querySelector('.mini-shell')).backgroundColor}]};`;
@@ -118,5 +122,8 @@
     epoch=(await read()).media.epoch;playId=null;await capture('account_closed_light');
     assert(await mini("return window.__miniMenuLeaving.length>0&&window.__miniMenuLeaving.every(v=>v.inert&&v.focusBlocked);"),'outgoing menu inert and unfocusable');
     await emit({kind:'complete',stage:'complete',ok:true,miniMenuUi:true,stageCount:count,staleContextRejected:true,ipcIsolationVerified:true,twoAccountRealtimeVerified:false,realMusicRequests:0,realAccountWrites:0});
-  }catch(error){await emit({kind:'failed',stage:'failed',message:String(error),stack:error?.stack,last,stageCount:count,miniFailure:await mini(facts).catch(()=>null)});}
+  }catch(error){
+    const nativeMode=await read().then(({media})=>({mode:media.mode,family:media.modeFamily}),()=>null);
+    await emit({kind:'failed',stage:'failed',message:String(error),stack:error?.stack,last,lastChoice,stageCount:count,nativeMode,miniFailure:await mini(facts).catch(()=>null)});
+  }
 })();

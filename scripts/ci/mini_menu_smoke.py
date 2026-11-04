@@ -20,6 +20,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--frontend-dist', type=Path, help='use a local production asset snapshot')
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--exit', action='store_true', help='verify the actual menu exit instead of account switch')
     args = parser.parse_args()
@@ -28,6 +29,8 @@ def main():
     env = {k:v for k,v in os.environ.items() if not k.startswith('CUMULUS_')}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MINI_SCRIPT=str(Path(__file__).resolve().parents[2]/'desktop/examples/mini_menu_probe.js'),
                CUMULUS_MINI_FM_PROOF='1', CUMULUS_INTELLIGENCE_START_PROOF='1')
+    if args.frontend_dist:
+        env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.exit:
         env['CUMULUS_MINI_MENU_EXIT_PROOF'] = '1'
     for key,name in [('XDG_DATA_HOME','data'),('XDG_CONFIG_HOME','config'),('XDG_CACHE_HOME','cache'),('XDG_RUNTIME_DIR','runtime'),('APPDATA','roaming'),('LOCALAPPDATA','local')]:
