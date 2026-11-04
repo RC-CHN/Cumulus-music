@@ -341,6 +341,8 @@ def main():
             assert player['queueLen'] == len(queue['tracks']) == 2
             assert player['mode'] == 'order_loop'
             assert player['position'] >= 12.5 if name == 'voice_playing' else .2 < player['position'] < 10
+            assert value['detailTitle'] == player['track']['name']
+        assert all(value['detailTitle'] is None for value in stages if not value['playing'])
         assert sum(v['playing'] for v in stages) == 2
         assert by_name['modal_suppression']['dialog'] and not by_name['modal_suppression']['prompt']
         assert not by_name['modal_restored']['dialog'] and by_name['modal_restored']['prompt']

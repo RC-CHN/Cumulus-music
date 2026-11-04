@@ -251,6 +251,10 @@ async fn mixed_queue_native_playback_music_restarts_and_voice_resumes_without_le
         assert!(!serde_json::to_string(&view).unwrap().contains("PRIVATE"));
         let playing = w.playing().await;
         assert_eq!(playing.state, PlaybackStatus::Playing);
+        let loaded = view.loaded_playback.expect("fresh native load receipt");
+        assert_eq!(loaded.operation_id, id);
+        assert_eq!(Some(loaded.play_id), playing.play_id);
+        assert_eq!(Some(loaded.entry_id), playing.entry_id);
         assert_eq!(playing.mode, cumulus_core::playback::PlaybackMode::Random);
         assert_eq!(
             playing.position,
@@ -258,7 +262,7 @@ async fn mixed_queue_native_playback_music_restarts_and_voice_resumes_without_le
         );
         assert_eq!(playing.queue_len, 2);
         let before = w.device.state.lock().unwrap().loads;
-        w.play(&id, &revision).await;
+        assert!(w.play(&id, &revision).await.loaded_playback.is_none());
         assert_eq!(w.device.state.lock().unwrap().loads, before);
         assert_eq!(w.api.pulls(), 1);
         let queue = w.store.get("9", "playback", "queue").unwrap().unwrap();
@@ -308,6 +312,7 @@ async fn permission_failure_retains_ready_pull_and_explicit_retry_never_pulls_tw
     w.api.deny.store(true, Ordering::SeqCst);
     let view = w.play(&first, &revision).await;
     assert_eq!(view.operations[0].phase, RelayPlaybackPhase::Failed);
+    assert!(view.loaded_playback.is_none());
     assert!(view.operations[0].can_retry);
     assert_eq!(w.device.state.lock().unwrap().loads, 0);
     w.api.deny.store(false, Ordering::SeqCst);
@@ -334,7 +339,35 @@ async fn permission_failure_retains_ready_pull_and_explicit_retry_never_pulls_tw
         RelayPlaybackPhase::Installed
     );
     assert_eq!(w.api.pulls(), 1);
+    assert_eq!(view.loaded_playback.unwrap().operation_id, retry);
     assert_eq!(w.playing().await.state, PlaybackStatus::Playing);
+}
+
+#[tokio::test]
+async fn native_load_failure_never_receipts_a_persisted_selection_as_playable() {
+    let w = World::new(plan("song"));
+    let revision = w.revision().await;
+    let id = id();
+    w.device.load_failure_code.store(-13, Ordering::SeqCst);
+    let view = w.play(&id, &revision).await;
+    assert!(view.loaded_playback.is_none());
+    assert_eq!(w.playing().await.state, PlaybackStatus::Error);
+    assert_eq!(w.api.pulls(), 1);
+    let recovered = w.client.relay_view(&w.epoch(), false).await.unwrap().value;
+    assert!(recovered.loaded_playback.is_none());
+}
+
+#[tokio::test]
+async fn relay_without_an_assigned_item_plays_the_first_entry_without_a_detail_receipt() {
+    let mut response = plan("song");
+    response.as_object_mut().unwrap().remove("currentPlayState");
+    let w = World::new(response);
+    let revision = w.revision().await;
+    let view = w.play(&id(), &revision).await;
+    assert_eq!(view.operations[0].phase, RelayPlaybackPhase::Installed);
+    assert!(view.loaded_playback.is_none());
+    assert_eq!(w.playing().await.state, PlaybackStatus::Playing);
+    assert_eq!(w.api.pulls(), 1);
 }
 #[tokio::test]
 async fn queue_inspection_does_not_invalidate_remote_preparation_but_user_stop_does() {
@@ -386,6 +419,7 @@ async fn queue_inspection_does_not_invalidate_remote_preparation_but_user_stop_d
         );
         if stop {
             assert_eq!(w.device.state.lock().unwrap().loads, 0);
+            assert!(result.value.loaded_playback.is_none());
         } else {
             assert_eq!(w.playing().await.state, PlaybackStatus::Playing);
         }
@@ -553,6 +587,7 @@ async fn installed_queue_marker_recovers_application_without_loading_it_again() 
         .unwrap();
     let page = w.client.relay_view(&w.epoch(), false).await.unwrap().value;
     assert_eq!(page.operations[0].phase, RelayPlaybackPhase::Installed);
+    assert!(page.loaded_playback.is_none());
     assert_eq!(w.device.state.lock().unwrap().loads, before);
     assert_eq!(w.api.pulls(), 1);
 }

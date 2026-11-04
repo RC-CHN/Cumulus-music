@@ -1,7 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { useRelay } from '../src/composables/useRelay.ts';
-import { relayOutcome, type RelayClient, type RelayView } from '../src/services/relay.ts';
+import {
+  relayOutcome,
+  relayPlaybackDisposition,
+  type RelayClient,
+  type RelayView,
+} from '../src/services/relay.ts';
 const account = {
   epoch: '1',
   status: 'authenticated' as const,
@@ -86,7 +91,91 @@ test('relay lost IPC acknowledgement inspects native history without repeating t
   assert.equal(calls, 1);
   assert.equal(model.unknown.value, undefined);
   assert.equal(model.page.value?.operations[0].phase, 'installed');
+  assert.equal(model.playbackTarget.value, undefined);
   assert.equal(await model.continueHere(), false);
+});
+test('relay playback detail consumes only the explicit command and matching loaded player instance', async () => {
+  const detail = { operationId: 'historic', playId: 'play-2', entryId: 'entry-2', revision: '12' };
+  const model = useRelay(
+    backend({
+      relayView: async () => reply({ ...page(), loadedPlayback: detail }),
+      relayCommand: async (_, command) => {
+        assert.equal(command.kind, 'continue');
+        if (command.kind !== 'continue') throw new Error('unexpected command');
+        return reply({
+          ...page(),
+          loadedPlayback: { ...detail, operationId: command.id },
+          operations: [
+            {
+              id: command.id,
+              phase: 'installed',
+              pullPhase: 'ready',
+              canRetry: false,
+              createdAt: 1,
+            },
+          ],
+        });
+      },
+    }),
+  );
+  model.connect(account);
+  await model.read(true);
+  assert.equal(model.playbackTarget.value, undefined);
+  await model.continueHere();
+  const target = model.playbackTarget.value;
+  assert.ok(target);
+  await model.read(false);
+  assert.deepEqual(model.playbackTarget.value, target);
+  const current = {
+    epoch: account.epoch,
+    playId: detail.playId,
+    entryId: detail.entryId,
+    revision: detail.revision,
+    state: 'playing' as const,
+  };
+  assert.equal(relayPlaybackDisposition(target, { ...current, revision: '11' }), 'wait');
+  assert.equal(relayPlaybackDisposition(target, current), 'open');
+  assert.equal(relayPlaybackDisposition(target, { ...current, playId: 'replayed' }), 'discard');
+  assert.equal(relayPlaybackDisposition(target, { ...current, entryId: 'replacement' }), 'discard');
+  assert.equal(relayPlaybackDisposition(target, { ...current, state: 'idle' }), 'discard');
+  assert.equal(relayPlaybackDisposition(target, { ...current, epoch: '2' }), 'discard');
+  model.connect({ ...account, epoch: '2' });
+  assert.equal(model.playbackTarget.value, undefined);
+});
+test('relay ignores a loaded receipt when the explicit operation failed or the account changed', async () => {
+  for (const changed of [false, true]) {
+    const gate = deferred<ReturnType<typeof reply>>();
+    let operationId = '';
+    const model = useRelay(
+      backend({
+        relayCommand: async (_, command) => {
+          if (command.kind === 'continue') operationId = command.id;
+          return gate.promise;
+        },
+      }),
+    );
+    model.connect(account);
+    await model.read(true);
+    const pending = model.continueHere();
+    if (changed) model.connect({ ...account, epoch: '2' });
+    gate.resolve(
+      reply({
+        ...page(),
+        loadedPlayback: { operationId, playId: 'p', entryId: 'e', revision: '1' },
+        operations: [
+          {
+            id: operationId,
+            phase: changed ? 'installed' : 'failed',
+            pullPhase: 'ready',
+            canRetry: false,
+            createdAt: 1,
+          },
+        ],
+      }),
+    );
+    await pending;
+    assert.equal(model.playbackTarget.value, undefined);
+  }
 });
 test('relay unresolved host reply is cancelled before delayed IPC can execute', async () => {
   let calls = 0;

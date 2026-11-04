@@ -1,5 +1,5 @@
 import type { AccountData } from './contracts';
-import type { Quality } from './player';
+import type { PlayerView, Quality } from './player';
 import type { SettingsOperation } from './settings';
 export interface RelaySettingOperation
   extends Omit<SettingsOperation, 'change' | 'before' | 'observed'> {
@@ -37,6 +37,27 @@ export interface RelayOperation {
   superseded?: boolean;
   createdAt: number;
 }
+export interface RelayLoadedPlayback {
+  operationId: string;
+  playId: string;
+  entryId: string;
+  revision: string;
+}
+export type RelayPlaybackTarget = RelayLoadedPlayback & { epoch: string };
+type CurrentPlayback = Pick<PlayerView, 'epoch' | 'playId' | 'entryId' | 'revision' | 'state'>;
+export function relayPlaybackDisposition(
+  target: RelayPlaybackTarget,
+  current?: CurrentPlayback,
+): 'wait' | 'discard' | 'open' {
+  if (!current) return 'wait';
+  if (current.epoch !== target.epoch) return 'discard';
+  if (BigInt(current.revision) < BigInt(target.revision)) return 'wait';
+  return current.playId === target.playId &&
+    current.entryId === target.entryId &&
+    ['playing', 'paused', 'buffering'].includes(current.state)
+    ? 'open'
+    : 'discard';
+}
 export interface RelayView {
   revision: string;
   availability: 'unchecked' | 'experiment_excluded' | 'server_disabled' | 'available';
@@ -44,6 +65,7 @@ export interface RelayView {
   settings?: RelaySettingState | null;
   alert: { title: string; deviceName: string; resourceName: string; buttonText: string } | null;
   operations: RelayOperation[];
+  loadedPlayback?: RelayLoadedPlayback;
 }
 export type RelayCommand =
   | { kind: 'continue'; id: string; revision: string; quality: Quality }

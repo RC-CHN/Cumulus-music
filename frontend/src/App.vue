@@ -154,6 +154,8 @@ import { createPlayerResume } from './services/playerResume';
 import { useMusic, type Page } from './composables/useMusic';
 import { downloadSectionQuery } from './services/downloadPage';
 import { useCore } from './services/core';
+import { relayPlaybackDisposition } from './services/relay';
+import { modalDepth } from './services/modal';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
 const collectionMemory = createCollectionViewportMemory();
@@ -1976,6 +1978,18 @@ watch(
   },
   { immediate: true },
 );
+watch([relay.playbackTarget, player.view], () => {
+  const target = relay.playbackTarget.value;
+  if (!target) return;
+  const result =
+    account.value.status === 'authenticated' && account.value.epoch === target.epoch
+      ? relayPlaybackDisposition(target, player.view.value)
+      : 'discard';
+  if (result === 'wait') return;
+  relay.playbackTarget.value = undefined;
+  if (result === 'open' && !modalDepth.value && !player.busy.value && !player.lyricsOpen.value)
+    player.toggleLyrics();
+});
 watch(
   () => [account.value.epoch, account.value.status],
   () => {

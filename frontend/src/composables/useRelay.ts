@@ -7,6 +7,7 @@ import {
   type RelaySettingCommand,
   type RelayClient,
   type RelayCommand,
+  type RelayPlaybackTarget,
   type RelayView,
 } from '../services/relay.ts';
 import { useCore } from '../services/core.ts';
@@ -18,6 +19,7 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
   const hidden = ref('');
   const unknown = shallowRef<{ id: string; revision: string }>();
   const settingUnknown = shallowRef<Extract<RelaySettingCommand, { enabled: boolean }>>();
+  const playbackTarget = shallowRef<RelayPlaybackTarget>();
   let epoch: string | undefined,
     serial = 0,
     disposed = false;
@@ -42,6 +44,7 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
     hidden.value = '';
     unknown.value = undefined;
     settingUnknown.value = undefined;
+    playbackTarget.value = undefined;
     loading.value = false;
     busy.value = false;
     error.value = '';
@@ -68,6 +71,7 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
       page.value = undefined;
       unknown.value = undefined;
       settingUnknown.value = undefined;
+      playbackTarget.value = undefined;
       busy.value = false;
       loading.value = false;
       expired();
@@ -98,12 +102,22 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
     const active = () => !disposed && epoch === owner && current === serial;
     busy.value = true;
     error.value = '';
+    if (command.kind === 'continue' || command.kind === 'retry') playbackTarget.value = undefined;
     try {
       const result = isRelaySettingCommand(command)
         ? await core.relaySettingCommand(owner, command)
         : await core.relayCommand(owner, command);
       if (!active()) return false;
       accept(result, owner);
+      const loaded = result.value.loadedPlayback;
+      if (
+        (command.kind === 'continue' || command.kind === 'retry') &&
+        loaded?.operationId === command.id &&
+        result.value.operations.some(
+          (operation) => operation.id === command.id && operation.phase === 'installed',
+        )
+      )
+        playbackTarget.value = { ...loaded, epoch: owner };
       return true;
     } catch (e) {
       if (!active() || failed(e)) return false;
@@ -187,6 +201,7 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
   function dispose() {
     disposed = true;
     serial++;
+    playbackTarget.value = undefined;
   }
   return {
     page,
@@ -196,6 +211,7 @@ export function useRelay(core: RelayClient = useCore(), expired = () => {}) {
     error,
     unknown,
     settingUnknown,
+    playbackTarget,
     canChangeSetting,
     changeSetting,
     reconcileSetting,

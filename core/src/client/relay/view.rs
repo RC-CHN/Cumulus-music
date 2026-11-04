@@ -13,6 +13,18 @@ pub struct RelayView {
     pub settings: Option<super::RelaySettingsView>,
     pub alert: Option<RelayAlertView>,
     pub operations: Vec<RelayOperationView>,
+    /// One response to an explicit Continue/Retry. Historical views never
+    /// imply that a specific native play instance was successfully loaded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loaded_playback: Option<RelayLoadedPlayback>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayLoadedPlayback {
+    pub operation_id: String,
+    pub play_id: String,
+    pub entry_id: String,
+    pub revision: String,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -108,6 +120,7 @@ impl MusicClient {
                 button_text: a.text("btnDesc").unwrap_or("继续播放").into(),
             }),
             operations,
+            loaded_playback: None,
         };
         self.session.with_token(&token, |_| {
             Ok(AccountData {

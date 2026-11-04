@@ -10,7 +10,9 @@ use crate::{
     membership::Quality,
     playback::{
         PlaybackMode, QueueEntry, QueueSnapshot,
-        controller::{PlaybackCommand, QueueTransport, QueueUpdate},
+        controller::{
+            PlaybackCommand, PlaybackSnapshot, PlaybackStatus, QueueTransport, QueueUpdate,
+        },
     },
     relay::{
         PullPhase, RelayPlayback, RelayPlaybackPhase, RelayPlaybackRequest, RelayService,
@@ -44,6 +46,17 @@ pub enum RelayCommand {
         revision: String,
     },
 }
+
+fn loaded_entry(snapshot: &PlaybackSnapshot) -> Option<(&str, &QueueEntry)> {
+    if !matches!(
+        snapshot.state,
+        PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+    ) {
+        return None;
+    }
+    Some((snapshot.play_id.as_deref()?, snapshot.selected.as_ref()?))
+}
+
 impl MusicClient {
     pub async fn relay_command(
         &self,
@@ -143,7 +156,7 @@ impl MusicClient {
                     source: prepared.source.clone(),
                 })
                 .collect::<Vec<_>>();
-            let current = Some(items[prepared.index].entry_id.clone());
+            let entry_id = items[prepared.index].entry_id.clone();
             let mode = plan.mode.map(Into::into).unwrap_or(before.mode);
             let mut order = items.iter().map(|e| e.entry_id.clone()).collect::<Vec<_>>();
             if mode == PlaybackMode::Random {
@@ -152,7 +165,7 @@ impl MusicClient {
             record.phase = RelayPlaybackPhase::Applying;
             self.session
                 .with_token(&token, |owner| applications.save_original(owner, &record))?;
-            controller
+            let loaded = controller
                 .command(
                     &token,
                     PlaybackCommand::UpdateQueue(QueueUpdate {
@@ -160,7 +173,7 @@ impl MusicClient {
                         queue: QueueSnapshot {
                             items,
                             order,
-                            current,
+                            current: Some(entry_id.clone()),
                             mode,
                             fm_source: None,
                             intelligence: None,
@@ -173,11 +186,29 @@ impl MusicClient {
                 )
                 .await?;
             self.session.check_generation(&token)?;
-            Ok(())
+            let receipt = loaded_entry(&loaded).filter(|(_, entry)| {
+                // The official opening marker is only set for the remotely
+                // assigned item, not the queue's normal first-entry fallback.
+                plan.current.is_some()
+                    && entry.entry_id == entry_id
+                    && entry.source["relay_application"].as_str() == Some(id.as_str())
+            });
+            Ok(receipt.map(|(play_id, _)| {
+                (
+                    attempt,
+                    loaded.revision,
+                    RelayLoadedPlayback {
+                        operation_id: id.clone(),
+                        play_id: play_id.to_owned(),
+                        entry_id,
+                        revision: loaded.revision.to_string(),
+                    },
+                )
+            }))
         }
         .await;
-        record.phase = match result {
-            Ok(()) => RelayPlaybackPhase::Installed,
+        record.phase = match &result {
+            Ok(_) => RelayPlaybackPhase::Installed,
             Err(_) if record.phase == RelayPlaybackPhase::Applying => RelayPlaybackPhase::Uncertain,
             Err(_) => RelayPlaybackPhase::Failed,
         };
@@ -185,7 +216,25 @@ impl MusicClient {
         self.session.check_generation(&token)?;
         // The typed page exposes durable outcome instead of private network
         // errors or source URLs. Player load failures remain player state.
-        self.relay_view_with_operation(epoch, false, Some(&id))
-            .await
+        let mut view = self
+            .relay_view_with_operation(epoch, false, Some(&id))
+            .await?;
+        if let Ok(Some((attempt, revision, loaded))) = result
+            && self.player.selection.load(Ordering::Acquire) == attempt
+            && self.player.controller.get().is_some_and(|controller| {
+                let current = controller.snapshot();
+                // The watch publication may lag the direct load reply by one
+                // turn. A newer snapshot, if available, must still agree.
+                current.account == token
+                    && (current.revision < revision
+                        || loaded_entry(&current).is_some_and(|(play_id, entry)| {
+                            play_id == loaded.play_id && entry.entry_id == loaded.entry_id
+                        }))
+            })
+        {
+            view.value.loaded_playback = Some(loaded);
+        }
+        self.session.check_generation(&token)?;
+        Ok(view)
     }
 }
