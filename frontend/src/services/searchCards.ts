@@ -95,7 +95,9 @@ export function searchCardCanQueue(item: SearchItem): item is SearchQueueCollect
 }
 export function searchCardCanPlay(item: SearchItem): boolean {
   return (
-    ['playlist', 'album', 'artist'].includes(item.kind) ||
+    (item.kind === 'playlist' && !item.knownEmpty) ||
+    item.kind === 'album' ||
+    item.kind === 'artist' ||
     (item.kind === 'podcast' && !item.podcast.unavailable) ||
     (item.kind === 'voice' && !item.voice.unavailable)
   );

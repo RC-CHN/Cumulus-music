@@ -294,7 +294,44 @@
       await choose('playlists');
       await checkPlaylistDownload('playlists');
       assert(downloadCommands===0,'opening and cancelling the download confirmation cannot start a download');
-      await emit('complete',{ok:true,searchCollectionNextVerified:true,searchPlaylistDownloadVerified:true,playlistReads,downloadCommands,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await fixture('playlist_playability');await fresh('合成空歌单与未知歌单');
+      const menu=()=>one('.action-menu[role="menu"]:not([inert])');
+      const entry=key=>menu()?.querySelector(`[data-menu-key="${key}"]`);
+      async function openPlaylistMenu(id){
+        const card=one(`[data-result-key="playlist:${id}"]`);
+        const anchor=card?.querySelector('.search-card-open');
+        assert(anchor&&!anchor.disabled,'playlist detail remains navigable');
+        anchor.scrollIntoView({block:'nearest'});
+        anchor.focus({preventScroll:true});
+        anchor.dispatchEvent(new KeyboardEvent('keydown',{key:'F10',shiftKey:true,bubbles:true,cancelable:true}));
+        await wait(()=>entry('next')&&menu()?.contains(document.activeElement),'playlist playback menu');
+        return {card,anchor};
+      }
+      for(const category of ['all','playlists']){
+        if(category!=='all')await choose(category);
+        const empty=await openPlaylistMenu(4);
+        assert(entry('play')?.disabled&&entry('next')?.disabled&&
+          !empty.card.querySelector('.search-card-play'),'known empty blocks playback and next');
+        await capture('playlist_known_empty_'+category);
+        key(document.activeElement,'Escape');
+        await wait(()=>!menu()&&document.activeElement===empty.anchor,'empty playlist menu restores focus');
+        const unknown=await openPlaylistMenu(5);
+        assert(!entry('play')?.disabled&&!entry('next').disabled&&
+          unknown.card.querySelector('.search-card-play:not(:disabled)')&&
+          !unknown.card.querySelector('.search-result-sub')?.textContent.includes('0 首'),
+          'missing count remains available without displaying a false zero');
+        if(category==='all'){
+          key(document.activeElement,'Escape');
+          await wait(()=>!menu(),'close unknown playlist menu');
+        }else{
+          click(entry('play'));
+          await wait(()=>one('.playerbar')?.dataset.state==='playing','unknown-count playlist starts native playback');
+          const view=await invoke('player_snapshot',{epoch});
+          assert(view.origin?.kind==='playlist'&&view.origin.id==='5'&&view.queueLen===40,
+            'native playlist, not the search preview, supplies the full queue');
+        }
+      }
+      await emit('complete',{ok:true,searchCollectionNextVerified:true,searchPlaylistDownloadVerified:true,searchPlaylistPlayabilityVerified:true,playlistReads,downloadCommands,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchPlaylistCreatorProof){

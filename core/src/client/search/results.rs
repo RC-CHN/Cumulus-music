@@ -35,6 +35,8 @@ pub enum SearchItem {
     },
     Playlist {
         playlist: PlaylistView,
+        #[serde(rename = "knownEmpty", skip_serializing_if = "std::ops::Not::not")]
+        known_empty: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         recommendation: Option<String>,
     },
@@ -276,6 +278,7 @@ fn item(
         }
         "playlist" => SearchItem::Playlist {
             playlist: mapping::playlist(v, uid)?,
+            known_empty: api::playlist_known_empty(v),
             recommendation: comprehensive
                 .and_then(|_| v["recommendText"].as_str())
                 .map(|value| {

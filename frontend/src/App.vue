@@ -444,7 +444,7 @@ function queueSearchCard({ item, anchor }: SearchQueueRequest) {
   if (
     page.value.kind !== 'search' ||
     !searchCollectionQueueable.value ||
-    (item.kind === 'playlist' && item.playlist.trackCount <= 0)
+    (item.kind === 'playlist' && item.knownEmpty)
   )
     return;
   if (item.kind === 'album') albumAction({ album: item.album, action: 'next', anchor });

@@ -129,6 +129,35 @@ async fn categories_use_official_shapes_and_only_public_card_fields_cross_ipc() 
     }
 }
 #[tokio::test]
+async fn playlist_search_distinguishes_empty_from_missing_track_evidence() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    *api.reply.lock().unwrap() = json!({"code":200,"result":{"playlists":[
+        {"id":1,"name":"Empty","userId":2,"trackCount":0},
+        {"id":2,"name":"Unknown","userId":2},
+        {"id":3,"name":"Preview","userId":2,"trackCount":0,"trackIds":[{"id":17,"extra":"PRIVATE_TRACK_SENTINEL"}]},
+        {"id":4,"name":"Empty by IDs","userId":2,"trackIds":[]},
+        {"id":5,"name":"Has songs","userId":2,"trackCount":3,"trackIds":[]}
+    ],"playlistCount":5,"hasMore":false}});
+    let view = client
+        .search_results(&epoch, query(C::Playlists))
+        .await
+        .unwrap()
+        .value;
+    let view = serde_json::to_value(view).unwrap();
+    let items = view["sections"][0]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 5);
+    assert_eq!(
+        items
+            .iter()
+            .map(|v| v["knownEmpty"].as_bool().unwrap_or(false))
+            .collect::<Vec<_>>(),
+        vec![true, false, false, true, false]
+    );
+    assert!(!view.to_string().contains("trackIds"));
+    assert!(!view.to_string().contains("PRIVATE_TRACK_SENTINEL"));
+}
+#[tokio::test]
 async fn corrections_are_valid_search_terms_and_cannot_override_an_opt_out() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;

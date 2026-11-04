@@ -51,6 +51,7 @@ pub fn control(value: &Value) {
             "song_waterfall_error",
             "voice_queue",
             "playlist_creator_search",
+            "playlist_playability",
             "album_artist_search",
             "preview",
             "lyrics",
@@ -483,6 +484,34 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
             }
         } else {
             creators(response["result"]["playlists"].as_array_mut().unwrap());
+        }
+    }
+    if mode == "playlist_playability" && matches!(category, "all" | "playlists") {
+        let entries = if category == "all" {
+            response["data"]["blocks"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|block| block["blockCode"] == "search_block_playlist")
+                .unwrap()["resources"]
+                .as_array_mut()
+                .unwrap()
+        } else {
+            response["result"]["playlists"].as_array_mut().unwrap()
+        };
+        for row in entries {
+            let entry = if category == "all" {
+                &mut row["baseInfo"]
+            } else {
+                row
+            };
+            match entry["id"].as_u64() {
+                Some(4) => entry["trackCount"] = json!(0),
+                Some(5) => {
+                    entry.as_object_mut().unwrap().remove("trackCount");
+                }
+                _ => {}
+            }
         }
     }
     if matches!(mode.as_str(), "hot_source" | "selection_source") {

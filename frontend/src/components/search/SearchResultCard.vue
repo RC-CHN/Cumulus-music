@@ -84,15 +84,22 @@ function contextMenu(event: MouseEvent | KeyboardEvent) {
   );
 }
 const failedCover = ref(false);
-const canPlay = computed(() => searchCardCanPlay(props.item));
+const canPlay = computed(
+  () => searchCardCanPlay(props.item) || (props.item.kind === 'playlist' && props.current),
+);
 const canQueue = computed(
-  () => props.queueable && (props.item.kind !== 'playlist' || props.item.playlist.trackCount > 0),
+  () => props.queueable && (props.item.kind !== 'playlist' || !props.item.knownEmpty),
 );
 const albumArtists = computed(() => searchAlbumCredits(props.item));
 const cardArtists = computed(() =>
   props.item.kind === 'mv' ? searchVideoCredits(props.item) : albumArtists.value,
 );
 const playlistCreator = computed(() => searchPlaylistCreator(props.item));
+const playlistTrackCount = computed(() =>
+  props.item.kind === 'playlist' && (props.item.knownEmpty || props.item.playlist.trackCount > 0)
+    ? `${props.item.playlist.trackCount} 首`
+    : '',
+);
 const playlistSubscribe = computed(() =>
   props.item.kind === 'playlist'
     ? playlistSubscribeMenuItem(props.item.playlist, props.playlistKnown, props.playlistActionBusy)
@@ -116,13 +123,13 @@ const markedTitle = computed(
 const items = computed<MenuItem[]>(() => {
   if (props.item.kind === 'artist') return artistCardMenu();
   return [
-    ...(canPlay.value
+    ...(canPlay.value || props.item.kind === 'playlist'
       ? [
           {
             key: 'play',
             label: props.current && props.playing ? '暂停' : '播放',
             icon: props.current && props.playing ? 'pause' : 'play',
-            disabled: !props.playable,
+            disabled: !props.playable || !canPlay.value,
           },
         ]
       : []),
@@ -306,7 +313,7 @@ const card = computed(() => {
       return {
         name: i.playlist.name,
         cover: i.playlist.coverUrl,
-        sub: [`${i.playlist.trackCount} 首`, i.playlist.creator.trim()].filter(Boolean).join(' · '),
+        sub: [playlistTrackCount.value, i.playlist.creator.trim()].filter(Boolean).join(' · '),
         round: false,
       };
     case 'album':
@@ -489,7 +496,9 @@ watch(
       v-else-if="item.kind === 'playlist' && (playlistCreator || playlistRecommendation)"
       class="search-result-sub search-playlist-credit"
     >
-      <span v-if="!playlistRecommendation">{{ item.playlist.trackCount }} 首 ·</span>
+      <span v-if="!playlistRecommendation && playlistTrackCount"
+        >{{ playlistTrackCount }}{{ playlistCreator || item.playlist.creator ? ' ·' : '' }}</span
+      >
       <button
         v-if="playlistCreator"
         type="button"

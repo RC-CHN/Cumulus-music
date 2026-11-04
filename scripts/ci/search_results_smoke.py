@@ -119,13 +119,15 @@ def main():
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['searchCollectionNextVerified']
-        assert complete['searchPlaylistDownloadVerified'] and complete['stageCount'] == 4
+        assert complete['searchPlaylistDownloadVerified'] and complete['searchPlaylistPlayabilityVerified']
+        assert complete['stageCount'] == 6
         assert complete['playlistReads'] == [['3', 0, 100], ['3', 0, 100]]
         assert complete['downloadCommands'] == 0
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (4 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchCollectionNextVerified=True,
-                              searchPlaylistDownloadVerified=True, stageCount=4)))
+                              searchPlaylistDownloadVerified=True, searchPlaylistPlayabilityVerified=True,
+                              stageCount=6)))
         return
     if args.playlist_creator:
         first = root / 'first'

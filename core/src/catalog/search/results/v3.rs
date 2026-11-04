@@ -237,7 +237,34 @@ fn playlist(v: &Value) -> Fields {
     );
     nested(&mut out, v, "creator", creator);
     strings(&mut out, v, &["tags"]);
+    if let Some(ids) = v["trackIds"].as_array() {
+        // Only distinguish absent, empty, and nonempty; no IDs from this
+        // preview are needed or carried forward.
+        out.insert(
+            "trackIds".into(),
+            Value::Array(if ids.is_empty() {
+                vec![]
+            } else {
+                vec![Value::Null]
+            }),
+        );
+    }
     out
+}
+
+#[cfg(test)]
+#[test]
+fn playlist_preview_preserves_only_track_presence() {
+    for (raw, empty) in [
+        (json!({"trackCount":0}), true),
+        (json!({}), false),
+        (json!({"trackCount":0,"trackIds":[{"id":"PRIVATE"}]}), false),
+        (json!({"trackIds":[]}), true),
+    ] {
+        let projection = Value::Object(playlist(&raw));
+        assert_eq!(super::playlist_known_empty(&projection), empty);
+        assert!(!projection.to_string().contains("PRIVATE"));
+    }
 }
 
 fn artist(v: &Value) -> Fields {

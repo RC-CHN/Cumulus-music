@@ -55,7 +55,7 @@ export type SearchItem =
       originalRecording?: boolean;
       reasons?: SearchReasonTag[];
     }
-  | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string }
+  | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string; knownEmpty?: boolean }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
   | { kind: 'voice'; voice: EpisodeView; listenerCount?: number }

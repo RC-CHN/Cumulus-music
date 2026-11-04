@@ -5,6 +5,16 @@ use serde_json::{Value, json};
 pub(crate) mod reason;
 pub(crate) mod v3;
 
+/// M/622 p: missing summary fields do not prove a playlist is empty.
+pub(crate) fn playlist_known_empty(value: &Value) -> bool {
+    let count = value["trackCount"].as_u64();
+    let ids = value["trackIds"].as_array();
+    if count.is_some_and(|n| n > 0) || ids.is_some_and(|ids| !ids.is_empty()) {
+        return false;
+    }
+    count == Some(0) || ids.is_some()
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchCorrectionPart {
