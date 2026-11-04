@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onUnmounted, ref, watch } from 'vue';
 import { failure, type AccountView } from '../services/contracts';
 import { useCore } from '../services/core';
 import type { EffectDeviceChoice } from '../services/effectDirectory';
@@ -16,6 +16,10 @@ const brandError = ref('');
 const modelError = ref('');
 let brandRequest = 0;
 let modelRequest = 0;
+let directoryGeneration = 0;
+const cachedModels = new Map<number, EffectDeviceChoice[]>();
+const modelReads = new Map<number, Promise<EffectDeviceChoice[]>>();
+const modelCacheLimit = 8;
 
 function owns(epoch: string) {
   return props.account.status === 'authenticated' && props.account.epoch === epoch;
@@ -45,12 +49,34 @@ async function loadModels(id?: number) {
   modelError.value = '';
   modelLoading.value = id !== undefined;
   if (id === undefined) return;
+  const cached = cachedModels.get(id);
+  if (cached) {
+    cachedModels.delete(id);
+    cachedModels.set(id, cached);
+    models.value = cached;
+    modelLoading.value = false;
+    return;
+  }
+  const generation = directoryGeneration;
+  let read = modelReads.get(id);
+  if (!read) {
+    read = core.effectDeviceModels(epoch, id).then((rows) => {
+      if (generation === directoryGeneration && owns(epoch)) {
+        if (cachedModels.size >= modelCacheLimit)
+          cachedModels.delete(cachedModels.keys().next().value!);
+        cachedModels.set(id, rows);
+      }
+      return rows;
+    });
+    modelReads.set(id, read);
+  }
   try {
-    const rows = await core.effectDeviceModels(epoch, id);
+    const rows = await read;
     if (current()) models.value = rows;
   } catch (issue) {
     if (current()) modelError.value = failure(issue).message;
   } finally {
+    if (modelReads.get(id) === read) modelReads.delete(id);
     if (current()) modelLoading.value = false;
   }
 }
@@ -62,11 +88,27 @@ function chooseModel(event: Event) {
   const value = (event.currentTarget as HTMLSelectElement).value;
   model.value = models.value.find((item) => String(item.id) === value)?.id;
 }
-onMounted(() => void loadBrands());
-onUnmounted(() => {
+function resetReads() {
   brandRequest++;
   modelRequest++;
-});
+  directoryGeneration++;
+  cachedModels.clear();
+  modelReads.clear();
+}
+watch(
+  () => [props.account.epoch, props.account.status] as const,
+  ([epoch]) => {
+    resetReads();
+    brands.value = [];
+    models.value = [];
+    brand.value = model.value = undefined;
+    brandError.value = modelError.value = '';
+    brandLoading.value = modelLoading.value = false;
+    if (owns(epoch)) void loadBrands();
+  },
+  { immediate: true, flush: 'sync' },
+);
+onUnmounted(resetReads);
 </script>
 
 <template>

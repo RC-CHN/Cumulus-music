@@ -115,11 +115,18 @@
     select(selects()[0], 4200);
     await wait(() => text().includes('此品牌暂无耳机型号。') && selects().length === 1, 'empty brand clears old models');
     await capture('07_empty_headphones');
+    select(selects()[0], 4100);
+    await Promise.resolve();
+    assert(selects()[1]?.textContent.includes('合成耳机乙') && selects()[1]?.value === '',
+      'visited brand restores its models without restoring a selection');
+    select(selects()[0], 4200);
+    await Promise.resolve();
+    assert(text().includes('此品牌暂无耳机型号。'), 'visited empty brand restores the empty result');
     click(button(dialog(), '关闭音效目录'));
     await wait(() => !dialog() && document.activeElement === opener, 'return focus to equalizer');
     assert(seenArtwork.some((url) => url.endsWith('-dark.png')) && seenArtwork.every((url) =>
       /^https:\/\/p1\.music\.126\.net\/cumulus-proof-artwork-(light|dark)\.png$/.test(url)), 'only sanitized artwork reached WebView');
-    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true, limitedFreeExpiryVerified: true });
+    await emit('complete', { ok: true, stageCount: 7, artworkVerified: true, devicesVerified: true, deviceCacheVerified: true, limitedFreeExpiryVerified: true });
   } catch (error) {
     const image = one('.effect-directory-card img');
     await emit('failed', { message: String(error), body: document.body.innerText.slice(0, 2000),

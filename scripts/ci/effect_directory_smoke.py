@@ -38,7 +38,7 @@ def main():
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['stageCount'] == 7 and complete['artworkVerified'] and complete['devicesVerified']
-    assert complete['limitedFreeExpiryVerified']
+    assert complete['limitedFreeExpiryVerified'] and complete['deviceCacheVerified']
     catalogue = '/api/usertool/sound/queryAllSound'
     detail = '/api/usertool/home/sound/info'
     rights = '/api/vipauth/app/interests/auth/query'
