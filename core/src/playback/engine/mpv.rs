@@ -325,6 +325,16 @@ impl MpvEngine {
         self.load_pinned(Box::new(file), format, authority, cancel)
     }
 
+    #[cfg(test)]
+    pub(super) fn load_probe_wav(
+        &mut self,
+        reader: impl PinnedReader + 'static,
+        authority: Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.control(&["set", "options/cache", "yes"])?;
+        self.load_pinned(Box::new(reader), "wav", authority, &Cancellation::default())
+    }
+
     fn check_regular(file: &std::fs::File) -> Result<()> {
         if !file.metadata()?.is_file() {
             return Err(Error::InvalidInput("pinned audio requires a regular file"));

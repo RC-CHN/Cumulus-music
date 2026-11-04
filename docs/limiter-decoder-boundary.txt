@@ -56,9 +56,9 @@ the source clock.
 The experiment does not prove bounded-time indexed seeking in long media,
 support for authorized pinned streams, sample counts for codecs with
 priming/edit lists, unknown-length sources, decoder format negotiation or
-changes, or real hardware timing. The two proofs do not yet stream the
-decoded producer and the libmpv output within one native session; they
-share the recovered DSP but exercise different boundaries.
+changes, or real hardware timing. The later combined experiment in
+limiter-native-pipeline-proof.txt joins this boundary to the libmpv sink
+within one real native session on a short synthetic fixture.
 The remaining work includes a bounded-time decoder, an explicit audio
 sink generation swap with clock mapping, full proprietary graph routing,
 device/rate handling and real Windows/native desktop verification. Do not

@@ -25,6 +25,8 @@ const QUEUE_PACKETS: usize = 2;
 const SOURCE_END: u64 = 98_304;
 const SEEK_FRAME: u64 = 40_500;
 
+mod pipeline;
+
 struct NativeProducer {
     packets: Option<Receiver<DecodedPacket>>,
     worker: Option<JoinHandle<()>>,

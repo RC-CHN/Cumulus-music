@@ -76,17 +76,27 @@ impl LimiterSegment {
     /// Logical transport seek (or first load). Call before accepting any PCM
     /// from the replacement decoder. Pause is independent of discontinuities.
     fn start(&mut self, first: u64, end: u64) -> Result<Generation> {
-        // The recovered millisecond clock is signed 32-bit. Leave room for
-        // its one additional EOF frame and for timestamp arithmetic.
-        if first > end || self.millis(end.saturating_add(1)).is_none() {
-            return Err(Error::InvalidInput("unsupported limiter source range"));
-        }
-        self.generation = Generation(
+        let next = Generation(
             self.generation
                 .0
                 .checked_add(1)
                 .ok_or(Error::State("limiter generation exhausted"))?,
         );
+        self.activate(next, first, end)?;
+        Ok(next)
+    }
+
+    /// Use an identity issued by the controller for a newly owned reader.
+    fn activate(&mut self, generation: Generation, first: u64, end: u64) -> Result<()> {
+        // The recovered millisecond clock is signed 32-bit. Leave room for
+        // its one additional EOF frame and for timestamp arithmetic.
+        if generation.0 <= self.generation.0
+            || first > end
+            || self.millis(end.saturating_add(1)).is_none()
+        {
+            return Err(Error::InvalidInput("unsupported limiter source range"));
+        }
+        self.generation = generation;
         self.dsp.reset();
         self.source_start = first;
         self.source_end = end;
@@ -94,7 +104,7 @@ impl LimiterSegment {
         self.next_rendered_frame = first;
         self.decoder_end = false;
         self.failed = false;
-        Ok(self.generation)
+        Ok(())
     }
 
     fn millis(&self, frame: u64) -> Option<u32> {

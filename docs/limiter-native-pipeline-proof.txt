@@ -1,0 +1,64 @@
+Recovered limiter: combined native playback proof
+
+`limiter_native_pipeline_generation_seek_and_eof` uses one real libmpv
+instance. Its PCM comes from a generated FLAC decoded by the opt-in trusted
+FFmpeg executable. The source goes through the two-packet decoder queue,
+generation fence, recovered linked limiter/FIFO, and production
+`cumuluspinned://` libmpv callback. Output uses libmpv's null audio device.
+There is no production pipeline switch, decoder process dependency, IPC,
+account access, or network. The experiment is compiled only in core tests.
+
+    cargo test --locked -p cumulus-core --lib limiter_native_pipeline -- --ignored --nocapture
+
+`CUMULUS_LIMITER_PROBE_MPV` and `CUMULUS_LIMITER_PROBE_FFMPEG` optionally
+specify trusted paths. The Linux probe uses libmpv v0.41.0 (client API 2.5)
+and FFmpeg 8.0.1. A native Windows run requires both trusted binaries; the
+current Cumulus Windows installer does not provide ffmpeg.exe.
+
+The callback retains only a small float-PCM byte window and the decoder and
+limiter FIFOs. Each WAV generation describes a fixed length, including the
+official one-frame sentinel for an empty FIFO at EOF. The byte callback
+advertises actual seek behavior: backward probes outside the retained window
+replay the same short FLAC slice from the same generation's source origin
+and retain its deterministic PCM. Complete replay passes must have the
+same SHA-256 over their PCM bytes. The fixture limits each WAV to four
+decoder passes and bounds each read while checking its authority. The WAV
+reader confirms the decoder's successful exit and the limiter's full drain
+before handing libmpv the last bytes advertised in the header. Temporary
+FIFO starvation does not signal EOF.
+
+A logical seek does not use the byte offset as a DSP reset signal. The
+test stops the old libmpv entry, revokes its authority, activates a new
+decoder and limiter generation at source frame 40500 and publishes its new
+one-shot URI. It intentionally presents one real decoded packet from the
+retired generation; only the active generation reaches the native sink.
+The target stereo frame is quieter with the old gain history than in the
+new generation, where it equals the decoded source and both channels stay
+linked. libmpv keeps the replacement paused until the user resumes.
+
+The test compares two clocks. The rendered source cursor can reach the end
+while libmpv's `time-pos` remains at zero in a paused entry. Following
+replacement, the playback clock is libmpv's reported segment position plus
+the logical source offset, and only the new entry's natural EOF counts.
+The last sampled position may be earlier than the final source frame; the
+exact total PCM/limiter drain and native end-file are separate checks.
+Production should require the current generation's verified decoder/drain
+completion as well as the sink event before advancing the queue. This run
+does not characterize how every demuxer reports a midstream source error.
+
+On Linux the original reader saw three absolute seek callbacks and two
+decoder passes; the rendered cursor reached frame 98304 with libmpv
+paused at 0.000 s. Playback advanced before replacement. The target pair
+changed from [0.049164176, -0.006145522] to [0.14672852, -0.018341064]
+after the new generation. The new entry completed two decoder passes
+and reported natural EOF. The second pass returned the same PCM digest.
+
+This test joins the earlier decoder and sink evidence. It does not use
+libmpv's stock LADSPA node for the limiter, does not monitor physical audio
+output, and does not verify the complete proprietary effects graph. The
+short fixture's deterministic re-decode is not a safe random-access design
+for long audio or authorized HTTP streams. Production still needs bounded
+indexed decode with format/rate/priming handling, a source protocol that
+accounts for unknown lengths or bounded seek replay, correct account/source
+authority and output recovery, full material graph placement, an approved
+cross-platform decoder distribution, and native Windows/device tests.

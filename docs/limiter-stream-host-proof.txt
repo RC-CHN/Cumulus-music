@@ -93,3 +93,6 @@ actual libmpv events and properties. It does not compare audio hardware
 output, cover Windows execution, prove decoding or routing of real songs,
 or establish parity of the full proprietary material graph. No live
 limiter path is enabled.
+
+The later limiter-native-pipeline-proof.txt experiment supplies this host
+with actual FLAC decoder packets while keeping the same isolation.
