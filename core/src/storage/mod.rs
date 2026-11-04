@@ -4,4 +4,5 @@ mod operation_lock;
 mod state;
 pub use directory::private_directory_builder;
 pub use operation_lock::OperationLock;
+pub(crate) use state::PlaybackDownloadKind;
 pub use state::{StateRow, StateStore, StateTransaction};

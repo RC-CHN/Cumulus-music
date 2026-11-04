@@ -23,6 +23,21 @@ pub async fn song_download_state(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn voice_download_state<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    id: String,
+) -> Result<SongDownloadState, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("voice download state requires main window").into());
+    }
+    client
+        .voice_download_state(&epoch, &id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn download_command(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

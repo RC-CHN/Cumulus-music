@@ -1,26 +1,27 @@
-import { computed, shallowRef, watch, type Ref } from 'vue';
+import { computed, ref, shallowRef, watch, type Ref } from 'vue';
 import { useCore } from '../services/core';
 import type { SongDownloadState } from '../services/downloads';
-import type { CurrentCatalogTrack } from '../services/player';
+import type { CurrentPlaybackDownload } from '../services/player';
 
 export function usePlaybackDownloadState(
-  target: Readonly<Ref<CurrentCatalogTrack | undefined>>,
+  target: Readonly<Ref<CurrentPlaybackDownload | undefined>>,
   changing: () => boolean,
 ) {
   const core = useCore();
   const key = computed(() => {
     const value = target.value;
-    return value ? JSON.stringify([value.epoch, value.playId, value.track.id]) : undefined;
+    return value ? JSON.stringify([value.epoch, value.playId, value.kind, value.id]) : undefined;
   });
-  const result = shallowRef<{ key: string; state: SongDownloadState }>();
+  const result = shallowRef<{ key: string; state: SongDownloadState | 'unknown' }>();
+  const attempt = ref(0);
   watch(
-    [key, changing],
+    [key, changing, attempt],
     ([identity, busy], _previous, onCleanup) => {
       if (result.value?.key !== identity) result.value = undefined;
       if (!identity || busy) return;
       const current = target.value;
       if (!current) return;
-      const selected = { key: identity, epoch: current.epoch, id: current.track.id };
+      const selected = { key: identity, epoch: current.epoch, id: current.id, kind: current.kind };
       let active = true;
       let timer: ReturnType<typeof setTimeout> | undefined;
       onCleanup(() => {
@@ -29,12 +30,18 @@ export function usePlaybackDownloadState(
       });
       async function observe() {
         try {
-          const state = await core.songDownloadState(selected.epoch, selected.id);
+          const state = await (selected.kind === 'voice'
+            ? core.voiceDownloadState(selected.epoch, selected.id)
+            : core.songDownloadState(selected.epoch, selected.id));
           if (active && key.value === selected.key) result.value = { key: selected.key, state };
         } catch {
-          // A failed optional local read cannot block playback or download setup.
+          // An unread voice status offers a local read retry instead of a new task.
+          // Keep the existing song shortcut behavior.
           if (active && key.value === selected.key && !result.value)
-            result.value = { key: selected.key, state: 'none' };
+            result.value = {
+              key: selected.key,
+              state: selected.kind === 'voice' ? 'unknown' : 'none',
+            };
         }
         if (
           active &&
@@ -47,8 +54,14 @@ export function usePlaybackDownloadState(
     },
     { immediate: true },
   );
-  return computed(() => {
+  const state = computed(() => {
     const value = result.value;
     return value?.key === key.value ? value?.state : undefined;
   });
+  function retry() {
+    if (state.value !== 'unknown') return;
+    result.value = undefined;
+    attempt.value++;
+  }
+  return { state, retry };
 }

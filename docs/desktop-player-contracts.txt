@@ -355,3 +355,30 @@ resume，其他来源才 playAll。社区版对当前已载入、同账号、同
 其他资源、官方社交渠道、一起听快捷动作、灰度分组与购买不在本菜单批次。
 player_layout_smoke 检查窄窗内的实际按钮命中和长标签、切歌关闭旧菜单、模态框
 焦点返回以及首位歌手和专辑的原生读取；没有真实账号写操作。
+
+当前播客单集的下载入口
+
+官方 PlayBar/Download.tsx:65–91、100–125（SHA256
+0919b926b4b8be8af3b876ddb644b1eb52fc6ad32736435de638c0b50ec1996d）
+根据 resourceType 从 voiceMap 或 trackMap 读取当前资源的下载状态；声音有自己的
+完成提示和下载动作。播放器底栏
+现在也为当前普通在线单集显示下载入口。选中项带账号代次、playId、资源种类和
+voiceId；切换后废弃旧结果。没有用主音源歌曲 ID 当作单集 ID，也没有把本地、云盘
+或已下载条目加入这一入口。
+
+主窗 `voice_download_state` 只查询当前账号 SQLite 下载任务的 origin.voice_id，
+不会启动工作器、请求服务或透露地址/路径。状态未知时按钮只重读；等待、进行中、
+已完成和失败等复用歌曲的状态反馈。没有任务时点击打开既有单集下载确认框，打开
+或取消不会创建任务或改变播放。确认仍调用既有 `download_command/start_voice`，
+使用 `/api/dj/program/detail`、`/api/dj/voices/download/check` 和既有单集下载授权路径，
+不放宽会员、试听或地域限制，
+也不增加 NCM 或单集字幕下载能力。未使用 YesPlayMusic。
+
+`song_download_state` Rust 回归覆盖歌曲 ID/音源 ID 撞号、账号隔离、等待、工作及
+文件存在性。`search_results_smoke.py --voice-direct` 在普通搜索单集的真实原生
+播放期间验证状态读取失败后本地重试、确认框显示当前单集、取消无下载命令且队列不变；
+保留原有暂停和歌曲/声音身份分离检查。使用合成资源和空输出，不验证实服下载或听感。
+Linux 实测：单集专项 5 个检查点，原有歌曲下载菜单 36 个检查点，均使用相同版本
+的正式 Vue 和原生 IPC；保存的合成截图与回执在 `.build/ui-proof/player-voice-download/`。
+本批没有实际提交下载确认；现有 `podcast_download` Rust 测试仍验证独立授权、
+拒绝时不请求媒体、恢复后重新验证权益和文件管理。

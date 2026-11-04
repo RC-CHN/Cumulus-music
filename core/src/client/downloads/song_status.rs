@@ -1,6 +1,6 @@
-//! The player observes only the current catalogue song's local download state.
+//! The player observes local download state in the song or voice namespace.
 use super::MusicClient;
-use crate::{Error, Result, protocol::api::identifier};
+use crate::{Error, Result, protocol::api::identifier, storage::PlaybackDownloadKind};
 use serde::Serialize;
 use serde_json::json;
 
@@ -17,6 +17,21 @@ pub enum SongDownloadState {
 
 impl MusicClient {
     pub async fn song_download_state(&self, epoch: &str, id: &str) -> Result<SongDownloadState> {
+        self.playback_download_state(epoch, id, PlaybackDownloadKind::Song)
+            .await
+    }
+
+    pub async fn voice_download_state(&self, epoch: &str, id: &str) -> Result<SongDownloadState> {
+        self.playback_download_state(epoch, id, PlaybackDownloadKind::Voice)
+            .await
+    }
+
+    async fn playback_download_state(
+        &self,
+        epoch: &str,
+        id: &str,
+        kind: PlaybackDownloadKind,
+    ) -> Result<SongDownloadState> {
         let id = identifier(&json!(id))?;
         let session = self.session.clone();
         let token = session.token()?;
@@ -27,7 +42,7 @@ impl MusicClient {
         let store = self.downloads.inner.store.clone();
         tokio::task::spawn_blocking(move || {
             let state = store
-                .song_download_rows(&owner, &id)?
+                .playback_download_rows(&owner, &id, kind)?
                 .into_iter()
                 .map(|row| match row.status.as_str() {
                     "queued" => SongDownloadState::Waiting,
@@ -51,6 +66,6 @@ impl MusicClient {
             session.with_token(&token, |_| Ok(state))
         })
         .await
-        .map_err(|_| Error::State("song download state worker stopped"))?
+        .map_err(|_| Error::State("playback download state worker stopped"))?
     }
 }

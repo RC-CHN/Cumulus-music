@@ -152,7 +152,7 @@ export interface DownloadClient {
   openDownloadDirectory(epoch: string, taskId: string | null): Promise<void>;
 }
 export type DownloadDialogTarget =
-  | { kind: 'voice'; tracks: import('./podcast').EpisodeView[] }
+  | { kind: 'voice'; tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[] }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }
   | { kind: 'start'; tracks: TrackView[] }
   | { kind: 'settings' }

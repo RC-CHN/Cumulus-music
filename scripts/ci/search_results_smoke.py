@@ -358,7 +358,7 @@ def main():
                 'peopleCategoriesVerified' if args.people_categories else
                 'originalCorrectionVerified' if args.correction_original else
                 'cardTitleMatchesVerified' if args.card_matches else 'voiceDirectVerified')
-        stages = 4 if args.people_categories else 3 if args.voice_direct or args.correction_original else 2
+        stages = 5 if args.voice_direct else 4 if args.people_categories else 3 if args.correction_original else 2
         assert complete['ok'] and complete[flag] and complete['stageCount'] == stages
         if args.people_categories:
             assert complete['searchArtistMenuVerified']
@@ -369,6 +369,7 @@ def main():
             assert complete['categoryCorrectionPartsVerified'] and complete['staleCorrectionPartsSuppressed']
         if args.voice_direct:
             assert complete['preparedTicketFenceVerified'] and complete['searchSongNamespaceVerified']
+            assert complete['voiceDownloadVerified']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (stages if args.screenshots else 0)
         print(json.dumps(dict(complete, actualWebView=True)))

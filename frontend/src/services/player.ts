@@ -127,6 +127,42 @@ export function currentCatalogTrack(view?: PlayerView): CurrentCatalogTrack | un
   return { epoch: view.epoch, playId, track };
 }
 
+export interface CurrentPlaybackDownload {
+  epoch: string;
+  playId: string;
+  kind: 'song' | 'voice';
+  id: string;
+  name: string;
+}
+
+export function currentPlaybackDownload(view?: PlayerView): CurrentPlaybackDownload | undefined {
+  const song = currentCatalogTrack(view);
+  if (song)
+    return {
+      epoch: song.epoch,
+      playId: song.playId,
+      kind: 'song',
+      id: song.track.id,
+      name: song.track.name,
+    };
+  const track = view?.track;
+  if (
+    view?.resourceKind !== 'voice' ||
+    !view.playId ||
+    !track?.voiceId ||
+    track.local ||
+    track.missing
+  )
+    return undefined;
+  return {
+    epoch: view.epoch,
+    playId: view.playId,
+    kind: 'voice',
+    id: track.voiceId,
+    name: track.name,
+  };
+}
+
 export interface PlayerOrigin {
   kind: 'playlist' | 'album' | 'artist' | 'podcast';
   id: string;

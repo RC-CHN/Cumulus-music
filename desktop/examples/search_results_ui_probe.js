@@ -1491,6 +1491,18 @@
       assert(play&&!card.querySelector('.search-voice-radio'),'episode play is independent of the parent radio link');
       const invoke=(name,args={})=>window.__TAURI_INTERNALS__.invoke(name,args);
       const {epoch}=await invoke('account_snapshot');
+      const provides=one('#app').__vue_app__._context.provides;
+      const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
+      const nativeVoiceState=core.voiceDownloadState;
+      const nativeDownloadCommand=core.downloadCommand;
+      const voiceReads=[];
+      let downloadCommands=0;
+      core.voiceDownloadState=(owner,id)=>{
+        voiceReads.push([owner,id]);
+        if(voiceReads.length===1) return Promise.reject({code:'state',message:'synthetic local read failure'});
+        return nativeVoiceState(owner,id);
+      };
+      core.downloadCommand=(...args)=>{downloadCommands++; return nativeDownloadCommand(...args);};
       click(play);
       let first;
       for(let i=0;i<200;i++){
@@ -1500,6 +1512,26 @@
       }
       assert(first,'standalone episode reached actual native playback');
       await capture('voice_without_radio_playing');
+      const badge=()=>one('.player-current-download');
+      await wait(()=>badge()?.dataset.downloadState==='unknown','failed voice status offers local retry');
+      assert(badge().getAttribute('aria-label')==='重新读取当前声音下载状态','unknown is not an available download');
+      click(badge());
+      await wait(()=>badge()?.dataset.downloadState==='none','retry observes the real local voice status');
+      assert(voiceReads.length===2&&voiceReads.every(([owner,id])=>owner===epoch&&id==='401'),
+        'voice download reads use the episode identity, never backing media ID 1');
+      assert(!one('.download-dialog')&&!downloadCommands,'retry only reads');
+      await capture('voice_download_status_retried');
+      click(badge());
+      await wait(()=>one('.download-dialog[open]'),'current voice opens existing download confirmation');
+      assert(one('.download-dialog').textContent.includes('下载 1 个单集')&&
+        one('.download-dialog').textContent.includes(first.track.name),'confirmation shows the exact current episode');
+      assert(!downloadCommands,'opening the dialog does not enqueue a download');
+      await capture('voice_download_confirmation');
+      click(one('.download-dialog footer button[type="button"]'));
+      await wait(()=>!one('.download-dialog'),'cancel current voice confirmation');
+      const afterDownload=await invoke('player_snapshot',{epoch});
+      assert(!downloadCommands&&afterDownload.playId===first.playId&&afterDownload.queueRevision===first.queueRevision,
+        'cancel never submits and playback selection is unchanged');
       const oldTicket=await invoke('prepare_play_selection',{
         epoch,expectedQueueRevision:first.queueRevision,expectedPlayId:first.playId,
       });
@@ -1532,15 +1564,18 @@
         await sleep(70);
       }
       assert(catalog&&catalog.playId!==paused.playId,'catalog click replaces the colliding episode');
-      await wait(()=>song.getAttribute('aria-label').startsWith('暂停 '),'matching catalog song offers pause');
+      await wait(()=>song.isConnected&&!song.disabled&&song.getAttribute('aria-label').startsWith('暂停 '),
+        'matching catalog song is ready to pause');
       click(song);
       await wait(()=>one('.playerbar').dataset.state==='paused','same catalog song pauses');
       const catalogPaused=await invoke('player_snapshot',{epoch});
       assert(catalogPaused.playId===catalog.playId&&catalogPaused.queueRevision===catalog.queueRevision,
         'same catalog song pauses without replacing its entry');
+      await wait(()=>badge()?.getAttribute('aria-label')==='下载当前歌曲','song uses its own footer download state');
+      assert(voiceReads.length===2&&!downloadCommands,'catalog switch does not reread or write the previous voice');
       await capture('catalog_song_not_episode');
       await emit('complete',{ok:true,voiceDirectVerified:true,preparedTicketFenceVerified:true,
-        searchSongNamespaceVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+        searchSongNamespaceVerified:true,voiceDownloadVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchV3Proof){

@@ -362,6 +362,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 downloads::downloads,
                 downloads::download_command,
                 downloads::song_download_state,
+                downloads::voice_download_state,
                 downloads::play_downloads,
                 downloads::pick_download_directory,
                 downloads::open_download_directory,

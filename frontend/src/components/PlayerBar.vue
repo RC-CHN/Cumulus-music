@@ -2,8 +2,12 @@
 import { computed, ref, shallowRef, nextTick, useId, watch, onUnmounted } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { IntelligenceModel } from '../composables/useIntelligence';
-import { currentCatalogTrack, time } from '../services/player';
-import type { CurrentCatalogTrack, PlayerAction } from '../services/player';
+import { currentCatalogTrack, currentPlaybackDownload, time } from '../services/player';
+import type {
+  CurrentCatalogTrack,
+  CurrentPlaybackDownload,
+  PlayerAction,
+} from '../services/player';
 import type { AccountView, TrackView } from '../services/contracts';
 import type { CatalogResource } from '../services/catalog';
 import Icon from './Icon.vue';
@@ -46,7 +50,7 @@ const emit = defineEmits<{
   like: [track: TrackView];
   retry: [];
   comments: [track: TrackView];
-  download: [epoch: string, playId: string, trackId: string];
+  download: [target: CurrentPlaybackDownload];
   member: [];
   login: [];
   audioOutput: [epoch: string];
@@ -120,12 +124,25 @@ const currentCatalog = computed<CurrentCatalogTrack | undefined>((previous) => {
     return previous;
   return current;
 });
-const currentDownload = computed(() =>
-  props.downloadsAllowed && currentCatalog.value?.epoch === props.account.epoch
-    ? currentCatalog.value
-    : undefined,
+const currentDownload = computed<CurrentPlaybackDownload | undefined>((previous) => {
+  if (!props.downloadsAllowed || view.value?.epoch !== props.account.epoch) return undefined;
+  const target = currentPlaybackDownload(view.value);
+  return target &&
+    previous?.epoch === target.epoch &&
+    previous.playId === target.playId &&
+    previous.kind === target.kind &&
+    previous.id === target.id &&
+    previous.name === target.name
+    ? previous
+    : target;
+});
+const { state: downloadState, retry: retryDownloadState } = usePlaybackDownloadState(
+  currentDownload,
+  () => !!props.downloadsChanging,
 );
-const downloadState = usePlaybackDownloadState(currentDownload, () => !!props.downloadsChanging);
+const downloadResourceLabel = computed(() =>
+  currentDownload.value?.kind === 'voice' ? '声音' : '歌曲',
+);
 const downloadNotice = ref('');
 let downloadNoticeTimer: ReturnType<typeof setTimeout> | undefined;
 function clearDownloadNotice() {
@@ -137,13 +154,14 @@ onUnmounted(clearDownloadNotice);
 const downloadLabel = computed(
   () =>
     ({
-      reading: '正在读取当前歌曲下载状态',
-      none: '下载当前歌曲',
-      waiting: '等待下载当前歌曲',
-      working: '正在下载当前歌曲',
-      complete: '当前歌曲已下载',
-      paused: '当前歌曲下载已暂停',
-      failed: '当前歌曲下载失败',
+      reading: `正在读取当前${downloadResourceLabel.value}下载状态`,
+      unknown: `重新读取当前${downloadResourceLabel.value}下载状态`,
+      none: `下载当前${downloadResourceLabel.value}`,
+      waiting: `等待下载当前${downloadResourceLabel.value}`,
+      working: `正在下载当前${downloadResourceLabel.value}`,
+      complete: `当前${downloadResourceLabel.value}已下载`,
+      paused: `当前${downloadResourceLabel.value}下载已暂停`,
+      failed: `当前${downloadResourceLabel.value}下载失败`,
     })[downloadState.value ?? 'reading'],
 );
 function downloadCurrent() {
@@ -151,14 +169,15 @@ function downloadCurrent() {
   if (!selection || props.downloadsChanging) return;
   const state = downloadState.value;
   if (!state || state === 'working') return;
-  if (state === 'none') emit('download', selection.epoch, selection.playId, selection.track.id);
+  if (state === 'unknown') retryDownloadState();
+  else if (state === 'none') emit('download', selection);
   else {
     clearDownloadNotice();
     downloadNotice.value =
       state === 'waiting'
         ? '等待下载中'
         : state === 'complete'
-          ? '该歌曲已下载'
+          ? `该${downloadResourceLabel.value}已下载`
           : state === 'paused'
             ? '下载已暂停，请到下载管理继续'
             : '下载失败，请到下载管理重试';
@@ -484,7 +503,16 @@ async function seek(event: Event) {
           class="player-download-spinner"
           aria-hidden="true"
         />
-        <Icon v-else :name="downloadState === 'complete' ? 'check' : 'download'" />
+        <Icon
+          v-else
+          :name="
+            downloadState === 'complete'
+              ? 'check'
+              : downloadState === 'unknown'
+                ? 'refresh'
+                : 'download'
+          "
+        />
       </button>
     </div>
     <div class="player-center">

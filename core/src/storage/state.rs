@@ -23,7 +23,18 @@ const DOWNLOAD_SONG_TASK: &str = "kind='download_tasks_v1' AND
     CASE WHEN json_valid(value) THEN coalesce(json_extract(value,'$.origin.kind'),'song')='song'
     ELSE 0 END";
 
-pub(crate) struct SongDownloadRow {
+const DOWNLOAD_VOICE_ID: &str =
+    "CASE WHEN json_valid(value) THEN CAST(json_extract(value,'$.origin.voice_id') AS TEXT) END";
+const DOWNLOAD_VOICE_TASK: &str = "kind='download_tasks_v1' AND
+    CASE WHEN json_valid(value) THEN json_extract(value,'$.origin.kind')='voice' ELSE 0 END";
+
+#[derive(Clone, Copy)]
+pub(crate) enum PlaybackDownloadKind {
+    Song,
+    Voice,
+}
+
+pub(crate) struct PlaybackDownloadRow {
     pub status: String,
     pub path: Option<PathBuf>,
     pub moving: bool,
@@ -78,7 +89,9 @@ impl StateStore {
             "CREATE INDEX IF NOT EXISTS style_tag_unresolved_v1 ON state(owner,key)
              WHERE {STYLE_TAG_UNRESOLVED};
              CREATE INDEX IF NOT EXISTS download_song_v1 ON state(owner,({DOWNLOAD_SONG_ID}))
-             WHERE {DOWNLOAD_SONG_TASK};"
+             WHERE {DOWNLOAD_SONG_TASK};
+             CREATE INDEX IF NOT EXISTS download_voice_v1 ON state(owner,({DOWNLOAD_VOICE_ID}))
+             WHERE {DOWNLOAD_VOICE_TASK};"
         ))?;
         Ok(Self {
             directory,
@@ -98,16 +111,29 @@ impl StateStore {
         .get(owner, kind, key)
     }
 
-    pub(crate) fn song_download_rows(&self, owner: &str, id: &str) -> Result<Vec<SongDownloadRow>> {
+    pub(crate) fn playback_download_rows(
+        &self,
+        owner: &str,
+        id: &str,
+        kind: PlaybackDownloadKind,
+    ) -> Result<Vec<PlaybackDownloadRow>> {
+        let (index, task, identity) = match kind {
+            PlaybackDownloadKind::Song => {
+                ("download_song_v1", DOWNLOAD_SONG_TASK, DOWNLOAD_SONG_ID)
+            }
+            PlaybackDownloadKind::Voice => {
+                ("download_voice_v1", DOWNLOAD_VOICE_TASK, DOWNLOAD_VOICE_ID)
+            }
+        };
         let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
         let mut query = connection.prepare_cached(&format!(
             "SELECT json_extract(value,'$.status'), json_extract(value,'$.target'),
                     json_extract(value,'$.file_operation') IS NOT NULL
-             FROM state INDEXED BY download_song_v1
-             WHERE owner=? AND {DOWNLOAD_SONG_TASK} AND ({DOWNLOAD_SONG_ID})=?"
+             FROM state INDEXED BY {index}
+             WHERE owner=? AND {task} AND ({identity})=?"
         ))?;
         let rows = query.query_map([owner, id], |row| {
-            Ok(SongDownloadRow {
+            Ok(PlaybackDownloadRow {
                 status: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
                 path: row.get::<_, Option<String>>(1)?.map(PathBuf::from),
                 moving: row.get(2)?,

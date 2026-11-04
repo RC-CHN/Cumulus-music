@@ -129,6 +129,7 @@ export interface CoreClient
   getAppInfo(): Promise<AppInfo>;
   copyText(text: string): Promise<void>;
   songDownloadState(epoch: string, id: string): Promise<SongDownloadState>;
+  voiceDownloadState(epoch: string, id: string): Promise<SongDownloadState>;
   accountSnapshot(): Promise<AccountView>;
   restoreAccount(): Promise<AccountView>;
   beginQr(): Promise<QrView>;

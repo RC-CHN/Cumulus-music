@@ -86,6 +86,8 @@ import QueuePanel from './components/QueuePanel.vue';
 import type { TrackCurrentToggle, TrackMenuRequest, TrackPlayGesture } from './services/trackMenu';
 import {
   currentCatalogTrack,
+  currentPlaybackDownload,
+  type CurrentPlaybackDownload,
   type QueueCollectionView,
   type SearchResultPlayback,
   type SongRowDoubleClickSelection,
@@ -1255,18 +1257,24 @@ watch(music.page, (next) => {
     revealSettingsSection();
   else settingsFocus = undefined;
 });
-function openCurrentDownload(epoch: string, playId: string, trackId: string) {
-  const current = currentCatalogTrack(player.view.value);
+function openCurrentDownload(target: CurrentPlaybackDownload) {
+  const current = currentPlaybackDownload(player.view.value);
   if (
     !signedIn.value ||
     downloadDialog.value ||
-    epoch !== account.value.epoch ||
-    current?.epoch !== epoch ||
-    current.playId !== playId ||
-    current.track.id !== trackId
+    target.epoch !== account.value.epoch ||
+    current?.epoch !== target.epoch ||
+    current.playId !== target.playId ||
+    current.kind !== target.kind ||
+    current.id !== target.id
   )
     return;
-  downloadDialog.value = { kind: 'start', tracks: [current.track] };
+  if (current.kind === 'voice') {
+    downloadDialog.value = { kind: 'voice', tracks: [{ id: current.id, name: current.name }] };
+    return;
+  }
+  const song = currentCatalogTrack(player.view.value);
+  if (song) downloadDialog.value = { kind: 'start', tracks: [song.track] };
 }
 
 function downloadReturnFocus() {

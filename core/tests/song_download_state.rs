@@ -99,3 +99,57 @@ async fn badge_reads_only_matching_account_song_tasks_and_requires_a_present_fil
         SongDownloadState::Working
     );
 }
+
+#[tokio::test]
+async fn voice_badge_is_keyed_by_episode_instead_of_the_backing_song() {
+    let root = tempfile::tempdir().unwrap();
+    let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
+    let store = registry.store();
+    let api = Arc::new(NoNetwork);
+    let session = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
+    session
+        .adopt(api.clone(), json!({"userId":1}), &session.token().unwrap())
+        .unwrap();
+    let client = MusicClient::with_session(session.clone(), registry);
+    let epoch = client.account().unwrap().epoch;
+    let put = |owner: &str, task: &str, record: Value| {
+        store
+            .put(owner, "download_tasks_v1", task, &record)
+            .unwrap();
+    };
+    let read = || client.voice_download_state(&epoch, "401");
+    put(
+        "1",
+        "collision",
+        json!({"song_id":"401","status":"downloading"}),
+    );
+    put(
+        "1",
+        "backing-collision",
+        json!({"song_id":"401","origin":{"kind":"voice","voice_id":"402"},"status":"downloading"}),
+    );
+    put(
+        "2",
+        "other-account",
+        json!({"song_id":"1","origin":{"kind":"voice","voice_id":"401"},"status":"downloading"}),
+    );
+    assert_eq!(read().await.unwrap(), SongDownloadState::None);
+    let path = root.path().join("voice.wav");
+    let voice = |status: &str| json!({"song_id":"1","origin":{"kind":"voice","voice_id":"401"},"status":status,"target":path});
+    put("1", "selected", voice("queued"));
+    assert_eq!(read().await.unwrap(), SongDownloadState::Waiting);
+    put("1", "selected", voice("downloading"));
+    assert_eq!(read().await.unwrap(), SongDownloadState::Working);
+    assert_eq!(
+        client.song_download_state(&epoch, "1").await.unwrap(),
+        SongDownloadState::None
+    );
+    put("1", "selected", voice("complete"));
+    assert_eq!(read().await.unwrap(), SongDownloadState::None);
+    std::fs::write(path, b"synthetic present file").unwrap();
+    assert_eq!(read().await.unwrap(), SongDownloadState::Complete);
+    session
+        .adopt(api, json!({"userId":2}), &session.token().unwrap())
+        .unwrap();
+    assert!(matches!(read().await, Err(Error::StaleResponse)));
+}
