@@ -25,6 +25,10 @@ name = "startup_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "playback_power_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "equalizer_ui_probe"
 required-features = ["custom-protocol"]
 
