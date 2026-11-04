@@ -34,6 +34,8 @@
   let step = 'boot';
   let stageCount = 0;
   async function capture(name) {
+    await wait(() => !one('.page-view.page-enter-active, .page-view.page-leave-active'),
+      'page transition has settled for ' + name);
     const stage = `ux_${String(++stageCount).padStart(2, '0')}_${name}`;
     assert(document.documentElement.scrollWidth <= innerWidth, 'ranking causes horizontal overflow');
     await emit(stage, { width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme });

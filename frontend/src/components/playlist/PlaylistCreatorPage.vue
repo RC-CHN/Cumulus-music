@@ -158,10 +158,12 @@ function open(id: string) {
           <span class="card-cover creator-rank-cover" aria-hidden="true">
             <Icon name="list" />
           </span>
-          <span>{{ rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}</span>
-          <small v-if="rankEntry.listenSongs !== null" class="muted">
-            累计听歌{{ rankEntry.listenSongs }}首
-          </small>
+          <span class="library-card-copy">
+            <span class="card-title">{{ rankEntry.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}</span>
+            <small v-if="rankEntry.listenSongs !== null"
+              >累计听歌{{ rankEntry.listenSongs }}首</small
+            >
+          </span>
         </button>
         <PlaylistCard
           v-for="list in model.cards.value"
