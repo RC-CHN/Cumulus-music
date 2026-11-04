@@ -1,3 +1,4 @@
+mod discovery;
 mod dto;
 pub(super) mod view;
 use super::MusicClient;
@@ -7,6 +8,8 @@ use crate::{
     podcast::{PodcastApi, PodcastLibrary, PodcastScope, PodcastService},
     protocol::api::identifier,
 };
+pub(super) use discovery::AudiobookDiscoveryHost;
+pub use discovery::{AudiobookDiscovery, AudiobookDiscoveryQuery};
 pub use dto::*;
 use serde_json::{Value, json};
 

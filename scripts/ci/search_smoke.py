@@ -69,8 +69,9 @@ def verify(root, capture):
     assert complete['cyclicSuggestionsVerified'] and complete['audioRankNavigationVerified']
     assert complete['immediateCompositionSubmitVerified']
     assert complete['audioRankPlaybackVerified']
-    assert complete['audioRankDetails'] == [301, 301, 302]
-    assert complete['stageCount'] == 55 and complete['syntheticSearchCalls'] > 30
+    assert complete['audiobookMoreVerified']
+    assert complete['audioRankDetails'] == [301, 301, 302, 304]
+    assert complete['stageCount'] == 59 and complete['syntheticSearchCalls'] > 30
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
     if capture:

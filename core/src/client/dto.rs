@@ -40,8 +40,8 @@ pub use super::playlist_creator::PlaylistCreatorProfile;
 pub use super::playlist_tags_browse::{PlaylistTagPage, PlaylistTagQuery};
 pub use super::playlists::{PlaylistEditor, PlaylistMutationView, PlaylistOrderView, PlaylistTag};
 pub use super::podcast::{
-    EpisodeView, PodcastCard, PodcastCommand, PodcastMutationView, PodcastPage, PodcastQuery,
-    PodcastState,
+    AudiobookDiscovery, AudiobookDiscoveryQuery, EpisodeView, PodcastCard, PodcastCommand,
+    PodcastMutationView, PodcastPage, PodcastQuery, PodcastState,
 };
 pub use super::rankings::{RankingPageView, RankingView, SongSaleView};
 pub use super::relay::{

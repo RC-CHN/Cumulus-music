@@ -90,3 +90,20 @@ export interface PodcastClient {
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }
+
+export type AudiobookDiscoveryQuery =
+  | { kind: 'categories' }
+  | { kind: 'books'; subId: string; continuation?: string };
+export interface AudiobookCategory {
+  id: string;
+  label: string;
+}
+export type AudiobookDiscovery =
+  | { kind: 'categories'; categories: AudiobookCategory[] }
+  | { kind: 'books'; cards: PodcastCard[]; continuation: string | null };
+export interface AudiobookDiscoveryClient {
+  audiobookDiscovery(
+    epoch: string,
+    query: AudiobookDiscoveryQuery,
+  ): Promise<AccountData<AudiobookDiscovery>>;
+}

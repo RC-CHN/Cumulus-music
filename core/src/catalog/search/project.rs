@@ -144,6 +144,9 @@ pub(super) fn discovery(query: SearchDiscoveryQuery, response: &Value) -> Result
                         },
                         need_play,
                         audio,
+                        audiobook_more: (id == "HOT_SEARCH_DJ_VOICE_BOOK#@#")
+                            .then(|| text(&row["button"]["text"]))
+                            .flatten(),
                     });
                 }
             }

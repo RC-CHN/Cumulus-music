@@ -11,6 +11,7 @@ static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
 static ALBUM_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
+static AUDIOBOOK_MORE_READS: AtomicUsize = AtomicUsize::new(0);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -207,8 +208,8 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         "/api/search/pc/rcmd/keyword/get" => json!({"operateWords":{},"algWords":words(18)}),
         "/api/search/pc/chart/list" if mode == "audio_ranks" => {
             json!({"tabInfo":{"list":[
-                {"id":"HOT_SEARCH_DJ#@#","name":"播客榜"},
-                {"id":"HOT_SEARCH_DJ_VOICE_BOOK#@#","name":"听书榜"}]},
+                {"id":"HOT_SEARCH_DJ#@#","name":"播客榜","button":{"text":"更多"}},
+                {"id":"HOT_SEARCH_DJ_VOICE_BOOK#@#","name":"听书榜","button":{"text":"更多","url":"https://ignored.synthetic.invalid"}}]},
                 "items":{"HOT_SEARCH_DJ#@#":[
                     {"toUserWord":"合成播客榜条目","url":"orpheus://audio/detail?id=301&private=omit"},
                     {"toUserWord":"外链不可打开","url":"https://synthetic.invalid/?id=999"},
@@ -276,6 +277,36 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
     let radio = |id| json!({"id":id,"name":format!("合成播客 {id}"),"programCount":3,"dj":{"nickname":"合成主播"}});
     let program = |id, radio_id| json!({"id":id,"name":format!("合成声音 {id}"),"mainSong":{"id":id-400,"name":format!("合成声音 {id}"),"duration":360000},"duration":360000,"radio":radio(radio_id),"dj":{"nickname":"合成主播"}});
     let data = match path {
+        "/api/dj/radio/category/list" if MODE.lock().unwrap().as_str() == "audio_ranks" => {
+            assert_eq!(*args, json!({}));
+            json!({"code":200,"data":{"parentCategoryVoList":[
+                {"id":"1","subCategoryVO":[{"id":"100","name":"无关分类"}]},
+                {"id":"10001","subCategoryVO":[{"id":"000","name":"全部"},{"id":"3076096","name":"文学"}]}
+            ]}})
+        }
+        "/api/dj/radio/category/radio/list" if MODE.lock().unwrap().as_str() == "audio_ranks" => {
+            assert_eq!(args["parentId"], "10001");
+            assert_eq!(args["limit"], 20);
+            match (args["subId"].as_str(), args["cursor"].as_str()) {
+                (Some("000"), Some("")) => json!({"code":200,"data":{
+                    "radioList":[{"id":302,"name":"合成有声书首批","programCount":3}],
+                    "page":{"cursor":"{\"internal\":\"next\"}","more":true}}}),
+                (Some("000"), Some("{\"internal\":\"next\"}")) => {
+                    if AUDIOBOOK_MORE_READS.fetch_add(1, Ordering::SeqCst) == 0 {
+                        return Some(Err(Error::Transport(
+                            "synthetic book page unavailable".into(),
+                        )));
+                    }
+                    json!({"code":200,"data":{"radioList":[
+                        {"id":302,"name":"合成有声书重复项"}, {"id":303,"name":"合成有声书续页"}],
+                        "page":{"cursor":null,"more":false}}})
+                }
+                (Some("3076096"), Some("")) => json!({"code":200,"data":{
+                    "radioList":[{"id":304,"name":"合成文学有声书"}],
+                    "page":{"cursor":null,"more":false}}}),
+                _ => return Some(Err(Error::InvalidInput("unexpected synthetic book page"))),
+            }
+        }
         "/api/djradio/v3/get" => {
             if card_failed() {
                 return Some(Err(Error::Transport("合成播客读取失败".into())));

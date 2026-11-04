@@ -111,6 +111,7 @@ import {
 } from './services/commentResource';
 import LocalPage from './components/LocalPage.vue';
 import PodcastPage from './components/PodcastPage.vue';
+import AudiobookDiscoveryPage from './components/AudiobookDiscoveryPage.vue';
 import TogetherPage from './components/TogetherPage.vue';
 import RankingsPage from './components/RankingsPage.vue';
 import FmPage from './components/FmPage.vue';
@@ -124,6 +125,7 @@ import { useRankings } from './composables/useRankings';
 import { rankingQueryKey, type RankingQuery } from './services/rankings';
 import { useTogether } from './composables/useTogether';
 import { usePodcasts } from './composables/usePodcasts';
+import { useAudiobookDiscovery } from './composables/useAudiobookDiscovery';
 import type { PodcastScope } from './services/podcast';
 import {
   failure,
@@ -593,6 +595,12 @@ watch(
 const podcasts = usePodcasts(undefined, () => {
   void music.bootstrap(false);
 });
+const audiobookDiscovery = useAudiobookDiscovery(
+  () => music.account.value,
+  () => {
+    void music.bootstrap(false);
+  },
+);
 function playPodcast(scope: PodcastScope, revision: string, startId: string | null) {
   void player.select({ kind: 'podcast', scope, revision, start_id: startId });
 }
@@ -2175,6 +2183,7 @@ onUnmounted(() => {
         :playable="player.ready.value && !player.busy.value"
         @play-chart="playSearchChart"
         @radio="openSearchChartRadio"
+        @audiobooks="music.navigate({ kind: 'audiobook_discovery' })"
         @search="
           (word, channel, displayKeyword) =>
             music.navigate({ kind: 'search', keyword: word, channel, displayKeyword })
@@ -2597,6 +2606,11 @@ onUnmounted(() => {
                 @play="playPodcast"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
                 @download="(tracks) => (downloadDialog = { kind: 'voice', tracks })"
+              />
+              <AudiobookDiscoveryPage
+                v-else-if="page.kind === 'audiobook_discovery'"
+                :model="audiobookDiscovery"
+                @open="openSceneRadio"
               />
               <PlaylistCreatorPage
                 v-else-if="page.kind === 'playlist_creator'"

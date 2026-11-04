@@ -22,6 +22,7 @@ const emit = defineEmits<{
   search: [keyword: string, channel?: SearchChannel, displayKeyword?: string];
   playChart: [keywords: string[]];
   radio: [id: string];
+  audiobooks: [];
   expired: [];
 }>();
 const model = useSearchBox(undefined, () => emit('expired'));
@@ -114,6 +115,12 @@ function openChartRadio(id: string) {
   model.close();
   focusInput();
   emit('radio', id);
+}
+function openAudiobooks() {
+  if (!open.value || searching.value || composing.value) return;
+  model.close();
+  focusInput();
+  emit('audiobooks');
 }
 async function clear() {
   model.input('');
@@ -376,6 +383,7 @@ onUnmounted(() => {
               @select="submit"
               @play="playChart"
               @radio="openChartRadio"
+              @audiobooks="openAudiobooks"
               @retry="(id) => model.load({ kind: 'chart', id }, 'chart:' + id)"
             />
           </template>

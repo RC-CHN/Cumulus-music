@@ -118,6 +118,7 @@ export interface SearchChart {
   items: SearchWord[];
   needPlay?: boolean;
   audio?: boolean;
+  audiobookMore?: string;
   playKeywords?: string[] | null;
 }
 export type SearchDiscoveryQuery =

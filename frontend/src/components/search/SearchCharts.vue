@@ -11,6 +11,7 @@ const emit = defineEmits<{
   select: [keyword: string, channel: SearchChannel | undefined, display: string];
   play: [keywords: string[]];
   radio: [id: string];
+  audiobooks: [];
   retry: [id: string];
 }>();
 </script>
@@ -31,6 +32,20 @@ const emit = defineEmits<{
         @click="chart.playKeywords?.length && emit('play', chart.playKeywords)"
       >
         <Icon name="play" />播放
+      </button>
+      <button
+        v-if="
+          chart.audiobookMore &&
+          chart.items.length &&
+          !pending['chart:' + chart.id] &&
+          !errors['chart:' + chart.id]
+        "
+        class="search-chart-play"
+        data-search-choice
+        :aria-label="`${chart.name}：${chart.audiobookMore}`"
+        @click="emit('audiobooks')"
+      >
+        {{ chart.audiobookMore }}<Icon name="forward" />
       </button>
     </div>
     <p v-if="pending['chart:' + chart.id]" class="search-muted" role="status">正在加载榜单…</p>

@@ -701,6 +701,44 @@
     await capture("audiobook_rank_detail");
     click(button("返回上一页"));
     await wait(()=>ready("合成推荐词1", "all", ".search-track-card"),"audiobook Back restores search");
+    await home();
+    await wait(() => button("听书榜：更多"), "official audiobook chart advertises More");
+    assert(!button("播客榜：更多"), "the separate public podcast homepage is not yet routed");
+    click(button("听书榜：更多"));
+    const bookPane = () => one(".audiobook-discovery");
+    const book = (id) => one(`[data-book-id="${id}"]`);
+    await wait(() => book(302) && !panel(), "More opens the public audiobook category");
+    assert(button("全部", bookPane())?.getAttribute("aria-pressed") === "true" &&
+      !button("无关分类", bookPane()) && !one(".podcast-open"), "public category uses its own first subcategory, not the personal library");
+    const bookArt = book(302).querySelector(".search-result-art").getBoundingClientRect();
+    assert(bookArt.width === 48 && bookArt.height === 48 &&
+      book(302).querySelector(".search-result-name").getBoundingClientRect().bottom < bookPane().getBoundingClientRect().bottom,
+      "official 48px title cell keeps the audiobook title visible in a narrow window");
+    const firstBooks = await invoke("audiobook_discovery", { epoch, query: { kind: "books", subId: "000" } });
+    const handle = firstBooks.value.continuation;
+    assert(/^[\da-f]{32}$/.test(handle) && !JSON.stringify(firstBooks).includes("internal"), "wire cursor stays in native code");
+    for (const [targetEpoch, targetSub] of [[epoch, "3076096"], ["0", "000"]]) {
+      const accepted = await invoke("audiobook_discovery", { epoch: targetEpoch, query: { kind: "books", subId: targetSub, continuation: handle } }).then(() => true, () => false);
+      assert(!accepted, "continuation cannot cross accounts or subcategories");
+    }
+    await capture("audiobook_more_category");
+    click(button("加载更多有声书", bookPane()));
+    await wait(() => button("重试", bookPane()), "continuation error is retryable");
+    assert(book(302) && !book(303), "the first page stays visible after the continuation fails");
+    await capture("audiobook_more_retry");
+    click(button("重试", bookPane()));
+    await wait(() => book(303) && !button("加载更多有声书", bookPane()), "retry appends the next official page");
+    assert(all('[data-book-id="302"]').length === 1, "overlap does not duplicate cards in the directory");
+    await capture("audiobook_more_next");
+    click(button("文学", bookPane()));
+    await wait(() => book(304) && !book(302) && !book(303), "subcategory replaces the previous directory");
+    click(book(304).querySelector("button"));
+    await wait(() => one(".podcast-cover h2")?.textContent === "合成播客 304", "directory book opens the real detail");
+    click(button("返回上一页"));
+    await wait(() => book(304) && !book(302), "detail Back restores the chosen audiobook subcategory");
+    await capture("audiobook_more_back");
+    click(button("返回上一页"));
+    await wait(() => ready("合成推荐词1", "all", ".search-track-card"), "catalogue Back restores prior search");
     await fixture("expired");
     input().click();
     type("失效");
@@ -727,6 +765,7 @@
       immediateCompositionSubmitVerified: true,
       audioRankNavigationVerified: true,
       audioRankPlaybackVerified: true,
+      audiobookMoreVerified: true,
       realMusicRequests: 0,
       realAccountWrites: 0,
       officialPixelMatchVerified: false,

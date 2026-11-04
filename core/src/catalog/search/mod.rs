@@ -40,6 +40,8 @@ pub struct SearchChart {
     pub play_keywords: Option<Vec<String>>,
     pub need_play: bool,
     pub audio: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audiobook_more: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(
