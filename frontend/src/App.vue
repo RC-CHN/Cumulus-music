@@ -51,6 +51,7 @@ import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import { usePlaylistTagCatalogue } from './composables/usePlaylistTagCatalogue';
+import { usePlaylistSquare } from './composables/usePlaylistSquare';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterTrackScope } from './services/trackScopeSearch';
 import TrackScopeSearch from './components/TrackScopeSearch.vue';
@@ -1481,6 +1482,18 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 const playlistTagBrowse = usePlaylistTagBrowse(core);
+const playlistSquare = usePlaylistSquare(
+  core,
+  () => account.value,
+  () => void music.bootstrap(false),
+);
+watch(
+  settings.personalServiceObservation,
+  (value) => {
+    if (value) playlistSquare.observePersonalService(value);
+  },
+  { flush: 'sync' },
+);
 const playlistTagCatalogue = usePlaylistTagCatalogue(
   core,
   () => account.value,
@@ -1493,7 +1506,10 @@ watch(
     () => (page.value.kind === 'playlist_tag' ? page.value.tag : null),
   ],
   ([epoch, status, tag]) => {
-    void playlistTagBrowse.enter(status === 'authenticated' ? epoch : '', tag);
+    void playlistTagBrowse.enter(
+      status === 'authenticated' ? epoch : '',
+      tag === '推荐' ? null : tag,
+    );
   },
   { immediate: true, flush: 'sync' },
 );
@@ -2851,8 +2867,14 @@ onUnmounted(() => {
                 :tag="page.tag"
                 :model="playlistTagBrowse"
                 :catalogue="playlistTagCatalogue"
+                :square="playlistSquare"
+                :playable="player.ready.value && !player.busy.value"
+                :current="currentOrigin?.kind === 'playlist' ? currentOrigin.id : undefined"
+                :playing="player.playing.value"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
                 @category="(tag) => music.navigate({ kind: 'playlist_tag', tag })"
+                @play="playRankingPlaylist"
+                @settings="openPodcastPrivacy"
               />
               <CommentsPage
                 v-else-if="page.kind === 'comments'"

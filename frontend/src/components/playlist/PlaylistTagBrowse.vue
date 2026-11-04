@@ -3,13 +3,24 @@ import { nextTick, onMounted, ref } from 'vue';
 import Icon from '../Icon.vue';
 import type { usePlaylistTagBrowse } from '../../composables/usePlaylistTagBrowse';
 import type { usePlaylistTagCatalogue } from '../../composables/usePlaylistTagCatalogue';
+import type { usePlaylistSquare } from '../../composables/usePlaylistSquare';
 import PlaylistCataloguePicker from './PlaylistCataloguePicker.vue';
+import PlaylistSquareFeed from './PlaylistSquareFeed.vue';
 const props = defineProps<{
   tag: string;
   model: ReturnType<typeof usePlaylistTagBrowse>;
   catalogue: ReturnType<typeof usePlaylistTagCatalogue>;
+  square: ReturnType<typeof usePlaylistSquare>;
+  playable: boolean;
+  current?: string;
+  playing: boolean;
 }>();
-const emit = defineEmits<{ open: [id: string]; category: [tag: string] }>();
+const emit = defineEmits<{
+  open: [id: string];
+  category: [tag: string];
+  play: [id: string];
+  settings: [];
+}>();
 const root = ref<HTMLElement>();
 onMounted(async () => {
   const origin = document.activeElement;
@@ -44,55 +55,67 @@ function missingImage(event: Event) {
       </div>
     </header>
     <PlaylistCataloguePicker :tag="tag" :model="catalogue" @choose="emit('category', $event)" />
-    <p v-if="model.busy.value" role="status">正在读取歌单…</p>
-    <p v-if="model.failed.value" class="error-state" role="alert">
-      无法读取此分类
-      <button type="button" class="text-button" @click="model.retry">重试</button>
-    </p>
-    <template v-if="model.items.value">
-      <p v-if="!model.items.value.length" class="muted">此页暂无歌单</p>
-      <ul v-else class="playlist-tag-cards">
-        <li v-for="item in model.items.value" :key="item.id">
+    <PlaylistSquareFeed
+      v-if="tag === '推荐'"
+      :model="square"
+      :playable="playable"
+      :current="current"
+      :playing="playing"
+      @open="emit('open', $event)"
+      @play="emit('play', $event)"
+      @settings="emit('settings')"
+    />
+    <template v-else>
+      <p v-if="model.busy.value" role="status">正在读取歌单…</p>
+      <p v-if="model.failed.value" class="error-state" role="alert">
+        无法读取此分类
+        <button type="button" class="text-button" @click="model.retry">重试</button>
+      </p>
+      <template v-if="model.items.value">
+        <p v-if="!model.items.value.length" class="muted">此页暂无歌单</p>
+        <ul v-else class="playlist-tag-cards">
+          <li v-for="item in model.items.value" :key="item.id">
+            <button
+              type="button"
+              :data-tag-playlist-id="item.id"
+              :aria-label="item.name"
+              @click="open(item.id)"
+            >
+              <span class="playlist-tag-art">
+                <Icon name="music" />
+                <img
+                  v-if="item.coverUrl"
+                  :src="item.coverUrl"
+                  :key="item.coverUrl"
+                  alt=""
+                  loading="lazy"
+                  referrerpolicy="no-referrer"
+                  @error="missingImage"
+                />
+              </span>
+              <span class="ellipsis" :title="item.name">{{ item.name }}</span>
+            </button>
+          </li>
+        </ul>
+        <nav v-if="model.offset.value || model.canNext.value" aria-label="分类歌单分页">
           <button
             type="button"
-            :data-tag-playlist-id="item.id"
-            :aria-label="item.name"
-            @click="open(item.id)"
+            class="text-button"
+            :disabled="!model.offset.value || model.busy.value"
+            @click="model.previous"
           >
-            <span class="playlist-tag-art">
-              <Icon name="music" />
-              <img
-                v-if="item.coverUrl"
-                :src="item.coverUrl"
-                :key="item.coverUrl"
-                alt=""
-                loading="lazy"
-                referrerpolicy="no-referrer"
-                @error="missingImage"
-              />
-            </span>
-            <span class="ellipsis" :title="item.name">{{ item.name }}</span>
+            上一页
           </button>
-        </li>
-      </ul>
-      <nav v-if="model.offset.value || model.canNext.value" aria-label="分类歌单分页">
-        <button
-          type="button"
-          class="text-button"
-          :disabled="!model.offset.value || model.busy.value"
-          @click="model.previous"
-        >
-          上一页
-        </button>
-        <button
-          type="button"
-          class="text-button"
-          :disabled="!model.canNext.value || model.busy.value"
-          @click="model.next"
-        >
-          下一页
-        </button>
-      </nav>
+          <button
+            type="button"
+            class="text-button"
+            :disabled="!model.canNext.value || model.busy.value"
+            @click="model.next"
+          >
+            下一页
+          </button>
+        </nav>
+      </template>
     </template>
   </section>
 </template>

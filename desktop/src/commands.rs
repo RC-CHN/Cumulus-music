@@ -193,6 +193,18 @@ pub async fn playlist_creator_profile(
 }
 
 #[tauri::command]
+pub async fn playlist_square_recommendations(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    continuation: Option<String>,
+) -> Result<AccountData<PlaylistSquarePage>, ClientError> {
+    client
+        .playlist_square_recommendations(&epoch, continuation.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn playlist_tag_catalogue(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

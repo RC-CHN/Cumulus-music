@@ -52,12 +52,20 @@ def main():
     assert read('ux_04_square')['playlistCatalogueCalls'] == []
     assert read('ux_05_catalogue')['playlistCatalogueCalls'] == [{}, {}]
     complete = read('complete')
-    assert complete['ok'] and complete['catalogueVerified']
+    assert complete['ok'] and complete['catalogueVerified'] and complete['recommendationVerified']
     assert complete['playlistTagCalls'] == [first, next_page, official, selected]
     assert complete['playlistCatalogueCalls'] == [{}, {}]
-    assert len(list(output.glob('ux_*.png'))) == (5 if args.screenshots else 0)
+    first_rcmd = {'cursor': '', 'newStyle': True}
+    next_rcmd = {'cursor': '{ "next" : "第一页/第二页" }', 'newStyle': True}
+    assert read('ux_06_recommended')['playlistSquare'] == {'calls': [first_rcmd], 'settings': 1}
+    assert read('ux_07_recommended_back')['playlistSquare'] == {
+        'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 3,
+    }
+    assert complete['playlistSquare'] == {'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 4}
+    assert len(list(output.glob('ux_*.png'))) == (8 if args.screenshots else 0)
     print(json.dumps({'ok': True, 'actualWebView': True, 'categoryReads': 3,
-                      'continuationReads': 1, 'catalogueReads': 2, 'realAccountWrites': 0}))
+                      'continuationReads': 1, 'catalogueReads': 2, 'recommendationReads': 3,
+                      'privacyReads': 4, 'realAccountWrites': 0}))
 
 
 if __name__ == '__main__':

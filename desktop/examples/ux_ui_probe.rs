@@ -47,6 +47,8 @@ mod playlist_cover_transfer_fixture;
 mod playlist_editor_fixture;
 #[path = "support/playlist_layout_fixture.rs"]
 mod playlist_layout_fixture;
+#[path = "support/playlist_square_fixture.rs"]
+mod playlist_square_fixture;
 #[path = "support/queue_collection_fixture.rs"]
 mod queue_collection_fixture;
 #[allow(dead_code)]
@@ -136,6 +138,11 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if playlist_tag_browse_proof()
+                && let Some(response) = playlist_square_fixture::response(path, &args)
+            {
+                return response;
+            }
             if let Some(response) = member_sign_fixture::response(path, &args).await {
                 return response;
             }
@@ -604,6 +611,7 @@ fn main() {
             if playlist_tag_browse_proof() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
                 value["playlistCatalogueCalls"] = json!(*PLAYLIST_CATALOGUE_CALLS.lock().unwrap());
+                value["playlistSquare"] = playlist_square_fixture::report();
             }
             if playlist_creator_proof() {
                 value["playlistCreatorCalls"] = json!(*PLAYLIST_CREATOR_CALLS.lock().unwrap());
@@ -671,6 +679,10 @@ fn main() {
             if search_fixture::enabled() && stage=="search-fixture" {
                 search_fixture::control(&value);
                 handle.get_webview_window("main").unwrap().eval("window.__searchFixtureAck=true;").unwrap();return;
+            }
+            if playlist_tag_browse_proof() && stage=="playlist-square-disable" {
+                playlist_square_fixture::disable();
+                handle.get_webview_window("main").unwrap().eval("window.__squareDisabledAck=true;").unwrap();return;
             }
             if let Some(fixture)=transfer.as_ref() && stage=="cover-transfer-fixture" {
                 let handle=handle.clone();let fixture=fixture.clone();

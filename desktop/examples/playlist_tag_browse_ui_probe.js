@@ -52,6 +52,37 @@
     const catalogue = () => one('.playlist-catalogue-panel');
     const more = () => one('.playlist-catalogue-trigger');
     const heading = () => one('.playlist-tag-browse .page-heading p')?.textContent;
+    const feed = () => one('.playlist-square-feed');
+    const groups = () => [...document.querySelectorAll('.playlist-square-group')];
+    await wait(() => heading() === '推荐' && groups().length === 1 &&
+      one('[data-square-card="0:3"]') && button('合成推荐分组：向右浏览', feed()),
+      'discovery defaults to the grouped recommendation route');
+    assert(!feed().textContent.includes('不显示活动') && cards().length === 0, 'only known groups, no category alias');
+    const rail = () => groups()[0].querySelector('.playlist-square-rail');
+    click(button('合成推荐分组：向右浏览', feed()));
+    await wait(() => rail().scrollLeft > 24, 'group controls browse independently');
+    await emit('ux_06_recommended');
+    click(button('加载更多推荐歌单'));
+    await wait(() => button('重新加载推荐') && groups().length === 1, 'continuation failure keeps the first group');
+    click(button('重新加载推荐'));
+    await wait(() => groups().length === 2 && !button('加载更多推荐歌单'), 'continuation appends second group in service order');
+    assert(groups().map((group) => group.querySelector('h2').textContent).join('|') === '合成推荐分组|合成下一分组',
+      'both official group shapes preserve titles and order');
+    const source = () => one('[data-square-card="0:3"]');
+    assert(one('[data-square-card="1:3"]'), 'the same playlist can occur in two different groups');
+    click(source());
+    await wait(() => one('.playlist-hero h1')?.textContent === '合成歌单 3', 'recommended card opens exact detail');
+    click(button('返回上一页'));
+    await wait(() => groups().length === 2 && document.activeElement === source() && rail().scrollLeft > 24,
+      'Back restores loaded groups, the exact duplicate instance and horizontal position');
+    await emit('ux_07_recommended_back');
+    await emit('playlist-square-disable');
+    await wait(() => window.__squareDisabledAck, 'synthetic privacy change is installed');
+    click(button('刷新推荐'));
+    await wait(() => feed()?.textContent.includes('个性化服务已关闭') && groups().length === 0 &&
+      button('打开个性化设置'), 'refresh honors disabled recommendation setting');
+    await emit('ux_08_recommended_disabled');
+    click(button('官方', one('.playlist-catalogue-controls')));
     await wait(() => cards().length === 24 && heading() === '官方', 'discovery enters official category');
     await emit('ux_04_square');
     click(more());
@@ -75,7 +106,7 @@
     assert(button('风格', catalogue()).getAttribute('aria-pressed')==='true', 'restored exact group');
     catalogue().dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
     await wait(() => !catalogue() && document.activeElement===more(), 'Escape restores trigger focus');
-    await emit('complete', { ok: true, catalogueVerified: true });
+    await emit('complete', { ok: true, catalogueVerified: true, recommendationVerified: true });
   } catch (error) {
     await emit('failed', { message: String(error) });
   }

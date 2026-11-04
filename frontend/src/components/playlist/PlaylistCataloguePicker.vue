@@ -61,6 +61,7 @@ onUnmounted(() => document.removeEventListener('pointerdown', pointerOutside, tr
 <template>
   <div ref="root" class="playlist-catalogue" @keydown.esc="escape" @focusout="focusOutside">
     <div class="playlist-catalogue-controls" role="group" aria-label="歌单分类">
+      <button class="secondary" :aria-pressed="tag === '推荐'" @click="choose('推荐')">推荐</button>
       <button class="secondary" :aria-pressed="tag === '官方'" @click="choose('官方')">官方</button>
       <button
         ref="trigger"
