@@ -1582,7 +1582,15 @@
         await choose(category);check(kind,true);
         if(kind==='playlist'){
           assert(!playlistCard()?.querySelector('.search-playlist-count'),'dedicated playlist results retain their layout');
-          await capture('playlist_category_title_and_reason');
+          await wait(()=>!one('.search-results-enter-active'),'playlist category transition finished');
+          const striped=one('.search-playlist-row.search-collection-striped');
+          assert(striped,'visible striped playlist row for the paint check');
+          const rowBounds=striped.getBoundingClientRect();
+          await capture('playlist_category_title_and_reason',{
+            screenX,screenY,ratio:devicePixelRatio,
+            paintSamples:[{x:rowBounds.left+rowBounds.width/2,y:rowBounds.top+5,
+              color:getComputedStyle(striped).backgroundColor}],
+          });
         }
         if(kind==='voice'){
           const row=one('.search-voice-row');
