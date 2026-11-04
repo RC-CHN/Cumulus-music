@@ -65,6 +65,12 @@ pub(super) fn user_id(value: &Value) -> Option<String> {
     positive_id(&value["userId"]).or_else(|| positive_id(&value["id"]))
 }
 
+pub(super) fn is_plain_reply(value: &Value) -> bool {
+    let content = payload(value);
+    number(&content["type"]) == Some(6)
+        && content["msg"].as_str().is_some_and(|text| !text.is_empty())
+}
+
 fn sharing(value: &Value) -> (Option<String>, String) {
     let kind = number(&value["type"]);
     let resource = match kind {
@@ -150,7 +156,7 @@ fn row_id(value: &Value) -> String {
         })
 }
 
-fn project_row(tab: MessageTab, value: &Value, uid: &str) -> MessageRow {
+pub(super) fn project_row(tab: MessageTab, value: &Value, uid: &str) -> MessageRow {
     let mut row = MessageRow {
         id: String::new(),
         peer_id: None,
@@ -271,6 +277,7 @@ pub(super) fn project(
     Ok(MessagePage {
         rows,
         next_cursor,
+        reply_receipt: None,
         hint: if query.tab == MessageTab::Thread {
             text(&response["hint"], 500)
         } else {

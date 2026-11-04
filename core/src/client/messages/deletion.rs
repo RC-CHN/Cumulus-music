@@ -279,6 +279,21 @@ impl DeletionHost {
         Ok(())
     }
 
+    pub(super) fn observed_peer(
+        &self,
+        token: &SessionToken,
+        peer: &str,
+        revision: Option<u64>,
+    ) -> Result<bool> {
+        let snapshot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        Ok(snapshot.owner.as_ref() == Some(token)
+            && revision.is_none_or(|revision| snapshot.revision == revision)
+            && snapshot
+                .rows
+                .iter()
+                .any(|row| row.target.is_conversation() && row.target.peer() == peer))
+    }
+
     fn require(&self, token: &SessionToken, receipt: &str) -> Result<Target> {
         let snapshot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         if snapshot.owner.as_ref() == Some(token)
@@ -301,6 +316,16 @@ impl DeletionHost {
         }
         Ok(())
     }
+}
+
+pub(super) fn lock_peer(store: &StateStore, uid: &str, peer: &str) -> Result<OperationLock> {
+    OperationLock::acquire(store.directory(), JOURNAL, &format!("{uid}:{peer}"))
+}
+
+pub(super) fn conversation_unresolved(store: &StateStore, uid: &str, peer: &str) -> Result<bool> {
+    Ok(pending(store, uid)?
+        .iter()
+        .any(|entry| entry.target.is_conversation() && entry.target.peer() == peer))
 }
 
 fn definitely_rejected(error: &Error) -> bool {
@@ -363,11 +388,7 @@ impl MusicClient {
             };
             Ok((uid.to_owned(), target))
         })?;
-        let _lock = OperationLock::acquire(
-            store.directory(),
-            JOURNAL,
-            &format!("{uid}:{}", target.peer()),
-        )?;
+        let _lock = lock_peer(&store, &uid, target.peer())?;
         let key = target.key();
         let value = match action {
             Remove => {
@@ -411,6 +432,9 @@ impl MusicClient {
                     self.session.with_token(&token, |uid| match result {
                         Ok(_) => {
                             self.message_deletion.forget(&token, &target)?;
+                            if target.is_conversation() {
+                                self.message_reply.forget_peer(&token, target.peer())?;
+                            }
                             store.delete(uid, JOURNAL, &key)?;
                             Ok(Removed)
                         }

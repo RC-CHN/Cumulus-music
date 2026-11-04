@@ -1,5 +1,6 @@
 mod deletion;
 mod projection;
+mod reply;
 
 use super::{MusicClient, dto::AccountData};
 use crate::{Error, Result};
@@ -7,6 +8,8 @@ pub(super) use deletion::DeletionHost;
 pub use deletion::{MessageDeleteAction, MessageDeleteOutcome, MessagePendingDeletion};
 pub use projection::attachment::MessageTarget;
 use projection::project;
+pub(super) use reply::ReplyHost;
+pub use reply::{MessageReplyAction, MessageReplyView};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -62,6 +65,8 @@ pub struct MessagePage {
     pub rows: Vec<MessageRow>,
     pub next_cursor: Option<u64>,
     pub hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reply_receipt: Option<String>,
 }
 
 const MAX_SAFE_TIME: u64 = 9_007_199_254_740_991;
@@ -140,6 +145,9 @@ impl MusicClient {
     ) -> Result<AccountData<MessagePage>> {
         let token = self.player_token(epoch)?;
         let revision = self.message_deletion.revision()?;
+        let peer = (query.tab == MessageTab::Thread)
+            .then(|| query.peer_id.clone())
+            .flatten();
         let (mut value, observed) = self
             .session
             .run_for(&token, |api, uid| async move {
@@ -150,15 +158,24 @@ impl MusicClient {
                 Ok((page, observed))
             })
             .await?;
-        if !observed.is_empty()
-            && let Ok(store) = self.session.persistent_store()
+        if let Ok(store) = self.session.persistent_store()
+            && (!observed.is_empty() || peer.is_some())
         {
             self.session.with_token(&token, |uid| {
-                // Deletion capabilities fail closed independently of the
-                // original read-only inbox if the local journal is unavailable.
-                let _ = self
-                    .message_deletion
-                    .publish(&store, &token, uid, revision, &mut value, observed);
+                // Mutations fail closed independently of the original inbox.
+                if !observed.is_empty() {
+                    let _ = self
+                        .message_deletion
+                        .publish(&store, &token, uid, revision, &mut value, observed);
+                }
+                if let Some(peer) = peer
+                    && self
+                        .message_deletion
+                        .observed_peer(&token, &peer, Some(revision))?
+                {
+                    value.reply_receipt =
+                        Some(self.message_reply.observe(&token, &peer, &value.rows)?);
+                }
                 Ok(())
             })?;
         }

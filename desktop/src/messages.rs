@@ -3,7 +3,7 @@ use cumulus_core::client::{
     dto::AccountData,
     messages::{
         MessageCounts, MessageDeleteAction, MessageDeleteOutcome, MessagePage,
-        MessagePendingDeletion, MessageQuery,
+        MessagePendingDeletion, MessageQuery, MessageReplyAction, MessageReplyView,
     },
 };
 
@@ -44,6 +44,18 @@ pub async fn delete_message(
 ) -> Result<AccountData<MessageDeleteOutcome>, ClientError> {
     client
         .delete_message(&epoch, &receipt, action)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn message_reply(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    action: MessageReplyAction,
+) -> Result<AccountData<MessageReplyView>, ClientError> {
+    client
+        .message_reply(&epoch, action)
         .await
         .map_err(Into::into)
 }

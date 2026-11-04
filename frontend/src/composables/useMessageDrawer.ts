@@ -13,6 +13,7 @@ const createList = () => ({
   rows: [] as MessageRow[],
   cursor: null as number | null,
   hint: null as string | null,
+  replyReceipt: undefined as string | undefined,
   loaded: false,
   busy: false,
   error: false,
@@ -112,6 +113,8 @@ export function useMessageDrawer(
       target.rows = rows.slice(0, MAX_ROWS);
       target.cursor = result.value.nextCursor;
       target.capped = rows.length > MAX_ROWS || (rows.length === MAX_ROWS && !!target.cursor);
+      if (query.tab === 'thread' && result.value.replyReceipt)
+        target.replyReceipt = result.value.replyReceipt;
       target.hint = result.value.hint || (mode === 'more' ? target.hint : null);
       target.loaded = true;
       return true;

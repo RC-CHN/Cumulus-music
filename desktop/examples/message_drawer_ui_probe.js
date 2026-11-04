@@ -105,6 +105,114 @@
     assert(!contains('一键全读') && !drawer().querySelector('textarea'),
       'read-only drawer has no mark-all or compose controls');
     await capture('private');
+    if (window.__cumulusMessageReplyProof) {
+      const textarea = () => one('[aria-label="私信正文"]');
+      const notice = () => one('[data-message-reply-status]')?.textContent.trim();
+      const send = () => button('发送');
+      const writes = async () => (await fixture()).requests.filter(([path]) => path === '/api/msg/private/send');
+      const input = async (value) => {
+        const editor = textarea();
+        editor.value = value;
+        editor.dispatchEvent(new Event('input', { bubbles: true }));
+        await Promise.resolve();
+      };
+      const key = (flags = {}) => {
+        const event = new KeyboardEvent('keydown', { key:'Enter', cancelable:true, bubbles:true, ...flags });
+        textarea().dispatchEvent(event);
+        return event;
+      };
+      const enter = async (id, writable = true) => {
+        click(one(`[data-message-peer="${id}"]`));
+        await wait(() => ready() && textarea() && (!writable || !textarea().readOnly),
+          'exact authenticated thread and composer ' + id);
+      };
+      const back = async () => {
+        click(button('返回私信列表'));
+        await wait(() => !textarea() && one('[data-message-peer="505"]'), 'only thread has editor');
+      };
+      await enter(505);
+      assert(send().disabled, 'blank editor cannot send');
+      await input('🪷'.repeat(501));
+      await wait(() => send().disabled && contains('1002 / 1000') && contains('字数超出限制'),
+        'official UTF-16 limit counts both surrogate code units');
+      assert(key().defaultPrevented && (await writes()).length === 0, 'overlength Enter is fenced');
+      await capture('reply_limit');
+      const denied = '  合成拦截正文\n';
+      await input(denied);
+      assert(!key({shiftKey:true}).defaultPrevented && !key({isComposing:true}).defaultPrevented,
+        'newline and composition Enter never send');
+      await back();
+      await enter(506);
+      assert(textarea().value === '', 'other peer never inherits private draft');
+      await back();
+      await enter(505);
+      await wait(() => textarea().value === denied && !send().disabled, 'same peer restores in-drawer draft');
+      await capture('reply_peer_draft');
+      assert(key().defaultPrevented, 'Enter is explicit send');
+      await wait(() => one('.account-binding-qr-dialog[open] [data-account-binding-qr] path[d]'),
+        'missing phone binding opens official fixed QR');
+      assert((await writes()).length === 0 && textarea().value === denied, 'no message before phone binding');
+      await sleep(220);
+      await capture('reply_phone');
+      click(one('[aria-label="关闭扫码设置"]'));
+      await wait(() => !one('.account-binding-qr-dialog[open]') && document.activeElement === textarea(),
+        'close QR returns to exact editor');
+      click(send());
+      await wait(() => notice()?.includes('被服务拦截') && textarea().value === denied && !textarea().readOnly,
+        '2202 denial preserves whitespace and draft');
+      assert(!contains('SYNTHETIC_RAW_INTERCEPTION'), 'raw service message is private');
+      await capture('reply_denied');
+      await input('  合成发送正文\n');
+      key();
+      await wait(() => notice()?.includes('已收到发送回执') && textarea().value === '' &&
+        contains('服务端返回的合成已发送正文'), 'exact positive receipt clears editor and appends canonical row');
+      assert(all('.message-drawer-own').at(-1)?.textContent.includes('服务端返回的合成已发送正文'),
+        'native returned own message placed at bottom');
+      await capture('reply_delivered');
+      await fixture('reply-hold');
+      await input('合成迟到发送正文');
+      click(send());
+      await wait(async () => (await fixture()).replyHeld, 'native positive receipt held');
+      await back();
+      await fixture('reply-release');
+      await wait(async () => !(await fixture()).replyHeld, 'native receipt released outside the thread');
+      await enter(505, false);
+      const enabledCheck = () => {
+        const check = button('核对本机回执');
+        return check && !check.disabled && check;
+      };
+      await wait(() => notice()?.includes('已收到发送回执') || enabledCheck(), 'late receipt status ready');
+      if (textarea().readOnly && enabledCheck()) click(enabledCheck());
+      await wait(() => notice()?.includes('已收到发送回执') && textarea().value === '' &&
+        contains('服务端返回的合成迟到正文'), 'late exact receipt clears only its previous draft');
+      await capture('reply_late_delivery');
+      await input('合成未知正文');
+      click(send());
+      await wait(() => textarea().readOnly && notice()?.includes('无法确认私信是否已发送'),
+        'lost acknowledgement retains locked draft');
+      assert(textarea().value === '合成未知正文' && send().disabled && !contains('合成未知正文'),
+        'unknown reply never fabricates a sent row');
+      await capture('reply_unknown');
+      click(button('核对本机回执'));
+      await wait(() => notice()?.includes('已核对本机回执'), 'explicit local-only status readback');
+      click(button('刷新消息'));
+      await wait(() => ready() && contains('合成未知正文') && textarea().readOnly,
+        'matching historical body does not resolve the uncertain send');
+      assert((await writes()).length === 4 && send().disabled, 'no retry from readback or history');
+      await capture('reply_matching_history');
+      click(button('关闭消息'));
+      await wait(() => !drawer(), 'closing purges private draft body');
+      click(trigger());
+      await wait(() => ready() && one('[data-message-peer="505"]'), 'inbox reopens');
+      await enter(505, false);
+      await wait(() => notice()?.includes('无法确认私信是否已发送') && textarea().readOnly &&
+        textarea().value === '', 'durable unknown survives reopen without cached private text');
+      await capture('reply_reopened');
+      await emit('complete', {
+        ok: true, count, privateReplyVerified: true, realAccountWrites: 0, realMusicRequests: 0,
+      });
+      return;
+    }
     if (window.__cumulusMessageDeletionProof) {
       const action = (id) => one(`[data-message-delete="${id}"]`);
       const menuItem = (key) => one(`[role="menu"][aria-label="私信操作"] [data-menu-key="${key}"]`);

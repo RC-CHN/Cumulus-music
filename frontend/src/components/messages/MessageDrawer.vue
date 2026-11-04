@@ -15,6 +15,7 @@ import ActionMenu from '../ActionMenu.vue';
 import Icon from '../Icon.vue';
 import ModalTransition from '../ModalTransition.vue';
 import MessageDeleteDialog from './MessageDeleteDialog.vue';
+import PrivateReplyComposer from './PrivateReplyComposer.vue';
 
 const props = defineProps<{
   account: AccountView;
@@ -37,6 +38,47 @@ const scroller = ref<HTMLElement>();
 const backButton = ref<HTMLButtonElement>();
 const uid = useId();
 const deleteMenuLabel = '私信操作';
+const replyBusy = ref(false);
+const replyDrafts = ref(new Map<string, string>());
+const replyUncertain = ref(new Map<string, string>());
+function setReplyDraft(scope: object, value: string) {
+  if (current.value !== scope) return;
+  const id = peer.value?.id;
+  if (!id) return;
+  replyDrafts.value.delete(id);
+  if (value) replyDrafts.value.set(id, value);
+  if (replyDrafts.value.size > 128) {
+    const oldest = replyDrafts.value.keys().next().value;
+    if (oldest) replyDrafts.value.delete(oldest);
+  }
+}
+function setReplyUncertain(scope: object, value?: string) {
+  if (!peer.value || current.value !== scope) return;
+  if (value) replyUncertain.value.set(peer.value.id, value);
+  else replyUncertain.value.delete(peer.value.id);
+}
+function setReplyReceipt(scope: object, value: string) {
+  if (peer.value && current.value === scope) current.value.replyReceipt = value;
+}
+function setReplyBusy(scope: object, value: boolean) {
+  if (peer.value && current.value === scope) replyBusy.value = value;
+}
+function replyExpired(scope: object) {
+  if (peer.value && current.value === scope) emit('expired');
+}
+async function deliveredReply(scope: object, row: MessageRow) {
+  if (!peer.value || !row.own || current.value !== scope) return;
+  const list = current.value;
+  list.rows = [row, ...list.rows.filter((item) => item.id !== row.id)].slice(0, 300);
+  await nextTick();
+  if (current.value === list && scroller.value)
+    scroller.value.scrollTop = scroller.value.scrollHeight;
+}
+function resetReply() {
+  replyDrafts.value.clear();
+  replyUncertain.value.clear();
+  replyBusy.value = false;
+}
 const deleteMenu = ref<InstanceType<typeof ActionMenu>>();
 const deleteBusy = ref(false);
 const deleteNotice = ref('');
@@ -105,6 +147,7 @@ function openDeleteMenu(item: MessageRow, event: MouseEvent | KeyboardEvent) {
     !visible.value ||
     current.value.busy ||
     deleteBusy.value ||
+    replyBusy.value ||
     confirmation.value
   )
     return;
@@ -272,6 +315,7 @@ watch(
   () => {
     suspended.value = undefined;
     resetDeletion();
+    resetReply();
   },
   { flush: 'sync' },
 );
@@ -293,6 +337,7 @@ function close(restore = true) {
   suspended.value = undefined;
   model.close();
   resetDeletion();
+  resetReply();
   scrollPositions.clear();
   previousFocus = null;
   if (restore) trigger.value?.focus({ preventScroll: true });
@@ -360,6 +405,7 @@ async function enter(row: MessageRow, event: MouseEvent) {
 async function back() {
   const previous = peer.value?.id;
   model.back();
+  replyBusy.value = false;
   await nextTick();
   if (!shown.value || tab.value !== 'private' || peer.value) return;
   scroller.value?.scrollTo(0, scrollPositions.get('private') ?? 0);
@@ -389,7 +435,8 @@ function scroll() {
     current.value.error ||
     current.value.busy ||
     confirmation.value ||
-    deleteBusy.value
+    deleteBusy.value ||
+    replyBusy.value
   )
     return;
   // Switching views can clamp the previous scroll position to zero, which
@@ -442,7 +489,7 @@ function refresh() {
           class="icon-button"
           aria-label="刷新消息"
           title="刷新消息"
-          :disabled="current.busy || countsBusy || deleteBusy"
+          :disabled="current.busy || countsBusy || deleteBusy || replyBusy"
           @click="refresh"
         >
           <Icon name="refresh" />
@@ -632,11 +679,27 @@ function refresh() {
           <span v-else>本次最多显示 300 条</span>
         </div>
       </div>
+      <PrivateReplyComposer
+        v-if="peer && current.replyReceipt"
+        :key="peer.id"
+        :epoch="account.epoch"
+        :scope="current"
+        :receipt="current.replyReceipt"
+        :draft="replyDrafts.get(peer.id) ?? ''"
+        :uncertain-attempt="replyUncertain.get(peer.id)"
+        :blocked="current.busy || deleteBusy || !!confirmation"
+        @draft="setReplyDraft"
+        @receipt="setReplyReceipt"
+        @uncertain-attempt="setReplyUncertain"
+        @delivered="deliveredReply"
+        @busy="setReplyBusy"
+        @expired="replyExpired"
+      />
       <ActionMenu
         ref="deleteMenu"
         :label="deleteMenuLabel"
         :items="deleteOptions"
-        :disabled="deleteBusy || !!confirmation"
+        :disabled="deleteBusy || replyBusy || !!confirmation"
         variant="song"
         context-only
         @select="chooseDeletion"

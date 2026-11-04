@@ -30,6 +30,7 @@ export interface MessagePage {
   rows: MessageRow[];
   nextCursor: number | null;
   hint: string | null;
+  replyReceipt?: string;
 }
 export type MessageDeleteOutcome =
   | 'removed'
@@ -41,7 +42,17 @@ export interface MessagePendingDeletion {
   receipt: string;
   conversation: boolean;
 }
+export type MessageReplyAction =
+  | { kind: 'status'; receipt: string }
+  | { kind: 'send'; receipt: string; text: string };
+export type MessageReplyView = { receipt: string } & (
+  | { status: 'ready' | 'phone_required' | 'preflight_unavailable' }
+  | { status: 'unknown'; operation: string }
+  | { status: 'denied'; operation: string; intercepted: boolean }
+  | { status: 'delivered'; operation: string; messageId: string; row?: MessageRow }
+);
 export interface MessageClient {
+  messageReply(epoch: string, action: MessageReplyAction): Promise<AccountData<MessageReplyView>>;
   messageCounts(epoch: string): Promise<AccountData<MessageCounts>>;
   messagePage(epoch: string, query: MessageQuery): Promise<AccountData<MessagePage>>;
   pendingMessageDeletions(epoch: string): Promise<AccountData<MessagePendingDeletion[]>>;

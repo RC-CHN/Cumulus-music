@@ -2,7 +2,7 @@ use cumulus_core::{Error, Result};
 use serde_json::{Value, json};
 use std::sync::{
     Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 const T: i64 = 1_700_000_100_000;
@@ -14,6 +14,26 @@ static WRITE_ATTEMPT: AtomicBool = AtomicBool::new(false);
 static REMOVED_SINGLE: AtomicBool = AtomicBool::new(false);
 static REMOVED_CONVERSATION: AtomicBool = AtomicBool::new(false);
 static OMIT_UNKNOWN: AtomicBool = AtomicBool::new(false);
+static REPLY_BINDINGS: AtomicUsize = AtomicUsize::new(0);
+static REPLY_SENDS: AtomicUsize = AtomicUsize::new(0);
+static HOLD_REPLY: AtomicBool = AtomicBool::new(false);
+static REPLY_HELD: AtomicBool = AtomicBool::new(false);
+
+const REPLY_PATH: &str = "/api/msg/private/send";
+const REPLY_GATE: &str = "/api/w/v1/user/bindings/2";
+const REPLY_TEXT: &str = "  合成发送正文\n";
+const REPLY_DENIED: &str = "  合成拦截正文\n";
+const REPLY_LOST: &str = "合成未知正文";
+const REPLY_LATE: &str = "合成迟到发送正文";
+
+fn reply_mode() -> bool {
+    std::env::var("CUMULUS_MESSAGE_REPLY_PROOF").as_deref() == Ok("1")
+}
+
+fn sent_row() -> Value {
+    json!({"id":"9007199254741997","time":T+10,"fromUser":{"userId":2,"nickname":"合成自己"},
+        "toUser":{"userId":505},"msg":{"type":6,"msg":"服务端返回的合成已发送正文"}})
+}
 
 pub fn enabled() -> bool {
     std::env::var("CUMULUS_MESSAGE_DRAWER_PROOF").as_deref() == Ok("1")
@@ -25,6 +45,11 @@ fn attachments() -> bool {
 fn deletion() -> bool {
     std::env::var("CUMULUS_MESSAGE_DELETION_PROOF").as_deref() == Ok("1")
 }
+fn late_reply_row() -> Value {
+    json!({"id":"9007199254742997","time":T+11,"fromUser":{"userId":2,"nickname":"合成自己"},
+        "toUserId":505,"msg":{"type":6,"msg":"服务端返回的合成迟到正文"}})
+}
+
 fn target_comment(id: u64) -> Value {
     json!({"code":200,"comments":[],"currentComment":{"commentId":id,
         "content":format!("合成定位评论 {id}"),"time":T,"likedCount":0,
@@ -37,6 +62,8 @@ pub fn control(mode: &str) -> Value {
         "hold" => HOLD_NOTICE.store(true, Ordering::SeqCst),
         "release" => HOLD_NOTICE.store(false, Ordering::SeqCst),
         "deletion-omit" if deletion() => OMIT_UNKNOWN.store(true, Ordering::SeqCst),
+        "reply-hold" if reply_mode() => HOLD_REPLY.store(true, Ordering::SeqCst),
+        "reply-release" if reply_mode() => HOLD_REPLY.store(false, Ordering::SeqCst),
         "read" => {}
         _ => panic!("unknown message fixture command"),
     }
@@ -45,12 +72,52 @@ pub fn control(mode: &str) -> Value {
 
 pub fn report() -> Value {
     json!({"requests":*REQUESTS.lock().unwrap(),"blockedWrite":WRITE_ATTEMPT.load(Ordering::SeqCst),
-        "noticeHeld":NOTICE_HELD.load(Ordering::SeqCst)})
+        "noticeHeld":NOTICE_HELD.load(Ordering::SeqCst),"replyHeld":REPLY_HELD.load(Ordering::SeqCst)})
 }
 
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
+    }
+    if reply_mode() && matches!(path, REPLY_PATH | REPLY_GATE) {
+        REQUESTS.lock().unwrap().push((path.into(), args.clone()));
+        return Some(match path {
+            REPLY_GATE if args == &json!({"userId":"2"}) => {
+                let attempt = REPLY_BINDINGS.fetch_add(1, Ordering::SeqCst);
+                Ok(
+                    json!({"code":200,"bindings":if attempt == 0 {json!([])} else {json!([{"type":1}])}}),
+                )
+            }
+            REPLY_PATH => {
+                let attempt = REPLY_SENDS.fetch_add(1, Ordering::SeqCst);
+                let text = match attempt {
+                    0 => REPLY_DENIED,
+                    1 => REPLY_TEXT,
+                    2 => REPLY_LATE,
+                    3 => REPLY_LOST,
+                    _ => panic!("synthetic reply replayed"),
+                };
+                assert_eq!(
+                    args,
+                    &json!({"type":"text","id":0,"userIds":["505"],"msg":text})
+                );
+                match attempt {
+                    0 => Ok(json!({"code":2202,"msg":"SYNTHETIC_RAW_INTERCEPTION"})),
+                    1 => Ok(json!({"code":200,"newMsgs":[sent_row()]})),
+                    2 => {
+                        REPLY_HELD.store(true, Ordering::SeqCst);
+                        let end = std::time::Instant::now() + std::time::Duration::from_secs(12);
+                        while HOLD_REPLY.load(Ordering::SeqCst) && std::time::Instant::now() < end {
+                            tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+                        }
+                        REPLY_HELD.store(false, Ordering::SeqCst);
+                        Ok(json!({"code":200,"newMsgs":[late_reply_row()]}))
+                    }
+                    _ => Err(Error::Transport("synthetic message reply lost".into())),
+                }
+            }
+            _ => Err(Error::InvalidInput("unexpected synthetic reply request")),
+        });
     }
     if attachments() && path.starts_with("/api/v1/resource/comments/") {
         REQUESTS.lock().unwrap().push((path.into(), args.clone()));
@@ -142,7 +209,25 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             if !(501..516).contains(&peer) {
                 return Some(Err(Error::InvalidInput("history picked another user")));
             }
-            if args["time"] == -1 && deletion() {
+            if args["time"] == -1 && reply_mode() {
+                let attempts = REPLY_SENDS.load(Ordering::SeqCst);
+                let mut rows = Vec::new();
+                if peer == 505 && attempts >= 4 {
+                    rows.push(json!({"id":"9007199254743997","time":T+12,"fromUser":{"userId":2,"nickname":"合成自己"},
+                        "toUserId":peer,"msg":{"type":6,"msg":REPLY_LOST}}));
+                }
+                if peer == 505 && attempts >= 3 && !REPLY_HELD.load(Ordering::SeqCst) {
+                    rows.push(late_reply_row());
+                }
+                if peer == 505 && attempts >= 2 {
+                    rows.push(sent_row());
+                }
+                rows.push(
+                    json!({"id":301,"time":T,"fromUser":{"userId":peer,"nickname":"合成对方"},
+                    "msg":{"type":6,"msg":"已有的合成私信"}}),
+                );
+                json!({"code":200,"more":false,"msgs":rows})
+            } else if args["time"] == -1 && deletion() {
                 let mut rows = Vec::new();
                 if !REMOVED_SINGLE.load(Ordering::SeqCst) {
                     rows.push(
