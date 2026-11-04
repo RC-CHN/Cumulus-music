@@ -10,6 +10,7 @@ import re
 import socket
 import subprocess
 
+from diagnostics import verify_proof_databases
 from installed_linux_audio import (
     Input, isolated_audio, private_pipewire_stream, read_playback, sink_tone, start_accessibility, stop,
     wait_for,
@@ -33,6 +34,7 @@ def main():
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     state_dir = root / 'state'
     env['CUMULUS_DATA_DIR'] = str(state_dir)
+    env['CUMULUS_DEVICE_IDENTITY'] = 'native'
     for key, suffix in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache')]:
         folder = root / suffix
         folder.mkdir(mode=0o700)
@@ -148,6 +150,7 @@ def main():
             finally:
                 stop(app)
 
+    verify_proof_databases([state_dir])
     report = dict(ok=True, ordinaryProductionBinary=True, actualWebView=True,
                   sameCanonicalRootThroughSymlink=True, nativeUnicodeAndSpaces=True,
                   senderBypassesGraphicsBootstrap=True, competingRequestReceivedBusy=True,

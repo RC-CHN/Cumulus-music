@@ -10,6 +10,7 @@ import sqlite3
 import subprocess
 import time
 
+from diagnostics import verify_proof_databases
 from installed_linux_audio import (
     Input, focus_installed_control, isolated_audio, private_pipewire_stream, read_playback,
     sink_tone, start_accessibility, stop, wait_for,
@@ -32,6 +33,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     env['CUMULUS_DATA_DIR'] = str(root / 'state')
+    env['CUMULUS_DEVICE_IDENTITY'] = 'native'
     for key, suffix in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'), ('XDG_CACHE_HOME', 'cache')]:
         folder = root / suffix
         folder.mkdir(mode=0o700)
@@ -157,6 +159,7 @@ def main():
             finally:
                 stop(app)
 
+    verify_proof_databases([root / 'state'])
     report = dict(ok=True, ordinaryProductionBinary=True, actualWebView=True,
                   acceptedNativeArgvAndUnicode=True, invalidFileSkipped=True, openedTwoInOrder=True,
                   firstFilePinnedDecoderAdvanced=True, secondFilePinnedDecoderAdvanced=True,
