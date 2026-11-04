@@ -11,8 +11,16 @@ use tauri::{Manager, webview::PageLoadEvent};
 
 pub(super) const ARG: &str = "--cumulus-renderer-check";
 pub(super) const CANCELLED: i32 = 125;
+pub(super) const TRACE_ENV: &str = "CUMULUS_RENDERER_TRACE";
 
 pub(super) fn run(root: &Path) -> i32 {
+    let diagnostic = std::env::var_os(TRACE_ENV).is_some();
+    let trace = move |stage| {
+        if diagnostic {
+            eprintln!("renderer probe: {stage}");
+        }
+    };
+    trace("waiting for parent");
     // The Windows parent attaches a kill-on-close job before allowing WebView2
     // children to start. A crashed parent cannot leave an unbounded waiter.
     let waiting = std::time::Instant::now();
@@ -24,6 +32,7 @@ pub(super) fn run(root: &Path) -> i32 {
     }
     // SAFETY: this is the child process entry, before any runtime or worker.
     unsafe { super::prepare_process() };
+    trace("initializing WebView");
     let mut context = tauri::generate_context!();
     context.config_mut().app.windows.clear();
     let report = root.join("ready");
@@ -52,6 +61,7 @@ pub(super) fn run(root: &Path) -> i32 {
                 invoke.resolver.resolve(());
                 return true;
             }
+            trace("animation acknowledged");
             let webview = invoke.message.webview();
             let handle = webview.app_handle().clone();
             let output = report.clone();
@@ -63,6 +73,7 @@ pub(super) fn run(root: &Path) -> i32 {
                     use webkit2gtk::WebViewExt;
                     view.inner().snapshot(webkit2gtk::SnapshotRegion::Visible,
                         webkit2gtk::SnapshotOptions::NONE, None::<&webkit2gtk::gio::Cancellable>, move |result| {
+                        trace("snapshot returned");
                         let ok = result.is_ok_and(|surface| {
                             let Ok(image) = surface.map_to_image(None) else { return false; };
                             if image.width() < 100 || image.height() < 100 { return false; }
@@ -89,12 +100,16 @@ pub(super) fn run(root: &Path) -> i32 {
                 .title("Cumulus").inner_size(360.0, 220.0).resizable(false)
                 .decorations(false).center().data_directory(profile)
                 .build()?;
+            trace("WebView created");
             #[cfg(target_os = "linux")]
             {
                 let handle = app.handle().clone();
                 window.with_webview(move |view| {
                     use webkit2gtk::WebViewExt;
-                    view.inner().connect_web_process_terminated(move |_, _| handle.exit(1));
+                    view.inner().connect_web_process_terminated(move |_, _| {
+                        trace("Web process terminated");
+                        handle.exit(1);
+                    });
                 })?;
             }
             #[cfg(not(target_os = "linux"))]
@@ -106,8 +121,9 @@ pub(super) fn run(root: &Path) -> i32 {
                 window.app_handle().exit(CANCELLED);
             }
         })
-        .on_page_load(|view, payload| {
+        .on_page_load(move |view, payload| {
             if payload.event() == PageLoadEvent::Finished && view.label() == "main" {
+                trace("splash loaded");
                 // Require a mapped page, DOM layout and multiple animation frames.
                 // Parent timeout handles a blank, hung or terminated WebProcess.
                 let _ = view.eval(r#"(() => {
@@ -127,7 +143,10 @@ pub(super) fn run(root: &Path) -> i32 {
         .build(context);
     match result {
         Ok(app) => app.run_return(|_, _| {}),
-        Err(_) => 1,
+        Err(_) => {
+            trace("WebView initialization failed");
+            1
+        }
     }
 }
 

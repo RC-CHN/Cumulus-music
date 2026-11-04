@@ -36,7 +36,7 @@ pub fn bootstrap() -> bool {
     }
     let diagnostic =
         command.as_deref() == Some(std::ffi::OsStr::new("--cumulus-renderer-diagnostics"));
-    let result = select();
+    let result = select(diagnostic);
     if diagnostic {
         match result {
             Ok(report) => {
@@ -74,7 +74,7 @@ pub fn bootstrap() -> bool {
     }
 }
 
-fn select() -> std::io::Result<Report> {
+fn select(diagnostic: bool) -> std::io::Result<Report> {
     let requested = std::env::var("CUMULUS_RENDERER").unwrap_or_else(|_| "auto".into());
     let requested = Mode::parse(&requested)
         .ok_or_else(|| std::io::Error::other("unknown CUMULUS_RENDERER mode"))?;
@@ -85,7 +85,8 @@ fn select() -> std::io::Result<Report> {
         .and_then(|path| cache::read(path, &environment, cache::now()));
     let modes = policy::candidates(requested, cached, cfg!(target_os = "linux"));
     let executable = std::env::current_exe()?;
-    let (selected, attempts) = policy::choose(&modes, |mode| check(&executable, mode, TIMEOUT))?;
+    let (selected, attempts) =
+        policy::choose(&modes, |mode| check(&executable, mode, TIMEOUT, diagnostic))?;
     if requested == Mode::Auto {
         if let Some(mode) = selected {
             // Do not extend the retry period on every launch: after seven days
@@ -113,7 +114,12 @@ fn select() -> std::io::Result<Report> {
     })
 }
 
-fn check(executable: &Path, mode: Mode, timeout: Duration) -> std::io::Result<Outcome> {
+fn check(
+    executable: &Path,
+    mode: Mode,
+    timeout: Duration,
+    diagnostic: bool,
+) -> std::io::Result<Outcome> {
     let root = tempfile::Builder::new()
         .prefix("cumulus-renderer-")
         .tempdir()?;
@@ -125,6 +131,12 @@ fn check(executable: &Path, mode: Mode, timeout: Duration) -> std::io::Result<Ou
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    if diagnostic {
+        eprintln!("renderer probe: starting {}", mode.name());
+        command.env(probe::TRACE_ENV, "1").stderr(Stdio::inherit());
+    } else {
+        command.env_remove(probe::TRACE_ENV);
+    }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -192,19 +204,19 @@ mod tests {
         std::fs::write(&executable, "#!/bin/sh\nexit 0\n").unwrap();
         std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o700)).unwrap();
         assert_eq!(
-            check(&executable, Mode::Auto, Duration::from_secs(2)).unwrap(),
+            check(&executable, Mode::Auto, Duration::from_secs(2), false).unwrap(),
             Outcome::Failed
         );
         std::fs::write(&executable, "#!/bin/sh\nsleep 20\n").unwrap();
         let start = Instant::now();
         assert_eq!(
-            check(&executable, Mode::Auto, Duration::from_millis(100)).unwrap(),
+            check(&executable, Mode::Auto, Duration::from_millis(100), false).unwrap(),
             Outcome::TimedOut
         );
         assert!(start.elapsed() < Duration::from_secs(3));
         std::fs::write(&executable, "#!/bin/sh\nexit 125\n").unwrap();
         assert_eq!(
-            check(&executable, Mode::Auto, Duration::from_secs(2)).unwrap(),
+            check(&executable, Mode::Auto, Duration::from_secs(2), false).unwrap(),
             Outcome::Cancelled
         );
     }
