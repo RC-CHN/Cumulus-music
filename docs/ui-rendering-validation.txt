@@ -53,12 +53,13 @@ sets process-local defaults only when the user has not supplied that variable:
 - NVIDIA + X11: GPU shared-memory transport (the Wayland setting is inapplicable).
 - Other drivers: normal hardware-acceleration initialization.
 CUMULUS_RENDERER=software requests Mesa software GL on Linux while keeping
-WebKit compositing enabled. Its process-local defaults are LIBGL_ALWAYS_SOFTWARE=1
-and, unless a user supplies WEBKIT_DISABLE_DMABUF_RENDERER, WEBKIT_FORCE_DMABUF_RENDERER=1
-with WEBKIT_DMABUF_RENDERER_FORCE_SHM=1. This keeps WebKit's renderer active and
-presents through shared memory rather than exporting DMA-BUF buffers. A runtime
-or GL implementation that does not honor these compatibility switches is still
-subject to the normal startup probe. Existing explicit values are preserved.
+WebKit compositing enabled. All Linux backends default to LIBGL_ALWAYS_SOFTWARE=1.
+X11 also defaults to WEBKIT_FORCE_DMABUF_RENDERER=1 with
+WEBKIT_DMABUF_RENDERER_FORCE_SHM=1, unless WEBKIT_DISABLE_DMABUF_RENDERER is
+already set. Native Wayland leaves the presentation transport to WebKit and
+the compositor: forcing X11's SHM switches caused a frame timeout on the
+physical NVIDIA session. Existing explicit values are preserved. A runtime
+that does not honor these switches is still subject to the startup probe.
 CUMULUS_RENDERER=gpu-shm selects GPU/shared-memory transport;
 CUMULUS_RENDERER=gpu requests the direct path without auto driver workarounds.
 No desktop-wide, driver, display-frequency or login-session setting is modified.
@@ -108,6 +109,15 @@ launch then selected gpu-shm successfully. The next launch started at cached
 gpu-shm and succeeded in one attempt. Separate default and software checks passed.
 Local synthetic evidence: .build/graphics-recovery-first.json,
 .build/graphics-recovery-cached.json and .build/graphics-smoke-local.json.
+The revised Linux binary at 860732cd was also verified in the physical KDE
+Wayland session with no network routes and no private Cumulus profile. Pinned
+software rendered immediately; a fresh Auto run timed out once in Auto and
+once in GPU/SHM, then selected software and drew the startup snapshot. No
+business SQLite database was created. The same binary tree passed all 15
+software mode external-import paint checks in X11. Exact evidence:
+.build/ui-proof/phase21-860732cd/{wayland-software.json,wayland-auto.json,software-import/report.json}.
+This Wayland proof is limited to the native startup window, not all application
+surfaces, frame rates, or other drivers.
 The startup diagnostic creates no SQLite account/business databases.
 Unit tests cover crash/timeout progression, all-candidate exhaustion, cancellation,
 manual overrides, changed environment/expiry/corruption, exit without render ack,

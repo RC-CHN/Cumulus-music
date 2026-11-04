@@ -75,5 +75,7 @@
 - [识曲请求调度](song-recognition-request-proof.txt)按累计 3、6、9、12、15 秒前缀生成请求。封闭 PipeWire 探针已从真实 i16/f32 流走到指纹、EAPI 报文和进程内回包，验证取消后的迟到结果。正式入口、真实用户设备和上游识曲未启用。
 - [Windows WASAPI 回采原型](song-recognition-wasapi-proof.txt)的设备选择和停止策略有六项合成测试及 Windows GNU 交叉链接证据。未在 Windows 实际回采或发布入口。
 - [官方桌宠](desktop-pet-contracts.txt)已核对入口、领养状态、窗口动作和素材约束。本机 Linux WebKit 未通过半透明 WebM 探针；尚无正式窗口、现有已领养宠物的合格素材或 Windows 原生验收。
+- [装扮和音乐桌面](desktop-decoration-contracts.txt)以及[福利活动和 WPS](member-welfare-cooperation-audit.txt)已有独立官方入口、请求与写入契约。此批是恢复证据，尚未包含对应产品功能。
+- [Linux 图形回退](ui-rendering-validation.txt)的软件配置保留合成；X11 强制共享内存，Wayland 由宿主协商。X11 实际绘制导入弹窗，物理 Wayland 实际验证默认和 GPU/SHM 超时后成功回退。Windows 行为与设备限制不变。
 - [精确基线 CI](https://github.com/RC-CHN/Cumulus-music/actions/runs/41763187918) 与已发布的 `v0.1.0` 是两套提交。只在 Linux、Windows、前端和最终 CI gate 均对**同一提交**通过后，才能用该提交的门槛作为发布证据。本轮没有发布新版本。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
