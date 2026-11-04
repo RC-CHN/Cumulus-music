@@ -64,6 +64,7 @@ pub struct Service {
     ordinary_https: bool,
     retry_https: bool,
     eof_https: bool,
+    loading_step: bool,
     source_authorizations: AtomicUsize,
     source_load_attempts: AtomicUsize,
     loading_seek_released: AtomicBool,
@@ -79,12 +80,14 @@ impl Service {
         ordinary_https: bool,
         retry_https: bool,
         eof_https: bool,
+        loading_step: bool,
     ) -> Self {
         Self {
             media: media::Media::new(store),
             ordinary_https,
             retry_https,
             eof_https,
+            loading_step,
             source_authorizations: Default::default(),
             source_load_attempts: Default::default(),
             loading_seek_released: Default::default(),
@@ -102,6 +105,9 @@ impl Service {
             first["dt"] = json!(12000);
         }
         first
+    }
+    fn multi_song_queue(&self) -> bool {
+        self.eof_https || self.loading_step
     }
     fn playback_url(&self) -> &'static str {
         if self.ordinary_https {
@@ -203,13 +209,13 @@ impl Api for Service {
                     let mut rows = vec![
                         json!({"type":"song","baseInfo":{"simpleSongData":self.first_search_song()}}),
                     ];
-                    if self.eof_https {
+                    if self.multi_song_queue() {
                         rows.push(json!({"type":"song","baseInfo":{"simpleSongData":eof_song()}}));
                     }
                     json!({"code":200,"data":{"totalCount":rows.len(),"resources":rows,"hasMore":false}})
                 }
                 "/api/v3/song/detail" => {
-                    if self.eof_https {
+                    if self.multi_song_queue() {
                         let packed = p["c"]
                             .as_str()
                             .ok_or(Error::InvalidInput("missing synthetic song IDs"))?;
@@ -229,7 +235,7 @@ impl Api for Service {
                 }
                 "/api/song/lyric/v1" => json!({"code":200,"lrc":{"lyric":"[00:00.00]合成测试"}}),
                 "/api/song/enhance/player/url/v1" => {
-                    let id = if self.eof_https {
+                    let id = if self.multi_song_queue() {
                         let packed = p["ids"]
                             .as_str()
                             .ok_or(Error::InvalidInput("missing synthetic authorization ID"))?;

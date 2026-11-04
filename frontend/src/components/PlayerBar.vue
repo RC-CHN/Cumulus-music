@@ -59,6 +59,8 @@ const {
   pendingTransport,
   pendingTransportBusy,
   primaryTransportPauses,
+  loadingStepKey,
+  loadingStepBusy,
 } = props.player;
 const chorusMarker = usePlaybackChorus(view, loaded);
 const commentCount = usePlaybackCommentCount(view, loaded, () => props.account.epoch);
@@ -180,6 +182,11 @@ function primaryTransport(event: MouseEvent) {
   const key = (event.currentTarget as HTMLButtonElement).dataset.primaryTransportKey;
   return transport(event, () => props.player.togglePrimaryTransport(key));
 }
+function stepTransport(event: MouseEvent, direction: 'next' | 'previous') {
+  const key = (event.currentTarget as HTMLButtonElement).dataset.loadingStepKey;
+  if (key && props.togetherActive) return;
+  return transport(event, () => props.player.stepDisplayed(direction, key));
+}
 const draft = ref<number>();
 const seekHovered = ref(false);
 const seekInFlight = shallowRef<{ key: string }>();
@@ -211,7 +218,8 @@ const canSeek = computed(
       (view.value?.state === 'loading' &&
         !view.value.fm &&
         !props.togetherActive &&
-        !pendingTransportBusy.value)),
+        !pendingTransportBusy.value &&
+        !loadingStepBusy.value)),
 );
 const seekPlayed = computed(() => {
   const { span, min, max } = rail.value;
@@ -303,6 +311,16 @@ function dismissIntelligence() {
 }
 const pending = computed(
   () => busy.value || ['preparing', 'loading'].includes(view.value?.state ?? ''),
+);
+const canStep = computed(
+  () =>
+    ready.value &&
+    !!view.value?.queueLen &&
+    (!pending.value ||
+      (!!loadingStepKey.value &&
+        !props.togetherActive &&
+        !pendingTransportBusy.value &&
+        !loadingStepBusy.value)),
 );
 const message = computed(
   () =>
@@ -449,8 +467,9 @@ async function seek(event: Event) {
         <button
           class="icon-button"
           aria-label="上一首"
-          :disabled="!ready || !view?.queueLen || pending"
-          @click="transport($event, { kind: 'previous' })"
+          :disabled="!canStep"
+          :data-loading-step-key="loadingStepKey"
+          @click="stepTransport($event, 'previous')"
         >
           <Icon name="previous" />
         </button>
@@ -460,7 +479,7 @@ async function seek(event: Event) {
           :disabled="
             !ready ||
             (!view?.queueLen && !view?.track) ||
-            (pendingTransport ? togetherActive || pendingTransportBusy : pending)
+            (pendingTransport ? togetherActive || pendingTransportBusy || loadingStepBusy : pending)
           "
           :data-primary-transport-key="player.primaryTransportKey.value"
           @click="primaryTransport"
@@ -470,8 +489,9 @@ async function seek(event: Event) {
         <button
           class="icon-button"
           aria-label="下一首"
-          :disabled="!ready || !view?.queueLen || pending"
-          @click="transport($event, { kind: 'next' })"
+          :disabled="!canStep"
+          :data-loading-step-key="loadingStepKey"
+          @click="stepTransport($event, 'next')"
         >
           <Icon name="next" />
         </button>

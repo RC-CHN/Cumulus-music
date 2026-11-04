@@ -408,6 +408,11 @@ pub enum PlayerAction {
     },
     Next,
     Previous,
+    StepLoading {
+        play_id: String,
+        expected_queue_revision: String,
+        direction: crate::playback::Step,
+    },
     Stop,
     Restore,
     Refresh,

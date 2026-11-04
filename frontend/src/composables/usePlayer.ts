@@ -41,6 +41,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditError = ref(''),
     lyricError = ref('');
   const pendingSourceCommand = shallowRef<{ source: PlayerView }>();
+  const loadingStepCommand = shallowRef<{ key: string }>();
   const reported = shallowRef<CoreFailure>();
   const reportedRevision = ref(0);
   const error = computed(() => reported.value?.message ?? '');
@@ -90,6 +91,16 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   });
   const primaryTransportPauses = computed(
     () => playing.value || pendingTransport.value?.paused === false,
+  );
+  const stepIdentity = (current: PlayerView) =>
+    JSON.stringify([current.epoch, current.playId, current.queueRevision]);
+  const loadingStepKey = computed(() => {
+    const current = view.value;
+    if (current && pendingTransport.value && current.queueLen > 1 && !current.intelligence)
+      return stepIdentity(current);
+  });
+  const loadingStepBusy = computed(
+    () => !!loadingStepCommand.value && loadingStepCommand.value.key === loadingStepKey.value,
   );
   // Bind the rendered footer action to its selection, without letting
   // harmless clock/buffer updates invalidate the button.
@@ -184,6 +195,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     ready.value = false;
     busy.value = false;
     pendingSourceCommand.value = undefined;
+    loadingStepCommand.value = undefined;
     queueBusy.value = false;
     queueLoading.value = false;
     queueEditing.value = false;
@@ -233,7 +245,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   async function run(
     operation: PlaybackOperation,
-    onRetry = operation,
+    onRetry: PlaybackOperation | null = operation,
     selectionScoped: boolean | ((initial?: PlayerView, current?: PlayerView) => boolean) = false,
   ) {
     if (!ready.value) return;
@@ -253,11 +265,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
           typeof selectionScoped === 'function'
             ? selectionScoped(origin, view.value)
             : !selectionScoped || sameSelection(origin, view.value);
-        const issue = handle(e, currentSelection);
+        const issue = handle(
+          onRetry === null ? { ...failure(e), retryable: false } : e,
+          currentSelection,
+        );
         failedOperation =
           currentSelection && issue.code !== 'stale'
             ? {
-                repeat: issue.retryable ? onRetry : undefined,
+                repeat: issue.retryable ? (onRetry ?? undefined) : undefined,
                 selection: selectionScoped ? view.value : undefined,
               }
             : undefined;
@@ -592,7 +607,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const runSelection = (operation: PlaybackOperation) => run(operation, operation, true);
   const select = (input: PlaySelection) => runSelection((e) => core.playSelection(e, input));
   async function controlPendingSource(current: PlayerView, input: PlayerAction) {
-    if (pendingTransportBusy.value) return;
+    if (pendingTransportBusy.value || loadingStepBusy.value) return;
     // The original selection still owns busy/retry until decode completes.
     const captured = epoch;
     const session = connection;
@@ -650,6 +665,44 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (loaded.value && !current.fm) return toggleSource();
     // An inactive selection needs a new load; FM play uses its coordinator.
     return action(playing.value ? { kind: 'pause', paused: true } : { kind: 'play' });
+  }
+  async function stepDisplayed(direction: 'next' | 'previous', displayedKey?: string) {
+    const current = view.value;
+    if (!ready.value || !current?.queueLen) return;
+    if (!displayedKey) {
+      if (busy.value || current.state === 'preparing' || current.state === 'loading') return;
+      return action({ kind: direction });
+    }
+    if (
+      !current.playId ||
+      current.queueLen < 2 ||
+      current.fm ||
+      current.intelligence ||
+      displayedKey !== stepIdentity(current) ||
+      pendingTransportBusy.value ||
+      loadingStepCommand.value?.key === displayedKey
+    )
+      return;
+    const playId = current.playId;
+    const command = { key: displayedKey };
+    loadingStepCommand.value = command;
+    try {
+      return await run(
+        (e) =>
+          core.playerAction(e, {
+            kind: 'step_loading',
+            play_id: playId,
+            expected_queue_revision: current.queueRevision,
+            direction,
+          }),
+        // If the next entry fails, the native retry belongs to that entry,
+        // never to a repeated skip of the queue.
+        null,
+        true,
+      );
+    } finally {
+      if (loadingStepCommand.value === command) loadingStepCommand.value = undefined;
+    }
   }
   function toggleSource() {
     if (!ready.value || busy.value) return;
@@ -962,6 +1015,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     primaryTransportPauses,
     pendingTransport,
     pendingTransportBusy,
+    loadingStepKey,
+    loadingStepBusy,
+    stepDisplayed,
     togglePrimaryTransport,
     seekDisplayed,
     togglePlaylist,

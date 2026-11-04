@@ -366,6 +366,21 @@ impl MusicClient {
         if matches!(action, PlayerAction::Startup) {
             return self.startup_player(epoch).await;
         }
+        if let PlayerAction::StepLoading {
+            play_id,
+            expected_queue_revision,
+            direction,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "loading step used as native media command",
+                ));
+            }
+            return self
+                .step_loading_source(epoch, &play_id, &expected_queue_revision, direction)
+                .await;
+        }
         if let PlayerAction::ModeFor {
             mode,
             expected_queue_revision,
@@ -1052,6 +1067,7 @@ impl MusicClient {
             }
             PlayerAction::Next => PlaybackCommand::Next,
             PlayerAction::Previous => PlaybackCommand::Previous,
+            PlayerAction::StepLoading { .. } => unreachable!("handled before generic action"),
             PlayerAction::Stop => PlaybackCommand::Stop,
             PlayerAction::Restore => PlaybackCommand::Restore,
             PlayerAction::Refresh => PlaybackCommand::RefreshSource,

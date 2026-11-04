@@ -258,6 +258,12 @@ export type PlaySelection =
     };
 export type PlayerAction =
   | {
+      kind: 'step_loading';
+      play_id: string;
+      expected_queue_revision: string;
+      direction: 'next' | 'previous';
+    }
+  | {
       kind: 'queue_for';
       expected_queue_revision: string;
       expected_room_id?: string | null;

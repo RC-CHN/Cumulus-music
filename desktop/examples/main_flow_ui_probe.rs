@@ -140,8 +140,10 @@ fn main() {
     let ordinary_https = fixture::ordinary_https();
     let retry_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_RETRY").as_deref() == Ok("1");
     let eof_https = std::env::var("CUMULUS_MAIN_FLOW_HTTPS_EOF").as_deref() == Ok("1");
+    let loading_step = std::env::var("CUMULUS_MAIN_FLOW_LOADING_STEP").as_deref() == Ok("1");
     assert!(!(retry_https || eof_https) || ordinary_https);
     assert!(!(retry_https && eof_https));
+    assert!(!(loading_step && ordinary_https));
     let reopen = std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1");
     if reopen {
         let completed: Value = serde_json::from_slice(
@@ -177,7 +179,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             let store = Arc::new(StateStore::open(root.join("state"))?);
-            let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https, retry_https, eof_https));
+            let fixture = Arc::new(fixture::Service::new(store.clone(), ordinary_https, retry_https, eof_https, loading_step));
             let wire = Arc::new(if reopen {
                 wire::Wire::reopen(fixture.clone())
             } else {
@@ -312,7 +314,7 @@ fn main() {
         })
         .on_page_load(move |webview, payload| {
             if payload.event()==PageLoadEvent::Finished {
-                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};window.__mainFlowHttpsEof={eof_https};")).unwrap();
+                webview.eval(format!("window.__mainFlowDownloadPath={path};window.__mainFlowOrdinaryHttps={ordinary_https};window.__mainFlowHttpsRetry={retry_https};window.__mainFlowHttpsEof={eof_https};window.__mainFlowLoadingStep={loading_step};")).unwrap();
                 let source = if reopen {
                     include_str!("main_flow_reopen_probe.js")
                 } else {

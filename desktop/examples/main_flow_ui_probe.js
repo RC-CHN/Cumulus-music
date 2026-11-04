@@ -109,13 +109,30 @@
     }
     await search();
     await stage("search");
-    if (window.__mainFlowHttpsEof)
-      await click(() => one(".search-result-actions .primary"), "search play all for the EOF queue");
+    if (window.__mainFlowHttpsEof || window.__mainFlowLoadingStep)
+      await click(() => one(".search-result-actions .primary"), "search play all for the two-song queue");
     else
       await click(() => one(`${songPanel} ${songRow} .track-play`), "search play control");
     let loadingSeekVerified = false;
     let loadingPauseVerified = false;
-    if (!window.__mainFlowOrdinaryHttps) {
+    let loadingStepVerified = false;
+    if (window.__mainFlowLoadingStep) {
+      const held = await wait(async () => {
+        const player = await invoke("player_snapshot", { epoch });
+        return player.state === "loading" && player.track?.id === "1" && player.queueLen === 2 && player;
+      }, "first decoder blocked in a two-song queue");
+      await wait(() => {
+        const previous = button("上一首", one(".playerbar"));
+        return previous && !previous.disabled;
+      }, "previous also stays enabled");
+      await click(() => button("下一首", one(".playerbar")), "skip a blocked decoder from the footer");
+      await wait(async () => {
+        const player = await invoke("player_snapshot", { epoch });
+        return player.state === "playing" && player.track?.id === "2" &&
+          player.playId !== held.playId && player.queueLen === 2 && player.position >= .1;
+      }, "native next track advances without releasing the first decoder gate");
+      loadingStepVerified = true;
+    } else if (!window.__mainFlowOrdinaryHttps) {
       const slider = await wait(() => {
         const range = one('.playerbar input[aria-label="播放进度"]');
         return state() === "loading" && range && !range.disabled && range;
@@ -155,7 +172,8 @@
       await click(retry, "explicit HTTPS retry");
       await wait(() => !one(".playback-message"), "retry clears playback feedback");
     }
-    await wait(() => state() === "playing" && one(".playerbar")?.dataset.trackId === "1" && position() >= .1, "native playback clock");
+    const expectedTrack = window.__mainFlowLoadingStep ? "2" : "1";
+    await wait(() => state() === "playing" && one(".playerbar")?.dataset.trackId === expectedTrack && position() >= .1, "native playback clock");
     let advancedByEof = false;
     if (window.__mainFlowHttpsEof) {
       const firstId = one(".playerbar")?.dataset.playId;
@@ -187,7 +205,7 @@
       await wait(() => state() === "paused", "resumed native entry paused");
     }
     await stage("playback", { nativeProgress: true, paused: true, resumedSameEntry, advancedByEof,
-      loadingSeekVerified, loadingPauseVerified, output: "null" });
+      loadingSeekVerified, loadingPauseVerified, loadingStepVerified, output: "null" });
     await click(() => button("停止播放", one(".playerbar")), "stop online playback");
     await wait(() => state() === "idle", "online player stopped");
 

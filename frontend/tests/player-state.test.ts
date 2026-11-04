@@ -1849,3 +1849,48 @@ test('the footer can pause an in-flight selection and does not repeat a stale pe
   assert.equal(f.player.busy.value, false);
   f.player.dispose();
 });
+
+test('a manual step supersedes a pending source and rejects duplicate or older rendered steps', async () => {
+  const first = deferred<PlayerView>();
+  const next = deferred<PlayerView>();
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: (_epoch, action) => {
+      actions.push(action);
+      return action.kind === 'play' ? first.promise : next.promise;
+    },
+  });
+  await f.player.connect(account());
+  const start = f.player.action({ kind: 'play' });
+  const preparing: PlayerView = {
+    ...state('3', '1', 'pending'),
+    state: 'preparing',
+    pendingPaused: false,
+    queueLen: 3,
+  };
+  f.emit(preparing);
+  const key = f.player.loadingStepKey.value;
+  assert.ok(key);
+  const step = f.player.stepDisplayed('next', key);
+  assert.equal(f.player.loadingStepBusy.value, true);
+  await f.player.stepDisplayed('previous', key);
+  const playing = { ...state('5', '1', 'successor'), queueRevision: '2', queueLen: 3 };
+  f.emit(playing);
+  await f.player.stepDisplayed('previous', key);
+  next.resolve(playing);
+  await step;
+  first.resolve({ ...preparing, revision: '4' });
+  await start;
+  assert.equal(f.player.view.value?.playId, 'successor');
+  assert.equal(f.player.busy.value, false);
+  assert.deepEqual(actions, [
+    { kind: 'play' },
+    {
+      kind: 'step_loading',
+      play_id: 'pending',
+      expected_queue_revision: '1',
+      direction: 'next',
+    },
+  ]);
+  f.player.dispose();
+});

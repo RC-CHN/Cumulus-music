@@ -25,10 +25,13 @@ def main():
     special = parser.add_mutually_exclusive_group()
     special.add_argument('--https-retry-once', action='store_true', help=argparse.SUPPRESS)
     special.add_argument('--https-eof-next', action='store_true', help=argparse.SUPPRESS)
+    special.add_argument('--loading-step', action='store_true')
     parser.add_argument('--screenshots', action='store_true', help='optional isolated Linux GTK screenshots')
     args = parser.parse_args()
     if (args.https_retry_once or args.https_eof_next) and not args.ordinary_https:
         parser.error('HTTPS playback scenarios require --ordinary-https')
+    if args.loading_step and args.ordinary_https:
+        parser.error('--loading-step uses the synthetic decoder gate')
     stage_names = STAGES
     expected_source_loads = 2 if args.https_eof_next else 1
     if args.https_retry_once or args.https_eof_next:
@@ -47,6 +50,8 @@ def main():
         env['CUMULUS_MAIN_FLOW_HTTPS_RETRY'] = '1'
     if args.https_eof_next:
         env['CUMULUS_MAIN_FLOW_HTTPS_EOF'] = '1'
+    if args.loading_step:
+        env['CUMULUS_MAIN_FLOW_LOADING_STEP'] = '1'
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
@@ -85,8 +90,12 @@ def main():
     assert stages['playback']['fixture']['sourceLoads'] == expected_source_loads
     assert stages['playback']['fixture']['ordinaryHttps'] == args.ordinary_https
     assert stages['playback']['resumedSameEntry'] == args.ordinary_https
-    assert stages['playback']['loadingSeekVerified'] == (not args.ordinary_https)
-    assert stages['playback']['loadingPauseVerified'] == (not args.ordinary_https)
+    assert stages['playback']['loadingSeekVerified'] == (not args.ordinary_https and not args.loading_step)
+    assert stages['playback']['loadingPauseVerified'] == (not args.ordinary_https and not args.loading_step)
+    assert stages['playback']['loadingStepVerified'] == args.loading_step
+    if args.loading_step:
+        assert stages['playback']['fixture']['sourceLoadAttempts'] == 2
+        assert stages['playback']['fixture']['sourceAuthorizations'] == 2
     if args.https_retry_once:
         failed = stages['https_failure']
         assert failed['failedBeforeExplicitRetry'] and not failed['rawLocatorVisible']

@@ -30,7 +30,8 @@ pub enum PlaybackMode {
     Sequential,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Step {
     Next,
     Previous,

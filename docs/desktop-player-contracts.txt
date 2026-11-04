@@ -249,6 +249,22 @@ FM 和附着一起听仍走原来的协调逻辑；仅在已有原生载入意�
 Linux 非 C locale 的本机验证为 18 个检查点（17 张截图）；播放阶段记录一条授权
 和一次实际加载。见 .build/loading-pause-webview/run/first/ux_playback.json。
 
+加载时切换上一首与下一首
+------------------------
+官方 M/1384:5556–5634 的 jump2Track 按当前队列、曲目、播放模式和方向切歌，
+不等待旧解码完成；M/308:3841–4093 把目标送入原生播放。恢复的桌宠 Playbar.tsx
+也明确记录了与底栏 MiddleNew 一致的普通队列及 FM 分流。
+Cumulus 在普通多曲队列的已识别载入上开放上一首/下一首。新增 player_action
+的 step_loading 仅传方向、播放 ID 和队列版本，Rust 在取消旧载入前核对账号、
+显示选择、控制版本、音频归属和房间状态，继续使用现有队列模式与音源授权。
+播放器不回放旧点击，不把已经切换后发生的音源错误当作应重试的切歌。FM、一起听、
+心动和单曲队列不扩展此入口。未增加上游 HTTP 接口。
+Rust 回归拦住旧曲授权并分别向前、向后验证；main_flow_smoke --loading-step
+在实际底栏点击下一首，保持第一首解码门关闭并核对第二首的 libmpv 时钟推进。
+本机 Linux 非 C locale 下，新场景和原加载定位/暂停场景各通过 18 个检查点；
+新场景两次尝试仅有一次完成解码。见
+.build/loading-step-webview/run/first/ux_playback.json。
+
 持续等待的进度滑块提示
 ----------------------
 官方 PlayProgress.tsx 订阅 isSeekOrLoadingState$；同一次连续等待超过三秒后

@@ -236,6 +236,74 @@ async fn old_seek_does_not_seek_the_replacement_and_current_seek_preserves_playb
 }
 
 #[tokio::test]
+async fn either_manual_step_supersedes_an_ordinary_pending_authorization() {
+    use cumulus_core::playback::Step;
+    use std::time::Duration;
+    for (direction, expected) in [(Step::Previous, "1"), (Step::Next, "3")] {
+        let device = Arc::new(support::Device::default());
+        let (_dir, api, _, client, _) = fixture_with_device(device.clone());
+        api.hold_url_id.store(2, Ordering::SeqCst);
+        let starting = client.clone();
+        let pending = tokio::spawn(async move {
+            starting
+                .play_selection(
+                    "1",
+                    PlaySelection::Songs {
+                        ids: ["1", "2", "3"].map(str::to_owned).to_vec(),
+                        index: 1,
+                        quality: Quality::Standard,
+                    },
+                )
+                .await
+        });
+        tokio::time::timeout(Duration::from_secs(5), api.url_started.notified())
+            .await
+            .unwrap();
+        let loading = client.player_snapshot("1").await.unwrap();
+        assert_eq!(loading.state, PlaybackStatus::Preparing);
+        assert_eq!(loading.track.as_ref().unwrap().id, "2");
+        let step = |revision| PlayerAction::StepLoading {
+            play_id: loading.play_id.clone().unwrap(),
+            expected_queue_revision: revision,
+            direction,
+        };
+        assert!(matches!(
+            client.player_action("1", step("0".into())).await,
+            Err(Error::StaleResponse)
+        ));
+        assert_eq!(
+            client.player_snapshot("1").await.unwrap().play_id,
+            loading.play_id
+        );
+        let next = tokio::time::timeout(
+            Duration::from_secs(5),
+            client.player_action("1", step(loading.queue_revision.clone())),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(next.state, PlaybackStatus::Playing);
+        assert_eq!(next.track.as_ref().unwrap().id, expected);
+        assert_ne!(next.play_id, loading.play_id);
+        assert_eq!(next.queue_len, 3);
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(5), pending)
+                .await
+                .unwrap()
+                .unwrap(),
+            Err(Error::Cancelled | Error::StaleResponse)
+        ));
+        assert!(matches!(
+            client
+                .player_action("1", step(loading.queue_revision.clone()))
+                .await,
+            Err(Error::StaleResponse)
+        ));
+        assert_eq!(device.state.lock().unwrap().loads, 1);
+    }
+}
+
+#[tokio::test]
 async fn pending_transport_pauses_the_same_search_load_before_audio_can_start() {
     use std::time::Duration;
     let device = Arc::new(support::Device::default());
