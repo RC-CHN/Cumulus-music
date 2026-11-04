@@ -1,4 +1,5 @@
 import type { LocalNetworkReport } from './networkDiagnostics';
+import type { UpdateCheck } from './updates';
 import type { ExternalPlaylistImportClient } from './externalPlaylistImport';
 import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
@@ -168,6 +169,8 @@ export interface CoreClient
     ProfilePlayRecordClient,
     ProfileRelationClient {
   getAppInfo(): Promise<AppInfo>;
+  checkForUpdates(): Promise<UpdateCheck>;
+  openUpdateReleasePage(): Promise<void>;
   localNetworkDiagnostics(): Promise<LocalNetworkReport>;
   copyText(text: string): Promise<void>;
   songDownloadState(epoch: string, id: string): Promise<SongDownloadState>;

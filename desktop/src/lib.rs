@@ -48,6 +48,8 @@ pub mod shortcuts;
 mod style_tags;
 pub mod system_media;
 mod together;
+mod updates;
+pub use updates::UpdateAdapters;
 pub mod watchman;
 pub use effects::configure_native_audio;
 pub use graphics::prepare_process as prepare_graphics;
@@ -70,6 +72,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .plugin(watchman::collection::lifecycle())
         .plugin(shortcuts::lifecycle())
         .manage(cumulus_core::Application)
+        .manage(updates::UpdateGate::default())
         .manage(mini::Host::default())
         .manage(desktop_lyrics::Host::default())
         .manage(fonts::Host::default())
@@ -206,6 +209,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 renewal::session_renewal,
                 renewal::renew_session,
                 commands::get_app_info,
+                updates::check_for_updates,
+                updates::open_update_release_page,
                 network_diagnostics::local_network_diagnostics,
                 effect_activation::effect_peq_pending,
                 effect_activation::effect_peq_status,

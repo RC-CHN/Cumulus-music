@@ -231,3 +231,7 @@
   text-align: right;
   color: var(--text-secondary);
 }
+
+.settings-update-check {
+  width: min(442px, calc(100vw - 32px));
+}

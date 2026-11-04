@@ -30,7 +30,9 @@
     const about = () => one('[aria-labelledby="settings-about"]');
     await wait(() => about()?.textContent.includes('当前版本'), 'About and version render');
     assert(one('.settings-page')?.textContent.includes('尚未登录网易云音乐'), 'proof must remain signed out');
-    const opener = about().querySelector('button');
+    const opener = Array.from(about().querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === '网络诊断');
+    assert(opener, 'explicit network diagnostics entry');
     opener.scrollIntoView({ block: 'end' });
     assert(!one('.settings-network-diagnostics'), 'diagnostics are not opened automatically');
     await capture('settings');

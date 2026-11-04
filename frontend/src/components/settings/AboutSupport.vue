@@ -3,10 +3,13 @@ import { onMounted, ref } from 'vue';
 import { useCore } from '../../services/core';
 import ModalTransition from '../ModalTransition.vue';
 import NetworkDiagnosticsDialog from './NetworkDiagnosticsDialog.vue';
+import UpdateCheckDialog from './UpdateCheckDialog.vue';
 
 const core = useCore();
 const opener = ref<HTMLButtonElement>();
 const open = ref(false);
+const updateOpener = ref<HTMLButtonElement>();
+const updateOpen = ref(false);
 const version = ref('');
 onMounted(async () => {
   try {
@@ -23,8 +26,16 @@ onMounted(async () => {
     <div class="settings-section-content">
       <p v-if="version">当前版本 {{ version }}</p>
       <p class="settings-note">检查本机的网络设置，不连接外部服务，也不上传诊断结果。</p>
-      <button ref="opener" class="secondary" type="button" @click="open = true">网络诊断</button>
+      <div class="settings-account-actions">
+        <button ref="updateOpener" class="secondary" type="button" @click="updateOpen = true">
+          检查更新
+        </button>
+        <button ref="opener" class="secondary" type="button" @click="open = true">网络诊断</button>
+      </div>
     </div>
+    <ModalTransition :return-focus="() => updateOpener ?? null">
+      <UpdateCheckDialog v-if="updateOpen" @close="updateOpen = false" />
+    </ModalTransition>
     <ModalTransition :return-focus="() => opener ?? null">
       <NetworkDiagnosticsDialog v-if="open" @close="open = false" />
     </ModalTransition>

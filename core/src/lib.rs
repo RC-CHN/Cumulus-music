@@ -30,6 +30,7 @@ pub mod protocol;
 pub mod relay;
 pub mod song_recognition;
 pub mod storage;
+pub mod updates;
 pub mod watchman;
 
 pub use application::{AppInfo, Application};

@@ -243,3 +243,7 @@ required-features = ["custom-protocol"]
 [[example]]
 name = "profile_report_ui_probe"
 required-features = ["custom-protocol"]
+
+[[example]]
+name = "manual_update_ui_probe"
+required-features = ["custom-protocol"]

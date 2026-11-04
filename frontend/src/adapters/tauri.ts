@@ -396,6 +396,8 @@ export function createTauriClient(): CoreClient {
     likeRecovery: (epoch, offset) => invoke('like_recovery', { epoch, offset }),
     recoverLike: (epoch, command) => invoke('recover_like', { epoch, command }),
     localNetworkDiagnostics: () => invoke('local_network_diagnostics'),
+    checkForUpdates: () => invoke('check_for_updates'),
+    openUpdateReleasePage: () => invoke('open_update_release_page'),
     async getAppInfo(): Promise<AppInfo> {
       const info: unknown = await invoke('get_app_info');
       if (
