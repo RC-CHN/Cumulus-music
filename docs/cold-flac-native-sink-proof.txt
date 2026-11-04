@@ -1,0 +1,86 @@
+Cold NCM-FLAC to the real libmpv sink
+
+The opt-in test limiter_cold_flac_sink_seek_eof_and_buffered_revocation
+connects the verified cold grant reader, in-process libFLAC 1.5.0, recovered
+limiter and real libmpv in one session. It builds the synthetic FLAC with
+libFLAC, wraps it in strict NCM, and verifies it through the real cold
+profile/task/ledger. A substituted pathname fails a new open while the
+verified descriptor continues to work. No FFmpeg child, account service,
+or plaintext cache is involved. Only the synthetic profile adoption uses
+the injected HTTP backend. libmpv uses its real null audio output, so the
+test does not measure a physical sound card or speaker.
+
+    cargo test --locked -p cumulus-core --lib limiter_cold_flac_sink -- --ignored --nocapture
+
+Use CUMULUS_FLAC_PROBE_LIBRARY and CUMULUS_LIMITER_PROBE_MPV for trusted
+runtime paths. Linux has executable evidence; Windows cross-compilation
+does not test the staged native DLLs or hardware. See the in-process
+decoder audit for the proposed libFLAC distribution requirements.
+
+One worker owns one libFLAC instance and the single authorized File until
+the sink closes. The native pointer never crosses threads. WAV callbacks
+request at most one packet at a time through a bounded command/reply path.
+They check the current pass and authority before/after native work. Logical
+playback generations and private decoder seek passes are distinct: a
+demuxer byte replay starts another indexed pass from the same logical
+origin on the original descriptor; a user seek stops the old entry and
+loads a new one-shot URI with a new limiter/transport generation. Completed
+replays must reproduce the same PCM SHA-256. The WAV sink and fixed-window
+buffer are shared with the earlier CLI probe; the authorized variant has no
+fallback to the child or to an unverified file path.
+
+The playback fixture contains a standard FLAC SEEKTABLE with one point per
+1024-frame FLAC block. The initial unindexed variant exercised a concrete
+failure: when compression density changes around frame 40500, libFLAC
+consumed the entire 128 KiB per-operation read budget searching for that
+sample. The native input callback mapped the failure to mpv's generic -17
+load error; the probe records the actual source reason. A separate Linux
+negative case reproduces the exact 131072-byte stop through the cold reader.
+An 8192-frame point spacing also exhausted the budget in this fixture.
+The per-block index resolves the seek without changing the budget. This does
+not mean every unindexed file fails, or every supplied seektable is safe;
+production needs validated seek bounds/index coverage and an explicit
+fallback or error when a candidate cannot be seeked under budget. It must
+not silently reopen a different file or weaken source authority.
+
+Pinned libFLAC seek and seektable sources:
+https://github.com/xiph/flac/blob/1.5.0/src/libFLAC/stream_decoder.c#L3402
+https://github.com/xiph/flac/blob/1.5.0/include/FLAC/metadata.h#L1478-L1520
+
+The test loads the first entry paused, lets the decoder reach the source
+end ahead of the native playback clock, resumes, then pauses and jumps to
+source frame 40500. The new entry remains paused until resume, rejects one
+late actual packet from the previous generation, and starts from a fresh
+limiter history with linked stereo. The independently mapped libmpv clock
+advances; the current entry reports natural EOF only after confirmed
+decoder EOF and the recovered limiter's terminal drain.
+
+A third entry on the same libmpv instance and held File proves revocation.
+The WAV bytes are prefetched and the native clock is already running when
+the actual cold AccountSession detaches. On the next native poll, the
+existing pinned authority check stops the entry, reports cancellation,
+and then emits Stop for that entry. It must not publish more input bytes,
+report a live position for the retired entry, or call this natural EOF.
+No claim is made about a sub-buffer physical output deadline: this is the
+existing native poll/stop boundary exercised with the real null AO.
+The existing authority helper attempts native stop but discards its error;
+the failure branch is not exercised. A shipping host must ensure teardown
+if native stop fails while protected PCM is queued.
+
+On the reference Linux runtime, one file/decoder handled six passes and
+six actual compressed seeks, reading at most 8192 bytes per restart. At
+the restart frame, the stereo pair changed
+from [0.049164176, -0.006145522] to [0.14672852, -0.018341064]. The new
+segment PCM SHA-256 was
+abd03e950d2743c041ee2c66aec9ea62d26b0f6c8e070d4d64cb19423b737150,
+identical to the earlier CLI producer's synthetic fixture. The revoked
+entry had already advanced past 0.15 s and had future data cached; the
+native sink reported Stop and the input callback emitted no more bytes.
+
+No shipping source, effect, dependency or bundle changed. Production still
+needs an installed native decoder on both OSes, tested media format/rate
+coverage, transport integration preserving account/focus and play identity,
+bounded behavior for real long sources and callback shutdown, protected
+device recovery and full material graph parity. This short fixed-size WAV
+probe can deterministically replay from its logical origin; it is not an
+efficient arbitrary-byte random access design for long filtered audio.

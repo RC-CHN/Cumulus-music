@@ -16,14 +16,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-const RATE: u32 = 44_100;
-const CHANNELS: usize = 2;
-const QUANTUM: u32 = 2048;
+pub(super) const RATE: u32 = 44_100;
+pub(super) const CHANNELS: usize = 2;
+pub(super) const QUANTUM: u32 = 2048;
 const PACKET_FRAMES: usize = 613;
 const PACKET_BYTES: usize = PACKET_FRAMES * CHANNELS * size_of::<f32>();
 const QUEUE_PACKETS: usize = 2;
-const SOURCE_END: u64 = 98_304;
-const SEEK_FRAME: u64 = 40_500;
+pub(super) const SOURCE_END: u64 = 98_304;
+pub(super) const SEEK_FRAME: u64 = 40_500;
 
 mod pipeline;
 
@@ -178,7 +178,7 @@ fn decode(
     }
 }
 
-fn input_pair(frame: u64) -> [i16; CHANNELS] {
+pub(super) fn input_pair(frame: u64) -> [i16; CHANNELS] {
     let left = if frame < SEEK_FRAME {
         24_576
     } else {
@@ -225,7 +225,7 @@ fn make_flac(binary: &OsString, dir: &Path) -> std::path::PathBuf {
     flac
 }
 
-fn make_segment() -> LimiterSegment {
+pub(super) fn make_segment() -> LimiterSegment {
     let plan = material_limiter_plan(&serde_json::json!({
         "aev2": { "limiter": { "on": true, "threshold": -12.0, "attack": 0.005, "release": 0.1, "outputgain": 0.0, "infiniteRatio": true } }
     })).unwrap();
@@ -233,7 +233,7 @@ fn make_segment() -> LimiterSegment {
     LimiterSegment::new(&plan, RATE, CHANNELS as u32, QUANTUM).unwrap()
 }
 
-fn until<T>(mut poll: impl FnMut() -> Option<T>) -> T {
+pub(super) fn until<T>(mut poll: impl FnMut() -> Option<T>) -> T {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         if let Some(value) = poll() {

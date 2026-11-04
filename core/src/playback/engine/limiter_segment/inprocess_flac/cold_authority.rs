@@ -44,6 +44,9 @@ const FLAC: &[u8] = include_bytes!(concat!(
     "/tests/fixtures/tag_audio/seed.flac"
 ));
 
+mod sink;
+mod worker;
+
 #[derive(Default)]
 struct SyntheticService(AtomicUsize);
 impl HttpBackend for SyntheticService {

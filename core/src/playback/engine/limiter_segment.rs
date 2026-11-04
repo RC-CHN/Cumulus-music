@@ -8,6 +8,7 @@ use crate::{
 
 mod inprocess_flac;
 mod native_decoder;
+mod probe_wav;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Generation(u64);

@@ -57,3 +57,6 @@ limiter-authorized-source-contract.txt for transport/online differences.
 No Windows native decoder, hardware output, ordinary download-path adapter,
 authorized HTTP Range source, or production engine/filter switch is proved
 by this boundary. No production dependency or bundle asset was added.
+
+The later cold-flac-native-sink-proof.txt joins this same reader to the
+in-process decoder, limiter and native libmpv null output in an opt-in test.

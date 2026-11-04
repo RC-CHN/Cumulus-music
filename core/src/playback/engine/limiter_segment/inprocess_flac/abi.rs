@@ -164,13 +164,25 @@ impl Api {
         frames: u64,
         sample: impl Fn(u64) -> [i32; 2],
     ) -> io::Result<()> {
-        struct Encoder {
+        self.encode_fixture_with_index(path, rate, blocksize, frames, None, sample)
+    }
+
+    pub(super) fn encode_fixture_with_index(
+        &self,
+        path: &Path,
+        rate: u32,
+        blocksize: u32,
+        frames: u64,
+        seek_spacing: Option<u32>,
+        sample: impl Fn(u64) -> [i32; 2],
+    ) -> io::Result<()> {
+        struct Object {
             handle: NonNull<c_void>,
             delete: unsafe extern "C" fn(Handle),
         }
-        impl Drop for Encoder {
+        impl Drop for Object {
             fn drop(&mut self) {
-                // SAFETY: owns the encoder and no native callbacks escape.
+                // SAFETY: owns the native object and no callbacks escape.
                 unsafe { (self.delete)(self.handle.as_ptr()) }
             }
         }
@@ -182,6 +194,41 @@ impl Api {
         // The encoder is deleted before the library reference can end; init
         // receives a valid UTF-8 filename as required on Windows and no callbacks.
         unsafe {
+            let table = if let Some(spacing) = seek_spacing {
+                if spacing == 0 || frames == 0 {
+                    return Err(io::Error::other("invalid synthetic FLAC seektable"));
+                }
+                let create = self
+                    ._library
+                    .get::<unsafe extern "C" fn(c_int) -> Handle>(b"FLAC__metadata_object_new\0")
+                    .map_err(io::Error::other)?;
+                let delete = self
+                    ._library
+                    .get::<unsafe extern "C" fn(Handle)>(b"FLAC__metadata_object_delete\0")
+                    .map_err(io::Error::other)?;
+                let append = self._library.get::<unsafe extern "C" fn(Handle, u32, u64) -> c_int>(b"FLAC__metadata_object_seektable_template_append_spaced_points_by_samples\0").map_err(io::Error::other)?;
+                let sort = self
+                    ._library
+                    .get::<unsafe extern "C" fn(Handle, c_int) -> c_int>(
+                        b"FLAC__metadata_object_seektable_template_sort\0",
+                    )
+                    .map_err(io::Error::other)?;
+                let handle = NonNull::new(create(3))
+                    .ok_or_else(|| io::Error::other("cannot allocate FLAC seektable"))?;
+                let table = Object {
+                    handle,
+                    delete: *delete,
+                };
+                if append(handle.as_ptr(), spacing, frames) == 0 || sort(handle.as_ptr(), 1) == 0 {
+                    return Err(io::Error::other("could not initialize FLAC seektable"));
+                }
+                Some(table)
+            } else {
+                None
+            };
+            // Both the metadata object and its pointer array outlive the
+            // encoder, which fills the offsets during finish().
+            let mut metadata = table.as_ref().map(|table| [table.handle.as_ptr()]);
             let new = self
                 ._library
                 .get::<unsafe extern "C" fn() -> Handle>(b"FLAC__stream_encoder_new\0")
@@ -192,11 +239,22 @@ impl Api {
                 .map_err(io::Error::other)?;
             let handle = NonNull::new(new())
                 .ok_or_else(|| io::Error::other("cannot allocate FLAC encoder"))?;
-            let _encoder = Encoder {
+            let _encoder = Object {
                 handle,
                 delete: *delete,
             };
             let handle = handle.as_ptr();
+            if let Some(metadata) = metadata.as_mut() {
+                let set = self
+                    ._library
+                    .get::<unsafe extern "C" fn(Handle, *mut Handle, u32) -> c_int>(
+                        b"FLAC__stream_encoder_set_metadata\0",
+                    )
+                    .map_err(io::Error::other)?;
+                if set(handle, metadata.as_mut_ptr(), 1) == 0 {
+                    return Err(io::Error::other("FLAC encoder seektable rejected"));
+                }
+            }
             for (key, value) in [
                 (c"FLAC__stream_encoder_set_channels", 2),
                 (c"FLAC__stream_encoder_set_bits_per_sample", 16),
