@@ -38,7 +38,8 @@ const tiers = computed(() => [
             >SVIP</span
           >
         </div>
-        <p>已登录{{ limits.currentNum ?? '未知' }}台手机/电脑/平板设备</p>
+        <p v-if="limits.currentNum === null || limits.currentNum === undefined">已登录设备数未知</p>
+        <p v-else>已登录{{ limits.currentNum }}台手机/电脑/平板设备</p>
       </div>
     </div>
     <table class="login-device-limit" aria-label="各会员档位设备额度">

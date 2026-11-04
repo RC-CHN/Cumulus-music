@@ -336,7 +336,7 @@
     click(one('[data-testid="account-devices-retry"]'));
     await wait(() => selectedTier() === "ordinary", "ordinary membership after retry");
     assert(membership().textContent.includes("畅听合成账号") && !membership().textContent.includes("设备额度合成账号"), "fresh read replaces membership identity");
-    assert(membership().textContent.includes("已登录未知台手机/电脑/平板设备"), "missing device count");
+    assert(membership().textContent.includes("已登录设备数未知"), "missing device count");
     assert(limits().join(",") === "4台,8台,10台", "ordinary alias and default quota rules");
     await stage("devices_ordinary_dark", { expectNickname });
     await emit("complete", { ok: true, accountDetail: true, stageCount: count, expectNickname });
