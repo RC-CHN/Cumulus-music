@@ -118,13 +118,16 @@ const matchKeyword = computed(() =>
 );
 const lyrics = computed(() => category.value === 'lyrics');
 const songWaterfall = computed(() => category.value === 'songs' && props.pagination === undefined);
-const firstNumberedSongPage: SearchPageStep = { offset: 0, number: 1, previous: undefined };
-const gridWaterfall = computed(() =>
-  ['artists', 'users', 'albums', 'mvs'].includes(category.value),
+const playlistWaterfall = computed(
+  () => category.value === 'playlists' && props.pagination === undefined,
+);
+const firstNumberedPage: SearchPageStep = { offset: 0, number: 1, previous: undefined };
+const gridWaterfall = computed(
+  () => playlistWaterfall.value || ['artists', 'users', 'albums', 'mvs'].includes(category.value),
 );
 const waterfall = computed(() => lyrics.value || gridWaterfall.value || songWaterfall.value);
 const limit = computed(() =>
-  lyrics.value || songWaterfall.value || category.value === 'albums'
+  lyrics.value || songWaterfall.value || playlistWaterfall.value || category.value === 'albums'
     ? 10
     : gridWaterfall.value
       ? 13
@@ -856,9 +859,12 @@ onBeforeUnmount(() => {
             </button>
             <span v-else>没有更多可显示的结果</span>
             <button
-              v-if="songWaterfall && (moreError || count >= SEARCH_PLAYBACK_ROW_LIMIT)"
+              v-if="
+                playlistWaterfall ||
+                (songWaterfall && (moreError || count >= SEARCH_PLAYBACK_ROW_LIMIT))
+              "
               class="text-button"
-              @click="turn(category, firstNumberedSongPage)"
+              @click="turn(category, firstNumberedPage)"
             >
               使用分页查看
             </button>

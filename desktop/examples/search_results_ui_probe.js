@@ -409,11 +409,15 @@
       const card=id=>one(`[data-result-key="playlist:${id}"]`);
       const creator=()=>card(3)?.querySelector('.search-playlist-creator');
       const link='https://music.163.com/#/playlist?id=3';
-      const clipboard=[], mutations=[];
+      const clipboard=[], mutations=[], playlistWaterfallReads=[];
       const fetchIPC=window.fetch;
       window.fetch=function(url,options){
         if(String(url).endsWith('/copy_text'))clipboard.push(JSON.parse(options.body).text);
         if(String(url).endsWith('/mutate_playlist'))mutations.push(JSON.parse(options.body).command);
+        if(String(url).endsWith('/search_results')){
+          const {query}=JSON.parse(options.body);
+          if(query.category==='playlists'&&query.keyword==='合成歌单续页')playlistWaterfallReads.push([query.offset,query.limit]);
+        }
         return fetchIPC.call(window,url,options);
       };
       const menu=()=>one('.action-menu[role="menu"]:not([inert])');
@@ -486,7 +490,33 @@
       click(card(3).querySelector('.search-card-open'));
       await wait(()=>!one('.playlist-creator-page')&&one('.playlist-hero h1')?.textContent.trim()==='合成歌单 3'&&one('.track-row'),'playlist card still opens playlist');
       assert(clipboard.length===2&&clipboard.every(text=>text===link),'no private or unexpected URL reaches the clipboard');
-      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await theme(760,540,'dark');
+      await fixture('short_pages');await fresh('合成歌单续页');await choose('playlists');
+      const panel=()=>one('.search-result-panel'), grid=()=>panel()?.querySelector('.search-result-grid');
+      const scrollBottom=()=>{
+        panel().scrollTop=panel().scrollHeight;
+        panel().dispatchEvent(new Event('scroll'));
+      };
+      assert(grid()?.dataset.loadedCount==='18'&&!one('.search-result-pagination')&&
+        JSON.stringify(playlistWaterfallReads)==='[[0,10]]','playlist starts in continuous ten-item mode');
+      scrollBottom();
+      await wait(()=>grid()?.dataset.loadedCount==='28'&&panel().textContent.includes('有 1 项结果暂无法展示'),
+        'playlist continuation appends valid results without counting the malformed card');
+      assert(JSON.stringify(playlistWaterfallReads)==='[[0,10],[18,10]]',
+        'continuation advances by raw rows even when the service does not return ten');
+      await capture('playlist_waterfall_appended');
+      scrollBottom();
+      await wait(()=>grid()?.dataset.loadedCount==='32'&&panel().textContent.includes('没有更多可显示的结果'),
+        'playlist continuation reaches terminal page');
+      assert(JSON.stringify(playlistWaterfallReads)==='[[0,10],[18,10],[29,10]]'&&
+        all('.search-result-card').length<32&&button('使用分页查看'),
+        'malformed rows do not shift the native offset and virtualization stays bounded');
+      scrollBottom();
+      const footer=one('.search-load-more');
+      assert(footer.getBoundingClientRect().bottom<=panel().getBoundingClientRect().bottom+1,
+        'the terminal status and numbered fallback are reachable');
+      await capture('playlist_waterfall_complete');
+      await emit('complete',{ok:true,searchPlaylistCreatorVerified:true,searchPlaylistLinksVerified:true,searchPlaylistSubscribeVerified:true,searchPlaylistWaterfallVerified:true,playlistWaterfallReads,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchMvProof){
@@ -1095,7 +1125,7 @@
     }
     await fixture('short_pages');await fresh('合成短分页');await choose('playlists');
     const onPage=(number,offset)=>ready()&&one('.search-result-pagination')?.textContent.includes(`第 ${number} 页`)&&one('.search-result-card')?.textContent.includes(`合成分页 ${offset}`);
-    assert(onPage(1,0),'first short page');
+    click(button('使用分页查看'));await wait(()=>onPage(1,0),'first short page in explicit numbered mode');
     click(button('下一页'));await wait(()=>onPage(2,18),'second short page');
     assert(one('.search-result-panel').textContent.includes('有 1 项结果暂无法展示'),'short page keeps valid rows and counts malformed records');
     const numberedPanel=one('#search-result-panel');
@@ -1127,11 +1157,12 @@
     await capture('correction_all');
     await choose('songs');assert(one('.track-row')&&one('.search-correction')?.textContent.includes('合成正词'),'songs use rewritten term and retain original action');
     assert(matches(one('.track-row'))==='合成正词','song category highlights rewritten term');
-    await choose('playlists');click(button('下一页'));await wait(()=>ready()&&one('.search-result-card')&&one('.search-result-pagination')?.textContent.includes('第 2 页'),'corrected term carries to next page');
-    await capture('correction_pagination');
+    await choose('playlists');click(button('加载更多'));await wait(()=>ready()&&
+      one('.search-result-grid')?.dataset.loadedCount==='20','corrected term carries to the next playlist batch');
+    await capture('correction_waterfall');
     click(button('仍然搜索“合成错词”'));await wait(()=>ready()&&one('[data-category="all"]').getAttribute('aria-selected')==='true'&&!one('.search-correction')&&one('.search-result-panel').textContent.includes('按原词搜索结果'),'original term sent with correction disabled');
     await capture('correction_disabled');
-    click(button('返回上一页'));await wait(()=>ready()&&one('[data-category="playlists"]').getAttribute('aria-selected')==='true'&&one('.search-correction')?.textContent.includes('合成正词'),'back restores corrected route');
+    click(button('返回上一页'));await wait(()=>ready()&&one('[data-category="playlists"]').getAttribute('aria-selected')==='true'&&one('.search-correction')?.textContent.includes('合成正词')&&one('.search-result-grid')?.dataset.loadedCount==='20','back restores corrected route and its appended results');
     await fixture('empty');await fresh('合成空结果');await choose('lyrics');await capture('empty');assert(one('.search-result-panel').textContent.includes('没有找到'),'empty copy');
     await fixture('result_error');await fresh('合成失败结果');await choose('albums');await capture('error');
     const retryPanel=one('#search-result-panel');

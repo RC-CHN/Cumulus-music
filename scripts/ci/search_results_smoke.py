@@ -137,15 +137,16 @@ def main():
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['searchPlaylistCreatorVerified']
         assert complete['searchPlaylistLinksVerified'] and complete['searchPlaylistSubscribeVerified']
-        assert complete['stageCount'] == 6
+        assert complete['searchPlaylistWaterfallVerified'] and complete['stageCount'] == 8
+        assert complete['playlistWaterfallReads'] == [[0, 10], [18, 10], [29, 10]]
         calls = complete['searchProfileCalls']
         profile_reads = [{'all': True, 'userId': '501'}, {'uid': '501', 'offset': 0, 'limit': 1000}]
         assert calls in (profile_reads, profile_reads * 2)
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (8 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchPlaylistCreatorVerified=True,
                               searchPlaylistLinksVerified=True, searchPlaylistSubscribeVerified=True,
-                              stageCount=6)))
+                              searchPlaylistWaterfallVerified=True, stageCount=8)))
         return
     if args.mv_play:
         first = root / 'first'
