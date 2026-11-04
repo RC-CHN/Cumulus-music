@@ -423,11 +423,12 @@ fn limiter_inprocess_flac_exact_random_seek_and_generation_eof() {
     let sdk = std::env::var_os("CUMULUS_FLAC_PROBE_LIBRARY")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            assert!(
-                cfg!(target_os = "linux"),
-                "set CUMULUS_FLAC_PROBE_LIBRARY to the trusted libFLAC DLL"
-            );
-            PathBuf::from("/usr/lib/x86_64-linux-gnu/libFLAC.so.14")
+            #[cfg(target_os = "linux")]
+            {
+                PathBuf::from("/usr/lib/x86_64-linux-gnu/libFLAC.so.14")
+            }
+            #[cfg(not(target_os = "linux"))]
+            panic!("set CUMULUS_FLAC_PROBE_LIBRARY to the trusted libFLAC DLL");
         });
     let api = Api::open(&sdk).unwrap();
     let dir = tempfile::tempdir().unwrap();
