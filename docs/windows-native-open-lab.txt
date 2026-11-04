@@ -4,7 +4,9 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
 - 原版 Windows 3.1.42.205594 的 native shell command 采用 --play="%1"；
   M4:14568–14579、M377:24–34、M3085:5915–5926 将暖启动的本地路径转到
   与冷启动相同的 onPlayLocalMusic 分支。恢复链和 DLL 锚点见
-  docs/default-player-contracts.txt。该证据没有证明原版 IPC 传输或安全描述符。
+  docs/default-player-contracts.txt。M4:14983–15003 还把 native
+  ipc.ipcmessagerecived 的消息编号 2 转成 app.playlocalmusic。该证据没有
+  证明原版 IPC 的内核传输或安全描述符。
 - 固定 Tauri CLI 2.12.4 的 installer.nsi:662–665 向 APP_ASSOCIATE 传普通
   "%1"，不会传 --play。FileAssociation.nsh:66–76 写 Software\Classes\.ext
   的未命名默认值；101–106 会在卸载时恢复备份。既不适配 Cumulus 参数，
@@ -83,6 +85,33 @@ Windows 原生文件打开：候选注册证据与暖转交前置实验
   的单资料目录所有权、活跃账号/队列栅栏、原窗口恢复、实际播放和窗口关闭
   取消。安装器和 Windows 产品暖转交目前均保持关闭。
 
+受限令牌 ACL 负向对照（独立运行，仍未接产品）
+- `--restricted-acl` 用和稳定实验相同的本地 protected DACL 与保留句柄。独立
+  子进程继承原测试登录，不继承应用环境。仅在同步线程范围内对自身的主令牌
+  用 CreateRestrictedToken、DISABLE_MAX_PRIVILEGE 和一个 WinRestrictedCodeSid
+  创建受限令牌，再调用 ImpersonateLoggedOnUser。不创建账号、不接受密码，
+  不提升权限、不改系统/注册表。OpenThreadToken 回读限制 SID 列表、用户 SID、
+  登录 SID 及 TokenStatistics.AuthenticationId，要求限制生效且原身份不变。
+- 在受限线程上用正常客户端相同的原始 CreateFileW 权限尝试一次，只有内核
+  ERROR_ACCESS_DENIED (5) 算拒绝；Tokio 注册、忙碌或地址不存在均不能冒充拒绝。
+  Microsoft 规定限制 SID 非空时 DACL 有两次访问检查，常规登录 SID 可通过
+  第一次，只有登录 SID 的原 DACL 没授予 WinRestrictedCodeSid，第二次拒绝。
+- 子进程显式 RevertToSelf 并检查线程不再有令牌。随后同一子进程在同一原
+  DACL/管道上正常连接，双向验证内核 PID 对应的用户和登录，服务端在 READY
+  前确认无客户端帧；控制分支只接收 READY，不发送路径或其它字节。恢复失败
+  立即结束该合成子进程，不继续尝试。报告只保留布尔和固定数字，不输出 SID、
+  LUID、账户名、目录或管道名。
+- 这证明的是同一个 Windows 登录的受限线程触发内核 ACL 拒绝；管道双方的
+  正常身份核验仍读进程主令牌。不能把受限 SID、不同 TokenId 或不同进程
+  当成第二个登录。CreateProcessWithLogonW 的 LOGON_NETCREDENTIALS_ONLY
+  文档明确保留本地令牌，即使另有 LSA 网络凭据会话，不能用它假定
+  TokenLogonSid 已变；实验未调用。真实不同用户/本地登录 SID、提升态组合、
+  正式 app 账户和播放接线仍待另行验证。
+- 手动 Windows x64 命令：cargo run --locked --manifest-path
+  desktop/probes/native-open-windows/Cargo.toml -- --restricted-acl。
+  已通过本地 Rust wire 夹具与 Win64 交叉编译；Windows 原生手动工作流
+  已加独立验证步骤，尚未派发，不能把交叉编译算作内核 ACL 实测。
+
 主要依据（适用于本实验/边界，不是 Windows 实测凭据）：
 https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi
 https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/FileAssociation.nsh
@@ -90,6 +119,9 @@ https://learn.microsoft.com/en-us/windows/win32/shell/how-to-include-an-applicat
 https://learn.microsoft.com/en-us/windows/win32/shell/fa-progids
 https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow
 https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-access-rights
+https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-createrestrictedtoken
+https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-impersonateloggedonuser
+https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createprocesswithlogonw
 https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
 https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions
 https://github.com/tokio-rs/mio/blob/v1.2.3/src/sys/windows/named_pipe.rs

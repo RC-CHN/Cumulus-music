@@ -16,6 +16,8 @@ jobs:
         shell: pwsh
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - name: Verify the isolated Win64 transport
         env:
           CUMULUS_LAB_ENV_CANARY: synthetic-parent-only
@@ -60,11 +62,31 @@ jobs:
           if ($report.productionEnabled -ne $false -or $report.realFilesOpened -ne 0 -or $report.registryWrites -ne 0) {
             throw 'Unexpected production activity'
           }
+      - name: Verify restricted thread is denied by the protected logon ACL
+        env:
+          CUMULUS_LAB_ENV_CANARY: synthetic-parent-only
+        run: |
+          $manifest = 'desktop/probes/native-open-windows/Cargo.toml'
+          $proof = Join-Path $env:RUNNER_TEMP 'cumulus-native-open-windows-restricted.json'
+          cargo run --quiet --locked --manifest-path $manifest -- --restricted-acl | Tee-Object -FilePath $proof
+          if ($LASTEXITCODE -ne 0) { throw 'Restricted-token ACL proof failed' }
+          $report = Get-Content -Raw $proof | ConvertFrom-Json
+          foreach ($key in @('ok','nativeWindowsNamedPipe','actualChildProcess','logonOnlyDaclObserved',
+                            'effectiveThreadTokenRestricted','sameUserAndLogonLuid','kernelAccessDenied',
+                            'samePipeRestoredTokenControl','sameUserAndLogonBothDirections',
+                            'noFrameQueuedBeforeReady')) {
+            if ($report.$key -ne $true) { throw "Missing proof: $key" }
+          }
+          if ($report.distinctLogonVerified -ne $false -or $report.productionEnabled -ne $false -or
+              $report.realFilesOpened -ne 0 -or $report.registryWrites -ne 0 -or $report.clientBytesSent -ne 0) {
+            throw 'Unexpected production activity or overclaimed token boundary'
+          }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-native-open-transport-lab
           path: |
             ${{ runner.temp }}/cumulus-native-open-windows-lab.json
             ${{ runner.temp }}/cumulus-native-open-windows-stable.json
+            ${{ runner.temp }}/cumulus-native-open-windows-restricted.json
           if-no-files-found: error
           retention-days: 7

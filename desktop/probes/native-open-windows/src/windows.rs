@@ -1,4 +1,6 @@
 //! Windows API host for an isolated same-logon, same-directory transport.
+#[path = "restricted_probe.rs"]
+mod restricted_probe;
 #[path = "stable_probe.rs"]
 mod stable_probe;
 
@@ -10,7 +12,10 @@ use std::{
     env,
     ffi::OsStr,
     io,
-    os::windows::{ffi::OsStrExt, io::AsRawHandle},
+    os::windows::{
+        ffi::OsStrExt,
+        io::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle},
+    },
     path::Path,
     process::Stdio,
     ptr,
@@ -267,7 +272,7 @@ fn verify_acl(server: &impl AsRawHandle, identity: &Identity) -> io::Result<()> 
     )
 }
 
-fn open(address: &str) -> io::Result<NamedPipeClient> {
+fn open_handle(address: &str) -> io::Result<OwnedHandle> {
     let address = wide(address);
     // SAFETY: exact lab-owned local name, non-inheritable handle with only
     // individual client rights (no FILE_CREATE_PIPE_INSTANCE) and no
@@ -286,6 +291,12 @@ fn open(address: &str) -> io::Result<NamedPipeClient> {
     if raw == INVALID_HANDLE_VALUE {
         return Err(io::Error::last_os_error());
     }
+    // SAFETY: successful CreateFileW returned an owned pipe handle.
+    Ok(unsafe { OwnedHandle::from_raw_handle(raw) })
+}
+
+fn open(address: &str) -> io::Result<NamedPipeClient> {
+    let raw = open_handle(address)?.into_raw_handle();
     // SAFETY: the fresh overlapped pipe handle transfers ownership to Tokio,
     // including on registration error; this is called inside its I/O runtime.
     unsafe { NamedPipeClient::from_raw_handle(raw) }
@@ -334,6 +345,9 @@ async fn read_group(pipe: &mut NamedPipeServer, limit: Duration) -> io::Result<V
 async fn client(root: &Path, scenario: &OsStr) -> io::Result<u8> {
     let identity = Identity::current()?;
     let address = identity.address(root)?;
+    if scenario == "restricted-acl" {
+        return restricted_probe::child(&identity, &address).await;
+    }
     let mut pipe = match open(&address) {
         Ok(pipe) => pipe,
         Err(error) if error.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) => return Ok(BUSY),
@@ -542,7 +556,7 @@ pub fn run() -> io::Result<()> {
         let scenario = args.next().ok_or_else(|| fail("missing lab scenario"))?;
         demand(
             args.next().is_none()
-                && ["normal", "oversize", "stall"]
+                && ["normal", "oversize", "stall", "restricted-acl"]
                     .iter()
                     .any(|name| scenario == *name),
             "unexpected lab child arguments",
@@ -566,6 +580,10 @@ pub fn run() -> io::Result<()> {
     if kind.as_deref() == Some(OsStr::new("--stable-listener")) {
         demand(args.next().is_none(), "unexpected stable lab arguments")?;
         return runtime.block_on(stable_probe::run());
+    }
+    if kind.as_deref() == Some(OsStr::new("--restricted-acl")) {
+        demand(args.next().is_none(), "unexpected restricted lab arguments")?;
+        return runtime.block_on(restricted_probe::run());
     }
     demand(kind.is_none(), "unexpected lab arguments")?;
     runtime.block_on(run_lab())

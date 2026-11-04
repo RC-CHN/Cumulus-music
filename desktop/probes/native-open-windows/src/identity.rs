@@ -15,7 +15,8 @@ use windows_sys::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, HANDLE, WAIT_TIMEOUT},
     Security::{
         GetTokenInformation, IsValidSid, PSID, TOKEN_GROUPS, TOKEN_INFORMATION_CLASS, TOKEN_QUERY,
-        TOKEN_USER, TokenLogonSid, TokenUser,
+        TOKEN_STATISTICS, TOKEN_USER, TokenLogonSid, TokenRestrictedSids, TokenStatistics,
+        TokenUser,
     },
     Storage::FileSystem::{
         FILE_FLAG_BACKUP_SEMANTICS, FILE_ID_INFO, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
@@ -60,8 +61,12 @@ impl Identity {
         }
         // SAFETY: OpenProcessToken returned unique ownership of the token handle.
         let token = unsafe { OwnedHandle::from_raw_handle(raw) };
-        let user = TokenBuffer::query(token.as_raw_handle(), TokenUser)?;
-        let logon = TokenBuffer::query(token.as_raw_handle(), TokenLogonSid)?;
+        Self::for_token(token.as_raw_handle())
+    }
+
+    pub(super) fn for_token(token: HANDLE) -> io::Result<Self> {
+        let user = TokenBuffer::query(token, TokenUser)?;
+        let logon = TokenBuffer::query(token, TokenLogonSid)?;
         if user.len < size_of::<TOKEN_USER>() || logon.len < size_of::<TOKEN_GROUPS>() {
             return Err(denied());
         }
@@ -171,6 +176,32 @@ impl Identity {
             hash.finalize()
         ))
     }
+}
+
+pub(super) fn authentication_id(token: HANDLE) -> io::Result<(u32, i32)> {
+    let statistics = TokenBuffer::query(token, TokenStatistics)?;
+    if statistics.len < size_of::<TOKEN_STATISTICS>() {
+        return Err(denied());
+    }
+    // SAFETY: TokenStatistics returned the aligned and length-checked header.
+    let value = unsafe { &*statistics.words.as_ptr().cast::<TOKEN_STATISTICS>() };
+    Ok((
+        value.AuthenticationId.LowPart,
+        value.AuthenticationId.HighPart,
+    ))
+}
+
+pub(super) fn only_restricting_sid(token: HANDLE, expected: &[u8]) -> io::Result<bool> {
+    let groups = TokenBuffer::query(token, TokenRestrictedSids)?;
+    if groups.len < size_of::<TOKEN_GROUPS>() {
+        return Err(denied());
+    }
+    // SAFETY: the size check covers the TOKEN_GROUPS header and first element.
+    let value = unsafe { &*groups.words.as_ptr().cast::<TOKEN_GROUPS>() };
+    if value.GroupCount != 1 {
+        return Ok(false);
+    }
+    Ok(groups.sid(value.Groups[0].Sid)? == expected)
 }
 
 pub fn local_path(path: &Path) -> bool {
