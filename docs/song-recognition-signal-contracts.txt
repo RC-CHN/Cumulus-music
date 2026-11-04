@@ -4,7 +4,8 @@
 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
 以下均为 RVA。原生执行范围、离线向量、封包及服务边界见
 docs/song-recognition-contracts.txt。本次只观察合成样本的原生状态，
-没有设备采集、账户、服务请求或生产启用。矩阵文件及探针只在本机 .build。
+没有设备采集、账户、服务请求或生产启用。原生探针只在本机 .build；
+仓库只存无私人信息的合成输入及输出向量。
 
 输入和时频矩阵
 
@@ -72,6 +73,33 @@ f64 ln 再转 f32 在 137,862 个 log 元素中有 102 处不同，中心化后�
   bash .build/song-recognition-math-dump-run.sh --noise --record \
     > .build/song-recognition-extended/math-noise-matrices.log
   unshare -Urn python3 .build/song-recognition-extended/check_centered.py
-随后可先迁移“已中心化矩阵 → 默认候选”的纯 Rust 逻辑，冻结小矩阵
-边界（边缘、相等、跳列、严格阈值、邻域大值），再逐层移植 FFT 和
-C90B60 的 f32 运算。输入下混、实机取流及服务识别结果需单独验证。
+Rust 离线峰值选择与回归
+
+core::song_recognition::CenteredPeakMatrix 只接收行优先、频率为行、
+时间为列的有限 f32，允许 1–999 行、1–738 帧（15 秒采样的帧数上限）。
+它不生成、重心化或验证输入的统计分布。小矩阵用来覆盖筛选算法的边界；
+采样上游的完整 999 行和至少 10 帧是另一个阶段的契约。
+select_default_peaks 返回封包可直接使用的 (bin, frame, f32 位形)；
+没有录音、播放取流、UI、识别请求或账号依赖。
+
+core/tests/fixtures/song-recognition-peaks-official.json 收录 16 个小矩阵。
+初始化 D0A2C0 得到默认选择器，只为控制合成矩阵的行数调整裁剪上界
+与高度；在 D13DE0 的 D140C6 写入合成中心化矩阵，不更改此后任何指令。
+分别在 D140E5 读取 D14570 初筛向量、D142D8 读取 D14910 返回均值，
+最后从 D13DE0 输出读最终向量。两轮各自从空虚拟内存开始，记录一致。
+覆盖相邻对角线、拒绝后继续、接受后跳列、相等峰、正值门槛、严格均值
+和突显度阈值、±5/±10 均值裁剪，以及恰好在抑制半径和刚刚超出的
+更大值。其中一个向量的逐项 f32 和为 3、真实数值和为 2，可区分
+以 f64 或不同顺序累加；另有较大邻点已被初筛淘汰但仍产生抑制的向量。
+
+song-recognition-noise-centered.f32le.gz 是上述完整 999×138 合成噪声的
+原生中心化矩阵，解压后的长度为 551,448 字节。重复执行未改算法的
+原生信号链，两份矩阵及输出相同。测试核对矩阵散列、初筛计数
+4,333 和首批记录，并用独立冻结的 song-recognition-official.json
+比对最终 105 个峰的全部坐标、位形和排序。gzip 只用于存放测试向量。
+本地及 Linux/Windows CI 的识曲核心命令：
+  cargo test --locked -p cumulus-core --lib --features song-recognition-zlib song_recognition
+
+仍需逐层恢复窗口至功率矩阵的 FFT 运算顺序和 C90B60 的 f32 对数，再
+核对设备输入下混、捕获与服务授权边界。完整矩阵回归仅覆盖已中心化
+矩阵之后的峰值选择，不能证明这些上游步骤或真实服务结果。

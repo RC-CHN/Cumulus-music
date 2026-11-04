@@ -1,13 +1,16 @@
-//! The recovered packet packing and sealing stages for PC song recognition.
+//! Recovered offline stages for PC song recognition.
 //!
-//! This is an offline codec. It does not record audio, extract acoustic features,
-//! or send a recognition request. Stock zlib is an explicit optional feature.
+//! Accepts already-centered matrices and supports peak selection, packet packing,
+//! and sealing. It does not record audio, compute the signal matrix, or send
+//! a recognition request. Stock zlib is an explicit optional feature.
 
 mod packing;
+mod selection;
 #[cfg(feature = "song-recognition-zlib")]
 mod stock_zlib;
 
 pub use packing::{PeakRecord, pack_default_packet};
+pub use selection::{CenteredPeakMatrix, select_default_peaks};
 #[cfg(feature = "song-recognition-zlib")]
 pub use stock_zlib::compress_packed_packet;
 

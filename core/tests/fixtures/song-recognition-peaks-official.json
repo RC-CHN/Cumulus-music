@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "sourceClientVersion": "3.1.42.205594",
+  "sourceDllSha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+  "oraclePlatform": "Linux x86_64, Unicorn 2.1.4; synthetic inputs, network namespace, no native imports",
+  "matrixEncoding": "frequency-major, each frequency row is contiguous time frames, little-endian IEEE-754 f32",
+  "recordLayout": "preliminary and mean: row, frame, u32 value bits; final: bin, frame, u32 value bits",
+  "smallOracle": "Original D13DE0 with default constructed context, only crop height changed to the fixture height; substitute synthetic centered bytes at D140C6, record D140E5 vector and D142D8 mean return, then read the final vector. Both runs byte-identical.",
+  "smallOracleSha256": "1f9ca576ce52b280ac1f352c6dc65e6402ced5e768a52eb36a83f7162ddf2bcc",
+  "smallRunnerSha256": "e073abe9edb93c380475cd78cfc8310d72b6a854a5f9d44e47e6da01ad11dc4d",
+  "fullOracle": "Unmodified native matrix from the frozen 24,000-sample noise recipe. Both centered matrices and final records are byte-identical.",
+  "fullOracleSha256": "7034054fc295b26f4ca2afe3cb0df8a92769de01b178303b95ed76789d5f6cf6",
+  "fullRunnerSha256": "4ecaba1de9dcce41379f1365c7ecbf22895ed14c8d5ae6fa75de58a77be7623a",
+  "fullMatrix": {
+    "originalCase": "noise",
+    "inputSha256": "c08f4666c5e7309cea7b66ad7a643291285d5fd6b865016afa347830eb009ea5",
+    "rows": 999,
+    "columns": 138,
+    "matrixSha256": "d3e75088290d3870f0a903e3d7210441afa7fbafb62836661e9a1ba05459690f",
+    "nativePreliminaryCount": 4333,
+    "nativeFirstPreliminary": [
+      [
+        0,
+        14,
+        1028343904
+      ],
+      [
+        0,
+        34,
+        1060811644
+      ],
+      [
+        0,
+        43,
+        1056813496
+      ],
+      [
+        0,
+        61,
+        1057706712
+      ],
+      [
+        0,
+        91,
+        1061622260
+      ],
+      [
+        0,
+        137,
+        1057072932
+      ],
+      [
+        1,
+        4,
+        1038015200
+      ],
+      [
+        1,
+        10,
+        1023686976
+      ]
+    ],
+    "nativeFinalCount": 105
+  },
+  "smallCases": [
+    {
+      "name": "one-cell-equal-mean",
+      "rows": 1,
+      "columns": 1,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1073741824]],
+      "matrixSha256": "d88c86f15bbea365d658ad95a81d45367c465f7af6f7264fb077f01747ddc77d",
+      "nativePreliminary": [[0, 0, 1073741824]],
+      "nativePositiveMeans": [[0, 0, 1073741824]],
+      "nativeFinal": []
+    },
+    {
+      "name": "one-cell-greater-mean",
+      "rows": 1,
+      "columns": 1,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1073741825]],
+      "matrixSha256": "ddfc1ad0b8cc1ba710426b71f4fd25054fcd9ddd5b4005c72d88a4d9605261fb",
+      "nativePreliminary": [[0, 0, 1073741825]],
+      "nativePositiveMeans": [[0, 0, 1073741825]],
+      "nativeFinal": [[25, 0, 1073741825]]
+    },
+    {
+      "name": "time-crop-equal-prominence",
+      "rows": 1,
+      "columns": 8,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1065353216], [0, 1, 3212836864]],
+      "matrixSha256": "a47bcf75a4fae11f249be4f4f477ac7b93826822919d2311f05a501b9e315b71",
+      "nativePreliminary": [[0, 0, 1065353216], [0, 2, 0], [0, 4, 0], [0, 6, 0]],
+      "nativePositiveMeans": [[0, 0, 0]],
+      "nativeFinal": []
+    },
+    {
+      "name": "time-crop-greater-prominence",
+      "rows": 1,
+      "columns": 8,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1065353217], [0, 1, 3212836865]],
+      "matrixSha256": "b99cc0dce1515950f84ce328cf6d46bd54f778d24104cdb527c983d3c3724cee",
+      "nativePreliminary": [[0, 0, 1065353217], [0, 2, 0], [0, 4, 0], [0, 6, 0]],
+      "nativePositiveMeans": [[0, 0, 0]],
+      "nativeFinal": [[25, 0, 1065353217]]
+    },
+    {
+      "name": "signed-zero-and-negatives",
+      "rows": 2,
+      "columns": 3,
+      "defaultBits": 0,
+      "cells": [[0, 0, 2147483648], [0, 1, 3204448256], [0, 2, 3204448256], [1, 0, 3204448256], [1, 1, 3204448256]],
+      "matrixSha256": "ed56957b04ceb90b9097f4b29cd1f81367f17028e00d3bf14991b667d64373c8",
+      "nativePreliminary": [[0, 0, 2147483648], [1, 2, 0]],
+      "nativePositiveMeans": [],
+      "nativeFinal": []
+    },
+    {
+      "name": "ties-skip-and-order",
+      "rows": 3,
+      "columns": 6,
+      "defaultBits": 1082130432,
+      "cells": [],
+      "matrixSha256": "12abc06816643f133bc93dd19acc95e04820600c80a470c01f20500725098e9b",
+      "nativePreliminary": [[0, 0, 1082130432], [0, 2, 1082130432], [0, 4, 1082130432], [1, 0, 1082130432], [1, 2, 1082130432], [1, 4, 1082130432], [2, 0, 1082130432], [2, 2, 1082130432], [2, 4, 1082130432]],
+      "nativePositiveMeans": [[0, 0, 1082130432], [0, 2, 1082130432], [0, 4, 1082130432], [1, 0, 1082130432], [1, 2, 1082130432], [1, 4, 1082130432], [2, 0, 1082130432], [2, 2, 1082130432], [2, 4, 1082130432]],
+      "nativeFinal": [[25, 0, 1082130432], [26, 0, 1082130432], [27, 0, 1082130432], [25, 2, 1082130432], [26, 2, 1082130432], [27, 2, 1082130432], [25, 4, 1082130432], [26, 4, 1082130432], [27, 4, 1082130432]]
+    },
+    {
+      "name": "one-column-frequency-crop",
+      "rows": 6,
+      "columns": 1,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1082130432], [1, 0, 3229614080], [4, 0, 1082130432]],
+      "matrixSha256": "07c0e4c5d71db9b3531004ef8cfbcac92ec3486519d08934db8bd715e9eae16c",
+      "nativePreliminary": [[0, 0, 1082130432], [2, 0, 0], [4, 0, 1082130432]],
+      "nativePositiveMeans": [[0, 0, 1059760811], [4, 0, 1059760811]],
+      "nativeFinal": [[25, 0, 1082130432], [29, 0, 1082130432]]
+    },
+    {
+      "name": "reject-then-consider-next-column",
+      "rows": 1,
+      "columns": 5,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1073741824], [0, 1, 1077936128], [0, 2, 1077936128], [0, 3, 1077936128], [0, 4, 1077936128]],
+      "matrixSha256": "359f2bffbbdfd0dee288dce85ad8dec501be5d4ab41887fb5512a29403996f16",
+      "nativePreliminary": [[0, 1, 1077936128], [0, 3, 1077936128]],
+      "nativePositiveMeans": [[0, 1, 1077097267], [0, 3, 1077097267]],
+      "nativeFinal": [[25, 1, 1077936128], [25, 3, 1077936128]]
+    },
+    {
+      "name": "suppression-uses-rejected-point-inclusive-time",
+      "rows": 1,
+      "columns": 18,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1073741824], [0, 8, 1077936128], [0, 9, 1082130432]],
+      "matrixSha256": "3b9e8c181b231a29b82e40a54406517547219feb4e06c152af3f9acb7980256b",
+      "nativePreliminary": [[0, 0, 1073741824], [0, 2, 0], [0, 4, 0], [0, 6, 0], [0, 9, 1082130432], [0, 11, 0], [0, 13, 0], [0, 15, 0], [0, 17, 0]],
+      "nativePositiveMeans": [[0, 0, 1051372203], [0, 9, 1059252410]],
+      "nativeFinal": [[25, 9, 1082130432]]
+    },
+    {
+      "name": "greater-point-outside-time",
+      "rows": 1,
+      "columns": 18,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1073741824], [0, 9, 1082130432]],
+      "matrixSha256": "8508695469ed1b6ba3352e2fb928ff8005c423a778806d8fb56414a920292e9b",
+      "nativePreliminary": [[0, 0, 1073741824], [0, 2, 0], [0, 4, 0], [0, 6, 0], [0, 9, 1082130432], [0, 11, 0], [0, 13, 0], [0, 15, 0], [0, 17, 0]],
+      "nativePositiveMeans": [[0, 0, 1051372203], [0, 9, 1052389004]],
+      "nativeFinal": [[25, 0, 1073741824], [25, 9, 1082130432]]
+    },
+    {
+      "name": "suppression-inclusive-frequency",
+      "rows": 32,
+      "columns": 1,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1073741824], [30, 0, 1077936128], [31, 0, 1082130432]],
+      "matrixSha256": "1d62f73f0b437d37a59dcb7b3caf41700c4bd38e7d6ca8fbe248c162e4164fb1",
+      "nativePreliminary": [[0, 0, 1073741824], [2, 0, 0], [3, 0, 0], [4, 0, 0], [5, 0, 0], [6, 0, 0], [7, 0, 0], [8, 0, 0], [9, 0, 0], [10, 0, 0], [11, 0, 0], [12, 0, 0], [13, 0, 0], [14, 0, 0], [15, 0, 0], [16, 0, 0], [17, 0, 0], [18, 0, 0], [19, 0, 0], [20, 0, 0], [21, 0, 0], [22, 0, 0], [23, 0, 0], [24, 0, 0], [25, 0, 0], [26, 0, 0], [27, 0, 0], [28, 0, 0], [31, 0, 1082130432]],
+      "nativePositiveMeans": [[0, 0, 1044000396], [31, 0, 1059252410]],
+      "nativeFinal": [[56, 0, 1082130432]]
+    },
+    {
+      "name": "greater-point-outside-frequency",
+      "rows": 32,
+      "columns": 1,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1073741824], [31, 0, 1082130432]],
+      "matrixSha256": "92534c28f73cb394764c93cd31939c1a72b73535d516fdc476929877a650d7a9",
+      "nativePreliminary": [[0, 0, 1073741824], [2, 0, 0], [3, 0, 0], [4, 0, 0], [5, 0, 0], [6, 0, 0], [7, 0, 0], [8, 0, 0], [9, 0, 0], [10, 0, 0], [11, 0, 0], [12, 0, 0], [13, 0, 0], [14, 0, 0], [15, 0, 0], [16, 0, 0], [17, 0, 0], [18, 0, 0], [19, 0, 0], [20, 0, 0], [21, 0, 0], [22, 0, 0], [23, 0, 0], [24, 0, 0], [25, 0, 0], [26, 0, 0], [27, 0, 0], [28, 0, 0], [29, 0, 0], [31, 0, 1082130432]],
+      "nativePositiveMeans": [[0, 0, 1044000396], [31, 0, 1052389004]],
+      "nativeFinal": [[25, 0, 1073741824], [56, 0, 1082130432]]
+    },
+    {
+      "name": "time-mean-includes-radius-five-only",
+      "rows": 1,
+      "columns": 8,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1065353216], [0, 5, 3212836864], [0, 6, 1056964608]],
+      "matrixSha256": "9b53a07d3a879d9869218b9a3411c1099c4f36ade2e09d23108d21e634151a6e",
+      "nativePreliminary": [[0, 0, 1065353216], [0, 2, 0], [0, 4, 0], [0, 6, 1056964608]],
+      "nativePositiveMeans": [[0, 0, 0], [0, 6, 3180480805]],
+      "nativeFinal": []
+    },
+    {
+      "name": "frequency-mean-includes-radius-ten-only",
+      "rows": 13,
+      "columns": 1,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1065353216], [10, 0, 3212836864], [11, 0, 1056964608]],
+      "matrixSha256": "779a712ff05a75c8125959c0e86ac1b52bae136ea154a9273d0f3fd68574aff2",
+      "nativePreliminary": [[0, 0, 1065353216], [2, 0, 0], [3, 0, 0], [4, 0, 0], [5, 0, 0], [6, 0, 0], [7, 0, 0], [8, 0, 0], [9, 0, 0], [11, 0, 1056964608]],
+      "nativePositiveMeans": [[0, 0, 0], [11, 0, 3173690027]],
+      "nativeFinal": []
+    },
+    {
+      "name": "diagonal-neighbor-counts",
+      "rows": 2,
+      "columns": 3,
+      "defaultBits": 0,
+      "cells": [[0, 0, 1077936128], [1, 1, 1082130432]],
+      "matrixSha256": "fde6930ba20c856eedfa43154982f6bb345e34e9144b2d27d603230f8264c986",
+      "nativePreliminary": [[1, 1, 1082130432]],
+      "nativePositiveMeans": [[1, 1, 1066751317]],
+      "nativeFinal": [[26, 1, 1082130432]]
+    },
+    {
+      "name": "clipped-window-row-major-f32-sum",
+      "rows": 2,
+      "columns": 3,
+      "defaultBits": 0,
+      "cells": [[0, 0, 3414163456], [0, 1, 3212836864], [0, 2, 1266679808], [1, 0, 1065353216], [1, 1, 1065353216], [1, 2, 1065353216]],
+      "matrixSha256": "96050ca9de3d415c59e9f2ec602352b4d3e267a3164ec1af8a448d8212f8402a",
+      "nativePreliminary": [[0, 2, 1266679808], [1, 0, 1065353216]],
+      "nativePositiveMeans": [[0, 2, 1056964608], [1, 0, 1056964608]],
+      "nativeFinal": [[25, 2, 1266679808]]
+    }
+  ]
+}
