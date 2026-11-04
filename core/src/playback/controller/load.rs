@@ -13,6 +13,15 @@ use crate::{
 use std::sync::Arc;
 
 #[derive(Default)]
+pub(super) enum LoadSource {
+    #[default]
+    CurrentPreference,
+    Retained(Arc<ResolvedSource>),
+    RenewIfExpired(Arc<ResolvedSource>),
+    FreshOnline,
+}
+
+#[derive(Default)]
 pub(super) struct LoadOptions {
     pub paused: bool,
     pub position: Option<f64>,
@@ -20,8 +29,7 @@ pub(super) struct LoadOptions {
     pub retain_source_retry: bool,
     pub relative: bool,
     pub restart_at_end: bool,
-    pub source: Option<Arc<ResolvedSource>>,
-    pub refresh_expired_source: bool,
+    pub source: LoadSource,
 }
 pub(super) struct Prepared {
     pub item: QueueEntry,
@@ -48,6 +56,16 @@ fn loading_timeline(source: &ResolvedSource, item: &QueueEntry, timeline: Timeli
 }
 
 impl Actor {
+    pub(super) fn ordinary_online_song(&self, item: &QueueEntry) -> bool {
+        !self.queue.is_fm()
+            && self.queue.intelligence_context().is_none()
+            && item.source["kind"] != "listen_together"
+            && item.resource["cloud_song_id"].is_null()
+            && item.resource["download_task_id"].is_null()
+            && super::quality::song_resource(&item.resource)
+            && item.resource["playback_constraint"].is_null()
+    }
+
     pub async fn begin(
         &mut self,
         options: LoadOptions,
@@ -76,9 +94,9 @@ impl Actor {
             .queue
             .selected()
             .ok_or(Error::State("queue is empty"))?;
-        // Recovery with an already authorized source must retain that source's
-        // request. Ordinary loads resolve the latest account listening choice.
-        if options.source.is_none() {
+        // Recovery keeps the request for the interrupted source. Only ordinary
+        // new loads resolve the latest account listening choice.
+        if matches!(&options.source, LoadSource::CurrentPreference) {
             self.apply_quality_preference(&mut item.resource);
             if self.queue.selected().as_ref() != Some(&item) {
                 self.queue
@@ -158,17 +176,23 @@ impl Actor {
                 .await?;
                 cancel.check()?;
                 let source = match options.source {
-                    Some(source)
-                        if options.refresh_expired_source
-                            && source.needs_renewal_for_reopen(resolver.now()) =>
+                    LoadSource::RenewIfExpired(source)
+                        if source.needs_renewal_for_reopen(resolver.now()) =>
                     {
                         // The retained entry supplies the original requested
                         // quality/identity. Its cache may already have been
                         // renewed by a single-track loop's prefetch.
                         resolver.resolve(&item.resource, &token).await?
                     }
-                    Some(source) => source,
-                    None => resolver.resolve(&item.resource, &token).await?,
+                    LoadSource::RenewIfExpired(source) | LoadSource::Retained(source) => source,
+                    LoadSource::CurrentPreference => {
+                        resolver.resolve(&item.resource, &token).await?
+                    }
+                    LoadSource::FreshOnline => {
+                        resolver
+                            .resolve_fresh_online(&item.resource, &token)
+                            .await?
+                    }
                 };
                 cancel.check()?;
                 let timeline = crate::playback::PlaybackConstraint::apply(

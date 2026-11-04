@@ -231,6 +231,75 @@ async fn retry_after_paused_stream_failure_keeps_position_and_transport() {
 }
 
 #[tokio::test]
+async fn play_resumes_a_failed_song_with_fresh_authorization_but_stopped_play_starts_over() {
+    for (system, was_paused, error) in [(false, true, -13), (true, false, -14)] {
+        let play = || {
+            if system {
+                Cmd::PlayFromStart
+            } else {
+                Cmd::Play
+            }
+        };
+        let f = Fixture::new();
+        f.command(Cmd::Replace {
+            resources: vec![
+                json!({"id":1,"dt":120000,"level":"lossless"}),
+                json!({"id":2}),
+            ],
+            index: 0,
+            source: json!({"kind":"songs"}),
+        })
+        .await
+        .unwrap();
+        f.command(Cmd::Seek(37.0)).await.unwrap();
+        f.command(Cmd::Pause(was_paused)).await.unwrap();
+        let queue = f.player.queue(&f.token()).await.unwrap();
+        {
+            let mut native = f.device.state.lock().unwrap();
+            let entry_id = native.view.entry_id.take().unwrap();
+            native.view.position = None;
+            native.view.events.push(EngineEvent::Ended {
+                entry_id,
+                reason: EndReason::Error,
+                error,
+            });
+        }
+        let failed = until(&f.player, |s| s.state == Status::Error).await;
+        assert_eq!(failed.position, Some(37.0));
+        // The old authorization is still within its TTL; do not reopen it
+        // after it already failed, or acquire a new one without user intent.
+        assert_eq!(f.api.count(1), 1);
+        assert_eq!(f.device.state.lock().unwrap().loads, 1);
+        f.api.url_version.store(1, Ordering::SeqCst);
+        f.device.required_url_version.store(1, Ordering::SeqCst);
+
+        let resumed = f.command(play()).await.unwrap();
+        assert_eq!(resumed.state, Status::Playing);
+        assert_eq!(resumed.position, Some(37.0));
+        assert_eq!(f.player.queue(&f.token()).await.unwrap(), queue);
+        assert_ne!(resumed.play_id, failed.play_id);
+        {
+            let calls = f.api.calls.lock().unwrap();
+            let authorization: Vec<_> = calls.iter().filter(|(id, _)| *id == 1).collect();
+            assert_eq!(authorization.len(), 2);
+            assert!(authorization.iter().all(|(_, level)| level == "lossless"));
+        }
+        {
+            let device = f.device.state.lock().unwrap();
+            assert_eq!(device.loads, 2);
+            assert_eq!(device.view.position, Some(37.0));
+            assert!(!device.view.paused);
+        }
+
+        f.command(Cmd::Stop).await.unwrap();
+        let restarted = f.command(play()).await.unwrap();
+        assert_eq!(restarted.state, Status::Playing);
+        assert_eq!(restarted.position, Some(0.0));
+        assert_eq!(f.api.count(1), 2);
+    }
+}
+
+#[tokio::test]
 async fn late_quality_authorization_cannot_restart_a_terminal_entry() {
     for reason in [EndReason::Error, EndReason::Eof] {
         let f = Fixture::new();

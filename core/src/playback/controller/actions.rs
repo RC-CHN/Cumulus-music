@@ -1,5 +1,12 @@
-use super::{PlaybackCommand, PlaybackStatus, Reply, Request, load::LoadOptions, state::Actor};
-use crate::{Error, Result, playback::Step};
+use super::{
+    PlaybackCommand, PlaybackStatus, Reply, Request,
+    load::{LoadOptions, LoadSource},
+    state::Actor,
+};
+use crate::{
+    Error, Result,
+    playback::{Step, failure::PlaybackFailure},
+};
 
 impl Actor {
     pub async fn request(&mut self, request: Request) {
@@ -265,27 +272,23 @@ impl Actor {
                     self.queue.set_mode(mode)
                 }
             }
-            PlaybackCommand::PlayFromStart => {
+            PlaybackCommand::Play | PlaybackCommand::PlayFromStart => {
                 if self.state == PlaybackStatus::Paused || self.pending.is_some() {
                     self.pause(false).await
                 } else if self.state.active() {
                     Ok(())
                 } else {
-                    options = Some(LoadOptions {
-                        position: Some(0.0),
-                        relative: true,
-                        ..Default::default()
-                    });
-                    Ok(())
-                }
-            }
-            PlaybackCommand::Play => {
-                if self.state == PlaybackStatus::Paused || self.pending.is_some() {
-                    self.pause(false).await
-                } else if self.state.active() {
-                    Ok(())
-                } else {
-                    options = Some(LoadOptions::default());
+                    options = Some(self.resume_failed_song().unwrap_or_else(|| {
+                        if matches!(request.command, PlaybackCommand::PlayFromStart) {
+                            LoadOptions {
+                                position: Some(0.0),
+                                relative: true,
+                                ..Default::default()
+                            }
+                        } else {
+                            LoadOptions::default()
+                        }
+                    }));
                     Ok(())
                 }
             }
@@ -389,10 +392,7 @@ impl Actor {
                 if self.state != PlaybackStatus::Error
                     || self.queue.is_fm()
                     || self.queue.intelligence_context().is_some()
-                    || !matches!(
-                        self.error,
-                        Some(crate::playback::failure::PlaybackFailure::DownloadedFileMissing)
-                    )
+                    || !matches!(self.error, Some(PlaybackFailure::DownloadedFileMissing))
                     || self.quality_preferences.preferences.revision != preference_revision
                 {
                     Err(Error::StaleResponse)
@@ -408,7 +408,7 @@ impl Actor {
                             options = Some(LoadOptions {
                                 position: Some(0.0),
                                 relative: true,
-                                source: Some(source),
+                                source: LoadSource::Retained(source),
                                 ..Default::default()
                             });
                         })
@@ -435,6 +435,37 @@ impl Actor {
             let result = self.sync_queue_after_edit(resume_after_removal).await;
             self.reply(request.reply, result);
         }
+    }
+    fn resume_failed_song(&self) -> Option<LoadOptions> {
+        if self.state != PlaybackStatus::Error
+            || !matches!(
+                self.error,
+                Some(
+                    PlaybackFailure::Engine
+                        | PlaybackFailure::OpenMedia
+                        | PlaybackFailure::Output
+                        | PlaybackFailure::Network
+                        | PlaybackFailure::SourceServiceTemporary
+                )
+            )
+        {
+            return None;
+        }
+        let retry = self.source_retry.as_ref()?;
+        if self.queue.selected().as_ref() != Some(&retry.item)
+            || !self.ordinary_online_song(&retry.item)
+        {
+            return None;
+        }
+        // Play is explicit consent to resume, even if the failed load was
+        // paused. Retry keeps the previous pause intent instead.
+        Some(LoadOptions {
+            position: Some(retry.position),
+            recover: true,
+            retain_source_retry: true,
+            source: LoadSource::FreshOnline,
+            ..Default::default()
+        })
     }
     fn require_loaded(&self) -> Result<()> {
         if self.state.active() && self.loaded.is_some() {

@@ -1,4 +1,8 @@
-use super::{Message, PlaybackStatus, Response, load::LoadOptions, state::Actor};
+use super::{
+    Message, PlaybackStatus, Response,
+    load::{LoadOptions, LoadSource},
+    state::Actor,
+};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -227,7 +231,7 @@ impl Actor {
             position: self.position,
             retain_source_retry: self.position.is_some(),
             recover: true,
-            source: Some(source),
+            source: LoadSource::Retained(source),
             ..Default::default()
         };
         // The resource was authorized before interrupting the old track.

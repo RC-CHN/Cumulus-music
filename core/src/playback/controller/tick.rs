@@ -1,6 +1,6 @@
 use super::{
     Message, PlaybackStatus, PrefetchSnapshot,
-    load::LoadOptions,
+    load::{LoadOptions, LoadSource},
     state::{Actor, SourceRetryPoint},
 };
 use crate::{
@@ -189,13 +189,11 @@ impl Actor {
                 position,
                 recover: true,
                 retain_source_retry: position.is_some(),
-                source: Some(loaded.source.clone()),
-                refresh_expired_source: !self.queue.is_fm()
-                    && self.queue.intelligence_context().is_none()
-                    && loaded.item.source["kind"] != "listen_together"
-                    && loaded.item.resource["cloud_song_id"].is_null()
-                    && super::quality::song_resource(&loaded.item.resource)
-                    && loaded.item.resource["playback_constraint"].is_null(),
+                source: if self.ordinary_online_song(&loaded.item) {
+                    LoadSource::RenewIfExpired(loaded.source.clone())
+                } else {
+                    LoadSource::Retained(loaded.source.clone())
+                },
                 ..Default::default()
             };
             return self.begin(options, uuid::Uuid::new_v4().simple().to_string(), None).await;
