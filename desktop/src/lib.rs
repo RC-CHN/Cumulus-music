@@ -437,6 +437,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::commit_prepared_selection,
                 player::player_queue,
                 player::queue_more_tip,
+                player::power::playback_power,
+                player::power::set_playback_power,
                 player::player_snapshot,
                 player::intelligence::player_intelligence,
                 player::intelligence::player_intelligence_cancel,
@@ -586,6 +588,18 @@ pub fn run() {
             let resources = app.path().resource_dir()?;
             app.manage(effect_activation::Host::new(&resources));
             let client = configure_native_audio(client, &resources, false);
+            #[cfg(windows)]
+            let client = match playback_keep_awake::DesktopPlaybackPower::start_windows() {
+                Ok(host) => {
+                    let host = std::sync::Arc::new(host);
+                    app.manage(host.clone());
+                    client.with_playback_power_sink(host)
+                }
+                Err(_) => {
+                    eprintln!("Cumulus playback power settings are unavailable.");
+                    client
+                }
+            };
             tauri::async_runtime::block_on(client.start_local_library())?;
             app.manage(client);
             start_message_count_polling(app.handle())?;
@@ -604,8 +618,18 @@ pub fn run() {
             }
             Ok(())
         })
-        .run(context)
-        .expect("could not start Cumulus");
+        .build(context)
+        .expect("could not start Cumulus")
+        .run(|_app, _event| {
+            #[cfg(windows)]
+            if matches!(_event, tauri::RunEvent::Exit)
+                && let Some(host) =
+                    _app.try_state::<std::sync::Arc<playback_keep_awake::DesktopPlaybackPower>>()
+                && host.stop().is_err()
+            {
+                eprintln!("Cumulus could not release playback power state cleanly.");
+            }
+        });
 }
 
 /// SDK paths are native launch/package configuration, never accepted over IPC.

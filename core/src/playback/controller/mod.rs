@@ -8,6 +8,7 @@ mod intelligence;
 mod load;
 mod loudness;
 mod parametric;
+mod power;
 pub(crate) use parametric::DeviceRestoreAuthority;
 pub use parametric::{
     DeviceParametricComparison, DeviceParametricStatus, DeviceParametricTarget,
@@ -76,6 +77,7 @@ enum Message {
     QueueMoreGroups(queue_more::GroupsReady),
     QueueMoreRows(queue_more::RowsReady),
     QueueMoreTip(queue_more_tip::Request),
+    PowerPreferenceChanged,
 }
 
 pub struct PlaybackController {
@@ -109,7 +111,7 @@ impl PlaybackController {
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
     ) -> Result<Self> {
-        Self::start_inner(session, store, resolver, engine, false, false)
+        Self::start_inner(session, store, resolver, engine, false, false, None)
     }
     /// Production native observer + durable network worker. The ordinary start
     /// constructor remains isolated for embedders and read-only test adapters.
@@ -119,7 +121,7 @@ impl PlaybackController {
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
     ) -> Result<Self> {
-        Self::start_inner(session, store, resolver, engine, true, false)
+        Self::start_inner(session, store, resolver, engine, true, false, None)
     }
     pub(crate) fn start_inner(
         session: Arc<AccountSession>,
@@ -128,6 +130,7 @@ impl PlaybackController {
         engine: Box<dyn AudioEngine>,
         relay_enabled: bool,
         queue_more_enabled: bool,
+        power: Option<Arc<super::keep_awake::PowerControl>>,
     ) -> Result<Self> {
         tokio::runtime::Handle::try_current()
             .map_err(|_| Error::State("playback requires an async runtime"))?;
@@ -142,6 +145,7 @@ impl PlaybackController {
             shutdown.clone(),
         )?;
         actor.queue_more.supported = queue_more_enabled;
+        actor.power = power.map(super::keep_awake::PowerEffect::new);
         let relay = if relay_enabled {
             let runtime = crate::relay::publisher::player::Runtime::start(session.clone())?;
             actor.relay = Some(crate::relay::publisher::player::Observer::new(
@@ -167,6 +171,9 @@ impl PlaybackController {
     }
     pub fn relay_runtime(&self) -> Option<&Arc<crate::relay::publisher::player::Runtime>> {
         self.relay.as_ref()
+    }
+    pub(crate) fn power_preference_changed(&self) {
+        let _ = self.sender.send(Message::PowerPreferenceChanged);
     }
     pub fn snapshot(&self) -> PlaybackSnapshot {
         self.view.borrow().clone()

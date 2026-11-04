@@ -532,6 +532,7 @@ impl Actor {
             if let Some(retry) = &mut self.source_retry {
                 retry.paused = paused;
             }
+            self.power_pending();
             return Ok(());
         }
         self.require_loaded()?;

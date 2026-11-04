@@ -76,6 +76,7 @@ pub(super) struct Actor {
     pub queue: PlaybackQueue,
     pub queue_more: super::queue_more::Coordinator,
     pub queue_more_tip: super::queue_more_tip::Cue,
+    pub power: Option<crate::playback::keep_awake::PowerEffect>,
     pub prefs: Preferences,
     pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub state: PlaybackStatus,
@@ -154,6 +155,7 @@ impl Actor {
             token,
             queue_more: Default::default(),
             queue_more_tip: Default::default(),
+            power: None,
             bound: true,
             revision: 0,
             control_revision: 0,
@@ -347,6 +349,7 @@ impl Actor {
         Ok(())
     }
     pub async fn stop(&mut self, save: bool) -> Result<()> {
+        self.power_set(crate::playback::keep_awake::OfficialPlayingState::Stop);
         let saved = if save { self.save_position() } else { Ok(()) };
         self.cancel_load().await?;
         // An explicit stop must still work after a session expires.
@@ -423,6 +426,7 @@ impl Actor {
         publisher: watch::Sender<PlaybackSnapshot>,
     ) {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+        self.power_after_event();
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         while let Some(revision) = self.revision.checked_add(1) {
             self.revision = revision;
@@ -448,6 +452,7 @@ impl Actor {
                             pending.timeline = Some(timeline);
                             pending.authorized_position = Some(authorized_position);
                             self.state = PlaybackStatus::Loading;
+                            self.power_pending();
                         }
                     },
                     Some(Message::Loaded { generation, result }) => self.loaded(generation,result).await,
@@ -456,6 +461,7 @@ impl Actor {
                     Some(Message::QueueMoreGroups(value)) => self.queue_more_groups(value),
                     Some(Message::QueueMoreRows(value)) => self.queue_more_rows(value).await,
                     Some(Message::QueueMoreTip(request)) => self.queue_more_tip_request(request).await,
+                    Some(Message::PowerPreferenceChanged) => {},
                     Some(Message::Shutdown) | None => break,
                 },
                 _ = interval.tick() => {
@@ -464,6 +470,7 @@ impl Actor {
                     }
                 },
             }
+            self.power_after_event();
             self.observe_queue_more();
             if self.bound
                 && let Some(relay) = &mut self.relay

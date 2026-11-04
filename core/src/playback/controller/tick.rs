@@ -300,7 +300,12 @@ impl Actor {
             }
             self.save_position()?;
         }
-        if ended && !self.queue.is_fm() && self.queue.advance(Step::Next, true)?.is_some() {
+        let advance =
+            ended && !self.queue.is_fm() && self.queue.advance(Step::Next, true)?.is_some();
+        if ended && (!advance || self.queue.mode() != crate::playback::PlaybackMode::Sequential) {
+            self.power_set(crate::playback::keep_awake::OfficialPlayingState::End);
+        }
+        if advance {
             self.begin(
                 LoadOptions {
                     // EOF may have been drained by an explicit pause.

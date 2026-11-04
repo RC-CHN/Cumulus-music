@@ -169,6 +169,7 @@ impl Actor {
             authorized_position: None,
             seek: None,
         });
+        self.power_pending();
         let resolver = self.resolver.clone();
         let token = self.token.clone();
         let engine = self.engine.clone();

@@ -1,4 +1,5 @@
 pub mod intelligence;
+pub mod power;
 pub mod quality;
 pub mod reports;
 use cumulus_core::{

@@ -1,6 +1,9 @@
-//! An explicit desktop host for the recovered playback power requests.
-//! No startup hook, IPC command, or setting constructs this worker.
+//! Dedicated Windows thread for the recovered playback power requests.
 #![cfg(any(test, windows))]
+
+mod delivery;
+#[cfg(windows)]
+pub use delivery::DesktopPlaybackPower;
 
 use cumulus_core::playback::keep_awake::PlaybackPowerRequest;
 use std::{

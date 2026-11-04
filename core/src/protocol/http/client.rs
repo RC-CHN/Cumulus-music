@@ -144,6 +144,10 @@ impl MusicHttpClient {
     }
 
     pub(crate) fn pc_experiment_revision(&self) -> Result<String> {
+        self.pc_experiment_revision_for(true)
+    }
+
+    fn pc_experiment_revision_for(&self, require_account: bool) -> Result<String> {
         use crate::protocol::pc_experiments::ASSIGNMENT_PATH;
         if self.credentials.origin() != super::ApiOrigin::Pc
             || self.profile.user_agent != super::OFFICIAL_WINDOWS_USER_AGENT
@@ -162,7 +166,9 @@ impl MusicHttpClient {
         }
         let target = super::ApiOrigin::Pc.request_url(WireRoute::Eapi, ASSIGNMENT_PATH)?;
         let credentials = self.credentials.request_credentials(&target)?;
-        if credentials.device_id.is_empty() || credentials.unique_music_u().is_none() {
+        if credentials.device_id.is_empty()
+            || (require_account && credentials.unique_music_u().is_none())
+        {
             return Err(Error::State(
                 "signed PC experiment requires its original PC credentials",
             ));
@@ -174,10 +180,18 @@ impl MusicHttpClient {
         &self,
         revision: &str,
     ) -> Result<crate::protocol::pc_experiments::PcExperimentGroups> {
+        self.pc_experiment_groups_for(revision, true).await
+    }
+
+    async fn pc_experiment_groups_for(
+        &self,
+        revision: &str,
+        require_account: bool,
+    ) -> Result<crate::protocol::pc_experiments::PcExperimentGroups> {
         use crate::protocol::pc_experiments::{
             ASSIGNMENT_PATH, PcExperimentGroups, assignment_arguments,
         };
-        if self.pc_experiment_revision()? != revision {
+        if self.pc_experiment_revision_for(require_account)? != revision {
             return Err(Error::CredentialChanged);
         }
         let response = self
@@ -594,6 +608,22 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn playback_power_experiment(
+        &self,
+    ) -> crate::protocol::api::ApiFuture<
+        '_,
+        Option<crate::protocol::pc_experiments::PcExperimentGroups>,
+    > {
+        Box::pin(async {
+            let revision = self.pc_experiment_revision_for(false)?;
+            let groups = self.pc_experiment_groups_for(&revision, false).await?;
+            if self.pc_experiment_revision_for(false)? != revision {
+                return Err(Error::CredentialChanged);
+            }
+            Ok(Some(groups))
+        })
+    }
+
     fn queue_more_experiment_groups(
         &self,
     ) -> crate::protocol::api::ApiFuture<'_, crate::protocol::pc_experiments::PcExperimentGroups>

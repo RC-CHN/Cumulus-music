@@ -10,6 +10,7 @@ mod next_play;
 mod origin;
 mod output;
 mod playlist_batch;
+mod power;
 mod preferences;
 mod prepared_selection;
 mod quality;
@@ -40,6 +41,7 @@ use crate::{
 pub use dto::*;
 pub use intelligence::{IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin};
 pub use output::{OutputCommand, OutputEngineView, OutputView};
+pub use power::PlaybackPowerView;
 pub use preferences::{StartupPreferencesCommand, StartupPreferencesView};
 pub use quality::{
     QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
@@ -76,6 +78,8 @@ pub(super) struct PlayerHost {
     intelligence: Arc<intelligence::IntelligenceHost>,
     relay_enabled: bool,
     queue_more_enabled: bool,
+    power: Option<Arc<crate::playback::keep_awake::PowerControl>>,
+    power_assignment: tokio::sync::Mutex<Option<power::Assignment>>,
     queue_more_memberships: queue_more_playlist::MembershipCache,
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
@@ -101,6 +105,8 @@ impl PlayerHost {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
             relay_enabled: false,
             queue_more_enabled: false,
+            power: None,
+            power_assignment: Default::default(),
             queue_more_memberships: Default::default(),
             session,
             store,
@@ -139,6 +145,7 @@ impl PlayerHost {
                     }))),
                     self.relay_enabled,
                     self.queue_more_enabled,
+                    self.power.clone(),
                 )?))
             })
             .await

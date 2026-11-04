@@ -123,3 +123,8 @@ pub fn playlist_name(value: &str) -> Result<String> {
     }
     Ok(value.into())
 }
+fn playback_power_experiment(
+    &self,
+) -> ApiFuture<'_, Option<super::pc_experiments::PcExperimentGroups>> {
+    Box::pin(async { Ok(None) })
+}

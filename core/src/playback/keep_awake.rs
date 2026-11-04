@@ -1,5 +1,7 @@
-//! Official PC playback-to-power request projection. The desktop host owns
-//! platform effects and keeps this observation inactive until explicitly wired.
+//! Official PC playback-to-power request projection. The desktop owns platform effects.
+mod device;
+pub use device::PlaybackPowerSink;
+pub(crate) use device::{PowerControl, PowerEffect};
 /// Recovered M/7 enum; native buffering was a separate event and did not
 /// change this state. Cumulus actor status cannot be substituted mechanically.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
