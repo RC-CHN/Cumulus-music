@@ -7,6 +7,7 @@ use std::sync::{
 
 const CURSOR: &str = "{ \"next\" : \"第一页/第二页\" }";
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static TOP_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static SETTINGS: AtomicUsize = AtomicUsize::new(0);
 static DISABLED: AtomicBool = AtomicBool::new(false);
 
@@ -16,6 +17,10 @@ pub fn disable() {
 
 pub fn report() -> Value {
     json!({"calls":*CALLS.lock().unwrap(),"settings":SETTINGS.load(Ordering::SeqCst)})
+}
+
+pub fn top_calls() -> Vec<Value> {
+    TOP_CALLS.lock().unwrap().clone()
 }
 
 fn group(kind: &str, title: &str, ids: &[u32]) -> Value {
@@ -36,6 +41,24 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             Ok(
                 json!({"code":200,"setting":{"personalServiceSetting":if DISABLED.load(Ordering::SeqCst) {2} else {0}}}),
             )
+        }
+        "/api/personalized/playlist/tag/rcmd" => {
+            assert!(
+                !DISABLED.load(Ordering::SeqCst),
+                "disabled settings must fence top tags"
+            );
+            assert_eq!(*args, json!({}));
+            let mut calls = TOP_CALLS.lock().unwrap();
+            calls.push(args.clone());
+            if calls.len() == 1 {
+                Err(Error::Transport("合成顶部标签中断".into()))
+            } else {
+                assert_eq!(calls.len(), 2);
+                Ok(
+                    json!({"code":200,"data":[{"tag":"民谣","displayName":"不可代替原标签"},
+                    {"tag":"官方"},{"tag":"民谣"},{"tag":"推荐"},{"tag":"纯音乐"},{"tag":"\t"}]}),
+                )
+            }
         }
         "/api/playlist/square/block/page" => {
             assert!(

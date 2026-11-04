@@ -3,6 +3,7 @@ import { nextTick, onMounted, ref } from 'vue';
 import Icon from '../Icon.vue';
 import type { usePlaylistTagBrowse } from '../../composables/usePlaylistTagBrowse';
 import type { usePlaylistTagCatalogue } from '../../composables/usePlaylistTagCatalogue';
+import type { usePlaylistTopTags } from '../../composables/usePlaylistTopTags';
 import type { usePlaylistSquare } from '../../composables/usePlaylistSquare';
 import PlaylistCataloguePicker from './PlaylistCataloguePicker.vue';
 import PlaylistSquareFeed from './PlaylistSquareFeed.vue';
@@ -10,6 +11,7 @@ const props = defineProps<{
   tag: string;
   model: ReturnType<typeof usePlaylistTagBrowse>;
   catalogue: ReturnType<typeof usePlaylistTagCatalogue>;
+  topTags: ReturnType<typeof usePlaylistTopTags>;
   square: ReturnType<typeof usePlaylistSquare>;
   playable: boolean;
   current?: string;
@@ -63,7 +65,12 @@ function missingImage(event: Event) {
         <p class="muted">{{ tag }}</p>
       </div>
     </header>
-    <PlaylistCataloguePicker :tag="tag" :model="catalogue" @choose="emit('category', $event)" />
+    <PlaylistCataloguePicker
+      :tag="tag"
+      :model="catalogue"
+      :top="topTags"
+      @choose="emit('category', $event)"
+    />
     <PlaylistSquareFeed
       v-if="tag === '推荐'"
       :model="square"

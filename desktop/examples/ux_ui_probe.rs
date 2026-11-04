@@ -628,6 +628,7 @@ fn main() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
                 value["playlistCatalogueCalls"] = json!(*PLAYLIST_CATALOGUE_CALLS.lock().unwrap());
                 value["playlistSquare"] = playlist_square_fixture::report();
+                value["playlistTopTagCalls"] = json!(playlist_square_fixture::top_calls());
                 value["playlistEssential"] = playlist_essential_fixture::report();
             }
             if playlist_creator_proof() {

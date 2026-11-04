@@ -53,6 +53,7 @@ import { usePlaylistCreator } from './composables/usePlaylistCreator';
 import { usePlaylistTagBrowse } from './composables/usePlaylistTagBrowse';
 import { usePlaylistEssential } from './composables/usePlaylistEssential';
 import { usePlaylistTagCatalogue } from './composables/usePlaylistTagCatalogue';
+import { usePlaylistTopTags } from './composables/usePlaylistTopTags';
 import { usePlaylistSquare } from './composables/usePlaylistSquare';
 import PlaylistSubscribers from './components/playlist/PlaylistSubscribers.vue';
 import { filterTrackScope } from './services/trackScopeSearch';
@@ -1489,6 +1490,11 @@ watch(
   { immediate: true, flush: 'sync' },
 );
 const playlistTagBrowse = usePlaylistTagBrowse(core);
+const playlistTopTags = usePlaylistTopTags(
+  core,
+  () => account.value,
+  () => void music.bootstrap(false),
+);
 const playlistEssential = usePlaylistEssential(core, () => void music.bootstrap(false));
 watch(
   [
@@ -1507,7 +1513,19 @@ const playlistSquare = usePlaylistSquare(
 watch(
   settings.personalServiceObservation,
   (value) => {
-    if (value) playlistSquare.observePersonalService(value);
+    if (value) {
+      playlistSquare.observePersonalService(value);
+      playlistTopTags.observePersonalService(value);
+    }
+  },
+  { flush: 'sync' },
+);
+watch(
+  playlistSquare.enabled,
+  (value) => {
+    if (value === undefined) return;
+    playlistTopTags.observePersonalService({ epoch: account.value.epoch, value: value ? 0 : 2 });
+    if (value && page.value.kind === 'playlist_tag') playlistTopTags.activate();
   },
   { flush: 'sync' },
 );
@@ -2910,6 +2928,7 @@ onUnmounted(() => {
                 :tag="page.tag"
                 :model="playlistTagBrowse"
                 :catalogue="playlistTagCatalogue"
+                :top-tags="playlistTopTags"
                 :square="playlistSquare"
                 :playable="player.ready.value && !player.busy.value"
                 :current="currentOrigin?.kind === 'playlist' ? currentOrigin.id : undefined"

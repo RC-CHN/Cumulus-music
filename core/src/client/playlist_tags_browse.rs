@@ -1,5 +1,5 @@
 use super::{MusicClient, dto::AccountData, mapping};
-use crate::{Error, Result, protocol::api::identifier};
+use crate::{Error, Result, account::AccountApi, protocol::api::identifier};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
@@ -57,6 +57,13 @@ pub struct PlaylistTagGroup {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PlaylistTopTags {
+    recommendation_enabled: bool,
+    tags: Vec<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct PlaylistCatalogueTag {
     name: String,
     display_name: Option<String>,
@@ -71,6 +78,21 @@ pub(super) fn safe_label(label: &str) -> bool {
 
 fn valid_tag(label: &str) -> bool {
     safe_label(label) && label != "推荐"
+}
+
+fn top_tags(reply: &Value) -> Result<Vec<String>> {
+    let rows = reply["data"]
+        .as_array()
+        .filter(|rows| rows.len() <= 256)
+        .ok_or(Error::Response("invalid playlist top tags"))?;
+    let mut seen = HashSet::new();
+    Ok(rows
+        .iter()
+        .filter_map(|row| row["tag"].as_str())
+        .filter(|tag| valid_tag(tag) && *tag != "官方" && seen.insert(*tag))
+        .take(16)
+        .map(str::to_owned)
+        .collect())
 }
 
 fn catalogue(reply: &Value) -> Result<Vec<PlaylistTagGroup>> {
@@ -116,6 +138,39 @@ fn catalogue(reply: &Value) -> Result<Vec<PlaylistTagGroup>> {
 }
 
 impl MusicClient {
+    pub async fn playlist_top_tags(&self, epoch: &str) -> Result<AccountData<PlaylistTopTags>> {
+        let token = self.playlist_token(epoch)?;
+        let value = self
+            .session
+            .run_for(&token, |api, _| async move {
+                if AccountApi::new(api.clone()).settings().await?["personalServiceSetting"] == 2 {
+                    return Ok(PlaylistTopTags {
+                        recommendation_enabled: false,
+                        tags: Vec::new(),
+                    });
+                }
+                let reply = api
+                    .call(
+                        "/api/personalized/playlist/tag/rcmd",
+                        json!({}),
+                        false,
+                        &[200],
+                    )
+                    .await?;
+                Ok(PlaylistTopTags {
+                    recommendation_enabled: true,
+                    tags: top_tags(&reply)?,
+                })
+            })
+            .await?;
+        self.session.with_token(&token, |_| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value,
+            })
+        })
+    }
+
     pub async fn playlist_tag_catalogue(
         &self,
         epoch: &str,
@@ -259,6 +314,15 @@ pub(super) fn header_tags(value: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn top_tags_preserve_official_raw_order_without_fixed_or_unusable_tags() {
+        let reply = json!({"data":[{"tag":"华语","displayName":"其他显示"},
+            {"tag":"推荐"},{"tag":"摇滚"},{"tag":"华语"},{"tag":"官方"},
+            {"tag":"\t"},{"name":"不应按名称猜标签"}]});
+        assert_eq!(top_tags(&reply).unwrap(), ["华语", "摇滚"]);
+        assert!(top_tags(&json!({"data":{}})).is_err());
+    }
 
     #[test]
     fn catalogue_preserves_group_and_entry_order_and_uses_raw_tag_names() {

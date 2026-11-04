@@ -1,9 +1,14 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { usePlaylistTagCatalogue } from '../../composables/usePlaylistTagCatalogue';
+import type { usePlaylistTopTags } from '../../composables/usePlaylistTopTags';
 import Icon from '../Icon.vue';
 
-const props = defineProps<{ tag: string; model: ReturnType<typeof usePlaylistTagCatalogue> }>();
+const props = defineProps<{
+  tag: string;
+  model: ReturnType<typeof usePlaylistTagCatalogue>;
+  top: ReturnType<typeof usePlaylistTopTags>;
+}>();
 const emit = defineEmits<{ choose: [tag: string] }>();
 const { groups, pending, error, load } = props.model;
 const open = ref(false);
@@ -11,12 +16,21 @@ const groupId = ref<number>();
 const trigger = ref<HTMLButtonElement>();
 const panel = ref<HTMLElement>();
 const root = ref<HTMLElement>();
-const group = computed(() => groups.value?.find((entry) => entry.id === groupId.value));
-watch([open, groups, () => props.tag], () => {
-  if (!open.value || !groups.value) return;
+const visibleGroups = computed(() => {
+  const outside = new Set(props.top.tags.value);
+  return groups.value
+    ?.map((entry) => ({
+      ...entry,
+      tags: entry.tags.filter((tag) => !outside.has(tag.name)),
+    }))
+    .filter((entry) => entry.tags.length);
+});
+const group = computed(() => visibleGroups.value?.find((entry) => entry.id === groupId.value));
+watch([open, visibleGroups, () => props.tag], ([opened, values, selected], [wasOpen, _, prior]) => {
+  if (!opened || !values) return;
+  if (wasOpen && selected === prior && values.some((entry) => entry.id === groupId.value)) return;
   groupId.value =
-    groups.value.find((entry) => entry.tags.some((tag) => tag.name === props.tag))?.id ??
-    groups.value[0]?.id;
+    values.find((entry) => entry.tags.some((tag) => tag.name === selected))?.id ?? values[0]?.id;
 });
 async function toggle() {
   if (open.value) return close(true);
@@ -54,7 +68,10 @@ function focusOutside(event: FocusEvent) {
   )
     close(false);
 }
-onMounted(() => document.addEventListener('pointerdown', pointerOutside, true));
+onMounted(() => {
+  document.addEventListener('pointerdown', pointerOutside, true);
+  props.top.activate();
+});
 onUnmounted(() => document.removeEventListener('pointerdown', pointerOutside, true));
 </script>
 
@@ -64,6 +81,15 @@ onUnmounted(() => document.removeEventListener('pointerdown', pointerOutside, tr
       <button class="secondary" :aria-pressed="tag === '推荐'" @click="choose('推荐')">推荐</button>
       <button class="secondary" :aria-pressed="tag === '官方'" @click="choose('官方')">官方</button>
       <button
+        v-for="topTag in top.tags.value"
+        :key="topTag"
+        class="secondary playlist-catalogue-top"
+        :aria-pressed="tag === topTag"
+        @click="choose(topTag)"
+      >
+        {{ topTag }}
+      </button>
+      <button
         ref="trigger"
         class="secondary playlist-catalogue-trigger"
         :aria-expanded="open"
@@ -72,6 +98,7 @@ onUnmounted(() => document.removeEventListener('pointerdown', pointerOutside, tr
       >
         更多标签 <Icon name="down" />
       </button>
+      <button v-if="top.error.value" class="text-button" @click="top.load">重试推荐标签</button>
     </div>
     <section
       v-if="open"
@@ -86,11 +113,11 @@ onUnmounted(() => document.removeEventListener('pointerdown', pointerOutside, tr
         <p>{{ error }}</p>
         <button class="secondary" @click="retry">重新加载</button>
       </div>
-      <p v-else-if="groups && !groups.length" class="muted">暂无可选歌单标签。</p>
-      <template v-else-if="groups">
+      <p v-else-if="visibleGroups && !visibleGroups.length" class="muted">暂无可选歌单标签。</p>
+      <template v-else-if="visibleGroups">
         <div class="playlist-catalogue-groups" role="group" aria-label="标签分组">
           <button
-            v-for="entry in groups"
+            v-for="entry in visibleGroups"
             :key="entry.id"
             class="text-button"
             :aria-pressed="entry.id === groupId"

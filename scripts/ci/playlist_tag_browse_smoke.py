@@ -48,21 +48,25 @@ def main():
     assert read('ux_03_next')['playlistTagCalls'] == [first, next_page]
     official = {'cat': '官方', 'limit': 24, 'newStyle': True}
     selected = {'cat': '摇滚', 'limit': 24, 'newStyle': True}
-    assert read('ux_04_square')['playlistTagCalls'] == [first, next_page, official]
-    assert read('ux_04_square')['playlistCatalogueCalls'] == []
+    promoted = {'cat': '民谣', 'limit': 24, 'newStyle': True}
+    assert read('ux_04_square')['playlistTagCalls'] == [first, next_page, promoted, official]
+    assert read('ux_13_top_tags')['playlistCatalogueCalls'] == []
     assert read('ux_05_catalogue')['playlistCatalogueCalls'] == [{}, {}]
     complete = read('complete')
     assert complete['ok'] and complete['catalogueVerified'] and complete['recommendationVerified']
-    assert complete['essentialVerified']
-    assert complete['playlistTagCalls'] == [first, next_page, official, selected]
+    assert complete['essentialVerified'] and complete['topTagsVerified']
+    assert complete['playlistTagCalls'] == [first, next_page, promoted, official, selected]
     assert complete['playlistCatalogueCalls'] == [{}, {}]
+    assert read('ux_02_first')['playlistTopTagCalls'] == [{}]
+    assert read('ux_13_top_tags')['playlistTopTagCalls'] == [{}, {}]
+    assert complete['playlistTopTagCalls'] == [{}, {}]
     first_rcmd = {'cursor': '', 'newStyle': True}
     next_rcmd = {'cursor': '{ "next" : "第一页/第二页" }', 'newStyle': True}
-    assert read('ux_06_recommended')['playlistSquare'] == {'calls': [first_rcmd], 'settings': 1}
+    assert read('ux_06_recommended')['playlistSquare'] == {'calls': [first_rcmd], 'settings': 3}
     assert read('ux_07_recommended_back')['playlistSquare'] == {
-        'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 3,
+        'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 5,
     }
-    assert complete['playlistSquare'] == {'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 4}
+    assert complete['playlistSquare'] == {'calls': [first_rcmd, next_rcmd, next_rcmd], 'settings': 7}
     first_essential = {'cat': '轻音乐', 'limit': 36, 'lasttime': '-1'}
     next_essential = {'cat': '轻音乐', 'limit': 36, 'lasttime': 1_700_000_000_123}
     all_essential = {'cat': '全部', 'limit': 36, 'lasttime': '-1'}
@@ -73,10 +77,10 @@ def main():
     assert complete['playlistEssential'] == {
         'pages': [first_essential, next_essential, next_essential, all_essential], 'tags': 2,
     }
-    assert len(list(output.glob('ux_*.png'))) == (12 if args.screenshots else 0)
-    print(json.dumps({'ok': True, 'actualWebView': True, 'categoryReads': 3,
+    assert len(list(output.glob('ux_*.png'))) == (14 if args.screenshots else 0)
+    print(json.dumps({'ok': True, 'actualWebView': True, 'categoryReads': 4,
                       'continuationReads': 1, 'catalogueReads': 2, 'recommendationReads': 3,
-                      'privacyReads': 4, 'essentialReads': 4, 'essentialTagReads': 2,
+                      'privacyReads': 7, 'essentialReads': 4, 'essentialTagReads': 2, 'topTagReads': 2,
                       'realAccountWrites': 0}))
 
 

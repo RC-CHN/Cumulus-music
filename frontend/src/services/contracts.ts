@@ -151,6 +151,7 @@ export interface CoreClient
   ): Promise<AccountData<PlaylistCreatorProfile | null>>;
   playlistTagPage(epoch: string, query: PlaylistTagQuery): Promise<AccountData<PlaylistTagPage>>;
   playlistTagCatalogue(epoch: string): Promise<AccountData<PlaylistTagGroup[]>>;
+  playlistTopTags(epoch: string): Promise<AccountData<PlaylistTopTags>>;
   playlistEssentialCategories(epoch: string): Promise<AccountData<PlaylistEssentialCategory[]>>;
   playlistEssentialPage(
     epoch: string,
@@ -240,6 +241,10 @@ export interface PlaylistTagGroup {
   id: number;
   name: string;
   tags: { name: string; displayName: string | null }[];
+}
+export interface PlaylistTopTags {
+  recommendationEnabled: boolean;
+  tags: string[];
 }
 export interface PlaylistSquareCard {
   id: string;

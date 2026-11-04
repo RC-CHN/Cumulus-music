@@ -229,6 +229,14 @@ pub async fn playlist_square_recommendations(
 }
 
 #[tauri::command]
+pub async fn playlist_top_tags(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<PlaylistTopTags>, ClientError> {
+    client.playlist_top_tags(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn playlist_tag_catalogue(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

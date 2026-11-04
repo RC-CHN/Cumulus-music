@@ -35,6 +35,9 @@
     await emit('ux_01_source');
     click(one('.playlist-hero-tags button'));
     await wait(() => cards().length === 24, 'first bounded page');
+    const topPills = () => [...document.querySelectorAll('.playlist-catalogue-top')];
+    await wait(() => button('重试推荐标签'), 'top tags failure does not block ordinary lists');
+    assert(!topPills().length && cards().length === 24, 'ordinary browsing stays usable without personalized tags');
     assert(one('.playlist-tag-browse').textContent.includes('轻音乐'), 'tag preserved');
     const promo = () => one('.playlist-essential-promo');
     assert(promo()?.textContent.includes('合成精品入口') && promo() === one('.playlist-tag-cards button'),
@@ -93,6 +96,10 @@
       'category Back restores first category without another native read');
     click(button('返回上一页'));
     await wait(() => cards().length === 24 && document.activeElement === promo(), 'return to first ordinary category and exact promo focus');
+    click(button('重试推荐标签'));
+    await wait(() => topPills().map((pill) => pill.textContent.trim()).join('|') === '民谣|纯音乐',
+      'top tags preserve raw names and service order without duplicate fixed pills');
+    await emit('ux_13_top_tags');
     click(button('歌单广场', one('.sidebar')));
     const catalogue = () => one('.playlist-catalogue-panel');
     const more = () => one('.playlist-catalogue-trigger');
@@ -121,19 +128,38 @@
     await wait(() => groups().length === 2 && document.activeElement === source() && rail().scrollLeft > 24,
       'Back restores loaded groups, the exact duplicate instance and horizontal position');
     await emit('ux_07_recommended_back');
+    click(button('民谣', one('.playlist-catalogue-controls')));
+    await wait(() => heading() === '民谣' && cards().length === 24 &&
+      button('民谣', one('.playlist-catalogue-controls')).getAttribute('aria-pressed') === 'true',
+      'top tag opens the exact ordinary category');
+    click(more());
+    await wait(() => catalogue()?.textContent.includes('网络请求失败') &&
+      button('重新加载', catalogue()), 'catalogue error can retry independently');
+    click(button('重新加载', catalogue()));
+    await wait(() => catalogue() && button('语种', catalogue()) && button('华语', catalogue()),
+      'non-promoted categories still display');
+    click(button('风格', catalogue()));
+    await wait(() => button('摇滚精选', catalogue()) && !button('民谣', catalogue()),
+      'More Tags excludes the promoted raw category without hiding its neighbors');
+    await emit('ux_14_top_tags_dedup');
+    catalogue().dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
+    await wait(() => !catalogue(), 'close the catalogue before leaving the category');
+    click(button('返回上一页'));
+    await wait(() => heading() === '推荐' && groups().length === 2, 'top pill Back keeps the prior recommendation results');
     await emit('playlist-square-disable');
     await wait(() => window.__squareDisabledAck, 'synthetic privacy change is installed');
     click(button('刷新推荐'));
     await wait(() => feed()?.textContent.includes('个性化服务已关闭') && groups().length === 0 &&
-      button('打开个性化设置'), 'refresh honors disabled recommendation setting');
+      button('打开个性化设置') && !topPills().length, 'refresh clears recommendation and personalized top pills');
+    const provides = one('#app').__vue_app__._context.provides;
+    const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
+    const disabled = await core.playlistTopTags((await core.accountSnapshot()).epoch);
+    assert(!disabled.value.recommendationEnabled && !disabled.value.tags.length, 'native refuses the optional read while privacy is disabled');
     await emit('ux_08_recommended_disabled');
     click(button('官方', one('.playlist-catalogue-controls')));
     await wait(() => cards().length === 24 && heading() === '官方', 'discovery enters official category');
     await emit('ux_04_square');
     click(more());
-    await wait(() => catalogue()?.textContent.includes('网络请求失败') &&
-      button('重新加载', catalogue()), 'catalogue error can retry');
-    click(button('重新加载', catalogue()));
     await wait(() => catalogue() && button('语种', catalogue()) && button('华语', catalogue()),
       'catalogue uses the first official group and displays its tags');
     assert(!button('官方', catalogue()) && !button('推荐', catalogue()),
@@ -151,7 +177,7 @@
     assert(button('风格', catalogue()).getAttribute('aria-pressed')==='true', 'restored exact group');
     catalogue().dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true,cancelable:true}));
     await wait(() => !catalogue() && document.activeElement===more(), 'Escape restores trigger focus');
-    await emit('complete', { ok: true, catalogueVerified: true, recommendationVerified: true, essentialVerified: true });
+    await emit('complete', { ok: true, catalogueVerified: true, recommendationVerified: true, essentialVerified: true, topTagsVerified: true });
   } catch (error) {
     await emit('failed', { message: String(error) });
   }
