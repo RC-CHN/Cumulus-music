@@ -1,0 +1,56 @@
+动态与笔记举报（官方 Windows PC 3.1.42.205594）
+================================================
+
+官方动作
+- x86/x64 的 package/orpheus.ntpk 均为 SHA256
+  170413b1675708e87a9e89c2d122a8643a51e86b5b5ae1c6260cfeaf25b19be4。
+  关注动态、详情和用户主页笔记沿用恢复的 EventCard。hybrid_38/M2157:1094–1114,
+  1150–1169 中，卡片右键和顶部更多按钮传相同的顶层 resource 和 resourceType=event；
+  appendResource 是给附件菜单的独立参数。hybrid_46 对应模块也有该入口。
+- hybrid_app/M622:1588–1658 按 resource.user.id 是否等于 host.uid 切换删除和举报；
+  举报子菜单顺序为「广告或营销信息」「恶意人身攻击」「色情、低俗或有害内容」
+  「政治敏感言论」「其他原因 >」。四个预设传中文原文，不采用评论专用的
+  「段子或者无意义的评论」。用户主页笔记、包含音乐附件的动态和转发的外层卡片
+  都用当前顶层事件；不是 srcResId、附件资源 ID、发布 uuid 或内嵌转发原文 ID。
+- hybrid_app/M21:429–481,1229–1235,1291–1300 把服务 event.id 和 user.userId
+  投影为十进制字符串。M55:51–80,285–312,362–410 先保证已登录，再调用
+  M15:2683 的无缓存 POST /api/report/reportevent：
+  {"id":"顶层动态事件 ID","userid":"该事件作者 ID","reason":"所选原因原文"}。
+  200=「举报成功」，-1=「重复举报」，其余=「举报失败」；没有独立查询或撤销。
+  这与个人资料的 /api/report/reportuser 和 /api/report/reportcomment 各自独立。
+- 官方预设原因选择后直接发送。「其他原因」复用 M55:117–156 的居中弹窗、无可见
+  遮罩和自动聚焦「举报原因：」。trim 只用于启用确认，发送内容保留原始空白。
+  M12:277–313、M402:377–450 使用全局 PC 请求工厂；Cumulus 走现有 PC EAPI
+  路由 https://interfacepc.music.163.com/eapi/report/reportevent。
+
+Cumulus 状态和边界
+- core/src/client/community/report.rs 只接收当前账号代次、已注册的顶层卡片
+  UUID 与类型化动作。不能从界面传入任意事件 ID、作者 ID 或授权信息。关注流、
+  用户笔记、话题和详情共享原有的注册/投影机制；本人、匿名、内嵌转发原文、
+  无法展示或已删除的对象不可提交。不给附件或独立社区评论猜测举报接口。
+- 预设和自填均需用户明确确认；自填原样发送并限制 4096 UTF-8 字节。确认票
+  120 秒内有效，绑定账号代次、事件、作者及当前卡片 UUID；刷新替换句柄后，
+  旧确认票不适用。提交前无缓存重读 /api/v1/event/{作者 ID}/{事件 ID} {}，
+  只接受顶层事件和作者严格匹配且仍可见的响应，再检查原句柄仍注册。
+- 共享 report_receipt 原生守卫。账号加顶层事件 ID 是持久回执键，因此同一事件
+  从列表或详情重开可共用回执；提交前持久化 uncertain，只发一次。记录不包含
+  原因、动态正文、响应或凭据。成功或明确重复是终态，未确认结果只允许本机
+  核对。没有重试、切换接口或将未知响应当作成功。取消不请求，关闭恢复原操作
+  按钮焦点，报告结果不移除或编辑卡片。
+- 不替换本人动态删除、附件、评论等已有动作。未认证时从现有登录入口验证后
+  重新操作；不会自动续发此前动作。只用合成请求做 Linux 实际 WebView 验证，
+  没有真实账号或实际举报；原生 Windows、实际服务结果与全局 XEAPI 尚未验证。
+
+复现
+- cargo test -p cumulus-core --locked --test community_report --test community_delete
+  --test comment_report --test profile_report
+- cargo build -p cumulus-desktop --example community_ui_probe --features custom-protocol --locked
+- Linux en_US.UTF-8、独立 Xvfb/DBus 与断网命名空间内执行
+  scripts/ci/community_smoke.py --report-note --binary <example> --frontend-dist frontend/dist
+  --root <新目录> --screenshots。关注流和详情、左键与右键、取消与焦点、嵌套
+  原文不可举报、合成成功/重复/丢回包均覆盖；--delete-note 验证原删除路径。
+- 在 760×540 的实际 Linux WebView 中，举报通过 9 个场景并留存 9 张截图，
+  本人删除回归通过 8 个场景。定位到原菜单在滚动区底部会被裁掉后，调整为按
+  窗口空间定位；两条流程均复测。证据：
+  .build/community-report-evidence/report-layout/report.json 和
+  .build/community-report-evidence/delete-layout/report.json。

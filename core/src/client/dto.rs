@@ -327,6 +327,7 @@ pub use super::community::composer::{
 pub use super::community::delete::{CommunityDeleteAction, CommunityDeleteReply};
 pub use super::community::new_song_notice::{CommunityNewSongNotice, CommunityNoticeMode};
 pub use super::community::publish::{ComposerPublication, ComposerPublishAction};
+pub use super::community::report::{CommunityReportCommand, CommunityReportView};
 pub use super::community::{
     CommunityCommentPage, CommunityDetail, CommunityFeedAction, CommunityFeedPage,
 };

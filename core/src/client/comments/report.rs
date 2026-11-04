@@ -76,6 +76,7 @@ impl MusicClient {
             kind: "comment-report-receipt-v1",
             lock_prefix: "comment-report",
             key: serde_json::to_string(&(&thread, &id))?,
+            draft_scope: None,
         };
         let value = self
             .comment_report

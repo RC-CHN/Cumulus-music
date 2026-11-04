@@ -78,6 +78,7 @@ impl MusicClient {
             kind: "profile-report-receipt-v1",
             lock_prefix: "profile-report",
             key: uid.clone(),
+            draft_scope: None,
         };
         let value = self
             .profile_report

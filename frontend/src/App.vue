@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import CommunityDeleteDialog from './components/community/CommunityDeleteDialog.vue';
+import CommunityReportDialog from './components/community/CommunityReportDialog.vue';
+import { communityReportKey, useCommunityReport } from './composables/useCommunityReport';
 import { communityDeleteKey, useCommunityDelete } from './composables/useCommunityDelete';
 import SearchBox from './components/search/SearchBox.vue';
 import MessageDrawer from './components/messages/MessageDrawer.vue';
@@ -1842,6 +1844,13 @@ const communityDelete = useCommunityDelete(
   () => void music.bootstrap(false),
 );
 provide(communityDeleteKey, communityDelete);
+const communityReport = useCommunityReport(core, () =>
+  account.value.status === 'authenticated' ? account.value.epoch : '',
+);
+provide(communityReportKey, communityReport);
+watch([page, () => account.value.epoch, () => account.value.status], communityReport.close, {
+  flush: 'sync',
+});
 watch(
   communityDelete.target,
   (value) => {
@@ -4413,6 +4422,7 @@ onUnmounted(() => {
     />
     <WindowClosePrompt />
     <CommunityDeleteDialog v-if="communityDelete.target.value" :model="communityDelete" />
+    <CommunityReportDialog :model="communityReport" @expired="music.bootstrap(false)" />
     <ModalTransition :fallback-focus="likeRecoveryFocus">
       <LikeRecoveryDialog
         v-if="likeRecovery.open.value"

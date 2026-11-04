@@ -1,4 +1,5 @@
 import type { AccountData } from './contracts';
+import type { ProfileReportCommand, ProfileReportView } from './profileReport';
 
 export type CommunityFeedAction =
   | { kind: 'first' | 'refresh' }
@@ -31,6 +32,15 @@ export interface CommunityCard {
   status: 'ready' | 'unsupported' | 'deleted' | 'unavailable';
   detail: string | null;
   canDelete?: boolean;
+  canReport?: boolean;
+}
+
+export interface CommunityReportClient {
+  communityNoteReport(
+    epoch: string,
+    detail: string,
+    command: ProfileReportCommand,
+  ): Promise<AccountData<ProfileReportView>>;
 }
 
 export type CommunityDeleteAction =

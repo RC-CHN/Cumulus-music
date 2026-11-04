@@ -89,6 +89,7 @@ pub struct Library {
     fallback: super::catalog_fixture::Library,
     community_topic: super::community_topic_fixture::Library,
     community_delete: super::community_delete_fixture::Library,
+    community_report: super::community_report_fixture::Library,
     profile_notes: super::profile_notes_fixture::Library,
     profile_podcasts: super::profile_podcasts_fixture::Library,
     profile_playlists: super::profile_playlists_fixture::Library,
@@ -139,6 +140,9 @@ impl Library {
         if super::community_delete_fixture::Library::enabled() {
             report["deleteCalls"] = self.community_delete.report();
         }
+        if super::community_report_fixture::Library::enabled() {
+            report["eventReportCalls"] = self.community_report.report();
+        }
         report
     }
 }
@@ -163,6 +167,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self.community_report.request(path, &payload, cache) {
+                return result;
+            }
             if let Some(result) = self.community_delete.request(path, &payload, cache) {
                 return result;
             }

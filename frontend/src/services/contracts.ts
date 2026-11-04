@@ -18,6 +18,7 @@ import type { CommentClient, CommentReportClient } from './comments';
 import type {
   CommunityClient,
   CommunityDeleteClient,
+  CommunityReportClient,
   CommunityNoticeClient,
   ProfileNotesClient,
 } from './community';
@@ -122,6 +123,7 @@ export interface CoreClient
     CommunityClient,
     CommunityTopicClient,
     CommunityDeleteClient,
+    CommunityReportClient,
     ProfileNotesClient,
     CommunityNoticeClient,
     CommentResourceClient,

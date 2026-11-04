@@ -170,6 +170,7 @@ pub(super) fn card(
         status: CommunityCardStatus::Ready,
         detail: None,
         can_delete: false,
+        can_report: false,
     };
     if UNSUPPORTED.contains(&kind) {
         card.status = CommunityCardStatus::Unsupported;

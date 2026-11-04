@@ -1,6 +1,19 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 
 #[tauri::command]
+pub async fn community_note_report(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    detail: String,
+    command: CommunityReportCommand,
+) -> Result<AccountData<CommunityReportView>, ClientError> {
+    client
+        .community_note_report(&epoch, &detail, command)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn community_note_delete(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

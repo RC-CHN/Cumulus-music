@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { inject, nextTick, ref } from 'vue';
+import { computed, inject, nextTick, ref, watch } from 'vue';
 import type { CommunityCard, CommunityResource } from '../../services/community';
 import { communityDeleteKey } from '../../composables/useCommunityDelete';
+import { communityReportKey } from '../../composables/useCommunityReport';
+import { profileReportChoices, type ProfileReportChoice } from '../../services/profileReport';
 import Icon from '../Icon.vue';
 import CommunityTopicText from './CommunityTopicText.vue';
 
@@ -17,36 +19,142 @@ const emit = defineEmits<{
   topic: [name: string, opener: string];
 }>();
 const deletion = inject(communityDeleteKey, null);
+const reporter = inject(communityReportKey, null);
+const mayDelete = computed(() => !!deletion && !props.nested && !!props.card.canDelete);
+const mayReport = computed(
+  () => !!reporter && !props.nested && !!props.card.canReport && !props.card.canDelete,
+);
 const menu = ref(false);
+const reasons = ref(false);
 const menuOpener = ref<HTMLButtonElement>();
-const deleteItem = ref<HTMLButtonElement>();
+const primaryItem = ref<HTMLButtonElement>();
+const reasonList = ref<HTMLElement>();
+const popup = ref<HTMLElement>();
+const anchor = ref({ left: 0, top: 0, offset: 0, flyoutLeft: true });
+const anchorStyle = computed(() => ({
+  left: `${anchor.value.left}px`,
+  top: `${anchor.value.top}px`,
+}));
+const reasonStyle = computed(() => ({ top: `${anchor.value.offset}px` }));
+let triggerPosition: DOMRect | undefined;
+function positionMenu(event?: MouseEvent) {
+  const rect = menuOpener.value?.getBoundingClientRect();
+  if (!rect) return;
+  triggerPosition = rect;
+  const contextual = event?.type === 'contextmenu' && (event.clientX || event.clientY);
+  const x = contextual ? event.clientX : rect.right - 112;
+  const y = contextual ? event.clientY : rect.bottom + 4;
+  const left = Math.max(8, Math.min(x, innerWidth - 120));
+  const top = Math.max(8, Math.min(y, innerHeight - 56));
+  anchor.value = {
+    left,
+    top,
+    offset: Math.max(8, Math.min(top, innerHeight - 202)) - top,
+    flyoutLeft: left >= 210,
+  };
+}
+function outsideMenu(event: Event) {
+  const node = event.target;
+  if (node instanceof Node && !popup.value?.contains(node) && !menuOpener.value?.contains(node))
+    closeMenu();
+}
+function movedMenu() {
+  const rect = menuOpener.value?.getBoundingClientRect();
+  if (
+    !rect ||
+    !triggerPosition ||
+    rect.top !== triggerPosition.top ||
+    rect.left !== triggerPosition.left
+  )
+    closeMenu();
+}
+function hideMenu() {
+  closeMenu();
+}
+function closeMenu(restore = false) {
+  menu.value = reasons.value = false;
+  if (restore) menuOpener.value?.focus({ preventScroll: true });
+}
 async function openMenu(event?: MouseEvent) {
-  if (!deletion || props.nested || !props.card.canDelete) return;
+  if (!mayDelete.value && !mayReport.value) return;
   if (event) {
     if (event.target instanceof HTMLElement && event.target.closest('[data-community-forwarded]'))
       return;
     event.preventDefault();
   }
+  positionMenu(event);
   menu.value = true;
   await nextTick();
-  deleteItem.value?.focus({ preventScroll: true });
+  primaryItem.value?.focus({ preventScroll: true });
 }
 function menuFocus(event: FocusEvent) {
-  const node = event.currentTarget;
-  if (
-    node instanceof HTMLElement &&
-    event.relatedTarget instanceof Node &&
-    node.contains(event.relatedTarget)
-  )
+  const next = event.relatedTarget;
+  if (next instanceof Node && (popup.value?.contains(next) || menuOpener.value?.contains(next)))
     return;
-  menu.value = false;
+  closeMenu();
+}
+watch(menu, (open, _, cleanup) => {
+  if (!open) return;
+  window.addEventListener('pointerdown', outsideMenu, true);
+  window.addEventListener('scroll', movedMenu, true);
+  window.addEventListener('resize', hideMenu);
+  window.addEventListener('blur', hideMenu);
+  cleanup(() => {
+    window.removeEventListener('pointerdown', outsideMenu, true);
+    window.removeEventListener('scroll', movedMenu, true);
+    window.removeEventListener('resize', hideMenu);
+    window.removeEventListener('blur', hideMenu);
+  });
+});
+async function openReasons(focus = true) {
+  if (!mayReport.value) return;
+  reasons.value = true;
+  if (focus) {
+    await nextTick();
+    reasonList.value?.querySelector('button')?.focus({ preventScroll: true });
+  }
+}
+function menuKeys(event: KeyboardEvent) {
+  const inReasons = reasonList.value?.contains(document.activeElement);
+  if (event.key === 'Escape' || (event.key === 'ArrowLeft' && inReasons)) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (inReasons) {
+      reasons.value = false;
+      primaryItem.value?.focus({ preventScroll: true });
+    } else closeMenu(true);
+  } else if (event.key === 'ArrowRight' && document.activeElement === primaryItem.value) {
+    event.preventDefault();
+    void openReasons();
+  } else if (inReasons && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+    event.preventDefault();
+    const items = Array.from(reasonList.value?.querySelectorAll('button') ?? []);
+    if (!items.length) return;
+    const current = items.findIndex((node) => node === document.activeElement);
+    const next =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? items.length - 1
+          : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next]?.focus({ preventScroll: true });
+  }
 }
 function deleteNote() {
-  if (!props.card.canDelete || props.nested) return;
-  menu.value = false;
-  // The detail page uses the same native key without adding a second link to itself.
+  if (!mayDelete.value) return;
+  closeMenu();
   deletion?.open(props.card.key, menuOpener.value);
 }
+function reportNote(choice: ProfileReportChoice) {
+  if (!mayReport.value) return;
+  closeMenu(true);
+  reporter?.open(props.card.key, props.card.authorName, choice, menuOpener.value);
+}
+watch(
+  () => [props.card.key, mayDelete.value, mayReport.value],
+  () => closeMenu(),
+  { flush: 'sync' },
+);
 const date = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' });
 const labels = {
   track: '单曲',
@@ -91,7 +199,7 @@ const labels = {
         查看详情
       </button>
       <div
-        v-if="deletion && !nested && card.canDelete"
+        v-if="mayDelete || mayReport"
         class="community-note-menu"
         :class="{ 'menu-without-detail-link': !card.detail }"
         @focusout="menuFocus"
@@ -103,29 +211,69 @@ const labels = {
           aria-label="动态操作"
           aria-haspopup="menu"
           :aria-expanded="menu"
-          @click="menu ? (menu = false) : openMenu()"
+          @click="menu ? closeMenu() : openMenu($event)"
+          @keydown.down.prevent="openMenu()"
         >
           <Icon name="more" />
         </button>
-        <div
-          v-if="menu"
-          role="menu"
-          class="community-note-menu-items"
-          @keydown.esc.stop="
-            menu = false;
-            menuOpener?.focus();
-          "
-        >
-          <button
-            ref="deleteItem"
-            class="text-button"
-            role="menuitem"
-            type="button"
-            @click="deleteNote"
+        <Teleport to="body">
+          <div
+            v-if="menu"
+            ref="popup"
+            role="menu"
+            class="community-note-menu-items"
+            :data-event-menu-key="card.key"
+            :style="anchorStyle"
+            @keydown="menuKeys"
+            @focusout="menuFocus"
           >
-            删除
-          </button>
-        </div>
+            <button
+              v-if="mayDelete"
+              ref="primaryItem"
+              class="text-button"
+              role="menuitem"
+              type="button"
+              @click="deleteNote"
+            >
+              删除
+            </button>
+            <template v-else-if="mayReport">
+              <button
+                ref="primaryItem"
+                class="text-button"
+                role="menuitem"
+                type="button"
+                aria-haspopup="menu"
+                :aria-expanded="reasons"
+                @click="openReasons()"
+                @pointerenter="openReasons(false)"
+              >
+                举报 <span aria-hidden="true">›</span>
+              </button>
+              <div
+                v-if="reasons"
+                ref="reasonList"
+                role="menu"
+                aria-label="举报原因"
+                data-community-report-reasons
+                class="community-note-menu-items community-report-reasons"
+                :class="{ 'community-report-reasons-left': anchor.flyoutLeft }"
+                :style="reasonStyle"
+              >
+                <button
+                  v-for="[choice, label] in profileReportChoices"
+                  :key="choice"
+                  class="text-button"
+                  type="button"
+                  role="menuitem"
+                  @click="reportNote(choice)"
+                >
+                  {{ label }} <span v-if="choice === 'other'" aria-hidden="true">›</span>
+                </button>
+              </div>
+            </template>
+          </div>
+        </Teleport>
       </div>
     </header>
     <p v-if="card.status === 'unsupported'" class="muted">
@@ -210,19 +358,38 @@ const labels = {
   margin-left: auto;
 }
 .community-note-menu-items {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 3;
-  min-width: 100px;
+  position: fixed;
+  z-index: 60;
+  width: 112px;
+  box-sizing: border-box;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface-raised);
 }
+.community-report-reasons {
+  position: absolute;
+  left: 100%;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+}
+.community-report-reasons-left {
+  left: auto;
+  right: 100%;
+}
 .community-note-menu-items button {
+  display: flex;
   width: 100%;
-  text-align: left;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px;
+  color: var(--text);
+  text-align: start;
+}
+.community-note-menu-items button:hover,
+.community-note-menu-items button:focus-visible {
+  background: var(--surface-alt);
 }
 </style>
 

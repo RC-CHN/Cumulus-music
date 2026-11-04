@@ -7,6 +7,7 @@
   );
   const dialog = () => one('.community-delete-dialog[open]');
   const card = (title) => all('article[data-event-key]').find((node) => one('h2', node)?.textContent === title);
+  const menu = (row) => row ? one(`[data-event-menu-key="${row.dataset.eventKey}"]`) : null;
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (value, label) => { if (!value) throw Error(label); };
   const emit = (stage, payload = {}) => window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
@@ -41,13 +42,14 @@
     click(button('关注'));
     const own = await wait(() => card('合成待删笔记'), 'own card');
     const guest = card('合成来宾笔记');
-    assert(guest && !button('动态操作', guest), 'guest was offered delete');
+    assert(guest && button('动态操作', guest), 'guest report menu missing');
     guest.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-    assert(!button('删除', guest), 'guest context menu exposed delete');
+    await wait(() => one('[aria-haspopup="menu"][role="menuitem"]', menu(guest)), 'guest report only');
+    assert(!button('删除', menu(guest)), 'guest context menu exposed delete');
     await capture('owner_only');
     const opener = button('动态操作', own);
     click(opener);
-    click(await wait(() => button('删除', own), 'own ellipsis menu'));
+    click(await wait(() => button('删除', menu(own)), 'own ellipsis menu'));
     await wait(() => button('确定', dialog()) && !button('确定', dialog()).disabled, 'confirmation');
     await wait(() => document.activeElement === button('取消', dialog()), 'confirmation defaults to Cancel');
     await capture('confirm');
@@ -57,7 +59,7 @@
     click(one('[data-community-opener]', own));
     const detail = await wait(() => one('.community-heading h1')?.textContent === '动态详情' && card('合成待删笔记'), 'own note detail');
     click(button('动态操作', detail));
-    click(await wait(() => button('删除', detail), 'detail menu'));
+    click(await wait(() => button('删除', menu(detail)), 'detail menu'));
     click(await wait(() => {
       const ok = button('确定', dialog()); return ok && !ok.disabled && ok;
     }, 'detail confirmation'));
@@ -66,7 +68,7 @@
     await capture('ack_detail_back');
     const unknown = card('合成未知笔记');
     unknown.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-    click(await wait(() => button('删除', unknown), 'own right-click menu'));
+    click(await wait(() => button('删除', menu(unknown)), 'own right-click menu'));
     click(await wait(() => {
       const ok = button('确定', dialog()); return ok && !ok.disabled && ok;
     }, 'unknown confirmation'));
@@ -79,7 +81,7 @@
     click(button('关闭', dialog()));
     await wait(() => !dialog(), 'dismiss unknown');
     click(button('动态操作', unknown));
-    click(await wait(() => button('删除', unknown), 'reopen own menu'));
+    click(await wait(() => button('删除', menu(unknown)), 'reopen own menu'));
     await wait(() => dialog()?.textContent.includes('客户端不会再次发送删除请求'), 'reopen durable pending');
     assert(!button('确定', dialog()), 'pending offered another delete');
     await capture('reopen_no_replay');

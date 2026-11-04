@@ -19,6 +19,8 @@ mod profile_podcasts_fixture;
 
 #[path = "support/community_delete_fixture.rs"]
 mod community_delete_fixture;
+#[path = "support/community_report_fixture.rs"]
+mod community_report_fixture;
 #[path = "support/community_topic_fixture.rs"]
 mod community_topic_fixture;
 

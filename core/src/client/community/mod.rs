@@ -4,6 +4,7 @@ pub mod new_song_notice;
 mod profile;
 mod project;
 pub mod publish;
+pub(super) mod report;
 pub(super) mod topic;
 
 use super::{MusicClient, comments, dto::AccountData};
@@ -61,6 +62,8 @@ pub struct CommunityCard {
     detail: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     can_delete: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    can_report: bool,
 }
 
 #[derive(Serialize)]
@@ -341,6 +344,12 @@ impl ReadLease<'_> {
                 card.detail = Some(card.key.clone());
                 card.can_delete =
                     record.locator.as_ref().map(|locator| &locator.owner) == token.uid.as_ref();
+                card.can_report = record.locator.as_ref().is_some_and(|locator| {
+                    token
+                        .uid
+                        .as_deref()
+                        .is_some_and(|viewer| locator.reportable(viewer))
+                });
             }
             if let Some(previous) = cards.iter_mut().find(|previous| previous.key == card.key) {
                 *previous = card;
@@ -480,6 +489,7 @@ impl MusicClient {
                 }
                 card.key = detail.into();
                 card.can_delete = token.uid.as_deref() == Some(locator.owner.as_str());
+                card.can_report = locator.reportable(viewer);
                 let resource = locator.comments();
                 let comments_available =
                     raw["info"]["threadId"].as_str() == Some(resource.thread()?.as_str());

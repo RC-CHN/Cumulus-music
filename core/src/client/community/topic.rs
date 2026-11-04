@@ -492,6 +492,10 @@ impl SliceLease<'_> {
                     .locator
                     .as_ref()
                     .is_some_and(|locator| locator.owner == owner);
+                card.can_report = record
+                    .locator
+                    .as_ref()
+                    .is_some_and(|locator| locator.reportable(owner));
             }
             if let Some(existing) = projected
                 .iter_mut()

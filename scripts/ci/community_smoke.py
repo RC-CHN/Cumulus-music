@@ -133,6 +133,29 @@ def verify_topic(stages, native):
     assert end == ['/api/act/event/new', '/api/act/event', '/api/act/event/hot', '/api/act/detail'], calls
 
 
+def verify_report(stages, native):
+    names = ('eligible', 'reasons', 'cancelled', 'detail', 'accepted', 'forward_custom',
+             'uncertain', 'reopened', 'duplicate')
+    assert set(stages) == set(names), stages
+    assert [sum(call[0] == '/api/report/reportevent'
+                for call in stages[name]['native']['eventReportCalls']) for name in names] == [0, 0, 0, 0, 1, 1, 2, 2, 3]
+    assert stages['cancelled']['openerFocused'] and stages['reopened']['uncertain']
+    calls = native['eventReportCalls']
+    first, forward, dup = ('90071992547409973331', '90071992547409973332',
+                           '90071992547409973333')
+    write = '/api/report/reportevent'
+    assert calls == [
+        ['/api/event/pc/history/feed/get', {'cursor': '-1'}],
+        [f'/api/v1/event/73/{first}', {}],
+        [f'/api/v1/event/73/{first}', {}],
+        [write, {'id': first, 'userid': '73', 'reason': '政治敏感言论'}],
+        [f'/api/v1/event/74/{forward}', {}],
+        [write, {'id': forward, 'userid': '74', 'reason': ' \u3000合成转发举报 100%\n末行 \t'}],
+        [f'/api/v1/event/75/{dup}', {}],
+        [write, {'id': dup, 'userid': '75', 'reason': '恶意人身攻击'}],
+    ], calls
+
+
 def verify_delete(stages, native):
     assert set(stages) == {'owner_only', 'confirm', 'cancel', 'ack_detail_back', 'uncertain',
                            'absence', 'reopen_no_replay', 'observed_removed'}
@@ -205,13 +228,15 @@ def main():
     mode.add_argument('--publication', action='store_true')
     mode.add_argument('--topic', action='store_true')
     mode.add_argument('--delete-note', action='store_true')
+    mode.add_argument('--report-note', action='store_true')
     mode.add_argument('--profile-playlists', action='store_true')
     mode.add_argument('--profile-follow', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    script = ('community_delete_ui_probe.js' if args.delete_note else
+    script = ('community_report_ui_probe.js' if args.report_note else
+              'community_delete_ui_probe.js' if args.delete_note else
               'community_topic_ui_probe.js' if args.topic else
               'own_profile_navigation_ui_probe.js' if args.own_profile else
               'profile_notes_ui_probe.js' if args.profile_notes else
@@ -223,6 +248,8 @@ def main():
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
     if args.topic:
         env['CUMULUS_COMMUNITY_TOPIC_PROOF'] = '1'
+    if args.report_note:
+        env['CUMULUS_COMMUNITY_REPORT_PROOF'] = '1'
     if args.delete_note:
         env['CUMULUS_COMMUNITY_DELETE_PROOF'] = '1'
     if args.profile_notes:
@@ -266,7 +293,9 @@ def main():
               for path in output.glob('ux_*.json')}
     assert len(stages) == complete['stageCount']
     assert all(stage['width'] == 760 for stage in stages.values())
-    if args.delete_note:
+    if args.report_note:
+        verify_report(stages, complete['native'])
+    elif args.delete_note:
         verify_delete(stages, complete['native'])
     elif args.topic:
         verify_topic(stages, complete['native'])
@@ -296,7 +325,9 @@ def main():
     report = {'ok': True, 'actualWebView': True, 'states': len(stages),
               'screenshots': len(stages) if args.screenshots else 0,
               'realMusicRequests': 0, 'remoteAccountWrites': 0}
-    if args.delete_note:
+    if args.report_note:
+        report['eventReportCalls'] = complete['native']['eventReportCalls']
+    elif args.delete_note:
         report['deleteCalls'] = complete['native']['deleteCalls']
     elif args.topic:
         report['topicCalls'] = complete['native']['topicCalls']

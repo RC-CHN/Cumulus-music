@@ -125,7 +125,7 @@ impl ReportHost {
                     let handle = uuid::Uuid::new_v4().simple().to_string();
                     *self.draft(journal.token)? = Some(Draft {
                         token: journal.token.clone(),
-                        key: journal.key.clone(),
+                        key: journal.draft_key().to_owned(),
                         reason,
                         receipt: handle.clone(),
                         at: Instant::now(),
@@ -137,10 +137,9 @@ impl ReportHost {
             ReportCommand::Cancel { receipt } => {
                 journal.session.with_token(journal.token, |owner| {
                     let mut slot = self.draft(journal.token)?;
-                    if slot
-                        .as_ref()
-                        .is_some_and(|draft| draft.key == journal.key && draft.receipt == receipt)
-                    {
+                    if slot.as_ref().is_some_and(|draft| {
+                        draft.key == journal.draft_key() && draft.receipt == receipt
+                    }) {
                         *slot = None;
                     }
                     Ok(journal.read(owner)?.map_or(ReportStatus::Ready, Into::into))
@@ -154,7 +153,7 @@ impl ReportHost {
                     let draft = journal.session.with_token(journal.token, |_| {
                         let mut slot = self.draft(journal.token)?;
                         if !slot.as_ref().is_some_and(|draft| {
-                            draft.key == journal.key && draft.receipt == receipt
+                            draft.key == journal.draft_key() && draft.receipt == receipt
                         }) {
                             return Err(Error::State("report confirmation expired"));
                         }
@@ -176,8 +175,12 @@ pub(super) struct ReportJournal<'a> {
     pub kind: &'static str,
     pub lock_prefix: &'static str,
     pub key: String,
+    pub draft_scope: Option<String>,
 }
 impl ReportJournal<'_> {
+    fn draft_key(&self) -> &str {
+        self.draft_scope.as_deref().unwrap_or(&self.key)
+    }
     fn lock(&self) -> Result<OperationLock> {
         self.session.with_token(self.token, |owner| {
             OperationLock::acquire(
