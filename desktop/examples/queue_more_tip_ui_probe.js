@@ -104,9 +104,10 @@
     if (window.__queueTipReopen) {
       await setFocus(true);
       await selectRecommendation('51');
-      await wait(() => calls.some(({ kind, granted }) => kind === 'begin' && !granted), 'native SQLite rejects restored UID offer');
-      await sleep(1050);
-      assert(!tip() && calls.length === 1 && !panel(), 'same UID restart suppresses eligible early-window cue');
+      await sleep(1350);
+      // Native restore can already have rejected a pre-probe offer from the same UID.
+      assert(!tip() && calls.length <= 1 && calls.every(({ kind, granted }) => kind === 'begin' && !granted) && !panel(),
+        'same UID restart suppresses eligible early-window cue');
       assert(await direct(epoch, { kind: 'begin', play_id: playId() }) === null, 'native restart guard denies cue');
       await capture('restart_suppressed');
     } else {
@@ -142,6 +143,8 @@
       await setFocus(true);
       await wait(() => tip() && calls.some(({ kind, granted }) => kind === 'begin' && granted), 'foreground cue displayed');
       firstShown = performance.now();
+      await wait(() => tip() && getComputedStyle(tip()).opacity === '1' &&
+        !tip().classList.contains('queue-more-tip-enter-active'), 'cue entrance animation settled');
       assert(tip().textContent.trim() === '列表播完已自动推荐，↓点击去设置' && !panel() &&
         tip().getAttribute('role') === 'status' && getComputedStyle(tip()).pointerEvents === 'none',
         'exact passive cue copy and semantics');
@@ -149,7 +152,10 @@
       const bubble = tip().getBoundingClientRect();
       assert(bubble.bottom <= icon.bottom + 1 && bubble.right >= icon.left && bubble.left <= icon.right,
         'cue anchored near queue icon');
-      await capture('shown');
+      await capture('shown', {
+        paintSamples: [{ x: bubble.left + 5, y: (bubble.top + bubble.bottom) / 2,
+          color: getComputedStyle(tip()).backgroundColor }],
+      });
       await sleep(2000);
       assert(!!tip() && !calls.some(({ kind }) => kind === 'seen'), 'cue remains and no early completion');
       await wait(() => !tip() && calls.some(({ kind }) => kind === 'seen'), 'cue times out and completes');

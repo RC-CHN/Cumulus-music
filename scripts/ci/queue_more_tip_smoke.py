@@ -44,11 +44,15 @@ def verify_stage(row, label, base_player):
     assert row['cue'] == (CUE if label == 'shown' else None), label
     assert row['cueCount'] == int(label == 'shown'), label
     assert not native['error'], label
+    eligible = label in ['unfocused', 'at_zero', 'past_window']
+    assert bool(native.get('queueMoreTipEligible')) == row['eligible'] == eligible, label
     calls = row['calls']
     if label in ['unfocused', 'at_zero', 'past_window']:
         assert calls == [], label
-    elif label in ['shown', 'restart_suppressed']:
-        assert [(c['kind'], c['granted']) for c in calls] == [('begin', label == 'shown')], label
+    elif label == 'restart_suppressed':
+        assert [(c['kind'], c['granted']) for c in calls] in [[], [('begin', False)]], label
+    elif label == 'shown':
+        assert [(c['kind'], c['granted']) for c in calls] == [('begin', True)], label
     else:
         assert [(c['kind'], c['granted']) for c in calls] == [('begin', True), ('seen', False)], label
         assert 4900 <= calls[1]['at'] - calls[0]['at'] < 8500, label
@@ -126,6 +130,9 @@ def main():
             verify_stage(row, label, base_player)
             if args.screenshots:
                 assert path.with_suffix('.png').is_file(), label
+                if label == 'shown':
+                    paint = read(path.with_name('paint-' + path.name))
+                    assert paint['samples'] and all(sample['ok'] for sample in paint['samples'])
         if sys.platform == 'linux':
             locale = read(output / 'locale.json')
             assert locale['numeric'] == 'C', locale
