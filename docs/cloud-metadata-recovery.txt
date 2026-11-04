@@ -1,0 +1,48 @@
+云盘已上传歌曲：只读元数据补全与手动改配边界
+官方 PC 3.1.42.205594，32 位与 64 位安装包恢复材料；不使用真实账号写入。
+
+已证实的读取
+- hybrid_app/15.js:1049–1083（SHA256 8ec4bf8d343f6963860eb73bc59ca09f0dd1ae50db2608a6c5abc7d69a0b521a）：
+  /api/v1/cloud/get 读到云盘记录，先对 simpleSong 做标准歌曲转换，保留原始云盘 songId。
+  若标准专辑存在但名称为空，用上传记录 album；若标准首位歌手存在但名称为空，用
+  上传记录 artist。该操作在本地响应转换阶段执行，不提交写请求、匹配候选或新映射。
+- hybrid_app/21.js:537–601：标准歌曲转换接受 ar/artists、album/al；首选 ar 和 album。
+  hybrid_52/3100.js:645–691（SHA256 2a5703b0917487fa4d1c707152cf75ac53ce3ded18c05e3b529c45e9cb452276）：
+  标题行使用规范化 origin 和歌手信息，专辑列用 origin.album，不含修改对话框。
+- Rust CloudApi 在完整云盘读取时补齐首位空歌手，保留该条目的 ID、其他已知歌手和
+  独立的云盘、目录歌曲 ID。已知目录名称优先，排序仍以原始上传字段为证据。既有
+  cloud_page IPC 只投影安全 TrackView 与有证据的公开歌曲 ID；WebView 不接触原始回包。
+  现有离线缓存不会被一次纯读取重写；成功刷新才提交本次标准化后的完整快照。
+
+未证实的手动改配
+- 上传列表 UploadedTrack.tsx:453–493 把资源交给 cloudTrack 行菜单。
+  hybrid_app/556.js（SHA256 ba9fea37236253341e1efc97b1b644d5173a30612f0c641799ceeab6b3c5fe20）
+  在已恢复场景下只有播放、下一首、收藏、分享、本地目录、删除，且按私有、下架、选择范围
+  及本地映射过滤；未找到编辑标签、候选匹配、保存、撤回或进入纠错网页的入口。
+  以 node references/recovered-client/scripts/netease_cloud_menu_oracle.cjs 重跑四个合成场景，
+  见 core/tests/fixtures/cloud_menu.json。该脚本是本地研究对照，使用恢复工厂和依赖替身，
+  不代表运行完整官方进程。
+- 同组件 480–488 唯一相关外部地址来自 hybrid_app/150.js:19：
+  https://music.163.com/static/cloudservice.html 。文案《“我的音乐网盘”服务协议》；
+  这是服务协议链接，没有证据为改配入口。容量区的会员跳转也不涉及元数据。
+- hybrid_app/15.js:4082 的 /api/feedback/correct/song 经 hybrid_app/109.js:119–134
+  用于既有歌词纠错提交，不能替代云盘元数据更新。
+- 对 4,717 个恢复 JS 模块搜索 /api/cloud/user/song/match、adjustSongId 和相关命名，未命中。
+  两个架构的 redist_packages/cloudmusic.dll、cloudmusic.exe 用 strings -a 与
+  strings -a -el 同样未命中这些名称；这是明文扫描范围，不能排除其它包或动态路径。
+  归档的第三方 netease-api-reborn 4.29.7 module/cloud_match.js 含该路径及
+  userId/songId/adjustSongId，不是官方 PC 执行、响应或权限证据，未作为产品实现。
+- 未实现用户手动改配、编辑/保存、取消匹配或纠错外链；也没有做线上端点探测。
+  下一步需同版官方录屏、调用点或合法受控的请求/回包证明触发、主体身份、重读、撤销及
+  失败语义。独立云盘资源不得用公开曲 ID 代替，更不以相同名称猜测归属。
+
+复现
+- cargo test -p cumulus-core --test client_cloud --locked
+- scripts/ci/cloud_page_smoke.py 使用真实 mini_ui_probe + 生产 IPC、隔离 SQLite 和合成后端。
+  核对未命名首位歌手的上传标签回退及合作歌手保留，继续由原云盘 ID 播放。专项不访问实服，
+  脚本中既有删除验证也只走合成夹具。
+- Linux 真 WebView 通过 26 个检查点及 26 张截图，另有 46 项 Rust 云盘回归通过。
+  界面显示上传回退与合作歌手，实际 libmpv 继续选原云盘 ID。证据
+  `.build/ui-proof/cloud-metadata-20261104/report.json`；
+  静态哈希、字面量命中数及四个菜单向量见 `.build/ui-proof/cloud-metadata-static-20261104/`。
+  未验证真实用户的改配能力或 Windows WebView。

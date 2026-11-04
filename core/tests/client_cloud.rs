@@ -246,6 +246,54 @@ fn query(tab: CloudTab) -> CloudQuery {
     }
 }
 #[tokio::test]
+async fn uploaded_tags_fill_only_unnamed_catalog_credits() {
+    let f = Fixture::new(0);
+    let mut unnamed = row(701);
+    unnamed["artist"] = json!("Uploaded artist");
+    unnamed["album"] = json!("Uploaded album");
+    unnamed["simpleSong"] = json!({
+        "id":8801,"name":"Catalog title","ar":[{"id":401,"name":"","private":"SECRET"},{"id":402,"name":"Catalog collaborator"}],
+        "album":{"id":501,"name":""},"al":{"name":"Not the preferred album"},"dt":120000
+    });
+    let mut known = row(702);
+    known["artist"] = json!("Original upload artist");
+    known["album"] = json!("Original upload album");
+    known["simpleSong"] = json!({
+        "id":8802,"name":"Known catalog track","artists":[{"id":403,"name":"Known catalog artist"},{"id":404,"name":""}],
+        "al":{"id":502,"name":"Known catalog album"},"dt":120000
+    });
+    *f.api.rows.lock().unwrap() = vec![unnamed, known];
+    let page = f
+        .client()
+        .cloud_page("1", query(CloudTab::Uploaded), true)
+        .await
+        .unwrap();
+    let first = page.tracks.iter().find(|r| r.track.id == "701").unwrap();
+    assert_eq!(first.track.name, "Catalog title");
+    assert_eq!(
+        first.track.artists,
+        ["Uploaded artist", "Catalog collaborator"]
+    );
+    assert_eq!(first.track.artist_refs[0].id.as_deref(), Some("401"));
+    assert_eq!(first.track.artist_refs[1].id.as_deref(), Some("402"));
+    assert_eq!(first.track.album, "Uploaded album");
+    assert_eq!(first.track.album_id.as_deref(), Some("501"));
+    assert_eq!(first.public_song_id.as_deref(), Some("8801"));
+    let second = page.tracks.iter().find(|r| r.track.id == "702").unwrap();
+    assert_eq!(second.track.artists, ["Known catalog artist", ""]);
+    assert_eq!(second.track.album, "Known catalog album");
+    assert_eq!(second.public_song_id.as_deref(), Some("8802"));
+    assert!(!serde_json::to_string(&page).unwrap().contains("SECRET"));
+    assert_eq!(
+        *f.api.calls.lock().unwrap(),
+        [(
+            "/api/v1/cloud/get".to_string(),
+            json!({"offset":0,"limit":200})
+        )]
+    );
+}
+
+#[tokio::test]
 async fn cloud_sorted_pages_and_playback_use_official_cloud_fields_and_stable_original_order() {
     let oracle: Value = serde_json::from_str(include_str!("fixtures/cloud_sort.json")).unwrap();
     let f = Fixture::new(0);

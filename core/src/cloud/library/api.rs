@@ -25,12 +25,28 @@ fn metadata(raw: &Value, id: &str) -> Result<Value> {
         .or_else(|| raw["songName"].as_str())
         .or_else(|| raw["fileName"].as_str())
         .unwrap_or("");
-    let artists = simple["ar"]
+    let uploaded_artist = raw["artist"].as_str().unwrap_or("");
+    let mut artists = simple["ar"]
         .as_array()
+        .or_else(|| simple["artists"].as_array())
         .filter(|a| !a.is_empty())
         .cloned()
-        .unwrap_or_else(|| vec![json!({"name":raw["artist"].as_str().unwrap_or("")})]);
-    let mut album = simple["al"].as_object().cloned().unwrap_or_default();
+        .unwrap_or_else(|| vec![json!({"name":uploaded_artist})]);
+    // M/15 fills only an unnamed first normalized catalog artist, leaving
+    // its identity and all later credits intact.
+    if let Some(first) = artists.first_mut().and_then(Value::as_object_mut)
+        && first
+            .get("name")
+            .and_then(Value::as_str)
+            .is_none_or(str::is_empty)
+    {
+        first.insert("name".into(), json!(uploaded_artist));
+    }
+    let mut album = simple["album"]
+        .as_object()
+        .or_else(|| simple["al"].as_object())
+        .cloned()
+        .unwrap_or_default();
     if album
         .get("name")
         .and_then(Value::as_str)

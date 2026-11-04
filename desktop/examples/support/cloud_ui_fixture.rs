@@ -31,7 +31,15 @@ pub struct Fixture {
     download_auths: Mutex<Vec<String>>,
 }
 fn rows(count: usize) -> Vec<Value> {
-    (1..=count).map(|i|json!({"songId":1000+i,"songName":format!("云盘合成歌曲 {i:03} · 用来核对长标题与操作布局"),"artist":format!("合成歌手 {}", i%7),"album":"一段很长的云盘专辑名称用于检查窄窗口","fileName":format!("cloud-{i:03}.flac"),"fileSize":if batch_enabled(){media::DATA.len()}else{12_345_678+i},"addTime":1_700_000_000_000u64+i as u64*1000,"bitrate":999000,"simpleSong":{"id":if menu_enabled(){json!(900000+i)}else{Value::Null},"t":if menu_enabled()&&i==2{1}else{0},"privilege":{"st":if menu_enabled()&&i==3{-100}else{0}},"name":format!("云盘合成歌曲 {i:03} · 用来核对长标题与操作布局"),"ar":[{"name":format!("合成歌手 {}",i%7)}],"al":{"name":"一段很长的云盘专辑名称用于检查窄窗口"},"dt":235000}})).collect()
+    (1..=count).map(|i| {
+        let artist = format!("合成歌手 {}", i % 7);
+        let artists = if i == 5 && !batch_enabled() {
+            json!([{"name":""},{"name":"合成合作歌手"}])
+        } else {
+            json!([{"name":artist}])
+        };
+        json!({"songId":1000+i,"songName":format!("云盘合成歌曲 {i:03} · 用来核对长标题与操作布局"),"artist":artist,"album":"一段很长的云盘专辑名称用于检查窄窗口","fileName":format!("cloud-{i:03}.flac"),"fileSize":if batch_enabled(){media::DATA.len()}else{12_345_678+i},"addTime":1_700_000_000_000u64+i as u64*1000,"bitrate":999000,"simpleSong":{"id":if menu_enabled(){json!(900000+i)}else{Value::Null},"t":if menu_enabled()&&i==2{1}else{0},"privilege":{"st":if menu_enabled()&&i==3{-100}else{0}},"name":format!("云盘合成歌曲 {i:03} · 用来核对长标题与操作布局"),"ar":artists,"al":{"name":"一段很长的云盘专辑名称用于检查窄窗口"},"dt":235000}})
+    }).collect()
 }
 impl Default for Fixture {
     fn default() -> Self {

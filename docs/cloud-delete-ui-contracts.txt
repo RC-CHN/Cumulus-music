@@ -61,7 +61,7 @@ Rust投影与版本归属
   默认保留本地；可选删除、CUE提示、逐文件结果和单独重试见
   cloud-local-delete-contracts.txt。原云盘分批/对账协议不变；不能将冻结CUE参数
   观察当作真实文件副作用通过，必须对照该文档指向的Rust和WebView运行证据。
-- 官方元数据匹配/纠正的保存调用链仍缺证据，未编造端点。新版SVIP远端配置、
+- 官方元数据匹配/纠正的保存调用链仍缺证据；只读补全与静态审计见 cloud-metadata-recovery.txt。新版SVIP远端配置、
   真实OSS/LRC/CUE服务限制、Windows实机视觉及全应用其他分支继续原边界。
 
 验证入口

@@ -35,7 +35,7 @@ def main():
     assert code == 0, f'cloud page process exit {code}'
     complete = json.loads((root/'first/complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['cloudPageUi'] and complete['stageCount'] == len(LABELS)
-    assert complete['writeCount'] == 4
+    assert complete['cloudMetadataFallback'] and complete['writeCount'] == 4
     rows = {}
     for i, label in enumerate(LABELS,1):
         path=root/'first'/f'ux_{i:02}_{label}.json'
@@ -63,7 +63,7 @@ def main():
     assert rows['filtered_playing_light']['nativePlayer']['track']['id']=='1005'
     for name,row in rows.items():
         if name!='account_replaced_light': assert row['nativePlayer']['state']=='paused' and abs(row['nativePlayer']['position']-10)<.2
-    report=dict(ok=True,states=len(LABELS),screenshots=len(LABELS) if args.screenshots else 0,actualWebViews=1,syntheticDeleteRequests=4,realMusicRequests=0,realAccountWrites=0,physicalDisplayVerified=False,physicalAudioOutputVerified=False)
+    report=dict(ok=True,states=len(LABELS),screenshots=len(LABELS) if args.screenshots else 0,actualWebViews=1,syntheticDeleteRequests=4,cloudMetadataFallback=True,realMusicRequests=0,realAccountWrites=0,physicalDisplayVerified=False,physicalAudioOutputVerified=False)
     (root/'report.json').write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8'); print(json.dumps(report))
 
 if __name__ == '__main__': main()

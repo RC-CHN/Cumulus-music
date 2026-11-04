@@ -207,7 +207,7 @@
     }
   ],
   "pending": [
-    "metadata matching/editing UI",
+    "manual metadata reassignment/editing: no recovered official PC save or handoff; see docs/cloud-metadata-recovery.txt",
     "real channel=3 OSS allocation and live UI",
     "LRC/CUE service restrictions",
     "Windows actual runtime evidence; macOS is not supported"
