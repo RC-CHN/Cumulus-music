@@ -18,6 +18,8 @@ use std::{
     sync::{Arc, Mutex, atomic::Ordering},
 };
 
+mod handoff;
+
 struct Entry {
     media: LoadedMedia,
     trace: Arc<Mutex<Trace>>,

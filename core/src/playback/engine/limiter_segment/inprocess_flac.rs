@@ -42,6 +42,27 @@ struct Source<'reader> {
     fault: Option<&'static str>,
 }
 
+const READ_BUDGET_EXHAUSTED: &str = "FLAC operation read budget exhausted";
+
+#[derive(Debug)]
+struct ReadBudget;
+
+impl std::fmt::Display for ReadBudget {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(READ_BUDGET_EXHAUSTED)
+    }
+}
+
+impl std::error::Error for ReadBudget {}
+
+fn operation_error(fault: &'static str) -> io::Error {
+    if fault == READ_BUDGET_EXHAUSTED {
+        io::Error::other(ReadBudget)
+    } else {
+        io::Error::other(fault)
+    }
+}
+
 impl Source<'_> {
     fn fail(&mut self, message: &'static str) -> Option<c_int> {
         self.fault.get_or_insert(message);
@@ -51,7 +72,7 @@ impl Source<'_> {
     fn prepare_operation(&mut self) -> io::Result<()> {
         self.authority.check().map_err(io::Error::other)?;
         if let Some(fault) = self.fault {
-            return Err(io::Error::other(fault));
+            return Err(operation_error(fault));
         }
         self.bytes_left = BYTE_BUDGET;
         self.seeks_left = 32;
@@ -91,13 +112,16 @@ unsafe extern "C" fn read(_: Handle, out: *mut u8, len: *mut usize, cookie: Hand
         if source.offset == source.size {
             return Some(abi::READ_EOF);
         }
+        if requested == 0 {
+            return source.fail("invalid FLAC read callback length");
+        }
+        if source.bytes_left == 0 {
+            return source.fail(READ_BUDGET_EXHAUSTED);
+        }
         let count = requested
             .min(SCRATCH)
             .min(source.bytes_left)
             .min((source.size - source.offset) as usize);
-        if count == 0 {
-            return source.fail("FLAC operation read budget exhausted");
-        }
         let actual = match source.input.read(&mut source.scratch[..count]) {
             Ok(actual) if (1..=count).contains(&actual) => actual,
             _ => return source.fail("FLAC source read failed or truncated"),
@@ -320,7 +344,7 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
                 .get_or_insert("native FLAC operation failed");
         }
         if let Some(error) = self.source().fault {
-            return Err(io::Error::other(error));
+            return Err(operation_error(error));
         }
         Ok(())
     }

@@ -46,12 +46,31 @@ second test also exercises an occupied sink, an out-of-range target,
 and a real account detach before handoff. These tests use synthetic
 profile adoption only and start no decoder subprocess.
 
-There is no automatic fallback or new production decoder selection. A
-future active optional worker must first stop and hand its reader back
-after its callbacks finish; the current optional worker only proves its
-test transport and does not expose such a reclaim API. The host must
-retain and poll the cold reader's authority, preserve its current public
-playback identity, and report unavailable if the stock sink cannot
-confirm the desired position. No attempt is made to cover CUE/trial
-ranges, online Range semantics, actual sound hardware, or Windows native
-runtime here. Optional FLAC/limiter remains disabled by default.
+The opt-in active-seek proof starts a protected optional limiter sink and
+waits for its clock and buffered PCM. A seek for another native entry is
+rejected without affecting it. The current entry is retired with its
+exact native Stop, then the bounded seek is tried on the worker. A typed
+128 KiB read limit is eligible for the stock handoff; other decoder
+errors do not take that branch. The worker lends its sole reader to
+libFLAC. Reclaim cancels a separate worker gate and has a 3 s deadline.
+The reader is transferable only after libFLAC and its callbacks finish
+and the worker joins; retaining an old callback factory cannot keep the
+worker alive or start another pass. On timeout no reader is returned.
+Closing the worker does not cancel the account or source lease. The
+native host validates the cold authorization again before publishing a
+new sink. The fixture tests both transport intents, an invalid logical
+seek that must not start a second sink, and an actual cold session
+detach after reclaim and before stock publication.
+
+    cargo test --locked -p cumulus-core --lib limiter_cold_flac_active_seek -- --include-ignored --nocapture
+
+The stock helper remains explicit. There is no automatic fallback or
+production decoder selection; the optional worker is compiled only in
+tests. The production host must preserve the public playback identity,
+retain and poll the cold reader's authority, and report unavailable if
+the stock sink cannot confirm the desired position. A separate native
+failure-injection proof covers synchronous sink destruction when exact
+Stop cannot be confirmed; the active-seek fixtures exercise successful
+Stop. No claim covers CUE/trial ranges, online Range semantics, actual
+sound hardware or Windows native runtime. Optional FLAC/limiter remains
+disabled by default.
