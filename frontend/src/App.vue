@@ -59,6 +59,7 @@ import PlaylistTagBrowse from './components/playlist/PlaylistTagBrowse.vue';
 import PlaylistEssentialPage from './components/playlist/PlaylistEssentialPage.vue';
 import PlaylistCreatorPage from './components/playlist/PlaylistCreatorPage.vue';
 import { usePlaylistCreator } from './composables/usePlaylistCreator';
+import ProfilePlayRecordPage from './components/profile/ProfilePlayRecordPage.vue';
 import ProfileRelationsPage from './components/profile/ProfileRelationsPage.vue';
 import { useProfileRelations } from './composables/useProfileRelations';
 import type { ProfileRelationCard, ProfileRelationMode } from './services/profileRelations';
@@ -1621,6 +1622,36 @@ watch(
   },
   { immediate: true, flush: 'sync' },
 );
+function openProfilePlayRecord() {
+  const profile = playlistCreator.profile.value;
+  if (
+    !profile?.listeningRank ||
+    page.value.kind !== 'playlist_creator' ||
+    page.value.id !== profile.id
+  )
+    return;
+  music.navigate({
+    kind: 'profile_play_record',
+    uid: profile.listeningRank.isSelf ? null : profile.id,
+    name: profile.nickname,
+    period: 'week',
+  });
+}
+function playProfileRank(tracks: TrackView[], index: number) {
+  const track = tracks[index];
+  if (!track) return;
+  const current = visibleTrackToggle.value;
+  if (current?.trackId === track.id) {
+    void player.action({
+      kind: 'pause_for',
+      play_id: current.playId,
+      expected_queue_revision: current.queueRevision,
+      paused: current.pause,
+    });
+    return;
+  }
+  playOnlineSongs(tracks, index);
+}
 const profileRelations = useProfileRelations(core, () => void music.bootstrap(false));
 let relationVisit = 0;
 watch(
@@ -3280,6 +3311,24 @@ onUnmounted(() => {
                 :relation-notice="profileRelations.entryNotice.value"
                 @open="(id) => music.navigate({ kind: 'playlist', id })"
                 @relations="openProfileRelations"
+                @rank="openProfilePlayRecord"
+              />
+              <ProfilePlayRecordPage
+                v-else-if="page.kind === 'profile_play_record'"
+                :target="page"
+                :epoch="account.epoch"
+                :playable="player.ready.value && !player.busy.value"
+                :liked="liked"
+                :busy-likes="busyLikes"
+                :current-id="currentSearchSongId"
+                :playing="player.playing.value"
+                @period="
+                  (period) =>
+                    page.kind === 'profile_play_record' && music.navigate({ ...page, period })
+                "
+                @play="playProfileRank"
+                @like="(id) => music.like({ id })"
+                @expired="music.bootstrap(false)"
               />
               <ProfileRelationsPage
                 v-else-if="page.kind === 'profile_relations'"
@@ -3947,6 +3996,10 @@ onUnmounted(() => {
         :account="account"
         @close="accountsOpen = false"
         @changed="authorized"
+        @listening-rank="
+          accountsOpen = false;
+          music.navigate({ kind: 'profile_play_record', uid: null, name: '', period: 'week' });
+        "
         @login="
           accountsOpen = false;
           loginOpen = true;

@@ -17,8 +17,16 @@ pub struct PlaylistCreatorProfile {
     pub signature: String,
     pub following_count: Option<u64>,
     pub followers_count: Option<u64>,
+    pub listening_rank: Option<ListeningRankEntry>,
     pub created: Vec<PlaylistView>,
     pub collected: Vec<PlaylistView>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListeningRankEntry {
+    pub is_self: bool,
+    pub listen_songs: Option<u64>,
 }
 
 impl MusicClient {
@@ -100,7 +108,7 @@ impl MusicClient {
                     return Err(Error::Response("public playlist pagination limit reached"));
                 }
                 Ok(Some(PlaylistCreatorProfile {
-                    id: uid,
+                    id: uid.clone(),
                     nickname: nickname.chars().take(128).collect(),
                     avatar_url: mapping::artwork(&profile["avatarUrl"]),
                     signature: profile["signature"]
@@ -111,6 +119,13 @@ impl MusicClient {
                         .collect(),
                     following_count: relation_count(&profile["follows"]),
                     followers_count: relation_count(&profile["followeds"]),
+                    listening_rank: super::profile_play_record::allowed(&response, viewer == uid)
+                        .then(|| ListeningRankEntry {
+                            is_self: viewer == uid,
+                            listen_songs: super::profile_play_record::count(
+                                &response["listenSongs"],
+                            ),
+                        }),
                     created,
                     collected,
                 }))

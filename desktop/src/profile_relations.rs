@@ -28,3 +28,16 @@ pub async fn profile_relation_page(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn profile_play_record(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    uid: Option<String>,
+    period: cumulus_core::client::dto::ProfilePlayRecordPeriod,
+) -> Result<AccountData<cumulus_core::client::dto::ProfilePlayRecordView>, ClientError> {
+    client
+        .profile_play_record(&epoch, uid.as_deref(), period)
+        .await
+        .map_err(Into::into)
+}

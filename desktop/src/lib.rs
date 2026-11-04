@@ -274,6 +274,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::playlist_essential_categories,
                 commands::playlist_essential_page,
                 commands::playlist_creator_profile,
+                profile_relations::profile_play_record,
                 profile_relations::profile_relation_access,
                 profile_relations::profile_relation_page,
                 commands::search_songs,

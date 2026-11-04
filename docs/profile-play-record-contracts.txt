@@ -1,0 +1,33 @@
+用户主页听歌排行（Windows PC 3.1.42.205594）
+
+官方证据与调用
+- M/2264:386–459（page:userDetail 的 fetchPlayRecordRankWeekList /
+  fetchPlayRecordRankAllList）读取指定用户的两个独立榜，不是本账号最近播放历史。
+  M/15.Uh:1137、API-0472 请求 POST /api/v1/play/record：
+  {offset:0,total:true,limit:120,uid:<目标用户十进制字符串>,type:1|0}，
+  最近一周 type=1 读取顶层 weekData；所有时间 type=0 读取 allData。按服务顺序使用
+  row.song，不把 score、播放次数或本地历史作为排序替代。单批至多 120 条，无猜测分页。
+- M/2264 的 fetchUserDetail、fetchUserPlaylist 与 M/100.i 根据
+  /api/w/v1/user/detail/{uid} 返回的顶层 peopleCanSeeMyPlayRecord 控制访客入口，
+  本人可进入。资料卡显示同一已获准响应的 listenSongs 累计首数。
+  M/3088:2863–2879 的普通主页也不对被屏蔽的访客呈现歌单区；Cumulus 在每次排行读取前
+  统一检查访客权限和 profile.inBlacklist，不把缓存入口或单个前端设置值当成授权。
+- M/3088:1793–1948 与恢复的 PlayRecordTabs.tsx：主页初次进最近一周，
+  切换最近一周／所有时间时压入路径，因此返回依次还原前一个排行页、原主页。
+  M/352:1223–1287 的曲目表按行呈现标题和喜欢操作，只有本人显示每首播放量。
+  Cumulus 在 Rust 就移除访客每首播放量；不把原始曲目 JSON、音源地址或 score 发给前端。
+- core/src/client/profile_play_record.rs 绑定当前会话代次，访客先读实时资料校验
+  profile.userId、权限和屏蔽状态，再发排行请求。会话或 API 实例变化取消旧结果；
+  缺权限、明确 403/404、有效空列表、畸形或传输失败分别处理。无访客授权不发排行请求。
+  资料入口使用现有用户主页桥；profile_play_record IPC 仅接受 epoch、目标 UID
+  （null 由核心选择当前账号）及 week/all。账号弹窗提供本人快捷入口。
+- 排行曲目使用现有本地播放队列和音源权利检查，喜欢走同一账号用例。未迁移官方
+  自己排行菜单的「删除听歌记录」（M/3085:2661–2675 → M/2264:460–512，
+  API-0276）和虚拟歌单整单入口的专属播放来源上报（M/404:82–92）；
+  没有对真实账号执行删除、喜欢或其他写入。皮肤图片使用社区图标，无官方图复制。
+  本人的实验侧栏替代入口、真实账号授权和 Windows 实机仍待单独验证。
+
+复现
+- cargo test -p cumulus-core --test profile_play_record --locked
+- npm --prefix frontend ci && npm --prefix frontend run build
+- Linux 实际 WebView 用封闭合成 transport；无需真实账号、Cookie 或公网。

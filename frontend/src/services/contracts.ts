@@ -48,6 +48,7 @@ import type { OutputClient } from './output';
 import type { EffectDirectoryClient } from './effectDirectory';
 import type { RelayClient } from './relay';
 import type { RelayPublicationClient } from './relayPublication';
+import type { ProfilePlayRecordClient } from './profilePlayRecord';
 import type { ProfileRelationClient } from './profileRelations';
 /** Wire format returned by core::AppInfo. Keep the IPC test in sync. */
 export interface AppInfo {
@@ -138,6 +139,7 @@ export interface CoreClient
     WindowLifecycleClient,
     RelayClient,
     RelayPublicationClient,
+    ProfilePlayRecordClient,
     ProfileRelationClient {
   getAppInfo(): Promise<AppInfo>;
   copyText(text: string): Promise<void>;
@@ -231,6 +233,7 @@ export interface PlaylistCreatorProfile {
   nickname: string;
   avatarUrl: string | null;
   signature: string;
+  listeningRank?: { isSelf: boolean; listenSongs: number | null } | null;
   followingCount?: number | null;
   followersCount?: number | null;
   created: PlaylistView[];

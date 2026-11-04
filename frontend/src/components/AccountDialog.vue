@@ -14,7 +14,7 @@ import SessionRenewal from './SessionRenewal.vue';
 import { useConfirmationFocus } from '../composables/useConfirmationFocus';
 import { useControlFocus } from '../composables/useControlFocus';
 const props = defineProps<{ account: AccountView }>();
-const emit = defineEmits<{ close: []; login: []; changed: [] }>();
+const emit = defineEmits<{ close: []; login: []; changed: []; listeningRank: [] }>();
 const core = useCore();
 const model = useLogin(core, () => emit('changed'));
 const { busy } = model;
@@ -381,6 +381,15 @@ onBeforeUnmount(deactivate);
           <p v-if="uncheckedCount">其余本机记录未核对。</p>
         </template>
       </section>
+      <button
+        v-if="account.status === 'authenticated'"
+        class="text-button"
+        type="button"
+        :disabled="busy || leaving || removing"
+        @click="emit('listeningRank')"
+      >
+        我的听歌排行
+      </button>
       <button class="account-add" :disabled="busy || leaving || removing" @click="login">
         ＋ 添加账号
       </button>

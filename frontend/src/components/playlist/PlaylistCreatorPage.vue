@@ -10,7 +10,11 @@ const props = defineProps<{
   checkingRelations: boolean;
   relationNotice: string;
 }>();
-const emit = defineEmits<{ open: [id: string]; relations: [kind: ProfileRelationMode] }>();
+const emit = defineEmits<{
+  open: [id: string];
+  relations: [kind: ProfileRelationMode];
+  rank: [];
+}>();
 const root = ref<HTMLElement>();
 const failedAvatar = ref(false);
 onMounted(async () => {
@@ -21,7 +25,12 @@ onMounted(async () => {
   const card = Array.from(
     root.value.querySelectorAll<HTMLButtonElement>('[data-library-open]'),
   ).find((node) => node.dataset.libraryOpen === props.model.opened.value);
-  (relationButton() ?? card ?? root.value.querySelector('h1'))?.focus({ preventScroll: true });
+  const rank =
+    props.model.openedRank.value &&
+    root.value.querySelector<HTMLElement>('[data-profile-rank-entry]');
+  (rank || relationButton() || card || root.value.querySelector('h1'))?.focus({
+    preventScroll: true,
+  });
 });
 function relationButton() {
   return root.value?.querySelector<HTMLElement>(
@@ -38,11 +47,13 @@ watch(
 );
 function relations(kind: ProfileRelationMode) {
   if (props.checkingRelations) return;
+  props.model.openedRank.value = false;
   props.model.rememberRelation(kind);
   emit('relations', kind);
 }
 const count = new Intl.NumberFormat('zh-CN', { notation: 'compact' });
 function open(id: string) {
+  props.model.openedRank.value = false;
   props.model.opened.value = id;
   emit('open', id);
 }
@@ -127,6 +138,28 @@ function open(id: string) {
           收藏的歌单 {{ model.profile.value.collected.length }}
         </button>
       </div>
+      <button
+        v-if="
+          model.group.value === 'created' &&
+          model.page.value === 0 &&
+          model.profile.value.listeningRank
+        "
+        class="text-button creator-rank-entry"
+        type="button"
+        data-profile-rank-entry
+        @click="
+          model.openedRank.value = true;
+          emit('rank');
+        "
+      >
+        <Icon name="music" />
+        <span>
+          {{ model.profile.value.listeningRank.isSelf ? '我的听歌排行' : 'TA的听歌排行' }}
+          <small v-if="model.profile.value.listeningRank.listenSongs !== null" class="muted">
+            累计听歌{{ model.profile.value.listeningRank.listenSongs }}首
+          </small>
+        </span>
+      </button>
       <div v-if="model.cards.value.length" class="playlist-grid">
         <PlaylistCard
           v-for="list in model.cards.value"
@@ -198,5 +231,15 @@ function open(id: string) {
 .creator-page-groups [aria-pressed='true'] {
   font-weight: 600;
   background: var(--surface-alt);
+}
+.creator-rank-entry {
+  display: flex;
+  align-items: center;
+  text-align: start;
+  gap: 0.75rem;
+  margin-block-end: 0.75rem;
+}
+.creator-rank-entry small {
+  display: block;
 }
 </style>

@@ -9,6 +9,7 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
   const group = ref<'created' | 'collected'>('created');
   const page = ref(0);
   const opened = ref('');
+  const openedRank = ref(false);
   const openedRelation = ref<ProfileRelationMode>();
   const relationEntries = new Map<string, ProfileRelationMode>();
   const list = computed(() => profile.value?.[group.value] ?? []);
@@ -46,6 +47,7 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
     if (owner !== epoch || (target && target !== uid)) {
       epoch = owner;
       uid = target ?? '';
+      openedRank.value = false;
       openedRelation.value = relationEntries.get(uid);
       profile.value = undefined;
       group.value = 'created';
@@ -74,6 +76,7 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
     pages,
     cards,
     opened,
+    openedRank,
     openedRelation,
     rememberRelation,
     enter,

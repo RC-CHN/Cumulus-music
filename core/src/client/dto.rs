@@ -51,6 +51,7 @@ pub use super::podcast::{
     PodcastRankResource, PodcastRankRow, PodcastRankTab, PodcastRanks, PodcastSearchMembership,
     PodcastState, PodcastSubcategory, PodcastTopLayout,
 };
+pub use super::profile_play_record::{ProfilePlayRecordPeriod, ProfilePlayRecordView};
 pub use super::profile_relations::{
     ProfileRelationAccess, ProfileRelationEntry, ProfileRelationKind, ProfileRelationPage,
 };
