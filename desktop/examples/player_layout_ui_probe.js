@@ -230,6 +230,29 @@
     await wait(()=>one('.lyric-line.current')&&gain()===initial+3,'saved font gain restored');
     assert(one('.playerbar').dataset.playId===playId&&one('.playerbar').dataset.state==='paused','font preference does not alter native playback');
   }
+  async function verifyAudioOutputRecovery() {
+    const bar=()=>one('.playerbar');
+    const settings=()=>all('.playback-message button').find(node=>node.textContent.trim()==='音频输出设置');
+    const retry=()=>all('.playback-message button').find(node=>node.textContent.trim()==='重试');
+    assert(!settings(),'normal playback does not expose output recovery action');
+    window.__cardSourceAck={};
+    await emit('card-source-fixture',{id:1,mode:'fail-next-output'});
+    await wait(()=>window.__cardSourceAck[1]?.pendingOutputFailure,'arm native audio output failure');
+    all('.track-row')[0].dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));
+    await wait(()=>bar().dataset.state==='error'&&settings()?.disabled===false&&retry()?.disabled===false,'output failure exposes settings and explicit retry');
+    const failedId=bar().dataset.playId;
+    assert(failedId,'failed selection remains addressable');
+    click(settings());
+    const heading=()=>one('#settings-audio-output');
+    await wait(()=>heading()&&document.activeElement===heading()&&hit(heading()),'audio output settings focuses and scrolls to the correct section');
+    assert(bar().dataset.state==='error'&&bar().dataset.playId===failedId,'settings navigation does not retry or replace audio');
+    await emit(`ux_${String(++stageCount).padStart(2,'0')}_audio_output_recovery`,{target:heading().textContent,failedId});
+    await sleep(800);
+    click(retry());
+    await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.15&&!settings(),'explicit retry recovers native playback');
+    click(one('.playerbar [aria-label="暂停"]'));
+    await wait(()=>bar().dataset.state==='paused','pause recovered song');
+  }
   try {
     await wait(()=>all('.track-row').length>2,'daily');
     await wait(()=>one('[aria-label="列表循环"]') && !one('[aria-label="列表循环"]').disabled,'native player ready');
@@ -275,8 +298,9 @@
     }
     click(one('[aria-label="收起播放详情"]'));await wait(()=>!one('.lyrics-panel'),'details close');await sleep(300);
     assert(document.activeElement===one('[aria-label="歌词"]'),'detail close focus lost');
+    if(!window.__playerLayoutBaseline) await verifyAudioOutputRecovery();
     const passed=checks.every(row=>Object.entries(row).every(([key,value])=>key==='label'||value===true));
     assert(window.__playerLayoutBaseline||passed,JSON.stringify(checks.filter(row=>Object.values(row).includes(false))));
-    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline});
+    await emit('complete',{ok:true,layoutPassed:passed,checks,stageCount,realMusicRequests:0,accountWrites:0,focusRestored:true,lyricFollowVerified:!window.__playerLayoutBaseline,lyricTimelineVerified:!window.__playerLayoutBaseline,lyricFontVerified:!window.__playerLayoutBaseline,lyricModesVerified:!window.__playerLayoutBaseline,chorusMarkerVerified:!window.__playerLayoutBaseline,seekTimePreviewVerified:!window.__playerLayoutBaseline,slowPlaybackWaitVerified:!window.__playerLayoutBaseline,seekStepVerified:!window.__playerLayoutBaseline,audioOutputRecoveryVerified:!window.__playerLayoutBaseline});
   } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount,checks});}
 })();

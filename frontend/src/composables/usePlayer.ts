@@ -43,6 +43,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const reported = shallowRef<CoreFailure>();
   const reportedRevision = ref(0);
   const error = computed(() => reported.value?.message ?? '');
+  const errorCode = computed(() => reported.value?.code ?? view.value?.errorCode);
   const canRetry = computed(
     () => reported.value?.retryable ?? view.value?.errorRetryable ?? !!view.value?.error,
   );
@@ -88,6 +89,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       current?.queueRevision,
       current?.state,
       current?.error,
+      current?.errorCode,
       current?.errorRetryable,
       reported.value ? reportedRevision.value : null,
     ]);
@@ -804,6 +806,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditing,
     queueCurrent,
     error,
+    errorCode,
     canRetry,
     queueError,
     queueEditError,

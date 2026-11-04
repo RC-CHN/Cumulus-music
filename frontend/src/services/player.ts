@@ -79,6 +79,7 @@ export interface PlayerView {
   mode: PlaybackMode;
   queueLen: number;
   error: string | null;
+  errorCode?: string | null;
   errorRetryable?: boolean | null;
   historyWarning: string | null;
   positionReset: boolean;

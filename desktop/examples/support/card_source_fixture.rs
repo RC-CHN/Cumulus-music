@@ -17,6 +17,7 @@ pub fn enabled() -> bool {
 pub struct Control {
     buffer: AtomicBool,
     fail_resume: AtomicBool,
+    fail_output: AtomicBool,
     loads: AtomicU64,
     failed_resumes: AtomicU64,
 }
@@ -26,13 +27,14 @@ impl Control {
             "buffer-on" => self.buffer.store(true, Ordering::SeqCst),
             "buffer-off" => self.buffer.store(false, Ordering::SeqCst),
             "fail-next-resume" => self.fail_resume.store(true, Ordering::SeqCst),
+            "fail-next-output" => self.fail_output.store(true, Ordering::SeqCst),
             "read" => {}
             _ => return Err(Error::InvalidInput("unknown synthetic card audio mode")),
         }
         Ok(self.report())
     }
     pub fn report(&self) -> Value {
-        json!({"loads":self.loads.load(Ordering::SeqCst),"failedResumes":self.failed_resumes.load(Ordering::SeqCst),"forcedBuffering":self.buffer.load(Ordering::SeqCst),"pendingResumeFailure":self.fail_resume.load(Ordering::SeqCst)})
+        json!({"loads":self.loads.load(Ordering::SeqCst),"failedResumes":self.failed_resumes.load(Ordering::SeqCst),"forcedBuffering":self.buffer.load(Ordering::SeqCst),"pendingResumeFailure":self.fail_resume.load(Ordering::SeqCst),"pendingOutputFailure":self.fail_output.load(Ordering::SeqCst)})
     }
 }
 pub struct Audio {
@@ -47,6 +49,12 @@ impl Audio {
 impl AudioEngine for Audio {
     fn load(&mut self, input: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         self.control.loads.fetch_add(1, Ordering::SeqCst);
+        if self.control.fail_output.swap(false, Ordering::SeqCst) {
+            return Err(Error::Playback {
+                operation: "load ended",
+                code: -14,
+            });
+        }
         self.inner.load(input, cancel)
     }
     fn pause(&mut self, paused: bool) -> Result<()> {

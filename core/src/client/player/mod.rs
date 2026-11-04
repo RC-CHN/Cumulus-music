@@ -186,6 +186,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     if &value.account != token {
         return Err(Error::StaleResponse);
     }
+    let failure = value.error.map(super::ClientError::from);
     Ok(PlayerView {
         fm: value.fm,
         intelligence: value.intelligence.as_ref().map(|state| state.phase),
@@ -244,12 +245,9 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         speed: value.speed,
         mode: value.mode,
         queue_len: value.visible_queue_len,
-        error: value
-            .error
-            .map(|error| super::ClientError::from(error).message),
-        error_retryable: value
-            .error
-            .map(|error| super::ClientError::from(error).retryable),
+        error: failure.as_ref().map(|error| error.message),
+        error_code: failure.as_ref().map(|error| error.code),
+        error_retryable: failure.map(|error| error.retryable),
         position_reset: value.position_reset,
         history_warning: value.history_error.as_ref().map(|_| "最近播放暂未保存"),
     })

@@ -301,6 +301,7 @@ async fn authorized_media_and_output_failures_keep_distinct_action_and_snapshot_
         let state = client.player_snapshot("1").await.unwrap();
         assert_eq!(state.state, PlaybackStatus::Error);
         assert_eq!(state.error, Some(diagnostic.message));
+        assert_eq!(state.error_code, Some(public));
         assert_eq!(state.error_retryable, Some(true));
         assert!(
             !serde_json::to_string(&state)
@@ -318,6 +319,7 @@ async fn authorized_media_and_output_failures_keep_distinct_action_and_snapshot_
     device.load_failure_code.store(0, Ordering::SeqCst);
     let playing = client.play_selection("1", songs("2")).await.unwrap();
     assert_eq!(playing.state, PlaybackStatus::Playing);
+    assert!(playing.error_code.is_none());
     assert_eq!(playing.error_retryable, None);
 }
 

@@ -42,14 +42,14 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    expected = 20 if args.baseline else 24
+    expected = 20 if args.baseline else 25
     assert complete['ok'] and complete['stageCount'] == expected and complete['focusRestored']
     assert complete['realMusicRequests'] == complete['accountWrites'] == 0
     assert complete['nativePlayer']['state'] == 'paused' and complete['nativePlayer']['position'] > 0
     assert args.baseline or all(complete[key] for key in (
         'layoutPassed', 'lyricFollowVerified', 'lyricTimelineVerified', 'lyricFontVerified',
         'lyricModesVerified', 'chorusMarkerVerified', 'seekTimePreviewVerified',
-        'slowPlaybackWaitVerified', 'seekStepVerified'))
+        'slowPlaybackWaitVerified', 'seekStepVerified', 'audioOutputRecoveryVerified'))
     stages = list((root / 'first').glob('ux_*.json'))
     assert len(stages) == expected
     if not args.baseline:
@@ -57,6 +57,13 @@ def main():
         native_wait = json.loads(waiting.read_text(encoding='utf-8'))
         assert native_wait['nativePlayer']['state'] == 'buffering'
         assert native_wait['sourceAudio']['forcedBuffering']
+        recovery, = [stage for stage in stages if stage.stem.endswith('_audio_output_recovery')]
+        native_error = json.loads(recovery.read_text(encoding='utf-8'))
+        assert native_error['nativePlayer']['state'] == 'error'
+        assert native_error['nativePlayer']['errorCode'] == 'audio_output_failed'
+        assert native_error['nativePlayer']['playId'] == native_error['failedId']
+        assert native_error['nativePlayer']['track']['id'] == complete['nativePlayer']['track']['id']
+        assert native_error['target'] == '音频输出'
     if args.screenshots:
         assert len(list((root / 'first').glob('ux_*.png'))) == expected
     report = dict(complete, actualWebView=True, screenshots=expected if args.screenshots else 0,

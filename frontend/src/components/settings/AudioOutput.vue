@@ -56,7 +56,7 @@ onUnmounted(model.dispose);
     aria-labelledby="settings-audio-output"
     :aria-busy="model.loading.value || model.busy.value"
   >
-    <h2 id="settings-audio-output">音频输出</h2>
+    <h2 id="settings-audio-output" tabindex="-1">音频输出</h2>
     <div class="settings-section-content">
       <div class="settings-read-status">
         <span>本机输出设备</span
@@ -126,6 +126,10 @@ onUnmounted(model.dispose);
   </section>
 </template>
 <style scoped>
+.audio-output > h2 {
+  align-self: start;
+  justify-self: start;
+}
 .output-selection {
   display: flex;
   align-items: center;

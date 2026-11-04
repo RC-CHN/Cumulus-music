@@ -144,7 +144,7 @@ import { usePlaylists } from './composables/usePlaylists';
 import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { createPlayerResume } from './services/playerResume';
-import { useMusic } from './composables/useMusic';
+import { useMusic, type Page } from './composables/useMusic';
 import { downloadSectionQuery } from './services/downloadPage';
 import { useCore } from './services/core';
 const core = useCore();
@@ -957,6 +957,7 @@ watch(
 function mainPageEntered() {
   miniFmFocus.complete();
   restoreDailyMenuFocus();
+  focusAudioOutput();
   const focus = styleHomeFocus;
   styleHomeFocus = undefined;
   if (document.activeElement !== document.body) return;
@@ -1058,6 +1059,38 @@ function backFromPage() {
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
+let outputFocus: { epoch: string; route: Page } | undefined;
+function focusAudioOutput() {
+  if (outputFocus?.route !== music.page.value || outputFocus.epoch !== music.account.value.epoch)
+    return;
+  const heading = document.querySelector<HTMLElement>('#settings-audio-output');
+  if (!heading || heading.closest('.page-leave-active')) return;
+  outputFocus = undefined;
+  heading.scrollIntoView({ block: 'start', behavior: 'instant' });
+  heading.focus({ preventScroll: true });
+}
+function revealAudioOutput() {
+  player.lyricsOpen.value = false;
+  player.queueOpen.value = false;
+  void nextTick(focusAudioOutput);
+}
+function openAudioOutput(epoch: string) {
+  if (epoch !== music.account.value.epoch) return;
+  const current = music.page.value;
+  if (current.kind === 'settings' && !current.accountDetail) {
+    outputFocus = { epoch, route: current };
+    revealAudioOutput();
+    return;
+  }
+  const route: Page = { kind: 'settings' };
+  outputFocus = { epoch, route };
+  music.navigate(route);
+}
+watch(music.page, (next) => {
+  if (outputFocus?.route === next && outputFocus.epoch === music.account.value.epoch)
+    revealAudioOutput();
+  else outputFocus = undefined;
+});
 function openCurrentDownload(epoch: string, playId: string, trackId: string) {
   const current = currentCatalogDownload(player.view.value);
   if (
@@ -2995,6 +3028,7 @@ onUnmounted(() => {
       :together-active="together.view.value?.attached ?? false"
       @like="likePlaying"
       @retry="player.connect(account)"
+      @audio-output="openAudioOutput"
       @comments="trackComments"
       @download="openCurrentDownload"
       @member="music.navigate({ kind: 'member' })"

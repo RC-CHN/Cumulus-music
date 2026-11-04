@@ -38,6 +38,7 @@ const emit = defineEmits<{
   download: [epoch: string, playId: string, trackId: string];
   member: [];
   login: [];
+  audioOutput: [epoch: string];
 }>();
 const { view, ready, busy, error, canRetry, playing, loaded } = props.player;
 const chorusMarker = usePlaybackChorus(view, loaded);
@@ -80,6 +81,11 @@ async function retryPlayback(event: MouseEvent) {
         : null) ?? host?.querySelector<HTMLButtonElement>('.play-toggle:not(:disabled)');
     target?.focus({ preventScroll: true });
   }
+}
+function openAudioOutput(event: MouseEvent) {
+  const key = (event.currentTarget as HTMLButtonElement).dataset.retryKey;
+  if (key === props.player.retryKey.value && props.player.errorCode.value === 'audio_output_failed')
+    emit('audioOutput', props.account.epoch);
 }
 async function transport(event: MouseEvent, action: PlayerAction | (() => unknown)) {
   const origin = event.currentTarget as HTMLButtonElement,
@@ -521,6 +527,15 @@ async function seek(event: Event) {
           @click="retryPlayback"
         >
           重试</button
+        ><button
+          v-if="player.errorCode.value === 'audio_output_failed'"
+          type="button"
+          class="text-button"
+          :disabled="busy"
+          :data-retry-key="player.retryKey.value"
+          @click="openAudioOutput"
+        >
+          音频输出设置</button
         ><span v-if="view?.timeline?.mode === 'trial' && !outsideTrial">试听片段</span>
       </div>
       <Transition
