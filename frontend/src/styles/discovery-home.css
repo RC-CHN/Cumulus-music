@@ -46,7 +46,11 @@
   gap: 16px;
   overflow-x: auto;
   padding: 3px;
-  scrollbar-width: thin;
+  /* The official carousel exposes arrows without a scrollbar on the cards. */
+  scrollbar-width: none;
+}
+.discovery-home-rail::-webkit-scrollbar {
+  display: none;
 }
 .discovery-home-rail.discovery-home-compact {
   grid-auto-columns: calc((100% - 32px) / 3);
