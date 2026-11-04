@@ -228,7 +228,10 @@ fn main() {
                 if (is_live || relays || interactive) && value["playing"]==true {
                     let player=client.subscribe_playback(&epoch).await.unwrap().current().unwrap();
                     if player.position.is_none_or(|p|p<=0.2)||player.queue_len==0||player.error.is_some(){
-                        fs::write(output.join("failed.json"),br#"{"ok":false,"error":"native playback did not advance"}"#).unwrap();handle.exit(1);return;
+                        let failure=serde_json::json!({"ok":false,"error":"native playback did not advance",
+                            "stage":stage,"state":player.state,"position":player.position,
+                            "queueLen":player.queue_len,"hasPlaybackError":player.error.is_some()});
+                        fs::write(output.join("failed.json"),serde_json::to_vec(&failure).unwrap()).unwrap();handle.exit(1);return;
                     }
                     value["nativePlayer"]=serde_json::to_value(player).unwrap();
                     value["nativeQueue"]=serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();

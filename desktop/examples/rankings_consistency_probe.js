@@ -171,6 +171,20 @@
   async function sourceState() {
     return { player: await playerSnapshot(), queue: await playerQueue() };
   }
+  function nativeAdvance(current) {
+    const bar = document.querySelector(".playerbar");
+    // The HTML range quantizes to its step and can show > 0.2 before the
+    // underlying position crosses it. Verify the same play in both layers.
+    return (
+      current.state === "playing" &&
+      current.position > 0.2 &&
+      current.queueLen === 5 &&
+      !current.error &&
+      bar?.dataset.state === "playing" &&
+      bar.dataset.playId === current.playId &&
+      Number(bar.dataset.position) > 0.2
+    );
+  }
   function sameSource(actual, expected) {
     for (const key of ["playId", "entryId", "queueRevision"])
       assert(actual[key] === expected[key], "source retains " + key);
@@ -195,8 +209,8 @@
         `[data-rank-id="${id}"] .rank-play`,
       );
       return (
-        current.state === "playing" &&
-        current.position > 0.2 &&
+        nativeAdvance(current) &&
+        current.origin?.kind === "playlist" &&
         current.origin?.id === id &&
         control &&
         !control.disabled &&
@@ -425,14 +439,8 @@
     playCard.focus({ preventScroll: true });
     await capture("card_keyboard_light");
     click(playCard);
-    await wait(
-      () =>
-        document.querySelector(".playerbar")?.dataset.state === "playing" &&
-        Number(document.querySelector('[aria-label="播放进度"]')?.value) > 0.2,
-      "native card playback",
-    );
+    let native = await nativePlaying("19723756");
     await capture("card_playing_light", { playing: true, expectedQueue: 5 });
-    let native = await playerSnapshot();
     await invoke("player_action", {
       epoch,
       action: { kind: "seek", seconds: 4 },
@@ -666,13 +674,16 @@
     );
     await theme("light");
     await capture("song_sales_light");
+    const priorSalePlay = (await playerSnapshot()).playId;
     click(button("播放全部", rank()));
-    await wait(
-      () =>
-        document.querySelector(".playerbar")?.dataset.state === "playing" &&
-        Number(document.querySelector('[aria-label="播放进度"]')?.value) > 0.2,
-      "native song sales playback",
-    );
+    await wait(async () => {
+      const current = await playerSnapshot();
+      return (
+        nativeAdvance(current) &&
+        current.playId !== priorSalePlay &&
+        current.track?.id === "1"
+      );
+    }, "native song sales playback");
     await theme("dark");
     await capture("songs_playing_dark", { playing: true, expectedQueue: 5 });
     await pause();
