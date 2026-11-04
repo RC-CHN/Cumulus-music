@@ -67,9 +67,10 @@ def verify(root, capture):
     assert complete['hotqueryChannelVerified'] and complete['searchDisplayLabelVerified']
     assert complete['searchInputChannelVerified'] and complete['searchSelectionChannelsVerified']
     assert complete['cyclicSuggestionsVerified'] and complete['audioRankNavigationVerified']
+    assert complete['immediateCompositionSubmitVerified']
     assert complete['audioRankPlaybackVerified']
     assert complete['audioRankDetails'] == [301, 301, 302]
-    assert complete['stageCount'] == 53 and complete['syntheticSearchCalls'] > 30
+    assert complete['stageCount'] == 55 and complete['syntheticSearchCalls'] > 30
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
     assert len(list((root / 'first').glob('ux_*.json'))) == complete['stageCount']
     if capture:

@@ -548,6 +548,39 @@
       "composition settled",
     );
     await capture("composition_complete");
+    const compose = (kind, data) => input().dispatchEvent(
+      new CompositionEvent(`composition${kind}`, { bubbles: true, data }),
+    );
+    const completedSearch = (word) =>
+      one(".search-results-page h1")?.textContent === word &&
+      one("#search-result-panel")?.getAttribute("aria-busy") === "false" && !panel();
+    compose("start", "");
+    type("lianxu");
+    await wait(() => one(".search-exact")?.disabled, "partial composition is visible");
+    key(input(), "Enter", { isComposing: true });
+    input().form.requestSubmit();
+    await Promise.resolve();
+    assert(input().getAttribute("aria-expanded") === "true", "partially composed term is not submitted");
+    type("连续回车");
+    compose("end", "连续回车");
+    key(input(), "Enter", { keyCode: 229 });
+    assert(input().getAttribute("aria-expanded") === "true",
+      "legacy composition-confirming key does not close the panel");
+    key(input(), "Enter");
+    await wait(() => completedSearch("连续回车"), "immediate separate Enter searches the committed text");
+    assert(document.activeElement === input(), "IME keyboard search retains input focus");
+    await capture("composition_then_enter");
+    input().click();
+    compose("start", "");
+    type("dianji");
+    await wait(() => button("开始搜索").disabled, "search button is inactive during composition");
+    type("连续点击");
+    compose("end", "连续点击");
+    await Promise.resolve(); // Let Vue re-enable the submit button, with no arbitrary sleep.
+    click(button("开始搜索"));
+    await wait(() => completedSearch("连续点击"), "immediate explicit click searches the committed text");
+    await capture("composition_then_click");
+    input().click();
     hold("suggestions");
     type("关闭前");
     await wait(() => held, "pending close");
@@ -691,6 +724,7 @@
       searchSelectionChannelsVerified: true,
       searchDisplayLabelVerified: true,
       cyclicSuggestionsVerified: true,
+      immediateCompositionSubmitVerified: true,
       audioRankNavigationVerified: true,
       audioRankPlaybackVerified: true,
       realMusicRequests: 0,

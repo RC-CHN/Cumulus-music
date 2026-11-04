@@ -55,8 +55,7 @@ watch(
   () => historyPanelGeneration++,
   { flush: 'sync' },
 );
-let frame = 0,
-  compositionEnded = 0;
+let frame = 0;
 const historyWords = computed(() =>
   history.value.map((keyword) => ({ keyword, label: keyword, tag: null })),
 );
@@ -91,7 +90,7 @@ function onFocus() {
   if (!suppressFocus) void show();
 }
 function submit(word?: string, channel?: SearchChannel, display?: string) {
-  if (composing.value || performance.now() - compositionEnded < 60) return;
+  if (composing.value) return;
   const fromInput = word === undefined ? model.submitInput() : undefined;
   const value = word === undefined ? fromInput?.keyword : model.submit(word, display);
   if (value) {
@@ -120,10 +119,6 @@ async function clear() {
   model.input('');
   await show();
   input.value?.focus();
-}
-function compositionEnd() {
-  model.composition(false);
-  compositionEnded = performance.now();
 }
 async function removeHistory(word: string) {
   const at = history.value.indexOf(word);
@@ -287,7 +282,7 @@ onUnmounted(() => {
         type="submit"
         class="search-submit"
         aria-label="开始搜索"
-        :disabled="account.status !== 'authenticated'"
+        :disabled="account.status !== 'authenticated' || composing"
       >
         <Icon name="search" />
       </button>
@@ -307,7 +302,7 @@ onUnmounted(() => {
         @focus="onFocus"
         @click="show"
         @compositionstart="model.composition(true)"
-        @compositionend="compositionEnd"
+        @compositionend="model.composition(false)"
       />
       <button v-if="query" type="button" class="icon-button" aria-label="清空搜索" @click="clear">
         <Icon name="close" />
