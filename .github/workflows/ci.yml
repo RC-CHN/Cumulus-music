@@ -336,6 +336,7 @@ jobs:
           python scripts/ci/search_results_smoke.py --playlist-creator --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-playlist-creator-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --collection-next --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-collection-next-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --album-artist --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-album-artist-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_results_smoke.py --artist-gallery --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-artist-gallery-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --search-next --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-next-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --song-waterfall --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-song-waterfall-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --card-matches --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-card-matches-windows --runtime .build/package-stage/windows-x64/native
@@ -635,6 +636,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --playlist-creator --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-playlist-creator-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --collection-next --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-collection-next-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --album-artist --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-album-artist-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --artist-gallery --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-artist-gallery-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --search-next --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-next-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --song-waterfall --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-song-waterfall-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --card-matches --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-card-matches-linux
