@@ -60,8 +60,8 @@ M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求�
     socket 或发出服务请求，探针不观察 Windows NLA 服务自身的系统活动。Runner
     实际读取必须走完 Begin/Next/End/Cleanup 并得到正常结果类别才记通过。
     只记录参与结果的调用，省略原版条件日志的错误细节。其他类别和失败清理顺序
-    由同一个 Rust 执行器的本地替身验证，不能当作更改 Windows 网络状态的实测。未派发此 workflow，Windows 原生结果及四路监听通知
-    仍待验收，不连接生产计数或播放。
+    由同一个 Rust 执行器的本地替身验证，不能当作更改 Windows 网络状态的实测。
+    Windows 原生一次性采样和四路监听是两个独立验收点，均不连接生产计数或播放。
 * M/12:297–329 在请求返回真值后、格式化数据之前派发 musicFeOnline。catch 除
   responseError、fetchFrontEndEncryptError 外派发 musicFeOffline；同步格式化错误可能
   先后产生两个事件。JSON 非成功业务码在 M/12:174–194 被包装为 responseError。
@@ -71,6 +71,56 @@ M/59 的替代曲查询使用 Redux app.isOnline，不能从一条音源请求�
   校验规则；单次 URL 拒绝、缺资源、解码失败或只看 HTTP 数字不能代替原观察位置。
 * M/119:50 四类信号分别做首个立即生效的 100ms throttleTime；native 和浏览器的
   triggerOnline 共享这一窗口。有效在线值变化会重新订阅并清空四类节流。
+
+原生 app.onnetstatus 的 Windows 观察链（x64）
+
+* 安装包 native 网络实现保留了 third_party/partial-chromium 源路径（如
+  0x181a70930、0x181a7f6a0、0x181ad1f90），与界面 CEF 的版本不是同一个
+  可替换依赖。以下以安装包指令为准，Chromium 公开源码仅用于识别观察器。
+* IP 来源为 Windows 异步 NotifyAddrChange（0x1806cb950）：IPv4 地址到接口
+  的映射表变化，不枚举地址、接口或默认路由。只接受 ERROR_IO_PENDING。
+  原版使用 WSACreateEvent，ObjectWatcher 经 0x1812f2884 调用
+  RegisterWaitForSingleObject；0x1806cb420 清除监听状态，先重新注册
+  （0x1806cb5b0），再触发 IP observer（0x1806cb1b9）。挂载失败每 500ms
+  重试；此前挂载失败、后来重新成功也触发一次 IP observer。停止走
+  CancelIPChangeNotify（0x1806caa7f）、解除等待、关闭 WSA 事件；
+  NotifyAddrChange 返回的文件句柄不是调用者所有。
+* 紧随 IP observer 的连接类型计时器（0x1806cb221）为 1 秒、重置计数。
+  0x1806cb240 重读 native 类型；已公布离线、当前仍离线且样本计数不超过
+  20 时再等 1 秒，否则公布并调用连接类型 observer（0x1806cb3e7）。
+  与 app watcher 一样，底层类型不是服务请求成功或账号权益。
+* 派生 NetworkChange 不是另一条 OS API：0x18068b2f0、0x18068ae80
+  为 IP 和连接类型输入安排同一个回调 0x180688790。Windows 参数为 IP
+  1500/1500ms，连接类型 1500/500ms（上次公布离线/在线），后来的输入
+  替换此前定时。回调跳过已公布的重复 NONE，非 NONE 前先向 network
+  observer 派发 NONE，再派发实际类型。app watcher 不直接转发这两个
+  枚举值，而为每次回调重读一次 NLA 布尔。
+* DNS 来自原生 DnsConfigServiceWin，不能用 DNS 请求错误代替。固定注册
+  入口 0x18074e6b9、0x18074e803、0x18074e81b、0x18074e833 观察 HKLM
+  的 Tcpip、Tcpip6、Dnscache Parameters 和 Windows NT DNSClient 策略键。
+  0x18074e530 以 KEY_NOTIFY 打开，进入 RegNotifyChangeKeyValue
+  （0x180636192；异步、观察子树、mask 0x0f）。另一路 0x18074e891
+  安装系统 drivers\etc\hosts 观察。其他 DNS 策略键也有读取引用，未把
+  所有读取当成已订阅。保留 DNS/hosts 读取、去重、发布与注销的完整边界，
+  当前不将单个注册表或文件事件视为官方 DNS callback。
+* Microsoft 的 NotifyAddrChange 与 CancelIPChangeNotify 契约：
+  https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-notifyaddrchange
+  https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-cancelipchangenotify
+  Linux 的 GIO、netlink 默认路由、WebView 事件既不是上述 Win32 观察链，
+  也不是 app.onnetstatus 的等价来源。Linux 产品继续只用已验收的浏览器边。
+* `desktop/probes/windows-address-watch` 独立锁定的复用边界仅实现确认过的
+  原始 IPv4 表通知、先重挂再返回、显式重试和取消；没有启动后台线程、NLA
+  采样、账号/应用/播放器或 DNS/派生通知。适配器用 CreateEventW 建立同类
+  手动重置事件，每次确认上一请求终止后复位，用非阻塞 GetOverlappedResult
+  核对信号。调用方传入的单次等待上限 500ms，
+  与尚未接入的原版重试定时不是同一回事。关闭请求后至多等待一次 250ms，
+  仅在重叠操作明确完成或取消后释放；若无法确认，保留唯一注册槽、事件和
+  存储至进程退出，防止系统仍持有的指针失效。上限针对显式等待，不能限制
+  原生 API 自身耗时，不应从 UI 线程调用。替身测试覆盖重挂失败/重试、
+  取消和完成竞态、等待超限及未确认取消，Windows x64 交叉编译通过；
+  `cargo run --locked --manifest-path desktop/probes/windows-address-watch/Cargo.toml
+  --example lifecycle` 可在 Windows 手动核对独占、注销及重开，仅输出布尔结果。
+  Windows 实机地址事件及注销均未验收；该探针不是完整四路 app watcher。
 
 状态、定时与返回
 
