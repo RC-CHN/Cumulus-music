@@ -84,3 +84,8 @@ Cumulus 设置、权限与状态
   scripts/ci/playback_power_smoke.py 和 playback_power_ui_probe。
 - 上述检查不调用实际 Win32 电源 API、不访问真实账号或服务。Windows 原生
   调用与实体机睡眠/熄屏仍是独立实测；Linux 不提供此 Windows 功能。
+- Linux 已在无外网的独立 X11 会话成功启动正式 Cumulus 程序；工作区
+  Rust fmt、严格 Clippy 和锁定测试（2166 通过、17 项标记忽略）以及固定 Node
+  格式、814 项前端测试和生产构建通过。Windows GNU 工作区全目标严格 Clippy
+  与新增原生夹具的交叉检查通过，不能代替 Windows MSVC 打包、WebView2 实测
+  或 Win32 电源请求。Windows CI 的合成 WebView2 夹具不持有真实休眠请求。
