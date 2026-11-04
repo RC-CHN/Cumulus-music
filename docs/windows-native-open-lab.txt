@@ -85,3 +85,11 @@ https://learn.microsoft.com/en-us/windows/win32/ipc/named-pipe-security-and-acce
 https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
 https://learn.microsoft.com/en-us/windows/win32/ipc/pipe-functions
 https://github.com/tokio-rs/mio/blob/v1.2.3/src/sys/windows/named_pipe.rs
+
+2026-11-05 实际 Windows Server x64 runner：
+https://github.com/RC-CHN/Cumulus-music/actions/runs/41911859366
+精确主线 837d4b1e 的 MSVC 格式、Clippy、wire 和 native child proof 通过。
+发布的合成 JSON 已核对目录别名、首实例、登录会话 ACL、双向用户及登录会话、
+忙碌、Unicode、超长/停滞和丢失回执不重发。未开启正式功能，未打开真实文件，
+未改注册表。此结果不能证明正式播放器的 Windows 窗口、声卡输出或文件关联；
+同一地址多次连接、跨令牌拒绝及实际播放器接线另行核对。
