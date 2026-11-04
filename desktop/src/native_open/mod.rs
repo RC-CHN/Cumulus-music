@@ -19,7 +19,14 @@ impl Pending {
         let Some(first) = args.next() else {
             return Self::default();
         };
-        let mut paths = if first == "--play" {
+        let mut paths = if cfg!(target_os = "linux") && first == "--open-local-files" {
+            // Desktop Entry %F disappears on a normal launcher click. Keep
+            // that path distinct from an explicit invalid --play invocation.
+            let Some(path) = args.next() else {
+                return Self::default();
+            };
+            vec![PathBuf::from(path)]
+        } else if first == "--play" {
             Vec::new()
         } else if first.as_encoded_bytes().starts_with(b"--play=") {
             let Some(path) = first.to_str().and_then(|text| text.strip_prefix("--play=")) else {
@@ -129,6 +136,27 @@ mod tests {
         let pending = Pending::from_args([path].into_iter());
         assert!(pending.requested());
         assert_eq!(pending.take(), Some(vec![]));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn desktop_entry_file_field_disappears_on_an_ordinary_launch() {
+        let ordinary = Pending::from_args(["--open-local-files".into()].into_iter());
+        assert!(!ordinary.requested());
+        assert_eq!(ordinary.take(), None);
+        let local = PathBuf::from("/tmp/合成 % \"音乐\".flac");
+        let selection = Pending::from_args(
+            ["--open-local-files".into(), local.clone().into_os_string()].into_iter(),
+        );
+        assert_eq!(selection.take(), Some(vec![local]));
+        let uri = Pending::from_args(
+            [
+                "--open-local-files".into(),
+                "https://example.invalid/music.mp3".into(),
+            ]
+            .into_iter(),
+        );
+        assert_eq!(uri.take(), Some(vec![]));
     }
 
     #[test]

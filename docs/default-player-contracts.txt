@@ -74,11 +74,10 @@ Linux 暖转交
   未确认（先看现有播放器），5 表示已有文件打开处理中。只接收 CLI 路径，
   不转发环境、账号、媒体 URL 或 WebView 命令。
 
-默认归属仍不启用
-- Cumulus 不写系统默认、Explorer UserChoice/Hash、Linux mimeapps.list，
-  不注册类型，也不展示一个不可验证的默认播放器复选框。没有自动请求关联、
-  引导弹窗或安装时修改。Linux 已有 CLI 暖转交；系统文件管理器和 Windows
-  的暖转交仍未启用。
+Debian 打开方式候选与系统默认归属
+- Cumulus 不写系统默认、Explorer UserChoice/Hash 或 Linux mimeapps.list，
+  不展示默认播放器复选框，也不启动系统默认选择流程。Debian 包仅声明自己
+  可被选为打开方式；便携包和 Windows 不增加关联元数据。
 - Windows：固定 Tauri CLI 2.12.4 的 NSIS installer.nsi 调 APP_ASSOCIATE，
   FileAssociation.nsh 的 66–76 行会改写 Software\Classes\.ext 的
   默认值，卸载还会恢复备份，可能覆盖用户后来选择，因此保持关闭。
@@ -86,15 +85,24 @@ Linux 暖转交
   OpenWithProgids，再由用户从系统 Default Apps 选择。Windows 11 的
   ms-settings:defaultapps?registeredAppUser=… 只在候选已注册时才有意义；
   不复刻原版私有 UserChoice 行为。实际 Windows shell 与现代用户选择未测。
-- Linux：标准方式是在安装包应用自有 .desktop 声明已验证 MIME，并接收
-  Exec 传入的本地文件参数，不写入用户 Default Applications。与真实文件管理器
-  和系统选择验证完成后再启用。当前 .deb/.zip/NSIS 元数据不变。
+- Debian：保留 Tauri 2.12.4 的既有 Cumulus.desktop 名称、图标、分类和
+  StartupWMClass；模板只添加 audio/mpeg、audio/flac，并把 Exec 改为
+  cumulus --open-local-files %F。%F 是本地文件列表，不启用 %U、URL scheme、
+  D-Bus activation 或 shell；路径仍逐项走原生校验。菜单启动时 %F 不产生
+  文件参数，走普通启动（包括原有自动恢复和同实例策略）；显式 CLI --play
+  的无效参数保护保持独立。
+- Debian 的 desktop-file-utils 触发器监听 /usr/share/applications；无需
+  Cumulus 安装/卸载脚本、xdg-mime 写入或用户文件修改。既有明确的默认应用
+  由桌面保留；若未配置任何默认应用，freedesktop 规范允许桌面从现有候选中
+  自行选出回退应用。应用无法在不退出候选列表的前提下禁止这种回退。
 
 平台依据：
 https://learn.microsoft.com/en-us/windows/apps/develop/launch/launch-default-apps-settings
 https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/installer.nsi
 https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/windows/nsis/FileAssociation.nsh
-https://specifications.freedesktop.org/mime-apps/latest/
+https://specifications.freedesktop.org/mime-apps/latest/default.html
+https://specifications.freedesktop.org/desktop-entry/latest-single/
+https://raw.githubusercontent.com/tauri-apps/tauri/tauri-cli-v2.12.4/crates/tauri-bundler/src/bundle/linux/freedesktop/main.desktop
 
 验证入口：scripts/ci/native_file_open_smoke.py。只在隔离 X11、D-Bus、AT-SPI、
 无外网网络命名空间、隐藏宿主 /dev/snd、私有 PipeWire null sink 和临时账号
@@ -110,4 +118,10 @@ Xvfb 和 D-Bus 会话内调用：
 参数相同；从同资料目录的另一原生路径发起，原窗口最小化时转交，检查
 原进程/原窗口、无效请求未改旧队列、有效替换后的不同 PCM 与无竞争实例；
 也验证并发请求被拒、历史会话覆盖不可转交，以及发送方无需图形初始化。
-此项不证明 OS 选择、真实声卡、Windows 暖转交/Explorer 或服务登录。
+Debian 桌面候选验证使用 scripts/ci/linux_file_candidate_smoke.py --deb …
+--root … --outer-network …。脚本只解包，不安装到宿主；使用真实 GIO 查找
+候选和默认应用，并启动同一个包内桌面入口，观察冷启动解码、普通菜单启动
+恢复、暖启动多个含中文/引号/百分号的路径及其实际 PCM。验证前后既有两种
+默认值和 mimeapps.list 字节一致，WAV 和网络 URI 不在候选范围。
+这是隔离 Linux GIO 行为证明；不代表所有文件管理器的菜单外观、物理声卡、
+Windows 暖转交/Explorer 或服务登录。
