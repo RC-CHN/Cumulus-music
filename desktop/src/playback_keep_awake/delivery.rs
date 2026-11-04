@@ -117,7 +117,10 @@ mod tests {
             self.event.send((thread::current().id(), request)).unwrap();
             let (lock, wake) = &*self.block;
             let guard = lock.lock().unwrap();
-            drop(wake.wait_while(guard, |held| *held).unwrap());
+            drop(
+                wake.wait_timeout_while(guard, Duration::from_secs(5), |held| *held)
+                    .unwrap(),
+            );
             Ok(())
         }
     }
