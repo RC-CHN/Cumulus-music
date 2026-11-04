@@ -25,22 +25,67 @@
 - H5:3473–3517,4467–4517 的 POST /api/playlist/import/url/check {link:encodeURI(url)}
   仅在非桌面的剪贴板自动填充启用后执行；桌面分支直接跳过。它不构成桌面手动输入的
   曲目预览或可导入回执，Cumulus 也不调用它或读取剪贴板。
-- H5:3618–3685,7796–7816：用户主动开始后，链接分支向
-  POST /api/playlist/import/name/task/create 发送 playlistName、createBusinessCode、
+- H5:3618–3685,7796–7816：用户主动开始后，链接分支为
+  POST /api/playlist/import/name/task/create 构造 playlistName、createBusinessCode、
   extParam、taskIdForLog、importStarPlaylist、rqRefer 和 songs。songs 是 JSON 数组字符串，
-  每项 {name,type:"",url:encodeURI(提取结果)}；rqRefer 在桌面取 window.rqRefer。
+  每项 {name,type:"",url:encodeURI(提取结果)}，保持输入次序。默认名称为「导入音乐 」加
+  本地时间 `YYYY/M/D HH:mm:ss`，也是每项的 name（H5 Ws0M:464–470）。固定桌面入口的
+  query 仅给 appBizName，createBusinessCode 和 extParam 均为 undefined，WEAPI JSON 中省略；
+  taskIdForLog 是空字符串。importStarPlaylist 默认 false，属于另一个可选目标。
+  桌面 rqRefer 取 window.rqRefer，无值时用空字符串（H5:7211–7228）。
   文字分支复用接口，把整个输入封成 rpc://playlist/import?text=...（4590–4652）；
   图片使用 /api/playlist/import/create，带 playlistId 和 picIds JSON 字符串（5359–5407）。
   H5 的本地音乐隐藏页分支通过 /api/playlist/local/detail 读详情，提交 multiSongs；
   官方桌面固定入口没有 initPage=3 或对应目标，不能把该页当外部链接的预览。
-- 任务创建回包需有 taskId，后续调用 nm.mine.importPlaylistTask。PC 的
-  hybrid_app/290.js:436–442 无条件回 code 200；这只是桥接确认，不能证明完成。
-  接着 orpheus://nm/base/startExternalPlaylist 让宿主关闭 iframe，并提示「歌单正在导入」、
-  到「创建的歌单」和小秘书通知查看；可显式再导入其他歌单。请求失败或无 taskId 留在
-  表单并提示，H5 无桌面完成轮询。M/15:4866 的 /api/playlist/import/task/status/v2
-  仅创建函数后被逗号表达式丢弃，未发现请求实参、调用方或任务与新歌单的可靠绑定。
-  没有可用于避免重放或恢复未知写入的官方完成回读；没有移植任务创建、图片上传、
-  文字上传、收藏到红心或任务回读，也没有启动远端 H5 或安装通用网页桥。
+
+桌面 CEF 到 H5 提交路径（静态恢复）
+- 两个安装包的 cloudmusic.dll 均把同一个带 `NeteaseMusicDesktop/3.1.42.205594` 的 UA
+  字符串设置到 CEF 初始化结构。它与已记录的 WinHTTP 字符串一致，但这里独立核对了
+  CEF 的调用链。以下为 `objdump -d -M intel` 显示的虚拟地址，`objdump -p` 可核对导入表。
+  x86 DLL SHA256 b080a1c8c90cce1e2eefe93d992f81dc4db02dee7bc8c3b681e69e55a001cace：
+  0x10001170 从字面量 0x10ac3020 初始化全局字符串 0x10bb212c；0x1001996b 调
+  0x10023d40，把字符串写到 CEF 设置 +0x70（0x10023fc1–0x10024016，0x1002428f 调
+  cef_string_utf8_to_utf16）。0x10019ad6 将同一设置缓冲传给 cef_initialize。
+  x64 DLL SHA256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493：
+  0x18000318b–0x180003199 将字面量 0x181dbb590 拷贝到全局字符串 0x1822059c8；
+  0x1802e1268 调 0x1802e7300，在 0x1802e74da–0x1802e752d 把字符串写到设置 +0xc8
+  （0x18006718f 调 cef_string_utf8_to_utf16）。0x1802e12ee 把同一设置缓冲交给
+  0x1804f2cf0，后者在 0x1804f2ebe 经导入跳板调用 cef_initialize。
+- H5:6400–6431,6645–6664 的 oEee、网络包装器判定固定入口启用加密。固定哈希
+  vendors 的 TSUN 将上述 UA 归为桌面；WoLd 的 HostPatcher 将 mp.music.163.com 映射到
+  interface.music.163.com，其移动 App 正则要求 `NeteaseMusic/` 或 `NeteaseMusicIpad/`，
+  不匹配 `NeteaseMusicDesktop/`。如果相对路径已选中桥接，HostPatcher 会在发送前报
+  DOWNGRADE，HpmA 改用直接浏览器请求；本来未选桥接时，直接换到该接口域名。
+- vendors/jA/N 的浏览器分支将 /api/ 改成 /weapi/，加密表单参数为 params、encSecKey，
+  带 `credentials: include`。从 H5 文档 Cookie 读到非空 __csrf 时，csrf_token 同时进入
+  请求 URL 的查询和加密载荷。链接提交因此走
+  POST https://interface.music.163.com/weapi/playlist/import/name/task/create 。PC 虽有
+  hybrid_app/290.js:196–228,265–334 的通用 net.nativeRequest，不能由此把该固定桌面 H5
+  提交改成 interfacepc 的 EAPI。以上是二进制配置和脚本分支证据，没有实机抓包、真实登录
+  Cookie 或服务端受理验证；也没有扩大任何账号 Cookie 的作用域。
+
+任务受理、完成与回包丢失
+- H5:6635–6664 解开成功回包的 data（没有 data 时用原对象），链接分支需取到 taskId
+  才调用 nm.mine.importPlaylistTask({taskId})（H5:3650–3678）。PC 的 hybrid_app/290.js:
+  436–442 忽略实参，无条件回 code 200，未登记或回查该任务；这只确认桥调用成功。
+  H5 随后调用无 taskId 或 playlistId 的 orpheus://nm/base/startExternalPlaylist。
+  M/290:45–53 只派发 step: start-external 并关闭 iframe，M/1384:4279–4306 只显示
+  「歌单正在导入」，提示到「创建的歌单」和小秘书的私信查看；可显式再导入其他歌单。
+  请求失败或缺 taskId 留在表单并提示，官方桌面没有完成轮询。H5:309–316 注册的
+  nm.song.importTask 没有调用方，和实际调用的 nm.mine.importPlaylistTask 不同。
+- M/15:4866 的 /api/playlist/import/task/status/v2 仅创建函数后被逗号表达式丢弃，
+  未恢复官方调用方、实参或回包。非官方 netease-api-reborn 4.29.7 的
+  module/playlist_import_task_status.js:1–11 传 `{taskIds: JSON.stringify([id])}`，
+  这是尚未验证的线索，不能作为生产协议。没有已验证的状态枚举、错误语义、账号归属
+  或任务与新歌单 ID 的绑定；即使将来验证，也只能查询已经拿到 ID 的任务。
+- 小秘书提示指私信，不是 /api/msg/notices 的通知标签。恢复的 PC 私信界面按一般消息
+  渲染；PrivateItem.jsx:103–175 和 TalkItem.jsx:123–190,304–327 未见该导入专用的
+  消息类型、固定发送者 ID 或 taskId 与消息/歌单的绑定。不能按标题、时间或昵称自动归因。
+- 下一步可在封闭夹具内先验证链接提交和本地回执：同一账号的一次显式提交只派发一次，
+  收到合法 taskId 才显示「已受理」，未知回包保持「结果未知」并提供人工检查入口。
+  丢失创建回包时没有任务编号可查，空 taskIdForLog 也没有可证明的幂等语义；不能自动重发、
+  改走其他协议或宣称任务失败/完成。当前没有移植任务创建、图片上传、文字上传、
+  收藏到红心或任务回读，也没有启动远端 H5 或安装通用网页桥。
 
 当前 Cumulus 本地子集
 - 「我的歌单 → 歌单导入预览」是本地入口，明确不同于 t1 的正式侧栏入口。
