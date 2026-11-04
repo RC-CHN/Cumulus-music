@@ -113,3 +113,16 @@
   --unguarded-async-probes额外运行没有lease的原始故障对照，任何失败仍返回非零；
   不以continue-on-error或忽略生产路径失败通过CI。真实WASAPI设备路由仍须实机。
   COM修正的Windows结果须以新的精确SHA独立CI记录为准。
+
+2026-11-04 Linux 原生格式和输出复验
+
+- 使用当前 Rust `MpvEngine` 和 `Ffprobe`，对 Unicode 路径下的 9 个合成音频
+  分别验证打开、时钟推进、暂停、定位、继续和停止。覆盖 WAV/PCM、FLAC、MP3、
+  M4A/AAC、ADTS/AAC、OGG/Vorbis、Opus、AIFF/PCM 与 WMA2。该矩阵使用空输出，
+  不经过桌面窗口或库索引；记录在 `.build/current-native-format-matrix.json`。
+  这轮没有 APE 样本，NCM 的加密及授权边界仍由单独验收覆盖。
+- 在非 C 系统 locale 的真实桌面窗口初始化后，使用
+  `scripts/ci/output_devices_smoke.py --desktop --managed` 的独立 PipeWire 会话，
+  观察 PCM 流按 A→B→A→B→A 路由；设备移除后自动回退，重新出现后显式重试，
+  播放条目和暂停状态保持。此项使用两个虚拟输出，不访问线上服务或真实账号。
+  它不验证物理声卡听感、Bluetooth/HDMI 设备实际断连或 Windows 真实设备路由。
