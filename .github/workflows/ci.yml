@@ -368,6 +368,7 @@ jobs:
           python scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-message-reply-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-latest-releases-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-external-import-sidebar-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           python scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe.exe --root .build/ci-user-blacklist-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
@@ -524,6 +525,7 @@ jobs:
           python scripts/ci/community_smoke.py --profile-follow --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-profile-follow-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --topic --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-topic-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --delete-note --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-delete-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/community_smoke.py --report-note --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-community-report-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --own-profile --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-own-profile-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/community_smoke.py --profile-notes --binary .build/target/debug/examples/community_ui_probe.exe --root .build/ci-profile-notes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-history-windows --runtime .build/package-stage/windows-x64/native --history
@@ -708,6 +710,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/message_drawer_smoke.py --reply --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-message-reply-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --latest-releases --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-latest-releases-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-linux
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/external_import_sidebar_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-external-import-sidebar-linux
           cargo build -p cumulus-desktop --example user_blacklist_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/user_blacklist_smoke.py --binary .build/target/debug/examples/user_blacklist_ui_probe --root .build/ci-user-blacklist-linux
           cargo build -p cumulus-desktop --example profile_report_ui_probe --features custom-protocol --locked
@@ -875,6 +878,7 @@ jobs:
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --profile-follow --binary .build/target/debug/examples/community_ui_probe --root .build/ci-profile-follow-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --topic --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-topic-linux
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --delete-note --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-delete-linux
+          CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/community_smoke.py --report-note --binary .build/target/debug/examples/community_ui_probe --root .build/ci-community-report-linux
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-history-linux --history
           xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-settings-linux --settings
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-relay-linux --relay
