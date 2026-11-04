@@ -25,7 +25,6 @@ const result = (
       },
     ],
     nextOffset,
-    capped: false,
   },
 });
 
@@ -72,7 +71,7 @@ test('gallery keeps the selected filters and prefix, rejects late reads and rese
     model.page.value.artists.map((row) => row.id),
     ['first'],
   );
-  const page = model.load();
+  const page = model.retry();
   account.value = { ...account.value, epoch: '2' };
   resolvePage(result('1', 'second', null));
   await page;

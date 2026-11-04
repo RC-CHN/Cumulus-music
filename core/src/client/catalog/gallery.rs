@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashSet;
 
-const LIMIT: usize = 20;
-const LAST_OFFSET: usize = 180;
+const LIMIT: u32 = 20;
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -14,7 +13,7 @@ pub struct ArtistGalleryQuery {
     #[serde(rename = "type")]
     kind: i16,
     initial: i16,
-    offset: usize,
+    offset: u32,
 }
 
 impl ArtistGalleryQuery {
@@ -22,8 +21,8 @@ impl ArtistGalleryQuery {
         if !matches!(self.area, -1 | 7 | 96 | 8 | 16 | 0)
             || !matches!(self.kind, -1 | 1..=3)
             || !matches!(self.initial, -1 | 0 | 65..=90)
-            || self.offset > LAST_OFFSET
             || !self.offset.is_multiple_of(LIMIT)
+            || self.offset.checked_add(LIMIT).is_none()
         {
             return Err(Error::InvalidInput("invalid artist gallery filter"));
         }
@@ -38,14 +37,13 @@ impl ArtistGalleryQuery {
 #[serde(rename_all = "camelCase")]
 pub struct ArtistGalleryPage {
     artists: Vec<ArtistCard>,
-    next_offset: Option<usize>,
-    capped: bool,
+    next_offset: Option<u32>,
 }
 
-fn page(value: &Value, offset: usize) -> Result<ArtistGalleryPage> {
+fn page(value: &Value, offset: u32) -> Result<ArtistGalleryPage> {
     let rows = value["artists"]
         .as_array()
-        .filter(|rows| rows.len() <= LIMIT)
+        .filter(|rows| rows.len() <= LIMIT as usize)
         .ok_or(Error::Response("invalid artist gallery rows"))?;
     let more = value["more"]
         .as_bool()
@@ -72,8 +70,15 @@ fn page(value: &Value, offset: usize) -> Result<ArtistGalleryPage> {
         .collect();
     Ok(ArtistGalleryPage {
         artists,
-        next_offset: (more && offset < LAST_OFFSET).then_some(offset + LIMIT),
-        capped: more && offset == LAST_OFFSET,
+        next_offset: if more {
+            Some(
+                offset
+                    .checked_add(LIMIT)
+                    .ok_or(Error::Response("artist offset overflow"))?,
+            )
+        } else {
+            None
+        },
     })
 }
 
@@ -130,8 +135,8 @@ mod tests {
         );
         assert_eq!(result.artists[0].song_count, 3);
         assert_eq!(result.next_offset, Some(40));
-        let last = page(&response, LAST_OFFSET).unwrap();
-        assert!(last.capped && last.next_offset.is_none());
+        assert_eq!(page(&response, 180).unwrap().next_offset, Some(200));
+        assert_eq!(page(&response, 200).unwrap().next_offset, Some(220));
         assert!(page(&json!({"artists":[]}), 0).is_err());
         assert!(
             ArtistGalleryQuery {

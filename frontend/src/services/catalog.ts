@@ -30,7 +30,6 @@ export interface ArtistGalleryFilter {
 export interface ArtistGalleryPage {
   artists: ArtistCard[];
   nextOffset: number | null;
-  capped: boolean;
 }
 export interface AlbumCard {
   id: string;

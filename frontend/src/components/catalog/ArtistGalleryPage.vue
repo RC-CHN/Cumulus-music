@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { nextTick, onMounted, ref, watch } from 'vue';
 import type { useArtistGallery } from '../../composables/useArtistGallery';
 import type { ArtistCard as Artist, CatalogResource } from '../../services/catalog';
 import type { ArtistCardRequest } from '../../services/artistCards';
@@ -16,8 +16,10 @@ const emit = defineEmits<{
   play: [artist: Artist];
   action: [request: ArtistCardRequest];
 }>();
-const { filter, page, pending, error, load, select } = props.model;
+const { filter, page, pending, error, batchNumber, nextBatch, load, browse, retry, select } =
+  props.model;
 const surface = ref<HTMLElement>();
+const heading = ref<HTMLElement>();
 const more = ref<HTMLElement>();
 const locations = [
   [-1, '全部'],
@@ -73,12 +75,24 @@ function restore() {
     .find((button) => button.dataset.catalogKey === key)
     ?.focus();
 }
+async function readBatch(action: () => Promise<void> | undefined) {
+  const before = page.value.startOffset;
+  const selection = filter.value;
+  await action();
+  if (selection === filter.value && before !== page.value.startOffset) {
+    await nextTick();
+    heading.value?.focus({ preventScroll: true });
+    heading.value?.scrollIntoView({ block: 'start', behavior: 'instant' });
+  }
+}
 defineExpose({ restore });
 </script>
 
 <template>
   <section ref="surface" class="artist-gallery">
-    <header class="page-heading"><h1>歌手</h1></header>
+    <header class="page-heading">
+      <h1 ref="heading" tabindex="-1">歌手</h1>
+    </header>
     <div class="artist-gallery-filters">
       <div class="artist-gallery-pills" role="group" aria-label="地区">
         <button
@@ -112,6 +126,16 @@ defineExpose({ restore });
       </div>
     </div>
     <div class="artist-gallery-results" :aria-busy="pending">
+      <div v-if="batchNumber > 1" class="artist-gallery-batch">
+        <button
+          class="secondary"
+          :disabled="pending || !!error"
+          @click="readBatch(() => browse('previous'))"
+        >
+          查看上一批
+        </button>
+        <span class="muted">第 {{ batchNumber }} 批</span>
+      </div>
       <div v-if="page.artists.length" class="artist-gallery-grid">
         <ArtistCard
           v-for="artist in page.artists"
@@ -127,15 +151,15 @@ defineExpose({ restore });
       </div>
       <div v-if="error" class="empty-state">
         <p role="status">{{ error }}</p>
-        <button class="secondary" @click="load">重新加载</button>
+        <button class="secondary" @click="readBatch(retry)">重新加载</button>
       </div>
       <p v-else-if="pending" class="muted" role="status">正在加载歌手…</p>
-      <div v-else-if="page.nextOffset && !page.capped" ref="more" class="artist-gallery-more">
+      <div v-else-if="nextBatch" class="artist-gallery-more">
+        <button class="secondary" @click="readBatch(() => browse('next'))">查看下一批</button>
+      </div>
+      <div v-else-if="page.nextOffset" ref="more" class="artist-gallery-more">
         <button class="secondary" @click="load">加载更多</button>
       </div>
-      <p v-else-if="page.capped" class="muted" role="status">
-        已显示前 200 条结果，可调整筛选条件。
-      </p>
       <p v-else-if="page.nextOffset === null && !page.artists.length" class="empty-state">
         没有找到歌手。
       </p>
@@ -191,5 +215,11 @@ defineExpose({ restore });
 .artist-gallery-more {
   padding: 12px 0;
   text-align: center;
+}
+.artist-gallery-batch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
 }
 </style>

@@ -1344,7 +1344,36 @@
       await capture('artist_gallery_empty');
       click(control('首字母','A'));
       await wait(()=>state(21,'合成歌手101'),'prior filter retains its complete prefix');
-      await emit('complete',{ok:true,artistGalleryVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      click(control('首字母','B'));
+      await wait(()=>state(20,'合成歌手1000'),'long gallery starts with the first native page');
+      for(let size=40;size<=200;size+=20){
+        await wait(()=>button('加载更多',gallery()),'visible continuation before '+size);
+        one('.artist-gallery-more').scrollIntoView({block:'end'});
+        await wait(()=>state(size,'合成歌手1000'),'continuous scroll reaches '+size);
+      }
+      assert(button('查看下一批',gallery())&&!button('加载更多',gallery()),'next batch is a distinct action');
+      await capture('artist_gallery_batch_end');
+      click(button('查看下一批',gallery()));
+      await wait(()=>state(200,'合成歌手1000')&&button('重新加载',gallery()),'next batch failure retains the first batch');
+      click(button('重新加载',gallery()));
+      await wait(()=>state(20,'合成歌手1200')&&button('查看上一批',gallery())&&
+        document.activeElement===one('.artist-gallery h1'),'offset 200 replaces the first batch and moves focus');
+      assert(control('首字母','B').getAttribute('aria-pressed')==='true'&&
+        !button('查看下一批',gallery())&&!button('加载更多',gallery()),
+        'second batch retains filters and honors server end');
+      await capture('artist_gallery_second_batch');
+      const secondDetail=()=>one('.artist-gallery [data-catalog-key="artist:1200"]');
+      click(secondDetail());
+      await wait(()=>!gallery()&&one('.catalog-heading h1')?.textContent==='相似歌手 1200',
+        'opens exact artist in the second batch');
+      click(button('返回上一页'));
+      await wait(()=>state(20,'合成歌手1200')&&document.activeElement===secondDetail(),
+        'Back restores the second batch and exact artist button');
+      click(button('查看上一批',gallery()));
+      await wait(()=>state(20,'合成歌手1000')&&!button('查看上一批',gallery()),
+        'previous batch reopens source offset zero');
+      await emit('complete',{ok:true,artistGalleryVerified:true,artistGalleryBatchesVerified:true,
+        stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchOriginalCorrectionProof){

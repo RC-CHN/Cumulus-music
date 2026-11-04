@@ -339,18 +339,22 @@ def main():
     if args.artist_gallery:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['artistGalleryVerified'] and complete['stageCount'] == 3
+        assert complete['ok'] and complete['artistGalleryVerified'] and complete['stageCount'] == 5
+        assert complete['artistGalleryBatchesVerified']
         assert complete['artistGalleryCalls'] == [
             dict(area=area, type=kind, initial=initial, offset=offset, limit=20)
             for area, kind, initial, offset in [
                 (-1, -1, -1, 0), (7, -1, -1, 0), (7, 2, -1, 0), (7, 2, 65, 0),
                 (7, 2, 65, 20), (7, 2, 65, 20), (7, 2, 0, 0),
+                *((7, 2, 66, offset) for offset in range(0, 200, 20)),
+                (7, 2, 66, 200), (7, 2, 66, 200), (7, 2, 66, 0),
             ]
         ]
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        assert len(list(first.glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, artistGalleryVerified=True,
-                              stageCount=3, nativeArtistGalleryReads=7, realAccountWrites=0)))
+                              artistGalleryBatchesVerified=True, stageCount=5,
+                              nativeArtistGalleryReads=20, realAccountWrites=0)))
         return
     if args.voice_direct or args.card_matches or args.correction_original or args.people_categories or args.search_next:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))

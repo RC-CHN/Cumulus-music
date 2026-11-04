@@ -20,6 +20,7 @@ static PODCAST_FOLLOW_MAP_STALE: AtomicBool = AtomicBool::new(false);
 static PODCAST_FOLLOW_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 static ARTIST_GALLERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static ARTIST_GALLERY_FAILED: AtomicBool = AtomicBool::new(false);
+static ARTIST_GALLERY_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
 }
@@ -172,6 +173,13 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 (7, 1, false)
             }
             ([Some(7), Some(2), Some(0)], 0) => (0, 0, false),
+            ([Some(7), Some(2), Some(66)], 0..=180) => (1000 + offset, 20, true),
+            ([Some(7), Some(2), Some(66)], 200) => {
+                if !ARTIST_GALLERY_BATCH_FAILED.swap(true, Ordering::SeqCst) {
+                    return Some(Err(Error::Transport("合成歌手下一批中断".into())));
+                }
+                (1200, 20, false)
+            }
             _ => {
                 return Some(Err(Error::InvalidInput(
                     "unexpected synthetic artist filters",
