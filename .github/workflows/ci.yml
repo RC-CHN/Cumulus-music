@@ -114,6 +114,8 @@ jobs:
       - id: rust-clippy
         run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+      - name: Verify optional song fingerprint compression
+        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib song_recognition
       - name: Reclaim Linux test build space before packaging
         run: |
           df -h .
@@ -254,6 +256,8 @@ jobs:
       - id: rust-clippy
         run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+      - name: Verify optional song fingerprint compression
+        run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib song_recognition
       - name: Build release packages and verify native media
         env:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
