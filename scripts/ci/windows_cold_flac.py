@@ -208,6 +208,9 @@ def main():
     args = parser.parse_args()
     if sys.platform != 'win32':
         parser.error('run native verification on Windows')
+    # Rust probe diagnostics are UTF-8. A redirected Windows stdout may use
+    # CP1252, which cannot print some successful-case diagnostics.
+    sys.stdout.reconfigure(encoding='utf-8')
     verify(args.report.resolve(), args.runtime.resolve(strict=True),
            Path(os.environ['CUMULUS_MSYS2_ROOT']).resolve(strict=True))
 
