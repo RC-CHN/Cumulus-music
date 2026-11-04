@@ -2459,6 +2459,45 @@ const playlistTrackSearch = computed(() =>
       : '',
   ),
 );
+const canDropPlaylistSong = computed(
+  () =>
+    signedIn.value &&
+    player.queueOpen.value &&
+    queuePanel.value?.canDrop === true &&
+    page.value.kind === 'playlist' &&
+    playlistSongsActive.value &&
+    result.value?.playlist?.id === page.value.id &&
+    !!result.value.revision &&
+    !loading.value,
+);
+function startPlaylistQueueDrop(event: PointerEvent, track: TrackView, index: number) {
+  const route = page.value;
+  const snapshot = result.value;
+  if (route.kind !== 'playlist' || !snapshot?.revision || !canDropPlaylistSong.value) return;
+  const id = route.id;
+  const revision = snapshot.revision;
+  const epoch = account.value.epoch;
+  const keyword = playlistKeyword.value;
+  const ordinal = playlistTrackSearch.value.positions?.[index] ?? index;
+  const current = () =>
+    canDropPlaylistSong.value &&
+    page.value === route &&
+    account.value.epoch === epoch &&
+    playlistKeyword.value === keyword &&
+    result.value?.revision === revision &&
+    result.value.tracks[ordinal]?.id === track.id &&
+    playlistTrackSearch.value.tracks[index]?.id === track.id;
+  if (!current()) return;
+  queuePanel.value?.beginDrop(event, {
+    kind: 'playlist',
+    id,
+    revision,
+    trackId: track.id,
+    trackIndex: ordinal,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    current,
+  });
+}
 watch(
   [() => account.value.epoch, () => (page.value.kind === 'playlist' ? page.value.id : null)],
   () => (playlistKeyword.value = ''),
@@ -3496,10 +3535,10 @@ onUnmounted(() => {
                   !player.view.value?.fm
                 "
                 :queue-local="player.queueLocal"
-                :queue-drop-enabled="player.queueOpen.value && queuePanel?.canDropLocal"
+                :queue-drop-enabled="player.queueOpen.value && queuePanel?.canDrop"
                 :current-id="currentLocalId"
                 @play="playLocal"
-                @queue-drag="(event, source) => queuePanel?.beginLocalDrop(event, source)"
+                @queue-drag="(event, source) => queuePanel?.beginDrop(event, source)"
                 @comments="(id, title) => openComments({ kind: 'track', id }, title)"
               />
               <SkinCenter v-else-if="page.kind === 'decoration'" :account="account" />
@@ -4521,6 +4560,8 @@ onUnmounted(() => {
                     navigable
                     @artist="(id) => openCatalog({ kind: 'artist', id })"
                     @album="(id) => openCatalog({ kind: 'album', id })"
+                    :queue-drop-enabled="canDropPlaylistSong"
+                    @queue-drag="startPlaylistQueueDrop"
                     :tracks="playlistTrackSearch.tracks"
                     :match-keyword="
                       playlistTrackSearch.positions !== null ? playlistKeyword : undefined

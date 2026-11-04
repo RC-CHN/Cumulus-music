@@ -1,8 +1,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import type { LocalQueueDropSource, QueueView } from '../services/player';
+import type { QueueDropSource, QueueView } from '../services/player';
 
 function suppressReleasedClick(owner: Element, pointerId: number) {
-  const row = owner.closest('tr');
+  const row = owner.closest('tr, .track-row');
   if (!row) return;
   function click(event: MouseEvent) {
     if (!(event.target instanceof Element) || !row!.contains(event.target)) return;
@@ -28,7 +28,7 @@ function suppressReleasedClick(owner: Element, pointerId: number) {
 }
 
 /** Capture a typed in-window gesture. There is no HTML/OS data transfer. */
-export function useLocalQueueDrop(options: {
+export function useQueueDrop(options: {
   queue(): QueueView | null | undefined;
   playId(): string | null;
   container(): HTMLElement | undefined;
@@ -36,7 +36,7 @@ export function useLocalQueueDrop(options: {
   rowHeight: number;
   scroll(): void;
   commit(
-    source: LocalQueueDropSource,
+    source: QueueDropSource,
     queue: QueueView,
     playId: string | null,
     before: string | null,
@@ -49,7 +49,7 @@ export function useLocalQueueDrop(options: {
   );
   let stop: (() => void) | undefined;
 
-  function begin(event: PointerEvent, source: LocalQueueDropSource) {
+  function begin(event: PointerEvent, source: QueueDropSource) {
     if (event.button !== 0 || event.pointerType === 'touch' || options.disabled()) return;
     stop?.();
     const queue = options.queue();

@@ -134,7 +134,13 @@ function startQueueDrop(event: PointerEvent, row: LocalTrack) {
         !candidate.track.missing,
     );
   if (current())
-    emit('queueDrag', event, { query: scope, revision, trackId: row.track.id, current });
+    emit('queueDrag', event, {
+      kind: 'local',
+      query: scope,
+      revision,
+      trackId: row.track.id,
+      current,
+    });
 }
 const canPlay = computed(
   () => props.playable && !busy.value && !readLocked.value && !!view.value?.playable,

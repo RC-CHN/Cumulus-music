@@ -250,7 +250,7 @@
       const aborted = startDrop(1);
       const marker = await wait(() => {
         const node = one('.queue-drop-marker');
-        return node?.style.top === '64px' && one('.queue-drag-hint')?.textContent.includes('添加本地歌曲') && node;
+        return node?.style.top === '64px' && one('.queue-drag-hint')?.textContent.includes('添加歌曲') && node;
       }, 'drop insertion line between the two displayed rows');
       const markerRect = marker.getBoundingClientRect();
       await capture('ux_03_local_queue_drop', {

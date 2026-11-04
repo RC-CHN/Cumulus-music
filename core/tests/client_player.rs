@@ -24,6 +24,7 @@ struct Backend {
     hold_id: AtomicU64,
     hold_url_id: AtomicU64,
     deny_url_id: AtomicU64,
+    playlist_cloud_song_id: AtomicU64,
     unavailable_url_id: AtomicU64,
     deny_voice: std::sync::atomic::AtomicBool,
     started: Notify,
@@ -89,7 +90,7 @@ impl Api for Backend {
                     json!({"code":200,"album":{"id":7,"name":"长专辑"},"songs":self.album_tracks.lock().unwrap().clone().unwrap_or_else(||(1..=501).map(|id|json!({"id":id,"name":"曲目","dt":120000})).collect::<Vec<_>>())})
                 }
                 "/api/v6/playlist/detail" => {
-                    json!({"code":200,"playlist":{"trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
+                    json!({"code":200,"playlist":{"id":payload["id"],"trackIds":self.playlist_tracks.lock().unwrap().clone().unwrap_or_else(|| (1..=205).map(|id|json!({"id":id})).collect::<Vec<_>>())}})
                 }
                 "/api/homepage/category/daily/song/list" => {
                     let expected = if self.style_tag_after_ack.swap(false, Ordering::SeqCst) {
@@ -152,7 +153,11 @@ impl Api for Backend {
                         self.started.notify_one();
                         self.release.notified().await;
                     }
-                    json!({"code":200,"songs":ids.iter().map(|v|json!({"id":v["id"],"name":"曲目","ar":[{"id":12,"name":"歌手"}],"al":{"id":7,"name":"专辑","picUrl":"http://p1.music.126.net/image.jpg?token=SECRET"},"dt":120000,"url":"https://private/?secret=SECRET","cookie":"SECRET"})).collect::<Vec<_>>()})
+                    let mut response = json!({"code":200,"songs":ids.iter().map(|v|json!({"id":v["id"],"name":"曲目","ar":[{"id":12,"name":"歌手"}],"al":{"id":7,"name":"专辑","picUrl":"http://p1.music.126.net/image.jpg?token=SECRET"},"dt":120000,"url":"https://private/?secret=SECRET","cookie":"SECRET"})).collect::<Vec<_>>()});
+                    if id == self.playlist_cloud_song_id.load(Ordering::SeqCst) {
+                        response["privileges"] = json!([{"id":id,"cs":1}]);
+                    }
+                    response
                 }
                 "/api/song/enhance/player/url/v1" => {
                     *self.trial.lock().unwrap() = Some(payload["trialMode"].clone());
@@ -1205,6 +1210,9 @@ async fn desktop_lyric_document_shares_detail_cache_offset_and_native_clock_with
 mod next_play;
 #[path = "client_player/playlist_batch.rs"]
 mod playlist_batch;
+
+#[path = "client_player/queue_drop.rs"]
+mod queue_drop;
 #[path = "client_player/queue_playlist.rs"]
 mod queue_playlist;
 

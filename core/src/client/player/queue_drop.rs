@@ -1,33 +1,50 @@
-//! Local library row dropped onto a displayed ordinary queue boundary.
+//! Route-bound rows dropped onto a displayed ordinary queue boundary.
 use super::*;
 use crate::{
+    catalog::CatalogApi,
     library::catalog::LocalQuery,
+    membership::Quality,
     playback::{PlaybackMode, QueueEntry, QueueSnapshot, controller::QueueUpdate},
+    playlist::PlaylistApi,
+    protocol::{api::identifier, wire::serialization::js_truthy},
 };
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 
-pub(super) struct LocalDrop {
-    pub query: LocalQuery,
-    pub revision: String,
-    pub track_id: String,
+pub(super) enum DropSource {
+    Local {
+        query: LocalQuery,
+        revision: String,
+        track_id: String,
+    },
+    Playlist {
+        id: String,
+        revision: String,
+        track_id: String,
+        track_index: usize,
+        quality: Quality,
+    },
+}
+
+pub(super) struct DropTarget {
     pub expected_queue_revision: String,
     pub expected_play_id: Option<String>,
     pub before_entry_id: Option<String>,
 }
 
 impl MusicClient {
-    pub(super) async fn drop_local_into_queue(
+    pub(super) async fn drop_into_queue(
         &self,
         epoch: &str,
-        mut drop: LocalDrop,
+        source: DropSource,
+        target: DropTarget,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
         self.session.check_generation(&token)?;
         let controller = self.player.controller().await?;
         let (before, mut queue) = controller.queue_with_state(&token).await?;
-        if before.queue_revision.to_string() != drop.expected_queue_revision
-            || before.play_id != drop.expected_play_id
+        if before.queue_revision.to_string() != target.expected_queue_revision
+            || before.play_id != target.expected_play_id
         {
             return Err(Error::QueueChanged);
         }
@@ -48,10 +65,10 @@ impl MusicClient {
             || self.together_attached(&token, None)?
         {
             return Err(Error::State(
-                "local drops require a stable ordinary ordered queue",
+                "drops require a stable ordinary ordered queue",
             ));
         }
-        let boundary = match drop.before_entry_id.as_deref() {
+        let boundary = match target.before_entry_id.as_deref() {
             Some(id) => queue
                 .items
                 .iter()
@@ -62,25 +79,91 @@ impl MusicClient {
             None => queue.items.len(),
         };
         let attempt = self.player.selection.load(Ordering::Acquire);
-        drop.query.revision = Some(drop.revision.clone());
-        let local = self.local.context().await?;
-        let resource = tokio::task::spawn_blocking(move || {
-            let snapshot = local.library.catalog(&drop.query)?;
-            if !snapshot
-                .items
-                .iter()
-                .skip(drop.query.offset)
-                .take(drop.query.limit)
-                .any(|row| row.id == drop.track_id)
-            {
-                return Err(Error::InvalidInput(
-                    "local drop row is outside the displayed page",
-                ));
+        let (resource, origin) = match source {
+            DropSource::Local {
+                mut query,
+                revision,
+                track_id,
+            } => {
+                query.revision = Some(revision.clone());
+                let local = self.local.context().await?;
+                let resource = tokio::task::spawn_blocking(move || {
+                    let snapshot = local.library.catalog(&query)?;
+                    if !snapshot
+                        .items
+                        .iter()
+                        .skip(query.offset)
+                        .take(query.limit)
+                        .any(|row| row.id == track_id)
+                    {
+                        return Err(Error::InvalidInput(
+                            "local drop row is outside the displayed page",
+                        ));
+                    }
+                    snapshot.queue_track(&track_id)
+                })
+                .await
+                .map_err(|_| Error::State("local drop worker stopped"))??;
+                (resource, json!({"kind":"local","revision":revision}))
             }
-            snapshot.queue_track(&drop.track_id)
-        })
-        .await
-        .map_err(|_| Error::State("local drop worker stopped"))??;
+            DropSource::Playlist {
+                id,
+                revision,
+                track_id,
+                track_index,
+                quality,
+            } => {
+                if token.uid.is_none() {
+                    return Err(Error::State("playlist drops require an active account"));
+                }
+                let id = identifier(&json!(id))?;
+                let track_id = identifier(&json!(track_id))?;
+                let detail = self
+                    .session
+                    .run_for(&token, |api, _| async {
+                        PlaylistApi::new(api).detail(&json!(id)).await
+                    })
+                    .await?;
+                let tracks = detail["trackIds"]
+                    .as_array()
+                    .ok_or(Error::Response("missing playlist tracks"))?;
+                if identifier(&detail["id"])? != id
+                    || tracks.len() > 50_000
+                    || super::playlist_batch::track_revision(&id, tracks)? != revision
+                    || !tracks.get(track_index).is_some_and(|row| {
+                        row["v"].as_i64() != Some(-1)
+                            && identifier(&row["id"]).is_ok_and(|actual| actual == track_id)
+                    })
+                {
+                    return Err(Error::QueueChanged);
+                }
+                if self.player.selection.load(Ordering::Acquire) != attempt {
+                    return Err(Error::StaleResponse);
+                }
+                let batch = self
+                    .session
+                    .run_for(&token, |api, _| async {
+                        CatalogApi::new(api).songs(&[json!(track_id)], 1).await
+                    })
+                    .await?;
+                let song = batch
+                    .songs
+                    .into_iter()
+                    .flatten()
+                    .next()
+                    .ok_or(Error::State("playlist drop song is unavailable"))?;
+                if js_truthy(&song["privilege"]["cs"])
+                    || batch
+                        .privileges
+                        .get(&track_id)
+                        .is_some_and(|p| js_truthy(&p["cs"]))
+                {
+                    return Err(Error::State("playlist drops do not support cloud songs"));
+                }
+                let resource = super::queue_playlist::catalog_queue_resource(&song, quality)?;
+                (resource, json!({"kind":"playlist","id":id}))
+            }
+        };
         self.session.check_generation(&token)?;
         let selection = self.player.selection.clone();
         if selection.load(Ordering::Acquire) != attempt {
@@ -94,10 +177,9 @@ impl MusicClient {
         if self.together_attached(&token, None)?
             || self.queue_clear_context(&token)?.room_id.is_some()
         {
-            return Err(Error::State("local drops require ordinary playback"));
+            return Err(Error::State("drops require ordinary playback"));
         }
-        let source = json!({"kind":"local","revision":drop.revision});
-        insert_local_drop(&mut queue, resource, source, boundary)?;
+        insert_drop(&mut queue, resource, origin, boundary)?;
         let expected = before.fence();
         let value = controller
             .command_guarded(
@@ -116,19 +198,17 @@ impl MusicClient {
     }
 }
 
-fn insert_local_drop(
+fn insert_drop(
     queue: &mut QueueSnapshot,
     resource: Value,
     source: Value,
     mut boundary: usize,
 ) -> Result<()> {
-    let local_id = resource["local_id"]
-        .as_str()
-        .ok_or(Error::State("drop resource is not local"))?;
-    let mut duplicates = queue
-        .items
-        .iter()
-        .filter(|entry| entry.resource["local_id"].as_str() == Some(local_id));
+    let key = super::identity::collection_key(&resource, false)
+        .ok_or(Error::State("drop resource has no queue identity"))?;
+    let matches =
+        |entry: &QueueEntry| super::identity::collection_key(&entry.resource, false) == Some(key);
+    let mut duplicates = queue.items.iter().filter(|entry| matches(entry));
     let first = duplicates.next();
     let current = first
         .filter(|entry| queue.current.as_ref() == Some(&entry.entry_id))
@@ -155,7 +235,7 @@ fn insert_local_drop(
     let mut index = 0;
     let original_boundary = boundary;
     queue.items.retain(|entry| {
-        let duplicate = entry.resource["local_id"].as_str() == Some(local_id);
+        let duplicate = matches(entry);
         if duplicate && index < original_boundary {
             boundary -= 1;
         }

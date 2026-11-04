@@ -11,7 +11,7 @@ import type {
   PlayerAction,
   QueueView,
   QueueEdit,
-  LocalQueueDropSource,
+  QueueDropSource,
   LyricsView,
   LyricPreferences,
   QualityTrialCommand,
@@ -857,22 +857,31 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       input.kind === 'clear',
     );
   }
-  async function dropLocalIntoQueue(
-    source: LocalQueueDropSource,
+  async function dropIntoQueue(
+    source: QueueDropSource,
     displayed: QueueView,
     playId: string | null,
     before: string | null,
   ) {
     if (!source.current() || (view.value?.playId ?? null) !== playId) return false;
-    return sendQueueEdit(displayed, (snapshot) => ({
-      kind: 'drop_local_into_queue',
-      query: source.query,
-      revision: source.revision,
-      track_id: source.trackId,
-      expected_queue_revision: snapshot.revision,
-      expected_play_id: playId,
-      before_entry_id: before,
-    }));
+    return sendQueueEdit(displayed, (snapshot) => {
+      const target = {
+        expected_queue_revision: snapshot.revision,
+        expected_play_id: playId,
+        before_entry_id: before,
+      };
+      const row = { revision: source.revision, track_id: source.trackId };
+      return source.kind === 'local'
+        ? { kind: 'drop_local_into_queue', query: source.query, ...row, ...target }
+        : {
+            kind: 'drop_playlist_song_into_queue',
+            id: source.id,
+            track_index: source.trackIndex,
+            quality: source.quality,
+            ...row,
+            ...target,
+          };
+    });
   }
   async function sendQueueEdit(
     displayed: QueueView | undefined | null,
@@ -1035,7 +1044,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   return {
     queuePlaylist,
     queueLocal,
-    dropLocalIntoQueue,
+    dropIntoQueue,
     queueAlbum,
     queueDaily,
     queueStyleRecommendations,

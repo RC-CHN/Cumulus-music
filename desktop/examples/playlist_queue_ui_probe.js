@@ -15,7 +15,7 @@
     window.__libraryFixtureAck = null; await emit('library-fixture', { mode });
     await wait(() => window.__libraryFixtureAck, 'fixture ack'); return window.__libraryFixtureAck;
   };
-  async function capture(label) {
+  async function capture(label, extra = {}) {
     step = label; await sleep(200);
     assert(document.documentElement.scrollWidth <= innerWidth, 'document containment');
     for (const n of all('.action-menu, dialog[open]')) {
@@ -27,7 +27,7 @@
       const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
       assert(hit && (n.contains(hit) || n === hit), 'dialog controls reachable');
     }
-    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`, { width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme, items: menu() ? [...menu().querySelectorAll('button')].map(n => ({ text: n.textContent.trim(), disabled: n.disabled })) : [] });
+    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`, { width: innerWidth, height: innerHeight, theme: document.documentElement.dataset.theme, items: menu() ? [...menu().querySelectorAll('button')].map(n => ({ text: n.textContent.trim(), disabled: n.disabled })) : [], ...extra });
     await sleep(420);
   }
   async function library() {
@@ -114,7 +114,63 @@
     await fixture('success'); click(button('重试',feedback())); await wait(done,'retry after navigation');
     assert(document.activeElement===one('.sidebar-navigation [aria-current="page"]'),'disconnected trigger uses current page navigation focus'); await capture('detached_recovered');
     await library();
+    step='online row drop';
+    await emit('resize',{width:1120,height:760}); await wait(()=>innerWidth===1120,'wide queue');
+    await detail(9);
+    const field=one('[aria-label="搜索歌单歌曲"]');
+    field.value='合成歌曲 507'; field.dispatchEvent(new Event('input',{bubbles:true}));
+    await wait(()=>all('.track-scroll [data-track-id]').length===1 &&
+      one('.track-scroll [data-track-id]')?.dataset.trackId==='507','filtered source with original ordinal two');
+    const {epoch}=await invoke('account_snapshot');
+    const before=await invoke('player_snapshot',{epoch});
+    const original=await invoke('player_queue',{epoch});
+    const queueIds=(q)=>q.tracks.map(r=>r.track.id);
+    assert(before.state==='paused' && !queueIds(original).includes('507'),'paused queue lacks the target song');
+    click(button('播放队列'));
+    await wait(()=>one('.queue-scroll')?.querySelectorAll('.queue-row').length>=2,'ordinary drop destination');
+    await sleep(350);
+    function startDrop() {
+      const source=one('.track-scroll [data-track-id="507"] .track-row-title-text');
+      const viewport=one('.queue-scroll');
+      viewport.scrollTop=0;
+      const a=source.getBoundingClientRect(), b=viewport.getBoundingClientRect();
+      const x=a.left+4, y=a.top+a.height/2, X=b.left+b.width/2, Y=b.top+72;
+      assert(source.contains(document.elementFromPoint(x,y)) &&
+        viewport.contains(document.elementFromPoint(X,Y)),'source and destination are both pointer reachable');
+      const pointer=(node,type,clientX,clientY)=>node.dispatchEvent(new PointerEvent(type,{
+        bubbles:true,cancelable:true,pointerId:57,pointerType:'mouse',button:0,buttons:type==='pointerup'?0:1,clientX,clientY,
+      }));
+      pointer(source,'pointerdown',x,y); pointer(viewport,'pointermove',X,Y);
+      return ()=>pointer(viewport,'pointerup',X,Y);
+    }
+    await fixture('empty_detail');
+    startDrop()();
+    await wait(()=>one('.queue-notice[role="alert"]')?.textContent.includes('列表已更新'),'stale playlist rejection in queue');
+    assert((await invoke('player_queue',{epoch})).revision===original.revision,'stale playlist leaves queue intact');
+    await capture('playlist_drop_stale');
+    await fixture('success');
+    const drop=startDrop();
+    await wait(()=>one('.queue-drop-marker')?.style.top==='64px' &&
+      one('.queue-drag-hint')?.textContent.includes('正在添加歌曲'),'visible insertion marker between rows');
+    const line=one('.queue-drop-marker'), rect=line.getBoundingClientRect();
+    await capture('playlist_drop_boundary',{screenX,screenY,ratio:devicePixelRatio,
+      paintSamples:[{x:rect.left+8,y:rect.top+1,color:getComputedStyle(line).backgroundColor}]});
+    drop();
+    const expected=queueIds(original); expected.splice(1,0,'507');
+    let inserted;
+    for(let i=0;i<200;i++) {
+      const observed=await invoke('player_queue',{epoch});
+      if(queueIds(observed).join(',')===expected.join(',')){inserted=observed;break;}
+      await sleep(30);
+    }
+    assert(inserted && inserted.revision!==original.revision,'exact original boundary insertion');
+    const after=await invoke('player_snapshot',{epoch});
+    assert(after.state==='paused' && after.playId===before.playId && after.entryId===before.entryId &&
+      Math.abs(after.position-before.position)<.05 && !one('.playback-message'),'retains native playback and avoids an audio error');
+    await capture('playlist_drop_done',{inserted:'507',at:1});
+    click(button('关闭播放队列')); await wait(()=>!one('.queue-panel'),'close drop destination');
+    await library();
     await fixture('expired_detail'); await open(7); await choose('下一首播放'); await wait(()=>button('重新登录') || button('点击登录'),'expired account'); await capture('expired');
-    await emit('complete',{ok:true,playlistQueueUi:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+    await emit('complete',{ok:true,playlistQueueUi:true,onlinePlaylistDrop:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
   } catch(error) { await emit('failed',{step,message:String(error),stack:error.stack,stageCount:count}); }
 })();

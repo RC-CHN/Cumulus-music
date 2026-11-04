@@ -4,6 +4,12 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 
+pub(super) fn track_revision(id: &str, tracks: &[Value]) -> Result<String> {
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(&json!([
+        id, tracks
+    ]))?)))
+}
+
 pub(super) fn selected_ids(
     id: &str,
     detail: &Value,
@@ -16,7 +22,7 @@ pub(super) fn selected_ids(
     let tracks = detail["trackIds"]
         .as_array()
         .ok_or(Error::Response("missing playlist tracks"))?;
-    let actual = hex::encode(Sha256::digest(serde_json::to_vec(&json!([id, tracks]))?));
+    let actual = track_revision(id, tracks)?;
     if actual != revision {
         return Err(Error::QueueChanged);
     }

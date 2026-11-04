@@ -79,6 +79,14 @@ fn playlist(id: u64) -> Value {
         );
         value["trackCount"] = json!(4);
     }
+    if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() && id == 9 {
+        value["trackIds"] = json!(
+            (505..=508)
+                .map(|id| json!({"id":id,"v":0}))
+                .collect::<Vec<_>>()
+        );
+        value["trackCount"] = json!(4);
+    }
     value
 }
 pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {

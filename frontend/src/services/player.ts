@@ -231,11 +231,22 @@ export type QueueEdit =
   | { kind: 'remove' | 'reorder'; entry_ids: string[] }
   | { kind: 'clear' };
 export type LocalQueueDropSource = {
+  kind: 'local';
   query: import('./local').LocalQuery;
   revision: string;
   trackId: string;
   current: () => boolean;
 };
+export type PlaylistQueueDropSource = {
+  kind: 'playlist';
+  id: string;
+  revision: string;
+  trackId: string;
+  trackIndex: number;
+  quality: Quality;
+  current: () => boolean;
+};
+export type QueueDropSource = LocalQueueDropSource | PlaylistQueueDropSource;
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
 export type SongRowDoubleClickSelection =
   | ({
@@ -368,6 +379,17 @@ export type PlayerAction =
       query: import('./local').LocalQuery;
       revision: string;
       track_id: string;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
+    }
+  | {
+      kind: 'drop_playlist_song_into_queue';
+      id: string;
+      revision: string;
+      track_id: string;
+      track_index: number;
+      quality: Quality;
       expected_queue_revision: string;
       expected_play_id: string | null;
       before_entry_id: string | null;

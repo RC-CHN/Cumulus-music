@@ -1,4 +1,4 @@
-"""Whole-playlist queue menu UX in a real WebView."""
+"""Playlist queue menus and route-bound song drop in a real WebView."""
 import argparse
 import json
 import os
@@ -36,13 +36,13 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
     result = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-    assert result['ok'] and result['playlistQueueUi'] and result['stageCount'] == 44
+    assert result['ok'] and result['playlistQueueUi'] and result['onlinePlaylistDrop'] and result['stageCount'] == 47
     assert result['realMusicRequests'] == result['realAccountWrites'] == 0
     assert result['syntheticLibrary']['writes'] == 0
     records = sorted((root / 'first').glob('ux_*.json'))
-    assert len(records) == 44
+    assert len(records) == 47
     if args.screenshots:
-        assert len(list((root / 'first').glob('ux_*.png'))) == 44
+        assert len(list((root / 'first').glob('ux_*.png'))) == 47
     initial = json.loads(records[1].read_text(encoding='utf-8'))['nativePlayer']
     for file in records:
         data = json.loads(file.read_text(encoding='utf-8'))
@@ -58,6 +58,19 @@ def main():
         if file.name in ['ux_36_explicit_next.json','ux_40_sidebar_done.json']:
             assert player['track']['id'] == '1' and player['state'] == 'paused'
         assert len(ids) == len(set(ids)), file.name
+    stale, marker, dropped = [
+        json.loads(next((root / 'first').glob(f'ux_*_{name}.json')).read_text(encoding='utf-8'))
+        for name in ('playlist_drop_stale', 'playlist_drop_boundary', 'playlist_drop_done')
+    ]
+    assert stale['nativeQueue']['revision'] == marker['nativeQueue']['revision']
+    before_ids = [row['track']['id'] for row in stale['nativeQueue']['tracks']]
+    after_ids = [row['track']['id'] for row in dropped['nativeQueue']['tracks']]
+    assert after_ids == before_ids[:1] + ['507'] + before_ids[1:]
+    for key in ('playId', 'entryId', 'state', 'position'):
+        assert dropped['nativePlayer'][key] == stale['nativePlayer'][key]
+    if args.screenshots:
+        paint = json.loads(next((root / 'first').glob('paint-ux_*_playlist_drop_boundary.json')).read_text(encoding='utf-8'))
+        assert len(paint['samples']) == 1 and paint['samples'][0]['ok']
     result.update(actualWebView=True, physicalDisplayVerified=False, windowsVisualVerified=False)
     (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
     print(json.dumps({k: result[k] for k in ['ok', 'stageCount', 'actualWebView', 'realAccountWrites']}))

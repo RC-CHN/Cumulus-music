@@ -207,11 +207,7 @@ impl MusicClient {
                 })
                 .await?;
             for song in songs.songs.into_iter().flatten() {
-                let v = mapping::track(&song)?;
-                resources.push(json!({"id":v.id,"level":quality.as_str(),"dt":v.duration_ms,
-                    "song":{"id":v.id,"name":v.name,"dt":v.duration_ms,"fee":v.fee,
-                    "ar":v.artist_refs.iter().map(|a|json!({"id":a.id,"name":a.name})).collect::<Vec<_>>(),
-                    "al":{"id":v.album_id,"name":v.album,"picUrl":v.cover_url}}}));
+                resources.push(catalog_queue_resource(&song, quality)?);
             }
             if resources.len() >= QUEUE_LIMIT {
                 resources.truncate(QUEUE_LIMIT);
@@ -550,6 +546,16 @@ impl MusicClient {
         self.together_signal(&token, None);
         project(&value, &token)
     }
+}
+
+pub(super) fn catalog_queue_resource(song: &Value, quality: Quality) -> Result<Value> {
+    let v = mapping::track(song)?;
+    Ok(
+        json!({"id":v.id,"level":quality.as_str(),"dt":v.duration_ms,
+        "song":{"id":v.id,"name":v.name,"dt":v.duration_ms,"fee":v.fee,
+        "ar":v.artist_refs.iter().map(|a|json!({"id":a.id,"name":a.name})).collect::<Vec<_>>(),
+        "al":{"id":v.album_id,"name":v.album,"picUrl":v.cover_url}}}),
+    )
 }
 
 fn resource_key(resource: &Value, downloaded: bool) -> Option<(PlayerResourceKind, &str)> {

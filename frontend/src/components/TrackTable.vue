@@ -23,6 +23,7 @@ const props = defineProps<{
   toggleBusy?: boolean;
   navigable?: boolean;
   preserveScrollOnRefresh?: boolean;
+  queueDropEnabled?: boolean;
   locateIndex?: number;
   scrollScope?: string;
 }>();
@@ -35,6 +36,7 @@ const emit = defineEmits<{
   artist: [id: string];
   album: [id: string];
   scrollEdge: [scope: string, scrolled: boolean, overflow: number];
+  queueDrag: [event: PointerEvent, track: TrackView, index: number];
 }>();
 const rowHeight = 56;
 const {
@@ -47,6 +49,25 @@ const {
   center,
 } = useVirtualRows(() => props.tracks.length, rowHeight);
 const rows = computed(() => props.tracks.slice(start.value, end.value));
+function queueDrag(event: PointerEvent) {
+  if (!props.queueDropEnabled || !(event.target instanceof Element)) return;
+  const hit = event.target;
+  if (hit.closest('button, a, input, select')) return;
+  const row = hit.closest<HTMLElement>('.track-row[data-track-id]');
+  if (!row) return;
+  const index = Number(row.getAttribute('aria-rowindex')) - 2;
+  const track = props.tracks[index];
+  if (track?.id === row.dataset.trackId && !track.missing && !track.local)
+    emit('queueDrag', event, track, index);
+}
+function preventNativeDrag(event: DragEvent) {
+  if (
+    props.queueDropEnabled &&
+    event.target instanceof Element &&
+    event.target.closest('.track-row')
+  )
+    event.preventDefault();
+}
 let wasScrolled = false;
 function scroll() {
   onScroll();
@@ -86,7 +107,13 @@ defineExpose({ locate, restoreScroll });
       <span>#</span><span role="columnheader">歌曲 / 歌手</span><span role="columnheader">专辑</span
       ><span role="columnheader">喜欢</span><span role="columnheader">时长</span>
     </div>
-    <div ref="scroller" class="track-scroll" @scroll.passive="scroll">
+    <div
+      ref="scroller"
+      class="track-scroll"
+      @scroll.passive="scroll"
+      @pointerdown="queueDrag"
+      @dragstart="preventNativeDrag"
+    >
       <div :style="{ height: `${start * rowHeight}px` }" aria-hidden="true" />
       <TrackRow
         v-for="(track, index) in rows"

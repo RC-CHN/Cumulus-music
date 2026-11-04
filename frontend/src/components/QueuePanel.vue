@@ -12,7 +12,7 @@ import {
 import { useVirtualRows } from '../composables/useVirtualRows';
 import { useQueueSelection } from '../composables/useQueueSelection';
 import { useQueueDrag } from '../composables/useQueueDrag';
-import { useLocalQueueDrop } from '../composables/useLocalQueueDrop';
+import { useQueueDrop } from '../composables/useQueueDrop';
 import { useControlFocus } from '../composables/useControlFocus';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { TogetherModel } from '../composables/useTogether';
@@ -107,7 +107,7 @@ const drag = useQueueDrag({
   },
 });
 const dragging = drag.dragging;
-const canDropLocal = computed(
+const canDrop = computed(
   () =>
     !locked.value &&
     !clearOpen.value &&
@@ -117,18 +117,18 @@ const canDropLocal = computed(
     view.value?.mode !== 'random' &&
     !['preparing', 'loading'].includes(view.value?.state ?? 'idle'),
 );
-const localDrop = useLocalQueueDrop({
+const externalDrop = useQueueDrop({
   queue: () => queue.value,
   playId: () => view.value?.playId ?? null,
   container: () => container.value,
-  disabled: () => !canDropLocal.value || dragging.value.size > 0,
+  disabled: () => !canDrop.value || dragging.value.size > 0,
   rowHeight: row,
   scroll: onScroll,
   commit: (source, displayed, playId, before) => {
-    void props.player.dropLocalIntoQueue(source, displayed, playId, before);
+    void props.player.dropIntoQueue(source, displayed, playId, before);
   },
 });
-defineExpose({ beginLocalDrop: localDrop.begin, canDropLocal });
+defineExpose({ beginDrop: externalDrop.begin, canDrop });
 const clearChanged = computed(
   () =>
     !!clearTicket.value &&
@@ -703,17 +703,17 @@ async function confirmClear(event: Event) {
         </div>
         <div :style="{ height: `${(queue.tracks.length - end) * row}px` }" aria-hidden="true" />
         <div
-          v-if="drag.marker.value !== undefined || localDrop.marker.value !== undefined"
+          v-if="drag.marker.value !== undefined || externalDrop.marker.value !== undefined"
           class="queue-drop-marker"
-          :style="{ top: `${localDrop.marker.value ?? drag.marker.value}px` }"
+          :style="{ top: `${externalDrop.marker.value ?? drag.marker.value}px` }"
           aria-hidden="true"
         />
       </div>
       <div v-if="dragging.size" class="queue-drag-hint" role="status">
         正在移动 {{ dragging.size }} 项 · Esc 取消
       </div>
-      <div v-else-if="localDrop.dragging.value" class="queue-drag-hint" role="status">
-        正在添加本地歌曲 · Esc 取消
+      <div v-else-if="externalDrop.dragging.value" class="queue-drag-hint" role="status">
+        正在添加歌曲 · Esc 取消
       </div>
     </div>
     <ModalTransition
