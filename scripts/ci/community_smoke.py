@@ -63,6 +63,32 @@ def verify_profile_podcasts(stages, native, root):
     assert native['feed'] == [] and native['details'] == native['releaseReads'] == 0
 
 
+def verify_profile_playlists(stages, native):
+    assert set(stages) == {'guest_created', 'guest_collected', 'own_created', 'own_private_detail',
+                           'own_back_focus', 'own_collected', 'blocked'}
+    assert stages['guest_created']['ids'] == ['20', '26', '25']
+    assert stages['guest_collected']['ids'] == ['29']
+    assert stages['own_created']['ids'] == stages['own_back_focus']['ids'] == ['41', '42', '46', '22']
+    assert stages['own_back_focus']['focused'] == '42'
+    assert stages['own_collected']['ids'] == ['45']
+    assert stages['blocked']['ids'] == []
+
+    def detail(id_):
+        return ['/api/v6/playlist/detail', {'id': id_, 'n': 100000, 's': 0}]
+
+    def profile(uid):
+        return [f'/api/w/v1/user/detail/{uid}', {'all': True, 'userId': uid}]
+
+    def groups(uid):
+        return [['/api/djradio/get/create/sub/count', {'userId': uid}],
+                ['/api/user/playlist', {'uid': uid, 'offset': 0, 'limit': 1000}],
+                ['/api/user/playlist/getTop', {'userId': uid, 'offset': 0, 'limit': 1000}]]
+
+    calls = native['profilePlaylistCalls']
+    assert calls == [detail('20'), profile('73'), *groups('73'), detail('22'), profile('2'),
+                     *groups('2'), detail('42'), detail('21'), profile('74')], calls
+
+
 def verify_community(stages, native):
     assert set(stages) == {'first_error', 'feed', 'notice_return', 'detail_error', 'comment_error', 'comments',
                            'comment_next', 'back_to_feed', 'unavailable', 'next_error',
@@ -114,6 +140,7 @@ def main():
     mode.add_argument('--profile-podcasts', action='store_true')
     mode.add_argument('--own-profile', action='store_true')
     mode.add_argument('--publication', action='store_true')
+    mode.add_argument('--profile-playlists', action='store_true')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -121,6 +148,7 @@ def main():
     script = ('own_profile_navigation_ui_probe.js' if args.own_profile else
               'profile_notes_ui_probe.js' if args.profile_notes else
               'profile_podcasts_ui_probe.js' if args.profile_podcasts else
+              'profile_playlists_ui_probe.js' if args.profile_playlists else
               'community_publication_ui_probe.js' if args.publication else 'community_ui_probe.js')
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'),
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
@@ -130,6 +158,8 @@ def main():
         env['CUMULUS_OWN_PROFILE_PROOF'] = '1'
     if args.publication:
         env['CUMULUS_COMMUNITY_PUBLICATION_PROOF'] = '1'
+    if args.profile_playlists:
+        env['CUMULUS_PROFILE_PLAYLISTS_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -175,6 +205,8 @@ def main():
         verify_profile_notes(stages, complete['native'])
     elif args.profile_podcasts:
         verify_profile_podcasts(stages, complete['native'], root)
+    elif args.profile_playlists:
+        verify_profile_playlists(stages, complete['native'])
     else:
         assert complete['composerVerified']
         verify_community(stages, complete['native'])
@@ -192,6 +224,8 @@ def main():
     elif args.profile_podcasts:
         report['profilePodcastCalls'] = complete['native']['profilePodcastCalls']
         report['browserHandoff'] = {'officialSso': True, 'plainFallback': True}
+    elif args.profile_playlists:
+        report['profilePlaylistCalls'] = complete['native']['profilePlaylistCalls']
     else:
         report['composerVerified'] = True
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

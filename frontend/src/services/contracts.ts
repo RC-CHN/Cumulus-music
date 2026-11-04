@@ -247,6 +247,7 @@ export interface PlaylistCreatorProfile {
   listeningRank?: { isSelf: boolean; listenSongs: number | null } | null;
   followingCount?: number | null;
   followersCount?: number | null;
+  playlistsVisible?: boolean;
   created: PlaylistView[];
   collected: PlaylistView[];
 }

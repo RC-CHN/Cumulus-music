@@ -6,8 +6,11 @@ use super::{
 };
 use crate::{Error, Result, protocol::api::identifier};
 use serde::Serialize;
-use serde_json::json;
-use std::collections::HashSet;
+use serde_json::{Value, json};
+use std::collections::{HashMap, HashSet};
+
+const LIST_LIMIT: usize = 1000;
+const MAX_PAGES: usize = 8;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +24,7 @@ pub struct PlaylistCreatorProfile {
     pub notes_count: Option<u64>,
     pub podcasts: Option<ProfilePodcastEntry>,
     pub listening_rank: Option<ListeningRankEntry>,
+    pub playlists_visible: bool,
     pub created: Vec<PlaylistView>,
     pub collected: Vec<PlaylistView>,
 }
@@ -74,53 +78,71 @@ impl MusicClient {
                 } else {
                     None
                 };
-                self.session.require_api(request_token, &api)?;
                 let (mut created, mut collected) = (Vec::new(), Vec::new());
-                let mut seen = HashSet::new();
-                let mut more = true;
-                const LIMIT: usize = 1000;
-                for page in 0..8 {
-                    let result = api
-                        .call(
-                            "/api/user/playlist",
-                            json!({"uid":uid,"offset":page*LIMIT,"limit":LIMIT}),
-                            false,
-                            &[200],
-                        )
-                        .await?;
-                    let rows = result["playlist"]
-                        .as_array()
-                        .filter(|rows| rows.len() <= LIMIT)
-                        .ok_or(Error::Response("invalid public playlist page"))?;
-                    more = result["more"]
-                        .as_bool()
-                        .ok_or(Error::Response("missing public playlist pagination"))?;
-                    if more && rows.is_empty() {
-                        return Err(Error::Response("empty public playlist continuation"));
-                    }
-                    for row in rows {
-                        // This destination is public even when the visitor owns the profile.
-                        if row["privacy"].as_i64() != Some(0) {
-                            continue;
+                if visible {
+                    let mut pages = Vec::new();
+                    let mut more = true;
+                    for page in 0..MAX_PAGES {
+                        self.session.require_api(request_token, &api)?;
+                        let offset = page * LIST_LIMIT;
+                        let mut result = api
+                            .call(
+                                "/api/user/playlist",
+                                json!({"uid":uid,"offset":offset,"limit":LIST_LIMIT}),
+                                false,
+                                &[200],
+                            )
+                            .await?;
+                        let rows = std::mem::take(&mut result["playlist"]);
+                        let Value::Array(rows) = rows else {
+                            return Err(Error::Response("invalid profile playlist page"));
+                        };
+                        if rows.len() > LIST_LIMIT {
+                            return Err(Error::Response("invalid profile playlist page"));
                         }
-                        let owner = identifier(&row["userId"])
-                            .or_else(|_| identifier(&row["creator"]["userId"]))?;
-                        let item = mapping::playlist(row, &viewer)?;
-                        if !seen.insert(item.id.clone()) {
-                            continue;
+                        more = result["more"]
+                            .as_bool()
+                            .ok_or(Error::Response("missing profile playlist pagination"))?;
+                        if more && rows.is_empty() {
+                            return Err(Error::Response("empty profile playlist continuation"));
                         }
-                        if owner == uid {
-                            created.push(item);
-                        } else {
-                            collected.push(item);
+                        if !rows.is_empty() {
+                            self.session.require_api(request_token, &api)?;
+                            // M/232 orders each base page before separating the two groups.
+                            // An optional pin request must not erase the authoritative base page.
+                            let pins = api
+                                .call(
+                                    "/api/user/playlist/getTop",
+                                    json!({"userId":uid,"offset":offset,"limit":LIST_LIMIT}),
+                                    false,
+                                    &[200],
+                                )
+                                .await
+                                .ok()
+                                .and_then(|mut response| {
+                                    match response
+                                        .get_mut("data")
+                                        .and_then(|data| data.get_mut("topItemList"))
+                                        .map(std::mem::take)
+                                    {
+                                        Some(Value::Array(rows)) if rows.len() <= LIST_LIMIT => {
+                                            Some(rows)
+                                        }
+                                        _ => None,
+                                    }
+                                })
+                                .unwrap_or_default();
+                            pages.push((rows, pins));
+                        }
+                        if !more {
+                            break;
                         }
                     }
-                    if !more {
-                        break;
+                    if more {
+                        return Err(Error::Response("profile playlist pagination limit reached"));
                     }
-                }
-                if more {
-                    return Err(Error::Response("public playlist pagination limit reached"));
+                    self.session.require_api(request_token, &api)?;
+                    (created, collected) = project_profile_playlists(&pages, &viewer, &uid);
                 }
                 Ok(Some(PlaylistCreatorProfile {
                     id: uid.clone(),
@@ -144,6 +166,7 @@ impl MusicClient {
                                 &response["listenSongs"],
                             ),
                         }),
+                    playlists_visible: visible,
                     created,
                     collected,
                 }))
@@ -156,6 +179,107 @@ impl MusicClient {
             })
         })
     }
+}
+
+/// Match M/232.q's first-row / pinned / remaining order while retaining the
+/// base response's ownership/privacy when the pin references a known playlist.
+fn project_profile_playlists(
+    pages: &[(Vec<Value>, Vec<Value>)],
+    viewer: &str,
+    uid: &str,
+) -> (Vec<PlaylistView>, Vec<PlaylistView>) {
+    let mut base = HashMap::<String, &Value>::new();
+    let mut conflicts = HashSet::new();
+    for (rows, _) in pages {
+        for row in rows {
+            if let Ok(id) = identifier(&row["id"]) {
+                if let Some(previous) = base.get(&id) {
+                    if previous["privacy"] != row["privacy"]
+                        || playlist_owner(previous) != playlist_owner(row)
+                    {
+                        conflicts.insert(id);
+                    }
+                } else {
+                    base.insert(id, row);
+                }
+            }
+        }
+    }
+    let mut seen = HashSet::new();
+    let (mut created, mut collected) = (Vec::new(), Vec::new());
+    let mut push = |row: &Value| {
+        let Ok(id) = identifier(&row["id"]) else {
+            return;
+        };
+        if conflicts.contains(&id) {
+            return;
+        }
+        let Some((owner, declared)) = playlist_owner(row) else {
+            return;
+        };
+        let own = owner == uid;
+        match row["privacy"].as_i64() {
+            Some(0) => (),
+            // Private playlists must explicitly name the authenticated owner.
+            Some(10) if own && viewer == uid && declared => (),
+            _ => return,
+        }
+        if let Ok(card) = mapping::playlist(row, viewer)
+            && seen.insert(card.id.clone())
+        {
+            if own {
+                created.push(card)
+            } else {
+                collected.push(card)
+            }
+        }
+    };
+
+    for (rows, pins) in pages {
+        let Some((first, rest)) = rows.split_first() else {
+            continue;
+        };
+        push(first);
+        for pin in pins {
+            let Ok(id) = identifier(&pin["id"]) else {
+                continue;
+            };
+            let row = if let Some(row) = base.get(&id) {
+                // Pins can be sparse. Use authoritative base metadata even
+                // when the corresponding row appeared on another base page.
+                if (!pin["privacy"].is_null() && pin["privacy"] != row["privacy"])
+                    || (!pin["userId"].is_null() || !pin["creator"]["userId"].is_null())
+                        && playlist_owner(pin).map(|value| value.0)
+                            != playlist_owner(row).map(|value| value.0)
+                {
+                    continue;
+                }
+                *row
+            } else {
+                // A pin can appear outside the ordinary pages. A private item
+                // needs authoritative base membership before disclosing it.
+                if pin["privacy"].as_i64() != Some(0) {
+                    continue;
+                }
+                pin
+            };
+            push(row);
+        }
+        for row in rest {
+            push(row);
+        }
+    }
+    (created, collected)
+}
+
+fn playlist_owner(row: &Value) -> Option<(String, bool)> {
+    let direct = identifier(&row["userId"]).ok();
+    let creator = identifier(&row["creator"]["userId"]).ok();
+    if matches!((&direct, &creator), (Some(a), Some(b)) if a != b) {
+        return None;
+    }
+    let declared = direct.is_some();
+    Some((direct.or(creator)?, declared))
 }
 
 fn relation_count(value: &serde_json::Value) -> Option<u64> {

@@ -81,6 +81,7 @@ pub struct Library {
     fallback: super::catalog_fixture::Library,
     profile_notes: super::profile_notes_fixture::Library,
     profile_podcasts: super::profile_podcasts_fixture::Library,
+    profile_playlists: super::profile_playlists_fixture::Library,
 }
 impl Library {
     pub fn block_profile_notes(&self) {
@@ -115,6 +116,9 @@ impl Library {
         if super::profile_podcasts_fixture::Library::enabled() {
             report["profilePodcastCalls"] = self.profile_podcasts.report();
         }
+        if super::profile_playlists_fixture::Library::enabled() {
+            report["profilePlaylistCalls"] = self.profile_playlists.report();
+        }
         report
     }
 }
@@ -139,6 +143,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(result) = self.profile_playlists.request(path, &payload, cache) {
+                return result;
+            }
             if let Some(result) = self.profile_podcasts.request(path, &payload, cache) {
                 return result;
             }

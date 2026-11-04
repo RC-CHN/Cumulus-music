@@ -1,0 +1,37 @@
+用户主页歌单：Windows PC 3.1.42.205594
+
+官方普通版
+- M/2264:514–569 fetchUserPlaylist 调用 M/232.q（M/232:211–275），本人和访客都对
+  正在浏览的 uid 使用 POST /api/user/playlist {uid,offset,limit:1000}；more=true
+  时下一 offset 加 1000。M/15.kh 使用 M/21.v（G）规范化，每条保留 id、userId、
+  creator、privacy、trackCount 等。按规范化后的 userId 与目标 uid 相同与否，分成
+  创建、收藏两组；不是与当前访客 UID 比较。
+- 每一批基础 playlist 非空时继续 POST /api/user/playlist/getTop
+  {userId,offset,limit:1000}（M/15.qh/API-0433）。响应 data.topItemList 用同一规范化。
+  M/232.g 先保留该批首条基础记录，再放服务返回的置顶项，最后放其余基础记录。
+  置顶接口失败按官方继续使用基础顺序，不向页面伪造置顶；空的最后一批不读置顶。
+- 官方模型没有删除自己的 privacy=10；恢复的 PlaylistCard/index.tsx:1159–1166
+  及 MyCreatePlaylistTableViewer.tsx:150–207 都渲染私密锁。历史官方 PC 写入验收
+  core-pc-playlist-official-contracts.txt 也记录用同一账号私密创建后按本账号回读。
+  Cumulus 仅允许本人主页展示显式 userId=认证 UID 的基础私密记录（如同时提供
+  creator.userId 也必须一致）。访客一律只展示明确 privacy=0；即使条目属于访客
+  自己，也不会借另一个用户的主页曝光。未知隐私值和矛盾的身份均不投影。
+- 已在基础列表出现的置顶项沿用该列表的隐私与元数据，忽略置顶副本的冲突和重复；
+  单独出现的置顶项必须明确公开。跨分页的身份/隐私冲突不展示，避免先由置顶副本
+  泄漏后在基础列表发现私密。私密卡片继承私密封面/可读锁标记，打开仍经原生详情
+  权限核对，不显示私密歌单的播放数。
+- M/3088 的 inBlacklist 隐藏客态资料分组：Cumulus 在资料头确认黑名单后不读取基础/
+  置顶列表，不提供页签，并给出不可查看状态。每次独立读取和回包都检查账号代次；
+  切换账号时旧的基础读取不能触发置顶，也不能把旧账号私密结果投影给新账号。
+- M/2264:208–275 的两组分页都是 20 项；有最近一周听歌排行的创建组首屏，该入口占
+  一项，实际歌单项按原顺序连续翻页。虚拟入口不计入 Cumulus 页签上显示的歌单数。
+
+边界及复现
+- 本批恢复普通版的数据、隐私、排序与分页。Cumulus 仍使用分组切换控件；官方普通版
+  同时纵向展示两个分区，各带网格/列表切换。未为未验证的「音乐」A/B 近期推荐页启用
+  分流，也不新增资料页中的编辑、收藏、置顶或其他写操作。基础列表失败保持可见重试，
+  不自动重复服务调用或把半份清单当成完整结果（官方 M/232 有有限重读及失败前缀）。
+- cargo test -p cumulus-core --test profile_playlists --test profile_play_record --test profile_podcasts --test client_boundary --locked
+- 使用独立账号数据和断网的 Linux Xvfb/DBus 实际 WebView：
+  python3 scripts/ci/community_smoke.py --binary <community_ui_probe> --root <新目录> --screenshots --profile-playlists
+- 未连接实际服务、读取真实私密歌单或修改账号。

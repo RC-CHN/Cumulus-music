@@ -80,6 +80,7 @@ function keyboard(event: KeyboardEvent) {
       class="playlist-card"
       :data-library-open="playlist.id"
       :aria-label="playlist.name"
+      :aria-description="playlist.private ? '私密歌单' : undefined"
       :data-tooltip="playlist.name"
       @click="emit('open')"
     >

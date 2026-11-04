@@ -2,6 +2,8 @@ import { computed, ref, shallowRef } from 'vue';
 import type { CoreClient, PlaylistCreatorProfile } from '../services/contracts';
 import type { ProfileRelationMode } from '../services/profileRelations';
 
+const PAGE_SIZE = 20;
+
 export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProfile'>) {
   const profile = shallowRef<PlaylistCreatorProfile | null>();
   const busy = ref(false);
@@ -13,8 +15,16 @@ export function usePlaylistCreator(client: Pick<CoreClient, 'playlistCreatorProf
   const openedRelation = ref<ProfileRelationMode>();
   const relationEntries = new Map<string, ProfileRelationMode>();
   const list = computed(() => profile.value?.[group.value] ?? []);
-  const cards = computed(() => list.value.slice(page.value * 24, (page.value + 1) * 24));
-  const pages = computed(() => Math.max(1, Math.ceil(list.value.length / 24)));
+  const rankSlots = computed(() =>
+    group.value === 'created' && profile.value?.listeningRank ? 1 : 0,
+  );
+  const cards = computed(() => {
+    const offset = page.value * PAGE_SIZE - rankSlots.value;
+    return list.value.slice(Math.max(0, offset), offset + PAGE_SIZE);
+  });
+  const pages = computed(() =>
+    Math.max(1, Math.ceil((list.value.length + rankSlots.value) / PAGE_SIZE)),
+  );
   let generation = 0;
   let epoch = '';
   let uid = '';

@@ -154,6 +154,9 @@ function open(id: string) {
       <button class="text-button" type="button" @click="model.load">重试</button>
     </p>
     <p v-else-if="model.profile.value === null" class="muted">用户不存在</p>
+    <p v-else-if="model.profile.value?.playlistsVisible === false" role="status">
+      此用户的歌单不可查看
+    </p>
     <template v-else-if="model.profile.value">
       <nav
         v-if="model.profile.value.notesCount != null"
@@ -202,7 +205,7 @@ function open(id: string) {
       </nav>
       <slot v-if="activeSection !== 'playlists'" />
       <template v-else>
-        <div class="creator-page-groups" role="group" aria-label="公开歌单">
+        <div class="creator-page-groups" role="group" aria-label="用户歌单">
           <button
             class="text-button"
             type="button"
@@ -269,7 +272,7 @@ function open(id: string) {
           />
         </div>
         <p v-else class="muted">暂无公开歌单</p>
-        <nav v-if="model.pages.value > 1" aria-label="公开歌单分页">
+        <nav v-if="model.pages.value > 1" aria-label="用户歌单分页">
           <button
             class="text-button"
             type="button"
