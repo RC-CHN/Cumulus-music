@@ -43,4 +43,4 @@
   python3 scripts/ci/community_smoke.py --binary <community_ui_probe> --root <新目录> --screenshots --topic
   合成证明的 12 个阶段涵盖详情/评论、热榜回位、两种游标、真实 20 秒提示、显式刷新、
   来源回位及不可用状态；同一二进制通过关注流、发布恢复和个人笔记回归。此次本机证据在
-  .build/ui-proof/community-topic-d39d59d5/（仅合成截图和 JSON）；CI 接入 Linux 检查。
+  .build/ui-proof/community-topic-d39d59d5/（仅合成截图和 JSON）；已注册 Linux 和 Windows CI，Windows 结果待运行。

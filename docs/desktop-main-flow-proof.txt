@@ -389,3 +389,13 @@ Linux 合成桌面硬断网：已发布下载 → 离线播放
 - 另执行同一产品的冷离线 FLAC 原生限幅用例。验证有索引的跳转和超预算时以原
   授权句柄切回普通 libmpv，保留暂停／播放，撤权后停止；常规桌面默认未启用。
   日志 `.build/ui-proof/product-phase11/production-cold-flac.log`；输出为 null。
+
+2026-11-04 合并产品候选 6d58a94a
+- 新歌新碟与社区话题接入同一应用后，严格全工作区 Clippy 通过；Rust 全目标
+  1989 通过、15 忽略、0 失败，前端 796 通过、格式及生产构建通过。
+- Linux 封闭合成 WebView：新歌新碟 15、话题 12、笔记发布/回执恢复 10、
+  本人主页笔记 8，共 45 态及 45 张截图。报告见
+  `.build/ui-proof/product-phase13/{latest-releases,topic,publication,profile-notes}/report.json`。
+  话题的真实 20 秒提示不触发自动刷新；回程保留来源话题的滚动与焦点。
+- 新歌目录首次授权只读见 latest-releases-contracts.txt；修正候选 8c67dd27
+  对服务新碟结构的投影已复验。公开 CI 仅执行合成测试；Windows 原生结果待 CI。
