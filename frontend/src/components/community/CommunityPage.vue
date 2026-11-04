@@ -3,6 +3,7 @@ import { nextTick, onMounted, ref, watch } from 'vue';
 import type { useCommunity } from '../../composables/useCommunity';
 import type { useCommunityNotice } from '../../composables/useCommunityNotice';
 import type { CommunityResource } from '../../services/community';
+import CommunityComposer from './CommunityComposer.vue';
 import CommunityEventCard from './CommunityEventCard.vue';
 import CommunityNewSongNotice from './CommunityNewSongNotice.vue';
 import Icon from '../Icon.vue';
@@ -11,6 +12,7 @@ const props = defineProps<{
   model: ReturnType<typeof useCommunity>;
   notice: ReturnType<typeof useCommunityNotice>;
   detailKey?: string;
+  accountEpoch: string;
   playable: boolean;
 }>();
 const emit = defineEmits<{
@@ -128,16 +130,18 @@ async function commentPage(value: number, prior = false) {
       <h1 id="community-title" ref="heading" tabindex="-1">
         {{ detailKey ? '动态详情' : '关注' }}
       </h1>
-      <button
-        v-if="!detailKey"
-        class="icon-button"
-        type="button"
-        aria-label="刷新关注动态"
-        :disabled="pending"
-        @click="refresh"
-      >
-        <Icon name="refresh" />
-      </button>
+      <div v-if="!detailKey" class="community-heading-actions">
+        <CommunityComposer :epoch="accountEpoch" />
+        <button
+          class="icon-button"
+          type="button"
+          aria-label="刷新关注动态"
+          :disabled="pending"
+          @click="refresh"
+        >
+          <Icon name="refresh" />
+        </button>
+      </div>
     </header>
     <template v-if="!detailKey">
       <CommunityNewSongNotice
@@ -304,6 +308,12 @@ async function commentPage(value: number, prior = false) {
 </template>
 
 <style scoped>
+.community-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .community-page {
   max-width: 920px;
   flex: 1;

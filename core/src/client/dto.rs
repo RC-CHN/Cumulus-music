@@ -292,6 +292,9 @@ pub use super::comments::{
     CommentSort, CommentView, CommentWriteAction, CommentWriteCommand, CommentWritePhase,
     CommentWriteView,
 };
+pub use super::community::composer::{
+    ComposerDraft, ComposerDraftAction, ComposerKind, ComposerSearchPage, DraftAttachmentEdit,
+};
 pub use super::community::new_song_notice::{CommunityNewSongNotice, CommunityNoticeMode};
 pub use super::community::{
     CommunityCommentPage, CommunityDetail, CommunityFeedAction, CommunityFeedPage,

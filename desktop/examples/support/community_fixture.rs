@@ -13,6 +13,53 @@ const CURSOR: &str = "90071992547409933331";
 const NOTICE: &str = "/api/user/friend/new/song/notice/web/get";
 const RELEASES: &str = "/api/sub/artist/new/works/song-mv/list/v2";
 const LATEST: &str = "/api/sub/artist/new/works/song/playall";
+const COMPOSER: [&str; 5] = [
+    "/api/search/song/list/page",
+    "/api/v1/search/artist/get",
+    "/api/v1/search/album/get",
+    "/api/v1/search/playlist/get",
+    "/api/search/voicelist/get",
+];
+
+fn composer(path: &str, body: &Value, attempt: usize) -> Value {
+    let kind = COMPOSER
+        .iter()
+        .position(|candidate| *candidate == path)
+        .unwrap();
+    let offset = body["offset"].as_u64().unwrap();
+    let expected = match kind {
+        0 => {
+            json!({"keyword":"合成附件","scene":"normal","limit":8,"offset":offset,"needCorrect":true})
+        }
+        4 => json!({"keyword":"合成附件","scene":"normal","limit":8,"offset":offset}),
+        _ => json!({"s":"合成附件","limit":8,"offset":offset,"queryCorrect":true}),
+    };
+    assert_eq!(*body, expected);
+    let item = |id, name: String| json!({"id":id,"name":name,"sensitive":"SYNTHETIC_PRIVATE"});
+    match kind {
+        0 if offset == 0 => {
+            let rows = (1..=8).map(|id| json!({"baseInfo":{"simpleSongData":item(id, format!("合成附件单曲 {id}"))}})).collect::<Vec<_>>();
+            json!({"code":200,"data":{"resources":rows}})
+        }
+        0 if offset == 8 && attempt == 1 => json!({"code":503}),
+        0 if offset == 8 => {
+            json!({"code":200,"data":{"resources":[{"baseInfo":{"simpleSongData":item(9,"合成附件单曲续页".into())}}]}})
+        }
+        1 if offset == 0 => {
+            json!({"code":200,"result":{"artists":[item(91,"合成附件歌手".into())]}})
+        }
+        2 if offset == 0 => {
+            json!({"code":200,"result":{"albums":[item(92,"合成附件专辑".into())]}})
+        }
+        3 if offset == 0 => {
+            json!({"code":200,"result":{"playlists":[item(93,"合成附件歌单".into())]}})
+        }
+        4 if offset == 0 => {
+            json!({"code":200,"data":{"resources":[{"baseInfo":item(94,"合成附件播客".into())}]}})
+        }
+        _ => panic!("unexpected composer fixture offset"),
+    }
+}
 
 #[derive(Default)]
 pub struct Library {
@@ -25,6 +72,7 @@ impl Library {
         json!({"feed": calls.iter().filter(|(path, _)|path==FEED).map(|(_,body)|body).collect::<Vec<_>>(),
             "notice": calls.iter().filter(|(path, _)|path==NOTICE).map(|(_,body)|body).collect::<Vec<_>>(),
             "releaseReads": calls.iter().filter(|(path, _)|path==RELEASES||path==LATEST).count(),
+            "composer": calls.iter().filter(|(path, _)|COMPOSER.contains(&path.as_str())).collect::<Vec<_>>(),
             "details":calls.iter().filter(|(path, _)|path==DETAIL).count(),
             "unavailable":calls.iter().filter(|(path, _)|path==UNAVAILABLE).count(),
             "commentOffsets":calls.iter().filter(|(path, _)|path==COMMENTS).map(|(_,body)|&body["offset"]).collect::<Vec<_>>()})
@@ -57,6 +105,7 @@ impl Api for Library {
                 LATEST,
             ]
             .contains(&path)
+                && !COMPOSER.contains(&path)
             {
                 // Closed catalogue fixture; it has no network implementation.
                 return self.fallback.request(path, payload, cache).await;
@@ -70,6 +119,9 @@ impl Api for Library {
                     .count()
             };
             assert!(!cache);
+            if COMPOSER.contains(&path) {
+                return Ok(composer(path, &payload, attempt));
+            }
             Ok(match path {
                 NOTICE if payload == json!({}) => json!({"code":200,"data":{
                     "style":"all-normal","time":1700000000000_u64,"text":"合成关注歌手发布了新歌"}}),

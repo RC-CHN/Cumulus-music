@@ -3007,6 +3007,7 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'community' || page.kind === 'community_detail'"
                 ref="communityPage"
                 :model="community"
+                :account-epoch="account.epoch"
                 :notice="communityNotice"
                 :playable="player.ready.value && !player.busy.value"
                 :detail-key="page.kind === 'community_detail' ? page.handle : undefined"

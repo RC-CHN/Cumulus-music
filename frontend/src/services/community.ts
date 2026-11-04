@@ -57,7 +57,41 @@ export interface CommunityCommentPage {
   total: number;
 }
 
+export type ComposerKind = 'song' | 'artist' | 'album' | 'playlist' | 'podcast';
+export interface ComposerAttachment {
+  kind: ComposerKind;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  coverUrl: string | null;
+}
+export interface ComposerSearchItem extends ComposerAttachment {
+  receipt: string;
+}
+export interface ComposerDraft {
+  revision: string;
+  text: string;
+  attachment: ComposerAttachment | null;
+}
+export type ComposerAttachmentEdit =
+  | { kind: 'keep' | 'remove' }
+  | { kind: 'select'; receipt: string };
+export type ComposerDraftAction =
+  | { kind: 'read' }
+  | { kind: 'save'; revision: string | null; text: string; attachment: ComposerAttachmentEdit }
+  | { kind: 'discard'; revision: string };
+
 export interface CommunityClient {
+  communityComposerSearch(
+    epoch: string,
+    kind: ComposerKind,
+    keyword: string,
+    offset: number,
+  ): Promise<AccountData<{ items: ComposerSearchItem[]; nextOffset: number | null }>>;
+  communityComposerDraft(
+    epoch: string,
+    action: ComposerDraftAction,
+  ): Promise<AccountData<ComposerDraft | null>>;
   communityFeed(
     epoch: string,
     action: CommunityFeedAction,

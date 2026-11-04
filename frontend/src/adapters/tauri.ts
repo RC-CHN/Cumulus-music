@@ -24,6 +24,10 @@ export function createTauriClient(): CoreClient {
       invoke('artist_onboarding_result', { epoch, id, action, queueRevision, quality }),
     searchResults: (epoch, query) => invoke('search_results', { epoch, query }),
     searchReasonPage: (epoch, target) => invoke('search_reason_page', { epoch, target }),
+    communityComposerSearch: (epoch, kind, keyword, offset) =>
+      invoke('community_composer_search', { epoch, kind, keyword, offset }),
+    communityComposerDraft: (epoch, action) =>
+      invoke('community_composer_draft', { epoch, action }),
     communityFeed: (epoch, action) => invoke('community_feed', { epoch, action }),
     communityNewSongNotice: (epoch, mode) => invoke('community_new_song_notice', { epoch, mode }),
     communityDetail: (epoch, detail) => invoke('community_detail', { epoch, detail }),

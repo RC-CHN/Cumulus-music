@@ -38,13 +38,14 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, f'community process exited {status}'
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['realMusicRequests'] == complete['remoteWrites'] == 0
+    assert complete['ok'] and complete['composerVerified'] and complete['realMusicRequests'] == complete['remoteWrites'] == 0
     stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
               for path in output.glob('ux_*.json')}
     assert set(stages) == {'first_error', 'feed', 'notice_return', 'detail_error', 'comment_error', 'comments',
                            'comment_next', 'back_to_feed', 'unavailable', 'next_error',
-                           'next_recovered', 'empty'}
-    assert len(stages) == complete['stageCount'] == 12
+                           'next_recovered', 'empty', 'composer_draft', 'composer_search',
+                           'composer_restored'}
+    assert len(stages) == complete['stageCount'] == 15
     assert all(stage['width'] == 760 for stage in stages.values())
     assert stages['feed']['theme'] == 'light' and stages['empty']['theme'] == 'dark'
     assert stages['next_error']['feedCount'] == 5 and stages['next_recovered']['feedCount'] == 6
@@ -57,11 +58,17 @@ def main():
     assert native['notice'][:2] == [{}, {}] and len(native['notice']) == 3
     assert list(native['notice'][2]) == ['time'] and native['notice'][2]['time'] > 1700000000000
     assert native['releaseReads'] == 2
+    assert [path for path, _ in native['composer']] == [
+        '/api/search/song/list/page', '/api/search/song/list/page', '/api/search/song/list/page',
+        '/api/v1/search/artist/get', '/api/v1/search/playlist/get', '/api/search/voicelist/get',
+        '/api/v1/search/album/get',
+    ]
+    assert [body['offset'] for _, body in native['composer']] == [0, 8, 8, 0, 0, 0, 0]
     if args.screenshots:
         assert len(list(output.glob('ux_*.png'))) == len(stages)
     report = {'ok': True, 'actualWebView': True, 'states': len(stages),
               'screenshots': len(stages) if args.screenshots else 0,
-              'realMusicRequests': 0, 'remoteAccountWrites': 0}
+              'realMusicRequests': 0, 'remoteAccountWrites': 0, 'composerVerified': True}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

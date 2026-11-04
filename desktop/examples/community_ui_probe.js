@@ -69,6 +69,47 @@
     const first = one('[aria-label="查看 合成作者 11 的动态详情"]');
     assert(first && body().includes('合成动态专辑'), 'first row and attachment');
     await capture('feed');
+    const trigger = button('写笔记', page());
+    const composer = () => one('.community-composer[open]');
+    const input = (node, value) => {
+      node.value = value;
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    click(trigger);
+    await wait(() => composer()?.querySelector('textarea') === document.activeElement, 'draft text receives focus');
+    input(composer().querySelector('textarea'), '这是本机合成草稿');
+    assert(!button('发布', composer()), 'draft must not publish');
+    await capture('composer_draft');
+    click(button('添加音乐附件', composer()));
+    await wait(() => one('[aria-label="搜索音乐附件"]') === document.activeElement, 'attachment query receives focus');
+    input(one('[aria-label="搜索音乐附件"]'), '合成附件');
+    await wait(() => button('搜索', composer())?.disabled === false, 'query enables search');
+    click(button('搜索', composer()));
+    await wait(() => button('合成附件单曲 8', composer()), 'eight official song results');
+    click(button('加载更多附件', composer()));
+    await wait(() => button('重试', composer()), 'attachment continuation failure');
+    assert(button('合成附件单曲 1', composer()), 'continuation failure preserves rows');
+    click(button('重试', composer()));
+    await wait(() => button('合成附件单曲续页', composer()), 'retry appends exact offset');
+    await capture('composer_search');
+    for (const type of ['歌手','歌单','播客','专辑']) {
+      click(button(type, composer()));
+      await wait(() => button('合成附件' + type, composer()), 'attachment tab ' + type);
+    }
+    click(button('合成附件专辑', composer()));
+    await wait(() => composer()?.querySelector('textarea')?.value === '这是本机合成草稿' &&
+      composer().textContent.includes('专辑：合成附件专辑'), 'one attachment restores draft text');
+    click(button('保存草稿', composer()));
+    await wait(() => composer()?.textContent.includes('草稿已保存在本机'), 'native durable save');
+    composer().dispatchEvent(new Event('cancel', {cancelable:true}));
+    await wait(() => !composer() && document.activeElement === trigger, 'draft close returns to composer trigger');
+    click(trigger);
+    await wait(() => composer()?.querySelector('textarea')?.value === '这是本机合成草稿' &&
+      composer().textContent.includes('专辑：合成附件专辑'), 'reopened draft uses native record');
+    assert(!composer().textContent.includes('SYNTHETIC_PRIVATE'), 'raw attachment data reached composer');
+    await capture('composer_restored');
+    composer().dispatchEvent(new Event('cancel', {cancelable:true}));
+    await wait(() => !composer() && document.activeElement === trigger, 'restored draft closes');
     click(one('.new-song-notice'));
     await wait(() => one('.follow-release-page')?.textContent.includes('关注的歌手最近没有发布内容'),
       'new song notice opens the actual followed-release route');
@@ -115,7 +156,7 @@
     await wait(() => body().includes('暂无关注动态'), 'sidebar reselect refresh empty');
     await wait(() => !one('.new-song-notice'), 'no replacement notice on the second visit');
     await capture('empty');
-    await emit('complete', { ok: true, stageCount: count, realMusicRequests: 0, remoteWrites: 0 });
+    await emit('complete', { ok: true, stageCount: count, composerVerified: true, realMusicRequests: 0, remoteWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, stageCount: count, error: String(error),
       focus: document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName,

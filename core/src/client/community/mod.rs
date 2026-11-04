@@ -1,3 +1,4 @@
+pub mod composer;
 pub mod new_song_notice;
 mod project;
 
@@ -145,6 +146,7 @@ struct State {
     continuation: Option<(Uuid, Value)>,
     cards: VecDeque<CardLease>,
     visited: HashSet<String>,
+    attachments: VecDeque<composer::AttachmentReceipt>,
 }
 #[derive(Default)]
 pub(super) struct CommunityHost(Mutex<State>);

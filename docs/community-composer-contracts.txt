@@ -1,0 +1,63 @@
+关注页笔记编辑器：本机草稿、附件搜索与公开发布边界
+官方 PC 3.1.42.205594；不发送真实账号发布、私信或转发。
+
+官方入口和编辑器
+- pages/community/components/FollowHeader.jsx:70–82,123–135 的「发布」打开 events
+  模式的「发笔记」，提示「一起聊聊音乐吧~」。成功使用返回的 event 加入当前 feed；
+  失败再读本地草稿。EventPublishModal.jsx:94–113 的确认键要求有附件、没有超长或图片错误。
+  TextArea/index.jsx:109–143 使用 JavaScript UTF-16 length 限制 1000；官方还支持
+  表情、话题、@人、图像和转发/私信等独立模式。
+- EventPublish/components/searchbox.jsx:33–82 以搜索触发词进入附件结果；searchTab/index.jsx
+  单曲/歌手/专辑/歌单/播客对应 song/artist/album/playlist/djradio，结果点击后替换唯一附件，
+  回到正文编辑。Frame.jsx:115–128,225–248 的卡片显示资源、作者、封面；空词的最近播放与
+  输入结果不同（最近播放可含节目），本批没有把节目误作播客，也未移植最近播放面板。
+- hybrid_151/3032.js（SHA256 8cd19c3aa85bfb1a14cd8b20a1f52e2f5eff74d8861e3b75825fb86e23e0b850）
+  194–404 按词、种类和 offset 读取，固定八项；服务返回八项才继续。hybrid_151/2245.js
+  （SHA256 9947f3ddb7a0873decb0182aa4ce727aa87c03189e05f3f3cc5461f3f8122c2e）与
+  hybrid_app/15.js:2140–2212,2303–2372 对应已实现的五条 POST 只读请求：
+    单曲 /api/search/song/list/page {keyword,scene:"normal",limit:8,offset,needCorrect:true}
+         data.resources[*].baseInfo.simpleSongData
+    歌手 /api/v1/search/artist/get {s,limit:8,offset,queryCorrect:true} → result.artists
+    专辑 /api/v1/search/album/get {s,limit:8,offset,queryCorrect:true} → result.albums
+    歌单 /api/v1/search/playlist/get {s,limit:8,offset,queryCorrect:true} → result.playlists
+    播客 /api/search/voicelist/get {keyword,scene:"normal",limit:8,offset} → data.resources[*].baseInfo
+  UID 仅供官方 formatter 上下文，不放入这些请求体。不调用全局搜索 V3 或把跨类别结果混用。
+
+Cumulus 已实现的只读和本地分支
+- 关注页「写笔记」可保存、恢复、删除当前账号的一份本机草稿；文字和最多一个附件
+  保存在 Rust 管理的 SQLite，不在 WebView 持久化。文本可单独存为草稿，不等于官方
+  允许无附件发布。显式保存才更新记录；关闭未保存时允许返回继续编辑或放弃，
+  账户变化关闭窗口并清空表单。保存和删除校验当前版本，避免覆盖另一窗口/进程的修改。
+- community_composer_search 根据账号代次绑定请求和候选，返回有界名称/来源、合规公开
+  封面及临时候选号；过滤缺失身份、下架和已知无版权歌曲，仍用服务原始条数判断续页。
+  UI 支持换标签、重试和继续加载，后发状态优先。词和 offset 有本地上限。
+- community_composer_draft 的 Read/Save/Discard 只读写本机。Save 选新附件必须使用
+  当前账号原生候选号；保留或移除现有附件不需要网络。搜索原始结果、私密字段和授权 URL
+  不进入草稿；账号代次已失效或版本冲突时不落盘。
+- 只恢复上述编辑、搜索与草稿；没有模拟发布按钮、真实结果卡或自动重试。
+
+公开发布与恢复边界
+- hybrid_56/3106.js（SHA256 0c6c4f8ad65e9ff7332bf669cf1148c7aaadcd7cffa30c5e0f26786759de0ed2）
+  1403–1563 先执行 host/binding；hybrid_app/198.js:1772–1801 先检查已有 bindings
+  的手机号类型 1，缺失时读 /api/w/v1/user/bindings/{uid}，仍无绑定则展示
+  orpheus://settings/bindaccount 扫码并返回 false。此批不绕过或自动触发绑定。
+- events 且有附件时，官方 POST /api/share/friends/resource {id,msg,type,uuid,active:0,pics}
+  （评论附件另带 threadId）。uuid 由八位随机值、share、时间、uid、deviceId 组合经
+  M/3106:1203–1206 的辅助函数生成；pics 是上传完成后的 JSON 数组字符串。
+  hybrid_app/577.js:33–42 要求 code=200 并归一化 response.event；正常回包才能
+  给出动态 ID/作者，后续只读详情路径为 /api/v1/event/{owner}/{event}。
+- 官方错误分支 512 转购买提醒、510 提示云盘不支持、401 提示不可分享，其余提示失败；
+  部分失败将编辑内容存账号草稿。其草稿重开再次提交会生成新 uuid。M/21:1276 可读取
+  返回事件的 uuid 字段，但未确认它必然回显请求 uuid、是幂等键或能通过自己的 feed
+  找回回包丢失的提交；详情端点必须先有动态 ID。没有把内容相等、成功提示、
+  返回值缺失或没有看到新动态当作可安全重发的证据。
+- 本批没有接入发送、上传图片、发布、转发或私信。若后续恢复真实提交与丢失回包核对，
+  仍需明确确认、账号和附件资格检查、发出前持久记录以及不自动重复发送。
+
+验证入口
+- cargo test -p cumulus-core --test community_composer --locked：五种精确请求、页大小及
+  投影、同账号进程重开、旧版本与跨账号候选号拒绝；草稿读写无业务请求。
+- scripts/ci/community_smoke.py 使用实际 community_ui_probe 和封闭合成账号验证。
+  Linux 真实 WebView 通过 15 个检查点及 15 张截图，验证五类切换、续页失败及同 offset 重试、
+  正文/附件保存后重开和焦点归还。证据 `.build/ui-proof/community-composer-20261104-final/report.json`。
+  未访问真实服务、没有账号写入，不外推 Windows 实机或公开发布结果。
