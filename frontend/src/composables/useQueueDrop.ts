@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { QueueDropSource, QueueView } from '../services/player';
+import { rowBoundary, rowTop, type RowExpansion } from '../services/virtualWindow';
 
 function suppressReleasedClick(owner: Element, pointerId: number) {
   const row = owner.closest('tr, .track-row');
@@ -36,6 +37,7 @@ export function useQueueDrop(options: {
   container(): HTMLElement | undefined;
   disabled(): boolean;
   rowHeight: number;
+  expansion(): RowExpansion | undefined;
   scroll(): void;
   commit(
     source: QueueDropSource,
@@ -48,7 +50,9 @@ export function useQueueDrop(options: {
   const dragging = ref(false);
   const itemCount = ref(0);
   const marker = computed(() =>
-    boundary.value === undefined ? undefined : boundary.value * options.rowHeight,
+    boundary.value === undefined
+      ? undefined
+      : rowTop(boundary.value, options.rowHeight, options.expansion()),
   );
   let stop: (() => void) | undefined;
 
@@ -75,14 +79,11 @@ export function useQueueDrop(options: {
       const box = element!.getBoundingClientRect();
       boundary.value =
         x >= box.left && x <= box.right && y >= box.top && y <= box.bottom
-          ? Math.max(
-              0,
-              Math.min(
-                queue!.tracks.length,
-                Math.floor(
-                  (y - box.top + element!.scrollTop + options.rowHeight / 2) / options.rowHeight,
-                ),
-              ),
+          ? rowBoundary(
+              y - box.top + element!.scrollTop,
+              queue!.tracks.length,
+              options.rowHeight,
+              options.expansion(),
             )
           : undefined;
     }
@@ -166,6 +167,7 @@ export function useQueueDrop(options: {
       () => options.queue()?.revision,
       options.playId,
       options.disabled,
+      options.expansion,
     ],
     () => stop?.(),
   );

@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import type { QueueView } from '../services/player';
+import { rowBoundary, rowTop, type RowExpansion } from '../services/virtualWindow';
 import { reorderQueueRows } from '../services/queueSelection';
 
 /** In-window pointer sorting avoids OS file drops and retains capture on the
@@ -11,12 +12,18 @@ export function useQueueDrag(options: {
   selected(): ReadonlySet<string>;
   select(id: string, toggle: boolean, range: boolean): void;
   scroll(): void;
+  rowHeight: number;
+  expansion(): RowExpansion | undefined;
   reorder(ids: string[], displayed: QueueView, focusId: string): void;
 }) {
   const dragging = shallowRef<ReadonlySet<string>>(new Set()),
     boundary = ref<number>();
   let cleanup: (() => void) | undefined;
-  const marker = computed(() => (boundary.value === undefined ? undefined : boundary.value * 64));
+  const marker = computed(() =>
+    boundary.value === undefined
+      ? undefined
+      : rowTop(boundary.value, options.rowHeight, options.expansion()),
+  );
   function start(event: PointerEvent, id: string) {
     if (event.button !== 0 || options.disabled() || event.pointerType === 'touch') return;
     cleanup?.();
@@ -44,9 +51,11 @@ export function useQueueDrag(options: {
       const box = element.getBoundingClientRect();
       boundary.value =
         x >= box.left && x <= box.right && y >= box.top && y <= box.bottom
-          ? Math.max(
-              0,
-              Math.min(ids.length, Math.floor((y - box.top + element.scrollTop + 32) / 64)),
+          ? rowBoundary(
+              y - box.top + element.scrollTop,
+              ids.length,
+              options.rowHeight,
+              options.expansion(),
             )
           : undefined;
     };
@@ -151,8 +160,14 @@ export function useQueueDrag(options: {
     element.addEventListener('lostpointercapture', cancel);
     window.addEventListener('blur', stop);
   }
-  watch([() => options.queue()?.epoch, () => options.queue()?.revision, options.disabled], () =>
-    cleanup?.(),
+  watch(
+    [
+      () => options.queue()?.epoch,
+      () => options.queue()?.revision,
+      options.disabled,
+      options.expansion,
+    ],
+    () => cleanup?.(),
   );
   onBeforeUnmount(() => cleanup?.());
   return { dragging, boundary, marker, start };

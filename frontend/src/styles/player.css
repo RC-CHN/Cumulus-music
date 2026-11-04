@@ -562,6 +562,80 @@ input[type='range'] {
   width: 16px;
   height: 16px;
 }
+.queue-panel-with-more > header {
+  min-height: 54px;
+}
+.queue-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 12px;
+  min-height: 46px;
+  padding: 10px 20px;
+  border-block: 1px solid var(--line);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+.queue-more-copy {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.queue-more-switch {
+  position: relative;
+  flex: 0 0 40px;
+  height: 24px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface-hover);
+}
+.queue-more-switch[aria-checked='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.queue-more-switch[aria-disabled='true'] {
+  cursor: default;
+  opacity: 0.62;
+}
+.queue-more-switch::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  content: '';
+  transition: transform 140ms ease;
+}
+.queue-more-switch[aria-checked='true']::after {
+  transform: translateX(16px);
+}
+.queue-more-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+:root[data-motion='reduced'] .queue-more-switch::after {
+  transition: none;
+}
+.queue-more-badge {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  border: 1px solid #5975b220;
+  border-radius: 4px;
+  color: #5975b2;
+  background: #5975b21a;
+  font-size: 11px;
+  font-weight: 600;
+}
+:root[data-theme='dark'] .queue-more-badge {
+  color: #9ab2eb;
+}
 .queue-empty {
   display: flex;
   flex: 1;
@@ -607,6 +681,19 @@ input[type='range'] {
   align-items: center;
   gap: 3px;
   border-bottom: 1px solid var(--line);
+}
+.queue-row.queue-more-separated {
+  position: relative;
+  box-sizing: border-box;
+  height: 74px;
+  padding-top: 10px;
+}
+.queue-more-divider {
+  position: absolute;
+  top: 4px;
+  inset-inline: 0;
+  border-top: 1px solid var(--line-strong);
+  pointer-events: none;
 }
 .queue-row.current {
   color: var(--accent);
@@ -673,6 +760,16 @@ input[type='range'] {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
+}
+.queue-song-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.queue-song-title > strong {
+  display: block;
   min-width: 0;
 }
 .queue-song:disabled {

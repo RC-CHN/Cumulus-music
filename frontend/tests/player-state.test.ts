@@ -10,6 +10,7 @@ import {
   type PlayerClient,
   type PlayerAction,
   type PlaySelection,
+  type QueueView,
 } from '../src/services/player.ts';
 function deferred<T>() {
   let resolve!: (v: T) => void;
@@ -1649,6 +1650,125 @@ test('account replacement invalidates pending queue reads and edits without leak
   assert.equal(f.player.queue.value, undefined);
   assert.equal(f.player.queueEditError.value, '');
   assert.equal(f.player.queueError.value, '');
+  f.player.dispose();
+});
+
+function recommendationsQueue(enabled = true, roomId: string | null = null): QueueView {
+  return {
+    epoch: '1',
+    revision: '1',
+    fm: false,
+    clearContext: { roomId, issue: null },
+    current: 'current',
+    tracks: [],
+    moreRecommendations: {
+      visible: true,
+      enabled,
+      canToggle: true,
+      separatorBefore: null,
+      prefetchOnOpen: enabled,
+    },
+  };
+}
+
+test('queue recommendation prefetch stays passive and toggle rereads an unchanged queue revision', async () => {
+  const opening = deferred<PlayerView>();
+  const toggling = deferred<PlayerView>();
+  const calls: PlayerAction[] = [];
+  let projection = recommendationsQueue();
+  let reads = 0;
+  const f = fixture({
+    playerQueue: async () => {
+      reads++;
+      return projection;
+    },
+    playerAction: (_epoch, input) => {
+      calls.push(input);
+      return input.kind === 'queue_more_opened' ? opening.promise : toggling.promise;
+    },
+  });
+  await f.player.connect(account());
+  f.player.toggleQueue();
+  await turn();
+  const shown = f.player.queue.value!;
+  const passive = f.player.queueMoreOpened(shown);
+  assert.equal(f.player.busy.value, false);
+  assert.equal(f.player.queueEditing.value, false);
+  assert.equal(f.player.queueMoreChanging.value, false);
+  const explicit = f.player.toggleQueueMore(shown, false);
+  assert.equal(f.player.queue.value?.moreRecommendations?.enabled, true);
+  assert.equal(f.player.queueMoreChanging.value, true);
+  assert.equal(await f.player.toggleQueueMore(shown, false), false);
+  projection = recommendationsQueue(false);
+  toggling.resolve({ ...state('3'), queueMoreAvailable: true });
+  assert.equal(await explicit, true);
+  assert.equal(f.player.queue.value?.moreRecommendations?.enabled, false);
+  assert.equal(f.player.queueMoreChanging.value, false);
+  assert.equal(await f.player.toggleQueueMore(shown, false), false);
+  opening.resolve({ ...state('2'), queueMoreAvailable: true });
+  assert.equal(await passive, true);
+  assert.equal(reads, 2);
+  assert.deepEqual(calls, [
+    { kind: 'queue_more_opened', expected_revision: '1' },
+    { kind: 'queue_more_toggle', expected_revision: '1', enabled: false },
+  ]);
+  assert.equal(f.player.view.value?.revision, '3');
+  f.player.dispose();
+});
+
+test('an open queue rereads only distinct recommendation availability changes and blocks room actions', async () => {
+  let reads = 0;
+  const calls: PlayerAction[] = [];
+  const f = fixture({
+    playerQueue: async () => {
+      reads++;
+      return recommendationsQueue(true, 'room');
+    },
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      return state('7');
+    },
+  });
+  await f.player.connect(account());
+  f.player.toggleQueue();
+  await turn();
+  const shown = f.player.queue.value!;
+  assert.equal(await f.player.queueMoreOpened(shown), false);
+  assert.equal(await f.player.toggleQueueMore(shown, false), false);
+  assert.deepEqual(calls, []);
+  f.emit({ ...state('2'), queueMoreAvailable: true });
+  await turn();
+  assert.equal(reads, 2);
+  f.emit({ ...state('3'), queueMoreAvailable: true, position: 12 });
+  await turn();
+  assert.equal(reads, 2);
+  f.emit({ ...state('4'), queueMoreAvailable: false });
+  await turn();
+  assert.equal(reads, 3);
+  f.emit({ ...state('5'), queueMoreAvailable: false, position: 13 });
+  await turn();
+  assert.equal(reads, 3);
+  f.player.dispose();
+});
+
+test('an explicit recommendation failure stays in the queue and never becomes audio retry', async () => {
+  const calls: PlayerAction[] = [];
+  const f = fixture({
+    playerQueue: async () => recommendationsQueue(),
+    playerAction: async (_epoch, input) => {
+      calls.push(input);
+      throw { code: 'queue_changed', message: 'queue changed' };
+    },
+  });
+  await f.player.connect(account());
+  f.player.toggleQueue();
+  await turn();
+  assert.equal(await f.player.toggleQueueMore(f.player.queue.value!, false), false);
+  assert.equal(f.player.queue.value?.moreRecommendations?.enabled, true);
+  assert.equal(f.player.queueMoreError.value, 'queue changed');
+  assert.equal(f.player.error.value, '');
+  await f.player.retry();
+  assert.equal(calls.length, 1);
   f.player.dispose();
 });
 

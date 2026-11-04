@@ -16,7 +16,14 @@ import { useQueueDrop } from '../composables/useQueueDrop';
 import { useControlFocus } from '../composables/useControlFocus';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { TogetherModel } from '../composables/useTogether';
-import { time, type QueueView, type QueueEdit, type QueueCollectionView } from '../services/player';
+import {
+  queueMoreRecommendations,
+  time,
+  type QueueView,
+  type QueueEdit,
+  type QueueCollectionView,
+} from '../services/player';
+import { rowTop, rowExtent } from '../services/virtualWindow';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
 import { artistLabel } from '../services/artistLabel';
@@ -41,12 +48,43 @@ const client = useCore();
 const collecting = ref(false),
   collectionIssue = ref('');
 let collectionRead = 0;
-const { queue, view, busy, queueError, queueLoading, queueEditing, queueEditError, queueCurrent } =
-  props.player;
+const {
+  queue,
+  view,
+  busy,
+  queueError,
+  queueLoading,
+  queueEditing,
+  queueEditError,
+  queueCurrent,
+  queueMoreChanging,
+  queueMoreError,
+} = props.player;
+const moreRecommendations = computed(() =>
+  props.authenticated &&
+  !view.value?.fm &&
+  view.value?.queueMoreAvailable !== false &&
+  queue.value?.epoch === view.value?.epoch
+    ? queueMoreRecommendations(queue.value)
+    : undefined,
+);
+const showMoreMarks = computed(() => moreRecommendations.value?.enabled === true);
+const separatorIndex = computed(() => {
+  const id = moreRecommendations.value?.separatorBefore;
+  return showMoreMarks.value && id
+    ? (queue.value?.tracks.findIndex((entry) => entry.entryId === id) ?? -1)
+    : -1;
+});
 const row = 64;
+const expansion = computed(() =>
+  separatorIndex.value > 0 ? { index: separatorIndex.value, extra: 10 } : undefined,
+);
+const offset = (index: number) => rowTop(index, row, expansion.value);
 const { container, start, end, onScroll, center } = useVirtualRows(
   () => queue.value?.tracks.length ?? 0,
   row,
+  8,
+  () => expansion.value,
 );
 const visible = computed(() => queue.value?.tracks.slice(start.value, end.value) ?? []);
 const currentEntry = computed(() => view.value?.entryId);
@@ -79,6 +117,40 @@ const collectionLocked = computed(
     !queue.value?.tracks.length,
 );
 const clearLocked = computed(() => locked.value || !!queue.value?.clearContext.issue);
+const moreToggleLocked = computed(
+  () => locked.value || queueMoreChanging.value || !moreRecommendations.value?.canToggle,
+);
+const mounted = ref(false);
+let morePrefetched = false;
+watch(
+  [mounted, props.player.ready, queueCurrent, moreRecommendations],
+  () => {
+    const displayed = queue.value;
+    if (
+      !mounted.value ||
+      morePrefetched ||
+      !props.player.ready.value ||
+      !queueCurrent.value ||
+      !displayed ||
+      !moreRecommendations.value?.enabled ||
+      !moreRecommendations.value.prefetchOnOpen
+    )
+      return;
+    morePrefetched = true;
+    void props.player.queueMoreOpened(displayed);
+  },
+  { flush: 'post' },
+);
+function toggleMore() {
+  const displayed = queue.value;
+  const state = moreRecommendations.value;
+  if (moreToggleLocked.value || !displayed || !state) return;
+  // The explicit on gesture already requests recommendations. Do not also
+  // turn the same opening into a passive prefetch as the projection updates.
+  if (!state.enabled) morePrefetched = true;
+  void props.player.toggleQueueMore(displayed, !state.enabled);
+}
+
 const selection = useQueueSelection(() => queue.value);
 const selected = selection.selected;
 const completedRoom = ref<string>();
@@ -104,6 +176,8 @@ const drag = useQueueDrag({
   selected: () => selected.value,
   select: selection.select,
   scroll: onScroll,
+  rowHeight: row,
+  expansion: () => expansion.value,
   reorder: (ids, displayed, focusId) => {
     void edit({ kind: 'reorder', entry_ids: ids }, ids.indexOf(focusId), displayed);
   },
@@ -125,6 +199,7 @@ const externalDrop = useQueueDrop({
   container: () => container.value,
   disabled: () => !canDrop.value || dragging.value.size > 0,
   rowHeight: row,
+  expansion: () => expansion.value,
   scroll: onScroll,
   commit: (source, displayed, playId, before) => {
     void props.player.dropIntoQueue(source, displayed, playId, before);
@@ -167,6 +242,8 @@ const clearPresentation = computed(() =>
 );
 let focus: HTMLElement | null = null;
 onMounted(() => {
+  props.player.clearQueueMoreError();
+  mounted.value = true;
   focus = document.activeElement as HTMLElement;
   panel.value?.focus({ preventScroll: true });
 });
@@ -203,6 +280,7 @@ watch(
 );
 let leavingPanel: HTMLElement | undefined;
 onBeforeUnmount(() => {
+  mounted.value = false;
   leavingPanel = panel.value;
 });
 onUnmounted(() => {
@@ -287,10 +365,11 @@ async function focusRow(index: number) {
     return;
   }
   index = Math.max(0, Math.min(index, queue.value.tracks.length - 1));
-  const top = index * row;
+  const top = offset(index);
+  const height = rowExtent(index, row, expansion.value);
   if (top < element.scrollTop) element.scrollTop = top;
-  else if (top + row > element.scrollTop + element.clientHeight)
-    element.scrollTop = top + row - element.clientHeight;
+  else if (top + height > element.scrollTop + element.clientHeight)
+    element.scrollTop = top + height - element.clientHeight;
   onScroll();
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   await nextTick();
@@ -499,6 +578,7 @@ async function confirmClear(event: Event) {
   <aside
     ref="panel"
     class="queue-panel"
+    :class="{ 'queue-panel-with-more': moreRecommendations }"
     tabindex="-1"
     aria-label="当前播放队列"
     :aria-busy="queueLoading || queueEditing"
@@ -534,6 +614,31 @@ async function confirmClear(event: Event) {
         <Icon name="close" />
       </button>
     </header>
+    <div v-if="moreRecommendations" class="queue-more">
+      <span class="queue-more-copy">
+        <span class="queue-more-badge" aria-hidden="true">荐</span>
+        <span id="queue-more-label">在列表下方推荐你喜欢的相似歌曲</span>
+      </span>
+      <button
+        class="queue-more-switch"
+        type="button"
+        role="switch"
+        data-queue-more-toggle
+        aria-labelledby="queue-more-label"
+        :aria-checked="moreRecommendations.enabled"
+        :aria-disabled="moreToggleLocked"
+        :aria-busy="queueMoreChanging"
+        @click="toggleMore"
+      />
+    </div>
+    <p
+      v-if="moreRecommendations && queueMoreError"
+      class="queue-notice"
+      role="alert"
+      data-queue-more-error
+    >
+      {{ queueMoreError }}
+    </p>
     <div v-if="queueError" class="error-state" role="alert">
       {{ queueError }}<button @click="retryQueue">重试</button>
     </div>
@@ -643,7 +748,7 @@ async function confirmClear(event: Event) {
       @scroll.passive="onScroll"
     >
       <div class="queue-items">
-        <div :style="{ height: `${start * row}px` }" aria-hidden="true" />
+        <div :style="{ height: `${offset(start)}px` }" aria-hidden="true" />
         <div
           v-for="(item, index) in visible"
           :key="item.entryId"
@@ -657,6 +762,8 @@ async function confirmClear(event: Event) {
             queue.tracks.length,
             selected.has(item.entryId),
             dragging.has(item.entryId),
+            showMoreMarks && item.moreRecommendation,
+            expansion?.index === start + index,
           ]"
           class="queue-row"
           :data-entry-id="item.entryId"
@@ -664,9 +771,16 @@ async function confirmClear(event: Event) {
             current: item.entryId === currentEntry,
             selected: selected.has(item.entryId),
             dragging: dragging.has(item.entryId),
+            'queue-more-separated': expansion?.index === start + index,
           }"
           :aria-current="item.entryId === currentEntry ? 'true' : undefined"
         >
+          <span
+            v-if="expansion?.index === start + index"
+            class="queue-more-divider"
+            data-queue-more-divider
+            aria-hidden="true"
+          />
           <button
             class="icon-button queue-play"
             :disabled="locked || item.track.missing"
@@ -690,12 +804,21 @@ async function confirmClear(event: Event) {
             @click="selectRow($event, item.entryId)"
             @dblclick="activateRow($event.currentTarget, item.entryId, item.track.missing)"
           >
-            <span
-              ><strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong
-              ><small class="ellipsis" :title="artistLabel(item.track)">{{
+            <span>
+              <span class="queue-song-title">
+                <strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong>
+                <span
+                  v-if="showMoreMarks && item.moreRecommendation"
+                  class="queue-more-badge"
+                  data-queue-more-badge
+                  title="更多推荐"
+                  ><span aria-hidden="true">荐</span><span class="sr-only">更多推荐</span></span
+                >
+              </span>
+              <small class="ellipsis" :title="artistLabel(item.track)">{{
                 artistLabel(item.track)
-              }}</small></span
-            >
+              }}</small>
+            </span>
           </button>
           <time :title="item.track.durationMs > 0 ? undefined : '时长未知'">{{
             item.track.durationMs > 0 ? time(item.track.durationMs / 1000) : '—'
@@ -723,7 +846,10 @@ async function confirmClear(event: Event) {
             <Icon name="close" />
           </button>
         </div>
-        <div :style="{ height: `${(queue.tracks.length - end) * row}px` }" aria-hidden="true" />
+        <div
+          :style="{ height: `${offset(queue.tracks.length) - offset(end)}px` }"
+          aria-hidden="true"
+        />
         <div
           v-if="drag.marker.value !== undefined || externalDrop.marker.value !== undefined"
           class="queue-drop-marker"

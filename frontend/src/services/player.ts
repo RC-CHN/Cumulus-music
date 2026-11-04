@@ -76,6 +76,7 @@ export interface PlayerView {
   epoch: string;
   revision: string;
   queueRevision: string;
+  queueMoreAvailable?: boolean;
   state: PlaybackStatus;
   pendingPaused?: boolean;
   playId: string | null;
@@ -209,6 +210,14 @@ export interface EqualizerView {
 export interface QueueTrack {
   entryId: string;
   track: TrackView;
+  moreRecommendation?: boolean;
+}
+export interface QueueMoreRecommendations {
+  visible: boolean;
+  enabled: boolean;
+  canToggle: boolean;
+  separatorBefore: string | null;
+  prefetchOnOpen: boolean;
 }
 export interface QueueView {
   fm: boolean;
@@ -217,6 +226,13 @@ export interface QueueView {
   revision: string;
   current: string | null;
   tracks: QueueTrack[];
+  moreRecommendations?: QueueMoreRecommendations | null;
+}
+
+export function queueMoreRecommendations(queue?: QueueView): QueueMoreRecommendations | undefined {
+  return queue?.moreRecommendations?.visible && !queue.fm && !queue.clearContext.roomId
+    ? queue.moreRecommendations
+    : undefined;
 }
 export interface QueueCollectionView {
   epoch: string;
@@ -339,6 +355,8 @@ export type PlaySelection =
       quality: Quality;
     };
 export type PlayerAction =
+  | { kind: 'queue_more_opened'; expected_revision: string }
+  | { kind: 'queue_more_toggle'; enabled: boolean; expected_revision: string }
   | {
       kind: 'step_loading';
       play_id: string;

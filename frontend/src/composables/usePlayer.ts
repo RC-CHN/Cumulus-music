@@ -17,6 +17,7 @@ import type {
   QualityTrialCommand,
   IntelligenceCommand,
 } from '../services/player.ts';
+import { queueMoreRecommendations } from '../services/player.ts';
 import { useCore } from '../services/core.ts';
 import type { CatalogSelectionPage } from '../services/catalog.ts';
 import type { CloudQuery } from '../services/cloud.ts';
@@ -40,6 +41,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditing = ref(false),
     queueError = ref(''),
     queueEditError = ref(''),
+    queueMoreChanging = ref(false),
+    queueMoreError = ref(''),
     lyricError = ref('');
   const pendingSourceCommand = shallowRef<{ source: PlayerView }>();
   const loadingStepCommand = shallowRef<{ key: string }>();
@@ -179,7 +182,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     lyricUpdating.value = false;
     lyricError.value = '';
   }
-  function accept(next: PlayerView) {
+  function accept(next: PlayerView, refreshQueue = true) {
     if (next.epoch !== epoch || (view.value && BigInt(next.revision) < BigInt(view.value.revision)))
       return;
     const old = view.value;
@@ -194,7 +197,12 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       resetLyrics();
       if (lyricsOpen.value && next.playId) void loadLyrics();
     }
-    if (queueOpen.value && old?.queueRevision !== next.queueRevision) void loadQueue();
+    const queueChanged = old?.queueRevision !== next.queueRevision;
+    const moreAvailabilityChanged = !!old?.queueMoreAvailable !== !!next.queueMoreAvailable;
+    if (queueChanged || moreAvailabilityChanged) {
+      queueMoreError.value = '';
+      if (refreshQueue && queueOpen.value) void loadQueue();
+    }
   }
   async function connect(account: AccountView) {
     if (epoch !== account.epoch) lyricsOpen.value = false;
@@ -215,6 +223,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditing.value = false;
     queueError.value = '';
     queueEditError.value = '';
+    queueMoreError.value = '';
+    queueMoreChanging.value = false;
     queuePreparation++;
     view.value = undefined;
     queue.value = undefined;
@@ -852,6 +862,76 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       if (current === queueRequest) queueLoading.value = false;
     }
   }
+  async function sendQueueMore(displayed: QueueView, enabled?: boolean): Promise<boolean> {
+    const recommendations = queueMoreRecommendations(displayed);
+    const toggle = enabled !== undefined;
+    if (
+      !recommendations ||
+      !queueOpen.value ||
+      !ready.value ||
+      displayed !== queue.value ||
+      displayed.epoch !== epoch ||
+      displayed.revision !== view.value?.queueRevision ||
+      view.value.fm ||
+      view.value.queueMoreAvailable === false ||
+      (toggle
+        ? !recommendations.canToggle ||
+          recommendations.enabled === enabled ||
+          queueMoreChanging.value ||
+          busy.value ||
+          queueBusy.value ||
+          queueEditing.value ||
+          queueLoading.value ||
+          !!queueError.value
+        : !recommendations.enabled || !recommendations.prefetchOnOpen)
+    )
+      return false;
+
+    const captured = epoch,
+      session = connection;
+    const active = () => session === connection && captured === epoch && ready.value;
+    if (toggle) {
+      queueMoreChanging.value = true;
+      queueMoreError.value = '';
+    }
+    try {
+      const next = await core.playerAction(
+        captured,
+        enabled === undefined
+          ? { kind: 'queue_more_opened', expected_revision: displayed.revision }
+          : { kind: 'queue_more_toggle', enabled, expected_revision: displayed.revision },
+      );
+      if (!active() || next.epoch !== captured) return false;
+      accept(next, !toggle);
+      // A preference-only acknowledgement may leave the queue revision
+      // unchanged. Read the native projection before displaying the new value.
+      if (toggle && queueOpen.value) await loadQueue();
+      return active();
+    } catch (issue) {
+      if (active()) {
+        const problem = failure(issue);
+        if (toggle && queueOpen.value) {
+          if (['queue_changed', 'snapshot_changed', 'stale'].includes(problem.code))
+            await loadQueue();
+          if (active() && queueOpen.value) queueMoreError.value = problem.message;
+        }
+        if (active() && ['session_expired', 'profile_changed'].includes(problem.code))
+          onSessionChanged();
+      }
+      return false;
+    } finally {
+      if (toggle && session === connection && captured === epoch) queueMoreChanging.value = false;
+    }
+  }
+  function queueMoreOpened(displayed: QueueView) {
+    return sendQueueMore(displayed);
+  }
+  function toggleQueueMore(displayed: QueueView, enabled: boolean) {
+    return sendQueueMore(displayed, enabled);
+  }
+  function clearQueueMoreError() {
+    queueMoreError.value = '';
+  }
   // Queue edits belong to the list the user saw, with their own pending/error
   // feedback. They must never become the footer's audio-error retry operation.
   async function editQueue(input: QueueEdit, displayed = queue.value): Promise<boolean> {
@@ -1070,6 +1150,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueBusy.value = false;
     queueLoading.value = false;
     queueEditing.value = false;
+    queueMoreChanging.value = false;
+    queueMoreError.value = '';
     disconnect?.();
     ready.value = false;
   }
@@ -1100,6 +1182,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     canRetry,
     queueError,
     queueEditError,
+    queueMoreChanging,
+    queueMoreError,
     lyricError,
     queueOpen,
     lyricsOpen,
@@ -1137,6 +1221,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     canPlayMissingDownloadOnline,
     playMissingDownloadOnline,
     loadQueue,
+    queueMoreOpened,
+    toggleQueueMore,
+    clearQueueMoreError,
     editQueue,
     toggleQueue,
     loadLyrics,
