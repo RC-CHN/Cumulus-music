@@ -42,6 +42,7 @@
   日志源 audio_capture_wasapi.cpp、GetNextPacketSize / GetBuffer 见
   A/native/strings/x64/cloudmusic.dll.jsonl:308300–308338。不同格式、
   布局、设备切换与精确重采样尚未逐样本验证，不能把任意麦克风输入当等价。
+  默认设备、格式回退及两段 swresample 接缝见 song-recognition-host-contracts.txt。
 - Native audio_discern_data_processor.cpp 工作函数 3070D0：307152–307195
   在活动条件满足后，按 (已收集次数 + 1) × 3 × 8000 × 2 字节等待缓冲，
   即 3/6/9/12/15 秒的累计 8 kHz、每样本 2 字节的前缀，非连续五个独立
@@ -77,7 +78,7 @@
   或 Rust 通用请求的毫秒时间与随机后缀。正文其他字段如下：
 
     rawdata        Base64 指纹字符串
-    sessionId      原生会话字符串（不从 GUID 推测）
+    sessionId      由原生 Windows GUID 生成的 36 字符串，与页面 GUID 独立
     times          请求次序，整数
     duration       累计输入秒数，整数
     algorithmCode  字符串 "shazam_v2"
@@ -268,8 +269,9 @@ Rust 已迁移的封包阶段：
   Windows runner 可用等价环境变量与同一组平台无关对照。没有启用真实识曲。
 
 下一阶段：
-1. 追 3087B1 附近的 8000 配置与下混重采样；设备采集、输入样本转换
-   与已验证的离线指纹编码需分别验证。阶段对照见
+1. 冻结已恢复的两阶段 swresample 合成向量，再验证 Windows/Linux
+   输出回采与设备输入转换。原生宿主与请求边界见
+   docs/song-recognition-host-contracts.txt，离线指纹阶段对照见
    docs/song-recognition-signal-contracts.txt。
 2. Rust 可移植纯状态、计时/采样单位、EAPI 固定字段、结果解析及权限补读，
    用合成 transport 比较发送次数和正文。cloudmusic.dll 只有 16 个通用导出，

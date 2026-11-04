@@ -1,0 +1,144 @@
+听歌识曲：原生输出回采、PCM 接缝及请求授权边界
+
+依据官方 PC 3.1.42.205594 x64 解包材料。以下均为 cloudmusic.dll RVA，
+映像 SHA256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493。
+回采和请求是静态恢复；没有打开实际音频设备、账户、服务连接或生产功能。
+已有合成 PCM 指纹实测见 song-recognition-signal-contracts.txt。
+
+1. Windows 回采的默认选择与启动
+
+- 2F8610 仅迭代一个捕获类型，2F875C 取 2F7270 的默认选项，然后在
+  2F87A1 建立 AudioCaptureWasapi（RTTI vtable 0x19fbe40、构造 30A040）。
+  2F7270 初始化三个空字符串，把选项 +0x70 字节置零；30A200 复制，
+  30AF40 读取它。此条入口不从用户当前播放器的专用设备 ID 猜测。
+- 30B660 判断设备字段为空或 UTF-16 "default"。30CF52–30CFC6 在
+  默认回采分支调用 IMMDeviceEnumerator::GetDefaultAudioEndpoint，
+  参数为 eRender=0、eConsole=0。另有非空且非 "default" 的显式 ID
+  分支调用 GetDevice（30CFCE–30D02E），也有 +0x70=1 时的
+  eCapture/eCommunications 分支；默认识曲入口没有选它。找不到默认
+  输出设备是启动失败，不能自动切到系统默认录音设备。
+- 30E070 → 30D620 建立枚举器、选择设备、保留其 ID，再启动音频客户。
+  30C5F0 先 IMMDevice::Activate 和 IAudioClient::GetMixFormat；默认
+  回采 flags=EVENTCALLBACK 0x40000 | LOOPBACK 0x20000。Initialize
+  为 shared=0、5 秒请求缓冲（50,000,000 × 100 ns）、periodicity=0、
+  默认 session GUID。GetMixFormat 自身失败会提前退出；已拿到格式后，
+  布局检查失败或 Initialize 错误才进入格式回退（30C90B–30CC07）。
+- 回退是同一 WASAPI 输出设备的 24 种 WAVEFORMATEXTENSIBLE。30BFC0
+  的嵌套次序：最内层 48000、96000、192000、44100 Hz，次层 16、32、
+  8 位，最外层双声道、单声道。数组在 0x2193150/3160/316C。32 位
+  子格式为 IEEE float，其余为 PCM；双声道 mask 3，单声道 mask 4。
+  保留第一个成功格式，全部不支持则结束本次启动。30D060 记录成功
+  格式的样本率、位深映射和布局。
+- 默认 loopback 还在同一设备调用 30D1C0 初始化 shared render
+  客户（flags=0），取 render 服务和一段缓冲，写零后 ReleaseBuffer；
+  此函数内未发现 render Start。该分支失败会中止启动。最后
+  30C4D9 获取 IAudioCaptureClient，30C54C 设事件，30C57A 启动
+  线程（失败返回 -2），30C5B8 启动 capture。没有在真实 Windows 上
+  观察驱动兼容性或确认伴随 render 分支的系统版本原因。
+- 30AF80 等待 capture 及 stop 两个事件。回采分支也每 10 ms timeout
+  尝试读包；非回采分支无限等待事件。30DAA0 对 GetNextPacketSize=0
+  返回正常空结果，GetNextPacketSize/GetBuffer 错误终止 worker。
+  非空包取得帧数、flags、设备位置和 QPC，复制 plane 0 后 ReleaseBuffer。
+  观察到的主分支没有读取 GetBuffer flags 再处理 SILENT 或
+  DATA_DISCONTINUITY，不能据此写成“官方补零”或“官方跨设备无缝恢复”。
+  Windows 移植应遵守 API 对空/静音指针的保护，并在可控测试中记录
+  这种边界差异。尚未观察设备被拔出、设备切换、不同独占模式的行为。
+
+2. 送入离线指纹的格式与长度
+
+- 30D060 从 WAVEFORMATEXTENSIBLE 取 channel mask，30F7F0 把
+  0x0b/0x107/0x3b/0x60f/0x63f 映射为内部布局 3/4/5/6/8，其余
+  使用 nChannels；30E190 初始检查允许布局 1/2/3/4/5/6/8。
+  位深 8→内部格式 1，16→2，32→4，其余也归入 4；在已见分支
+  这只检查位宽，不等于证明打包 24 位或所有 32 位 PCM 都受支持。
+  30DAA0 组装输入包：plane[0] +0，帧数 +0x40，布局 +0x44，
+  格式 +0x48，采样率 +0x4c，QPC +0x50。
+- 307BF0 → 308650 重用处理器；源采样率、布局或格式之一改变就释放
+  旧转换器。3087A1–3087E2 调 3125C0 配置目标：0x19f988c=8000，
+  内部格式 2 由 313180 转 AV_SAMPLE_FMT_S16=1，内部布局 1 由
+  313240 转 AV_CH_LAYOUT_MONO=4（front center）。
+- 312900 先比较源与目标三元组；完全相同直接传入帧和指针。若布局
+  不同，先使用独立的 swresample 上下文：输入布局 → mono，
+  两端均保持源采样率和源样本格式（312B29–312C14）。随后另一上下文
+  用 mono→mono 改样本率和样本格式（312D46–312E32）；源已 mono
+  则跳过第一层，第二层仍按此处调用。两层各自重用，不能视为一次
+  下混重采样，也不能用固定左右各 0.5 的手写矩阵代替。
+- 315450 先解析目标声道数，调用
+  swr_alloc_set_opts(NULL, out_layout, out_fmt, out_rate,
+                     in_layout, in_fmt, in_rate, 0, NULL)
+  后 swr_init；该构造未设置私有 downmix 矩阵、dither 或选项。
+  315740 用 ceil((swr_get_delay(ctx,in_rate)+in_frames)*out_rate/in_rate)
+  估算输出容量（av_rescale_rnd 的 AV_ROUND_UP=3），随后 swr_convert
+  返回实际产出帧数。所见常规调用没有在每个输入包后 drain/flush。
+  3158A4/D17D43、31590B/D17D8B、3157C7/D17D91 分别对应
+  av_samples_get_buffer_size、swr_convert、swr_get_delay。导入
+  IAT 0x19f2020–0x19f2048。
+- 随安装包的 swresample-3.dll SHA256
+  2e3a886d9638ee5af22b810703de7a068ac7521bc09d36f5b45a48ca329bad42；
+  其 swresample_version 导出经 0x373d 跳至 0x23a50，返回
+  0x030764（3.7.100）。配套 avutil-56.dll SHA256
+  1fdad3dd763ea004ddaf2f99bec3b238a640a17238f03e9b20edd3e1e7793c1e。
+  版本号及参数已确定，未运行 DLL 转换实际或合成包；尚无特定源码
+  build 选项、滤波器、重混矩阵和平台 SIMD 结果的逐样本证明。
+- 3088D8–308905 从输出 plane 0 追加 2×实际产出帧数字节，格式是
+  i16/8000/mono；313FD8–313FDB 从字节数转换成 i16 数量，送 D0A3B0。
+  307152–307413 只取累计 24,000/48,000/72,000/96,000/120,000
+  样本前缀，times 为 1–5，duration=3×times 秒；最多收集 15 秒数据，
+  整体另有 16 秒期限。空包或失败会减少可用输入，不能用墙钟时间
+  合成一个未捕获的合格前缀。未对真实设备切换时重建前的缓存做动态复验。
+- 指纹对数默认分支是另一层选择。CCC1D0 用 CPUID leaf 1 ECX
+  0x18001000（OSXSAVE、AVX、FMA3）及 XGETBV(0)&6==6 决定
+  原生 0x221262c，CCC248 可在支持时覆盖。Rust 离线 API 保持
+  SSE/FMA 显式选择；若将来做“默认官方检测”，需独立测 OS 寄存器
+  支持/覆盖条件，不能从当前平台、位数或声卡驱动推断。没有观察
+  官方 Windows 启动覆盖该标志的行为。
+
+3. 网络边界独立于捕获
+
+- 307C70 为每次新的数据处理会话清空积累、记 UI GUID，并把
+  62C0C0 的输出写到 +0x160。该函数依次调用 ole32::CoCreateGuid
+  （62C0E9）和 StringFromGUID2（62C1EC，长度需为 39 个含终止符
+  的 UTF-16 单元），取 36 个去外侧花括号的字符再转窄串（62C254–
+  62C32B）。保留 OS 格式化结果，未看到另作大小写转换；精确 casing
+  与失败的发包结果需合成 Windows 验证。307413 → 2FB070 把同一个
+  session 字符串拷到各前缀任务 +0x30，2FB410 取出，314C3A 写
+  sessionId；它与 UI 的 8 字符 GUID 和服务响应独立。
+- 官方 POST 的 e_url 由宿主配置，默认
+  https://music.163.com/eapi/music/audio/match；EAPI canonical
+  /api/music/audio/match。314510 写 rawdata（离线指纹加密后 Base64）、
+  sessionId 字符串、times/duration 整数、algorithmCode="shazam_v2"、
+  from="pc_back_discern"、decrypt=1 整数及 header 对象。header 有
+  os="pc"、appver、deviceId、clientSign、requestId；后者是 GetTickCount
+  的 u32 十进制文本，每次请求取值。
+- 同时写外层 User-Agent: Windows_Curl;、os: pc、
+  Referer: music.163.com（这里的常量没有 URL scheme）和 Cookie。
+  314665–314692 把配置 e_url 给 3371F0 的原生 Cookie 获取链；
+  这不授权跨域复制 Cookie，也没有独立的识曲 Cookie/login token
+  生成。314E39–314E92 将 JSON 序列化、CE42F0 封装，再发送
+  params=<密文>。此函数里未确认底层默认 Content-Type，不能用
+  通用请求模板补造 e_r、未观察到的头或设备字段。
+- 现有 Rust EAPI encrypt_json 可作为纯算法使用，先冻结此路由的
+  正文、顺序、类型和加密字节，再用合成 transport 验证最多前缀
+  调度、拒绝旧会话回调和结果权限补读。授权上下文只在 core 内；
+  Windows UA 或兼容映射不是账号资格。真实服务是否允许游客、是否
+  需要特定登录/风控状态及响应格式未验证；UI 入口没有强制登录。
+  反馈上传是另一入口，不自动发、也不作为普通识曲回退。
+
+4. 跨平台可行的下一步与证据门槛
+
+- Windows：desktop 可使用独立 COM worker、默认 render endpoint、
+  shared WASAPI loopback 与可取消等待；以私有/测试音源覆盖启动失败、
+  数字静音、断流和资源释放。先测真实 Windows API 和不同格式，再决定
+  是否采用官方兼容回退。Core 只接收界限明确的 PCM/格式与会话事件。
+- Linux：已有安装包测试 scripts/ci/installed_linux_audio.py 的私有
+  PipeWire/Pulse sink 用显式 cumulus_private.monitor 和合成音乐采样，
+  证明该平台的 monitor 机制可用；识曲宿主尚未实现。实际宿主可从
+  当前输出 sink 得到显式 monitor source，校验绑定后在用户启动期间
+  读流，不能选默认录音源、缺 monitor 后切麦克风或把 CI 的 parec
+  子进程当作生产实现。PipeWire/Pulse 后端之间也不声称天然样本相同。
+- 最先冻结合成 48k stereo f32、44.1k stereo i16、已是 8k mono i16
+  的直通、分包等价、设备格式变化、启动拒绝和可取消资源回收；比较
+  官方两阶段转换实际每包产出和最终前缀。Linux 机器已见
+  libswresample.so.6，不能因同名 API 把它当官方 3.7.100。没有合成
+  Windows DLL 对照以前只报告回采/格式链证据，不能承诺逐样本兼容。
+  不纳入官方 DLL，不保留真实 PCM，不以真实设备或账号作为 CI 先决条件。
