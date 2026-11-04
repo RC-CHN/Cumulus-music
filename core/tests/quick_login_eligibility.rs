@@ -12,14 +12,52 @@ use cumulus_core::{
         MusicClient,
         dto::{LoginMode, ServerQuickLoginCommand},
     },
-    protocol::http::{ApiOrigin, BodyStatus, MusicHttpClient},
+    protocol::{
+        api::ApiFuture,
+        http::{ApiOrigin, BodyStatus, HttpBackend, HttpReply, MusicHttpClient, RequestPlan},
+        wire::eapi,
+    },
     storage::StateStore,
 };
 use serde_json::{Value, json};
-use std::{fs, sync::Arc};
+use std::{
+    fs,
+    sync::{
+        Arc,
+        atomic::{AtomicU8, Ordering},
+    },
+};
 use support::http::{HttpResponse, ScriptHttp, gate, reply};
 
 const PATH: &str = "/api/login/getquickloginlist";
+const EXP: &str = "PH-PC-quickLoginSwitchAccountNew";
+const OFFER_STATE: &str = "quick-login-offer-v1";
+
+struct AssignedHttp {
+    inner: Arc<ScriptHttp>,
+    assignment: AtomicU8,
+}
+impl HttpBackend for AssignedHttp {
+    fn post(&self, plan: RequestPlan) -> ApiFuture<'_, HttpReply> {
+        Box::pin(async move {
+            let (_, value) = url::form_urlencoded::parse(&plan.body)
+                .find(|(key, _)| key == "params")
+                .ok_or(Error::Response("fixture expects EAPI"))?;
+            let (path, payload) = eapi::unwrap(&value)?;
+            if path == "/api/rtrs/abt/front/expinfo/list" && payload["expNames"] == EXP {
+                let item = json!({"expName":EXP,"expGroupName":"t1"});
+                return Ok(reply(
+                    json!({"code":200,"data":match self.assignment.load(Ordering::Acquire) {
+                        0 => vec![item],
+                        1 => vec![json!({"expName":EXP,"expGroupName":"c"})],
+                        _ => vec![item.clone(), item],
+                    }}),
+                ));
+            }
+            self.inner.post(plan).await
+        })
+    }
+}
 
 struct World {
     root: tempfile::TempDir,
@@ -27,12 +65,20 @@ struct World {
     session: Arc<AccountSession>,
     guest: Arc<MusicHttpClient>,
     backend: Arc<ScriptHttp>,
+    wire: Arc<AssignedHttp>,
     client: Arc<MusicClient>,
     ids: Vec<String>,
 }
 
 impl World {
     async fn new(count: u32, replies: impl IntoIterator<Item = HttpResponse>) -> Self {
+        Self::new_with_offers(count, replies, true).await
+    }
+    async fn new_with_offers(
+        count: u32,
+        replies: impl IntoIterator<Item = HttpResponse>,
+        enrolled: bool,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let registry = ProfileRegistry::open(&root.path().join("registry"), ApiOrigin::Pc).unwrap();
         let identity = (1..=count).map(|uid| {
@@ -44,6 +90,10 @@ impl World {
         }}).into()
         });
         let backend = Arc::new(ScriptHttp::new(identity.chain(replies)));
+        let wire = Arc::new(AssignedHttp {
+            inner: backend.clone(),
+            assignment: AtomicU8::new(0),
+        });
         let credentials = Arc::new(
             Credentials::open(
                 Arc::new(StateStore::open(root.path().join("guest")).unwrap()),
@@ -57,7 +107,7 @@ impl World {
                 Default::default(),
                 Default::default(),
                 None,
-                backend.clone(),
+                wire.clone(),
             )
             .unwrap(),
         );
@@ -75,12 +125,7 @@ impl World {
                 "# Netscape HTTP Cookie File\ninterfacepc.music.163.com\tFALSE\t/\tTRUE\t\tMUSIC_U\thistory-token-{uid}\n"
             )).unwrap();
             let candidate = registry
-                .candidate_with_backend(
-                    Default::default(),
-                    Default::default(),
-                    None,
-                    backend.clone(),
-                )
+                .candidate_with_backend(Default::default(), Default::default(), None, wire.clone())
                 .unwrap();
             candidate
                 .credentials()
@@ -91,10 +136,17 @@ impl World {
                 .await
                 .unwrap();
             ids.push(registry.selection().unwrap().unwrap().session_id);
+            if enrolled {
+                registry.store().put("transport", OFFER_STATE, &uid.to_string(), &json!({
+                    "revision":format!("{uid:032x}"),
+                    "profile":{"nickname":format!("Saved {uid}"),"avatar_url":format!("https://p1.music.126.net/{uid}.jpg"),
+                        "avatar_img_id":9007199254740995_u64,"user_type":4,"cellphone":"13800138000"}
+                })).unwrap();
+            }
         }
         let client = Arc::new(
             MusicClient::with_session(session.clone(), registry.clone())
-                .with_login_providers(Some(backend.clone()), None),
+                .with_login_providers(Some(wire.clone()), None),
         );
         Self {
             root,
@@ -102,6 +154,7 @@ impl World {
             session,
             guest,
             backend,
+            wire,
             client,
             ids,
         }
@@ -122,7 +175,7 @@ impl World {
                     profile: Default::default(),
                     options: Default::default(),
                     context: None,
-                    backend: self.backend.clone(),
+                    backend: self.wire.clone(),
                 },
             )
             .await
@@ -139,12 +192,184 @@ impl World {
                     profile: Default::default(),
                     options: Default::default(),
                     context: None,
-                    backend: self.backend.clone(),
+                    backend: self.wire.clone(),
                 },
             )
             .await
             .unwrap()
     }
+}
+
+#[tokio::test]
+async fn explicit_offer_is_separate_from_credentials_and_filters_all_quick_payloads() {
+    let world = World::new_with_offers(1, [
+        json!({"code":200,"bindings":[{"type":1,"tokenJsonStr":"{\"cellphone\":\"13800138000\",\"access_token\":\"private-binding\"}"}]}).into(),
+        json!({"code":200,"profile":{"userId":1,"nickname":"Fresh","avatarUrl":"https://p1.music.126.net/a.jpg?private=1","avatarImgId":9007199254740995_u64,"userType":4}}).into(),
+        json!({"code":200,"data":{"userId":1}}).into(),
+        json!({"code":200,"data":[]}).into(),
+        json!({"code":200,"deleteUserIds":[]}).into(),
+    ], false).await;
+    let epoch = world.epoch();
+    let selection = world.registry.selection().unwrap().unwrap();
+    let selected_client = world.registry.current(Default::default()).unwrap().unwrap();
+    let credential = selected_client
+        .credentials
+        .login_credentials()
+        .unwrap()
+        .token;
+    let original = serde_json::to_value(world.client.saved_accounts(&epoch).unwrap()).unwrap();
+    let unopened = world.client.quick_login_access(&epoch).await.unwrap().value;
+    assert!(unopened.assigned && !unopened.offer.unwrap().enabled);
+    assert_eq!(
+        world
+            .client
+            .quick_login_eligibility(&epoch)
+            .await
+            .unwrap()
+            .value
+            .checked_count,
+        0
+    );
+    assert_eq!(world.backend.calls().len(), 1);
+    for mode in [1, 2] {
+        world.wire.assignment.store(mode, Ordering::Release);
+        assert!(
+            !world
+                .client
+                .quick_login_access(&epoch)
+                .await
+                .unwrap()
+                .value
+                .assigned
+        );
+        assert!(world.client.quick_login_eligibility(&epoch).await.is_err());
+        assert!(
+            world
+                .client
+                .set_quick_login_offer(&epoch, true, None)
+                .await
+                .is_err()
+        );
+    }
+    world.wire.assignment.store(0, Ordering::Release);
+    let enabled = world
+        .client
+        .set_quick_login_offer(&epoch, true, None)
+        .await
+        .unwrap()
+        .value;
+    assert!(enabled.enabled && enabled.revision.is_some());
+    assert_eq!(
+        world
+            .client
+            .quick_login_eligibility(&epoch)
+            .await
+            .unwrap()
+            .value
+            .checked_count,
+        1
+    );
+    let calls = world.backend.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "/api/w/nuser/account/get",
+            "/api/w/v1/user/bindings/1",
+            "/api/w/v1/user/detail/1",
+            "/api/music-vip-membership/client/vip/info",
+            "/api/authentication/identity/user/all",
+            PATH,
+        ]
+    );
+    let history: Value = serde_json::from_str(
+        calls.last().unwrap().payload["userInfoList"]
+            .as_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(history[0]["userProfile"]["nickname"], "Fresh");
+    assert_eq!(history[0]["userProfile"]["cellphone"], "13800138000");
+    assert_eq!(
+        history[0]["userProfile"]["avatarUrl"],
+        "https://p1.music.126.net/a.jpg"
+    );
+    assert!(!history.to_string().contains("private-binding"));
+    let disabled = world
+        .client
+        .set_quick_login_offer(&epoch, false, enabled.revision.as_deref())
+        .await
+        .unwrap()
+        .value;
+    assert!(!disabled.enabled && disabled.revision != enabled.revision);
+    assert_eq!(
+        world
+            .client
+            .quick_login_eligibility(&epoch)
+            .await
+            .unwrap()
+            .value
+            .checked_count,
+        0
+    );
+    assert_eq!(world.backend.calls().len(), 6);
+    assert_eq!(world.registry.selection().unwrap().unwrap(), selection);
+    assert_eq!(
+        selected_client
+            .credentials
+            .login_credentials()
+            .unwrap()
+            .token,
+        credential
+    );
+    assert_eq!(
+        serde_json::to_value(world.client.saved_accounts(&epoch).unwrap()).unwrap(),
+        original
+    );
+    let reopened =
+        ProfileRegistry::open(&world.root.path().join("registry"), ApiOrigin::Pc).unwrap();
+    assert!(
+        reopened
+            .store()
+            .get("transport", OFFER_STATE, "1")
+            .unwrap()
+            .unwrap()["profile"]
+            .is_null()
+    );
+}
+
+#[tokio::test]
+async fn enabling_offer_drops_old_account_reads_and_cannot_enroll_a_replacement() {
+    let (held, response) = gate();
+    let world = World::new_with_offers(1, [held], false).await;
+    let epoch = world.epoch();
+    let client = world.client.clone();
+    let task = tokio::spawn(async move { client.set_quick_login_offer(&epoch, true, None).await });
+    world.backend.wait(2).await;
+    world.session.attach(world.guest.clone()).unwrap();
+    assert!(matches!(task.await.unwrap(), Err(Error::StaleResponse)));
+    assert!(response.is_closed());
+    assert_eq!(world.backend.calls().len(), 2);
+    assert!(
+        world
+            .registry
+            .store()
+            .values("transport", OFFER_STATE)
+            .unwrap()
+            .is_empty()
+    );
+    assert!(
+        world
+            .client
+            .quick_login_access(&world.epoch())
+            .await
+            .unwrap()
+            .value
+            .offer
+            .is_none()
+    );
 }
 
 #[tokio::test]

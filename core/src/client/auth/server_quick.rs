@@ -91,6 +91,7 @@ impl MusicClient {
         if active {
             self.check_account_transition()?;
         }
+        self.require_quick_login_assignment(&base).await?;
         let previous_id = {
             let pending = self.auth.pending.lock().map_err(|_| Error::LockPoisoned)?;
             allow_quick_replacement(pending.as_ref())?;
@@ -205,7 +206,10 @@ impl MusicClient {
             }
         };
         let state = match (command, flow) {
-            (ServerQuickLoginCommand::Execute, Some(flow)) => flow.execute().await?,
+            (ServerQuickLoginCommand::Execute, Some(flow)) => {
+                self.require_quick_login_assignment(&base).await?;
+                flow.execute().await?
+            }
             (ServerQuickLoginCommand::Execute, None) => return Err(Error::StaleResponse),
             (ServerQuickLoginCommand::Reconcile, Some(flow)) => flow.reconcile().await?,
             (ServerQuickLoginCommand::Cancel, Some(flow)) => match self.cancel_login(id) {

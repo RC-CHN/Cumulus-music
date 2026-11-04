@@ -441,6 +441,11 @@ impl From<Error> for ClientError {
                     "请先退出一起听并恢复播放设置，再切换账号",
                     false,
                 ),
+                Error::State("quick login offer is unavailable") => (
+                    "quick_login_unavailable",
+                    "当前暂未开放服务端快速登录",
+                    false,
+                ),
                 Error::State("cannot remove current account") => (
                     "current_account",
                     "请先退出或切换账号，再移除这条登录记录",

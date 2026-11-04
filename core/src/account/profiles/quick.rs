@@ -1,5 +1,6 @@
 //! Explicit JSK eligibility check. It never issues a login or changes profiles.
 mod exchange;
+pub(super) mod offer;
 use super::{OWNER, ProfileRegistry, SavedProfile, Selection, removal, saved};
 use crate::{
     Error, Result,
@@ -15,6 +16,7 @@ use crate::{
 pub use exchange::{
     QuickLoginTransport, ServerQuickLogin, ServerQuickLoginPhase, ServerQuickLoginView,
 };
+pub use offer::{QuickLoginAccessView, QuickLoginOfferView};
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{any::Any, cmp::Reverse, collections::BTreeSet, sync::Arc};
@@ -44,6 +46,7 @@ pub struct QuickLoginAccountView {
 struct Entry {
     saved: SavedProfile,
     credential: QuickLoginCredential,
+    offer: offer::Record,
     current: bool,
 }
 
@@ -55,6 +58,7 @@ struct History {
 pub(super) struct QuickSavedTarget {
     pub(super) saved: SavedProfile,
     credential_revision: String,
+    pub(super) offer: offer::Record,
 }
 
 impl ProfileRegistry {
@@ -78,6 +82,7 @@ impl ProfileRegistry {
                 "JSK quick login requires the PC origin",
             ));
         }
+        let _offer_lock = self.quick_offer_lock()?;
         let api = session.native_api(expected)?;
         let target = ApiOrigin::Pc.request_url(WireRoute::Eapi, PATH)?;
         let (history, payload) = {
@@ -170,18 +175,21 @@ impl ProfileRegistry {
                             return Err(Error::State("invalid saved quick login identity"));
                         }
                         removal::available(tx, &saved.session_id)?;
-                        Ok(saved)
+                        Ok(offer::read(tx, &uid)?
+                            .filter(|value| value.profile.is_some())
+                            .map(|offer| (saved, offer)))
                     })();
                     match parsed {
-                        Err(Error::State("saved account removal has started")) => None,
-                        other => Some(other),
+                        Err(Error::State("saved account removal has started")) | Ok(None) => None,
+                        Ok(Some(entry)) => Some(Ok(entry)),
+                        Err(error) => Some(Err(error)),
                     }
                 })
                 .collect::<Result<Vec<_>>>()
         })?;
         let mut entries = Vec::new();
         let mut session_ids = BTreeSet::new();
-        for saved in rows {
+        for (saved, offer) in rows {
             if !session_ids.insert(saved.session_id.clone()) {
                 return Err(Error::State("duplicate saved quick login session"));
             }
@@ -193,8 +201,12 @@ impl ProfileRegistry {
                     current: current == Some(saved.uid.as_str()),
                     saved,
                     credential,
+                    offer,
                 });
             }
+        }
+        if current.is_some() && !entries.iter().any(|entry| entry.current) {
+            entries.clear();
         }
         // M1368 limits the SDK history to three. The PC bridge synthesizes
         // lastUsedDate for each record (M290), not durable usage timestamps.
@@ -217,31 +229,26 @@ impl ProfileRegistry {
     }
 
     fn quick_payload(&self, history: &History) -> Result<Value> {
-        let rows = history.entries.iter().map(|entry| {
-            let saved = &entry.saved;
-            let raw = self.store.get(&saved.uid, "account", "profile")?.unwrap_or(Value::Null);
-            if !raw.is_null() && identifier(&raw["userId"]).as_deref().ok() != Some(saved.uid.as_str()) {
-                return Err(Error::State("saved quick login profile identity mismatch"));
-            }
-            // M290:524–542 derives exactly these userProfile fields; never
-            // copy a raw account/get response or any bindings into the list.
-            let image_id = &raw["avatarImgId"];
-            let image_id = if identifier(image_id).is_ok_and(|id| id.len() <= 32) { image_id.clone() } else { json!(0) };
-            let phone = text(raw["cellphone"].as_str(), 32);
-            let phone = if phone.bytes().all(|b| b.is_ascii_digit()) { phone } else { "" };
-            Ok(json!({
-                "userId": saved.uid,
-                "userProfile": {
+        let rows = history
+            .entries
+            .iter()
+            .map(|entry| {
+                let saved = &entry.saved;
+                let profile = entry.offer.profile.as_ref().ok_or(Error::StaleResponse)?;
+                Ok(json!({
                     "userId": saved.uid,
-                    "nickname": text(Some(&saved.nickname), 512),
-                    "avatarUrl": public_avatar(saved.avatar_url.as_deref()),
-                    "avatarImgId": image_id,
-                    "userType": raw["userType"].as_u64().and_then(|n| u32::try_from(n).ok()).unwrap_or(0),
-                    "cellphone": phone,
-                },
-                "musicU": entry.credential.music_u,
-            }))
-        }).collect::<Result<Vec<_>>>()?;
+                    "userProfile": {
+                        "userId": saved.uid,
+                        "nickname": profile.nickname,
+                        "avatarUrl": profile.avatar_url,
+                        "avatarImgId": profile.avatar_img_id,
+                        "userType": profile.user_type,
+                        "cellphone": profile.cellphone,
+                    },
+                    "musicU": entry.credential.music_u,
+                }))
+            })
+            .collect::<Result<Vec<_>>>()?;
         // M1368:4350–4375. JSK is deliberately separate from legacy's richer
         // currentEnv and usableUserIds response.
         Ok(json!({"currentEnv":"{}","userInfoList":serde_json::to_string(&rows)?}))
@@ -254,6 +261,7 @@ impl ProfileRegistry {
         for entry in &history.entries {
             let stored = self.store.transaction(|tx| {
                 removal::available(tx, &entry.saved.session_id)?;
+                offer::confirm(tx, &entry.saved.uid, &entry.offer)?;
                 tx.get(OWNER, saved::KIND, &entry.saved.uid)
             })?;
             if stored.as_ref() != Some(&serde_json::to_value(&entry.saved)?) {

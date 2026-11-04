@@ -4,6 +4,22 @@ import type { AccountData, AccountView, QrStatus } from './contracts';
 import type { RenewalClient } from './renewal';
 import type { LoginPresentationClient } from './loginPresentation';
 import type { PenaltyView } from './loginPenalty';
+export interface QuickLoginOffer {
+  enabled: boolean;
+  revision: string | null;
+}
+export interface QuickLoginAccess {
+  assigned: boolean;
+  offer: QuickLoginOffer | null;
+}
+export interface QuickLoginOfferClient {
+  quickLoginAccess(epoch: string): Promise<AccountData<QuickLoginAccess>>;
+  setQuickLoginOffer(
+    epoch: string,
+    enabled: boolean,
+    expectedRevision: string | null,
+  ): Promise<AccountData<QuickLoginOffer>>;
+}
 export type LoginMode = 'phone_password' | 'phone_sms' | 'email' | 'saved_account';
 export type LoginStatus =
   | 'ready'
@@ -269,6 +285,7 @@ export interface AuthClient
   extends RenewalClient,
     LoginPresentationClient,
     QuickLoginEligibilityClient,
+    QuickLoginOfferClient,
     ServerQuickLoginClient,
     ActiveServerSwitchClient {
   solveLoginCaptcha(operationId: string): Promise<LoginCaptchaView>;

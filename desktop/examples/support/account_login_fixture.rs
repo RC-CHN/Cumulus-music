@@ -85,6 +85,46 @@ impl HttpBackend for Service {
             let (path, data) = eapi::unwrap(params)?;
             *self.paths.lock().unwrap().entry(path.clone()).or_default() += 1;
             let mode = self.mode.lock().unwrap().clone();
+            if path == "/api/rtrs/abt/front/expinfo/list"
+                && data["expNames"] == "PH-PC-quickLoginSwitchAccountNew"
+            {
+                let group = if mode == "quick_offer_control" {
+                    "c"
+                } else {
+                    "t1"
+                };
+                return Ok(auth::reply(
+                    json!({"code":200,"data":[{
+                        "expName":"PH-PC-quickLoginSwitchAccountNew","expGroupName":group
+                    }]}),
+                    None,
+                ));
+            }
+            if path == "/api/authentication/identity/user/all"
+                || path == "/api/music-vip-membership/client/vip/info" && mode == "quick_offer"
+            {
+                let uid = plan
+                    .headers
+                    .get("Cookie")
+                    .and_then(|cookies| {
+                        cookies
+                            .split(';')
+                            .find_map(|part| part.trim().strip_prefix("MUSIC_U=fixture"))
+                    })
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .filter(|id| matches!(id, 2 | 5))
+                    .ok_or(Error::Response("fixture quick offer owner"))?;
+                let uid_text = uid.to_string();
+                if data["userId"].as_str() != Some(uid_text.as_str()) {
+                    return Err(Error::Response("fixture quick offer owner mismatch"));
+                }
+                let content = if path.contains("/identity/") {
+                    json!([])
+                } else {
+                    json!({"userId":uid})
+                };
+                return Ok(auth::reply(json!({"code":200,"data":content}), None));
+            }
             if path == "/api/lbs/region/code" {
                 if data
                     .as_object()

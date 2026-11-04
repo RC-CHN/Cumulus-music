@@ -61,7 +61,7 @@ def main():
     complete = json.loads((output/'complete.json').read_text(encoding='utf-8'))
     states = [json.loads(path.read_text(encoding='utf-8')) for path in sorted(output.glob('ux_*.json'))]
     assert complete['ok'] and len(states) == complete['stageCount']
-    assert len(states) == (8 if args.active_switch else 7 if args.quick_login or args.account_detail else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.device_removal else 2 if args.baseline else 33)
+    assert len(states) == (8 if args.active_switch else 7 if args.quick_login or args.account_detail else 4 if args.account_avatar else 5 if args.profile_edit else 6 if args.device_removal else 2 if args.baseline else 36)
     for state in states:
         assert not state['overflow']
         if not args.baseline:
@@ -247,6 +247,18 @@ def main():
         assert poll_error['fixture']['paths'][unikey] == still['fixture']['paths'][unikey] + 1
         assert poll_error['fixture']['paths'][poll] == still['fixture']['paths'].get(poll, 0) + 1
         assert generated['fixture']['paths'][unikey] == poll_error['fixture']['paths'][unikey] + 1
+        offer_off, offer_on, offer_disabled = (by_name[name] for name in (
+            'quick_offer_off_dark', 'quick_offer_on_dark', 'quick_offer_disabled_dark'))
+        assert offer_off['savedAccounts'] == offer_on['savedAccounts'] == offer_disabled['savedAccounts']
+        for endpoint in ('/api/w/v1/user/bindings/2', '/api/w/v1/user/detail/2',
+                         '/api/music-vip-membership/client/vip/info', '/api/authentication/identity/user/all'):
+            assert offer_on['fixture']['paths'][endpoint] == offer_off['fixture']['paths'].get(endpoint, 0) + 1
+            assert offer_disabled['fixture']['paths'][endpoint] == offer_on['fixture']['paths'][endpoint]
+        assert offer_disabled['fixture']['paths'].get('/api/login/getquickloginlist', 0) == 0
+        with sqlite3.connect((root/'run/state/core.sqlite3').as_uri()+'?mode=ro', uri=True) as state:
+            offers = dict(state.execute('SELECT key,value FROM state WHERE owner=? AND kind=?',
+                                       ('transport', 'quick-login-offer-v1')))
+        assert set(offers) == {'2'} and json.loads(offers['2'])['profile'] is None
         current = by_name['qr_error_keeps_current_dark']
         assert current['nativeAccount']['epoch'] == by_name['account_closed_dark']['nativeAccount']['epoch']
         assert current['sessionRenewal']['state'] != 'login_in_progress'

@@ -11,6 +11,55 @@ pub(super) fn short_text(value: &Value) -> Option<String> {
 }
 
 impl MusicClient {
+    pub async fn quick_login_access(
+        &self,
+        epoch: &str,
+    ) -> Result<AccountData<crate::account::profiles::QuickLoginAccessView>> {
+        let token = self.auth_token(epoch)?;
+        let value = self
+            .registry
+            .quick_login_access(&self.session, &token)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+
+    pub async fn set_quick_login_offer(
+        &self,
+        epoch: &str,
+        enabled: bool,
+        expected_revision: Option<&str>,
+    ) -> Result<AccountData<crate::account::profiles::QuickLoginOfferView>> {
+        let token = self.auth_token(epoch)?;
+        let value = self
+            .registry
+            .set_quick_login_offer(&self.session, &token, enabled, expected_revision)
+            .await?;
+        self.session.check_generation(&token)?;
+        Ok(AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
+
+    pub(super) async fn require_quick_login_assignment(
+        &self,
+        token: &crate::account::SessionToken,
+    ) -> Result<()> {
+        if self
+            .registry
+            .quick_login_assignment(&self.session, token)
+            .await?
+        {
+            Ok(())
+        } else {
+            Err(crate::Error::State("quick login offer is unavailable"))
+        }
+    }
+
     /// Explicit eligibility read for the existing saved-account chooser. No
     /// credential, raw user ID or upstream response is exposed to IPC.
     pub async fn quick_login_eligibility(
@@ -18,6 +67,7 @@ impl MusicClient {
         epoch: &str,
     ) -> Result<AccountData<crate::account::profiles::QuickLoginEligibilityView>> {
         let token = self.auth_token(epoch)?;
+        self.require_quick_login_assignment(&token).await?;
         let value = self
             .registry
             .quick_login_eligibility_for(&self.session, &token)

@@ -208,6 +208,7 @@ impl ProfileRegistry {
         let binding = QuickSavedTarget {
             saved: target.saved.clone(),
             credential_revision: target.credential.revision.clone(),
+            offer: target.offer.clone(),
         };
         let registry = self.clone();
         let current_uid = expected.uid.clone().unwrap_or_default();
@@ -307,13 +308,14 @@ impl ServerQuickLogin {
                 drop(state);
                 return self.snapshot();
             }
+            let offer_lock = self.candidate.registry.quick_offer_lock()?;
             let guard = self.exchange_lock()?;
             let request = state
                 .request
                 .take()
                 .ok_or(Error::State("missing quick login request"))?;
             state.phase = ServerQuickLoginPhase::Exchanging;
-            (guard, request)
+            ((guard, offer_lock), request)
         };
         let _interrupted = Interrupted(&self.state);
         let registry = self.candidate.registry.clone();

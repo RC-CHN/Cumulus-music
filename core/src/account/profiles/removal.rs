@@ -107,6 +107,7 @@ impl ProfileRegistry {
                     let record: SavedProfile = serde_json::from_value(value)?;
                     if record.session_id == session_id {
                         tx.delete(OWNER, saved::KIND, &intent.uid)?;
+                        super::quick::offer::forget(tx, &intent.uid)?;
                     }
                 }
                 intent.complete = true;

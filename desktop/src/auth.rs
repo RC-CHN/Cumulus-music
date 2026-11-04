@@ -92,6 +92,39 @@ pub fn saved_accounts(
 }
 
 #[tauri::command]
+pub async fn quick_login_access<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<cumulus_core::account::profiles::QuickLoginAccessView>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("quick login requires the main window").into(),
+        );
+    }
+    client.quick_login_access(&epoch).await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn set_quick_login_offer<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    enabled: bool,
+    expected_revision: Option<String>,
+) -> Result<AccountData<cumulus_core::account::profiles::QuickLoginOfferView>, ClientError> {
+    if window.label() != "main" {
+        return Err(
+            cumulus_core::Error::InvalidInput("quick login requires the main window").into(),
+        );
+    }
+    client
+        .set_quick_login_offer(&epoch, enabled, expected_revision.as_deref())
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn quick_login_eligibility(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

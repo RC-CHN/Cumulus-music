@@ -21,8 +21,8 @@ use crate::{
     storage::StateStore,
 };
 pub use quick::{
-    QuickLoginAccountView, QuickLoginEligibilityView, QuickLoginTransport, ServerQuickLogin,
-    ServerQuickLoginPhase, ServerQuickLoginView,
+    QuickLoginAccessView, QuickLoginAccountView, QuickLoginEligibilityView, QuickLoginOfferView,
+    QuickLoginTransport, ServerQuickLogin, ServerQuickLoginPhase, ServerQuickLoginView,
 };
 pub use saved::SavedProfile;
 use serde::{Deserialize, Serialize};
@@ -316,6 +316,7 @@ impl LoginCandidate {
                         .ok_or(Error::StaleResponse)
                         .and_then(|v| Ok(serde_json::from_value(v)?))?;
                     let target_matches = if let Some(target) = &self.quick_target {
+                        quick::offer::confirm(tx, &uid, &target.offer)?;
                         current == target.saved
                     } else {
                         current.session_id == self.id

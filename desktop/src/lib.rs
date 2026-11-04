@@ -214,6 +214,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 auth::login_command,
                 auth::cancel_login,
                 auth::saved_accounts,
+                auth::quick_login_access,
+                auth::set_quick_login_offer,
                 auth::quick_login_eligibility,
                 auth::begin_server_quick_login,
                 auth::server_quick_login_command,

@@ -31,6 +31,7 @@ import DesktopLyrics from './settings/DesktopLyrics.vue';
 import SystemMedia from './settings/SystemMedia.vue';
 import Shortcuts from './settings/Shortcuts.vue';
 import AccountProfilePage from './account/AccountProfilePage.vue';
+import QuickLoginOffer from './account/QuickLoginOffer.vue';
 import LoginDevicesPage from './account/LoginDevicesPage.vue';
 import ProfileBlacklistPage from './profile/ProfileBlacklistPage.vue';
 import type { ProfileBlacklistResult } from '../services/profileBlacklist';
@@ -309,6 +310,12 @@ function accept(op: SettingsOperation) {
               </button>
             </template>
           </div>
+          <QuickLoginOffer
+            v-if="account.status === 'authenticated'"
+            :key="account.epoch"
+            :epoch="account.epoch"
+            @accounts="emit('accounts')"
+          />
         </div>
       </section>
       <section class="settings-section" aria-labelledby="settings-privacy">

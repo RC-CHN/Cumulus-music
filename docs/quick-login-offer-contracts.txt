@@ -1,0 +1,46 @@
+设置 → 账号 → 快速登录（官方 PC 3.1.42.205594）
+
+来源
+- Account.jsx:193,241–259,329–349；M/212 只在 Windows PC 的
+  PH-PC-quickLoginSwitchAccountNew 精确等于 t1 时开放。设置先读账号绑定；
+  关闭发送 host/onDeleteLoginedUserInfo {deleteUserIds:[uid],closeQuickLogin:true}，
+  开启发送 host/getHostUserDetail {uid,bindings,updateLoginedUserInfo:true}。
+  选中时显示「切换账号列表」，关闭不影响当前登录或启动自动登录。
+- M/198:214–215 从独立的 loginedNewUserInfo 推导开关；494–547 更新当前 UID、
+  去重并保留前三，关闭只从该历史删除当前 UID；972–979 的普通新登录无条目时
+  不视为已开启，特殊快捷/追加切换有独立分支。1232–1342 从当前资料和绑定提取
+  有界历史字段；M/100:63–112、M/15:1741–1764 定义读取。
+- M/198:901–923 删除 active/autoLogin Cookies，未删除独立的历史；
+  M/290:524–556 从历史构造 JSK 参数。官方可能在退出后仍有独立历史凭据，
+  Cumulus 的主动退出则继续清除该会话凭据；未新增任何秘密副本，也不承诺
+  已主动退出的同一账号还能快捷登录。普通本机切换保存另一账号有效凭据不变。
+
+生产行为
+- 原生查询 POST /api/rtrs/abt/front/expinfo/list
+  {expNames:"PH-PC-quickLoginSwitchAccountNew"}；缺失、冲突和失败不开放入口。
+  设置和选择器只收到 assigned、enabled 和不透明版本。执行服务端资格、快捷
+  登录或切换之前原生再查；未分组不构造快捷历史、不发资格或交换请求。
+- 启用前核对当前原生会话与选中的保存账号；POST /api/w/v1/user/bindings/{uid}
+  {userId} 后并行 POST /api/w/v1/user/detail/{uid} {all:true,userId}、
+  /api/music-vip-membership/client/vip/info {userId}、
+  /api/authentication/identity/user/all {userId}。失败保留原开关，允许明确重试；
+  不照搬官方资料页面的自动重试/全局 VIP 更新。切号立即取消旧资料读取并拒绝写入。
+- 只在安装级 SQLite 保存该 UID 的独立许可和历史资料投影（昵称、已去查询
+  的头像地址、头像 ID、用户类型、经绑定取得的手机字段）；关闭清除这些投影。
+  Cookie、RT、完整绑定原文不进入新记录或 IPC。启动自动登录、现有保存账号、
+  正在使用的会话以及播放不改。主动移除保存账号时清除对应许可。
+- 旧 Cumulus 没有显式许可的保存账号默认为关闭，避免把普通登录当作发送历史
+  凭据的同意。仍可本机恢复；当前已授权历史按现有最多三条有界排序规则构造，
+  启用设置本身不查资格。缺可用的原作用域凭据时不发送此条。未迁移官方自动
+  促销气泡、特殊切换自动开启和独立的退出后快捷凭据。
+- 开关采用账号代次、当前记录、凭据版本和本地许可版本防止错配；资格或交换
+  在途期间不会同时提交相冲突的开关。准备好的旧历史和目标在再次发送/采用前
+  检查许可版本。设置回包不明只回读，不重发；服务端登录现有未决恢复保持只读。
+
+验证（2026-11-05）
+- Rust quick_login_eligibility 和 client_auth 共 49 项；新增控制组/歧义、
+  默认关闭、启用字段与清除、本机记录及原凭据不变、重开回读、切号取消。
+- 隔离 Linux GTK/WebKitGTK 运行 account_login_smoke.py：设置及账号 36 态、
+  36 图；--quick-login 7 态；--active-switch 8 态。核对关闭状态仍能显式
+  本机恢复，实际登录与切换使用显式许可、合成凭据、无真实请求或账号变更。
+  Windows 尚待 CI 独立运行。证据 .build/ui-proof/quick-login-offer-e6f44918/。

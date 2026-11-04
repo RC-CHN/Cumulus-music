@@ -217,6 +217,17 @@
     await wait(() => !one("dialog"), "login closed");
     await settle();
   }
+  async function enrollQuickOffer() {
+    await mode("quick_offer");
+    const { epoch } = await invoke("account_snapshot");
+    const { value } = await invoke("quick_login_access", { epoch });
+    assert(value.assigned && value.offer && !value.offer.enabled, "ordinary login is not enrolled");
+    const saved = await invoke("set_quick_login_offer", {
+      epoch, enabled: true, expectedRevision: value.offer.revision,
+    });
+    assert(saved.value.enabled, "explicit offer saved");
+    await mode("normal");
+  }
   async function logged(name = "邮箱验证账号") {
     await wait(
       () =>
@@ -484,6 +495,7 @@
     await open();
     await email();
     await logged(target);
+    await enrollQuickOffer();
     await chooser();
     click(button("＋ 添加账号"));
     await wait(() => one(".login-methods"), "second synthetic account");
@@ -501,7 +513,9 @@
       click(one('[aria-label="同意登录协议"]'));
     click(one(".login-submit"));
     await logged(source);
+    await enrollQuickOffer();
     await chooser();
+    await wait(() => eligibility() === "idle", "assigned active picker");
     assert(eligibility() === "idle" && !test("active-server-switch-open"), "picker did not query eligibility on entry");
     await stage("active_switch_idle_light", { expectNickname: source });
 
@@ -563,8 +577,10 @@
     await open();
     await email();
     await logged(expectNickname);
+    await enrollQuickOffer();
     await mode("quick_eligibility");
     await chooser();
+    await wait(() => eligibility() === "idle", "assigned picker");
     assert(eligibility() === "idle", "authenticated picker did not check automatically");
     await check();
     assert(!test("server-quick-login-open"), "authenticated picker has no server switch");
@@ -1046,6 +1062,42 @@
     await wait(() => !one("dialog"), "chooser closed");
     await settle();
     await stage("account_closed_dark", { expectNickname: "邮箱验证账号" });
+    await mode("quick_offer_control");
+    click(button("打开设置"));
+    await wait(() => one("#settings-account"), "settings account exists");
+    const offer = () => one('[data-testid="quick-login-offer"]');
+    const offerBox = () => offer()?.querySelector("input");
+    async function showOffer() {
+      await wait(offerBox, "assigned account sees quick-login offer");
+      offerBox().scrollIntoView({ block: "center" });
+      offerBox().focus();
+      await settle();
+    }
+    await sleep(400);
+    assert(!offer(), "control cohort has no offer");
+    await mode("quick_offer");
+    click(button("返回上一页"));
+    await wait(() => !one("#settings-account"), "control settings closed");
+    click(button("打开设置"));
+    await showOffer();
+    assert(!offerBox().checked && !button("切换账号列表 ›"), "ordinary QR did not enroll");
+    await stage("quick_offer_off_dark", { expectNickname: "邮箱验证账号" });
+    click(offerBox());
+    await wait(() => offerBox()?.checked && offerBox().getAttribute("aria-disabled") === "false",
+      "offer explicitly enabled");
+    await stage("quick_offer_on_dark", { expectNickname: "邮箱验证账号" });
+    click(button("切换账号列表 ›"));
+    await wait(() => one(".account-dialog") && one('[data-testid="quick-login-eligibility-check"]'),
+      "enabled offer opens the account list");
+    click(button("关闭账号窗口"));
+    await wait(() => !one("dialog"), "account list returns to Settings");
+    await showOffer();
+    click(offerBox());
+    await wait(() => !offerBox()?.checked && offerBox().getAttribute("aria-disabled") === "false",
+      "offer explicitly disabled");
+    await stage("quick_offer_disabled_dark", { expectNickname: "邮箱验证账号" });
+    click(button("返回上一页"));
+    await wait(() => !one("#settings-account"), "settings closed");
     await mode("qr_error");
     await chooser();
     click(button("＋ 添加账号"));

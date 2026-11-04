@@ -55,6 +55,18 @@ const activeSwitch = useServerQuickLogin(
 const exchange = computed(() => (quickTarget.value?.mode === 'active' ? activeSwitch : quickLogin));
 const cancellingQuick = computed(() => exchange.value.cancelling.value);
 const { view: eligibility, state: eligibilityState, busy: checkingEligibility } = quick;
+const quickAssigned = ref(false);
+async function loadQuickAssignment() {
+  try {
+    const reply = await core.quickLoginAccess(epoch);
+    if (alive && props.account.epoch === epoch && reply.epoch === epoch)
+      quickAssigned.value =
+        reply.value.assigned && (!activeEpoch() || reply.value.offer?.enabled === true);
+  } catch {
+    // Closed gate leaves the local account list usable.
+  }
+}
+onMounted(() => void loadQuickAssignment());
 const quickRows = computed(() => {
   const rows = eligibility.value?.accounts ?? [];
   const names = new Map(accounts.value.map((item) => [item.id, item.nickname]));
@@ -333,6 +345,7 @@ onBeforeUnmount(deactivate);
         </div>
       </div>
       <section
+        v-if="quickAssigned"
         class="account-quick-eligibility"
         data-testid="quick-login-eligibility"
         :data-quick-eligibility-state="eligibilityState"

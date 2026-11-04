@@ -218,6 +218,9 @@ export function createTauriClient(): CoreClient {
     loginCommand: (operationId, command) => invoke('login_command', { operationId, command }),
     cancelLogin: (operationId) => invoke('cancel_login', { operationId }),
     savedAccounts: (epoch) => invoke('saved_accounts', { epoch }),
+    quickLoginAccess: (epoch) => invoke('quick_login_access', { epoch }),
+    setQuickLoginOffer: (epoch, enabled, expectedRevision) =>
+      invoke('set_quick_login_offer', { epoch, enabled, expectedRevision }),
     quickLoginEligibility: (epoch) => invoke('quick_login_eligibility', { epoch }),
     beginServerQuickLogin: (epoch, savedId, consent) =>
       invoke('begin_server_quick_login', { epoch, savedId, consent }),
