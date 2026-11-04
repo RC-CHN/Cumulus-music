@@ -14,6 +14,10 @@ fn actions_enabled() -> bool {
     std::env::var_os("CUMULUS_ORDINARY_ESSENTIAL_ACTIONS_PROOF").is_some()
 }
 
+fn voice_actions_enabled() -> bool {
+    std::env::var_os("CUMULUS_ORDINARY_ESSENTIAL_VOICE_ACTIONS_PROOF").is_some()
+}
+
 pub struct Library {
     base: Arc<dyn Api>,
     settings: Mutex<(u64, String)>,
@@ -77,8 +81,16 @@ fn action_playlist(id: u64, preview: bool) -> Value {
     result
 }
 
+fn voice_media_id(id: u64) -> u64 {
+    if voice_actions_enabled() && id == 701 {
+        2 // The selected catalog song and the episode share a backing media ID.
+    } else {
+        id + 1000
+    }
+}
+
 fn voice(id: u64, radio: u64) -> Value {
-    json!({"id":id,"name":format!("合成声音 {id}"),"duration":25000,"mainSong":{"id":id+1000,"name":format!("合成声音 {id}"),"duration":25000},
+    json!({"id":id,"name":format!("合成声音 {id}"),"duration":25000,"mainSong":{"id":voice_media_id(id),"name":format!("合成声音 {id}"),"duration":25000},
         "radio":{"id":radio,"name":format!("合成播单 {radio}"),"programCount":2},"dj":{"brand":format!("合成播单 {radio}")}})
 }
 
@@ -116,6 +128,21 @@ impl Api for Library {
                 if path == "/api/v6/playlist/detail" && mode == "detail-down" {
                     return Err(Error::Transport("synthetic playlist read failure".into()));
                 }
+            }
+            if voice_actions_enabled()
+                && matches!(
+                    path,
+                    "/api/dj/program/detail"
+                        | "/api/dj/play/url/check"
+                        | "/api/dj/around/program/v1"
+                        | "/api/v6/dj/program/byradio"
+                        | "/api/song/enhance/player/url/v1"
+                )
+            {
+                self.reads
+                    .lock()
+                    .unwrap()
+                    .push(json!({"owner":owner,"mode":mode,"path":path,"args":args}));
             }
             Ok(match path {
                 "/api/w/nuser/account/get" if owner == 0 => json!({"code":200,"profile":null}),
@@ -196,7 +223,7 @@ impl Api for Library {
                     json!({"code":200,"program":voice(number(&args["id"]),600)})
                 }
                 "/api/dj/play/url/check" => {
-                    json!({"code":200,"data":{"voiceId":args["voiceId"],"songId":number(&args["voiceId"])+1000,"canPlay":true}})
+                    json!({"code":200,"data":{"voiceId":args["voiceId"],"songId":voice_media_id(number(&args["voiceId"])),"canPlay":true}})
                 }
                 "/api/djradio/get/subed" => {
                     json!({"code":200,"djRadios":[],"count":0,"hasMore":false})

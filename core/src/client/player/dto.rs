@@ -402,6 +402,10 @@ pub enum PlayerAction {
         quality: Quality,
         expected_queue_revision: String,
     },
+    QueueVoice {
+        id: String,
+        expected_queue_revision: String,
+    },
     QueueDailyRecommendations {
         revision: String,
         #[serde(default)]

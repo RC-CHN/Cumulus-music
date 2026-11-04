@@ -58,6 +58,33 @@
   .build/ui-proof/choice-card-actions-7f937185/verified/。没有真实账号变更、下载、
   声卡或 Windows 实机证据。
 
+热门播客的单集菜单与下载
+- PageEssential.tsx:334–375 使用 HotVoiceCard；HotVoiceCard.tsx:90–112 传
+  needFetchAudio=true，VoiceCard/index.jsx:192–247,286–349 保留单集 ID、
+  assignedPlayId、pldScene=audio，支持右键和悬停的「更多」「下载」。
+  M/622:1184–1320 给普通单集提供「播放」「下一首播放」及未完成下载项。
+- M/3085:124–136,196–206,309–311,399–411,564–585 区分菜单与普通播放：
+  菜单的 nextPlay 只传当前单集 [P]，不读取相邻节目，不补全整个播客；
+  没有当前项时转为播放。Rust queue_voice 先检查账号、队列版本、播放模式，
+  然后用 /api/dj/program/detail {id} 验证单集身份和媒体 ID。保留当前播放和
+  已有顺序，把单集插到下一位；按 voice_id 判同一单集，同媒体 ID 的歌曲
+  仍独立保留。现有播放器可预取下一项；单集权益检查 /api/dj/play/url/check
+  {voiceId} 和音源请求 /api/song/enhance/player/url/v1 不扩展到其他单集。
+- 菜单和悬停下载检查同账号本地单集状态；已下载不再提供菜单下载，排队中
+  或下载中不创建第二项。这里使用 Cumulus 现有的单集确认窗作为额外确认；
+  只在「开始下载」后才提交 start_voice，传单集 ID 而非媒体 ID。取消返回
+  原控件并保留播放，不提交任务。
+- 封面和双击沿用只播选中单集的行为；官方菜单「播放」可读取相邻单集并
+  后台补全，因此本次没有把该菜单项接到现有封面动作。菜单的评论计数/评论、
+  私信分享、复制及已下载文件定位也未迁移。没有真实下载或声卡听感证据。
+- 2026-11-05，catalog_smoke.py --ordinary-essential-voice-actions 在隔离
+  Linux GTK/WebKitGTK 通过 6 态、6 图：键盘/右键/更多定位、同媒体编号
+  的歌曲和播客独立入队、重复不增项、保留原曲暂停和进度、两种下载入口
+  取消恢复焦点、下一首实际播放，以及空队列直接播放单集。libmpv 使用
+  null 输出，LC_NUMERIC=C，界面 locale 保持 en_US.UTF-8。既有精选 11 态
+  和歌单菜单 9 态回归也通过。没有真实请求或下载任务；Windows 待独立验证。
+  .build/ui-proof/choice-voice-actions-352cfde9/final/。
+
 请求、分区错误和缓存
 - M/3145:12–116,222–321 对相同 host.uid 并发请求以下四个读取（M/15）：
   /api/playlist/category/list

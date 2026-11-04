@@ -405,6 +405,7 @@ export type PlayerAction =
     }
   | { kind: 'queue_downloads'; task_ids: string[]; expected_queue_revision: string }
   | { kind: 'queue_playlist'; id: string; quality: Quality; expected_queue_revision: string }
+  | { kind: 'queue_voice'; id: string; expected_queue_revision: string }
   | {
       kind: 'queue_style_recommendations';
       revision: string;

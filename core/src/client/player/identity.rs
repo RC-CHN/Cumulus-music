@@ -27,6 +27,7 @@ pub(super) fn collection_key(
         (false, PlayerResourceKind::Catalog) => "id",
         (false, PlayerResourceKind::Local) => "local_id",
         (false, PlayerResourceKind::Cloud) => "cloud_song_id",
+        (false, PlayerResourceKind::Voice) => "voice_id",
         _ => return None,
     };
     resource[field].as_str().map(|id| (kind, id))

@@ -378,6 +378,9 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
+  function queueVoice(id: string) {
+    return queueAction({ kind: 'queue_voice', id });
+  }
   function queueLocal(query: LocalQuery, revision: string, trackId?: string) {
     return queueAction({ kind: 'queue_local', query, revision, track_id: trackId });
   }
@@ -461,6 +464,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_downloads'
             | 'queue_local'
             | 'queue_playlist'
+            | 'queue_voice'
             | 'queue_daily_recommendations'
             | 'queue_style_recommendations'
             | 'queue_playlist_batch'
@@ -1054,6 +1058,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   return {
     queuePlaylist,
+    queueVoice,
     queueLocal,
     dropIntoQueue,
     queueAlbum,

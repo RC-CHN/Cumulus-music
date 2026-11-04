@@ -56,6 +56,9 @@ pub(super) enum QueueCollection {
         quality: Quality,
         selection: Option<(Vec<String>, String)>,
     },
+    Voice {
+        id: String,
+    },
     Downloads(Vec<String>),
     Local {
         query: crate::library::catalog::LocalQuery,
@@ -238,7 +241,8 @@ impl MusicClient {
         let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
         let album_batch = matches!(collection, QueueCollection::AlbumBatch { .. });
         let artist_favor = matches!(collection, QueueCollection::ArtistFavor { .. });
-        let ordinary = daily || style || local || artist || album_batch || artist_favor;
+        let voice = matches!(collection, QueueCollection::Voice { .. });
+        let ordinary = daily || style || local || artist || album_batch || artist_favor || voice;
         let special_queue = if daily {
             "daily recommendations require ordinary playback"
         } else if style {
@@ -247,6 +251,8 @@ impl MusicClient {
             "artist songs require ordinary playback"
         } else if album_batch {
             "album batch requires ordinary playback"
+        } else if voice {
+            "voice next requires ordinary playback"
         } else {
             "local queue requires ordinary playback"
         };
@@ -276,6 +282,15 @@ impl MusicClient {
             }
             _ => (None, None),
         };
+        if let QueueCollection::Voice { id } = &collection {
+            self.session.with_token(&token, |_| Ok(()))?;
+            if queue.selected().is_some_and(|entry| {
+                resource_key(&entry.resource, false)
+                    == Some((PlayerResourceKind::Voice, id.as_str()))
+            }) {
+                return project(&before, &token);
+            }
+        }
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let (resources, source, downloaded) = match collection {
@@ -465,6 +480,28 @@ impl MusicClient {
                     return Err(Error::State("playlist has no online tracks"));
                 }
                 (resources, json!({"kind":"playlist","id":id}), false)
+            }
+            QueueCollection::Voice { id } => {
+                // M3085: a context-menu next action uses just the selected
+                // program, even when the card requests the surrounding audio.
+                let id = identifier(&json!(id))?;
+                let resource = self
+                    .session
+                    .run_for(&token, |api, _| async {
+                        let episode = crate::podcast::PodcastApi::new(api)
+                            .episode(&json!(id))
+                            .await?;
+                        let mut resource = episode.playback_resource()?;
+                        resource["song"] = episode.download_metadata()?;
+                        resource["level"] = json!("standard");
+                        Ok(resource)
+                    })
+                    .await?;
+                (
+                    vec![resource],
+                    json!({"kind":"voice","id":id,"pldScene":"audio"}),
+                    false,
+                )
             }
             QueueCollection::Downloads(ids) => (
                 self.download_resources(epoch, ids).await?,

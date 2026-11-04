@@ -19,12 +19,16 @@ import type {
 import Icon from './Icon.vue';
 import ActionMenu from './ActionMenu.vue';
 import type { MenuItem } from '../services/menu';
+import type { SongDownloadState } from '../services/downloads';
 
 const props = defineProps<{
   model: OrdinaryEssentialModel;
   authenticated: boolean;
   playable: boolean;
   playlistItems: (card: EssentialCard) => MenuItem[];
+  voiceQueueable: boolean;
+  voiceFeedback: string;
+  voiceDownloadState: (card: EssentialCard) => Promise<SongDownloadState>;
   playing: boolean;
   track?: string;
   playlist?: string;
@@ -37,47 +41,82 @@ const emit = defineEmits<{
   open: [rail: EssentialRail, card: EssentialCard];
   play: [rail: EssentialRail, card: EssentialCard, ids: string[]];
   playlistAction: [card: EssentialCard, key: string];
+  voiceAction: [card: EssentialCard, key: 'next' | 'download', anchor: HTMLElement];
 }>();
 const { data, category, loading, changing, error, categoryError, viewport, online } = props.model;
 const root = ref<HTMLElement>();
-const playlistMenu = ref<InstanceType<typeof ActionMenu>>();
-const menuTarget = shallowRef<{ card: EssentialCard; anchor: HTMLButtonElement }>();
-const menuItems = computed(() =>
-  menuTarget.value ? props.playlistItems(menuTarget.value.card) : [],
-);
-function playlistContext(
+const actionMenu = ref<InstanceType<typeof ActionMenu>>();
+const menuTarget = shallowRef<{
+  card: EssentialCard;
+  rail: 'playlists' | 'voices';
+  anchor: HTMLButtonElement;
+}>();
+const downloadState = ref<SongDownloadState>();
+const menuItems = computed<MenuItem[]>(() => {
+  const target = menuTarget.value;
+  if (!target) return [];
+  if (target.rail === 'playlists') return props.playlistItems(target.card);
+  return [
+    { key: 'next', label: '下一首播放', disabled: !props.voiceQueueable },
+    ...(downloadState.value === 'complete'
+      ? []
+      : [{ key: 'download', label: '下载', icon: 'download' }]),
+  ];
+});
+function cardContext(
   event: MouseEvent | KeyboardEvent,
   rail: EssentialRail,
   card: EssentialCard,
+  more = false,
 ) {
   if (
-    rail !== 'playlists' ||
+    (rail !== 'playlists' && rail !== 'voices') ||
     (event instanceof KeyboardEvent &&
       event.key !== 'ContextMenu' &&
       !(event.key === 'F10' && event.shiftKey))
   )
     return;
   const row = event.currentTarget as HTMLElement;
-  const anchor =
-    (event.target instanceof Element &&
-      event.target.closest<HTMLButtonElement>('button:not(:disabled)')) ||
-    row.querySelector<HTMLButtonElement>('.essential-card-title');
+  const anchor = more
+    ? (row as HTMLButtonElement)
+    : (event.target instanceof Element &&
+        event.target.closest<HTMLButtonElement>('button:not(:disabled)')) ||
+      row.querySelector<HTMLButtonElement>(
+        rail === 'voices' ? '.essential-voice-more' : '.essential-card-title',
+      );
   if (!anchor) return;
   event.preventDefault();
   event.stopPropagation();
-  menuTarget.value = { card, anchor };
+  const target = { card, anchor, rail } as const;
+  menuTarget.value = target;
+  downloadState.value = undefined;
+  if (rail === 'voices') {
+    void props.voiceDownloadState(card).then(
+      (state) => {
+        if (menuTarget.value === target) downloadState.value = state;
+      },
+      () => {}, // The explicit action can retry the local status lookup.
+    );
+  }
   const rect = anchor.getBoundingClientRect();
-  const pointer = event instanceof MouseEvent && (event.clientX || event.clientY);
-  void playlistMenu.value?.showAt(
+  const pointer = !more && event instanceof MouseEvent && (event.clientX || event.clientY);
+  void actionMenu.value?.showAt(
     pointer ? event.clientX : rect.left + rect.width / 2,
-    pointer ? event.clientY : rect.top + rect.height / 2,
+    pointer ? event.clientY : more ? rect.bottom : rect.top + rect.height / 2,
     anchor,
   );
 }
 function menuAction(key: string) {
   const current = menuTarget.value;
   if (!current?.anchor.isConnected || current.anchor.closest('.page-leave-active')) return;
-  emit('playlistAction', current.card, key);
+  if (current.rail === 'playlists') emit('playlistAction', current.card, key);
+  else if (key === 'next' || key === 'download')
+    emit('voiceAction', current.card, key, current.anchor);
+}
+function directVoiceDownload(event: MouseEvent, card: EssentialCard) {
+  const anchor = event.currentTarget as HTMLButtonElement;
+  anchor.focus({ preventScroll: true });
+  emit('voiceAction', card, 'download', anchor);
 }
 function activatePlaylist(event: MouseEvent, rail: EssentialRail, card: EssentialCard) {
   if (rail !== 'playlists' || !(event.target instanceof Element) || event.target.closest('button'))
@@ -334,8 +373,8 @@ defineExpose({ restore });
             class="essential-card"
             :data-essential-card="`${rail.kind}:${card.id}`"
             @click="activatePlaylist($event, rail.kind, card)"
-            @contextmenu="playlistContext($event, rail.kind, card)"
-            @keydown="playlistContext($event, rail.kind, card)"
+            @contextmenu="cardContext($event, rail.kind, card)"
+            @keydown="cardContext($event, rail.kind, card)"
             @dblclick="(rail.kind === 'songs' || rail.kind === 'voices') && play(rail, card)"
           >
             <div class="essential-artwork">
@@ -390,14 +429,42 @@ defineExpose({ restore });
                 <template v-else>{{ card.subtitle }}</template>
               </small>
             </div>
+            <div v-if="rail.kind === 'voices'" class="essential-voice-actions">
+              <button
+                type="button"
+                :aria-label="`下载${card.title}`"
+                :data-essential-focus="`voices:${card.id}:download`"
+                @click.stop="directVoiceDownload($event, card)"
+                @dblclick.stop
+              >
+                <Icon name="download" />
+              </button>
+              <button
+                class="essential-voice-more"
+                type="button"
+                :aria-label="`${card.title}的更多操作`"
+                :data-essential-focus="`voices:${card.id}:menu`"
+                aria-haspopup="menu"
+                aria-expanded="false"
+                @click.stop="cardContext($event, rail.kind, card, true)"
+                @dblclick.stop
+              >
+                <Icon name="more" />
+              </button>
+            </div>
           </article>
         </div>
       </div>
     </section>
+    <Transition name="notice">
+      <div v-if="voiceFeedback" class="essential-voice-feedback" role="status">
+        {{ voiceFeedback }}
+      </div>
+    </Transition>
     <ActionMenu
-      ref="playlistMenu"
+      ref="actionMenu"
       context-only
-      :label="`歌单操作：${menuTarget?.card.title ?? ''}`"
+      :label="`${menuTarget?.rail === 'voices' ? '播客' : '歌单'}操作：${menuTarget?.card.title ?? ''}`"
       :items="menuItems"
       @select="menuAction"
     />
@@ -545,6 +612,43 @@ select {
 .essential-play svg {
   width: 16px;
   height: 16px;
+}
+.essential-voice-feedback {
+  position: fixed;
+  bottom: 108px;
+  left: 50%;
+  z-index: 2;
+  max-width: calc(100vw - 40px);
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+.essential-voice-actions {
+  display: flex;
+  flex: none;
+  gap: 3px;
+  margin-inline-start: auto;
+  opacity: 0;
+}
+.essential-card:hover .essential-voice-actions,
+.essential-card:focus-within .essential-voice-actions,
+.essential-voice-actions:has([aria-expanded='true']) {
+  opacity: 1;
+}
+.essential-voice-actions button {
+  display: grid;
+  width: 26px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+}
+.essential-voice-actions svg {
+  width: 17px;
+  height: 17px;
 }
 .essential-labels {
   min-width: 0;

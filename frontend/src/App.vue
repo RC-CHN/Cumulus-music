@@ -313,6 +313,66 @@ function choicePlaylistAction(card: EssentialCard, key: string) {
     playlistActions.value?.show(list, key);
   }
 }
+const choiceVoiceQueueable = computed(
+  () =>
+    searchCollectionQueueable.value &&
+    !player.view.value?.intelligence &&
+    !together.view.value?.attached,
+);
+function choiceVoiceDownloadState(card: EssentialCard) {
+  return core.voiceDownloadState(music.account.value.epoch, card.id);
+}
+const choiceVoiceFeedback = ref('');
+let choiceVoiceDownloadRequest = 0;
+watch([music.page, () => music.account.value.epoch], () => {
+  choiceVoiceFeedback.value = '';
+  choiceVoiceDownloadRequest++;
+});
+async function choiceVoiceAction(
+  card: EssentialCard,
+  key: 'next' | 'download',
+  anchor: HTMLElement,
+) {
+  const route = music.page.value;
+  const epoch = music.account.value.epoch;
+  if (route.kind !== 'ordinary_essential' || !music.signedIn.value) return;
+  const current = () => music.page.value === route && music.account.value.epoch === epoch;
+  const attempt = ++choiceVoiceDownloadRequest;
+  choiceVoiceFeedback.value = '';
+  try {
+    if (key === 'next') {
+      if (!choiceVoiceQueueable.value) return;
+      const previous = player.view.value;
+      const next = await player.queueVoice(card.id);
+      if (
+        current() &&
+        attempt === choiceVoiceDownloadRequest &&
+        previous?.queueLen &&
+        next &&
+        next.queueRevision !== previous.queueRevision
+      )
+        choiceVoiceFeedback.value = '已添加至播放列表';
+      return;
+    }
+    if (downloadDialog.value) return;
+    const state = await core.voiceDownloadState(epoch, card.id);
+    if (
+      !current() ||
+      attempt !== choiceVoiceDownloadRequest ||
+      downloadDialog.value ||
+      document.activeElement !== anchor ||
+      !anchor.isConnected
+    )
+      return;
+    if (state === 'complete') choiceVoiceFeedback.value = '该单集已下载';
+    else if (state === 'waiting' || state === 'working')
+      choiceVoiceFeedback.value = '该单集正在下载';
+    else downloadDialog.value = { kind: 'voice', tracks: [{ id: card.id, name: card.title }] };
+  } catch (error) {
+    if (current() && attempt === choiceVoiceDownloadRequest)
+      choiceVoiceFeedback.value = failure(error).message;
+  }
+}
 function playEssential(rail: EssentialRail, card: EssentialCard, ids: string[]) {
   if (
     music.page.value.kind !== 'ordinary_essential' ||
@@ -3645,6 +3705,9 @@ onUnmounted(() => {
                 :authenticated="signedIn"
                 :playable="player.ready.value && !player.busy.value"
                 :playlist-items="choicePlaylistMenu"
+                :voice-queueable="choiceVoiceQueueable"
+                :voice-download-state="choiceVoiceDownloadState"
+                :voice-feedback="choiceVoiceFeedback"
                 :playing="player.playing.value"
                 :track="currentVoiceId ? undefined : currentTrackId"
                 :playlist="currentPlaylistId"
@@ -3655,6 +3718,7 @@ onUnmounted(() => {
                 @open="openEssentialCard"
                 @play="playEssential"
                 @playlist-action="choicePlaylistAction"
+                @voice-action="choiceVoiceAction"
               />
               <AccountWelcome
                 v-else-if="!signedIn"

@@ -575,6 +575,19 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueVoice {
+            id,
+            expected_queue_revision,
+        } = action
+        {
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::Voice { id },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueDailyRecommendations {
             revision,
             indices,
@@ -1113,6 +1126,7 @@ impl MusicClient {
             PlayerAction::NextPlay { .. }
             | PlayerAction::SearchNextPlay { .. }
             | PlayerAction::QueuePlaylist { .. }
+            | PlayerAction::QueueVoice { .. }
             | PlayerAction::QueueAlbum { .. }
             | PlayerAction::QueueAlbumBatch { .. }
             | PlayerAction::QueueDailyRecommendations { .. }

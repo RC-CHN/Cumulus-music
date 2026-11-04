@@ -79,6 +79,7 @@ def main():
     mode.add_argument('--latest-releases', action='store_true')
     mode.add_argument('--ordinary-essential', action='store_true')
     mode.add_argument('--ordinary-essential-actions', action='store_true')
+    mode.add_argument('--ordinary-essential-voice-actions', action='store_true')
     mode.add_argument('--layout', action='store_true', help='long content, artwork and comment scrolling')
     mode.add_argument('--collections', action='store_true')
     mode.add_argument('--history', action='store_true')
@@ -114,11 +115,16 @@ def main():
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
         source = 'album_batch_ui_probe.js' if args.album_batch else 'album_ui_probe.js'
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
-    if args.ordinary_essential or args.ordinary_essential_actions:
+    if args.ordinary_essential or args.ordinary_essential_actions or args.ordinary_essential_voice_actions:
         env['CUMULUS_ORDINARY_ESSENTIAL_PROOF'] = '1'
-        source = 'ordinary_essential_actions_ui_probe.js' if args.ordinary_essential_actions else 'ordinary_essential_ui_probe.js'
-        if args.ordinary_essential_actions:
+        if args.ordinary_essential_voice_actions:
+            env['CUMULUS_ORDINARY_ESSENTIAL_VOICE_ACTIONS_PROOF'] = '1'
+            source = 'ordinary_essential_voice_actions_ui_probe.js'
+        elif args.ordinary_essential_actions:
             env['CUMULUS_ORDINARY_ESSENTIAL_ACTIONS_PROOF'] = '1'
+            source = 'ordinary_essential_actions_ui_probe.js'
+        else:
+            source = 'ordinary_essential_ui_probe.js'
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
@@ -182,6 +188,41 @@ def main():
                       nativeVideoVerified=True, realMusicRequests=0, realAccountWrites=0, artistMvCalls=calls)
         (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))
+        return
+    if args.ordinary_essential_voice_actions:
+        assert complete['ok'] and complete['downloads'] == 0
+        assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        names = ('context_menu', 'native_next', 'download_menu', 'download_direct', 'native_voice', 'empty_next')
+        assert complete['states'] == list(names)
+        assert not args.screenshots or captures == len(names)
+        states = {name: json.loads((output / f'ux_{name}.json').read_text(encoding='utf-8'))
+                  for name in names}
+        before_play = states['native_next']['essentialReads']
+        details = [call['args'] for call in before_play if call['path'] == '/api/dj/program/detail']
+        assert len(details) >= 2 and all(args == {'id': '701'} for args in details), details
+        # The shared player may prefetch the next entry after the queue commits;
+        # it must never check another program as part of this card operation.
+        assert all(call['args'] == {'voiceId': '701'} for call in before_play if call['path'] == '/api/dj/play/url/check')
+        reads = complete['essentialReads']
+        assert not any(call['path'] in ('/api/dj/around/program/v1', '/api/v6/dj/program/byradio') for call in reads)
+        assert list(dict.fromkeys(call['args']['voiceId'] for call in reads if call['path'] == '/api/dj/play/url/check')) == ['701', '702']
+        for name, voice_id, media_id in [('native_voice', '701', '2'), ('empty_next', '702', '1702')]:
+            played = states[name]['nativePlayer']
+            assert played['state'] == 'playing' and played['track']['voiceId'] == voice_id
+            assert played['track']['id'] == media_id and played['position'] > .2
+        assert states['empty_next']['nativePlayer']['queueLen'] == 1
+        if (output / 'locale.json').is_file():
+            import locale
+            observed = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
+            assert observed['numeric'] == 'C'
+            expected = locale.normalize(os.environ.get('LC_ALL', ''))
+            if expected.lower().startswith('en_us.'):
+                assert observed['messages'] == observed['characters'] == 'en_US.UTF-8', observed
+        report = dict(ok=True, actualWebView=True, nativeNullPlaybackVerified=True,
+                      preservedCatalogMediaCollision=True, states=len(names), screenshots=captures,
+                      realMusicRequests=0, realAccountWrites=0, downloadCommands=0)
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
         return
     if args.ordinary_essential_actions:
         assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
