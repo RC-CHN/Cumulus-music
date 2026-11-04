@@ -87,4 +87,7 @@
 - [普通精选](ordinary-essential-contracts.txt)使用独立的官方歌单、最新音乐、精选有声书和热门播客，保留滚动和焦点；匿名注册、广告和实验排版分开。
 - [自动启动窗口模式](window-startup-mode-contracts.txt)支持前台或留在托盘，托盘缺失会显示窗口；这个模式与系统注册、文件关联不同。
 - [本地旁挂歌词](core-lyrics-contracts.txt)按原生路径顺序读取，Windows 的真实运行仍需验收。[淡入淡出](playback-fade-mute-contracts.txt)有官方 DLL 的离线数值对照；生产后端没有 DirectSound，未启用该设置。
+- [系统开机启动](desktop-autostart-contracts.txt)读取当前用户实际注册状态，仅在明确操作时写本机并回读；默认文件关联独立。
+- [本地拖入队列](queue-drop-contracts.txt)按落点插入或移动重复条目，保留当前解码和时间线；不接外部文件或链接。
+- [搜索热点卡](search-results-ui-contracts.txt)接通歌曲和播客单集；封面控制音频、详情入口返回原搜索位置，未经确认的链接仍不打开。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。

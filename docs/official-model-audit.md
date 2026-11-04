@@ -6,7 +6,7 @@
 当作独立功能数或通过数。来源是本机研究材料
 `references/recovered-client/docs/product/model-index.txt`，不随产品发布。
 该索引 SHA-256 为 `a3503d83e74d8625403737e9ceaa998962c045358630c0f0a0f5ad15e0dd18f9`。
-本表基线为待集成产品树 `78c6be65`；总体流程及验证层级见
+本表基线为产品树 `7f937185`；总体流程及验证层级见
 [桌面验收矩阵](desktop-feature-matrix.md)。
 
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
@@ -94,11 +94,11 @@
 | `page:playlist` (29) | `models/page_playlist.txt` | [已接入口](playlist-detail-ui-contracts.txt) | 详情、分页、播放和管理；作者/分享等分支另验。 |
 | `page:playlistsquare` (18) | `models/page_playlistsquare.txt` | [已接入口](playlist-detail-ui-contracts.txt) | 广场、普通分类与精品独立游标。 |
 | `page:ranklist` (4) | `models/page_ranklist.txt` | [已接入口](rankings-ui-contracts.txt) | 榜单首页和各已核对入口。 |
-| `page:searchResults` (20) | `models/page_searchResults.txt` | [已接入口](search-results-ui-contracts.txt) | 分类、综合、分页、结果投影；特殊资源和实验另列。 |
+| `page:searchResults` (20) | `models/page_searchResults.txt` | [已接入口](search-results-ui-contracts.txt) | 分类、综合、分页、结果投影及热点歌/单集播放；其他特殊资源和实验另列。 |
 | `page:setting` (0) | `models/page_setting.txt` | [已接入口](settings-mapping.json) | 独立子项证据；页面存在不等于所有设置已实现。 |
 | `page:settingAbout` (1) | `models/page_settingAbout.txt` | [部分](settings-support-contracts.txt) | 本机诊断与版本；无官方客服和自动日志上传。 |
 | `page:settingAccount` (1) | `models/page_settingAccount.txt` | [已接入口](account-feature-audit.txt) | 账号资料、登录设备和绑定摘要；各真实写操作分开。 |
-| `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](window-startup-mode-contracts.txt) | 自动启动窗口形态已接；OS 注册、默认关联仍独立。 |
+| `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](desktop-autostart-contracts.txt) | 启动窗口形态及本机注册已接；默认关联仍独立。 |
 | `page:settingPrivacy` (3) | `models/page_settingPrivacy.txt` | [已接入口](account-settings-contracts.txt) | 六项远端设置、联动与回读；系统唤起交接另验。 |
 | `page:singleIndexList` (2) | `models/page_singleIndexList.txt` | [已接入口](rankings-ui-contracts.txt) | 歌曲指数榜独立于普通歌单。 |
 | `page:sns` (2) | `models/page_sns.txt` | [仅恢复](sns-login-recovery.txt) | 微信、QQ、微博授权宿主没有正式实现。 |
@@ -114,7 +114,7 @@
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
 | `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、列表与移除；未对真实用户设备执行删除。 |
 | `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；不同媒体/实验按各自证据。 |
-| `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作及独立入口；同步、特殊列表不通算。 |
+| `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作与本地单行拖入；同步、特殊队列和其他来源另验。 |
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | 设置逐项证据，系统相关和音效部分未完成。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |
 | `window:moveDownload` (3) | `models/window_moveDownload.txt` | [已接入口](core-download-directory-contracts.txt) | 任务锁定、搬移及恢复；平台文件系统故障另验。 |
