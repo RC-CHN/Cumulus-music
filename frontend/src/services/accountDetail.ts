@@ -1,3 +1,4 @@
+import type { AccountBindingsView } from './accountBindings';
 import type { AccountData } from './contracts';
 import regions from '../../../core/assets/account-regions.json' with { type: 'json' };
 
@@ -80,9 +81,12 @@ export interface LoginDevicesView {
 export interface AccountBindingQrView {
   modules: boolean[][];
 }
+export type AccountDetailKind = 'profile' | 'devices' | 'blacklist' | 'bindings';
+
 export interface AccountDetailClient {
   accountProfileDetail(epoch: string): Promise<AccountData<AccountProfileDetail>>;
   accountLoginDevices(epoch: string): Promise<AccountData<LoginDevicesView>>;
+  accountBindings(epoch: string): Promise<AccountData<AccountBindingsView>>;
   accountBindingQr(epoch: string): Promise<AccountData<AccountBindingQrView>>;
 }
 

@@ -30,6 +30,9 @@ import WindowBehavior from './settings/WindowBehavior.vue';
 import DesktopLyrics from './settings/DesktopLyrics.vue';
 import SystemMedia from './settings/SystemMedia.vue';
 import Shortcuts from './settings/Shortcuts.vue';
+import type { AccountDetailKind } from '../services/accountDetail';
+import AccountBindingsPage from './account/AccountBindingsPage.vue';
+import AccountBindingsEntry from './account/AccountBindingsEntry.vue';
 import AccountProfilePage from './account/AccountProfilePage.vue';
 import QuickLoginOffer from './account/QuickLoginOffer.vue';
 import LoginDevicesPage from './account/LoginDevicesPage.vue';
@@ -44,13 +47,13 @@ const props = defineProps<{
   player: PlayerModel;
   relay: RelayModel;
   publication: RelayPublicationModel;
-  accountDetail?: 'profile' | 'devices' | 'blacklist';
+  accountDetail?: AccountDetailKind;
 }>();
 const emit = defineEmits<{
   login: [];
   accounts: [];
   downloads: [];
-  accountDetail: [kind: 'profile' | 'devices' | 'blacklist'];
+  accountDetail: [kind: AccountDetailKind];
   blacklistProfile: [id: string];
   blacklistUpdated: [id: string, result: ProfileBlacklistResult];
   back: [];
@@ -65,7 +68,7 @@ function requestLeave(commit: () => void) {
 defineExpose({ requestLeave });
 let detailOrigin: HTMLElement | undefined;
 let detailScroll = 0;
-function openDetail(kind: 'profile' | 'devices' | 'blacklist', event: MouseEvent) {
+function openDetail(kind: AccountDetailKind, event: MouseEvent) {
   if (props.account.status !== 'authenticated') return;
   detailOrigin = event.currentTarget as HTMLElement;
   detailScroll = settingsScroll.value?.scrollTop ?? 0;
@@ -197,6 +200,12 @@ function accept(op: SettingsOperation) {
     @back="emit('back')"
     @expired="emit('expired')"
   />
+  <AccountBindingsPage
+    v-else-if="accountDetail === 'bindings'"
+    :account="account"
+    @back="emit('back')"
+    @expired="emit('expired')"
+  />
   <ProfileBlacklistPage
     v-else-if="accountDetail === 'blacklist'"
     :account="account"
@@ -292,6 +301,11 @@ function accept(op: SettingsOperation) {
               {{ account.status === 'authenticated' ? '管理登录账号' : '登录账号' }}
             </button>
             <template v-if="account.status === 'authenticated'">
+              <AccountBindingsEntry
+                :account="account"
+                @open="(event) => openDetail('bindings', event)"
+                @expired="emit('expired')"
+              />
               <button
                 type="button"
                 class="secondary"

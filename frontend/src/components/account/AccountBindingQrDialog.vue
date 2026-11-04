@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, shallowRef, wat
 import { useCore } from '../../services/core';
 import Icon from '../Icon.vue';
 
-const props = defineProps<{ epoch: string }>();
+const props = defineProps<{ epoch: string; purpose?: 'password' }>();
 const emit = defineEmits<{ close: [] }>();
 const core = useCore();
 const dialog = ref<HTMLDialogElement>();
@@ -96,7 +96,9 @@ onUnmounted(() => {
     @cancel.prevent="close"
   >
     <header>
-      <h2 id="account-binding-qr-title">扫码设置</h2>
+      <h2 id="account-binding-qr-title">
+        {{ purpose === 'password' ? '扫码修改密码' : '扫码设置' }}
+      </h2>
       <button
         ref="closeButton"
         class="icon-button"

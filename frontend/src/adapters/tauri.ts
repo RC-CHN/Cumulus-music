@@ -211,6 +211,7 @@ export function createTauriClient(): CoreClient {
       invoke('account_profile_edit_page', { epoch, refresh }),
     accountProfileEditCommand: (epoch, command) =>
       invoke('account_profile_edit_command', { epoch, command }),
+    accountBindings: (epoch) => invoke('account_bindings', { epoch }),
     accountBindingQr: (epoch) => invoke('account_binding_qr', { epoch }),
     accountLoginDevices: (epoch) => invoke('account_login_devices', { epoch }),
     accountLoginDeviceRemoval: (epoch) => invoke('account_login_device_removal', { epoch }),

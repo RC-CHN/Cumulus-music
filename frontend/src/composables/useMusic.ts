@@ -1,3 +1,4 @@
+import type { AccountDetailKind } from '../services/accountDetail';
 import { computed, ref, shallowRef } from 'vue';
 import type {
   AccountData,
@@ -14,7 +15,7 @@ import type { CommentResource } from '../services/comments';
 export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
 type Destination =
   | { kind: 'decoration' }
-  | { kind: 'settings'; accountDetail?: 'profile' | 'devices' | 'blacklist' }
+  | { kind: 'settings'; accountDetail?: AccountDetailKind }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
   | {
       kind: 'collections';

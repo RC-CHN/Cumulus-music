@@ -5,7 +5,7 @@ import { useControlFocus } from '../../composables/useControlFocus';
 import Icon from '../Icon.vue';
 import '../../styles/account-detail.css';
 const props = defineProps<{
-  kind: 'profile' | 'devices';
+  kind: 'profile' | 'devices' | 'bindings';
   epoch: string;
   title: string;
   subtitle: string;
@@ -14,6 +14,13 @@ const props = defineProps<{
   refresh: () => Promise<void>;
 }>();
 const emit = defineEmits<{ back: [] }>();
+const labels = { profile: '个人资料', devices: '登录设备', bindings: '绑定信息' };
+const classes = {
+  profile: 'account-profile-page',
+  devices: 'login-devices-page',
+  bindings: 'account-bindings-page',
+};
+
 const heading = ref<HTMLElement>();
 const root = ref<HTMLElement>();
 const scroll = ref<HTMLElement>();
@@ -51,7 +58,7 @@ onBeforeUnmount(() => {
   <section
     ref="root"
     class="account-read-page"
-    :class="kind === 'profile' ? 'account-profile-page' : 'login-devices-page'"
+    :class="classes[kind]"
     :data-account-read-state="state"
     :aria-busy="state === 'loading'"
     aria-labelledby="account-read-title"
@@ -69,7 +76,7 @@ onBeforeUnmount(() => {
         type="button"
         class="account-read-retry"
         :data-testid="`account-${kind}-retry`"
-        :aria-label="`重新读取${kind === 'profile' ? '个人资料' : '登录设备'}`"
+        :aria-label="`重新读取${labels[kind]}`"
         :disabled="state === 'loading'"
         @click="focus.run($event, refresh)"
       >
@@ -80,9 +87,7 @@ onBeforeUnmount(() => {
     <div ref="scroll" class="account-read-scroll" tabindex="0" :aria-label="title">
       <slot name="before" />
       <p v-if="state === 'loading'" class="account-read-status" role="status">
-        <span class="spinner" aria-hidden="true" />正在读取{{
-          kind === 'profile' ? '个人资料' : '登录设备'
-        }}…
+        <span class="spinner" aria-hidden="true" />正在读取{{ labels[kind] }}…
       </p>
       <p v-else-if="state === 'error'" class="account-read-status account-read-error" role="alert">
         {{ error }}
