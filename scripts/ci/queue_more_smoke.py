@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 
 from motion_smoke import launch
 
@@ -118,6 +119,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     script = (Path(__file__).resolve().parents[2] / 'desktop/examples/queue_more_ui_probe.js').read_text(encoding='utf-8')
     states = 0
+    locale_observed = {}
     for name in ['assigned', 'control']:
         control = name == 'control'
         case = root / name
@@ -158,8 +160,16 @@ def main():
         if not control:
             assert actions[0] == 'queue_more_opened'
         states += count
+        if sys.platform == 'linux':
+            observed = read(output / 'locale.json')
+            assert observed['numeric'] == 'C', observed
+            for category, key in [('LC_MESSAGES', 'messages'), ('LC_CTYPE', 'characters')]:
+                expected = env.get('LC_ALL') or env.get(category) or env.get('LANG') or 'C'
+                assert expected.lower() not in {'c', 'posix'}, 'run with a non-C GUI locale'
+                assert observed[key].casefold().replace('-', '') == expected.casefold().replace('-', ''), observed
+            locale_observed[name] = observed
     report = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, nativeEof=True,
-                  controlledExperiment=True, states=states, screenshots=states if args.screenshots else 0,
+                  controlledExperiment=True, locales=locale_observed, states=states, screenshots=states if args.screenshots else 0,
                   syntheticApi=True, realMusicRequests=0, realAccountWrites=0,
                   physicalDisplayVerified=False, physicalAudioOutputVerified=False)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

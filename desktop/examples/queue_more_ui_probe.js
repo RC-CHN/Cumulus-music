@@ -34,6 +34,7 @@
   const panel = () => one('.queue-panel');
   const toggle = () => one('button[role=switch][data-queue-more-toggle]');
   const divider = () => one('[data-queue-more-divider]');
+  const toggleAvailable = () => toggle()?.getAttribute('aria-disabled') === 'false';
   const ids = (q) => q.tracks.map(({ track }) => String(track.id));
   const entryFor = (q, id) => q.tracks.find((row) => String(row.track.id) === id)?.entryId;
   const row = (entry) => all('.queue-row[data-entry-id]').find((el) => el.dataset.entryId === entry);
@@ -161,7 +162,8 @@
       await fixture('hold');
       await open();
       await wait(() => toggle()?.getAttribute('aria-checked') === 'true', 'eligible switch default');
-      assert(toggle().getAttribute('aria-label') === '在列表下方推荐你喜欢的相似歌曲', 'official switch label');
+      assert(document.getElementById(toggle().getAttribute('aria-labelledby'))?.textContent.trim() ===
+        '在列表下方推荐你喜欢的相似歌曲', 'official switch label');
       await waitCounts(1, 0);
       await pause();
       await seek(3);
@@ -208,6 +210,7 @@
       await pause();
       await seek(3);
       const retained = bar().dataset.playId;
+      await wait(toggleAvailable, 'more recommendation switch available');
       click(toggle());
       await wait(async () => ids(await queue()).join(',') === '1,2,52' &&
         toggle()?.getAttribute('aria-checked') === 'false' && !divider(), 'off retains only the current recommended row');
@@ -216,10 +219,12 @@
       await checkCounts(1, 1, 'turning off makes no recommendation request');
 
       await fixture('hold');
+      await wait(toggleAvailable, 'more recommendation switch available');
       click(toggle());
       await waitCounts(2, 1);
-      await wait(() => toggle()?.getAttribute('aria-checked') === 'true' && !toggle()?.disabled,
+      await wait(() => toggle()?.getAttribute('aria-checked') === 'true' && toggleAvailable(),
         'turn-off remains available while held');
+      await wait(toggleAvailable, 'more recommendation switch available');
       click(toggle());
       await wait(() => toggle()?.getAttribute('aria-checked') === 'false', 'prompt turn-off before service release');
       assert(bar().dataset.playId === retained && Math.abs(Number(bar().dataset.position) - 3) < .2,

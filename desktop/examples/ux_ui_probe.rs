@@ -595,6 +595,10 @@ fn main() {
     let queue_ui_proof = std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some();
     let queue_click_proof = std::env::var_os("CUMULUS_QUEUE_CLICK_PROOF").is_some();
     assert!(!queue_click_proof || (queue_ui_proof && motion_proof));
+    assert!(
+        !queue_more_fixture::enabled() || (queue_ui_proof && motion_proof),
+        "queue recommendations require the isolated native player and queue capture"
+    );
     assert!(!message_fixture::enabled() || motion_proof);
     let peq_proof = effect_peq_fixture::enabled();
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
@@ -643,7 +647,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() {
+        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
