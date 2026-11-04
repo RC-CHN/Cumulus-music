@@ -487,6 +487,8 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-album-batch-windows --runtime .build/package-stage/windows-x64/native --album-batch
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-windows --runtime .build/package-stage/windows-x64/native --artist
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-artist-mv-windows --runtime .build/package-stage/windows-x64/native --artist-mv
+          cargo build -p cumulus-desktop --example discovery_home_ui_probe --features custom-protocol --locked
+          python scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe.exe --root .build/ci-discovery-home-windows
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-artist-batch-windows --runtime .build/package-stage/windows-x64/native --artist-batch
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-navigation-windows --runtime .build/package-stage/windows-x64/native --navigation
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-catalog-playback-credit-windows --runtime .build/package-stage/windows-x64/native --playback-credit
@@ -820,6 +822,8 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-album-batch-linux --album-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-linux --artist
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-artist-mv-linux --artist-mv
+          cargo build -p cumulus-desktop --example discovery_home_ui_probe --features custom-protocol --locked
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/discovery_home_smoke.py --binary .build/target/debug/examples/discovery_home_ui_probe --root .build/ci-discovery-home-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-artist-batch-linux --artist-batch
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-navigation-linux --navigation
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe --root .build/ci-catalog-playback-credit-linux --playback-credit
