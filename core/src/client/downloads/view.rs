@@ -89,8 +89,7 @@ impl Host {
             if query.category != DownloadCategory::All && category != query.category {
                 continue;
             }
-            let track = task
-                .song
+            let track = native_metadata(&task)
                 .as_ref()
                 .map(mapping::track)
                 .transpose()?

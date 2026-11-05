@@ -28,6 +28,26 @@ use std::{
 use tokio::sync::Notify;
 
 const PREFERENCES: &str = "download_preferences_v1";
+
+// A download's typed origin owns its namespace. Raw metadata remains intact in
+// the task record, but cannot turn a Song/Cloud download into an episode while
+// projecting the list or constructing a new playback resource.
+fn native_metadata(task: &crate::download::service::DownloadTask) -> Option<serde_json::Value> {
+    let mut metadata = task.song.clone()?;
+    if let Some(fields) = metadata.as_object_mut() {
+        match &task.origin {
+            crate::download::service::DownloadOrigin::Voice { voice_id } => {
+                fields.insert("voice_id".into(), serde_json::json!(voice_id));
+            }
+            _ => {
+                fields.remove("voice_id");
+                fields.remove("voice");
+            }
+        }
+    }
+    Some(metadata)
+}
+
 pub(super) struct DownloadHost {
     inner: Arc<Host>,
 }
@@ -284,8 +304,8 @@ impl MusicClient {
                 let task=context.service.get(&id)?;
                 if task.origin.is_mv(){return Err(Error::State("MV downloads require the video player"));}
                 let path=task.playback_target()?;
-                let metadata = task.song.as_ref().ok_or(Error::State("download metadata missing"))?;
-                let track=super::mapping::track(metadata)?;
+                let metadata = native_metadata(&task).ok_or(Error::State("download metadata missing"))?;
+                let track=super::mapping::track(&metadata)?;
                 // Native origin authority is separate from arbitrary song JSON.
                 // Never infer an episode from a Song/Cloud task's raw metadata.
                 let download_voice_id = match &task.origin {

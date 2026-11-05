@@ -25,6 +25,13 @@
   download_voice_id 与 song.voice_id 一致。download_voice_id 只在 native
   download_resources 从 DownloadOrigin::Voice 填入；Song/Cloud 任务不能靠任意
   原始 voice JSON 自称节目。该内部标记不进入 PlayerView、TrackView 或队列 IPC。
+- 下载列表与新播放资源共用一份按原生 DownloadOrigin 规范的 metadata 副本。
+  非 Voice 任务移除 voice 和 voice_id，避免原始节目 JSON 让普通 Song/Cloud
+  任务误入前端节目布局、隐藏歌手/专辑与下载来源；无效的原始 voice_id 也不会在
+  类型规范前令 track 映射失败。Voice 任务的 song.voice_id 采用 typed voice_id，
+  不信任同名原始字段。原始 voice 对象保持不变，只有现有节目/主歌曲关联核对通过
+  才投影主播和日期；typed ID 不能覆盖冲突的 voice.id 来伪造详情。
+  这些规范只作用于读取时的副本，不重写原下载任务，也不迁移历史恢复队列。
 - 本地音乐/CUE、云盘、普通歌曲及含有冲突身份的下载记录不借用声音标题信息。
   没有增加每次时钟更新的数据库读取，也没有通过 UI 接收此内部标记。
 - 主播名字按官方优先级取字符串；缺有效 userId 时保留纯文字名称，不猜导航目标。
@@ -55,3 +62,8 @@
   PlayerView 才显示匹配的节目、主播和日期。测试没有手工给播放器传标记，核对额外 API/
   媒体请求为0，公开结果没有内部标记或私密字段。此定向测试1项通过，不代表实服下载
   或真实解码器/声卡；后两者由桌面批次分别验证。
+- 同一集成测试现扩展为 Song/Cloud 两种 typed origin，均保留同一份外来节目 JSON，
+  分别覆盖有效与无效原始 voice_id；检查正式下载列表及实际播放结果没有 voice_id，持久播放队列
+  没有 voice、song.voice_id 或下载声音标记，原始任务不变。再切换为 Voice，检查
+  canonical song.voice_id 与完整详情；保留冲突 raw voice.id 时继续播放，但不授予
+  声音详情。新增断言随本次完整集成批次验证，此处不把先前单项通过移用于扩展后测试。

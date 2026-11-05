@@ -1609,17 +1609,11 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
         "authorization":"PRIVATE_TOKEN"
     }))
     .unwrap();
-    task.song = Some(episode.download_metadata().unwrap());
-    // Identical raw voice JSON in a normal Song task must not grant voice detail.
-    task.origin = DownloadOrigin::Song;
-    f.store
-        .put(
-            "1",
-            "download_tasks_v1",
-            &task_id,
-            &serde_json::to_value(&task).unwrap(),
-        )
-        .unwrap();
+    let mut metadata = episode.download_metadata().unwrap();
+    // An invalid foreign voice ID must not fail mapping before typed origin
+    // normalization, either in the download list or in the playback producer.
+    metadata["voice_id"] = json!("not-a-decimal-id");
+    task.song = Some(metadata);
     let calls = f.api.calls.lock().unwrap().len();
     let media_calls = f.backend.audio.calls().len();
     let select = |category| PlaySelection::Downloads {
@@ -1630,36 +1624,76 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
         },
         start_id: Some(task_id.clone()),
     };
-    let song = f
-        .client
-        .play_selection("1", select(DownloadCategory::Song))
-        .await
-        .unwrap();
-    assert_eq!(song.state, PlaybackStatus::Playing);
-    assert_eq!(song.resource_kind, Some(PlayerResourceKind::Downloaded));
-    assert_eq!(song.download_task_id.as_deref(), Some(task_id.as_str()));
-    assert!(song.play_id.is_some());
-    assert!(song.voice_detail.is_none());
-    let queue: cumulus_core::playback::QueueSnapshot =
-        serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
-    assert!(queue.items[0].resource["download_voice_id"].is_null());
-    f.client
-        .player_action("1", PlayerAction::Stop)
-        .await
-        .unwrap();
+    let mut previous_play_id = None;
+    for origin in [
+        DownloadOrigin::Song,
+        DownloadOrigin::Cloud {
+            file_name: "synthetic.flac".into(),
+            file_size: FLAC.len() as u64,
+        },
+    ] {
+        for raw_voice_id in [json!("71"), json!("not-a-decimal-id")] {
+            // Identical foreign episode JSON in either audio task kind cannot
+            // grant voice layout, with either a valid or malformed raw ID.
+            task.song.as_mut().unwrap()["voice_id"] = raw_voice_id;
+            task.origin = origin.clone();
+            let stored = serde_json::to_value(&task).unwrap();
+            f.store
+                .put("1", "download_tasks_v1", &task_id, &stored)
+                .unwrap();
+            let downloads = f
+                .client
+                .downloads(
+                    "1",
+                    DownloadQuery {
+                        tab: DownloadTab::Completed,
+                        category: DownloadCategory::Song,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(downloads.tasks.len(), 1);
+            assert!(downloads.tasks[0].track.voice_id.is_none());
+            let song = f
+                .client
+                .play_selection("1", select(DownloadCategory::Song))
+                .await
+                .unwrap();
+            assert_eq!(song.state, PlaybackStatus::Playing);
+            assert_eq!(song.resource_kind, Some(PlayerResourceKind::Downloaded));
+            assert_eq!(song.download_task_id.as_deref(), Some(task_id.as_str()));
+            assert!(song.play_id.is_some());
+            assert_ne!(song.play_id, previous_play_id);
+            previous_play_id = song.play_id;
+            assert!(song.voice_detail.is_none());
+            assert!(song.track.as_ref().unwrap().voice_id.is_none());
+            let queue: cumulus_core::playback::QueueSnapshot =
+                serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap())
+                    .unwrap();
+            assert!(queue.items[0].resource["download_voice_id"].is_null());
+            assert!(queue.items[0].resource["song"]["voice_id"].is_null());
+            assert!(queue.items[0].resource["voice"].is_null());
+            assert_eq!(
+                f.store.get("1", "download_tasks_v1", &task_id).unwrap(),
+                Some(stored),
+                "projection must not rewrite the persisted raw task"
+            );
+            f.client
+                .player_action("1", PlayerAction::Stop)
+                .await
+                .unwrap();
+        }
+    }
 
-    // Only the typed native task origin changes. No marker is supplied here:
-    // download_resources must derive it while rebuilding the real selection.
+    // Only the typed native origin changes; the invalid raw song voice ID is
+    // deliberately retained. Both list and playback must use canonical 71.
     task.origin = DownloadOrigin::Voice {
         voice_id: "71".into(),
     };
+    let stored = serde_json::to_value(&task).unwrap();
     f.store
-        .put(
-            "1",
-            "download_tasks_v1",
-            &task_id,
-            &serde_json::to_value(&task).unwrap(),
-        )
+        .put("1", "download_tasks_v1", &task_id, &stored)
         .unwrap();
     let voice = f
         .client
@@ -1669,7 +1703,7 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
     assert_eq!(voice.state, PlaybackStatus::Playing);
     assert_eq!(voice.resource_kind, Some(PlayerResourceKind::Downloaded));
     assert_eq!(voice.download_task_id.as_deref(), Some(task_id.as_str()));
-    assert_ne!(voice.play_id, song.play_id);
+    assert_ne!(voice.play_id, previous_play_id);
     assert_eq!(voice.track.as_ref().unwrap().id, "123");
     assert_eq!(
         voice.track.as_ref().unwrap().voice_id.as_deref(),
@@ -1682,6 +1716,11 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
     let queue: cumulus_core::playback::QueueSnapshot =
         serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
     assert_eq!(queue.items[0].resource["download_voice_id"], "71");
+    assert_eq!(queue.items[0].resource["song"]["voice_id"], "71");
+    assert_eq!(
+        f.store.get("1", "download_tasks_v1", &task_id).unwrap(),
+        Some(stored)
+    );
     assert_eq!(
         f.client.player_snapshot("1").await.unwrap().voice_detail,
         voice.voice_detail
@@ -1690,6 +1729,41 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
     assert!(!public.contains("download_voice_id"));
     assert!(!public.contains("PRIVATE"));
     assert!(!public.contains(f.root.path().to_str().unwrap()));
+    assert_eq!(f.api.calls.lock().unwrap().len(), calls);
+    assert_eq!(f.backend.audio.calls().len(), media_calls);
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+
+    // Canonical origin is not permission to rewrite conflicting raw episode
+    // identity. Playback keeps the typed episode namespace, but header details
+    // remain unavailable when the preserved voice JSON names another episode.
+    task.song.as_mut().unwrap()["voice"]["id"] = json!(72);
+    let stored = serde_json::to_value(&task).unwrap();
+    f.store
+        .put("1", "download_tasks_v1", &task_id, &stored)
+        .unwrap();
+    let conflict = f
+        .client
+        .play_selection("1", select(DownloadCategory::Voice))
+        .await
+        .unwrap();
+    assert_eq!(conflict.state, PlaybackStatus::Playing);
+    assert_eq!(
+        conflict.track.as_ref().unwrap().voice_id.as_deref(),
+        Some("71")
+    );
+    assert!(conflict.voice_detail.is_none());
+    let queue: cumulus_core::playback::QueueSnapshot =
+        serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
+    assert_eq!(queue.items[0].resource["download_voice_id"], "71");
+    assert_eq!(queue.items[0].resource["song"]["voice_id"], "71");
+    assert_eq!(queue.items[0].resource["voice"]["id"], 72);
+    assert_eq!(
+        f.store.get("1", "download_tasks_v1", &task_id).unwrap(),
+        Some(stored)
+    );
     assert_eq!(f.api.calls.lock().unwrap().len(), calls);
     assert_eq!(f.backend.audio.calls().len(), media_calls);
     f.client
