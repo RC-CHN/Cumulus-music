@@ -231,7 +231,7 @@ impl WatcherState {
     fn own_paths<'a>(&'a self, own: &'a str) -> impl Iterator<Item = &'a str> {
         self.items
             .iter()
-            .filter_map(|item| item.strip_prefix(own))
+            .filter_map(move |item| item.strip_prefix(own))
             .filter(|path| path.starts_with('/'))
     }
 }
