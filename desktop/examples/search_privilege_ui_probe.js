@@ -103,6 +103,10 @@
 
   async function capture(label) {
     step = label;
+    // WebKit can report the newly patched badge before the compositor has
+    // painted it. Hold the same view through two layout frame pairs before
+    // asking the native harness to capture the screen.
+    assert(await layoutFrames(4), 'search privilege layout did not paint');
     domCheckpoint = { before: observeDom() };
     const native = await played(epoch);
     const live = domCheckpoint.after = observeDom();
