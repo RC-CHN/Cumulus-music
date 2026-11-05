@@ -34,6 +34,7 @@
   let original;
   let acknowledgement;
   const actions = [];
+  const skipNotice = window.__observeOrdinarySkipNotice();
   try {
     assert(group === 't1' || group === 'c', 'fixture cohort');
     const account = await wait(async () => {
@@ -75,7 +76,8 @@
       duration: view.timeline?.total, epoch: view.epoch, error: view.error,
     });
     await emit('ux_01_before', { actual: true, group, online: navigator.onLine,
-      player: state(before), dom: render(), ids, current: beforeQueue.current });
+      player: state(before), dom: render(), ids, current: beforeQueue.current,
+      skipNotices: skipNotice.capture(false).visible });
     const provided = one('#app').__vue_app__._context.provides;
     core = provided[Reflect.ownKeys(provided).find((key) =>
       typeof key === 'symbol' && key.description === 'core-client')];
@@ -92,7 +94,7 @@
     const after = await wait(async () => {
       if (!acknowledgement) return false;
       const value = await readPlaying(target)();
-      return value && (group === 't1' || value.position > before.position + .05) && value;
+      return value && (group === 't1' ? skipNotice.visible() : value.position > before.position + .05) && value;
     }, 'bottom-bar IPC acknowledgment and expected native clock');
     const afterQueue = await queue();
     assert(actions.length === 1 && actions[0].epoch === epoch, 'exact one real button action');
@@ -108,13 +110,19 @@
     assert(group === 't1' ? after.playId !== before.playId :
       after.playId === before.playId && after.queueRevision === before.queueRevision &&
         beforeQueue.current === afterQueue.current, 'treatment steps and control keeps the playing source');
+    const toast = skipNotice.capture(group === 't1');
     await emit('ux_02_after', { actual: true, group, online: navigator.onLine,
-      player: state(after), dom: render(), ids, current: afterQueue.current, actions, acknowledgement });
-    await emit('complete', { ok: true, group, target, stageCount: 2 });
+      player: state(after), dom: render(), ids, current: afterQueue.current, actions, acknowledgement,
+      skipNotices: toast.visible, paintSamples: toast.paint, screenX, screenY, ratio: devicePixelRatio });
+    if (toast.visible.length && window.__CUMULUS_PROOF_ACK__ === 'ux_02_after')
+      assert(skipNotice.visible(), 'PNG capture completed while the toast was still fully visible');
+    const notices = await skipNotice.finish(group === 't1');
+    await emit('complete', { ok: true, group, target, stageCount: 2, notices });
   } catch (error) {
     await emit('failed', { ok: false, group, error: String(error), online: navigator.onLine,
       state: bar()?.dataset.state, trackId: bar()?.dataset.trackId, unread: unread(), actions });
   } finally {
+    skipNotice.stop();
     if (core && original) core.playerAction = original;
   }
 })();

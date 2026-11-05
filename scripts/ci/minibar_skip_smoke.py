@@ -12,6 +12,24 @@ def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def check_skip_notices(stages, complete, expected):
+    localized = {'text': '已为您自动跳过不能播放的歌曲', 'role': 'status'}
+    for index, stage in enumerate(stages):
+        assert stage['skipNotices'] == ([localized] if expected and index == 1 else []), stage
+    observed = complete['notices']
+    assert observed['remaining'] == 0, observed
+    if expected:
+        assert len(observed['mounts']) == 1 and observed['observedAfterCaptureMs'] >= 150, observed
+        mount, = observed['mounts']
+        assert {key: mount[key] for key in localized} == localized, mount
+        assert mount['mountedAt'] <= mount['visibleAt'] < mount['removedAt'], mount
+        assert 2500 <= mount['elapsedMs'] <= 4400, mount
+        assert abs(mount['elapsedMs'] - (mount['removedAt'] - mount['mountedAt'])) < .01, mount
+    else:
+        assert observed['mounts'] == [] and observed['observedAfterCaptureMs'] >= 3500, observed
+    return observed
+
+
 def check(directory, group, capture):
     before = read(directory / 'ux_01_before.json')
     after = read(directory / 'ux_02_after.json')
@@ -19,6 +37,7 @@ def check(directory, group, capture):
     expected = '3' if group == 't1' else '1'
     assert complete['ok'] and complete['group'] == group and complete['target'] == expected, complete
     assert complete['stageCount'] == 2
+    notices = check_skip_notices([before, after], complete, group == 't1')
     assert before['ids'] == after['ids'], (before, after)
     assert [item[0] for item in before['ids']] == ['1', '2', '3']
     for row, track in ((before, '1'), (after, expected)):
@@ -64,7 +83,14 @@ def check(directory, group, capture):
                for key in ('messages', 'characters')), locale
     screenshots = len(list(directory.glob('ux_*.png')))
     assert screenshots == (2 if capture else 0)
-    return {'group': group, 'target': expected, 'stages': [before, after],
+    if group == 't1':
+        assert [sample['source'] for sample in after['paintSamples']] == [
+            '.playerbar .ordinary-skip-notice',
+        ], after
+        if capture:
+            paint = read(directory / 'paint-ux_02_after.json')
+            assert len(paint['samples']) == 1 and paint['samples'][0]['ok'], paint
+    return {'group': group, 'target': expected, 'stages': [before, after], 'notices': notices,
             'screenshots': screenshots, 'locale': locale}
 
 

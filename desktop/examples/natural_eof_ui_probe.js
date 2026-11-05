@@ -72,6 +72,7 @@
   const target = skip ? '3' : '1';
   const actions = [];
   const replies = [];
+  const skipNotice = window.__observeOrdinarySkipNotice();
   let core;
   let original;
   try {
@@ -104,13 +105,16 @@
     const stage = async (label, view, q) => {
       await twoFrames();
       assert(matching(view) && document.visibilityState === 'visible', 'visible native and DOM state for ' + label);
-      const paintSamples = ['.sidebar-caption', '.playerbar'].map(paintSample);
+      const toast = skipNotice.capture(label === 'ux_02_after' && skip);
+      const paintSamples = [...['.sidebar-caption', '.playerbar'].map(paintSample), ...toast.paint];
       assert(paintSamples.some((sample) => sample.color !== 'rgb(0, 0, 0)'), 'not an all-black frame');
       await emit(label, {
         actual: true, case: caseName, group, online: navigator.onLine, player: state(view),
-        dom: dom(), ids: idsOf(q), current: q.current, actions, replies,
+        dom: dom(), ids: idsOf(q), current: q.current, actions, replies, skipNotices: toast.visible,
         screenX, screenY, ratio: devicePixelRatio, paintSamples,
       });
+      if (toast.visible.length && window.__CUMULUS_PROOF_ACK__ === label)
+        assert(skipNotice.visible(), 'PNG capture completed while the toast was still fully visible');
     };
     const initial = await wait(async () => {
       const view = await player();
@@ -158,7 +162,7 @@
       const view = await player();
       if (view.error) throw new Error('unexpected playback error: ' + view.error);
       return view.state === expectedState && view.track?.id === target && matching(view) &&
-        (skip ? view.position > .2 && view.timeline?.total === 30 : view.position === 8) &&
+        (skip ? view.position > .2 && view.timeline?.total === 30 && skipNotice.visible() : view.position === 8) &&
         (caseName !== 'random-control' || view.playId === null) && view;
     }, 'cohort-specific state after natural native EOF');
     const afterQueue = await queue();
@@ -199,12 +203,14 @@
       'native Next reply retains the same finished clock, play and queue');
       await stage('ux_03_control_next', retained, retainedQueue);
     }
-    await emit('complete', { ok: true, case: caseName, group, target,
+    const notices = await skipNotice.finish(skip);
+    await emit('complete', { ok: true, case: caseName, group, target, notices,
       stageCount: caseName === 'control' ? 3 : 2 });
   } catch (error) {
     await emit('failed', { ok: false, case: caseName, error: String(error),
       state: bar()?.dataset.state, trackId: bar()?.dataset.trackId, online: navigator.onLine, actions, replies });
   } finally {
+    skipNotice.stop();
     if (core && original) core.playerAction = original;
   }
 })();

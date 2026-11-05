@@ -233,9 +233,10 @@ fn main() {
         |path| fs::read_to_string(path).expect("explicit sealed probe script"),
     );
     let source = format!(
-        "window.__minibarProofGroup={};window.__ordinaryEofProofCase={};\n{source}",
+        "window.__minibarProofGroup={};window.__ordinaryEofProofCase={};\n{}\n{source}",
         json!(group),
-        json!(eof.map(eof_fixture::Case::name))
+        json!(eof.map(eof_fixture::Case::name)),
+        include_str!("support/skip_notice_observer.js")
     );
     let source = if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
         capture_ack::script(&source)

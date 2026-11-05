@@ -6,7 +6,7 @@ from pathlib import Path
 import sqlite3
 import sys
 
-from minibar_skip_smoke import read
+from minibar_skip_smoke import check_skip_notices, read
 from motion_smoke import launch as launch_webview
 from playback_power_smoke import windows_runtime
 from window_manager import launch
@@ -37,6 +37,7 @@ def check(directory, case, capture, windows):
     complete = read(directory / 'complete.json')
     assert complete['ok'] and complete['case'] == case and complete['group'] == group
     assert complete['target'] == target and complete['stageCount'] == len(stages), complete
+    notices = check_skip_notices(stages, complete, skip)
     assert before['ids'] == after['ids'] and [row[0] for row in before['ids']] == display
     entries = dict(before['ids'])
     for row, track, status in ((before, '1', 'paused'), (after, target, state)):
@@ -143,10 +144,16 @@ def check(directory, case, capture, windows):
                    for key in ('messages', 'characters')), locale
     images = sorted(directory.glob('ux_*.png'))
     assert [image.stem for image in images] == (names if capture else []), images
-    if capture:
-        for image in images:
-            paint = read(image.with_name('paint-' + image.stem + '.json'))
-            assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples']), paint
+    for name, stage in zip(names, stages, strict=True):
+        sources = ['.sidebar-caption', '.playerbar']
+        if skip and name == 'ux_02_after':
+            sources.append('.playerbar .ordinary-skip-notice')
+        assert [sample['source'] for sample in stage['paintSamples']] == sources, stage
+        if capture:
+            paint = read(directory / ('paint-' + name + '.json'))
+            assert len(paint['samples']) == len(sources) and all(
+                sample['ok'] for sample in paint['samples']
+            ), paint
     transport = ['3', '1', '2'] if mode == 'random' else display
     database = (directory.parent / 'state' / 'core.sqlite3').resolve(strict=True)
     with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
@@ -158,7 +165,7 @@ def check(directory, case, capture, windows):
     assert saved['current'] == entries[target]
     return {'case': case, 'group': group, 'target': target, 'state': state,
             'displayOrder': display, 'transportOrder': transport,
-            'stages': stages, 'locale': locale, 'screenshots': len(images)}
+            'stages': stages, 'notices': notices, 'locale': locale, 'screenshots': len(images)}
 
 
 def main():
