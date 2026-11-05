@@ -91,3 +91,28 @@ Reproduction for this code, using the repository toolchain and existing cache:
 These scoped checks do not replace the full batch/release checks. No frontend,
 desktop GUI, Windows native execution or real service success was established
 by this runner attempt.
+
+2026-11-05 explicit fresh-local execution
+---------------------------------------
+Runner 689b83ab used the same production business source and the explicit fresh
+flag. Three scoped synthetic tests, strict example Clippy, build and formatting
+passed. It then performed exactly one existing-account read sequence:
+  account/get -> complete 190-key assignment -> result/tab -> complex/page/v3
+All four HTTP responses and service codes were 200. The exact production Rust
+assignment projection observed t1 for all four search flags. Search returned six
+song rows, two hints and two recommendation reasons. The footer projection was
+consistent with that live t1 result. This is a native Rust read result, not a
+real-account GUI, cross-platform or cohort-transition proof.
+
+Identity was fresh_local_initialization from this machine's actual hardware in
+a new private store; it was not an old installation identity restoration. The
+existing PC Cookie/device scope and saved native configuration were preserved.
+The two original database main-file hashes were unchanged before/after. SDK
+demands/requests, external config downloads, denied HTTP requests, renewal and
+remote business writes were all zero. No response or credential was printed.
+
+Private sanitized evidence:
+  .build/ui-proof/phase58-search-signed-fresh-20261105-a/execution-summary.json
+It records the exact code marker, binary SHA-256, fixed logical paths and result
+counts. The earlier reuse-only missing-identity attempt remains separate and is
+not relabeled as success. No anonymous registration was attempted.
