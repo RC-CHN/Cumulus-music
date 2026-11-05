@@ -491,6 +491,11 @@ jobs:
         shell: pwsh
         run: |
           python scripts/ci/windows_zip_smoke.py --packages .build/packages/windows-x64 --commit "$env:GITHUB_SHA" --root .build/ci-windows-zip
+      - name: Verify natural playback completion and live history settings on Windows
+        run: |
+          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
+          python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
       - name: Windows native media and desktop WebView regression
         if: runner.os == 'Windows'
         run: |
@@ -894,6 +899,30 @@ jobs:
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --binary .build/target/debug/examples/native_local_equalizer_probe \
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --frontend-dist frontend/dist --root .build/ci-native-local-equalizer-linux
+      - name: Verify natural playback completion and live history settings on Linux
+        run: |
+          cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
+          outer_network=$(readlink /proc/self/ns/net)
+          isolated_proof() {
+            sudo unshare --net --fork --kill-child sh -ec '
+              test "$(readlink /proc/self/ns/net)" != "$1"
+              target_user=$2
+              shift 2
+              ip link set lo up
+              # A private dummy route lets WebKit produce a real online sample.
+              # No link in this namespace has a peer on the host or a gateway.
+              ip link add proof0 type dummy
+              ip addr add 192.0.2.1/24 dev proof0
+              ip link set proof0 up
+              ip route add default via 192.0.2.254 dev proof0
+              exec runuser -u "$target_user" -- "$@"
+            ' sh "$outer_network" "$(id -un)" xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' \
+              env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+              env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+              /usr/bin/python3 "$@"
+          }
+          isolated_proof scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe --root .build/ci-natural-eof-linux --screenshots
+          isolated_proof scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-history-settings-cohort-linux --screenshots
       - name: Linux native media and desktop WebView regression
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:

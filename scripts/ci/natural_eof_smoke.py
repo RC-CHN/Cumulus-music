@@ -6,6 +6,8 @@ from pathlib import Path
 import sys
 
 from minibar_skip_smoke import read
+from motion_smoke import launch as launch_webview
+from playback_power_smoke import windows_runtime
 from window_manager import launch
 
 
@@ -17,7 +19,7 @@ CASES = {
 WIRE = '/api/song/enhance/player/url/v1'
 
 
-def check(directory, case, capture):
+def check(directory, case, capture, windows):
     group, target, state = CASES[case]
     before = read(directory / 'ux_01_before.json')
     after = read(directory / 'ux_02_after.json')
@@ -124,10 +126,12 @@ def check(directory, case, capture):
             assert stops == [{'kind': 'native_stop', 'entry': old}]
             assert trace.index(stops[0]) > trace.index(events[0]), trace
 
-    locale = read(directory / 'locale.json')
-    assert locale['numeric'] == 'C', locale
-    assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
-               for key in ('messages', 'characters')), locale
+    locale = None
+    if not windows:
+        locale = read(directory / 'locale.json')
+        assert locale['numeric'] == 'C', locale
+        assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
+                   for key in ('messages', 'characters')), locale
     images = sorted(directory.glob('ux_*.png'))
     assert [image.stem for image in images] == (names if capture else []), images
     if capture:
@@ -143,17 +147,32 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--runtime', type=Path, help='exact staged Windows media runtime')
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
-    if sys.platform != 'linux':
-        parser.error('this isolated WebKitGTK proof runs on Linux')
+    windows = sys.platform == 'win32'
+    if not windows and sys.platform != 'linux':
+        parser.error('this proof runs on Linux and Windows')
+    if windows and (not args.runtime or args.screenshots):
+        parser.error('Windows requires --runtime and supports no GTK screenshot capture')
+    if not windows and args.runtime:
+        parser.error('--runtime identifies the Windows native media stage only')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    base = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    base.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
+    binary = args.binary.resolve(strict=True)
+    base = {key: value for key, value in os.environ.items()
+            if not key.upper().startswith(('CUMULUS_', 'WEBVIEW2_'))
+            and key.upper() != 'MPV_DLL_DIR_CUMULUS'}
+    windows_media = None
+    if windows:
+        stage, windows_media = windows_runtime(binary, args.runtime)
+        base['MPV_DLL_DIR_CUMULUS'] = str(stage)
+        profiles = ('APPDATA', 'LOCALAPPDATA', 'TEMP')
+    else:
+        base.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
+        profiles = ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR')
     if args.frontend_dist:
         base['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
-    binary = args.binary.resolve(strict=True)
     cases = {}
     for case in CASES:
         work = root / case
@@ -161,18 +180,23 @@ def main():
         run = work / 'run'
         output = run / 'first'
         env = {**base, 'CUMULUS_PROOF_DIR': str(run), 'CUMULUS_ORDINARY_EOF_CASE': case}
-        for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
+        for key in profiles:
             location = work / key
             location.mkdir(mode=0o700)
             env[key] = str(location)
+        if windows:
+            env['TMP'] = env['TEMP']
         host = work / 'host.log'
         with host.open('x', encoding='utf-8') as log:
-            status = launch(binary, env, log, output, args.screenshots)
+            launcher = launch_webview if windows else launch
+            status = launcher(binary, env, log, output, args.screenshots)
         failed = output / 'failed.json'
         assert not failed.exists(), read(failed) if failed.exists() else None
         assert status == 0 and 'panicked at' not in host.read_text(encoding='utf-8'), host
-        cases[case] = check(output, case, args.screenshots)
+        cases[case] = check(output, case, args.screenshots, windows)
     report = {'actualWebView': True, 'decoder': 'libmpv', 'audioOutput': 'null',
+              'webViewRuntime': 'WebView2' if windows else 'WebKitGTK',
+              'windowsMediaRuntime': windows_media, 'physicalAudioOutputVerified': False,
               'transport': 'sealed_synthetic_verified_capability', 'cases': cases}
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
                                       encoding='utf-8')
