@@ -105,9 +105,14 @@ export function useVinylCommentLikes(
       apply(operation.observed);
     } catch (error) {
       if (current()) {
-        issue.value = { id: item.id, message: failure(error).message };
+        const problem = failure(error);
         ready.value = false;
         await refresh();
+        if (current())
+          issue.value = {
+            id: item.id,
+            message: operations.value.has(item.id) ? '点赞结果尚未确认，请核对状态。' : problem.message,
+          };
       }
     } finally {
       if (current()) busy.value = undefined;

@@ -296,6 +296,7 @@ test('the same verified inline like updates Hot and Latest, fences stale pages a
     assert.deepEqual(cursors, [0, 60, 60]);
     await model.likes.toggle(model.latest.value[0]!);
     assert.equal(model.likes.operations.value.get(item.id)?.phase, 'uncertain');
+    assert.equal(model.likes.issue.value?.message, '点赞结果尚未确认，请核对状态。');
     assert.equal(model.latest.value[0]!.liked, true);
     await model.likes.toggle(model.hot.value[0]!);
     assert.deepEqual(actions, ['true', 'false']);
