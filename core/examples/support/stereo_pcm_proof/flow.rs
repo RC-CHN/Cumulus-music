@@ -263,13 +263,13 @@ pub fn verify(
     stage("stereo_pcm_native_tail_eof_verified");
     let mut revoked = pass(source, 0)?;
     let revoke_control = revoked.control();
-    let last = engine.load_stereo_pcm(revoked.take_reader()?, &Cancellation::default())?;
+    let revoked_media = engine.load_stereo_pcm(revoked.take_reader()?, &Cancellation::default())?;
     engine.pause(false)?;
     let ahead = until("revocation_buffered_native_clock", |last| {
         let view = engine.poll()?;
         *last = observed(&view, &revoke_control)?;
         let state = revoke_control.snapshot()?;
-        Ok(position(&view, last.entry_id)
+        Ok(position(&view, revoked_media.entry_id)
             .filter(|p| *p > 0.05 && *p < 1.0)
             .and_then(|_| {
                 state
@@ -320,7 +320,7 @@ pub fn verify(
         "retired":state(retired),"workerJoinedBeforeSeek":true,"sourcePathReplaced":true,"reopenRejected":true,
         "seek":{"oldEntry":old.entry_id,"newEntry":new.entry_id,"firstSourceFrame":SEEK,"paused":true,"sameHeldSource":true},
         "eof":state(complete),"actualNativeEof":true,"tailFrames":RATE,
-        "revoked":state(revoked_state),"revokedEntry":last.entry_id,"bufferedAheadAtRevocation":ahead,"revokedReclaimDenied":true,
+        "revoked":state(revoked_state),"revokedEntry":revoked_media.entry_id,"bufferedAheadAtRevocation":ahead,"revokedReclaimDenied":true,
         "stages":stages,
     }))
 }
