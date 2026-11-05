@@ -5,31 +5,22 @@ import type { SearchViewportMemory } from '../services/searchViewport.ts';
 /** One shell subscription outlives search pages and their Back snapshots. */
 export function usePcPresentation(core: PcPresentationClient, memory: SearchViewportMemory) {
   let account: AccountView | undefined;
-  let generation = 0,
-    eventSerial = 0;
+  let generation = 0;
   let closed = false,
     started = false,
     listening = false;
   let unlisten: (() => void) | undefined;
   function observe(view: PcPresentationView) {
     if (closed || account?.status !== 'authenticated' || account.epoch !== view.epoch) return;
-    eventSerial++;
     memory.observePresentation(view);
   }
   async function snapshot() {
     if (!listening || account?.status !== 'authenticated') return;
     const epoch = account.epoch,
-      visit = generation,
-      serial = eventSerial;
+      visit = generation;
     try {
       const view = await core.pcPresentation(epoch);
-      if (
-        !closed &&
-        generation === visit &&
-        account?.epoch === epoch &&
-        eventSerial === serial &&
-        view.epoch === epoch
-      )
+      if (!closed && generation === visit && account?.epoch === epoch && view.epoch === epoch)
         memory.observePresentation(view);
     } catch {
       // A local observation failure cannot cause a search, login or polling loop.
@@ -52,7 +43,8 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
       }
       unlisten = stop;
       listening = true;
-      // Subscribe first: events during this local snapshot invalidate its reply.
+      // Subscribe first. Memory arbitrates both sources by native revision,
+      // including a newer snapshot that completes after an intermediate event.
       await snapshot();
     } catch {
       // Existing native search reads still gate their own presentation.

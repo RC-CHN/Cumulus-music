@@ -37,7 +37,7 @@ function page(): SearchResultView {
   return {
     query,
     presentationReceipt: 'page-1',
-    presentationRevision: 'initial',
+    presentationRevision: '1',
     privilegeReceipt: 'rights-1',
     total: 7,
     more: false,
@@ -109,7 +109,7 @@ const tick = () => new Promise<void>((done) => setImmediate(done));
 test('live presentation removes footers immediately and only the newest native receipt may restore them', async () => {
   const memory = createSearchViewportMemory();
   memory.connect(account);
-  memory.observePresentation(observation('initial'));
+  memory.observePresentation(observation('1'));
   const off = deferred<AccountData<SearchPresentationPatch>>(),
     on = deferred<AccountData<SearchPresentationPatch>>();
   let searches = 0;
@@ -123,7 +123,7 @@ test('live presentation removes footers immediately and only the newest native r
       searchPresentation: (_epoch, receipt, revision) => {
         assert.equal(receipt, 'page-1');
         projections.push(revision);
-        return revision === 'off' ? off.promise : on.promise;
+        return revision === '2' ? off.promise : on.promise;
       },
     } as SearchResultsClient,
     () => assert.fail('no auth transition'),
@@ -139,15 +139,15 @@ test('live presentation removes footers immediately and only the newest native r
     previewPositions: { albums: 2 },
   };
   model.savePosition(position);
-  memory.observePresentation(observation('off', false));
+  memory.observePresentation(observation('2', false));
   assert.equal(hint(model.view.value), undefined, 'revocation hides before local IPC completion');
-  memory.observePresentation(observation('on'));
-  on.resolve(patch('on'));
+  memory.observePresentation(observation('3'));
+  on.resolve(patch('3'));
   await tick();
-  assert.deepEqual(hint(model.view.value), { kind: 'alias', text: 'on' });
-  off.resolve(patch('off', false));
+  assert.deepEqual(hint(model.view.value), { kind: 'alias', text: '3' });
+  off.resolve(patch('2', false));
   await tick();
-  assert.deepEqual(hint(model.view.value), { kind: 'alias', text: 'on' });
+  assert.deepEqual(hint(model.view.value), { kind: 'alias', text: '3' });
   assert.equal(model.view.value?.previewLayout, 'compact_carousel');
   assert.equal(
     model.view.value?.sections[0]?.items.length,
@@ -156,14 +156,14 @@ test('live presentation removes footers immediately and only the newest native r
   );
   assert.deepEqual(model.position.value, position);
   assert.equal(searches, 1);
-  assert.deepEqual(projections, ['off', 'on']);
+  assert.deepEqual(projections, ['2', '3']);
   model.dispose();
 });
 
 test('Back projects its account-owned snapshot before publication and eviction never replays search', async () => {
   const memory = createSearchViewportMemory();
   memory.connect(account);
-  memory.observePresentation(observation('initial'));
+  memory.observePresentation(observation('1'));
   let searches = 0,
     projections = 0;
   const held = deferred<AccountData<SearchPresentationPatch>>();
@@ -182,7 +182,7 @@ test('Back projects its account-owned snapshot before publication and eviction n
   await first.open(query, true, 9);
   first.savePosition({ top: 290, tracks: 0, focus: 'song:1' });
   first.dispose();
-  memory.observePresentation(observation('changed'));
+  memory.observePresentation(observation('2'));
   const back = useSearchResults(api, () => {}, memory);
   back.connect(account);
   const opening = back.open(query, true, 9);
@@ -208,7 +208,7 @@ test('a page without a native candidate receipt cannot acquire footer eligibilit
       searchResults: async () => ({ epoch: '1', value: source }),
       searchPresentation: async () => {
         projections++;
-        return patch('changed');
+        return patch('2');
       },
     } as SearchResultsClient,
     () => {},
@@ -216,7 +216,7 @@ test('a page without a native candidate receipt cannot acquire footer eligibilit
   );
   model.connect(account);
   await model.open(query, true, 1);
-  memory.observePresentation(observation('changed'));
+  memory.observePresentation(observation('2'));
   await tick();
   assert.equal(hint(model.view.value), undefined);
   assert.equal(model.view.value?.sections[0]?.items.length, 7);
@@ -227,7 +227,7 @@ test('a page without a native candidate receipt cannot acquire footer eligibilit
 test('Back rechecks a native receipt even when its global presentation revision is unchanged', async () => {
   const memory = createSearchViewportMemory();
   memory.connect(account);
-  memory.observePresentation(observation('initial'));
+  memory.observePresentation(observation('1'));
   let searches = 0,
     projections = 0;
   const api = {
@@ -258,7 +258,7 @@ for (const order of ['privilege-first', 'presentation-first']) {
   test(`membership and presentation merge without overwriting each other (${order})`, async () => {
     const memory = createSearchViewportMemory();
     memory.connect(account);
-    memory.observePresentation(observation('initial'));
+    memory.observePresentation(observation('1'));
     const appearance = deferred<AccountData<SearchPresentationPatch>>();
     const rights = deferred<AccountData<SearchPrivilegePatch>>();
     let push!: (event: SearchPrivilegeObservation) => void;
@@ -277,7 +277,7 @@ for (const order of ['privilege-first', 'presentation-first']) {
     );
     model.connect(account);
     await model.open(query, true, 1);
-    memory.observePresentation(observation('changed'));
+    memory.observePresentation(observation('2'));
     push({ epoch: '1', revision: 'verified-vip' });
     const resolvedRights: AccountData<SearchPrivilegePatch> = {
       epoch: '1',
@@ -301,7 +301,7 @@ for (const order of ['privilege-first', 'presentation-first']) {
       rights.resolve(resolvedRights);
       await tick();
     }
-    appearance.resolve(patch('changed'));
+    appearance.resolve(patch('2'));
     await tick();
     if (order === 'presentation-first') {
       rights.resolve(resolvedRights);
@@ -310,7 +310,7 @@ for (const order of ['privilege-first', 'presentation-first']) {
     const section = model.view.value!.sections[0];
     const row = section.items[0];
     assert(row.kind === 'song');
-    assert.deepEqual(row.hint, { kind: 'alias', text: 'changed' });
+    assert.deepEqual(row.hint, { kind: 'alias', text: '2' });
     assert.equal(row.track.coverUrl, resolvedRights.value.rows[0].coverUrl);
     assert.equal(row.mvId, '55');
     assert.equal(row.limitedFree, true);
@@ -321,12 +321,12 @@ for (const order of ['privilege-first', 'presentation-first']) {
 
 test('cross-account late projection and mismatched row identity cannot publish candidates', async () => {
   const source = page();
-  const bad = patch('bad').value;
+  const bad = patch('2').value;
   bad.sections[0].items[0].trackId = 'other-song';
   assert.equal(patchSearchPresentation(source, bad), undefined);
   const memory = createSearchViewportMemory();
   memory.connect(account);
-  memory.observePresentation(observation('initial'));
+  memory.observePresentation(observation('1'));
   const held = deferred<AccountData<SearchPresentationPatch>>();
   const model = useSearchResults(
     {
@@ -338,9 +338,9 @@ test('cross-account late projection and mismatched row identity cannot publish c
   );
   model.connect(account);
   await model.open(query, true, 1);
-  memory.observePresentation(observation('changed'));
+  memory.observePresentation(observation('2'));
   model.connect({ ...account, epoch: '2' });
-  held.resolve(patch('changed'));
+  held.resolve(patch('2'));
   await tick();
   assert.equal(model.view.value, undefined);
   assert.equal(memory.presentation('2'), undefined);

@@ -3,6 +3,13 @@ import type { AccountView } from './contracts.ts';
 import type { SearchCategory, SearchResultQuery, SearchResultView } from './search.ts';
 import type { PcPresentationView } from './pcPresentation.ts';
 
+function presentationRevision(value: unknown): bigint | undefined {
+  // Native public revisions are canonical decimal u64 counters, not credentials.
+  if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,19})$/.test(value)) return;
+  const revision = BigInt(value);
+  return revision <= 18_446_744_073_709_551_615n ? revision : undefined;
+}
+
 export function withoutSearchFooters(view: SearchResultView): SearchResultView {
   if (view.query.category !== 'all') return view;
   let changed = false;
@@ -44,24 +51,39 @@ export function createSearchViewportMemory(capacity = 16) {
   const searchTabs = new Map<number, readonly SearchCategory[]>();
   const reminders = new Map<string, SearchCorrectionReminder>();
   let presentation: PcPresentationView | undefined;
+  let presentationOrder: bigint | undefined;
   const presentationListeners = new Set<(view: PcPresentationView) => void>();
   function clear() {
     entries.clear();
     searchTabs.clear();
     reminders.clear();
-    presentation = undefined;
   }
   return {
     presentation(epoch: string) {
       return owner === epoch ? presentation : undefined;
     },
-    observePresentation(next: PcPresentationView) {
-      if (!owner || owner !== next.epoch || presentation?.revision === next.revision) return;
-      presentation = next;
+    observePresentation(next: PcPresentationView): 'changed' | 'unchanged' | 'rejected' {
+      const revision = presentationRevision(next.revision);
+      if (
+        !owner ||
+        owner !== next.epoch ||
+        revision === undefined ||
+        (presentationOrder !== undefined && revision < presentationOrder)
+      )
+        return 'rejected';
+      if (presentation && revision === presentationOrder)
+        return next.searchFooter === presentation.searchFooter &&
+          next.searchExpanded === presentation.searchExpanded &&
+          next.searchDense === presentation.searchDense
+          ? 'unchanged'
+          : 'rejected';
+      presentation = { ...next };
+      presentationOrder = revision;
       if (!next.searchFooter)
         for (const [key, snapshot] of entries)
           entries.set(key, { ...snapshot, view: withoutSearchFooters(snapshot.view) });
-      for (const listener of presentationListeners) listener(next);
+      for (const listener of presentationListeners) listener(presentation);
+      return 'changed';
     },
     onPresentation(listener: (view: PcPresentationView) => void) {
       presentationListeners.add(listener);
@@ -69,7 +91,11 @@ export function createSearchViewportMemory(capacity = 16) {
     },
     connect(account: AccountView) {
       const next = account.status === 'authenticated' ? account.epoch : '';
-      if (!next || owner !== next) clear();
+      if (!next || owner !== next) {
+        clear();
+        presentation = undefined;
+        presentationOrder = undefined;
+      }
       owner = next;
     },
     key(query: SearchResultQuery, session: number) {
