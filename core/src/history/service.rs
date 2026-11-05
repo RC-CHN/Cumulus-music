@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
 pub(super) const NAMESPACE: &str = "play-history-v1";
+const SYNC_PRIVACY_REVISION: &str = "sync-privacy-revision";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RemoteHistory {
     pub kind: HistoryKind,
@@ -76,6 +77,22 @@ pub(super) fn enabled(tx: &StateTransaction<'_>, owner: &str) -> Result<bool> {
         Some(Value::Bool(b)) => Ok(b),
         _ => Err(Error::State("invalid recent play preference")),
     }
+}
+fn sync_privacy_revision(tx: &StateTransaction<'_>, owner: &str) -> Result<u64> {
+    match tx.get(owner, NAMESPACE, SYNC_PRIVACY_REVISION)? {
+        // Existing histories keep their saved bool and need no eager migration.
+        None => Ok(0),
+        Some(value) => value
+            .as_u64()
+            .ok_or(Error::State("invalid recent play privacy revision")),
+    }
+}
+fn change_sync(tx: &mut StateTransaction<'_>, owner: &str, desired: bool) -> Result<()> {
+    let next = sync_privacy_revision(tx, owner)?
+        .checked_add(1)
+        .ok_or(Error::State("recent play privacy revision overflow"))?;
+    tx.put(owner, NAMESPACE, "sync-enabled", &json!(desired))?;
+    tx.put(owner, NAMESPACE, SYNC_PRIVACY_REVISION, &json!(next))
 }
 pub(super) fn upsert(
     tx: &mut StateTransaction<'_>,
@@ -185,10 +202,26 @@ impl HistoryService {
             })
         })
     }
-    pub fn set_sync_for(&self, token: &SessionToken, enabled: bool) -> Result<()> {
+    pub fn set_sync_for(&self, token: &SessionToken, desired: bool) -> Result<()> {
         self.session.with_local_owner(token, |owner| {
-            self.store
-                .put(owner, NAMESPACE, "sync-enabled", &json!(enabled))
+            self.store.transaction(|tx| {
+                if enabled(tx, owner)? != desired {
+                    change_sync(tx, owner, desired)?;
+                }
+                Ok(())
+            })
+        })
+    }
+    /// A dispatch authorization is valid only for this continuous enabled period.
+    pub(crate) fn enabled_sync_revision_for(&self, token: &SessionToken) -> Result<Option<u64>> {
+        self.session.with_token(token, |owner| {
+            self.store.transaction(|tx| {
+                if enabled(tx, owner)? {
+                    Ok(Some(sync_privacy_revision(tx, owner)?))
+                } else {
+                    Ok(None)
+                }
+            })
         })
     }
     /// Device-local display policy; this operation does not load any history rows or API.
@@ -218,7 +251,7 @@ impl HistoryService {
                         tx.put(owner, NAMESPACE, "sync-first-off-confirmed", &json!(true))?;
                         confirmed = true;
                     }
-                    tx.put(owner, NAMESPACE, "sync-enabled", &json!(desired))?;
+                    change_sync(tx, owner, desired)?;
                     current = desired;
                 }
                 Ok(HistorySyncState {

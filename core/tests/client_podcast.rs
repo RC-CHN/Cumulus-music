@@ -634,6 +634,78 @@ async fn episode_progress_discards_trial_opt_out_and_old_credential_revision() {
 }
 
 #[tokio::test]
+async fn reenabled_history_sync_cannot_release_a_checkpoint_queued_before_opt_out() {
+    use cumulus_core::history::{HistoryService, HistorySyncAction};
+
+    // Both the Settings command and the legacy History command can change
+    // this account's local preference. Exercise each while the sender is held.
+    for settings in [true, false] {
+        let (_dir, api, session, client) = fixture();
+        api.count.store(3, Ordering::SeqCst);
+        api.progress_revision.store(1, Ordering::SeqCst);
+        api.progress_hold.store(true, Ordering::SeqCst);
+        let depart = |id, seconds| {
+            let client = &client;
+            async move {
+                played_voice_from(client, "1", Some(id)).await;
+                client
+                    .player_action("1", PlayerAction::Seek { seconds })
+                    .await
+                    .unwrap();
+                client.player_action("1", PlayerAction::Stop).await.unwrap();
+            }
+        };
+
+        depart("1", 7.5).await;
+        let already_dispatched = json!({"programId":1,"listenLocation":7000.0,"isListened":false});
+        assert_eq!(
+            wait_for_progress(&api, 1).await.as_slice(),
+            std::slice::from_ref(&already_dispatched)
+        );
+        // Program 2 reaches its terminal actor event, but the writer cannot
+        // process it while the synthetic transport holds program 1.
+        depart("2", 16.5).await;
+        assert_eq!(api.progress.lock().unwrap().len(), 1);
+        let set = |enabled| {
+            if settings {
+                assert_eq!(
+                    client
+                        .history_sync_preference(
+                            "1",
+                            HistorySyncAction::Set {
+                                enabled,
+                                confirmed_first_disable: true,
+                            },
+                        )
+                        .unwrap()
+                        .value
+                        .enabled,
+                    enabled
+                );
+            } else {
+                HistoryService::new(session.clone())
+                    .unwrap()
+                    .set_sync_for(&session.token().unwrap(), enabled)
+                    .unwrap();
+            }
+        };
+        set(false);
+        set(true);
+        depart("3", 29.5).await;
+        set(true); // Re-saving an unchanged preference must not drop program 3.
+        api.progress_hold.store(false, Ordering::SeqCst);
+        api.progress_released.notify_one();
+        assert_eq!(
+            wait_for_progress(&api, 2).await,
+            [
+                already_dispatched,
+                json!({"programId":3,"listenLocation":29000.0,"isListened":false}),
+            ]
+        );
+    }
+}
+
+#[tokio::test]
 async fn account_switch_discards_queued_episode_progress_without_replaying_to_the_new_api() {
     let (_dir, old, session, client) = fixture();
     old.count.store(2, Ordering::SeqCst);

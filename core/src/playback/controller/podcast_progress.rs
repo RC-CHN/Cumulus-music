@@ -4,7 +4,7 @@ use super::state::Actor;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
-    history::{HistoryService, HistorySyncAction},
+    history::HistoryService,
     playback::TimelineMode,
     podcast::progress::{playrecord, program_id},
     protocol::api::Api,
@@ -52,17 +52,20 @@ impl Capture {
 struct Write {
     captured: Capture,
     payload: Value,
+    sync_revision: u64,
 }
 
-fn sync_enabled(session: Arc<AccountSession>, token: &SessionToken) -> Result<bool> {
-    Ok(HistoryService::new(session)?
-        .sync_setting_for(token, HistorySyncAction::Read)?
-        .enabled)
+fn sync_revision(session: Arc<AccountSession>, token: &SessionToken) -> Result<Option<u64>> {
+    HistoryService::new(session)?.enabled_sync_revision_for(token)
 }
 
 impl Write {
     async fn send(self, session: &Arc<AccountSession>, shutdown: &Arc<AtomicBool>) -> Result<()> {
-        let Self { captured, payload } = self;
+        let Self {
+            captured,
+            payload,
+            sync_revision: queued_revision,
+        } = self;
         let mut changes = session.subscribe()?;
         let captured = &captured;
         let request = session.run_for(&captured.owner, |api, _| async move {
@@ -78,7 +81,7 @@ impl Write {
                     return Ok(false);
                 }
                 session.require_api(&owner, &bound)?;
-                sync_enabled(session.clone(), &owner)
+                Ok(sync_revision(session.clone(), &owner)? == Some(queued_revision))
             };
             if !allowed()? {
                 return Ok(());
@@ -134,11 +137,11 @@ impl Actor {
             || self.token != captured.owner
             || program_id(&loaded.item.resource) != Some(captured.program_id)
             || loaded.timeline.snapshot().mode != TimelineMode::Full
-            || !sync_enabled(self.session.clone(), &self.token).unwrap_or(false)
         {
             return;
         }
-        if let Some(duration) = loaded.timeline.display_end()
+        if let Ok(Some(sync_revision)) = sync_revision(self.session.clone(), &self.token)
+            && let Some(duration) = loaded.timeline.display_end()
             && let Some(payload) = playrecord(
                 captured.program_id,
                 self.position.unwrap_or(0.0),
@@ -149,7 +152,11 @@ impl Actor {
             let publisher = self
                 .podcast_publisher
                 .get_or_insert_with(|| Publisher::new(self.session.clone(), self.shutdown.clone()));
-            let _ = publisher.sender.try_send(Write { captured, payload });
+            let _ = publisher.sender.try_send(Write {
+                captured,
+                payload,
+                sync_revision,
+            });
         }
     }
 }
