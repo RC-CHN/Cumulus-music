@@ -3,7 +3,11 @@ import OrdinaryEssentialPage from './components/OrdinaryEssentialPage.vue';
 import ChoiceTabs from './components/ChoiceTabs.vue';
 import VerticalZonePage from './components/VerticalZonePage.vue';
 import { useVerticalZone } from './composables/useVerticalZone';
-import type { VerticalZoneCard, VerticalZoneLocation } from './services/verticalZone';
+import type {
+  VerticalZoneCard,
+  VerticalZoneLocation,
+  ZonePlaylistBatchOrigin,
+} from './services/verticalZone';
 import { useOrdinaryEssential } from './composables/useOrdinaryEssential';
 import {
   essentialPlaylistMenu,
@@ -1585,29 +1589,45 @@ async function queueLeft() {
 }
 const playlistEditor = ref<{ id: string; cover?: boolean }>();
 const playlistEditorPage = ref<InstanceType<typeof PlaylistEditorPage>>();
-const batchTarget = ref<PlaylistView>();
+const batchTarget = shallowRef<{ list: PlaylistView; origin?: ZonePlaylistBatchOrigin }>();
 const batchPage = ref<InstanceType<typeof PlaylistBatchPage>>();
 const batchClosing = ref(false);
 let batchReturnFocus: HTMLElement | undefined,
   batchDirty = false,
   restoreBatchFocus = false;
 let batchScroll = 0;
-function openBatch(list: PlaylistView) {
+function openBatch(list: PlaylistView, scene: PlaylistMenuScene) {
+  const current = music.page.value;
+  let origin: ZonePlaylistBatchOrigin | undefined;
+  if (
+    scene === 'detail' &&
+    current.kind === 'playlist' &&
+    current.id === list.id &&
+    current.zonePlaylistReceipt
+  ) {
+    const snapshot = music.result.value;
+    if (snapshot?.playlist?.id !== list.id || !snapshot.revision) {
+      music.notice.value = '专区歌单还未读取完成，请稍后重试。';
+      return;
+    }
+    origin = { receipt: current.zonePlaylistReceipt, revision: snapshot.revision };
+  }
   batchReturnFocus =
     document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
   batchScroll =
     document.querySelector<HTMLElement>('.content-page-previous .track-scroll')?.scrollTop ?? 0;
   batchDirty = false;
-  batchTarget.value = list;
+  batchTarget.value = { list, origin };
 }
 async function closeBatch(restore = true) {
   if (batchClosing.value) return;
   batchClosing.value = true;
-  const id = batchTarget.value?.id;
+  const target = batchTarget.value;
+  const id = target?.list.id;
   const epoch = music.account.value.epoch;
   if (restore && batchDirty && music.page.value.kind === 'playlist' && music.page.value.id === id)
     await music.load();
-  if (music.account.value.epoch !== epoch || batchTarget.value?.id !== id) return;
+  if (music.account.value.epoch !== epoch || batchTarget.value !== target) return;
   restoreBatchFocus = restore;
   batchTarget.value = undefined;
   batchClosing.value = false;
@@ -3026,7 +3046,7 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
   const item = playlistMenu(list, scene).find((item) => item.key === key);
   if (!item || item.disabled) return;
   if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
-  else if (key === 'batch') openBatch(list);
+  else if (key === 'batch') openBatch(list, scene);
   else if (key === 'play') {
     if (
       scene === 'detail' &&
@@ -3923,8 +3943,9 @@ onUnmounted(() => {
           <PlaylistBatchPage
             v-if="batchTarget"
             ref="batchPage"
-            :key="account.epoch + ':' + batchTarget.id"
-            :playlist="batchTarget"
+            :key="account.epoch + ':' + batchTarget.list.id"
+            :playlist="batchTarget.list"
+            :zone-origin="batchTarget.origin"
             :account="account"
             :manager="playlistManager"
             :player="player"

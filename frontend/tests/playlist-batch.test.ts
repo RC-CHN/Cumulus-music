@@ -38,9 +38,8 @@ test('batch reads the whole snapshot in order including unavailable rows', async
     },
   };
   const result = await readPlaylistBatch(
-    core,
+    (query) => core.playlistPage('7', query),
     '1',
-    '7',
     () => true,
     (count) => progress.push(count),
   );
@@ -74,15 +73,42 @@ test('batch rejects stale, incomplete, nonadvancing or mismatched snapshots befo
     };
     await assert.rejects(
       readPlaylistBatch(
-        core,
+        (query) => core.playlistPage('7', query),
         '1',
-        '7',
         () => active,
         () => {},
       ),
     );
     assert.equal(calls, mode === 'revision' ? 2 : 1, mode);
   }
+});
+test('zone batch requires its detail revision from the first page and never adopts another', async () => {
+  const origin = { receipt: 'opaque-visit', revision: 'zone-snapshot' };
+  const revisions: Array<string | null> = [];
+  const read = (replaceFirst: boolean) =>
+    readPlaylistBatch(
+      async (query) => {
+        revisions.push(query.revision ?? null);
+        return {
+          epoch: '1',
+          value: {
+            playlist: null,
+            offset: query.offset,
+            tracks: [track(query.offset + 1)],
+            revision: replaceFirst ? 'another-snapshot' : origin.revision,
+            total: 2,
+            more: query.offset === 0,
+          },
+        };
+      },
+      '1',
+      () => true,
+      () => {},
+      origin,
+    );
+  assert.equal((await read(false)).revision, origin.revision);
+  await assert.rejects(read(true), { code: 'snapshot_changed' });
+  assert.deepEqual(revisions, [origin.revision, origin.revision, origin.revision]);
 });
 test('whole-row toggles preserve other selections; optional Shift ranges add inclusively', () => {
   const ids = ['1', '2', '3', '4', '5'];

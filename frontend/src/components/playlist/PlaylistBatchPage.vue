@@ -6,6 +6,7 @@ import type { PlayerModel } from '../../composables/usePlayer';
 import type { DownloadModel } from '../../composables/useDownloads';
 import { usePlaylistBatch } from '../../composables/usePlaylistBatch';
 import { useCore } from '../../services/core';
+import type { ZonePlaylistBatchOrigin } from '../../services/verticalZone';
 import PlaylistBatchTable from './PlaylistBatchTable.vue';
 import PlaylistMutationDialog from './PlaylistMutationDialog.vue';
 import PlaylistCollectDialog from '../PlaylistCollectDialog.vue';
@@ -15,6 +16,7 @@ import Icon from '../Icon.vue';
 import '../../styles/playlist-batch.css';
 const props = defineProps<{
   playlist: PlaylistView;
+  zoneOrigin?: ZonePlaylistBatchOrigin;
   account: AccountView;
   manager: PlaylistManager;
   player: PlayerModel;
@@ -29,6 +31,7 @@ const batch = usePlaylistBatch(
   () => props.account,
   props.playlist.id,
   () => emit('expired'),
+  props.zoneOrigin,
 );
 const { data, tracks, chosen, available, selected, loading, error, progress } = batch;
 const dialog = ref<'collect' | 'download' | 'delete'>(),
@@ -100,8 +103,16 @@ async function perform(kind: 'play' | 'queue') {
   message.value = kind === 'play' ? '正在准备播放…' : '正在添加所选歌曲…';
   retryAction = () => perform(kind);
   try {
-    const value =
-      kind === 'play'
+    const zone = props.zoneOrigin;
+    const value = zone
+      ? kind === 'play'
+        ? await props.player.selectForPage({
+            kind: 'vertical_zone_playlist_batch',
+            ...selection,
+            receipt: zone.receipt,
+          })
+        : await props.player.queueZonePlaylistBatch({ ...selection, receipt: zone.receipt })
+      : kind === 'play'
         ? await props.player.select({ kind: 'playlist_batch', ...selection })
         : await props.player.queuePlaylist(selection.id, selection);
     if (!alive) return;
@@ -118,7 +129,11 @@ async function perform(kind: 'play' | 'queue') {
   } catch (value) {
     if (!alive) return;
     const issue = failure(value);
-    message.value = issue.message;
+    const reopen =
+      props.zoneOrigin &&
+      ['stale', 'snapshot_changed', 'queue_changed', 'profile_changed'].includes(issue.code);
+    message.value = reopen ? '专区歌单或播放队列已更新，请重新读取。' : issue.message;
+    if (reopen) retryAction = undefined;
     failed.value = true;
     if (['session_expired', 'profile_changed'].includes(issue.code)) emit('expired');
   } finally {

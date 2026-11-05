@@ -199,6 +199,8 @@ export function createTauriClient(): CoreClient {
       invoke('vertical_zone_playlist_origin', { epoch, viewId, cardKey, id }),
     verticalZonePlaylistDetail: (epoch, receipt, id, page) =>
       invoke('vertical_zone_playlist_detail', { epoch, receipt, id, page }),
+    verticalZonePlaylistBatchPage: (epoch, receipt, id, page) =>
+      invoke('vertical_zone_playlist_batch_page', { epoch, receipt, id, page }),
     verticalZonePage: (epoch, pageCode, tabKey, tabKeyName) =>
       invoke('vertical_zone_page', { epoch, pageCode, tabKey, tabKeyName }),
     discoveryHomeRankings: (epoch) => invoke('discovery_home_rankings', { epoch }),

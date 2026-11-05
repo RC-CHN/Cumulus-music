@@ -278,6 +278,14 @@ export type SongRowDoubleClickSelection =
       quality: Quality;
     }
   | { kind: 'playlist'; id: string; start_id: string; revision: string | null; quality: Quality };
+export type ZonePlaylistBatchSelection = {
+  id: string;
+  receipt: string;
+  ids: string[];
+  revision: string;
+  quality: Quality;
+};
+
 export type PlaySelection =
   | {
       kind: 'vertical_zone_playlist_detail';
@@ -301,6 +309,7 @@ export type PlaySelection =
   | { kind: 'podcast_recent'; revision: string; id: string; double_click: boolean }
   | { kind: 'downloads'; query: import('./downloads').DownloadQuery; start_id: string | null }
   | { kind: 'playlist_batch'; id: string; ids: string[]; revision: string; quality: Quality }
+  | ({ kind: 'vertical_zone_playlist_batch' } & ZonePlaylistBatchSelection)
   | {
       kind: 'history';
       history_kind: import('./history').HistoryKind;
@@ -395,6 +404,10 @@ export type PlayerAction =
       quality: Quality;
       expected_queue_revision: string;
     }
+  | ({
+      kind: 'queue_vertical_zone_playlist_batch';
+      expected_queue_revision: string;
+    } & ZonePlaylistBatchSelection)
   | {
       kind: 'queue_cloud_batch';
       query?: CloudQuery;

@@ -57,6 +57,10 @@ export interface ZonePlaylistOrigin {
   receipt: string;
 }
 
+export interface ZonePlaylistBatchOrigin extends ZonePlaylistOrigin {
+  revision: string;
+}
+
 export interface VerticalZoneClient {
   verticalZoneFmPreview(
     epoch: string,
@@ -70,6 +74,12 @@ export interface VerticalZoneClient {
     id: string,
   ): Promise<AccountData<ZonePlaylistOrigin>>;
   verticalZonePlaylistDetail(
+    epoch: string,
+    receipt: string,
+    id: string,
+    page: PageRequest,
+  ): Promise<AccountData<TrackPage>>;
+  verticalZonePlaylistBatchPage(
     epoch: string,
     receipt: string,
     id: string,

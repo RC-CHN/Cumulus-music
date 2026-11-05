@@ -1,12 +1,14 @@
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { failure, type AccountView, type CoreClient, type TrackPage } from '../services/contracts';
 import { readPlaylistBatch, toggleBatchSelection } from '../services/playlistBatch';
+import type { ZonePlaylistBatchOrigin } from '../services/verticalZone';
 
 export function usePlaylistBatch(
   core: CoreClient,
   account: () => AccountView,
   id: string,
   expired: () => void,
+  origin?: ZonePlaylistBatchOrigin,
 ) {
   const data = shallowRef<TrackPage & { revision: string }>(),
     selected = shallowRef(new Set<string>());
@@ -29,13 +31,16 @@ export function usePlaylistBatch(
     progress.value = '正在读取完整歌单…';
     try {
       const value = await readPlaylistBatch(
-        core,
+        (page) =>
+          origin
+            ? core.verticalZonePlaylistBatchPage(owner, origin.receipt, id, page)
+            : core.playlistPage(id, page),
         owner,
-        id,
         () => active() && current === sequence,
         (count, total) => {
           progress.value = `正在读取歌单歌曲：${count} / ${total}`;
         },
+        origin,
       );
       if (!active() || current !== sequence) return;
       data.value = value;
@@ -46,7 +51,11 @@ export function usePlaylistBatch(
     } catch (value) {
       if (!active() || current !== sequence) return;
       const issue = failure(value);
-      error.value = issue.message;
+      error.value =
+        origin &&
+        ['stale', 'snapshot_changed', 'queue_changed', 'profile_changed'].includes(issue.code)
+          ? '专区歌单已更新，请返回专区重新打开歌单。'
+          : issue.message;
       if (['session_expired', 'profile_changed'].includes(issue.code)) expired();
     } finally {
       if (current === sequence) loading.value = false;

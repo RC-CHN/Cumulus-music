@@ -1,26 +1,33 @@
-import type { CoreClient, TrackPage } from './contracts';
+import type { AccountData, PageRequest, TrackPage } from './contracts';
+import type { ZonePlaylistBatchOrigin } from './verticalZone';
+
+type ReadPage = (page: PageRequest) => Promise<AccountData<TrackPage>>;
 
 /** Official batch pages wait for the entire revision-bound playlist. */
 export async function readPlaylistBatch(
-  client: Pick<CoreClient, 'playlistPage'>,
+  readPage: ReadPage,
   epoch: string,
-  id: string,
   active: () => boolean,
   progress: (loaded: number, total: number) => void,
+  origin?: ZonePlaylistBatchOrigin,
 ): Promise<TrackPage & { revision: string }> {
   let result: TrackPage | undefined;
   const tracks: TrackPage['tracks'] = [];
   while (active()) {
     const offset = result?.tracks.length ?? 0;
-    const response = await client.playlistPage(id, {
+    const response = await readPage({
       offset,
       limit: 100,
-      revision: result?.revision ?? null,
+      revision: origin?.revision ?? result?.revision ?? null,
     });
     if (!active() || response.epoch !== epoch) throw { code: 'stale', message: '读取已取消' };
     const page = response.value;
     if (!page.revision) throw { code: 'invalid_response', message: '歌单信息不完整，请重新读取' };
-    if (page.offset !== offset || (result && page.revision !== result.revision))
+    if (
+      page.offset !== offset ||
+      (origin && page.revision !== origin.revision) ||
+      (result && page.revision !== result.revision)
+    )
       throw { code: 'snapshot_changed', message: '歌单已改变，请重新读取' };
     if (page.total > 50000 || offset + page.tracks.length > 50000)
       throw { code: 'invalid_input', message: '歌单过大，无法一次读取' };
