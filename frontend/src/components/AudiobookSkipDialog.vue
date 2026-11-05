@@ -23,6 +23,8 @@ const dialog = ref<HTMLDialogElement>();
 const view = shallowRef<AudiobookSkipView>();
 const draft = shallowRef<SkipDraft>();
 const pending = ref(false);
+const saving = ref(false);
+const needsReadback = ref(false);
 const error = ref('');
 const setting = computed(() => (draft.value ? audiobookSkipSetting(draft.value) : undefined));
 let alive = true;
@@ -44,6 +46,7 @@ async function load() {
     if (!alive || result.epoch !== props.epoch) return;
     view.value = result.value;
     draft.value = audiobookSkipDraft(result.value.setting);
+    needsReadback.value = false;
     void readSmart(result.value.editId);
   } catch {
     if (alive) error.value = '无法读取跳过设置';
@@ -66,8 +69,9 @@ async function readSmart(editId: string) {
   }
 }
 async function save() {
-  if (!view.value || !setting.value || pending.value) return;
+  if (!view.value || !setting.value || pending.value || needsReadback.value) return;
   pending.value = true;
+  saving.value = true;
   error.value = '';
   try {
     const result = await client.audiobookSkipSettings(props.epoch, props.context, {
@@ -75,13 +79,19 @@ async function save() {
       editId: view.value.editId,
       setting: setting.value,
     });
-    if (!alive || result.epoch !== props.epoch) return;
+    if (result.epoch !== props.epoch) return;
     audiobookSkipSaved.value = result;
-    emit('close');
+    if (alive) emit('close');
   } catch {
-    if (alive) error.value = '无法保存跳过设置，请重试';
+    if (alive) {
+      needsReadback.value = true;
+      error.value = '未能确认保存结果，请重新读取本机设置';
+    }
   } finally {
-    if (alive) pending.value = false;
+    if (alive) {
+      pending.value = false;
+      saving.value = false;
+    }
   }
 }
 function choose(kind: SkipDraft['kind']) {
@@ -179,9 +189,24 @@ function move(rail: 'start' | 'endRail', event: Event) {
           <span>跳过片尾 {{ MAX_SKIP_SECONDS - draft.endRail }} 秒</span>
         </div>
       </div>
-      <p v-if="error" role="alert">{{ error }}</p>
-      <button type="submit" class="primary audiobook-skip-confirm" :disabled="pending || !setting">
-        {{ pending ? '正在保存…' : '确定' }}
+      <div v-if="error" role="alert">
+        {{ error }}
+        <button
+          v-if="needsReadback"
+          type="button"
+          class="text-button"
+          :disabled="pending"
+          @click="load"
+        >
+          重新读取
+        </button>
+      </div>
+      <button
+        type="submit"
+        class="primary audiobook-skip-confirm"
+        :disabled="pending || needsReadback || !setting"
+      >
+        {{ saving ? '正在保存…' : '确定' }}
       </button>
     </form>
     <div v-else class="audiobook-skip-content">
