@@ -89,6 +89,8 @@ mod vertical_zone_fixture;
 mod voice_download_fixture;
 #[path = "support/volume_fixture.rs"]
 mod volume_fixture;
+#[path = "support/zone_fm_preview_fixture.rs"]
+mod zone_fm_preview_fixture;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
@@ -213,6 +215,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = zone_fm_preview_fixture::response(path, &args, cached).await {
+                return response;
+            }
             if let Some(response) = vertical_zone_fixture::response(path, &args) {
                 return response;
             }
@@ -883,6 +888,7 @@ fn main() {
             }
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
             if vertical_zone_fixture::enabled() {value["verticalZoneCalls"]=json!(vertical_zone_fixture::calls());}
+            if zone_fm_preview_fixture::enabled() {value["zoneFmPreview"]=zone_fm_preview_fixture::report();}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
