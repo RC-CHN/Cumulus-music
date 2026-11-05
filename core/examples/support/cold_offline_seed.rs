@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -178,7 +178,14 @@ impl Api for Seed {
     }
 }
 
+// Desktop fixtures retain the public summary; native held-source proofs also
+// need the authoritative completed row's path, without guessing its layout.
+#[allow(dead_code)]
 pub async fn seed(root: &Path, format: SeedFormat) -> Result<Value> {
+    Ok(seed_with_path(root, format).await?.0)
+}
+
+pub async fn seed_with_path(root: &Path, format: SeedFormat) -> Result<(Value, PathBuf)> {
     let ncm = format.encrypted();
     let (_, bytes, suffix, quality) = format.media();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc)?;
@@ -283,14 +290,15 @@ pub async fn seed(root: &Path, format: SeedFormat) -> Result<Value> {
         reader.read_to_end(&mut decoded)?;
         decoded
     } else {
-        std::fs::read(path)?
+        std::fs::read(&path)?
     };
     if decoded != bytes {
         return Err(Error::State(
             "synthetic published audio does not match fixture",
         ));
     }
-    Ok(
+    Ok((
         json!({"published":true,"id":id,"title":TITLE,"mediaTransfers":seed.requests.load(Ordering::Acquire),"ncm":ncm,"format":suffix,"quality":quality.as_str()}),
-    )
+        path,
+    ))
 }

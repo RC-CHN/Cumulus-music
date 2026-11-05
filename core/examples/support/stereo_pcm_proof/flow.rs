@@ -74,7 +74,8 @@ pub fn verify(
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let publication = runtime.block_on(seed::seed(root, seed::SeedFormat::NcmStereoPcm))?;
+    let (publication, original) =
+        runtime.block_on(seed::seed_with_path(root, seed::SeedFormat::NcmStereoPcm))?;
     ensure(
         publication["published"] == true
             && publication["ncm"] == true
@@ -116,19 +117,15 @@ pub fn verify(
     };
     ensure(source.total_frames() == TOTAL, "source frame count changed")?;
     stage("stereo_pcm_cold_grant_opened");
-    let files = fs::read_dir(root.join("media"))?.collect::<std::io::Result<Vec<_>>>()?;
-    let ncm = files
-        .into_iter()
-        .filter(|entry| entry.path().extension().is_some_and(|x| x == "ncm"))
-        .map(|e| e.path())
-        .collect::<Vec<_>>();
     ensure(
-        ncm.len() == 1,
-        "expected exactly one synthetic published NCM",
+        original.extension().is_some_and(|x| x == "ncm"),
+        "authoritative publication was not a synthetic NCM",
     )?;
-    let original = &ncm[0];
-    fs::rename(original, original.with_extension("held-retired"))?;
-    fs::write(original, b"replacement path cannot become authorized audio")?;
+    fs::rename(&original, original.with_extension("held-retired"))?;
+    fs::write(
+        &original,
+        b"replacement path cannot become authorized audio",
+    )?;
     ensure(
         grant.open_flac_reader(id, Cancellation::default()).is_err(),
         "new path open ignored the production ledger hash",
