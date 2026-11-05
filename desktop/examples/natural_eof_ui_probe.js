@@ -176,10 +176,11 @@
           matching(view) && visible(next()) && view;
       }, 'real scoped Next acknowledgment retains the finished control playback');
       const retainedQueue = await queue();
-      assert(actions.length === 3 && JSON.stringify(actions[2]) === JSON.stringify({
-        epoch, action: { kind: 'step_mini_bar', direction: 'next', play_id: after.playId,
-          expected_queue_revision: after.queueRevision },
-      }), 'one real Next with the exact finished play and queue identity');
+      const stepped = actions[2]?.action;
+      assert(actions.length === 3 && actions[2].epoch === epoch && Object.keys(stepped).length === 4 &&
+        stepped.kind === 'step_mini_bar' && stepped.direction === 'next' &&
+        stepped.play_id === after.playId && stepped.expected_queue_revision === after.queueRevision,
+      'one real Next with the exact finished play and queue identity');
       assert(JSON.stringify(replies[2]) === JSON.stringify(state(after)) &&
         retainedQueue.current === afterQueue.current &&
         retainedQueue.revision === afterQueue.revision &&
