@@ -24,6 +24,7 @@ use std::{
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+mod anonymous;
 
 #[derive(Debug, Clone)]
 pub struct ResponseInfo {
@@ -43,6 +44,7 @@ pub struct MusicHttpClient {
     last_response: Mutex<Option<ResponseInfo>>,
     server_clock: Mutex<Option<(u64, Instant)>>,
     registration_user: Mutex<Option<String>>,
+    anonymous_store: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -73,6 +75,10 @@ enum RequestBinding<'a> {
     },
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     LegacyRenewal {
+        permission: &'a (dyn Fn() -> Result<()> + Sync),
+        dispatched: &'a AtomicBool,
+    },
+    AnonymousRegistration {
         permission: &'a (dyn Fn() -> Result<()> + Sync),
         dispatched: &'a AtomicBool,
     },
@@ -120,6 +126,7 @@ impl MusicHttpClient {
             last_response: Mutex::new(None),
             server_clock: Mutex::new(None),
             registration_user: Mutex::new(None),
+            anonymous_store: false,
         })
     }
 
@@ -594,6 +601,14 @@ impl MusicHttpClient {
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
             }
+            if let Some(RequestBinding::AnonymousRegistration {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                permission()?;
+                dispatched.store(true, Ordering::Relaxed);
+            }
             if let Some(RequestBinding::VinylWiki(permission)) = binding {
                 // Request-context preparation may await a provider. Recheck
                 // the exact target scope before handing this read to HTTP.
@@ -686,9 +701,26 @@ impl MusicHttpClient {
         } else if jsk != Jsk::QuickEligibility
             && (!jsk.quick_exchange() || (200..300).contains(&response.status))
         {
+            let anonymous_headers;
+            let cookies = if matches!(binding, Some(RequestBinding::AnonymousRegistration { .. })) {
+                // Only this isolated guest transport can use the binding.
+                // Filter before committing, including unreadable/late replies.
+                anonymous_headers = response
+                    .set_cookies
+                    .iter()
+                    .filter(|header| {
+                        cookie_store::Cookie::parse(header.as_str(), &response_url)
+                            .is_ok_and(|cookie| cookie.name() != "MUSIC_U")
+                    })
+                    .cloned()
+                    .collect::<Vec<_>>();
+                &anonymous_headers
+            } else {
+                &response.set_cookies
+            };
             self.credentials.record_login_response(
                 &response_url,
-                &response.set_cookies,
+                cookies,
                 refresh,
                 &snapshot.revision,
                 last_login_at,
@@ -796,6 +828,73 @@ impl Api for MusicHttpClient {
 
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
         self.pc_experiment_revision().map(Some)
+    }
+
+    fn pc_presentation_credential_revision(&self) -> Result<Option<String>> {
+        self.pc_experiment_revision_for(false).map(Some)
+    }
+
+    fn pc_presentation_credential_changes(
+        &self,
+    ) -> Result<Option<tokio::sync::watch::Receiver<String>>> {
+        Ok(Some(self.credentials.subscribe_commits()))
+    }
+
+    fn pc_presentation_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, crate::protocol::pc_experiments::PcExperimentGroups> {
+        Box::pin(async move { self.pc_experiment_groups_for(revision, false).await })
+    }
+
+    fn pc_anonymous_state(&self) -> Result<crate::protocol::pc_experiments::PcAnonymousState> {
+        if self.pc_experiment_revision_for(false).is_err() {
+            return Ok(crate::protocol::pc_experiments::PcAnonymousState::Unsupported);
+        }
+        self.credentials.anonymous_state()
+    }
+
+    fn register_pc_anonymous(
+        &self,
+    ) -> ApiFuture<'_, crate::protocol::pc_experiments::PcAnonymousState> {
+        Box::pin(self.register_anonymous())
+    }
+
+    fn pc_anonymous_store_matches(&self, directory: &std::path::Path) -> Result<bool> {
+        Ok(self.anonymous_store
+            && matches!(
+                (directory.canonicalize(), self.credentials.store().directory().canonicalize()),
+                (Ok(expected), Ok(current)) if expected == current
+            ))
+    }
+
+    fn isolated_pc_anonymous_transport(
+        &self,
+        directory: &std::path::Path,
+    ) -> Result<Option<Arc<dyn Api>>> {
+        self.pc_experiment_revision_for(false)?;
+        if matches!(
+            self.credentials.anonymous_state()?,
+            crate::protocol::pc_experiments::PcAnonymousState::Unsupported
+        ) {
+            return Err(Error::State(
+                "anonymous transport cannot replace an account Cookie",
+            ));
+        }
+        let credentials = Arc::new(Credentials::open(
+            Arc::new(crate::storage::StateStore::open(directory)?),
+            super::ApiOrigin::Pc,
+        )?);
+        credentials.seed_anonymous_device(&self.credentials.device_id()?)?;
+        let mut isolated = Self::with_backend(
+            credentials,
+            self.profile.clone(),
+            self.options,
+            self.context.clone(),
+            self.backend.clone(),
+        )?;
+        isolated.anonymous_store = true;
+        Ok(Some(Arc::new(isolated)))
     }
 
     fn verified_pc_experiment_groups<'a>(

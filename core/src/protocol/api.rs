@@ -257,6 +257,44 @@ pub trait Api: Send + Sync + std::any::Any {
         })
     }
 
+    /// Presentation-only signed PC capability. Anonymous transport support
+    /// does not attest that the official anonymous registration has completed.
+    fn pc_presentation_credential_revision(&self) -> Result<Option<String>> {
+        self.verified_pc_experiment_revision()
+    }
+
+    fn pc_presentation_credential_changes(
+        &self,
+    ) -> Result<Option<tokio::sync::watch::Receiver<String>>> {
+        Ok(None)
+    }
+
+    fn pc_presentation_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, super::pc_experiments::PcExperimentGroups> {
+        self.verified_pc_experiment_groups(revision)
+    }
+
+    fn pc_anonymous_state(&self) -> Result<super::pc_experiments::PcAnonymousState> {
+        Ok(super::pc_experiments::PcAnonymousState::Unsupported)
+    }
+
+    fn register_pc_anonymous(&self) -> ApiFuture<'_, super::pc_experiments::PcAnonymousState> {
+        Box::pin(async { Err(Error::State("PC anonymous registration is unavailable")) })
+    }
+
+    fn pc_anonymous_store_matches(&self, _directory: &std::path::Path) -> Result<bool> {
+        Ok(false)
+    }
+
+    fn isolated_pc_anonymous_transport(
+        &self,
+        _directory: &std::path::Path,
+    ) -> Result<Option<std::sync::Arc<dyn Api>>> {
+        Ok(None)
+    }
+
     /// The scoped read must fence the signed cohort revision at dispatch.
     /// Ordinary request transports cannot emulate that native authority.
     fn request_vinyl_comment_page<'a>(

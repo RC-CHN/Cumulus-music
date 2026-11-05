@@ -1,10 +1,18 @@
 //! Only the native signed PC branch of the recovered experiment assignment.
+mod anonymous;
+mod presentation;
+mod runtime;
+mod store;
+pub(in crate::client) use presentation::PcPresentationSnapshot;
+pub use presentation::PcPresentationView;
+pub use runtime::{PcPresentationRuntimeLease, PcPresentationRuntimeStatus};
 
 use super::MusicClient;
 use crate::{
     Error, Result,
-    account::{SessionStatus, SessionToken},
+    account::{AccountSession, SessionStatus, SessionToken},
     protocol::{api::Api, pc_experiments::PcExperimentGroups},
+    storage::StateStore,
 };
 use std::{
     sync::{Arc, Mutex as Observed, Weak},
@@ -19,6 +27,14 @@ const TIMEOUT: Duration = Duration::from_secs(8);
 pub(super) struct PcExperimentHost {
     gate: Mutex<()>,
     state: Observed<Option<Assigned>>,
+    presentation: presentation::PresentationHost,
+}
+
+#[derive(Clone)]
+struct ScopeContext {
+    session: Arc<AccountSession>,
+    host: Arc<PcExperimentHost>,
+    store: Arc<StateStore>,
 }
 
 struct Assigned {
@@ -133,41 +149,91 @@ impl MusicClient {
             .map(|(_, groups)| groups)
     }
 
+    fn pc_presentation_context(&self) -> ScopeContext {
+        ScopeContext {
+            session: self.session.clone(),
+            host: self.pc_experiments.clone(),
+            store: self.registry.store(),
+        }
+    }
+
     pub(super) async fn verified_pc_experiment_groups_for(
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,
     ) -> Result<(String, PcExperimentGroups)> {
+        self.pc_presentation_context()
+            .live_pc_experiment_groups_for(token, api, false, &|| {
+                self.login_pending().map(|pending| !pending)
+            })
+            .await
+    }
+
+    /// Native host refresh only; no renderer command forces a cohort change.
+    pub async fn refresh_pc_presentation(&self) -> Result<PcPresentationView> {
+        let token = self.session.token()?;
+        let context = self.pc_presentation_context();
+        let mut api = self.session.native_api(&token)?;
+        if token.uid.is_none() {
+            api = context.isolate_guest(&token, &api)?.unwrap_or(api);
+            context
+                .live_anonymous_groups_for(&token, &api, true)
+                .await?;
+        } else {
+            context
+                .live_pc_experiment_groups_for(&token, &api, true, &|| {
+                    self.login_pending().map(|pending| !pending)
+                })
+                .await?;
+        }
+        self.pc_presentation()
+    }
+}
+
+impl ScopeContext {
+    async fn live_pc_experiment_groups_for(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        scheduled: bool,
+        allowed: &(dyn Fn() -> Result<bool> + Send + Sync),
+    ) -> Result<(String, PcExperimentGroups)> {
+        let requested = Instant::now();
         let session = self.session.snapshot()?;
         if session.token != *token {
             return Err(Error::StaleResponse);
         }
-        if session.status != SessionStatus::Authenticated || self.login_pending()? {
+        if session.status != SessionStatus::Authenticated || !allowed()? {
             return Err(Error::State(
                 "PC experiment requires a current authenticated account",
             ));
         }
         let mut changes = self.session.subscribe()?;
-        let _gate = self.pc_experiments.gate.lock().await;
+        let _gate = self.host.gate.lock().await;
         self.session.require_api(token, api)?;
-        if self.login_pending()? {
+        if !allowed()? {
             return Err(Error::StaleResponse);
         }
         let credentials = api.verified_pc_experiment_revision()?.ok_or(Error::State(
             "PC experiment requires a native signed transport",
         ))?;
         let cached = self
-            .pc_experiments
+            .host
             .state
             .lock()
             .map_err(|_| Error::LockPoisoned)?
             .as_ref()
-            .filter(|current| current.matches(token, api, &credentials))
+            .filter(|current| {
+                current.matches(token, api, &credentials)
+                    && (!scheduled || current.fetched >= requested)
+            })
             .map(|current| current.groups.clone());
         if let Some(groups) = cached {
-            return self
+            let result = self
                 .session
-                .with_verified_profile(token, api, |_, _| Ok((credentials, groups)));
+                .with_verified_profile(token, api, |_, _| Ok((credentials, groups)))?;
+            let _ = self.commit_presentation(token, api, &result.0, &result.1);
+            return Ok(result);
         }
         let refresh =
             tokio::time::timeout(TIMEOUT, api.verified_pc_experiment_groups(&credentials));
@@ -176,18 +242,14 @@ impl MusicClient {
             _ = changes.changed() => return Err(Error::StaleResponse),
             result = refresh => result.map_err(|_| Error::Transport("PC experiment assignment timed out".into()))??,
         };
-        if self.login_pending()?
+        if !allowed()?
             || api.verified_pc_experiment_revision()?.as_deref() != Some(credentials.as_str())
         {
             return Err(Error::StaleResponse);
         }
-        self.session.with_verified_profile(token, api, |_, _| {
+        let result = self.session.with_verified_profile(token, api, |_, _| {
             let result = groups.clone();
-            *self
-                .pc_experiments
-                .state
-                .lock()
-                .map_err(|_| Error::LockPoisoned)? = Some(Assigned {
+            *self.host.state.lock().map_err(|_| Error::LockPoisoned)? = Some(Assigned {
                 token: token.clone(),
                 api: Arc::downgrade(api),
                 credentials: credentials.clone(),
@@ -195,7 +257,9 @@ impl MusicClient {
                 groups,
             });
             Ok((credentials, result))
-        })
+        })?;
+        let _ = self.commit_presentation(token, api, &result.0, &result.1);
+        Ok(result)
     }
 }
 

@@ -10,6 +10,17 @@ use std::{
 };
 
 pub const ASSIGNMENT_PATH: &str = "/api/rtrs/abt/front/expinfo/list";
+pub const ANONYMOUS_PATH: &str = "/api/register/anonimous";
+
+/// Native-only anonymous registration state. An anonymous UID never grants
+/// the authenticated AccountSession namespace or enters a renderer DTO.
+#[derive(Clone, PartialEq, Eq)]
+pub enum PcAnonymousState {
+    Unsupported,
+    Unregistered,
+    Uncertain,
+    Registered { uid: String, revision: String },
+}
 const SKIP: &str = "PH-PC-skipSongs2";
 const SEARCH_AUDIO_TOPLIST: &str = "pc-search-audio-toplist";
 const EMOTION: &str = "PH-PC-qingxv";

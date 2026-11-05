@@ -309,6 +309,28 @@ impl AccountSession {
         Ok(())
     }
 
+    /// A signed-out guest may move to an isolated native anonymous jar. This
+    /// never adopts its anonymous UID as an authenticated account, nor changes
+    /// the guest epoch. API and presentation observers must still rebind.
+    pub(crate) fn replace_guest_api(
+        &self,
+        expected: &SessionToken,
+        previous: &Arc<dyn Api>,
+        next: Arc<dyn Api>,
+    ) -> Result<()> {
+        let mut state = self.lock()?;
+        state.require(expected)?;
+        if state.uid.is_some()
+            || state.status == SessionStatus::Unknown
+            || !Arc::ptr_eq(&state.api, previous)
+        {
+            return Err(Error::StaleResponse);
+        }
+        state.api = next;
+        state.changes.send_replace(state.token());
+        Ok(())
+    }
+
     pub(crate) fn with_verified_profile<T>(
         &self,
         expected: &SessionToken,

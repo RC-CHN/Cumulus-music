@@ -1,10 +1,12 @@
 //! Profile-local credentials committed atomically in the private SQLite store.
 //! An origin is fixed at construction; Cookie domain/path flags stay intact.
+mod anonymous;
 use crate::{
     Error, Result,
     protocol::{http::ApiOrigin, wire::crypto::random_bytes},
     storage::StateStore,
 };
+pub(crate) use anonymous::AnonymousIntent;
 use cookie_store::{Cookie, CookieStore};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -50,6 +52,7 @@ pub struct Credentials {
     origin: ApiOrigin,
     store: Arc<StateStore>,
     state: Mutex<State>,
+    commits: tokio::sync::watch::Sender<String>,
 }
 
 /// Private native-side values, intentionally neither Debug nor Serialize.
@@ -200,6 +203,7 @@ impl Credentials {
         Ok(Self {
             origin,
             store,
+            commits: tokio::sync::watch::channel(record.revision.clone()).0,
             state: Mutex::new(State { record, persisted }),
         })
     }
@@ -209,6 +213,12 @@ impl Credentials {
     }
     pub fn origin(&self) -> ApiOrigin {
         self.origin
+    }
+
+    /// Native commit observations only. Never contains Cookie/token values;
+    /// failed commits and identical records cannot wake lifecycle readers.
+    pub(crate) fn subscribe_commits(&self) -> tokio::sync::watch::Receiver<String> {
+        self.commits.subscribe()
     }
     pub fn device_id(&self) -> Result<String> {
         let state = self.lock()?;
@@ -295,6 +305,16 @@ impl Credentials {
         let mut state = self.lock()?;
         let mut candidate = state.record.clone();
         operation(&mut candidate)?;
+        let canonical = |record: &Record| -> Result<Value> {
+            let mut value = serde_json::to_value(record)?;
+            if let Some(cookies) = value["cookies"].as_array_mut() {
+                cookies.sort_by_cached_key(Value::to_string);
+            }
+            Ok(value)
+        };
+        if canonical(&candidate)? == canonical(&state.record)? {
+            return self.require_current(&state);
+        }
         candidate.revision = Uuid::new_v4().simple().to_string();
         validate_record(&candidate, self.origin)?;
         let raw = serde_json::to_value(&candidate)?;
@@ -306,6 +326,7 @@ impl Credentials {
         })?;
         state.record = candidate;
         state.persisted = raw;
+        self.commits.send_replace(state.record.revision.clone());
         Ok(())
     }
 
