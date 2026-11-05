@@ -28,6 +28,12 @@
   const mode = window.__searchFooterCase;
   let step = 'startup', count = 0, epoch;
   const native = () => invoke('player_snapshot', { epoch });
+  const bar = () => {
+    const node = one('.playerbar');
+    return node && { state: node.dataset.state, playId: node.dataset.playId ?? null,
+      trackId: node.dataset.trackId ?? null, position: Number(node.dataset.position),
+      title: one('.playerbar .now-copy button')?.textContent.trim() ?? null };
+  };
   async function playerWhen(test, message) {
     let result;
     await wait(async () => { result = await native(); return test(result); }, message);
@@ -56,6 +62,14 @@
       && all('.search-result-panel,.search-reason-page').every((node) => node.getAnimations().every((animation) => animation.playState !== 'running' && !animation.pending)), 'settled page ' + label);
     const observed = await native();
     if (expected) assert(expected(observed), 'native state before ' + label);
+    await wait(() => {
+      const rendered = bar();
+      return rendered?.state === observed.state && (!observed.track ||
+        rendered.playId === observed.playId && rendered.trackId === observed.track.id &&
+        rendered.title === observed.track.name && rendered.position > .2);
+    }, 'rendered player bar agrees with native playback before ' + label);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    await sleep(120);
     const stage = `ux_${String(++count).padStart(2, '0')}_${label}`;
     window.__searchFooterRecorded = '';
     await emit(stage, {
@@ -67,6 +81,7 @@
       focusAction: document.activeElement?.dataset.resultAction ?? null,
       noOverflow: document.documentElement.scrollWidth <= innerWidth,
       observedPlayId: observed.playId, observedState: observed.state,
+      playerbar: bar(),
     });
     // An emit reply precedes the spawned host actor snapshot. This receipt is
     // emitted only after native JSON persistence (and optional PNG capture).

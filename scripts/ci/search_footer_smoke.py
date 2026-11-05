@@ -62,6 +62,11 @@ def verify(directory, case, expected_assignment, screenshots, windows):
         assert state["footerCase"] == case and state["label"] == label and state["noOverflow"]
         player = state["nativePlayer"]
         assert state["observedPlayId"] == player["playId"] and state["observedState"] == player["state"]
+        bar = state["playerbar"]
+        assert bar["state"] == player["state"], state
+        if player.get("track"):
+            assert bar["playId"] == player["playId"] and bar["trackId"] == player["track"]["id"]
+            assert bar["title"] == player["track"]["name"] and bar["position"] > .2
         if label == "recommendation":
             assert state["reasonTitle"] == "合成推荐详情" and state["footerCount"] == 0
         else:
