@@ -284,6 +284,8 @@ export function createTauriClient(): CoreClient {
       invoke('together_statistics', { epoch, relationKey }),
     togetherCommand: (epoch, command) => invoke('together_command', { epoch, command }),
     podcastPage: (epoch, query, refresh) => invoke('podcast_page', { epoch, query, refresh }),
+    audiobookSkipSettings: (epoch, context, action) =>
+      invoke('audiobook_skip_settings', { epoch, context, action }),
     podcastRecent: (epoch, query) => invoke('podcast_recent', { epoch, query }),
     podcastCatalogue: (epoch, query) => invoke('podcast_catalogue', { epoch, query }),
     podcastHome: (epoch, continuation) => invoke('podcast_home', { epoch, continuation }),

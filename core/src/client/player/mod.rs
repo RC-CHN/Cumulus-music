@@ -217,6 +217,8 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     }
     let failure = value.error.map(super::ClientError::from);
     Ok(PlayerView {
+        audiobook_skip_available: token.uid.is_some()
+            && super::podcast::audiobook::active_radio(value).is_some(),
         fm: value.fm,
         zone_fm_rule_id: value.selected.as_ref().and_then(|entry| {
             (value.fm && entry.source["kind"] == "fm" && entry.source["source"]["kind"] == "zone")

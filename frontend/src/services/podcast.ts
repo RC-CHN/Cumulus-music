@@ -76,6 +76,7 @@ export interface PodcastPage {
   radio: PodcastCard | null;
   likedIds: string[];
   resumeEnabled: boolean | null;
+  audiobookSkipEnabled?: boolean | null;
   operations: PodcastMutation[];
 }
 export type PodcastCommand =

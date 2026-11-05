@@ -61,6 +61,7 @@ pub(super) fn page(
     liked_ids: Vec<String>,
     resume_enabled: Option<bool>,
     operations: Vec<PodcastMutationView>,
+    audiobook_skip_enabled: Option<bool>,
 ) -> Result<PodcastPage> {
     let keyword = query.keyword.trim().to_lowercase();
     let is_radio = matches!(query.scope, PodcastScope::Radio { .. });
@@ -120,6 +121,7 @@ pub(super) fn page(
         },
         liked_ids,
         resume_enabled,
+        audiobook_skip_enabled,
         operations,
     })
 }

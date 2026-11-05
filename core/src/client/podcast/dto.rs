@@ -67,6 +67,7 @@ pub struct PodcastPage {
     pub radio: Option<PodcastCard>,
     pub liked_ids: Vec<String>,
     pub resume_enabled: Option<bool>,
+    pub audiobook_skip_enabled: Option<bool>,
     pub operations: Vec<PodcastMutationView>,
 }
 #[derive(Clone, Serialize)]

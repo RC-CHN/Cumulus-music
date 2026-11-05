@@ -1,5 +1,17 @@
 use cumulus_core::client::{ClientError, MusicClient, dto::*};
 #[tauri::command]
+pub async fn audiobook_skip_settings(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    context: AudiobookSkipContext,
+    action: AudiobookSkipAction,
+) -> Result<AccountData<AudiobookSkipView>, ClientError> {
+    client
+        .audiobook_skip_settings(&epoch, context, action)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn scene_fm_view(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

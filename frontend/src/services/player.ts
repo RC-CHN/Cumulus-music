@@ -63,6 +63,7 @@ export interface DeviceParametricView {
 
 export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
+  audiobookSkipAvailable?: boolean;
   origin?: PlayerOrigin | null;
   profileRankPlaylistUid?: string;
   recommendationOrigin?: { kind: 'daily' | 'style'; revision: string } | null;

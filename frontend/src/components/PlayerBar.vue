@@ -27,6 +27,8 @@ import { usePlaybackDownloadState } from '../composables/usePlaybackDownloadStat
 import { useQueueMoreTip } from '../composables/useQueueMoreTip';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
 import PlayerTrackActions from './PlayerTrackActions.vue';
+import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
+import type { AudiobookSkipContext } from '../services/audiobookSkip';
 const equalizerOpen = ref(false);
 const effectDirectoryOpen = ref(false);
 const headphoneManagementOpen = ref(false);
@@ -134,6 +136,18 @@ const currentCatalog = computed<CurrentCatalogTrack | undefined>((previous) => {
   )
     return previous;
   return current;
+});
+const audiobookSkipContext = computed<AudiobookSkipContext | undefined>(() => {
+  const current = view.value;
+  if (
+    current?.audiobookSkipAvailable &&
+    current.epoch === props.account.epoch &&
+    props.account.status === 'authenticated' &&
+    current.playId &&
+    current.entryId
+  )
+    return { kind: 'player', playId: current.playId, entryId: current.entryId };
+  return undefined;
 });
 const currentDownload = computed<CurrentPlaybackDownload | undefined>((previous) => {
   if (!props.downloadsAllowed || view.value?.epoch !== props.account.epoch) return undefined;
@@ -737,6 +751,7 @@ async function seek(event: Event) {
         @catalog="(resource) => emit('catalog', resource)"
         @effects="effectDirectoryOpen = true"
       />
+      <AudiobookSkipMenu :epoch="account.epoch" :context="audiobookSkipContext" />
     </div>
     <div class="player-feedback-stack">
       <Transition name="playback-feedback">

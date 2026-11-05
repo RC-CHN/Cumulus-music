@@ -1,3 +1,4 @@
+pub(in crate::client) mod audiobook;
 mod discovery;
 mod dto;
 mod home;
@@ -12,6 +13,8 @@ use crate::{
     podcast::{PodcastAction, PodcastApi, PodcastLibrary, PodcastScope, PodcastService},
     protocol::api::identifier,
 };
+pub(super) use audiobook::Host as AudiobookSkipHost;
+pub use audiobook::{AudiobookSkipAction, AudiobookSkipContext, AudiobookSkipView};
 pub(super) use discovery::PodcastDiscoveryHost;
 pub use discovery::{
     PodcastCatalogue, PodcastCatalogueCard, PodcastCatalogueQuery, PodcastCategory,
@@ -141,8 +144,33 @@ impl MusicClient {
             .filter(|v| v.phase.pending())
             .map(view::operation)
             .collect();
-        self.session.with_token(&token, |_| Ok(()))?;
-        view::page(epoch, snapshot, query, liked_ids, resume, operations)
+        let audiobook_skip_enabled = self.session.with_token(&token, |owner| {
+            let PodcastScope::Radio { id, .. } = &query.scope else {
+                return Ok(None);
+            };
+            let Some(radio) = snapshot
+                .radios
+                .first()
+                .filter(|radio| radio.id == *id && audiobook::detail_category(&radio.raw))
+            else {
+                return Ok(None);
+            };
+            let store = self.session.persistent_store()?;
+            use crate::podcast::AudiobookSkip;
+            Ok(Some(
+                AudiobookSkip::read(&store, owner, &radio.id)
+                    .is_ok_and(|value| value != AudiobookSkip::Close),
+            ))
+        })?;
+        view::page(
+            epoch,
+            snapshot,
+            query,
+            liked_ids,
+            resume,
+            operations,
+            audiobook_skip_enabled,
+        )
     }
     pub async fn podcast_command(
         &self,

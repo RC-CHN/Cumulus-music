@@ -6,6 +6,8 @@ import { time } from '../services/player';
 import type { PodcastModel } from '../composables/usePodcasts';
 import type { PodcastRecentModel } from '../composables/usePodcastRecent';
 import PodcastRecentList from './PodcastRecentList.vue';
+import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
+import { audiobookSkipSaved, type AudiobookSkipContext } from '../services/audiobookSkip';
 import type { PodcastScope, EpisodeView } from '../services/podcast';
 const props = defineProps<{
   model: PodcastModel;
@@ -39,6 +41,33 @@ watch(
 );
 const scope = computed(() => query.value.scope);
 const detail = computed(() => !recentSelected.value && scope.value.kind === 'radio');
+const audiobookSkipContext = computed<AudiobookSkipContext | undefined>(() => {
+  const current = page.value;
+  if (
+    !detail.value ||
+    scope.value.kind !== 'radio' ||
+    !current ||
+    current.scope.kind !== 'radio' ||
+    current.scope.id !== scope.value.id ||
+    current.scope.ascending !== scope.value.ascending ||
+    typeof current.audiobookSkipEnabled !== 'boolean'
+  )
+    return undefined;
+  return { kind: 'detail', scope: current.scope, revision: current.revision };
+});
+watch(audiobookSkipSaved, (saved) => {
+  const current = page.value;
+  if (
+    current &&
+    saved &&
+    current.epoch === saved.epoch &&
+    current.scope.kind === 'radio' &&
+    current.scope.id === saved.value.radioId &&
+    typeof current.audiobookSkipEnabled === 'boolean'
+  ) {
+    page.value = { ...current, audiobookSkipEnabled: saved.value.setting.kind !== 'close' };
+  }
+});
 async function restoreRecentScroll() {
   if (!recentSelected.value) return;
   await nextTick();
@@ -215,6 +244,12 @@ function order() {
             >
               {{ page.radio.subscribed ? '已收藏' : '收藏播客' }}
             </button>
+            <AudiobookSkipMenu
+              :epoch="page.epoch"
+              :context="audiobookSkipContext"
+              :enabled="page.audiobookSkipEnabled === true"
+              :disabled="loading || busy"
+            />
             <label v-if="page.resumeEnabled !== null"
               ><input
                 type="checkbox"

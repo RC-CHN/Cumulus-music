@@ -10,6 +10,7 @@ import type { SearchClient, SearchResultsClient } from './search';
 import type { NativeLikesClient } from './nativeLikes';
 import type { LikeRecoveryClient } from './likeRecovery';
 import type { PlayerClient } from './player';
+import type { AudiobookSkipClient } from './audiobookSkip';
 import type { PlaylistClient } from './playlists';
 import type { PlaylistCoverClient } from './playlistCover';
 import type { ColdOfflineClient } from './coldOffline';
@@ -142,6 +143,7 @@ export interface CoreClient
     LocalClient,
     LocalMatchClient,
     PodcastClient,
+    AudiobookSkipClient,
     PodcastCatalogueClient,
     PodcastHomeClient,
     PodcastRankingClient,
