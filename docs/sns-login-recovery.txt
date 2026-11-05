@@ -25,7 +25,7 @@ Cumulus SNS 登录恢复契约与后续实现边界
 
   M3143:373–375 的 beforepopup 只把目标 URL 交给通用 openUrl。其实现 M73:20–43
   默认交给 Os.openExternal；不会建立 SNS 子窗口回传通道。若当时仍有登录态且目标
-  满足该工具的 SSO 条件，还会尝试 GET /api/sso/login/token，取得 token 后经
+  满足该工具的 SSO 条件，还会尝试 POST /api/sso/login/token（M12:291 默认 POST），取得 token 后经
   /sso/login 打开外部链接。这是通用外链分支，不是微信或 QQ 的成功票据生产者；
   隔离的 SNS 授权窗口不得沿用此分支传递已有账号状态或票据。
 
