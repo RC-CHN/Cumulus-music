@@ -150,6 +150,13 @@ Windows将binary换为.exe，并通过--runtime指定打包的native目录。--s
 - 透明窗要求平台合成器支持；Wayland可能限制位置恢复、全局快捷键与穿透。位置保存
   失败会显示提示；不改变系统级图形设置。主窗/歌词窗关闭错误不会触发图形自动重启。
 
+未入库音频的旁挂歌词
+- Linux `8c791d33` 用实际打开的合成 PCM WAV 验证，文件未出现在本地媒体库。
+  播放详情和桌面歌词各实际显示嵌套 `lyric/lrc/` 中的同一份文本，且保持
+  同一原生播放的暂停时钟。两态、两张截图和实际区域证据在
+  `.build/ui-proof/phase74-native-lyrics-r2/`；无在线歌词请求。Linux `LC_NUMERIC`
+  为 `C`，消息语言保持 `en_US.UTF-8`。Windows 实际 WebView2 仍须独立核对。
+
 2026-11-01 Windows独立输入验证修正
 - a4732c4/41281027082的Linux完整job成功，Windows在desktop_lyrics_driver的独立
   输入进程取前台失败，整个CI失败。原日志保存在ci-a4732c4-windows-failed.log。
