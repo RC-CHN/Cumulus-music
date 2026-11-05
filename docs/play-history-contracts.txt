@@ -378,3 +378,6 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   观察。探针改为等待实际启用、无遮挡的同一按钮后只点击一次。复跑仍通过原七态，
   七条分组读取、六次提交观察和一次明确保存；报告
   `.build/ui-proof/phase72-history-readiness-r1/report.json`。产品的历史逻辑未改。
+  同一提交的 Windows 包任务也先通过冷 FLAC、便携版启动和六个自然播完场景，
+  随后同样在 `startup` 报 `enabled settings control`，历史观察及命令均为空
+  （CI 42111466668，任务 127539828781）。Windows 修正版结果须另验。
