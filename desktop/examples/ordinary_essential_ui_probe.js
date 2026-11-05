@@ -39,6 +39,33 @@
     element.value = String(value);
     element.dispatchEvent(new Event('change', { bubbles: true }));
   }
+  const chapter = () => one('[data-listened-book="0"] [data-listened-chapter]');
+  const radioTitle = () => one('[data-listened-book="0"] .listened-book-title');
+  const radioRows = () => all('.podcast-page .episode-row[data-voice-id]').map((row) => row.dataset.voiceId);
+  const orderButton = () => all('.podcast-page .podcast-toolbar button')
+    .find((node) => ['正序', '倒序'].includes(node.textContent.trim()));
+  async function waitOrder(ascending) {
+    const label = ascending ? '正序' : '倒序';
+    const ids = ascending ? '791,792' : '792,791';
+    await wait(() => !one('.page-enter-active,.page-leave-active')
+      && one('.podcast-summary h2')?.textContent.trim() === '合成播单 691'
+      && orderButton()?.textContent.trim() === label && !orderButton().disabled
+      && radioRows().join(',') === ids, 'radio 691 detail: ' + label);
+  }
+  async function openRadio(ascending) {
+    await wait(() => !one('.page-enter-active,.page-leave-active') && radioTitle(), 'radio title on listened page');
+    click(radioTitle());
+    await waitOrder(ascending);
+  }
+  async function goFromRadioToBooks() {
+    click(back());
+    await wait(() => !one('.page-enter-active,.page-leave-active') && chapter(), 'back from radio to listened books');
+  }
+  async function savedOrder(epoch) {
+    const reply = await invoke('podcast_radio_order', { epoch, query: { kind: 'read', id: '691' } });
+    assert(reply.epoch === epoch, 'radio preference belongs to the current account');
+    return reply.value;
+  }
   async function reloadAt(name) {
     sessionStorage.setItem('essential-phase', name);
     sessionStorage.setItem('essential-states', JSON.stringify(states));
@@ -63,6 +90,11 @@
       click(all('.ordinary-essential button').find((node) => node.textContent.trim() === '重试'));
       await wait(() => button('songs:1:play')?.getAttribute('aria-label')?.includes('精选新歌 3'), 'retry loads only current account');
       await capture('retry');
+      const { epoch } = await invoke('account_snapshot');
+      click(button('books:history:open'));
+      await openRadio(true);
+      assert(await savedOrder(epoch) === null, 'another account has no saved order for the same radio');
+      await capture('radio_order_other_account', { preference: null, visible: radioRows() });
       await fixture(0, 'initial');
       await reloadAt('guest');
       return;
@@ -114,7 +146,6 @@
     click(pagination('下一页'));
     await wait(() => all('[data-listened-book]').length === 1 && one('[data-listened-book="20"]'), 'twenty rows per page');
     click(pagination('上一页'));
-    const chapter = () => one('[data-listened-book="0"] [data-listened-chapter]');
     await wait(() => chapter() && !chapter().disabled, 'chapter back on first page');
     const { epoch } = await invoke('account_snapshot');
     const player = () => invoke('player_snapshot', { epoch });
@@ -154,9 +185,32 @@
     await action({ kind: 'seek', seconds: 11.75 });
     const sought = await waitPlayer((state) => state.state === 'paused' && !state.nativeSeeking
       && state.playId === original.playId && Math.abs(state.position - 11.75) < .15, 'paused chapter seek');
+    async function unchangedPaused(previous, label) {
+      const current = await player();
+      assert(current.state === 'paused' && current.playId === previous.playId
+        && current.entryId === previous.entryId && current.queueRevision === previous.queueRevision
+        && Math.abs(current.position - previous.position) < .15, label);
+    }
+    async function toggleOrder(ascending, previous) {
+      click(orderButton());
+      await waitOrder(ascending);
+      assert(await savedOrder(epoch) === ascending, 'only the requested order committed');
+      await unchangedPaused(previous, 'sorting detail must not change paused native playback');
+    }
+    await openRadio(true);
+    assert(await savedOrder(epoch) === null, 'first account starts with no radio preference');
+    await toggleOrder(false, sought);
+    await capture('radio_order_desc', { playing: true, preference: false, visible: radioRows() });
+    await goFromRadioToBooks();
+    await openRadio(false);
+    assert(await savedOrder(epoch) === false, 'the descending preference survived closing detail');
+    await unchangedPaused(sought, 'reopening a sorted detail must not change paused native playback');
+    await capture('radio_order_reopened', { playing: true, preference: false, visible: radioRows() });
+    await toggleOrder(true, sought);
     const stopped = await action({ kind: 'stop' });
     assert(stopped.state === 'idle' && !stopped.playId && stopped.queueRevision === sought.queueRevision,
       'stop leaves the exact played chapter before reopening');
+    await goFromRadioToBooks();
     await backFromBooks();
     await capture('history_return', { scroll });
 
@@ -176,15 +230,14 @@
     click(chapter());
     await wait(() => all('.playback-message[role=status]')
       .some((node) => node.textContent.includes('列表已更新，请刷新后重试')), 'missing around anchor shows failure');
-    const preserved = await player();
-    assert(preserved.state === 'paused' && preserved.playId === held.playId
-      && preserved.entryId === held.entryId && preserved.queueRevision === held.queueRevision
-      && Math.abs(preserved.position - held.position) < .15, 'missing anchor preserves paused native playback and queue');
+    await unchangedPaused(held, 'missing anchor preserves paused native playback and queue');
     await capture('listened_around_rejected', { playing: true, notice: '列表已更新，请刷新后重试' });
 
+    await fixture(2, 'initial');
+    await openRadio(true);
+    await toggleOrder(false, held);
     await fixture(2, 'listened-different');
-    await backFromBooks();
-    await reopenBooks();
+    await goFromRadioToBooks();
     assert(chapter().textContent.trim() === '目录章节 791'
       && one('[data-listened-book="0"]').textContent.includes('已播 10%'), 'same-book different chapter uses remote row');
     const other = await playChapter('791', 2, resumed.playId);

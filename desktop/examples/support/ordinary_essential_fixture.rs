@@ -244,8 +244,20 @@ impl Api for Library {
                     json!({"code":200,"data":{"list":programs,"asc":true}})
                 }
                 BY_RADIO if args["radioId"] == "691" => {
-                    assert_eq!(args, json!({"radioId":"691","limit":250,"offset":0}));
-                    json!({"code":200,"data":{"programs":[voice(791,691),voice(792,691)],"count":2,"more":false}})
+                    let limit = args["limit"].as_u64().expect("book chapter page size");
+                    let asc = args["asc"].as_bool();
+                    let mut expected = json!({"radioId":"691","limit":limit,"offset":0});
+                    match (limit, asc) {
+                        (200 | 250, Some(asc)) => expected["asc"] = json!(asc),
+                        (250, None) => (),
+                        _ => panic!("invalid book chapter request"),
+                    }
+                    assert_eq!(args, expected);
+                    let mut programs = vec![voice(791, 691), voice(792, 691)];
+                    if asc == Some(false) {
+                        programs.reverse();
+                    }
+                    json!({"code":200,"data":{"programs":programs,"count":2,"more":false,"asc":asc}})
                 }
                 BY_RADIO => {
                     json!({"code":200,"data":{"programs":[voice(701, number(&args["radioId"])),voice(702, number(&args["radioId"]))],"count":2,"more":false,"asc":args["asc"]}})
