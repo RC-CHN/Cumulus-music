@@ -284,11 +284,21 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
-      - name: Export the exact packaged Linux filter for WebView smoke
+      - name: Export the exact packaged Linux filter and FLAC decoder for WebView smoke
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: linux-webview-package-filter
-          path: .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+          name: linux-webview-package-runtime
+          path: |
+            .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+            .build/package-stage/linux-x64/native/libcumulus_flac150.so.14
+            .build/package-stage/linux-x64/native/third-party/licenses/flac-1.5.0/COPYING.Xiph
+          if-no-files-found: error
+          retention-days: 3
+      - name: Export the corresponding Linux package attestation for WebView smoke
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-webview-package-manifest
+          path: .build/packages/linux-x64/manifest-linux-x64.json
           if-no-files-found: error
           retention-days: 3
 
@@ -843,14 +853,47 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           # Same workflow run; no external run ID or cache lookup.
-          name: linux-webview-package-filter
+          name: linux-webview-package-runtime
           path: .build/package-stage/linux-x64/native
-      - name: Require packaged filter and measure Linux WebView disk
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: linux-webview-package-manifest
+          path: .build/packages/linux-x64
+      - name: Verify same-run Linux media runtime and measure WebView disk
         run: |
           test -f frontend/dist/index.html
           test -s .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+          test ! -L .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
+          flac_sha="$(PYTHONPATH=scripts/ci python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          from linux_flac_artifacts import MAX_MANIFEST, verify_extracted
+          from linux_flac150_package import bounded_file
+
+          path = Path('.build/packages/linux-x64/manifest-linux-x64.json')
+          bounded_file(path, MAX_MANIFEST)
+          manifest = json.loads(path.read_text(encoding='utf-8'))
+          actual = (manifest['platform'], manifest['commit'], manifest['ciRun'], manifest['ciAttempt'])
+          expected = ('linux-x64', os.environ['GITHUB_SHA'], os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT'])
+          if actual != expected:
+              raise ValueError('Linux media runtime is not from the exact package run and attempt')
+          report = verify_extracted(Path('.build/package-stage/linux-x64/native'), manifest.get('flacDecoder'))
+          print(report['sha256'])
+          PY
+          )"
+          printf 'CUMULUS_CI_PACKAGED_FLAC_SHA256=%s\n' "$flac_sha" >> "$GITHUB_ENV"
           test ! -d .build/target
           df -h .
+      - name: Verify the packaged Linux FLAC decoder through ordinary local equalizer playback
+        run: |
+          cargo build -p cumulus-desktop --example native_local_equalizer_probe --features custom-protocol --locked
+          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
+            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --binary .build/target/debug/examples/native_local_equalizer_probe \
+            --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
+            --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --frontend-dist frontend/dist --root .build/ci-native-local-equalizer-linux
       - name: Linux native media and desktop WebView regression
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:
@@ -860,8 +903,7 @@ jobs:
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: '1'
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
-          python3 scripts/ci/linux_flac150.py --build-dir .build/ci-flac150-linux
-          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-stereo-pcm-linux.json --stereo-pcm-flac-library .build/ci-flac150-linux/runtime/libFLAC.so.14
+          LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-stereo-pcm-linux.json --stereo-pcm-flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-linux.json
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/native_smoke.py --binary .build/target/debug/examples/native_audio_probe --report .build/ci-native-audio-stereo-linux.json --stereo-native-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so
           cargo build -p cumulus-desktop --example playback_power_ui_probe --features custom-protocol --locked

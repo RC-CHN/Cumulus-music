@@ -22,18 +22,21 @@ https://downloads.xiph.org/releases/flac/flac-1.5.0.tar.xz
 SHA256 f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920
 Official checksum publication: https://www.xiph.org/downloads/
 
-A new task-private directory receives a bounded HTTPS archive, hash verification,
-regular-file-only bounded extraction and CMake shared FLAC target build. Ogg,
-programs, tests, C++ library, examples and docs are disabled. No cmake install,
-sudo, global library replacement or package-stage write occurs. The explicit
-private library is ELF x86_64 and FLAC__VERSION_STRING must equal 1.5.0; the report
-records its exact path/SHA, source SHA, options and CMake version. The existing
-Linux WebView job builds the same native_audio_probe once, then runs the new
-flow in en_US.UTF-8 through Xvfb/dbus. Actual GUI initialization must still set
-only numeric locale to C; the proof retains its existing message-locale check.
-Only report.json and build.log enter the diagnostic closed set, not source,
-archives, binaries or CMake cache. --build-dir deliberately is not --root, so
-the automatic UI-proof root archiver does not collect this build directory.
+The standalone proof helper can still build its private library from that
+bounded archive. The required Linux WebView job instead receives the exact
+filter, decoder and Xiph notice exported by the package runner, alongside its
+small package manifest. It checks the commit, CI run and attempt, and verifies
+the packaged decoder and notice against the attestation before loading either
+native library. It does not download or rebuild FLAC. The cold native_audio_probe
+keeps its assertions using that packaged decoder in en_US.UTF-8 through
+Xvfb/dbus; GTK still has to set only numeric locale to C.
+
+A separate step uses the same verified decoder and packaged filter for the
+ordinary local equalizer probe in the network-isolated Linux WebView. It checks
+the trusted decoder, stock fallback on a deliberately wrong digest, and the
+paused handoff to independent native PEQ. These are synthetic null-output
+flows. The runner exports the staged files and manifest, not the source tree,
+compiler cache or private profiles.
 
 Windows
 -------
