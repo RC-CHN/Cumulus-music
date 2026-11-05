@@ -118,14 +118,21 @@ def verify(output, screenshots):
                     result[lane].append(frames)
         return result
 
-    mono = []
+    mono, mono_lanes = [], []
     for start, capture, material in ((first_revision['after'], captures[0], first_revision),
                                      (hot_revision['after'], captures[1], hot_revision),
                                      (resume['after'], captures[3], hot_revision)):
         lane_runs = run_between(start, len(capture['toneGeometry']['callbackRows']), 44100,
                                 material['detail']['revision'])
-        assert lane_runs and all(QUANTUM in frames for frames in lane_runs.values())
+        assert len(lane_runs) == 1 and all(set(frames) == {QUANTUM} for frames in lane_runs.values())
+        mono_lanes.append(next(iter(lane_runs)))
         mono.append(dict(laneCount=len(lane_runs), callbackSizes=sorted({n for runs in lane_runs.values() for n in runs})))
+    original, hot_lane, restarted = mono_lanes
+    assert original == hot_lane and restarted != original
+    seek_lifecycle = [(lane, event, revision) for seq, lane, event, rate, _, revision in rows
+                      if seeks[0]['before'] < seq <= resume['before'] and event != RUN and rate == 44100]
+    assert seek_lifecycle == [(original, RETIRED, 0), (restarted, CREATED, 0),
+                              (restarted, ACTIVATED, hot_revision['detail']['revision'])], seek_lifecycle
     stereo_runs = run_between(loads[1]['before'], ends[0]['cursor'], 48000)
     assert len(stereo_runs) == 2, stereo_runs
     full, tail = divmod(STEREO_FRAMES, QUANTUM)
@@ -135,7 +142,8 @@ def verify(output, screenshots):
                 decoded=[{'rate': row['detail']['rate'], 'channels': row['detail']['channels']} for row in formats],
                 mono=mono, stereo={'lanes': len(stereo_runs), 'framesPerLane': STEREO_FRAMES,
                                    'fullCallbacksPerLane': full, 'tail': tail},
-                geometryAndMaterialIntervals=True, seekSameEntry=True, officialPcmParity=False,
+                geometryAndMaterialIntervals=True, hotKeptFilterInstance=True,
+                seekSameEntry=True, seekRecreatedFilterWithHotRevision=True, officialPcmParity=False,
                 physicalSpeakerLayout=False, actualHttpsDecode=False, installedDSPChanged=False,
                 laneAttribution='opaque instances in single-engine intervals; no L/R or physical speaker names',
                 callbackRows=len(rows), screenshots=len(STAGES) if screenshots else 0)
