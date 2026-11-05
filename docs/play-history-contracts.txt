@@ -374,3 +374,7 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   .build/ui-proof/phase67-history-settings-r1/report.json；真实账号请求及远端写入均为零。
   复现：构建 ux_ui_probe，然后运行 scripts/ci/pc_presentation_smoke.py --history-settings
   --binary ABS_PROBE --root NEW。Linux/Windows 独立 runner 使用同一审计；本机仅实测 Linux。
+  后续 Linux CI 的 adf78a81 用例在启动阶段命中仍禁用的设置按钮，当时没有写入或历史
+  观察。探针改为等待实际启用、无遮挡的同一按钮后只点击一次。复跑仍通过原七态，
+  七条分组读取、六次提交观察和一次明确保存；报告
+  `.build/ui-proof/phase72-history-readiness-r1/report.json`。产品的历史逻辑未改。
