@@ -80,6 +80,20 @@ Linux：先检查固定的 libayatana-appindicator3.so.1 / libappindicator3.so.1
 每秒顺序查询该 owner 的 GetAll，检查 host=true 且本连接注册了当前 tray ID。
 只读取本进程对象，最多4个候选，每个 D-Bus 请求500ms上限；校验 Item 的 Id、
 Active 状态和 Menu 路径。owner 代次拒绝旧响应；无信号变化也会被轮询发现。
+  Ubuntu Noble 的 Ayatana 0.5.93 有独立的原生注册竞争：
+  AppIndicator 先安装名称监听，再异步填写对象自己的 session-bus 字段。
+  名称回调虽然已收到有效连接，却使用尚未设置的对象字段创建代理，触发
+  g_dbus_proxy_new 的连接断言。稍后的连接回调仍正常导出本进程的 Item 和
+  DBusMenu，但没有 watcher 代理时不会自行补发注册。仅预热 GIO 共享连接
+  不能约束这两个回调的先后。
+  来源：https://github.com/AyatanaIndicators/libayatana-appindicator/blob/0.5.93/src/app-indicator.c
+  （name_appeared_handler、app_indicator_init、bus_creation、check_connect）。
+  Cumulus 先等待一个正常轮询周期；若真实 watcher 尚未列出本连接的 Item，
+  只核对固定的本进程 Ayatana 路径、原始 ID、Active 和其真实 DBusMenu
+  GetLayout。再次确认 watcher 仍归同一唯一 owner、条目仍未注册后，向该
+  owner 补发一次 RegisterStatusNotifierItem。每个 owner 至多一次，最多
+  记住 16 个尝试；即使回执丢失也不重发。补发本身不能证明托盘可用，
+  仍需回读 watcher 的注册项和 host=true；无 host 时窗口继续按原规则恢复。
   使用保留的 GIO 共享连接，关闭此连接不退出进程。GIO 0.18 的 Rust watcher
   对 vanished 回调的空连接直接解包；宿主使用遵守 GLib 可空约定的回调，
   断线时只撤销本次可用状态，已隐藏的主窗口沿用同一恢复逻辑。
@@ -98,6 +112,12 @@ frontend/tests/window-lifecycle.test.ts：事件超越读/命令响应的大整�
 挂载结束后的订阅清理。正式前端已有200项测试（本批最终结果见验证日志）。
 desktop/examples/tray_native_probe + scripts/ci/tray_protocol_smoke.py：真正 native
 菜单显示/隐藏/退出、无 host 也可构造、watcher 重启重新注册；不是产品关闭验收。
+托盘注册竞争用同一 Ubuntu Noble 0.5.93-1build3 库和私有 D-Bus 验证：
+仅推迟 Ayatana 私有连接回调 350ms 即可重现原生断言，旧生产程序仍能打开
+设置，但原样 --startup 验证等待真实托盘超时。修复后的生产程序用原样
+--startup 在正常、强制竞争两轮均通过六次独立 X11 启动；第二轮每个进程
+都产生原生断言，但实际 D-Bus 记录仍是每个进程恰好注册一次。两轮均核对
+XDG 入口、菜单显示和退出、无宿主限时恢复、宿主丢失恢复及外部启动项保护。
 desktop/examples/tray_ui_probe + 同驱动 --lifecycle：正式 Vue/Tauri/核心设置和
 关闭流程；外部私有 D-Bus panel 模拟，仅合成音乐请求。14个 UI 状态含深浅色、
 760×540、无 host、记住选择、托盘恢复、host 丢失、重启、损坏/修复、保存失败、
