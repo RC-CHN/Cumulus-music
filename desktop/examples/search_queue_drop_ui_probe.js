@@ -88,7 +88,8 @@
   }
 
   try {
-    await wait(() => one('.track-row') && !button('播放', bar())?.disabled, 'signed-in daily page');
+    await wait(() => one('.track-row') && button('列表循环', bar() ?? document)?.disabled === false,
+      'signed-in daily page and native player ready');
     await emit('resize', { width: 1120, height: 760 });
     await wait(() => innerWidth === 1120 && innerHeight === 760, 'wide viewport');
     ({ epoch } = await invoke('account_snapshot'));
