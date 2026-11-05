@@ -340,6 +340,13 @@ impl MusicClient {
                         index,
                         source,
                     }
+                } else if song.track.id == page.song_id {
+                    // Official current-first Action.play still inserts the
+                    // rest of the collection. Keep the exact selected entry
+                    // so the actor continues or resumes its authorized decoder.
+                    PlaybackCommand::RetainCurrentQueueAndPlay(insert_collection_bound(
+                        queue, resources, source, false, true, false,
+                    ))
                 } else {
                     let mut queue =
                         insert_collection_bound(queue, resources, source, false, true, true);

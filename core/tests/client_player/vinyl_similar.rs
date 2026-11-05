@@ -318,3 +318,121 @@ async fn vinyl_similar_stale_play_revision_account_and_empty_or_denied_results_s
         }
     }
 }
+
+#[tokio::test]
+async fn vinyl_similar_current_first_header_and_current_artwork_keep_the_decoder() {
+    let device = Arc::new(support::Device::default());
+    let (_dir, api, _, client, _) = fixture_with_device(device.clone());
+    api.vinyl_comment_group.store(1, Ordering::SeqCst);
+    let play_id = seed_middle(&client).await;
+    let positioned = client
+        .player_action("1", PlayerAction::Seek { seconds: 22.0 })
+        .await
+        .unwrap();
+    assert_eq!(positioned.state, PlaybackStatus::Playing);
+    assert_eq!(positioned.position, Some(22.0));
+    let entry_id = positioned.entry_id.unwrap();
+    let engine_entry = device.state.lock().unwrap().view.entry_id;
+    assert!(engine_entry.is_some());
+    // Both existing generic UpdateQueue paths would otherwise be tempting:
+    // rebinding the entry reloads; using remote transport with the same
+    // entry still seeks. Neither is allowed for the current-first case.
+    device.fail_seek.store(true, Ordering::SeqCst);
+
+    for (paused, alternatives, expected) in [
+        (false, [4, 5], &["1", "2", "4", "5", "3"][..]),
+        (true, [6, 4], &["1", "2", "6", "4", "5", "3"][..]),
+    ] {
+        if paused {
+            client
+                .player_action("1", PlayerAction::Pause { paused: true })
+                .await
+                .unwrap();
+        }
+        let recommended = [2, alternatives[0], alternatives[1]].map(|id| {
+            json!({"id":id,"name":"来自推荐的不同元数据","dt":120000,"privilege":{"pl":128000}})
+        });
+        *api.vinyl_similar.response.lock().unwrap() = Some(json!({"code":200,"songs":recommended}));
+        let view = client
+            .player_vinyl_similar_songs("1", &play_id)
+            .await
+            .unwrap();
+        let receipt = view.receipt.unwrap();
+        let pause_offset = device.state.lock().unwrap().pauses.len();
+        let header = client
+            .player_vinyl_similar_play(
+                "1",
+                &play_id,
+                &receipt,
+                VinylSimilarAction::Header,
+                Quality::Lossless,
+            )
+            .await
+            .unwrap();
+        assert_eq!(header.play_id.as_deref(), Some(play_id.as_str()));
+        assert_eq!(header.entry_id.as_deref(), Some(entry_id.as_str()));
+        assert_eq!(header.position, Some(22.0));
+        assert_eq!(header.state, PlaybackStatus::Playing);
+        assert_eq!(queue_ids(&client).await, expected);
+        {
+            let device = device.state.lock().unwrap();
+            assert_eq!(device.loads, 1);
+            assert_eq!(device.view.entry_id, engine_entry);
+            assert_eq!(
+                &device.pauses[pause_offset..],
+                if paused { &[false][..] } else { &[] }
+            );
+        }
+
+        let cover_pause_offset = device.state.lock().unwrap().pauses.len();
+        let cover = client
+            .player_vinyl_similar_play(
+                "1",
+                &play_id,
+                &receipt,
+                VinylSimilarAction::Cover { index: 0 },
+                Quality::Standard,
+            )
+            .await
+            .unwrap();
+        assert_eq!(cover.play_id, header.play_id);
+        assert_eq!(cover.entry_id, header.entry_id);
+        assert_eq!(cover.position, header.position);
+        assert_eq!(cover.state, PlaybackStatus::Playing);
+        assert_eq!(queue_ids(&client).await, expected);
+        assert_eq!(
+            device.state.lock().unwrap().pauses.len(),
+            cover_pause_offset
+        );
+    }
+
+    let paused = client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    let receipt = client
+        .player_vinyl_similar_songs("1", &play_id)
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    let resumed = client
+        .player_vinyl_similar_play(
+            "1",
+            &play_id,
+            &receipt,
+            VinylSimilarAction::Cover { index: 0 },
+            Quality::Standard,
+        )
+        .await
+        .unwrap();
+    assert_eq!(resumed.play_id, paused.play_id);
+    assert_eq!(resumed.entry_id, paused.entry_id);
+    assert_eq!(resumed.position, paused.position);
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    let native = device.state.lock().unwrap();
+    assert_eq!(native.loads, 1);
+    assert_eq!(native.view.entry_id, engine_entry);
+    assert!(native.pauses.ends_with(&[true, false]));
+}

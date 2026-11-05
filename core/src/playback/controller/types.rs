@@ -177,6 +177,9 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    /// Install an ordinary queue with the exact same native selected entry,
+    /// then keep playing or resume it without seeking or reloading.
+    RetainCurrentQueueAndPlay(QueueSnapshot),
     /// Zone FM's explicit same-track case may retain its already authorized
     /// decoder; an incompatible source takes the normal load path.
     UpdateZoneFm {

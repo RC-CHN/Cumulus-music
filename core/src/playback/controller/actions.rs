@@ -37,6 +37,7 @@ impl Actor {
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
+                | PlaybackCommand::RetainCurrentQueueAndPlay(_)
         ) && request.guard.is_none()
         {
             self.reply(request.reply, Err(Error::StaleResponse));
@@ -227,6 +228,10 @@ impl Actor {
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
             }
+            PlaybackCommand::RetainCurrentQueueAndPlay(queue) => self
+                .retain_current_queue_and_play(queue)
+                .await
+                .map(|value| options = value),
             PlaybackCommand::UpdateZoneFm {
                 update,
                 retain_paused,
@@ -490,6 +495,40 @@ impl Actor {
             self.reply(request.reply, result);
         }
     }
+    async fn retain_current_queue_and_play(
+        &mut self,
+        queue: crate::playback::QueueSnapshot,
+    ) -> Result<Option<LoadOptions>> {
+        let selected = self.queue.selected();
+        // This command authorizes continuing the current decoder only. It
+        // cannot replace the media locator, rights, identity or queue family.
+        if self.queue.is_fm()
+            || self.queue.intelligence_context().is_some()
+            || queue.fm_source.is_some()
+            || queue.intelligence.is_some()
+            || selected.is_none()
+            || queue.selected() != selected
+        {
+            return Err(Error::StaleResponse);
+        }
+        self.save_position()?;
+        self.queue.install(queue)?;
+        if let Some(pending) = &self.pending {
+            if pending.paused {
+                self.pause(false).await?;
+            }
+            return Ok(None);
+        }
+        if self.state == PlaybackStatus::Paused {
+            self.pause(false).await?;
+            return Ok(None);
+        }
+        if self.state.active() {
+            return Ok(None);
+        }
+        Ok(Some(self.resume_interrupted_song().unwrap_or_default()))
+    }
+
     fn resume_interrupted_song(&self) -> Option<LoadOptions> {
         let source = match self.state {
             // Only an unsolicited native stop leaves a retry point in Idle.
