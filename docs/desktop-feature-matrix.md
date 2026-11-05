@@ -134,6 +134,6 @@
 
 - [场景 FM 在途取色](scene-fm-palette-contracts.txt)已补齐同账号同规范封面切节目时的 header、image、canvas 在途复用。Linux 真实 WebView 三个新场景共12阶段/12张PNG，601→602不增加读取或取消；旧节目新请求仍严格拒绝。头命中1请求/0图片body，图片回退2请求/76字节PNG，实际512字节本地RGBA送Rust；取色read各1次、sample为0/1/1、cancel均0。原生播放ID和队列保持、位置前进，不将此说成解码器分配次数或物理声卡证明。
 - 原四种取色场景已有完成记录；旧聚合在第五场景的Python封面URL期待错误处中止。仅按当前verify重新解析旧记录，得到 `.build/ui-proof/phase57-search-and-palette/recovered-original-four-report.json` 的4场景/11阶段/11PNG通过，启动新进程数为0。三种在途场景独立执行于 `palette-pending-r2/report.json`，两根共23阶段/23PNG；保留原失败且不算作七场景同一次完整运行。GUI未验证ABA、实服CDN、Windows实际渲染或真实声卡。
-- [综合搜索单曲页脚](search-preview-ui-contracts.txt)接入独立 `PH-PC-search-result=t1` 门控，实际签名完整PC实验批次同时提供原三桶布局；控制组、未知或过时回包不产生新的歌词命中、别名和推荐原因入口。刷新失败按同身份最近一次全局成功分配回退，不复活搜索本地旧t1；该显示回退不把过期快照变成新鲜授权。真实签名链、原始请求顺序与凭据变更已有原生定向测试源；本批搜索四场景GUI、完整Rust测试和Clippy仍在执行，不提前记通过。
+- [综合搜索单曲页脚](search-preview-ui-contracts.txt)接入独立 `PH-PC-search-result=t1` 门控，实际签名完整PC实验批次同时提供原三桶布局；控制组、未知或过时回包不产生新的歌词命中、别名和推荐原因入口。刷新失败按同身份最近一次全局成功分配回退，不复活搜索本地旧t1；该显示回退不把过期快照变成新鲜授权。真实签名链的10项原生传输用例与完整Rust2337项、严格Clippy通过；四种分组实际WebView共14阶段/14PNG通过，并核对真实底栏与原生播放一致。Windows运行仍须后续精确CI，不用GNU交叉检查代替。
 - 官方实验生命周期仍需衔接：M198:998–1005在用户初始化/切换后刷新；M147:2730–2750从 `abtest-cached-exps` 启动恢复，:2944–2971成功更新全局状态并持久化，:3055–3065每30分钟刷新；M3095:1688的搜索selector随全局分桶变化。当前每次读取有门控，但这些初次/周期/持久bootstrap及已返回Vue缓存页的reactive联动尚未完整迁移。它们是可继续实现的客户端工作，下一步应接原生生命周期并让当前页/缓存页一致更新，不通过前端新增轮询猜分桶；不能把单次读取门控列为搜索模块完成，也不能归为外部条件阻塞。
-- 本批Node测试885项通过。上述取色GUI使用Linux真实GTK/WebKitGTK、隔离合成传输及null libmpv；LC_NUMERIC单独为C，界面消息和字符locale仍为en_US.UTF-8。完整工作区和搜索桌面验证的最终结论须待本批运行完成后另行记录。
+- 本批Node测试885项通过。上述取色GUI使用Linux真实GTK/WebKitGTK、隔离合成传输及null libmpv；LC_NUMERIC单独为C，界面消息和字符locale仍为en_US.UTF-8。完整工作区和搜索桌面验证的来源、失败修正与平台边界另见本批验证记录。

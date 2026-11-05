@@ -4866,3 +4866,34 @@ CAPTCHA探针也已按新协议门槛显式勾选，但本轮未重新打开在�
   图为1440×1000虚拟桌面中的1120×760应用窗口，外部黑色为无窗口管理器的桌面背景。
 - 四次启动均仅数字 locale 为 C，消息与字符 locale 保留 en_US.UTF-8。最终 OS 电源 sink
   为合成且实际 OS 电源调用、音乐请求、账号写入均0；不是 Windows 实机或物理声卡验收。
+
+2026-11-05 phase57：搜索分组与在途取色实际桌面验证
+- 取色：palette-pending-r2/report.json的三个新进程，header/image/canvas各4阶段、
+  共12PNG。节目601切到602时原生规范封面相同，外部展示URL带param=320y320；
+  read各1次、sample为0/1/1、cancel均0。请求数1/2/2，图片body0/76/76字节，
+  两组真实本地Image/canvas为16×8、512字节RGBA。旧voice新请求仍拒绝，当前播放ID、
+  队列及前进时钟不被取色完成改写。没有把这些快照扩称解码器分配计数。
+- 原header/only_tb/sample/late四个新进程在palette-webview中已执行完11阶段/11PNG；
+  聚合在第五组的Python期待不带缩略参数处中止。修正为实际DTO精确地址后，
+  recovered-original-four-report.json仅重新解析原四组（0新进程），另独立实跑上述三组。
+  两根共23阶段/23PNG；palette-visual-review.json记录复核代理实际查看其中10张。
+- 搜索：search-footer-r3/report.json实际四组新进程t1/c/unknown/error，共14阶段/14PNG。
+  Native例程序53b9ef12、外部JS b3aadb44，真实MusicHttpClient完成合成同账号恢复→完整PC
+  实验批次，HTTP后端实际解EAPI并核对原生PC上下文/同凭据及完整expNames；逻辑调用
+  恰好2次，不暴露Cookie、sign、设备标识或完整授权地址。业务搜索/音源为闭合合成。
+- t1的三卡分别有歌词、别名、原因，进入推荐详情后返回保留reason:0焦点；c/unknown/error
+  三卡均无该页脚。error仅落盘历史V3布局以验证失败catch可正常搜索，不能授予页脚。
+  所有组点击首卡后实际null libmpv播放/暂停，完整队列只含选中歌曲1，playId/entry/revision
+  保持；当前DOM底栏state/playId/trackId/title/position与原生结果一致后，额外等待两帧及
+  120ms合成再截图。主代理实看t1播放/暂停2张，复核代理实看其余代表6张，共8张。
+- 首次search-footer-webview在恢复前被测试后端拒绝：夹具把仅有HTTP的MConfig误要求
+  出现在加密正文；生产client.rs本已正确剥离再放HTTP头，因此只修夹具，没有改协议。
+  search-footer-r2原生与页脚流程正确，但两张播放器仍为旧合成帧；保留visual-review边界，
+  最终r3补齐DOM/绘制等待并重新执行全四组，不用旧图宣称可视播放状态通过。
+- artist-regression/report.json是新Library兼容胶水影响的旧歌手Top50双组，各7阶段/7PNG。
+  t0使用v2/artist/songs，t1为v3/detail(top50)→enhance/privilege；原播放、下一首、暂停、
+  恢复、失败保队列和Back严断言不变。这里是legacy合成分组provider，不冒充新签名分配证明。
+- 本条所有根相对 .build/ui-proof/phase57-search-and-palette/。运行以Xvfb+bwrap独立网络
+  和合成账号/媒体完成，真实GTK/WebKit与libmpv/null；数字locale=C，消息和字符保持
+  en_US.UTF-8。没有实际服务音乐请求、真实账号写入、物理声卡或Windows实机验收，
+  不据虚拟显示器推断刷新率。全局AB调度与缓存页联动仍按契约继续，不宣称整目标完成。

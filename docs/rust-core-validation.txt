@@ -1828,3 +1828,23 @@ RT下发/轮换或真实浏览器网页已打开。细节、失败修正和界�
 - CI工具96项、actionlint、源码公开审计与非发行release_guard通过。原远端运行
   41977111356仍为失败；Linux与Windows停在旧3项设置断言，修复与18态本机证据见
   desktop-ci-race-audit.txt。没有创建标签、发布或宣布完整目标完成。
+
+2026-11-05 phase57：搜索独立分组与同封面在途复用
+- 完整workspace/all-targets/custom-protocol在47f2df99业务源码上执行：383个程序，
+  2337 passed、0 failed、19按既定条件忽略，cargo退出0。证据
+  .build/ui-proof/phase57-search-and-palette/rust-test-final.log；包括10项真实
+  MusicHttpClient/EAPI搜索页脚传输用例和同URL header/image/canvas、ABA及旧取消单测。
+- 随后Rust仅修正测试后端对MConfig的HTTP/加密正文位置检查（53b9ef12），业务源码未改。
+  同范围严格workspace Clippy与格式再次通过，例程序重新编译通过；例程序单独test为0项，
+  不把这次编译称为功能验证。桌面功能证据来自随后实际搜索四组14阶段，而非这个0项目标。
+- 前端Node24.16.0、锁文件npm ci、format:check、885项测试和类型/生产构建通过；最终
+  产品前端源码之后未修改。对应frontend-{format,test,build}.log。
+- 普通cumulus与podcast_recent_ui_probe由e93204b8构建；修正后的ux_ui_probe由53b9ef12
+  构建，外部搜索取证脚本b3aadb44。二进制及来源分别见palette-artifacts.sha256、
+  search-corrected-artifact.sha256与同目录的source.sha文件。它们不是同一提交发行凭据。
+- Windows GNU对应核心库、三组受影响测试、桌面库与两例程序严格交叉检查通过，修正后
+  UX另行复查通过；没有执行Windows WebView或用它证明MSVC数值/物理声卡。
+- CI脚本96项、actionlint、公开源码审计、非发行release_guard通过。新增Linux/Windows
+  签名搜索用例入口及七场景取色入口仍须精确提交的远端CI通过，不从本地结果推断。
+- 全局实验初次/周期更新、缓存搜索页的反应式联动和持久启动恢复仍是必要后续工作，
+  不把每次search读取正确或上述测试数量写成整个目标完成。没有发布新版本。
