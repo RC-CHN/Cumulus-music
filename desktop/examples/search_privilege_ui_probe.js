@@ -18,6 +18,10 @@
   const query = '合成会员刷新';
   const panel = () => one('#search-result-panel');
   const card = () => one('[data-result-key="song:601"]');
+  const heading = () => one('.search-results-page h1')?.textContent;
+  const transition = () => one(
+    '.page-enter-active,.page-leave-active,.search-results-enter-active,.search-results-leave-active',
+  );
   const mv = () => card()?.querySelector('[data-result-action="mv"]')?.getAttribute('aria-label');
   const more = () => card()?.querySelector('[aria-label^="更多操作 "]');
   const labels = () => ({
@@ -31,15 +35,34 @@
   const played = (epoch) => invoke('player_snapshot', { epoch });
   const membership = (epoch) => invoke('member_rights', { epoch, refresh: true });
   let step = 'startup', count = 0, epoch, baseline, focused, original, scrollTop, targetPanel;
+  let domCheckpoint;
   const refreshes = [];
+
+  function observeDom() {
+    const current = panel(), active = document.activeElement;
+    return {
+      sameCard: !!original && original === card(),
+      sameFocus: !!focused && focused === active,
+      samePanel: !!targetPanel && targetPanel === current,
+      activeTag: active?.tagName ?? null,
+      activeLabel: active?.getAttribute('aria-label') ?? null,
+      expectedScrollTop: scrollTop ?? null,
+      scrollTop: current?.scrollTop ?? null,
+      heading: heading() ?? null,
+      transitionClass: transition()?.className ?? null,
+      panelBusy: current?.getAttribute('aria-busy') ?? null,
+    };
+  }
+  const domReady = (view) => view.sameCard && view.sameFocus && view.samePanel &&
+    view.heading === query && view.transitionClass === null && view.panelBusy === 'false';
 
   async function capture(label) {
     step = label;
+    domCheckpoint = { before: observeDom() };
     const native = await played(epoch);
-    const sameDom = original === card() && focused === document.activeElement &&
-      targetPanel === panel() && Math.abs(scrollTop - panel().scrollTop) < 1;
-    assert(sameDom && one('.search-results-page h1')?.textContent === query &&
-      !one('.search-results-enter-active,.search-results-leave-active'),
+    const live = domCheckpoint.after = observeDom();
+    const sameDom = domReady(live) && Math.abs(scrollTop - live.scrollTop) < 1;
+    assert(sameDom,
       'native refresh preserves live search card, focus, scroll and route');
     assert(native.state === 'paused' && native.playId === baseline.playId &&
       native.entryId === baseline.entryId && native.position === baseline.position &&
@@ -95,9 +118,9 @@
     field.value = query;
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await wait(() => one('.search-results-page h1')?.textContent === query &&
+    await wait(() => heading() === query &&
       panel()?.getAttribute('aria-busy') === 'false' && more() &&
-      !one('.page-enter-active,.page-leave-active,.search-results-enter-active'),
+      !transition(),
       'cold comprehensive search and stable card');
     assert(mv()?.startsWith('查看替代 MV') && refreshes.length === 0,
       'restricted initial card comes from search, without extra privilege request');
@@ -106,9 +129,19 @@
     focused = more();
     focused.focus({ preventScroll: true });
     targetPanel.scrollTop = 52;
-    await wait(() => targetPanel.scrollTop > 0 && document.activeElement === focused,
-      'nonzero scroll and stable More focus');
-    scrollTop = targetPanel.scrollTop;
+    step = 'cold_baseline';
+    scrollTop = await wait(async () => {
+      const before = observeDom();
+      domCheckpoint = { before };
+      if (!domReady(before) || !(before.scrollTop > 0)) return false;
+      // Initial navigation can settle scroll/focus after the DOM says ready.
+      // Arm the baseline only if the same nodes and scroll survive two paints
+      // and a native read; don't refocus or move the scroll again.
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await played(epoch);
+      const after = domCheckpoint.after = observeDom();
+      return domReady(after) && after.scrollTop === before.scrollTop && after.scrollTop;
+    }, 'nonzero scroll and stable More focus');
     await capture('cold_restricted');
 
     await membership(epoch);
@@ -151,6 +184,7 @@
       ok: true, stageCount: count, refreshes, realMusicRequests: 0, realAccountWrites: 0,
     });
   } catch (error) {
-    await emit('failed', { step, count, error: String(error), refreshes, labels: labels() });
+    await emit('failed', { step, count, error: String(error), refreshes, labels: labels(),
+      domCheckpoint, currentDom: observeDom() });
   }
 })();
