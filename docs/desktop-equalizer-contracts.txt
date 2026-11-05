@@ -229,8 +229,30 @@ SDK outer 68770/6B960 到 1C590，恢复默认 B0 参数并重放组件旁路；
 SE1 叠加的完整图、总开关 native transition、RVB-on 及真实普通/在线 source
 decoder 接线需要各自对照；本次无 SE 或环境音效 UI。
 
-候选回归：equalizer_controller::source_latch 检查实际档/请求档/物理 br 的区别，
-连续特殊档、合成普通本地源、显式重应用、保存槽、总开关、失败和迟到加载、持久
-队列换源、新 CAS 和切账号；effects_service 的联合 fixture 核对独立 PEQ 仍旁路、响度仍保持
-同样 track gain，显式 EQ 重应用只改变 EQ。前端状态测试覆盖联合文案/错误优先级，
-这些是已准备的回归源码，真实合成桌面和集中构建结果另行记录。
+本批 9 项 Rust 回归随 e839bd94 的完整 workspace 执行通过。
+equalizer_controller::source_latch 检查实际档/请求档/物理 br 的区别、连续特殊档、
+合成普通本地源、显式重应用、保存槽、总开关、失败和迟到加载、持久队列换源、新 CAS
+和切账号；effects_service 联合 fixture 核对独立 PEQ 仍旁路、响度保持相同 track gain，
+显式 EQ 重应用只改变 EQ。906 项前端测试也包含联合文案/错误优先级。
+
+真实 Linux WebView：同构建的 ux_ui_probe、equalizer_ui_probe、原生滤镜在隔离
+X11/Xvfb/D-Bus 和 en_US.UTF-8 下运行；检查数字 locale=C，保留消息 locale。
+`effect_peq_native_smoke.py --source-bypass` 经实际前端预设和低音控件启用普通 EQ，
+再登记独立参数均衡。封闭的四个授权响应依次给 standard/vivid/dolby/standard，
+实际解码为合成 WAV，质量字段不作为杜比解码证据。Linux 结果：
+- 第一首请求 vivid 实得 standard，不旁路；下一首请求 standard 实得 vivid，
+  普通均衡器与独立 PEQ 均临时旁路，保存的均衡器曲线及低音 +6 dB 保留。
+- 在第二首执行 typed retry_equalizer 后普通 EQ 从原生 revision3→4，
+  libmpv entry2、EQ 实例总数、独立 PEQ revision2 与活跃实例数不变；
+  独立 PEQ 保持旁路，时钟0.726461→1.129942s，SQLite EQ revision2 不变。
+- 下一首实际 dolby 按官方 Ge 分支恢复，最后普通档保持。共四次源授权、
+  四次实际解码加载、一次合成 PEQ 登记，没有额外登记/撤销或真实业务写入。
+- 共六个实跑状态与截图；旁路两条提示同时可见，重应用后普通 EQ 文案恢复，
+  PEQ 旁路提示保留。静态截图不代替原生版本、时钟、SQLite 或连续动画证据。
+
+同源码 `equalizer_live_smoke.py` 验证本地正常调节、自定义预设、重开、缺库恢复；
+`vertical_zone_smoke.py --case playlist-detail-focus` 另通过 14 态播放/焦点回归。
+六张音效与十四张焦点原 PNG 逐张检查。私有记录
+.build/ui-proof/phase63-source-eq/{central-r1.json,actual-gui-r1.json,native-artifacts-r1.json,visual-review-r1.json}。
+均为实际原生解码与 null 输出；未用真实账号、实服源、实体音频输出或 Windows UI
+证明此候选。正式完整旧材料与普通播放器接入仍需对应的原图和宿主验证。

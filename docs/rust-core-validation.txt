@@ -1,6 +1,13 @@
 Rust core 迁移验证记录
 2026-10-26；本记录不代替完整目标验收。
 
+2026-11-06 普通均衡器实际音质旁路：e839bd94 通过格式、严格workspace Clippy，
+完整394程序/2427 passed/0 failed/20 ignored。新增8项源状态机及1项EQ/PEQ/响度
+隔离回归全通过。固定Node24.16的npm ci、format、906 tests、类型及构建通过；
+CI Python124、公开源码审计与非发行release_guard通过。三组实际Linux WebView
+验证覆盖四个授权档与同条目重应用、普通EQ持久/重开/缺库、歌单点播焦点，20张原图
+逐张查看，详见 desktop-equalizer-contracts.txt。不据此推断真实杜比、声卡或Windows。
+
 2026-11-06 完整固定音效图接入显式受控 NCM-FLAC 源：6b12b673源码在固定Rust上
 通过格式、严格workspace Clippy及394程序/2418 passed/0 failed/20 ignored。
 新增6个源测试包含5个原图PCM逐块对照、1个reset调用核对；124个CI脚本测试通过。
