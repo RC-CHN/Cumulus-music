@@ -1,9 +1,11 @@
 // A short authorized WAV naturally completes in null libmpv. The only
-// explicit playback controls after startup are one Pause and one Resume.
+// explicit controls before EOF are Pause and Resume; control alone tests
+// the visible Next button after the finished state has been captured.
 (async () => {
   const one = (selector) => document.querySelector(selector);
   const bar = () => one('.playerbar');
   const primary = () => one('.playerbar .play-toggle');
+  const next = () => one('.playerbar button[aria-label="下一首"]');
   const unread = () => Boolean(one('[aria-label="消息"] .message-drawer-unread-dot'));
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
   const emit = (stage, payload) => invoke('plugin:event|emit', {
@@ -78,6 +80,7 @@
       position: Number(bar()?.dataset.position), title: one('.playerbar .now-copy button')?.textContent.trim(),
       elapsed: one('.playerbar .seek-control time')?.textContent.trim(),
       primaryLabel: primary()?.getAttribute('aria-label'), unread: unread(),
+      nextLabel: next()?.getAttribute('aria-label'), nextEnabled: visible(next()),
     });
     const matching = (view) => {
       const rendered = dom();
@@ -160,7 +163,32 @@
         (caseName === 'control' ? after.playId === before.playId : after.playId === null),
     'native play identity and queue revision agree with the cohort outcome');
     await stage('ux_02_after', after, afterQueue);
-    await emit('complete', { ok: true, case: caseName, group, target, stageCount: 2 });
+    if (caseName === 'control') {
+      await twoFrames();
+      const button = next();
+      assert(visible(button) && matching(after), 'finished control has a visible enabled Next button');
+      button.focus({ preventScroll: true });
+      button.click();
+      const retained = await wait(async () => {
+        if (replies.length !== 3) return false;
+        const view = await player();
+        return JSON.stringify(state(view)) === JSON.stringify(state(after)) &&
+          matching(view) && visible(next()) && view;
+      }, 'real scoped Next acknowledgment retains the finished control playback');
+      const retainedQueue = await queue();
+      assert(actions.length === 3 && JSON.stringify(actions[2]) === JSON.stringify({
+        epoch, action: { kind: 'step_mini_bar', direction: 'next', play_id: after.playId,
+          expected_queue_revision: after.queueRevision },
+      }), 'one real Next with the exact finished play and queue identity');
+      assert(JSON.stringify(replies[2]) === JSON.stringify(state(after)) &&
+        retainedQueue.current === afterQueue.current &&
+        retainedQueue.revision === afterQueue.revision &&
+        JSON.stringify(idsOf(retainedQueue)) === JSON.stringify(ids),
+      'native Next reply retains the same finished clock, play and queue');
+      await stage('ux_03_control_next', retained, retainedQueue);
+    }
+    await emit('complete', { ok: true, case: caseName, group, target,
+      stageCount: caseName === 'control' ? 3 : 2 });
   } catch (error) {
     await emit('failed', { ok: false, case: caseName, error: String(error),
       state: bar()?.dataset.state, trackId: bar()?.dataset.trackId, online: navigator.onLine, actions, replies });

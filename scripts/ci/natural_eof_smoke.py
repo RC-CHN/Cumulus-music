@@ -21,9 +21,15 @@ def check(directory, case, capture):
     group, target, state = CASES[case]
     before = read(directory / 'ux_01_before.json')
     after = read(directory / 'ux_02_after.json')
+    stages = [before, after]
+    names = ['ux_01_before', 'ux_02_after']
+    if case == 'control':
+        names.append('ux_03_control_next')
+        stages.append(read(directory / (names[-1] + '.json')))
+    assert sorted(path.stem for path in directory.glob('ux_*.json')) == names
     complete = read(directory / 'complete.json')
     assert complete['ok'] and complete['case'] == case and complete['group'] == group
-    assert complete['target'] == target and complete['stageCount'] == 2, complete
+    assert complete['target'] == target and complete['stageCount'] == len(stages), complete
     assert before['ids'] == after['ids'] and [row[0] for row in before['ids']] == ['1', '2', '3']
     for row, track, status in ((before, '1', 'paused'), (after, target, state)):
         player, dom = row['player'], row['dom']
@@ -97,6 +103,22 @@ def check(directory, case, capture):
         if case == 'control':
             assert current['playId'] == previous['playId'] and current['duration'] == 8
             assert not stops, trace
+            retained = stages[-1]
+            assert retained['actual'] and retained['online'] and retained['group'] == group
+            assert retained['case'] == case and retained['player'] == current
+            assert retained['dom'] == after['dom'] and retained['dom']['nextEnabled']
+            assert retained['dom']['nextLabel'] == '下一首'
+            assert retained['current'] == after['current'] and retained['ids'] == after['ids']
+            assert retained['actions'] == after['actions'] + [{
+                'epoch': current['epoch'], 'action': {
+                    'kind': 'step_mini_bar', 'direction': 'next', 'play_id': current['playId'],
+                    'expected_queue_revision': current['queueRevision'],
+                },
+            }], retained['actions']
+            assert retained['replies'] == after['replies'] + [current], retained['replies']
+            assert retained['trace'] == trace, retained['trace']
+            assert retained['durablePosition'] == after['durablePosition']
+            old_checkpoint(retained['durablePosition'])
         else:
             assert current['playId'] is None and current['duration'] is None
             assert stops == [{'kind': 'native_stop', 'entry': old}]
@@ -107,13 +129,13 @@ def check(directory, case, capture):
     assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
                for key in ('messages', 'characters')), locale
     images = sorted(directory.glob('ux_*.png'))
-    assert len(images) == (2 if capture else 0), images
+    assert [image.stem for image in images] == (names if capture else []), images
     if capture:
         for image in images:
             paint = read(image.with_name('paint-' + image.stem + '.json'))
             assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples']), paint
     return {'case': case, 'group': group, 'target': target, 'state': state,
-            'stages': [before, after], 'locale': locale, 'screenshots': len(images)}
+            'stages': stages, 'locale': locale, 'screenshots': len(images)}
 
 
 def main():
