@@ -120,6 +120,74 @@ fn body(plan: &RequestPlan) -> Value {
         .collect();
     eapi::unwrap(&fields["params"]).unwrap().1
 }
+
+#[tokio::test]
+async fn podcast_progress_posts_once_and_checks_privacy_and_credentials_after_the_gate() {
+    use std::sync::atomic::AtomicBool;
+    let (_tmp, credentials) = credentials();
+    let (finish, response) = oneshot::channel();
+    let backend = Arc::new(Backend::new([
+        Reply::Pending(response),
+        Reply::Ready(reply(json!({"code":500}))),
+    ]));
+    let api = Arc::new(client(
+        credentials.clone(),
+        backend.clone(),
+        RequestOptions::default(),
+        None,
+    ));
+    let revision = api.podcast_progress_revision().unwrap().unwrap();
+    let data = json!({"programId":42,"listenLocation":12345,"isListened":false});
+    let reader = {
+        let api = api.clone();
+        tokio::spawn(async move { api.request("/api/read", json!({}), false).await })
+    };
+    backend.wait().await;
+    let enabled = Arc::new(AtomicBool::new(true));
+    let allowed = {
+        let enabled = enabled.clone();
+        move || Ok(enabled.load(Ordering::SeqCst))
+    };
+    let mut write = api.upload_podcast_progress(data.clone(), &revision, &allowed);
+    std::future::poll_fn(|cx| {
+        assert!(write.as_mut().poll(cx).is_pending());
+        std::task::Poll::Ready(())
+    })
+    .await;
+    enabled.store(false, Ordering::SeqCst);
+    assert!(finish.send(reply(json!({"code":200}))).is_ok());
+    reader.await.unwrap().unwrap();
+    assert!(matches!(write.await, Err(Error::Cancelled)));
+    assert_eq!(backend.calls.lock().unwrap().len(), 1);
+
+    let allow = || Ok(true);
+    assert!(
+        api.upload_podcast_progress(data.clone(), &revision, &allow)
+            .await
+            .is_err()
+    );
+    {
+        let calls = backend.calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        let plan = &calls[1];
+        assert_eq!(plan.url.path(), "/eapi/dj/playrecord/upload");
+        assert!(plan.url.query().is_none());
+        assert_eq!(plan.route, WireRoute::Eapi);
+        // M/402 form-encodes and decodes the arguments before sealing eAPI.
+        let plain = body(plan);
+        assert_eq!(plain["programId"], "42");
+        assert_eq!(plain["listenLocation"], "12345");
+        assert_eq!(plain["isListened"], "false");
+    }
+
+    credentials.clear().unwrap();
+    assert_eq!(api.podcast_progress_revision().unwrap(), None);
+    assert!(matches!(
+        api.upload_podcast_progress(data, &revision, &allow).await,
+        Err(Error::CredentialChanged)
+    ));
+    assert_eq!(backend.calls.lock().unwrap().len(), 2);
+}
 struct Tokens(AtomicUsize);
 impl TokenProvider for Tokens {
     fn token<'a>(&'a self, _business: &'a str) -> ApiFuture<'a, String> {

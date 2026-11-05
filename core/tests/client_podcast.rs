@@ -26,6 +26,12 @@ struct Backend {
     offline: AtomicBool,
     personalization_disabled: AtomicBool,
     search_creator: AtomicUsize,
+    progress_revision: AtomicUsize,
+    progress: Mutex<Vec<Value>>,
+    progress_hold: AtomicBool,
+    progress_started: tokio::sync::Notify,
+    progress_released: tokio::sync::Notify,
+    trial: AtomicBool,
 }
 fn program(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"djPlayRecordVo":{"listenLocation":15000,"isListened":false},"cookie":"SECRET"})
@@ -34,6 +40,34 @@ fn radio() -> Value {
     json!({"id":7,"name":"Radio","programCount":205,"subed":true,"picUrl":"https://p1.music.126.net/art.jpg?token=SECRET","cookie":"SECRET"})
 }
 impl Api for Backend {
+    fn podcast_progress_revision(&self) -> cumulus_core::Result<Option<String>> {
+        let revision = self.progress_revision.load(Ordering::SeqCst);
+        Ok((revision > 0).then(|| revision.to_string()))
+    }
+
+    fn upload_podcast_progress<'a>(
+        &'a self,
+        payload: Value,
+        revision: &'a str,
+        allowed: &'a cumulus_core::protocol::api::PodcastProgressPermission,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            if self.podcast_progress_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            if !allowed()? {
+                return Err(Error::Cancelled);
+            }
+            self.progress.lock().unwrap().push(payload);
+            self.progress_started.notify_one();
+            if self.progress_hold.load(Ordering::SeqCst) {
+                self.progress_released.notified().await;
+                return Err(Error::State("ambiguous progress result"));
+            }
+            Ok(())
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, p: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push((path.into(), p.clone()));
@@ -112,7 +146,10 @@ impl Api for Backend {
                 }
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> = serde_json::from_str(p["ids"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/program.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard"}]})
+                    let trial =
+                        self.trial.load(Ordering::SeqCst) && (ids[0] == "1001" || ids[0] == 1001);
+                    json!({"code":200,"data":[{"id":ids[0],"code":200,"url":"https://m1.music.126.net/program.mp3?key=SECRET","md5":"abc","expi":120,"level":"standard",
+                        "freeTrialInfo":trial.then(|| json!({"start":0,"end":20}))}]})
                 }
                 "/api/my/podcast/page/list" => {
                     json!({"code":200,"data":{"radioIdList":[7],"myPodcastVOList":[radio()]}})
@@ -145,6 +182,16 @@ fn fixture() -> (
     Arc<AccountSession>,
     MusicClient,
 ) {
+    let (dir, api, session, client, _) = fixture_with_device();
+    (dir, api, session, client)
+}
+fn fixture_with_device() -> (
+    tempfile::TempDir,
+    Arc<Backend>,
+    Arc<AccountSession>,
+    MusicClient,
+    Arc<engine::Device>,
+) {
     let dir = tempfile::tempdir().unwrap();
     let api = Arc::new(Backend::default());
     api.count.store(205, Ordering::SeqCst);
@@ -152,9 +199,11 @@ fn fixture() -> (
     let s = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     s.adopt(api.clone(), json!({"userId":9}), &s.token().unwrap())
         .unwrap();
+    let device = Arc::new(engine::Device::default());
+    let audio = device.clone();
     let c = MusicClient::with_session(s.clone(), registry)
-        .with_audio_factory(|| Ok(engine::audio_engine(Arc::new(engine::Device::default()))));
-    (dir, api, s, c)
+        .with_audio_factory(move || Ok(engine::audio_engine(audio.clone())));
+    (dir, api, s, c, device)
 }
 #[tokio::test]
 async fn category_only_projects_the_official_score_and_preserves_zero_type() {
@@ -436,6 +485,181 @@ async fn resume_uses_remote_location_then_local_checkpoint_and_honors_switch() {
         Some(0.0)
     );
     c.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+async fn played_voice(client: &MusicClient, epoch: &str) -> PlayerView {
+    played_voice_from(client, epoch, None).await
+}
+
+async fn played_voice_from(client: &MusicClient, epoch: &str, id: Option<&str>) -> PlayerView {
+    let page = client
+        .podcast_page(epoch, query(scope(), 0), true)
+        .await
+        .unwrap();
+    client
+        .play_selection(
+            epoch,
+            PlaySelection::Podcast {
+                scope: scope(),
+                revision: page.revision,
+                start_id: Some(id.unwrap_or(&page.episodes[0].id).to_owned()),
+            },
+        )
+        .await
+        .unwrap()
+}
+
+async fn wait_for_progress(api: &Backend, count: usize) -> Vec<Value> {
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            {
+                let progress = api.progress.lock().unwrap();
+                if progress.len() >= count {
+                    return progress.clone();
+                }
+            }
+            api.progress_started.notified().await;
+        }
+    })
+    .await
+    .expect("no progress request")
+}
+
+#[tokio::test]
+async fn episode_progress_uses_the_departed_program_and_distinguishes_manual_skip_from_eof() {
+    use cumulus_core::playback::engine::EndReason;
+    let (_dir, api, _session, client, device) = fixture_with_device();
+    api.count.store(2, Ordering::SeqCst);
+    api.progress_revision.store(1, Ordering::SeqCst);
+    api.progress_hold.store(true, Ordering::SeqCst);
+    let first = played_voice(&client, "1").await.track.unwrap();
+    let id: u64 = first.voice_id.unwrap().parse().unwrap();
+    let first_native = device.state.lock().unwrap().view.entry_id.unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 12.75 })
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 17.75 })
+        .await
+        .unwrap();
+    assert!(api.progress.lock().unwrap().is_empty());
+    // A slow/ambiguous checkpoint must not block moving to the next episode.
+    let next = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        client.player_action("1", PlayerAction::Next),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .track
+    .unwrap();
+    let next_id: u64 = next.voice_id.unwrap().parse().unwrap();
+    assert_ne!(id, next_id);
+    assert_eq!(
+        wait_for_progress(&api, 1).await,
+        [json!({"programId": id, "listenLocation": 17000.0, "isListened": false})]
+    );
+    let second_native = device.state.lock().unwrap().view.entry_id.unwrap();
+    engine::event(&device, first_native, EndReason::Eof);
+    engine::event(&device, second_native, EndReason::Eof);
+    api.progress_hold.store(false, Ordering::SeqCst);
+    api.progress_released.notify_one();
+    assert_eq!(
+        wait_for_progress(&api, 2).await,
+        [
+            json!({"programId": id, "listenLocation": 17000.0, "isListened": false}),
+            json!({"programId": next_id, "listenLocation": 120000.0, "isListened": true})
+        ]
+    );
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    assert_eq!(api.progress.lock().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn episode_progress_discards_trial_opt_out_and_old_credential_revision() {
+    let (_dir, api, _session, client) = fixture();
+    api.count.store(2, Ordering::SeqCst);
+    api.progress_revision.store(1, Ordering::SeqCst);
+    api.trial.store(true, Ordering::SeqCst);
+    let trial = played_voice_from(&client, "1", Some("1")).await;
+    assert_eq!(
+        trial.timeline.unwrap().mode,
+        cumulus_core::playback::TimelineMode::Trial
+    );
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    let full = played_voice_from(&client, "1", Some("2")).await;
+    let id: u64 = full.track.unwrap().voice_id.unwrap().parse().unwrap();
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 8.0 })
+        .await
+        .unwrap();
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    assert_eq!(
+        wait_for_progress(&api, 1).await,
+        [json!({"programId": id, "listenLocation": 8000.0, "isListened": false})]
+    );
+
+    // Start an independent account fixture for the preference/revision fences.
+    let (_dir, api, session, client) = fixture();
+    api.count.store(1, Ordering::SeqCst);
+    api.progress_revision.store(1, Ordering::SeqCst);
+    let history = cumulus_core::history::HistoryService::new(session.clone()).unwrap();
+    let token = session.token().unwrap();
+    history.set_sync_for(&token, false).unwrap();
+    played_voice(&client, "1").await;
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    history.set_sync_for(&token, true).unwrap();
+    played_voice(&client, "1").await;
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 37.0 })
+        .await
+        .unwrap();
+    api.progress_revision.store(2, Ordering::SeqCst);
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    played_voice(&client, "1").await;
+    client
+        .player_action("1", PlayerAction::Seek { seconds: 58.0 })
+        .await
+        .unwrap();
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    assert_eq!(
+        wait_for_progress(&api, 1).await,
+        [json!({"programId": 1, "listenLocation": 58000.0, "isListened": false})]
+    );
+}
+
+#[tokio::test]
+async fn account_switch_discards_queued_episode_progress_without_replaying_to_the_new_api() {
+    let (_dir, old, session, client) = fixture();
+    old.count.store(2, Ordering::SeqCst);
+    old.progress_revision.store(1, Ordering::SeqCst);
+    old.progress_hold.store(true, Ordering::SeqCst);
+    played_voice(&client, "1").await;
+    client.player_action("1", PlayerAction::Next).await.unwrap();
+    wait_for_progress(&old, 1).await;
+    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    let new = Arc::new(Backend::default());
+    new.count.store(1, Ordering::SeqCst);
+    new.progress_revision.store(1, Ordering::SeqCst);
+    session
+        .adopt(new.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    played_voice(&client, "2").await;
+    client
+        .player_action("2", PlayerAction::Seek { seconds: 9.0 })
+        .await
+        .unwrap();
+    client.player_action("2", PlayerAction::Stop).await.unwrap();
+    assert_eq!(
+        wait_for_progress(&new, 1).await,
+        [json!({"programId": 1, "listenLocation": 9000.0, "isListened": false})]
+    );
+    assert_eq!(old.progress.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]

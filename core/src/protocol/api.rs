@@ -5,9 +5,25 @@ use serde_json::{Value, json};
 use std::{future::Future, pin::Pin};
 
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
 
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
+
+    /// Scoped native credential revision for the episode progress write.
+    /// Ordinary adapters do not opt into automatic account writes.
+    fn podcast_progress_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn upload_podcast_progress<'a>(
+        &'a self,
+        _payload: Value,
+        _revision: &'a str,
+        _allowed: &'a PodcastProgressPermission,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async { Err(Error::State("podcast progress write is unavailable")) })
+    }
 
     /// Native signed authority only. A generic API adapter does not acquire
     /// experiment access by implementing the ordinary request transport.

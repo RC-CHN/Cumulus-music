@@ -101,6 +101,9 @@ impl Actor {
             let after = self.queue.selected();
             let was_paused = self.state == PlaybackStatus::Paused
                 || self.pending.as_ref().is_some_and(|p| p.paused);
+            if before.as_deref() != after.as_ref().map(|item| item.entry_id.as_str()) {
+                self.depart_podcast(false);
+            }
             self.stop(false).await?;
             if let Some(after) = after {
                 let paused =
@@ -162,7 +165,7 @@ impl Actor {
         // Native events can share a poll (including ones drained by a
         // transport command). A dead engine or current-entry failure cannot
         // be converted into successful EOF or a fresh load by another event.
-        let failure = if events.iter().any(|event| match event {
+        let quitting = events.iter().any(|event| match event {
             EngineEvent::Shutdown => true,
             EngineEvent::Ended {
                 entry_id,
@@ -170,7 +173,8 @@ impl Actor {
                 ..
             } => *entry_id == loaded.media.entry_id,
             _ => false,
-        }) {
+        });
+        let failure = if quitting {
             Some(PlaybackFailure::Engine)
         } else {
             events.iter().rev().find_map(|event| match event {
@@ -227,6 +231,11 @@ impl Actor {
                 if *entry_id == loaded.media.entry_id)
             });
         let failed = failure.is_some();
+        let failed_native_play = failed && !quitting
+            && events.iter().any(|event| {
+                matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Error | EndReason::Redirect | EndReason::Unknown(_), .. }
+                if *entry_id == loaded.media.entry_id)
+            });
         if let Some(failure) = failure {
             self.state = PlaybackStatus::Error;
             self.error = Some(failure);
@@ -272,6 +281,7 @@ impl Actor {
             // Save the accepted clock as stopped, not as a completed track,
             // then release the old decoder and its transport identity.
             self.state = PlaybackStatus::Idle;
+            self.depart_podcast(false);
             self.stop(true).await?;
             self.error = None;
             self.source_retry = retry;
@@ -293,6 +303,9 @@ impl Actor {
                 paused: was_paused,
                 history: loaded.history.clone(),
             });
+        }
+        if ended || failed_native_play {
+            self.depart_podcast(ended);
         }
         if failed || ended || self.last_save.elapsed() >= Duration::from_secs(1) {
             if failed || ended {

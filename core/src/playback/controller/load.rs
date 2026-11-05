@@ -137,6 +137,17 @@ impl Actor {
         if history.played_at.is_none() {
             self.history_error = None;
         }
+        let same_play = self.loaded.as_ref().is_some_and(|loaded| {
+            options.recover && options.position.is_some() && loaded.item.entry_id == item.entry_id
+        });
+        let podcast_progress = if same_play {
+            self.loaded
+                .as_mut()
+                .and_then(|loaded| loaded.podcast_progress.take())
+        } else {
+            self.depart_podcast(false);
+            None
+        };
         self.cancel_load().await?;
         self.source_retry = options
             .position
@@ -161,6 +172,7 @@ impl Actor {
         self.cancel = cancel.clone();
         self.pending = Some(Pending {
             history,
+            podcast_progress,
             id,
             item: item.clone(),
             reply: reply.take(),
@@ -397,8 +409,15 @@ impl Actor {
                 } else {
                     PlaybackStatus::Playing
                 };
+                let mut podcast_progress = pending.podcast_progress;
+                if let Some(capture) = &mut podcast_progress
+                    && let Some(play_id) = self.play_id.as_deref()
+                {
+                    capture.reload(play_id);
+                }
                 self.loaded = Some(Loaded {
                     history: pending.history,
+                    podcast_progress,
                     item: prepared.item,
                     source: prepared.source,
                     media: prepared.media,

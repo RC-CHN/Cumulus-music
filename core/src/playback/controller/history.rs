@@ -15,6 +15,16 @@ impl Actor {
             loaded.history.played_at = Some(
                 (time::OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).max(0) as u64,
             );
+            if loaded.timeline.snapshot().mode == TimelineMode::Full
+                && let Some(play_id) = self.play_id.as_deref()
+            {
+                loaded.podcast_progress = super::podcast_progress::Capture::new(
+                    &self.session,
+                    &self.token,
+                    &loaded.item.resource,
+                    play_id,
+                );
+            }
         }
         let queue = self.queue.snapshot();
         let result: Result<()> = self.session.with_local_owner(&self.token, |owner| {

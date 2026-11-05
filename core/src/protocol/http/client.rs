@@ -57,6 +57,7 @@ impl Jsk {
 #[derive(Clone, Copy)]
 enum RequestBinding<'a> {
     Login(&'a super::JskLoginContext),
+    PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     Switch {
         source: &'a MusicHttpClient,
         revision: &'a str,
@@ -359,6 +360,11 @@ impl MusicHttpClient {
         // Async gate serializes cookie rotation for one candidate/profile;
         // no blocking mutex is held during network I/O.
         let _guard = self.gate.lock().await;
+        if let Some(RequestBinding::PodcastProgress(allowed)) = binding
+            && !allowed()?
+        {
+            return Err(Error::Cancelled);
+        }
         if path == "/api/w/register/cellphone" {
             *self
                 .registration_user
@@ -367,7 +373,10 @@ impl MusicHttpClient {
         }
         let target = origin.request_url(route, path)?;
         let snapshot = self.credentials.request_credentials(&target)?;
-        if expected.is_some_and(|revision| revision != snapshot.revision) {
+        if expected.is_some_and(|revision| revision != snapshot.revision)
+            || (matches!(binding, Some(RequestBinding::PodcastProgress(_)))
+                && snapshot.unique_music_u().is_none())
+        {
             return Err(Error::CredentialChanged);
         }
         // M402 sends same-origin request credentials. An active switch borrows
@@ -482,6 +491,11 @@ impl MusicHttpClient {
                 None
             };
             check_wire_source()?;
+            if let Some(RequestBinding::PodcastProgress(allowed)) = binding
+                && !allowed()?
+            {
+                return Err(Error::Cancelled);
+            }
             let response = wire.backend.post(plan).await?;
             check_wire_source()?;
             response
@@ -608,6 +622,39 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn podcast_progress_revision(&self) -> Result<Option<String>> {
+        use crate::podcast::progress::PLAYRECORD_PATH;
+        let origin = self.credentials.origin();
+        let route =
+            select_route_with_policy(origin, PLAYRECORD_PATH, &json!({}), self.options.routing)?;
+        let target = origin.request_url(route, PLAYRECORD_PATH)?;
+        let snapshot = self.credentials.request_credentials(&target)?;
+        Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
+    }
+
+    fn upload_podcast_progress<'a>(
+        &'a self,
+        payload: Value,
+        revision: &'a str,
+        allowed: &'a crate::protocol::api::PodcastProgressPermission,
+    ) -> ApiFuture<'a, ()> {
+        use crate::podcast::progress::PLAYRECORD_PATH;
+        Box::pin(async move {
+            let response = self
+                .execute(
+                    PLAYRECORD_PATH,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::PodcastProgress(allowed)),
+                )
+                .await?;
+            crate::protocol::api::validate_response(PLAYRECORD_PATH, response, &[200])?;
+            Ok(())
+        })
+    }
+
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
         self.pc_experiment_revision().map(Some)
     }

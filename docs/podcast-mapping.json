@@ -1,5 +1,5 @@
 {
-  "scope": "Native podcast/audiobook domain, typed desktop UI, complete queues, local checkpoint/resume and program downloads",
+  "scope": "Native podcast/audiobook domain, typed desktop UI, complete queues, local checkpoint/resume, remote episode progress and program downloads",
   "goal_complete": false,
   "official_first": true,
   "yesplaymusic_used": false,
@@ -79,6 +79,18 @@
     {
       "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/308.js",
       "sha256": "2cd3a0da5759370a80cfe20c7ac4e58ef192bab33c396e8eff3efdd35c254a7d"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/110.js",
+      "sha256": "8e432ba683264b5bdf3f2edaf35059b2f2b416304f5b07cb1269b7bef13a415c"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/12.js",
+      "sha256": "da570de13fd15b094bc6898cebb51273b2ee0e2b1d9ab39398a61717db732176"
+    },
+    {
+      "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_app.chunk.1482700000000.js/402.js",
+      "sha256": "c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37"
     },
     {
       "path": "references/netease-3.1.42.205594-analysis/recovered-js/modules/hybrid_165.chunk.1482700000000.js/3150.js",
@@ -400,7 +412,26 @@
         "I",
         "R"
       ],
-      "boundary": "Real 37-second local resume controlled by official switch verified; no server history upload, offline switch cache or cross-device handoff claim."
+      "boundary": "Real 37-second local resume controlled by official switch verified; no offline switch cache or cross-device handoff claim."
+    },
+    {
+      "id": "remote_program_checkpoint",
+      "official": [
+        "M/110:461–486 lastPlaying",
+        "M/308:3670–3728 onPlayEnd",
+        "M/71:136–155",
+        "M/15:1675–1678 POST /api/dj/playrecord/upload",
+        "M/12:278–313 default POST",
+        "M/402:373–387,437–444 eAPI form serialization"
+      ],
+      "rust": "core/src/playback/controller/podcast_progress.rs",
+      "test": "core/tests/client_podcast.rs; core/tests/http.rs",
+      "evidence": [
+        "S",
+        "L",
+        "I"
+      ],
+      "boundary": "Synthetic departure and scoped wire proof; Cumulus respects the local-only recent-play setting. No upstream write/readback, native exit, or automatic skip-outro proof."
     },
     {
       "id": "curated_radio_cross_members",

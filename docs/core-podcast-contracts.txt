@@ -92,7 +92,8 @@ PodcastService 接固定 SessionToken；目标由 PodcastAction 和资源ID构�
 Subscribe：/api/djradio/sub 或 /api/djradio/unsub {id}，详情 data.subed 为回读事实。
 Like：/api/resource/like 或 /api/resource/unlike {threadId:"A_DJ_1_"+voiceId}，完整喜欢声音列表回读。
 Resume：/api/dj/user/setting/resumeplay/get {radioId} -> resumePlayValue 0/1；
-update {radioId,resumePlayValue:0或1}。原生播放器已接本地断点和远端djPlayRecordVo；跨设备断点上传尚未接通。
+update {radioId,resumePlayValue:0或1}。原生播放器已接本地断点和远端djPlayRecordVo；
+节目终止时的远端断点上传已接入 Rust，触发、权限及未实测边界见 desktop-podcast-contracts.txt。
 skip_enabled：/api/voice/alg/skip/switch/get {radioId:Number(id)}，data=false 是合法关闭状态。
 当前只读智能跳过开关；实际跳过区间请求、定位和开关修改还未完成。
 
@@ -123,7 +124,7 @@ DownloadService，重新授权2次，原音频2953343字节、写标签封面后
 原生这里重建的是DownloadService；独立StateStore重开由故障测试覆盖，不冒称真实桌面重启。
 a因分类ID文本被探针当整数而中止；b因节目level=null被通用歌曲校验拒绝，均保留失败证据。
 没有覆盖 paid/VOICEBOOK_VIP/PLUS、购买和新用户试用真实账号；没有播客页面截图或完整UI流程。
-后续必须补播客/有声书页面、完整队列、续播/历史上传、智能跳过、付费权限样本、节目NCM/文字稿、
+当时的后续项为播客/有声书页面、完整队列、续播/历史上传、智能跳过、付费权限样本、节目NCM/文字稿、
 原生收藏/点赞/设置往返及断点状态联动。全目标继续，不以本批17项测试作为整个领域或桌面完成。
 
 桌面后续：完整列表快照、代次失效、3条IPC、播客页面、节目队列、评论、下载和本地续播实现

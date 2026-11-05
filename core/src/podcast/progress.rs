@@ -9,6 +9,62 @@ use crate::{
 };
 use serde_json::{Value, json};
 const KIND: &str = "podcast-positions-v1";
+pub(crate) const PLAYRECORD_PATH: &str = "/api/dj/playrecord/upload";
+
+/// Episode identity is distinct from the ID of the playable main song.
+/// Downloaded episodes can carry the same native metadata inside `song`.
+pub(crate) fn program_id(resource: &Value) -> Option<u64> {
+    let voice = resource
+        .get("voice")
+        .filter(|voice| voice.is_object())
+        .or_else(|| resource["song"].get("voice"))?;
+    let id = identifier(&voice["id"]).ok()?;
+    let mut claimed = [&resource["voice_id"], &resource["song"]["voice_id"]]
+        .into_iter()
+        .filter(|value| !value.is_null());
+    if identifier(claimed.next()?).ok()? != id
+        || claimed.any(|value| identifier(value).ok().as_ref() != Some(&id))
+    {
+        return None;
+    }
+    let main_song = voice
+        .get("mainTrackId")
+        .filter(|value| !value.is_null())
+        .unwrap_or(&voice["mainSong"]["id"]);
+    if identifier(main_song).ok()? != identifier(&resource["id"]).ok()? {
+        return None;
+    }
+    let number = id.parse::<u64>().ok()?;
+    (number > 0 && number <= (1_u64 << 53) - 1).then_some(number)
+}
+
+/// M/308 passes the last stored progress for an interruption; native M/110
+/// stores whole seconds for ordinary playback. EOF/skip-outro use the full
+/// duration. M/71 calculates the wire completion flag independently.
+pub(crate) fn playrecord(
+    program_id: u64,
+    position: f64,
+    duration: f64,
+    completed: bool,
+) -> Option<Value> {
+    if !position.is_finite() || position < 0.0 || !duration.is_finite() || duration <= 0.0 {
+        return None;
+    }
+    let seconds = if completed {
+        duration
+    } else {
+        position.floor()
+    };
+    let millis = 1000.0 * seconds;
+    if !millis.is_finite() {
+        return None;
+    }
+    Some(json!({
+        "programId": program_id,
+        "listenLocation": millis,
+        "isListened": seconds.floor() >= duration.floor(),
+    }))
+}
 /// Local listening history includes previews, without treating them as a
 /// resumable full program or an entitlement to the remaining content.
 pub(crate) fn mark_heard(

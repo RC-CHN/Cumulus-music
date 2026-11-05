@@ -376,11 +376,17 @@ impl Actor {
                             Ok(())
                         }
                     }
-                    Ok(None) => self.stop(true).await,
+                    Ok(None) => {
+                        self.depart_podcast(false);
+                        self.stop(true).await
+                    }
                     Err(error) => Err(error),
                 }
             }
-            PlaybackCommand::Stop => self.stop(true).await,
+            PlaybackCommand::Stop => {
+                self.depart_podcast(false);
+                self.stop(true).await
+            }
             PlaybackCommand::Suspend => {
                 if self.pending.is_some() || self.quality_task.is_some() {
                     self.stop(true).await

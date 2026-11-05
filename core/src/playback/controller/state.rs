@@ -27,6 +27,7 @@ use tokio::{
 
 pub(super) struct Loaded {
     pub history: crate::history::playback::Checkpoint,
+    pub podcast_progress: Option<super::podcast_progress::Capture>,
     pub item: QueueEntry,
     pub source: Arc<ResolvedSource>,
     pub media: LoadedMedia,
@@ -34,6 +35,7 @@ pub(super) struct Loaded {
 }
 pub(super) struct Pending {
     pub history: crate::history::playback::Checkpoint,
+    pub podcast_progress: Option<super::podcast_progress::Capture>,
     pub id: String,
     pub item: QueueEntry,
     pub reply: Option<Response>,
@@ -89,6 +91,7 @@ pub(super) struct Actor {
     pub buffered_through: Option<f64>,
     pub error: Option<crate::playback::failure::PlaybackFailure>,
     pub history_error: Option<String>,
+    pub podcast_publisher: Option<super::podcast_progress::Publisher>,
     pub reset: bool,
     pub loaded: Option<Loaded>,
     pub source_retry: Option<SourceRetryPoint>,
@@ -171,6 +174,7 @@ impl Actor {
             buffered_through: None,
             error: None,
             history_error: None,
+            podcast_publisher: None,
             reset: false,
             loaded: None,
             source_retry: None,
@@ -488,6 +492,7 @@ impl Actor {
                 break;
             }
         }
+        self.podcast_publisher = None;
         let _ = self.stop(true).await;
         if let Some(task) = self.prefetch_task.take() {
             task.abort();

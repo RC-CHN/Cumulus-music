@@ -8,6 +8,7 @@ mod intelligence;
 mod load;
 mod loudness;
 mod parametric;
+mod podcast_progress;
 mod power;
 pub(crate) use parametric::DeviceRestoreAuthority;
 pub use parametric::{
