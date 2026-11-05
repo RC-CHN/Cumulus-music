@@ -242,6 +242,7 @@ impl MusicClient {
                     None
                 };
                 let mut footer_revision = None;
+                let mut presentation_credentials = None;
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
@@ -279,7 +280,10 @@ impl MusicClient {
                             .search
                             .tabs_for(&self.session, token, api.as_ref(), &query.keyword)
                             .await?;
-                        let raw = api::v3::fetch(api.as_ref(), &query, default_context()?).await;
+                        let context = default_context()?;
+                        presentation_credentials =
+                            api.pc_presentation_credential_revision().ok().flatten();
+                        let raw = api::v3::fetch(api.as_ref(), &query, context).await;
                         let projected = match raw {
                             Ok(raw)
                                 if raw.has_zone_candidate() && !assignment.optional_read_failed =>
@@ -314,12 +318,14 @@ impl MusicClient {
                         };
                         (api::v3::PATH, Some(tabs), layout, projected)
                     } else {
+                        let context = default_context()?;
+                        presentation_credentials =
+                            api.pc_presentation_credential_revision().ok().flatten();
                         (
                             api::COMPREHENSIVE_PATH,
                             None,
                             layout,
-                            api::request_with_default(api.as_ref(), &query, default_context()?)
-                                .await,
+                            api::request_with_default(api.as_ref(), &query, context).await,
                         )
                     }
                 } else {
@@ -376,19 +382,28 @@ impl MusicClient {
                 // from searchHot, including both hints and clickable reasons.
                 // A credential change during search cannot publish an older
                 // assignment; the ordinary search result itself remains usable.
-                let live_presentation = self.capture_search_presentation(token, &api, &mut view)?;
+                let live_presentation = self.capture_search_presentation(
+                    token,
+                    &api,
+                    presentation_credentials.as_deref(),
+                    &mut view,
+                )?;
                 if !live_presentation
                     && view.query.category == SearchCategory::All
-                    && !footer_revision.as_deref().is_some_and(|revision| {
-                        !self.login_pending().unwrap_or(true)
-                            && api
-                                .verified_pc_experiment_revision()
-                                .ok()
-                                .flatten()
-                                .as_deref()
-                                == Some(revision)
-                    })
+                    && (presentation_credentials.is_some()
+                        || !footer_revision.as_deref().is_some_and(|revision| {
+                            !self.login_pending().unwrap_or(true)
+                                && api
+                                    .verified_pc_experiment_revision()
+                                    .ok()
+                                    .flatten()
+                                    .as_deref()
+                                    == Some(revision)
+                        }))
                 {
+                    if presentation_credentials.is_some() {
+                        view.preview_layout = None;
+                    }
                     for section in &mut view.sections {
                         for item in &mut section.items {
                             if let SearchItem::Song { hint, reasons, .. } = item {

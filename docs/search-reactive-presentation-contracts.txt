@@ -24,6 +24,11 @@ Rust 本地候选
 - receipt 随机且不持久化，绑定 SessionToken、实际 API 对象及私有 credential
   revision。publish/resolve 前后核对凭据；账号/API/凭据变化后旧 receipt 无效，
   即便相同账号新分组又为 t1，也不能复活旧凭据下的候选。
+- 综合 V1/V3 在各自真正发送结果请求前记录该私有 revision（V3 的 tab 查询
+  已完成）。如果结果本身通过 Set-Cookie 换了凭据，旧结果可保留普通条目，
+  但不显示 footer，不签发候选 receipt，也不沿用旧布局；新分组恢复 t1 后只有
+  以新凭据获取的页面可签发新候选。旧结果不自动重搜。同凭据下分组更新仍按
+  最新全局表现重投影，不把 cohort revision 当作请求凭据版本。
 - search_presentation(epoch, receipt, revision) 只重投影已有候选。全局表现版本
   必须仍然当前，回复只含 receipt/revision/layout 和窄字段补丁。前后检查来源，
   不发送 HTTP、不初始化音频、不重跑搜索，也不覆盖 VIP、限免、原曲/替代 MV、
@@ -46,7 +51,8 @@ Rust 本地候选
 验证入口及限度
 - core/tests/pc_experiment_transport/search_presentation.rs 使用真实
   MusicHttpClient/PC 请求上下文/EAPI，后端封闭；校验 t1→c→t1 仅增加完整
-  实验读取，不重发搜索，旧版本/账号/凭据失效及 ordinary DTO 保留。
+  实验读取，不重发搜索，旧版本/账号/凭据失效及 ordinary DTO 保留；另覆盖
+  搜索响应真实提交合成 Set-Cookie、同账号新 t1 后旧页无 receipt 而新搜索有。
 - 私有单元覆盖候选预算、LRU 和来源边界；前端测试覆盖乱序、Back、失效 receipt、
   权益更新的两种完成顺序、焦点与滚动策略。
 - scripts/ci/pc_presentation_smoke.py 在实际 WebView 通过封闭服务器响应改变

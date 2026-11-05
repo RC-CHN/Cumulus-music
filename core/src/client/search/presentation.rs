@@ -57,21 +57,21 @@ impl SearchPresentationPages {
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,
+        credentials: Option<&str>,
         view: &SearchResultView,
     ) -> Result<Option<String>> {
-        let credentials = api.pc_presentation_credential_revision()?;
         let sections = candidates(view);
         let bytes = serde_json::to_vec(&sections)?.len();
         if bytes > PAGE_BYTES {
             return Ok(None);
         }
-        if api.pc_presentation_credential_revision()? != credentials {
+        let mut pages = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        if api.pc_presentation_credential_revision()?.as_deref() != credentials {
             return Err(Error::StaleResponse);
         }
-        let mut pages = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         if pages
             .back()
-            .is_some_and(|page| !owns(page, token, api, credentials.as_deref()))
+            .is_some_and(|page| !owns(page, token, api, credentials))
         {
             pages.clear();
         }
@@ -84,13 +84,13 @@ impl SearchPresentationPages {
         pages.push_back(Page {
             token: token.clone(),
             api: Arc::downgrade(api),
-            credentials: credentials.clone(),
+            credentials: credentials.map(str::to_owned),
             receipt: receipt.clone(),
             bytes,
             sections,
         });
         drop(pages);
-        if api.pc_presentation_credential_revision()? != credentials {
+        if api.pc_presentation_credential_revision()?.as_deref() != credentials {
             return Err(Error::StaleResponse);
         }
         Ok(Some(receipt))
@@ -169,9 +169,23 @@ impl MusicClient {
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,
+        credentials: Option<&str>,
         view: &mut SearchResultView,
     ) -> Result<bool> {
-        if view.query.category != SearchCategory::All {
+        let Some(credentials) = credentials.filter(|_| view.query.category == SearchCategory::All)
+        else {
+            return Ok(false);
+        };
+        let still_bound = || {
+            api.pc_presentation_credential_revision()
+                .ok()
+                .flatten()
+                .as_deref()
+                == Some(credentials)
+        };
+        // The response may itself have committed a new Cookie. A new live
+        // cohort can render new searches, but must not inherit old candidates.
+        if !still_bound() {
             return Ok(false);
         }
         // Hosts without the native presentation lifecycle retain their existing
@@ -181,13 +195,17 @@ impl MusicClient {
             Err(Error::LockPoisoned) => return Err(Error::LockPoisoned),
             Err(_) => return Ok(false),
         };
-        if !self.pc_presentation_is_current(token, api, &snapshot.view.revision)? {
-            return Err(Error::StaleResponse);
-        }
         // Capture only already-whitelisted display fields before applying c.
         // No raw response, media URL, privilege, or playback receipt is stored.
-        view.presentation_receipt = self.search.presentation.publish(token, api, view)?;
-        view.presentation_revision = Some(snapshot.view.revision.clone());
+        let receipt = match self
+            .search
+            .presentation
+            .publish(token, api, Some(credentials), view)
+        {
+            Ok(receipt) => receipt,
+            Err(Error::StaleResponse | Error::CredentialChanged) => return Ok(false),
+            Err(error) => return Err(error),
+        };
         view.preview_layout = layout(&snapshot.view);
         if !snapshot.view.search_footer {
             for section in &mut view.sections {
@@ -199,9 +217,13 @@ impl MusicClient {
                 }
             }
         }
-        if !self.pc_presentation_is_current(token, api, &snapshot.view.revision)? {
-            return Err(Error::StaleResponse);
+        match self.pc_presentation_is_current(token, api, &snapshot.view.revision) {
+            Ok(true) if still_bound() => (),
+            Ok(_) | Err(Error::StaleResponse | Error::CredentialChanged) => return Ok(false),
+            Err(error) => return Err(error),
         }
+        view.presentation_receipt = receipt;
+        view.presentation_revision = Some(snapshot.view.revision);
         Ok(true)
     }
 
@@ -317,7 +339,10 @@ mod tests {
         let api: Arc<dyn Api> = Arc::new(Offline);
         let owner = token(1);
         let original = page();
-        let receipt = pages.publish(&owner, &api, &original).unwrap().unwrap();
+        let receipt = pages
+            .publish(&owner, &api, None, &original)
+            .unwrap()
+            .unwrap();
         let rows = pages.resolve(&owner, &api, &receipt).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].items.len(), SECTION_SONGS);
@@ -353,16 +378,16 @@ mod tests {
         let owner = token(1);
         let mut receipts = Vec::new();
         for _ in 0..PAGE_LIMIT {
-            receipts.push(pages.publish(&owner, &api, &page()).unwrap().unwrap());
+            receipts.push(pages.publish(&owner, &api, None, &page()).unwrap().unwrap());
         }
         pages.resolve(&owner, &api, &receipts[0]).unwrap();
-        pages.publish(&owner, &api, &page()).unwrap();
+        pages.publish(&owner, &api, None, &page()).unwrap();
         assert!(pages.resolve(&owner, &api, &receipts[1]).is_err());
         assert!(pages.resolve(&owner, &api, &receipts[0]).is_ok());
         assert!(pages.resolve(&owner, &other, &receipts[0]).is_err());
         assert!(pages.resolve(&token(2), &api, &receipts[0]).is_err());
         assert!(pages.resolve(&owner, &api, "invalid").is_err());
-        pages.publish(&token(2), &other, &page()).unwrap();
+        pages.publish(&token(2), &other, None, &page()).unwrap();
         assert!(pages.resolve(&owner, &api, &receipts[0]).is_err());
         assert!(pages.0.lock().unwrap().len() <= PAGE_LIMIT);
     }
