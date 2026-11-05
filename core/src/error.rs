@@ -23,6 +23,8 @@ pub enum Error {
     QueueChanged,
     #[error("playlist source changed after the drag was prepared")]
     PlaylistDropSourceChanged,
+    #[error("album source changed after the drag was prepared")]
+    AlbumDropSourceChanged,
     #[error("this resource already has an operation in progress")]
     MutationBusy,
     #[error("previous write is unresolved; only read-only reconciliation is allowed")]

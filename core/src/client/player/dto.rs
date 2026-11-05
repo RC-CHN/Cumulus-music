@@ -398,6 +398,12 @@ pub struct PlaylistDropRow {
     pub track_index: usize,
 }
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AlbumDropRow {
+    pub track_id: String,
+    pub track_index: usize,
+}
+#[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
     StepMiniBar {
@@ -460,6 +466,15 @@ pub enum PlayerAction {
     },
     DropSearchSongsIntoQueue {
         rows: Vec<super::super::search::SearchDropRow>,
+        quality: Quality,
+        expected_queue_revision: String,
+        expected_play_id: Option<String>,
+        before_entry_id: Option<String>,
+    },
+    DropAlbumSongsIntoQueue {
+        id: String,
+        revision: String,
+        rows: Vec<AlbumDropRow>,
         quality: Quality,
         expected_queue_revision: String,
         expected_play_id: Option<String>,

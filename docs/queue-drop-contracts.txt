@@ -134,3 +134,43 @@ WebKitGTK / libmpv 使用 XTest 发送真实鼠标事件，确认反向选中的
 顺序落在绘出的插入线，基线 701、702 变为 701、102、101、702。播放 ID、
 选中条目及暂停位置 9.99 秒保持不变；Esc 和离开搜索页都不再提交。共七个
 状态和七张截图；没有真实账号、实体声卡或 Windows 实窗结果。
+
+普通专辑歌曲拖入当前播放列表
+----------------------------
+
+官方 Windows PC 3.1.42.205594，恢复的 M/3111（hybrid_58）:526–586 将筛选后的
+tracks 放入 M/352.a，父动作带 Scene.album、resourceIdOfScene 与专辑 sourceData。
+M/352:304–334 转给 M/195；M/195:73–80、323–352、399–410 使用普通 track 行与
+原顺序的 selectedData；M/405:58–72、225–235 允许拖动，M/392:49–68 将子行的
+unknown 场景替换为父专辑场景。拖入播放列表仍走 PlaylistContent.tsx:132–145 /
+M/3085:2508–2532：有选择时发送该组，否则发送单行，clear=false、play=false、
+offset=insertIndex-1。该动作使用已载入的专辑资源，不走专辑整张播放、批量操作、
+追加到下一首或重新获取专辑／歌曲详情的分支；不复制试用参数。
+
+专辑「歌曲」标签接同一有序多选手势和播放列表插入线。专辑筛选后的显示位置映射回
+原生专辑曲目序号；只传专辑 ID、目录快照 revision、按选择次序排列的曲目 ID 和
+原始序号，不接受前端资源对象。按下已选行可拖整组，普通松手仍折叠选区。切换标签、
+专辑、账号、当前播放、队列或筛选会撤销未完成手势；Escape 继续取消。未新增专辑
+排序或将「批量操作」改成拖动入口。
+
+`player_action/drop_album_songs_into_queue` 在现有主窗 IPC 下由 Rust 核对账号、
+队列版本、播放 ID 及精确落点。目录快照从当前账号的 CatalogDetails 缓存读出，
+同时校验查询、专辑身份和曲目顺序哈希；逐项核对原始序号、曲目 ID 和普通歌曲类型。
+缺失、私有云盘、声音、本地占位或其他无效行拒绝整组；快照过期明确提示刷新专辑后
+重新拖入，不自动读接口或重放。即使没有新的远端读取，也不把缓存权限当作媒体授权：
+只有后来实际播放某行时才走既有原生音源和权限流程。
+
+原子落点沿用普通播放队列规则，重复歌曲移到该处，当前重复项保留原生 entry、playId、
+位置、暂停状态和加载来源；新条目及非当前重复项记为这次专辑来源。FM、心动、随机、
+一起听和空队列仍受既有入口限制。M/401 的跨端事件不在此范围；不修改远端歌单或账号。
+
+独立验收入口（合成账号与音频）：
+  cargo test --locked -p cumulus-core --test client_player album_drag_
+  node --experimental-strip-types --test --test-name-pattern='album drops' frontend/tests/player-state.test.ts
+  cargo build --locked -p cumulus-desktop --example catalog_ui_probe --features custom-protocol
+  GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/album_queue_drop_smoke.py
+    --binary <target>/debug/examples/catalog_ui_probe --frontend-dist frontend/dist
+    --root <全新隔离目录> --screenshots --trusted-pointer
+探针待运行；目标是实际 GTK/WebKit、XTest 拖动和 libmpv null，检查筛选后逆序选择、
+可见插入线、暂停播放身份与时间、Escape／筛选／标签取消，以及拖动期间零目录或音频
+地址读取。XTest 拖放与合成修饰键选区分开记录，不代表物理鼠标、声卡或 Windows 实窗。

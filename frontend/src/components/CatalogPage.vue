@@ -7,7 +7,7 @@ import type { ArtistTab, CatalogResource, CatalogSelectionPage } from '../servic
 import type { AlbumCard, ArtistCard } from '../services/catalog';
 import type { AlbumCardRequest } from '../services/catalogCards';
 import type { ArtistCardRequest } from '../services/artistCards';
-import type { PlayerOrigin, PlayerView } from '../services/player';
+import type { AlbumQueueDropGesture, PlayerOrigin, PlayerView } from '../services/player';
 import type { AlbumTab, CatalogPanelKey } from '../services/catalogNavigation';
 import type { CatalogSession } from '../composables/useCatalogSession';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
@@ -37,6 +37,7 @@ const props = defineProps<{
   origin?: PlayerOrigin | null;
   playing: boolean;
   queueable: boolean;
+  albumQueueDropEnabled?: boolean;
   queueArtistSongs: (pages: CatalogSelectionPage[]) => Promise<PlayerView | undefined>;
 }>();
 const emit = defineEmits<{
@@ -57,6 +58,7 @@ const emit = defineEmits<{
   back: [];
   playAlbum: [album: AlbumCard];
   albumAction: [request: AlbumCardRequest];
+  albumQueueDrag: [event: PointerEvent, gesture: AlbumQueueDropGesture];
   playArtist: [artist: ArtistCard];
   artistAction: [request: ArtistCardRequest];
 }>();
@@ -480,12 +482,14 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         :playable="playable && !playBusy"
         :current-id="currentId"
         :current-toggle="currentToggle"
+        :queue-drop-enabled="albumQueueDropEnabled"
         @choose="emit('albumTab', $event)"
         @enter="restore"
         @play="play"
         @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @like="emit('like', $event)"
         @more="emit('more', $event)"
+        @queue-drag="(event, gesture) => emit('albumQueueDrag', event, gesture)"
         @open="emit('open', $event)"
         @expired="expire"
       />

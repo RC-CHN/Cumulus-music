@@ -34,6 +34,7 @@ struct Backend {
     trial: Mutex<Option<Value>>,
     playlist_tracks: Mutex<Option<Vec<Value>>>,
     album_tracks: Mutex<Option<Vec<Value>>>,
+    album_privileges: Mutex<Vec<Value>>,
     daily_tracks: Mutex<Option<Vec<Value>>>,
     style_tag_state: AtomicU64,
     style_tag_write_mode: AtomicU64,
@@ -224,7 +225,9 @@ impl Api for Backend {
                     json!({"code":200,"total":55,"more":offset+limit<55,"songs":((offset+1)..=(offset+limit).min(55)).map(|id|json!({"id":id,"name":"曲目"})).collect::<Vec<_>>()})
                 }
                 "/api/album/detail/dynamic" => json!({"code":200,"isSub":false}),
-                "/api/album/privilege" => json!({"code":200,"data":[]}),
+                "/api/album/privilege" => {
+                    json!({"code":200,"data":self.album_privileges.lock().unwrap().clone()})
+                }
                 "/api/resource-exposure/config" => {
                     json!({"code":200,"data":{"resourceType":"other"}})
                 }
@@ -425,6 +428,8 @@ mod search_queue_drop;
 #[path = "client_player/queue_click.rs"]
 mod queue_click;
 
+#[path = "client_player/album_queue_drop.rs"]
+mod album_queue_drop;
 #[path = "client_player/queue_album.rs"]
 mod queue_album;
 #[path = "client_player/queue_daily.rs"]

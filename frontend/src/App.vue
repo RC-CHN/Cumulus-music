@@ -36,7 +36,7 @@ import SearchReasonPage from './components/search/SearchReasonPage.vue';
 import { createSearchViewportMemory } from './services/searchViewport';
 import { createCollectionViewportMemory } from './services/collectionViewport';
 import ContentTooltip from './components/ContentTooltip.vue';
-import type { PlayerView } from './services/player';
+import type { AlbumQueueDropGesture, PlayerView } from './services/player';
 import type { SearchHotPlaybackTarget, SearchHotTarget, SearchItem } from './services/search';
 import {
   searchCardIsCurrent,
@@ -3251,6 +3251,39 @@ const canDropSearchSong = computed(
     player.queueOpen.value &&
     queuePanel.value?.canDrop === true,
 );
+const canDropAlbumSong = computed(
+  () =>
+    account.value.status === 'authenticated' &&
+    page.value.kind === 'catalog' &&
+    page.value.resource.kind === 'album' &&
+    catalogSession.value?.albumTab.value === 'songs' &&
+    player.queueOpen.value &&
+    queuePanel.value?.canDrop === true,
+);
+function startAlbumQueueDrop(event: PointerEvent, gesture: AlbumQueueDropGesture) {
+  const route = page.value;
+  const model = catalogSession.value;
+  if (
+    !canDropAlbumSong.value ||
+    route.kind !== 'catalog' ||
+    route.resource.kind !== 'album' ||
+    route.resource.id !== gesture.id ||
+    !model?.valid()
+  )
+    return;
+  const epoch = account.value.epoch;
+  queuePanel.value?.beginDrop(event, {
+    ...gesture,
+    kind: 'album',
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    current: () =>
+      canDropAlbumSong.value &&
+      page.value === route &&
+      catalogSession.value === model &&
+      account.value.epoch === epoch &&
+      gesture.current(),
+  });
+}
 function startSearchQueueDrop(
   event: PointerEvent,
   rows: { receipt: string; trackId: string }[],
@@ -4779,6 +4812,7 @@ onUnmounted(() => {
                 ref="catalogDetailPage"
                 :model="catalogSession"
                 :account="account"
+                :album-queue-drop-enabled="canDropAlbumSong"
                 :playable="player.ready.value"
                 :play-busy="player.busy.value"
                 :origin="player.loaded.value ? player.view.value?.origin : null"
@@ -4798,6 +4832,7 @@ onUnmounted(() => {
                 @profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
                 @play-album="playAlbumCard"
                 @album-action="albumAction"
+                @album-queue-drag="startAlbumQueueDrop"
                 @play-artist="playResourceCard({ kind: 'artist', id: $event.id })"
                 @artist-action="artistAction"
                 @artist-tab="

@@ -1,4 +1,5 @@
 //! Route-bound rows dropped onto a displayed ordinary queue boundary.
+mod album;
 use super::*;
 use crate::{
     catalog::CatalogApi,
@@ -17,6 +18,12 @@ use std::{
 use super::{identity::collection_key, queue_playlist::QUEUE_LIMIT};
 
 pub(super) enum DropSource {
+    Album {
+        id: String,
+        revision: String,
+        rows: Vec<AlbumDropRow>,
+        quality: Quality,
+    },
     Search {
         rows: Vec<super::super::search::SearchDropRow>,
         quality: Quality,
@@ -88,6 +95,12 @@ impl MusicClient {
         };
         let attempt = self.player.selection.load(Ordering::Acquire);
         let (resources, origin) = match source {
+            DropSource::Album {
+                id,
+                revision,
+                rows,
+                quality,
+            } => album::resolve(self, &token, &id, &revision, rows, quality)?,
             DropSource::Search { rows, quality } => {
                 let rows = self.search_drop_rows(&token, &rows)?;
                 let resources = rows

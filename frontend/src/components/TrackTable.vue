@@ -31,6 +31,7 @@ const props = defineProps<{
   preserveScrollOnRefresh?: boolean;
   queueDropEnabled?: boolean;
   playlistSelectionScope?: string;
+  selectionLabel?: string;
   locateIndex?: number;
   scrollScope?: string;
 }>();
@@ -246,7 +247,7 @@ defineExpose({ locate, restoreScroll });
   <div
     class="track-table"
     :role="playlistSelectionScope ? 'grid' : 'table'"
-    :aria-label="playlistSelectionScope ? '歌单歌曲' : undefined"
+    :aria-label="playlistSelectionScope ? (selectionLabel ?? '歌单歌曲') : undefined"
     :aria-multiselectable="playlistSelectionScope ? true : undefined"
     :aria-rowcount="tracks.length + 1"
   >

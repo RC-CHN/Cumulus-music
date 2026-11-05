@@ -1107,6 +1107,15 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
           track_id: trackId,
           track_index: trackIndex,
         }));
+        if (source.kind === 'album')
+          return {
+            kind: 'drop_album_songs_into_queue',
+            id: source.id,
+            revision: source.revision,
+            quality: source.quality,
+            rows,
+            ...target,
+          };
         const playlist = { id: source.id, revision: source.revision, quality: source.quality };
         return rows.length === 1
           ? { kind: 'drop_playlist_song_into_queue', ...rows[0], ...playlist, ...target }

@@ -10,6 +10,7 @@ import type {
 } from '../../services/trackMenu';
 import type { CatalogSession } from '../../composables/useCatalogSession';
 import type { AlbumTab } from '../../services/catalogNavigation';
+import type { AlbumQueueDropGesture } from '../../services/player';
 import TrackTable from '../TrackTable.vue';
 import TrackScopeSearch from '../TrackScopeSearch.vue';
 import { filterTrackScope } from '../../services/trackScopeSearch';
@@ -24,6 +25,7 @@ const props = defineProps<{
   playable: boolean;
   currentId?: string;
   currentToggle?: TrackCurrentToggle;
+  queueDropEnabled?: boolean;
 }>();
 const emit = defineEmits<{
   play: [index: number, gesture?: TrackPlayGesture];
@@ -34,12 +36,57 @@ const emit = defineEmits<{
   expired: [];
   choose: [tab: AlbumTab];
   enter: [element: Element];
+  queueDrag: [event: PointerEvent, gesture: AlbumQueueDropGesture];
 }>();
 type Tab = AlbumTab;
 const selected = props.model.albumTab;
 const comments = props.model.comments;
 const keyword = ref('');
 const filtered = computed(() => filterTrackScope(props.tracks, keyword.value));
+const selectionScope = computed(() => {
+  const current = props.model.detail.view.value;
+  if (
+    props.account.status === 'authenticated' &&
+    selected.value === 'songs' &&
+    current?.query.kind === 'album' &&
+    current.query.id === props.album.id &&
+    current.page.kind === 'album' &&
+    current.page.album.id === props.album.id &&
+    props.model.valid()
+  )
+    return JSON.stringify([props.account.epoch, props.album.id, current.revision]);
+});
+function queueDrag(
+  event: PointerEvent,
+  picked: { track: TrackView; index: number }[],
+  selectionCurrent: () => boolean,
+) {
+  const document = props.model.detail.view.value;
+  const visible = filtered.value;
+  const scope = selectionScope.value;
+  if (!scope || document?.page.kind !== 'album') return;
+  const sourceTracks = document.page.tracks;
+  const current = () =>
+    !!props.queueDropEnabled &&
+    scope === selectionScope.value &&
+    !props.model.detail.loading.value &&
+    props.model.detail.view.value === document &&
+    filtered.value === visible &&
+    selectionCurrent();
+  if (!current()) return;
+  const rows = picked.flatMap(({ track, index }) => {
+    const trackIndex = visible.positions?.[index] ?? index;
+    if (
+      !track.voiceId &&
+      visible.tracks[index] === track &&
+      sourceTracks[trackIndex]?.id === track.id
+    )
+      return [{ trackId: track.id, trackIndex }];
+    return [];
+  });
+  if (rows.length !== picked.length || !rows.length) return;
+  emit('queueDrag', event, { id: props.album.id, revision: document.revision, rows, current });
+}
 function play(index: number, gesture?: TrackPlayGesture) {
   const positions = filtered.value.positions;
   const sourceIndex = positions === null ? index : positions[index];
@@ -147,10 +194,14 @@ function keydown(event: KeyboardEvent, index: number) {
             :playable="playable"
             :current-id="currentId"
             :current-toggle="currentToggle"
+            :playlist-selection-scope="selectionScope"
+            selection-label="专辑歌曲"
+            :queue-drop-enabled="queueDropEnabled"
             @play="play"
             @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
             @like="emit('like', $event)"
             @more="emit('more', $event)"
+            @queue-drag="queueDrag"
             @artist="emit('open', { kind: 'artist', id: $event })"
             @album="emit('open', { kind: 'album', id: $event })"
           />

@@ -294,10 +294,21 @@ export type SearchQueueDropSource = {
   quality: Quality;
   current: () => boolean;
 };
+export type AlbumQueueDropGesture = {
+  id: string;
+  revision: string;
+  rows: { trackId: string; trackIndex: number }[];
+  current: () => boolean;
+};
+export type AlbumQueueDropSource = AlbumQueueDropGesture & {
+  kind: 'album';
+  quality: Quality;
+};
 export type QueueDropSource =
   | LocalQueueDropSource
   | PlaylistQueueDropSource
-  | SearchQueueDropSource;
+  | SearchQueueDropSource
+  | AlbumQueueDropSource;
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
 export type SongRowDoubleClickSelection =
   | ({
@@ -521,6 +532,16 @@ export type PlayerAction =
   | {
       kind: 'drop_search_songs_into_queue';
       rows: { receipt: string; track_id: string }[];
+      quality: Quality;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
+    }
+  | {
+      kind: 'drop_album_songs_into_queue';
+      id: string;
+      revision: string;
+      rows: { track_id: string; track_index: number }[];
       quality: Quality;
       expected_queue_revision: string;
       expected_play_id: string | null;

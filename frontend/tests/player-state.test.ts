@@ -1608,6 +1608,69 @@ test('queue edits capture the displayed revision, isolate errors and never enter
   f.player.dispose();
 });
 
+test('album drops keep gesture order and source positions and do not replay a stale source', async () => {
+  const calls: PlayerAction[] = [];
+  const paused: PlayerView = { ...state('2', '1', 'paused-song'), state: 'paused', position: 22 };
+  let outdated = true;
+  const f = fixture({
+    playerAction: async (_epoch, action) => {
+      calls.push(action);
+      if (outdated) throw { code: 'album_drop_source_changed', message: '请刷新专辑后重新拖入' };
+      return { ...paused, revision: '3', queueRevision: '2' };
+    },
+  });
+  await f.player.connect(account());
+  f.emit(paused);
+  await f.player.loadQueue();
+  const shown = f.player.queue.value!;
+  let current = false;
+  const source = {
+    kind: 'album' as const,
+    id: '7',
+    revision: 'album-v1',
+    quality: 'standard' as const,
+    rows: [
+      { trackId: '11', trackIndex: 10 },
+      { trackId: '10', trackIndex: 9 },
+    ],
+    current: () => current,
+  };
+  assert.equal(await f.player.dropIntoQueue(source, shown, paused.playId, 'next-entry'), false);
+  assert.equal(calls.length, 0);
+  current = true;
+  assert.equal(await f.player.dropIntoQueue(source, shown, paused.playId, 'next-entry'), false);
+  assert.equal(f.player.queueEditError.value, '请刷新专辑后重新拖入');
+  assert.equal(f.player.error.value, '');
+  await f.player.retry();
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], {
+    kind: 'drop_album_songs_into_queue',
+    id: '7',
+    revision: 'album-v1',
+    quality: 'standard',
+    rows: [
+      { track_id: '11', track_index: 10 },
+      { track_id: '10', track_index: 9 },
+    ],
+    expected_queue_revision: shown.revision,
+    expected_play_id: 'paused-song',
+    before_entry_id: 'next-entry',
+  });
+  outdated = false;
+  assert.equal(
+    await f.player.dropIntoQueue(
+      { ...source, revision: 'album-v2' },
+      shown,
+      paused.playId,
+      'next-entry',
+    ),
+    true,
+  );
+  assert.equal(f.player.view.value?.position, 22);
+  assert.equal(f.player.view.value?.playId, 'paused-song');
+  f.player.dispose();
+});
+
 test('account replacement invalidates pending queue reads and edits without leaking their errors', async () => {
   const editing = deferred<PlayerView>(),
     reading = deferred<import('../src/services/player.ts').QueueView>();

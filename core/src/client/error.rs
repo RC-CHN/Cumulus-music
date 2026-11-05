@@ -256,6 +256,11 @@ impl From<Error> for ClientError {
                 ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),
                 Error::QueueChanged => ("snapshot_changed", "列表已更新，请刷新后重试", true),
+                Error::AlbumDropSourceChanged => (
+                    "album_drop_source_changed",
+                    "专辑歌曲列表已更新，请刷新专辑后重新拖入",
+                    true,
+                ),
                 Error::State("search drop results expired") => (
                     "search_drop_source_changed",
                     "搜索结果已失效，请重新搜索后再拖入",
