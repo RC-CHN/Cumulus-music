@@ -19,6 +19,24 @@
   const best = () => one('.search-best-section');
   const regular = () => one('[data-result-section^="search_block_artist:"]');
   const keys = (root) => root ? all('[data-result-key]', root).map((node) => node.dataset.resultKey) : [];
+  const regularProjection = () => {
+    const section = regular(), grid = section?.querySelector('.search-result-grid[data-loaded-count]');
+    const template = grid ? getComputedStyle(grid).gridTemplateColumns : null;
+    const tracks = template?.trim().split(/\s+/) ?? [];
+    const columns = tracks.length && tracks.every((track) => /^\d+(?:\.\d+)?px$/.test(track)) ? tracks.length : null;
+    const tops = grid ? all('.search-grid-cell', grid).map((node) => node.getBoundingClientRect().top) : [];
+    return { keys: keys(section), candidates: grid ? Number(grid.dataset.loadedCount)
+      : section?.querySelector('.search-carousel') ? keys(section).length : 0,
+      columns, preview: grid?.dataset.preview === 'true', singleRow: !!tops.length && Math.max(...tops) - Math.min(...tops) < 1,
+      template };
+  };
+  const regularReady = (treatment) => {
+    const view = regularProjection();
+    const visible = treatment ? 10 : Math.min(6, view.columns ?? 0);
+    return view.candidates === (treatment ? 10 : 6) && visible > 0
+      && view.keys.join(',') === Array.from({ length: visible }, (_, index) => `artist:${200 + index}`).join(',')
+      && (treatment || view.preview && view.singleRow);
+  };
   const bar = () => {
     const node = one('.playerbar');
     return node && { state: node.dataset.state, playId: node.dataset.playId ?? null,
@@ -36,8 +54,7 @@
   function layout(treatment) {
     assert(footerCount() === (treatment ? 3 : 0), 'all three footer lanes match the native cohort');
     assert(keys(best()).join(',') === (treatment ? 'artist:100,artist:101,artist:102' : 'artist:100,artist:101'), 'best-match projection keeps official first three/two');
-    const expected = Array.from({ length: treatment ? 10 : 6 }, (_, index) => `artist:${200 + index}`);
-    assert(keys(regular()).join(',') === expected.join(','), 'ordinary preview retains ten/six bounded candidates');
+    assert(regularReady(treatment), 'ordinary preview retains ten/six candidates and exact visible ordered columns');
     const rail = regular()?.querySelector('.search-carousel-rail');
     assert(treatment ? rail && getComputedStyle(rail).gap === '16px' : !rail, 'dense carousel is derived from the actual global assignment');
   }
@@ -81,6 +98,9 @@
     window.__searchFooterRecorded = '';
     const focused = document.activeElement;
     await emit(stage, { label, footerCount: footerCount(), bestKeys: keys(best()), regularKeys: keys(regular()),
+      regularCandidateCount: regularProjection().candidates, regularColumns: regularProjection().columns,
+      regularPreview: regularProjection().preview, regularSingleRow: regularProjection().singleRow,
+      regularGridTemplate: regularProjection().template,
       denseGap: regular()?.querySelector('.search-carousel-rail')?.style.gap ?? null,
       scrollTop: panel()?.scrollTop ?? null, renderedTracks: all('.search-track-card').length,
       focusCard: focused?.closest('[data-result-key]')?.dataset.resultKey ?? null,
@@ -120,7 +140,7 @@
     input.value = '合成 V3';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await wait(() => ready() && regular() && keys(regular()).length === 10 && footerCount() === 3, 'single comprehensive search in treatment');
+    await wait(() => ready() && regularReady(true) && footerCount() === 3, 'single comprehensive search in treatment');
     layout(true);
     await capture('initial');
     click(cover('1'));
@@ -135,14 +155,14 @@
     const reason = card('3').querySelector('[data-result-action="reason:0"]');
     reason.focus({ preventScroll: true });
     await refresh('c');
-    await wait(() => footerCount() === 0 && keys(best()).length === 2 && keys(regular()).length === 6
+    await wait(() => footerCount() === 0 && keys(best()).length === 2 && regularReady(false)
       && document.activeElement === cover('3'), 'removed reason falls back to its own surviving cover');
     layout(false);
     assert(panel().scrollTop === top, 'control update retains scroll');
     await capture('current_control');
     input.focus({ preventScroll: true });
     await refresh('t1');
-    await wait(() => footerCount() === 3 && keys(best()).length === 3 && keys(regular()).length === 10, 'native receipt restores all three presentation branches');
+    await wait(() => footerCount() === 3 && keys(best()).length === 3 && regularReady(true), 'native receipt restores all three presentation branches');
     layout(true);
     assert(document.activeElement === input && panel().scrollTop === top, 'new focus and viewport are not stolen');
     await capture('current_treatment');
@@ -162,13 +182,13 @@
     assert(footerCount() === 0 && all('.search-track-card').length === 0, 'old granted rows are never flashed during Back projection');
     await capture('back_pending');
     releaseProjection();
-    await wait(() => ready() && all('.search-track-card').length === 3 && keys(regular()).length === 6
+    await wait(() => ready() && all('.search-track-card').length === 3 && regularReady(false)
       && document.activeElement === cover('3'), 'Back publishes the current control projection and scoped fallback focus');
     layout(false);
     assert(panel().scrollTop === top, 'Back restores the same scrolled visit');
     await capture('back_control');
     await refresh('t1');
-    await wait(() => footerCount() === 3 && keys(best()).length === 3 && keys(regular()).length === 10, 'same cached visit receives treatment without another query');
+    await wait(() => footerCount() === 3 && keys(best()).length === 3 && regularReady(true), 'same cached visit receives treatment without another query');
     layout(true);
     assert(document.activeElement === cover('3') && panel().scrollTop === top, 'returning footer does not move surviving focus or scroll');
     await capture('back_treatment');

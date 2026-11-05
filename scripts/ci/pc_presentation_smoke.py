@@ -95,7 +95,15 @@ def verify(root, repository, screenshots, windows):
             assert stage["footerCount"] == (3 if treatment else 0)
             assert stage["renderedTracks"] == 3
             assert stage["bestKeys"] == [f"artist:{index}" for index in range(100, 103 if treatment else 102)]
-            assert stage["regularKeys"] == [f"artist:{index}" for index in range(200, 210 if treatment else 206)]
+            assert stage["regularCandidateCount"] == (10 if treatment else 6)
+            if treatment:
+                visible = 10
+            else:
+                columns = stage["regularColumns"]
+                assert isinstance(columns, int) and columns >= 1
+                assert stage["regularPreview"] and stage["regularSingleRow"]
+                visible = min(6, columns)
+            assert stage["regularKeys"] == [f"artist:{index}" for index in range(200, 200 + visible)]
             assert stage["denseGap"] == ("16px" if treatment else None)
         else:
             assert stage["footerCount"] == stage["renderedTracks"] == 0
