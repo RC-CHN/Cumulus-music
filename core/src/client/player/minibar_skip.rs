@@ -1,7 +1,7 @@
 //! Only the official main bottom bar's explicit forward/back triggers.
 use super::MusicClient;
 use crate::{
-    Error, Result,
+    Result,
     account::{SessionStatus, SessionToken},
     playback::{
         Step,
@@ -72,7 +72,7 @@ impl MusicClient {
                         })
                     })
         });
-        let result = controller
+        let outcome = controller
             .ordinary_minibar_skip(
                 token,
                 current.fence(),
@@ -81,18 +81,10 @@ impl MusicClient {
                 OrdinaryQueueEnvironment::OnlineWithoutMvExperiment { app_online: true },
                 authority,
             )
-            .await;
+            .await?;
         transport.check()?;
-        match result {
-            Ok(outcome) => Ok(outcome.applied),
-            Err(error)
-                if matches!(error.root(), Error::StaleResponse) || error.is_service_code(301) =>
-            {
-                Err(error)
-            }
-            // The optional scan did not consume the intent. Generic service
-            // errors are never proof of a rights denial.
-            Err(_) => Ok(None),
-        }
+        // An in-flight preflight failure isn't permission to send a second
+        // transport intent. Only a decision of Unchanged falls through.
+        Ok(outcome.applied)
     }
 }
