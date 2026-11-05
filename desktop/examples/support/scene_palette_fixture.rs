@@ -9,7 +9,7 @@ use std::{
     collections::BTreeMap,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -25,22 +25,54 @@ pub struct PaletteMedia {
     case: String,
     calls: Mutex<Vec<String>>,
     pub body_bytes: Arc<AtomicUsize>,
+    held: AtomicBool,
+    release: tokio::sync::watch::Sender<bool>,
 }
 impl PaletteMedia {
     pub fn new(case: String) -> Self {
         assert!(matches!(
             case.as_str(),
-            "header" | "only_tb" | "sample" | "late"
+            "header"
+                | "only_tb"
+                | "sample"
+                | "late"
+                | "pending_header"
+                | "pending_image"
+                | "pending_canvas"
         ));
         Self {
             case,
             calls: Mutex::default(),
             body_bytes: Arc::new(AtomicUsize::new(0)),
+            held: AtomicBool::new(false),
+            release: tokio::sync::watch::channel(false).0,
         }
     }
     pub fn snapshot(&self) -> Value {
         json!({"urls":self.calls.lock().unwrap().clone(),
-            "bodyBytes":self.body_bytes.load(Ordering::SeqCst)})
+            "bodyBytes":self.body_bytes.load(Ordering::SeqCst),
+            "held":self.held.load(Ordering::SeqCst),"released":*self.release.borrow()})
+    }
+    pub fn shared_cover(&self) -> bool {
+        self.case.starts_with("pending_")
+    }
+    pub fn release(&self) {
+        assert!(matches!(
+            self.case.as_str(),
+            "pending_header" | "pending_image"
+        ));
+        assert!(self.held.load(Ordering::SeqCst));
+        self.release.send_replace(true);
+    }
+    async fn hold(&self) {
+        let mut released = self.release.subscribe();
+        self.held.store(true, Ordering::SeqCst);
+        while !*released.borrow_and_update() {
+            released
+                .changed()
+                .await
+                .expect("live synthetic palette release");
+        }
     }
 }
 impl MediaBackend for PaletteMedia {
@@ -52,6 +84,11 @@ impl MediaBackend for PaletteMedia {
             assert_eq!(request.offset, 0);
             assert!(request.if_range.is_none());
             self.calls.lock().unwrap().push(url.to_owned());
+            if self.case == "pending_header" && url.contains("xnos=1")
+                || self.case == "pending_image" && !url.contains("xnos=1")
+            {
+                self.hold().await;
+            }
             if self.case == "late" && url.contains("601.png") {
                 tokio::time::sleep(Duration::from_millis(1500)).await;
             }
@@ -61,7 +98,7 @@ impl MediaBackend for PaletteMedia {
             ]);
             if url.contains("xnos=1") {
                 match self.case.as_str() {
-                    "sample" => {}
+                    "sample" | "pending_image" | "pending_canvas" => {}
                     "only_tb" => {
                         headers.insert("x-nos-meta-n-m-cl".into(), "T:112233|B:445566".into());
                     }
@@ -111,12 +148,13 @@ impl MediaBody for Body {
     }
 }
 
-pub fn artwork_response(mut value: Value) -> Value {
-    fn decorate(voice: &mut Value) {
+pub fn artwork_response(mut value: Value, shared_cover: bool) -> Value {
+    fn decorate(voice: &mut Value, shared_cover: bool) {
         if let Some(id) = voice["id"].as_u64() {
             assert!(matches!(id, 601 | 602));
+            let artwork_id = if shared_cover { 601 } else { id };
             voice["coverUrl"] = json!(format!(
-                "https://p1.music.126.net/obj/cumulus-palette/cover{id}.png"
+                "https://p1.music.126.net/obj/cumulus-palette/cover{artwork_id}.png"
             ));
         }
     }
@@ -130,13 +168,13 @@ pub fn artwork_response(mut value: Value) -> Value {
         for row in rows {
             if let Some(voices) = row["creativeExtInfoVO"]["djPrograms"].as_array_mut() {
                 for voice in voices {
-                    decorate(voice);
+                    decorate(voice, shared_cover);
                 }
             }
         }
     }
     if value["program"].is_object() {
-        decorate(&mut value["program"]);
+        decorate(&mut value["program"], shared_cover);
     }
     value
 }

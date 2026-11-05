@@ -7,7 +7,8 @@ import sys
 from urllib.parse import urlsplit
 from window_manager import launch
 
-CASES = ('header', 'only_tb', 'sample', 'late')
+PENDING_CASES = ('pending_header', 'pending_image', 'pending_canvas')
+CASES = ('header', 'only_tb', 'sample', 'late') + PENDING_CASES
 BLUE = 'linear-gradient(245deg,rgb(71,125,179)0%,rgb(71,143,179)48%,rgb(71,125,179)100%)'
 BROWN = 'linear-gradient(245deg,rgb(179,107,71)0%,rgb(179,89,71)48%,rgb(179,107,71)100%)'
 RED = 'linear-gradient(245deg,rgb(179,71,71)0%,rgb(179,71,89)48%,rgb(179,71,71)100%)'
@@ -17,11 +18,58 @@ def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def verify_pending(output, case, screenshots, done, stages):
+    names = ('pending_first', 'pending_second', 'palette_complete', 'playing_stable')
+    assert done['ok'] and done['case'] == case and tuple(stages) == names, done
+    assert done['stageCount'] == 4 and all(s['actual'] for s in stages.values()), done
+    assert done['oldVoiceRejected'] is True, done
+    assert done['realMusicRequests'] == done['realAccountWrites'] == 0, done
+    samples = int(case != 'pending_header')
+    ipc = {'reads': 1, 'samples': samples, 'cancels': 0}
+    assert done['ipc'] == ipc, done
+    first, second, complete, stable = (stages[name] for name in names)
+    assert first['state']['state'] == 'idle' and first['queue']['voices'] == [], first
+    assert first['scene']['id'] == '601' and second['scene']['id'] == '602', stages
+    cover = 'https://p1.music.126.net/obj/cumulus-palette/cover601.png'
+    assert all(s['scene']['cover'] == cover for s in stages.values()), stages
+    assert first['background']['pending'] == second['background']['pending'] == 'true', stages
+    assert second['oldVoiceRejected'] is True, second
+    expected = BLUE if case == 'pending_header' else BROWN
+    for stage in (complete, stable):
+        bg = stage['background']
+        assert bg['pending'] == 'false' and bg['kind'] == 'gradient', stage
+        assert ''.join(bg['image'].split()) == expected and stage['ipc'] == ipc, stage
+    for stage in (second, complete, stable):
+        state, queue = stage['state'], stage['queue']
+        assert state['state'] == 'playing' and state['voice'] == '602' and state['playId'], stage
+        assert state['playId'] == second['state']['playId'] and queue == second['queue'], stage
+        assert [item[1] for item in queue['voices']] == ['601', '602'], stage
+    assert stable['state']['position'] > complete['state']['position'] >= second['state']['position']
+    stats = done['paletteRequests']
+    assert len(stats['urls']) == 1 + samples and stats['bodyBytes'] == 76 * samples, stats
+    assert all(urlsplit(u).netloc == 'p1.music.126.net' and
+               urlsplit(u).path == '/obj/cumulus-palette/cover601.png' for u in stats['urls']), stats
+    assert urlsplit(stats['urls'][0]).query == 'xnos=1&imageView=&thumbnail=300y300', stats
+    if samples:
+        assert urlsplit(stats['urls'][1]).query == 'imageView=&thumbnail=300y300&type=webp&rotate=0&tostatic=0'
+        assert done['sampledSize'] == {'width': 16, 'height': 8, 'bytes': 512}, done
+    if sys.platform == 'linux':
+        locale = read(output / 'locale.json')
+        assert locale['numeric'] == 'C' and all(locale[k].casefold().replace('-', '') == 'en_us.utf8'
+            for k in ('messages', 'characters')), locale
+    pictures = len(list(output.glob('ux_*.png')))
+    assert not screenshots or pictures == 4, pictures
+    return {'stages': names, 'screenshots': pictures, 'paletteRequests': stats,
+            'sameArtworkPendingReuse': True, 'oldVoiceAdmissionRejected': True, 'ipc': ipc}
+
+
 def verify(output, case, screenshots):
     failed = output / 'failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     done = read(output / 'complete.json')
     stages = {p.stem.split('_', 2)[2]: read(p) for p in sorted(output.glob('ux_*.json'))}
+    if case in PENDING_CASES:
+        return verify_pending(output, case, screenshots, done, stages)
     names = ('new_source', 'old_source_discarded') if case == 'late' else (
         'palette_idle', 'playing_palette_stable', 'voice_detail')
     assert done['ok'] and done['case'] == case and tuple(stages) == names, done

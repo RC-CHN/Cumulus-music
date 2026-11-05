@@ -128,7 +128,10 @@ impl Api for Library {
                             )
                         {
                             response.map(|response| {
-                                let response = scene_palette_fixture::artwork_response(response);
+                                let response = scene_palette_fixture::artwork_response(
+                                    response,
+                                    self.palette.as_ref().unwrap().shared_cover(),
+                                );
                                 if self.voice_detail.is_some() {
                                     voice_detail_fixture::enrich(response)
                                 } else {
@@ -293,7 +296,14 @@ fn main() {
             if voice_detail_enabled {
                 include_str!("voice_detail_ui_probe.js").to_owned()
             } else if palette_enabled {
-                include_str!("scene_palette_ui_probe.js").to_owned()
+                if palette_case
+                    .as_deref()
+                    .is_some_and(|case| case.starts_with("pending_"))
+                {
+                    include_str!("scene_palette_pending_ui_probe.js").to_owned()
+                } else {
+                    include_str!("scene_palette_ui_probe.js").to_owned()
+                }
             } else if scene_enabled {
                 include_str!("podcast_scene_home_ui_probe.js").to_owned()
             } else if progress_enabled {
@@ -325,6 +335,18 @@ fn main() {
             app.listen("ux-proof", move |event| {
                 let mut value: Value = serde_json::from_str(event.payload()).unwrap();
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
+                if stage == "palette_poll" {
+                    if let (Some(palette), Some(nonce)) = (&api.palette, value["nonce"].as_u64()) {
+                        handle.get_webview_window("main").unwrap().eval(format!(
+                            "window.__paletteStatus = [{nonce}, {}];", palette.snapshot()
+                        )).unwrap();
+                    }
+                    return;
+                }
+                if stage == "palette_release" {
+                    api.palette.as_ref().expect("isolated palette fixture").release();
+                    return;
+                }
                 if progress_enabled && stage == "progress_poll" {
                     if let Some(nonce) = value["nonce"].as_u64() {
                         let count = api.progress_uploads.lock().unwrap().len();
