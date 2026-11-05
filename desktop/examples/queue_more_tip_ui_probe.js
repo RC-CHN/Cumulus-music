@@ -7,6 +7,7 @@
   const emit = (stage, value = {}) =>
     invoke('plugin:event|emit', { event: 'ux-proof', payload: { stage, ...value } });
   const assert = (condition, message) => { if (!condition) throw Error(message); };
+  const milestone = (step) => emit('queue-more-tip-milestone', { step });
   const wait = async (condition, message) => {
     for (let i = 0; i < 250; i++) {
       if (await condition()) return;
@@ -74,7 +75,9 @@
     await wait(() => window.__queueSelectionRecorded === stage, 'native observation: ' + label);
   }
   try {
+    if (window.__queueTipReopenMilestones) await milestone('renderer_enter');
     await wait(() => button('列表循环') && !button('列表循环').disabled && one('.track-row'), 'Daily startup');
+    if (window.__queueTipReopenMilestones) await milestone('daily_ready');
     const provides = one('#app').__vue_app__._context.provides;
     client = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     epoch = (await client.accountSnapshot()).epoch;
@@ -93,23 +96,31 @@
       calls.push({ kind: action.kind, granted: result !== null, at: started });
       return result;
     };
+    if (window.__queueTipReopenMilestones) await milestone('daily_load_begin');
     one('.track-row').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     await wait(() => track() === '1' && state() === 'playing' && position() > .15, 'actual Daily seed playback');
+    if (window.__queueTipReopenMilestones) await milestone('daily_playing');
     await setPaused(true);
     await open();
     await wait(async () => (await client.playerQueue(epoch)).tracks.some((row) => row.moreRecommendation),
       'two-read recommendation fixture');
     await close();
+    if (window.__queueTipReopenMilestones) await milestone('recommendations_loaded');
 
     if (window.__queueTipReopen) {
       await setFocus(true);
+      if (window.__queueTipReopenMilestones) await milestone('focus_observed');
       await selectRecommendation('51');
+      if (window.__queueTipReopenMilestones) await milestone('recommendation_playing');
       await sleep(1350);
       // Native restore can already have rejected a pre-probe offer from the same UID.
       assert(!tip() && calls.length <= 1 && calls.every(({ kind, granted }) => kind === 'begin' && !granted) && !panel(),
         'same UID restart suppresses eligible early-window cue');
+      if (window.__queueTipReopenMilestones) await milestone('cue_check_begin');
       assert(await direct(epoch, { kind: 'begin', play_id: playId() }) === null, 'native restart guard denies cue');
+      if (window.__queueTipReopenMilestones) await milestone('cue_denied');
       await capture('restart_suppressed');
+      if (window.__queueTipReopenMilestones) await milestone('capture_acknowledged');
     } else {
       await setFocus(false);
       await selectRecommendation('51');

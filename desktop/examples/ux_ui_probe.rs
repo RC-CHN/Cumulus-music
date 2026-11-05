@@ -846,6 +846,7 @@ impl Api for Library {
 fn main() {
     // SAFETY: first operation before GTK/runtime or worker creation.
     unsafe { cumulus_desktop::prepare_graphics() };
+    queue_more_fixture::reopen_milestone("graphics_prepared");
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
     let playback_cache_proof = std::env::var_os("CUMULUS_PLAYBACK_CACHE_PROOF").is_some();
@@ -927,6 +928,7 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
     let mut context = assets::context();
+    queue_more_fixture::reopen_milestone("context_loaded");
     if device_source_bypass_proof || ordinary_source_bypass_proof {
         effect_directory_fixture::restrict_source_bypass_artwork(&mut context);
     }
@@ -943,6 +945,7 @@ fn main() {
     let window_config = context.config().app.windows[0].clone();
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
+        queue_more_fixture::reopen_milestone("setup_enter");
         #[cfg(target_os = "linux")]
         if tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
@@ -954,6 +957,7 @@ fn main() {
         }
 
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
+        queue_more_fixture::reopen_milestone("registry_opened");
         let proof_store=registry.store();
         search_fixture::initialize(&proof_store)?;
         let older_verified=vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || search_artist_top50_fixture::enabled() || vertical_zone_fixture::enabled();
@@ -1045,7 +1049,9 @@ fn main() {
             client = client.with_audio_factory(move || {
                 let start = std::time::Instant::now();
                 std::thread::sleep(std::time::Duration::from_millis(startup_delay));
+                queue_more_fixture::reopen_milestone("audio_factory_enter");
                 let mut audio = relay_fixture::NativeAudio::open(wave.clone())?;
+                queue_more_fixture::reopen_milestone("audio_factory_returned");
                 if let Some(directory)=download_directory.as_ref() { audio=audio.allow_download_directory(directory.clone()); }
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
                 count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
@@ -1117,13 +1123,19 @@ fn main() {
                 }
             }
             if queue_more_fixture::tip_enabled() {
+                if value["stage"]=="queue-more-tip-milestone" {
+                    queue_more_fixture::renderer_reopen_milestone(value["step"].as_str().unwrap_or_default());
+                    return;
+                }
                 let main=handle.get_webview_window("main").unwrap();
                 if value["stage"]=="queue-more-tip-focus" {
+                    queue_more_fixture::reopen_milestone("focus_enter");
                     let helper=handle.get_webview_window("queue-tip-focus-helper").unwrap();
                     if value["focus"]==true { helper.hide().unwrap(); main.set_focus().unwrap(); }
                     else {helper.show().unwrap(); helper.set_focus().unwrap();}
                     let sequence=value["sequence"].as_u64().unwrap();
                     main.eval(format!("window.__queueTipFocusAck={sequence};")).unwrap();
+                    queue_more_fixture::reopen_milestone("focus_returned");
                     return;
                 }
                 let owner=fixture_session.token().unwrap().uid.unwrap_or_default();
@@ -1540,6 +1552,7 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     if tone_geometry_proof { value["toneGeometry"]=tone_geometry::report(); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                    if stage=="ux_01_restart_suppressed" { queue_more_fixture::reopen_milestone("capture_written"); }
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
                     if tone_geometry_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__toneGeometryRecorded={};",json!(stage))).unwrap();
@@ -1598,7 +1611,10 @@ fn main() {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();
                     }
                     if ["complete","failed"].contains(&stage.as_str()) {
+                        if stage=="complete" { queue_more_fixture::reopen_milestone("complete_written"); }
+                        queue_more_fixture::reopen_milestone("shutdown_stop_enter");
                         let _=client.player_action(&epoch,cumulus_core::client::dto::PlayerAction::Stop).await;
+                        queue_more_fixture::reopen_milestone("shutdown_stop_returned");
                         handle.exit(if stage=="complete" {0} else {1});
                     }
                 });
@@ -1616,11 +1632,15 @@ fn main() {
         // resolver. The builder API owns this isolated test directory explicitly.
         let mut builder=tauri::WebviewWindowBuilder::from_config(app, &window_config)?.data_directory(root.join("webview"));
         if motion_proof { builder=builder.initialization_script(include_str!("motion_environment.js")); }
+        queue_more_fixture::reopen_milestone("main_window_build_enter");
         builder.build()?;
+        queue_more_fixture::reopen_milestone("main_window_built");
         if queue_more_fixture::tip_enabled() {
+            queue_more_fixture::reopen_milestone("focus_helper_build_enter");
             tauri::WebviewWindowBuilder::new(app,"queue-tip-focus-helper",tauri::WebviewUrl::External("about:blank".parse()?))
                 .title("Synthetic native focus control").visible(false).position(1150.0,32.0)
                 .inner_size(180.0,100.0).data_directory(root.join("focus-helper-webview")).build()?;
+            queue_more_fixture::reopen_milestone("focus_helper_built");
         }
         if media_proof {cumulus_desktop::system_media::install(app.handle());}
         playback_power_guide_fixture::install_media(app.handle());
@@ -1628,11 +1648,14 @@ fn main() {
         Ok(())
     }).on_page_load(|view, payload| {
         if payload.event()==PageLoadEvent::Finished && view.label()=="main" {
+            queue_more_fixture::reopen_milestone("main_page_loaded");
             let script=std::env::var_os("CUMULUS_UX_SCRIPT").map(|p|fs::read_to_string(p).unwrap());
             let default_script = if std::env::var_os("CUMULUS_LIKE_RECOVERY_PROOF").is_some() { include_str!("like_recovery_ui_probe.js") } else if std::env::var_os("CUMULUS_MOTION_PROOF").is_some() { include_str!("motion_ui_probe.js") } else { include_str!("ux_ui_probe.js") };
             let source=script.as_deref().unwrap_or(default_script);
             if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref()==Ok("1") {view.eval(capture_ack::script(source)).unwrap();}
             else {view.eval(source).unwrap();}
+            queue_more_fixture::reopen_milestone("script_queued");
         }
     }).run(context).expect("UX probe");
+    queue_more_fixture::reopen_milestone("run_returned");
 }

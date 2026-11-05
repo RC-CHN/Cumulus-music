@@ -1,9 +1,12 @@
 //! Isolated two-read recommendation fixture. No profile data or API leaves the host.
 use cumulus_core::{Error, Result, protocol::pc_experiments::PcExperimentGroups};
 use serde_json::{Value, json};
-use std::sync::{
-    Mutex, OnceLock,
-    atomic::{AtomicBool, AtomicUsize, Ordering},
+use std::{
+    io::Write,
+    sync::{
+        Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering},
+    },
 };
 use tokio::sync::Notify;
 
@@ -29,6 +32,43 @@ pub fn enabled() -> bool {
 
 pub fn tip_enabled() -> bool {
     std::env::var_os("CUMULUS_QUEUE_MORE_TIP_PROOF").is_some()
+}
+
+/// Bounded stderr breadcrumbs from the isolated Windows reopen process.
+/// Flush immediately so an abrupt native process exit keeps the latest step.
+pub fn reopen_milestone(stage: &'static str) {
+    static COUNT: AtomicU8 = AtomicU8::new(0);
+    if !cfg!(windows)
+        || !tip_enabled()
+        || std::env::var_os("CUMULUS_PROOF_REOPEN").is_none()
+        || COUNT
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                (count < 48).then_some(count + 1)
+            })
+            .is_err()
+    {
+        return;
+    }
+    let mut stderr = std::io::stderr().lock();
+    let _ = writeln!(stderr, "queue-tip-reopen:{stage}");
+    let _ = stderr.flush();
+}
+
+pub fn renderer_reopen_milestone(stage: &str) {
+    let stage = match stage {
+        "renderer_enter" => "renderer_enter",
+        "daily_ready" => "daily_ready",
+        "daily_load_begin" => "daily_load_begin",
+        "daily_playing" => "daily_playing",
+        "recommendations_loaded" => "recommendations_loaded",
+        "focus_observed" => "focus_observed",
+        "recommendation_playing" => "recommendation_playing",
+        "cue_check_begin" => "cue_check_begin",
+        "cue_denied" => "cue_denied",
+        "capture_acknowledged" => "capture_acknowledged",
+        _ => return,
+    };
+    reopen_milestone(stage);
 }
 
 pub fn groups() -> Result<PcExperimentGroups> {

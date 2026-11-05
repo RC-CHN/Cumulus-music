@@ -1,0 +1,49 @@
+Windows queue recommendation cue restart: isolated crash localization
+
+The Windows package jobs for 26ddcc78 (127570467006, line 2345) and d5278dd5
+(127585050650, line 2571) both returned 3221225725 / 0xC00000FD on the reopened
+UX probe. The driver reached the reopen only after the first process passed all
+six UI stages and the same-owner SQLite assertion. Earlier fd735dd9 job
+127560726391 line 2337 passed all seven states, including the restart. An exit
+status alone does not identify the faulting thread or distinguish native
+startup, WebView/focus, playback restoration, or teardown. This candidate makes
+no change to the production application, stack size, or cue assertions.
+
+The Windows reopen-only synthetic probe flushes bounded allowlisted milestones
+through stderr: setup/profile, main/hidden helper windows, navigation/script,
+Daily/player readiness, recommendation/focus, cue denial, capture and native
+Stop/exit. The Python driver retains the normal failure and adds a small JSON
+receipt with the status, milestones, and existence of the three known evidence
+files. No raw stderr, DB, media, path, or renderer-supplied data goes into the
+receipt. The Windows package job makes that file available separately as
+queue-tip-reopen-failure-windows-x64 (and prints the same receipt before the
+unchanged assertion). An empty trace does not prove what happened before the
+first breadcrumb. `shutdown_stop_returned` means the Stop future returned;
+it does not assert that a previously ignored Stop result became success.
+
+To reproduce in an isolated Windows Server 2022 job, use the failing commit,
+that job's locked frontend build, compiled ux_ui_probe.exe and staged media
+runtime. Do not use an installed user's profile. With a new empty proof root:
+
+  python scripts/ci/queue_more_tip_smoke.py \
+    --binary .build/target/debug/examples/ux_ui_probe.exe \
+    --root .build/ci-queue-more-tip-windows \
+    --runtime .build/package-stage/windows-x64/native
+
+The Windows debugger was unavailable in the development environment. If an
+existing Windows SDK `Debuggers\x64\cdb.exe` is available on the exact runner,
+use it only for a separate diagnostic replay, keeping the ordinary command
+above as the acceptance result. The simplest way to preserve the exact
+post-first synthetic state and child environment is to run the same Python
+command with `python -m pdb` and set a conditional breakpoint at the driver's
+`code = launch(...)` line (condition `trace_reopen`). Continue past the first
+process; the breakpoint stops just before the only reopen, with `args.binary`
+and the exact sealed child `env` as locals. From that prompt launch the same
+native exe under cdb using `subprocess.call([cdb, str(args.binary.resolve())],
+env=env)`. At cdb's initial stop use `sxe sov` and `g`. At the first stack
+overflow capture `.lastevent`, `.exr -1`, `.ecxr`, `k 64` and `lm` (thread,
+exception, stack and module offsets), then quit the diagnostic run. Keep the
+repro synthetic and do not upload a memory dump; existing exact PDBs can help
+but are not required to identify the faulting module. With no debugger, retain
+the categorical receipt rather than change WER/registry or increase any stack
+limit. A repro that no longer crashes under observation does not fix the bug.
