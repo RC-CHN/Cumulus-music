@@ -30,7 +30,7 @@ def verify_pending(output, case, screenshots, done, stages):
     first, second, complete, stable = (stages[name] for name in names)
     assert first['state']['state'] == 'idle' and first['queue']['voices'] == [], first
     assert first['scene']['id'] == '601' and second['scene']['id'] == '602', stages
-    cover = 'https://p1.music.126.net/obj/cumulus-palette/cover601.png'
+    cover = 'https://p1.music.126.net/obj/cumulus-palette/cover601.png?param=320y320'
     assert all(s['scene']['cover'] == cover for s in stages.values()), stages
     assert first['background']['pending'] == second['background']['pending'] == 'true', stages
     assert second['oldVoiceRejected'] is True, second
