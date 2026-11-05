@@ -136,6 +136,12 @@ Linux 真实 WebKitGTK 复验：`.build/ui-proof/phase70-download-quality-r4/aud
 发布文件字节与源 WAV 相同，默认仍为 `lossless`。Windows 已加入同样的密闭用例，
 实际 WebView2 结果须查对应提交的 CI。
 
+`26ddcc7` 的 Linux CI 音质探针曾用 `Range` 测字体边界，同一行 CJK 与拉丁文字的
+字形度量不同，虽然名称元素的行框对齐，旧探针仍在下载前失败。改为核对实际名称
+行框和权益说明位置后，常规字体与私有混合回退分别通过六个状态及六张截图；故意
+让一项名称下移 3px 的对照仍失败。没有改布局、放宽名称对齐或减少授权/发布断言。
+三组独立记录见 `.build/ui-proof/phase73-held-48k/ci-26ddcc78/download-quality-diagnosis/`。
+
 复现
 先 npm --prefix frontend run build，再
   cargo build -p cumulus-desktop --example ui_probe --bin cumulus --features custom-protocol --offline

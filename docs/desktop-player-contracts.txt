@@ -206,6 +206,10 @@ Rust 从原生选中的普通目录条目核对 `kind=songs`、`scene=search`，
 
 Rust 合成测试核对歌单原曲暂停/继续的请求数、原生播放和队列身份，以及
 新选搜索曲的投影和字段白名单；前端定向测试核对可导航与纯文本分支。
+`search_footer_smoke.py --vinyl-origin` 已在 Linux 实际 WebView 和 libmpv 核对原
+歌单链接、全新搜索曲的纯文字来源及关闭后返回原结果；三个状态和三张动画结束后截图
+见 `.build/ui-proof/phase75-vinyl-origin-r2/`。暂停播放标识与队列版本均保持，无真实服务请求。
+Windows WebView2 实际结果另查对应提交的 CI。
 
 播放列表定位
 官方 PlaylistContent.tsx:108–129、243–249 从当前曲目计算 scrollToIndex。Cumulus

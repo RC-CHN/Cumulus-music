@@ -146,8 +146,10 @@ Cumulus 在同一播放实例、同一 song:ID 的普通在线正文/同曲缓�
   GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py
     --credits --screenshots --binary .build/target/debug/examples/desktop_lyrics_ui_probe
     --root .build/ui-proof/lyric-credit-webview
-桌面 opt-in 场景检查实际界面、原生 IPC、站内用户请求目标、解码实例、版本请求和缓存分支；
-这是待运行的验收入口，不代表已验证 Windows 或物理音频输出。
+Linux WebKitGTK 与 libmpv 的合成桌面场景已通过六态、六张截图
+（`.build/ui-proof/phase76-lyric-credits-r1/`）。实际操作核对关闭译文、无效昵称链接、
+精确站内主页、同一原生播放、缓存失败保留和新响应省略后清除；四次本机签名歌词交互，
+主页只读取合成用户 73。另跑内嵌 FLAC 双窗口对照。未验证 Windows 或物理音频输出。
 
 导出与本地辅助
 render_lrc 接受时间可选的行；0 是有效时间。format_timestamp 按 JS 数字字符串截取
