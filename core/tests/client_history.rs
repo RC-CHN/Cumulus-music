@@ -83,7 +83,14 @@ impl Api for Backend {
                     }
                     json!({"code":200,"data":{"programs":[voice(5,&p["radioId"]),voice(6,&p["radioId"])],"count":2,"more":false,"asc":p["asc"]}})
                 }
-                "/api/dj/program/detail" => json!({"code":200,"program":voice(5,&json!(8))}),
+                "/api/dj/program/detail" => {
+                    let (id, radio_id) = match p["id"].as_str() {
+                        Some("5") => (5, 8),
+                        Some("6") => (6, 22),
+                        _ => panic!("unexpected history program detail identity"),
+                    };
+                    json!({"code":200,"program":voice(id,&json!(radio_id))})
+                }
                 "/api/dj/user/setting/resumeplay/get" => {
                     json!({"code":200,"data":{"resumePlayValue":0}})
                 }
@@ -428,7 +435,11 @@ async fn listened_books_owns_local_pages_and_exact_chapter_selection() {
                 .count(),
             1
         );
-        assert!(calls.iter().any(|path| path == "/api/dj/play/url/check"));
+        assert!(
+            calls
+                .windows(2)
+                .any(|paths| { paths == ["/api/dj/program/detail", "/api/dj/play/url/check"] })
+        );
         assert!(!calls.iter().any(|path| path.contains("/play-record/")));
     }
 

@@ -119,11 +119,11 @@
     let listenedPlayback;
     for (let attempt = 0; attempt < 100; attempt++) {
       listenedPlayback = await invoke('player_snapshot', { epoch });
-      if (listenedPlayback.track?.voiceId === '702' && listenedPlayback.state === 'playing'
+      if (listenedPlayback.track?.voiceId === '792' && listenedPlayback.state === 'playing'
           && listenedPlayback.position > .2) break;
       await sleep(60);
     }
-    assert(listenedPlayback.track?.voiceId === '702' && listenedPlayback.track?.id === '1702'
+    assert(listenedPlayback.track?.voiceId === '792' && listenedPlayback.track?.id === '1792'
         && listenedPlayback.state === 'playing' && listenedPlayback.queueLen === 2
         && listenedPlayback.position > .2, 'clicked assigned episode, not first chapter or radio as media');
     await capture('listened_chapter', { playing: true });

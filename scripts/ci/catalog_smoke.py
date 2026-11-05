@@ -257,8 +257,8 @@ def main():
                   for name in names}
         assert states['history_return']['scroll'] > 0
         listened = states['listened_chapter']['nativePlayer']
-        assert listened['state'] == 'playing' and listened['track']['voiceId'] == '702'
-        assert listened['track']['id'] == '1702' and listened['queueLen'] == 2 and listened['position'] > .2
+        assert listened['state'] == 'playing' and listened['track']['voiceId'] == '792'
+        assert listened['track']['id'] == '1792' and listened['queueLen'] == 2 and listened['position'] > .2
         native = states['native_play']['nativePlayer']
         assert native['state'] == 'playing' and native['track']['id'] == '2'
         assert native['position'] > .2 and native['queueLen'] == 9

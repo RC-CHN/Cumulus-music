@@ -223,6 +223,10 @@ impl Api for Library {
                 "/api/djradio/v3/get" => {
                     json!({"code":200,"data":{"id":args["id"],"name":format!("合成播单 {}",args["id"].as_str().unwrap_or("")),"programCount":2}})
                 }
+                "/api/v6/dj/program/byradio" if args["radioId"] == "691" => {
+                    assert_eq!(args, json!({"radioId":"691","limit":250,"offset":0}));
+                    json!({"code":200,"data":{"programs":[voice(791,691),voice(792,691)],"count":2,"more":false}})
+                }
                 "/api/v6/dj/program/byradio" => {
                     json!({"code":200,"data":{"programs":[voice(701, number(&args["radioId"])),voice(702, number(&args["radioId"]))],"count":2,"more":false,"asc":args["asc"]}})
                 }
@@ -230,7 +234,9 @@ impl Api for Library {
                     json!({"code":200,"data":{"resumePlayValue":0}})
                 }
                 "/api/dj/program/detail" => {
-                    json!({"code":200,"program":voice(number(&args["id"]),600)})
+                    let id = number(&args["id"]);
+                    let radio = if matches!(id, 791 | 792) { 691 } else { 600 };
+                    json!({"code":200,"program":voice(id,radio)})
                 }
                 "/api/dj/play/url/check" => {
                     json!({"code":200,"data":{"voiceId":args["voiceId"],"songId":voice_media_id(number(&args["voiceId"])),"canPlay":true}})
@@ -243,11 +249,11 @@ impl Api for Library {
                 }
                 LISTENED => {
                     assert_eq!(args, json!({}));
-                    let mut chapter = voice(702, 691);
+                    let mut chapter = voice(792, 691);
                     chapter["radio"]["name"] = json!("合成听书 691");
                     chapter["radio"]["subCount"] = json!(123);
                     chapter["djPlayRecordVo"] =
-                        json!({"id":"702","listenLocation":2500,"isListened":false});
+                        json!({"id":"792","listenLocation":2500,"isListened":false});
                     chapter["url"] = json!("https://blocked.invalid/private");
                     let group = (670..690).map(|id| voice(701, id)).collect::<Vec<_>>();
                     json!({"code":200,"data":{"currentList":[chapter],"yesterdayList":group[..19],"passingList":group[19..]}})
