@@ -93,7 +93,8 @@ fn revision(epoch: &str, options: &DownloadOptions, choices: &[Choice]) -> Resul
 fn download_membership_expired(commit: &MembershipCommit, now: Instant) -> bool {
     let server_now =
         commit.server_now + now.saturating_duration_since(commit.at).as_secs_f64() * 1000.0;
-    let [_, plus, vinyl, music_package, _] = commit.expiries;
+    // MembershipManager::expiries orders vinyl, plus, music package, album, voice book.
+    let [vinyl, plus, music_package, _, _] = commit.expiries;
     [plus, vinyl, music_package]
         .into_iter()
         .any(|expiry| expiry > commit.server_now && expiry <= server_now)
@@ -233,31 +234,36 @@ mod tests {
     #[test]
     fn download_membership_rechecks_crossed_not_already_known_expiry() {
         let at = Instant::now();
-        let commit = MembershipCommit {
-            token: SessionToken {
-                generation: 1,
-                uid: Some("1".into()),
-            },
-            expiries: [1_005.0, 0.0, 1_100.0, 900.0, 1_002.0],
-            server_now: 1_000.0,
-            at,
-        };
-        assert!(!download_membership_expired(
-            &commit,
-            at + Duration::from_millis(99)
-        ));
-        assert!(download_membership_expired(
-            &commit,
-            at + Duration::from_millis(100)
-        ));
-        let checked_expired = MembershipCommit {
-            server_now: 1_110.0,
-            ..commit
-        };
-        assert!(!download_membership_expired(
-            &checked_expired,
-            at + Duration::from_secs(10)
-        ));
+        for index in 0..5 {
+            let mut expiries = [0.0; 5];
+            expiries[index] = 1_100.0;
+            let commit = MembershipCommit {
+                token: SessionToken {
+                    generation: 1,
+                    uid: Some("1".into()),
+                },
+                expiries,
+                server_now: 1_000.0,
+                at,
+            };
+            assert!(!download_membership_expired(
+                &commit,
+                at + Duration::from_millis(99)
+            ));
+            assert_eq!(
+                download_membership_expired(&commit, at + Duration::from_millis(100)),
+                index < 3,
+                "membership slot {index}"
+            );
+            let checked_expired = MembershipCommit {
+                server_now: 1_110.0,
+                ..commit
+            };
+            assert!(!download_membership_expired(
+                &checked_expired,
+                at + Duration::from_secs(10)
+            ));
+        }
     }
 
     #[test]
