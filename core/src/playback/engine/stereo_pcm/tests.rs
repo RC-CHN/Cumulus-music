@@ -3,7 +3,11 @@ use crate::{
     Error,
     effects::{
         dsp::Format,
-        stereo::{LocalFixedStereoMaterial, LocalStereoMaterialPlan, LocalStereoSubgraph},
+        equalizer::EqualizerSettings,
+        stereo::{
+            LocalEqualizerMaterialPlan, LocalEqualizerStereoMaterial, LocalFixedStereoMaterial,
+            LocalStereoMaterialPlan, LocalStereoSubgraph,
+        },
     },
     playback::engine::Cancellation,
 };
@@ -133,30 +137,92 @@ fn paused_replacement_can_prefill_two_native_packets_without_advancing_the_old_s
     assert_first_native_sync(true, 22_050);
 }
 
-fn assert_first_native_sync(paused: bool, first: u64) {
-    use crate::effects::dsp::PlanarBlock;
+#[test]
+fn cold_paused_initial_sync_keeps_the_legacy_first_packet_bound() {
+    use super::control::QUANTUM;
     let rate = 44100u32;
     let (mut reader, control, shared) =
-        channel(rate, first, 200000, Cancellation::default(), None).unwrap();
+        channel(rate, 0, 200000, Cancellation::default(), None).unwrap();
+    control.publish_sink().unwrap();
+    // Consume the real unbound startup credit in complete worker blocks.
+    let samples = [0.25; QUANTUM * 2];
+    for block in 1..=4 {
+        shared.wait_for_credit(|_| unreachable!()).unwrap();
+        shared
+            .publish(&samples, (block * QUANTUM) as u64, false)
+            .unwrap();
+    }
+    control.bind_entry(77).unwrap();
+    control.observe(77, Some(0.0), true, true).unwrap();
+    let mut packet = vec![0; rate as usize / 8 * 8];
+    reader.read_exact(&mut packet).unwrap();
+    let paused = control.snapshot().unwrap();
+    assert!(paused.paused && paused.seeking);
+    assert_eq!(paused.native_output_frame, 0);
+    assert_eq!(paused.delivered_frames, u64::from(rate / 8));
+    assert!(paused.produced_frames <= u64::from(rate.div_ceil(8)) + 4096);
+    let state = shared.state.lock().unwrap();
+    // There is room for more PCM after consuming one packet, but the bound
+    // cold source has not been granted any additional production credit.
+    assert_eq!(shared.producer_credit(&state), paused.produced_frames);
+}
+
+fn ordinary_plan(gain: f32) -> LocalEqualizerMaterialPlan {
+    let mut gains = [0.0; 10];
+    gains[3] = gain;
+    LocalEqualizerMaterialPlan::from_saved(EqualizerSettings::new(true, gains).unwrap())
+}
+
+fn assert_first_native_sync(paused: bool, first: u64) {
+    use crate::effects::dsp::PlanarBlock;
+    enum Graph {
+        Cold(LocalStereoSubgraph),
+        Ordinary(LocalEqualizerStereoMaterial),
+    }
+    let rate = 44100u32;
+    let (mut reader, control, shared) = if paused {
+        native_channel(rate, first, 200000, Cancellation::default())
+    } else {
+        channel(rate, first, 200000, Cancellation::default(), None)
+    }
+    .unwrap();
+    let queue_control = |gain| {
+        if paused {
+            control.queue_graph_control(StereoGraphControl::ApplyLocal(ordinary_plan(gain as f32)))
+        } else {
+            control.configure(plan(gain))
+        }
+    };
     control.publish_sink().unwrap();
     control.bind_entry(77).unwrap();
     control.observe(77, Some(0.0), paused, true).unwrap();
     let worker_shared = shared.clone();
     let worker = thread::spawn(move || {
-        let mut graph =
-            LocalStereoSubgraph::new(Format::new(rate as f32, 2, 2048).unwrap(), plan(3)).unwrap();
-        let mut block = PlanarBlock::new(graph.format());
+        let format = Format::new(rate as f32, 2, 2048).unwrap();
+        let mut graph = if paused {
+            Graph::Ordinary(LocalEqualizerStereoMaterial::new(format, ordinary_plan(3.0)).unwrap())
+        } else {
+            Graph::Cold(LocalStereoSubgraph::new(format, plan(3)).unwrap())
+        };
+        let mut block = PlanarBlock::new(format);
         let mut output = [0.0; 4096];
         let mut decoded = first;
         loop {
-            match worker_shared.wait_for_credit(|control| match control {
-                StereoGraphControl::Cold(plan) => graph.configure(plan),
-                _ => panic!("unexpected ordinary graph control"),
+            match worker_shared.wait_for_credit(|control| match (&mut graph, control) {
+                (Graph::Cold(graph), StereoGraphControl::Cold(plan)) => graph.configure(plan),
+                (Graph::Ordinary(graph), StereoGraphControl::ApplyLocal(plan)) => {
+                    graph.apply_material(plan)
+                }
+                _ => panic!("control belongs to another stereo graph"),
             }) {
                 Err(Error::Cancelled) => break,
                 result => result.unwrap(),
             }
-            let flow = graph.process(&mut block, 2048, false).unwrap();
+            let flow = match &mut graph {
+                Graph::Cold(graph) => graph.process(&mut block, 2048, false),
+                Graph::Ordinary(graph) => graph.process(&mut block, 2048, false),
+            }
+            .unwrap();
             block
                 .copy_interleaved(flow.valid_frames, &mut output[..flow.valid_frames * 2])
                 .unwrap();
@@ -186,7 +252,7 @@ fn assert_first_native_sync(paused: bool, first: u64) {
     }
     let (read, reader) = read.unwrap();
     read.unwrap();
-    let revision = control.configure(plan(-3)).unwrap();
+    let revision = queue_control(-3).unwrap();
     control
         .wait_applied(revision, Duration::from_secs(2))
         .unwrap();
@@ -198,15 +264,22 @@ fn assert_first_native_sync(paused: bool, first: u64) {
     assert_eq!(initial.delivered_frames, u64::from((rate / 8) * 2));
     assert!(initial.produced_frames <= u64::from(rate.div_ceil(4)) + 2048);
     assert!(!initial.graph_end);
-    control.observe(77, Some(0.05), paused, false).unwrap();
-    control.observe(77, Some(0.05), paused, true).unwrap();
-    let revision = control.configure(plan(7)).unwrap();
+    // A qualified zero observation must close the ordinary startup lane even
+    // though no actual paused sample has advanced the native clock.
+    let settled_clock = if paused { 0.0 } else { 0.05 };
+    control
+        .observe(77, Some(settled_clock), paused, false)
+        .unwrap();
+    control
+        .observe(77, Some(settled_clock), paused, true)
+        .unwrap();
+    let revision = queue_control(7).unwrap();
     control
         .wait_applied(revision, Duration::from_secs(2))
         .unwrap();
     let seeking = control.snapshot().unwrap();
-    assert!(seeking.native_output_frame > 0);
-    let revision = control.configure(plan(-3)).unwrap();
+    assert_eq!(seeking.native_output_frame == 0, paused);
+    let revision = queue_control(-3).unwrap();
     control
         .wait_applied(revision, Duration::from_secs(2))
         .unwrap();

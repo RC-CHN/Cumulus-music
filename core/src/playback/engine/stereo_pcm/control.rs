@@ -186,6 +186,29 @@ impl Shared {
         Cancellation::new(move || shared.check().is_ok())
     }
 
+    pub(super) fn producer_credit(&self, state: &State) -> u64 {
+        if state.entry.is_none() {
+            self.startup
+        } else if self.local_controls
+            && state.paused
+            && state.seeking
+            && !state.native_clock_observed
+        {
+            // FILE_LOADED can precede AO startup even while paused. Only the
+            // ordinary native source needs this extra prefill for replacement.
+            // A cold source retains its first-packet startup bound.
+            self.lead
+        } else if state.paused || (state.seeking && state.native > 0) {
+            state.produced
+        } else {
+            // mpv remains in initial seeking/sync until its AO queue is full.
+            // Before the first real native clock, unpaused startup may use
+            // this SAME bounded quarter-second lead. After a real clock has
+            // advanced, seeking grants no credit.
+            state.native.saturating_add(self.lead)
+        }
+    }
+
     /// Apply every accepted control in order, even while no audio credit is
     /// available. No graph mutation happens on libmpv's callback/actor thread.
     pub(crate) fn wait_for_credit(
@@ -208,24 +231,7 @@ impl Shared {
                 self.wake.notify_all();
                 continue;
             }
-            let credit = if state.entry.is_none() {
-                self.startup
-            } else if state.paused && state.seeking && !state.native_clock_observed {
-                // FILE_LOADED can precede AO startup even while paused.
-                // Supply the same bounded lead as unpaused startup so the
-                // native demuxer can finish its first sync. This allowance
-                // ends at the first valid clock sample (even at time zero).
-                self.lead
-            } else if state.paused || (state.seeking && state.native > 0) {
-                state.produced
-            } else {
-                // mpv remains in initial seeking/sync until its AO queue is
-                // full. Before the first real native clock, unpaused startup
-                // may use this SAME bounded quarter-second lead; freezing it
-                // after the first raw packet deadlocks AO initialization.
-                // After a real clock has advanced, seeking grants no credit.
-                state.native.saturating_add(self.lead)
-            };
+            let credit = self.producer_credit(&state);
             if state.produced < credit && state.pcm.len() / 2 + QUANTUM <= self.capacity {
                 return Ok(());
             }
