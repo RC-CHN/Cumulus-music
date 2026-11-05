@@ -1,8 +1,8 @@
 //! Full signed native transport; all HTTP is sealed synthetic data.
-use super::{HttpResponse, ScriptHttp, gate, reply, vinyl_http};
+use super::{HttpResponse, ScriptHttp, gate, reply, vinyl_http_with_credentials};
 use cumulus_core::{
     Error,
-    account::{AccountSession, SessionStatus, profiles::ProfileRegistry},
+    account::{AccountSession, SessionStatus, credentials::Credentials, profiles::ProfileRegistry},
     client::{
         MusicClient,
         pc_experiments::{OrdinarySkipAssignment, PcPresentationRuntimeStatus, PcPresentationView},
@@ -24,6 +24,7 @@ struct Fixture {
     root: tempfile::TempDir,
     client: Arc<MusicClient>,
     native: Arc<MusicHttpClient>,
+    credentials: Arc<Credentials>,
     registry: Arc<ProfileRegistry>,
     session: Arc<AccountSession>,
     http: Arc<ScriptHttp>,
@@ -33,7 +34,8 @@ impl Fixture {
     fn new(authenticated: bool, responses: impl IntoIterator<Item = HttpResponse>) -> Self {
         let root = tempfile::tempdir().unwrap();
         let cookies: &[&str] = if authenticated { &[COOKIE] } else { &[] };
-        let (native, http) = vinyl_http(root.path(), cookies, responses);
+        let (native, http, credentials) =
+            vinyl_http_with_credentials(root.path(), cookies, responses);
         let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
         let session = Arc::new(AccountSession::new(native.clone(), Some(registry.store())));
         if authenticated {
@@ -50,6 +52,7 @@ impl Fixture {
             root,
             client,
             native,
+            credentials,
             registry,
             session,
             http,
@@ -214,7 +217,7 @@ async fn only_real_credential_commits_notify_and_invalidate_the_native_view() {
         .unwrap()
         .unwrap();
     let target = ApiOrigin::Pc.url();
-    let stored = f.native.credentials();
+    let stored = &f.credentials;
     let revision = stored.request_credentials(&target).unwrap().revision;
     stored
         .record_response(&target, &[COOKIE.into()], None, &revision)
@@ -311,7 +314,7 @@ async fn unknown_waits_then_definite_fresh_301_registers_before_ab_without_promo
     assert_eq!(f.session.snapshot().unwrap().status, SessionStatus::Unknown);
     assert_eq!(f.paths(), [ACCOUNT, ANONYMOUS_PATH, ASSIGNMENT_PATH]);
     let calls = f.http.calls();
-    let original_device = f.native.credentials().device_id().unwrap();
+    let original_device = f.credentials.device_id().unwrap();
     assert_eq!(
         calls[1].payload["username"],
         cumulus_core::account::anonymous_identity::encode_anonymous_id(&original_device).unwrap()
@@ -356,14 +359,7 @@ async fn unknown_waits_then_definite_fresh_301_registers_before_ab_without_promo
             .iter()
             .all(|(name, _)| name != "MUSIC_U")
     );
-    assert!(
-        f.native
-            .credentials()
-            .login_credentials()
-            .unwrap()
-            .token
-            .is_none()
-    );
+    assert!(f.credentials.login_credentials().unwrap().token.is_none());
     lease.shutdown().await.unwrap();
     assert_batch(&f.http);
 }
@@ -378,7 +374,7 @@ async fn unknown_with_stored_account_cookie_waits_for_authoritative_restore() {
         ],
     );
     let target = ApiOrigin::Pc.url();
-    let stored = f.native.credentials();
+    let stored = &f.credentials;
     let revision = stored.request_credentials(&target).unwrap().revision;
     stored
         .record_response(&target, &[COOKIE.into()], None, &revision)

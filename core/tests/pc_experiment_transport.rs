@@ -442,6 +442,19 @@ fn vinyl_http(
     Arc<cumulus_core::protocol::http::MusicHttpClient>,
     Arc<ScriptHttp>,
 ) {
+    let (client, http, _) = vinyl_http_with_credentials(root, cookies, replies);
+    (client, http)
+}
+
+fn vinyl_http_with_credentials(
+    root: &std::path::Path,
+    cookies: &[&str],
+    replies: impl IntoIterator<Item = HttpResponse>,
+) -> (
+    Arc<cumulus_core::protocol::http::MusicHttpClient>,
+    Arc<ScriptHttp>,
+    Arc<Credentials>,
+) {
     use cumulus_core::protocol::http::{MusicHttpClient, RequestOptions, RoutingPolicy};
     let credentials = Arc::new(
         Credentials::open(
@@ -468,7 +481,7 @@ fn vinyl_http(
     let context = RequestContext::from_pc(config, "3.1.42.205594", Arc::new(ClosedConfig)).unwrap();
     let http = Arc::new(ScriptHttp::new(replies));
     let client = MusicHttpClient::with_backend(
-        credentials,
+        credentials.clone(),
         ClientProfile {
             user_agent: OFFICIAL_WINDOWS_USER_AGENT.into(),
             os_version: "Microsoft Windows 10".into(),
@@ -482,7 +495,7 @@ fn vinyl_http(
         http.clone(),
     )
     .unwrap();
-    (Arc::new(client), http)
+    (Arc::new(client), http, credentials)
 }
 
 fn vinyl_t1() -> Value {
