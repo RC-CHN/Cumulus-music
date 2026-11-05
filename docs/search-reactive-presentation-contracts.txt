@@ -29,6 +29,11 @@ Rust 本地候选
   但不显示 footer，不签发候选 receipt，也不沿用旧布局；新分组恢复 t1 后只有
   以新凭据获取的页面可签发新候选。旧结果不自动重搜。同凭据下分组更新仍按
   最新全局表现重投影，不把 cohort revision 当作请求凭据版本。
+- 官方 M3095:3940–3969 完成 tab 并设 tabsUpdated，:1728–1736 随后派发 complex；
+  M3001:543–549、568–576 在 effect 开始重新读取 PH-PC-searchHot 选择 V1/V3。
+  Rust 保留这个时点：如 V3 tab 在途期间全局切到 c，结果直接请求 V1、用固定
+  tabs，不再查实验、不重发 tab、不持久化被抛弃的动态 tabs；下一次真实 t1
+  仍可读动态 tabs，失败时用上一次已接受的动态 tabs。
 - search_presentation(epoch, receipt, revision) 只重投影已有候选。全局表现版本
   必须仍然当前，回复只含 receipt/revision/layout 和窄字段补丁。前后检查来源，
   不发送 HTTP、不初始化音频、不重跑搜索，也不覆盖 VIP、限免、原曲/替代 MV、
@@ -53,6 +58,8 @@ Rust 本地候选
   MusicHttpClient/PC 请求上下文/EAPI，后端封闭；校验 t1→c→t1 仅增加完整
   实验读取，不重发搜索，旧版本/账号/凭据失效及 ordinary DTO 保留；另覆盖
   搜索响应真实提交合成 Set-Cookie、同账号新 t1 后旧页无 receipt 而新搜索有。
+- search_footer.rs 暂停真实 EAPI tab 响应，让同一 UID/凭据的全局完整分组
+  先切 c，再交付不同 tab，核对 V1 精确请求序列及下次 t1/Tab 403 的旧缓存。
 - 私有单元覆盖候选预算、LRU 和来源边界；前端测试覆盖乱序、Back、失效 receipt、
   权益更新的两种完成顺序、焦点与滚动策略。
 - scripts/ci/pc_presentation_smoke.py 在实际 WebView 通过封闭服务器响应改变

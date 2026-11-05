@@ -220,8 +220,11 @@ async fn cookie_rotating_search_response_cannot_issue_candidates_for_the_new_coh
     let result = |id| {
         json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":[{
             "type":"song","baseInfo":{"simpleSongData":{"id":id,"name":"合成保留曲目","mark":1048576}},
-            "extInfo":{"songAlias":"<em>合成</em>提示","algClickableTags":[{
-                "text":"原因","clickable":true,"reasonType":1,"reasonId":"synthetic","resourceId":id}]}
+            "extInfo":{"songAlias":"<em>合成</em>提示"}
+        },{
+            "type":"song","baseInfo":{"simpleSongData":{"id":id + 10,"name":"合成理由曲目"}},
+            "extInfo":{"algClickableTags":[{
+                "text":"原因","clickable":true,"reasonType":1,"reasonId":"synthetic","resourceId":id + 10}]}
         }]}]}})
     };
     let mut rotates = reply(result(1));
@@ -274,6 +277,11 @@ async fn cookie_rotating_search_response_cannot_issue_candidates_for_the_new_coh
         SearchItem::Song { track, hint: None, reasons, explicit: true, .. }
             if track.id == "1" && reasons.is_empty()
     ));
+    assert!(matches!(
+        &old.sections[0].items[1],
+        SearchItem::Song { track, hint: None, reasons, .. }
+            if track.id == "11" && reasons.is_empty()
+    ));
     assert_eq!(http.calls().len(), 3, "no retry or extra experiment read");
 
     let current = client.refresh_pc_presentation().await.unwrap();
@@ -293,7 +301,13 @@ async fn cookie_rotating_search_response_cannot_issue_candidates_for_the_new_coh
         .value;
     assert_eq!(patch.sections[0].items[0].track_id, "2");
     assert!(patch.sections[0].items[0].hint.is_some());
-    assert!(!patch.sections[0].items[0].reasons.is_empty());
+    assert_eq!(patch.sections[0].items[1].track_id, "12");
+    assert_eq!(
+        serde_json::to_value(&patch.sections[0].items[1].reasons).unwrap(),
+        json!([{
+            "label":"原因","target":{"kind":"recommendation","reasonId":"synthetic","songId":"12","name":"原因"}
+        }])
+    );
     let calls = http.calls();
     assert_eq!(calls.len(), 6);
     assert_eq!(calls[2].path, "/api/search/pc/complex/page/v3");

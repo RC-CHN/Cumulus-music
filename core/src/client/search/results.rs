@@ -264,22 +264,36 @@ impl MusicClient {
                     // M147 restores one global web assignment at bootstrap.
                     // Its display snapshot also selects V1/V3 after a failed
                     // refresh; the separate fresh cache remains authorization-only.
-                    if let Ok(snapshot) = self.pc_presentation_snapshot(token, &api) {
-                        flags.v3 = snapshot.search_v3;
-                        flags.expanded = snapshot.view.search_expanded;
-                        flags.dense = snapshot.view.search_dense;
-                    }
+                    let read_selector = |flags: &mut super::experiment::SearchFlags| {
+                        if let Ok(snapshot) = self.pc_presentation_snapshot(token, &api) {
+                            flags.v3 = snapshot.search_v3;
+                            flags.expanded = snapshot.view.search_expanded;
+                            flags.dense = snapshot.view.search_dense;
+                        }
+                    };
+                    read_selector(&mut flags);
                     footer_revision = assignment.footer_revision;
+                    let tabs = if flags.v3 {
+                        let tabs = api::tabs(api.as_ref(), &query.keyword).await;
+                        self.session.require_api(token, &api)?;
+                        // M3095 publishes tabsUpdated first; the following
+                        // M3001 complex effect selects the then-current group.
+                        // A refreshed control cohort uses static tabs and V1.
+                        read_selector(&mut flags);
+                        if flags.v3 {
+                            Some(self.search.selected_tabs(&self.session, token, tabs)?)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
                     let layout = flags.expanded.then_some(if flags.dense {
                         SearchPreviewLayout::CompactCarousel
                     } else {
                         SearchPreviewLayout::Carousel
                     });
                     if flags.v3 {
-                        let tabs = self
-                            .search
-                            .tabs_for(&self.session, token, api.as_ref(), &query.keyword)
-                            .await?;
                         let context = default_context()?;
                         presentation_credentials =
                             api.pc_presentation_credential_revision().ok().flatten();
@@ -316,7 +330,7 @@ impl MusicClient {
                             Ok(raw) => raw.project(api::v3::HotZoneContext::default()),
                             Err(error) => Err(error),
                         };
-                        (api::v3::PATH, Some(tabs), layout, projected)
+                        (api::v3::PATH, tabs, layout, projected)
                     } else {
                         let context = default_context()?;
                         presentation_credentials =

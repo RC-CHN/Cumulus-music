@@ -481,6 +481,70 @@ async fn held_assignment_or_search_response_cannot_deliver_t1_after_credentials_
 }
 
 #[tokio::test]
+async fn complex_request_reselects_current_cohort_after_tabs_without_caching_control_tabs() {
+    let (held, release) = gate();
+    let treatment = || assignment(Some(json!("t1")), true);
+    let f = Fixture::new([
+        treatment().into(),
+        json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"单曲"}]}}).into(),
+        page(true).into(),
+        held,
+        assignment(Some(json!("c")), false).into(),
+        page(false).into(),
+        treatment().into(),
+        json!({"code":403}).into(),
+        page(true).into(),
+    ]);
+    let first = f.search().await;
+    assert_eq!(first["tabs"], json!(["all", "songs"]));
+    let client = f.client.clone();
+    let epoch = f.epoch.clone();
+    let pending = tokio::spawn(async move { client.search_results(&epoch, query()).await });
+    f.http.wait(4).await;
+    let control = f.client.refresh_pc_presentation().await.unwrap();
+    assert!(!control.search_footer);
+    assert!(
+        release
+            .send(Ok(reply(json!({"code":200,"data":{"algTabs":[
+                {"title":"综合"},{"title":"歌单"}
+            ]}}))))
+            .is_ok()
+    );
+    let second = pending.await.unwrap().unwrap().value;
+    assert!(second.tabs.is_none(), "control uses static tabs");
+    assert!(!second.sections.is_empty());
+    assert_eq!(
+        http_paths(&f),
+        [ASSIGNMENT_PATH, TABS, V3, TABS, ASSIGNMENT_PATH, LEGACY]
+    );
+
+    f.client.refresh_pc_presentation().await.unwrap();
+    let restored = f.search().await;
+    assert_eq!(
+        restored["tabs"], first["tabs"],
+        "last accepted V3 tabs survive; the dropped control result was never cached"
+    );
+    assert_eq!(
+        http_paths(&f),
+        [
+            ASSIGNMENT_PATH,
+            TABS,
+            V3,
+            TABS,
+            ASSIGNMENT_PATH,
+            LEGACY,
+            ASSIGNMENT_PATH,
+            TABS,
+            V3
+        ]
+    );
+}
+
+fn http_paths(f: &Fixture) -> Vec<String> {
+    f.http.calls().into_iter().map(|call| call.path).collect()
+}
+
+#[tokio::test]
 async fn account_change_cancels_held_assignment_before_any_old_account_search() {
     let (held, release) = gate();
     let f = Fixture::new([

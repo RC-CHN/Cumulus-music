@@ -1,5 +1,5 @@
 //! Native search experiment assignment and last successful tab order.
-use crate::catalog::search::results::{self as api, SearchCategory};
+use crate::catalog::search::results::SearchCategory;
 use crate::{
     Result,
     account::{AccountSession, SessionToken, login_policy::AB_PATH},
@@ -348,14 +348,12 @@ impl SearchHost {
         Ok(updated.flags)
     }
 
-    pub(super) async fn tabs_for(
+    pub(super) fn selected_tabs(
         &self,
         session: &AccountSession,
         token: &SessionToken,
-        api: &dyn Api,
-        keyword: &str,
+        response: Result<Value>,
     ) -> Result<Vec<SearchCategory>> {
-        let response = api::tabs(api, keyword).await;
         let store = session.persistent_store()?;
         session.with_token(token, |owner| {
             if let Some(tabs) = response.as_ref().ok().and_then(parse_tabs) {
