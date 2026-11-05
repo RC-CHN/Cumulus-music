@@ -72,6 +72,77 @@ def verify_voice_download_file(path, directory):
     assert stat.S_ISREG(state.st_mode) and state.st_size > 0, 'voice download is not a nonempty file'
 
 
+def verify_artist_top50(root, group, screenshots):
+    first = root / 'first'
+    read = lambda path: json.loads(path.read_text(encoding='utf-8'))
+    complete = read(first / 'complete.json')
+    assert complete['ok'] and complete['artistTop50Verified'] and complete['stageCount'] == 7
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    states = {p.stem.split('_', 2)[2]: read(p) for p in sorted(first.glob('ux_*.json'))}
+    expected_states = (
+        ('artist_best_play', 'all', '101', '92', 'playing'),
+        ('artist_best_next', 'all', '101', '91', 'playing'),
+        ('artist_regular_play', 'artists', '102', '96', 'playing'),
+        ('artist_regular_pause', 'artists', '102', '96', 'paused'),
+        ('artist_regular_resume', 'artists', '102', '96', 'playing'),
+        ('artist_failure_keeps_queue', 'artists', '102', '96', 'playing'),
+        ('artist_back_to_search', 'all', '102', '96', 'playing'),
+    )
+    assert tuple(states) == tuple(name for name, *_ in expected_states)
+    ids = {'101': ['92', '91', '93'], '102': ['96', '94', '95'], '103': ['98', '97', '99']}
+    url = '/api/song/enhance/player/url/v1'
+    reads = [call for call in complete['artistTop50Calls'] if 'path' in call and call['path'] != url]
+    assert [call['assignment'] for call in complete['artistTop50Calls'] if 'assignment' in call] == [group]
+    oracle = []
+    for artist, tracks in ids.items():
+        if group == 't0':
+            oracle.append(dict(path='/api/v2/artist/songs', args=dict(id=artist, limit=50, offset=0), cache=False))
+        else:
+            oracle.extend((
+                dict(path='/api/artist/v3/detail', args=dict(id=artist, top=50, e_r=False), cache=True),
+                dict(path='/api/song/enhance/privilege',
+                     args=dict(ids=json.dumps(tracks, separators=(',', ':'))), cache=False),
+            ))
+    assert reads == oracle, reads
+    for i, (name, category, artist, track, transport) in enumerate(expected_states):
+        stage = states[name]
+        p, queue = stage['nativePlayer'], stage['nativeQueue']
+        assert stage['query'] == '合成歌手热歌' and stage['category'] == category
+        assert p['track']['id'] == stage['trackId'] == track and p['resourceKind'] == 'catalog'
+        assert p['playId'] == stage['playId'] and p['state'] == transport and p['position'] > .14
+        assert p['origin']['kind'] == 'artist' and p['origin']['id'] == artist
+        assert queue['revision'] == p['queueRevision'] == stage['queueRevision']
+        assert queue['current'] == p['entryId']
+        assert [row['track']['id'] for row in queue['tracks']] == ids[artist]
+        assert [row['entryId'] for row in queue['tracks']] == stage['entryIds']
+        observed = [call for call in stage['artistTop50Calls'] if 'path' in call and call['path'] != url]
+        requests = 1 if i < 2 else 2 if i < 5 else 3
+        assert observed == oracle[:requests * (2 if group == 't1' else 1)], (name, observed)
+    first_play, next_play, regular = (states[name] for name, *_ in expected_states[:3])
+    assert len({first_play['playId'], next_play['playId'], regular['playId']}) == 3
+    assert first_play['entryIds'] == next_play['entryIds']
+    assert all(stage['playId'] == regular['playId'] and stage['entryIds'] == regular['entryIds']
+               for stage in list(states.values())[2:])
+    assert states['artist_failure_keeps_queue']['error']
+    media = [call for call in complete['artistTop50Calls'] if call.get('path') == url]
+    authorized = [str(id_) for call in media for id_ in json.loads(call['args']['ids'])]
+    assert authorized[0] == '92' and {'92', '91', '96'} <= set(authorized) <= set(ids['101'] + ids['102'])
+    assert all(call['args']['trialMode'] == -1 and not call['cache'] for call in media)
+    if os.name != 'nt':
+        locale = read(first / 'locale.json')
+        assert locale['numeric'] == 'C'
+        assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
+                   for key in ('messages', 'characters'))
+    pictures = len(list(first.glob('ux_*.png')))
+    assert pictures == (7 if screenshots else 0)
+    report = dict(ok=True, actualWebView=True, nativeNullPlaybackVerified=True, group=group,
+                  states=list(states), artistRequests=reads, screenshots=pictures,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n',
+                                      encoding='utf-8')
+    print(json.dumps(report, ensure_ascii=False))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -87,6 +158,7 @@ def main():
     mode.add_argument('--card-matches', action='store_true')
     mode.add_argument('--correction-original', action='store_true')
     mode.add_argument('--artist-gallery', action='store_true')
+    mode.add_argument('--artist-top50', choices=('t0', 't1'))
     mode.add_argument('--people-categories', action='store_true')
     mode.add_argument('--search-next', action='store_true')
     mode.add_argument('--song-waterfall', action='store_true')
@@ -160,6 +232,10 @@ def main():
         prefix = 'window.__cumulusSearchOriginalCorrectionProof = true;\n'
     if args.artist_gallery:
         prefix = 'window.__cumulusArtistGalleryProof = true;\n'
+    if args.artist_top50:
+        env['CUMULUS_SEARCH_ARTIST_TOP50_PROOF'] = args.artist_top50
+        prefix = ('window.__cumulusSearchArtistTop50Proof = true;\n'
+                  + source.with_name('search_artist_top50_ui_probe.js').read_text(encoding='utf-8') + '\n')
     if args.card_matches:
         prefix = 'window.__cumulusSearchCardMatchesProof = true;\n'
     if args.voice_direct or args.voice_download_submit:
@@ -204,6 +280,9 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.artist_top50:
+        verify_artist_top50(root, args.artist_top50, args.screenshots)
+        return
     if args.hot_playback:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))

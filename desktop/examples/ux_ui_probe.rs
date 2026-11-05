@@ -70,6 +70,8 @@ mod queue_more_fixture;
 mod relay_fixture;
 #[path = "support/remote_skin_fixture.rs"]
 mod remote_skin_fixture;
+#[path = "support/search_artist_top50_fixture.rs"]
+mod search_artist_top50_fixture;
 #[path = "support/search_fixture.rs"]
 mod search_fixture;
 #[path = "support/search_mv_fixture.rs"]
@@ -176,6 +178,7 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(vinyl_comments_fixture::group()
+            .or_else(search_artist_top50_fixture::revision)
             .or_else(|| vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into())))
     }
 
@@ -186,6 +189,8 @@ impl Api for Library {
         Box::pin(async move {
             if vinyl_comments_fixture::group().is_some() {
                 vinyl_comments_fixture::assignment(revision)
+            } else if search_artist_top50_fixture::enabled() {
+                search_artist_top50_fixture::groups(revision)
             } else {
                 vertical_zone_fixture::groups(revision)
             }
@@ -393,6 +398,9 @@ impl Api for Library {
                 )
             {
                 return fixture::Library::default().request(path, args, false).await;
+            }
+            if let Some(result) = search_artist_top50_fixture::response(path, &args, cached) {
+                return result;
             }
             if let Some(result) = search_fixture::response(path, &args) {
                 return result;
@@ -775,7 +783,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() {
+        if search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -971,6 +979,7 @@ fn main() {
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
+                if search_artist_top50_fixture::enabled() { value["artistTop50Calls"] = json!(search_artist_top50_fixture::report()); }
                 if let Some(calls) = search_fixture::audio_toplist_calls() { value["audioToplistCalls"] = json!(calls); }
                 if search_fixture::v3_enabled() { value["syntheticV3Calls"] = json!(search_fixture::v3_calls()); }
                 if search_fixture::hot_playback_enabled() { value["hotPlaybackCalls"] = json!(search_fixture::hot_playback_calls()); }
@@ -1265,14 +1274,14 @@ fn main() {
                     if queue_click_proof && value["deferQueueClickObservation"]==true && stage=="ux_06_catalog_added" {
                         tokio::time::sleep(std::time::Duration::from_millis(750)).await;
                     }
-                    let player = if queue_click_proof {
+                    let player = if queue_click_proof || search_artist_top50_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
                     };
                     if let Ok(snapshot)=player {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() {
+                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                         if profile_play_record_fixture::play_card_enabled() {
@@ -1308,6 +1317,9 @@ fn main() {
                     }
                     if vinyl_comments_fixture::composer() && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__vinylComposerRecorded={};",json!(stage))).unwrap();
+                    }
+                    if search_artist_top50_fixture::enabled() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__searchArtistTop50Recorded={};",serde_json::json!(stage))).unwrap();
                     }
                     if (std::env::var_os("CUMULUS_QUEUE_SELECTION_UI_PROOF").is_some() || intelligence_ui_fixture::enabled() || intelligence_start_fixture::enabled() || fm_feedback_fixture::enabled() || queue_more_fixture::enabled()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueSelectionRecorded={};",serde_json::json!(stage))).unwrap();

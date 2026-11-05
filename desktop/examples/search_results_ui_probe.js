@@ -23,7 +23,12 @@
     if(one('[data-category="all"]')?.getAttribute('aria-selected')==='true') { assert(!one('.search-result-panel .track-table'),'comprehensive songs use cards'); assert(all('.search-track-card').length<=6,'bounded song previews');if(one('.search-result-tracks'))assert(one('.search-track-card'),'ready song section has previews'); }
     const first=one('.search-result-name'),category=one('[data-category][aria-selected="true"]')?.dataset.category;if(first&&category!=='all'&&panel.scrollTop===0&&!one('dialog[open]')) assert(first.getBoundingClientRect().bottom<=one('.playerbar').getBoundingClientRect().top,'first caption above player');
     for(const n of all('.search-result-actions button')){const r=n.getBoundingClientRect();assert(Math.abs(r.width-94)<1&&Math.abs(r.height-40)<1,'official 94x40 result action');}
-    await emit(`ux_${String(++count).padStart(2,'0')}_${label}`,{...info,...extra});await sleep(500);
+    const stage=`ux_${String(++count).padStart(2,'0')}_${label}`;
+    if(window.__cumulusSearchArtistTop50Proof) window.__searchArtistTop50Recorded='';
+    await emit(stage,{...info,...extra});
+    if(window.__cumulusSearchArtistTop50Proof)
+      await wait(()=>window.__searchArtistTop50Recorded===stage,'native artist proof recorded '+stage);
+    else await sleep(500);
   }
   async function theme(w,h,t){await emit('resize',{width:w,height:h});await wait(()=>innerWidth===w&&innerHeight===h,'window resize');click(button('外观主题'));await wait(()=>one('.action-menu'),'theme menu');click(button(t==='dark'?'深色':'浅色'));await wait(()=>!one('.action-menu')&&document.documentElement.dataset.theme===t,'theme');}
   const submit=word=>{const input=one('[aria-label="搜索音乐"]');input.value=word;input.dispatchEvent(new Event('input',{bubbles:true}));input.form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));};
@@ -50,6 +55,11 @@
     } finally { window.requestAnimationFrame=frames; }
   }
   try {
+    if(window.__cumulusSearchArtistTop50Proof){
+      await window.__searchArtistTop50Run({one,wait,button,click,ready,choose,capture,fresh,sleep,assert,fixture});
+      await emit('complete',{ok:true,artistTop50Verified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      return;
+    }
     if(window.__cumulusSearchHotPlaybackProof){
       await wait(()=>one('.track-row'),'daily ready');
       await theme(920,590,'light');
