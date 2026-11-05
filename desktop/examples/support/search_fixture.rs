@@ -251,6 +251,7 @@ pub fn control(value: &Value) {
             "artist_gallery",
             "preview",
             "lyrics",
+            "lyrics_waterfall_boundary",
             "empty",
             "expired"
         ]
@@ -1480,6 +1481,14 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     let offset = args["offset"].as_u64().unwrap_or(0) as usize;
     let limit = args["limit"].as_u64().unwrap_or(30) as usize;
     let short_playlists = mode == "short_pages" && category == "playlists";
+    let lyric_boundary = mode == "lyrics_waterfall_boundary" && category == "lyrics";
+    if lyric_boundary {
+        assert_eq!(
+            *args,
+            json!({"keyword":"合成歌词滚动","scene":"normal","limit":10,"offset":offset})
+        );
+        assert!(offset <= 60, "short lyric batch must be terminal");
+    }
     let limit = if short_playlists {
         match offset {
             0 => 18,
@@ -1492,6 +1501,8 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     let total = if short_playlists {
         33
+    } else if lyric_boundary {
+        63
     } else if mode.starts_with("song_waterfall") {
         30
     } else if mode == "scroll_duplicates" {
@@ -1560,7 +1571,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     if mode == "mixed_results" && category == "songs" {
         container[key][0] = json!({"baseInfo":{"simpleSongData":{"name":"不可展示的合成结果"}}});
     }
-    if mode == "lyrics" && category == "lyrics" {
+    if (mode == "lyrics" && category == "lyrics") || lyric_boundary {
         for (i, row) in container[key]
             .as_array_mut()
             .unwrap()
@@ -1579,6 +1590,11 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
     }
     container["hasMore"] = json!(mode != "empty" && category != "all" && offset + limit < total);
+    if lyric_boundary {
+        container["hasMore"] = json!(offset != 50);
+        container["totalCount"] = json!(99);
+        container["queryRewriteInfo"] = json!({"rewriteQuery":"不能从歌词页接收的纠正词"});
+    }
     if mode.starts_with("scroll") || mode.starts_with("song_waterfall") {
         for key in [
             "totalCount",

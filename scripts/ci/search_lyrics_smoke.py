@@ -42,10 +42,12 @@ def main():
     assert code == 0, f'probe exited {code}'
     if args.waterfall:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
-        assert complete['ok'] and complete['lyricWaterfall'] and complete['stageCount'] == 3
-        assert complete['offsets'] == [0, 10, 10, 20, 30, 40, 50, 0, *range(10, 111, 10)]
-        assert complete['nativePlaybackId'] == '53' and complete['duplicateHitsPreserved']
-        assert len(list((root / 'first').glob('ux_*.png'))) == (3 if args.screenshots else 0)
+        assert complete['ok'] and complete['lyricWaterfall'] and complete['stageCount'] == 4
+        assert complete['offsets'] == [0, 10, 10, 20, 30, 40, 50, 60, 0, *range(10, 111, 10)]
+        assert complete['nativePlaybackId'] == '58' and complete['duplicateHitsPreserved']
+        terminal = json.loads((root / 'first/ux_02_short_batch_terminal.json').read_text(encoding='utf-8'))
+        assert terminal['loaded'] == complete['terminalShortBatch'] == 63 and terminal['mounted'] < 28
+        assert len(list((root / 'first').glob('ux_*.png'))) == (4 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, lyricWaterfall=True)))
         return
     verify(root, args.screenshots)

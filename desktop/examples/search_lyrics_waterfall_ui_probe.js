@@ -58,7 +58,7 @@
   const offsets = [];
   try {
     await wait(() => one('.track-row'), 'daily ready');
-    await fixture('lyrics');
+    await fixture('lyrics_waterfall_boundary');
     const provides = one('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) =>
       typeof key === 'symbol' && key.description === 'core-client')];
@@ -100,9 +100,23 @@
     await wait(() => loaded() === 30, 'held page appends');
     for (const count of [40, 50, 60]) {
       await sleep(120);
+      const oldHeight = one('.search-lyric-window').clientHeight;
       bottom();
-      await wait(() => loaded() === count, 'append ' + count);
+      await wait(() => loaded() === count && one('.search-lyric-window').clientHeight > oldHeight,
+        'append and settle spacer ' + count);
     }
+    const lastContinuation = button('加载更多');
+    assert(lastContinuation && offsets.at(-1) === 50,
+      'a full ten-row batch can continue despite hasMore=false');
+    lastContinuation.focus({ preventScroll: true });
+    bottom();
+    await wait(() => {
+      const footer = one('.search-load-more');
+      return loaded() === 63 && footer?.textContent.includes('没有更多可显示的结果') &&
+        footer.getAttribute('aria-busy') === 'false' && document.activeElement === footer;
+    }, 'short batch ends despite hasMore=true and retains continuation focus');
+    assert(offsets.join(',') === '0,10,10,20,30,40,50,60', 'terminal lyric cursor');
+    await capture('short_batch_terminal');
     assert(windowSize() < 28, 'lyrics DOM remains bounded after many pages');
     pane().scrollTop = 0;
     await wait(() => row(4), 'return to long first-page result');
@@ -135,8 +149,8 @@
     // After collapsing, scrolling near the end must mount the actual deep rows.
     row(4).querySelector('[data-result-action="expand"]').click();
     bottom();
-    await wait(() => row(52), 'deep visible lyric rows');
-    const chosen = row(52).querySelector('.track-play');
+    await wait(() => row(57), 'deep visible lyric rows');
+    const chosen = row(57).querySelector('.track-play');
     const { epoch } = await invoke('account_snapshot');
     await invoke('play_selection', {
       epoch, selection: { kind: 'songs', ids: ['91', '92'], index: 0, quality: 'standard' },
@@ -145,10 +159,10 @@
     chosen.click();
     await wait(async () => {
       const native = await invoke('player_snapshot', { epoch });
-      return native.state === 'playing' && native.track?.id === '53' && native.queueLen === 3;
+      return native.state === 'playing' && native.track?.id === '58' && native.queueLen === 3;
     }, 'native playback inserts the clicked absolute row');
     const queue = await invoke('player_queue', { epoch });
-    assert(queue.tracks.map(({track}) => track.id).join(',') === '91,53,92' &&
+    assert(queue.tracks.map(({track}) => track.id).join(',') === '91,58,92' &&
       queue.tracks[0].entryId === baseline.tracks[0].entryId &&
       queue.tracks[2].entryId === baseline.tracks[1].entryId &&
       queue.current === queue.tracks[1].entryId, 'deep lyric playback preserves the native queue');
@@ -165,7 +179,7 @@
     assert(windowSize() < 28, 'deep repeat-ID result DOM stays bounded');
     await capture('bounded_repeat_hits');
     await emit('complete', { ok: true, lyricWaterfall: true, stageCount: stages, offsets,
-      nativePlaybackId: '53', duplicateHitsPreserved: true });
+      nativePlaybackId: '58', duplicateHitsPreserved: true, terminalShortBatch: 63 });
   } catch (error) {
     await emit('failed', { message: String(error), offsets, loaded: loaded(), mounted: windowSize(),
       scroll: pane() ? [pane().scrollTop, pane().scrollHeight, pane().clientHeight] : null });
