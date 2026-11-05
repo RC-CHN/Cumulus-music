@@ -29,6 +29,13 @@ pub(super) struct Prefetched {
     result: Result<()>,
     deadline: Option<Duration>,
 }
+fn native_end_failure(reason: EndReason, error: i32) -> bool {
+    matches!(
+        reason,
+        EndReason::Error | EndReason::Redirect | EndReason::Unknown(_)
+    ) || reason == EndReason::Eof && error != 0
+}
+
 impl Actor {
     pub async fn rebind(&mut self) -> Result<()> {
         let token = self.session.token()?;
@@ -180,9 +187,9 @@ impl Actor {
             events.iter().rev().find_map(|event| match event {
                 EngineEvent::Ended {
                     entry_id,
-                    reason: EndReason::Error | EndReason::Redirect | EndReason::Unknown(_),
+                    reason,
                     error,
-                } if *entry_id == loaded.media.entry_id => {
+                } if *entry_id == loaded.media.entry_id && native_end_failure(*reason, *error) => {
                     Some(PlaybackFailure::from_error(&Error::Playback {
                         operation: "stream ended",
                         code: *error,
@@ -224,10 +231,9 @@ impl Actor {
                 matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Stop, .. }
                 if *entry_id == loaded.media.entry_id)
             });
-        let native_ended = failure.is_none()
-            && !stopped
-            && events.iter().any(|event| {
-                matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, .. }
+        let native_ended =
+            failure.is_none() && !stopped && events.iter().any(|event| {
+                matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, error: 0 }
                 if *entry_id == loaded.media.entry_id)
             });
         let skipped_outro = failure.is_none()
@@ -251,10 +257,11 @@ impl Actor {
         }
         let ended = native_ended || skipped_outro;
         let failed = failure.is_some();
-        let failed_native_play = failed && !quitting
+        let failed_native_play = failed
+            && !quitting
             && events.iter().any(|event| {
-                matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Error | EndReason::Redirect | EndReason::Unknown(_), .. }
-                if *entry_id == loaded.media.entry_id)
+                matches!(event, EngineEvent::Ended { entry_id, reason, error }
+                if *entry_id == loaded.media.entry_id && native_end_failure(*reason, *error))
             });
         if let Some(failure) = failure {
             self.state = PlaybackStatus::Error;
@@ -333,9 +340,19 @@ impl Actor {
             }
             self.save_position()?;
         }
-        let advance =
-            ended && !self.queue.is_fm() && self.queue.advance(Step::Next, true)?.is_some();
-        if ended && (!advance || self.queue.mode() != crate::playback::PlaybackMode::Sequential) {
+        if native_ended && self.schedule_ordinary_eof(was_paused) {
+            // The previous decoder has genuinely finished. Do not keep the
+            // system awake while waiting for a new source to be authorized.
+            self.power_set(crate::playback::keep_awake::OfficialPlayingState::End);
+        } else if ended {
+            self.advance_after_end(was_paused).await?;
+        }
+        self.schedule_prefetch()
+    }
+
+    pub(super) async fn advance_after_end(&mut self, was_paused: bool) -> Result<()> {
+        let advance = !self.queue.is_fm() && self.queue.advance(Step::Next, true)?.is_some();
+        if !advance || self.queue.mode() != crate::playback::PlaybackMode::Sequential {
             self.power_set(crate::playback::keep_awake::OfficialPlayingState::End);
         }
         if advance {
@@ -351,8 +368,9 @@ impl Actor {
             )
             .await?;
         }
-        self.schedule_prefetch()
+        Ok(())
     }
+
     pub fn schedule_prefetch(&mut self) -> Result<()> {
         if !self.state.active() {
             self.prefetch_key = None;

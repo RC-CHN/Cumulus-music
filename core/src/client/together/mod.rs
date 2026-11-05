@@ -28,7 +28,7 @@ pub use dto::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{Mutex as AsyncMutex, mpsc};
@@ -59,6 +59,29 @@ pub(super) struct TogetherHost {
     error: Arc<Mutex<Option<String>>>,
     factory: Option<Arc<dyn crate::listen_together::transport::ImFactory>>,
     cleanup_uncertain: Arc<Mutex<bool>>,
+}
+#[derive(Clone)]
+pub(super) struct RoomDetachment(Weak<Mutex<Option<Runtime>>>);
+
+impl TogetherHost {
+    pub(super) fn detachment(&self) -> RoomDetachment {
+        RoomDetachment(Arc::downgrade(&self.runtime))
+    }
+}
+impl RoomDetachment {
+    pub(super) fn is_detached(&self, token: &SessionToken) -> Result<bool> {
+        let runtime = self.0.upgrade().ok_or(Error::Cancelled)?;
+        let slot = runtime.lock().map_err(|_| Error::LockPoisoned)?;
+        Ok(slot
+            .as_ref()
+            .is_none_or(|r| r.token != *token || r.worker.is_finished()))
+    }
+
+    pub(super) fn authority(&self, token: &SessionToken) -> Cancellation {
+        let room = self.clone();
+        let token = token.clone();
+        Cancellation::new(move || room.is_detached(&token).unwrap_or(false))
+    }
 }
 pub(super) fn signal(action: &PlayerAction) -> Option<CommandKind> {
     match action {
@@ -143,16 +166,7 @@ impl MusicClient {
             }))
     }
     pub(super) fn together_detached_guard(&self, token: &SessionToken) -> Cancellation {
-        let runtime = Arc::downgrade(&self.together.runtime);
-        let token = token.clone();
-        Cancellation::new(move || {
-            runtime.upgrade().is_some_and(|runtime| {
-                runtime.lock().is_ok_and(|slot| {
-                    slot.as_ref()
-                        .is_none_or(|r| r.token != token || r.worker.is_finished())
-                })
-            })
-        })
+        self.together.detachment().authority(token)
     }
     pub(super) fn together_signal(&self, token: &SessionToken, kind: Option<CommandKind>) {
         self.together_notify(token, runtime::Signal::Player(kind));

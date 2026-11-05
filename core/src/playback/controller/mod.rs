@@ -3,7 +3,9 @@
 mod actions;
 mod audiobook_skip;
 mod effect_runtime;
+mod eof;
 mod equalizer;
+pub(crate) use eof::{OrdinaryEofAuthority, VerifiedOrdinarySkip};
 mod history;
 mod intelligence;
 mod load;
@@ -81,10 +83,19 @@ enum Message {
     AudiobookSkipRefreshed(audiobook_skip::Refreshed),
     Quality(quality::QualityReady),
     Prefetched(tick::Prefetched),
+    OrdinaryEof(Box<eof::Ready>),
     QueueMoreGroups(queue_more::GroupsReady),
     QueueMoreRows(queue_more::RowsReady),
     QueueMoreTip(queue_more_tip::Request),
     PowerPreferenceChanged,
+}
+
+#[derive(Default)]
+pub(crate) struct PlaybackHostOptions {
+    pub relay_enabled: bool,
+    pub queue_more_enabled: bool,
+    pub power: Option<Arc<super::keep_awake::PowerControl>>,
+    pub ordinary_eof: Option<OrdinaryEofAuthority>,
 }
 
 pub struct PlaybackController {
@@ -118,7 +129,13 @@ impl PlaybackController {
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
     ) -> Result<Self> {
-        Self::start_inner(session, store, resolver, engine, false, false, None)
+        Self::start_inner(
+            session,
+            store,
+            resolver,
+            engine,
+            PlaybackHostOptions::default(),
+        )
     }
     /// Production native observer + durable network worker. The ordinary start
     /// constructor remains isolated for embedders and read-only test adapters.
@@ -128,16 +145,23 @@ impl PlaybackController {
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
     ) -> Result<Self> {
-        Self::start_inner(session, store, resolver, engine, true, false, None)
+        Self::start_inner(
+            session,
+            store,
+            resolver,
+            engine,
+            PlaybackHostOptions {
+                relay_enabled: true,
+                ..Default::default()
+            },
+        )
     }
     pub(crate) fn start_inner(
         session: Arc<AccountSession>,
         store: Arc<StateStore>,
         resolver: Arc<SourceResolver>,
         engine: Box<dyn AudioEngine>,
-        relay_enabled: bool,
-        queue_more_enabled: bool,
-        power: Option<Arc<super::keep_awake::PowerControl>>,
+        options: PlaybackHostOptions,
     ) -> Result<Self> {
         tokio::runtime::Handle::try_current()
             .map_err(|_| Error::State("playback requires an async runtime"))?;
@@ -151,9 +175,10 @@ impl PlaybackController {
             sender.clone(),
             shutdown.clone(),
         )?;
-        actor.queue_more.supported = queue_more_enabled;
-        actor.power = power.map(super::keep_awake::PowerEffect::new);
-        let relay = if relay_enabled {
+        actor.queue_more.supported = options.queue_more_enabled;
+        actor.power = options.power.map(super::keep_awake::PowerEffect::new);
+        actor.ordinary_eof = options.ordinary_eof;
+        let relay = if options.relay_enabled {
             let runtime = crate::relay::publisher::player::Runtime::start(session.clone())?;
             actor.relay = Some(crate::relay::publisher::player::Observer::new(
                 runtime.clone(),

@@ -1,5 +1,7 @@
 #[path = "pc_experiment_transport/minibar_skip.rs"]
 mod minibar_skip;
+#[path = "pc_experiment_transport/natural_eof.rs"]
+mod natural_eof;
 #[path = "pc_experiment_transport/pc_presentation.rs"]
 mod pc_presentation;
 #[allow(dead_code)]

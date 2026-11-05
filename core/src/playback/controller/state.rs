@@ -108,6 +108,8 @@ pub(super) struct Actor {
     pub quality_task: Option<JoinHandle<()>>,
     pub quality_id: Option<String>,
     pub prefetch_task: Option<JoinHandle<()>>,
+    pub ordinary_eof: Option<super::OrdinaryEofAuthority>,
+    pub eof_flight: Option<super::eof::Flight>,
     pub prefetch: PrefetchSnapshot,
     pub prefetch_key: Option<super::tick::PrefetchKey>,
     pub refresh_at: Option<std::time::Duration>,
@@ -195,6 +197,8 @@ impl Actor {
             quality_task: None,
             quality_id: None,
             prefetch_task: None,
+            ordinary_eof: None,
+            eof_flight: None,
             prefetch: PrefetchSnapshot {
                 state: "idle",
                 entry_id: None,
@@ -340,6 +344,7 @@ impl Actor {
         )
     }
     pub async fn cancel_load(&mut self) -> Result<()> {
+        self.eof_flight = None;
         if let Some(task) = self.audiobook_skip_task.take() {
             task.abort();
         }
@@ -485,6 +490,11 @@ impl Actor {
                     Some(Message::AudiobookSkipRefreshed(value)) => self.refreshed_audiobook_skip(value),
                     Some(Message::Quality(value)) => self.quality_ready(value).await,
                     Some(Message::Prefetched(value)) => self.prefetched(value),
+                    Some(Message::OrdinaryEof(value)) => {
+                        if let Err(error) = self.finish_ordinary_eof(*value).await {
+                            self.stop_after_poll_failure(&error).await;
+                        }
+                    },
                     Some(Message::QueueMoreGroups(value)) => self.queue_more_groups(value),
                     Some(Message::QueueMoreRows(value)) => self.queue_more_rows(value).await,
                     Some(Message::QueueMoreTip(request)) => self.queue_more_tip_request(request).await,

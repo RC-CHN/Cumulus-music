@@ -105,14 +105,13 @@ impl MusicClient {
         *playback = Some(binding);
         Ok(poller)
     }
-
-    pub(in crate::client) fn pc_playback_connectivity(
+}
+impl PcMessagePollHost {
+    pub(in crate::client) fn playback_authority(
         &self,
         token: &SessionToken,
     ) -> Result<Option<crate::playback::engine::Cancellation>> {
-        self.session.check_generation(token)?;
         Ok(self
-            .message_poll
             .playback
             .lock()
             .map_err(|_| Error::LockPoisoned)?

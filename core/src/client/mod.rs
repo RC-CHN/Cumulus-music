@@ -146,7 +146,7 @@ pub struct MusicClient {
     profile_rank_removal: profile_play_record::RemovalHost,
     message_deletion: messages::DeletionHost,
     message_reply: messages::ReplyHost,
-    message_poll: messages::PcMessagePollHost,
+    message_poll: Arc<messages::PcMessagePollHost>,
     member_offer: member::MemberOfferHost,
     follow_latest: catalog::FollowLatestHost,
     daily_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
@@ -277,6 +277,15 @@ impl MusicClient {
     pub fn with_session(session: Arc<AccountSession>, registry: Arc<ProfileRegistry>) -> Self {
         let focus = Arc::new(focus::MediaFocus::default());
         let output = crate::playback::output::OutputRuntime::new(registry.store());
+        let pc_experiments = Arc::new(pc_experiments::PcExperimentHost::default());
+        let message_poll = Arc::new(messages::PcMessagePollHost::default());
+        let together = together::TogetherHost::default();
+        let skip = player::OrdinarySkipHost::new(
+            session.clone(),
+            message_poll.clone(),
+            pc_experiments.clone(),
+            together.detachment(),
+        );
         Self {
             external_import: Default::default(),
             external_import_sidebar: false,
@@ -307,20 +316,20 @@ impl MusicClient {
             profile_rank_removal: Default::default(),
             message_deletion: Default::default(),
             message_reply: Default::default(),
-            message_poll: Default::default(),
+            message_poll,
             member_offer: Default::default(),
             follow_latest: Default::default(),
             daily_recommendations: Default::default(),
             style_home: Default::default(),
             seeded_style_recommendations: Default::default(),
             style_recommendations: Default::default(),
-            pc_experiments: Default::default(),
+            pc_experiments,
             vertical_zone: Default::default(),
             vertical_zone_detail: Default::default(),
             quality_experiment: quality_experiment::QualityExperiment::default(),
             daily_experiment: daily_experiment::DailyExperiment::default(),
             latest_releases: catalog::LatestReleasesHost::default(),
-            together: together::TogetherHost::default(),
+            together,
             scene_fm: scene_fm::SceneFmHost::default(),
             local: local::LocalHost::new(registry.store()),
             cloud: cloud::CloudHost::new(session.clone()),
@@ -332,6 +341,7 @@ impl MusicClient {
                 registry.store(),
                 focus.clone(),
                 output.clone(),
+                skip,
             ),
             mv: mv::MvHost::new(session.clone(), focus.clone(), output.clone()),
             output,

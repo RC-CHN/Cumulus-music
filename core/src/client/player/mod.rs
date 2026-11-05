@@ -5,6 +5,8 @@ mod identity;
 mod intelligence;
 mod lyrics;
 mod minibar_skip;
+mod ordinary_skip_authority;
+pub(super) use ordinary_skip_authority::OrdinarySkipHost;
 mod missing_download;
 mod mode;
 mod next_play;
@@ -48,7 +50,10 @@ use crate::{
     library::LocalLibrary,
     lyrics::LyricsService,
     playback::{
-        controller::{PlaybackCommand, PlaybackController, PlaybackSnapshot, PlaybackStatus},
+        controller::{
+            PlaybackCommand, PlaybackController, PlaybackHostOptions, PlaybackSnapshot,
+            PlaybackStatus,
+        },
         engine::{AudioEngine, Cancellation, MpvConfig, MpvEngine},
         source::SourceResolver,
     },
@@ -98,6 +103,7 @@ pub(super) struct PlayerHost {
     relay_enabled: bool,
     queue_more_enabled: bool,
     power: Option<Arc<crate::playback::keep_awake::PowerControl>>,
+    ordinary_skip: OrdinarySkipHost,
     power_assignment: tokio::sync::Mutex<Option<power::Assignment>>,
     queue_more_memberships: queue_more_playlist::MembershipCache,
     session: Arc<AccountSession>,
@@ -123,12 +129,14 @@ impl PlayerHost {
         store: Arc<StateStore>,
         focus: Arc<super::focus::MediaFocus>,
         output: Arc<crate::playback::output::OutputRuntime>,
+        ordinary_skip: OrdinarySkipHost,
     ) -> Self {
         Self {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
             relay_enabled: false,
             queue_more_enabled: false,
             power: None,
+            ordinary_skip,
             power_assignment: Default::default(),
             queue_more_memberships: Default::default(),
             session,
@@ -172,9 +180,15 @@ impl PlayerHost {
                         focus: self.focus.clone(),
                         owner: super::focus::Owner::Audio,
                     }))),
-                    self.relay_enabled,
-                    self.queue_more_enabled,
-                    self.power.clone(),
+                    PlaybackHostOptions {
+                        relay_enabled: self.relay_enabled,
+                        queue_more_enabled: self.queue_more_enabled,
+                        power: self.power.clone(),
+                        ordinary_eof: Some(
+                            self.ordinary_skip
+                                .eof(self.focus.clone(), self.selection.clone()),
+                        ),
+                    },
                 )?))
             })
             .await
