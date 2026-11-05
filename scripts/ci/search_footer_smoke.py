@@ -11,37 +11,15 @@ from pathlib import Path
 
 from motion_smoke import launch
 from playback_power_smoke import windows_runtime
+from search_signed_trace import assignment_arguments, signed_assignment
 
 
 CASES = ("t1", "c", "unknown", "error")
-ACCOUNT = "/api/w/nuser/account/get"
-ASSIGNMENT = "/api/rtrs/abt/front/expinfo/list"
 PLAYER_URL = "/api/song/enhance/player/url/v1"
 
 
 def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
-
-
-def assignment_arguments(repository):
-    manifest = read(repository / "core/src/protocol/pc_experiments_3_1_42.json")
-    names = [name for name, opened, _ in manifest["web"] if opened]
-    return {"expNames": ",".join(names + manifest["native"])}
-
-
-def signed_assignment(trace, case, expected):
-    assert trace["transport"] == "MusicHttpClient" and trace["syntheticOnly"] is True
-    assert trace["sameProfileAccountRestore"] is True and trace["footerCase"] == case
-    calls = trace["calls"]
-    assert [call["path"] for call in calls] == [ACCOUNT, ASSIGNMENT], calls
-    assert calls[0]["args"] == {} and calls[1]["args"] == expected, calls
-    assert all(call["signedPcContextVerified"] is True and call["sameAccountCredential"] is True
-               for call in calls), "real EAPI/context/same-profile backend assertions must pass"
-    assert calls[0]["responseCode"] == 200
-    if case == "error":
-        assert calls[1].get("response") == "synthetic_error" and "responseCode" not in calls[1]
-    else:
-        assert calls[1]["responseCode"] == 200
 
 
 def verify(directory, case, expected_assignment, screenshots, windows):

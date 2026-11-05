@@ -1,0 +1,48 @@
+Sealed search probe request accounting
+
+The ordinary V3, HotExplain card, and carousel WebView probes now obtain the PC
+assignment through a genuine MusicHttpClient backed by a closed synthetic HTTP
+server. That backend verifies the actual EAPI body, official PC context and the
+same local credential used for synthetic account restoration. The full ordered
+assignment schema comes from pc_experiments_3_1_42.json, including its duplicates.
+
+The signed backend and the legacy business fixture have separate counters. The
+former owns exactly account/get followed by one full assignment; account/get is
+not a search read. The latter no longer receives the old three-name assignment.
+Do not count a missing old short assignment as a missing production request.
+
+scripts/ci/search_signed_trace.py is shared by these probes and the independent
+four-cohort footer proof. It requires the exact signed two-call trace, account
+restoration and credential/context checks, the exact full manifest arguments,
+and a successful assignment response for ordinary probes. It rejects missing or
+duplicate assignments, short or reordered schemas, and extra business reads.
+
+Exact comprehensive search budgets (excluding account restoration):
+- --v3: one signed full assignment + one tabs read + one V3 body = 3.
+- --hot-card: one signed full assignment + three tabs/V3 pairs = 7.
+- --carousel: one signed full assignment + one V1 body = 2. The one body trace
+  must retain its exact keyword/scene/channel/cursor/bizQueryInfo arguments.
+Back navigation must not add a body read. Existing renderer, playback, queue,
+focus, bounded layout and screenshot assertions are preserved.
+
+Observed hosted failure: main c9742b61, CI run 42035096922, Linux WebView job
+127282676125 completed nine V3 stages with every renderer assertion true. All
+stage snapshots already contained the exact signed account/get/full assignment
+trace and the legacy V3 counter was consistently 2, from the initial result to
+completion (search counter 3 to 5). The old verifier still expected legacy V3
+counter 3. This was deterministic stale test accounting, not an observed request
+loss or a process-flush race. The corrected verifier still requires exactly
+three comprehensive reads across the two real fixture boundaries.
+
+These proofs use synthetic accounts and isolated/null native audio. They do not
+prove real service access, physical sound-card behavior or whole DSP material.
+
+Local regression on 2026-11-05 used the previously verified f8b0e2a7 native
+ux_ui_probe binary. Git comparison confirmed the relevant core/protocol,
+desktop/probe and frontend sources were identical at f8b0e2a7, c9742b61 and the
+ee3d186f patch base; the original 22-file frontend dist was retained. The new
+Python verifier ran --v3 (9 stages), --hot-card (5) and --carousel (6) in separate
+network-isolated real GTK/WebViews with screenshots: all 20 stages passed. This
+is reuse of an explicitly equivalent existing search product binary, not a new
+build of this Python-only patch. The eight validator unit cases independently
+exercise exact budgets and malformed/extra/unsigned trace rejection.

@@ -10,6 +10,12 @@ import stat
 from threading import Event
 import time
 from motion_smoke import launch
+from search_signed_trace import assignment_arguments, comprehensive_reads
+
+
+def signed_result_reads(complete, result_reads, expected_total):
+    repository = Path(__file__).resolve().parents[2]
+    return comprehensive_reads(complete, assignment_arguments(repository), result_reads, expected_total)
 
 
 def drag_playlist_column(output, cancelled, capture):
@@ -327,23 +333,29 @@ def main():
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['hotCardVerified'] and complete['stageCount'] == 5
-        assert complete['syntheticV3Calls'] == 7 and complete['realAccountWrites'] == 0
+        reads = signed_result_reads(complete, complete['syntheticV3Calls'], 7)
+        assert complete['realAccountWrites'] == 0
         assert len(list(first.glob('ux_*.png'))) == (5 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, hotCardVerified=True,
-                              stageCount=5, v3Reads=7, realAccountWrites=0)))
+                              stageCount=5, nativeAssignmentAndResultReads=reads, realAccountWrites=0)))
         return
     if args.carousel:
         first = root / 'first'
         complete = json.loads((first / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['searchCarouselVerified'] and complete['searchBestThirdVerified'] and complete['stageCount'] == 6
         calls = complete['searchCarouselCalls']
-        assert [call['path'] for call in calls] == ['/api/rtrs/abt/front/expinfo/list', '/api/search/pc/complex/page']
-        assert calls[0]['args']['expNames'] == 'PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency'
+        assert [call['path'] for call in calls] == ['/api/search/pc/complex/page'], calls
+        assert calls[0]['args'] == {
+            'keyword': '合成轮播', 'scene': 'normal', 'needCorrect': True,
+            'channel': 'typing', 'cursor': '{"page":0,"ignoreBlocks":[],"traceId":""}',
+            'bizQueryInfo': '',
+        }, calls
+        reads = signed_result_reads(complete, len(calls), 2)
         assert complete['realAccountWrites'] == 0
         assert len(list(first.glob('ux_*.png'))) == (6 if args.screenshots else 0)
         print(json.dumps(dict(ok=True, actualWebView=True, searchCarouselVerified=True,
                               searchBestThirdVerified=True, stageCount=6,
-                              nativeAssignmentAndResultReads=2, realAccountWrites=0)))
+                              nativeAssignmentAndResultReads=reads, realAccountWrites=0)))
         return
     if args.filtered_pagination:
         first = root / 'first'
@@ -652,7 +664,8 @@ def verify(root, capture, v3=False):
             'v3OriginalRecordingVerified', 'v3ReasonCurrentRowVerified',
         ))
         assert complete['stageCount'] == 9
-        assert complete['syntheticV3Calls'] == 3 and complete['syntheticSearchCalls'] >= 4
+        signed_result_reads(complete, complete['syntheticV3Calls'], 3)
+        assert complete['syntheticSearchCalls'] >= 4
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.json'))) == 9
         assert len(list((root / 'first').glob('ux_*.png'))) == (9 if capture else 0)
