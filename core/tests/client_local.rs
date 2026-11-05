@@ -474,7 +474,7 @@ async fn native_open_lyrics_use_the_active_file_without_creating_a_library_row()
             .text,
         "首选相邻歌词"
     );
-    assert_eq!(detail.lines[1].time, 1.0);
+    assert_eq!(detail.lines[1].time, Some(1.0));
     let serialized = serde_json::to_string(&detail).unwrap();
     assert!(!serialized.contains("native_open_file") && !serialized.contains(".wav"));
 
