@@ -18,14 +18,23 @@ LABELS = (
 TRACK_REQUESTS = {
     '/api/album/v3/detail', '/api/album/v4/detail', '/api/album/privilege',
     '/api/album/detail/dynamic', '/api/v3/song/detail', '/api/song/enhance/privilege',
-    '/api/song/enhance/player/url/v1',
 }
+SOURCE = '/api/song/enhance/player/url/v1'
 
 
 def relevant_reads(record):
     return [
         row for row in record['albumQueueDropFixture']['calls'] if row['path'] in TRACK_REQUESTS
     ]
+
+
+def source_reads(record):
+    return [row['args'] for row in record['albumQueueDropFixture']['calls'] if row['path'] == SOURCE]
+
+
+def expected_sources(*ids):
+    return [dict(ids=json.dumps([id]), level='standard', encodeType='aac',
+                 immerseType='c51', trialMode=-1) for id in ids]
 
 
 def main():
@@ -85,7 +94,6 @@ def main():
         if index == 1:
             initial, reads = player, relevant_reads(record)
             assert any(r['path'] == '/api/album/v3/detail' and r['args']['id'] == '7' for r in reads)
-            assert any(r['path'] == '/api/song/enhance/player/url/v1' for r in reads)
         if index == 5:
             updated = queue['revision']
             assert updated != initial['queueRevision']
@@ -100,11 +108,14 @@ def main():
         ids = [row['track']['id'] for row in queue['tracks']]
         assert ids == (['701', '702'] if index < 5 else ['701', '11', '10', '702'])
         assert relevant_reads(record) == reads, f'unexpected album/song read during {label}'
+        expected = expected_sources('701', '702') if index < 5 else expected_sources('701', '702', '11')
+        assert source_reads(record) == expected, f'unexpected source authorization during {label}'
         if 2 <= index <= 4:
             assert record['selected'] == ['10', '11']
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
     assert relevant_reads(result) == reads
+    assert source_reads(result) == expected_sources('701', '702', '11')
     if args.screenshots:
         paint = json.loads((output / 'paint-ux_04_insertion_boundary.json').read_text(encoding='utf-8'))
         assert len(paint['samples']) == 1 and paint['samples'][0]['ok']
@@ -116,6 +127,7 @@ def main():
                   screenshots=len(LABELS) if args.screenshots else 0, dropCommands=1,
                   orderedQueue=['701', '11', '10', '702'], pausedPosition=initial['position'],
                   realMusicRequests=0, realAccountWrites=0, dropAlbumOrSongReads=0,
+                  ordinaryNextPrefetches=1,
                   physicalAudioOutputVerified=False, windowsVisualVerified=False)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

@@ -258,6 +258,15 @@ fn main() {
             if stage=="fixture" && histories && !is_live {history_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && settings && !is_live {settings_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
             if stage=="fixture" && relays && !is_live {relay_fixture.mode(value["mode"].as_str().unwrap_or(""));return;}
+            if stage=="album_url_reads" && album_queue_drop && !is_live {
+                let report=catalog_fixture.report();
+                let reads:Vec<_>=report["calls"].as_array().unwrap().iter()
+                    .filter(|call| call["path"]=="/api/song/enhance/player/url/v1")
+                    .map(|call| call["args"].clone()).collect();
+                handle.get_webview_window("main").unwrap().eval(format!(
+                    "window.__CUMULUS_ALBUM_URL_READS__={};",serde_json::json!(reads))).unwrap();
+                return;
+            }
             if stage=="resize" {
                 let window=handle.get_webview_window("main").unwrap();
                 let width=value["width"].as_f64().unwrap();let height=value["height"].as_f64().unwrap();

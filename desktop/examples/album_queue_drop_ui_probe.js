@@ -47,6 +47,17 @@
   const action = action => invoke('player_action', { epoch, action });
   const trusted = window.__cumulusAlbumDropTrusted === true;
   const dropCalls = [];
+  async function waitUrlOrder(ids) {
+    await wait(async () => {
+      await emit('album_url_reads');
+      const reads = window.__CUMULUS_ALBUM_URL_READS__;
+      if (!Array.isArray(reads) || reads.length < ids.length) return false;
+      check(reads.length === ids.length && reads.every((args, index) =>
+        args.ids === JSON.stringify([ids[index]]) && args.trialMode === -1),
+      'exact existing source authorization and next-neighbor prefetch');
+      return true;
+    }, 'observed the expected source authorization and prefetch');
+  }
   async function capture(label, extra = {}) {
     last = label;
     await wait(settled, 'page and panels settled before ' + label);
@@ -129,6 +140,7 @@
     const initial = await queue();
     const before = await snapshot();
     check(queueIds(initial) === '701,702' && before.playId && before.entryId, 'native paused baseline');
+    await waitUrlOrder(['701', '702']);
 
     const provides = one('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides)
@@ -183,6 +195,7 @@
     check(after.revision !== initial.revision, 'native commit advances the queue revision once');
     retained(before, await snapshot());
     await wait(() => scroll()?.querySelectorAll('.queue-row').length === 4 && !marker(), 'updated queue rendered');
+    await waitUrlOrder(['701', '702', '11']);
     await capture('ordered_drop', { typed });
 
     async function noNewDrop(release) {

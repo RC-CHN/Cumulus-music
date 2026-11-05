@@ -1,5 +1,8 @@
 use super::*;
-use cumulus_core::{catalog::details::CatalogQuery, playback::controller::PlaybackStatus};
+use cumulus_core::{
+    catalog::details::CatalogQuery,
+    playback::{PlaybackMode, controller::PlaybackStatus},
+};
 
 fn drop(
     view: &PlayerView,
@@ -35,6 +38,17 @@ async fn album_drag_resolves_native_order_without_requests_or_replacing_paused_p
         .await
         .unwrap()
         .value
+        .unwrap();
+    // Isolate the mutation's transport behavior from the normal next-song
+    // tick. The real desktop proof independently checks the new neighbor.
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::SingleLoop,
+            },
+        )
+        .await
         .unwrap();
     client
         .play_selection(
