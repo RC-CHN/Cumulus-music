@@ -13,7 +13,9 @@ def main():
     parser.add_argument('--frontend-dist', type=Path, help='optional production frontend snapshot for local comparison')
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    parser.add_argument('--embedded', action='store_true', help='Frozen local FLAC in both lyric surfaces')
+    local = parser.add_mutually_exclusive_group()
+    local.add_argument('--embedded', action='store_true', help='Frozen local FLAC in both lyric surfaces')
+    local.add_argument('--native-sidecar', action='store_true', help='Open unindexed native WAV and show its nested sidecar in both lyric surfaces')
     args = parser.parse_args()
     root = args.root.resolve()
     assert not root.exists(), 'new proof root required'
@@ -24,6 +26,9 @@ def main():
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if args.embedded:
         env['CUMULUS_EMBEDDED_LYRIC_PROOF'] = '1'
+    if args.native_sidecar:
+        env['CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF'] = '1'
+    local = args.embedded or args.native_sidecar
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -33,7 +38,7 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     total = 0
-    for phase in (['first'] if args.embedded else ['first', 'reopen']):
+    for phase in (['first'] if local else ['first', 'reopen']):
         if phase == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         output = root / phase
@@ -45,12 +50,15 @@ def main():
         complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['realMusicRequests'] == 0
         assert complete['mainVisible']
-        if args.embedded:
+        if local:
             stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
             assert [stage['surface'] for stage in stages] == ['main', 'lyric']
             assert stages[0]['timedLine'] and stages[0]['nativeClockAdvanced'] and stages[1]['paintedRow']
-            assert all(stage['fromEmbedded'] and not stage['fromSidecar'] and not stage['overflow']
+            assert all(stage['fromEmbedded'] == args.embedded and stage['fromSidecar'] == args.native_sidecar
+                       and not stage['overflow']
                        and stage['lyricRequests'] == 0 for stage in stages)
+            if args.native_sidecar:
+                assert stages[0]['unindexed'] and complete['unindexed']
             assert stages[0]['playId'] == stages[1]['playId']
             assert all(stage['nativePlayer']['state'] == 'paused' and
                        stage['nativePlayer']['playId'] == stage['playId'] for stage in stages)
@@ -78,6 +86,9 @@ def main():
                   physicalAudioOutputVerified=False, physicalDisplayVerified=False)
     if args.embedded:
         report.update(embeddedLyrics=True, format='FLAC', sameNativePlayback=True)
+    if args.native_sidecar:
+        report.update(nativeOpenSidecar=True, format='PCM WAV', sameNativePlayback=True,
+                      localIndexUnchanged=True)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 

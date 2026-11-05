@@ -8,6 +8,8 @@ mod desktop_lyric_fixture;
 mod fixture;
 #[path = "support/mini_fixture.rs"]
 mod mini_fixture;
+#[path = "../../core/tests/support/native_lyric_wave.rs"]
+mod native_lyric_wave;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
@@ -18,7 +20,11 @@ mod settings_fixture;
 mod shortcut_foreground;
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
-    client::{MusicClient, dto::LocalCommand},
+    client::{
+        MusicClient,
+        dto::{LocalCommand, LocalQuery},
+    },
+    playback::engine::Cancellation,
     protocol::http::ApiOrigin,
 };
 use serde_json::{Value, json};
@@ -71,9 +77,11 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     let reopened = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let embedded = std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some();
+    let native_sidecar = std::env::var_os("CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF").is_some();
+    assert!(!(embedded && native_sidecar), "select one local lyric case");
     assert!(
-        !embedded || !reopened,
-        "embedded proof requires a new local library"
+        !(reopened && (embedded || native_sidecar)),
+        "local lyric cases need a fresh profile"
     );
     let embedded_dir = embedded.then(|| {
         let directory = root.join("embedded-media");
@@ -86,6 +94,20 @@ fn main() {
         fs::write(directory.join("embedded.lrc"), [0xff, 0xfe, 0x20])
             .expect("write synthetic truncated UTF-16 sidecar");
         directory
+    });
+    let native_path = native_sidecar.then(|| {
+        let directory = root.join("native-media");
+        let nested = directory.join("lyric/lrc");
+        fs::create_dir_all(&nested).expect("new native lyric fixture folder");
+        let name = "原生 合成.session.wav";
+        let path = directory.join(name);
+        fs::write(&path, native_lyric_wave::native_stereo_wave(10)).expect("write synthetic PCM");
+        fs::write(
+            nested.join(name).with_extension("lrc"),
+            "[00:00]未扫描也能显示歌词\n[00:04]第二句本地歌词",
+        )
+        .expect("write synthetic filename sidecar");
+        path.canonicalize().expect("canonical synthetic audio")
     });
     let output = root.join(if reopened { "reopen" } else { "first" });
     fs::create_dir(&output).expect("new proof directory");
@@ -116,11 +138,16 @@ fn main() {
         let count=Arc::new(AtomicUsize::new(0));
         let factory_count=count.clone(); let wave=relay_fixture::wave(&root)?;
         let audio_directory=embedded_dir.clone();
+        let native_audio=native_path.clone();
         let client=MusicClient::with_session(session.clone(),registry).with_audio_factory(move || {
             factory_count.fetch_add(1,Ordering::AcqRel);
             let audio = relay_fixture::NativeAudio::open(wave.clone())?;
             let audio = match &audio_directory {
                 Some(directory) => audio.allow_download_directory(directory.clone()),
+                None => audio,
+            };
+            let audio = match &native_audio {
+                Some(path) => audio.allow_native_open(path.clone()),
                 None => audio,
             };
             Ok(Box::new(audio))
@@ -182,6 +209,22 @@ fn main() {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__lyricAck[{id}]={answer};")).unwrap();
                     });
                 }
+                "open_native_sidecar" => {
+                    let path=native_path.as_ref().expect("native sidecar proof only").clone();
+                    let handle=handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let client=handle.state::<MusicClient>();
+                        let before=client.local_page(LocalQuery::default()).await.unwrap();
+                        let epoch=client.account().unwrap().epoch;
+                        let result=client.play_native_open_files_warm(&epoch,vec![path],Cancellation::default()).await;
+                        let after=client.local_page(LocalQuery::default()).await.unwrap();
+                        let answer=match result {
+                            Ok(play) => json!({"ok":true,"unindexed":before.tracks.is_empty()&&after.tracks.is_empty(),"playId":play.play_id}),
+                            Err(error) => json!({"error":format!("synthetic native open: {error}")}),
+                        };
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__lyricAck[{id}]={answer};")).unwrap();
+                    });
+                }
                 "stats" => ack(json!({"requests":api.lyrics.load(Ordering::Acquire),"pending":api.pending.load(Ordering::Acquire),"factoryCount":count.load(Ordering::Acquire)})),
                 "storage" => {
                     let sql=rusqlite::Connection::open(root.join("state/core.sqlite3")).unwrap();
@@ -233,10 +276,11 @@ fn main() {
         cumulus_desktop::shortcuts::install(app.handle());
         cumulus_desktop::desktop_lyrics::start(app.handle());
         Ok(())
-    }).on_page_load(|view,payload| {
+    }).on_page_load(move |view,payload| {
         if view.label()=="main" && payload.event()==PageLoadEvent::Finished {
             view.eval(format!("window.__lyricProofReopen={};", std::env::var_os("CUMULUS_PROOF_REOPEN").is_some())).unwrap();
-            view.eval(if std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some() {
+            view.eval(format!("window.__nativeSidecarLyricProof={native_sidecar};")).unwrap();
+            view.eval(if native_sidecar || std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some() {
                 include_str!("embedded_lyrics_ui_probe.js")
             } else if std::env::var_os("CUMULUS_FONT_PROOF").is_some() {
                 include_str!("fonts_ui_probe.js")

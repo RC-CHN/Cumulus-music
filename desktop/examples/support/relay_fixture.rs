@@ -212,6 +212,7 @@ pub struct NativeAudio {
     inner: MpvEngine,
     wave: PathBuf,
     download_directory: Option<PathBuf>,
+    native_open: Option<PathBuf>,
 }
 impl NativeAudio {
     pub fn open(wave: PathBuf) -> Result<Self> {
@@ -222,6 +223,7 @@ impl NativeAudio {
             })?,
             wave,
             download_directory: None,
+            native_open: None,
         })
     }
     // Download/local-resource UI probes may decode their own isolated files.
@@ -233,6 +235,7 @@ impl NativeAudio {
 
     // The dedicated search fixture independently verifies the exact bytes
     // and must pass this File through without opening its pathname again.
+    #[allow(dead_code)]
     pub(super) fn load_verified_search_file(
         &mut self,
         file: std::fs::File,
@@ -244,9 +247,19 @@ impl NativeAudio {
         }
         self.inner.load_pinned_audio(file, authority, cancel)
     }
+
+    #[allow(dead_code)]
+    pub fn allow_native_open(mut self, path: PathBuf) -> Self {
+        self.native_open = Some(path);
+        self
+    }
 }
 impl AudioEngine for NativeAudio {
     fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
+        if matches!(&request.source, MediaInput::NativeFile { path, .. } if self.native_open.as_ref() == Some(path))
+        {
+            return self.inner.load(request, cancel);
+        }
         if let MediaInput::File(path) = &request.source
             && let Some(directory) = &self.download_directory
             && path.canonicalize()?.starts_with(directory.canonicalize()?)

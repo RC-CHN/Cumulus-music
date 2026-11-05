@@ -109,6 +109,9 @@ core/lyrics/desktop/{mod,prepared}.rs：
   cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
   LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py
     --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
+其中独立 `--native-sidecar` 用合成 PCM WAV 和 `lyric/lrc/` 旁挂检查原生打开：
+曲库前后为空，主详情与桌面窗口用同一暂停的播放 ID，并显示同一句及旁挂来源。
+这是可执行验收入口；是否通过以该候选源码的实跑报告为准。
 Windows将binary换为.exe，并通过--runtime指定打包的native目录。--screenshots仅用于
 本机Linux/GDK截图。透明像素观察需合成器；纯Xvfb/DOM背景透明属性不构成像素证明。
 实际结果与截图位于ui-ux-validation.txt；全范围目标继续，不据阶段通过数宣布完成。
