@@ -59,14 +59,23 @@
   }
   const caseName = window.__ordinaryEofProofCase;
   const group = window.__minibarProofGroup;
-  const target = caseName === 't1-skip' ? '3' : '1';
-  const expectedState = { 't1-skip': 'playing', control: 'ended', 't1-tail': 'idle' }[caseName];
+  const scenario = {
+    't1-skip': ['t1', 'playing', 'sequential', '1,2,3'],
+    control: ['c', 'ended', 'sequential', '1,2,3'],
+    't1-tail': ['t1', 'idle', 'sequential', '1,2,3'],
+    'order-loop-skip': ['t1', 'playing', 'order_loop', '2,3,1'],
+    'random-skip': ['t1', 'playing', 'random', '1,3,2'],
+    'random-control': ['c', 'ended', 'random', '1,3,2'],
+  }[caseName];
+  const [expectedGroup, expectedState, expectedMode, expectedOrder] = scenario || [];
+  const skip = expectedState === 'playing';
+  const target = skip ? '3' : '1';
   const actions = [];
   const replies = [];
   let core;
   let original;
   try {
-    assert(expectedState && group === (caseName === 'control' ? 'c' : 't1'), 'sealed EOF case and cohort');
+    assert(expectedState && group === expectedGroup, 'sealed EOF case and cohort');
     const account = await wait(async () => {
       const value = await invoke('account_snapshot');
       return value.status === 'authenticated' && value;
@@ -105,9 +114,9 @@
     };
     const initial = await wait(async () => {
       const view = await player();
-      return view.track?.id === '1' && view.mode === 'sequential' && view.queueLen === 3 &&
+      return view.track?.id === '1' && view.mode === expectedMode && view.queueLen === 3 &&
         ['idle', 'paused', 'playing'].includes(view.state) && matching(view) && visible(primary()) && view;
-    }, 'ordinary sequential queue on actual PlayerBar');
+    }, 'ordinary queue on actual PlayerBar in ' + expectedMode);
     if (initial.state !== 'playing') click('播放');
     const running = await wait(async () => {
       const view = await player();
@@ -133,7 +142,8 @@
     }, 'same actual decoder paused for the before capture');
     const beforeQueue = await queue();
     const ids = idsOf(beforeQueue);
-    assert(ids.map(([id]) => id).join(',') === '1,2,3' && beforeQueue.current === ids[0][1] &&
+    assert(ids.map(([id]) => id).join(',') === expectedOrder &&
+      beforeQueue.current === ids.find(([id]) => id === '1')[1] &&
       beforeQueue.revision === before.queueRevision, 'preserve original displayed queue order and revision');
     await stage('ux_01_before', before, beforeQueue);
 
@@ -148,17 +158,18 @@
       const view = await player();
       if (view.error) throw new Error('unexpected playback error: ' + view.error);
       return view.state === expectedState && view.track?.id === target && matching(view) &&
-        (caseName === 't1-skip' ? view.position > .2 && view.timeline?.total === 30 : view.position === 8) && view;
+        (skip ? view.position > .2 && view.timeline?.total === 30 : view.position === 8) &&
+        (caseName !== 'random-control' || view.playId === null) && view;
     }, 'cohort-specific state after natural native EOF');
     const afterQueue = await queue();
     assert(JSON.stringify(idsOf(afterQueue)) === JSON.stringify(ids) &&
-      afterQueue.current === ids[Number(target) - 1][1] &&
+      afterQueue.current === ids.find(([id]) => id === target)[1] &&
       afterQueue.revision === after.queueRevision, 'natural transition keeps queue rows and order');
     assert(actions.length === 2 && actions.every(({ epoch: owner, action }, i) =>
       owner === epoch && action.kind === 'pause_for' && action.play_id === before.playId &&
       action.expected_queue_revision === before.queueRevision && action.paused === (i === 0)),
     'real UI sent pause/resume only, no next, seek, or stop');
-    assert(caseName === 't1-skip' ? after.playId && after.playId !== before.playId :
+    assert(skip ? after.playId && after.playId !== before.playId :
       after.queueRevision === before.queueRevision &&
         (caseName === 'control' ? after.playId === before.playId : after.playId === null),
     'native play identity and queue revision agree with the cohort outcome');

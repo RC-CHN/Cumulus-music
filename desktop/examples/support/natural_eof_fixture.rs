@@ -2,9 +2,12 @@
 use super::relay_fixture;
 use cumulus_core::{
     Error, Result,
-    playback::engine::{
-        AudioEngine, Cancellation, EndReason, EngineEvent, EngineSnapshot, LoadRequest,
-        LoadedMedia, MediaInput, MpvConfig, MpvEngine,
+    playback::{
+        PlaybackMode,
+        engine::{
+            AudioEngine, Cancellation, EndReason, EngineEvent, EngineSnapshot, LoadRequest,
+            LoadedMedia, MediaInput, MpvConfig, MpvEngine,
+        },
     },
     storage::StateStore,
 };
@@ -25,6 +28,9 @@ pub enum Case {
     Skip,
     Control,
     DeniedTail,
+    OrderLoopSkip,
+    RandomSkip,
+    RandomControl,
 }
 
 impl Case {
@@ -33,6 +39,9 @@ impl Case {
             Ok("t1-skip") => Some(Self::Skip),
             Ok("control") => Some(Self::Control),
             Ok("t1-tail") => Some(Self::DeniedTail),
+            Ok("order-loop-skip") => Some(Self::OrderLoopSkip),
+            Ok("random-skip") => Some(Self::RandomSkip),
+            Ok("random-control") => Some(Self::RandomControl),
             Ok(_) => panic!("unknown sealed EOF case"),
             Err(std::env::VarError::NotPresent) => None,
             Err(error) => panic!("invalid EOF case: {error}"),
@@ -44,11 +53,40 @@ impl Case {
             Self::Skip => "t1-skip",
             Self::Control => "control",
             Self::DeniedTail => "t1-tail",
+            Self::OrderLoopSkip => "order-loop-skip",
+            Self::RandomSkip => "random-skip",
+            Self::RandomControl => "random-control",
         }
     }
 
     pub fn group(self) -> &'static str {
-        if self == Self::Control { "c" } else { "t1" }
+        if matches!(self, Self::Control | Self::RandomControl) {
+            "c"
+        } else {
+            "t1"
+        }
+    }
+
+    pub fn mode(self) -> PlaybackMode {
+        match self {
+            Self::OrderLoopSkip => PlaybackMode::OrderLoop,
+            Self::RandomSkip | Self::RandomControl => PlaybackMode::Random,
+            _ => PlaybackMode::Sequential,
+        }
+    }
+
+    pub fn displayed_rows(self) -> [u64; 3] {
+        match self.mode() {
+            PlaybackMode::OrderLoop => [2, 3, 1],
+            PlaybackMode::Random => [1, 3, 2],
+            _ => [1, 2, 3],
+        }
+    }
+
+    pub fn random_deck(self) -> Option<[usize; 3]> {
+        // Persist [3,1,2] on a display [1,3,2], so playing 1 tests denied 2
+        // and wraps to 3. Using display order would authorize 3 directly.
+        (self.mode() == PlaybackMode::Random).then_some([1, 0, 2])
     }
 
     pub fn playable(self, id: u64) -> bool {

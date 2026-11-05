@@ -160,19 +160,30 @@ fn main() {
     let store = registry.store();
     let mut queue = PlaybackQueue::new(Some(store.clone()), "2").unwrap();
     queue
-        .set_mode(if eof.is_some() {
-            PlaybackMode::Sequential
-        } else {
-            PlaybackMode::SingleLoop
-        })
+        .set_mode(eof.map_or(PlaybackMode::SingleLoop, eof_fixture::Case::mode))
         .unwrap();
+    let displayed = eof.map_or([1, 2, 3], eof_fixture::Case::displayed_rows);
     queue
         .replace(
-            (1..=3).map(|id| song(id, eof)).collect(),
-            0,
+            displayed.into_iter().map(|id| song(id, eof)).collect(),
+            displayed.iter().position(|&id| id == 1).unwrap(),
             json!({"kind":"playlist"}),
         )
         .unwrap();
+    if let Some(deck) = eof.and_then(eof_fixture::Case::random_deck) {
+        let mut snapshot = queue.snapshot();
+        snapshot.order = deck
+            .map(|slot| snapshot.items[slot].entry_id.clone())
+            .to_vec();
+        store
+            .put(
+                "2",
+                "playback",
+                "queue",
+                &serde_json::to_value(snapshot).unwrap(),
+            )
+            .unwrap();
+    }
     let api = Arc::new(ProofApi {
         base: Default::default(),
         group,

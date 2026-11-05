@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sqlite3
 import sys
 
 from minibar_skip_smoke import read
@@ -12,15 +13,19 @@ from window_manager import launch
 
 
 CASES = {
-    't1-skip': ('t1', '3', 'playing'),
-    'control': ('c', '1', 'ended'),
-    't1-tail': ('t1', '1', 'idle'),
+    't1-skip': ('t1', '3', 'playing', 'sequential', ['1', '2', '3']),
+    'control': ('c', '1', 'ended', 'sequential', ['1', '2', '3']),
+    't1-tail': ('t1', '1', 'idle', 'sequential', ['1', '2', '3']),
+    'order-loop-skip': ('t1', '3', 'playing', 'order_loop', ['2', '3', '1']),
+    'random-skip': ('t1', '3', 'playing', 'random', ['1', '3', '2']),
+    'random-control': ('c', '1', 'ended', 'random', ['1', '3', '2']),
 }
 WIRE = '/api/song/enhance/player/url/v1'
 
 
 def check(directory, case, capture, windows):
-    group, target, state = CASES[case]
+    group, target, state, mode, display = CASES[case]
+    skip = state == 'playing'
     before = read(directory / 'ux_01_before.json')
     after = read(directory / 'ux_02_after.json')
     stages = [before, after]
@@ -32,14 +37,15 @@ def check(directory, case, capture, windows):
     complete = read(directory / 'complete.json')
     assert complete['ok'] and complete['case'] == case and complete['group'] == group
     assert complete['target'] == target and complete['stageCount'] == len(stages), complete
-    assert before['ids'] == after['ids'] and [row[0] for row in before['ids']] == ['1', '2', '3']
+    assert before['ids'] == after['ids'] and [row[0] for row in before['ids']] == display
+    entries = dict(before['ids'])
     for row, track, status in ((before, '1', 'paused'), (after, target, state)):
         player, dom = row['player'], row['dom']
         assert row['case'] == case and row['group'] == group and row['actual'] and row['online']
         assert player['trackId'] == dom['trackId'] == track, row
         assert player['state'] == dom['state'] == status and player['error'] is None, row
-        assert player['playId'] == dom['playId'] and player['mode'] == 'sequential', row
-        assert player['entryId'] == row['current'] == row['ids'][int(track) - 1][1], row
+        assert player['playId'] == dom['playId'] and player['mode'] == mode, row
+        assert player['entryId'] == row['current'] == entries[track], row
         assert dom['unread'] and dom['title'] == f'合成自然结束歌曲 {track}', dom
         assert dom['primaryLabel'] == ('暂停' if status == 'playing' else '播放'), dom
     previous, current = before['player'], after['player']
@@ -65,14 +71,14 @@ def check(directory, case, capture, windows):
     assert any(row['kind'] == 'count' and row['path'] == '/api/pl/count' for row in prefix), prefix
     assert all(row.get('path') != '/api/v3/song/detail' for row in trace), trace
     authorization = [row for row in trace if row['kind'] == 'authorization']
-    expected_ids = ['1', '2', '3'] if case == 't1-skip' else ['1', '2']
+    expected_ids = ['1', '2', '3'] if skip else ['1', '2']
     assert authorization == [
         {'kind': 'authorization', 'path': WIRE, 'id': item} for item in expected_ids
     ], trace
     assert authorization[:2] == [row for row in prefix if row['kind'] == 'authorization'], prefix
     loads = [row for row in trace if row['kind'] == 'native_load']
     assert [(row['id'], row['duration']) for row in loads] == (
-        [('1', 8), ('3', 30)] if case == 't1-skip' else [('1', 8)]
+        [('1', 8), ('3', 30)] if skip else [('1', 8)]
     ), trace
     old = loads[0]['entry']
     events = [row for row in trace if row['kind'] == 'native_eof']
@@ -88,7 +94,7 @@ def check(directory, case, capture, windows):
         assert value['seconds'] == 8 and value['paused'] is False, value
 
     stops = [row for row in trace if row['kind'] == 'native_stop']
-    if case == 't1-skip':
+    if skip:
         assert .2 < current['position'] < 30 and current['duration'] == 30, current
         assert current['playId'] and current['playId'] != previous['playId']
         assert current['queueRevision'] != previous['queueRevision'] and current['timelineMode'] == 'full'
@@ -121,6 +127,9 @@ def check(directory, case, capture, windows):
             assert retained['trace'] == trace, retained['trace']
             assert retained['durablePosition'] == after['durablePosition']
             old_checkpoint(retained['durablePosition'])
+        elif case == 'random-control':
+            assert current['playId'] is None and current['duration'] == 8
+            assert not stops, trace
         else:
             assert current['playId'] is None and current['duration'] is None
             assert stops == [{'kind': 'native_stop', 'entry': old}]
@@ -138,7 +147,17 @@ def check(directory, case, capture, windows):
         for image in images:
             paint = read(image.with_name('paint-' + image.stem + '.json'))
             assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples']), paint
+    transport = ['3', '1', '2'] if mode == 'random' else display
+    database = (directory.parent / 'state' / 'core.sqlite3').resolve(strict=True)
+    with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
+        persisted = connection.execute(
+            "SELECT value FROM state WHERE owner='2' AND kind='playback' AND key='queue'"
+        ).fetchone()
+    saved = json.loads(persisted[0])
+    assert saved['order'] == [entries[item] for item in transport], saved['order']
+    assert saved['current'] == entries[target]
     return {'case': case, 'group': group, 'target': target, 'state': state,
+            'displayOrder': display, 'transportOrder': transport,
             'stages': stages, 'locale': locale, 'screenshots': len(images)}
 
 
