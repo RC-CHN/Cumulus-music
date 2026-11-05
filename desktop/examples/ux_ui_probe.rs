@@ -85,6 +85,8 @@ mod style_recommendations_fixture;
 mod system_master_volume_fixture;
 #[path = "support/vertical_zone_fixture.rs"]
 mod vertical_zone_fixture;
+#[path = "support/vinyl_comments_fixture.rs"]
+mod vinyl_comments_fixture;
 #[path = "support/voice_download_fixture.rs"]
 mod voice_download_fixture;
 #[path = "support/volume_fixture.rs"]
@@ -173,14 +175,21 @@ fn playlist(id: u64) -> Value {
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
-        Ok(vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into()))
+        Ok(vinyl_comments_fixture::group()
+            .or_else(|| vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into())))
     }
 
     fn verified_pc_experiment_groups<'a>(
         &'a self,
         revision: &'a str,
     ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
-        Box::pin(async move { vertical_zone_fixture::groups(revision) })
+        Box::pin(async move {
+            if vinyl_comments_fixture::group().is_some() {
+                vinyl_comments_fixture::assignment(revision)
+            } else {
+                vertical_zone_fixture::groups(revision)
+            }
+        })
     }
 
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
@@ -233,6 +242,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = vinyl_comments_fixture::response(path, &args) {
+                return response;
+            }
             if let Some(response) = zone_fm_preview_fixture::response(path, &args, cached).await {
                 return response;
             }
@@ -730,7 +742,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() {
+        if search_fixture::hot_playback_enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -920,6 +932,7 @@ fn main() {
                 value["memberSignSongLikeWrites"]=json!(member_sign_fixture::sign_song_like_writes());
             }
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
+            if vinyl_comments_fixture::group().is_some() {value["vinylCommentsCalls"]=json!(vinyl_comments_fixture::report());}
             if vertical_zone_fixture::enabled() {value["verticalZoneCalls"]=json!(vertical_zone_fixture::calls());}
             if zone_fm_preview_fixture::enabled() {value["zoneFmPreview"]=zone_fm_preview_fixture::report();}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
