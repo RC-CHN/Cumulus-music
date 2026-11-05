@@ -7,6 +7,7 @@ mod limiter_segment;
 mod mpv;
 mod output;
 mod runtime;
+mod stereo_transport;
 mod types;
 mod video;
 use crate::Result;
@@ -16,6 +17,7 @@ pub(crate) use limiter_segment::{ColdLimiterConfig, ColdLimiterRender, ColdLimit
 pub use mpv::{MpvConfig, MpvEngine};
 pub use output::{OutputDevice, OutputDevices};
 pub use runtime::MpvRuntime;
+pub use stereo_transport::{StereoGeneration, StereoRead, StereoSourceTransport};
 pub use types::*;
 pub use video::{MpvVideoEngine, VideoEngine};
 

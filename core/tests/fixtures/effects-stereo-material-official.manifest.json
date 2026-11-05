@@ -1,0 +1,105 @@
+{
+  "schema": "cumulus-local-stereo-subgraph-v1",
+  "dllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "fixtureSha256": "a10bb2f4e89ec1b55c2172fb6ad67cbb2636b1c6a29c0e166af6488bf345d0a4",
+  "generatorSha256": "f79476b670ca802e7c92589d5e977a5f5cf3160e154419bcc8cce182a23b3d9b",
+  "nativeSourceSha256": {
+    "se": "c5128d2dbb966ebbfad3ff013422a2becb20e45dca2b5906157f43322d7b9cf4",
+    "limiter": "5181f8fec7d8df798f4d14872eb60fd7a2fcaedba9d074e47d908380718de8ce"
+  },
+  "executedSe": [
+    "B2030",
+    "B1780",
+    "B1AE0",
+    "B34C0",
+    "B3990",
+    "A85B0",
+    "A8550",
+    "A80D0"
+  ],
+  "executedLimiter": [
+    "63900",
+    "63EB0",
+    "654B0",
+    "654A0",
+    "65490",
+    "63B90",
+    "63AC0"
+  ],
+  "sourceReferences": [
+    "1AEC0",
+    "1BBA0",
+    "1C590",
+    "1D360",
+    "1D410",
+    "1AA50"
+  ],
+  "fullSdkGraph": false,
+  "graphDriver1AA50Executed": false,
+  "outerFifoExecuted": false,
+  "caseCount": 12,
+  "blockCount": 1032,
+  "seCallsThroughFirstEnd": 984,
+  "seCallsActuallyExecuted": 1044,
+  "outputFrames": 796718,
+  "rates": [
+    44100,
+    48000,
+    96000
+  ],
+  "capacities": [
+    512,
+    2048
+  ],
+  "channels": 2,
+  "callerFtz": 0,
+  "controls": {
+    "presence": 3,
+    "stereoizer": 5,
+    "sshaper": true,
+    "ambience": 1
+  },
+  "limiterDefaults": {
+    "threshold": 0,
+    "attackF32": 0.005,
+    "releaseF32": 0.1,
+    "outputGain": 0,
+    "infiniteRatio": true,
+    "ratio": 4,
+    "flag48": true
+  },
+  "inputPacking": "full capacity planar f32 little-endian bits; frames/end/reset are source inputs",
+  "outputPacking": "valid L then valid R f32 little-endian bytes per block; every block has outputSha256",
+  "selectedOutputBits": "first, midpoint, SE first end and B0 first end; not a full PCM public duplicate",
+  "composition": "two independent namespace child processes; SE valid n/end/PCM fed unchanged to B0, then four zero/end=true calls; only invalid padding is zeroed",
+  "postSeEndDrain": "extra B0 rows have sourceFrames=0/sourceEnd=true and inputBits all zero; original SE host separately proves post-end remains zero/end=true",
+  "reset": "same logical block calls original SE B3990 and B0 65490; discarded previous B0 lookahead accounted",
+  "adapters": {
+    "se": [
+      "PE mapping",
+      "bounded allocator/free and block context",
+      "TEB lower stack bound"
+    ],
+    "limiter": [
+      "PE mapping",
+      "4 bounded ownership-checked CRT memory seams unchanged"
+    ]
+  },
+  "excludes": [
+    "full SDK factories/initialization, master and off sibling first-block transitions",
+    "1AA50 execution, format converters and outer FIFO",
+    "DllMain/imports/Windows CRT CPU init",
+    "physical output, real assets/accounts/network",
+    "other rates/capacities/controls/FTZ inputs"
+  ],
+  "compilerFlags": [
+    "-std=c11",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "compiler": "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0"
+}

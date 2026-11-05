@@ -63,7 +63,7 @@ impl LimiterStage {
         })
     }
 
-    fn reset_stream_state(&mut self) {
+    pub(crate) fn reset_stream_state(&mut self) {
         self.flow.reset();
         if let Some(envelope) = &mut self.envelope {
             envelope.reset();

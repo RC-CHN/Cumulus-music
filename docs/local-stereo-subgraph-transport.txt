@@ -1,0 +1,174 @@
+Local equalizer SE1 -> default-B0 subgraph and bounded source transport
+====================================================================
+This builds on core-effects-stereo-one.txt and stereo-native-host-contracts.txt.
+It adds executable computation, FIFO/source-clock and generation/authority
+boundaries. It is not activation of a whole official material in the player.
+
+Exact selected official lane
+-----------------------------
+Equalizer.tsx/M3091 writes the free local equalizer_data JSON, not a downloaded
+sound-library entitlement. This candidate admits exactly four root sections:
+ eq: on=false and exactly10 zero gains;
+ bt: on=false, bass=0, treble=0;
+ rvb: on=false (the None selection);
+ se: ambience=1, sshaper=true, integer presence[-10,10], stereoizer[0,10],
+     on equal to either control being nonzero.
+The native plan has no URL/path/file/network access. aev2, PEQ, rotation,
+nonzero GEQ/BT, enabled RVB and inconsistent controls are rejected, not ignored.
+Parsing this subset is not proof of local origin, current source or isOpen.
+A future native business caller must additionally bind those actual facts.
+
+The official PCM order from 1AA50 is GEQ -> BT -> SE -> Rotate -> RVB -> B0
+(with loudness before effect nodes when enabled). Default B0 remains enabled
+even when no explicit limiter section appears. 1BBA0/68000/6C1A0 initialize
+threshold0dB, attack f32(.005), release f32(.1), outputgain0dB, infinite ratio,
+ratio4 and flag48=true. Top-level RVB.off does not disable SE's own bank1
+environment child. Setter order in cloudmusic.dll EFB760 is not signal order.
+
+LocalStereoMaterialPlan is a strict validated data plan. LocalStereoSubgraph
+executes the already restored SE1 first, passes its actual produced frames/end
+to the actual default LimiterStage, and returns B0's produced frames/end.
+Neither node's valid length is guessed from the input. Reset preserves SE
+parent gain/ring/EOF history as its real reset does and restarts B0's proven
+lookahead/history. Controls change SE in place and leave B0 installed.
+Arithmetic failure clears the owned output and quarantines the graph.
+
+Real original-function evidence (not full SDK)
+---------------------------------------------
+The manual freeze_stereo_material.py hash-pins the same original x64 DSP DLL
+and runs stereo_one_native.c and native_limiter_oracle.c in TWO independent
+network namespaces/mapped images. Real A80D0/B28E0 output n/end and valid PCM
+feed real B0 63B90, then extra empty EOF calls drain B0. Existing ownership-
+checked B0 memory seams remain unchanged; SE memory is never admitted into
+their registry. No arithmetic/transcendental functions are replaced.
+Only invalid SE padding is zeroed for the second host's full-packet validator;
+all valid samples remain bit-for-bit original.
+
+12 cases cover44.1/48/96kHz, capacity512/2048, continuous and synchronized
+reset flows, short7/3 frames, a normal zero-frame call, and complete EOF.
+The original SE host executes1044 calls, of which984 precede/include its first
+EOF in each case; B0 executes1032 calls. The frozen final output has796718
+valid frames. Every block has an exact valid planar L||R SHA256, and selected
+blocks also retain PCM bits. Source DLL, both native hosts, generator and
+fixture hashes plus adapter limits are in the public manifest. Public tests
+need only the synthetic fixture, never an original binary or Python process.
+
+The key discovered EOF behavior is preserved:44.1kHz cases finish B0 in the
+same invocation as SE;48kHz/cap512 and both96kHz capacities need an additional
+zero/end=true call AFTER SE's end. Six of the twelve cases exercise this.
+Synchronized reset drops the preceding B0 lookahead219/238/478 frames as the
+original does. No assertion has been relaxed to make counts match.
+
+This is explicitly a SERIAL SUBGRAPH oracle. It does not execute 1AA50,
+1AEC0's complete initialization, input/output conversion, SDK master bypass
+or disabled sibling wrappers' first-block transitions. 1AEC0 creates other
+components even when disabled; they cannot be deleted by assumption and then
+called a full SDK/material comparison. Closing that source-recoverable gap is
+still required before official local-material activation, not an external
+permission barrier or a removed goal item. Caller FTZ0/Linux native math here
+does not prove Windows CPU/CRT/DllMain or physical output equivalence.
+
+Bounded FIFO with the actual tail
+---------------------------------
+LocalStereoStream uses the original2048-frame processing quantum, independent
+interleaved input/output FIFOs and source timestamp rule from67C00/68120.
+It validates complete finite stereo frames, signed32-bit millisecond clocks,
+capacity and a conservative output bound before changing either DSP/clock.
+EOF is an explicit empty write, not 'decoder packet pending'. It inserts the
+documented67CE8 one silent INPUT frame only when the input FIFO was already
+empty, distinct from environment tail and B0 padding. There is no fake settle.
+Subsequent writes after terminal input are ignored before payload validation.
+
+EOF iterates the actual subgraph until BOTH nodes end, including empty calls
+after SE terminates. Reads return only produced samples and signal end only
+after the graph ended and its output FIFO emptied. A zero-capacity read leaves
+end=None. Source timestamp advances only for consumed input frames, not the
+one-second tail or the default limiter's additional drain.
+
+The old limiter FIFO limit65536 cannot hold a96kHz one-second SE tail. This new
+stereo stream reserves up to524288 frames per FIFO (two channels), requires
+at least rate+4096 frames, and allocates fallibly before processing. No push,
+pull, configure or reset allocation is introduced. Before EOF it reserves
+available_input+rate+2048+already_queued_output, deliberately conservatively.
+If the quota cannot fit, it rejects before any terminal latch/clock/history
+change; a caller may read pending output and retry the same local EOF. No
+remote write is replayed. This is explicit bounded backpressure, not a claim
+that the original native FIFO had the same resource quota. A drain-iteration
+bound and actual produced-frame bounds quarantine unexpected failures.
+
+StereoSourceTransport binds one held-source range and Cancellation lease to
+that stream. start issues an opaque token containing a private per-transport
+nonce and monotonically increasing sequence, then resets the SAME graph/FIFOs;
+it does not synthesize samples, reopen a file or grant new media rights. Two
+transport objects cannot accept each other's equal-sequence token. Stale
+generation packets are ignored before payload use. Reads also require that
+exact token: a stale/foreign sink receives an error and zeroed target before
+any current PCM is popped or its source coordinate is advanced.
+Current packets must be contiguous, <=2048 decoded frames, within the held
+range, and successful decoder EOF must match its exact end. Empty samples
+are invalid packets, not EOF. Every offer/read checks actual source authority
+before and after work. Authority loss wipes queued data and silences the read;
+the retired transport cannot be revived by a later true predicate or start.
+Output source_clock is clamped at the held source end while tail frames still
+exist; only full drain returns End. Pending never means EOF or zero silence.
+This is a produced-PCM SOURCE COORDINATE cursor and may lead physical playback.
+It must not be used as the audible clock. End means producer/DSP drain, not a
+native speaker/sink EOF; queue advancement still needs the same native entry's
+actual EOF after its buffered tail has played.
+
+The transport deliberately owns no decoder, sink or account registry. Its
+Cancellation must be supplied by the real source owner; this API is not an
+authorization receipt. The owner must stop/destroy the old sink and close its
+decoder worker before publishing a replacement, and must retain real pause
+state. The generation fence rejects late packets but cannot itself acknowledge
+external thread destruction. This native seam has no frontend IPC command.
+
+Runnable offline tools
+----------------------
+ effect_dsp_render stereo-material
+stdin contains {sampleRate,maxFrames,material,blocks:[{samples,end,reset}]}.
+Samples are interleaved; maxFrames is the bounded aligned kernel capacity.
+It returns actual timing/PCM, fullSdkGraph=false and completeGraph=false.
+
+ effect_dsp_render stereo-material-stream
+stdin contains {sampleRate,decodedChannels,fifoCapacity,material,actions}.
+Actions are {kind:push,samples,timestampMs?}, {kind:read,frames}, {kind:reset}.
+An empty push explicitly ends the synthetic decoder; reset preserves original
+graph state according to reset semantics. Read0 returns no EOF change. Input,
+action count and maximum requested output are bounded before running. No
+account, actual decoder, player or external process is needed at runtime.
+
+Rust/desktop verification boundary
+----------------------------------
+The new tests compare Rust graph valid PCM/EOF against all1032 original-function
+receipts, with selected exact bits and synchronized resets. Separate prepared
+tests cover packet/quantum reassembly, real tail, clock not advanced by tail,
+EOF quota rejection/retry, reset retaining gain instead of recreation, CLI
+interleaving, source-generation fencing and buffered authority revocation.
+They have not been executed in this source branch; root batches Rust checks.
+The independently run original oracle is evidence for expected behavior, not
+a substitute for passing those Rust tests or a native desktop playback proof.
+
+Actual sink integration remains separate
+-----------------------------------------
+LADSPA's fixed-count void run cannot express the subgraph's shortened first
+output and extended terminal output. The five-port descriptor alone therefore
+does not implement this material. The explicit variable-frame native API and
+this source-clock FIFO are usable prerequisites; stock playback is unchanged.
+
+Existing limiter native probes use a fixed WAV length(source frames+one EOF
+sentinel). A live SE switch can change the real tail length0..rate. Hardcoding
+source+one second into that WAV then returning early EOF is not a valid fix.
+Unrestricted libmpv read-ahead could also pre-render a short track with old
+controls and make later sliders ineffective until the buffered PCM drains.
+The actual adapter needs bounded render-ahead/native cache policy, independent
+host-clock credit and cancellable waits; decoder/read cursors are not credit
+from the audible clock. It cannot simulate live adjustment by restarting the
+song or treating source-coordinate production as completed playback.
+An owned unknown-length PCM reader/sink protocol, or an exactly controlled
+alternative, must still be proved together with real decoder format, pause,
+source-clock mapping, seek/reset, cancellation and EOF. One current native
+decoder format observation cannot establish continuous format stability.
+Full SDK sibling/master behavior and actual Linux/Windows output remain work;
+no experimental default, renderer switch, broad material support or UI claim
+is added by this candidate.

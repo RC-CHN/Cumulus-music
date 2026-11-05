@@ -3,6 +3,8 @@
 mod ambience_one_wire;
 #[path = "support/limiter_wire.rs"]
 mod limiter_wire;
+#[path = "support/stereo_material_wire.rs"]
+mod stereo_material_wire;
 #[path = "support/stereo_one_wire.rs"]
 mod stereo_one_wire;
 #[path = "support/stereo_zero_wire.rs"]
@@ -14,7 +16,7 @@ use std::io::{Read, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).ok_or(
-        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq, stereo-zero, ambience-one, stereo-one or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,limiter-plan,limiter-flow,dly,alc,spspatial}; for NCAE PCM use material-render-active-peq PATH or material-limiter-{render,stream} PATH",
+        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq, stereo-zero, ambience-one, stereo-one, stereo-material, stereo-material-stream or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,limiter-plan,limiter-flow,dly,alc,spspatial}; for NCAE PCM use material-render-active-peq PATH or material-limiter-{render,stream} PATH",
     )?;
     let mut input = Vec::new();
     std::io::stdin()
@@ -60,6 +62,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "{}",
             serde_json::to_string(&stereo_one_wire::render(&input)?)?
         );
+        return Ok(());
+    }
+    if mode == "stereo-material" || mode == "stereo-material-stream" {
+        let value = if mode == "stereo-material" {
+            stereo_material_wire::render(&input)?
+        } else {
+            stereo_material_wire::stream(&input)?
+        };
+        println!("{}", serde_json::to_string(&value)?);
         return Ok(());
     }
     let result = if mode == "material-render-active-peq" {

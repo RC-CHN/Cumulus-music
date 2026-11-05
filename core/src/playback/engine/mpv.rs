@@ -607,10 +607,16 @@ impl AudioEngine for MpvEngine {
         if self.property(c"idle-active").as_deref() != Some("no") {
             return Ok(None);
         }
+        if self.property(c"seeking").as_deref() != Some("no") {
+            return Ok(None);
+        }
         let value = self.native_mut()?.decoded_audio_format()?;
         self.require_pinned_authority()?;
         if self.entry != Some(entry_id) {
             return Err(Error::StaleResponse);
+        }
+        if self.property(c"seeking").as_deref() != Some("no") {
+            return Ok(None);
         }
         Ok(
             value.map(|(sample_rate, channels)| super::DecodedAudioFormat {
