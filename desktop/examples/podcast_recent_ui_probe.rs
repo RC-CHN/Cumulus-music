@@ -9,6 +9,8 @@ mod fixture;
 #[allow(dead_code)]
 #[path = "support/relay_fixture.rs"]
 mod relay_fixture;
+#[path = "support/podcast_scene_home_fixture.rs"]
+mod scene_home_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
@@ -47,6 +49,8 @@ struct Library {
     calls: Mutex<Vec<Value>>,
     progress_enabled: bool,
     progress_uploads: Mutex<Vec<Value>>,
+    scene_home: Option<scene_home_fixture::SceneHome>,
+    scene_baseline: settings_fixture::Library,
 }
 
 fn radio() -> Value {
@@ -58,6 +62,10 @@ fn voice(id: u64) -> Value {
         "disPlayStatus":if id==505 {"REMOVED"}else{"NORMAL"}})
 }
 impl Api for Library {
+    fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
+        Box::pin(async { Ok(self.scene_home.is_some()) })
+    }
+
     fn podcast_progress_revision(&self) -> Result<Option<String>> {
         Ok(self.progress_enabled.then(|| PROOF_REVISION.to_owned()))
     }
@@ -92,6 +100,14 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(scene) = &self.scene_home {
+                return match scene.response(path, &body) {
+                    Some(response) => response,
+                    None => {
+                        scene_home_fixture::baseline(&self.scene_baseline, path, body, cache).await
+                    }
+                };
+            }
             if path.contains("clear")
                 || path.contains("submit")
                 || matches!(
@@ -203,8 +219,14 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let progress_enabled = std::env::var_os("CUMULUS_PODCAST_PROGRESS_PROOF").is_some();
+    let scene_home = std::env::var("CUMULUS_PODCAST_SCENE_HOME_PROOF")
+        .ok()
+        .map(scene_home_fixture::SceneHome::new);
+    let scene_enabled = scene_home.is_some();
+    assert!(!(scene_enabled && progress_enabled));
     let api = Arc::new(Library {
         progress_enabled,
+        scene_home,
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -218,7 +240,9 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let source = std::env::var_os("CUMULUS_UX_SCRIPT").map_or_else(
         || {
-            if progress_enabled {
+            if scene_enabled {
+                include_str!("podcast_scene_home_ui_probe.js").to_owned()
+            } else if progress_enabled {
                 include_str!("podcast_progress_ui_probe.js").to_owned()
             } else {
                 include_str!("podcast_recent_ui_probe.js").to_owned()
@@ -234,7 +258,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
-            if progress_enabled {
+            if progress_enabled || scene_enabled {
                 fs::write(output.join("locale.json"), serde_json::to_vec(&json!({
                     "numeric":locale(libc::LC_NUMERIC),
                     "messages":locale(libc::LC_MESSAGES),
@@ -260,7 +284,9 @@ fn main() {
                     || stage.starts_with("ux_") && stage.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
                     return;
                 }
-                if stage == "complete" {
+                if let Some(scene) = &api.scene_home {
+                    value["calls"] = json!(scene.calls());
+                } else if stage == "complete" {
                     value["calls"] = json!(api.calls.lock().unwrap().clone());
                 }
                 if progress_enabled {
@@ -273,7 +299,7 @@ fn main() {
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" {0} else {1});
                     } else if capture_ack::acknowledge(&handle, &output, &stage, true).await
-                        && progress_enabled
+                        && (progress_enabled || scene_enabled)
                     {
                         handle.get_webview_window("main").unwrap().eval(format!(
                             "window.__podcastProgressStage = {};",
@@ -287,6 +313,10 @@ fn main() {
         })
         .on_page_load(move |view, payload| {
             if payload.event() == PageLoadEvent::Finished && view.label() == "main" {
+                if scene_enabled {
+                    let case = std::env::var("CUMULUS_PODCAST_SCENE_HOME_PROOF").unwrap();
+                    view.eval(format!("window.__podcastSceneHomeCase = {};", json!(case))).unwrap();
+                }
                 view.eval(&source).unwrap();
             }
         })

@@ -202,7 +202,8 @@
       const top = () => one('.podcast-top[data-layout="classic"]');
       const regular = () => top()?.querySelector('[data-preview="podcast"]');
       await wait(() => regular()?.querySelectorAll('.podcast-top-item').length === 8, "failed assignment falls back to classic scores");
-      assert(button("打开私人漫游", top()) && !top().querySelector('[data-preview="book"]'), "classic uses the roam entry, no updated audiobook card");
+      await wait(() => top()?.querySelector('[data-podcast-scene-fm] [data-scene-id="OP_1"]'), "fallback classic reads the inline Scene FM card");
+      assert(!top().querySelector('[data-preview="book"]') && one(".playerbar")?.dataset.state === "idle", "fallback Classic displays the Scene FM directory without automatic playback or an updated audiobook card");
       await capture("podcast_top_classic_scores");
       click(button("今日最热", regular()));
       await wait(() => button("播放 合成声音 407", regular()), "legacy hot tab uses the voice preview endpoint");

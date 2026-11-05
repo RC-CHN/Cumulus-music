@@ -596,6 +596,13 @@ fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {
             }
             json!({"code":200,"data":[{"expName":"podcast_tab_better","expGroupName":"t1"}]})
         }
+        "/api/voice/homepage/block/content" if configured == "podcast_top_classic" => {
+            assert_eq!(*args, json!({"blockCode":"VOICE_HOMEPAGE_BLOCK_SCENE_FM"}));
+            json!({"code":200,"data":[{"creatives":[{"creativeId":"OP_1",
+                "uiElement":{"mainTitle":{"title":"合成回退场景"}},
+                "creativeExtInfoVO":{"djPrograms":[program(404,305)]}
+            }]}]})
+        }
         "/api/podcast/ranklist/square/ranklist/get/v2"
             if matches!(mode.as_str(), "audio_ranks" | "podcast_home_disabled") =>
         {
