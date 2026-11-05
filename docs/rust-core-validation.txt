@@ -1,6 +1,14 @@
 Rust core 迁移验证记录
 2026-10-26；本记录不代替完整目标验收。
 
+2026-11-05 固定本地音效完整图及界面整合：394程序/2412 passed/0 failed/20 ignored，
+格式与严格workspace Clippy通过；固定Node24.16的npm ci/format/905测试/类型与构建、
+123项CI脚本测试通过。原完整图32流/阶段、1204块经Rust末端B0逐块精确对照，
+12个独立PCM CLI逐有效字节核对；见 core-effects-local-fixed.txt。
+实际当前构建的GTK原生播放/动态SE1/私有FLAC1.5受控源、EQ持久化与缺库恢复、响度设置、
+MGC14态、搜索20态、footer四cohort14态均通过；53张本批原PNG逐张查看。
+GNU交叉检查不代表Windows执行；完整固定音效仍为独立组件，常规播放器设置接线继续。
+
 2026-11-05 后续：受控 NCM-FLAC→增量SE1/B0→未知长度原生音频源批次，
 完整391程序/2404 passed/0 failed/20 ignored，格式及严格workspace Clippy通过。
 另显式执行18项有真实运行前提的core原生测试、真实GTK后新源及普通播放、独立无GUI

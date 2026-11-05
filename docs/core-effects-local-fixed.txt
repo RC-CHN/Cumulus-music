@@ -1,4 +1,4 @@
-Fixed local old-schema stereo material — native candidate
+Fixed local old-schema stereo material — standalone native scope
 ========================================================
 
 Scope and status
@@ -19,9 +19,13 @@ must establish actual decoded format, local material origin, account/source
 identity, isOpen, native actor authority, and the whole graph's other gates.
 No automatic source/engine switch is made by the new component.
 
-At preparation time, Rust/build tests have not been run in this isolated
-branch: parent integration owns the centralized build. The manual strict C
-checks below are actual executed evidence; they are not Rust or desktop pass.
+Central Linux x86_64 integration has now built and executed this component.
+The scoped267-test batch and full2412-test workspace pass, including all1204
+original full-graph blocks through the actual Rust B0. Twelve standalone CLI
+flows also match every valid PCM output byte. The manual C evidence below is
+separate from those later Rust checks; neither installs a production effect.
+Windows x64 vector tests are enabled. GNU cross-Clippy passed, including the
+new FFI and test code, but actual Windows/MSVC execution remains a CI check.
 
 Official sources and actual processing order
 -------------------------------------------
@@ -134,9 +138,12 @@ sanitizer finding occurred. These checks do not execute Rust or libmpv.
 The frozen public full-graph receipts contain only synthetic PCM, flow,
 controls/action metadata, per-child output hashes and chosen sample prefixes;
 no DLL, raw original parameter/state blob, user audio or account data. The
-Rust integration tests are prepared to compare final interleaved PCM through
-the actual recovered B0, not merely the pre-limiter C result. Pending parent
-batch compilation/testing must be reported separately before claiming pass.
+Rust integration tests compare final interleaved PCM through the actual
+recovered B0, not merely the pre-limiter C result. The centralized run passed
+all32 flows/phases and1204 blocks. Complete output SHA is mandatory on every
+block; the compact optional raw prefixes are checked where present, with the
+exact selected-prefix counts retained. The original corpus was not rewritten
+to repair the initial test decoder's mistaken required-prefix assumption.
 
 The original full graph oracle is single-threaded x86_64 machine execution
 under the explicitly bounded VM OS/allocator/CRT-memory/synchronization
@@ -158,8 +165,11 @@ cargo run -p cumulus-core --example effects_local_fixed --locked -- \
 The explicit CLI reads bounded raw interleaved f32le stereo, validates the
 strict plan and real format constraints, drains actual EOF, and creates a new
 output file. It does not play through a sound device or create credentials.
-No output overwrite is allowed. This example is prepared but not executed in
-this isolated branch pending the centralized Rust build.
+No output overwrite is allowed. The actual built CLI ran12 synthetic cases:
+three rates ×two capacities ×fresh off/on. Its output was split at the original
+block boundaries and every valid-byte SHA matched the original complete SDK;
+all repeated output paths were refused without changing the file. Evidence:
+.build/ui-proof/phase61-local-fixed/fixed-cli-r1.json, binary source310b93fb.
 
 Additional complete-graph interaction receipts
 --------------------------------------------
@@ -177,6 +187,6 @@ sets remaining-tail to the inactive sentinel on fresh non-EOF data. Therefore
 new valid data followed by EOF can produce a new48000-frame tail, while
 Reset followed immediately by empty EOF remains a different sequence. The
 Rust final-B0 tests reuse one actual LocalFixedStereoMaterial for both phases.
-These added tests are prepared, not executed as Rust in this isolated tree.
-The executed C total is now1204 complete-graph blocks; source/reset/EOF/PCM
-comparisons still stop immediately before B0 and do not imply desktop pass.
+These added tests were executed successfully as Rust in the centralized batch,
+including the final B0 and same-instance reset/tail behavior. The independent
+C total1204 still stops before B0; it must not be described as a desktop pass.

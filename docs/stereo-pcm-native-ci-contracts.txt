@@ -56,6 +56,10 @@ recorded privately, not treated as a portable upstream binary signature.
 Python boundary tests cover archive links/traversal/duplicates/source bounds,
 wrong runtime version, HTTPS downgrade, and Windows GUI dispatch while the
 verified runtime exists. Existing native_smoke and diagnostics tests also pass.
-No new Cargo build, new Linux source GUI run, Windows execution or hosted CI
-success is claimed by this candidate. The root integration batch owns those
-checks and may merge the CI wiring only after its exact source GUI passes.
+The central integration subsequently built the current Rust/desktop and ran
+this exact source GUI mode successfully with that private1.5.0 library. Parent
+process-tree maps confirmed the actual private module/SHA21b9e7097e0bcd06cac94fb6d6eff8ec485752425eee71dccfc60c3a61a2945d,
+alongside system libmpv0.41.0. It retained all11 stages, exact tail/frame counts,
+same-entry controls and buffered revocation. Strict GNU cross-Clippy covers the
+Windows helper's type/layout code; actual Windows/MSVC loading and GUI still
+require the exact hosted CI. No hosted success is inferred from the local run.

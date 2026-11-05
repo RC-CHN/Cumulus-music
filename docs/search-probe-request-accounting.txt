@@ -1,8 +1,8 @@
 Sealed search probe request accounting
 
 The ordinary V3, HotExplain card, and carousel WebView probes now obtain the PC
-assignment through a genuine MusicHttpClient backed by a closed synthetic HTTP
-server. That backend verifies the actual EAPI body, official PC context and the
+assignment through a real MusicHttpClient backed by a closed synthetic
+HttpBackend. That backend verifies the actual EAPI body, official PC context and the
 same local credential used for synthetic account restoration. The full ordered
 assignment schema comes from pc_experiments_3_1_42.json, including its duplicates.
 
@@ -46,3 +46,8 @@ network-isolated real GTK/WebViews with screenshots: all 20 stages passed. This
 is reuse of an explicitly equivalent existing search product binary, not a new
 build of this Python-only patch. The eight validator unit cases independently
 exercise exact budgets and malformed/extra/unsigned trace rejection.
+
+The final integration then rebuilt native ux_ui_probe and the905-test frontend
+from source558436a2, and repeated all three search cases plus the four footer
+cohorts:20+14 states passed. The20 search screenshots were individually viewed.
+This later run no longer relies on the preserved older native executable.
