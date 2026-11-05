@@ -64,3 +64,9 @@ artist_card_smoke.py为生产dist/IPC/SQLite/libmpv/null、合成API/封面/WAV�
 实际最终轮次、截图人工范围、回归及检查结果见ui-ux-validation.txt。
 用户独立主页/私信、newSongArtist通知菜单、其他AB、全部DPI、真实CDN和Windows实机
 视觉继续审计；null输出不能证明实体声卡听感，虚拟runner不证明帧率。
+
+
+Linux 真实桌面合成验证：search_results_smoke.py --artist-top50 t0/t1 各
+覆盖七个状态和七张截图。最佳匹配和歌手 tab 常规卡片播放时核对完整请求体、
+原生首曲／下一首和队列顺序，点击原卡暂停／恢复不再取歌曲，读取失败保留
+先前播放和队列。返回恢复综合页。没有真实账号、实体声卡或 Windows 实窗结果。
