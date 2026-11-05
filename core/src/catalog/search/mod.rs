@@ -1,6 +1,7 @@
 //! Official PC search startup/suggestions: recovered M/623 and M/15.
 mod project;
 pub mod results;
+mod suggestion_marks;
 use crate::{Error, Result, protocol::api::Api};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -32,6 +33,21 @@ pub struct SearchWord {
     pub radio_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_receipt: Option<String>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchSuggestionWord {
+    #[serde(flatten)]
+    pub word: SearchWord,
+    pub label_parts: Vec<SearchSuggestionPart>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct SearchSuggestionPart {
+    pub text: String,
+    #[serde(rename = "match")]
+    pub marked: bool,
 }
 
 pub(crate) struct DefaultWord {
@@ -95,8 +111,8 @@ pub enum SearchDiscovery {
     },
     Suggestions {
         title: String,
-        recommended: Vec<SearchWord>,
-        suggestions: Vec<SearchWord>,
+        recommended: Vec<SearchSuggestionWord>,
+        suggestions: Vec<SearchSuggestionWord>,
     },
 }
 pub(crate) const CHART_ITEM_LIMIT: usize = 20;
@@ -122,9 +138,14 @@ pub async fn discover(api: Arc<dyn Api>, query: SearchDiscoveryQuery) -> Result<
 
 pub(crate) async fn discover_for<Fut: Future<Output = Result<bool>>>(
     api: &Arc<dyn Api>,
-    query: SearchDiscoveryQuery,
+    mut query: SearchDiscoveryQuery,
     audio_toplist: impl FnOnce() -> Fut,
 ) -> Result<SearchDiscovery> {
+    // Use the exact validated wire keyword for both the request and the
+    // local label matcher. Mark normalization never rewrites the request.
+    if let SearchDiscoveryQuery::Suggestions { keyword: text } = &mut query {
+        *text = keyword(text)?;
+    }
     let (path, args) = match &query {
         SearchDiscoveryQuery::Defaults => {
             let (words, refresh_ms) = fetch_default_words(api.as_ref()).await?;
@@ -163,7 +184,7 @@ pub(crate) async fn discover_for<Fut: Future<Output = Result<bool>>>(
         }
         SearchDiscoveryQuery::Suggestions { keyword: text } => (
             "/api/search/pc/suggest/keyword/get",
-            json!({"keyword":keyword(text)?}),
+            json!({"keyword":text}),
         ),
     };
     if matches!(&query, SearchDiscoveryQuery::Chart { id } if project::audio_chart(id)) {

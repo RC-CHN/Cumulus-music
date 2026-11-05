@@ -54,6 +54,28 @@ fn words(rows: &[Value], limit: usize) -> Vec<SearchWord> {
     rows.iter().filter_map(word).take(limit).collect()
 }
 
+fn suggestion_words(
+    rows: &[Value],
+    limit: usize,
+    matcher: &suggestion_marks::SuggestionMatcher,
+) -> Vec<SearchSuggestionWord> {
+    rows.iter()
+        .filter_map(word)
+        .take(limit)
+        .map(|word| {
+            let label_parts = matcher
+                .parts(&word.label)
+                .into_iter()
+                .map(|part| SearchSuggestionPart {
+                    text: part.text.to_owned(),
+                    marked: part.marked,
+                })
+                .collect();
+            SearchSuggestionWord { word, label_parts }
+        })
+        .collect()
+}
+
 pub(super) fn default_words(response: &Value) -> Result<(Vec<DefaultWord>, u64)> {
     let data = &response["data"];
     if !data.is_object() {
@@ -223,10 +245,13 @@ pub(super) fn discovery(
                 .collect::<Result<Vec<_>>>()?;
             SearchDiscovery::ChartSongs { ids }
         }
-        SearchDiscoveryQuery::Suggestions { .. } => SearchDiscovery::Suggestions {
-            title: text(&d["recTitle"]).unwrap_or_else(|| "猜你想搜".into()),
-            recommended: words(array(&d["recs"])?, 10),
-            suggestions: words(array(&d["suggests"])?, 20),
-        },
+        SearchDiscoveryQuery::Suggestions { keyword } => {
+            let matcher = suggestion_marks::SuggestionMatcher::new(&keyword);
+            SearchDiscovery::Suggestions {
+                title: text(&d["recTitle"]).unwrap_or_else(|| "猜你想搜".into()),
+                recommended: suggestion_words(array(&d["recs"])?, 10, &matcher),
+                suggestions: suggestion_words(array(&d["suggests"])?, 20, &matcher),
+            }
+        }
     })
 }

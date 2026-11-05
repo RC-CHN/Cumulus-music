@@ -85,7 +85,11 @@ impl Api for Backend {
                     json!({"songs":[{"song":{"id":88,"url":"PRIVATE"}},{"song":{"id":"67"}},{"song":{"id":88}}]})
                 }
                 "/api/search/pc/suggest/keyword/get" => {
-                    json!({"recTitle":"猜你想搜","recs":[{"keyword":"推荐建议"}],"suggests":[{"keyword":"联想词","name":"显示名称","cookie":"PRIVATE"}]})
+                    json!({
+                        "recTitle":"猜你想搜",
+                        "recs":[{"keyword":"推荐建议","name":"合成：组合词与樂隊、乐队"}],
+                        "suggests":[{"keyword":"联想词","name":"显示名称：乐队","cookie":"PRIVATE"}]
+                    })
                 }
                 _ => return Err(Error::Response("unexpected search fixture request")),
             };
@@ -135,7 +139,7 @@ async fn official_pc_search_shapes_remain_typed_and_do_not_expose_tracking_or_ur
             id: "HOT_SEARCH_SONG#@#".into(),
         },
         Q::Suggestions {
-            keyword: " 组合词 ".into(),
+            keyword: " 组合词 樂隊 ".into(),
         },
     ];
     let mut values = vec![];
@@ -147,7 +151,35 @@ async fn official_pc_search_shapes_remain_typed_and_do_not_expose_tracking_or_ur
     assert_eq!(values[0]["value"]["refreshMs"], 2000);
     assert_eq!(values[1]["value"]["words"].as_array().unwrap().len(), 2);
     assert_eq!(values[2]["value"]["charts"].as_array().unwrap().len(), 1);
-    assert_eq!(values[4]["value"]["suggestions"][0]["label"], "显示名称");
+    for word in [
+        &values[0]["value"]["words"][0],
+        &values[1]["value"]["words"][0],
+        &values[2]["value"]["charts"][0]["items"][0],
+    ] {
+        assert!(word.is_object());
+        assert!(word.get("labelParts").is_none());
+    }
+    let suggestions = &values[4]["value"]["suggestions"][0];
+    assert_eq!(suggestions["label"], "显示名称：乐队");
+    assert_eq!(suggestions["keyword"], "联想词");
+    assert_eq!(
+        suggestions["labelParts"],
+        json!([
+            {"text":"显示名称：","match":false},
+            {"text":"乐队","match":true}
+        ])
+    );
+    let recommended = &values[4]["value"]["recommended"][0];
+    assert_eq!(recommended["keyword"], "推荐建议");
+    assert_eq!(
+        recommended["labelParts"],
+        json!([
+            {"text":"合成：","match":false},
+            {"text":"组合词","match":true},
+            {"text":"与樂隊、","match":false},
+            {"text":"乐队","match":true}
+        ])
+    );
     let encoded = serde_json::to_string(&values).unwrap();
     assert!(
         !encoded.contains("PRIVATE")
@@ -155,11 +187,12 @@ async fn official_pc_search_shapes_remain_typed_and_do_not_expose_tracking_or_ur
             && !encoded.contains("bizQueryInfo")
     );
     let calls = api.calls.lock().unwrap();
+    assert_eq!(calls.len(), 5);
     assert_eq!(
         calls[4],
         (
             "/api/search/pc/suggest/keyword/get".into(),
-            json!({"keyword":"组合词"})
+            json!({"keyword":"组合词 樂隊"})
         )
     );
     assert_eq!(calls[1].1, json!({"lastQuery":"上次输入"}));

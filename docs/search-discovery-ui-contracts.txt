@@ -156,10 +156,31 @@ Linux WebView 通过 53 个检查点和截图；记录在 .build/search-audio-ra
 提示和重试。search_smoke.py --exact-fallback 验证普通建议、只有推荐及全部为空。
 
 搜索建议的关键词标记
-官方 M623:610–616 调用 M87 的 MarkText，M123:62–86 对每个标签最多标记100处。
-Cumulus 复用已有的有界字面匹配，保留原显示文本、浮层强调色和提交词；不在没有
-命中时输出空标记。未移植官方全量字形映射或分词规则。
-search_smoke.py --suggestion-matches 可验证重复命中、特殊符号和原样显示。
+官方 3.1.42.205594 hybrid_app chunk 的 M623:608–616、743–765 对普通建议和推荐
+建议使用同一个 M87.b MarkText；M87:10–30 使用 M123.d 的文字片段。M123:47–61
+先对查询做 ECMAScript trim、空白合并、整体小写，再把 FF00–FFFF 单位减 FEE0，
+并按两段内置 BMP 表从繁到简取首索引。标签仅 trim，保持其大小写和字形。
+随后 trim、合并 ASCII 空格，转义字面符号，只把第一个空格变为分支：例如
+“A B C”匹配 A 或完整的“B C”，并不做语言学分词。M123:62–93 以非 Unicode
+/gi 的大小写规则从左向右取首个分支的非重叠命中，每标签最多 100 个标记，
+保留最后的普通文本。
+Cumulus 在现有 /api/search/pc/suggest/keyword/get 的响应投影中仅给两组建议增加
+labelParts[{text,match}]。使用同一个已验证的请求词做本地标记，原请求体、标题、
+标签、提交词与普通结果、默认词和榜单的既有投影不变。WebView 用文字插值和 mark
+显示片段。保留既有 256 Unicode scalar/控制字符输入校验及 10/20 组大小限制。
+宽度转换只剩空表达式时显示普通文本；原 JS 此时会产生 100 个空标记。
+孤立 UTF-16 surrogate（含标记单独一半）不属于 Rust/IPC 的有效文字输入。
+合规配对为 2359 个源位置、2351 个首胜有效字对（8 个冲突重复），派生紧凑表
+仅 9404 bytes；不是通用简繁词典。原工厂实跑确认全部 2351 对映射及 33 个
+Unicode scalar 用例（30 个同片段、3 个有意安全边界），另 3 个不支持的 UTF-16
+样例作为负边界保存。范围由
+core/tests/fixtures/search-suggestion-marks-official.manifest.json 的原文件、数据、
+脚本哈希固定。手动复现用固定 Node 24.16.0 执行
+scripts/research/freeze_search_suggestion_marks.cjs <recovered-module-dir> <new-output-dir>：
+执行原 M123/M87、静态固定 M623，未运行完整原 CEF，不证明其他 Unicode 版本
+逐字一致。公开 Rust 测试读取合成冻结向量，不需要恢复包或真实服务。
+search_smoke.py --suggestion-matches 是既有重复命中、特殊符号、原样显示的 GUI
+回归；它不单独覆盖全量字形表。
 
 搜索建议的鼠标与键盘接续
 官方 SearchBox/view/searchResultsItems.jsx:126–127 和 M623:363–390、694–770

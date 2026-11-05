@@ -1,0 +1,26 @@
+{
+  "schema": "cumulus-search-suggestion-marks-original-v1",
+  "factorySha256": {
+    "87": "cf48fb051c00eda4d9fdb6a0ebc3ab29ac8e904000943b47cfa7d6d01d3f5c56",
+    "123": "49c9a38bbf1fd1ebbe9808210034fa897176f9011607c0a8bd374ac9240c3015",
+    "623": "bdefea2ef4fadab00afef5371b38957045629748a081d1b0ffe2748c925989aa"
+  },
+  "source": "Official PC 3.1.42.205594 recovered hybrid_app chunk, M123/M87; M623 static route only",
+  "generatorSha256": "6503c3c0433cdc0f048996557255328de62d2aaf9a51949882748920a0decf4e",
+  "oracleNode": "v24.16.0",
+  "oracleUnicode": "17.0",
+  "table": {
+    "sha256": "c0a3edfb032d738e6a0e8da54d5b4fe8bf11614f31fec2ea2abd9676bd8ac4ed",
+    "bytes": 9404,
+    "encodedAs": "sorted u16 little-endian source/target pairs",
+    "sourcePositions": 2359,
+    "uniquePairs": 2351,
+    "ignoredDuplicates": 8,
+    "originalNormalizationComparisons": 2351
+  },
+  "vectors": {
+    "sha256": "10f7130cc29ba37406dae33aba5e263b538c909f4024c01a5e61865d6e902ee7",
+    "validScalarCases": 33,
+    "isolatedSurrogateCases": 3
+  }
+}
