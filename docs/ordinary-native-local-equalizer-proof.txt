@@ -1,0 +1,49 @@
+Ordinary native file / local equalizer actor probe
+=================================================
+
+The dedicated native_local_equalizer_probe example starts a real Tauri
+WebView with the production frontend, numeric locale setup and the
+production MusicClient. Its registry is a new isolated guest profile and
+its Api can only synthesize signed-out account reads; all other requests
+are rejected. On Linux start it with en_US.UTF-8 in the existing private
+Xvfb/D-Bus/network harness. The example checks that GTK startup retains the
+message locale while setting LC_NUMERIC to C.
+
+From a native handler after page load, the example applies a nonzero GEQ
+curve and bass/treble through the ordinary equalizer action, selects
+sequential mode, and calls play_native_open_files with the existing frozen
+synthetic FLAC (44.1 kHz, two channels, 16-bit, 1024-sample blocks,
+88207 frames, real seektable). No renderer pathname, new IPC, audio rights,
+fixture engine, or independent cold playback controller is used.
+
+The same concrete MpvEngine is wrapped only to report the bound native
+entry, acknowledged seek replacement, real processor observation and EOF.
+The initial EQ must persist and select the combined graph before .1s of
+source clock is observed. Pausing holds the clock, changing a band while
+paused retains the logical play, and a .5s seek replaces only the native
+entry on the held graph. Resuming must observe processing and then actual
+EOF on the replacement entry. The public timeline ends at the original
+source duration and the durable EQ record keeps the edit. The fixture does
+not enable SE or claim its one-second tail; the sealed cold source and DSP
+reference vectors cover that separately.
+
+A second fresh process uses the same verified FLAC library and source bytes
+but deliberately passes a different expected digest. The same actor route
+must select the existing native decoder without a local graph, preserve
+the user's EQ preference, pause, seek without a replacement receipt and
+reach the real stock EOF. The driver independently checks the native trace
+and durable-preference fields of both cases. These runs are not an argv or
+package-resource-path test; native_file_open_smoke remains the registered
+production entry test. They use null audio, no physical output.
+
+Build on the exact integration source with:
+  cargo build -p cumulus-desktop --example native_local_equalizer_probe --features custom-protocol --locked
+
+Run with a staged trusted 1.5.0 library and its expected digest:
+  GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- \
+    python3 scripts/ci/native_local_equalizer_smoke.py --binary ABS_PROBE \
+    --flac-library ABS_STAGE_FLAC --flac-sha256 PACKAGE_FLAC_SHA256 --root NEW_REPORT_ROOT
+Put the command in the established no-egress CI namespace; the Python
+launcher does not independently create one. An explicit --mpv-library can
+select the same verified package libmpv for a native runner, and
+--frontend-dist is only for an already built exact frontend snapshot.

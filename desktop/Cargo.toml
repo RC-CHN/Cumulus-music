@@ -200,6 +200,10 @@ name = "native_audio_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "native_local_equalizer_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "scroll_ui_probe"
 required-features = ["custom-protocol"]
 
