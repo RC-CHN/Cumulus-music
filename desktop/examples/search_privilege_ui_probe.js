@@ -40,8 +40,22 @@
   const footer = (name) => bar()?.querySelector(`button[aria-label="${name}"]`);
   const played = (epoch) => invoke('player_snapshot', { epoch });
   const membership = (epoch) => invoke('member_rights', { epoch, refresh: true });
+  const clock = (view) => ({
+    epoch: view.epoch, revision: view.revision, state: view.state,
+    playId: view.playId, entryId: view.entryId, trackId: view.track?.id ?? null,
+    position: view.position, nativeSeeking: view.nativeSeeking, queueRevision: view.queueRevision,
+    queueLen: view.queueLen, error: view.error,
+  });
+  const sameClock = (left, right) =>
+    left.epoch === right.epoch && left.state === right.state && left.playId === right.playId &&
+    left.entryId === right.entryId && left.trackId === right.trackId && left.position === right.position &&
+    left.nativeSeeking === right.nativeSeeking && left.queueRevision === right.queueRevision &&
+    left.queueLen === right.queueLen && left.error === right.error;
+  // The actor's regular native poll is every 200 ms. The pause reply can
+  // precede a final clock sample for already queued audio output.
+  const pauseQuietMs = 450;
   let step = 'startup', count = 0, epoch, baseline, focused, original, scrollTop, targetPanel;
-  let domCheckpoint;
+  let domCheckpoint, pausedClock, pauseSettlement;
   const refreshes = [];
 
   function layoutFrames(count) {
@@ -95,13 +109,11 @@
     const sameDom = domReady(live) && Math.abs(scrollTop - live.scrollTop) < 1;
     assert(sameDom,
       'native refresh preserves live search card, focus, scroll and route');
-    assert(native.state === 'paused' && native.playId === baseline.playId &&
-      native.entryId === baseline.entryId && native.position === baseline.position &&
-      native.queueRevision === baseline.queueRevision,
-      'search refresh must not change paused native playback');
+    pausedClock = { baseline, observed: clock(native) };
+    assert(sameClock(baseline, pausedClock.observed), 'search refresh must not change paused native playback');
     await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, {
       labels: labels(), focused: document.activeElement.getAttribute('aria-label'),
-      native, sameDom, scrollTop: panel().scrollTop,
+      native, sameDom, scrollTop: panel().scrollTop, pausedClock, pauseSettlement,
       quality: cardQuality(),
       rowKeys: [...panel().querySelectorAll('.search-track-card[data-result-key]')]
         .map((row) => row.dataset.resultKey),
@@ -117,15 +129,34 @@
     await invoke('play_selection', {
       epoch, selection: { kind: 'songs', ids: ['701', '702'], index: 0, quality: 'standard' },
     });
-    await wait(async () => {
-      const value = await played(epoch);
-      return value.state === 'playing' && value.position > .2;
-    }, 'actual native playback is advancing');
+    const originalClock = await wait(async () => {
+      const value = clock(await played(epoch));
+      const pause = footer('暂停');
+      return value.state === 'playing' && value.trackId === '701' && value.queueLen === 2 &&
+        value.playId && value.entryId && value.position > .2 && value.error === null &&
+        pause?.isConnected && !pause.disabled && value;
+    }, 'actual native playback is advancing and pause is available');
     footer('暂停').click();
+    step = 'paused_baseline';
+    let quietSince = 0;
+    let firstQuiet;
     baseline = await wait(async () => {
-      const value = await played(epoch);
-      return value.state === 'paused' && value.position > .2 && value;
-    }, 'native playback is paused');
+      const observed = clock(await played(epoch));
+      const expectedPause = observed.state === 'paused' && observed.nativeSeeking === false &&
+        observed.error === null && observed.epoch === originalClock.epoch && observed.trackId === '701' &&
+        observed.playId === originalClock.playId && observed.entryId === originalClock.entryId &&
+        observed.queueRevision === originalClock.queueRevision && observed.queueLen === originalClock.queueLen &&
+        Number.isFinite(observed.position) && observed.position > .2;
+      const now = performance.now();
+      if (!expectedPause || !firstQuiet || !sameClock(firstQuiet, observed)) {
+        firstQuiet = expectedPause ? observed : undefined;
+        quietSince = now;
+      }
+      pausedClock = { baseline: firstQuiet ?? null, observed, quietMs: now - quietSince };
+      return firstQuiet && now - quietSince >= pauseQuietMs &&
+        BigInt(observed.revision) - BigInt(firstQuiet.revision) >= 2n && observed;
+    }, 'native paused clock did not settle across two actor polls');
+    pauseSettlement = { first: pausedClock.baseline, quietMs: pausedClock.quietMs };
 
     // Initial authoritative observation occurs before the search listener is attached.
     await membership(epoch);
@@ -235,6 +266,6 @@
     });
   } catch (error) {
     await emit('failed', { step, count, error: String(error), refreshes, labels: labels(),
-      domCheckpoint, currentDom: observeDom() });
+      domCheckpoint, currentDom: observeDom(), pausedClock });
   }
 })();

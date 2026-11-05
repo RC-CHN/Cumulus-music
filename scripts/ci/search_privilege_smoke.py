@@ -11,6 +11,13 @@ from window_manager import launch
 
 UNCHANGED = ('cold_restricted', 'changed_tuple', 'same_tuple', 'failed_privilege_read')
 STATES = (*UNCHANGED, 'play_all_refreshed')
+CLOCK_FIELDS = ('epoch', 'state', 'playId', 'entryId', 'position', 'nativeSeeking',
+                'queueRevision', 'queueLen', 'error')
+
+
+def clock(view):
+    return {**{key: view[key] for key in (*CLOCK_FIELDS, 'revision')},
+            'trackId': view['track']['id']}
 
 
 def read(path):
@@ -73,13 +80,22 @@ def main():
     assert rows['failed_privilege_read']['refreshes'] == [
         *changed['refreshes'], {'ok': False, 'fromNativeObservation': True},
     ]
+    baseline = first['pausedClock']['baseline']
+    settlement = first['pauseSettlement']
+    assert settlement['quietMs'] >= 450
+    assert int(baseline['revision']) - int(settlement['first']['revision']) >= 2
+    assert baseline['state'] == 'paused' and baseline['trackId'] == '701' and baseline['queueLen'] == 2
+    assert baseline['position'] > .2 and baseline['nativeSeeking'] is False and baseline['error'] is None
     for name in UNCHANGED:
         row = rows[name]
         assert row['sameDom'] and row['scrollTop'] == first['scrollTop'] > 0
         assert row['rowKeys'] == first['rowKeys'] and row['focused'] == first['focused']
-        assert row['native']['state'] == 'paused'
-        for field in ('playId', 'entryId', 'queueRevision', 'position'):
-            assert row['native'][field] == first['native'][field]
+        observed = clock(row['native'])
+        assert row['pausedClock'] == {'baseline': baseline, 'observed': observed}
+        assert row['pauseSettlement'] == settlement
+        assert int(observed['revision']) >= int(baseline['revision'])
+        for field in (*CLOCK_FIELDS, 'trackId'):
+            assert observed[field] == baseline[field] == settlement['first'][field]
     played = rows['play_all_refreshed']
     assert played['playAllIds'] == [str(i) for i in range(601, 607)]
     assert played['native']['track']['id'] == '601' and played['native']['position'] > .15
@@ -91,7 +107,8 @@ def main():
     assert screenshots == (len(STATES) if args.screenshots else 0)
     report = dict(ok=True, actualWebView=True, nativeNullPlaybackVerified=True,
                   platform='windows' if windows else 'linux', screenshots=screenshots,
-                  states=STATES, fixture=fixture, realAccountWrites=0, realMusicRequests=0)
+                  states=STATES, fixture=fixture, pausedClockBaseline=baseline, pauseSettlement=settlement,
+                  realAccountWrites=0, realMusicRequests=0)
     (root / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
 
