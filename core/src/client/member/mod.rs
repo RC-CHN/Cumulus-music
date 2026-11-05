@@ -7,7 +7,7 @@ use super::{MusicClient, dto::AccountData, mapping};
 use crate::{
     Error, Result,
     account::SessionToken,
-    membership::{MembershipManager, Quality, center::MemberCenter},
+    membership::{MembershipLifecycle, MembershipManager, Quality, center::MemberCenter},
 };
 pub use dto::*;
 pub use offer::MemberCardOffer;
@@ -18,6 +18,7 @@ pub use sign::{
     MemberSignAction, MemberSignCard, MemberSignCommand, MemberSignDetail, MemberSignOutcome,
     MemberSignPhase,
 };
+use std::sync::Arc;
 pub(super) use welfare::MemberWelfareHost;
 pub use welfare::MemberWelfareView;
 
@@ -28,6 +29,20 @@ fn revision(page: &MemberPage) -> Result<String> {
     Ok(hex::encode(Sha256::digest(serde_json::to_vec(page)?)))
 }
 impl MusicClient {
+    async fn membership_manager(&self) -> Result<Arc<MembershipManager>> {
+        self.membership
+            .get_or_try_init(|| async {
+                MembershipManager::new(self.session.clone()).map(Arc::new)
+            })
+            .await
+            .cloned()
+    }
+
+    /// Native shell only: the worker waits for a verified authenticated account.
+    pub async fn start_membership_lifecycle(&self) -> Result<MembershipLifecycle> {
+        MembershipLifecycle::start(self.session.clone(), self.membership_manager().await?)
+    }
+
     fn member_token(&self, epoch: &str) -> Result<SessionToken> {
         let token = self.session.token()?;
         if token.generation.to_string() != epoch {
@@ -42,11 +57,14 @@ impl MusicClient {
         refresh: bool,
     ) -> Result<AccountData<MemberRightsView>> {
         let token = self.member_token(epoch)?;
-        let manager = MembershipManager::new(self.session.clone())?;
         let snapshot = if refresh {
-            manager.refresh_for(token.clone()).await?
+            self.membership_manager()
+                .await?
+                .refresh_for(token.clone())
+                .await?
         } else {
-            manager.snapshot()?
+            // Other native readers also commit the shared SQLite record.
+            MembershipManager::new(self.session.clone())?.snapshot()?
         };
         let s = &snapshot.state;
         let entitlements = [

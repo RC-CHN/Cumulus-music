@@ -136,6 +136,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                     system_media::stop(window.app_handle());
                     shortcuts::stop(window.app_handle());
                     renewal::stop(window.app_handle());
+                    member::stop_lifecycle(window.app_handle());
                     messages::counts::stop(window.app_handle());
                     for (label, child) in window.app_handle().webview_windows() {
                         if label.starts_with("captcha-") {
@@ -631,6 +632,9 @@ pub fn run() {
             shortcuts::install(app.handle());
             desktop_lyrics::start(app.handle());
             renewal::start(app.handle());
+            if member::start_lifecycle(app.handle()).is_err() {
+                eprintln!("Cumulus membership refresh is unavailable.");
+            }
             #[cfg(target_os = "linux")]
             if let Some(listener) = relay_listener
                 && native_open::linux::install(app.handle(), listener).is_err()

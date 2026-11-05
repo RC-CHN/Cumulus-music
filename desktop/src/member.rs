@@ -2,6 +2,30 @@ use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, dto::*},
 };
+#[derive(Default)]
+pub(crate) struct LifecycleHost(
+    std::sync::Mutex<Option<cumulus_core::membership::MembershipLifecycle>>,
+);
+
+pub(crate) fn start_lifecycle<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> cumulus_core::Result<()> {
+    use tauri::Manager;
+    let client = app.state::<MusicClient>();
+    let owner = tauri::async_runtime::block_on(client.start_membership_lifecycle())?;
+    app.manage(LifecycleHost(std::sync::Mutex::new(Some(owner))));
+    Ok(())
+}
+
+pub(crate) fn stop_lifecycle<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    use tauri::Manager;
+    if let Some(host) = app.try_state::<LifecycleHost>()
+        && let Ok(mut owner) = host.0.lock()
+    {
+        drop(owner.take());
+    }
+}
+
 #[tauri::command]
 pub async fn member_welfare_available(
     client: tauri::State<'_, MusicClient>,

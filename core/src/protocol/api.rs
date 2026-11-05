@@ -227,6 +227,11 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async { Ok(false) })
     }
 
+    /// Optional native credential version used by authoritative membership reads.
+    fn membership_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Profile revision used to fence native search privilege receipts.
     fn search_privilege_credential_revision(&self) -> Result<Option<String>> {
         Ok(None)

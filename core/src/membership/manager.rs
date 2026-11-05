@@ -11,7 +11,10 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
 
 #[derive(Clone, Serialize, Deserialize)]
 pub(super) struct Record {
@@ -51,6 +54,7 @@ struct Cached {
     record: Record,
     anchor: f64,
     token: SessionToken,
+    credentials: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,12 +66,31 @@ pub struct MembershipSnapshot {
     pub refresh_after_ms: Option<f64>,
 }
 
+#[derive(Clone)]
+pub(crate) struct MembershipCommit {
+    pub(crate) token: SessionToken,
+    pub(crate) expiries: [f64; 5],
+    pub(crate) server_now: f64,
+    pub(crate) at: tokio::time::Instant,
+}
+
+pub(super) fn expiries(state: &MembershipState) -> [f64; 5] {
+    [
+        state.vinyl_vip_expire_time,
+        state.plus_vip_expire_time,
+        state.music_package_expire_time,
+        state.album_vip_expire_time,
+        state.voice_book_vip_expire_time,
+    ]
+}
+
 pub struct MembershipManager {
     session: Arc<AccountSession>,
     store: Arc<StateStore>,
     clock: Arc<dyn MembershipClock>,
     state: Mutex<Option<Cached>>,
     refresh_gate: tokio::sync::Mutex<()>,
+    completed: AtomicU64,
 }
 impl MembershipManager {
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
@@ -84,6 +107,7 @@ impl MembershipManager {
             clock,
             state: Mutex::new(None),
             refresh_gate: tokio::sync::Mutex::new(()),
+            completed: AtomicU64::new(0),
         })
     }
     fn token(&self) -> Result<SessionToken> {
@@ -113,12 +137,35 @@ impl MembershipManager {
         self.refresh_for(self.token()?).await
     }
     pub(crate) async fn refresh_for(&self, token: SessionToken) -> Result<MembershipSnapshot> {
+        let observed = self.completed.load(Ordering::Acquire);
         let _guard = self.refresh_gate.lock().await;
         let api = self.session.native_api(&token)?;
+        let credentials = api.membership_credential_revision()?;
+        if observed != self.completed.load(Ordering::Acquire) {
+            let clock = self.clock.now()?.validate()?;
+            let current = self.session.with_verified_profile(&token, &api, |_, _| {
+                let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+                state
+                    .as_ref()
+                    .filter(|cached| cached.token == token && cached.credentials == credentials)
+                    .map(|cached| Self::snapshot_from(cached, clock.monotonic_seconds))
+                    .transpose()
+            })?;
+            if let Some(current) = current {
+                return Ok(current);
+            }
+        }
+        let expected_api = &api;
+        let expected_credentials = credentials.as_deref();
         let data = self
             .session
-            .run_for(&token, |api, uid| async move {
-                MembershipApi::new(api).info(Some(&json!(uid))).await
+            .run_for(&token, |current, uid| async move {
+                if !Arc::ptr_eq(expected_api, &current)
+                    || current.membership_credential_revision()?.as_deref() != expected_credentials
+                {
+                    return Err(Error::StaleResponse);
+                }
+                MembershipApi::new(current).info(Some(&json!(uid))).await
             })
             .await?;
         let now = data["now"]
@@ -137,40 +184,50 @@ impl MembershipManager {
             server_ms: now,
             wall: clock.wall_seconds,
         };
-        let snapshot = self.session.with_token(&token, |uid| {
-            let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-            let candidate = Cached {
-                record,
-                anchor: clock.monotonic_seconds,
-                token: token.clone(),
-            };
-            let snapshot = Self::snapshot_from(&candidate, clock.monotonic_seconds)?;
-            self.store.put(
-                uid,
-                "membership",
-                "current",
-                &serde_json::to_value(&candidate.record)?,
-            )?;
-            *state = Some(candidate);
-            Ok(snapshot)
-        })?;
-        // Official M/3095 watches these five booleans and vipUserId only.
+        let candidate = Cached {
+            record,
+            anchor: clock.monotonic_seconds,
+            token: token.clone(),
+            credentials: credentials.clone(),
+        };
+        let snapshot = Self::snapshot_from(&candidate, clock.monotonic_seconds)?;
         let rights = &snapshot.state;
-        self.session.observe_membership(
+        let commit = MembershipCommit {
+            token: token.clone(),
+            expiries: expiries(rights),
+            server_now: snapshot.server_now,
+            at: tokio::time::Instant::now(),
+        };
+        // M/3095 watches active booleans and vipUserId, not dates.
+        let tuple = (
+            [
+                rights.is_album_vip,
+                rights.is_plus_vip,
+                rights.is_vinyl_vip,
+                rights.is_music_package,
+                rights.is_voice_book_vip,
+            ],
+            rights.user_id.clone(),
+        );
+        self.session.commit_membership(
             &token,
             &api,
-            (
-                [
-                    rights.is_album_vip,
-                    rights.is_plus_vip,
-                    rights.is_vinyl_vip,
-                    rights.is_music_package,
-                    rights.is_voice_book_vip,
-                ],
-                rights.user_id.clone(),
-            ),
-            snapshot.server_now,
+            credentials.as_deref(),
+            commit,
+            tuple,
+            |uid| {
+                let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+                self.store.put(
+                    uid,
+                    "membership",
+                    "current",
+                    &serde_json::to_value(&candidate.record)?,
+                )?;
+                *state = Some(candidate);
+                Ok(())
+            },
         )?;
+        self.completed.fetch_add(1, Ordering::Release);
         Ok(snapshot)
     }
     fn view(&self) -> Result<(SessionToken, MembershipSnapshot, [bool; 5])> {
@@ -188,6 +245,7 @@ impl MembershipManager {
                     record,
                     anchor: clock.monotonic_seconds,
                     token: token.clone(),
+                    credentials: None,
                 });
             }
             let cached = state

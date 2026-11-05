@@ -1,3 +1,5 @@
+#[path = "support/membership_lifecycle.rs"]
+mod lifecycle;
 mod support;
 use cumulus_core::{
     Error, Result,

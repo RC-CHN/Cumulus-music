@@ -7,6 +7,7 @@ mod policy;
 use super::{artist_onboarding::ArtistLogin, identity::VerifiedAccount, login_policy::LoginNotice};
 use crate::{
     Error, Result,
+    membership::MembershipCommit,
     protocol::api::{Api, identifier},
     storage::{StateStore, StateTransaction},
 };
@@ -67,6 +68,7 @@ struct SessionState {
     changes: tokio::sync::watch::Sender<SessionToken>,
     membership: Option<ObservedMembership>,
     membership_changes: tokio::sync::watch::Sender<Option<MembershipObservation>>,
+    membership_commits: tokio::sync::watch::Sender<Option<MembershipCommit>>,
 }
 
 impl SessionState {
@@ -131,6 +133,7 @@ impl AccountSession {
                 changes,
                 membership: None,
                 membership_changes: tokio::sync::watch::channel(None).0,
+                membership_commits: tokio::sync::watch::channel(None).0,
             }),
             store,
             policy: Default::default(),
@@ -165,29 +168,48 @@ impl AccountSession {
             .map(|entry| entry.observation.revision.clone()))
     }
 
-    pub(crate) fn observe_membership(
+    pub(crate) fn subscribe_membership_commits(
+        &self,
+    ) -> Result<tokio::sync::watch::Receiver<Option<MembershipCommit>>> {
+        Ok(self.lock()?.membership_commits.subscribe())
+    }
+
+    pub(crate) fn commit_membership<T>(
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,
+        credentials: Option<&str>,
+        commit: MembershipCommit,
         tuple: ([bool; 5], String),
-        server_now: f64,
-    ) -> Result<()> {
+        persist: impl FnOnce(&str) -> Result<T>,
+    ) -> Result<T> {
         let mut state = self.lock()?;
         state.require(token)?;
-        if !Arc::ptr_eq(&state.api, api) {
+        if !Arc::ptr_eq(&state.api, api)
+            || api.membership_credential_revision()?.as_deref() != credentials
+        {
             return Err(Error::StaleResponse);
         }
+        if state
+            .membership
+            .as_ref()
+            .is_some_and(|old| old.token == *token && commit.server_now < old.server_now)
+        {
+            return Err(Error::StaleResponse);
+        }
+        let uid = state.uid.as_deref().ok_or(Error::StaleResponse)?;
+        let value = persist(uid)?;
+        // Publishing the deadline is separate from the UI rights tuple. A
+        // shifted expiry can require rearming without changing any active flag.
         if let Some(old) = state
             .membership
             .as_mut()
             .filter(|entry| entry.token == *token)
         {
-            if server_now < old.server_now {
-                return Ok(());
-            }
             if tuple == old.tuple {
-                old.server_now = server_now;
-                return Ok(());
+                old.server_now = commit.server_now;
+                state.membership_commits.send_replace(Some(commit));
+                return Ok(value);
             }
         }
         let observation = MembershipObservation {
@@ -197,11 +219,12 @@ impl AccountSession {
         state.membership = Some(ObservedMembership {
             token: token.clone(),
             tuple,
-            server_now,
+            server_now: commit.server_now,
             observation: observation.clone(),
         });
+        state.membership_commits.send_replace(Some(commit));
         state.membership_changes.send_replace(Some(observation));
-        Ok(())
+        Ok(value)
     }
 
     /// Native lifecycle adapters can recover the concrete transport bound to
