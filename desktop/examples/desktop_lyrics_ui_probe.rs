@@ -91,8 +91,9 @@ fn main() {
     let reopened = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let embedded = std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some();
     let native_sidecar = std::env::var_os("CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF").is_some();
+    let credits = std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some();
     #[cfg(target_os = "linux")]
-    let original_messages = native_sidecar.then(|| {
+    let original_messages = (native_sidecar || credits).then(|| {
         // SAFETY: no GTK, runtime or worker has started in this process.
         assert!(!unsafe { libc::setlocale(libc::LC_ALL, c"".as_ptr()) }.is_null());
         assert!(!matches!(
@@ -105,6 +106,10 @@ fn main() {
     assert!(
         !(reopened && (embedded || native_sidecar)),
         "local lyric cases need a fresh profile"
+    );
+    assert!(
+        !credits || (!embedded && !native_sidecar && !reopened),
+        "credit proof requires fresh online fixture state"
     );
     let embedded_dir = embedded.then(|| {
         let directory = root.join("embedded-media");
@@ -156,7 +161,7 @@ fn main() {
     }));
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
-        let api=Arc::new(desktop_lyric_fixture::Library::default());
+        let api=Arc::new(desktop_lyric_fixture::Library::with_credit_proof(credits));
         let session=Arc::new(AccountSession::new(api.clone(),Some(registry.store())));
         let count=Arc::new(AtomicUsize::new(0));
         let factory_count=count.clone(); let wave=relay_fixture::wave(&root)?;
@@ -218,6 +223,15 @@ fn main() {
                 }
                 "hold" => { api.held.store(value["enabled"]==true, Ordering::Release); if value["enabled"]!=true {api.resume.notify_waiters();} ack(json!({"ok":true})); }
                 "offline" => { api.offline.store(value["enabled"]==true, Ordering::Release); ack(json!({"ok":true})); }
+                "omit_credits" => {
+                    assert!(credits);
+                    api.omit_credits.store(value["enabled"] == true, Ordering::Release);
+                    ack(json!({"ok":true}));
+                }
+                "credit_calls" => {
+                    assert!(credits);
+                    ack(json!({"value":&*api.credit_calls.lock().unwrap()}));
+                }
                 "index_embedded" => {
                     let directory=embedded_dir.as_ref().expect("embedded proof only").clone();
                     let handle=handle.clone();
@@ -311,6 +325,8 @@ fn main() {
             view.eval(format!("window.__nativeSidecarLyricProof={native_sidecar};")).unwrap();
             view.eval(if native_sidecar || std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some() {
                 include_str!("embedded_lyrics_ui_probe.js")
+            } else if std::env::var_os("CUMULUS_LYRIC_CREDIT_PROOF").is_some() {
+                include_str!("lyric_credit_ui_probe.js")
             } else if std::env::var_os("CUMULUS_FONT_PROOF").is_some() {
                 include_str!("fonts_ui_probe.js")
             } else { include_str!("desktop_lyrics_ui_probe.js") }).unwrap();

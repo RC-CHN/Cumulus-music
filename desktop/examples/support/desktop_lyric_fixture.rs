@@ -3,7 +3,10 @@ use cumulus_core::{
     protocol::api::{Api, ApiFuture},
 };
 use serde_json::{Value, json};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, AtomicUsize, Ordering},
+};
 #[derive(Default)]
 pub struct Library {
     base: super::mini_fixture::Library,
@@ -12,6 +15,17 @@ pub struct Library {
     pub held: AtomicBool,
     pub offline: AtomicBool,
     pub resume: tokio::sync::Notify,
+    credits: bool,
+    pub omit_credits: AtomicBool,
+    pub credit_calls: Mutex<Vec<Value>>,
+}
+impl Library {
+    pub fn with_credit_proof(credits: bool) -> Self {
+        Self {
+            credits,
+            ..Self::default()
+        }
+    }
 }
 struct Loading<'a>(&'a AtomicUsize);
 impl Drop for Loading<'_> {
@@ -23,7 +37,28 @@ impl Api for Library {
     fn request<'a>(&'a self, path: &'a str, args: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if path != "/api/song/lyric/v1" {
+                if self.credits
+                    && let Some(id) = path.strip_prefix("/api/w/v1/user/detail/")
+                    && matches!(id, "12" | "13" | "72" | "73")
+                {
+                    self.credit_calls
+                        .lock()
+                        .unwrap()
+                        .push(json!({"profile":id}));
+                    if matches!(id, "72" | "73") && args == json!({"all":true,"userId":id}) {
+                        return Ok(json!({"code":200,"profile":{
+                            "userId":id,"nickname":format!("合成署名主页 {id}")
+                        }}));
+                    }
+                    return Err(Error::Response("unexpected synthetic lyric credit profile"));
+                }
                 return self.base.request(path, args, cache).await;
+            }
+            if self.credits {
+                self.credit_calls
+                    .lock()
+                    .unwrap()
+                    .push(json!({"lyric":args}));
             }
             self.lyrics.fetch_add(1, Ordering::AcqRel);
             self.pending.fetch_add(1, Ordering::AcqRel);
@@ -33,6 +68,9 @@ impl Api for Library {
             }
             if self.offline.load(Ordering::Acquire) {
                 return Err(Error::Transport("synthetic lyric offline".into()));
+            }
+            if self.credits && self.omit_credits.load(Ordering::Acquire) && args["id"] == "1" {
+                return Ok(json!({"code":200,"transUser":null}));
             }
             let text = [
                 "云间音乐陪你走过每一个安静的夜晚",
@@ -70,9 +108,18 @@ impl Api for Library {
             let roman = (0..6)
                 .map(|i| format!("[00:{:02}.00]yun jian yin yue · {}\n", i * 4, i + 1))
                 .collect::<String>();
-            Ok(
-                json!({"code":200,"lrc":{"lyric":lrc},"tlyric":{"lyric":translated},"romalrc":{"lyric":roman},"yrc":{"lyric":yrc},"ytlrc":{"lyric":translated},"yromalrc":{"lyric":roman}}),
-            )
+            let mut value = json!({"code":200,"lrc":{"lyric":lrc},"tlyric":{"lyric":translated},"romalrc":{"lyric":roman},"yrc":{"lyric":yrc},"ytlrc":{"lyric":translated},"yromalrc":{"lyric":roman}});
+            if self.credits {
+                value["lrc"]["version"] = json!(7);
+                if args["id"] == "1" {
+                    value["lyricUser"] = json!({"id":12,"userid":72,"nickname":"合成 <歌词作者>","url":"https://invalid.example/never-project"});
+                    value["transUser"] = json!({"id":13,"userid":"73","nickname":"合成翻译作者","private":"never-project"});
+                } else if args["id"] == "2" {
+                    value["lyricUser"] =
+                        json!({"id":72,"userid":"../73","nickname":"合成无链接作者"});
+                }
+            }
+            Ok(value)
         })
     }
 }

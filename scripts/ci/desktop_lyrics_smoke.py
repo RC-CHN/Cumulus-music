@@ -14,9 +14,10 @@ def main():
     parser.add_argument('--frontend-dist', type=Path, help='optional production frontend snapshot for local comparison')
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    local = parser.add_mutually_exclusive_group()
-    local.add_argument('--embedded', action='store_true', help='Frozen local FLAC in both lyric surfaces')
-    local.add_argument('--native-sidecar', action='store_true', help='Open unindexed native WAV and show its nested sidecar in both lyric surfaces')
+    variant = parser.add_mutually_exclusive_group()
+    variant.add_argument('--embedded', action='store_true', help='Frozen local FLAC in both lyric surfaces')
+    variant.add_argument('--native-sidecar', action='store_true', help='Open unindexed native WAV and show its nested sidecar in both lyric surfaces')
+    variant.add_argument('--credits', action='store_true', help='Sealed ordinary vinyl lyric contributor flow')
     args = parser.parse_args()
     root = args.root.resolve()
     assert not root.exists(), 'new proof root required'
@@ -30,6 +31,8 @@ def main():
     if args.native_sidecar:
         env['CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF'] = '1'
     local = args.embedded or args.native_sidecar
+    if args.credits:
+        env['CUMULUS_LYRIC_CREDIT_PROOF'] = '1'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -39,7 +42,7 @@ def main():
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     total = 0
-    for phase in (['first'] if local else ['first', 'reopen']):
+    for phase in (['first'] if local or args.credits else ['first', 'reopen']):
         if phase == 'reopen':
             env['CUMULUS_PROOF_REOPEN'] = '1'
         output = root / phase
@@ -51,6 +54,45 @@ def main():
         complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
         assert complete['ok'] and complete['realMusicRequests'] == 0
         assert complete['mainVisible']
+        if args.credits:
+            paths = sorted(output.glob('ux_*.json'))
+            assert [p.stem for p in paths] == [
+                'ux_01_credits', 'ux_02_translation_off', 'ux_03_profile',
+                'ux_04_unlinked_credit', 'ux_05_cached_credits', 'ux_06_credits_cleared',
+            ]
+            stages = [json.loads(p.read_text(encoding='utf-8')) for p in paths]
+            first, off, profile, other, cached, cleared = stages
+            assert all(not s['overflow'] and not s['lyricWindows'] and
+                       s['nativePlayer']['playId'] == s['playId'] and
+                       s['nativePlayer']['state'] == 'paused' for s in stages)
+            assert first['translation'] and not off['translation']
+            assert first['credits'] == off['credits'] == cached['credits'] == [
+                {'kind': 'lyricContributor', 'text': '滚动歌词贡献者：合成 <歌词作者>',
+                 'button': True, 'timed': False},
+                {'kind': 'translationContributor', 'text': '翻译贡献者：合成翻译作者',
+                 'button': True, 'timed': False},
+            ]
+            assert profile['samePlayback'] and profile['profile'] == '73' and not profile['credits']
+            assert first['playId'] == off['playId'] == profile['playId'] != other['playId']
+            assert other['oldRejected'] and other['credits'] == [
+                {'kind': 'lyricContributor', 'text': '滚动歌词贡献者：合成无链接作者',
+                 'button': False, 'timed': False},
+            ]
+            assert cached['fromCache'] and cleared['lyricsPreserved'] and not cleared['credits']
+            assert cached['playId'] == cleared['playId'] not in [first['playId'], other['playId']]
+            assert complete['stageCount'] == len(stages) and complete['lyricRequests'] == 4
+            if sys.platform.startswith('linux'):
+                for stage in [*stages, complete]:
+                    locale = stage['locale']
+                    assert locale['numeric'] == 'C'
+                    assert locale['messages'] == locale['originalMessages'] not in ('C', 'POSIX')
+            assert [row['profile'] for row in complete['calls'] if 'profile' in row] == ['73']
+            assert [(row['lyric']['id'], row['lyric']['lv']) for row in complete['calls']
+                    if 'lyric' in row] == [('1', -1), ('2', -1), ('1', 7), ('1', 7)]
+            total += len(stages)
+            if args.screenshots:
+                assert len(list(output.glob('ux_*.png'))) == len(stages)
+            continue
         if local:
             stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
             assert [stage['surface'] for stage in stages] == ['main', 'lyric']
@@ -88,7 +130,7 @@ def main():
             assert len(list(output.glob('ux_*.png'))) == len(states)
         total += len(states)
     report = dict(ok=True, states=total, screenshots=total if args.screenshots else 0,
-                  actualWebViews=2, audioFactoryCount=complete['factoryCount'], playbackEngines=1,
+                  actualWebViews=1 if args.credits else 2, audioFactoryCount=complete['factoryCount'], playbackEngines=1,
                   deviceInspectors=complete['factoryCount'] - 1, realMusicRequests=0,
                   physicalAudioOutputVerified=False, physicalDisplayVerified=False)
     if args.embedded:
@@ -96,6 +138,8 @@ def main():
     if args.native_sidecar:
         report.update(nativeOpenSidecar=True, format='PCM WAV', sameNativePlayback=True,
                       localIndexUnchanged=True)
+    if args.credits:
+        report.update(lyricCredits=True, cachedFailure=True, freshOmission=True, sameNativePlayback=True)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
