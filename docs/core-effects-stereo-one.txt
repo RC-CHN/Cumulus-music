@@ -28,6 +28,58 @@ The component does not infer bypass from these controls: callers apply the
 explicit material enable value through set_bypass, preserving A8550 behavior.
 The standalone native object is initially enabled, as in A82B0/A80D0.
 
+Actual local-material eligibility (not downloaded preset entitlement)
+--------------------------------------------------------------------
+Recovered compiled sources are under modules/ in the pinned x64 analysis:
+ hybrid_app.chunk.1482700000000.js/{28,342}.js;
+ hybrid_53.chunk.1482700000000.js/3091.js.
+The readable original UI is packages/pc/src/pages/audio-effect/views/
+Equalizer.tsx in ui-recovery/sources.
+
+M28:249/434–454 creates EQUALIZER_AE=3 with isOn=true, isVipAudio=false and
+audioVipType undefined. M3091:1242–1252 selects only setting and AB; the
+AB changes spacing/width and old/new switching paths, not slider membership.
+M342:1724–1756's new switch path explicitly treats local EQUALIZER with no
+recommendId as native type2/path/isOpen, bypassing remote preset auth/stop.
+Thus the local equalizer_data material has no login/VIP prerequisite. That
+does not authorize downloaded sound-library materials or arbitrary sources.
+
+M3091:1278–1304 / Equalizer.tsx:140–168 constructs the entire OLD JSON schema:
+eq.on if any of ten gains is nonzero; bt.on if bass or treble is nonzero;
+rvb from the fixed local dropdown (None.off, other fixed entries.on);
+se.on if presence or stereoizer is nonzero, sshaper:true, ambience:1.
+It does not create an aev2 PEQ node or require a sound-material download.
+The controls commit on click/release; BT/SE same-value handlers return first.
+GEQ/preset/reset do not all share that no-op rule. Reset at :1429–1449 only
+clears BT/SE and keeps EQ/RVB. Environment selection :1687–1701 replaces RVB
+and reselects/enables the whole equalizer; its original name-vs-object guard
+is not a reliable same-name no-op. Save :1451–1465 persists a local custom
+GEQ slot and does not itself invoke this material write.
+
+Handlers call write() then activeEqualizer(); write's async function contains
+no await. Activation (M3091:1306–1320 -> M28:434–454) is therefore not an
+atomic 'write completed, then update setting' transaction. M342:1607–1642
+yield Storage.writeFile(JSON.stringify(content),webdata\\file\\equalizer_data);
+after completion it SELECTS THE CURRENT setting again and sends native
+{type:2,pathtype:2,path:webdata/file/equalizer_data,isOpen:current.isOn} only
+if the then-current type is EQUALIZER_AE. A user choosing another effect
+during the write must not be overwritten by an old completion. The original
+write effect has no local catch/rollback; community failure UI must not report
+successful activation for a failed or superseded write.
+
+M342:366–382 has separate source listenReg 2999/3999/5999/6999 suppression:
+it can send isOpen=false without changing persisted isOn. Because material
+write later re-reads setting, this one branch does not alone prove final native
+order always stays off. Full live attachment must use existing source guards
+and reconcile this ordering rather than taking 'free local' as always active.
+
+Native OLD-schema parsing/configuration EFB760 is in cloudmusic.dll, SHA256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493,
+not the DSP DLL above. Its eq/bt/se/rvb/rotate setter order is a configuration
+sequence, not PCM processing order (see core-effects-material-routing.txt).
+This evidence identifies the exact future slider material lane, without
+claiming that standalone SE1 alone is the full local equalizer chain.
+
 Typed initialization reuses the proven bank0/1 common EQ/dynamics constants.
 Bank1's side dynamics previous AND target input gain are 1dB. Bank0 starts
 with previous1dB but targets1.5dB after A85B0 changes bank: using its target
