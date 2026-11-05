@@ -85,7 +85,9 @@ NCM成品34828412字节；三项离线权限/完整性通过，临时目录全�
 
 尚未覆盖和平台边界
 普通歌曲是本报告初始范围；随后同一服务增加云盘原文件分支，见core-cloud-download-contracts.txt。
-MV/播客下载仍待迁移。已完成文件移动/删除/多索引更新已由completed模块与真实跨盘/恢复/
+后来已独立接入节目和 MV 的下载与管理；免费节目及已测 MV 有各自样本，见
+desktop-podcast-contracts.txt、desktop-mv-contracts.txt 和 desktop-download-contracts.txt。
+已完成文件移动/删除/多索引更新已由completed模块与真实跨盘/恢复/
 播放联动验证，见core-completed-files-contracts.txt。整目录协调与桌面任务UI也已接入并实测，
 分别见core-download-directory-contracts.txt和desktop-download-contracts.txt。
 当前只实际验证Linux，Windows/macOS未运行；要求文件系统支持同目录hard link。

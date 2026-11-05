@@ -58,7 +58,7 @@
 | `page:banners` (9) | `models/page_banners.txt` | [部分](discovery-home-contracts.txt) | 首页已证实的轮播；广告、跟踪和第三方回填未复刻。 |
 | `page:bind` (2) | `models/page_bind.txt` | [已接入口](account-binding-settings.txt) | 设置快捷标识、独立绑定页、按注册方式分组和官方 App 扫码交接；不接上游动态第三方地址，不在客户端内执行解绑、改密。 |
 | `page:cloudDisk` (1) | `models/page_cloudDisk.txt` | [已接入口](desktop-cloud-contracts.txt) | 实际云盘页面；手动重新匹配没有证据。 |
-| `page:comments` (3) | `models/page_comments.txt` | [已接入口](core-comments-contracts.txt) | 分页、楼层、赞和回读；富文本及平台差异待核。 |
+| `page:comments` (3) | `models/page_comments.txt` | [已接入口](core-comments-contracts.txt) | 分页、楼层、赞和回读；标准播放详情已接[内嵌读](vinyl-comments-contracts.txt)及[发表/回复](vinyl-comment-compose-contracts.txt)。富文本及平台差异待核。 |
 | `page:community` (0) | `models/page_community.txt` | [已接入口](community-read-contracts.txt) | 关注动态、列表和详情；不等于全部社区平台入口。 |
 | `page:dailyRecommend` (5) | `models/page_dailyRecommend.txt` | [已接入口](desktop-rankings-contracts.txt) | 日推和播放；生日及系统推送为独立分支。 |
 | `page:decorationSkin` (0) | `models/page_decorationSkin.txt` | [部分](desktop-decoration-contracts.txt) | 随包主题、在线目录和预览；远程安装和挂件未接。 |
@@ -115,7 +115,7 @@
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
 | `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、原地展开/收起、详情和移除；未对真实用户设备执行删除。 |
 | `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；普通歌曲来源预判、底栏跳歌命令及队尾规则有对照；未由正式播放器自动触发。 |
-| `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作、本地单行和普通在线歌单多选拖入；普通队列的[更多推荐](queue-more-recommendations.txt)已接自动补歌、开关、分隔和自然续播。同步、特殊队列和其他来源另验。 |
+| `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作、本地单行、普通在线歌单及[搜索单曲多选拖入](queue-drop-contracts.txt)；普通队列的[更多推荐](queue-more-recommendations.txt)已接自动补歌、开关、分隔和自然续播。同步、特殊队列和其他来源另验。 |
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | [Windows 播放防休眠](playback-keep-awake-contracts.txt)已接设备偏好与原生播放；其他系统和音效项分别核对。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |
 | `window:moveDownload` (3) | `models/window_moveDownload.txt` | [已接入口](core-download-directory-contracts.txt) | 任务锁定、搬移及恢复；平台文件系统故障另验。 |

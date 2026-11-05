@@ -105,3 +105,13 @@
 - [风格推荐返回](style-recommendations.txt)恢复原来显示的列表及标签，不自动刷新；旧种子页获得新播放版本。显式刷新仍向同一来源请求。
 - [登录设备列表](account-profile-devices.txt)保留前六台并原地展开，已退出的设备完整显示；详情退出后回到原行。未删除真实设备。
 - 此矩阵仍需在交付审计前细化到其余已恢复模型/动作和未核对的界面状态。尤其要逐个验证尚未复刻的发现页/会员分支、专有效果图、外部账号或 SDK 条件和 Windows 原生界面；不能用已覆盖的入口或测试数代替这些要求。
+
+
+以 2026-11-05 的开发提交 `9bbf21e6` 补充：
+
+- [歌手卡片](artist-card-ui-contracts.txt)按官方实验分组读 Top50 或普通歌曲列表；Linux 真实 WebView 核对两种请求、队列顺序和失败时保留当前播放。
+- [搜索单曲拖入](queue-drop-contracts.txt)通过 X11 真实指针输入验证多选顺序、落点、取消和原生暂停位置不变。
+- [播客断点](desktop-podcast-contracts.txt)与[有声书跳过片头尾](audiobook-skip-ui-contracts.txt)接到原生播放时钟；Linux 合成请求和实际解码均有记录，未用实服验证本次上报或算法样本。
+- [内嵌评论发表／回复](vinyl-comment-compose-contracts.txt)用真实 Linux WebView 验证当前歌曲约束、单次发送和丢回包后的独立页核对。没有使用真实账号公开发布。
+- [已登记的普通参数均衡旁路](effects-directory-desktop.txt)按已获授权的实际音质触发，下一次成功装载恢复。Linux 合成 PCM 和桌面控件均已复验，未扩大至整张专有效果图。
+- [下载批量页](download-batch-ui-contracts.txt)已覆盖实体删除和多选播放；批量移动不由单文件移动或整目录迁移代替。
