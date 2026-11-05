@@ -306,6 +306,11 @@ export function createTauriClient(): CoreClient {
     sceneFmAutoplayPreference: (epoch) => invoke('scene_fm_autoplay_preference', { epoch }),
     setSceneFmAutoplayPreference: (epoch, enabled) =>
       invoke('set_scene_fm_autoplay_preference', { epoch, enabled }),
+    sceneFmPaletteRead: (epoch, revision, voiceId, pixelRatio) =>
+      invoke('scene_fm_palette_read', { epoch, revision, voiceId, pixelRatio }),
+    sceneFmPaletteSample: (epoch, receipt, width, height, rgba) =>
+      invoke('scene_fm_palette_sample', { epoch, receipt, width, height, rgba }),
+    sceneFmPaletteCancel: (epoch, receipt) => invoke('scene_fm_palette_cancel', { epoch, receipt }),
     sceneFmView: (epoch, refresh) => invoke('scene_fm_view', { epoch, refresh }),
     sceneFmCommand: (epoch, command) => invoke('scene_fm_command', { epoch, command }),
     podcastState: (epoch, refresh) => invoke('podcast_state', { epoch, refresh }),

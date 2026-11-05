@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import { useSceneFmPalette } from '../composables/useSceneFmPalette';
+import { useCore } from '../services/core';
 import { useControlFocus } from '../composables/useControlFocus';
 import Icon from './Icon.vue';
 import type { SceneFmModel } from '../composables/useSceneFm';
@@ -19,6 +21,21 @@ const emit = defineEmits<{
 const { view, loading, busy, error } = props.model;
 const category = computed(() => view.value?.scenes.find((s) => s.id === view.value?.activeId));
 const panel = ref<HTMLElement>();
+const palette = useSceneFmPalette(useCore());
+watch(
+  () =>
+    [
+      props.epoch,
+      view.value?.revision,
+      view.value?.episode?.id,
+      view.value?.episode?.coverUrl,
+    ] as const,
+  ([epoch, revision, voiceId, coverKey]) => {
+    void palette.show({ epoch, revision, voiceId, coverKey }, window.devicePixelRatio || 1);
+  },
+  { immediate: true, flush: 'sync' },
+);
+onUnmounted(palette.dispose);
 const controlFocus = useControlFocus(
   () => props.epoch,
   () => panel.value,
@@ -89,7 +106,12 @@ async function openVoice() {
       <p>正在寻找好声音…</p>
     </div>
     <template v-else-if="view?.revision">
-      <div class="scene-fm-card">
+      <div
+        class="scene-fm-card"
+        :data-scene-fm-background-kind="palette.background.value.kind"
+        :data-scene-fm-palette-pending="palette.pending.value"
+        :style="{ '--scene-fm-background': palette.css.value }"
+      >
         <div class="scene-fm-top">
           <h2>随心听FM</h2>
           <span>{{ category?.label }}</span>
@@ -203,7 +225,7 @@ async function openVoice() {
 .scene-fm-card {
   max-width: 670px;
   border-radius: 14px;
-  background: linear-gradient(125deg, #59627f, #333950 75%, #493b55);
+  background: var(--scene-fm-background, var(--colorBlack8, var(--scene-fm-theme-fallback)));
   color: var(--on-accent);
   padding: 20px 24px;
   box-sizing: border-box;
