@@ -115,7 +115,22 @@ impl HttpBackend for ReadOnly {
                     return Err(Error::RequestNotSent(Box::new(error)));
                 }
             };
-            let response = self.backend.post(plan).await?;
+            let index = {
+                let mut observed = self.observed.lock().map_err(|_| Error::LockPoisoned)?;
+                let index = observed.calls.len();
+                observed
+                    .calls
+                    .push(json!({"path":path,"outcome":"dispatched"}));
+                index
+            };
+            let response = match self.backend.post(plan).await {
+                Ok(response) => response,
+                Err(error) => {
+                    self.observed.lock().map_err(|_| Error::LockPoisoned)?.calls[index]["failure"] =
+                        json!(failure(&error));
+                    return Err(error);
+                }
+            };
             let bytes = if encrypted {
                 eapi::decrypt_response(&response.body).ok()
             } else {
@@ -124,7 +139,7 @@ impl HttpBackend for ReadOnly {
             let parsed =
                 serde_json::from_slice::<Value>(bytes.as_deref().unwrap_or(&response.body)).ok();
             let mut observed = self.observed.lock().map_err(|_| Error::LockPoisoned)?;
-            observed.calls.push(json!({"path":path,"httpStatus":response.status,"code":parsed.as_ref().and_then(|v|v["code"].as_i64())}));
+            observed.calls[index] = json!({"path":path,"httpStatus":response.status,"code":parsed.as_ref().and_then(|v|v["code"].as_i64())});
             if path == ASSIGNMENT_PATH
                 && let Some(groups) = parsed
                     .as_ref()
@@ -302,6 +317,14 @@ async fn verify(source: &Path, output: &Path) -> Result<Value> {
                         report["songCount"] = json!(songs);
                         report["hintCount"] = json!(hints);
                         report["reasonCount"] = json!(reasons);
+                        let footer = transport
+                            .observed
+                            .lock()
+                            .map_err(|_| Error::LockPoisoned)?
+                            .groups
+                            .map(|groups| groups[3]);
+                        report["footerProjectionConsistent"] =
+                            json!(footer.is_some_and(|enabled| enabled || hints + reasons == 0));
                     }
                     Err(error) => report["searchFailure"] = json!(failure(&error)),
                 },
@@ -412,7 +435,7 @@ mod tests {
             .query_row("SELECT value FROM evidence", [], |row| row.get(0))
             .unwrap();
         assert_eq!(value, "synthetic committed WAL");
-        let count: u64 = original
+        let count: i64 = original
             .query_row("SELECT count(*) FROM evidence", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
