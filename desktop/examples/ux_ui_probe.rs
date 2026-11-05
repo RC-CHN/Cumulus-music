@@ -188,6 +188,29 @@ fn playlist(id: u64) -> Value {
     ))
 }
 impl Api for Library {
+    fn pc_presentation_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        self.signed_search.as_ref().map_or_else(
+            || self.verified_pc_experiment_revision(),
+            |signed| signed.client.pc_presentation_credential_revision(),
+        )
+    }
+    fn pc_presentation_credential_changes(
+        &self,
+    ) -> cumulus_core::Result<Option<tokio::sync::watch::Receiver<String>>> {
+        self.signed_search.as_ref().map_or(Ok(None), |signed| {
+            signed.client.pc_presentation_credential_changes()
+        })
+    }
+    fn pc_presentation_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
+        if let Some(signed) = self.signed_search.as_ref() {
+            signed.client.pc_presentation_groups(revision)
+        } else {
+            self.verified_pc_experiment_groups(revision)
+        }
+    }
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
         let existing = vinyl_comments_fixture::group()
             .or_else(vinyl_similar_fixture::revision)
@@ -818,6 +841,7 @@ fn main() {
     let queue_ui_proof = std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some();
     let search_footer_ui_proof = std::env::var_os("CUMULUS_SEARCH_FOOTER_UI_PROOF").is_some();
     assert!(!search_footer_ui_proof || (motion_proof && search_fixture::hot_playback_enabled()));
+    assert!(!search_signed_fixture::presentation_enabled() || search_footer_ui_proof);
     assert!(!vinyl_similar_fixture::enabled() || (queue_ui_proof && motion_proof));
     let queue_click_proof = std::env::var_os("CUMULUS_QUEUE_CLICK_PROOF").is_some();
     assert!(!queue_click_proof || (queue_ui_proof && motion_proof));
@@ -1007,6 +1031,9 @@ fn main() {
         app.manage(cumulus_desktop::effect_activation::Host::new(&app.path().resource_dir()?));
         system_master_volume_fixture::install(app);
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
+        if search_signed_fixture::presentation_enabled() {
+            cumulus_desktop::pc_presentation::start(app.handle())?;
+        }
         if member_lifecycle_fixture::enabled() {
             let client = app.state::<MusicClient>();
             let owner = tauri::async_runtime::block_on(client.start_membership_lifecycle())?;
@@ -1112,6 +1139,7 @@ fn main() {
                 if search_artist_top50_fixture::enabled() { value["artistTop50Calls"] = json!(search_artist_top50_fixture::report()); }
                 if let Some(calls) = search_fixture::audio_toplist_calls() { value["audioToplistCalls"] = json!(calls); }
                 if search_fixture::v3_enabled() { value["syntheticV3Calls"] = json!(search_fixture::v3_calls()); }
+                if search_signed_fixture::presentation_enabled() { value["presentationQueryCalls"] = json!(search_fixture::presentation_query_calls()); }
                 if search_fixture::hot_playback_enabled() { value["hotPlaybackCalls"] = json!(search_fixture::hot_playback_calls()); }
                 if search_fixture::carousel_enabled() { value["searchCarouselCalls"] = json!(search_fixture::carousel_calls()); }
                 value["searchProfileCalls"] = json!(*SEARCH_PROFILE_CALLS.lock().unwrap());
@@ -1387,6 +1415,22 @@ fn main() {
                 let window=handle.get_webview_window("main").unwrap();let width=value["width"].as_f64().unwrap();let height=value["height"].as_f64().unwrap();
                 if let Some(scale)=value["scale"].as_f64() {assert!(scale.is_finite() && scale>0.0 && scale<=4.0);window.set_size(tauri::PhysicalSize::new((width*scale).round() as u32,(height*scale).round() as u32)).unwrap();}
                 else{window.set_size(tauri::LogicalSize::new(width,height)).unwrap();}return;
+            }
+            if stage=="pc-presentation-fixture" && search_signed_fixture::presentation_enabled() {
+                let signed=signed_search.as_ref().expect("sealed signed presentation client").clone();
+                let nonce=value["nonce"].as_u64().unwrap();
+                let mode=value["mode"].as_str().unwrap();
+                let before=signed.full_reads();
+                signed.set_server_mode(mode).unwrap();
+                let handle=handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    let result=handle.state::<MusicClient>().refresh_pc_presentation().await;
+                    let result=result.map_err(cumulus_core::client::ClientError::from);
+                    let ack=json!({"nonce":nonce,"beforeFull":before,"afterFull":signed.full_reads(),
+                        "result":result});
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__pcPresentationFixtureAck={ack};")).unwrap();
+                });
+                return;
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();

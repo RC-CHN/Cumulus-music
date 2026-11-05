@@ -50,6 +50,14 @@ pub struct SignedSearch {
     pub client: Arc<MusicHttpClient>,
     backend: Arc<Backend>,
 }
+pub fn presentation_enabled() -> bool {
+    std::env::var("CUMULUS_PC_PRESENTATION_PROOF").as_deref() == Ok("1")
+}
+
+struct ServerState {
+    mode: String,
+    generation: u64,
+}
 impl SignedSearch {
     pub fn open(store: Arc<StateStore>) -> Result<Arc<Self>> {
         let mode = std::env::var("CUMULUS_SEARCH_FOOTER_PROOF").unwrap_or_else(|_| "t1".into());
@@ -76,7 +84,11 @@ impl SignedSearch {
         let backend = Arc::new(Backend {
             device: credentials.device_id()?,
             config: config.clone(),
-            mode,
+            server: Arc::new(Mutex::new(ServerState {
+                mode: mode.clone(),
+                generation: 0,
+            })),
+            initial_mode: mode,
             account_restored: AtomicBool::new(false),
             calls: Mutex::default(),
         });
@@ -100,16 +112,41 @@ impl SignedSearch {
     }
 
     pub fn report(&self) -> Value {
+        let state = self.backend.server.lock().unwrap();
         json!({"transport":"MusicHttpClient", "syntheticOnly":true,
             "sameProfileAccountRestore":self.backend.account_restored.load(Ordering::Acquire),
-            "footerCase":self.backend.mode, "calls":self.backend.calls.lock().unwrap().clone()})
+            "footerCase":self.backend.initial_mode, "serverMode":state.mode,
+            "serverGeneration":state.generation, "calls":self.backend.calls.lock().unwrap().clone()})
+    }
+
+    pub fn set_server_mode(&self, mode: &str) -> Result<()> {
+        if !presentation_enabled() || !matches!(mode, "t1" | "c" | "error") {
+            return Err(Error::InvalidInput(
+                "invalid sealed presentation server mode",
+            ));
+        }
+        let mut state = self.backend.server.lock().unwrap();
+        state.mode = mode.into();
+        state.generation += 1;
+        Ok(())
+    }
+
+    pub fn full_reads(&self) -> usize {
+        self.backend
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|call| call["path"] == ASSIGNMENT_PATH)
+            .count()
     }
 }
 
 struct Backend {
     device: String,
     config: Arc<PcConfig>,
-    mode: String,
+    initial_mode: String,
+    server: Arc<Mutex<ServerState>>,
     account_restored: AtomicBool,
     calls: Mutex<Vec<Value>>,
 }
@@ -191,23 +228,40 @@ impl HttpBackend for Backend {
                         "assignment must use the restored credential and exact full batch",
                     ));
                 }
-                if self.mode == "error" {
+                let (mode, generation) = {
+                    let state = self.server.lock().unwrap();
+                    (state.mode.clone(), state.generation)
+                };
+                if mode == "error" {
                     self.calls.lock().unwrap().push(json!({"path":path,"args":args,
-                        "signedPcContextVerified":true,"sameAccountCredential":true,"response":"synthetic_error"}));
+                        "signedPcContextVerified":true,"sameAccountCredential":true,"response":"synthetic_error",
+                        "serverMode":mode,"serverGeneration":generation}));
                     return Err(Error::Transport("sealed assignment unavailable".into()));
                 }
                 let mut groups = layout_rows();
+                if presentation_enabled() {
+                    for row in &mut groups {
+                        if row["expName"] != "PH-PC-searchHot" {
+                            row["expGroupName"] = json!(mode);
+                        }
+                    }
+                }
                 groups.push(json!({"expName":"PH-PC-search-result",
-                    "expGroupName":if self.mode == "unknown" {"future"} else {self.mode.as_str()}}));
+                    "expGroupName":if mode == "unknown" {"future"} else {mode.as_str()}}));
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .push(json!({"path":path,"args":args,
+                    "signedPcContextVerified":true,"sameAccountCredential":true,"responseCode":200,
+                    "serverMode":mode,"serverGeneration":generation}));
                 json!({"code":200,"data":groups})
             };
             // No cookie, signature, raw device identifier, credential revision or
             // encrypted body enters the WebView report or public test evidence.
-            self.calls
-                .lock()
-                .unwrap()
-                .push(json!({"path":path,"args":args,
-                "signedPcContextVerified":true,"sameAccountCredential":true,"responseCode":200}));
+            if path == ACCOUNT {
+                self.calls.lock().unwrap().push(json!({"path":path,"args":args,
+                    "signedPcContextVerified":true,"sameAccountCredential":true,"responseCode":200}));
+            }
             Ok(HttpReply {
                 status: 200,
                 body: serde_json::to_vec(&response)?,

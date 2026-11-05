@@ -8,6 +8,7 @@ use std::sync::{
 static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
+static PRESENTATION_QUERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
 static AUDIO_TOPLIST_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -150,6 +151,9 @@ fn fallback_results() -> Value {
 
 pub fn v3_calls() -> usize {
     V3_CALLS.load(Ordering::SeqCst)
+}
+pub fn presentation_query_calls() -> Vec<Value> {
+    PRESENTATION_QUERY_CALLS.lock().unwrap().clone()
 }
 pub fn v3_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_SEARCH_V3_PROOF").is_some()
@@ -294,6 +298,19 @@ fn subscribable_playlist() -> Value {
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if super::search_signed_fixture::presentation_enabled()
+        && matches!(
+            path,
+            "/api/search/pc/result/tab"
+                | "/api/search/pc/complex/page/v3"
+                | "/api/search/pc/complex/page"
+        )
+    {
+        PRESENTATION_QUERY_CALLS
+            .lock()
+            .unwrap()
+            .push(json!({"path":path,"args":args}));
+    }
     if let Some(response) = audio_toplist_response(path, args) {
         return Some(response);
     }
@@ -997,7 +1014,7 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                 if args
                     == &json!({"keyword":"合成 V3","scene":"normal","needCorrect":true,"channel":"typing","bizQueryInfo":""}) =>
             {
-                Some(json!({"code":200,"data":{"blocks":[
+                let mut response = json!({"code":200,"data":{"blocks":[
                     {"blockCode":"search_block_hot_result_hot_explain","resources":[{"baseInfo":{"hotExplainModuleData":{"title":"热点说明","text":"合成热点内容","textAction":"https://example.invalid/private"}}}]},
                     {"blockCode":"search_block_hot_result_core_resources","resources":(100..104).map(|id|
                         json!({"type":"artist","baseInfo":{"artistDTO":{"id":id,"name":format!("合成热点歌手 {id}")}}})
@@ -1009,7 +1026,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
                         {"text":"合成城市","clickable":true,"reasonType":5,"url":"https://example.invalid/private?chartCode=city-chart&targetId=77&targetType=4"},
                         {"text":"不可跳转","clickable":true,"reasonType":42}
                     ]}}]}
-                ]}}))
+                ]}});
+                if super::search_signed_fixture::presentation_enabled() {
+                    response["data"]["blocks"].as_array_mut().unwrap().push(json!({
+                        "blockCode":"search_block_artist", "uiElement":{"mainTitle":{"title":"合成普通歌手"}},
+                        "resources":(200..210).map(|id|json!({"type":"artist","baseInfo":{
+                            "artistDTO":{"id":id,"name":format!("合成普通歌手 {id}")}}})).collect::<Vec<_>>()
+                    }));
+                }
+                Some(response)
             }
             _ => None,
         };
