@@ -35,6 +35,11 @@ Rust 与可验证边界：
   错误身份都保留未决记录，重启也不自动重发或改走 JSK。
   这是与原客户端盲目定时重试的有意差异。拒绝、模糊回包不采纳其 Cookie，
   本流程不递归触发业务 301 校验，不自动注销、注册访客或上传诊断。
+- 用户在账号对话框显式「重新登录」后，普通二维码、手机和邮箱登录使用新的
+  候选凭据库。同一 UID 验证成功、切到新代次后，旧凭据库的未决记录不阻塞新会话。
+  恢复本机已保存的旧会话不会清除记录。使用 CUMULUS_SESSION_DIR 指向旧外部
+  凭据库时，下一次启动需移除或更新该显式覆盖。原生旧版 worker 不推送自己的
+  前端通知；重新打开对话框或下次现有续期发布时读取持久状态。
 
 验证入口（仅合成、不发真实请求）：
   cargo test --locked -p cumulus-core --test legacy_periodic_renewal --test refresh --test client_renewal --test client_login_policy
@@ -45,4 +50,8 @@ Rust 与可验证边界：
 为 PH-PC-loginJsk=c/t1，账户 Cookie 作用域一致，均无 RT。分别核对正式账户
 回读起点、实验回包、旧版 dispatch 时间和同账号回读；JSK 组覆盖相同等待窗口，
 其旧版请求和 SQLite 记录均应为零。Linux 可加 --screenshots；Windows 可用 --runtime。
+2026-11-05 实际 Linux X11 WebView：旧版组在验证身份后的 3014 ms 发出一次，
+随后回读同一账号并记录已确认的旧版成功；JSK 组同一启动方式观察 4628 ms，
+没有旧版请求和持久意图。两组账号窗口均显示没有新版续期凭据，未声称 RT 轮换。
+隔离网络、两个真实窗口截图和 SQLite 读回同时验证；Windows 独立 CI 待运行。
 真实上游旧版续期回包尚未验证；JSK 成对轮换的真实服务边界见 refresh-control-contracts.txt。

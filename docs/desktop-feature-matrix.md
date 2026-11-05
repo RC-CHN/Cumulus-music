@@ -118,3 +118,4 @@
 - [内嵌评论举报](vinyl-comment-report-contracts.txt)在精彩和最新评论复用当前播放及同账号回执；Linux WebView 核对取消、预设、原文和回包不明时不重发。
 - [会员权益自动读取](core-membership-contracts.txt)由原生登录生命周期触发；Linux WebView 核对首次加载和按官方日期规则复查，综合搜索即时更新，日期不变时不轮询。
 - [在线播放缓存](streaming-media-cache-contracts.txt)为少数已获授权的普通 MP3 保留本进程临时字节；Linux 核对原生播放、再次授权、清理和设置持久化，未将缓存当作离线授权。官方动态策略、原生缓存格式和更改缓存目录不由本实现冒充。
+- [旧版 PC 定期续期](legacy-periodic-renewal.txt)按已验证的官方分组和登录来源安排，和 JSK 续期互斥；Linux 合成冷恢复核对两组请求和持久结果，真实 RT 下发仍需服务回包证据。
