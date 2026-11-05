@@ -939,8 +939,9 @@ jobs:
               --frontend-dist frontend/dist "$@"
           }
           verify_spatial_rate --spatial-wav-48k-only --root .build/ci-native-spatial-wav-48k-linux
-          verify_spatial_rate --spatial-flac-48k-only --root .build/ci-native-spatial-flac-48k-linux \
-            --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256"
+          verify_spatial_rate --spatial-flac-48k-only \
+            --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 \
+            --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --root .build/ci-native-spatial-flac-48k-linux
       - name: Verify natural playback completion and live history settings on Linux
         run: |
           cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
