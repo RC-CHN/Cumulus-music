@@ -220,6 +220,10 @@ same process and measured 440 Hz PCM at the private PipeWire sink
 rejected and preserved the previous queue. The first warm run's group-writable
 test profile correctly disabled the native relay; the rerun used a private
 profile and the fixture now creates its profile at mode 0700 explicitly.
+An independent Rust test with the pinned libFLAC 1.5.0 compared the full WAV
+and FLAC graph output bytes, including the SE1 tail, from frame 0 and from
+frame 22,050. Both matched (`.build/phase71-wav-flac-pcm-r1.log`). It did not
+initialize a WebView or an audio device; the desktop checks above are separate.
 Neither test installs a file association or measures a physical device.
 Windows WebView2 uses the same synthetic spatial scenario with the packaged
 mpv runtime; an actual run on the exact commit is required for a Windows claim.
