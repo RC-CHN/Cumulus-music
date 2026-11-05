@@ -19,7 +19,7 @@ fn pass(source: ColdStereoSource, first: u64) -> crate::playback::engine::ColdSt
     else {
         panic!("indexed synthetic stereo FLAC preparation unexpectedly selected stock");
     };
-    pass
+    *pass
 }
 
 #[tokio::test]
@@ -49,7 +49,7 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
     };
     assert_eq!(source.total_frames(), total);
     replace(&path);
-    let mut initial = pass(source, 0);
+    let mut initial = pass(*source, 0);
     let control = initial.control();
     let mut native = MpvEngine::open(MpvConfig {
         library: std::env::var_os("CUMULUS_LIMITER_PROBE_MPV").map(PathBuf::from),

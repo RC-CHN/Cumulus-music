@@ -31,15 +31,15 @@ const QUANTUM: usize = 2048;
 const WAIT: Duration = Duration::from_secs(3);
 
 pub enum ColdStereoSelection {
-    Qualified(ColdStereoSource),
+    Qualified(Box<ColdStereoSource>),
     /// The exact held reader remains available for the existing stock path.
     Stock(ColdOfflineFlacReader),
 }
 pub enum ColdStereoStart {
-    Ready(ColdStereoPass),
+    Ready(Box<ColdStereoPass>),
     /// Preparation/seek failed before a native sink was published. Authority
     /// is checked again, and the same held descriptor/graph are returned.
-    Stock(ColdStereoSource),
+    Stock(Box<ColdStereoSource>),
 }
 
 pub struct ColdStereoSource {
@@ -108,12 +108,12 @@ impl ColdStereoSource {
                     return Ok(ColdStereoSelection::Stock(reader));
                 }
             };
-        Ok(ColdStereoSelection::Qualified(Self {
+        Ok(ColdStereoSelection::Qualified(Box::new(Self {
             reader,
             api,
             graph,
             total,
-        }))
+        })))
     }
 
     pub fn total_frames(&self) -> u64 {
@@ -153,7 +153,7 @@ impl ColdStereoSource {
             Err(_) => {
                 self.reader.authority().validate()?;
                 cancel.check()?;
-                return Ok(ColdStereoStart::Stock(self));
+                return Ok(ColdStereoStart::Stock(Box::new(self)));
             }
         };
         let (ready, status) = mpsc::sync_channel(1);
@@ -191,7 +191,7 @@ impl ColdStereoSource {
                     ))?;
                 source.reader.authority().validate()?;
                 cancel.check()?;
-                return Ok(ColdStereoStart::Stock(source));
+                return Ok(ColdStereoStart::Stock(Box::new(source)));
             }
         };
         let pass = ColdStereoPass {
@@ -205,13 +205,13 @@ impl ColdStereoSource {
                 pass.control.validate_host()?;
                 cancel.check()?;
                 preparing.store(false, Ordering::Release);
-                Ok(ColdStereoStart::Ready(pass))
+                Ok(ColdStereoStart::Ready(Box::new(pass)))
             }
             Ok(false) => {
                 let source = pass.reclaim()?;
                 source.reader.authority().validate()?;
                 cancel.check()?;
-                Ok(ColdStereoStart::Stock(source))
+                Ok(ColdStereoStart::Stock(Box::new(source)))
             }
             Err(_) => Err(Error::State("stereo decoder preparation timed out")),
         }
