@@ -605,6 +605,7 @@ jobs:
           python scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-results-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-v3-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_footer_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-footer-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/search_footer_smoke.py --vinyl-origin --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-vinyl-origin-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/pc_presentation_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-pc-presentation-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --hot-playback --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-hot-playback-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --carousel --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-carousel-windows --runtime .build/package-stage/windows-x64/native
@@ -722,6 +723,7 @@ jobs:
           python scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-desktop-lyrics-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/desktop_lyrics_smoke.py --embedded --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-embedded-lyrics-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-native-sidecar-lyrics-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-vinyl-lyric-credits-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe.exe --root .build/ci-fonts-windows --runtime .build/package-stage/windows-x64/native
           cargo build -p cumulus-desktop --example shortcut_probe --features custom-protocol --locked
           python scripts/ci/shortcut_smoke.py --binary .build/target/debug/examples/shortcut_probe.exe --root .build/ci-shortcuts-windows --runtime .build/package-stage/windows-x64/native
@@ -1073,6 +1075,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-results-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --v3 --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-v3-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-footer-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_footer_smoke.py --vinyl-origin --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-vinyl-origin-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/pc_presentation_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-pc-presentation-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --hot-card --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-hot-card-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --hot-playback --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-hot-playback-linux
@@ -1198,6 +1201,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --embedded --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-embedded-lyrics-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --native-sidecar --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-native-sidecar-lyrics-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --credits --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-vinyl-lyric-credits-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/fonts_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-fonts-linux
           cargo build -p cumulus-desktop --example saved_accounts_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/accounts_smoke.py --binary .build/target/debug/examples/saved_accounts_ui_probe --root .build/ci-accounts-linux
