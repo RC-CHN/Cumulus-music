@@ -10,6 +10,7 @@ mod reasons;
 mod service;
 mod trash;
 mod types;
+mod zone_preview;
 pub use api::FmApi;
 pub use service::{FmClock, FmService, SystemFmClock};
 pub use types::*;

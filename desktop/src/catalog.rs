@@ -48,6 +48,21 @@ pub async fn vertical_zone_page<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn vertical_zone_fm_preview<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    view_id: String,
+    card_key: String,
+) -> Result<AccountData<ZoneFmPreview>, ClientError> {
+    require_main(window.label())?;
+    client
+        .vertical_zone_fm_preview(&epoch, &view_id, &card_key)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn vertical_zone_playlist_origin<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

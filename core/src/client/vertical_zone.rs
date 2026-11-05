@@ -480,6 +480,7 @@ impl MusicClient {
 }
 
 pub(super) mod detail;
+pub(super) mod fm_preview;
 
 #[cfg(test)]
 mod tests;

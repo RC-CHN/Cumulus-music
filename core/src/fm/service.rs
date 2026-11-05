@@ -32,6 +32,7 @@ pub struct FmService {
     pub(super) session: Arc<AccountSession>,
     pub(super) store: Arc<StateStore>,
     pub(super) clock: Arc<dyn FmClock>,
+    pub(super) zone_preview: zone_preview::ZonePreviewState,
 }
 impl FmService {
     pub fn new(session: Arc<AccountSession>) -> Result<Self> {
@@ -42,6 +43,7 @@ impl FmService {
             store: session.persistent_store()?,
             session,
             clock,
+            zone_preview: Default::default(),
         })
     }
     pub(super) fn key(source: &FmSource) -> Result<String> {
@@ -167,6 +169,11 @@ impl FmService {
         source: FmSource,
         rights: FmRights,
     ) -> Result<FmQueue> {
+        let _zone = if let FmSource::Zone { rule_id, .. } = &source {
+            Some(self.zone_rule_gate(token, rule_id).await)
+        } else {
+            None
+        };
         let _gate = self.gate(token, &source)?;
         let old = self.queue_for(token, &source)?;
         let now = self.clock.now_ms()?;
@@ -179,7 +186,20 @@ impl FmService {
         let revision = old.as_ref().map(|q| q.revision).unwrap_or(0);
         let mut queue = old.unwrap_or_else(|| FmQueue::empty(source, rights));
         queue.rights = rights;
-        self.fill(token, &mut queue, true).await?;
+        // The card's preload supplies the first batch of recommendations only.
+        // The explicit source keeps its own cursor, URL trial and rights.
+        let seed = match &queue.source {
+            FmSource::Zone { rule_id, .. } if queue.tracks.is_empty() => {
+                self.zone_preview_batch_for(token, rule_id)?
+            }
+            _ => None,
+        };
+        if let Some(tracks) = seed {
+            queue.append(tracks);
+            queue.fetched_at = now;
+        } else {
+            self.fill(token, &mut queue, true).await?;
+        }
         let blacklist = self.blacklist_for(token)?;
         queue.index = queue
             .find(queue.index, false, &blacklist)

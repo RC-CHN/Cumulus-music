@@ -1,0 +1,30 @@
+专区漫游卡片首曲预读（网易云 PC 3.1.42.205594）
+
+- 官方 sources/packages/pc/src/pages/choice/verticalZone/conmponents/
+  ZoneFmCard.tsx:77–115，166–170：组件按 resourceId 读
+  zoneFm[rule].fmTracks[0]，不存在才 dispatch fmPlaying/loadMore
+  {scene:"preload",targetScene:zoneFm,targetId:resourceId}。封面优先取
+  这首歌的 album.picUrl，缺失时保留原卡片 coverUrl。此处不使用当前曲目下标，
+  也不会调用播放、暂停或反馈。背景取色属于后续客户端视觉行为。
+- M/1384:1917–1942 将首批数据写入目标规则；:1580–1625 的显式
+  fmPlay 使用该规则已有的当前曲目，没有才请求。M/1211:248–270 调
+  M/15:5007–5026 取得 /api/tag/tab/fm/recommends
+  {ruleType:1,limit:3,ruleId,firstSongId:"",firstSongAlg:"",tabTagId:""}；
+  M/120:12–35 调 /api/v3/song/detail
+  {c:JSON.stringify([{id,v},…]),trialMode:-1}。保留推荐返回的原始 ID
+  标量类型、顺序和 v（有效版本缺失按 0）；无首批引用不请求详情。
+- Cumulus IPC vertical_zone_fm_preview({epoch,viewId,cardKey}) 只允许主窗口。
+  核心验证当前已登记专区、账号/原生凭据、官方实验 revision 和已发布横排 FM
+  卡片，IPC 不接收 ruleId、trialMode 或 URL。完成时再核验同一视图和账号。
+  DTO 只有 {coverUrl:string|null}：仅允许既有图片 CDN，去掉上游参数和片段，
+  使用固定方形尺寸，缺失或无效时由卡片保留自己的封面。请求错误由界面保留
+  旧封面；无可识别首曲的空响应不缓存为成功。
+- 首批最多三首、单批最多 64 KiB，按账号代次和规则保存最多 32 份进程内数据。
+  同规则并发预览与显式预读共享互斥；已有本地队列时读取第一首，不改队列下标、
+  模式、反馈、播放焦点或输出设备。仅挂载不启动播放器或 FM 播放工作线程，也不
+  读取屏蔽、垃圾箱、会员或媒体 URL。规则种子不落盘、不改变现有完整 FmSource
+  持久化键。显式预读仅在自身队列为空时复用本次运行中预读的首批，仍按自己的
+  trialMode、黑名单、会员和普通音源授权处理；不合并旧的不同 trial 槽状态。
+- 封闭 Rust 验收：精确参数及顺序、同规则一次首批、预读后的显式复用、黑名单
+  令当前曲变化时卡片仍取第一首、未知图片/空批次、页面或账号变更时丢弃迟到结果。
+  没有真实账号、服务写入、实际声卡或复刻黑胶页的证明。

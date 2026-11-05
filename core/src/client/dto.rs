@@ -102,6 +102,7 @@ pub use super::together::{
     TogetherCommand, TogetherMemberView, TogetherOperationView, TogetherRoomView,
     TogetherStatisticsView, TogetherView,
 };
+pub use super::vertical_zone::fm_preview::ZoneFmPreview;
 pub use super::window::{WindowPreferencesCommand, WindowPreferencesView};
 pub use crate::account::collections::CollectionQuery;
 use crate::account::{QrStatus, SessionStatus, resources::MutationPhase};

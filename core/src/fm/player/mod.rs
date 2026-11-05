@@ -96,9 +96,19 @@ impl FmPlayer {
         controller: Arc<PlaybackController>,
         intents: Arc<AtomicU64>,
     ) -> Result<Self> {
+        let service = Arc::new(FmService::new(session.clone())?);
+        Self::with_service(session, service, controller, intents)
+    }
+
+    pub(crate) fn with_service(
+        session: Arc<AccountSession>,
+        service: Arc<FmService>,
+        controller: Arc<PlaybackController>,
+        intents: Arc<AtomicU64>,
+    ) -> Result<Self> {
         let inner = Arc::new(Inner {
             store: session.persistent_store()?,
-            service: Arc::new(FmService::new(session.clone())?),
+            service,
             session,
             controller,
             intents,

@@ -87,6 +87,7 @@ pub(super) struct PlayerHost {
     output: Arc<crate::playback::output::OutputRuntime>,
     inspector: OnceCell<Arc<Mutex<Box<dyn AudioEngine>>>>,
     pub(super) controller: OnceCell<Arc<PlaybackController>>,
+    fm_service: OnceCell<Arc<crate::fm::FmService>>,
     fm: OnceCell<Arc<crate::fm::player::FmPlayer>>,
     pub(super) selection: Arc<AtomicU64>,
     prepared_selection: Mutex<Option<prepared_selection::PreparedSelection>>,
@@ -112,6 +113,7 @@ impl PlayerHost {
             store,
             factory: Arc::new(|| Ok(Box::new(MpvEngine::open(MpvConfig::default())?))),
             controller: OnceCell::new(),
+            fm_service: OnceCell::new(),
             fm: OnceCell::new(),
             selection: Arc::new(AtomicU64::new(0)),
             prepared_selection: Mutex::new(None),
@@ -153,11 +155,22 @@ impl PlayerHost {
     pub(super) async fn fm(&self) -> Result<&Arc<crate::fm::player::FmPlayer>> {
         self.fm
             .get_or_try_init(|| async {
-                Ok(Arc::new(crate::fm::player::FmPlayer::new(
+                Ok(Arc::new(crate::fm::player::FmPlayer::with_service(
                     self.session.clone(),
+                    self.fm_service().await?.clone(),
                     self.controller().await?.clone(),
                     self.selection.clone(),
                 )?))
+            })
+            .await
+    }
+
+    /// Initialise only the catalogue/queue service, independently of the
+    /// output device, playback controller or FM worker.
+    pub(super) async fn fm_service(&self) -> Result<&Arc<crate::fm::FmService>> {
+        self.fm_service
+            .get_or_try_init(|| async {
+                Ok(Arc::new(crate::fm::FmService::new(self.session.clone())?))
             })
             .await
     }

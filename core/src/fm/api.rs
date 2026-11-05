@@ -21,7 +21,9 @@ impl FmApi {
             trial_mode,
         } = source
         {
-            return self.zone_batch(rule_id, trial_mode.unwrap_or(-1)).await;
+            return self
+                .zone_batch(rule_id, trial_mode.unwrap_or(-1), false)
+                .await;
         }
         let mut args = json!({"imageFm":u8::from(preload)});
         if let FmSource::Familiar { source_id } = source {
@@ -48,14 +50,28 @@ impl FmApi {
     }
     /// Official M1211.d -> M15.Pg -> M120.a. Zone recommendations are
     /// references, followed by details with their own trial context.
-    async fn zone_batch(&self, rule_id: &str, trial_mode: i32) -> Result<Vec<FmTrack>> {
+    pub(crate) async fn zone_preview_batch(&self, rule_id: &str) -> Result<Vec<FmTrack>> {
+        FmSource::Zone {
+            rule_id: rule_id.into(),
+            trial_mode: None,
+        }
+        .validate()?;
+        self.zone_batch(rule_id, -1, true).await
+    }
+
+    async fn zone_batch(
+        &self,
+        rule_id: &str,
+        trial_mode: i32,
+        passive: bool,
+    ) -> Result<Vec<FmTrack>> {
         let value = self.api.call("/api/tag/tab/fm/recommends",
             json!({"ruleType":1,"limit":3,"ruleId":rule_id,"firstSongId":"","firstSongAlg":"","tabTagId":""}),
             false, &[200]).await?;
         let references = value["data"]
             .as_array()
             .ok_or(Error::Response("missing zone FM references"))?;
-        if references.len() > 500 {
+        if references.len() > if passive { 3 } else { 500 } {
             return Err(Error::Response("too many zone FM references"));
         }
         if references.is_empty() {
@@ -63,7 +79,13 @@ impl FmApi {
         }
         let c = references
             .iter()
-            .map(|v| Ok(json!({"id":identifier(&v["id"])?,"v":v["v"].as_u64().unwrap_or(0)})))
+            .map(|v| {
+                let id = identifier(&v["id"])?;
+                // M1211 projects the raw recommendation's ID scalar into
+                // M120's JSON.stringify, preserving numbers vs. strings.
+                let id = if passive { v["id"].clone() } else { json!(id) };
+                Ok(json!({"id":id,"v":v["v"].as_u64().unwrap_or(0)}))
+            })
             .collect::<Result<Vec<_>>>()?;
         let details = self
             .api
@@ -77,16 +99,22 @@ impl FmApi {
         let songs = details["songs"]
             .as_array()
             .ok_or(Error::Response("missing zone FM songs"))?;
+        if passive && songs.len() > 32 {
+            return Err(Error::Response("too many zone FM preview songs"));
+        }
         let mut rows = std::collections::BTreeMap::new();
         for song in songs {
             rows.insert(identifier(&song["id"])?, song);
         }
         let mut privileges = std::collections::BTreeMap::new();
         if let Some(list) = details.get("privileges") {
-            for privilege in list
+            let list = list
                 .as_array()
-                .ok_or(Error::Response("invalid zone FM privileges"))?
-            {
+                .ok_or(Error::Response("invalid zone FM privileges"))?;
+            if passive && list.len() > 32 {
+                return Err(Error::Response("too many zone FM preview privileges"));
+            }
+            for privilege in list {
                 privileges.insert(identifier(&privilege["id"])?, privilege);
             }
         }
