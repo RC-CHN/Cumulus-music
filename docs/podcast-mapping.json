@@ -425,13 +425,13 @@
         "M/402:373–387,437–444 eAPI form serialization"
       ],
       "rust": "core/src/playback/controller/podcast_progress.rs",
-      "test": "core/tests/client_podcast.rs; core/tests/http.rs",
+      "test": "core/tests/client_podcast.rs; core/tests/http.rs; scripts/ci/podcast_recent_smoke.py --progress; scripts/ci/audiobook_skip_smoke.py",
       "evidence": [
         "S",
         "L",
         "I"
       ],
-      "boundary": "Synthetic departure and scoped wire proof; Cumulus respects the local-only recent-play setting. No upstream write/readback, native exit, or automatic skip-outro proof."
+      "boundary": "Synthetic departure, scoped wire and Linux WebKitGTK/libmpv proof, including the confirmed automatic skip-outro completion. Respects local-only recent-play preference. No upstream write/readback or native exit claim."
     },
     {
       "id": "curated_radio_cross_members",
@@ -447,6 +447,24 @@
         "R"
       ],
       "boundary": "Real 80-program radio includes four voices whose original radio differs; identity retained for permission/resume. Details and linked comments/download-dialog proof: .build/ui-proof/scene-fm-links-20261027-c/independent-audit.json"
+    },
+    {
+      "id": "audiobook_skip_intervals",
+      "official": [
+        "M/144.c classification; M/622:906–930 and 1431–1445 menus",
+        "M/31:866–879 and VoiceSkipBeginAndEndModal",
+        "M/308:2290–2350; M/86:194–196",
+        "PlayBar/PlayProgress.tsx:595–607 and 725–763; M/308:4397–4422"
+      ],
+      "rust": "core/src/podcast/skip.rs; core/src/client/podcast/audiobook.rs; core/src/playback/controller/audiobook_skip.rs",
+      "ui": "frontend/src/components/AudiobookSkipDialog.vue; frontend/src/components/AudiobookSkipMenu.vue",
+      "test": "core/tests/audiobook_skip_client.rs; core/tests/podcast_audiobook_skip.rs; core/tests/client_podcast/audiobook.rs; scripts/ci/audiobook_skip_smoke.py",
+      "evidence": [
+        "S",
+        "L",
+        "I"
+      ],
+      "boundary": "18 states with Linux WebKitGTK and libmpv null output; no real provider account, physical sound or Windows GUI proof."
     }
   ],
   "native_proof": ".build/podcast-native-20261026-c/report.json",
@@ -456,7 +474,7 @@
   "remaining": [
     "Paid/audiobook/PLUS and trial sample coverage",
     "Program NCM and transcript/lyrics",
-    "Skip intervals and playback history upload",
+    "Real upstream audiobook availability/interval samples and cross-device playback-history upload/readback",
     "Complete official M/21 and discovery block projection",
     "Discovery/category/search desktop entries",
     "Missing-detail unavailable program queue handling",
@@ -464,7 +482,8 @@
   ],
   "desktop_proof": [
     ".build/ui-proof/podcast-20261026-d/complete.json",
-    ".build/ui-proof/podcast-20261026-d/complete-reopened.json"
+    ".build/ui-proof/podcast-20261026-d/complete-reopened.json",
+    ".build/ui-proof/phase46-integrated/audiobook-skip/report.json"
   ],
   "social_proof": ".build/ui-proof/podcast-social-20261026-b/host-final.json",
   "social_independent": ".build/podcast-social-independent.json",
