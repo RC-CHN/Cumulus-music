@@ -108,7 +108,10 @@ async fn actor(store: Arc<StateStore>) -> Actor {
 
 fn held_reply(actor: &mut Actor, authority: Cancellation) -> Ready {
     let queue = actor.queue.snapshot();
-    let result = Ok(Outcome::PlayExisting(queue.items[2].entry_id.clone()));
+    let result = Ok(Outcome::PlayExisting {
+        target: queue.items[2].entry_id.clone(),
+        notify: true,
+    });
     let id = Uuid::new_v4();
     // The integration fixture exercises the real classifier. Here the reply is
     // deliberately held between classification and actor delivery.
@@ -144,6 +147,7 @@ async fn old_eof_reply_cannot_overwrite_peer_queue_new_intent_or_revoked_native_
         let dir = tempfile::tempdir().unwrap();
         let store = Arc::new(StateStore::open(dir.path()).unwrap());
         let mut actor = actor(store.clone()).await;
+        let mut notices = actor.skip_notices.subscribe();
         let allowed = Arc::new(AtomicBool::new(true));
         let valid = allowed.clone();
         let old = held_reply(
@@ -172,6 +176,13 @@ async fn old_eof_reply_cannot_overwrite_peer_queue_new_intent_or_revoked_native_
             _ => unreachable!(),
         }
         actor.finish_ordinary_eof(old).await.unwrap();
+        assert!(
+            matches!(
+                notices.try_recv(),
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+            ),
+            "{cause}"
+        );
         assert_eq!(actor.state, PlaybackStatus::Ended, "{cause}");
         assert_eq!(actor.play_id.as_deref(), Some("ended-play"), "{cause}");
         assert_eq!(actor.position, Some(40.0), "{cause}");

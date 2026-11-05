@@ -109,6 +109,7 @@ pub(super) struct Actor {
     pub quality_id: Option<String>,
     pub prefetch_task: Option<JoinHandle<()>>,
     pub ordinary_eof: Option<super::OrdinaryEofAuthority>,
+    pub skip_notices: tokio::sync::broadcast::Sender<super::skip_notice::CommittedSkip>,
     pub eof_flight: Option<super::eof::Flight>,
     pub prefetch: PrefetchSnapshot,
     pub prefetch_key: Option<super::tick::PrefetchKey>,
@@ -198,6 +199,7 @@ impl Actor {
             quality_id: None,
             prefetch_task: None,
             ordinary_eof: None,
+            skip_notices: super::skip_notice::publisher(),
             eof_flight: None,
             prefetch: PrefetchSnapshot {
                 state: "idle",

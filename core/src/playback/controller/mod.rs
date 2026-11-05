@@ -23,6 +23,8 @@ mod queue_more;
 mod queue_more_tip;
 mod remote;
 mod skip;
+mod skip_notice;
+pub use skip_notice::{OrdinarySkipNotice, OrdinarySkipNotices};
 mod startup;
 mod state;
 mod tick;
@@ -59,6 +61,7 @@ struct Request {
     command: PlaybackCommand,
     reply: Response,
     guard: Option<(PlaybackFence, Cancellation)>,
+    verified_skip_selection: bool,
 }
 enum Message {
     Request(Request),
@@ -102,6 +105,7 @@ pub struct PlaybackController {
     sender: mpsc::UnboundedSender<Message>,
     view: watch::Receiver<PlaybackSnapshot>,
     resolver: Arc<SourceResolver>,
+    skip_notices: tokio::sync::broadcast::Sender<skip_notice::CommittedSkip>,
     shutdown: Arc<AtomicBool>,
     relay: Option<Arc<crate::relay::publisher::player::Runtime>>,
     quality_trials: tokio::task::JoinHandle<()>,
@@ -190,12 +194,14 @@ impl PlaybackController {
             None
         };
         let (publisher, view) = watch::channel(actor.snapshot());
+        let skip_notices = actor.skip_notices.clone();
         tokio::spawn(actor.run(receiver, publisher));
         let quality_trials = crate::playback::quality::trials::monitor::spawn(session);
         Ok(Self {
             sender,
             view,
             resolver,
+            skip_notices,
             shutdown,
             relay,
             quality_trials,
@@ -221,6 +227,7 @@ impl PlaybackController {
         token: &SessionToken,
         command: PlaybackCommand,
         guard: Option<(PlaybackFence, Cancellation)>,
+        verified_skip_selection: bool,
     ) -> Result<Reply> {
         let id = uuid::Uuid::new_v4().simple().to_string();
         let (reply, receiver) = oneshot::channel();
@@ -231,6 +238,7 @@ impl PlaybackController {
                 command,
                 reply,
                 guard,
+                verified_skip_selection,
             }))
             .map_err(|_| Error::State("player is closed"))?;
         struct CancelOnDrop {
@@ -257,7 +265,7 @@ impl PlaybackController {
         token: &SessionToken,
         command: PlaybackCommand,
     ) -> Result<PlaybackSnapshot> {
-        Ok(self.request(token, command, None).await?.state)
+        Ok(self.request(token, command, None, false).await?.state)
     }
     pub(crate) async fn command_guarded(
         &self,
@@ -267,7 +275,24 @@ impl PlaybackController {
         cancel: Cancellation,
     ) -> Result<PlaybackSnapshot> {
         Ok(self
-            .request(token, command, Some((expected, cancel)))
+            .request(token, command, Some((expected, cancel)), false)
+            .await?
+            .state)
+    }
+    async fn select_verified_skip(
+        &self,
+        token: &SessionToken,
+        target: String,
+        expected: PlaybackFence,
+        authority: Cancellation,
+    ) -> Result<PlaybackSnapshot> {
+        Ok(self
+            .request(
+                token,
+                PlaybackCommand::Select(target),
+                Some((expected, authority)),
+                true,
+            )
             .await?
             .state)
     }
@@ -278,7 +303,9 @@ impl PlaybackController {
         &self,
         token: &SessionToken,
     ) -> Result<(PlaybackSnapshot, QueueSnapshot)> {
-        let reply = self.request(token, PlaybackCommand::Queue, None).await?;
+        let reply = self
+            .request(token, PlaybackCommand::Queue, None, false)
+            .await?;
         Ok((
             reply.state,
             reply.queue.ok_or(Error::State("missing queue reply"))?,
@@ -293,7 +320,9 @@ impl PlaybackController {
         QueueSnapshot,
         Option<super::queue_more::QueueMoreView>,
     )> {
-        let reply = self.request(token, PlaybackCommand::Queue, None).await?;
+        let reply = self
+            .request(token, PlaybackCommand::Queue, None, false)
+            .await?;
         Ok((
             reply.state,
             reply.queue.ok_or(Error::State("missing queue reply"))?,

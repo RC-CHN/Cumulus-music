@@ -602,6 +602,7 @@ export interface LyricsView {
 }
 export type PlayerUpdate =
   | { kind: 'state'; value: PlayerView; nativeOpenError?: CoreFailure }
+  | { kind: 'ordinary_copyright_skip'; epoch: string; id: string; remainingMs: number }
   | { kind: 'error'; error: CoreFailure };
 export type QualityAvailability = 'available' | 'unavailable' | 'unknown';
 export type QualityAccess =

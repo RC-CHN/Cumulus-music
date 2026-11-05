@@ -7,6 +7,7 @@ use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, dto::*},
     lyrics::LyricPreferences,
+    playback::controller::OrdinarySkipNotice,
 };
 use serde::Serialize;
 use std::{collections::HashMap, sync::Mutex};
@@ -75,6 +76,10 @@ pub enum PlayerUpdate {
     Error {
         error: ClientError,
     },
+    OrdinaryCopyrightSkip {
+        #[serde(flatten)]
+        value: OrdinarySkipNotice,
+    },
 }
 
 #[tauri::command]
@@ -114,6 +119,15 @@ pub async fn watch_player<R: tauri::Runtime>(
         .subscribe_playback(&epoch)
         .await
         .map_err(ClientError::from)?;
+    let mut skip_notices = if window.label() == "main" {
+        Some(
+            client
+                .subscribe_ordinary_skip(&epoch)
+                .map_err(ClientError::from)?,
+        )
+    } else {
+        None
+    };
     let mut values = streams
         .0
         .lock()
@@ -130,19 +144,39 @@ pub async fn watch_player<R: tauri::Runtime>(
             native_open_error,
         })
         .map_err(|_| ClientError::from(Error::Cancelled))?;
+    let app = window.app_handle().clone();
     current.task = Some(tauri::async_runtime::spawn(async move {
         loop {
-            let event = match source.changed().await {
-                Ok(value) => PlayerUpdate::State {
-                    value: Box::new(value),
-                    native_open_error: None,
+            let event = tokio::select! {
+                next = source.changed() => match next {
+                    Ok(value) => PlayerUpdate::State {
+                        value: Box::new(value),
+                        native_open_error: None,
+                    },
+                    Err(error) => {
+                        let _ = on_update.send(PlayerUpdate::Error { error: error.into() });
+                        break;
+                    }
                 },
-                Err(error) => {
-                    let _ = on_update.send(PlayerUpdate::Error {
-                        error: error.into(),
-                    });
-                    break;
-                }
+                notice = async {
+                    match &mut skip_notices {
+                        Some(stream) => stream.next().await,
+                        None => std::future::pending().await,
+                    }
+                } => match notice {
+                    Ok(value) => {
+                        if app.state::<MusicClient>().validate_player_epoch(&value.epoch).is_err() {
+                            continue;
+                        }
+                        PlayerUpdate::OrdinaryCopyrightSkip { value }
+                    }
+                    Err(_) => {
+                        // Stop this optional arm; normal account/player
+                        // invalidation remains owned by the state stream.
+                        skip_notices = None;
+                        continue;
+                    }
+                },
             };
             if on_update.send(event).is_err() {
                 break;

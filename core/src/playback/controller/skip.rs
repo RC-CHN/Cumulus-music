@@ -1,5 +1,5 @@
 //! Scoped native entry for the proved M/308 miniBar transport branch.
-use super::{PlaybackCommand, PlaybackController, PlaybackFence};
+use super::{PlaybackCommand, PlaybackController, PlaybackFence, VerifiedOrdinarySkip};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -14,6 +14,13 @@ use crate::{
     },
     protocol::pc_experiments::PcExperimentGroups,
 };
+
+struct Scope<'a> {
+    groups: &'a PcExperimentGroups,
+    environment: OrdinaryQueueEnvironment,
+    authority: Cancellation,
+    publish: bool,
+}
 
 impl PlaybackController {
     /// Main bottom bar only; standard Next/Previous/EOF paths do not call
@@ -31,6 +38,57 @@ impl PlaybackController {
         environment: OrdinaryQueueEnvironment,
         authority: Cancellation,
     ) -> Result<OrdinarySkipOutcome> {
+        self.ordinary_minibar_skip_inner(
+            token,
+            expected,
+            step,
+            Scope {
+                groups,
+                environment,
+                authority,
+                publish: false,
+            },
+        )
+        .await
+    }
+
+    /// Only the product host's verified PC observation may add the notice.
+    pub(crate) async fn verified_minibar_skip(
+        &self,
+        token: &SessionToken,
+        expected: PlaybackFence,
+        step: Step,
+        verified: VerifiedOrdinarySkip,
+    ) -> Result<OrdinarySkipOutcome> {
+        self.ordinary_minibar_skip_inner(
+            token,
+            expected,
+            step,
+            Scope {
+                groups: &verified.groups,
+                environment: OrdinaryQueueEnvironment::OnlineWithoutMvExperiment {
+                    app_online: true,
+                },
+                authority: verified.authority,
+                publish: true,
+            },
+        )
+        .await
+    }
+
+    async fn ordinary_minibar_skip_inner(
+        &self,
+        token: &SessionToken,
+        expected: PlaybackFence,
+        step: Step,
+        scope: Scope<'_>,
+    ) -> Result<OrdinarySkipOutcome> {
+        let Scope {
+            groups,
+            environment,
+            authority,
+            publish,
+        } = scope;
         fn unchanged(boundary: SkipBoundary) -> OrdinarySkipOutcome {
             OrdinarySkipOutcome {
                 decision: Decision::Unchanged(boundary),
@@ -99,6 +157,15 @@ impl PlaybackController {
             });
         };
         let decision = skip_policy::after_initial_denial(&queue, &scan, trigger)?;
+        if publish && let Decision::PlayExisting { target, .. } = &decision {
+            let applied = self
+                .select_verified_skip(token, target.clone(), expected, authority)
+                .await?;
+            return Ok(OrdinarySkipOutcome {
+                decision,
+                applied: Some(applied),
+            });
+        }
         let command = match &decision {
             Decision::PlayExisting { target, .. } => Some(PlaybackCommand::Select(target.clone())),
             Decision::PauseCurrent { .. } => Some(PlaybackCommand::Pause(true)),

@@ -522,6 +522,20 @@ impl MusicClient {
             token,
         })
     }
+    /// Native main-window stream adapter only. This can observe accepted
+    /// decisions and cannot authorize or publish one.
+    pub fn subscribe_ordinary_skip(
+        &self,
+        epoch: &str,
+    ) -> Result<crate::playback::controller::OrdinarySkipNotices> {
+        let token = self.player_token(epoch)?;
+        self.player
+            .controller
+            .get()
+            .ok_or(Error::State("player stream is not initialized"))?
+            .ordinary_skip_notices(token)
+    }
+
     pub async fn player_action(&self, epoch: &str, action: PlayerAction) -> Result<PlayerView> {
         self.player_action_checked(epoch, action, None).await
     }

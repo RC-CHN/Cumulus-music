@@ -2085,3 +2085,51 @@ test('the active ordinary bottom bar sends an exact displayed playback step', as
   ]);
   f.player.dispose();
 });
+
+test('typed copyright skip notices expire separately and cannot replay across a player connection', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const receivers: ((event: PlayerUpdate) => void)[] = [];
+  const f = fixture({
+    watchPlayer: async (epoch, receive) => {
+      receivers.push(receive);
+      receive({ kind: 'state', value: state('1', epoch) });
+      return () => {};
+    },
+  });
+  const id1 = 'a'.repeat(32),
+    id2 = 'b'.repeat(32),
+    id3 = 'c'.repeat(32);
+  const event = (id: string, epoch: string, remainingMs: number): PlayerUpdate => ({
+    kind: 'ordinary_copyright_skip',
+    id,
+    epoch,
+    remainingMs,
+  });
+  try {
+    await f.player.connect(account());
+    const original = receivers[0]!;
+    original(event(id1, '1', 3000));
+    original(event(id1, '1', 3000));
+    original(event(id3, '2', 1000));
+    original(event(id3, '1', 3001));
+    assert.deepEqual(f.player.ordinarySkipNotices.value, [id1]);
+    assert.equal(f.player.error.value, '');
+
+    t.mock.timers.tick(1000);
+    original(event(id2, '1', 2800));
+    t.mock.timers.tick(1999);
+    assert.deepEqual(f.player.ordinarySkipNotices.value, [id1, id2]);
+    t.mock.timers.tick(1);
+    assert.deepEqual(f.player.ordinarySkipNotices.value, [id2]);
+
+    await f.player.connect(account('2'));
+    original(event(id3, '2', 3000));
+    assert.deepEqual(f.player.ordinarySkipNotices.value, []);
+    receivers[1]!(event(id3, '2', 200));
+    assert.deepEqual(f.player.ordinarySkipNotices.value, [id3]);
+    t.mock.timers.tick(200);
+    assert.deepEqual(f.player.ordinarySkipNotices.value, []);
+  } finally {
+    f.player.dispose();
+  }
+});

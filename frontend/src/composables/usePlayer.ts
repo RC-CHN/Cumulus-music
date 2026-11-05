@@ -7,6 +7,7 @@ import {
 } from '../services/contracts.ts';
 import type {
   PlayerView,
+  PlayerUpdate,
   PlaySelection,
   PlayerAction,
   QueueView,
@@ -49,6 +50,36 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const loadingStepCommand = shallowRef<{ key: string }>();
   const reported = shallowRef<CoreFailure>();
   const reportedRevision = ref(0);
+  const ordinarySkipNotices = shallowRef<string[]>([]);
+  const skipNoticeTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  function clearSkipNotices() {
+    for (const timer of skipNoticeTimers.values()) clearTimeout(timer);
+    skipNoticeTimers.clear();
+    ordinarySkipNotices.value = [];
+  }
+  function showSkipNotice(event: Extract<PlayerUpdate, { kind: 'ordinary_copyright_skip' }>) {
+    const { id, remainingMs } = event;
+    if (
+      event.epoch !== epoch ||
+      !/^[0-9a-f]{32}$/.test(id) ||
+      !Number.isInteger(remainingMs) ||
+      remainingMs < 1 ||
+      remainingMs > 3000 ||
+      skipNoticeTimers.has(id)
+    )
+      return;
+    function remove(key: string) {
+      clearTimeout(skipNoticeTimers.get(key));
+      skipNoticeTimers.delete(key);
+      ordinarySkipNotices.value = ordinarySkipNotices.value.filter((old) => old !== key);
+    }
+    if (ordinarySkipNotices.value.length >= 16) remove(ordinarySkipNotices.value[0]!);
+    ordinarySkipNotices.value = [...ordinarySkipNotices.value, id];
+    skipNoticeTimers.set(
+      id,
+      setTimeout(() => remove(id), remainingMs),
+    );
+  }
   const error = computed(() => reported.value?.message ?? '');
   const errorCode = computed(() => reported.value?.code ?? view.value?.errorCode);
   const canPlayMissingDownloadOnline = computed(() => {
@@ -210,6 +241,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     const version = ++connection;
     disconnect?.();
     disconnect = undefined;
+    clearSkipNotices();
     epoch = account.epoch;
     request++;
     failedOperation = undefined;
@@ -255,8 +287,11 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             handle(event.nativeOpenError);
           }
           void finish();
+        } else if (event.kind === 'ordinary_copyright_skip') {
+          showSkipNotice(event);
         } else {
           ended = true;
+          clearSkipNotices();
           ready.value = false;
           handle(event.error);
           if (event.error.code === 'stale') onSessionChanged();
@@ -1206,6 +1241,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   const offset = (gain: number) => updateLyrics((e, id) => core.lyricOffset(e, id, gain));
   function dispose() {
     equalizerDraft.reset();
+    clearSkipNotices();
     connection++;
     request++;
     resetLyrics();
@@ -1244,6 +1280,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     queueEditing,
     queueCurrent,
     error,
+    ordinarySkipNotices,
     errorCode,
     canRetry,
     queueError,

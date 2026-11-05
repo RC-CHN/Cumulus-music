@@ -90,7 +90,22 @@ async fn run(browser: Option<bool>, group: &str, expected: u64) {
         expected_queue_revision: before.queue_revision.clone(),
         direction: Step::Next,
     };
+    let mut notices = client.subscribe_ordinary_skip(&epoch).unwrap();
     let after = client.player_action(&epoch, action()).await.unwrap();
+    if expected == 3 {
+        let notice = tokio::time::timeout(Duration::from_secs(2), notices.next())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(notice.epoch, epoch);
+        assert_eq!(notice.id.len(), 32);
+        assert!((1..=3000).contains(&notice.remaining_ms));
+    }
+    assert!(
+        tokio::time::timeout(Duration::from_millis(60), notices.next())
+            .await
+            .is_err()
+    );
     assert_eq!(after.track.unwrap().id, expected.to_string());
     if expected == 1 {
         assert_eq!(before.play_id, after.play_id);

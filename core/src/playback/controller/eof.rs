@@ -52,7 +52,7 @@ enum Outcome {
     KeepFinished,
     ControlKeepFinished,
     StopFinished,
-    PlayExisting(String),
+    PlayExisting { target: String, notify: bool },
 }
 
 pub(super) struct Ready {
@@ -136,7 +136,10 @@ impl Actor {
                     .await?;
                 ticket.authority.check()?;
                 if !denied {
-                    return Ok(Outcome::PlayExisting(attempted.entry_id));
+                    return Ok(Outcome::PlayExisting {
+                        target: attempted.entry_id,
+                        notify: false,
+                    });
                 }
                 if !verified.groups.skip_songs_assigned() {
                     return Ok(Outcome::ControlKeepFinished);
@@ -155,7 +158,10 @@ impl Actor {
                         OrdinarySkipDecision::StopAtDeniedTail { .. }
                         | OrdinarySkipDecision::StopAtErrorLimit { .. } => Outcome::StopFinished,
                         OrdinarySkipDecision::PlayExisting { target, .. } => {
-                            Outcome::PlayExisting(target)
+                            Outcome::PlayExisting {
+                                target,
+                                notify: true,
+                            }
                         }
                         // No candidate / incomplete facts do not give this
                         // bounded branch authority to advance a finished source.
@@ -224,7 +230,7 @@ impl Actor {
                     self.position = position;
                 }
             }
-            Ok(Outcome::PlayExisting(target)) => {
+            Ok(Outcome::PlayExisting { target, notify }) => {
                 // Queue::select compares the durable queue under its write
                 // transaction; hold the account generation through that commit.
                 let selected = self
@@ -234,6 +240,9 @@ impl Actor {
                     Ok(_) => {}
                     Err(Error::QueueChanged | Error::StaleResponse) => return Ok(()),
                     Err(error) => return Err(error),
+                }
+                if notify {
+                    self.publish_ordinary_skip();
                 }
                 self.begin(
                     LoadOptions {

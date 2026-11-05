@@ -295,10 +295,26 @@ impl Actor {
                 self.stamp_quality(&mut resources);
                 self.queue.append(resources, source).map(|_| ())
             }
-            PlaybackCommand::Select(id) => self
-                .queue
-                .select(&id)
-                .map(|_| options = Some(LoadOptions::default())),
+            PlaybackCommand::Select(id) => {
+                let selected = if request.verified_skip_selection {
+                    match &request.guard {
+                        Some((_, authority)) if !authority.is_cancelled() => self
+                            .session
+                            .with_token(&self.token, |_| self.queue.select(&id)),
+                        _ => Err(Error::StaleResponse),
+                    }
+                } else {
+                    self.queue.select(&id)
+                };
+                selected.map(|_| {
+                    // Queue selection has committed. M308's notice describes
+                    // this transition; URL/decoder success does not emit it.
+                    if request.verified_skip_selection {
+                        self.publish_ordinary_skip();
+                    }
+                    options = Some(LoadOptions::default());
+                })
+            }
             PlaybackCommand::Remove(ids) => self.queue.remove(&ids),
             PlaybackCommand::RemoveAndResume {
                 entry_ids,

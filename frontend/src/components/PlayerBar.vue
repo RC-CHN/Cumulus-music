@@ -765,6 +765,16 @@ async function seek(event: Event) {
       <AudiobookSkipMenu :epoch="account.epoch" :context="audiobookSkipContext" />
     </div>
     <div class="player-feedback-stack">
+      <TransitionGroup name="playback-feedback">
+        <div
+          v-for="id in player.ordinarySkipNotices.value"
+          :key="id"
+          class="playback-message ordinary-skip-notice"
+          role="status"
+        >
+          <span>已为您自动跳过不能播放的歌曲</span>
+        </div>
+      </TransitionGroup>
       <Transition name="playback-feedback">
         <div v-if="downloadNotice" class="playback-message player-download-notice" role="status">
           <span>{{ downloadNotice }}</span>

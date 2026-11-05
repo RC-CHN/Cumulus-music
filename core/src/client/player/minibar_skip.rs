@@ -7,7 +7,6 @@ use crate::{
         Step,
         controller::{PlaybackController, PlaybackSnapshot},
         engine::Cancellation,
-        preflight::OrdinaryQueueEnvironment,
     },
 };
 
@@ -28,14 +27,7 @@ impl MusicClient {
             return Ok(None);
         };
         let outcome = controller
-            .ordinary_minibar_skip(
-                token,
-                current.fence(),
-                direction,
-                &verified.groups,
-                OrdinaryQueueEnvironment::OnlineWithoutMvExperiment { app_online: true },
-                verified.authority,
-            )
+            .verified_minibar_skip(token, current.fence(), direction, verified)
             .await?;
         transport.check()?;
         // An in-flight preflight failure isn't permission to send a second

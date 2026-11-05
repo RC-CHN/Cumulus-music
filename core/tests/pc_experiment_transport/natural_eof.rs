@@ -249,8 +249,14 @@ async fn signed_denied_tail_stops_on_finished_row_but_control_keeps_finished_ide
         )
         .await;
         f.wire.wait(4).await;
+        let mut notices = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
         f.eof();
         let after = f.wait(|view| view.state == expected).await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(60), notices.next())
+                .await
+                .is_err()
+        );
         assert_eq!(after.entry_id, before.entry_id);
         assert_eq!(after.queue_revision, before.queue_revision);
         assert_eq!(after.track.as_ref().unwrap().id, "1");
@@ -368,8 +374,23 @@ async fn new_user_stop_retires_a_held_eof_target_before_it_can_decode() {
     )
     .await;
     f.wire.wait(4).await;
+    let mut notices = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
     f.eof();
     f.wire.wait(5).await;
+    // URL 3 is still blocked; the already committed selection owns the notice.
+    let notice = tokio::time::timeout(Duration::from_secs(2), notices.next())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(notice.epoch, f.epoch);
+    assert_eq!(notice.id.len(), 32);
+    assert!((1..=3000).contains(&notice.remaining_ms));
+    let mut late = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_millis(60), late.next())
+            .await
+            .is_err()
+    );
     f.client
         .player_action(&f.epoch, PlayerAction::Stop)
         .await
@@ -379,6 +400,11 @@ async fn new_user_stop_retires_a_held_eof_target_before_it_can_decode() {
     assert_eq!(after.state, PlaybackStatus::Idle);
     assert!(after.play_id.is_none());
     assert_eq!(f.loads(), 1);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(60), notices.next())
+            .await
+            .is_err()
+    );
     f.assert_wire(&["1", "2", "3"]);
     f.poll.shutdown().await;
 }
