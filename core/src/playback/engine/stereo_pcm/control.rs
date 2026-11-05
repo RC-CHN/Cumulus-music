@@ -174,9 +174,14 @@ impl Shared {
             }
             let credit = if state.entry.is_none() {
                 self.startup
-            } else if state.paused || state.seeking {
+            } else if state.paused || (state.seeking && state.native > 0) {
                 state.produced
             } else {
+                // mpv remains in initial seeking/sync until its AO queue is
+                // full. Before the first real native clock, unpaused startup
+                // may use this SAME bounded quarter-second lead; freezing it
+                // after the first raw packet deadlocks AO initialization.
+                // After a real clock has advanced, seeking grants no credit.
                 state.native.saturating_add(self.lead)
             };
             if state.produced < credit && state.pcm.len() / 2 + QUANTUM <= self.capacity {

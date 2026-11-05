@@ -75,7 +75,10 @@ The graph is processed incrementally to BOTH node ends, not eager full-tail
 rendering and not a synthetic one-frame settlement.
 
 Before a native entry is bound, startup admits rate/8+2048 produced frames,
-with at most one quantum overshoot. After binding while paused/seeking it
+with at most one quantum overshoot. After binding while paused it admits no
+new audio work. Initial unpaused native syncing may use the SAME quarter-second
+lead while the native clock is still zero: mpv requires a full AO queue before
+leaving initial seeking. Once a real native clock has advanced, seeking again
 admits no new audio work. While running, credit is native time-pos output
 frames+ceil(rate/4), again at most one quantum overshoot. Native clocks must
 match the bound entry, be finite/nonnegative/nonseeking, never move backwards
@@ -83,6 +86,18 @@ and cannot acknowledge frames the reader has not delivered. Decoder, produced,
 delivered and cache counters never create clock credit. EOF tail frames use
 the same credit instead of bypassing it. The PCM queue is fallibly allocated
 from that bound; full queues and stopped native clocks block the worker.
+
+This initial-sync distinction follows mpv0.41.0 demux/demux_raw.c (packets are
+floor(rate/8)), player/audio.c (STATUS_SYNCING waits for full AO queue or EOF),
+audio/out/ao.c (default0.2s soft buffer) and audio/out/buffer.c (queue max_samples
+is the actual AO buffer). Primary source: https://github.com/mpv-player/mpv/tree/v0.41.0
+The first real native failure supplied only7973frames at44.1kHz, below two raw
+packets and the null AO queue. It remained seeking with no clock; freezing
+every seeking observation created a startup deadlock. The fix distinguishes
+this first sync, retaining both numerical bounds, real seeking/clock truth,
+paused control acknowledgements and all later-seek freezes. Larger device AO
+buffers remain a runtime boundary; no arbitrary unlimited startup allowance
+or physical-output success is inferred from the null-output experiment.
 
 This is a bounded <=250ms+one quantum render lead, not zero output latency or
 a speaker measurement. A source shorter than the initial packet budget can

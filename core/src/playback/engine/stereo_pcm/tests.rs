@@ -101,3 +101,86 @@ fn producer_failure_zeros_even_an_already_encoded_partial_read_window() {
     assert!(reader.read(&mut pending).is_err());
     assert_eq!(pending, [0; 7]);
 }
+
+#[test]
+fn first_native_sync_can_fill_two_real_packets_without_forging_a_clock_or_loosening_later_seek() {
+    use crate::effects::dsp::PlanarBlock;
+    let rate = 44100u32;
+    let (mut reader, control, shared) =
+        channel(rate, 0, 200000, Cancellation::default(), None).unwrap();
+    control.publish_sink().unwrap();
+    control.bind_entry(77).unwrap();
+    control.observe(77, Some(0.0), false, true).unwrap();
+    let worker_shared = shared.clone();
+    let worker = thread::spawn(move || {
+        let mut graph =
+            LocalStereoSubgraph::new(Format::new(rate as f32, 2, 2048).unwrap(), plan(3)).unwrap();
+        let mut block = PlanarBlock::new(graph.format());
+        let mut output = [0.0; 4096];
+        let mut decoded = 0;
+        loop {
+            match worker_shared.wait_for_credit(&mut graph) {
+                Err(Error::Cancelled) => break,
+                result => result.unwrap(),
+            }
+            let flow = graph.process(&mut block, 2048, false).unwrap();
+            block
+                .copy_interleaved(flow.valid_frames, &mut output[..flow.valid_frames * 2])
+                .unwrap();
+            decoded += 2048;
+            match worker_shared.publish(&output[..flow.valid_frames * 2], decoded, false) {
+                Err(Error::Cancelled) => break,
+                result => result.unwrap(),
+            }
+        }
+    });
+    let (sent, received) = mpsc::sync_channel(1);
+    let consumer = thread::spawn(move || {
+        // Raw demux packets are floor(rate/8). One is not sufficient to fill
+        // mpv/null's real 0.2s AO queue and finish initial syncing.
+        let mut bytes = vec![0; (rate as usize / 8) * 2 * 8];
+        let result = reader.read_exact(&mut bytes);
+        sent.send((result, reader)).unwrap();
+    });
+    let read = received.recv_timeout(Duration::from_secs(2));
+    if read.is_err() {
+        control.cancel();
+    }
+    consumer.join().unwrap();
+    if read.is_err() {
+        worker.join().unwrap();
+        panic!("initial sync never supplied two real native packets");
+    }
+    let (read, reader) = read.unwrap();
+    read.unwrap();
+    let revision = control.configure(plan(-3)).unwrap();
+    control
+        .wait_applied(revision, Duration::from_secs(2))
+        .unwrap();
+    let initial = control.snapshot().unwrap();
+    assert_eq!(initial.native_output_frame, 0);
+    assert_eq!(initial.delivered_frames, u64::from((rate / 8) * 2));
+    assert!(initial.produced_frames <= u64::from(rate.div_ceil(4)) + 2048);
+    assert!(!initial.graph_end);
+    control.observe(77, Some(0.05), false, false).unwrap();
+    control.observe(77, Some(0.05), false, true).unwrap();
+    let revision = control.configure(plan(7)).unwrap();
+    control
+        .wait_applied(revision, Duration::from_secs(2))
+        .unwrap();
+    let seeking = control.snapshot().unwrap();
+    assert!(seeking.native_output_frame > 0);
+    let revision = control.configure(plan(-3)).unwrap();
+    control
+        .wait_applied(revision, Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(
+        control.snapshot().unwrap().produced_frames,
+        seeking.produced_frames
+    );
+    control.cancel();
+    worker.join().unwrap();
+    drop(reader);
+    assert!(!control.snapshot().unwrap().native_sink_retired);
+    control.retire_sink();
+}
