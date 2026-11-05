@@ -69,6 +69,7 @@ async fn album_drag_resolves_native_order_without_requests_or_replacing_paused_p
         .player_action("1", PlayerAction::Pause { paused: true })
         .await
         .unwrap();
+    assert_eq!(before.mode, PlaybackMode::SingleLoop);
     let queue_before = client.player_queue("1").await.unwrap();
     let anchor = Some(queue_before.tracks[2].entry_id.clone());
     api.calls.lock().unwrap().clear();
