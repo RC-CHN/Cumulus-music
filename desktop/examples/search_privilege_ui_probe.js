@@ -19,7 +19,7 @@
   const panel = () => one('#search-result-panel');
   const card = () => one('[data-result-key="song:601"]');
   const mv = () => card()?.querySelector('[data-result-action="mv"]')?.getAttribute('aria-label');
-  const more = () => card()?.querySelector('[aria-label="更多"], [aria-label^="更多 "]');
+  const more = () => card()?.querySelector('[aria-label^="更多操作 "]');
   const labels = () => ({
     mv: mv() ?? null,
     vip: card()?.querySelector('.vip-tag')?.textContent ?? null,
@@ -130,6 +130,22 @@
     assert(refreshes.length === 2 && refreshes[1].fromNativeObservation && !refreshes[1].ok &&
       mv()?.startsWith('播放 MV') && labels().free, 'failed privilege read retains prior labels and does not retry');
     await capture('failed_privilege_read');
+
+    const playAll = card().closest('.search-result-section')
+      .querySelector('[aria-label="播放全部搜索单曲"]');
+    assert(!playAll.disabled, 'explicit Play All remains available after the read failure');
+    playAll.click();
+    const playing = await wait(async () => {
+      const value = await played(epoch);
+      return value.state === 'playing' && value.track?.id === '601' &&
+        value.playId !== baseline.playId && value.position > .15 && value;
+    }, 'explicit Play All starts the first authorized result');
+    const queue = await invoke('player_queue', { epoch });
+    const playAllIds = queue.tracks.map((row) => row.track.id);
+    assert(playAllIds.join(',') === '601,602,603,604,605,606' && queue.current === playing.entryId,
+      'explicit Play All uses the six refreshed rows, not the full raw block');
+    await emit('ux_05_play_all_refreshed', { native: playing, playAllIds });
+    count++;
 
     await emit('complete', {
       ok: true, stageCount: count, refreshes, realMusicRequests: 0, realAccountWrites: 0,

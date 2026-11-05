@@ -9,7 +9,8 @@ from playback_power_smoke import windows_runtime
 from window_manager import launch
 
 
-STATES = ('cold_restricted', 'changed_tuple', 'same_tuple', 'failed_privilege_read')
+UNCHANGED = ('cold_restricted', 'changed_tuple', 'same_tuple', 'failed_privilege_read')
+STATES = (*UNCHANGED, 'play_all_refreshed')
 
 
 def read(path):
@@ -69,12 +70,17 @@ def main():
     assert rows['failed_privilege_read']['refreshes'] == [
         *changed['refreshes'], {'ok': False, 'fromNativeObservation': True},
     ]
-    for row in rows.values():
+    for name in UNCHANGED:
+        row = rows[name]
         assert row['sameDom'] and row['scrollTop'] == first['scrollTop'] > 0
         assert row['rowKeys'] == first['rowKeys'] and row['focused'] == first['focused']
         assert row['native']['state'] == 'paused'
         for field in ('playId', 'entryId', 'queueRevision', 'position'):
             assert row['native'][field] == first['native'][field]
+    played = rows['play_all_refreshed']
+    assert played['playAllIds'] == [str(i) for i in range(601, 607)]
+    assert played['native']['track']['id'] == '601' and played['native']['position'] > .15
+    assert played['native']['playId'] != first['native']['playId']
     fixture = complete['searchPrivilegeFixture']
     assert fixture['membershipReads'] == 4 and fixture['complexReads'] == 1
     assert fixture['privilegeReads'] == 2 and fixture['privilegeFailures'] == 1
