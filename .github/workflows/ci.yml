@@ -503,10 +503,13 @@ jobs:
       - name: Verify default and single-download quality in Windows WebView2
         run: |
           python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
-      - name: Verify local PCM WAV spatial controls in Windows WebView2
+      - name: Verify local WAV and 48 kHz FLAC spatial controls in Windows WebView2
         run: |
           cargo build -p cumulus-desktop --example native_local_equalizer_probe --features custom-protocol --locked
           python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-windows
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-wav-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-48k-windows
+          flac_sha="$(python -c "import sys; sys.path.insert(0, 'scripts/ci'); from windows_flac import FLAC_DLL_SHA256; print(FLAC_DLL_SHA256)")"
+          python scripts/ci/native_local_equalizer_smoke.py --spatial-flac-48k-only --binary .build/target/debug/examples/native_local_equalizer_probe.exe --mpv-library .build/package-stage/windows-x64/native/libmpv-2.dll --flac-library .build/package-stage/windows-x64/native/libFLAC.dll --flac-sha256 "$flac_sha" --frontend-dist frontend/dist --root .build/ci-native-spatial-flac-48k-windows
       - name: Windows native media and desktop WebView regression
         if: runner.os == 'Windows'
         run: |
@@ -926,6 +929,18 @@ jobs:
             env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --spatial-wav-only --binary .build/target/debug/examples/native_local_equalizer_probe \
             --frontend-dist frontend/dist --root .build/ci-native-spatial-wav-linux
+      - name: Verify local 48 kHz WAV and packaged FLAC spatial controls on Linux
+        run: |
+          verify_spatial_rate() {
+            sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
+              env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+              env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+              /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --binary .build/target/debug/examples/native_local_equalizer_probe \
+              --frontend-dist frontend/dist "$@"
+          }
+          verify_spatial_rate --spatial-wav-48k-only --root .build/ci-native-spatial-wav-48k-linux
+          verify_spatial_rate --spatial-flac-48k-only --root .build/ci-native-spatial-flac-48k-linux \
+            --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256"
       - name: Verify natural playback completion and live history settings on Linux
         run: |
           cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
