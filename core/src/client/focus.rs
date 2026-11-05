@@ -321,6 +321,26 @@ impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
     ) -> Result<LoadedMedia> {
         self.inner.load_streaming_audio(reader, cancel)
     }
+    fn supports_pinned_search_download(&self) -> bool {
+        self.inner.supports_pinned_search_download()
+    }
+    fn load_pinned_audio(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        // The pinned decoder also starts paused; pause(false) checks focus.
+        self.inner.load_pinned_audio(file, authority, cancel)
+    }
+    fn load_pinned_ncm(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.inner.load_pinned_ncm(file, authority, cancel)
+    }
     fn load(&mut self, r: LoadRequest, c: &Cancellation) -> Result<LoadedMedia> {
         // AudioEngine loads paused. Only pause(false) may start presentation.
         self.inner.load(r, c)

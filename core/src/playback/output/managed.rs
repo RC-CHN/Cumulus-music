@@ -215,6 +215,37 @@ fn remaining(request: &LoadRequest, deadline: Instant) -> Result<LoadRequest> {
     })
 }
 impl<E: AudioEngine + ?Sized> ManagedOutput<E> {
+    fn load_pinned_search(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+        encrypted: bool,
+    ) -> Result<LoadedMedia> {
+        let cancel = self.lease.cancellation(cancel);
+        let authority = self.lease.cancellation(&authority);
+        cancel.check()?;
+        authority.check()?;
+        self.synchronize(true)?;
+        cancel.check()?;
+        authority.check()?;
+        // This handle is one-shot. A device error cannot reopen its path.
+        let result = if encrypted {
+            self.inner.load_pinned_ncm(file, authority.clone(), &cancel)
+        } else {
+            self.inner
+                .load_pinned_audio(file, authority.clone(), &cancel)
+        };
+        if cancel.is_cancelled() || authority.is_cancelled() {
+            let _ = self.inner.stop();
+            return Err(Error::Cancelled);
+        }
+        if result.as_ref().is_err_and(output_failure) {
+            self.record_load_failure();
+        }
+        self.observe_successful_load(result)
+    }
+
     fn observe_successful_load(&mut self, result: Result<LoadedMedia>) -> Result<LoadedMedia> {
         if result.is_ok()
             && self
@@ -244,6 +275,28 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     }
     fn streaming_audio_available(&mut self) -> bool {
         self.inner.streaming_audio_available()
+    }
+
+    fn supports_pinned_search_download(&self) -> bool {
+        self.inner.supports_pinned_search_download()
+    }
+
+    fn load_pinned_audio(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.load_pinned_search(file, authority, cancel, false)
+    }
+
+    fn load_pinned_ncm(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.load_pinned_search(file, authority, cancel, true)
     }
 
     fn load_streaming_audio(
