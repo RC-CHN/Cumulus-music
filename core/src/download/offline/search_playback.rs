@@ -8,10 +8,7 @@ use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
     download::service::{DownloadOrigin, DownloadTask, TASKS},
-    media::{
-        ncm::{HeaderPolicy, NcmReader},
-        open_regular,
-    },
+    media::ncm::{HeaderPolicy, NcmReader},
     membership::{MembershipManager, MembershipState, OfflineSource, offline_access},
     playback::{
         PlaybackQueue, QueueEntry,
@@ -22,8 +19,9 @@ use crate::{
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
-    fs::File,
+    fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom},
+    path::Path,
     sync::Arc,
     time::{Duration, Instant, SystemTime},
 };
@@ -31,6 +29,38 @@ use std::{
 // Default DownloadService's publication ceiling. Do not let damaged ledger
 // bytes turn a source lookup into an unbounded scan of the file system.
 const MAX_SEARCH_FILE: u64 = 512 * 1024 * 1024;
+
+fn open_search_file(path: &Path) -> Result<File> {
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // A replacement FIFO cannot trap the verifier in open(), and the
+        // opened leaf must be the object itself rather than a symlink target.
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(Error::InvalidInput(
+            "search publication is not a regular file",
+        ));
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes() & 0x0000_0400 != 0 {
+            return Err(Error::InvalidInput("search publication is a reparse point"));
+        }
+    }
+    Ok(file)
+}
 
 /// Native-only identity of a publication selected from the active account's
 /// journal. Kept separately from the one-shot descriptor to allow an explicit
@@ -238,7 +268,7 @@ impl SearchPublication {
         if self.record.path.canonicalize()? != self.record.path {
             return Err(Error::State("published search path changed"));
         }
-        let mut file = open_regular(&self.record.path)?;
+        let mut file = open_search_file(&self.record.path)?;
         let expected = &self.record.integrity;
         let before = file.metadata()?;
         if before.len() != expected.bytes {
@@ -339,6 +369,29 @@ mod tests {
         fn request<'a>(&'a self, _: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
             panic!("sealed publication must not access an API")
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn search_file_open_rejects_replacement_fifo_and_symlink() {
+        use std::{ffi::CString, os::unix::ffi::OsStrExt};
+
+        let root = tempfile::tempdir().unwrap();
+        let regular = root.path().join("original.flac");
+        let replacement = root.path().join("replacement.flac");
+        std::fs::write(&regular, b"fLaC regular file").unwrap();
+        std::os::unix::fs::symlink(&regular, &replacement).unwrap();
+        assert!(open_search_file(&replacement).is_err());
+        std::fs::remove_file(&replacement).unwrap();
+
+        let pathname = CString::new(replacement.as_os_str().as_bytes()).unwrap();
+        // SAFETY: pathname is a live nul-terminated absolute temp path.
+        assert_eq!(unsafe { libc::mkfifo(pathname.as_ptr(), 0o600) }, 0);
+        assert!(matches!(
+            open_search_file(&replacement),
+            Err(Error::InvalidInput(_))
+        ));
+        assert!(open_search_file(&regular).is_ok());
     }
 
     #[test]
