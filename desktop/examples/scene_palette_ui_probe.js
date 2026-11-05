@@ -115,7 +115,7 @@
     } else {
       await palette(mode === 'sample' ? brown : mode === 'only_tb' ? null : blue);
       const playing = await capture('playing_palette_stable');
-      assert(playing.s.playId === loaded.playId && playing.q.voices.map((v) => v[1]).join(',') === '601,602',
+      assert(playing.s.playId === loaded.playId && playing.q.tracks.map((v) => v.track.voiceId).join(',') === '601,602',
         'palette keeps loaded complete queue');
       await click(title, 'open current voice detail');
       await wait(() => visible(one('.lyrics-panel')), 'official voice playback detail');
