@@ -42,9 +42,10 @@ impl MusicClient {
         else {
             return Ok(None);
         };
-        if !groups.skip_songs_assigned() || groups.group("PH-PC-Blacklist") == Some("t1") {
+        if groups.group("PH-PC-Blacklist") == Some("t1") {
             return Ok(None);
         }
+        let skip = groups.skip_songs_assigned();
         let session = self.session.clone();
         let host = self.pc_experiments.clone();
         let owner = token.clone();
@@ -66,7 +67,7 @@ impl MusicClient {
                     .is_ok_and(|current| {
                         current.is_some_and(|(at, groups)| {
                             at == version
-                                && groups.skip_songs_assigned()
+                                && groups.skip_songs_assigned() == skip
                                 && groups.group("PH-PC-Blacklist") != Some("t1")
                         })
                     })

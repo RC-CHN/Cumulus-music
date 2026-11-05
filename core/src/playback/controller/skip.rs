@@ -42,9 +42,6 @@ impl PlaybackController {
         if before.fence() != expected {
             return Err(Error::StaleResponse);
         }
-        if !groups.skip_songs_assigned() {
-            return Ok(unchanged(SkipBoundary::AssignmentOff));
-        }
         if matches!(environment, OrdinaryQueueEnvironment::Unresolved)
             || groups.group("PH-PC-Blacklist") == Some("t1")
             || before.fm
@@ -78,22 +75,41 @@ impl PlaybackController {
             return Ok(unchanged(SkipBoundary::InitialRightsNotProven));
         }
         authority.check()?;
-        let scan = self
-            .resolver
-            .ordinary_queue_preflight(token, &queue, environment)
-            .await?;
+        let scan = if groups.skip_songs_assigned() {
+            Some(
+                self.resolver
+                    .ordinary_queue_preflight(token, &queue, environment)
+                    .await?,
+            )
+        } else {
+            None
+        };
         let (after, current) = self.queue_with_state(token).await?;
         if after.fence() != expected || current != queue {
             return Err(Error::StaleResponse);
         }
         self.resolver.check_account_generation(token)?;
         authority.check()?;
+        let Some(scan) = scan else {
+            // M308 checks the initial row in both cohorts. With a definite
+            // denial outside t1 it returns before dispatching a player
+            // action: consume this click and retain the exact current play.
+            return Ok(OrdinarySkipOutcome {
+                decision: Decision::KeepCurrentDenied {
+                    attempted: item.entry_id.clone(),
+                },
+                applied: Some(after),
+            });
+        };
         let decision = skip_policy::after_initial_denial(&queue, &scan, trigger)?;
         let command = match &decision {
             Decision::PlayExisting { target, .. } => Some(PlaybackCommand::Select(target.clone())),
             Decision::PauseCurrent { .. } => Some(PlaybackCommand::Pause(true)),
             Decision::StopAtErrorLimit { .. } => Some(PlaybackCommand::Stop),
             Decision::Unchanged(_) => None,
+            Decision::KeepCurrentDenied { .. } => {
+                unreachable!("known control denials do not enter the traversal")
+            }
             Decision::StopAtDeniedTail { .. } => {
                 unreachable!("only native EOF can stop at denied tail")
             }

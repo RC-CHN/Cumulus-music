@@ -21,7 +21,6 @@ pub enum OrdinarySkipTrigger {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SkipBoundary {
-    AssignmentOff,
     ContextUnresolved,
     ExcludedTrigger,
     NaturalEndOrRepeat,
@@ -34,6 +33,9 @@ pub enum SkipBoundary {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OrdinarySkipDecision {
     Unchanged(SkipBoundary),
+    KeepCurrentDenied {
+        attempted: String,
+    },
     PauseCurrent {
         attempted: String,
     },

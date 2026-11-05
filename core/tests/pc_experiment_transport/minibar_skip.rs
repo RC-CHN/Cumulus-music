@@ -29,8 +29,9 @@ async fn run(browser: Option<bool>, group: &str, expected: u64) {
             url(1).into(),
             json!({"code":200,"data":[{"expName":"PH-PC-skipSongs2","expGroupName":group}]}).into(),
             json!({"code":200,"msg":0,"comment":0,"forward":0,"notice":0}).into(),
-            url(expected).into(),
-        ],
+        ]
+        .into_iter()
+        .chain((expected != 1).then(|| url(expected).into())),
     );
     let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
     let mut queue = PlaybackQueue::new(Some(registry.store()), "71").unwrap();
@@ -91,29 +92,39 @@ async fn run(browser: Option<bool>, group: &str, expected: u64) {
     };
     let after = client.player_action(&epoch, action()).await.unwrap();
     assert_eq!(after.track.unwrap().id, expected.to_string());
-    assert_ne!(before.play_id, after.play_id);
-    assert!(
-        matches!(client.player_action(&epoch, action()).await, Err(error) if matches!(error.root(), Error::StaleResponse))
-    );
+    if expected == 1 {
+        assert_eq!(before.play_id, after.play_id);
+        assert_eq!(before.entry_id, after.entry_id);
+    } else {
+        assert_ne!(before.play_id, after.play_id);
+        assert!(
+            matches!(client.player_action(&epoch, action()).await, Err(error) if matches!(error.root(), Error::StaleResponse))
+        );
+    }
     let calls = http.calls();
+    let mut expected_paths = vec![
+        "/api/song/enhance/player/url/v1",
+        ASSIGNMENT_PATH,
+        "/api/pl/count",
+    ];
+    if expected != 1 {
+        expected_paths.push("/api/song/enhance/player/url/v1");
+    }
     assert_eq!(
         calls
             .iter()
             .map(|call| call.path.as_str())
             .collect::<Vec<_>>(),
-        [
-            "/api/song/enhance/player/url/v1",
-            ASSIGNMENT_PATH,
-            "/api/pl/count",
-            "/api/song/enhance/player/url/v1",
-        ]
+        expected_paths
     );
-    let ids: Vec<Value> = serde_json::from_str(calls[3].payload["ids"].as_str().unwrap()).unwrap();
-    assert_eq!(ids.len(), 1);
-    assert_eq!(
-        cumulus_core::protocol::api::identifier(&ids[0]).unwrap(),
-        expected.to_string()
-    );
+    if let Some(next) = calls.get(3) {
+        let ids: Vec<Value> = serde_json::from_str(next.payload["ids"].as_str().unwrap()).unwrap();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(
+            cumulus_core::protocol::api::identifier(&ids[0]).unwrap(),
+            expected.to_string()
+        );
+    }
     poll.shutdown().await;
 }
 
@@ -122,5 +133,5 @@ async fn signed_main_minibar_uses_denial_scan_only_with_current_online_t1() {
     run(Some(true), "t1", 3).await;
     run(None, "t1", 2).await;
     run(Some(false), "t1", 2).await;
-    run(Some(true), "c", 2).await;
+    run(Some(true), "c", 1).await;
 }

@@ -186,9 +186,11 @@ async fn mini_bar_retries_known_denials_then_loads_one_existing_online_row_throu
         .unwrap();
     assert_eq!(
         disabled.decision,
-        Decision::Unchanged(SkipBoundary::AssignmentOff)
+        Decision::KeepCurrentDenied {
+            attempted: original.items[1].entry_id.clone()
+        }
     );
-    assert!(disabled.applied.is_none());
+    assert_eq!(disabled.applied.unwrap().fence(), before.fence());
     assert_eq!(f.player.snapshot().play_id, before.play_id);
     let result = f
         .player
