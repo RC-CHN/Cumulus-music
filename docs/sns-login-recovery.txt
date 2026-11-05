@@ -14,6 +14,24 @@ Cumulus SNS 登录恢复契约与后续实现边界
 时先继续可离线验证的其他业务。成功授权也只建立候选会话；切换、注册和绑定仍沿用
 已有确认和身份核对边界。
 
+2026-11-05 离线补核
+
+  pages/sns/index.js:381–405（编译 M3143:372–374）有原生 beforerequest /
+  beforepopup 转接。Windows 对 WeChat 的顶层 HTTP(S) 导航会重设同一授权 iframe
+  的 src；QQ 使用 Hosted 入口分支重新载入。另有 :163–185 的子窗口返回转接。
+  因此不能将顶层 WebView 导航假定为官方同一路径。已搜索恢复脚本、资源及
+  x86/x64 PE 的 ASCII/UTF-16LE 关键字，未找到成功票据生成文档。静态阴性结果
+  不能证明真实回调或后端脚本不存在。
+
+  当前锁定宿主有专用适配点：Tauri 2.11.5 的 PlatformWebview 可取 Windows
+  WebView2 controller 或 Linux WebKitGTK。WebView2 0.38.2 的 FrameCreated、
+  frame WebMessageReceived 和原生消息 Source 可作为具体 frame 的核对输入，
+  仍须验证实际 COM 能力与重定向。WebKitGTK 2.0.2 能验证主文档响应、在命名脚本
+  环境运行；若真实回调在 iframe，需从 WebKit web-process extension 取得 frame
+  身份与文档地址，通用 script-message 回调没有这两个字段。Wry 的通用桥不作为
+  票据来源证明。Windows 的临时窗口还须验证实际使用隔离 profile，不能只依赖
+  incognito 参数。该补核未访问第三方、未授权登录、未实现候选入口。
+
 1. 已恢复的端到端链路与尚未取得的部分
 
   已恢复：PC 登录入口 → JSK loginWithThirdParty → nm.sns.snsBindDetailInfo
