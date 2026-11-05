@@ -35,9 +35,17 @@
     } else {
       click(one('.track-row .track-play:not(:disabled)'));
       await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'actual decoder');
-      click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','pause');
-      const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
-      await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'seek');
+      const playId=bar().dataset.playId, trackId=bar().dataset.trackId;
+      const same=()=>!!playId&&bar()?.dataset.playId===playId&&bar().dataset.trackId===trackId;
+      const pause=()=>bar()?.querySelector('[aria-label="暂停"]');
+      const range=()=>bar()?.querySelector('input[type="range"][aria-label="播放进度"]');
+      const ready=(input=range())=>same()&&bar().dataset.state==='paused'&&input?.isConnected&&
+        !input.disabled&&Number(input.min)<=10&&Number(input.max)>=10;
+      await wait(()=>same()&&pause()?.isConnected&&!pause().disabled,'pause control ready');
+      click(pause());await wait(()=>ready(),'paused seek control ready');
+      const seek=range();assert(ready(seek),'seek control changed before dispatch');seek.value='10';
+      seek.dispatchEvent(new Event('change',{bubbles:true}));
+      await wait(()=>ready()&&Math.abs(Number(bar().dataset.position)-10)<.2,'seek');
       await invoke('player_action',{epoch,action:{kind:'quality',level:'lossless'}});
       await wait(()=>bar().dataset.preferredQuality==='lossless','initial preference');
       let info=await details();await capture('before_activation');

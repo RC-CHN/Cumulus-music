@@ -40,12 +40,26 @@
   async function confirm(){await choose('超清母带');await wait(()=>dialog()?.dataset.kind==='confirm','explicit offer');click(button('确认启用试用'));}
   async function applied(){await wait(()=>!one('.quality-trial-dialog')&&!one('.quality-action-menu')&&bar().dataset.preferredQuality==='jymaster','trial quality applied');assert(document.activeElement===tag(),'trial success focus');}
   async function expire(){await fixture('trial-expire');await wait(()=>bar().dataset.preferredQuality==='lossless','native preference fallback');}
+  async function pauseAtTen(){
+    const playId=bar().dataset.playId, trackId=bar().dataset.trackId;
+    const same=()=>!!playId&&bar()?.dataset.playId===playId&&bar().dataset.trackId===trackId;
+    const pause=()=>bar()?.querySelector('[aria-label="暂停"]');
+    const range=()=>bar()?.querySelector('input[type="range"][aria-label="播放进度"]');
+    const ready=(input=range())=>same()&&bar().dataset.state==='paused'&&input?.isConnected&&
+      !input.disabled&&Number(input.min)<=10&&Number(input.max)>=10;
+    await wait(()=>same()&&pause()?.isConnected&&!pause().disabled,'pause control ready');
+    click(pause());
+    await wait(()=>ready(),'paused seek control ready');
+    const seek=range();assert(ready(seek),'seek control changed before dispatch');seek.value='10';
+    seek.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>ready()&&Math.abs(Number(bar().dataset.position)-10)<.2,'native seek');
+  }
   async function freshSong(){
     // Use a different song for denial: the previous song still has a valid
     // authorized Master URL in the real resolver cache, which must stay intact.
     const old=bar().dataset.playId;const target=all('.track-row .track-play:not(:disabled)')[2];target.scrollIntoView({block:'nearest'});click(target);
     await wait(()=>bar().dataset.playId!==old&&bar().dataset.trackId==='3'&&bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'fresh selected song');
-    click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','fresh song pause');const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'fresh song seek');
+    await pauseAtTen();
   }
   try{
     await wait(()=>tag()&&one('.track-row .track-play:not(:disabled)'),'UI ready');
@@ -53,8 +67,8 @@
       await wait(()=>bar().dataset.state==='paused'&&bar().dataset.preferredQuality==='jymaster','restored trial');await capture('reopened_active');await open();
       assert(row('超清母带').textContent.includes('试用中'),'current trial status');await capture('reopened_menu');await dismiss();await expire();await capture('reopened_expired');
     }else{
-      click(one('.track-row .track-play:not(:disabled)'));await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decode');click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','pause');
-      const seek=one('[aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'native seek');
+      click(one('.track-row .track-play:not(:disabled)'));await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decode');
+      await pauseAtTen();
       const unchanged=bar().dataset.playId;await choose('标准');await wait(()=>!one('.quality-action-menu'),'current quality dismissed');await sleep(350);assert(bar().dataset.playId===unchanged,'selecting unchanged actual/requested/preferred quality does not reload playback');
       for(const [w,h,theme] of [[1120,760,'light'],[760,540,'light'],[760,540,'dark'],[1120,760,'dark']]){
         const suffix=`${w}_${theme}`;await layout(w,h,theme);await open();

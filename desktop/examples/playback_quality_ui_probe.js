@@ -14,7 +14,7 @@
   const key = value => document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true}));
   const rect = node => { const r=node.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height}; };
   const hit = node => { const r=rect(node),target=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return node===target||node.contains(target); };
-  let count=0, expectedTrack='1';
+  let count=0, expectedTrack='1', seekDiagnostic=null;
   async function capture(label) {
     await sleep(220);
     const popup=panel(), items=popup ? [...popup.querySelectorAll('.menu-items button')] : [], r=popup&&rect(popup);
@@ -73,13 +73,36 @@
     assert(details.choices.every(c=>c.sizeBytes===null),'native read succeeds with file sizes hidden by default');
     const json=JSON.stringify(details);assert(!json.includes('SECRET')&&!json.includes('https://')&&!json.includes('cookie'),'private response fields excluded');
   }
+  const range = () => bar()?.querySelector('input[type="range"][aria-label="播放进度"]');
+  const pause = () => bar()?.querySelector('[aria-label="暂停"]');
+  function seekSnapshot(input=range()) {
+    const player=bar()?.dataset;
+    return {trackId:player?.trackId,playId:player?.playId,state:player?.state,
+      position:Number(player?.position),message:one('.playback-message')?.textContent.trim()??'',
+      input:input?{connected:input.isConnected,disabled:input.disabled,min:Number(input.min),
+        max:Number(input.max),value:Number(input.value)}:null};
+  }
   async function pauseAtTen() {
-    if(bar().dataset.state!=='paused') {
-      await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decode');
-      click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','pause');
-    }
-    const seek=one('.playerbar [aria-label="播放进度"]');seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
-    await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!seek.disabled,'seek');
+    seekDiagnostic={expectedTrack,initial:seekSnapshot()};
+    await wait(()=>{
+      const player=bar()?.dataset, control=pause();
+      return player?.trackId===expectedTrack&&player.playId&&
+        (player.state==='paused'||(player.state==='playing'&&Number(player.position)>.2&&control?.isConnected&&!control.disabled));
+    },'native decode and pause control');
+    const playId=bar().dataset.playId;
+    if(bar().dataset.state!=='paused')click(pause());
+    const ready=(input=range())=>bar()?.dataset.playId===playId&&bar().dataset.trackId===expectedTrack&&
+      bar().dataset.state==='paused'&&input?.isConnected&&!input.disabled&&Number(input.min)<=10&&Number(input.max)>=10;
+    // Paused can arrive via the actor event before the IPC promise releases
+    // the UI's busy state. A user cannot seek on the still disabled input.
+    await wait(()=>ready(),'paused seek control ready');
+    const seek=range();
+    assert(ready(seek),'seek control changed before dispatch');
+    seek.value='10';
+    seekDiagnostic.dispatch=seekSnapshot(seek);
+    assert(Math.abs(Number(seek.value)-10)<.2,'seek input clamps the target');
+    seek.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>ready()&&Math.abs(Number(bar().dataset.position)-10)<.2,'seek');
   }
   async function next(id) {
     const oldPlay=bar().dataset.playId;
@@ -136,5 +159,6 @@
       assert(bar().dataset.requestedQuality==='lossless','already queued next uses preference');await capture('next_uses_preference');
     }
     await emit('complete',{ok:true,stageCount:count,reopened:!!window.__qualityReopen,nativeQualityReadVerified:true,realMusicRequests:0,accountWrites:0});
-  } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount:count,width:innerWidth,height:innerHeight,ratio:devicePixelRatio});}
+  } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount:count,width:innerWidth,height:innerHeight,ratio:devicePixelRatio,
+    seekDiagnostic:seekDiagnostic?{...seekDiagnostic,after:seekSnapshot()}:null});}
 })();
