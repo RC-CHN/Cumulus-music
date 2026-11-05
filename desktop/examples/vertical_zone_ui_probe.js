@@ -46,12 +46,15 @@
     // captures the actual X11 pixels. The DOM can be ready during enter.
     await sleep(100);
     const stage = `ux_${String(++count).padStart(2, '0')}_${name}`;
+    if (window.__verticalZoneCase === 'playlist-detail') window.__zonePlaylistStageRecorded = null;
     await emit(stage, {
       ...values, captureHandshake: true,
       width: innerWidth, height: innerHeight,
       zoneTitle: zone()?.getAttribute('aria-label'),
       modules: all('[data-zone-module]').map((node) => node.dataset.zoneModule),
     });
+    if (window.__verticalZoneCase === 'playlist-detail')
+      await wait(() => window.__zonePlaylistStageRecorded === stage, `native evidence saved for ${stage}`);
   }
   function viewport() {
     return { top: zone().scrollTop, left: rail().scrollLeft };
@@ -70,6 +73,79 @@
       Math.abs(viewport().top - before.top) <= 2 &&
       Math.abs(viewport().left - before.left) <= 2, `Back restores ${label} and both axes`);
     return { expected: before, actual: viewport(), focus: document.activeElement.getAttribute('aria-label') };
+  }
+  async function playlistDetailCase() {
+    const normal = '专区普通同号歌单';
+    const personalized = '专区合成歌单 204';
+    const title = () => one('.playlist-title h1');
+    const heading = () => one('.playlist-actions button.primary');
+    const row = (id) => one(`.track-row[data-track-id="${id}"]`);
+    const detailMarker = () => one('[data-zone-playlist-detail]');
+    const description = () => one('.playlist-description-preview p')?.textContent.trim();
+    const { epoch } = await invoke('account_snapshot');
+    const player = () => invoke('player_snapshot', { epoch });
+    let priorPlay;
+
+    async function open(label, isPersonalized, state) {
+      const card = button(label);
+      assert(card, `zone card ${label}`);
+      card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      await sleep(200);
+      const before = viewport();
+      click(card, label);
+      await wait(() => title()?.textContent.trim() === '专区打开后的合成歌单' && row('87') &&
+        heading() && !heading().disabled, 'both entries open the real playlist and complete its tracks');
+      assert(!!detailMarker() === isPersonalized, 'the native detail source is scoped to the clicked occurrence');
+      assert(description() === (isPersonalized ? '合成个性化歌单详情' : '合成普通歌单详情'),
+        'playlist description came from the expected detail reader');
+      await capture(state, { personalized: !!detailMarker(), description: description() });
+      return before;
+    }
+    async function started(id, state, target) {
+      let snapshot;
+      await wait(async () => {
+        const next = await player();
+        if (next.state !== 'playing' || next.track?.id !== id || next.playId === priorPlay ||
+          !(next.position > 0.15) || next.origin?.kind !== 'playlist' || next.origin.id !== '204') return false;
+        snapshot = next;
+        return true;
+      }, `native ${state} play request and decode clock`);
+      priorPlay = snapshot.playId;
+      const queue = (await invoke('player_queue', { epoch })).tracks.map(({ track }) => track.id);
+      assert(queue.join() === '81,84,87', 'playlist order retained at each chosen start');
+      await capture(state, { playId: snapshot.playId, trackId: id, position: snapshot.position, queue,
+        personalized: !!detailMarker(), focusRetained: target() === document.activeElement });
+      await invoke('player_action', { epoch, action: { kind: 'stop' } });
+      await wait(async () => (await player()).state === 'idle', 'native player stopped between gestures');
+    }
+
+    const ordinaryScroll = await open(normal, false, 'normal_detail');
+    click(heading(), 'normal playlist Play All');
+    await started('81', 'normal_header', heading);
+    back();
+    await capture('normal_back', await restored(normal, ordinaryScroll));
+
+    const personalizedScroll = await open(personalized, true, 'mgc_detail');
+    click(heading(), 'personalized playlist Play All');
+    await started('81', 'mgc_header', heading);
+    const rowPlay = () => row('87')?.querySelector('.track-play');
+    rowPlay().scrollIntoView({ block: 'nearest' });
+    await wait(() => hit(rowPlay()), 'row play button can be clicked');
+    click(rowPlay(), 'personalized playlist row play');
+    await started('87', 'mgc_row', rowPlay);
+    const double = () => row('84');
+    double().scrollIntoView({ block: 'nearest' });
+    double().focus({ preventScroll: true });
+    double().querySelector('.track-title').dispatchEvent(new MouseEvent('dblclick', {
+      bubbles: true, cancelable: true, detail: 2,
+    }));
+    await started('84', 'mgc_double', double);
+    back();
+    await capture('mgc_back', await restored(personalized, personalizedScroll));
+
+    await open(normal, false, 'normal_reopen');
+    click(heading(), 'normal playlist Play All after personalized entry');
+    await started('81', 'normal_replay', heading);
   }
   try {
     const curated = () => all('.sidebar button:not(:disabled)').find((node) => node.textContent.trim() === '精选');
@@ -128,6 +204,11 @@
     await wait(() => zone()?.getAttribute('aria-label') === '摇滚' && tab('default')?.getAttribute('aria-current') === 'page' &&
       all('[data-zone-module]').length === 4, 'Rock default and four module kinds');
     assert(zone().textContent.includes('专区榜单歌曲') && !zone().textContent.includes('禁止出现的远程动作'), 'rank preview and unknown target filtering');
+    if (window.__verticalZoneCase === 'playlist-detail') {
+      await playlistDetailCase();
+      await emit('complete', { ok: true, stageCount: count });
+      return;
+    }
     if (window.__verticalZoneCase === 'privacy') {
       assert(zone().textContent.includes('个性化推荐被关闭了噢！') &&
         !button('专区合成歌单 204') && !button('仅个性化网格卡片') && button('专区常规歌单'), 'privacy hides personalized data only');

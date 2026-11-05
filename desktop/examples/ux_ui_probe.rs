@@ -1193,6 +1193,9 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    if vertical_zone_fixture::playlist_detail() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__zonePlaylistStageRecorded={};",json!(stage))).unwrap();
+                    }
                     // An emit reply does not wait for this spawned snapshot.
                     // Do not let Stop on completion overtake the JSON sample.
                     if (system_master_volume_fixture::running() || playback_power_guide_fixture::enabled())

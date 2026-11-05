@@ -13,6 +13,10 @@ pub fn hotspot() -> bool {
     std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("hotspot")
 }
 
+pub fn playlist_detail() -> bool {
+    std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("playlist-detail")
+}
+
 pub fn groups(revision: &str) -> Result<PcExperimentGroups> {
     if revision != "synthetic-vertical-zone" || !enabled() {
         return Err(Error::CredentialChanged);
@@ -33,14 +37,18 @@ fn record(path: &str, args: &Value) {
 
 pub fn observe(path: &str, args: &Value) {
     if enabled()
-        && matches!(
+        && (matches!(
             path,
             "/api/album/v3/detail"
                 | "/api/album/v4/detail"
                 | "/api/v6/playlist/detail"
                 | "/api/song/enhance/player/url/v1"
                 | "/api/user/setting/update"
-        )
+        ) || playlist_detail()
+            && matches!(
+                path,
+                "/api/playlist/v4/detail" | "/api/playlist/detail/dynamic" | "/api/v3/song/detail"
+            ))
     {
         record(path, args);
     }
@@ -57,6 +65,13 @@ fn blocks() -> Vec<Value> {
             |id| json!({"resourceType":"playlist","id":id,"name":format!("专区合成歌单 {id}")}),
         ),
     );
+    let mut grid = vec![
+        json!({"resourceType":"playlist","id":206,"name":"专区常规歌单"}),
+        json!({"resourceType":"playlist","id":207,"name":"仅个性化网格卡片","hideAfterClosePersonalized":true}),
+    ];
+    if playlist_detail() {
+        grid.push(json!({"resourceType":"playlist","id":204,"name":"专区普通同号歌单"}));
+    }
     vec![
         json!({"componentName":"RecommendTabCarousel","children":[
             {"targetType":10,"targetId":7,"title":"专区合成横幅"},
@@ -68,11 +83,14 @@ fn blocks() -> Vec<Value> {
             "trackRankList":[{"songName":"专区榜单歌曲","artistName":"专区榜单歌手"}],
             "tracks":[{"first":"专区榜单歌曲","second":"专区榜单歌手"}]
         }]}),
-        json!({"componentName":"RecommendGrid","title":"专区常规网格","children":[
-            {"resourceType":"playlist","id":206,"name":"专区常规歌单"},
-            {"resourceType":"playlist","id":207,"name":"仅个性化网格卡片","hideAfterClosePersonalized":true}
-        ]}),
+        json!({"componentName":"RecommendGrid","title":"专区常规网格","children":grid}),
     ]
+}
+
+fn playlist(version: &str, ids: &[u64]) -> Value {
+    json!({"code":200,"playlist":{"id":204,"name":"专区打开后的合成歌单",
+        "description":version,"creator":{"userId":3,"nickname":"合成作者"},"specialType":0,
+        "trackCount":ids.len(),"trackIds":ids.iter().map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}})
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
@@ -148,9 +166,29 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             json!({"code":200,"data":[content("default","全部",vec![module])]})
         }
         "/api/v6/playlist/detail" if args["id"] == "204" || args["id"] == 204 => {
-            json!({"code":200,"playlist":{"id":204,"name":"专区打开后的合成歌单",
-                "creator":{"userId":3,"nickname":"合成作者"},"trackCount":2,
-                "trackIds":[{"id":81,"v":0},{"id":84,"v":0}]}})
+            if playlist_detail() {
+                playlist("合成普通歌单详情", &[81, 84, 87])
+            } else {
+                json!({"code":200,"playlist":{"id":204,"name":"专区打开后的合成歌单",
+                    "creator":{"userId":3,"nickname":"合成作者"},"trackCount":2,
+                    "trackIds":[{"id":81,"v":0},{"id":84,"v":0}]}})
+            }
+        }
+        "/api/playlist/v4/detail"
+            if playlist_detail() && *args == json!({"id":"204","n":0,"s":0}) =>
+        {
+            playlist("合成个性化歌单详情", &[81, 84, 87])
+        }
+        "/api/playlist/detail/dynamic" if playlist_detail() && *args == json!({"id":"204"}) => {
+            json!({"code":200,"bookedCount":135,"subscribed":false})
+        }
+        "/api/song/enhance/player/url/v1" if playlist_detail() => {
+            let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
+            assert_eq!(ids.len(), 1);
+            // Don't share URL cache between the three UI gestures: each one
+            // needs to prove its own native authorization trial mode.
+            json!({"code":200,"data":[{"id":ids[0],"url":"https://m1.music.126.net/cumulus-relay-fixture.wav",
+                "code":200,"md5":"fixture","level":"standard","expi":0}]})
         }
         "/api/batch" if args["/api/homepage/block/page"].is_string() => {
             json!({"code":200,"/api/homepage/block/page":{"code":200,"data":{"blocks":[]}}})
@@ -160,6 +198,8 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         "/api/secondary/tab/list"
         | "/api/zone/tab/get"
         | "/api/zone/get"
+        | "/api/playlist/v4/detail"
+        | "/api/playlist/detail/dynamic"
         | "/api/user/setting/update" => {
             return Some(Err(Error::InvalidInput(
                 "unexpected sealed vertical zone request",

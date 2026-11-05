@@ -15,17 +15,90 @@ TAB = "/api/zone/tab/get"
 CLASSIC = "/api/zone/get"
 ALBUM = {"/api/album/v3/detail", "/api/album/v4/detail"}
 PLAYLIST = "/api/v6/playlist/detail"
+PLAYLIST_V4 = "/api/playlist/v4/detail"
+PLAYLIST_DYNAMIC = "/api/playlist/detail/dynamic"
+SONG = "/api/v3/song/detail"
 PLAY = "/api/song/enhance/player/url/v1"
 MODULES = ["carousel", "horizontal", "ranking", "grid"]
 CASES = {
     "full": ("menu_open", "menu", "rock_modules", "album_back", "playlist_back", "playlist_play", "rock_hot", "jazz_fallback"),
     "privacy": ("privacy_gate", "privacy_settings"),
     "hotspot": ("hotspot_zone", "hotspot_back"),
+    "playlist-detail": ("normal_detail", "normal_header", "normal_back", "mgc_detail", "mgc_header",
+                        "mgc_row", "mgc_double", "mgc_back", "normal_reopen", "normal_replay"),
 }
+DEFAULT_CASES = ("full", "privacy", "hotspot")
 
 
 def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def check_playlist_detail(rows):
+    ids = ["81", "84", "87"]
+    scopes = {
+        "normal_header": ("81", -1), "mgc_header": ("81", 121),
+        "mgc_row": ("87", 121), "mgc_double": ("84", 121), "normal_replay": ("81", -1),
+    }
+    relevant = {PLAYLIST, PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG, PLAY}
+    previous = []
+    play_ids = set()
+    for name, row in rows.items():
+        wire = row["verticalZoneCalls"]
+        assert wire[:len(previous)] == previous, name
+        delta = [(call["path"], call["args"]) for call in wire[len(previous):] if call["path"] in relevant]
+        previous = wire
+        paths = [path for path, _ in delta]
+        if name in {"normal_detail", "mgc_detail", "normal_reopen"}:
+            mgc = name == "mgc_detail"
+            assert row["personalized"] == mgc
+            assert row["description"] == ("合成个性化歌单详情" if mgc else "合成普通歌单详情")
+            if mgc:
+                assert paths == [PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG], delta
+                assert delta[0][1] == {"id": "204", "n": 0, "s": 0}
+                assert delta[1][1] == {"id": "204"}
+            elif name == "normal_detail":
+                assert paths == [PLAYLIST, SONG], delta
+                assert delta[0][1] == {"id": "204", "n": 100000, "s": 0}
+            else:
+                assert all(path in {PLAYLIST, SONG} for path in paths), delta
+            for path, args in delta:
+                if path == SONG:
+                    assert json.loads(args["c"]) == [{"id": value, "v": 0} for value in ids], delta
+                    assert args.get("trialMode") == (121 if mgc else None), delta
+        elif name in scopes:
+            selected, trial = scopes[name]
+            assert row["personalized"] == (trial == 121)
+            assert row["queue"] == ids and row["trackId"] == selected and row["position"] > 0.15
+            player = row["nativePlayer"]
+            assert player["state"] == "playing" and not player["error"] and player["position"] > 0.15
+            assert player["playId"] == row["playId"] and player["playId"] not in play_ids
+            assert player["track"]["id"] == selected and player["origin"]["id"] == "204"
+            assert row["audioFactoryCount"] == 1
+            play_ids.add(player["playId"])
+            assert PLAYLIST_V4 not in paths and PLAYLIST_DYNAMIC not in paths, delta
+            if trial == 121:
+                assert PLAYLIST not in paths and SONG in paths and PLAY in paths, delta
+                assert paths.index(SONG) < paths.index(PLAY), delta
+            hydrated = []
+            authorized = []
+            for path, args in delta:
+                if path == SONG:
+                    assert args.get("trialMode") == (121 if trial == 121 else None), delta
+                    hydrated.extend(str(item["id"]) for item in json.loads(args["c"]))
+                elif path == PLAY:
+                    assert args["trialMode"] == trial, delta
+                    packed = json.loads(args["ids"])
+                    assert len(packed) == 1, delta
+                    authorized.append(str(packed[0]))
+            assert selected in authorized, (name, delta)
+            if trial == 121:
+                assert selected in hydrated, (name, delta)
+        else:
+            label = "专区普通同号歌单" if name == "normal_back" else "专区合成歌单 204"
+            assert row["focus"] == label
+            assert all(abs(row["expected"][axis] - row["actual"][axis]) <= 2 for axis in ("top", "left"))
+    assert len(play_ids) == len(scopes)
 
 
 def check_case(directory, case, screenshots, windows):
@@ -85,12 +158,14 @@ def check_case(directory, case, screenshots, windows):
         assert rows["privacy_gate"]["modules"] == MODULES
         assert rows["privacy_settings"]["focus"] == "settings-privacy"
         assert not any(call["path"] == PLAY for call in calls)
-    else:
+    elif case == "hotspot":
         assert rows["hotspot_zone"]["modules"] == ["grid"] and rows["hotspot_zone"]["zoneTitle"] == "摇滚"
         assert rows["hotspot_back"]["focus"] == "查看专区"
         assert any(call["path"] == "/api/search/pc/complex/page/v3" and
                    call["args"]["keyword"] == "合成专区热点" for call in calls)
         assert not any(call["path"] == PLAY for call in calls)
+    else:
+        check_playlist_detail(rows)
     if not windows:
         locale = read(output / "locale.json")
         assert locale["numeric"] == "C"
@@ -105,6 +180,7 @@ def main():
     parser.add_argument("--frontend-dist", type=Path)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--screenshots", action="store_true")
+    parser.add_argument("--case", choices=CASES)
     args = parser.parse_args()
     windows = sys.platform == "win32"
     if sys.platform not in {"linux", "win32"} or windows != bool(args.runtime) or windows and args.screenshots:
@@ -126,7 +202,8 @@ def main():
     probe = Path(__file__).resolve().parents[2] / "desktop/examples/vertical_zone_ui_probe.js"
     script_source = probe.read_text(encoding="utf-8")
     result = {}
-    for case in CASES:
+    selected_cases = (args.case,) if args.case else DEFAULT_CASES
+    for case in selected_cases:
         directory = root / case
         directory.mkdir()
         script = directory / "probe.js"
@@ -147,9 +224,9 @@ def main():
         assert not failed.exists(), failed.read_text(encoding="utf-8") if failed.exists() else ""
         assert code == 0, (case, code, directory)
         result[case] = check_case(directory, case, args.screenshots, windows)
+    states = sum(len(CASES[case]) for case in selected_cases)
     summary = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, windowsMediaRuntime=media,
-                   stateCount=sum(map(len, CASES.values())),
-                   screenshots=sum(map(len, CASES.values())) if args.screenshots else 0,
+                   stateCount=states, screenshots=states if args.screenshots else 0,
                    realMusicRequests=0, realAccountWrites=0, cases=result)
     (root / "audit.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(summary))
