@@ -1,0 +1,82 @@
+Official legacy local equalizer tone, PC 3.1.42.205594 x64
+
+Source and scope
+----------------
+
+The ordinary online path reaches this component. Recovered M/163:575–596
+builds the type-4 source from the authorized music URL, and M/308:2127–2141
+adds destLevel and calls native Play. In cloudmusic.dll SHA-256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493,
+the default AudioPlayerGlue branch (AF240:AF2B1, AF5F0/AF850) selects the
+legacy MAudioPlayer. B8F60 -> 1015480 -> 103BE84–103BEA0 accepts source type 4;
+1055840:1055BFF -> 10542F0 -> 1055EF0 passes decoded data to the SDK outer
+input 67C00. 104C980 and 10555B0 derive the geometry from the opened device,
+not the URL quality or advertised bitrate. Alternate backends and special
+formats are outside this trace.
+
+In neaudioeffects.dll SHA-256
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be,
+the 1AA50 graph calls processor slot +0x50 at 1AB21–1AB3A. Its virtual
+Process is A2970 (vtable 244160). The two active filters are type 7 at
+120 Hz and type 8 at 6000 Hz, both Q=0.5. The middle and six remaining
+bands are disabled. This is not the standalone BassTreble C stage.
+
+Slot50Tone wraps the existing safe ParametricEq storage, finite checks,
+bypass mixer and PEQ kernel. It does not duplicate the C DSP. The constructor
+accepts 44.1/48 kHz, mono/stereo, and 2048-sample planar capacity, then
+initializes the fixed bands and executes the true device Reset without an
+empty process call. Slot50Material accepts the old local UI's two integer
+gains in [-10,10], with zero/zero selecting component off.
+
+- Whole local material: outer 68000/1BBA0 sets flat gains and bypass; the
+  old setters (686B0/68600, then 65BC0) reopen the component when the
+  replacement has a nonzero gain. A dry-to-wet edge clears the histories;
+  the pending bypass mix keeps the previous processed target until Process.
+- Master off: 68770 -> 6B960 -> 1C590 sets the tone target to dry. Its
+  existing parameters and histories are needed for the pending wet-to-dry
+  blend. This is a leaf operation; sibling and limiter behavior are excluded.
+  Standalone master reopen is not exposed by this API.
+- Reset: outer 67F70 leads to the slot reset A2DB0/AE180. The recovered
+  reset clears histories and synchronizes previous to target; it does not
+  clear coefficients or generate PCM.
+
+Frozen evidence
+---------------
+
+core/tests/fixtures/effects-slot50-tone-official.json (22,411 bytes) SHA-256:
+81f5dc88d1beb98d1423d880fafe9872b3eacfabfb39bc87ffbd8d2312d18785
+
+The manual scripts/research/freeze_slot50_tone.py --dll PATH takes only the
+pinned local original DLL and runs it in the repository's reviewed bounded
+x64 interpreter in a network namespace. It checks real outer create/init,
+whole-material setters, master bypass and reset, then directly calls the
+original slot +0x50 Process. The corpus contains synthetic input/output
+hashes of full planar capacity (f32 little-endian), valid length/EOF and
+two categorical wrapper edge flags. It contains no DLL, original parameter
+memory or account data. The adapter verifies unmodified original executable
+text and zero NLS requests; the existing VM provides its documented
+allocator/CRT/Windows seams. Initial MXCSR is 0x1f80. Enum 3/4 are original
+outer Init representations only; this corpus supplies normalized f32
+planes to the leaf and does not exercise their PCM converters.
+
+The eight combinations produce 88 blocks, including continuous playback,
+dry/wet transitions, hot replacement, stable master-off, explicit reapply,
+Reset of each pending edge, four 7-frame blocks per combination (one EOF)
+and a final zero-frame/EOF dry call. The original leaf preserves valid
+length and EOF. The full owned, initialized planar capacity is needed for
+the native blend even when valid frames are short.
+
+Focused integration command:
+cargo test -p cumulus-core --locked --test effects_slot50_tone_original
+
+The original fixture generator was run against the pinned image; all 88
+blocks also matched an independent Rust 1.96 harness using the exact module
+and existing PEQ FFI/C sources (270,336 full-capacity f32 samples). The
+harness separately rejected malformed input without consuming the pending
+dry-to-wet edge. This does not substitute for the integrated Cargo suite.
+
+This is a reusable leaf, not a shipping filter selection. No native host
+ABI, player, settings or source changes use it. The full original graph,
+outer FIFO/EOF, actual negotiated device geometry and pre-unpause buffering
+remain separate proof requirements. The oracle did not run on real Windows
+or physical audio hardware.
