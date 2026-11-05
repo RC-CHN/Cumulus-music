@@ -656,6 +656,8 @@ fn main() {
     let peq_proof = effect_peq_fixture::enabled();
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
     assert!(!device_peq_proof || (!peq_proof && effect_directory_fixture::enabled()));
+    let device_source_bypass_proof = effect_directory_fixture::source_bypass_enabled();
+    assert!(!device_source_bypass_proof || device_peq_proof);
     assert!(
         !(peq_proof || device_peq_proof) || motion_proof,
         "native PEQ proof needs the closed audio fixture"
@@ -696,6 +698,9 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
     let mut context = assets::context();
+    if device_source_bypass_proof {
+        effect_directory_fixture::restrict_source_bypass_artwork(&mut context);
+    }
     if zone_fm_preview_fixture::enabled()
         || vertical_zone_fixture::playlist_v6()
         || vertical_zone_fixture::playlist_batch()
@@ -885,6 +890,9 @@ fn main() {
                 value["effectDirectoryMaterialGets"]=effect_peq_fixture::report()["materialGets"].clone();
             }
             if peq_proof || device_peq_proof {value["nativePeq"]=effect_peq_fixture::report();}
+            if device_source_bypass_proof {
+                value["headphoneSourceCalls"]=json!(effect_directory_fixture::source_calls());
+            }
             if latest_releases_fixture::enabled() {value["latestReleasesCalls"]=latest_releases_fixture::report();}
             if daily_history_fixture::enabled() {value["dailyHistoryCalls"]=json!(daily_history_fixture::calls());}
             if member_sign_fixture::enabled() {
@@ -952,6 +960,12 @@ fn main() {
             }
             if voice_download_fixture::enabled() { value["voiceDownloadService"]=voice_download_fixture::report(); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if device_source_bypass_proof && stage=="effect-source-native-stats" {
+                let sequence=value["sequence"].as_u64().unwrap();
+                let stats=&value["nativePeq"];
+                handle.get_webview_window("main").unwrap().eval(format!("window.__headphoneSourceStats={{sequence:{sequence},stats:{stats}}};")).unwrap();
+                return;
+            }
             if voice_download_fixture::enabled() && stage=="voice-download-release" {
                 voice_download_fixture::release();return;
             }
@@ -1205,6 +1219,9 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    if device_source_bypass_proof && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__headphoneSourceStageRecorded={};",json!(stage))).unwrap();
+                    }
                     if vertical_zone_fixture::playlist_stage_ack() && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__zonePlaylistStageRecorded={};",json!(stage))).unwrap();
                     }

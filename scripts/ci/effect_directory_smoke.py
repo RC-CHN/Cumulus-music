@@ -44,21 +44,82 @@ def verify_reopened(args, root, env, source, original_process):
     assert len(list(output.glob('ux_*.png'))) == (3 if args.screenshots else 0)
 
 
+def verify_source_bypass(root, output, complete, screenshots):
+    stages = [
+        ('ux_01_fallback_standard', 71, 'vivid', 'standard', False, 1, 0),
+        ('ux_02_vivid_bypassed', 72, 'standard', 'vivid', True, 1, 1),
+        ('ux_03_consecutive_dolby_restored', 73, 'standard', 'dolby', False, 2, 1),
+        ('ux_04_sky_bypassed', 74, 'standard', 'sky', True, 2, 2),
+        ('ux_05_jymaster_restored', 75, 'standard', 'jymaster', False, 3, 2),
+    ]
+    assert complete['ok'] and complete['stageCount'] == len(stages)
+    expected_sources = []
+    activation_ids = set()
+    play_ids = set()
+    reports = []
+    effect_reads = [
+        {'path': '/api/usertool/home/soundeffect/devicebrand/list', 'args': {}},
+        *[{'path': '/api/usertool/home/soundeffect/devicesound/list', 'args': {'deviceManagerId': 4100}}] * 3,
+    ]
+    for index, (stage, song, requested, actual, bypassed, attaches, bypasses) in enumerate(stages, 1):
+        expected_sources.append({'id': song, 'requested': requested, 'returned': actual})
+        proof = json.loads((output / f'{stage}.json').read_text(encoding='utf-8'))
+        player = proof['nativePlayer']
+        native = proof['nativePeq']
+        device = player['deviceParametric']
+        assert player['state'] == 'playing' and player['track']['id'] == str(song)
+        assert player['actualQuality'] == actual and player['position'] > .3
+        assert player['parametricProcessing'] is not bypassed
+        assert device['status'] == ('bypassed_for_source' if bypassed else 'configured')
+        assert ('comparison' in device) is not bypassed
+        assert native['decoderLoads'] == index and native['attaches'] == attaches and native['bypasses'] == bypasses
+        assert native['nativeAttached'] and native['detaches'] == native['failedBlocks'] == 0
+        assert native['revision'] == native['observedRevision'] and native['processedSamples'] > 0
+        assert native['bypassRevision'] == (native['revision'] if bypassed else None)
+        assert proof['headphoneSourceCalls'] == expected_sources
+        assert proof['effectDirectoryCalls'] == effect_reads
+        assert proof['effectDirectoryMaterialGets'] == 1 and native['starts'] == native['stops'] == 0
+        assert not native['calls']
+        activation_ids.add(device['activationId'])
+        play_ids.add(player['playId'])
+        reports.append({'stage': stage, 'requested': requested, 'authorized': actual,
+                        'nodeRevision': native['revision'], 'observedRevision': native['observedRevision'],
+                        'adapterSamples': native['processedSamples'], 'bypassed': bypassed,
+                        'processingUi': player['parametricProcessing']})
+    assert len(activation_ids) == 1 and len(play_ids) == len(stages)
+    assert complete['headphoneSourceCalls'] == expected_sources and complete['effectDirectoryCalls'] == effect_reads
+    assert len(list(output.glob('ux_*.png'))) == (len(stages) if screenshots else 0)
+    db = (root / 'state' / 'core.sqlite3').resolve(strict=True)
+    with closing(sqlite3.connect(db.as_uri() + '?mode=ro', uri=True)) as store:
+        assert not store.execute("SELECT 1 FROM state WHERE kind='effect-authorizations-v1'").fetchall()
+    report = {'ok': True, 'actualWebView': True, 'syntheticAudio': True, 'physicalOutput': False,
+              'singleActivation': True, 'realAccountWrites': 0, 'stages': reports}
+    (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(report))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--library', type=Path, help='also exercise live headphone tuning with this native filter')
+    parser.add_argument('--source-bypass', action='store_true', help='exercise effective source quality with native PEQ')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
+    if args.source_bypass and not args.library:
+        parser.error('--source-bypass requires --library')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    source = Path(__file__).resolve().parents[2] / 'desktop/examples/effect_directory_ui_probe.js'
+    name = 'effect_source_bypass_ui_probe.js' if args.source_bypass else 'effect_directory_ui_probe.js'
+    source = Path(__file__).resolve().parents[2] / 'desktop' / 'examples' / name
     script = source
-    if args.library:
+    if args.source_bypass:
+        env.update(CUMULUS_EFFECT_DEVICE_NATIVE_PROOF='1', CUMULUS_EFFECT_DEVICE_SOURCE_BYPASS_PROOF='1',
+                   CUMULUS_AUDIO_FILTER=str(args.library.resolve(strict=True)))
+    elif args.library:
         scenario = root / 'scenario.js'
         scenario.write_text('window.__cumulusDeviceNative = true;\n' + script.read_text(encoding='utf-8'),
                             encoding='utf-8')
@@ -83,6 +144,9 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0
     complete = json.loads((output / 'complete.json').read_text(encoding='utf-8'))
+    if args.source_bypass:
+        verify_source_bypass(root, output, complete, args.screenshots)
+        return
     stages = 14 if args.library else 7
     assert complete['ok'] and complete['stageCount'] == stages and complete['artworkVerified'] and complete['devicesVerified']
     assert complete['limitedFreeExpiryVerified'] and complete['deviceCacheVerified']

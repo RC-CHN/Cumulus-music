@@ -4,9 +4,59 @@ use serde_json::{Value, json};
 use std::sync::Mutex;
 
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static SOURCE_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_DIRECTORY_PROOF").is_some()
+}
+
+pub fn source_bypass_enabled() -> bool {
+    std::env::var_os("CUMULUS_EFFECT_DEVICE_SOURCE_BYPASS_PROOF").is_some()
+}
+
+pub fn restrict_source_bypass_artwork(context: &mut tauri::Context<tauri::Wry>) {
+    use tauri::utils::config::{Csp, CspDirectiveSources};
+    let security = &mut context.config_mut().app.security;
+    let mut directives = std::collections::HashMap::from(security.csp.take().expect("probe CSP"));
+    directives.insert(
+        "img-src".into(),
+        CspDirectiveSources::Inline("'self' asset: http://asset.localhost data:".into()),
+    );
+    security.csp = Some(Csp::from(directives));
+    security.dev_csp = security.csp.clone();
+}
+
+fn source_response(args: &Value) -> Result<Value> {
+    let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap_or_default())?;
+    let id = match ids.as_slice() {
+        [id] => id.as_u64().or_else(|| id.as_str()?.parse().ok()),
+        _ => None,
+    };
+    let (requested, returned, br) = match id {
+        Some(71) => ("vivid", "standard", 6_999_000),
+        Some(72) => ("standard", "vivid", 128_000),
+        Some(73) => ("standard", "dolby", 128_000),
+        Some(74) => ("standard", "sky", 128_000),
+        Some(75) => ("standard", "jymaster", 4_999_000),
+        _ => return Err(Error::Response("unapproved headphone source proof track")),
+    };
+    if args["level"] != requested {
+        return Err(Error::Response(
+            "wrong headphone source proof request quality",
+        ));
+    }
+    SOURCE_CALLS
+        .lock()
+        .unwrap()
+        .push(json!({"id":id,"requested":requested,"returned":returned}));
+    Ok(
+        json!({"code":200,"data":[{"id":id,"url":effect_peq_fixture::AUDIO_URL,
+        "code":200,"md5":"fixture","level":returned,"br":br,"expi":120}]}),
+    )
+}
+
+pub fn source_calls() -> Vec<Value> {
+    SOURCE_CALLS.lock().unwrap().clone()
 }
 
 fn sound(id: u64) -> Value {
@@ -36,6 +86,9 @@ fn sound(id: u64) -> Value {
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
+    }
+    if source_bypass_enabled() && path == "/api/song/enhance/player/url/v1" {
+        return Some(source_response(args));
     }
     let value = match path {
         "/api/usertool/home/soundeffect/devicebrand/list" if args == &json!({}) => json!([

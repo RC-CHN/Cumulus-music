@@ -22,7 +22,7 @@ use std::{
 const ID: u64 = 300;
 pub(super) const URL: &str = "https://m.test.music.126.net/synthetic-bound-peq.ncae";
 pub(super) const MD5: &str = "3d7172c914c75c5b32df037f967142a9";
-const AUDIO_URL: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
+pub(super) const AUDIO_URL: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
 // Same frozen, synthetic NCAE as the independent bound PEQ probe.
 pub(super) const NCAE: &str = concat!(
     "4e4341454f000000000000000100010009020100076352515057924ea58f1ff3ec",
@@ -39,6 +39,8 @@ struct Trace {
     stops: u32,
     attaches: u32,
     detaches: u32,
+    bypasses: u32,
+    bypass_revision: Option<u64>,
     stats: Option<EqualizerStats>,
     native_attached: bool,
     injected_faults: u32,
@@ -256,9 +258,25 @@ impl AudioEngine for Audio {
             let mut trace = TRACE.lock().unwrap();
             trace.native_attached = true;
             trace.stats = None;
+            trace.bypass_revision = None;
             trace.attaches += 1;
         }
         Ok(attached)
+    }
+    fn bypass_parametric_component(&mut self) -> Result<()> {
+        let before = self.engine.parametric_equalizer_stats()?;
+        self.engine.bypass_parametric_component()?;
+        let after = self.engine.parametric_equalizer_stats()?;
+        if after.revision <= before.revision {
+            return Err(Error::State(
+                "native PEQ bypass did not publish a new revision",
+            ));
+        }
+        let mut trace = TRACE.lock().unwrap();
+        trace.bypasses += 1;
+        trace.bypass_revision = Some(after.revision);
+        trace.stats = Some(after);
+        Ok(())
     }
     fn clear_parametric_component(&mut self) -> Result<()> {
         self.engine.clear_parametric_component()?;
@@ -268,6 +286,7 @@ impl AudioEngine for Audio {
                 return Err(Error::State("native PEQ still attached after clear"));
             }
             trace.native_attached = false;
+            trace.bypass_revision = None;
             trace.detaches += 1;
         }
         Ok(())
@@ -285,6 +304,10 @@ pub fn report() -> Value {
         "stops":trace.stops,
         "attaches":trace.attaches,
         "detaches":trace.detaches,
+        "bypasses":trace.bypasses,
+        "bypassRevision":trace.bypass_revision,
+        "observedRevision":trace.stats.map(|stats|stats.observed_revision),
+        "revision":trace.stats.map(|stats|stats.revision),
         "nativeAttached":trace.native_attached,
         "processedSamples":trace.stats.map(|stats| stats.processed_samples).unwrap_or(0),
         "failedBlocks":trace.stats.map(|stats| stats.failed_blocks).unwrap_or(0),
