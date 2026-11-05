@@ -500,6 +500,9 @@ jobs:
         run: |
           cargo build -p cumulus-desktop --example audiobook_skip_ui_probe --features custom-protocol --locked
           python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
+      - name: Verify default and single-download quality in Windows WebView2
+        run: |
+          python scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-quality-windows --runtime .build/package-stage/windows-x64/native
       - name: Windows native media and desktop WebView regression
         if: runner.os == 'Windows'
         run: |
@@ -903,6 +906,14 @@ jobs:
             /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --binary .build/target/debug/examples/native_local_equalizer_probe \
             --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
             --filter-library .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --frontend-dist frontend/dist --root .build/ci-native-local-equalizer-linux
+      - name: Verify the local spatial controls on packaged Linux FLAC
+        run: |
+          sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
+            env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
+            /usr/bin/python3 scripts/ci/native_local_equalizer_smoke.py --spatial-controls-only --binary .build/target/debug/examples/native_local_equalizer_probe \
+            --flac-library .build/package-stage/linux-x64/native/libcumulus_flac150.so.14 --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" \
+            --frontend-dist frontend/dist --root .build/ci-native-spatial-controls-linux
       - name: Verify natural playback completion and live history settings on Linux
         run: |
           cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
@@ -927,6 +938,7 @@ jobs:
           }
           isolated_proof scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe --root .build/ci-natural-eof-linux --screenshots
           isolated_proof scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-history-settings-cohort-linux --screenshots
+          isolated_proof scripts/ci/download_page_smoke.py --quality-settings --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-quality-linux --screenshots
       - name: Linux native media and desktop WebView regression
         # Start Xvfb before the private bus so activated GTK/AT-SPI services inherit DISPLAY.
         env:
