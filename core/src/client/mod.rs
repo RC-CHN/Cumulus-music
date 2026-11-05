@@ -79,8 +79,8 @@ pub mod style_tags;
 mod together;
 mod window;
 pub use player::{
-    PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView, VinylSimilarAction,
-    VinylSimilarSongView, VinylSimilarSongsView,
+    PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView, VinylRelatedPlaylistView,
+    VinylRelatedPlaylistsView, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
 };
 
 use crate::{

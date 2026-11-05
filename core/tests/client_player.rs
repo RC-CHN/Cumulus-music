@@ -52,6 +52,7 @@ struct Backend {
     artist_cover: artist_search_cover::CoverFixture,
     vinyl_comment_group: AtomicU64,
     vinyl_similar: vinyl_similar::Server,
+    vinyl_related_playlists: vinyl_related_playlists::Server,
     vinyl_comment_calls: Mutex<Vec<(String, Value)>>,
     vinyl_comment_hold: AtomicU64,
     vinyl_comment_started: Notify,
@@ -94,6 +95,19 @@ impl Api for Backend {
                 return Err(Error::CredentialChanged);
             }
             self.vinyl_similar.response(read).await
+        })
+    }
+
+    fn request_vinyl_related_playlists<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::VinylRelatedPlaylistsRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.verified_pc_experiment_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            self.vinyl_related_playlists.response(read).await
         })
     }
 
@@ -385,6 +399,9 @@ mod voice_selection;
 
 #[path = "client_player/vinyl_comments.rs"]
 mod vinyl_comments;
+
+#[path = "client_player/vinyl_related_playlists.rs"]
+mod vinyl_related_playlists;
 
 #[path = "client_player/vinyl_similar.rs"]
 mod vinyl_similar;

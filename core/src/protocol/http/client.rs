@@ -8,7 +8,7 @@ use crate::{
     protocol::{
         api::{
             Api, ApiFuture, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
-            VinylSimilarSongsRead,
+            VinylRelatedPlaylistsRead, VinylSimilarSongsRead,
         },
         context::RequestContext,
         wire::eapi,
@@ -64,7 +64,7 @@ impl Jsk {
 enum RequestBinding<'a> {
     Login(&'a super::JskLoginContext),
     VinylComment,
-    VinylSimilarSongs,
+    VinylDiscovery,
     VinylCommentWrite {
         permission: &'a VinylCommentWritePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -353,6 +353,21 @@ impl MusicHttpClient {
         .await
     }
 
+    async fn vinyl_discovery(&self, path: &str, payload: Value, revision: &str) -> Result<Value> {
+        if self.pc_experiment_revision()? != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.execute(
+            path,
+            payload,
+            false,
+            Some(revision),
+            Jsk::None,
+            Some(RequestBinding::VinylDiscovery),
+        )
+        .await
+    }
+
     async fn execute(
         &self,
         path: &str,
@@ -421,7 +436,7 @@ impl MusicHttpClient {
             binding,
             Some(
                 RequestBinding::VinylComment
-                    | RequestBinding::VinylSimilarSongs
+                    | RequestBinding::VinylDiscovery
                     | RequestBinding::VinylCommentWrite { .. }
             )
         ) {
@@ -803,21 +818,17 @@ impl Api for MusicHttpClient {
         read: VinylSimilarSongsRead,
         revision: &'a str,
     ) -> ApiFuture<'a, Value> {
-        Box::pin(async move {
-            if self.pc_experiment_revision()? != revision {
-                return Err(Error::CredentialChanged);
-            }
-            let (path, payload) = read.into_request();
-            self.execute(
-                path,
-                payload,
-                false,
-                Some(revision),
-                Jsk::None,
-                Some(RequestBinding::VinylSimilarSongs),
-            )
-            .await
-        })
+        let (path, payload) = read.into_request();
+        Box::pin(self.vinyl_discovery(path, payload, revision))
+    }
+
+    fn request_vinyl_related_playlists<'a>(
+        &'a self,
+        read: VinylRelatedPlaylistsRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        let (path, payload) = read.into_request();
+        Box::pin(self.vinyl_discovery(path, payload, revision))
     }
 
     fn request_vinyl_comment_write<'a>(

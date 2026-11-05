@@ -25,7 +25,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const EXPERIMENT: &str = "PH-PC-playPage-recommendMore-new";
+pub(super) const EXPERIMENT: &str = "PH-PC-playPage-recommendMore-new";
 const PATH: &str = "/api/v1/discovery/simiSong";
 const MAX_ROWS: usize = 100;
 const RECEIPT_LIFETIME: Duration = Duration::from_secs(600);
@@ -114,7 +114,11 @@ impl Host {
     }
 }
 
-fn seed(snapshot: &PlaybackSnapshot, token: &SessionToken, play_id: &str) -> Result<String> {
+pub(super) fn seed(
+    snapshot: &PlaybackSnapshot,
+    token: &SessionToken,
+    play_id: &str,
+) -> Result<String> {
     if &snapshot.account != token || snapshot.play_id.as_deref() != Some(play_id) {
         return Err(Error::StaleResponse);
     }
@@ -157,7 +161,7 @@ fn resource(song: &VinylSimilarSongView, quality: Quality) -> Value {
         "missing":false,"song":mapping::projected_song_metadata(&song.track)})
 }
 
-fn stale_credentials(error: Error) -> Error {
+pub(super) fn stale_credentials(error: Error) -> Error {
     if matches!(error.root(), Error::CredentialChanged) {
         Error::StaleResponse
     } else {

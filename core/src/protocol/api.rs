@@ -78,6 +78,24 @@ impl VinylSimilarSongsRead {
     }
 }
 
+/// Fixed PC vinyl related-playlist query. The renderer never selects a seed.
+pub struct VinylRelatedPlaylistsRead(String);
+
+impl VinylRelatedPlaylistsRead {
+    pub(crate) const PATH: &'static str = "/api/discovery/simiPlaylist";
+
+    pub(crate) fn new(song_id: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(song_id) {
+            return Err(Error::InvalidInput("invalid vinyl related-playlist seed"));
+        }
+        Ok(Self(song_id.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (Self::PATH, json!({"songid":self.0}))
+    }
+}
+
 /// Fixed mutations from an already authorized current track (M/438, M/232, M/55).
 pub struct VinylCommentWrite {
     song_id: String,
@@ -237,6 +255,18 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async {
             Err(Error::State(
                 "vinyl similar-song dispatch authority unavailable",
+            ))
+        })
+    }
+
+    fn request_vinyl_related_playlists<'a>(
+        &'a self,
+        _read: VinylRelatedPlaylistsRead,
+        _revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "vinyl related-playlist dispatch authority unavailable",
             ))
         })
     }

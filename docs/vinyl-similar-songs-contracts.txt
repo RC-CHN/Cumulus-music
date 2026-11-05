@@ -81,8 +81,46 @@ The old control layout combines this card with 百科. Its recovered fold
 expression M/253:66 selects three rows for canExpand && similarSongExpand
 and all rows otherwise, although new-song setup resets the flag false.
 This native treatment implementation does not make a guessed control
-fold available. The independent IncludeSongCard (recovered IncludeSongCard.tsx:119–159,176–240; M/109:93–97; M/15:3800–3809) uses
-uncached POST /api/discovery/simiPlaylist with songid, top-level playlists,
-three columns and six initially visible cards with local expansion, then
-ordinary /playlist/{id} navigation. That sibling has no product path in
-this change.
+fold available.
+
+Independent “相关歌单” card
+-------------------------
+
+The verified t1 相似推荐 tab displays related playlists above similar songs
+(M/182:4216–4217,4232–4245,4520–4547; recovered TrackDisplay.tsx:255).
+Each card mounts and reads independently. Neither card requires any
+rows from the other one. Control 百科 groups wiki, similar songs and
+related playlists in that order; the native entry covered here is t1.
+
+IncludeSongCard (M/182:4232–4265,4310–4366; recovered
+IncludeSongCard.tsx:119–161,176–240) calls the current-song helper
+M/109:93–97. M/15:3800–3809,1012–1014 registers the uncached call:
+
+  POST /api/discovery/simiPlaylist
+  { "songid": "<current ordinary catalog song ID>" }
+
+The response has top-level playlists; M/21:41–42,884–926 projects them
+in service order. Each card uses a decimal ID, name then title fallback,
+coverImgUrl then picUrl then coverUrl, and playCount defaulting to zero.
+The native desktop projection exposes only id, name, coverUrl and
+playCount, with HTTPS public artwork and incoming query/fragment
+stripped by the standard Cumulus artwork rule. No creator ID, private
+URL or raw response leaves the adapter. An empty response returns an
+empty list; malformed or failed responses fail only this call.
+
+The official card starts at six cards in a three-column grid and offers
+one-way “展开更多” when more rows exist, revealing already returned
+results. Expansion resets when the seed song changes; remounting with
+the same seed retains the setting. The entire card links to ordinary
+/playlist/{id}; it has no play button, novel route or mutation. The
+native read returns all accepted rows (safety ceiling 100) for that
+expansion. It is bound to the current catalog play, account generation,
+signed PC experiment/credential scope and fixed endpoint. It creates no
+playback receipt and cannot invalidate the sibling's receipt.
+
+The isolated native tests cover the two exact independent endpoints,
+playlist order and field fallback, safe URL/ID projection, an empty or
+failed playlist response preserving a playable song receipt, and delayed
+playlist results being retired on track, account or credential changes.
+The desktop shell, local expansion, Back navigation and rendered state
+remain subject to the desktop integration and its WebView proof.
