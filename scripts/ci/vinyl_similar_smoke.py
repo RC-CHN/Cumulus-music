@@ -59,6 +59,10 @@ def assert_play(row, song):
     assert native["entryId"] == queue["current"]
     assert row["audioFactoryCount"] >= 1
     assert queue["current"] in {entry["entryId"] for entry in queue["tracks"] if entry["track"]["id"] == song}
+    # The stock player can authorize the next queue item before selecting it.
+    # Require its source authorization by this native stage, rather than a
+    # redundant URL request after each gesture.
+    assert song in {str(identifier) for call in calls(row, "audio") for identifier in call["ids"]}
 
 
 def audit_treatment(rows, complete, related):
@@ -96,13 +100,6 @@ def audit_treatment(rows, complete, related):
     seeds = song_reads(complete)
     assert set(seeds) == {"1", "51", "55", "58", "61", "59"}
     assert seeds.index("61") < seeds.index("59")
-    authorized = [str(call["ids"][0]) for call in calls(complete, "audio")]
-    expected = iter(["1", "51", "55", "58", "61", "59"])
-    next_id = next(expected, None)
-    for received in authorized:
-        if received == next_id:
-            next_id = next(expected, None)
-    assert next_id is None, authorized
     if related:
         first_expanded = rows["related_first_expanded"]
         expanded, route = rows["related_expanded"], rows["playlist_route"]
