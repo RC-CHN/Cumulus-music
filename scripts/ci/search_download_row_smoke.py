@@ -104,6 +104,8 @@ def main():
             assert current['position'] > first['position'] + .14
         if args.local_marker:
             assert row['qualitySource'] == ('本地' if index < 2 else None)
+            assert row['localSourceTag'] == ('SPAN' if index < 2 else None)
+            assert row['qualityTrigger'] is (index == 2) and row['qualityTriggerEnabled'] is (index == 2)
             assert native.get('catalogFileSource', False) is (index < 2)
             assert native['canChangeQuality'] is (index == 2)
     local, paused, fallback = (rows[state]['nativePlayer'] for state in STATES)

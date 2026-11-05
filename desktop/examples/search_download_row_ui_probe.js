@@ -54,7 +54,11 @@
     const stage = `ux_${String(++count).padStart(2, '0')}_${label}`;
     assert(visible() && cover()?.isConnected, 'same actual search results route');
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    await emit(stage, { observed: value, qualitySource: one('[data-quality-source="local"]')?.textContent.trim() ?? null });
+    const localSource = bar()?.querySelector('[data-quality-source="local"]');
+    const qualityTrigger = bar()?.querySelector('.quality-control button[aria-label="音质"]');
+    await emit(stage, { observed: value, qualitySource: localSource?.textContent.trim() ?? null,
+      localSourceTag: localSource?.tagName ?? null, qualityTrigger: !!qualityTrigger,
+      qualityTriggerEnabled: !!qualityTrigger && !qualityTrigger.disabled });
     await wait(() => window.__searchDownloadStageRecorded === stage, `native receipt for ${stage}`);
   }
   try {
