@@ -16,6 +16,7 @@
   const emit = (stage, info = {}) =>
     invoke('plugin:event|emit', { event: 'ux-proof', payload: { stage, ...info } });
   const query = '合成会员刷新';
+  const initialScroll = 52;
   const panel = () => one('#search-result-panel');
   const card = () => one('[data-result-key="song:601"]');
   const heading = () => one('.search-results-page h1')?.textContent;
@@ -43,8 +44,29 @@
   let domCheckpoint;
   const refreshes = [];
 
+  function layoutFrames(count) {
+    return new Promise((resolve) => {
+      let frame;
+      const deadline = setTimeout(() => finish(false), 1500);
+      function finish(painted) {
+        clearTimeout(deadline);
+        cancelAnimationFrame(frame);
+        resolve(painted);
+      }
+      function next() {
+        if (--count === 0) finish(true);
+        else frame = requestAnimationFrame(next);
+      }
+      frame = requestAnimationFrame(next);
+    });
+  }
+
   function observeDom() {
     const current = panel(), active = document.activeElement;
+    const viewport = current ? {
+      clientHeight: current.clientHeight, scrollHeight: current.scrollHeight,
+      capacity: current.scrollHeight - current.clientHeight, overflowY: getComputedStyle(current).overflowY,
+    } : null;
     return {
       sameCard: !!original && original === card(),
       sameFocus: !!focused && focused === active,
@@ -53,13 +75,17 @@
       activeLabel: active?.getAttribute('aria-label') ?? null,
       expectedScrollTop: scrollTop ?? null,
       scrollTop: current?.scrollTop ?? null,
+      viewport,
       heading: heading() ?? null,
       transitionClass: transition()?.className ?? null,
       panelBusy: current?.getAttribute('aria-busy') ?? null,
     };
   }
-  const domReady = (view) => view.sameCard && view.sameFocus && view.samePanel &&
+  const routeReady = (view) => view.sameCard && view.samePanel &&
     view.heading === query && view.transitionClass === null && view.panelBusy === 'false';
+  const domReady = (view) => routeReady(view) && view.sameFocus;
+  const canSetInitialScroll = (view) => routeReady(view) &&
+    view.viewport?.capacity >= initialScroll && ['auto', 'scroll', 'overlay'].includes(view.viewport.overflowY);
 
   async function capture(label) {
     step = label;
@@ -134,21 +160,35 @@
     targetPanel = panel();
     original = card();
     focused = more();
-    focused.focus({ preventScroll: true });
-    targetPanel.scrollTop = 52;
-    step = 'cold_baseline';
-    scrollTop = await wait(async () => {
+    step = 'cold_layout';
+    await wait(async () => {
       const before = observeDom();
       domCheckpoint = { before };
-      if (!domReady(before) || !(before.scrollTop > 0)) return false;
-      // Initial navigation can settle scroll/focus after the DOM says ready.
-      // Arm the baseline only if the same nodes and scroll survive two paints
-      // and a native read; don't refocus or move the scroll again.
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (!canSetInitialScroll(before)) return false;
+      // The initial route can finish restoring its viewport after aria-busy
+      // becomes false. Leave it untouched through both layout frame pairs.
+      assert(await layoutFrames(4), 'initial search layout did not paint');
       await played(epoch);
       const after = domCheckpoint.after = observeDom();
-      return domReady(after) && after.scrollTop === before.scrollTop && after.scrollTop;
-    }, 'nonzero scroll and stable More focus');
+      return canSetInitialScroll(after) && after.scrollTop === before.scrollTop &&
+        after.viewport.clientHeight === before.viewport.clientHeight &&
+        after.viewport.scrollHeight === before.viewport.scrollHeight;
+    }, 'stable scrollable search layout');
+    step = 'cold_baseline';
+    domCheckpoint = { before: observeDom() };
+    assert(canSetInitialScroll(domCheckpoint.before) && focused.isConnected, 'initial search control changed before assignment');
+    focused.focus({ preventScroll: true });
+    targetPanel.scrollTop = initialScroll;
+    const assigned = domCheckpoint.assigned = observeDom();
+    assert(domReady(assigned), 'initial scroll moved the active search card or More focus');
+    assert(assigned.scrollTop > 0 && Math.abs(assigned.scrollTop - initialScroll) < 1,
+      'initial scroll assignment was clamped');
+    scrollTop = assigned.scrollTop;
+    assert(await layoutFrames(2), 'initial search scroll did not paint');
+    await played(epoch);
+    const settled = domCheckpoint.after = observeDom();
+    assert(domReady(settled) && settled.scrollTop === scrollTop,
+      'initial scroll or focus changed after assignment');
     await capture('cold_restricted');
 
     await membership(epoch);
