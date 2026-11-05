@@ -90,3 +90,41 @@ Rust、窗口及账号边界
   python3 scripts/ci/podcast_scene_home_smoke.py --binary <probe> --root <新目录> --screenshots。
   本次还隔离了网络和声卡设备。Windows CI 使用相同原生探针、额外指定 --runtime <native>，
   不用 Linux 取图器；Windows 实际运行结果须看各次 CI。
+
+2026-11-05 标题与原生起播确认之间的竞态修复候选
+- 旧 main 2528e823 的 CI run 41984290134、Linux WebView job 127110228854，
+  scene_palette sample 第三阶段失败。必要诊断 artifact 13398997223 的 head 与
+  该提交一致；ZIP SHA256=bb21324d985702f38246fe95887386ed9f63fd986a726d7da3e40a17b0fa3999，
+  与 GitHub digest 相符，完整核验 outer ZIP member CRC。只保留 palette 的 18 个
+  JSON/log；417221262 字节归档已删除，未提交诊断产物。
+- ux_02 已是节目 601、Playing、position=0.352709、queue revision=1；点标题后
+  ux_03 仍是 601，但 position=0、revision=2、playId 改变且 601/602 全部 entryId
+  被替换。header/only_tb 两例没有这种变化。这直接对应 Play 重建整组路径，
+  不是仅取色错误、自然 EOF 或 Toggle 暂停。
+  私有原始证据：.build/ui-proof/phase58-ci-diagnosis/old-linux-palette/sample/run/first/，
+  完整来源核验：同诊断根下 old-linux-palette-provenance.json。
+- SceneFmPage 原先从最多 1200ms 前的 polled active/playing 决定标题不发命令、
+  Toggle 或 Play。解码器已经起播时，旧 active=false 仍会再次 Play；旧
+  active=true/playing=false 也可能误 Toggle 暂停。官方 SceneFm.tsx:267–289
+  则要求当前单集只恢复（需要时）并开详情，非当前才整组播放。
+- 新 typed scene_fm_command 的 open_voice{revision,voice_id} 始终由 native
+  queue_with_state 判断。voice_id 必须是该目录 revision 的当前选中节目；同
+  scene/voice 的 Playing/Buffering 使用 guarded Snapshot，不发播放或队列写；
+  Paused 使用 guarded Play 恢复同一 decoder/position，不再 UpdateQueue。沿用
+  账号、目录、来源、焦点、实际 playback fence，保持同源恢复 lease 连续。
+- pending 只有在实际当前条目的 source.scene_revision 恰好等于该 pending
+  revision 时才能当作已装入、但页面未观察确认的队列；最终原有 sync_for 修复
+  本地确认。另一尚未应用的新 pending revision 不可借旧队列绕过恢复。非当前
+  来源（即便同 voice ID）保留官方整组队列路径。封面 Toggle 行为不改。
+- 前端标题不再选 Toggle/Play，使用同一 model 代次和回执隔离的 openVoice。
+  scene-fm-state 定向 10 测试通过，包含三种过期 card 状态和等待时换号。
+  新增 3 个 native 集成测试，核对已装入 pending 恢复、native load/playId/
+  position/queue 不变、Paused 恢复、非当前同声源完整三集及新 pending 仍需应用；
+  该候选尚未运行 Rust/真实 WebView，等待与下一批统一验证，未修改原 GUI 断言。
+- 当前 main 2b0bbb13 的 run 41992095683 则在 Linux/Windows 的队列第二进程
+  return-code 断言失败，属于另一 sealed 凭据夹具重开问题；见
+  playback-queue-click-contracts.txt，不能把此旧 sample 原因当作当前 job 根因。
+- 旧 2528e823 Windows job 127101290543 在 vinyl_display 的首次普通音频起播
+  等待失败，现有 failed log 只证实 native Idle、queueLen=0、audio factory 已
+  初始化，无法证明解码错误或确定丢失事件原因。全局首个 .track-row 与路由
+  过渡之间有待核验的测试时序可能；本候选没有按推测修改该流程。

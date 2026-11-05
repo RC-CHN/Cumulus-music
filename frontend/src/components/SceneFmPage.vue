@@ -64,10 +64,7 @@ async function openVoice() {
     loading.value
   )
     return;
-  const result =
-    captured.active && captured.playing
-      ? captured
-      : await props.model.act(captured.active ? 'toggle' : 'play');
+  const result = await props.model.openVoice();
   if (
     owner === props.epoch &&
     result?.active &&

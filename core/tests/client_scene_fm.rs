@@ -584,3 +584,150 @@ async fn failed_authorization_retains_explicit_recovery_and_stale_account_has_no
             .is_none()
     );
 }
+
+fn open_voice(revision: &str, voice_id: &str) -> SceneFmCommand {
+    SceneFmCommand::OpenVoice {
+        revision: revision.into(),
+        voice_id: voice_id.into(),
+    }
+}
+
+#[tokio::test]
+async fn title_uses_native_current_voice_when_card_or_local_completion_is_stale() {
+    let (dir, api, _session, c, device) = fixture();
+    let v = c.scene_fm_view("1", true).await.unwrap().value;
+    c.scene_fm_command("1", open_voice(v.revision.as_deref().unwrap(), "1"))
+        .await
+        .unwrap();
+    c.player_action("1", PlayerAction::Seek { seconds: 18.0 })
+        .await
+        .unwrap();
+    let sub = c.subscribe_playback("1").await.unwrap();
+    let before = sub.current().unwrap();
+    let queue = serde_json::to_value(c.player_queue("1").await.unwrap()).unwrap();
+    let calls = api.calls.lock().unwrap().len();
+    let native_revision = before.selected.as_ref().unwrap().source["scene_revision"]
+        .as_u64()
+        .unwrap();
+    // Reproduce the legitimate interval after the exact prepared queue was
+    // loaded but before a card view observes and confirms its pending record.
+    let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let mut pending = store.get("9", "scene-fm-v1", "current").unwrap().unwrap();
+    pending["revision"] = json!(native_revision);
+    pending["pending"] = json!(true);
+    store.put("9", "scene-fm-v1", "current", &pending).unwrap();
+    let v = c
+        .scene_fm_command("1", open_voice(&native_revision.to_string(), "1"))
+        .await
+        .unwrap()
+        .value;
+    assert!(v.active && v.playing && !v.pending);
+    let after = sub.current().unwrap();
+    assert_eq!(after.state, PlaybackStatus::Playing);
+    assert_eq!(after.play_id, before.play_id);
+    assert_eq!(after.control_revision, before.control_revision);
+    assert_eq!(after.queue_revision, before.queue_revision);
+    assert_eq!(after.position, Some(18.0));
+    assert_eq!(
+        serde_json::to_value(c.player_queue("1").await.unwrap()).unwrap(),
+        queue
+    );
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+
+    c.player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = sub.current().unwrap();
+    let v = c
+        .scene_fm_command("1", open_voice(v.revision.as_deref().unwrap(), "1"))
+        .await
+        .unwrap()
+        .value;
+    let resumed = sub.current().unwrap();
+    assert!(v.active && v.playing);
+    assert_eq!(resumed.state, PlaybackStatus::Playing);
+    assert_eq!(resumed.play_id, paused.play_id);
+    assert_eq!(resumed.queue_revision, paused.queue_revision);
+    assert_eq!(resumed.position, Some(18.0));
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(device.state.lock().unwrap().pauses.last(), Some(&false));
+    assert_eq!(
+        serde_json::to_value(c.player_queue("1").await.unwrap()).unwrap(),
+        queue
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+
+    assert!(matches!(
+        c.scene_fm_command("1", open_voice(v.revision.as_deref().unwrap(), "2"))
+            .await,
+        Err(cumulus_core::Error::QueueChanged)
+    ));
+    assert!(matches!(
+        c.scene_fm_command("0", open_voice(v.revision.as_deref().unwrap(), "1"))
+            .await,
+        Err(cumulus_core::Error::StaleResponse)
+    ));
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    assert_eq!(
+        serde_json::to_value(c.player_queue("1").await.unwrap()).unwrap(),
+        queue
+    );
+    c.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn title_starts_whole_scene_from_a_different_source_even_for_the_same_voice() {
+    let (_dir, _api, _session, c, device) = fixture();
+    let v = c.scene_fm_view("1", true).await.unwrap().value;
+    c.play_selection("1", PlaySelection::Voice { id: "1".into() })
+        .await
+        .unwrap();
+    let before = c.subscribe_playback("1").await.unwrap().current().unwrap();
+    assert_ne!(before.selected.as_ref().unwrap().source["kind"], "scene_fm");
+    let v = c
+        .scene_fm_command("1", open_voice(v.revision.as_deref().unwrap(), "1"))
+        .await
+        .unwrap()
+        .value;
+    let after = c.subscribe_playback("1").await.unwrap().current().unwrap();
+    assert!(v.active && v.playing);
+    assert_ne!(after.play_id, before.play_id);
+    assert_eq!(after.selected.as_ref().unwrap().source["kind"], "scene_fm");
+    assert_eq!(c.player_queue("1").await.unwrap().tracks.len(), 3);
+    assert_eq!(device.state.lock().unwrap().loads, 2);
+    c.player_action("1", PlayerAction::Stop).await.unwrap();
+}
+
+#[tokio::test]
+async fn title_does_not_consume_an_unapplied_pending_revision_as_current() {
+    let (dir, _api, _session, c, device) = fixture();
+    let v = c.scene_fm_view("1", true).await.unwrap().value;
+    let v = c
+        .scene_fm_command("1", play(v.revision.as_deref().unwrap()))
+        .await
+        .unwrap()
+        .value;
+    let before = c.subscribe_playback("1").await.unwrap().current().unwrap();
+    let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let mut pending = store.get("9", "scene-fm-v1", "current").unwrap().unwrap();
+    let revision = v.revision.unwrap().parse::<u64>().unwrap() + 1;
+    pending["revision"] = json!(revision);
+    pending["pending"] = json!(true);
+    store.put("9", "scene-fm-v1", "current", &pending).unwrap();
+    let v = c
+        .scene_fm_command("1", open_voice(&revision.to_string(), "1"))
+        .await
+        .unwrap()
+        .value;
+    let after = c.subscribe_playback("1").await.unwrap().current().unwrap();
+    assert!(v.active && v.playing && !v.pending);
+    assert_ne!(after.play_id, before.play_id);
+    assert_ne!(after.queue_revision, before.queue_revision);
+    assert_eq!(device.state.lock().unwrap().loads, 2);
+    c.player_action("1", PlayerAction::Stop).await.unwrap();
+}

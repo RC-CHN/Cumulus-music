@@ -166,6 +166,15 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
   function act(kind: 'play' | 'toggle' | 'cancel') {
     if (view.value?.revision) return command({ kind, revision: view.value.revision });
   }
+  function openVoice() {
+    const current = view.value;
+    if (current?.revision && current.episode)
+      return command({
+        kind: 'open_voice',
+        revision: current.revision,
+        voice_id: current.episode.id,
+      });
+  }
   function select(id: string) {
     if (view.value?.revision)
       return command({ kind: 'select', revision: view.value.revision, scene_id: id });
@@ -183,6 +192,20 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
     retireSurface();
     surface = null;
   }
-  return { view, loading, busy, error, connect, show, load, poll, command, act, select, dispose };
+  return {
+    view,
+    loading,
+    busy,
+    error,
+    connect,
+    show,
+    load,
+    poll,
+    command,
+    act,
+    openVoice,
+    select,
+    dispose,
+  };
 }
 export type SceneFmModel = ReturnType<typeof useSceneFm>;

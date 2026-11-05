@@ -258,3 +258,72 @@ test('慢回读只有一个在途请求，定时轮询不能让它永远失效',
   assert.equal(m.view.value?.playing, true);
   m.dispose();
 });
+
+test('标题始终提交原生 open_voice，不用过期 active/playing 选择 toggle 或 play', async () => {
+  const commands: SceneFmCommand[] = [];
+  const episode = {
+    id: '601',
+    name: '合成节目',
+    coverUrl: null,
+    creator: '',
+    radioId: null,
+    radioName: '',
+    durationMs: 120000,
+    feeType: 0,
+    liked: false,
+    unavailable: false,
+  };
+  for (const stale of [
+    { active: false, playing: false, pending: true },
+    { active: true, playing: false, pending: false },
+    { active: true, playing: true, pending: false },
+  ]) {
+    const core: SceneFmClient = {
+      ...homeOperations,
+      sceneFmView: async (epoch) => ({ epoch, value: view('7', { episode, ...stale }) }),
+      sceneFmCommand: async (epoch, command) => {
+        commands.push(command);
+        return { epoch, value: view('8', { episode, active: true, playing: true }) };
+      },
+    };
+    const model = useSceneFm(core, () => {});
+    model.connect(account());
+    await model.show('standalone');
+    const result = await model.openVoice();
+    assert.equal(result?.episode?.id, '601');
+    assert.equal(result?.playing, true);
+    assert.deepEqual(commands.at(-1), { kind: 'open_voice', revision: '7', voice_id: '601' });
+    model.dispose();
+  }
+  assert.equal(commands.length, 3);
+});
+
+test('标题等待原生命令期间换号，旧回执不能打开新账号的节目', async () => {
+  const reply = deferred<AccountData<SceneFmView>>();
+  const episode = {
+    id: '601',
+    name: '合成节目',
+    coverUrl: null,
+    creator: '',
+    radioId: null,
+    radioName: '',
+    durationMs: 120000,
+    feeType: 0,
+    liked: false,
+    unavailable: false,
+  };
+  const core: SceneFmClient = {
+    ...homeOperations,
+    sceneFmView: async (epoch) => ({ epoch, value: view('7', { episode }) }),
+    sceneFmCommand: () => reply.promise,
+  };
+  const model = useSceneFm(core, () => {});
+  model.connect(account());
+  await model.show('standalone');
+  const pending = model.openVoice();
+  model.connect(account('2'));
+  reply.resolve({ epoch: '1', value: view('8', { episode, active: true, playing: true }) });
+  assert.equal(await pending, undefined);
+  assert.equal(model.view.value, undefined);
+  model.dispose();
+});

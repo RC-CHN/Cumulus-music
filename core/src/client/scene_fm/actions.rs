@@ -38,6 +38,7 @@ impl MusicClient {
             SceneFmCommand::Select { revision, .. }
             | SceneFmCommand::Play { revision }
             | SceneFmCommand::Toggle { revision }
+            | SceneFmCommand::OpenVoice { revision, .. }
             | SceneFmCommand::HomeAutomatic { revision, .. } => revision.clone(),
         };
         let rev = revision(&rev)?;
@@ -45,6 +46,11 @@ impl MusicClient {
             .cached_for(&token)?
             .ok_or(Error::State("scene FM not loaded"))?;
         if desired.revision != rev {
+            return Err(Error::QueueChanged);
+        }
+        if let SceneFmCommand::OpenVoice { voice_id, .. } = &command
+            && desired.selected().is_none_or(|voice| voice.id != *voice_id)
+        {
             return Err(Error::QueueChanged);
         }
         let home = match &command {
@@ -66,6 +72,43 @@ impl MusicClient {
         }
         let controller = self.player.controller().await?;
         let (before, queue) = controller.queue_with_state(&token).await?;
+        let same = before.selected.as_ref().is_some_and(|e| {
+            e.source["kind"] == "scene_fm"
+                && e.source["scene_id"].as_str() == desired.active_id.as_deref()
+                && desired
+                    .selected()
+                    .is_some_and(|v| e.resource["voice_id"] == v.id)
+        });
+        if matches!(command, SceneFmCommand::OpenVoice { .. })
+            && same
+            && (!desired.pending
+                || before.selected.as_ref().is_some_and(|entry| {
+                    entry.source["scene_revision"].as_u64() == Some(desired.revision)
+                }))
+            && matches!(
+                before.state,
+                PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+            )
+        {
+            // SceneFm.tsx:267–289: a title opens the current voice and only
+            // resumes if paused. The card's polled active/playing flags cannot
+            // decide this: they can precede the actual decoder's start.
+            let lease = self.audio_source_resume_lease(&token).await?;
+            let focus = self.focus.clone();
+            controller
+                .command_guarded(
+                    &token,
+                    if before.state == PlaybackStatus::Paused {
+                        PlaybackCommand::Play
+                    } else {
+                        PlaybackCommand::Snapshot
+                    },
+                    before.fence(),
+                    Cancellation::new(move || focus.check(lease, Owner::Audio).is_ok()),
+                )
+                .await?;
+            return self.scene_fm_view(epoch, false).await;
+        }
         let initial = if let Some(visit) = home.as_ref() {
             visit.check(&self.session, &token)?;
             let Some(initial) = visit.audio.as_ref() else {
@@ -93,13 +136,6 @@ impl MusicClient {
         };
         // The same cover button controls only its own current voice. A newer
         // stop/selection is rejected atomically by the playback fence.
-        let same = before.selected.as_ref().is_some_and(|e| {
-            e.source["kind"] == "scene_fm"
-                && e.source["scene_id"].as_str() == desired.active_id.as_deref()
-                && desired
-                    .selected()
-                    .is_some_and(|v| e.resource["voice_id"] == v.id)
-        });
         if matches!(command, SceneFmCommand::Toggle { .. })
             && same
             && !desired.pending

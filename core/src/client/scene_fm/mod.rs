@@ -52,6 +52,7 @@ pub enum SceneFmCommand {
     Select { revision: String, scene_id: String },
     Play { revision: String },
     Toggle { revision: String },
+    OpenVoice { revision: String, voice_id: String },
     HomeAutomatic { revision: String, visit: String },
     Autoplay { enabled: bool },
     Cancel { revision: String },

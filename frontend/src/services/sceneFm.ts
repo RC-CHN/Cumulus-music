@@ -13,6 +13,7 @@ export interface SceneFmView {
 export type SceneFmCommand =
   | { kind: 'select'; revision: string; scene_id: string }
   | { kind: 'play' | 'toggle' | 'cancel'; revision: string }
+  | { kind: 'open_voice'; revision: string; voice_id: string }
   | { kind: 'home_automatic'; revision: string; visit: string };
 export interface SceneFmClient {
   sceneFmHomeEnter(epoch: string): Promise<AccountData<{ visit: string } | null>>;
