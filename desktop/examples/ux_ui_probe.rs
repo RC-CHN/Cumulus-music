@@ -1436,15 +1436,15 @@ fn main() {
                         handle.exit(1);
                         return;
                     }
-                    if queue_ui_proof && stage.starts_with("ux_") {
-                        if !handle.get_webview_window("main").is_some_and(|window| {
+                    if queue_ui_proof && stage.starts_with("ux_")
+                        && !handle.get_webview_window("main").is_some_and(|window| {
                             window.eval(format!("window.__queueUiStageRecorded={};",json!(stage))).is_ok()
-                        }) {
-                            let failure=json!({"ok":false,"stage":stage,"error":"native queue stage acknowledgement failed"});
-                            let _=fs::write(output.join("failed.json"),serde_json::to_vec_pretty(&failure).unwrap());
-                            handle.exit(1);
-                            return;
-                        }
+                        })
+                    {
+                        let failure=json!({"ok":false,"stage":stage,"error":"native queue stage acknowledgement failed"});
+                        let _=fs::write(output.join("failed.json"),serde_json::to_vec_pretty(&failure).unwrap());
+                        handle.exit(1);
+                        return;
                     }
                     if queue_click_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueClickRecorded={};",serde_json::json!(stage))).unwrap();
