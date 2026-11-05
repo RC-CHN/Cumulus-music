@@ -165,6 +165,12 @@ impl VinylCommentWrite {
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
+    /// Local scope proof for the ordinary playback URL request. A generic
+    /// transport without scoped credentials cannot authorize stock fallback.
+    fn playback_source_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Scoped native credential revision for the episode progress write.
     /// Ordinary adapters do not opt into automatic account writes.
     fn podcast_progress_revision(&self) -> Result<Option<String>> {

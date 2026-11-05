@@ -1,8 +1,8 @@
 use super::ResolvedSource;
-use crate::{Error, Result, account::SessionToken};
+use crate::{Error, Result, account::SessionToken, protocol::api::Api};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, Weak},
     time::Duration,
 };
 use tokio::sync::watch;
@@ -21,9 +21,22 @@ pub(super) struct PendingKey {
     pub revision: u64,
     pub key: Key,
 }
+#[derive(Clone)]
+pub(super) struct StockAuthorization {
+    pub api: Weak<dyn Api>,
+    pub revision: String,
+}
+
+pub(super) enum Provenance {
+    Fresh(Arc<dyn Api>),
+    Memory(Option<StockAuthorization>),
+    Shared,
+}
+
 pub(super) struct Cached {
     pub value: Arc<ResolvedSource>,
     pub deadline: Duration,
+    pub authorization: Option<StockAuthorization>,
 }
 pub(super) type Outcome = std::result::Result<Arc<ResolvedSource>, Arc<Error>>;
 #[derive(Default)]

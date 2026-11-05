@@ -15,12 +15,13 @@ use crate::{
     membership::Quality,
     protocol::api::{Api, identifier},
 };
-use cache::{CacheState, Key, Outcome, Owner, PendingKey};
+use cache::{CacheState, Key, Outcome, Owner, PendingKey, Provenance};
 use serde_json::{Value, json};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+pub(crate) use streaming::StreamingSelection;
 const AUTHORIZATION_REUSE_MARGIN: Duration = Duration::from_secs(5);
 
 /// No Debug or Serialize: info includes native authorization facts and URLs.
@@ -460,7 +461,7 @@ impl SourceResolver {
         token: &SessionToken,
         fresh: bool,
         expected: Option<&Arc<dyn Api>>,
-    ) -> Result<(Arc<ResolvedSource>, Option<Arc<dyn Api>>)> {
+    ) -> Result<(Arc<ResolvedSource>, Provenance)> {
         let key = self.key(resource, token)?;
         let (pending, mut receiver, owner) = {
             let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
@@ -480,9 +481,10 @@ impl SourceResolver {
             }
             if let Some(cached) = state.cache.get(&key) {
                 let value = cached.value.clone();
+                let authorization = cached.authorization.clone();
                 drop(state);
                 self.session.with_token(token, |_| Ok(()))?;
-                return Ok((value, None));
+                return Ok((value, Provenance::Memory(authorization)));
             }
             if let Some(sender) = state.pending.get(&pending) {
                 (pending, sender.subscribe(), None)
@@ -494,18 +496,20 @@ impl SourceResolver {
         };
         if let Some(owner) = owner {
             let guard = Owner::new(self.state.clone(), pending.clone(), owner);
-            let mut provenance = None;
+            let mut provenance = Provenance::Shared;
+            let mut authorization = None;
             let result = self
                 .fetch(resource, &key, expected)
                 .await
-                .and_then(|(value, api)| {
+                .and_then(|fetched| {
                     self.session.with_token(token, |_| Ok(()))?;
                     let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
                     if !guard.current(&state) {
                         return Err(Error::StaleResponse);
                     }
-                    provenance = Some(api);
-                    Ok(Arc::new(value))
+                    provenance = Provenance::Fresh(fetched.api);
+                    authorization = fetched.authorization;
+                    Ok(Arc::new(fetched.source))
                 });
             let outcome: Outcome = result.map_err(Arc::new);
             if let Ok(value) = &outcome {
@@ -533,6 +537,7 @@ impl SourceResolver {
                         cache::Cached {
                             value: value.clone(),
                             deadline,
+                            authorization,
                         },
                     );
                 }
@@ -551,7 +556,7 @@ impl SourceResolver {
                 return Err(Error::StaleResponse);
             }
             self.finish_outcome(outcome, token)
-                .map(|source| (source, None))
+                .map(|source| (source, Provenance::Shared))
         }
     }
 }

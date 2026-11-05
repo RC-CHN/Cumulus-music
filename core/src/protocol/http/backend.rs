@@ -62,7 +62,11 @@ impl HttpBackend for ReqwestBackend {
             })?;
             let status = response.status().as_u16();
             if response.status().is_redirection() {
-                return Err(Error::Transport("API redirect rejected".into()));
+                return Err(Error::HttpStatus {
+                    status,
+                    endpoint: None,
+                    body: None,
+                });
             }
             let oversized = response
                 .content_length()

@@ -651,7 +651,11 @@ async fn redirects_oversized_bodies_and_wrong_context_origin_do_not_claim_succes
     );
     assert!(matches!(
         client.request("/api/test", json!({}), false).await,
-        Err(Error::Transport(_))
+        Err(Error::HttpStatus {
+            status: 302,
+            body: None,
+            ..
+        })
     ));
     assert!(
         !credentials

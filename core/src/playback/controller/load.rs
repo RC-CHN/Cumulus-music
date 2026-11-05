@@ -6,9 +6,9 @@ use crate::{
     Error, Result,
     playback::{
         QueueEntry, Timeline, TimelineMode,
-        engine::{LoadRequest, LoadedMedia},
+        engine::{Cancellation, LoadRequest, LoadedMedia},
         failure::PlaybackFailure,
-        source::ResolvedSource,
+        source::{ResolvedSource, StreamingSelection},
     },
 };
 use std::sync::Arc;
@@ -39,9 +39,19 @@ pub(super) struct Prepared {
     pub timeline: Timeline,
     pub position: f64,
     pub reset: bool,
+    stock_fallback: Option<Cancellation>,
     audiobook_skip: Option<crate::podcast::AudiobookIntervals>,
     audiobook_skip_sequence: u64,
     apply_audiobook_intro: bool,
+}
+
+fn with_stock_fallback(transport: Cancellation, fallback: Option<Cancellation>) -> Cancellation {
+    match fallback {
+        None => transport,
+        Some(fallback) => {
+            Cancellation::new(move || !transport.is_cancelled() && !fallback.is_cancelled())
+        }
+    }
 }
 
 fn loading_timeline(source: &ResolvedSource, item: &QueueEntry, timeline: Timeline) -> Timeline {
@@ -212,7 +222,11 @@ impl Actor {
                     })
                     .await?;
                 cancel.check()?;
-                let (source, streaming_api) = if let Some(revision) = streaming_revision {
+                let StreamingSelection {
+                    source,
+                    fresh_api,
+                    stock_fallback,
+                } = if let Some(revision) = streaming_revision {
                     resolver
                         .resolve_streaming_source(&item.resource, &token, revision)
                         .await?
@@ -236,7 +250,7 @@ impl Actor {
                                 .await?
                         }
                     };
-                    (source, None)
+                    StreamingSelection::stock(source)
                 };
                 cancel.check()?;
                 let timeline = crate::playback::PlaybackConstraint::apply(
@@ -276,7 +290,7 @@ impl Actor {
                     authorized_position: position,
                 });
                 let stream_reader = if let (Some(revision), Some(api)) =
-                    (streaming_revision, streaming_api)
+                    (streaming_revision, fresh_api)
                     && snapshot.mode == TimelineMode::Full
                     && snapshot.media_start == 0.0
                 {
@@ -304,8 +318,8 @@ impl Actor {
                 } else {
                     None
                 };
-                let load_cancel = cancel.clone();
-                let media = super::engine(engine.clone(), cancel.clone(), move |engine| {
+                let load_cancel = with_stock_fallback(cancel.clone(), stock_fallback.clone());
+                let media = super::engine(engine.clone(), load_cancel.clone(), move |engine| {
                     if let Some(reader) = stream_reader {
                         engine.load_streaming_audio(reader, &load_cancel)
                     } else {
@@ -341,6 +355,7 @@ impl Actor {
                     timeline,
                     position,
                     reset,
+                    stock_fallback,
                     audiobook_skip,
                     audiobook_skip_sequence,
                     apply_audiobook_intro,
@@ -446,15 +461,23 @@ impl Actor {
                 match target {
                     Ok(target) => {
                         let initial = prepared.timeline.snapshot().media_start;
+                        let stock_fallback = prepared.stock_fallback.clone();
                         let result = self
-                            .parametric_transport(paused, self.cancel.clone(), move |engine| {
-                                if (target - initial).abs() > f64::EPSILON {
-                                    engine.seek(target)?;
-                                }
-                                engine.volume(prefs.volume)?;
-                                engine.speed(speed)?;
-                                engine.pause(paused)
-                            })
+                            .parametric_transport(
+                                paused,
+                                with_stock_fallback(self.cancel.clone(), stock_fallback.clone()),
+                                move |engine| {
+                                    if (target - initial).abs() > f64::EPSILON {
+                                        engine.seek(target)?;
+                                    }
+                                    engine.volume(prefs.volume)?;
+                                    engine.speed(speed)?;
+                                    if let Some(guard) = stock_fallback {
+                                        guard.check()?;
+                                    }
+                                    engine.pause(paused)
+                                },
+                            )
                             .await;
                         result.and_then(|_| {
                             self.queue.reload()?;

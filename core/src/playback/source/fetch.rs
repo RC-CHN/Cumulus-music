@@ -1,4 +1,7 @@
-use super::{ResolvedSource, SourceResolver, cache::Key};
+use super::{
+    ResolvedSource, SourceResolver,
+    cache::{Key, StockAuthorization},
+};
 use crate::{
     Error, Result,
     catalog::{CatalogApi, PlayOptions},
@@ -9,19 +12,30 @@ use crate::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+pub(super) struct Fetched {
+    pub source: ResolvedSource,
+    pub api: Arc<dyn Api>,
+    pub authorization: Option<StockAuthorization>,
+}
+
 impl SourceResolver {
     pub(super) async fn fetch(
         &self,
         resource: &Value,
         key: &Key,
         expected: Option<&Arc<dyn Api>>,
-    ) -> Result<(ResolvedSource, Arc<dyn Api>)> {
-        let (info, authorization_api) = self
+    ) -> Result<Fetched> {
+        let (info, authorization_api, authorization) = self
             .session
             .run_for(&key.token, |api, _| async move {
                 if expected.is_some_and(|expected| !Arc::ptr_eq(expected, &api)) {
                     return Err(Error::StaleResponse);
                 }
+                let stock_scope = (self.streaming_cache.is_some()
+                    && key.voice_id.is_none()
+                    && key.token.uid.is_some())
+                .then(|| api.playback_source_credential_revision().ok().flatten())
+                .flatten();
                 let options = PlayOptions {
                     level: &key.level,
                     encode_type: &key.encode,
@@ -41,7 +55,19 @@ impl SourceResolver {
                 };
                 let info =
                     info.ok_or(Error::Response("no playback resource for requested track"))?;
-                Ok((info, api))
+                let authorization = stock_scope
+                    .filter(|revision| {
+                        api.playback_source_credential_revision()
+                            .ok()
+                            .flatten()
+                            .as_ref()
+                            == Some(revision)
+                    })
+                    .map(|revision| StockAuthorization {
+                        api: Arc::downgrade(&api),
+                        revision,
+                    });
+                Ok((info, api, authorization))
             })
             .await?;
         // M/163 requires all three facts, independently of fee/trial flags.
@@ -104,6 +130,10 @@ impl SourceResolver {
             source.info["track_duration"] = json!(duration);
             source.timeline(None)?;
         }
-        Ok((source, authorization_api))
+        Ok(Fetched {
+            source,
+            api: authorization_api,
+            authorization,
+        })
     }
 }

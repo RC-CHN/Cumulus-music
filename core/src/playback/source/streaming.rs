@@ -1,6 +1,6 @@
-use super::{ResolvedSource, SourceResolver};
+use super::{ResolvedSource, SourceResolver, cache::Provenance};
 use crate::{
-    Result,
+    Error, Result,
     account::SessionToken,
     playback::{
         engine::{Cancellation, MediaInput},
@@ -11,6 +11,22 @@ use crate::{
 use serde_json::Value;
 use std::sync::Arc;
 
+pub(crate) struct StreamingSelection {
+    pub source: Arc<ResolvedSource>,
+    pub fresh_api: Option<Arc<dyn Api>>,
+    pub stock_fallback: Option<Cancellation>,
+}
+
+impl StreamingSelection {
+    pub(crate) fn stock(source: Arc<ResolvedSource>) -> Self {
+        Self {
+            source,
+            fresh_api: None,
+            stock_fallback: None,
+        }
+    }
+}
+
 impl SourceResolver {
     /// Select the stock source first. Only a fresh request owned by this
     /// selection, or a separately reauthorized exact warm candidate, may
@@ -20,45 +36,94 @@ impl SourceResolver {
         resource: &Value,
         token: &SessionToken,
         revision: u64,
-    ) -> Result<(Arc<ResolvedSource>, Option<Arc<dyn Api>>)> {
-        let (stock, fresh) = self
+    ) -> Result<StreamingSelection> {
+        let (stock, provenance) = self
             .resolve_online_observed(resource, token, false, None)
             .await?;
         let Some(owner) = token.uid.as_deref() else {
-            return Ok((stock, None));
+            return Ok(StreamingSelection::stock(stock));
         };
         let id = identifier(&resource["id"])?;
         let Some(key) = eligible(&stock, owner, &id) else {
-            return Ok((stock, None));
+            return Ok(StreamingSelection::stock(stock));
         };
-        if let Some(api) = fresh {
-            let fresh = self
-                .validate_streaming_source(token, &api)
-                .is_ok()
-                .then_some(api);
-            return Ok((stock, fresh));
-        }
+        let stock_authorization = match provenance {
+            Provenance::Fresh(api) => {
+                let mut selected = StreamingSelection::stock(stock);
+                selected.fresh_api = self
+                    .validate_streaming_source(token, &api)
+                    .is_ok()
+                    .then_some(api);
+                return Ok(selected);
+            }
+            Provenance::Memory(scope) => scope,
+            Provenance::Shared => None,
+        };
         if !self
             .streaming_cache
             .as_ref()
             .is_some_and(|cache| cache.store.has_hit(revision, &key).is_ok_and(|hit| hit))
         {
-            return Ok((stock, None));
+            return Ok(StreamingSelection::stock(stock));
         }
         let api = self.session.native_api(token)?;
         self.validate_streaming_source(token, &api)?;
         // This exact prior byte hit is the only reason to discard the stock
-        // memory URL. Fresh uses the ordinary resolver's invalidation and
-        // publication, so a refusal cannot leave the old URL reusable.
-        let (current, fresh) = self
+        // memory URL. Fresh invalidates its cache entry even on failure.
+        let renewed = self
             .resolve_online_observed(resource, token, true, Some(&api))
-            .await?;
+            .await;
+        let (current, provenance) = match renewed {
+            Ok(current) => current,
+            Err(error) if matches!(error.root(), Error::Transport(_)) => {
+                // Only ambiguous transport failure can use a still-bound
+                // original URL for this one load. It never returns warm bytes
+                // or republishes the old authorization into the memory cache.
+                let Some(scope) = stock_authorization.filter(|scope| {
+                    scope
+                        .api
+                        .upgrade()
+                        .is_some_and(|origin| Arc::ptr_eq(&api, &origin))
+                }) else {
+                    return Err(error);
+                };
+                let Some(deadline) = stock.reuse_until() else {
+                    return Err(error);
+                };
+                let (clock, session, token) =
+                    (self.clock.clone(), self.session.clone(), token.clone());
+                let guard = Cancellation::new(move || {
+                    clock.now() < deadline
+                        && session
+                            .with_verified_profile(&token, &api, |_, _| Ok(()))
+                            .is_ok()
+                        && api
+                            .playback_source_credential_revision()
+                            .ok()
+                            .flatten()
+                            .as_deref()
+                            == Some(scope.revision.as_str())
+                });
+                if guard.is_cancelled() {
+                    return Err(error);
+                }
+                return Ok(StreamingSelection {
+                    source: stock,
+                    fresh_api: None,
+                    stock_fallback: Some(guard),
+                });
+            }
+            Err(error) => return Err(error),
+        };
         self.validate_streaming_source(token, &api)?;
-        let fresh = fresh.filter(|verified| {
-            Arc::ptr_eq(verified, &api)
-                && eligible(&current, owner, &id).is_some_and(|current| current == key)
-        });
-        Ok((current, fresh))
+        let mut selected = StreamingSelection::stock(current);
+        if let Provenance::Fresh(verified) = provenance
+            && Arc::ptr_eq(&verified, &api)
+            && eligible(&selected.source, owner, &id).is_some_and(|current| current == key)
+        {
+            selected.fresh_api = Some(verified);
+        }
+        Ok(selected)
     }
 
     pub(crate) fn validate_streaming_source(
@@ -225,32 +290,32 @@ mod tests {
         let mut resolver = SourceResolver::new(session, None);
         resolver.streaming_cache = Some(StreamingCache::open(&state, 512 * 1024).unwrap());
         let unsupported = json!({"id":"42"});
-        let (first, provenance) = resolver
+        let first = resolver
             .resolve_streaming_source(&unsupported, &token, 0)
             .await
             .unwrap();
-        assert!(provenance.is_none());
-        let (memory, provenance) = resolver
+        assert!(first.fresh_api.is_none());
+        let memory = resolver
             .resolve_streaming_source(&unsupported, &token, 0)
             .await
             .unwrap();
-        assert!(Arc::ptr_eq(&first, &memory) && provenance.is_none());
+        assert!(Arc::ptr_eq(&first.source, &memory.source) && memory.fresh_api.is_none());
         assert_eq!(api.0.load(Ordering::SeqCst), 1);
 
         let ordinary = json!({"id":"43"});
-        let (first, provenance) = resolver
+        let first = resolver
             .resolve_streaming_source(&ordinary, &token, 0)
             .await
             .unwrap();
         assert!(
-            provenance.is_some(),
+            first.fresh_api.is_some(),
             "fresh stock request can qualify a first fill"
         );
-        let (memory, provenance) = resolver
+        let memory = resolver
             .resolve_streaming_source(&ordinary, &token, 0)
             .await
             .unwrap();
-        assert!(Arc::ptr_eq(&first, &memory) && provenance.is_none());
+        assert!(Arc::ptr_eq(&first.source, &memory.source) && memory.fresh_api.is_none());
         assert_eq!(
             api.0.load(Ordering::SeqCst),
             2,

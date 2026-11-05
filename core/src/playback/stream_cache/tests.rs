@@ -287,7 +287,7 @@ use crate::{
     playback::{
         controller::{PlaybackCommand, PlaybackController, PlaybackStatus},
         engine::{AudioEngine, EngineSnapshot, LoadRequest, LoadedMedia, MpvConfig, MpvEngine},
-        source::SourceResolver,
+        source::{ResolverClock, SourceResolver},
     },
     protocol::api::{Api, ApiFuture},
 };
@@ -296,7 +296,7 @@ use std::{
     io::{Read, Seek, SeekFrom},
     sync::{
         Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -433,6 +433,155 @@ impl Api for Authorizer {
                 "level":"standard","expi":120
             }]}))
         })
+    }
+}
+
+#[derive(Default)]
+struct StockClock(AtomicU64);
+
+impl ResolverClock for StockClock {
+    fn now(&self) -> Duration {
+        Duration::from_secs(self.0.load(Ordering::SeqCst))
+    }
+}
+
+#[derive(Clone, Copy, Default)]
+enum StockOutcome {
+    #[default]
+    Authorized,
+    Transport,
+    ExpiredInFlight,
+    RotatedInFlight,
+    Http(u16),
+    Denied,
+}
+
+struct StockAuthorizer {
+    original: Authorizer,
+    clock: Arc<StockClock>,
+    credential_revision: Mutex<Option<String>>,
+    outcome: Mutex<StockOutcome>,
+}
+
+impl Api for StockAuthorizer {
+    fn playback_source_credential_revision(&self) -> crate::Result<Option<String>> {
+        Ok(self.credential_revision.lock().unwrap().clone())
+    }
+
+    fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
+        let outcome = *self.outcome.lock().unwrap();
+        if matches!(outcome, StockOutcome::Authorized) {
+            return self.original.request(path, payload, cache);
+        }
+        Box::pin(async move {
+            assert_eq!(path, "/api/song/enhance/player/url/v1");
+            assert!(!cache);
+            assert_eq!(payload["ids"], "[\"1\"]");
+            self.original.calls.fetch_add(1, Ordering::SeqCst);
+            match outcome {
+                StockOutcome::ExpiredInFlight => self.clock.0.store(116, Ordering::SeqCst),
+                StockOutcome::RotatedInFlight => {
+                    *self.credential_revision.lock().unwrap() = Some("new credential".into());
+                }
+                StockOutcome::Http(status) => {
+                    return Err(Error::HttpStatus {
+                        status,
+                        endpoint: Some(path.into()),
+                        body: None,
+                    });
+                }
+                StockOutcome::Denied => return Ok(json!({"code":403})),
+                _ => {}
+            }
+            Err(Error::Transport(
+                "sealed authorization response lost".into(),
+            ))
+        })
+    }
+}
+
+#[tokio::test]
+async fn only_ambiguous_warm_authorization_can_return_a_still_bound_stock_url() {
+    for (outcome, bound) in [
+        (StockOutcome::Transport, true),
+        (StockOutcome::Transport, false),
+        (StockOutcome::ExpiredInFlight, true),
+        (StockOutcome::RotatedInFlight, true),
+        (StockOutcome::Http(302), true),
+        (StockOutcome::Http(403), true),
+        (StockOutcome::Http(503), true),
+        (StockOutcome::Denied, true),
+    ] {
+        let data: Arc<[u8]> = vec![17; 120].into();
+        let (root, cache) = open(512);
+        let identity = key("2", "1", "standard", &data);
+        let mut existing = fill(&cache, &identity);
+        existing.write_block(0, &data).unwrap();
+        assert!(existing.publish_if_complete().unwrap());
+        drop(existing);
+        let revision = cache.revision().unwrap();
+        let store = Arc::new(StateStore::open(root.path()).unwrap());
+        let clock = Arc::new(StockClock::default());
+        let api = Arc::new(StockAuthorizer {
+            original: Authorizer {
+                data: data.clone(),
+                calls: AtomicUsize::default(),
+                revoked: AtomicBool::default(),
+            },
+            clock: clock.clone(),
+            credential_revision: Mutex::new(bound.then(|| "old credential".into())),
+            outcome: Mutex::default(),
+        });
+        let session = Arc::new(AccountSession::new(api.clone(), Some(store)));
+        session
+            .adopt(api.clone(), json!({"userId":2}), &session.token().unwrap())
+            .unwrap();
+        let token = session.token().unwrap();
+        let backend = Arc::new(Ranges {
+            data,
+            requests: Mutex::default(),
+        });
+        let mut resolver = SourceResolver::with_clock(session, None, clock.clone());
+        resolver.streaming_cache = Some(Arc::new(StreamingCache {
+            store: cache,
+            backend: backend.clone(),
+            settings: None,
+        }));
+        let resource = json!({"id":"1"});
+        let original = resolver.resolve(&resource, &token).await.unwrap();
+        *api.outcome.lock().unwrap() = outcome;
+        let selection = resolver
+            .resolve_streaming_source(&resource, &token, revision)
+            .await;
+        match outcome {
+            StockOutcome::Transport if bound => {
+                let selection = selection.unwrap();
+                assert!(Arc::ptr_eq(&selection.source, &original));
+                assert!(selection.fresh_api.is_none(), "no fallback to warm bytes");
+                let fence = selection.stock_fallback.unwrap();
+                assert!(!fence.is_cancelled());
+                *api.credential_revision.lock().unwrap() = Some("new credential".into());
+                assert!(
+                    fence.is_cancelled(),
+                    "native load must recheck current credentials"
+                );
+            }
+            StockOutcome::Denied => assert!(selection.err().unwrap().is_service_code(403)),
+            StockOutcome::Http(expected) => assert!(
+                matches!(selection.err().unwrap().root(), Error::HttpStatus {status, ..} if *status == expected)
+            ),
+            _ => assert!(matches!(
+                selection.err().unwrap().root(),
+                Error::Transport(_)
+            )),
+        }
+        assert!(backend.requests.lock().unwrap().is_empty());
+        assert_eq!(api.original.calls.load(Ordering::SeqCst), 2);
+        assert!(
+            resolver.resolve(&resource, &token).await.is_err(),
+            "failed supplemental request must not republish the old stock URL"
+        );
+        assert_eq!(api.original.calls.load(Ordering::SeqCst), 3);
     }
 }
 

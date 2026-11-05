@@ -576,7 +576,11 @@ impl MusicHttpClient {
             response
         };
         if (300..400).contains(&response.status) {
-            return Err(Error::Transport("API redirect rejected".into()));
+            return Err(Error::HttpStatus {
+                status: response.status,
+                endpoint: Some(path.into()),
+                body: None,
+            });
         }
         let mut decrypted = false;
         let parsed: Result<Value> = if response.body.len() > super::backend::MAX_RESPONSE_BYTES
@@ -710,6 +714,15 @@ fn advance_server_clock(ms: u64, at: Instant, now: Instant) -> u64 {
 }
 
 impl Api for MusicHttpClient {
+    fn playback_source_credential_revision(&self) -> Result<Option<String>> {
+        const PATH: &str = "/api/song/enhance/player/url/v1";
+        let origin = self.credentials.origin();
+        let route = select_route_with_policy(origin, PATH, &json!({}), self.options.routing)?;
+        let target = origin.request_url(route, PATH)?;
+        let snapshot = self.credentials.request_credentials(&target)?;
+        Ok(snapshot.unique_music_u().map(|_| snapshot.revision.clone()))
+    }
+
     fn podcast_progress_revision(&self) -> Result<Option<String>> {
         use crate::podcast::progress::PLAYRECORD_PATH;
         let origin = self.credentials.origin();
