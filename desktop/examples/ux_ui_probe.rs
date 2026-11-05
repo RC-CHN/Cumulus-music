@@ -206,6 +206,25 @@ impl Api for Library {
         })
     }
 
+    fn request_vinyl_comment_write<'a>(
+        &'a self,
+        write: cumulus_core::protocol::api::VinylCommentWrite,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::VinylCommentWritePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            use cumulus_core::Error;
+            if !vinyl_comments_fixture::composer()
+                || self.verified_pc_experiment_revision()?.as_deref() != Some(revision)
+            {
+                return Err(Error::RequestNotSent(Box::new(Error::CredentialChanged)));
+            }
+            permission().map_err(|error| Error::RequestNotSent(Box::new(error)))?;
+            let (path, args) = write.into_request();
+            self.request(path, args, false).await
+        })
+    }
+
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
         Box::pin(async { search_fixture::audio_toplist_assignment() })
     }
