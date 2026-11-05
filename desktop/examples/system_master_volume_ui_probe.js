@@ -6,7 +6,8 @@
   function assert(value, message) { if (!value) throw Error(message); }
   async function wait(test, message) {
     for (let step = 0; step < 150; step++) {
-      if (test()) return;
+      const value = await test();
+      if (value) return value;
       await sleep(75);
     }
     throw Error(message);
@@ -22,14 +23,31 @@
   const refresh = () => one('[aria-label="刷新音频输出设备"]');
   const daily = () => all('.nav-item').find((node) => node.textContent.trim() === '每日推荐');
   let count = 0, playId, pausedAt, last = 'startup';
-  function click(node) {
-    assert(node && !node.matches(':disabled'), 'enabled control: ' + node?.outerHTML);
+  const enabled = (node) => node?.isConnected && !node.matches(':disabled') &&
+    !node.closest('[inert]') && node.getClientRects().length > 0;
+  const playAll = () => one('.track-actions [data-recommendation-play]');
+  const describe = (node) => node ? { connected: node.isConnected,
+    disabled: node.matches(':disabled'), visible: node.getClientRects().length > 0,
+    label: node.getAttribute('aria-label'), text: node.textContent.trim().slice(0, 100) } : null;
+  function click(node, label) {
+    assert(enabled(node), 'enabled control ' + label + ': ' + node?.outerHTML);
     node.scrollIntoView({ block: 'nearest' });
     node.focus({ preventScroll: true });
     node.click();
   }
+  async function activate(lookup, label) {
+    // Resolve and activate in the same DOM turn. Waiting for a previous query
+    // then querying again allowed a route update to remove that control.
+    last = label;
+    await wait(() => {
+      const node = lookup();
+      if (!enabled(node)) return false;
+      click(node, label);
+      return true;
+    }, 'connected enabled control: ' + label);
+  }
   async function openSettings() {
-    click(one('[aria-label="打开设置"]'));
+    await activate(() => one('[aria-label="打开设置"]'), 'open Settings');
     await wait(() => ready(), 'native settings ready');
   }
   async function capture(label) {
@@ -53,22 +71,35 @@
     window.__systemMasterVolumeFixtureAck = null;
     await emit('system-master-volume-fixture', { mode });
     await wait(() => window.__systemMasterVolumeFixtureAck === mode, 'synthetic native endpoint swapped');
-    click(refresh());
+    await activate(refresh, 'refresh endpoint: ' + mode);
     await wait(() => ready() && volume() === expected, 'fresh native result: ' + mode);
     await wait(() => document.activeElement === refresh(), 'refresh focus retained');
   }
   try {
-    await wait(() => daily() && one('[aria-label="打开设置"]') && !one('[aria-label="打开设置"]').disabled,
-      'ready after synthetic account recovery');
-    click(daily());
-    await wait(() => all('button').some((node) => node.textContent.trim() === '播放全部' && !node.disabled),
-      'synthetic Daily tracks');
-    click(all('button').find((node) => node.textContent.trim() === '播放全部' && !node.disabled));
-    await wait(() => bar().dataset.state === 'playing' && Number(bar().dataset.position) > 0.2,
-      'actual libmpv playing');
-    click(bar().querySelector('[aria-label="暂停"]'));
-    await wait(() => bar().dataset.state === 'paused', 'actual native pause');
-    playId = bar().dataset.playId;
+    const account = await wait(async () => {
+      const current = await invoke('account_snapshot');
+      return current.status === 'authenticated' && enabled(daily()) &&
+        enabled(one('[aria-label="打开设置"]')) && current;
+    }, 'ready after synthetic account recovery');
+    await activate(daily, 'open synthetic Daily');
+    last = 'wait for current Daily receipt';
+    await wait(() => one('.track-row[data-track-id="1"]') &&
+      playAll()?.getAttribute('data-recommendation-play') && enabled(playAll()),
+      'synthetic Daily rows and authoritative play receipt');
+    await activate(playAll, 'play confirmed Daily receipt');
+    last = 'wait for native Daily playback';
+    const playing = await wait(async () => {
+      const current = await invoke('player_snapshot', { epoch: account.epoch });
+      return current.state === 'playing' && current.track?.id === '1' && current.position > .2 &&
+        bar()?.dataset.playId === current.playId && bar().dataset.state === 'playing' && current;
+    }, 'actual libmpv playing the first authorized synthetic song');
+    await activate(() => bar()?.querySelector('[aria-label="暂停"]'), 'pause native Daily playback');
+    await wait(async () => {
+      const current = await invoke('player_snapshot', { epoch: account.epoch });
+      return current.state === 'paused' && current.playId === playing.playId &&
+        bar()?.dataset.playId === current.playId && bar().dataset.state === 'paused';
+    }, 'actual native pause');
+    playId = playing.playId;
     pausedAt = Number(bar().dataset.position);
     await openSettings();
     if (window.__systemMasterVolumeUnsupported) {
@@ -86,7 +117,7 @@
       await readFixture('missing', null);
       assert(diagnosis().textContent.includes('暂时无法读取系统音量'), 'failure is not reported as zero');
       await capture('unavailable');
-      click(one('input[name="settings-theme"][value="dark"]'));
+      await activate(() => one('input[name="settings-theme"][value="dark"]'), 'select dark theme');
       await wait(() => document.documentElement.dataset.theme === 'dark', 'dark theme');
       await emit('resize', {width:760, height:540});
       await sleep(150);
@@ -98,7 +129,7 @@
       await wait(() => innerWidth === 760, 'compact settings viewport');
       await readFixture('recovered', '84%');
       await capture('recovered');
-      click(daily());
+      await activate(daily, 'leave Settings for Daily');
       await wait(() => !one('.settings-page'), 'left settings');
       await openSettings();
       assert(volume() === '84%', 'remount performs a fresh native read');
@@ -106,6 +137,9 @@
     }
     await emit('complete', { ok:true, stageCount:count, realOsWrites:0, realMusicRequests:0, realAccountWrites:0 });
   } catch (cause) {
-    await emit('failed', { ok:false, last, count, error:String(cause), percent:volume(), state:bar()?.dataset.state });
+    await emit('failed', { ok:false, last, count, error:String(cause), stack:cause instanceof Error ? cause.stack : null,
+      controls: { daily:describe(daily()), settings:describe(one('[aria-label="打开设置"]')),
+        playAll:describe(playAll()), pause:describe(bar()?.querySelector('[aria-label="暂停"]')) },
+      percent:volume(), state:bar()?.dataset.state });
   }
 })();
