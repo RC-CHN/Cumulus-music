@@ -80,9 +80,7 @@ clear unrelated entries; replacement explicitly does.
 Scope and verification
 ----------------------
 
-This slice is the Rust product contract and the native queue use case;
-desktop IPC, actual mounted t1 tab rendering and native WebView proof
-are separate. The isolated Rust player fixture covers exact seed/path
+The isolated Rust player fixture covers exact seed/path
 and explicit control suppression, authorized and denied rows, receipt
 projection, title/artwork order, both device preferences, native
 same-play double-click pause/resume, and stale response rejection after a
@@ -134,5 +132,37 @@ The isolated native tests cover the two exact independent endpoints,
 playlist order and field fallback, safe URL/ID projection, an empty or
 failed playlist response preserving a playable song receipt, and delayed
 playlist results being retired on track, account or credential changes.
-The desktop shell, local expansion, Back navigation and rendered state
-remain subject to the desktop integration and its WebView proof.
+
+Desktop integration and proof
+-----------------------------
+
+Main-window commands: player_vinyl_similar_available(epoch) resolves the
+native group. player_vinyl_similar_songs(epoch,playId) and
+player_vinyl_related_playlists(epoch,playId) load the two cards.
+player_vinyl_similar_play(epoch,playId,receipt,action,quality) selects the
+header or exact displayed row, with no renderer-selected song ID or queue.
+The frontend renders the confirmed t1 tab next to lyrics in classic vinyl.
+It persists the selected tab as a local presentation preference and keeps
+the same song's playlist expansion when returning to it; a new song resets
+the expansion. Lyrics, scroll-to-comments and the cover remain separate.
+Each card loads and retries independently. A hidden or superseded play
+cannot accept late results. A failed play never uses a general playback
+retry to repeat its old receipt. Selected tracks from the recommendation
+queue show the fixed source label 相似歌曲 (TrackTitle.tsx:555–578, M/253
+and M/113's action source text); no synthetic navigation link is created.
+
+Linux X11 validation uses actual Vue, native IPC, the production player
+actor and libmpv null output with sealed generated media. Treatment
+covers no read before opening, failed song read and isolated retry,
+whole-list title insert, cover insert, both row double-click preferences,
+late result after a new play, six-to-eight expansion without a reread,
+and ordinary playlist 108 navigation preserving the existing paused
+track. Control displays lyrics and sends neither recommendation read.
+The WebView fixture saves 12 treatment states and 1 control state; no
+real account or music service is used. Current-first decode/seek/paused
+behavior is also tested independently in the Rust player fixture.
+
+Reproduce with scripts/ci/vinyl_similar_smoke.py --related --binary
+PATH_TO_UX_UI_PROBE --root NEW_DIR. Linux CI can capture screenshots;
+Windows uses its separate packaged runtime. This is not physical sound
+output, live service or old-control wiki/fold verification.
