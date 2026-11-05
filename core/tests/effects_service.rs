@@ -55,6 +55,10 @@ fn world(api: Arc<ScriptApi>, store: Arc<StateStore>) -> Arc<AccountSession> {
         .unwrap();
     session
 }
+
+#[path = "support/headphone_source.rs"]
+mod headphone_source;
+
 fn transfer(store: Arc<StateStore>, backend: Arc<Origin>) -> TransferManager {
     TransferManager::with_backend(store, "1".into(), backend, 64 * 1024 * 1024).unwrap()
 }

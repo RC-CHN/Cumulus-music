@@ -100,7 +100,7 @@ const effectEntry = computed(() => {
         ? 'problem'
         : status === 'deferred'
           ? 'pending'
-          : status === 'paused_locally'
+          : status === 'paused_locally' || status === 'bypassed_for_source'
             ? equalizerEntry.value.state
             : processing
               ? 'processing'

@@ -123,6 +123,8 @@ pub struct Device {
     pub parametric_supported: AtomicBool,
     pub parametric_attached: AtomicBool,
     pub parametric_bypassed: AtomicBool,
+    pub parametric_bypass_fail: AtomicBool,
+    pub parametric_bypassed_at_unpause: Mutex<Vec<bool>>,
     pub parametric_clear_fail: AtomicBool,
     pub parametric_poll_fault: AtomicBool,
     pub optional_poll_faults: AtomicU8,
@@ -158,6 +160,8 @@ impl Default for Device {
             parametric_supported: AtomicBool::new(false),
             parametric_attached: AtomicBool::new(false),
             parametric_bypassed: AtomicBool::new(false),
+            parametric_bypass_fail: AtomicBool::new(false),
+            parametric_bypassed_at_unpause: Mutex::new(Vec::new()),
             parametric_clear_fail: AtomicBool::new(false),
             parametric_poll_fault: AtomicBool::new(false),
             optional_poll_faults: AtomicU8::new(0),
@@ -223,6 +227,9 @@ impl AudioEngine for Engine {
         Ok(true)
     }
     fn bypass_parametric_component(&mut self) -> Result<()> {
+        if self.0.parametric_bypass_fail.load(Ordering::SeqCst) {
+            return Err(Error::State("injected parametric bypass failure"));
+        }
         if self.0.parametric_attached.load(Ordering::SeqCst) {
             self.0.parametric_bypassed.store(true, Ordering::SeqCst);
         }
@@ -233,6 +240,7 @@ impl AudioEngine for Engine {
             return Err(Error::State("injected parametric cleanup failure"));
         }
         self.0.parametric_attached.store(false, Ordering::SeqCst);
+        self.0.parametric_bypassed.store(false, Ordering::SeqCst);
         Ok(())
     }
     fn apply_loudness(
@@ -340,6 +348,11 @@ impl AudioEngine for Engine {
                 .lock()
                 .unwrap()
                 .push(self.0.parametric_attached.load(Ordering::SeqCst));
+            self.0
+                .parametric_bypassed_at_unpause
+                .lock()
+                .unwrap()
+                .push(self.0.parametric_bypassed.load(Ordering::SeqCst));
             self.0
                 .loudness_at_unpause
                 .lock()

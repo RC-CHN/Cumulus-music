@@ -331,7 +331,7 @@ impl Actor {
                     }
                     return;
                 }
-                if let Err(error) = self.parametric_apply_deferred().await {
+                if let Err(error) = self.parametric_finish_load(&prepared.source).await {
                     let _ = self.stop(false).await;
                     self.state = PlaybackStatus::Error;
                     self.record_failure(&error);

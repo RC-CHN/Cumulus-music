@@ -49,6 +49,7 @@ impl ParametricBindingStatus {
 pub enum DeviceParametricStatus {
     Deferred,
     Configured,
+    BypassedForSource,
     PausedLocally,
     DetachRequired,
     ProcessorFailed,
@@ -164,6 +165,7 @@ pub(super) struct State {
     detach_required: bool,
     failed_binding: Option<(SessionToken, BoundParametricTarget)>,
     device: Option<DeviceActivation>,
+    device_bypassed_for_source: bool,
     device_paused: bool,
     failed_device: Option<DeviceActivation>,
     device_selection_save_failed: bool,
@@ -230,6 +232,8 @@ impl State {
                     Status::DetachRequired
                 } else if self.device_paused {
                     Status::PausedLocally
+                } else if self.device_bypassed_for_source {
+                    Status::BypassedForSource
                 } else {
                     Status::Configured
                 },
@@ -632,6 +636,7 @@ impl Actor {
     ) -> Result<ParametricApplication> {
         if self.comparable_device_play() != Some(play_id)
             || self.parametric.detach_required
+            || self.parametric.device_bypassed_for_source
             || self.parametric.device_paused == paused
         {
             return Err(Error::StaleResponse);
@@ -714,7 +719,10 @@ impl Actor {
         self.parametric_apply(None).await
     }
 
-    pub(super) async fn parametric_apply_deferred(&mut self) -> Result<()> {
+    pub(super) async fn parametric_finish_load(
+        &mut self,
+        source: &crate::playback::source::ResolvedSource,
+    ) -> Result<()> {
         if let Some(selection) = self.parametric.deferred.take() {
             let is_device = matches!(selection, Selection::Device(_));
             if let Err(error) = self.parametric_apply_selection(selection).await
@@ -723,7 +731,51 @@ impl Actor {
                 return Err(error);
             }
         }
-        self.parametric_supervise().await
+        self.parametric_supervise().await?;
+        self.parametric_device_source(source).await
+    }
+
+    async fn parametric_device_source(
+        &mut self,
+        source: &crate::playback::source::ResolvedSource,
+    ) -> Result<()> {
+        if source.info["kind"] != "online" || self.parametric.device_paused {
+            return Ok(());
+        }
+        let Some(activation) = self.parametric.device.as_ref() else {
+            return Ok(());
+        };
+        // M/163 maps the authorized response's level, not the requested level
+        // or the response's physical br, to M/308's playInfo.bitrate.
+        let special = matches!(
+            source.actual_quality(),
+            Some("dolby" | "jyeffect" | "sky" | "vivid")
+        );
+        let bypassed = self.parametric.device_bypassed_for_source;
+        if special && !bypassed {
+            self.parametric.reset_activity();
+            match super::engine(self.engine.clone(), self.guard(), |engine| {
+                engine.bypass_parametric_component()
+            })
+            .await
+            {
+                Ok(()) => self.parametric.device_bypassed_for_source = true,
+                Err(_) => self.detach_failed_parametric().await?,
+            }
+        } else if bypassed {
+            // M/308 uses a latch, not a blacklist: even another special
+            // source takes this branch when Ge is already set.
+            let mut activation = activation.clone();
+            activation.remember_selection = false;
+            if let Err(error) = self
+                .parametric_apply_selection(Selection::Device(activation))
+                .await
+                && self.parametric.failed_device.is_none()
+            {
+                return Err(error);
+            }
+        }
+        self.session.check_generation(&self.token)
     }
 
     async fn parametric_apply_selection(
@@ -741,6 +793,7 @@ impl Actor {
             }
             Selection::Device(target) => {
                 self.parametric.failed_device = None;
+                self.parametric.device_bypassed_for_source = false;
                 self.parametric.device_paused = false;
                 if target.remember_selection {
                     self.parametric.device_selection_save_failed = false;
@@ -960,6 +1013,7 @@ impl Actor {
         }
         self.parametric_record_applied_clear();
         self.parametric.device = None;
+        self.parametric.device_bypassed_for_source = false;
         self.parametric.device_paused = false;
         self.parametric.device_selection_save_failed = false;
         if let Some(binding) = self.parametric.installing.take() {
