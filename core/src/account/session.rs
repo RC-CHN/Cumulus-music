@@ -61,6 +61,7 @@ struct SessionState {
     uid: Option<String>,
     profile: Option<Value>,
     status: SessionStatus,
+    guest_ready: bool,
     login_notice: Option<LoginNotice>,
     initial_restore_generation: Option<u64>,
     quick_exchange_generation: Option<u64>,
@@ -94,6 +95,7 @@ impl SessionState {
         self.artist_login = None;
         self.registration_type = None;
         self.status = status;
+        self.guest_ready = false;
         if status != SessionStatus::Expired {
             self.login_notice = None;
         }
@@ -134,6 +136,7 @@ impl AccountSession {
                 uid: None,
                 profile: None,
                 status: SessionStatus::Unknown,
+                guest_ready: false,
                 login_notice: None,
                 initial_restore_generation: None,
                 quick_exchange_generation: None,
@@ -321,14 +324,30 @@ impl AccountSession {
         let mut state = self.lock()?;
         state.require(expected)?;
         if state.uid.is_some()
-            || state.status == SessionStatus::Unknown
+            || !(state.guest_ready || state.status == SessionStatus::SignedOut)
             || !Arc::ptr_eq(&state.api, previous)
         {
             return Err(Error::StaleResponse);
         }
         state.api = next;
+        state.guest_ready = true;
         state.changes.send_replace(state.token());
         Ok(())
+    }
+
+    /// A fresh native 301 completes restoration without expiring a login or
+    /// advancing the generation. Unknown before that read cannot register.
+    pub(crate) fn guest_ready_for(
+        &self,
+        expected: &SessionToken,
+        api: &Arc<dyn Api>,
+    ) -> Result<bool> {
+        let state = self.lock()?;
+        state.require(expected)?;
+        if !Arc::ptr_eq(&state.api, api) {
+            return Err(Error::StaleResponse);
+        }
+        Ok(state.uid.is_none() && (state.guest_ready || state.status == SessionStatus::SignedOut))
     }
 
     pub(crate) fn with_verified_profile<T>(
@@ -452,6 +471,7 @@ impl AccountSession {
         state.artist_login = None;
         state.registration_type = None;
         state.status = SessionStatus::SignedOut;
+        state.guest_ready = false;
         state.login_notice = None;
         state.changes.send_replace(state.token());
         Ok(())
@@ -580,6 +600,7 @@ impl AccountSession {
         state.uid = Some(uid);
         state.profile = Some(profile.clone());
         state.status = SessionStatus::Authenticated;
+        state.guest_ready = false;
         state.login_notice = None;
         state.changes.send_replace(state.token());
         Ok(profile)
@@ -635,6 +656,15 @@ impl AccountSession {
             {
                 // account/get can reject a fresh installation or an explicitly
                 // signed-out profile. There is no previous login to expire.
+                let mut state = self.lock()?;
+                state.require(&token)?;
+                if !Arc::ptr_eq(&state.api, &api) {
+                    return Err(Error::StaleResponse);
+                }
+                if !state.guest_ready {
+                    state.guest_ready = true;
+                    state.changes.send_replace(state.token());
+                }
                 return Err(error);
             }
             Err(error) => return Err(self.reject(&token, error).await?),
@@ -663,6 +693,7 @@ impl AccountSession {
         state.registration_type = registration_type;
         state.profile = Some(profile.clone());
         state.status = SessionStatus::Authenticated;
+        state.guest_ready = false;
         state.login_notice = None;
         if state.token() != token {
             state.changes.send_replace(state.token());

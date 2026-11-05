@@ -136,7 +136,8 @@ impl MusicClient {
     pub fn pc_presentation(&self) -> Result<PcPresentationView> {
         let token = self.session.token()?;
         let api = self.session.native_api(&token)?;
-        self.pc_presentation_snapshot(&token, &api)
+        self.pc_presentation_context()
+            .snapshot(&token, &api)
             .map(|snapshot| snapshot.view)
     }
 
@@ -150,6 +151,11 @@ impl MusicClient {
         token: &SessionToken,
         api: &Arc<dyn Api>,
     ) -> Result<super::PcPresentationSnapshot> {
+        if api.pc_presentation_credential_revision()?.is_none() {
+            return Err(Error::State(
+                "PC presentation snapshot has no native transport",
+            ));
+        }
         self.pc_presentation_context().snapshot(token, api)
     }
 

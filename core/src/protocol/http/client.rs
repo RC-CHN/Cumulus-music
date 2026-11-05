@@ -702,9 +702,10 @@ impl MusicHttpClient {
             && (!jsk.quick_exchange() || (200..300).contains(&response.status))
         {
             let anonymous_headers;
-            let cookies = if matches!(binding, Some(RequestBinding::AnonymousRegistration { .. })) {
-                // Only this isolated guest transport can use the binding.
-                // Filter before committing, including unreadable/late replies.
+            let cookies = if self.anonymous_store {
+                // M198 persists anonymous cookies without MUSIC_U. This applies
+                // to every response in the isolated guest jar, including later
+                // AB reads and unreadable/late replies, before actual commit.
                 anonymous_headers = response
                     .set_cookies
                     .iter()

@@ -1,7 +1,7 @@
 //! M147 native lifetime: initial/user/credential changes and a fixed 30m timer.
 use super::{MusicClient, REFRESH, ScopeContext};
 use crate::protocol::pc_experiments::PcAnonymousState;
-use crate::{Error, Result, account::SessionStatus};
+use crate::{Error, Result};
 use std::{
     future::pending,
     sync::{
@@ -115,13 +115,28 @@ async fn run(
         }
         if read_due {
             read_due = false;
-            let Ok(api) = scope.session.native_api(&current) else {
-                return;
+            let api = match scope.session.native_api(&current) {
+                Ok(api) => api,
+                Err(Error::StaleResponse) => {
+                    // The generation can advance after the watch value was
+                    // sampled. Rebind instead of permanently stopping a live
+                    // lease during ordinary account restoration or switching.
+                    current = accounts.borrow_and_update().clone();
+                    credentials = None;
+                    credential_restarts = 0;
+                    read_due = true;
+                    continue;
+                }
+                Err(_) => return,
             };
             let Ok(session) = scope.session.snapshot() else {
                 return;
             };
-            if session.status != SessionStatus::Unknown && current.uid.is_none() {
+            let guest_ready = scope
+                .session
+                .guest_ready_for(&current, &api)
+                .unwrap_or(false);
+            if guest_ready && current.uid.is_none() {
                 match scope.isolate_guest(&current, &api) {
                     Ok(Some(_)) => {
                         current = accounts.borrow_and_update().clone();
@@ -153,7 +168,7 @@ async fn run(
                 receiver.borrow_and_update();
             }
             let _ = scope.snapshot(&current, &api);
-            let status = if session.status == SessionStatus::Unknown {
+            let status = if current.uid.is_none() && !guest_ready {
                 Some(PcPresentationRuntimeStatus::WaitingForAccount)
             } else if api
                 .pc_presentation_credential_revision()
@@ -228,7 +243,6 @@ async fn run(
                                 continue;
                             }
                         }
-                        credential_restarts = 0;
                         publish.send_replace(match result {
                             Ok(_) if scope.host.presentation.cache_write_failed.load(Ordering::Acquire) => PcPresentationRuntimeStatus::CacheWriteFailed,
                             Ok(_) => PcPresentationRuntimeStatus::Ready,

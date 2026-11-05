@@ -4,7 +4,7 @@ use crate::protocol::pc_experiments::PcAnonymousState;
 
 impl ScopeContext {
     /// Pure native transport handoff before registration. No Cookie is copied
-    /// from a selected account jar, and Unknown waits for account restoration.
+    /// from a selected account jar. Unknown waits for a definitive fresh 301.
     pub(super) fn isolate_guest(
         &self,
         token: &SessionToken,
@@ -13,7 +13,7 @@ impl ScopeContext {
         let current = self.session.snapshot()?;
         if current.token != *token
             || token.uid.is_some()
-            || current.status == SessionStatus::Unknown
+            || !self.session.guest_ready_for(token, api)?
         {
             return Err(Error::StaleResponse);
         }
@@ -37,7 +37,9 @@ impl ScopeContext {
         scheduled: bool,
     ) -> Result<(String, PcExperimentGroups)> {
         let before = self.session.snapshot()?;
-        if before.token != *token || token.uid.is_some() || before.status == SessionStatus::Unknown
+        if before.token != *token
+            || token.uid.is_some()
+            || !self.session.guest_ready_for(token, api)?
         {
             return Err(Error::StaleResponse);
         }
