@@ -79,3 +79,51 @@ The ordinary baseline, standalone V2 and optional core native case also passed.
 See stereo-pcm-source-validation.txt for executable source and measurements.
 Actual Windows V2 and complete CI for that candidate are not inferred from
 local Linux runs or any previous V1 workflow.
+
+Linux packaging candidate (separate from the shipping path)
+-----------------------------------------------------------
+scripts/ci/linux_flac150_package.py is a build-time helper, independent from
+the unchanged linux_flac150.py proof CLI. It returns one verified runtime
+and writes a stage report; package.py, Tauri startup, CI artifact selection
+and ordinary playback do not call it yet. It does not build a Debian/tar
+package or install libraries. It accepts only the same locked Xiph archive,
+whether fetched through the existing bounded helper or supplied via
+--locked-archive from a prior verified download. The old proof output can
+remain beside this new stage and is not suitable for shipping by renaming.
+
+Only the extracted FLAC CMake target receives two link changes: OUTPUT_NAME
+cumulus_flac150 (real SONAME libcumulus_flac150.so.14), and -Bsymbolic to bind
+both functions and data inside the library. Linux x86-64 generic C flags
+preserve the target baseline; upstream's CPU dispatch is unchanged.
+Before dynamic loading, the candidate must be a bounded regular ELF64
+x86_64 shared object, with the exact private SONAME, only libc.so.6 and
+libm.so.6 DT_NEEDED, symbolic binding, no ELF search-path/audit/filter/text
+relocation tags, no named FLAC__ dynamic relocations/imports, and all nine
+public Rust decoder symbols plus the version object. The maximum required
+glibc symbol version cannot exceed 2.39 (Ubuntu 24.04 baseline). The full
+source COPYING.Xiph is checked and copied into
+runtime/third-party/licenses/flac-1.5.0/. The source archive hash, exact
+artifact SHA/size, options/patch hash, ELF details, and license SHA are
+recorded in report.json. A locally generated ELF digest is evidence for
+that build only; it is not a universal 1.5.0 signature.
+
+Reproduce with:
+  python3 scripts/ci/linux_flac150_package.py --build-dir NEW_DIRECTORY \
+    --locked-archive VERIFIED_FLAC_1_5_0_ARCHIVE \
+    --ambient-library ABSOLUTE_TRUSTED_SYSTEM_LIBFLAC
+The two optional inputs are for the build operator only. The script uses a
+fresh child with ambient LD_* settings removed. It verifies dladdr file
+identity for the version object and nine live decoder symbols, requires
+version 1.5.0, allocates/deletes a decoder, and audits actual glibc binding
+trace with receipt sentinels. If supplied, the distinct trusted system
+library is already global when the candidate loads. A correctly resolved
+entrypoint alone does not prove isolation: on the reference machine the
+original proof ELF passed entrypoint and allocation checks but had 155
+internal FLAC__ bindings to the ambient system library. The CMake candidate
+had none under the same preload, with the exact same helper's native probe.
+Local evidence: .build/research/trusted-flac-packaging/
+linux-package-candidate-r1/{report,ambient-comparison}.json. This is real ELF
+build/loader evidence, not PCM, installed package, GTK, Windows or playback
+activation. Bundling still needs same-run digest binding in the application,
+package-layout verification, and actual packaged GUI/authorized-held-source
+and stock-fallback tests.
