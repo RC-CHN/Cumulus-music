@@ -230,3 +230,15 @@ mpv runtime; an actual run on the exact commit is required for a Windows claim.
 
 With 48 kHz support, the Linux warm-open probe uses 96 kHz for its out-of-scope
 case. It must still reject the file and leave the preceding queue intact.
+
+The same runner has separate `--spatial-wav-48k-only` and
+`--spatial-flac-48k-only` cases. For FLAC pass `--flac-library` and its
+pinned `--flac-sha256`; for WAV pass neither. Each case reuses the existing
+seven stages and screenshots. Both fixtures carry the same synthetic
+96,007 signed-16 stereo frames; the WAV is generated against the frozen
+FLAC manifest's PCM hash. The 48 kHz verifier checks actual libmpv
+`audio-params` for stock, raw and the replacement after seek, requiring
+48,000 Hz and two channels on all three distinct entries. It also checks
+the sample-based duration, browser seek, no restart on master controls,
+bound native PCM processing and real EOF. The 44.1 kHz cases remain
+independent. Neither result implies live Windows or physical playback.

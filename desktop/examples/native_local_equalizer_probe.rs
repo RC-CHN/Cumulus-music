@@ -37,6 +37,9 @@ use tauri::{Manager, webview::PageLoadEvent};
 const FLAC: &[u8] = include_bytes!("../../core/tests/fixtures/stereo-pcm-source.flac");
 const FLAC_MANIFEST: &str =
     include_str!("../../core/tests/fixtures/stereo-pcm-source.manifest.json");
+const FLAC_48K: &[u8] = include_bytes!("../../core/tests/fixtures/stereo-pcm-source-48k.flac");
+const FLAC_48K_MANIFEST: &str =
+    include_str!("../../core/tests/fixtures/stereo-pcm-source-48k.manifest.json");
 
 #[derive(Default)]
 struct Offline {
@@ -76,21 +79,20 @@ struct Proof {
 
 /// Independent reconstruction of the frozen FLAC fixture's signed PCM.
 /// The original published manifest pins the payload, without a WAV asset.
-fn frozen_wave(manifest: &Value) -> Vec<u8> {
-    const FRAMES: u32 = 88_207;
-    const PAYLOAD: u32 = FRAMES * 4;
-    let mut bytes = Vec::with_capacity(44 + PAYLOAD as usize);
+fn frozen_wave(manifest: &Value, rate: u32, frames: u32) -> Vec<u8> {
+    let payload = frames * 4;
+    let mut bytes = Vec::with_capacity(44 + payload as usize);
     bytes.extend_from_slice(b"RIFF");
-    bytes.extend_from_slice(&(36 + PAYLOAD).to_le_bytes());
+    bytes.extend_from_slice(&(36 + payload).to_le_bytes());
     bytes.extend_from_slice(b"WAVEfmt ");
     bytes.extend_from_slice(&16u32.to_le_bytes());
     bytes.extend_from_slice(&[1, 0, 2, 0]);
-    bytes.extend_from_slice(&44_100u32.to_le_bytes());
-    bytes.extend_from_slice(&176_400u32.to_le_bytes());
+    bytes.extend_from_slice(&rate.to_le_bytes());
+    bytes.extend_from_slice(&(rate * 4).to_le_bytes());
     bytes.extend_from_slice(&[4, 0, 16, 0]);
     bytes.extend_from_slice(b"data");
-    bytes.extend_from_slice(&PAYLOAD.to_le_bytes());
-    for i in 0..FRAMES {
+    bytes.extend_from_slice(&payload.to_le_bytes());
+    for i in 0..frames {
         let left = ((i * 97 + (i / 128) * 23) % 8192) as i16 - 4096;
         bytes.extend_from_slice(&left.to_le_bytes());
         bytes.extend_from_slice(&(-(left / 8)).to_le_bytes());
@@ -116,15 +118,18 @@ fn locale(category: libc::c_int) -> String {
 
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let wave = args.first().and_then(|value| value.to_str()) == Some("spatial_wav");
-    let (expect_graph, exercise_peq, exercise_spatial) =
-        match args.first().and_then(|value| value.to_str()) {
-            Some("trusted") => (true, false, false),
-            Some("wrong_digest") => (false, false, false),
-            Some("paused_peq") => (true, true, false),
-            Some("spatial_controls" | "spatial_wav") => (true, false, true),
-            _ => panic!("invalid proof case"),
-        };
+    let case = args.first().and_then(|value| value.to_str());
+    let wave = matches!(case, Some("spatial_wav" | "spatial_wav_48k"));
+    let rate_48k = matches!(case, Some("spatial_wav_48k" | "spatial_flac_48k"));
+    let (expect_graph, exercise_peq, exercise_spatial) = match case {
+        Some("trusted") => (true, false, false),
+        Some("wrong_digest") => (false, false, false),
+        Some("paused_peq") => (true, true, false),
+        Some("spatial_controls" | "spatial_wav" | "spatial_wav_48k" | "spatial_flac_48k") => {
+            (true, false, true)
+        }
+        _ => panic!("invalid proof case"),
+    };
     let required = if wave {
         2
     } else {
@@ -132,7 +137,7 @@ fn main() {
     };
     assert!(
         (required..=required + 1).contains(&args.len()),
-        "usage: native_local_equalizer_probe trusted|wrong_digest|spatial_controls ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]; or spatial_wav NEW_ROOT [ABS_MPV]"
+        "usage: native_local_equalizer_probe trusted|wrong_digest|spatial_controls|spatial_flac_48k ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]; or spatial_wav|spatial_wav_48k NEW_ROOT [ABS_MPV]"
     );
     let decoder = (!wave).then(|| {
         let sdk = PathBuf::from(&args[1]);
@@ -155,20 +160,28 @@ fn main() {
     let root = PathBuf::from(&args[if wave { 1 } else { 3 }]);
     fs::create_dir(&root).expect("new proof root");
     let root = root.canonicalize().expect("proof root");
-    let manifest: Value = serde_json::from_str(FLAC_MANIFEST).expect("frozen synthetic manifest");
+    let (flac, manifest, rate): (&[u8], &str, u32) = if rate_48k {
+        (FLAC_48K, FLAC_48K_MANIFEST, 48_000)
+    } else {
+        (FLAC, FLAC_MANIFEST, 44_100)
+    };
+    let manifest: Value = serde_json::from_str(manifest).expect("frozen synthetic manifest");
     assert_eq!(
         manifest["flacSha256"],
-        format!("{:x}", Sha256::digest(FLAC))
+        format!("{:x}", Sha256::digest(flac))
     );
-    assert_eq!(manifest["sourceFrames"], 88_207);
+    let frames = rate * 2 + 7;
+    assert_eq!(manifest["sourceFrames"], frames);
+    assert_eq!(manifest["sourceRate"], rate);
     let (kind, bytes) = if wave {
-        ("wav", frozen_wave(&manifest))
+        ("wav", frozen_wave(&manifest, rate, frames))
     } else {
-        ("flac", FLAC.to_vec())
+        ("flac", flac.to_vec())
     };
     let file = root.join(format!("合成 原生均衡器.{kind}"));
-    let fixture_source = json!({"kind":kind,"frames":manifest["sourceFrames"],
+    let fixture_source = json!({"kind":kind,"frames":frames,"sampleRate":rate,
         "sha256":format!("{:x}", Sha256::digest(&bytes)),
+        "sourcePcmSha256":manifest["pcmSha256"],
         "flacDecoderConfigured":decoder.is_some()});
     fs::write(&file, bytes).expect("synthetic native file");
     let filter = exercise_peq.then(|| {
@@ -222,6 +235,7 @@ fn main() {
                     Ok(Box::new(Recorded {
                         engine,
                         evidence: native_evidence.clone(),
+                        record_rate: rate_48k,
                     }))
                 });
             tauri::async_runtime::block_on(client.start_local_library())?;

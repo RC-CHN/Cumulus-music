@@ -1,0 +1,17 @@
+{
+  "schema": "cumulus-stereo-pcm-source-v1",
+  "synthetic": true,
+  "sourceRate": 48000,
+  "sourceChannels": 2,
+  "bitsPerSample": 16,
+  "maxBlockFrames": 1024,
+  "sourceFrames": 96007,
+  "seekSpacingFrames": 1024,
+  "libFLAC": "1.5.0",
+  "pcmPacking": "interleaved signed16 little-endian",
+  "pcmSha256": "0ed7634a1be5f5116c688980096c04b43e331022e69b3c3c990a1daaea09d0c4",
+  "flacSha256": "2caa47eb9e4aeb907424408ea3fe4efe931d2103969cf035154b68d3b36bc7b6",
+  "generatorSha256": "1cd45b627d35334446d91c50715533b070d9bf66490c25a1efa741efcf11619c",
+  "bytes": 204001,
+  "accountOrOriginalMedia": false
+}

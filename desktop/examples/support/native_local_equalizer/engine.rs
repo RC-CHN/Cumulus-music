@@ -12,7 +12,7 @@ use cumulus_core::{
 };
 use serde::Serialize;
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque, btree_map::Entry},
     sync::{Arc, Mutex},
 };
 
@@ -51,6 +51,8 @@ pub struct Poll {
 pub struct Observations {
     pub ordinary_loads: usize,
     pub stock_codecs: Vec<Option<String>>,
+    pub stock_entries: Vec<i64>,
+    pub decoded_formats: BTreeMap<i64, [u32; 2]>,
     pub loads: Vec<Load>,
     pub seeks: Vec<Seek>,
     pub processed_entries: BTreeSet<i64>,
@@ -67,6 +69,7 @@ pub type Evidence = Arc<Mutex<Observations>>;
 pub struct Recorded {
     pub engine: MpvEngine,
     pub evidence: Evidence,
+    pub record_rate: bool,
 }
 impl AudioEngine for Recorded {
     fn decoded_audio_format(&mut self, entry: i64) -> Result<Option<DecodedAudioFormat>> {
@@ -87,11 +90,9 @@ impl AudioEngine for Recorded {
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         self.evidence.lock().unwrap().ordinary_loads += 1;
         let loaded = self.engine.load(request, cancel)?;
-        self.evidence
-            .lock()
-            .unwrap()
-            .stock_codecs
-            .push(loaded.codec.clone());
+        let mut evidence = self.evidence.lock().unwrap();
+        evidence.stock_codecs.push(loaded.codec.clone());
+        evidence.stock_entries.push(loaded.entry_id);
         Ok(loaded)
     }
     fn supports_local_equalizer(&self) -> bool {
@@ -205,6 +206,16 @@ impl AudioEngine for Recorded {
             _ => None,
         });
         let mut evidence = self.evidence.lock().unwrap();
+        if self.record_rate
+            && !value.seeking
+            && !value.buffering
+            && let Some(entry) = value.entry_id
+            && let Entry::Vacant(slot) = evidence.decoded_formats.entry(entry)
+            && let Ok(Some(format)) = self.engine.decoded_audio_format(entry)
+        {
+            assert_eq!(format.entry_id, entry);
+            slot.insert([format.sample_rate, format.channels]);
+        }
         evidence.eof_entries.extend(ended);
         if evidence.last_polls.len() == 8 {
             evidence.last_polls.pop_front();

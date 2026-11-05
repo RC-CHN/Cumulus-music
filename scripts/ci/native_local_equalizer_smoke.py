@@ -64,7 +64,7 @@ def read_report(root, *, graph, peq):
     return report
 
 
-def read_spatial_report(root, capture=False, source_kind='flac'):
+def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100):
     directory = root / 'spatial'
     names = [
         'ux_01_stock_saved', 'ux_02_hot_paused', 'ux_03_master_off',
@@ -76,7 +76,8 @@ def read_spatial_report(root, capture=False, source_kind='flac'):
     assert complete['ok'] and complete['startedSpatial'] and complete['stageCount'] == len(stages)
     stock, hot, off, on, sought, ended, reset = stages
     fixture = complete['fixtureSource']
-    assert fixture['kind'] == source_kind and fixture['frames'] == 88_207
+    frames = rate * 2 + 7
+    assert fixture['kind'] == source_kind and fixture['frames'] == frames and fixture['sampleRate'] == rate
     assert fixture['flacDecoderConfigured'] == (source_kind == 'flac')
     for row in (*stages, complete):
         assert row['webviewFinished'] and row['realMusicRequests'] == row['realAccountWrites'] == 0
@@ -97,19 +98,32 @@ def read_spatial_report(root, capture=False, source_kind='flac'):
     assert stock['fixtureOpens'] == 1 and stock['native']['ordinary_loads'] == 1
     assert not stock['native']['loads'] and not stock['native']['local_updates']
     assert stock['dom']['sliders'] == [3, 5] and stock['dom']['status'] == 'unavailable'
+    source_pcm_sha = {
+        44_100: 'fd4410b1284111d2f4a39fdbd252230e1f2d25b85f5aae146a980f7417b23f63',
+        48_000: '0ed7634a1be5f5116c688980096c04b43e331022e69b3c3c990a1daaea09d0c4',
+    }[rate]
+    assert fixture['sourcePcmSha256'] == source_pcm_sha
+    path, = root.glob('*.' + source_kind)
+    with path.open('rb') as source:
+        assert hashlib.file_digest(source, 'sha256').hexdigest() == fixture['sha256']
     if source_kind == 'wav':
         import wave
-        path, = root.glob('*.wav')
-        with path.open('rb') as source:
-            assert hashlib.file_digest(source, 'sha256').hexdigest() == fixture['sha256']
         with wave.open(str(path), 'rb') as source:
-            assert (source.getnchannels(), source.getsampwidth(), source.getframerate(), source.getnframes()) == (2, 2, 44_100, 88_207)
-            assert hashlib.sha256(source.readframes(88_207)).hexdigest() == (
-                'fd4410b1284111d2f4a39fdbd252230e1f2d25b85f5aae146a980f7417b23f63'
-            )
+            assert (source.getnchannels(), source.getsampwidth(), source.getframerate(), source.getnframes()) == (2, 2, rate, frames)
+            assert hashlib.sha256(source.readframes(frames)).hexdigest() == source_pcm_sha
         assert stock['native']['stock_codecs'] == ['pcm_s16le']
+    elif rate == 48_000:
+        assert fixture['sha256'] == '2caa47eb9e4aeb907424408ea3fe4efe931d2103969cf035154b68d3b36bc7b6'
+        with path.open('rb') as source:
+            header = source.read(42)
+        assert header[:8] == b'fLaC\0\0\0\x22'
+        streaminfo = int.from_bytes(header[18:26], 'big')
+        assert (streaminfo >> 44, (streaminfo >> 41 & 7) + 1, (streaminfo >> 36 & 31) + 1) == (rate, 2, 16)
+        assert streaminfo & ((1 << 36) - 1) == frames
+        assert stock['native']['stock_codecs'] == ['flac']
+    if source_kind == 'wav' or rate == 48_000:
         for row in (stock, hot, sought, ended):
-            assert abs(row['player']['timeline']['total'] - 88_207 / 44_100) <= 1 / 44_100
+            assert abs(row['player']['timeline']['total'] - frames / rate) <= 1 / rate
     assert hot['player']['playId'] != stock['player']['playId']
     assert hot['player']['entryId'] != stock['player']['entryId']
     for row in (hot, off, on):
@@ -130,7 +144,7 @@ def read_spatial_report(root, capture=False, source_kind='flac'):
     assert abs(seek_target['accepted'] - seek_target['requested']) <= seek_target['step'] / 2 + 1e-9
     assert abs(sought['player']['position'] - seek_target['accepted']) < .06
     assert ended['player']['state'] == reset['player']['state'] == 'ended'
-    assert abs(ended['player']['position'] - 88_207 / 44_100) < .02
+    assert abs(ended['player']['position'] - frames / rate) < .02
     assert reset['player']['position'] == ended['player']['position']
     assert reset['dom']['sliders'] == reset['dom']['tone'] == [0, 0]
     assert not any(reset['durable']['settings'].get(key, 0) for key in (
@@ -146,6 +160,12 @@ def read_spatial_report(root, capture=False, source_kind='flac'):
     assert seek['graph_entry'] == seek['replacement'] != load['entry']
     assert native['processed_entries'] == sorted([load['entry'], seek['replacement']])
     assert native['eof_entries'] == [seek['replacement']]
+    if rate == 48_000:
+        stock_entry, = native['stock_entries']
+        expected_formats = {str(entry): [rate, 2] for entry in (stock_entry, load['entry'], seek['replacement'])}
+        assert native['decoded_formats'] == expected_formats
+        assert stock['native']['decoded_formats'] == {str(stock_entry): [rate, 2]}
+        assert sought['native']['decoded_formats'] == expected_formats
     assert any(row['entry'] == seek['replacement'] and row['paused'] and not row['seeking']
                and abs(row['position'] - seek_target['accepted']) < .06
                for row in sought['native']['last_polls'] if row['position'] is not None)
@@ -179,15 +199,21 @@ def main():
                          help='run the actual EQ UI with the ordinary held FLAC source')
     spatial.add_argument('--spatial-wav-only', action='store_true',
                          help='run the same actual EQ UI with held signed-16 PCM WAV and no FLAC configuration')
+    spatial.add_argument('--spatial-wav-48k-only', action='store_true',
+                         help='run the spatial WAV proof with actual 48 kHz native decoder checks')
+    spatial.add_argument('--spatial-flac-48k-only', action='store_true',
+                         help='run the same 48 kHz checks with a trusted FLAC library')
     parser.add_argument('--screenshots', action='store_true',
                         help='capture settled spatial stages on isolated Linux GTK')
     args = parser.parse_args()
-    is_spatial = args.spatial_controls_only or args.spatial_wav_only
+    is_wave = args.spatial_wav_only or args.spatial_wav_48k_only
+    rate_48k = args.spatial_wav_48k_only or args.spatial_flac_48k_only
+    is_spatial = args.spatial_controls_only or is_wave or args.spatial_flac_48k_only
     if args.screenshots and (not sys.platform.startswith('linux') or not is_spatial):
         parser.error('--screenshots requires Linux and a spatial case')
-    if args.spatial_wav_only and (args.flac_library or args.flac_sha256 or args.filter_library):
+    if is_wave and (args.flac_library or args.flac_sha256 or args.filter_library):
         parser.error('the WAV-only proof does not configure a FLAC or independent filter library')
-    if not args.spatial_wav_only and not (args.flac_library and args.flac_sha256):
+    if not is_wave and not (args.flac_library and args.flac_sha256):
         parser.error('FLAC proofs require --flac-library and --flac-sha256')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -212,6 +238,10 @@ def main():
         cases = [('spatial_controls', True, [])]
     elif args.spatial_wav_only:
         cases = [('spatial_wav', True, [])]
+    elif args.spatial_wav_48k_only:
+        cases = [('spatial_wav_48k', True, [])]
+    elif args.spatial_flac_48k_only:
+        cases = [('spatial_flac_48k', True, [])]
     reports = {}
     for case, graph, filter_args in cases:
         work = root / case
@@ -235,7 +265,8 @@ def main():
             case, status, failed.read_text(encoding='utf-8') if failed.exists() else None,
         )
         reports[case] = (read_spatial_report(work, capture=args.screenshots,
-                                             source_kind='wav' if args.spatial_wav_only else 'flac') if is_spatial
+                                             source_kind='wav' if is_wave else 'flac',
+                                             rate=48_000 if rate_48k else 44_100) if is_spatial
                          else read_report(work, graph=graph, peq=bool(filter_args)))
     output = {'ok': True, 'actualWebViewAndActor': True, 'flacSha256': args.flac_sha256,
               'realMusicRequests': 0, 'physicalOutputVerified': False, 'cases': reports}

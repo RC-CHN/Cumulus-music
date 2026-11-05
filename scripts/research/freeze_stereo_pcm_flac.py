@@ -11,8 +11,6 @@ import json
 from pathlib import Path
 
 
-RATE = 44100
-FRAMES = RATE * 2 + 7
 BLOCK = 1024
 
 
@@ -20,7 +18,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--library', required=True, type=Path)
     parser.add_argument('--output', required=True, type=Path)
+    parser.add_argument('--sample-rate', type=int, choices=(44100, 48000), default=44100)
     args = parser.parse_args()
+    rate = args.sample_rate
+    frames = rate * 2 + 7
     library = args.library.resolve(strict=True)
     output = args.output.resolve()
     manifest = output.with_suffix('.manifest.json')
@@ -45,18 +46,18 @@ def main():
     encoder = create()
     assert table and encoder
     try:
-        assert append(table, BLOCK, FRAMES) and sort(table, 1)
+        assert append(table, BLOCK, frames) and sort(table, 1)
         metadata = (pointer * 1)(table)
         assert fn('FLAC__stream_encoder_set_metadata', c.c_int, pointer, c.POINTER(pointer), u32)(encoder, metadata, 1)
-        for name, value in [('channels', 2), ('bits_per_sample', 16), ('sample_rate', RATE), ('blocksize', BLOCK), ('compression_level', 5)]:
+        for name, value in [('channels', 2), ('bits_per_sample', 16), ('sample_rate', rate), ('blocksize', BLOCK), ('compression_level', 5)]:
             assert fn('FLAC__stream_encoder_set_' + name, c.c_int, pointer, u32)(encoder, value)
-        assert fn('FLAC__stream_encoder_set_total_samples_estimate', c.c_int, pointer, u64)(encoder, FRAMES)
+        assert fn('FLAC__stream_encoder_set_total_samples_estimate', c.c_int, pointer, u64)(encoder, frames)
         output.parent.mkdir(parents=True, exist_ok=True)
         assert fn('FLAC__stream_encoder_init_file', c.c_int, pointer, c.c_char_p, pointer, pointer)(encoder, str(output).encode(), None, None) == 0
         process = fn('FLAC__stream_encoder_process_interleaved', c.c_int, pointer, c.POINTER(c.c_int32), u32)
         digest = hashlib.sha256()
-        for start in range(0, FRAMES, BLOCK):
-            count = min(BLOCK, FRAMES - start)
+        for start in range(0, frames, BLOCK):
+            count = min(BLOCK, frames - start)
             pcm = []
             for frame in range(start, start + count):
                 left = ((frame * 97 + (frame // 128) * 23) % 8192) - 4096
@@ -71,8 +72,8 @@ def main():
     data = output.read_bytes()
     value = {
         'schema': 'cumulus-stereo-pcm-source-v1', 'synthetic': True,
-        'sourceRate': RATE, 'sourceChannels': 2, 'bitsPerSample': 16,
-        'maxBlockFrames': BLOCK, 'sourceFrames': FRAMES,
+        'sourceRate': rate, 'sourceChannels': 2, 'bitsPerSample': 16,
+        'maxBlockFrames': BLOCK, 'sourceFrames': frames,
         'seekSpacingFrames': BLOCK, 'libFLAC': '1.5.0',
         'pcmPacking': 'interleaved signed16 little-endian',
         'pcmSha256': digest.hexdigest(), 'flacSha256': hashlib.sha256(data).hexdigest(),

@@ -154,7 +154,7 @@
 
     await openFile(1);
     const stock = await playback((view) => view.state === 'playing' && view.position > .08,
-      'first stock FLAC advances');
+      'first stock source advances');
     const stockPaused = await pause(stock);
     await openEq();
     const before = await snapshot();
