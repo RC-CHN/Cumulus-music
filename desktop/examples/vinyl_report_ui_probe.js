@@ -36,6 +36,9 @@ window.__vinylReportRun = async function ({
   assert(!report('hot', '2') && !report('latest', '2'), 'own report control is absent');
   assert((await inspect('1')).value.status === 'ready', 'no existing report');
   scroller().scrollTop = 35;
+  // The popover dismisses on scroll. Let the browser deliver the deliberate
+  // scroll event before exercising the report action at this position.
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const anchor = scroller().scrollTop;
   const stage = async (name, extra = {}) => {
     assert(tab() === 'comments' && Math.abs(scroller().scrollTop - anchor) < 1,
@@ -47,7 +50,8 @@ window.__vinylReportRun = async function ({
   await choose(other);
   await wait(() => dialogButton('确认')?.disabled, 'blank other reason is disabled');
   setDescription('不发送的合成草稿');
-  await wait(() => !dialogButton('确认')?.disabled, 'valid custom text can be confirmed');
+  await wait(() => dialogButton('确认') && !dialogButton('确认').disabled,
+    'valid custom text can be confirmed');
   await close('取消');
   assert((await inspect('1')).value.status === 'ready', 'cancelling custom reason did not send');
   await stage('report_cancelled');
