@@ -26,6 +26,8 @@ FIXED_PATHS = (
     # Linux's run_auth_probe takes its proof root positionally, without --root.
     'ci-login', 'ci-login.log',
     'ci-flac150-linux/report.json', 'ci-flac150-linux/build.log',
+    'package-stage/linux-x64/flac-source-build/report.json',
+    'package-stage/linux-x64/flac-source-build/build.log',
     'windows-media/build.log', 'windows-media/plan.json', 'windows-media/installed.json',
     'windows-media/player-probe.log', 'windows-media/player-probe.stdout.log', 'windows-media/player-probe.json', 'windows-media/equalizer-proof',
 )

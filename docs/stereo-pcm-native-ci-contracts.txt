@@ -80,13 +80,12 @@ See stereo-pcm-source-validation.txt for executable source and measurements.
 Actual Windows V2 and complete CI for that candidate are not inferred from
 local Linux runs or any previous V1 workflow.
 
-Linux packaging candidate (separate from the shipping path)
------------------------------------------------------------
+Linux packaging build and verification
+--------------------------------------
 scripts/ci/linux_flac150_package.py is a build-time helper, independent from
 the unchanged linux_flac150.py proof CLI. It returns one verified runtime
-and writes a stage report; package.py, Tauri startup, CI artifact selection
-and ordinary playback do not call it yet. It does not build a Debian/tar
-package or install libraries. It accepts only the same locked Xiph archive,
+and writes a stage report. It does not itself build a Debian/tar package or
+install libraries. It accepts only the same locked Xiph archive,
 whether fetched through the existing bounded helper or supplied via
 --locked-archive from a prior verified download. The old proof output can
 remain beside this new stage and is not suitable for shipping by renaming.
@@ -121,9 +120,33 @@ entrypoint alone does not prove isolation: on the reference machine the
 original proof ELF passed entrypoint and allocation checks but had 155
 internal FLAC__ bindings to the ambient system library. The CMake candidate
 had none under the same preload, with the exact same helper's native probe.
-Local evidence: .build/research/trusted-flac-packaging/
-linux-package-candidate-r1/{report,ambient-comparison}.json. This is real ELF
-build/loader evidence, not PCM, installed package, GTK, Windows or playback
-activation. Bundling still needs same-run digest binding in the application,
-package-layout verification, and actual packaged GUI/authorized-held-source
-and stock-fallback tests.
+Local ELF evidence: .build/research/trusted-flac-packaging/
+linux-package-candidate-r1/{report,ambient-comparison}.json.
+
+The Linux package.py job stages the fixed-name ELF and pinned notice in the
+same native resource directory as its existing filter. Debian places them
+under usr/lib/Cumulus/native/; the portable tar places the ELF beside
+cumulus and the notice in its matching third-party/licenses/flac-1.5.0/.
+Only the Tauri build subprocess is given
+CUMULUS_PACKAGED_LINUX_FLAC_SHA256 from this same verified ELF; this is a
+compile-time provenance input, not a runtime path or a source of trust
+from an editable manifest. Both Linux manifests carry the same
+flacDecoder fields and the actual Debian/tar members must match the exact
+stage library and notice before outer asset hashes are emitted.
+installed_linux_smoke.py --verify-packaged-flac then checks the extracted
+library and notice against the same build stage and independently loads
+the extracted ELF in the identity probe. This flag is required by both
+current Linux package checks but is opt-in when inspecting an older
+artifact without this resource. It does not change the default player,
+source authorization, or the private Linux WebView proof CLI.
+
+A local isolated layout test used the real pinned CMake-built 1.5.0 ELF and
+the genuine notice, put them into a real dpkg-deb archive and portable tar
+with synthetic non-application payload, verified the final members, and
+loaded both extracted ELF copies. Both had the same runtime digest and
+license as the stage. Report: .build/research/trusted-flac-packaging/
+linux-shipping-layout-r1/report.json. This is build/packaging-layout/loader
+evidence only; it does not certify a new Tauri bundle, app startup/GTK,
+PCM, installation, Windows or default playback. Missing or invalid runtime
+in an actual app must leave its stock path available; no library is fetched
+on the user's machine.

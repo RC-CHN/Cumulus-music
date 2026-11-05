@@ -21,6 +21,10 @@ import tarfile
 import tempfile
 import time
 
+from linux_flac_artifacts import (
+    DEBIAN_NATIVE, LIBRARY, MAX_NOTICE, NOTICE, validate_receipt, verify_extracted,
+)
+
 
 def digest(path):
     with path.open('rb') as stream:
@@ -35,16 +39,25 @@ def require_isolation():
         assert json.loads(routes) == [], 'probe requires no external routes'
 
 
-def unpack_portable(archive, directory, prefix):
-    """Copy only the executable and its adjacent filter from the verified tar."""
+def unpack_portable(archive, directory, prefix, *, flac_decoder=None):
+    """Copy only the known app files from the verified tar, without archive paths."""
+    filenames = ['cumulus', 'libcumulus_audio_filter.so']
+    if flac_decoder is not None:
+        library = validate_receipt(flac_decoder)
+        filenames.extend((LIBRARY, NOTICE))
     with tarfile.open(archive, 'r:gz') as package:
         members = package.getmembers()
-        for filename in ('cumulus', 'libcumulus_audio_filter.so'):
+        for filename in filenames:
             member, = (row for row in members if row.name == f'{prefix}/{filename}')
             assert member.isfile() and member.size > 0
             if filename == 'cumulus':
                 assert member.mode & 0o111, 'portable executable is not marked executable'
+            if filename == LIBRARY:
+                assert member.size == library['bytes'], 'portable FLAC library size mismatch'
+            elif filename == NOTICE:
+                assert member.size <= MAX_NOTICE, 'portable FLAC notice exceeds bounds'
             destination = directory / filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
             with package.extractfile(member) as stream, destination.open('xb') as output:
                 shutil.copyfileobj(stream, output)
             if filename == 'cumulus':
@@ -152,6 +165,8 @@ def main():
                         help='exercise synthetic audio via X11 and a private PipeWire null sink')
     parser.add_argument('--verify-installed-equalizer', action='store_true',
                         help='also exercise an EQ preset and the package filter while playing')
+    parser.add_argument('--verify-packaged-flac', action='store_true',
+                        help='load the audited FLAC bytes from the exact extracted package in an identity probe')
     parser.add_argument('--verify-monitor-pcm', action='store_true',
                         help='measure the synthetic tone and pause silence at the private sink')
     args = parser.parse_args()
@@ -159,6 +174,8 @@ def main():
         parser.error('--verify-monitor-pcm needs --verify-local-playback')
     if args.portable and not args.packages:
         parser.error('--portable needs --packages')
+    if args.verify_packaged_flac and not args.packages:
+        parser.error('--verify-packaged-flac needs --packages')
     if (args.ci_run or args.ci_attempt) and not (
         args.packages and all(re.fullmatch(r'[1-9][0-9]*', value or '')
                               for value in (args.ci_run, args.ci_attempt))
@@ -186,6 +203,9 @@ def main():
         if args.ci_run:
             assert (manifest['ciRun'], manifest['ciAttempt']) == (args.ci_run, args.ci_attempt), (
                 'wrong package CI run or attempt')
+        flac_decoder = manifest.get('flacDecoder') if args.verify_packaged_flac else None
+        if args.verify_packaged_flac:
+            validate_receipt(flac_decoder)
         version = manifest['version']
         assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version), 'invalid package version'
         prefix = f'Cumulus-{version}-linux-x64'
@@ -196,14 +216,21 @@ def main():
         with tempfile.TemporaryDirectory(prefix='cumulus-package-proof-') as extracted:
             directory = Path(extracted)
             if args.portable:
-                executable, packaged_filter = unpack_portable(archive, directory, prefix)
+                executable, packaged_filter = unpack_portable(archive, directory, prefix,
+                                                               flac_decoder=flac_decoder)
+                native = directory
             else:
                 subprocess.run(['dpkg-deb', '--extract', archive, extracted], check=True)
                 executable = directory/'usr/bin/cumulus'
-                packaged_filter = directory/'usr/lib/Cumulus/native/libcumulus_audio_filter.so'
+                native = directory / DEBIAN_NATIVE
+                packaged_filter = native / 'libcumulus_audio_filter.so'
             assert executable.is_file() and not executable.is_symlink() and os.access(executable, os.X_OK)
             assert packaged_filter.is_file() and not packaged_filter.is_symlink()
             assert digest(packaged_filter) == digest(args.filter)
+            flac = None
+            if flac_decoder is not None:
+                flac = verify_extracted(native, flac_decoder,
+                                        staged_library=args.filter.with_name(LIBRARY), native_probe=True)
             width, height, playback = observe(executable, root, args.verify_local_playback,
                                               packaged_filter if args.verify_installed_equalizer else None,
                                               args.verify_monitor_pcm,
@@ -211,6 +238,8 @@ def main():
         result = dict(ok=True, commit=args.commit, archiveVerified=True, package=name,
                       packageSha256=asset['sha256'], ciRun=manifest['ciRun'],
                       ciAttempt=manifest['ciAttempt'], installedFilterMatchesPortable=True)
+        if flac is not None:
+            result['packagedFlac'] = flac
     result.update(ordinaryWindowPainted=True, noExternalNetwork=True, width=width, height=height)
     if args.software_rendering:
         result['softwareRenderingRequested'] = True

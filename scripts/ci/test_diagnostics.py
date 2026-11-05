@@ -219,6 +219,8 @@ class ProofArchive(unittest.TestCase):
             'ci-engine-roundtrip-linux-x64.log',
             'ci-equalizer-roundtrip-windows-x64.log',
             'package-stage/windows-x64/equalizer-proof/filter.txt',
+            'package-stage/linux-x64/flac-source-build/report.json',
+            'package-stage/linux-x64/flac-source-build/build.log',
             'windows-media/equalizer-proof/audit.json',
             'windows-media/plan.json',
         ]
@@ -245,6 +247,8 @@ class ProofArchive(unittest.TestCase):
             included.parent.mkdir(parents=True)
             included.write_text('synthetic expected proof', encoding='utf-8')
             private = [
+                'package-stage/linux-x64/flac-source-build/flac-1.5.0.tar.xz',
+                'package-stage/linux-x64/flac-source-build/source/flac-1.5.0/private',
                 'research/account.json',
                 'references/session.json',
                 'private-session/cookies.json',

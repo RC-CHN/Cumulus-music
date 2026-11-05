@@ -90,6 +90,16 @@ def main():
     run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe", "--example", "parametric_probe"])
     shutil.copy2(target / "release" / filter_name, native / filter_name)
     dlls = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"])) if windows else []
+    flac_decoder = None
+    tauri_options = {}
+    if not windows:
+        from linux_flac_artifacts import COMPILE_DIGEST_ENV, stage_decoder, verify_archives
+        flac_decoder = stage_decoder(native, stage / "flac-source-build")
+        tauri_options["env"] = {
+            **{key: value for key, value in os.environ.items()
+               if key not in {COMPILE_DIGEST_ENV, "CUMULUS_PACKAGED_WINDOWS_FLAC_SHA256"}},
+            COMPILE_DIGEST_ENV: flac_decoder["library"]["sha256"],
+        }
     config = {"build": {"beforeBuildCommand": ""}, "bundle": {"active": True,
         "resources": {str(native): "" if windows else "native", str(ROOT / "LICENSE"): "LICENSE", str(ROOT / f"docs/releases/{version}.txt"): "README.txt"},
         "shortDescription": "Community desktop music client",
@@ -102,7 +112,7 @@ def main():
         "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
     config_path = stage / "bundle-config.json"
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-    run(["node", ROOT / "frontend/node_modules/@tauri-apps/cli/tauri.js", "build", "--ci", "--bundles", "nsis" if windows else "deb", "--config", config_path, "--", "--locked"], cwd=ROOT / "desktop")
+    run(["node", ROOT / "frontend/node_modules/@tauri-apps/cli/tauri.js", "build", "--ci", "--bundles", "nsis" if windows else "deb", "--config", config_path, "--", "--locked"], cwd=ROOT / "desktop", **tauri_options)
 
     portable = stage / f"Cumulus-{version}-{args.platform}"
     portable.mkdir()
@@ -166,6 +176,7 @@ def main():
         "version": version, "commit": sha, "platform": args.platform, "dlls": dlls,
         "nativePlayback": media_report, "equalizerPlayback": eq_report,
         "pinnedPlayback": pinned_report, "parametricPlayback": peq_report,
+        **({"flacDecoder": flac_decoder} if flac_decoder is not None else {}),
     }, indent=2), encoding="utf-8")
     archive_base = f"Cumulus-{version}-{args.platform}"
     if windows:
@@ -179,11 +190,15 @@ def main():
     installers = list((target / "release/bundle" / ("nsis" if windows else "deb")).glob("*.exe" if windows else "*.deb"))
     assert len(installers) == 1, f"expected one installer, found {len(installers)}"
     shutil.copy2(installers[0], output / f"{archive_base}-setup.exe" if windows else output / f"{archive_base}.deb")
+    if not windows:
+        verify_archives(output / f"{archive_base}.deb", output / f"{archive_base}.tar.gz",
+                        archive_base, flac_decoder, commit=sha, version=version)
     assert git("rev-parse", "HEAD") == sha and not git("status", "--porcelain", "--untracked-files=normal"), "source changed during packaging"
     manifest = {"version": version, "commit": sha, "platform": args.platform,
         "ciRun": os.environ.get("GITHUB_RUN_ID"), "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
         "nativePlayback": media_report, "equalizerPlayback": eq_report,
         "pinnedPlayback": pinned_report, "parametricPlayback": peq_report,
+        **({"flacDecoder": flac_decoder} if flac_decoder is not None else {}),
         "assets": [{"name": p.name, "bytes": p.stat().st_size, "sha256": digest(p)} for p in sorted(output.iterdir())]}
     (output / f"manifest-{args.platform}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     if windows and (github_env := os.environ.get("GITHUB_ENV")):
