@@ -1,0 +1,147 @@
+Paced held-source SE1/default-B0 -> unknown-length native PCM handoff
+=================================================================
+This candidate builds on local-stereo-subgraph-transport.txt. It is an explicit
+native source/sink seam, not a default player option, material UI, full SDK
+comparison or proof of actual GUI/physical output. No frontend IPC is added.
+
+Why another adapter is necessary
+--------------------------------
+The existing finite pinned registry asks every PinnedReader for its exact size
+and allows immutable byte seeks. Existing limiter WAV probes can do that
+because their output length is known. Live SE bypass/control changes can alter
+the real environment tail; a fixed source+1s WAV header would be false.
+LocalStereoStream also eagerly drains EOF into its FIFO, which could compute
+the entire tail before a later control. This new producer instead calls the
+same LocalStereoSubgraph once per actual output-credit quantum, including
+zero-input EOF calls. It does not change that earlier stream's contract.
+
+The libmpv side uses its documented custom stream callback with seek_fn and
+size_fn absent, and a forced rawaudio floatle/stereo demuxer at the verified
+source rate. It has no RIFF header, fake length, raw external URL, byte replay
+or low-level seek. Pending blocks the read; only verified graph end plus an
+empty queue/window returns EOF. Cancellation is atomic+Condvar notification
+and cannot enter libmpv or wait for its callback mutex.
+
+Pinned primary libmpv source:
+ https://github.com/mpv-player/mpv/blob/v0.41.0/include/mpv/stream_cb.h#L86-L155
+ documents blocking short reads, optional seek/size and concurrent cancel;
+ lines44-47 prohibit same-instance callback re-entry.
+ https://github.com/mpv-player/mpv/blob/v0.41.0/demux/demux_raw.c#L126-L174
+ derives duration only from a known size, sets actual raw format and reads
+ rate/8 frames per audio packet. Lines254-276 assign timestamps from bytes.
+ https://github.com/mpv-player/mpv/blob/v0.41.0/DOCS/man/options.rst#L3664-L3672
+ defines raw channels/rate/format; lines3777-3789 and3833-3839 describe read-
+ ahead and initial full-cache waiting. Per-load options here select rawaudio,
+ set cache=no/cache-pause=no/demuxer-readahead-secs=0/cache-wait=no. Stock
+ loads keep their existing file-local lavf options and finite callbacks.
+
+Actual source qualification, not output-device stereo coercion
+---------------------------------------------------------------
+ColdStereoSource::select consumes the real ColdOfflineFlacReader from the
+production cold grant. It validates that grant and inspects the already held
+FLAC payload (including strict authenticated NCM decoding where required).
+Only known STREAMINFO44.1kHz, exactly2 channels,16-bit, maxblock<=1024, total
+1..one hour and the existing <=16MiB compressed decoder boundary qualify.
+Those duration/size/block limits are explicit Cumulus resource bounds, not
+claims about original SDK clamps. Unknown/mono/different formats and missing
+trusted libFLAC1.5.0 return the SAME reader for stock without resetting the
+account/queue, reopening a pathname, authorizing a URL or starting a child.
+The actual libFLAC write callback also enforces every frame's rate/channels/
+depth/contiguity; a changed or malformed frame is terminal, never converted.
+
+LocalStereoMaterialPlan still admits only the exact free local old-schema
+subset: GEQ/BT/RVB off+flat, SE ambience1/shapertrue and valid integer controls.
+It grants no downloaded-preset rights. Full SDK/off siblings/master proof is
+still separately required for material activation. The native sink rejects
+existing GEQ/loudness/PEQ adapters rather than silently put those effects after
+B0 and call that the original order. No actor/default route selects this path.
+
+One worker, bounded credit and truthful controls
+------------------------------------------------
+ColdStereoSource::start moves the held reader, trusted Api and SAME owned graph
+to one worker. libFLAC is constructed and destroyed there; no borrowed native
+Decoder/NonNull crosses threads. Preparation cancellation is distinct from
+the completed source lifetime. After success, the reader's real source lease
+and explicit pass cancellation remain authoritative. Before native publication
+and on ordinary native polling, the original cold authority is also validated
+against the account/store; callbacks use only its existing fast fence.
+
+The worker combines actual <=1024-frame decoder packets into2048-frame graph
+quanta, retaining at most an extra decoded packet for a trimmed seek. Explicit
+decoder EOF must exactly match the known source end. The original empty-FIFO
+single silent INPUT EOF frame is retained only when required; later SE/B0 EOF
+steps use true zero valid input. Actual SE n/end feed B0 n/end unchanged.
+The graph is processed incrementally to BOTH node ends, not eager full-tail
+rendering and not a synthetic one-frame settlement.
+
+Before a native entry is bound, startup admits rate/8+2048 produced frames,
+with at most one quantum overshoot. After binding while paused/seeking it
+admits no new audio work. While running, credit is native time-pos output
+frames+ceil(rate/4), again at most one quantum overshoot. Native clocks must
+match the bound entry, be finite/nonnegative/nonseeking, never move backwards
+and cannot acknowledge frames the reader has not delivered. Decoder, produced,
+delivered and cache counters never create clock credit. EOF tail frames use
+the same credit instead of bypassing it. The PCM queue is fallibly allocated
+from that bound; full queues and stopped native clocks block the worker.
+
+This is a bounded <=250ms+one quantum render lead, not zero output latency or
+a speaker measurement. A source shorter than the initial packet budget can
+inevitably already be prepared; no claim is made that past/buffered PCM can be
+changed. The queued-control limit is32. Accepted configure returns a revision;
+the worker applies all accepted configurations in order to the installed graph
+even while audio is paused/no-credit. wait_applied is a bounded native-worker
+ACK, not an audible-state claim. Controls never reload/reopen/seek the song.
+
+Clock/source identity and actual retirement
+-------------------------------------------
+Each pass owns a distinct channel/reader/control; old readers cannot see a new
+pass queue. native_source_frame is min(source end,first+observed native output
+clock); generated tail must not advance the original source past its end.
+produced_frames is explicitly not that clock. Graph end is not a native EOF.
+The enclosing controller still needs the exact native END_FILE before queue
+advance and must preserve its existing selection/account/command fences.
+
+Generic MpvEngine::seek rejects this nonseekable PCM path. For an intentional
+logical seek, the owner preserves actual pause, invokes native Stop, waits
+for its real close, then reclaims. ColdStereoPass::reclaim requires BOTH
+reader_closed AND a separate native_sink_retired acknowledgement, plus the
+sole source returned from the worker and actual thread join within3s.
+Stream close alone is insufficient: libmpv can retain demux/decoder/AO audio
+after closing its byte stream. Only exact successful active-entry Stop/EOF,
+or synchronous libmpv destruction marks that retirement. Failed Stop destroys
+the sink using the existing pinned-stop boundary. Dropping MpvEngine cancels
+credit, destroys native state, then acknowledges retirement.
+
+After reclaim, start uses the same descriptor and graph, original graph.reset
+and a real libFLAC sample seek before publishing another native entry. Gain,
+cursor and EOF history are retained exactly as the restored reset specifies;
+the graph is not recreated as a fake seek. A preparation/seek failure before
+publication returns Stock with the same held source after close/join and
+revalidation. A blocked/timed-out worker withholds its reader; no second sink
+is created. Post-publication decoder/DSP/authority failure clears/fails reads,
+and native polling stops/destroys the sink; it never restarts audible playback
+or retries a remote write as a generic fallback.
+
+Prepared tests and honest remaining evidence
+---------------------------------------------
+New deterministic unit tests cover paused control ACK with zero producer
+credit, wrong-entry/undelivered-clock rejection, arbitrary partial raw bytes,
+real graph tail under paced output, early short-source adjustment, buffered
+failure zeroing, unknown seek/size ABI, cancel of a pending native callback and
+an already destroyed native handle's safe unpublished-reader recovery.
+
+An ignored native prerequisite test uses the existing real synthetic cold
+registry/ledger/membership, strict NCM, path replacement after opening, actual
+libFLAC and null libmpv: paused/live controls without native ID change, bounded
+prefetch, Stop/close/join -> sample seek -> a new native ID, genuine extended
+EOF and buffered account revocation. It is explicitly not GUI initialized.
+Neither these new Rust tests nor that native prerequisite have been executed
+in this source branch; root batches checks. Static rustfmt is not a native
+playback proof. No real account, service, user media or audio device is used.
+
+Still required: actual Linux WebView/GTK initialized proof with non-C system
+locale (numeric C only), actual Windows packaged runtime, first-packet/load
+readiness and native clock-credit/EOF-close behavior on those binaries, latency
+and recovery under real scheduling, full SDK graph equivalence, and eventual
+current-source/setting actor integration plus exact setting write/apply order.
+No official SE slider UI is added until those callable seams are proven.

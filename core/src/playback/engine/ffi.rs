@@ -198,6 +198,18 @@ impl Native {
         }
     }
 
+    pub fn stage_stereo_pcm(
+        &mut self,
+        input: super::StereoPcmReader,
+        authority: super::Cancellation,
+    ) -> Result<CString> {
+        self.prepare_pinned_stream()?;
+        self.streams
+            .as_ref()
+            .expect("registered stream")
+            .stage_pcm(input, authority)
+    }
+
     pub fn version(&self) -> u64 {
         self.version
     }
@@ -230,6 +242,38 @@ impl Native {
         })
     }
     pub fn load_with_demuxer(&mut self, sequence: u64, source: &CStr, format: &CStr) -> Result<()> {
+        self.load_with_options(
+            sequence,
+            source,
+            &[(c"demuxer", c"lavf"), (c"demuxer-lavf-format", format)],
+        )
+    }
+    pub fn load_with_stereo_pcm(&mut self, sequence: u64, source: &CStr, rate: u32) -> Result<()> {
+        if !(8000..=384000).contains(&rate) {
+            return Err(Error::InvalidInput("invalid raw stereo PCM sample rate"));
+        }
+        let rate = CString::new(rate.to_string()).expect("numeric rate");
+        self.load_with_options(
+            sequence,
+            source,
+            &[
+                (c"demuxer", c"rawaudio"),
+                (c"demuxer-rawaudio-rate", &rate),
+                (c"demuxer-rawaudio-channels", c"stereo"),
+                (c"demuxer-rawaudio-format", c"floatle"),
+                (c"cache", c"no"),
+                (c"cache-pause", c"no"),
+                (c"demuxer-readahead-secs", c"0"),
+                (c"demuxer-cache-wait", c"no"),
+            ],
+        )
+    }
+    fn load_with_options(
+        &mut self,
+        sequence: u64,
+        source: &CStr,
+        values: &[(&CStr, &CStr)],
+    ) -> Result<()> {
         use node::{List, MAP, Node, STRING, Value};
         fn string(value: &CStr) -> Node {
             Node {
@@ -248,10 +292,13 @@ impl Native {
 
         // Named options work on both sides of mpv 0.38, when loadfile gained
         // a positional index before its options argument.
-        let mut option_keys = [c"demuxer", c"demuxer-lavf-format"].map(|s| s.as_ptr().cast_mut());
-        let mut option_values = [string(c"lavf"), string(format)];
+        let mut option_keys: Vec<_> = values
+            .iter()
+            .map(|(key, _)| key.as_ptr().cast_mut())
+            .collect();
+        let mut option_values: Vec<_> = values.iter().map(|(_, value)| string(value)).collect();
         let mut options = List {
-            num: 2,
+            num: values.len() as c_int,
             values: option_values.as_mut_ptr(),
             keys: option_keys.as_mut_ptr(),
         };

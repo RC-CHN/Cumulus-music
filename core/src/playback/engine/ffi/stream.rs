@@ -3,7 +3,7 @@
 use super::Handle;
 use crate::{
     Error, Result,
-    playback::engine::{Cancellation, PinnedReader},
+    playback::engine::{Cancellation, PinnedReader, StereoPcmControl, StereoPcmReader},
 };
 use std::{
     ffi::{CStr, CString, c_char, c_int, c_void},
@@ -46,14 +46,19 @@ struct Pending {
 
 struct Stream {
     input: Mutex<Input>,
-    size: i64,
+    size: Option<i64>,
     cancelled: AtomicBool,
     authority: Cancellation,
+    interrupt: Option<StereoPcmControl>,
 }
 
 struct Input {
-    reader: Box<dyn PinnedReader>,
+    reader: Reader,
     scratch: Box<[u8]>,
+}
+enum Reader {
+    Pinned(Box<dyn PinnedReader>),
+    Pcm(Box<StereoPcmReader>),
 }
 
 impl Stream {
@@ -82,12 +87,41 @@ impl Registry {
             uri: uri.clone(),
             stream: Stream {
                 input: Mutex::new(Input {
-                    reader,
+                    reader: Reader::Pinned(reader),
                     scratch: vec![0; MAX_READ].into_boxed_slice(),
                 }),
-                size,
+                size: Some(size),
                 cancelled: AtomicBool::new(false),
                 authority,
+                interrupt: None,
+            },
+        });
+        Ok(uri)
+    }
+
+    /// True nonseekable/unknown-size PCM. No finite length or WAV header is
+    /// invented for a graph whose live controls can change its EOF tail.
+    pub(super) fn stage_pcm(
+        &self,
+        reader: StereoPcmReader,
+        authority: Cancellation,
+    ) -> Result<CString> {
+        authority.check()?;
+        let control = reader.control();
+        let uri = CString::new(format!("cumuluspinned://{}", uuid::Uuid::new_v4().simple()))
+            .expect("generated URI");
+        let mut slot = self.0.lock().map_err(|_| Error::LockPoisoned)?;
+        *slot = Some(Pending {
+            uri: uri.clone(),
+            stream: Stream {
+                input: Mutex::new(Input {
+                    reader: Reader::Pcm(Box::new(reader)),
+                    scratch: vec![0; MAX_READ].into_boxed_slice(),
+                }),
+                size: None,
+                cancelled: AtomicBool::new(false),
+                authority,
+                interrupt: Some(control),
             },
         });
         Ok(uri)
@@ -127,6 +161,7 @@ pub(super) unsafe extern "C" fn open(
             return None;
         }
         let stream = slot.take()?.stream;
+        let finite = stream.size.is_some();
         let cookie = Box::into_raw(Box::new(stream)).cast::<c_void>();
         // SAFETY: supplied by libmpv for this call; ownership of cookie is
         // transferred until close, after it finishes concurrent callbacks.
@@ -134,8 +169,8 @@ pub(super) unsafe extern "C" fn open(
             info.write(Info {
                 cookie,
                 read: Some(read),
-                seek: Some(seek),
-                size: Some(size),
+                seek: finite.then_some(seek),
+                size: finite.then_some(size),
                 close: Some(close),
                 cancel: Some(cancel),
             });
@@ -160,12 +195,21 @@ unsafe extern "C" fn read(cookie: *mut c_void, dst: *mut c_char, len: u64) -> i6
         }
         let mut input = stream.input.lock().ok()?;
         let Input { reader, scratch } = &mut *input;
-        let position = reader.stream_position().ok()?;
-        let remaining = u64::try_from(stream.size).ok()?.saturating_sub(position);
+        let remaining = match reader {
+            Reader::Pinned(reader) => {
+                let position = reader.stream_position().ok()?;
+                u64::try_from(stream.size?).ok()?.saturating_sub(position)
+            }
+            Reader::Pcm(_) => u64::MAX,
+        };
         let bound = len.min(remaining).min(MAX_READ as u64) as usize;
         let mut count = None;
         for _ in 0..4 {
-            match reader.read(&mut scratch[..bound]) {
+            let value = match reader {
+                Reader::Pinned(reader) => reader.read(&mut scratch[..bound]),
+                Reader::Pcm(reader) => std::io::Read::read(reader, &mut scratch[..bound]),
+            };
+            match value {
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
                 value => {
                     count = Some(value.ok()?);
@@ -191,19 +235,15 @@ unsafe extern "C" fn seek(cookie: *mut c_void, pos: i64) -> i64 {
         }
         // SAFETY: libmpv serializes close after callbacks and owns the cookie.
         let stream = unsafe { &*cookie.cast::<Stream>() };
-        if !stream.valid() || !(0..=stream.size).contains(&pos) {
+        let size = stream.size?;
+        if !stream.valid() || !(0..=size).contains(&pos) {
             return None;
         }
-        i64::try_from(
-            stream
-                .input
-                .lock()
-                .ok()?
-                .reader
-                .seek(SeekFrom::Start(pos as u64))
-                .ok()?,
-        )
-        .ok()
+        let mut input = stream.input.lock().ok()?;
+        let Reader::Pinned(reader) = &mut input.reader else {
+            return None;
+        };
+        i64::try_from(reader.seek(SeekFrom::Start(pos as u64)).ok()?).ok()
     })
 }
 
@@ -214,16 +254,18 @@ unsafe extern "C" fn size(cookie: *mut c_void) -> i64 {
         }
         // SAFETY: libmpv retains the cookie for the duration of the call.
         let stream = unsafe { &*cookie.cast::<Stream>() };
-        stream.valid().then_some(stream.size)
+        stream.valid().then_some(stream.size).flatten()
     })
 }
 
 unsafe extern "C" fn cancel(cookie: *mut c_void) {
     if !cookie.is_null() {
         // SAFETY: libmpv allows cancel to race read/seek but not close.
-        unsafe { &*cookie.cast::<Stream>() }
-            .cancelled
-            .store(true, Ordering::Release);
+        let stream = unsafe { &*cookie.cast::<Stream>() };
+        stream.cancelled.store(true, Ordering::Release);
+        if let Some(interrupt) = &stream.interrupt {
+            interrupt.cancel();
+        }
     }
 }
 
@@ -234,5 +276,68 @@ unsafe extern "C" fn close(cookie: *mut c_void) {
         let _ = catch_unwind(AssertUnwindSafe(|| unsafe {
             drop(Box::from_raw(cookie.cast::<Stream>()))
         }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::playback::engine::stereo_pcm::channel;
+    use std::{
+        mem::MaybeUninit,
+        sync::{Arc, mpsc},
+        thread,
+        time::Duration,
+    };
+
+    #[test]
+    fn unknown_pcm_callback_has_no_size_or_seek_and_cancel_interrupts_pending_read() {
+        let (reader, control, shared) =
+            channel(44100, 0, 5000, Cancellation::default(), None).unwrap();
+        let registry = Arc::new(Registry::default());
+        let uri = registry.stage_pcm(reader, control.authority()).unwrap();
+        let mut info = MaybeUninit::<Info>::uninit();
+        // SAFETY: valid live registry/URI and writable ABI-sized destination;
+        // this test closes the returned cookie only after its read thread ends.
+        assert_eq!(
+            unsafe {
+                open(
+                    Arc::as_ptr(&registry).cast_mut().cast(),
+                    uri.as_ptr().cast_mut(),
+                    info.as_mut_ptr(),
+                )
+            },
+            0
+        );
+        let info = unsafe { info.assume_init() };
+        assert!(info.seek.is_none() && info.size.is_none());
+        shared.publish(&[0.25, -0.5], 1, false).unwrap();
+        let mut data = [0u8; 8];
+        assert_eq!(
+            unsafe { info.read.unwrap()(info.cookie, data.as_mut_ptr().cast(), 8) },
+            8
+        );
+        assert_eq!(
+            data,
+            [0.25f32, -0.5]
+                .into_iter()
+                .flat_map(f32::to_le_bytes)
+                .collect::<Vec<_>>()
+                .as_slice()
+        );
+        let cookie = info.cookie as usize;
+        let (entered, running) = mpsc::sync_channel(1);
+        let worker = thread::spawn(move || {
+            entered.send(()).unwrap();
+            let mut output = [0x5a; 8];
+            // SAFETY: open cookie remains owned by this test; close runs only
+            // after join, while cancel is explicitly allowed concurrently.
+            unsafe { read(cookie as *mut c_void, output.as_mut_ptr().cast(), 8) }
+        });
+        running.recv_timeout(Duration::from_secs(2)).unwrap();
+        unsafe { info.cancel.unwrap()(info.cookie) };
+        assert_eq!(worker.join().unwrap(), -1, "pending is not EOF");
+        unsafe { info.close.unwrap()(info.cookie) };
+        assert!(control.snapshot().unwrap().reader_closed);
     }
 }

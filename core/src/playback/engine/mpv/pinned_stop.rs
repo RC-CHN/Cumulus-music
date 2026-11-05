@@ -35,6 +35,10 @@ impl MpvEngine {
         &mut self,
         acknowledge: impl FnOnce(&mut Self, i64) -> Result<EngineEvent>,
     ) {
+        let stereo = self.stereo_pcm.take();
+        if let Some(control) = &stereo {
+            control.cancel();
+        }
         if let Some(gate) = self.pinned_authority.take() {
             gate.cancel();
         }
@@ -54,6 +58,9 @@ impl MpvEngine {
             // Do not keep a failed handle alive for an attempted retry.
             drop(self.native.take());
             self.pinned_bmff_options = false;
+        }
+        if let Some(control) = stereo {
+            control.retire_sink();
         }
     }
 

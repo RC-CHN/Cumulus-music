@@ -13,6 +13,7 @@ mod native_decoder;
 mod probe_wav;
 pub use inprocess_flac::ColdLimiterWave;
 pub(crate) use inprocess_flac::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
+pub use inprocess_flac::{ColdStereoPass, ColdStereoSelection, ColdStereoSource, ColdStereoStart};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Generation(u64);

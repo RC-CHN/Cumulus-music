@@ -21,6 +21,8 @@ mod limiter_host_probe;
 mod loudness;
 mod parametric;
 mod pinned_stop;
+#[cfg(test)]
+mod stereo_tests;
 
 fn effect_filter(label: &str, graph: String) -> String {
     format!("@cumulus-{label}:lavfi=graph=%{}%{graph}", graph.len())
@@ -52,6 +54,28 @@ pub struct MpvEngine {
     api_version: u64,
     pinned_authority: Option<Cancellation>,
     pinned_bmff_options: bool,
+    stereo_pcm: Option<super::StereoPcmControl>,
+}
+impl Drop for MpvEngine {
+    fn drop(&mut self) {
+        let stereo = self.stereo_pcm.take();
+        if let Some(control) = &stereo {
+            control.cancel();
+        }
+        if let Some(gate) = self.pinned_authority.take() {
+            gate.cancel();
+        }
+        // Synchronous libmpv destruction acknowledges all callbacks and AO
+        // before the held source/graph may be reclaimed for a replacement.
+        drop(self.native.take());
+        if let Some(control) = stereo {
+            control.retire_sink();
+        }
+    }
+}
+enum SourceDemuxer<'a> {
+    Known(&'a CStr),
+    StereoPcm(u32),
 }
 fn string(value: impl AsRef<[u8]>) -> Result<CString> {
     CString::new(value.as_ref()).map_err(|_| Error::InvalidInput("NUL in audio argument"))
@@ -186,6 +210,7 @@ impl MpvEngine {
             null_output: config.null_output,
             pinned_authority: None,
             pinned_bmff_options: false,
+            stereo_pcm: None,
         })
     }
     pub fn api_version(&self) -> u64 {
@@ -419,7 +444,7 @@ impl MpvEngine {
             // real defaults back. mpv 0.37 rejects an empty lavf format.
             let media = self.load_source(
                 source,
-                Some(&string(format)?),
+                Some(SourceDemuxer::Known(&string(format)?)),
                 0.0,
                 None,
                 Duration::from_secs(25),
@@ -440,6 +465,78 @@ impl MpvEngine {
             if cancelled {
                 return Err(Error::Cancelled);
             }
+        }
+        result
+    }
+
+    /// Explicit native-only source handoff. The actual held-source producer
+    /// established stereo/format/authority; this does not activate a material
+    /// setting. Other effect nodes must be absent until full ordering is proven.
+    pub fn load_stereo_pcm(
+        &mut self,
+        reader: super::StereoPcmReader,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        if self.entry.is_some()
+            || self.pinned_authority.is_some()
+            || self.equalizer.is_some()
+            || self.loudness.is_some()
+            || self.parametric.is_some()
+        {
+            return Err(Error::State(
+                "stereo PCM requires an idle plain native sink",
+            ));
+        }
+        let control = reader.control();
+        control.validate_host()?;
+        cancel.check()?;
+        self.restore_bmff_options()?;
+        let rate = reader.rate();
+        let authority = control.authority();
+        control.publish_sink()?;
+        let source = match self
+            .native_mut()
+            .and_then(|native| native.stage_stereo_pcm(reader, authority.clone()))
+        {
+            Ok(source) => source,
+            Err(error) => {
+                control.retire_sink();
+                return Err(error);
+            }
+        };
+        self.pinned_authority = Some(authority.clone());
+        let load_authority = authority.clone();
+        let load_cancel = cancel.clone();
+        let guard = Cancellation::new(move || {
+            !load_authority.is_cancelled() && !load_cancel.is_cancelled()
+        });
+        let result = self
+            .load_source(
+                source,
+                Some(SourceDemuxer::StereoPcm(rate)),
+                0.0,
+                None,
+                Duration::from_secs(25),
+                &guard,
+            )
+            .and_then(|media| {
+                control.validate_host()?;
+                cancel.check()?;
+                if media.codec.as_deref() != Some("pcm_f32le") {
+                    return Err(Error::Media("raw stereo PCM codec was not confirmed"));
+                }
+                control.bind_entry(media.entry_id)?;
+                Ok(media)
+            });
+        if let Some(native) = &self.native {
+            native.clear_staged_pinned();
+        }
+        if result.is_err() {
+            control.cancel();
+            self.retire_pinned();
+            control.retire_sink();
+        } else {
+            self.stereo_pcm = Some(control);
         }
         result
     }
@@ -508,13 +605,16 @@ impl MpvEngine {
     fn load_source(
         &mut self,
         source: CString,
-        forced_demuxer: Option<&CStr>,
+        forced_demuxer: Option<SourceDemuxer<'_>>,
         start: f64,
         end: Option<f64>,
         timeout: Duration,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
         cancel.check()?;
+        if self.stereo_pcm.is_some() {
+            self.stop()?;
+        }
         let deadline = Instant::now() + timeout;
         self.command(vec![string("stop")?], deadline, cancel)?;
         self.entry = None;
@@ -536,8 +636,14 @@ impl MpvEngine {
         if let Some(format) = forced_demuxer {
             cancel.check()?;
             let sequence = self.sequence()?;
-            self.native_mut()?
-                .load_with_demuxer(sequence, &source, format)?;
+            match format {
+                SourceDemuxer::Known(format) => self
+                    .native_mut()?
+                    .load_with_demuxer(sequence, &source, format)?,
+                SourceDemuxer::StereoPcm(rate) => self
+                    .native_mut()?
+                    .load_with_stereo_pcm(sequence, &source, rate)?,
+            }
             self.await_command(sequence, deadline, cancel)?;
         } else {
             self.command(
@@ -879,6 +985,11 @@ impl AudioEngine for MpvEngine {
         self.control_authorized(&["set", "pause", if paused { "yes" } else { "no" }])
     }
     fn seek(&mut self, seconds: f64) -> Result<()> {
+        if self.stereo_pcm.is_some() {
+            return Err(Error::State(
+                "stereo PCM seek requires a retired-source handoff",
+            ));
+        }
         if !seconds.is_finite() || seconds < 0.0 {
             self.require_pinned_authority()?;
             return Err(Error::InvalidInput("invalid audio seek"));
@@ -912,6 +1023,12 @@ impl AudioEngine for MpvEngine {
         Ok(())
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
+        if let Some(control) = self.stereo_pcm.clone()
+            && let Err(error) = control.validate_host()
+        {
+            self.retire_pinned();
+            return Err(error);
+        }
         self.require_pinned_authority()?;
         // The callback quarantines a failed block. Report its exact processor
         // so the playback actor can remove that node before accepting a clock.
@@ -964,6 +1081,11 @@ impl AudioEngine for MpvEngine {
         // Events and properties may have been collected while the authority
         // changed. Do not let a concurrent revoke publish a stale EOF/clock.
         self.require_pinned_authority()?;
+        if let Some(control) = &self.stereo_pcm
+            && let Some(entry) = snapshot.entry_id
+        {
+            control.observe(entry, snapshot.position, snapshot.paused, snapshot.seeking)?;
+        }
         if self.entry.is_some_and(|active| snapshot.events.iter().any(|event| {
                 matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof | EndReason::Stop, error: 0 } if *entry_id == active)
             }))
@@ -972,6 +1094,7 @@ impl AudioEngine for MpvEngine {
             // Its terminal event was observed while still authorized. There
             // is no pinned entry left to stop on the next ordinary load.
             gate.cancel();
+            if let Some(control) = self.stereo_pcm.take() { control.retire_sink(); control.cancel(); }
         }
         Ok(snapshot)
     }

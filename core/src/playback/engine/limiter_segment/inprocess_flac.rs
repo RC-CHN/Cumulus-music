@@ -16,11 +16,13 @@ mod abi;
 mod cold;
 #[cfg(test)]
 mod cold_authority;
+mod stereo;
 #[cfg(all(test, windows))]
 mod windows_runtime;
 use abi::{Api, FrameHeader, Handle};
 pub use cold::ColdLimiterWave;
 pub(crate) use cold::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
+pub use stereo::{ColdStereoPass, ColdStereoSelection, ColdStereoSource, ColdStereoStart};
 
 const RATE: u32 = 44_100;
 const CHANNELS: usize = 2;
