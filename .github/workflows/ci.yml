@@ -532,6 +532,7 @@ jobs:
           python scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-player-layout-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_display_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-display-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_comments_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-comments-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/vinyl_comments_smoke.py --composer --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-composer-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-speed-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-native-stop-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-quality-windows --runtime .build/package-stage/windows-x64/native
@@ -892,6 +893,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_display_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-display-linux --screenshots --native-keys
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-comments-linux --screenshots
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --composer --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-composer-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-speed-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-native-stop-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-quality-linux
