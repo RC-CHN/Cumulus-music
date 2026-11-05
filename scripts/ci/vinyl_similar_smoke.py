@@ -146,8 +146,10 @@ def audit_wiki_treatment(rows, complete):
     assert failed["wikiState"] == "error" and wiki_reads(failed) == ["1"]
     assert retried["wikiState"] == "ready" and retried["wikiMetas"] == wiki_metas("1")
     assert left["tab"] == "lyrics" and left["wikiState"] is None and not left["wikiMetas"]
+    assert left["focusedDetailTab"] == left["selectedDetailTab"] == "lyrics"
     assert wiki_reads(retried) == wiki_reads(left) == ["1", "1"]
     assert reopened["wikiState"] == "ready" and reopened["wikiMetas"] == wiki_metas("1")
+    assert reopened["focusedDetailTab"] == reopened["selectedDetailTab"] == "wiki"
     assert wiki_reads(reopened) == ["1", "1", "1"]
     assert wiki_reads(rows["playlist_route"]) == wiki_reads(reopened), "standalone recommendations must not request Wiki"
 

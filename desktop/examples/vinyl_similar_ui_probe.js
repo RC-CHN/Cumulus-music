@@ -18,6 +18,13 @@
     assert(node, 'available row');
     node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, detail: 2 }));
   };
+  function tabKey(node, key) {
+    assert(node === document.activeElement && node.getAttribute('aria-selected') === 'true',
+      'keyboard starts on the selected detail tab');
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    node.dispatchEvent(event);
+    assert(event.defaultPrevented, 'detail tablist handled ' + key);
+  }
   async function wait(test, label) {
     for (let round = 0; round < 180; ++round) {
       const result = await test();
@@ -112,6 +119,9 @@
         wikiOrder: wikiOrder(),
         hasSimilarTab: !!tab(),
         hasWikiTab: !!wikiTab(),
+        focusedDetailTab: document.activeElement?.dataset.vinylDetailTab ?? null,
+        selectedDetailTab: one('[data-vinyl-detail-tab][aria-selected="true"]', lyrics() || document)
+          ?.dataset.vinylDetailTab ?? null,
       }),
       captureHandshake: true,
       ...more,
@@ -239,11 +249,19 @@
       assert(wikiTab() && one('[data-vinyl-lyrics-tab]', lyrics()), 'treatment has three visible tabs');
       await firstWiki(first, false);
       step = 'return to lyrics and reopen Wiki on the same play';
-      click(one('[data-vinyl-lyrics-tab]', lyrics()));
-      await wait(() => lyrics()?.dataset.vinylTab === 'lyrics' && !wikiPane() && one('.lyric-line.current'),
-        'lyrics remount and the Wiki pane unmounts');
+      const lyricTab = () => one('[data-vinyl-lyrics-tab]', lyrics());
+      wikiTab().focus({ preventScroll: true });
+      tabKey(wikiTab(), 'Home');
+      await wait(() => lyrics()?.dataset.vinylTab === 'lyrics' && document.activeElement === lyricTab()
+        && lyricTab()?.getAttribute('aria-selected') === 'true'
+        && wikiTab()?.getAttribute('aria-selected') === 'false' && !wikiPane() && one('.lyric-line.current'),
+        'Home selects and focuses remounted lyrics');
       await capture('wiki_left_for_lyrics', first);
-      await showWiki();
+      tabKey(lyricTab(), 'ArrowRight');
+      await wait(() => lyrics()?.dataset.vinylTab === 'wiki' && document.activeElement === wikiTab()
+        && wikiTab()?.getAttribute('aria-selected') === 'true'
+        && lyricTab()?.getAttribute('aria-selected') === 'false',
+        'ArrowRight selects and focuses remounted Wiki');
       await readyWiki('1');
       await capture('wiki_same_seed_reloaded', first);
     }
