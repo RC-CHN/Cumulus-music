@@ -107,7 +107,7 @@
 | `page:trashCan` (3) | `models/page_trashCan.txt` | [已接入口](fm-feedback-ui-contracts.txt) | 音乐黑名单分页、选择、恢复及未知结果核对。 |
 | `page:updateDownload` (1) | `models/page_updateDownload.txt` | [仅恢复](manual-update-contracts.txt) | Cumulus 显式读版本和校验；无官方更新下载页。 |
 | `page:userDetail` (73) | `models/page_userDetail.txt` | [已接入口](account-profile-navigation-contracts.txt) | 本人/访客的资料和分区；未覆盖全部 73 个变体。 |
-| `page:verticalZone` (3) | `models/page_verticalZone.txt` | [已接入口](vertical-zone-catalogue.txt) | 精选、已注册搜索热点、普通/标签回退、模块与播放；FM 卡片挂载预取、外链和实服另验。 |
+| `page:verticalZone` (3) | `models/page_verticalZone.txt` | [已接入口](vertical-zone-catalogue.txt) | 精选、已注册搜索热点、普通/标签回退、MGC 详情播放与 FM 卡片挂载预取；特殊歌单、FM 主动黑胶页、外链和实服另验。 |
 | `page:videoDetail` (16) | `models/page_videoDetail.txt` | [部分](desktop-mv-contracts.txt) | MV 实际播放；普通视频未找到独立授权链。 |
 | `page:vinylEffect` (10) | `models/page_vinylEffect.txt` | [部分](effects-directory-desktop.txt) | 音效目录、已支持的控制和授权；各材料与链路不同。 |
 | `page:vinylPage` (24) | `models/page_vinylPage.txt` | [部分](desktop-member-contracts.txt) | 会员权益、部分动态开通；无原生收银台/兑换。 |
