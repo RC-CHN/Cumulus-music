@@ -5,6 +5,8 @@ mod assets;
 mod engine;
 #[path = "support/native_local_equalizer/flow.rs"]
 mod flow;
+#[path = "support/native_local_equalizer/spatial_ui.rs"]
+mod spatial_ui;
 
 use cumulus_core::{
     Error, Result,
@@ -65,6 +67,7 @@ struct Proof {
     offline: Arc<Offline>,
     expect_graph: bool,
     exercise_peq: bool,
+    exercise_spatial: bool,
     started: AtomicBool,
 }
 
@@ -82,16 +85,18 @@ fn locale(category: libc::c_int) -> String {
 
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    let (expect_graph, exercise_peq) = match args.first().and_then(|value| value.to_str()) {
-        Some("trusted") => (true, false),
-        Some("wrong_digest") => (false, false),
-        Some("paused_peq") => (true, true),
-        _ => panic!("invalid proof case"),
-    };
+    let (expect_graph, exercise_peq, exercise_spatial) =
+        match args.first().and_then(|value| value.to_str()) {
+            Some("trusted") => (true, false, false),
+            Some("wrong_digest") => (false, false, false),
+            Some("paused_peq") => (true, true, false),
+            Some("spatial_controls") => (true, false, true),
+            _ => panic!("invalid proof case"),
+        };
     let required = 4 + usize::from(exercise_peq);
     assert!(
         (required..=required + 1).contains(&args.len()),
-        "usage: native_local_equalizer_probe trusted|wrong_digest ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; or paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]"
+        "usage: native_local_equalizer_probe trusted|wrong_digest|spatial_controls ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; or paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]"
     );
     let sdk = PathBuf::from(&args[1]);
     assert!(sdk.is_absolute() && sdk.is_file());
@@ -178,8 +183,12 @@ fn main() {
                 offline,
                 expect_graph,
                 exercise_peq,
+                exercise_spatial,
                 started: AtomicBool::new(false),
             });
+            if exercise_spatial {
+                spatial_ui::install(app)?;
+            }
             tauri::WebviewWindowBuilder::from_config(app, &window)?
                 .data_directory(root.join("webview"))
                 .build()?;
@@ -197,6 +206,12 @@ fn main() {
             let handle = window.app_handle().clone();
             let proof = handle.state::<Proof>();
             if proof.started.swap(true, Ordering::SeqCst) {
+                return;
+            }
+            if proof.exercise_spatial {
+                window
+                    .eval(spatial_ui::SCRIPT)
+                    .expect("spatial controls probe script");
                 return;
             }
             tauri::async_runtime::spawn(async move {

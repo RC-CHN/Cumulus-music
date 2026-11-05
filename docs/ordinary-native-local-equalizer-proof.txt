@@ -146,3 +146,19 @@ failures. All three cases passed on local libmpv 0.41 with the same FLAC 1.5.0
 decoder/filter bytes from CI 42092833982. Evidence:
 .build/ui-proof/phase68-native-eq-r2/report.json. This local result does not
 substitute for a repeat on the CI runner's libmpv 0.37 or physical output.
+
+Spatial control continuation
+----------------------------
+
+Use the same trusted staged libFLAC and ordinary example, with the runner's
+--spatial-controls-only option. This opt-in case requires the matching real
+frontend bundle. The sealed fixture explicitly opens only the same frozen
+FLAC twice; all slider commits, master, seek, resume and reset are driven
+through the rendered main window and its production Tauri commands. It
+distinguishes an uncommitted slider preview, saved-but-unavailable stock
+settings with no restart, qualified stereo-only raw PCM, paused hot apply,
+master disable/reapply, actual paused replacement seek, resumed processing,
+and native EOF. The runner compares each UI state with the local SQLite EQ
+record and the actual engine trace; the original three EQ/PEQ cases retain
+their checks and command line. These are proof expectations pending a
+matching native/WebView run, not physical-audio evidence.

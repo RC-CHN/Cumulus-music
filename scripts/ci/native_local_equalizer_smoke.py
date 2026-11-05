@@ -64,6 +64,76 @@ def read_report(root, *, graph, peq):
     return report
 
 
+def read_spatial_report(root):
+    directory = root / 'spatial'
+    names = [
+        'ux_01_stock_saved', 'ux_02_hot_paused', 'ux_03_master_off',
+        'ux_04_master_on', 'ux_05_paused_seek', 'ux_06_ended', 'ux_07_reset',
+    ]
+    assert sorted(path.stem for path in directory.glob('ux_*.json')) == names
+    stages = [json.loads((directory / (name + '.json')).read_text(encoding='utf-8')) for name in names]
+    complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
+    assert complete['ok'] and complete['startedSpatial'] and complete['stageCount'] == len(stages)
+    stock, hot, off, on, sought, ended, reset = stages
+    for row in (*stages, complete):
+        assert row['webviewFinished'] and row['realMusicRequests'] == row['realAccountWrites'] == 0
+        assert row['epoch'] == complete['epoch']
+        if sys.platform.startswith('linux'):
+            assert row['numericLocaleIsC'] and row['messagesLocalePreserved']
+    for row, expected in zip(stages, [
+        'unavailable', 'configured', 'bypassed', 'configured',
+        'configured', 'pending', 'off',
+    ], strict=True):
+        eq = row['player']['equalizer']
+        assert eq['spatial_status'] == expected and row['player']['error'] is None, row
+        assert row['durable']['revision'] == int(eq['revision'])
+        assert row['durable']['settings'] == eq['settings']
+        assert row['player']['state'] == row['dom']['state']
+        assert not eq['settings']['enabled'] and eq['settings']['gains'] == [0] * 10
+    assert stock['fixtureOpens'] == 1 and stock['native']['ordinary_loads'] == 1
+    assert not stock['native']['loads'] and not stock['native']['local_updates']
+    assert stock['dom']['sliders'] == [3, 5] and stock['dom']['status'] == 'unavailable'
+    assert hot['player']['playId'] != stock['player']['playId']
+    assert hot['player']['entryId'] != stock['player']['entryId']
+    for row in (hot, off, on):
+        assert row['dom']['sliders'] == [6, 8]
+        assert row['dom']['status'] == row['player']['equalizer']['spatial_status']
+        assert row['dom']['master'] == ('false' if row is off else 'true')
+        assert row['player']['state'] == 'paused'
+        assert abs(row['player']['position'] - hot['player']['position']) < .06
+        assert not row['native']['seeks'] and not row['native']['eof_entries']
+    assert off['durable']['settings']['master_bypassed']
+    assert not on['durable']['settings'].get('master_bypassed')
+    identity = lambda row: tuple(row['player'][key] for key in ('playId', 'entryId', 'queueRevision'))
+    assert all(identity(row) == identity(hot) for row in stages[1:])
+    assert sought['player']['state'] == 'paused' and not sought['player']['nativeSeeking']
+    assert abs(sought['player']['position'] - .5) < .06
+    assert ended['player']['state'] == reset['player']['state'] == 'ended'
+    assert abs(ended['player']['position'] - 88_207 / 44_100) < .02
+    assert reset['player']['position'] == ended['player']['position']
+    assert reset['dom']['sliders'] == reset['dom']['tone'] == [0, 0]
+    assert not any(reset['durable']['settings'].get(key, 0) for key in (
+        'presence', 'stereoizer', 'bass_db', 'treble_db',
+    ))
+
+    native = complete['native']
+    assert complete['fixtureOpens'] == 2 and native['ordinary_loads'] == 1 and not native['yields']
+    load, = native['loads']
+    seek, = native['seeks']
+    assert load['native_file'] and load['codec'] == 'pcm_f32le' and load['graph_entry'] == load['entry']
+    assert seek['seconds'] == .5 and seek['old_entry'] == load['entry']
+    assert seek['graph_entry'] == seek['replacement'] != load['entry']
+    assert native['processed_entries'] == sorted([load['entry'], seek['replacement']])
+    assert native['eof_entries'] == [seek['replacement']]
+    assert any(row['entry'] == seek['replacement'] and row['paused'] and not row['seeking']
+               and abs(row['position'] - .5) < .06
+               for row in sought['native']['last_polls'] if row['position'] is not None)
+    updates = [(row.get('presence', 0), row.get('stereoizer', 0), row.get('master_bypassed', False))
+               for row in on['native']['local_updates']]
+    assert updates[-3:] == [(6, 8, False), (6, 8, True), (6, 8, False)], updates
+    return {**complete, 'stages': stages}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
@@ -73,6 +143,8 @@ def main():
     parser.add_argument('--mpv-library', type=Path)
     parser.add_argument('--filter-library', type=Path, help='also run the independent paused PEQ handoff')
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--spatial-controls-only', action='store_true',
+                        help='run the actual EQ UI with the ordinary held FLAC source')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -90,6 +162,8 @@ def main():
     cases = [('trusted', True, []), ('wrong_digest', False, [])]
     if args.filter_library:
         cases.append(('paused_peq', True, [args.filter_library.resolve(strict=True)]))
+    if args.spatial_controls_only:
+        cases = [('spatial_controls', True, [])]
     reports = {}
     for case, graph, filter_args in cases:
         work = root / case
@@ -102,10 +176,13 @@ def main():
             result = subprocess.run([binary, case, library, args.flac_sha256, work, *filter_args, *mpv],
                                     env=case_env, stdout=log, stderr=log, timeout=60)
         failed = work / 'failed.json'
+        if case == 'spatial_controls':
+            failed = work / 'spatial' / 'failed.json'
         assert result.returncode == 0 and not failed.exists(), (
             case, result.returncode, failed.read_text(encoding='utf-8') if failed.exists() else None,
         )
-        reports[case] = read_report(work, graph=graph, peq=bool(filter_args))
+        reports[case] = (read_spatial_report(work) if case == 'spatial_controls'
+                         else read_report(work, graph=graph, peq=bool(filter_args)))
     output = {'ok': True, 'actualWebViewAndActor': True, 'flacSha256': args.flac_sha256,
               'realMusicRequests': 0, 'physicalOutputVerified': False, 'cases': reports}
     (root / 'report.json').write_text(json.dumps(output, indent=2) + '\n', encoding='utf-8')
