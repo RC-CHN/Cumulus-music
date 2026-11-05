@@ -62,6 +62,13 @@ fn voice(id: u64) -> Value {
         "disPlayStatus":if id==505 {"REMOVED"}else{"NORMAL"}})
 }
 impl Api for Library {
+    fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        Ok(self
+            .scene_home
+            .as_ref()
+            .map(|_| "scene-home-fixture-revision".to_owned()))
+    }
+
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
         Box::pin(async { Ok(self.scene_home.is_some()) })
     }
