@@ -6,6 +6,7 @@ use cumulus_core::{
     client::{
         MusicClient,
         dto::{SearchCategory, SearchResultQuery},
+        pc_experiments::OrdinarySkipAssignment,
     },
     protocol::{
         http::{ApiOrigin, MusicHttpClient},
@@ -316,6 +317,115 @@ async fn another_native_consumer_can_replace_failed_refresh_without_waiting_for_
             LEGACY,
         ],
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn expired_global_control_survives_search_catch_without_becoming_fresh_permission() {
+    let mut control = assignment(Some(json!("c")), false);
+    control["data"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"expName":"PH-PC-skipSongs2","expGroupName":"t1"}));
+    let f = Fixture::new([
+        assignment(Some(json!("t1")), true).into(),
+        tabs().into(),
+        page(true).into(),
+        control.into(),
+        json!({"code":403}).into(),
+        page(false).into(),
+        json!({"code":403}).into(),
+        assignment(Some(json!("t1")), true).into(),
+        tabs().into(),
+        page(true).into(),
+    ]);
+    // t=0: search consumes a verified t1 footer and the V3 endpoint.
+    let first = f.search().await;
+    assert_footer(&first, true);
+    assert_eq!(first["tabs"], json!(["all"]));
+    tokio::time::advance(Duration::from_secs(1800)).await;
+    // t=1800: a different native consumer refreshes global footer=c and
+    // searchHot=c. Search deliberately does not consume that successful batch.
+    assert_eq!(
+        f.client
+            .official_pc_ordinary_skip_assignment(&f.epoch)
+            .await
+            .unwrap(),
+        OrdinarySkipAssignment::Enabled
+    );
+    tokio::time::advance(Duration::from_secs(1800)).await;
+    // t=3600: the global c batch is now expired and the new read fails.
+    // M147's presentation catch keeps that latest global c, not search's t1.
+    let failed = f.search().await;
+    assert_footer(&failed, false);
+    assert!(
+        failed.get("tabs").is_none(),
+        "old V3 must not revive either"
+    );
+    // The passive catch snapshot does not extend TTL or grant an authorization
+    // consumer its expired skip=t1. It must try a fresh full batch and fail.
+    assert!(
+        f.client
+            .official_pc_ordinary_skip_assignment(&f.epoch)
+            .await
+            .unwrap_err()
+            .is_service_code(403)
+    );
+    // A later genuinely fresh successful assignment still wins immediately,
+    // even while search is backing off after its failed optional refresh.
+    f.client
+        .official_pc_ordinary_skip_assignment(&f.epoch)
+        .await
+        .unwrap();
+    let recovered = f.search().await;
+    assert_footer(&recovered, true);
+    assert_eq!(recovered["tabs"], json!(["all"]));
+    assert_full_batch(
+        &f,
+        &[
+            ASSIGNMENT_PATH,
+            TABS,
+            V3,
+            ASSIGNMENT_PATH,
+            ASSIGNMENT_PATH,
+            LEGACY,
+            ASSIGNMENT_PATH,
+            ASSIGNMENT_PATH,
+            TABS,
+            V3,
+        ],
+    );
+}
+
+#[tokio::test]
+async fn presentation_catch_cannot_retain_a_global_t1_from_another_credential_revision() {
+    let mut rotated = reply(page(false));
+    rotated.set_cookies = vec!["MUSIC_U=synthetic-search-footer-rotated; Path=/; Secure".into()];
+    let f = Fixture::new([
+        assignment(Some(json!("t1")), false).into(),
+        HttpResponse::Ready(Ok(rotated)),
+        json!({"code":403}).into(),
+        page(false).into(),
+    ]);
+    assert_footer(&f.search().await, false);
+    assert_footer(&f.search().await, false);
+    let calls = f.http.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [ASSIGNMENT_PATH, LEGACY, ASSIGNMENT_PATH, LEGACY]
+    );
+    assert!(
+        calls[2]
+            .cookie
+            .as_ref()
+            .unwrap()
+            .contains("MUSIC_U=synthetic-search-footer-rotated")
+    );
+    for call in [&calls[0], &calls[2]] {
+        assert_eq!(call.payload["expNames"], assignment_arguments()["expNames"]);
+    }
 }
 
 #[tokio::test]

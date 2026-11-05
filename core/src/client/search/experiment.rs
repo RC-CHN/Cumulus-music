@@ -223,13 +223,29 @@ impl MusicClient {
                 groups.group(FOOTER_EXPERIMENT) == Some("t1"),
                 false,
             ),
-            // M147's catch retains prior web assignment. Only this exact live
-            // account/API/credential may retain a previously verified footer;
-            // historical disk flags can preserve layout, but never grant it.
+            // M147 retains the latest global web assignment, not the last
+            // value this search page happened to consume. Another native
+            // consumer may have replaced t1 with c before that batch expired.
+            // This presentation-only catch does not make that batch fresh.
             _ => {
-                let (flags, footer) = previous
-                    .as_ref()
-                    .map(|current| (current.flags, current.footer))
+                let (flags, footer) = self
+                    .pc_experiments
+                    .search_catch_groups(token, api, &credentials)?
+                    .map(|groups| {
+                        (
+                            SearchFlags {
+                                v3: groups.group(EXPERIMENTS[0]) == Some("t1"),
+                                expanded: groups.group(EXPERIMENTS[1]) == Some("t1"),
+                                dense: groups.group(EXPERIMENTS[2]) == Some("t1"),
+                            },
+                            groups.group(FOOTER_EXPERIMENT) == Some("t1"),
+                        )
+                    })
+                    .or_else(|| {
+                        previous
+                            .as_ref()
+                            .map(|current| (current.flags, current.footer))
+                    })
                     .unwrap_or((old.flags, false));
                 (flags, footer, true)
             }

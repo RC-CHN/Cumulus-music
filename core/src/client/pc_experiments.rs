@@ -30,15 +30,37 @@ struct Assigned {
 }
 
 impl Assigned {
-    fn matches(&self, token: &SessionToken, api: &Arc<dyn Api>, credentials: &str) -> bool {
+    fn same_identity(&self, token: &SessionToken, api: &Arc<dyn Api>, credentials: &str) -> bool {
         self.token == *token
             && self.api.upgrade().is_some_and(|old| Arc::ptr_eq(&old, api))
             && self.credentials == credentials
-            && self.fetched.elapsed() < REFRESH
+    }
+
+    fn matches(&self, token: &SessionToken, api: &Arc<dyn Api>, credentials: &str) -> bool {
+        self.same_identity(token, api, credentials) && self.fetched.elapsed() < REFRESH
     }
 }
 
 impl PcExperimentHost {
+    /// M147's search presentation catch retains the last successful global
+    /// web assignment, including one refreshed by another native consumer.
+    /// This passive snapshot may be expired: it is not a fresh permission and
+    /// must never replace `matches` in an authorization/dispatch decision.
+    pub(super) fn search_catch_groups(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        credentials: &str,
+    ) -> Result<Option<PcExperimentGroups>> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|current| current.same_identity(token, api, credentials))
+            .map(|current| current.groups.clone()))
+    }
+
     /// Passive coherence check for consumers with an optional-read backoff.
     /// This never extends the shared assignment's original refresh deadline.
     pub(super) fn observed_groups(
