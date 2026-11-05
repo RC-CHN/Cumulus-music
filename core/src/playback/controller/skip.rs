@@ -1,5 +1,5 @@
 //! Scoped native entry for the proved M/308 miniBar transport branch.
-use super::{PlaybackCommand, PlaybackController, PlaybackFence, PlaybackStatus};
+use super::{PlaybackCommand, PlaybackController, PlaybackFence};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -55,10 +55,7 @@ impl PlaybackController {
                     && !alternative["mvInfo"].is_null()
                     && alternative["expInfo"]["mvPlay"] == true
             })
-            || !matches!(
-                before.state,
-                PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
-            )
+            || !before.state.permits_minibar_step()
         {
             return Ok(unchanged(SkipBoundary::ContextUnresolved));
         }

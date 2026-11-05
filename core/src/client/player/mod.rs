@@ -1172,12 +1172,19 @@ impl MusicClient {
                 self.session.check_generation(&token)?;
                 return project(&state, &token);
             }
-            source_control::validate(
-                &current,
-                play_id,
-                revision,
-                matches!(action, PlayerAction::Refresh),
-            )?;
+            if minibar_step.is_some() {
+                source_control::validate_identity(&current, play_id, revision)?;
+                if !current.state.permits_minibar_step() {
+                    return Err(Error::StaleResponse);
+                }
+            } else {
+                source_control::validate(
+                    &current,
+                    play_id,
+                    revision,
+                    matches!(action, PlayerAction::Refresh),
+                )?;
+            }
             Some(current.fence())
         } else {
             None

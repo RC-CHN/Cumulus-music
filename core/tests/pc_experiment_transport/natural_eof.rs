@@ -222,7 +222,7 @@ async fn signed_denied_tail_stops_on_finished_row_but_control_keeps_finished_ide
         let after = f.wait(|view| view.state == expected).await;
         assert_eq!(after.entry_id, before.entry_id);
         assert_eq!(after.queue_revision, before.queue_revision);
-        assert_eq!(after.track.unwrap().id, "1");
+        assert_eq!(after.track.as_ref().unwrap().id, "1");
         assert_eq!(after.position, Some(120.0));
         assert!(after.error.is_none());
         if group == "t1" {
@@ -238,6 +238,23 @@ async fn signed_denied_tail_stops_on_finished_row_but_control_keeps_finished_ide
             )
             .await;
             assert!(unexpected.is_err());
+            let clicked = f
+                .client
+                .player_action(
+                    &f.epoch,
+                    PlayerAction::StepMiniBar {
+                        play_id: after.play_id.unwrap(),
+                        expected_queue_revision: after.queue_revision.clone(),
+                        direction: cumulus_core::playback::Step::Next,
+                    },
+                )
+                .await
+                .unwrap();
+            assert_eq!(clicked.state, PlaybackStatus::Ended);
+            assert_eq!(clicked.entry_id, before.entry_id);
+            assert_eq!(clicked.play_id, before.play_id);
+            assert_eq!(clicked.queue_revision, before.queue_revision);
+            assert_eq!(clicked.position, Some(120.0));
         }
         f.assert_durable_end(before.entry_id.as_deref());
         assert_eq!(f.loads(), 1);

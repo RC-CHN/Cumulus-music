@@ -23,6 +23,10 @@ impl PlaybackStatus {
     pub(super) fn active(self) -> bool {
         matches!(self, Self::Playing | Self::Paused | Self::Buffering)
     }
+
+    pub(crate) fn permits_minibar_step(self) -> bool {
+        self.active() || self == Self::Ended
+    }
 }
 #[derive(Clone, Debug, Default)]
 pub struct PrefetchSnapshot {
