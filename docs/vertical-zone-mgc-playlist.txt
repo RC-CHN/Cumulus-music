@@ -18,6 +18,13 @@ PC 3.1.42.205594｜专区 MGC 歌单详情和播放来源
   的播放全部同样保留来源。M/3085:215–237、309–316、564–585 将来源放进
   原生播放动作；M/86:135–155 的 /api/song/enhance/player/url/v1 送 trialMode，
   由服务决定实际音源和权益。
+- 批量操作有独立来源契约：Common.jsx:429–459 同时在 from 和 to.state 放入
+  试用来源；M/622:202–232 保留 to 并改写到 /playlist/batch/:id，M/3085:1061–1077
+  保留路由 state。BatchOperation.tsx:90–105、115–147、181–197 用该 state
+  （我的红心优先 43）处理「播放所选」和「添加至播放列表」，下载不传该场景。
+  批量页挂载的全量补齐动作本身不带 trialMode；M/2997:472–531 只补从第一处
+  未缓存歌曲开始的后缀，M/120 的缺省值为 -1。详情页自身的后台补齐是另一触发，
+  M/2997:453–461 会转发详情的 trialMode。不能用一次整表默认读取混算这两个分支。
 
 Cumulus 原生契约
 - vertical_zone_playlist_origin(epoch,viewId,cardKey,id) 仅主窗口可用；用

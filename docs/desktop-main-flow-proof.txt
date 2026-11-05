@@ -992,3 +992,24 @@ scripts/ci/playback_power_smoke.py。
   Node 的 817 项测试和构建、公开源/版本审计和 93 项 CI Python 测试通过。
   原生 Windows 音量独立诊断只记结果类别，不是发行门槛；仍需同提交的 Windows
   实际结果。私有截图与日志保存在 .build/ui-proof/phase41/。
+
+专区歌单详情、FM 首曲和启动锁（2026-11-05）
+------------------------------------------------
+- 同一合成歌单的[普通入口与 MGC 入口](vertical-zone-mgc-playlist.txt)在真实
+  Linux WebKitGTK/Tauri/libmpv 通过 10 态，记录 v6 默认读取与 v4、动态数据、
+  121 授权的区别。头部、行与双击均核对；返回恢复两轴及焦点，普通入口不继承 121。
+- [专区 FM](vertical-zone-fm-preview.txt)同次构建通过 3 态：预读去重、并发上限、
+  封面回退、挂载保持空闲，以及点击后使用预读队列开始实际解码。原生回归还验证
+  同账号凭据轮换使旧种子失效；不把 DOM 地址当作已请求的图片。专区导航原有 12 态
+  回归通过，合计 25 张截图，存于 .build/ui-proof/phase42/combined-*-webview/。
+- 正式二进制同一构建在隔离的 X11 窗口、zh_CN.UTF-8 和无外网环境中实际启动。
+  夹具在 en_US.UTF-8 下验证只有数字 locale 是 C，账号、上游及音频为合成数据，
+  libmpv 使用 null 输出。Windows GNU 的核心、桌面、专区歌单测试及 GUI 示例严格
+  交叉检查通过；Windows 原生执行由独立 runner 验证。
+- Linux 并行测试触发本地文件打开锁竞争：一个 fork 后尚未 exec 的子进程能保留
+  原锁的文件描述，单靠父进程 close 会使立即重新加锁失败。释放私有锁时先明确
+  unlock，再关闭句柄；持有期间的互斥和应用状态生命周期不变。旧二进制用延迟
+  exec 的系统调用追踪复现，新二进制通过相同故障注入和保持重复句柄的回归。
+- 基线 e1ba9aa8 的独立 [Windows 音量诊断](windows-system-master-volume.txt)
+  在原生 x64 runner 的默认多媒体端点查询返回 0x80070490（无默认输出设备）；
+  因而不证明有设备时的激活、音量读取、静音或实体输出。
