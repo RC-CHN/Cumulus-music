@@ -39,6 +39,7 @@ export interface SearchResultQuery {
 export type SearchTrackHint =
   | { kind: 'lyric'; parts: { text: string; highlight: boolean }[] }
   | { kind: 'alias'; text: string };
+export type SearchQualityBadge = 'jymaster' | 'sky' | 'jyeffect' | 'hires' | 'sq';
 export type SearchReasonTarget =
   | { kind: 'recommendation'; reasonId: string; songId: string; name: string }
   | { kind: 'city'; chartCode: string; targetId: string; targetType: string };
@@ -63,6 +64,7 @@ export type SearchItem =
       replacementMv?: boolean;
       vipBadge?: boolean;
       limitedFree?: boolean;
+      qualityBadge?: SearchQualityBadge;
       hint?: SearchTrackHint;
       explicit?: boolean;
       originalRecording?: boolean;
@@ -161,6 +163,7 @@ export interface SearchPrivilegePatch {
     replacementMv: boolean;
     vipBadge: boolean;
     limitedFree: boolean;
+    qualityBadge: SearchQualityBadge | null;
   }[];
 }
 export interface SearchResultsClient {

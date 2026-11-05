@@ -93,7 +93,8 @@ pub use super::scene_fm::{
 pub use super::search::{
     ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,
     SearchItem, SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
-    SearchPrivilegePatch, SearchReasonPage, SearchResultQuery, SearchResultView, SearchSection,
+    SearchPrivilegePatch, SearchQualityBadge, SearchReasonPage, SearchResultQuery,
+    SearchResultView, SearchSection,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

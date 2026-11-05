@@ -1,4 +1,5 @@
 //! Official M/3095 + M/3001: refresh only the ordinary six-song preview.
+use super::results::SearchQualityBadge;
 use super::{AccountData, MusicClient};
 use crate::{
     Error, Result,
@@ -63,6 +64,7 @@ struct PrivilegeRow {
     replacement_mv: bool,
     vip_badge: bool,
     limited_free: bool,
+    quality_badge: Option<SearchQualityBadge>,
 }
 
 impl SearchPrivilegePages {
@@ -188,13 +190,17 @@ impl MusicClient {
 }
 
 pub(super) fn status(value: &Value) -> Option<f64> {
+    finite_number(value)
+}
+
+fn finite_number(value: &Value) -> Option<f64> {
     value
         .as_f64()
         .or_else(|| value.as_str()?.trim().parse().ok())
         .filter(|value| value.is_finite())
 }
 
-pub(super) fn badges(privilege: &Value) -> (bool, bool) {
+fn badges(privilege: &Value) -> (bool, bool) {
     // M/35.m and .k: VIP and limited-free badges may coexist.
     let trial = &privilege["freeTrialPrivilege"];
     if js_truthy(&trial["userConsumable"]) && js_truthy(&trial["resConsumable"]) {
@@ -212,13 +218,44 @@ pub(super) fn badges(privilege: &Value) -> (bool, bool) {
     (fee & (1 | 16 | 32) != 0, false)
 }
 
+fn display_quality(privilege: &Value) -> Option<SearchQualityBadge> {
+    // M/23.v bit shifts convert the scalar to a JS signed 32-bit integer.
+    // M/313 accepts a track here, so its separate bitrate-only branches do
+    // not apply. Even Dolby/Vivid bits do not select a badge on their own.
+    let flags = finite_number(&privilege["flag"])
+        .map_or(0, |flag| flag.trunc().rem_euclid(4_294_967_296.0) as u32);
+    for (bit, badge) in [
+        (16, SearchQualityBadge::JyMaster),
+        (18, SearchQualityBadge::Sky),
+        (17, SearchQualityBadge::JyEffect),
+        (12, SearchQualityBadge::HiRes),
+    ] {
+        if flags & (1 << bit) != 0 {
+            return Some(badge);
+        }
+    }
+    // M/21.A calculates the old maxSongBr from maxbr even when newer
+    // level fields are present; the strict SQ range is in kbps.
+    let max_song_br = (finite_number(&privilege["maxbr"])? / 1000.0).ceil();
+    (320.0 < max_song_br && max_song_br < 1999.0).then_some(SearchQualityBadge::Sq)
+}
+
+pub(super) fn card_badges(privilege: &Value) -> (bool, bool, Option<SearchQualityBadge>) {
+    let (vip, limited_free) = badges(privilege);
+    (
+        vip,
+        limited_free,
+        (!vip).then(|| display_quality(privilege)).flatten(),
+    )
+}
+
 impl PreviewRow {
     fn project(&self, privilege: &Value) -> PrivilegeRow {
         let status = status(&privilege["st"]);
         let restricted = status.is_some_and(|status| status < 0.0);
         let replace = restricted && (status != Some(-100.0) || js_truthy(&privilege["toast"]));
         let alternative = self.alternative.as_ref().filter(|_| replace);
-        let (vip_badge, limited_free) = badges(privilege);
+        let (vip_badge, limited_free, quality_badge) = card_badges(privilege);
         PrivilegeRow {
             id: self.id.clone(),
             cover_url: alternative
@@ -234,6 +271,37 @@ impl PreviewRow {
             replacement_mv: alternative.is_some(),
             vip_badge,
             limited_free,
+            quality_badge,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn track_quality_uses_official_flag_order_and_rounded_sq_without_a_bitrate_argument() {
+        use SearchQualityBadge::*;
+        for (raw, expected) in [
+            (json!({"flag":462848,"maxbr":999000}), Some(JyMaster)),
+            (json!({"flag":397312}), Some(Sky)),
+            (json!({"flag":135168}), Some(JyEffect)),
+            (json!({"flag":4096}), Some(HiRes)),
+            (json!({"flag":"4295032832"}), Some(JyMaster)),
+            (json!({"maxbr":320000}), None),
+            (json!({"maxbr":"320001"}), Some(Sq)),
+            (json!({"maxbr":1998000}), Some(Sq)),
+            (json!({"maxbr":1998001}), None),
+            (json!({"flag":2097152,"maxbr":6999000,"bitrate":6999}), None),
+            (json!({"flag":16384,"maxbr":2999000}), None),
+            (
+                json!({"pl":999000,"maxBrLevel":"lossless","mark":65536}),
+                None,
+            ),
+        ] {
+            assert_eq!(display_quality(&raw), expected, "{raw}");
         }
     }
 }

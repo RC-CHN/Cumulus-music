@@ -938,6 +938,7 @@ onBeforeUnmount(() => {
                 :replacement-mv="item.replacementMv"
                 :vip-badge="item.vipBadge"
                 :limited-free="item.limitedFree"
+                :quality-badge="item.qualityBadge"
                 :hint="item.hint"
                 :explicit="item.explicit"
                 :original-recording="item.originalRecording"

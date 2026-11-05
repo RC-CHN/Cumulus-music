@@ -240,12 +240,35 @@ fn song(v: &Value) -> Fields {
     if let Some(privilege) = v.get("privilege") {
         let projection = privilege.as_object().map(|_| {
             let mut fields = fields(privilege, &["st"], &[]);
+            for key in ["flag", "maxbr", "fee"] {
+                let value = &privilege[key];
+                if value.is_number() || value.as_str().is_some_and(|raw| raw.len() <= 64) {
+                    fields.insert(key.into(), value.clone());
+                }
+            }
             fields.insert(
                 "toast".into(),
                 json!(crate::protocol::wire::serialization::js_truthy(
                     &privilege["toast"]
                 )),
             );
+            if let Some(trial) = privilege["freeTrialPrivilege"].as_object() {
+                use crate::protocol::wire::serialization::js_truthy;
+                let mut bounded = json!({
+                    "userConsumable":js_truthy(&privilege["freeTrialPrivilege"]["userConsumable"]),
+                    "resConsumable":js_truthy(&privilege["freeTrialPrivilege"]["resConsumable"]),
+                });
+                if let Some(kind) = trial.get("freeLimitTagType").filter(|kind| {
+                    kind.is_null()
+                        || matches!(
+                            kind.as_str(),
+                            Some("VIP_AND_FREE_TAG" | "FREE_TAG" | "NO_TAG")
+                        )
+                }) {
+                    bounded["freeLimitTagType"] = kind.clone();
+                }
+                fields.insert("freeTrialPrivilege".into(), bounded);
+            }
             fields
         });
         out.insert(
@@ -711,6 +734,40 @@ mod tests {
             query.channel = Some(channel);
             request(&Wire(200, wire), &query).await.unwrap();
         }
+    }
+
+    #[test]
+    fn v3_preserves_mark_and_only_bounded_display_fields_in_replaced_song_privilege() {
+        let raw = json!({"blocks":[{"blockCode":"search_block_song","resources":[
+            {"mark":3,"baseInfo":{"simpleSongData":{"id":71,"mark":1048576,"privilege":{
+                "st":0,"flag":4096,"maxbr":"320001","fee":0,"pl":999000,"cookie":"PRIVATE",
+                "freeTrialPrivilege":{"userConsumable":1,"resConsumable":true,
+                    "freeLimitTagType":null,"url":"https://private.invalid/"}
+            }}}},
+            {"baseInfo":{"simpleSongData":{"id":72,"mark":1048576,"privilege":{"flag":65536}}},
+                "extInfo":{"mark":0,"privilege":{"maxbr":1998001,"url":"https://private.invalid/"}}},
+            {"baseInfo":{"simpleSongData":{"id":73,"privilege":{"flag":"655\u{0}36","maxbr":[999000]}}}}
+        ]}]});
+        let projected = normalize(&raw).unwrap();
+        let rows = &projected["data"]["blocks"][0]["resources"];
+        assert_eq!(rows[0]["baseInfo"]["mark"], 1048576);
+        assert_eq!(
+            rows[0]["baseInfo"]["privilege"],
+            json!({
+                "st":0,"flag":4096,"maxbr":"320001","fee":0,"toast":false,
+                "freeTrialPrivilege":{"userConsumable":true,"resConsumable":true,"freeLimitTagType":null}
+            })
+        );
+        assert_eq!(rows[1]["baseInfo"]["mark"], 0);
+        assert_eq!(
+            rows[1]["baseInfo"]["privilege"],
+            json!({"maxbr":1998001,"toast":false})
+        );
+        assert_eq!(
+            rows[2]["baseInfo"]["privilege"],
+            json!({"flag":"655\u{0}36","toast":false})
+        );
+        assert!(!projected.to_string().contains("private.invalid"));
     }
 
     #[tokio::test]

@@ -657,6 +657,7 @@ test('verified rights refresh patches the first six ordinary cards without chang
       local: false,
     },
     excerpt: [],
+    qualityBadge: 'sq' as const,
   });
   const page = view(query);
   page.value.privilegeReceipt = 'observed-receipt';
@@ -711,6 +712,16 @@ test('verified rights refresh patches the first six ordinary cards without chang
           replacementMv: false,
           vipBadge: false,
           limitedFree: true,
+          qualityBadge: 'hires',
+        },
+        {
+          id: '2',
+          coverUrl: null,
+          mvId: null,
+          replacementMv: false,
+          vipBadge: true,
+          limitedFree: false,
+          qualityBadge: null,
         },
       ],
     },
@@ -730,6 +741,9 @@ test('verified rights refresh patches the first six ordinary cards without chang
   assert.equal(best, page.value.sections[0]);
   assert.equal(section.items[0].kind === 'song' && section.items[0].mvId, '601');
   assert.equal(section.items[0].kind === 'song' && section.items[0].limitedFree, true);
+  assert.equal(section.items[0].kind === 'song' && section.items[0].qualityBadge, 'hires');
+  assert.equal(section.items[1].kind === 'song' && section.items[1].qualityBadge, undefined);
+  assert.equal(section.items[2].kind === 'song' && section.items[2].qualityBadge, 'sq');
   assert.equal(section.items[6], page.value.sections[1].items[6]);
   assert.deepEqual(
     comprehensivePlayAllTracks(section).map((row) => row.id),

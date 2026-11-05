@@ -202,6 +202,7 @@ export function useSearchResults(
               replacementMv: row.replacementMv,
               vipBadge: row.vipBadge,
               limitedFree: row.limitedFree,
+              qualityBadge: row.qualityBadge ?? undefined,
             };
           }),
         };

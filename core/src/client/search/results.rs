@@ -23,6 +23,12 @@ pub enum SearchItem {
         mv_id: Option<String>,
         #[serde(rename = "replacementMv", skip_serializing_if = "std::ops::Not::not")]
         replacement_mv: bool,
+        #[serde(rename = "vipBadge", skip_serializing_if = "Option::is_none")]
+        vip_badge: Option<bool>,
+        #[serde(rename = "limitedFree", skip_serializing_if = "std::ops::Not::not")]
+        limited_free: bool,
+        #[serde(rename = "qualityBadge", skip_serializing_if = "Option::is_none")]
+        quality_badge: Option<SearchQualityBadge>,
         #[serde(skip_serializing_if = "Option::is_none")]
         hint: Option<TrackHint>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
@@ -71,6 +77,17 @@ pub enum SearchItem {
         keyword: String,
     },
 }
+/// Catalog presentation only. A card badge is not an authorized media level.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SearchQualityBadge {
+    JyMaster,
+    Sky,
+    JyEffect,
+    HiRes,
+    Sq,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodcastSearchTable {
@@ -636,6 +653,9 @@ fn item(
                 queue_drop_receipt: None,
                 mv_id,
                 replacement_mv: is_replacement,
+                vip_badge: None,
+                limited_free: false,
+                quality_badge: None,
                 hint,
                 reasons,
                 explicit: comprehensive.is_some() && explicit_song(v),
@@ -857,7 +877,22 @@ fn project(
                     Some(resource),
                     allow_replacement_mv,
                 ) {
-                    Ok(Some(item)) => {
+                    Ok(Some(mut item)) => {
+                        if code == "search_block_song"
+                            && base["privilege"].is_object()
+                            && let SearchItem::Song {
+                                vip_badge,
+                                limited_free,
+                                quality_badge,
+                                ..
+                            } = &mut item
+                        {
+                            let (vip, free, quality) =
+                                super::privilege::card_badges(&base["privilege"]);
+                            *vip_badge = Some(vip);
+                            *limited_free = free;
+                            *quality_badge = quality;
+                        }
                         if let (Some(preview), SearchItem::Song { track, .. }) =
                             (&mut preview, &item)
                             && preview.rows.len() < super::privilege::ROW_LIMIT

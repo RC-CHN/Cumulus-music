@@ -2,8 +2,11 @@ use super::*;
 
 fn comprehensive() -> Value {
     let track = |id| {
-        json!({"type":"song","baseInfo":{"id":id,"name":"合成歌曲",
-        "mv":600+id,"privilege":{"st":-200},"cookie":"PRIVATE_SEARCH"}})
+        json!({"type":"song","baseInfo":{"id":id,"name":"合成歌曲","fee":1,
+        "mv":600+id,"privilege":if id == 4 {json!({"st":-200,"maxbr":999000,"fee":1,
+            "freeTrialPrivilege":{"userConsumable":true,"resConsumable":true,"freeLimitTagType":"FREE_TAG"}})}
+            else {json!({"st":-200,"flag":4096,"fee":if id == 2 {1} else {0}})},
+        "cookie":"PRIVATE_SEARCH"}})
     };
     json!({"code":200,"data":{"blocks":[
         {"blockCode":"search_block_best_match","resources":[track(90)]},
@@ -24,7 +27,10 @@ fn privilege() -> Value {
         {"id":"2","st":"0","fee":"32","freeTrialPrivilege":{
             "userConsumable":true,"resConsumable":true,"freeLimitTagType":"VIP_AND_FREE_TAG"
         },"cookie":"PRIVATE_REPLY"},
-        {"id":1,"st":-200,"fee":16}
+        {"id":1,"st":-200,"fee":16,"flag":65536},
+        {"id":3,"st":0,"flag":262144},
+        {"id":4,"st":0,"pl":999000,"maxbr":320000},
+        {"id":7,"st":0,"flag":131072}
     ]})
 }
 
@@ -42,6 +48,15 @@ async fn comprehensive_observation_and_request_use_only_the_native_six_song_rows
     let view = serde_json::to_value(current.sections).unwrap();
     assert_eq!(view[1]["items"].as_array().unwrap().len(), 7);
     assert!(view[1]["items"][1].get("mvId").is_none());
+    assert_eq!(view[1]["items"][0]["qualityBadge"], "hires");
+    assert_eq!(view[1]["items"][0]["vipBadge"], false);
+    assert!(view[1]["items"][1].get("qualityBadge").is_none());
+    assert_eq!(view[1]["items"][1]["vipBadge"], true);
+    assert_eq!(view[1]["items"][3]["qualityBadge"], "sq");
+    assert_eq!(view[1]["items"][3]["limitedFree"], true);
+    assert!(view[0]["items"][0].get("qualityBadge").is_none());
+    assert!(view[2]["items"][0].get("qualityBadge").is_none());
+    assert!(!view.to_string().contains("PRIVATE"));
 
     *api.reply.lock().unwrap() = member(1_000_000, 5, false);
     client.member_rights("1", true).await.unwrap();
@@ -83,8 +98,10 @@ async fn comprehensive_observation_and_request_use_only_the_native_six_song_rows
     assert_eq!(
         value["rows"],
         json!([
-            {"id":"1","coverUrl":null,"mvId":null,"replacementMv":false,"vipBadge":true,"limitedFree":false},
-            {"id":"2","coverUrl":null,"mvId":"602","replacementMv":false,"vipBadge":true,"limitedFree":true}
+            {"id":"1","coverUrl":null,"mvId":null,"replacementMv":false,"vipBadge":true,"limitedFree":false,"qualityBadge":null},
+            {"id":"2","coverUrl":null,"mvId":"602","replacementMv":false,"vipBadge":true,"limitedFree":true,"qualityBadge":null},
+            {"id":"3","coverUrl":null,"mvId":"603","replacementMv":false,"vipBadge":false,"limitedFree":false,"qualityBadge":"sky"},
+            {"id":"4","coverUrl":null,"mvId":"604","replacementMv":false,"vipBadge":false,"limitedFree":false,"qualityBadge":null}
         ])
     );
     assert!(!value.to_string().contains("PRIVATE"));

@@ -293,6 +293,7 @@ for (const order of ['privilege-first', 'presentation-first']) {
             replacementMv: false,
             vipBadge: false,
             limitedFree: true,
+            qualityBadge: 'sky',
           },
         ],
       },
@@ -314,6 +315,7 @@ for (const order of ['privilege-first', 'presentation-first']) {
     assert.equal(row.track.coverUrl, resolvedRights.value.rows[0].coverUrl);
     assert.equal(row.mvId, '55');
     assert.equal(row.limitedFree, true);
+    assert.equal(row.qualityBadge, 'sky');
     assert.deepEqual(section.playAllIds, resolvedRights.value.playAllIds);
     model.dispose();
   });

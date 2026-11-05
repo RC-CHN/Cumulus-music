@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../../services/contracts';
-import type { SearchTrackHint, SearchReasonTag, SearchReasonTarget } from '../../services/search';
+import type {
+  SearchQualityBadge,
+  SearchTrackHint,
+  SearchReasonTag,
+  SearchReasonTarget,
+} from '../../services/search';
 import type { TrackPendingToggle } from '../../services/trackMenu';
 import { artworkAt } from '../../services/artwork';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
@@ -14,6 +19,7 @@ const props = withDefaults(
     replacementMv?: boolean;
     vipBadge?: boolean;
     limitedFree?: boolean;
+    qualityBadge?: SearchQualityBadge;
     hint?: SearchTrackHint;
     explicit?: boolean;
     originalRecording?: boolean;
@@ -43,6 +49,13 @@ const hintText = computed(() =>
     ? props.hint.parts.map((part) => part.text).join('')
     : props.hint?.text,
 );
+const qualityLabels: Record<SearchQualityBadge, string> = {
+  jymaster: '超清母带',
+  sky: '沉浸声',
+  jyeffect: '高清臻音',
+  hires: 'Hi-Res',
+  sq: 'SQ',
+};
 const failedCover = ref(false);
 const element = ref<HTMLElement>();
 const cover = ref<HTMLButtonElement>();
@@ -115,6 +128,12 @@ watch(
       </p>
       <div class="search-track-credit">
         <span v-if="vipBadge ?? track.fee === 1" class="vip-tag">VIP</span>
+        <span
+          v-else-if="qualityBadge"
+          class="search-quality-tag"
+          :data-search-quality-badge="qualityBadge"
+          >{{ qualityLabels[qualityBadge] }}</span
+        >
         <span v-if="limitedFree" class="search-original-tag">限免</span>
         <button
           v-if="mvId"

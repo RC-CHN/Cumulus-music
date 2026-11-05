@@ -306,6 +306,9 @@ mod tests {
                         queue_drop_receipt: None,
                         mv_id: Some("9".into()),
                         replacement_mv: false,
+                        vip_badge: None,
+                        limited_free: false,
+                        quality_badge: None,
                         hint: Some(TrackHint::Alias {
                             text: format!("合成别名{id}"),
                         }),
