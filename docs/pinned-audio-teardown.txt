@@ -67,3 +67,15 @@ but this does not establish a physical speaker cutoff deadline or a
 timeout on a blocked OS read during native destruction. Windows native
 execution and output hardware remain separate checks. No optional FLAC
 engine, effect, library or release asset is enabled by this change.
+
+Linux local verification: the six retirement tests (including both opt-in
+native rejection/revocation cases) passed with libmpv 0.37.0 and 0.41.0.
+Both runtimes separately passed the actual WebView ordinary trusted FLAC,
+wrong-digest fallback and paused PEQ handoff; 48 kHz FLAC on 0.37 and WAV on
+0.41 also passed. Receipts: `.build/ui-proof/phase77-stop-flac37-r1/`,
+`phase77-stop-flac41-r1/`, `phase77-stop-flac48-37-r1/` and
+`phase77-stop-wav48-41-r1/` under the same root. The earlier runner failure
+(`fd735dd`, CI 42117438606) only proves that the old handle was destroyed
+before seek replacement. Its Stop event was not retained; local baseline
+repeats with the same 0.37.0 library and later `26ddcc7` runner passed.
+These checks verify the new contract, not a reproduced cause for that run.

@@ -157,8 +157,8 @@ offset=insertIndex-1。该动作使用已载入的专辑资源，不走专辑整
 队列版本、播放 ID 及精确落点。目录快照从当前账号的 CatalogDetails 缓存读出，
 同时校验查询、专辑身份和曲目顺序哈希；逐项核对原始序号、曲目 ID 和普通歌曲类型。
 缺失、私有云盘、声音、本地占位或其他无效行拒绝整组；快照过期明确提示刷新专辑后
-重新拖入，不自动读接口或重放。即使没有新的远端读取，也不把缓存权限当作媒体授权：
-只有后来实际播放某行时才走既有原生音源和权限流程。
+重新拖入，不自动读接口或重放。拖放动作本身不申请音源，也不把缓存权限当作媒体授权。
+队列提交后原生普通播放仍可按既有规则预取新的下一首；后续播放继续走已有授权和来源校验。
 
 原子落点沿用普通播放队列规则，重复歌曲移到该处，当前重复项保留原生 entry、playId、
 位置、暂停状态和加载来源；新条目及非当前重复项记为这次专辑来源。FM、心动、随机、
@@ -171,6 +171,10 @@ offset=insertIndex-1。该动作使用已载入的专辑资源，不走专辑整
   GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/album_queue_drop_smoke.py
     --binary <target>/debug/examples/catalog_ui_probe --frontend-dist frontend/dist
     --root <全新隔离目录> --screenshots --trusted-pointer
-探针待运行；目标是实际 GTK/WebKit、XTest 拖动和 libmpv null，检查筛选后逆序选择、
-可见插入线、暂停播放身份与时间、Escape／筛选／标签取消，以及拖动期间零目录或音频
-地址读取。XTest 拖放与合成修饰键选区分开记录，不代表物理鼠标、声卡或 Windows 实窗。
+Linux 实际 GTK/WebKit、XTest 和 libmpv 验收已通过八态和八张截图
+（`.build/ui-proof/phase78-album-drop-r2/`）。筛选后按 11、10 的选择顺序插在
+701 与 702 之间，当前播放标识与 10 秒暂停位置保持。Escape、改变筛选和切标签
+都没有新增提交。目录与歌曲详情的请求轨迹完全相同；列表循环的既有预取只为新下一首
+11 多一次 `standard/aac/c51/trialMode=-1` 请求，未为 10 或当前项重复请求。
+Rust 用例另在单曲循环下隔离预取，验证这次拖放本身零请求、旧账号/快照及坏行原子拒绝。
+XTest 拖放与合成修饰键选区分开记录，不代表物理鼠标、声卡或 Windows 实窗。

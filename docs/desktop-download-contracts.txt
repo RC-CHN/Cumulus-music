@@ -142,6 +142,12 @@ Linux 真实 WebKitGTK 复验：`.build/ui-proof/phase70-download-quality-r4/aud
 让一项名称下移 3px 的对照仍失败。没有改布局、放宽名称对齐或减少授权/发布断言。
 三组独立记录见 `.build/ui-proof/phase73-held-48k/ci-26ddcc78/download-quality-diagnosis/`。
 
+独立的下载目录弹窗键盘探针曾在 Windows `fd735dd` 试图聚焦禁用的音质单选项，浏览器
+保留了上一个焦点，导致旧断言报遮挡。Linux 实际 WebView 复现相同情况。修正只检查
+启用控件、真实 activeElement 和可见位置，不主动替浏览器滚动。修正后的 20 态实拍
+通过；故意遮挡一个启用选项仍失败。未修改下载弹窗或会员条件，也未把 Linux 复验算作
+Windows。证据见 `.build/ui-proof/phase72-product/ci-fd735dd9/download-layout-diagnosis/`。
+
 复现
 先 npm --prefix frontend run build，再
   cargo build -p cumulus-desktop --example ui_probe --bin cumulus --features custom-protocol --offline
