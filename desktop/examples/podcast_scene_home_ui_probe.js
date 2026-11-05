@@ -47,7 +47,7 @@
       layout: one('.podcast-top')?.dataset.layout, hasCard: !!card(),
       hasStandalone: !!one('.main-content .scene-fm-page') && !card(),
       scenes: [...(card()?.querySelectorAll('[data-scene-id]') ?? [])].map((n) => n.dataset.sceneId),
-      checked: preference()?.checked,
+      checked: preference()?.checked, lyricsOpen: !!one('.lyrics-panel:not(.lyrics-panel-leave-active)'),
       state: { state: state.state, voice: state.track?.voiceId, song: state.track?.id,
         playId: state.playId, position: state.position, mode: state.timeline?.mode },
       queue: { revision: rows.revision, current: rows.current,
@@ -153,6 +153,18 @@
           remount.rows.revision === paused.rows.revision && remount.rows.current === paused.rows.current &&
           Math.abs(remount.state.position - paused.state.position) < .10,
           'autoplay stays consumed for the same window/account; native clock and queue stay paused');
+        await click(() => one('[data-scene-fm-title]', card()), 'open the current voice from its inline title');
+        await wait(async () => {
+          const state = await player();
+          return visible(one('.lyrics-panel:not(.lyrics-panel-leave-active)')) && state.state === 'playing' &&
+            state.playId === remount.state.playId && state.track?.voiceId === '601' &&
+            state.position > remount.state.position + .1;
+        }, 'title resumes the same paused decoder and opens the actual playback detail');
+        const opened = await capture('title_resumes_detail');
+        assert(opened.state.playId === remount.state.playId &&
+          opened.rows.revision === remount.rows.revision && opened.rows.current === remount.rows.current &&
+          opened.state.position >= remount.state.position,
+          'title navigation keeps the loaded voice and queue identity');
       }
     }
     await emit('complete', { ok: true, case: kind, stageCount });

@@ -14,7 +14,7 @@ MEDIA = '/api/song/enhance/player/url/v1'
 DETAIL = '/api/dj/program/detail'
 RESUME = '/api/dj/user/setting/resumeplay/get'
 STAGES = {
-    'automatic': ('settings', 'first_automatic', 'paused', 'remount_no_replay'),
+    'automatic': ('settings', 'first_automatic', 'paused', 'remount_no_replay', 'title_resumes_detail'),
     'manual': ('settings', 'classic_opted_out', 'manual_play'),
     'updated': ('settings', 'updated_no_scene'),
     'retry': ('settings', 'directory_error', 'retry_automatic'),
@@ -109,6 +109,11 @@ def run(case, root, binary, dist, screenshots):
         assert paused['state']['playId'] == returned['state']['playId'] == stages['first_automatic']['state']['playId']
         assert paused['queue'] == returned['queue'] == stages['first_automatic']['queue']
         assert abs(paused['state']['position'] - returned['state']['position']) < .1
+        opened = stages['title_resumes_detail']
+        assert opened['lyricsOpen'] and opened['state']['state'] == 'playing'
+        assert opened['state']['playId'] == returned['state']['playId']
+        assert opened['queue'] == returned['queue']
+        assert opened['state']['position'] > returned['state']['position']
     locale = read(output / 'locale.json')
     assert locale['numeric'] == 'C' and all(locale[k].casefold().replace('-', '') == 'en_us.utf8'
                                             for k in ('messages', 'characters')), locale

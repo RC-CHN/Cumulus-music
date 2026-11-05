@@ -87,6 +87,9 @@ impl SceneHome {
             "/api/dj/user/setting/resumeplay/get" => {
                 json!({"code":200,"data":{"resumePlayValue":0}})
             }
+            "/api/song/lyric/v1" => {
+                json!({"code":200,"lrc":{"lyric":""},"nolyric":true})
+            }
             "/api/search/default/keyword/get" => json!({"code":200,"data":{
                 "refreshTime":60000,"keywords":[{"realkeyword":"合成关键词","showKeyword":"发现合成声音"}]
             }}),
