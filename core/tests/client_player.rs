@@ -70,6 +70,20 @@ impl Api for Backend {
             }))
         })
     }
+    fn request_vinyl_comment_page<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::VinylCommentRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.verified_pc_experiment_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            let (path, args) = read.into_request();
+            self.request(&path, args, false).await
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());

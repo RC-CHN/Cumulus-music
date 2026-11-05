@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     Result,
     account::{AccountSession, SessionToken},
+    protocol::api::Api,
     storage::StateStore,
 };
 use sha2::{Digest, Sha256};
@@ -37,12 +38,43 @@ impl Comments {
         resource: &CommentResource,
         query: &CommentQuery,
     ) -> Result<CommentPage> {
+        self.read_page_for(token, resource, query, None).await
+    }
+
+    pub(crate) async fn vinyl_page_for(
+        &self,
+        token: &SessionToken,
+        resource: &CommentResource,
+        query: &CommentQuery,
+        api: &Arc<dyn Api>,
+        credential_revision: &str,
+    ) -> Result<CommentPage> {
+        self.read_page_for(token, resource, query, Some((api, credential_revision)))
+            .await
+    }
+
+    async fn read_page_for(
+        &self,
+        token: &SessionToken,
+        resource: &CommentResource,
+        query: &CommentQuery,
+        vinyl: Option<(&Arc<dyn Api>, &str)>,
+    ) -> Result<CommentPage> {
         let key = Self::page_key(resource, query)?;
         let revision = self.revision(token, resource)?;
         let page = self
             .session
             .run_for(token, |api, _| async move {
-                CommentApi::new(api).page(resource, query).await
+                if let Some((expected_api, credential_revision)) = vinyl {
+                    if !Arc::ptr_eq(expected_api, &api) {
+                        return Err(crate::Error::StaleResponse);
+                    }
+                    CommentApi::new(api)
+                        .vinyl_page(resource, query, credential_revision)
+                        .await
+                } else {
+                    CommentApi::new(api).page(resource, query).await
+                }
             })
             .await?;
         self.cache_page(

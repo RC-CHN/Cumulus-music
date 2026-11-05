@@ -82,6 +82,25 @@ async fn embedded_vinyl_comments_reject_reply_after_new_play_or_credential_revis
         }
         api.vinyl_comment_release.notify_one();
         assert!(matches!(delayed.await.unwrap(), Err(Error::StaleResponse)));
+        if !swap_track {
+            use cumulus_core::comments::{CommentQuery, CommentResource, ResourceKind};
+            assert!(
+                client
+                    .comments_page(
+                        "1",
+                        CommentResource {
+                            kind: ResourceKind::Track,
+                            id: "1".into(),
+                            owner: None
+                        },
+                        CommentQuery::default(),
+                        false,
+                    )
+                    .await
+                    .is_err(),
+                "a stale cohort response cannot seed ordinary comment cache"
+            );
+        }
         api.vinyl_comment_group.store(1, Ordering::SeqCst);
     }
     assert!(matches!(

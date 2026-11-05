@@ -1,7 +1,7 @@
 use super::{model, *};
 use crate::{
     Error, Result,
-    protocol::api::{Api, identifier},
+    protocol::api::{Api, VinylCommentRead, identifier, validate_response},
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -30,6 +30,34 @@ impl CommentApi {
             if hot { "hotcomments" } else { "comments" }
         );
         let value = self.api.call(&path, params, false, &[200]).await?;
+        Self::project(&value, query)
+    }
+    pub(super) async fn vinyl_page(
+        &self,
+        resource: &CommentResource,
+        query: &CommentQuery,
+        revision: &str,
+    ) -> Result<CommentPage> {
+        if resource.kind != ResourceKind::Track
+            || resource.owner.is_some()
+            || *query != vinyl_query(query.offset)
+        {
+            return Err(Error::InvalidInput("invalid vinyl comment scope"));
+        }
+        let read = VinylCommentRead::new(&resource.id, query.offset)?;
+        let response = self.api.request_vinyl_comment_page(read, revision).await;
+        // A stale response (including a session rejection) cannot update
+        // this account or populate either comment surface's cache.
+        if !matches!(self.api.verified_pc_experiment_revision(), Ok(Some(current)) if current == revision)
+        {
+            return Err(Error::CredentialChanged);
+        }
+        let path = format!("/api/v1/resource/comments/{}", resource.thread()?);
+        let value = validate_response(&path, response?, &[200])?;
+        Self::project(&value, query)
+    }
+    fn project(value: &Value, query: &CommentQuery) -> Result<CommentPage> {
+        let hot = query.sort == CommentSort::Hot;
         let mut comments = model::rows(&value[if hot { "hotComments" } else { "comments" }], true)?;
         if comments.len() > query.limit {
             return Err(Error::Response("comment page exceeds request limit"));

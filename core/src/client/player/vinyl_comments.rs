@@ -4,10 +4,10 @@ use super::{MusicClient, PlaybackCommand, PlayerResourceKind, identity};
 use crate::{
     Error, Result,
     client::{
-        comments::{CommentQuery, CommentResource, CommentView},
+        comments::{CommentResource, CommentView, comment},
         dto::AccountData,
     },
-    comments::ResourceKind,
+    comments::{Comments, ResourceKind, vinyl_query},
     playback::controller::PlaybackSnapshot,
     protocol::api::identifier,
 };
@@ -65,10 +65,7 @@ impl MusicClient {
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
         let resource = song(&snapshot, play_id)?;
-        let query = CommentQuery {
-            offset,
-            ..Default::default()
-        };
+        let query = vinyl_query(offset);
         query.validate()?;
         let (revision, groups) = self.verified_pc_experiment_groups_for(&token, &api).await?;
         if groups.group(EXPERIMENT) != Some("t1") {
@@ -84,9 +81,13 @@ impl MusicClient {
         }
         // M438 defaults beforeTime to zero on every append. The independent
         // comments page's cursor carries time and must not drive this lane.
-        let page = self
-            .comments_page(epoch, resource.clone(), query, true)
-            .await?;
+        let page = Comments::new(self.session.clone())?
+            .vinyl_page_for(&token, &resource, &query, &api, &revision)
+            .await
+            .map_err(|error| match error {
+                Error::CredentialChanged => Error::StaleResponse,
+                other => other,
+            })?;
         let after = controller
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
@@ -96,20 +97,29 @@ impl MusicClient {
         {
             return Err(Error::StaleResponse);
         }
-        let page = page.value;
         let next_offset = page.more.then_some(offset + page.comments.len());
-        Ok(AccountData {
-            epoch: epoch.into(),
-            value: VinylCommentPageView {
-                latest: page.comments,
-                hot: if offset == 0 {
-                    page.hot_comments.into_iter().take(5).collect()
-                } else {
-                    Vec::new()
+        self.session.with_token(&token, |uid| {
+            Ok(AccountData {
+                epoch: epoch.into(),
+                value: VinylCommentPageView {
+                    latest: page
+                        .comments
+                        .into_iter()
+                        .map(|item| comment(item, uid))
+                        .collect(),
+                    hot: if offset == 0 {
+                        page.hot_comments
+                            .into_iter()
+                            .take(5)
+                            .map(|item| comment(item, uid))
+                            .collect()
+                    } else {
+                        Vec::new()
+                    },
+                    more_hot: offset == 0 && page.more_hot,
+                    next_offset,
                 },
-                more_hot: offset == 0 && page.more_hot,
-                next_offset,
-            },
+            })
         })
     }
 }

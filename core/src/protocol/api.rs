@@ -7,6 +7,42 @@ use std::{future::Future, pin::Pin};
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
 
+/// Fixed logical read from M/182 -> M/438 for the standard vinyl panel.
+/// Constructed from native current-track identity, never deserialized from IPC.
+#[derive(Clone)]
+pub struct VinylCommentRead {
+    song_id: String,
+    offset: usize,
+}
+
+impl VinylCommentRead {
+    pub const LIMIT: usize = 60;
+
+    pub fn new(song_id: &str, offset: usize) -> Result<Self> {
+        if song_id.is_empty()
+            || song_id.len() > 32
+            || song_id.starts_with('0')
+            || !song_id.bytes().all(|digit| digit.is_ascii_digit())
+            || offset > 1_000_000
+        {
+            return Err(Error::InvalidInput("invalid vinyl comment page"));
+        }
+        Ok(Self {
+            song_id: song_id.into(),
+            offset,
+        })
+    }
+
+    pub fn into_request(self) -> (String, Value) {
+        (
+            format!("/api/v1/resource/comments/R_SO_4_{}", self.song_id),
+            json!({"limit":Self::LIMIT,"offset":self.offset,"beforeTime":0,"commentId":"0",
+                "compareUserLocation":false,"composeConcert":false,"markReplied":false,
+                "forceFlatComment":false,"showInner":false}),
+        )
+    }
+}
+
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
@@ -40,6 +76,16 @@ pub trait Api: Send + Sync + std::any::Any {
                 "PC experiment requires a native signed transport",
             ))
         })
+    }
+
+    /// The scoped read must fence the signed cohort revision at dispatch.
+    /// Ordinary request transports cannot emulate that native authority.
+    fn request_vinyl_comment_page<'a>(
+        &'a self,
+        _read: VinylCommentRead,
+        _revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("vinyl comment dispatch authority unavailable")) })
     }
 
     /// The two official search-box long-audio charts are hidden by default.

@@ -192,6 +192,20 @@ impl Api for Library {
         })
     }
 
+    fn request_vinyl_comment_page<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::VinylCommentRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.verified_pc_experiment_revision()?.as_deref() != Some(revision) {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            let (path, args) = read.into_request();
+            self.request(&path, args, false).await
+        })
+    }
+
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
         Box::pin(async { search_fixture::audio_toplist_assignment() })
     }

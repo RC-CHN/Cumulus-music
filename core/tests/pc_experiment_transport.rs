@@ -430,3 +430,192 @@ async fn logout_cancels_held_response_without_carrying_group_to_new_epoch() {
     );
     assert_eq!(f.http.calls().len(), 2);
 }
+
+fn vinyl_http(
+    root: &std::path::Path,
+    cookies: &[&str],
+    replies: impl IntoIterator<Item = HttpResponse>,
+) -> (
+    Arc<cumulus_core::protocol::http::MusicHttpClient>,
+    Arc<ScriptHttp>,
+) {
+    use cumulus_core::protocol::http::{MusicHttpClient, RequestOptions, RoutingPolicy};
+    let credentials = Arc::new(
+        Credentials::open(
+            Arc::new(StateStore::open(root.join("profile")).unwrap()),
+            ApiOrigin::Pc,
+        )
+        .unwrap(),
+    );
+    let url = ApiOrigin::Pc.url();
+    let revision = credentials.request_credentials(&url).unwrap().revision;
+    credentials
+        .record_response(
+            &url,
+            &cookies.iter().map(ToString::to_string).collect::<Vec<_>>(),
+            None,
+            &revision,
+        )
+        .unwrap();
+    let config = PcConfig::new(
+        Arc::new(StateStore::open(root.join("config")).unwrap()),
+        Arc::new(ClosedConfig),
+    )
+    .unwrap();
+    let context = RequestContext::from_pc(config, "3.1.42.205594", Arc::new(ClosedConfig)).unwrap();
+    let http = Arc::new(ScriptHttp::new(replies));
+    let client = MusicHttpClient::with_backend(
+        credentials,
+        ClientProfile {
+            user_agent: OFFICIAL_WINDOWS_USER_AGENT.into(),
+            os_version: "Microsoft Windows 10".into(),
+            client_sign: Some("synthetic-signature".into()),
+        },
+        RequestOptions {
+            routing: RoutingPolicy::OfficialPcPlaylists,
+            ..Default::default()
+        },
+        Some(Arc::new(context)),
+        http.clone(),
+    )
+    .unwrap();
+    (Arc::new(client), http)
+}
+
+fn vinyl_t1() -> Value {
+    json!({"code":200,"data":[{"expName":"PH-PC-optimizeComment","expGroupName":"t1"}]})
+}
+
+#[tokio::test]
+async fn queued_vinyl_comment_cannot_dispatch_under_a_new_cohort_revision() {
+    use cumulus_core::protocol::api::{Api, VinylCommentRead};
+    use std::{future::poll_fn, task::Poll};
+
+    const HOLD: &str = "/api/w/nuser/account/get";
+    const COMMENT: &str = "/api/v1/resource/comments/R_SO_4_71";
+    let root = tempfile::tempdir().unwrap();
+    let (held, release) = gate();
+    let (client, http) = vinyl_http(
+        root.path(),
+        &["MUSIC_U=synthetic-old-cohort; Path=/; Secure"],
+        [
+            vinyl_t1().into(),
+            held,
+            vinyl_t1().into(),
+            json!({"code":200}).into(),
+        ],
+    );
+    let original = client.verified_pc_experiment_revision().unwrap().unwrap();
+    let groups = client
+        .verified_pc_experiment_groups(&original)
+        .await
+        .unwrap();
+    assert_eq!(groups.group("PH-PC-optimizeComment"), Some("t1"));
+    let occupying = {
+        let client = client.clone();
+        tokio::spawn(async move { client.request(HOLD, json!({}), false).await })
+    };
+    http.wait(2).await;
+    let mut queued =
+        client.request_vinyl_comment_page(VinylCommentRead::new("71", 60).unwrap(), &original);
+    // Poll exactly once with the gate known to be occupied: the initial
+    // revision check ran, but this request cannot yet snapshot/send credentials.
+    assert!(
+        poll_fn(|cx| Poll::Ready(queued.as_mut().poll(cx)))
+            .await
+            .is_pending()
+    );
+    let mut rotation = reply(json!({"code":200}));
+    rotation.set_cookies = vec!["MUSIC_U=synthetic-new-cohort; Path=/; Secure".into()];
+    assert!(release.send(Ok(rotation)).is_ok());
+    occupying.await.unwrap().unwrap();
+    assert!(matches!(queued.await, Err(Error::CredentialChanged)));
+    assert_eq!(
+        http.calls()
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [ASSIGNMENT_PATH, HOLD],
+    );
+
+    let revision = client.verified_pc_experiment_revision().unwrap().unwrap();
+    assert_ne!(revision, original);
+    assert_eq!(
+        client
+            .verified_pc_experiment_groups(&revision)
+            .await
+            .unwrap()
+            .group("PH-PC-optimizeComment"),
+        Some("t1"),
+    );
+    client
+        .request_vinyl_comment_page(VinylCommentRead::new("71", 60).unwrap(), &revision)
+        .await
+        .unwrap();
+    let calls = http.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [ASSIGNMENT_PATH, HOLD, ASSIGNMENT_PATH, COMMENT]
+    );
+    let comment = &calls[3];
+    assert!(
+        comment
+            .cookie
+            .as_deref()
+            .unwrap()
+            .contains("MUSIC_U=synthetic-new-cohort")
+    );
+    assert!(comment.login_chain.is_none());
+    let mut actual = comment.payload.clone();
+    assert!(
+        actual
+            .as_object_mut()
+            .unwrap()
+            .remove("header")
+            .unwrap()
+            .is_string()
+    );
+    assert_eq!(
+        actual,
+        json!({"limit":"60","offset":"60","beforeTime":"0","commentId":"0",
+        "compareUserLocation":"false","composeConcert":"false","markReplied":"false",
+        "forceFlatComment":"false","showInner":"false"})
+    );
+}
+
+#[tokio::test]
+async fn vinyl_comment_rejects_a_different_pc_cookie_scope_at_the_same_revision() {
+    use cumulus_core::protocol::api::{Api, VinylCommentRead};
+    let root = tempfile::tempdir().unwrap();
+    let (client, http) = vinyl_http(
+        root.path(),
+        &[
+            "MUSIC_U=synthetic-assignment; Path=/eapi/rtrs/abt/front/; Secure",
+            "MUSIC_U=synthetic-other-account; Path=/eapi/v1/resource/; Secure",
+        ],
+        [vinyl_t1().into()],
+    );
+    let revision = client.verified_pc_experiment_revision().unwrap().unwrap();
+    assert_eq!(
+        client
+            .verified_pc_experiment_groups(&revision)
+            .await
+            .unwrap()
+            .group("PH-PC-optimizeComment"),
+        Some("t1")
+    );
+    assert!(matches!(
+        client
+            .request_vinyl_comment_page(VinylCommentRead::new("71", 0).unwrap(), &revision)
+            .await,
+        Err(Error::CredentialChanged)
+    ));
+    assert_eq!(
+        client.verified_pc_experiment_revision().unwrap().as_deref(),
+        Some(revision.as_str())
+    );
+    assert_eq!(http.calls().len(), 1);
+}

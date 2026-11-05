@@ -6,7 +6,7 @@ use crate::{
     Error, Result,
     account::credentials::Credentials,
     protocol::{
-        api::{Api, ApiFuture},
+        api::{Api, ApiFuture, VinylCommentRead},
         context::RequestContext,
         wire::eapi,
     },
@@ -57,6 +57,7 @@ impl Jsk {
 #[derive(Clone, Copy)]
 enum RequestBinding<'a> {
     Login(&'a super::JskLoginContext),
+    VinylComment,
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     Switch {
         source: &'a MusicHttpClient,
@@ -379,6 +380,24 @@ impl MusicHttpClient {
         {
             return Err(Error::CredentialChanged);
         }
+        if matches!(binding, Some(RequestBinding::VinylComment)) {
+            // A single revision covers all URL scopes. The same revision
+            // alone does not prove both endpoints see the same MUSIC_U.
+            let assignment_target = super::ApiOrigin::Pc.request_url(
+                WireRoute::Eapi,
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            )?;
+            let assignment = self.credentials.request_credentials(&assignment_target)?;
+            if origin != super::ApiOrigin::Pc
+                || route != WireRoute::Eapi
+                || assignment.revision != snapshot.revision
+                || assignment.device_id != snapshot.device_id
+                || snapshot.unique_music_u().is_none()
+                || assignment.unique_music_u() != snapshot.unique_music_u()
+            {
+                return Err(Error::CredentialChanged);
+            }
+        }
         // M402 sends same-origin request credentials. An active switch borrows
         // the source's scoped wire snapshot, never its mutable credential sink.
         let (wire, source_snapshot) =
@@ -665,6 +684,28 @@ impl Api for MusicHttpClient {
     ) -> crate::protocol::api::ApiFuture<'a, crate::protocol::pc_experiments::PcExperimentGroups>
     {
         Box::pin(async move { self.pc_experiment_groups(revision).await })
+    }
+
+    fn request_vinyl_comment_page<'a>(
+        &'a self,
+        read: VinylCommentRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.pc_experiment_revision()? != revision {
+                return Err(Error::CredentialChanged);
+            }
+            let (path, payload) = read.into_request();
+            self.execute(
+                &path,
+                payload,
+                false,
+                Some(revision),
+                Jsk::None,
+                Some(RequestBinding::VinylComment),
+            )
+            .await
+        })
     }
 
     fn search_audio_toplist_assignment(&self) -> crate::protocol::api::ApiFuture<'_, bool> {
