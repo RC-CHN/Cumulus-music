@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sys
 from desktop_lyrics_driver import launch
 
 
@@ -59,6 +60,11 @@ def main():
                        and stage['lyricRequests'] == 0 for stage in stages)
             if args.native_sidecar:
                 assert stages[0]['unindexed'] and complete['unindexed']
+                if sys.platform.startswith('linux'):
+                    for stage in [*stages, complete]:
+                        locale = stage['locale']
+                        assert locale['numeric'] == 'C'
+                        assert locale['messages'] == locale['originalMessages'] not in ('C', 'POSIX')
             assert stages[0]['playId'] == stages[1]['playId']
             assert all(stage['nativePlayer']['state'] == 'paused' and
                        stage['nativePlayer']['playId'] == stage['playId'] for stage in stages)

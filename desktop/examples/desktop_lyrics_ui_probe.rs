@@ -70,6 +70,19 @@ impl tauri::Assets<tauri::Wry> for FaultAssets {
         Box::new(std::iter::empty())
     }
 }
+#[cfg(target_os = "linux")]
+fn locale_name(category: libc::c_int) -> String {
+    // SAFETY: the host's startup locale change has finished by the time
+    // this also runs in a proof callback. Copy the C-owned value immediately.
+    unsafe {
+        let value = libc::setlocale(category, std::ptr::null());
+        assert!(!value.is_null());
+        std::ffi::CStr::from_ptr(value)
+            .to_string_lossy()
+            .into_owned()
+    }
+}
+
 fn main() {
     // SAFETY: before creating any runtime threads or GTK widgets.
     unsafe { cumulus_desktop::prepare_graphics() };
@@ -78,6 +91,16 @@ fn main() {
     let reopened = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let embedded = std::env::var_os("CUMULUS_EMBEDDED_LYRIC_PROOF").is_some();
     let native_sidecar = std::env::var_os("CUMULUS_NATIVE_SIDECAR_LYRIC_PROOF").is_some();
+    #[cfg(target_os = "linux")]
+    let original_messages = native_sidecar.then(|| {
+        // SAFETY: no GTK, runtime or worker has started in this process.
+        assert!(!unsafe { libc::setlocale(libc::LC_ALL, c"".as_ptr()) }.is_null());
+        assert!(!matches!(
+            locale_name(libc::LC_NUMERIC).as_str(),
+            "C" | "POSIX"
+        ));
+        locale_name(libc::LC_MESSAGES)
+    });
     assert!(!(embedded && native_sidecar), "select one local lyric case");
     assert!(
         !(reopened && (embedded || native_sidecar)),
@@ -256,6 +279,12 @@ fn main() {
                     value["lyricWindows"]=json!(handle.webview_windows().keys().filter(|l|l.starts_with("desktop-lyrics-")).collect::<Vec<_>>());
                     value["lyricRequests"]=json!(api.lyrics.load(Ordering::Acquire));
                     value["pendingLyrics"]=json!(api.pending.load(Ordering::Acquire));
+                    #[cfg(target_os="linux")]
+                    if let Some(original)=&original_messages {
+                        let numeric=locale_name(libc::LC_NUMERIC);
+                        let messages=locale_name(libc::LC_MESSAGES);
+                        value["locale"]=json!({"numeric":numeric,"messages":messages,"originalMessages":original});
+                    }
                     tauri::async_runtime::spawn(async move {
                         let client=handle.state::<MusicClient>();
                         let epoch=client.account().unwrap().epoch;
