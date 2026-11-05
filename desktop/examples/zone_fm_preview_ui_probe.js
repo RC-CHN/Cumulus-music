@@ -23,6 +23,11 @@
   const button = (title) => one(`.vertical-zone button[aria-label="${title}"]`);
   const picture = (title) => button(title)?.querySelector('img')?.getAttribute('src');
   const cdn = (name) => `https://p1.music.126.net/synthetic-zone-${name}.png?param=320y320`;
+  let blockedArtwork = 0;
+  document.addEventListener('securitypolicyviolation', (event) => {
+    if (event.effectiveDirective === 'img-src' && event.blockedURI.startsWith('https://p1.music.126.net'))
+      blockedArtwork++;
+  });
   async function capture(stage, data) {
     await wait(() => {
       const page = one('.page-view');
@@ -54,12 +59,13 @@
       picture('另一首曲封面') === cdn('album-92') &&
       picture('最后一组首曲') === cdn('album-93'), 'bounded passive previews and shared rule artwork');
     assert(picture('保留旧封面') === cdn('card-12'), 'unsafe album cover keeps the existing card cover');
+    await wait(() => blockedArtwork > 0, 'fixture CSP blocks synthetic CDN requests');
     const idle = await player();
     assert(idle.state === 'idle' && idle.fm === false && idle.playId === before.playId &&
       idle.origin === before.origin && !idle.track, 'passive preview left transport untouched');
     await capture('ux_02_passive_art', {
       album: picture('合成漫游首曲'), duplicate: picture('同规则漫游'),
-      fallback: picture('保留旧封面'), playId: idle.playId,
+      fallback: picture('保留旧封面'), playId: idle.playId, blockedArtwork,
     });
     await wait(() => button('播放合成漫游首曲') && !button('播放合成漫游首曲').disabled, 'explicit play control');
     click(button('播放合成漫游首曲'), 'explicit play from zone');

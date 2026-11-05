@@ -44,6 +44,7 @@ def verify(output, screenshots, windows):
     assert 2 <= preview["zoneFmPreview"]["peak"] <= 3 and preview["zoneFmPreview"]["active"] == 0
     assert preview["album"] == preview["duplicate"] == "https://p1.music.126.net/synthetic-zone-album-81.png?param=320y320"
     assert preview["fallback"] == "https://p1.music.126.net/synthetic-zone-card-12.png?param=320y320"
+    assert preview["blockedArtwork"] > 0
     after = complete["zoneFmPreview"]["calls"]
     assert after[:len(calls)] == calls
     assert {call["path"] for call in after[len(calls):]} <= EXPLICIT_READS | {URL}, after
@@ -104,7 +105,8 @@ def main():
     assert not failed.exists(), failed.read_text(encoding="utf-8") if failed.exists() else ""
     assert code == 0, (code, root)
     report = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, windowsMediaRuntime=media,
-                  coverDomVerified=True, coverImageBytesVerified=False, realMusicRequests=0, realAccountWrites=0,
+                  coverDomVerified=True, coverImageBytesVerified=False, syntheticCdnBlocked=True,
+                  realMusicRequests=0, realAccountWrites=0,
                   **verify(output, args.screenshots, windows))
     (root / "audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report))

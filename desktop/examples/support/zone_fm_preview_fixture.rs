@@ -29,6 +29,25 @@ pub fn enabled() -> bool {
     std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("fm-preview")
 }
 
+/// The DOM still exposes the exact projected source. The probe document
+/// prohibits requesting those synthetic URLs even on a connected runner.
+pub fn restrict_artwork(context: &mut tauri::Context<tauri::Wry>) {
+    use tauri::utils::config::{Csp, CspDirectiveSources};
+    let security = &mut context.config_mut().app.security;
+    let mut directives = std::collections::HashMap::from(
+        security
+            .csp
+            .take()
+            .expect("desktop CSP for isolated FM cover proof"),
+    );
+    directives.insert(
+        "img-src".into(),
+        CspDirectiveSources::Inline("'self' asset: http://asset.localhost data:".into()),
+    );
+    security.csp = Some(Csp::from(directives));
+    security.dev_csp = security.csp.clone();
+}
+
 pub fn report() -> Value {
     json!({"calls":*CALLS.lock().unwrap(),"active":ACTIVE.load(Ordering::Acquire),
         "peak":PEAK.load(Ordering::Acquire)})

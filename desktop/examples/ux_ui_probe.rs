@@ -696,6 +696,9 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
     let mut context = assets::context();
+    if zone_fm_preview_fixture::enabled() {
+        zone_fm_preview_fixture::restrict_artwork(&mut context);
+    }
     let window_config = context.config().app.windows[0].clone();
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
