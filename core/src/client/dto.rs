@@ -34,6 +34,7 @@ pub use super::mv::{
     MvView, VideoAction, VideoView,
 };
 pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
+pub use super::pc_experiments::PcPresentationView;
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
@@ -91,8 +92,8 @@ pub use super::scene_fm::{
 };
 pub use super::search::{
     ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,
-    SearchItem, SearchPrivilegePatch, SearchReasonPage, SearchResultQuery, SearchResultView,
-    SearchSection,
+    SearchItem, SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
+    SearchPrivilegePatch, SearchReasonPage, SearchResultQuery, SearchResultView, SearchSection,
 };
 pub use super::settings::{
     AccountSettingField, AccountSettingsCommand, AccountSettingsPage, LinkedPrivacy,

@@ -31,6 +31,7 @@ pub(crate) struct SearchHost {
     pub(super) privilege_pages: super::privilege::SearchPrivilegePages,
     pub(super) default_contexts: super::default_context::DefaultContexts,
     pub(super) preview_config: Option<Arc<crate::protocol::mconfig::PcConfig>>,
+    pub(super) presentation: super::presentation::SearchPresentationPages,
     gate: tokio::sync::Mutex<()>,
     native: Mutex<Option<NativeAssignment>>,
 }

@@ -2,14 +2,14 @@
 use serde::Serialize;
 use serde_json::Value;
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum TrackHint {
     Lyric { parts: Vec<LyricPart> },
     Alias { text: String },
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct LyricPart {
     text: String,
     highlight: bool,

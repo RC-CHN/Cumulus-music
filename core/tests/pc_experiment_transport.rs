@@ -1,5 +1,7 @@
 #[path = "pc_experiment_transport/search_footer.rs"]
 mod search_footer;
+#[path = "pc_experiment_transport/search_presentation.rs"]
+mod search_presentation;
 mod support;
 #[path = "pc_experiment_transport/vinyl_wiki.rs"]
 mod vinyl_wiki;

@@ -167,6 +167,10 @@ pub struct SearchResultView {
     pub sections: Vec<SearchSection>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub privilege_receipt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation_receipt: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presentation_revision: Option<String>,
     pub total: Option<u64>,
     pub more: bool,
     pub next_offset: usize,
@@ -255,7 +259,15 @@ impl MusicClient {
                         )
                     };
                     let assignment = self.search_assignment_for(token, &api).await?;
-                    let flags = assignment.flags;
+                    let mut flags = assignment.flags;
+                    // M147 restores one global web assignment at bootstrap.
+                    // Its display snapshot also selects V1/V3 after a failed
+                    // refresh; the separate fresh cache remains authorization-only.
+                    if let Ok(snapshot) = self.pc_presentation_snapshot(token, &api) {
+                        flags.v3 = snapshot.search_v3;
+                        flags.expanded = snapshot.view.search_expanded;
+                        flags.dense = snapshot.view.search_dense;
+                    }
                     footer_revision = assignment.footer_revision;
                     let layout = flags.expanded.then_some(if flags.dense {
                         SearchPreviewLayout::CompactCarousel
@@ -364,7 +376,9 @@ impl MusicClient {
                 // from searchHot, including both hints and clickable reasons.
                 // A credential change during search cannot publish an older
                 // assignment; the ordinary search result itself remains usable.
-                if view.query.category == SearchCategory::All
+                let live_presentation = self.capture_search_presentation(token, &api, &mut view)?;
+                if !live_presentation
+                    && view.query.category == SearchCategory::All
                     && !footer_revision.as_deref().is_some_and(|revision| {
                         !self.login_pending().unwrap_or(true)
                             && api
@@ -706,6 +720,8 @@ impl SearchResultView {
             query,
             sections: vec![],
             privilege_receipt: None,
+            presentation_receipt: None,
+            presentation_revision: None,
             total: None,
             more: false,
             correction: None,

@@ -2,7 +2,11 @@ mod audio_toplist;
 mod default_context;
 pub(crate) mod experiment;
 mod lyrics;
+mod presentation;
 mod privilege;
+pub use presentation::{
+    SearchPresentationItem, SearchPresentationPatch, SearchPresentationSection,
+};
 pub use privilege::SearchPrivilegePatch;
 mod queue_drop;
 pub use queue_drop::SearchDropRow;
