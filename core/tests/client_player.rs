@@ -2085,6 +2085,71 @@ async fn single_search_result_keeps_queue_and_uses_search_trial() {
 }
 
 #[tokio::test]
+async fn search_vinyl_origin_depends_on_the_played_entry_not_the_view_or_pause_gesture() {
+    use cumulus_core::playback::controller::PlaybackStatus;
+
+    let (_dir, api, _session, client, _) = fixture();
+    *api.playlist_tracks.lock().unwrap() = Some(vec![json!({"id":1,"v":0})]);
+    let started = client
+        .play_selection(
+            "1",
+            PlaySelection::Playlist {
+                id: "7".into(),
+                start_id: Some("1".into()),
+                revision: None,
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    let playlist = json!({"kind":"playlist","id":"7"});
+    let public = serde_json::to_value(&started).unwrap();
+    assert_eq!(public["origin"], playlist);
+    assert!(public.get("searchOrigin").is_none());
+    let calls = api.calls.lock().unwrap().clone();
+    let queue = serde_json::to_value(client.player_queue("1").await.unwrap()).unwrap();
+    let row = |id: &str| PlaySelection::SearchResultTrack {
+        id: id.into(),
+        quality: Quality::Standard,
+        toggle_current: true,
+    };
+    for expected in [PlaybackStatus::Paused, PlaybackStatus::Playing] {
+        let view = client.play_selection("1", row("1")).await.unwrap();
+        assert_eq!(view.state, expected);
+        assert_eq!(view.play_id, started.play_id);
+        assert_eq!(view.entry_id, started.entry_id);
+        assert_eq!(view.queue_revision, started.queue_revision);
+        let public = serde_json::to_value(&view).unwrap();
+        assert_eq!(public["origin"], playlist);
+        assert!(public.get("searchOrigin").is_none());
+    }
+    assert_eq!(*api.calls.lock().unwrap(), calls);
+    assert_eq!(
+        serde_json::to_value(client.player_queue("1").await.unwrap()).unwrap(),
+        queue
+    );
+
+    let played = client.play_selection("1", row("2")).await.unwrap();
+    assert_eq!(played.state, PlaybackStatus::Playing);
+    assert_eq!(played.track.as_ref().unwrap().id, "2");
+    assert_ne!(played.play_id, started.play_id);
+    assert_eq!(*api.trial.lock().unwrap(), Some(json!(42)));
+    let paused = client.play_selection("1", row("2")).await.unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.play_id, played.play_id);
+    assert_eq!(paused.entry_id, played.entry_id);
+    assert_eq!(paused.queue_revision, played.queue_revision);
+    for view in [played, paused, client.player_snapshot("1").await.unwrap()] {
+        let public = serde_json::to_value(&view).unwrap();
+        assert_eq!(public["searchOrigin"], true);
+        assert!(public["origin"].is_null());
+        for key in ["source", "scene", "href", "keyword", "url", "authorization"] {
+            assert!(public.get(key).is_none(), "public player leaked {key}");
+        }
+    }
+}
+
+#[tokio::test]
 async fn search_result_actions_keep_selected_index_and_use_the_recovered_trial_context() {
     let (dir, api, _session, client, _) = fixture();
     let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
@@ -2116,6 +2181,7 @@ async fn search_result_actions_keep_selected_index_and_use_the_recovered_trial_c
             )
             .await
             .unwrap();
+        assert!(state.search_origin);
         assert_eq!(state.track.unwrap().id, ids[1]);
         assert_eq!(state.queue_len, 2);
         assert_eq!(*api.trial.lock().unwrap(), Some(json!(trial)));

@@ -1,4 +1,4 @@
-use super::{PlayerOrigin, RecommendationOrigin};
+use super::{PlayerOrigin, PlayerResourceKind, RecommendationOrigin, identity};
 use crate::protocol::api::identifier;
 use serde_json::Value;
 
@@ -14,6 +14,14 @@ pub(super) fn project(source: &Value) -> Option<PlayerOrigin> {
         },
         _ => return None,
     })
+}
+
+/// Only the native selected catalog entry can supply the search label.
+/// Do not project the original query, context, or a fabricated destination.
+pub(super) fn search(entry: &crate::playback::QueueEntry) -> bool {
+    identity::kind(&entry.resource) == PlayerResourceKind::Catalog
+        && entry.source["kind"] == "songs"
+        && entry.source["scene"] == "search"
 }
 
 pub(super) fn recommendation(source: &Value) -> Option<RecommendationOrigin> {
@@ -37,6 +45,31 @@ pub(super) fn recommendation(source: &Value) -> Option<RecommendationOrigin> {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn a_search_scene_only_labels_an_ordinary_catalog_song() {
+        use crate::playback::QueueEntry;
+
+        let entry = |resource, source| QueueEntry {
+            entry_id: "entry".into(),
+            resource,
+            source,
+        };
+        let source = json!({"kind":"songs","scene":"search","href":"PRIVATE","keyword":"PRIVATE"});
+        assert!(search(&entry(json!({"id":"1"}), source.clone())));
+        for kind in ["download_task_id", "local_id", "cloud_song_id", "voice_id"] {
+            let mut resource = json!({"id":"1"});
+            resource[kind] = json!("2");
+            assert!(!search(&entry(resource, source.clone())));
+        }
+        for source in [
+            json!({"kind":"playlist","scene":"search","id":"1"}),
+            json!({"kind":"songs","scene":"searchBox","label":"搜索"}),
+            json!({"kind":"songs","label":"搜索"}),
+        ] {
+            assert!(!search(&entry(json!({"id":"1"}), source)));
+        }
+    }
+
     #[test]
     fn only_known_public_resource_identity_is_exposed() {
         for kind in ["playlist", "artist", "album"] {

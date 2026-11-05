@@ -71,6 +71,7 @@ export interface PlayerView {
   audiobookSkipAvailable?: boolean;
   origin?: PlayerOrigin | null;
   vinylSimilarOrigin?: boolean;
+  searchOrigin?: boolean;
   profileRankPlaylistUid?: string;
   recommendationOrigin?: { kind: 'daily' | 'style'; revision: string } | null;
   fm: boolean;

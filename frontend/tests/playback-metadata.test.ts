@@ -76,3 +76,22 @@ test('ordinary songs preserve named sources, downloaded navigation and unknown f
   assert.deepEqual(playbackSource(base), { name: '未知' });
   assert.equal(playbackSource({ ...base, fm: true }), null);
 });
+
+test('search provenance is a non-navigable label for catalog songs only', () => {
+  const track = { id: '1', name: 'Song', artists: [], album: '', local: false };
+  const base = { track, fm: false, resourceKind: 'catalog' } as PlayerView;
+  assert.deepEqual(playbackSource({ ...base, searchOrigin: true }), { name: '搜索' });
+  assert.deepEqual(playbackSource({ ...base, searchOrigin: true, catalogFileSource: true }), {
+    name: '搜索',
+  });
+  assert.deepEqual(
+    playbackSource({ ...base, searchOrigin: true, origin: { kind: 'playlist', id: '7' } }),
+    { name: '歌单', target: { kind: 'playlist', id: '7' } },
+  );
+  assert.equal(playbackSource({ ...base, searchOrigin: true, fm: true }), null);
+  assert.equal(playbackSource({ ...base, searchOrigin: true, resourceKind: 'voice' }), null);
+  assert.deepEqual(playbackSource({ ...base, searchOrigin: true, resourceKind: 'downloaded' }), {
+    name: '下载管理',
+    target: { kind: 'downloads' },
+  });
+});

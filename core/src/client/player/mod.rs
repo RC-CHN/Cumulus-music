@@ -317,6 +317,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             identity::kind(&entry.resource) == PlayerResourceKind::Catalog
                 && entry.source["kind"] == "vinyl_similar"
         }),
+        search_origin: !value.fm && value.selected.as_ref().is_some_and(origin::search),
         track: value
             .selected
             .as_ref()

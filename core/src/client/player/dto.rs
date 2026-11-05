@@ -54,6 +54,9 @@ pub struct PlayerView {
     /// Known non-navigable playback provenance; no raw source data is exposed.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub vinyl_similar_origin: bool,
+    /// The selected catalog entry came from search; this label has no route.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub search_origin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_rank_playlist_uid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

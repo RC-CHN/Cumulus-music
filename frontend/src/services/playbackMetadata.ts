@@ -45,6 +45,7 @@ export function playbackSource(view: PlayerView | undefined): {
             : '播客';
     return { name, target: origin };
   }
+  if (view.searchOrigin && view.resourceKind === 'catalog') return { name: '搜索' };
   switch (view.resourceKind) {
     case 'local':
       return { name: '本地音乐', target: { kind: 'local' } };
