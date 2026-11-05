@@ -33,6 +33,7 @@ mod vinyl_report;
 pub use vinyl_related_playlists::{VinylRelatedPlaylistView, VinylRelatedPlaylistsView};
 mod vinyl_similar;
 pub use vinyl_similar::{VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView};
+mod vinyl_wiki;
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
@@ -63,6 +64,7 @@ use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 pub use vinyl_comments::VinylCommentPageView;
 pub use vinyl_likes::VinylCommentLikeAction;
+pub use vinyl_wiki::{VinylWikiCardView, VinylWikiMetaView, VinylWikiView};
 
 fn validate_quality_target(
     current: &PlaybackSnapshot,

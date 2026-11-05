@@ -1,4 +1,6 @@
 mod support;
+#[path = "pc_experiment_transport/vinyl_wiki.rs"]
+mod vinyl_wiki;
 use cumulus_core::{
     Error,
     account::credentials::Credentials,

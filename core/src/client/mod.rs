@@ -81,6 +81,7 @@ mod window;
 pub use player::{
     PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView, VinylRelatedPlaylistView,
     VinylRelatedPlaylistsView, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
+    VinylWikiCardView, VinylWikiMetaView, VinylWikiView,
 };
 
 use crate::{

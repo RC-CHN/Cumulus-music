@@ -4,7 +4,7 @@ use crate::{
     protocol::{
         api::identifier,
         wire::{
-            eapi::md5_hex,
+            desktop_signature::v1_md5,
             serialization::{encode_component, js_json, js_string, trim_js},
         },
     },
@@ -48,8 +48,7 @@ pub fn encrypt_params(values: &Value) -> Result<String> {
         text.push_str(&value);
         text.push('&');
     }
-    text.push_str("_scver=1&_sckey=7ada0f7ccadbe165e6e7fbe01113f4df");
-    Ok(md5_hex(text.as_bytes()))
+    Ok(v1_md5(text))
 }
 
 pub fn refresh_payload(

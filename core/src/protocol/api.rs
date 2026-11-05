@@ -7,6 +7,7 @@ use std::{future::Future, pin::Pin};
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
 pub type VinylCommentWritePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+pub type VinylWikiReadPermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 
 fn canonical_vinyl_comment_id(id: &str) -> bool {
     !id.is_empty()
@@ -93,6 +94,25 @@ impl VinylRelatedPlaylistsRead {
 
     pub fn into_request(self) -> (&'static str, Value) {
         (Self::PATH, json!({"songid":self.0}))
+    }
+}
+
+/// Fixed signed encyclopedia query for the native current-track identity.
+pub struct VinylWikiRead(String);
+
+impl VinylWikiRead {
+    pub(crate) const PATH: &'static str = "/api/music/wiki/home/song/desktop/get";
+
+    pub(crate) fn new(song_id: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(song_id) {
+            return Err(Error::InvalidInput("invalid vinyl wiki seed"));
+        }
+        Ok(Self(song_id.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        let sign = super::wire::desktop_signature::v1_md5(format!("songId={}&", self.0));
+        (Self::PATH, json!({"songId":self.0,"_scver":1,"_sign":sign}))
     }
 }
 
@@ -269,6 +289,16 @@ pub trait Api: Send + Sync + std::any::Any {
                 "vinyl related-playlist dispatch authority unavailable",
             ))
         })
+    }
+
+    /// Signed PC read for one live playback selection; no generic API fallback.
+    fn request_vinyl_wiki<'a>(
+        &'a self,
+        _read: VinylWikiRead,
+        _revision: &'a str,
+        _permission: &'a VinylWikiReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("vinyl wiki dispatch authority unavailable")) })
     }
 
     /// Only call permission at the dispatch boundary. It consumes the user's

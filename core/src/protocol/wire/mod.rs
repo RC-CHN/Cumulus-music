@@ -2,6 +2,7 @@
 //! None of these routines performs network I/O or implies service acceptance.
 pub mod aegis;
 pub mod crypto;
+pub(crate) mod desktop_signature;
 pub mod eapi;
 pub mod serialization;
 pub mod weapi;

@@ -1,0 +1,59 @@
+黑胶播放页：音乐百科元数据
+
+官方 Windows PC 3.1.42.205594
+- 恢复的 app M/182:4154–4213、4399–4405、4450–4468、4471–4530，
+  M/46:36–40；ui-recovery/sources/packages/pc/src/pages/vinyl-page/
+  views/TrackPage/components/{TrackDisplay,BaiKeCard,ScrollableTab}.tsx。
+  标准播放页右栏的「百科」是本地渲染的独立可滚动区。完整打开且选择该标签
+  才挂载音乐百科卡；当前资源歌曲 ID 变化重读，原生本地歌曲分支只有歌词。
+  M/27:118 按大小写无关的 track-/voice-/mv- 前缀去除离线标识。
+  PH-PC-playPage-recommendMore-new=t1 时标签依次为歌词、百科、相似推荐，
+  「百科」仅音乐百科卡；非 t1 为歌词、百科，卡片依次为音乐百科、
+  相似歌曲、相关歌单。当前实现不补造非 t1 推荐折叠、离线歌或其它资源入口。
+- M/4:14391–14412：App.getCommonData({type:"secretKey"}) 向原生桥发
+  app.getNativeData(sequence,type,{})，接收 app/GetNativeData 同序号回执。
+  M/109:161–184 无 data.secretKey 直接返回 null，不发请求；存在时，对
+  songId=<正则化歌曲ID>&_scver=1&_sckey=<原生静态值> 做小写十六进制 MD5。
+  不使用账号令牌作这个签名，不要用 M/46 的另一组 PC/macOS 常量。
+- 原始 cloudmusic.dll 的静态溯源，地址为 RVA：
+  x86：21A598 比对 secretKey；21A5B0 选择 21A150 回调；21A1A9 读取
+  .data BB2144，21A1CF–21A20C 以 secretKey 为键写入字典。BB2144 由
+  11C0–11FB 初始化，读取 .rdata AC30B4 的 32 个 ASCII 字节。
+  x64：EC5DF2 比对 secretKey；EC5E11 转给 ECC0A0；ECC103/ECC117
+  从 .data 22059E8 取值并写同名键。初始化器 313B–3149 使用 .rdata
+  19F6428 的同一字节串。两版完全一致，也和 M/1368 的既有续期签名
+  值逐字节一致；SHA-256 408126c94a362cb279a84eaa3ad9e68f6ef0303b9c8abedc7a1641dd4f8e57a9。
+- M/15:733–735、4086（x86 app 和 subApp 有相同调用），M/12:278–312：
+  POST /api/music/wiki/home/song/desktop/get，默认不启用额外 API 缓存。
+  业务对象为 {songId:<字符串>,_scver:1,_sign:<MD5>}；_scver 在业务对象
+  是数值，原请求表单和 Cumulus 的 EAPI 内层普通字段均序列化为字符串。
+  合成歌曲 424242 的签名为 332083521190d35a96829d59aac97a3e。
+- M/109:173–184 只在严格数值 code=200 且存在非空
+  data.wikiSubBlockBaseInfoVo.wikiSubElementVos 时产生卡；按原顺序过滤
+  缺少 title 或同时缺少可用 content/wikiSubMetaVos 的行。pattern 严格
+  为数值 1 时把 wikiSubMetaVos[].text 用「、」连接，否则取 content。
+  原始非空数组过滤后无行仍可有卡；原始缺失或空数组没有卡。卡标题
+  「音乐百科」，Windows 12px 圆角、20px 内边距、20px 标题，行左列
+  80px 标题、右列 16px 正文，均为文本而非富文本或网页。
+- M/182:4183–4194、M/147:957–970：仅 wikiUrl 存在且另一个
+  PH-PC-play-information 非 t1 时有「查看详情」。M/31:1029–1050、
+  M/397:412–415、hybrid_133/M/3047:17–42 表明点击只打开本地二维码
+  弹窗「查看百科详情」，180px、本地 L 级编码，提示用网易云音乐 App 扫码。
+  没有请求或打开该 URL 的桌面 WebView。响应的正式 URL 格式尚未实测，
+  此分支不交出原始 URL，也不创建二维码、链接或扫码页面。
+
+Cumulus 本批原生核心
+- MusicClient::player_vinyl_wiki(epoch, playId) 从原生播放器绑定当前
+  普通线上曲目；需验证过的账号及签名 PC 上下文，使用同域、同设备、同
+  MUSIC_U 的现有原生修订校验。不查询实验分组；两项实验均不禁止读这张
+  卡。本地、FM、播客、失效的播放/账号和不具备当前原生签名授权的调用
+  不走这一路径。原生 HTTP dispatch 门内复核播放身份，投影前后拒绝
+  失效的账号、播放和凭据修订；没有备用路由或自动重试。
+- 仅返回 {playId,songId,card:{metas:[{title,content}]}|null}，无原始
+  wikiUrl、响应结构、签名值、Cookie、签名材料或 HTML 解释能力。最多
+  64 行、每个聚合列表最多 64 个词、标题 128 UTF-8 字节、正文 4096
+  UTF-8 字节；拒绝异常类型、越界与非制表/换行的控制字符。后续桌面用
+  文本插值渲染；不渲染 HTML，不透传 QR。这批没有注册 IPC 或前端入口。
+- 验证命令：cargo test --locked -p cumulus-core --test pc_experiment_transport vinyl_wiki
+  合成媒体与冻结 EAPI 请求，不访问真实服务。还需真正桌面 WebView 的
+  验收和原服务回执，不能据此声称正式客户端读卡或扫码流程已通过。
