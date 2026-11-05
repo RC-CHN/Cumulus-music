@@ -241,16 +241,20 @@ async fn run(
                         continue;
                     },
                     result = refresh => {
-                        let changed = api.pc_presentation_credential_revision().ok().flatten() != before;
-                        if anonymous || changed {
-                            // A response can commit cookies and return Stale
-                            // in the same poll, after the watch arm was polled
-                            // Pending. Consume that notification here as part
-                            // of this read, not as a new external restart.
-                            credentials = api.pc_presentation_credential_changes().ok().flatten();
-                            if let Some(receiver) = credentials.as_mut() { receiver.borrow_and_update(); }
-                        }
-                        if changed && (!anonymous || matches!(&result, Err(Error::StaleResponse | Error::CredentialChanged))) {
+                        // Subscribe/mark first, then sample the actual source.
+                        // A commit before the sample is included in validation;
+                        // one after it remains an unseen watch notification.
+                        credentials = api.pc_presentation_credential_changes().ok().flatten();
+                        if let Some(receiver) = credentials.as_mut() { receiver.borrow_and_update(); }
+                        let actual = api.pc_presentation_credential_revision().ok().flatten();
+                        let stale = match &result {
+                            // Registration may legitimately change r0→r1. The
+                            // accepted full batch is bound to returned r1, not
+                            // merely any post-registration credential value.
+                            Ok((bound, _)) => actual.as_deref() != Some(bound.as_str()),
+                            Err(error) => actual != before && (!anonymous || matches!(error, Error::StaleResponse | Error::CredentialChanged)),
+                        };
+                        if stale {
                             let _ = scope.snapshot(&current, &api);
                             if credential_restarts == 0 {
                                 credential_restarts = 1;
@@ -288,6 +292,10 @@ async fn run(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "runtime_races.rs"]
+mod races;
 
 #[cfg(test)]
 mod tests {

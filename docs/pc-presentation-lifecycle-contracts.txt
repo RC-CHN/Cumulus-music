@@ -42,6 +42,9 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   自响应无限请求。这是本实现的有界恢复策略，不声称原客户端同样只有一次。
   若 Cookie commit 与 refresh 返回发生在同一次 poll，result 分支同样消费实际
   变更并计入这一次重启，不能在底层 watch 中把它再次当作新外部通知重开预算。
+  先订阅并标记 watch，再读取实际凭据版本；成功回执必须匹配返回 fullbatch 的
+  bound revision。匿名注册本身 r0→r1 不触发重复读，但回执 r1 之后实际已到 r2
+  不能借“注册自身变更”吞掉通知。取样之后的 commit 留作下一条未读 watch。
 
 持久表现不等于新鲜权限
 - Registry 根存储按 verified UID 或 anonymous:<privateUID> 分隔四个布尔值；
@@ -94,6 +97,9 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
 - 私有 unit tests 覆盖事务已完成注册不可重送、legacy migration、新 cache 优先、
   无睡眠的 generation 在 watch 取样后前进重绑。这里只记测试设计；提交时未运行
   Rust 测试或桌面 GUI，等待根分支集中编译/执行后单独记录实际结果。
+  runtime_races 使用普通 request 会 panic 的合成原生能力，精确注入最终 read
+  fence 之后、订阅期间、actual 取样之后三种 commit 窗口，均要求同一 lease
+  恰好两次读取并落到 r2 的 c；该 unit 不代替真实签名/EAPI 的 integration tests。
 - 当前未测试真实匿名注册服务、真实账号完整 30 分钟墙钟或物理输出设备；不把
   合成 transport/paused-time 测试称为实服/真实声卡验证。桌面 event/main-window
   与 cached search 页重投影由独立上层集成，未由这些 core 测试单独覆盖。
