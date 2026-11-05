@@ -263,7 +263,8 @@ fn main() {
                 let mut value: Value = serde_json::from_str(event.payload()).unwrap();
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
                 if !(matches!(stage.as_str(), "ux_01_before" | "ux_02_after" | "complete" | "failed")
-                    || eof == Some(eof_fixture::Case::Control) && stage == "ux_03_control_next")
+                    || matches!(eof, Some(eof_fixture::Case::Control | eof_fixture::Case::RandomControl))
+                        && stage == "ux_03_control_next")
                 {
                     return;
                 }

@@ -1,6 +1,6 @@
 // A short authorized WAV naturally completes in null libmpv. The only
-// explicit controls before EOF are Pause and Resume; control alone tests
-// the visible Next button after the finished state has been captured.
+// explicit controls before EOF are Pause and Resume. Each control cohort
+// clicks the visible Next button after its finished state has been captured.
 (async () => {
   const one = (selector) => document.querySelector(selector);
   const bar = () => one('.playerbar');
@@ -69,6 +69,8 @@
   }[caseName];
   const [expectedGroup, expectedState, expectedMode, expectedOrder] = scenario || [];
   const skip = expectedState === 'playing';
+  const randomControl = caseName === 'random-control';
+  const controlNext = caseName === 'control' || randomControl;
   const target = skip ? '3' : '1';
   const actions = [];
   const replies = [];
@@ -91,6 +93,7 @@
       elapsed: one('.playerbar .seek-control time')?.textContent.trim(),
       primaryLabel: primary()?.getAttribute('aria-label'), unread: unread(),
       nextLabel: next()?.getAttribute('aria-label'), nextEnabled: visible(next()),
+      endedStepKey: next()?.dataset.endedStepKey ?? null,
     });
     const matching = (view) => {
       const rendered = dom();
@@ -98,7 +101,8 @@
     };
     const state = (view) => ({
       state: view.state, epoch: view.epoch, mode: view.mode, trackId: view.track?.id, entryId: view.entryId,
-      playId: view.playId, queueRevision: view.queueRevision, position: view.position ?? null,
+      playId: view.playId, endedMinibarReceipt: view.endedMinibarReceipt ?? null,
+      queueRevision: view.queueRevision, position: view.position ?? null,
       duration: view.timeline?.total ?? null, timelineMode: view.timeline?.mode ?? null, error: view.error,
     });
     const idsOf = (value) => value.tracks.map((item) => [item.track.id, item.entryId]);
@@ -163,7 +167,9 @@
       if (view.error) throw new Error('unexpected playback error: ' + view.error);
       return view.state === expectedState && view.track?.id === target && matching(view) &&
         (skip ? view.position > .2 && view.timeline?.total === 30 && skipNotice.visible() : view.position === 8) &&
-        (caseName !== 'random-control' || view.playId === null) && view;
+        (!randomControl || (view.playId === null &&
+          /^[a-f0-9]{32}$/.test(view.endedMinibarReceipt) &&
+          dom().endedStepKey === JSON.stringify([epoch, view.endedMinibarReceipt, view.entryId, view.queueRevision]))) && view;
     }, 'cohort-specific state after natural native EOF');
     const afterQueue = await queue();
     assert(JSON.stringify(idsOf(afterQueue)) === JSON.stringify(ids) &&
@@ -178,24 +184,33 @@
         (caseName === 'control' ? after.playId === before.playId : after.playId === null),
     'native play identity and queue revision agree with the cohort outcome');
     await stage('ux_02_after', after, afterQueue);
-    if (caseName === 'control') {
+    if (controlNext) {
       await twoFrames();
       const button = next();
       assert(visible(button) && matching(after), 'finished control has a visible enabled Next button');
+      if (randomControl)
+        assert(button.dataset.endedStepKey ===
+          JSON.stringify([epoch, after.endedMinibarReceipt, after.entryId, after.queueRevision]),
+        'random control Next is rendered for the exact retained native EOF');
       button.focus({ preventScroll: true });
       button.click();
       const retained = await wait(async () => {
         if (replies.length !== 3) return false;
         const view = await player();
         return JSON.stringify(state(view)) === JSON.stringify(state(after)) &&
-          matching(view) && visible(next()) && view;
+          matching(view) && visible(next()) &&
+          (!randomControl || document.activeElement === next()) && view;
       }, 'real scoped Next acknowledgment retains the finished control playback');
       const retainedQueue = await queue();
       const stepped = actions[2]?.action;
-      assert(actions.length === 3 && actions[2].epoch === epoch && Object.keys(stepped).length === 4 &&
-        stepped.kind === 'step_mini_bar' && stepped.direction === 'next' &&
-        stepped.play_id === after.playId && stepped.expected_queue_revision === after.queueRevision,
-      'one real Next with the exact finished play and queue identity');
+      assert(actions.length === 3 && actions[2].epoch === epoch &&
+        stepped.direction === 'next' && stepped.expected_queue_revision === after.queueRevision &&
+        (randomControl
+          ? Object.keys(stepped).length === 5 && stepped.kind === 'step_ended_mini_bar' &&
+            stepped.receipt === after.endedMinibarReceipt && stepped.entry_id === after.entryId
+          : Object.keys(stepped).length === 4 && stepped.kind === 'step_mini_bar' &&
+            stepped.play_id === after.playId),
+      'one real Next with the exact finished play or retained EOF identity and queue revision');
       assert(JSON.stringify(replies[2]) === JSON.stringify(state(after)) &&
         retainedQueue.current === afterQueue.current &&
         retainedQueue.revision === afterQueue.revision &&
@@ -205,7 +220,7 @@
     }
     const notices = await skipNotice.finish(skip);
     await emit('complete', { ok: true, case: caseName, group, target, notices,
-      stageCount: caseName === 'control' ? 3 : 2 });
+      stageCount: controlNext ? 3 : 2 });
   } catch (error) {
     await emit('failed', { ok: false, case: caseName, error: String(error),
       state: bar()?.dataset.state, trackId: bar()?.dataset.trackId, online: navigator.onLine, actions, replies });

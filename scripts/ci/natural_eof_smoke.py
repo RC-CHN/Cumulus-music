@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import re
 import sqlite3
 import sys
 
@@ -30,7 +31,7 @@ def check(directory, case, capture, windows):
     after = read(directory / 'ux_02_after.json')
     stages = [before, after]
     names = ['ux_01_before', 'ux_02_after']
-    if case == 'control':
+    if case in ('control', 'random-control'):
         names.append('ux_03_control_next')
         stages.append(read(directory / (names[-1] + '.json')))
     assert sorted(path.stem for path in directory.glob('ux_*.json')) == names
@@ -52,6 +53,9 @@ def check(directory, case, capture, windows):
     previous, current = before['player'], after['player']
     assert .2 < previous['position'] < 7.5 and previous['duration'] == 8
     assert previous['timelineMode'] == 'full' and previous['playId']
+    assert previous['endedMinibarReceipt'] is None and before['dom']['endedStepKey'] is None
+    if case != 'random-control':
+        assert current['endedMinibarReceipt'] is None and after['dom']['endedStepKey'] is None
     assert [action['action']['paused'] for action in after['actions']] == [True, False]
     assert after['actions'] == [
         {'epoch': previous['epoch'], 'action': {
@@ -109,28 +113,33 @@ def check(directory, case, capture, windows):
         assert current['queueRevision'] == previous['queueRevision']
         old_checkpoint(after['durablePosition'])
         old_checkpoint(complete['durablePosition'])
-        if case == 'control':
-            assert current['playId'] == previous['playId'] and current['duration'] == 8
-            assert not stops, trace
+        if case in ('control', 'random-control'):
+            assert current['duration'] == 8 and not stops, trace
+            action = {'direction': 'next', 'expected_queue_revision': current['queueRevision']}
+            if case == 'control':
+                assert current['playId'] == previous['playId']
+                action.update(kind='step_mini_bar', play_id=current['playId'])
+            else:
+                assert current['playId'] is None
+                receipt = current['endedMinibarReceipt']
+                assert isinstance(receipt, str) and re.fullmatch('[a-f0-9]{32}', receipt)
+                assert json.loads(after['dom']['endedStepKey']) == [
+                    current['epoch'], receipt, current['entryId'], current['queueRevision'],
+                ]
+                action.update(kind='step_ended_mini_bar', receipt=receipt, entry_id=current['entryId'])
             retained = stages[-1]
             assert retained['actual'] and retained['online'] and retained['group'] == group
             assert retained['case'] == case and retained['player'] == current
             assert retained['dom'] == after['dom'] and retained['dom']['nextEnabled']
             assert retained['dom']['nextLabel'] == '下一首'
             assert retained['current'] == after['current'] and retained['ids'] == after['ids']
-            assert retained['actions'] == after['actions'] + [{
-                'epoch': current['epoch'], 'action': {
-                    'kind': 'step_mini_bar', 'direction': 'next', 'play_id': current['playId'],
-                    'expected_queue_revision': current['queueRevision'],
-                },
-            }], retained['actions']
+            assert retained['actions'] == after['actions'] + [
+                {'epoch': current['epoch'], 'action': action},
+            ], retained['actions']
             assert retained['replies'] == after['replies'] + [current], retained['replies']
             assert retained['trace'] == trace, retained['trace']
             assert retained['durablePosition'] == after['durablePosition']
             old_checkpoint(retained['durablePosition'])
-        elif case == 'random-control':
-            assert current['playId'] is None and current['duration'] == 8
-            assert not stops, trace
         else:
             assert current['playId'] is None and current['duration'] is None
             assert stops == [{'kind': 'native_stop', 'entry': old}]
@@ -175,6 +184,8 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path, help='exact staged Windows media runtime')
     parser.add_argument('--screenshots', action='store_true')
+    parser.add_argument('--case', choices=CASES, action='append',
+                        help='run only these named cases; default: all cases')
     args = parser.parse_args()
     windows = sys.platform == 'win32'
     if not windows and sys.platform != 'linux':
@@ -200,7 +211,7 @@ def main():
     if args.frontend_dist:
         base['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     cases = {}
-    for case in CASES:
+    for case in dict.fromkeys(args.case or CASES):
         work = root / case
         work.mkdir()
         run = work / 'run'
