@@ -112,6 +112,10 @@ def main():
         assert len({row["playId"] for row in rows.values()}) == 1
         assert len({row["queueRevision"] for row in rows.values()}) == 1
         if not reopened:
+            selected = complete["ordinaryProbe"]["dispatch"]
+            assert selected["trackId"] == "1" and selected["gesture"] == "double_click"
+            assert selected["pageCount"] == 1 and all(selected[key] for key in (
+                "toolbarEnabled", "rowEnabled", "visible", "hit", "settled"))
             assert rows["black_vinyl"]["position"] > rows["standard"]["position"] + .5
         else:
             # Once the zone actor is paused, changing or reopening layouts must

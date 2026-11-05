@@ -31,13 +31,50 @@
   const coverLine = () => one('.vinyl-cover-line')?.textContent;
   const slideClasses = '.modal-enter-active,.modal-leave-active,.lyrics-panel-enter-active,.lyrics-panel-leave-active';
   let stageCount = 0;
+  const ordinaryProbe = { observations: [], dispatch: null };
+  const twoFrames = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  function ordinaryCandidate() {
+    const pages = all('.page-view').filter((node) => !node.closest('[inert]') &&
+      !node.matches('.page-enter-active,.page-leave-active') && node.querySelector('.daily-track-actions'));
+    const page = pages.length === 1 ? pages[0] : null;
+    const row = page?.querySelector('.track-row[data-track-id="1"]');
+    const rowPlay = row?.querySelector('.track-play');
+    const toolbar = page?.querySelector('.daily-track-actions .primary');
+    const target = row?.querySelector('.track-title');
+    const bounds = target?.getBoundingClientRect();
+    const x = bounds ? bounds.left + Math.min(12, bounds.width / 2) : -1;
+    const y = bounds ? bounds.top + bounds.height / 2 : -1;
+    let visible = !!row?.isConnected && !!bounds && bounds.width > 0 && bounds.height > 0;
+    for (let node = row; node && visible; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      visible = !node.inert && style.opacity === '1' && style.visibility === 'visible' && style.display !== 'none';
+    }
+    const hit = visible && x >= 0 && y >= 0 && x < innerWidth && y < innerHeight &&
+      row.contains(document.elementFromPoint(x, y));
+    const snapshot = {
+      pageCount: pages.length, trackId: row?.dataset.trackId ?? null,
+      toolbarEnabled: !!toolbar && !toolbar.disabled,
+      rowEnabled: !!rowPlay && !rowPlay.disabled && !row.classList.contains('unavailable'),
+      visible, hit, settled: !!page && !page.getAnimations().some((animation) =>
+        animation.pending || animation.playState === 'running'),
+      legacyCandidate: !!one('.track-row') && !!one('.daily-track-actions') &&
+        !!one('[aria-label="列表循环"]:not(:disabled)'),
+    };
+    const previous = ordinaryProbe.observations.at(-1);
+    if (!previous || JSON.stringify(previous) !== JSON.stringify(snapshot)) {
+      ordinaryProbe.observations.push(snapshot);
+      if (ordinaryProbe.observations.length > 16) ordinaryProbe.observations.shift();
+    }
+    return { page, row, snapshot, ready: snapshot.pageCount === 1 && snapshot.toolbarEnabled &&
+      snapshot.rowEnabled && snapshot.visible && snapshot.hit && snapshot.settled };
+  }
 
   async function capture(label, data = {}) {
     await wait(() => !panel()?.matches(slideClasses) && !dialog()?.matches(slideClasses),
       'settled playback layout');
     await sleep(120);
     const stage = `ux_${String(++stageCount).padStart(2, '0')}_${label}`;
-    await emit(stage, { mode: mode(), captureHandshake: true, ...data });
+    await emit(stage, { mode: mode(), captureHandshake: true, ordinaryProbe, ...data });
   }
   async function showSheet(expected) {
     click(entry());
@@ -92,16 +129,21 @@
     };
     const beginOrdinary = async () => {
       const daily = () => all('.sidebar button:not(:disabled)').find((node) => node.textContent.trim() === '每日推荐');
-      await wait(daily, 'enabled daily navigation');
+      await wait(() => daily() && one('[aria-label="列表循环"]:not(:disabled)'),
+        'frontend player ready before daily navigation');
       click(daily());
-      await wait(() => {
-        const row = one('.track-row');
-        if (!row || !one('.daily-track-actions') ||
-            !one('[aria-label="列表循环"]:not(:disabled)')) return false;
-        // Discovery may replace the virtual rows on the next Vue microtask.
-        row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      let candidate;
+      await wait(async () => {
+        candidate = ordinaryCandidate();
+        if (!candidate.ready) return false;
+        await twoFrames();
+        const current = ordinaryCandidate();
+        if (!current.ready || candidate.page !== current.page || candidate.row !== current.row) return false;
+        candidate = current;
         return true;
-      }, 'ordinary recommendations and player ready');
+      }, 'current daily song is playable, settled and directly hittable');
+      ordinaryProbe.dispatch = { ...candidate.snapshot, gesture: 'double_click' };
+      candidate.row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
       await wait(async () => {
         const now = await player();
         return now.state === 'playing' && !now.fm && now.track?.id === '1' && now.position > .16;
@@ -141,7 +183,7 @@
       await capture('centered_lyric', await samePaused(advanced));
       await closeDetails(footer);
 
-      await emit('complete', { ok: true, stageCount, reopened });
+      await emit('complete', { ok: true, stageCount, reopened, ordinaryProbe });
       return;
     }
 
@@ -179,6 +221,8 @@
       stack: error?.stack, stageCount, mode: mode() ?? null,
       focus: document.activeElement?.outerHTML.slice(0, 350),
       line: coverLine() ?? null,
+      ordinaryProbe, currentOrdinary: ordinaryCandidate().snapshot,
+      visiblePage: one('.main-content')?.innerText.slice(0, 1600),
     });
   }
 })();
