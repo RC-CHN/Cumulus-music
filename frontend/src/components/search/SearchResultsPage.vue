@@ -10,6 +10,10 @@ import type { PlaylistLinkAction } from '../../services/playlistMenu';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { advanceSearchPage, type SearchPageStep } from '../../services/searchPagination';
 import type { SearchViewportMemory } from '../../services/searchViewport';
+import {
+  captureSearchPresentationViewport,
+  restoreSearchPresentationViewport,
+} from '../../services/searchPresentationViewport';
 import SearchCardGrid from './SearchCardGrid.vue';
 import type { SearchTableKind } from '../../services/searchTableColumns';
 import SearchTrackCard from './SearchTrackCard.vue';
@@ -592,6 +596,16 @@ watch(
     if (!restoring) void nextTick(() => maybeMore());
   },
 );
+watch(model.presentationChange, () => {
+  const element = panel.value;
+  if (!element || restoring || category.value !== 'all') return;
+  const generation = loadGeneration;
+  const saved = captureSearchPresentationViewport(element);
+  void nextTick(() => {
+    if (generation === loadGeneration && panel.value === element && !restoring)
+      restoreSearchPresentationViewport(element, saved);
+  });
+});
 watch(
   () => [props.account.epoch, props.account.status],
   () => model.connect(props.account),

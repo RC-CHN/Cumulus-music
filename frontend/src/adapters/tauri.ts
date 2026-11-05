@@ -1,4 +1,5 @@
 import type { SearchPrivilegeObservation } from '../services/search';
+import type { PcPresentationView } from '../services/pcPresentation';
 import type { NativeLikeChanged } from '../services/nativeLikes';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -14,6 +15,11 @@ import type { MessageCountView } from '../services/messages';
 /** The only module that knows how the desktop host transports commands. */
 export function createTauriClient(): CoreClient {
   return {
+    pcPresentation: (epoch) => invoke('pc_presentation', { epoch }),
+    onPcPresentationChanged: (handler) =>
+      listen<PcPresentationView>('cumulus:pc-presentation', (event) => handler(event.payload)),
+    searchPresentation: (epoch, receipt, revision) =>
+      invoke('search_presentation', { epoch, receipt, revision }),
     async watchMessageCounts(update) {
       const streamId = crypto.randomUUID();
       const onUpdate = new Channel<MessageCountView>();

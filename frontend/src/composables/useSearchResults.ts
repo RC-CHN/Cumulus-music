@@ -4,10 +4,13 @@ import { failure } from '../services/contracts.ts';
 import { searchCardKey } from '../services/searchCards.ts';
 import {
   createSearchViewportMemory,
+  withoutSearchFooters,
   type SearchCorrectionReminder,
   type SearchPosition,
   type SearchViewportMemory,
 } from '../services/searchViewport.ts';
+import type { PcPresentationView } from '../services/pcPresentation.ts';
+import { patchSearchPresentation } from '../services/searchPresentation.ts';
 import type {
   SearchCategory,
   SearchResultQuery,
@@ -35,13 +38,105 @@ export function useSearchResults(
     moreError = ref(''),
     manualMore = ref(false),
     position = shallowRef<SearchPosition>({ top: 0, tracks: 0 });
+  const presentationChange = ref(0);
   let activeKey = '';
   let generation = 0,
     account: AccountView | undefined;
   let privilegeSerial = 0;
+  let presentationSerial = 0;
   let observed: string | undefined;
   let closed = false;
   let unlistenPrivileges: (() => void) | undefined;
+  const unlistenPresentation = memory.onPresentation((next) => {
+    if (closed || next.epoch !== account?.epoch || account.status !== 'authenticated') return;
+    const current = view.value;
+    if (current?.query.category !== 'all') return;
+    if (!next.searchFooter) replacePresentation(withoutSearchFooters(current));
+    void refreshPresentation(next);
+  });
+  function replacePresentation(next: SearchResultView) {
+    if (view.value === next) return;
+    view.value = next;
+    presentationChange.value++;
+    save();
+  }
+  async function projectPresentation(
+    source: SearchResultView,
+    epoch: string,
+    observation: PcPresentationView | undefined,
+    restoringCache = false,
+  ): Promise<SearchResultView> {
+    if (source.query.category !== 'all') return source;
+    if (!observation) return restoringCache ? withoutSearchFooters(source) : source;
+    const safe = withoutSearchFooters(source);
+    if (!source.presentationReceipt || !core.searchPresentation) return safe;
+    if (!restoringCache && source.presentationRevision === observation.revision)
+      return observation.searchFooter ? source : safe;
+    try {
+      const reply = await core.searchPresentation(
+        epoch,
+        source.presentationReceipt,
+        observation.revision,
+      );
+      if (reply.epoch !== epoch || reply.value.revision !== observation.revision) return safe;
+      const projected = patchSearchPresentation(source, reply.value) ?? safe;
+      return observation.searchFooter ? projected : withoutSearchFooters(projected);
+    } catch {
+      // Missing/evicted receipts retain ordinary results, never replay a search.
+      return safe;
+    }
+  }
+  async function refreshPresentation(observation: PcPresentationView) {
+    const current = view.value;
+    const epoch = account?.status === 'authenticated' ? account.epoch : undefined;
+    if (!current || !epoch || current.query.category !== 'all') return;
+    const visit = generation,
+      serial = ++presentationSerial;
+    const next = await projectPresentation(current, epoch, observation);
+    if (
+      closed ||
+      generation !== visit ||
+      serial !== presentationSerial ||
+      account?.epoch !== epoch ||
+      memory.presentation(epoch)?.revision !== observation.revision ||
+      view.value?.presentationReceipt !== current.presentationReceipt
+    )
+      return;
+    // Membership may have updated while projection was pending. Merge into its
+    // newest rows rather than restoring an older privilege/play-all snapshot.
+    const latest = view.value;
+    if (!latest) return;
+    const patch =
+      next.presentationRevision === observation.revision
+        ? {
+            receipt: next.presentationReceipt!,
+            revision: next.presentationRevision,
+            previewLayout: next.previewLayout ?? null,
+            sections: next.sections.flatMap((section) => {
+              const items = section.items
+                .flatMap((item, index) =>
+                  item.kind === 'song'
+                    ? [
+                        {
+                          index,
+                          trackId: item.track.id,
+                          hint: item.hint ?? null,
+                          reasons: item.reasons ?? [],
+                        },
+                      ]
+                    : [],
+                )
+                .slice(0, 6);
+              return items.length ? [{ id: section.id, items }] : [];
+            }),
+          }
+        : undefined;
+    replacePresentation(
+      patch
+        ? (patchSearchPresentation(latest, patch) ?? withoutSearchFooters(latest))
+        : withoutSearchFooters(latest),
+    );
+  }
   if (core.onSearchPrivilegeChanged) {
     void core
       .onSearchPrivilegeChanged(({ epoch, revision }) => {
@@ -67,7 +162,7 @@ export function useSearchResults(
       account?.epoch === epoch &&
       visit === generation &&
       serial === privilegeSerial &&
-      current === view.value &&
+      current.privilegeReceipt === view.value?.privilegeReceipt &&
       !closed;
     try {
       const reply = await core.searchRefreshPrivileges(epoch, receipt, observation);
@@ -80,7 +175,9 @@ export function useSearchResults(
       )
         return;
       const patches = new Map(rows.map((row) => [row.id, row]));
-      const sections = current.sections.map((block) => {
+      const latest = view.value;
+      if (!latest) return;
+      const sections = latest.sections.map((block) => {
         if (block.id !== section || block.category !== 'songs') return block;
         let songs = 0;
         const shown = block.items
@@ -109,7 +206,7 @@ export function useSearchResults(
           }),
         };
       });
-      view.value = { ...current, sections };
+      view.value = { ...latest, sections };
       save();
     } catch (e) {
       if (active() && ['session_expired', 'profile_changed'].includes(failure(e).code)) expired();
@@ -181,10 +278,19 @@ export function useSearchResults(
     manualMore.value = cached?.manualMore ?? false;
     position.value = cached?.position ?? { top: 0, tracks: 0 };
     if (cached) {
-      view.value = cached.view;
+      view.value = undefined;
+      loading.value = true;
+      const observation = memory.presentation(epoch);
+      const projected = await projectPresentation(cached.view, epoch, observation, true);
+      if (closed || current !== generation || account?.epoch !== epoch) return;
+      const latest = memory.presentation(epoch);
+      view.value =
+        latest?.revision !== observation?.revision ? withoutSearchFooters(projected) : projected;
       if (!tabs.value && query.category === 'all') tabs.value = cached.view.tabs;
       error.value = '';
       loading.value = false;
+      save();
+      if (latest && latest.revision !== observation?.revision) void refreshPresentation(latest);
       // The official mount effect has something to update only if the
       // model already holds rows. Never add a second read to a cold search.
       if (query.category === 'all') void refreshPrivileges();
@@ -199,7 +305,12 @@ export function useSearchResults(
           ? await core.searchResults(epoch, query, defaultReceipt)
           : await core.searchResults(epoch, query);
       if (current === generation && account?.epoch === epoch && result.epoch === epoch) {
-        view.value = result.value;
+        const observation = memory.presentation(epoch);
+        const projected = await projectPresentation(result.value, epoch, observation);
+        if (closed || current !== generation || account?.epoch !== epoch) return;
+        const latest = memory.presentation(epoch);
+        view.value =
+          latest?.revision !== observation?.revision ? withoutSearchFooters(projected) : projected;
         if (query.category === 'all') updateReminder(result.value);
         if (
           query.category === 'all' &&
@@ -210,6 +321,7 @@ export function useSearchResults(
           tabs.value = result.value.tabs;
         }
         save();
+        if (latest && latest.revision !== observation?.revision) void refreshPresentation(latest);
       }
     } catch (e) {
       if (current !== generation) return;
@@ -359,6 +471,7 @@ export function useSearchResults(
     closed = true;
     unlistenPrivileges?.();
     unlistenPrivileges = undefined;
+    unlistenPresentation();
     account = undefined;
     view.value = undefined;
     tabs.value = undefined;
@@ -377,6 +490,7 @@ export function useSearchResults(
     moreError,
     manualMore,
     position,
+    presentationChange,
     connect,
     open,
     more,

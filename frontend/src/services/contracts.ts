@@ -7,6 +7,7 @@ import type { CommunityTopicClient } from './communityTopic';
 import type { MessageClient } from './messages';
 import type { ArtistOnboardingClient } from './artistOnboarding';
 import type { SearchClient, SearchResultsClient } from './search';
+import type { PcPresentationClient } from './pcPresentation';
 import type { NativeLikesClient } from './nativeLikes';
 import type { LikeRecoveryClient } from './likeRecovery';
 import type { PlayerClient } from './player';
@@ -113,6 +114,7 @@ export interface StyleTagOperation {
 /** UI-facing use cases; no Tauri types or raw HTTP API in this interface. */
 export interface CoreClient
   extends ArtistOnboardingClient,
+    PcPresentationClient,
     SearchClient,
     SearchResultsClient,
     DiscoveryHomeClient,
@@ -193,6 +195,7 @@ export interface CoreClient
     RelayPublicationClient,
     ProfilePlayRecordClient,
     ProfileRelationClient {
+  searchPresentation: NonNullable<SearchResultsClient['searchPresentation']>;
   getAppInfo(): Promise<AppInfo>;
   checkForUpdates(): Promise<UpdateCheck>;
   openUpdateReleasePage(): Promise<void>;

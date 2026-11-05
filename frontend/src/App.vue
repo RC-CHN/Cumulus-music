@@ -245,12 +245,14 @@ import { playlistSaved, type PlaylistDialogTarget } from './services/playlists';
 import { usePlayer } from './composables/usePlayer';
 import { createPlayerResume } from './services/playerResume';
 import { useMusic, type Page, type PlaylistSection } from './composables/useMusic';
+import { usePcPresentation } from './composables/usePcPresentation';
 import { downloadSectionQuery } from './services/downloadPage';
 import { useCore } from './services/core';
 import { relayPlaybackDisposition } from './services/relay';
 import { modalDepth } from './services/modal';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
+const pcPresentation = usePcPresentation(core, searchMemory);
 const collectionMemory = createCollectionViewportMemory();
 const latestReleaseMemory = createLatestReleaseMemory();
 const collectionRevision = ref(0);
@@ -590,6 +592,7 @@ watch(
   () => [music.account.value.epoch, music.account.value.status],
   () => {
     searchMemory.connect(music.account.value);
+    pcPresentation.connect(music.account.value);
     collectionMemory.connect(music.account.value);
     latestReleaseMemory.connect(music.signedIn.value ? music.account.value.epoch : null);
   },
@@ -3657,6 +3660,7 @@ const miniFmFocus = useMiniFmFocus(
 );
 let mounted = true;
 onMounted(async () => {
+  const presentationReady = pcPresentation.start();
   const localIdentity = music.primeLocalAccount();
   try {
     const stop = await core.onAccountChanged((next) => {
@@ -3754,6 +3758,7 @@ onMounted(async () => {
     /* The sidebar remains available when an event listener fails. */
   }
   await localIdentity;
+  await presentationReady;
   if (mounted) await music.bootstrap();
 });
 onUnmounted(() => {
@@ -3815,6 +3820,7 @@ watch([() => account.value.epoch, music.accountReady], () => {
   if (music.accountReady.value) void player.connect(account.value);
 });
 onUnmounted(() => local.dispose());
+onUnmounted(() => pcPresentation.dispose());
 onUnmounted(() => likeRecovery.dispose());
 onUnmounted(() => localMatching.dispose());
 onUnmounted(() => player.dispose());

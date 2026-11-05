@@ -119,6 +119,8 @@ export interface SearchResultView {
   previewLayout?: 'carousel' | 'compact_carousel';
   sections: SearchSection[];
   privilegeReceipt?: string;
+  presentationReceipt?: string;
+  presentationRevision?: string;
   total: number | null;
   more: boolean;
   nextOffset: number;
@@ -161,6 +163,11 @@ export interface SearchPrivilegePatch {
   }[];
 }
 export interface SearchResultsClient {
+  searchPresentation?(
+    epoch: string,
+    receipt: string,
+    revision: string,
+  ): Promise<AccountData<SearchPresentationPatch>>;
   searchRefreshPrivileges?(
     epoch: string,
     receipt: string,
@@ -179,6 +186,20 @@ export interface SearchResultsClient {
     query: SearchResultQuery,
     defaultReceipt?: string,
   ): Promise<AccountData<SearchResultView>>;
+}
+export interface SearchPresentationPatch {
+  receipt: string;
+  revision: string;
+  previewLayout: null | 'carousel' | 'compact_carousel';
+  sections: {
+    id: string;
+    items: {
+      index: number;
+      trackId: string;
+      hint: SearchTrackHint | null;
+      reasons: SearchReasonTag[];
+    }[];
+  }[];
 }
 export interface SearchWord {
   keyword: string;

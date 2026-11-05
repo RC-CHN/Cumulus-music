@@ -1,6 +1,21 @@
 import type { LyricAnchor } from './lyricWindow.ts';
 import type { AccountView } from './contracts.ts';
 import type { SearchCategory, SearchResultQuery, SearchResultView } from './search.ts';
+import type { PcPresentationView } from './pcPresentation.ts';
+
+export function withoutSearchFooters(view: SearchResultView): SearchResultView {
+  if (view.query.category !== 'all') return view;
+  let changed = false;
+  const sections = view.sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) => {
+      if (item.kind !== 'song' || (!item.hint && !item.reasons?.length)) return item;
+      changed = true;
+      return { ...item, hint: undefined, reasons: [] };
+    }),
+  }));
+  return changed ? { ...view, sections } : view;
+}
 
 export interface SearchPosition {
   top: number;
@@ -28,12 +43,30 @@ export function createSearchViewportMemory(capacity = 16) {
   const entries = new Map<string, Snapshot>();
   const searchTabs = new Map<number, readonly SearchCategory[]>();
   const reminders = new Map<string, SearchCorrectionReminder>();
+  let presentation: PcPresentationView | undefined;
+  const presentationListeners = new Set<(view: PcPresentationView) => void>();
   function clear() {
     entries.clear();
     searchTabs.clear();
     reminders.clear();
+    presentation = undefined;
   }
   return {
+    presentation(epoch: string) {
+      return owner === epoch ? presentation : undefined;
+    },
+    observePresentation(next: PcPresentationView) {
+      if (!owner || owner !== next.epoch || presentation?.revision === next.revision) return;
+      presentation = next;
+      if (!next.searchFooter)
+        for (const [key, snapshot] of entries)
+          entries.set(key, { ...snapshot, view: withoutSearchFooters(snapshot.view) });
+      for (const listener of presentationListeners) listener(next);
+    },
+    onPresentation(listener: (view: PcPresentationView) => void) {
+      presentationListeners.add(listener);
+      return () => presentationListeners.delete(listener);
+    },
     connect(account: AccountView) {
       const next = account.status === 'authenticated' ? account.epoch : '';
       if (!next || owner !== next) clear();
@@ -62,7 +95,13 @@ export function createSearchViewportMemory(capacity = 16) {
     set(key: string, value: Snapshot, epoch: string) {
       if (!owner || owner !== epoch) return;
       entries.delete(key);
-      entries.set(key, value);
+      entries.set(key, {
+        ...value,
+        view:
+          presentation && !presentation.searchFooter
+            ? withoutSearchFooters(value.view)
+            : value.view,
+      });
       while (entries.size > capacity) entries.delete(entries.keys().next().value!);
     },
     getTabs(session: number, epoch: string) {
