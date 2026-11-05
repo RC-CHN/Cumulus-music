@@ -83,7 +83,7 @@ pub fn configure_native_audio(
             Some(runtime) => engine.with_local_equalizer_decoder(runtime),
             None => engine,
         };
-        Ok(Box::new(engine))
+        Ok(Box::new(engine.with_local_equalizer_pcm_wave()))
     })
 }
 

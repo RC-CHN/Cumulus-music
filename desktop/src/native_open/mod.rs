@@ -101,7 +101,7 @@ pub(crate) fn public_error(error: Error) -> ClientError {
     }
     ClientError {
         code: "native_file_open",
-        message: "未能打开本地音频。请确认文件可读，并重新打开 MP3 或 FLAC 文件。",
+        message: "未能打开本地音频。请确认文件可读，并重新打开 MP3、FLAC 或受支持的 PCM WAV 文件。",
         retryable: false,
     }
 }

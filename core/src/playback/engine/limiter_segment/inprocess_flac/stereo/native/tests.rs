@@ -1,5 +1,8 @@
 use super::*;
-use crate::library::{identity::fingerprint, native_open::checked_audio_file};
+use crate::{
+    library::{identity::fingerprint, native_open::checked_audio_file},
+    playback::engine::pcm_wave::tests::wave,
+};
 use serde_json::json;
 use std::{
     fs,
@@ -87,12 +90,133 @@ fn native_flac_cannot_recover_the_file_after_observed_revocation() {
 // source position must equal these original samples bit-for-bit.
 fn dry_prefix(first: u64, frames: u64) -> Vec<u8> {
     (first..first + frames)
-        .flat_map(|frame| {
-            let left = ((frame * 97 + (frame / 128) * 23) % 8192) as i32 - 4096;
-            [left, -(left / 8)]
-        })
-        .flat_map(|sample| ((sample as f32) / 32768.0).to_le_bytes())
+        .flat_map(frozen_samples)
+        .flat_map(|sample| (f32::from(sample) / 32768.0).to_le_bytes())
         .collect()
+}
+
+fn frozen_samples(frame: u64) -> [i16; 2] {
+    let left = ((frame * 97 + (frame / 128) * 23) % 8192) as i16 - 4096;
+    [left, -(left / 8)]
+}
+
+fn wave_source(path: &Path, bytes: &[u8], authority: Cancellation) -> Box<NativeStereoSource> {
+    fs::write(path, bytes).unwrap();
+    let path = path.canonicalize().unwrap();
+    let (file, format) = checked_audio_file(&path, &fingerprint(&path).unwrap()).unwrap();
+    assert_eq!(format, "wav");
+    let NativeStereoSelection::Qualified(source) =
+        NativeStereoSource::select_wave(file, authority, plan(3)).unwrap()
+    else {
+        panic!("signed stereo PCM does not need any decoder runtime")
+    };
+    source
+}
+
+#[test]
+fn native_pcm_wav_retains_the_actual_file_and_frame_seek_after_rename() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("original.wav");
+    let bytes = wave((0..2055).map(frozen_samples));
+    let lifetime = Cancellation::default();
+    let mut source = wave_source(&path, &bytes, lifetime.clone());
+    fs::rename(&path, dir.path().join("moved.wav")).unwrap();
+    fs::write(&path, b"another file cannot replace a held descriptor").unwrap();
+    source.configure_reclaimed(plan(3), true).unwrap();
+
+    let cancel = Cancellation::default();
+    let NativeStereoStart::Ready(mut pass) = source.start(2048, &cancel).unwrap() else {
+        panic!("seven remaining source frames must prepare")
+    };
+    cancel.cancel();
+    let mut pcm = pass.take_reader().unwrap();
+    let control = pass.control();
+    assert_eq!(control.snapshot().unwrap().first_source_frame, 2048);
+    control.publish_sink().unwrap();
+    control.bind_entry(44).unwrap();
+    control.observe(44, Some(0.0), false, true).unwrap();
+    let mut prefix = [0; 56];
+    pcm.read_exact(&mut prefix).unwrap();
+    assert_eq!(prefix.as_slice(), dry_prefix(2048, 7).as_slice());
+    drop(pcm);
+    control.retire_sink();
+    let source = pass.reclaim().unwrap();
+    assert_eq!(source.total_frames(), 2055);
+    let (mut file, authority) = source.into_reader().unwrap().into_stock().unwrap();
+    let mut returned = Vec::new();
+    file.read_to_end(&mut returned).unwrap();
+    assert_eq!(returned, bytes);
+    lifetime.cancel();
+    assert!(matches!(authority.check(), Err(Error::Cancelled)));
+}
+
+#[test]
+fn native_pcm_wav_cannot_recover_to_stock_if_held_layout_changed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("editable.wav");
+    let source = wave_source(&path, &wave([[0, 0]; 10]), Cancellation::default());
+    fs::write(&path, wave([[1, -1]; 11])).unwrap();
+    let NativeStereoStart::Stock(source) = source.start(0, &Cancellation::default()).unwrap()
+    else {
+        panic!("the old layout must not publish a native sink")
+    };
+    assert!(matches!(
+        source.into_reader().unwrap().into_stock(),
+        Err(Error::Media("held PCM WAV layout changed"))
+    ));
+}
+
+#[test]
+#[ignore = "compares full real WAV and libFLAC 1.5.0 PCM with the same source; no audio device"]
+fn active_wav_and_trusted_flac_match_every_graph_sample_and_tail() {
+    fn drain(source: NativeStereoSource, first: u64) -> Vec<u8> {
+        let total = source.total_frames();
+        let NativeStereoStart::Ready(mut pass) =
+            source.start(first, &Cancellation::default()).unwrap()
+        else {
+            panic!("trusted source must prepare")
+        };
+        let mut reader = pass.take_reader().unwrap();
+        let control = pass.control();
+        control.publish_sink().unwrap();
+        control.bind_entry(18).unwrap();
+        control.observe(18, Some(0.0), false, true).unwrap();
+        let mut pcm = Vec::new();
+        let mut chunk = [0; 8192];
+        loop {
+            let n = reader.read(&mut chunk).unwrap();
+            if n == 0 {
+                break;
+            }
+            pcm.extend_from_slice(&chunk[..n]);
+            control
+                .observe(18, Some(pcm.len() as f64 / 8.0 / 44_100.0), false, false)
+                .unwrap();
+        }
+        let state = control.snapshot().unwrap();
+        assert_eq!(state.decoded_source_frame, total);
+        assert!(state.graph_end);
+        assert_eq!(pcm.len() as u64 / 8, total - first + 44_100);
+        pcm
+    }
+
+    let library = super::super::super::sdk_path();
+    let dir = tempfile::tempdir().unwrap();
+    let bytes = wave((0..88207).map(frozen_samples));
+    for first in [0, 22050] {
+        let wav = wave_source(
+            &dir.path().join("equivalent.wav"),
+            &bytes,
+            Cancellation::default(),
+        );
+        let (file, _) = checked_file(dir.path(), "equivalent.flac", FLAC);
+        let NativeStereoSelection::Qualified(flac) =
+            NativeStereoSource::select(file, Cancellation::default(), &library, plan(3)).unwrap()
+        else {
+            panic!("a qualified FLAC reference is required")
+        };
+        assert_eq!(drain(*wav, first), drain(*flac, first));
+    }
 }
 
 #[test]

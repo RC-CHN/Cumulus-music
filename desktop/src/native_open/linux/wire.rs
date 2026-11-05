@@ -38,7 +38,8 @@ impl Reply {
                 match self {
                     Self::Unavailable =>
                         "Cumulus cannot hand off to the existing app profile; try when its main player is ready.",
-                    Self::Invalid => "Cumulus could not open a readable MP3 or FLAC file.",
+                    Self::Invalid =>
+                        "Cumulus could not open a readable MP3, FLAC or supported PCM WAV file.",
                     Self::Unknown =>
                         "Cumulus did not confirm the handoff. Check the existing player before opening the files again.",
                     Self::Busy => "Cumulus is already processing an explicit file open.",

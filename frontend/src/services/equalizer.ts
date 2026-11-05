@@ -39,7 +39,7 @@ export function equalizerSpatialMessage(view: EqualizerView): string | undefined
   const status = view.spatial_status;
   if (!status || status === 'off') return;
   return {
-    pending: '环绕设置已保存，播放支持的本地 FLAC 时应用。',
+    pending: '环绕设置已保存，播放支持的本地 FLAC 或 PCM WAV 时应用。',
     unavailable: '当前音源不支持环绕，设置已保留。',
     configured: '环绕已配置，等待音频处理。',
     processing: '环绕正在处理音频。',

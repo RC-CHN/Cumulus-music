@@ -1,5 +1,8 @@
 //! Ordinary native file owner. No path can be opened through this module.
-use super::{HeldInput, HeldPass, HeldSource, Selection, SourceAuthority, SourceGraph, Start};
+use super::{
+    DecoderKind, HeldInput, HeldPass, HeldSource, PcmWave, Selection, SourceAuthority, SourceGraph,
+    Start,
+};
 use crate::{
     Error, Result,
     effects::stereo::LocalEqualizerMaterialPlan,
@@ -43,6 +46,29 @@ impl NativeStereoSource {
             match HeldSource::select(reader, library, |format| {
                 SourceGraph::new_local(format, plan)
             })? {
+                Selection::Qualified(source) => {
+                    NativeStereoSelection::Qualified(Box::new(Self(*source)))
+                }
+                Selection::Stock(reader) => NativeStereoSelection::Stock(reader),
+            },
+        )
+    }
+
+    pub(crate) fn select_wave(
+        file: File,
+        authority: Cancellation,
+        plan: LocalEqualizerMaterialPlan,
+    ) -> Result<NativeStereoSelection> {
+        let mut reader = NativeStereoFile::new(file, authority)?;
+        let layout = PcmWave::inspect(&mut reader)?;
+        reader.wave_layout = Some(layout);
+        Ok(
+            match HeldSource::qualified(
+                reader,
+                DecoderKind::Wave(layout),
+                layout.frames,
+                |format| SourceGraph::new_local(format, plan),
+            )? {
                 Selection::Qualified(source) => {
                     NativeStereoSelection::Qualified(Box::new(Self(*source)))
                 }
@@ -115,6 +141,7 @@ impl NativeStereoPass {
 pub(crate) struct NativeStereoFile {
     file: File,
     authority: Cancellation,
+    wave_layout: Option<PcmWave>,
 }
 
 impl NativeStereoFile {
@@ -135,13 +162,22 @@ impl NativeStereoFile {
             !revoked.load(Ordering::Acquire)
         });
         authority.check()?;
-        Ok(Self { file, authority })
+        Ok(Self {
+            file,
+            authority,
+            wave_layout: None,
+        })
     }
 
     /// Revalidate, rewind and move the original descriptor and its lifetime
     /// together into the stock pinned sink. No stock path reauthorizes it.
     pub(crate) fn into_stock(mut self) -> Result<(File, Cancellation)> {
         self.authority.check()?;
+        if let Some(layout) = self.wave_layout
+            && PcmWave::inspect(&mut self)? != layout
+        {
+            return Err(Error::Media("held PCM WAV layout changed"));
+        }
         self.rewind()?;
         self.authority.check()?;
         Ok((self.file, self.authority))

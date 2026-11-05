@@ -1,7 +1,7 @@
-//! Native-only held-FLAC adapter for the complete fixed local equalizer scope.
-//! No general SDK/UI activation. One worker retains libFLAC and the descriptor.
+//! Held audio sources for the recovered local equalizer graph.
 mod graph;
 mod native;
+mod wave;
 use super::{Api, Decoder, FLAC_BLOCK, Generation, MAX_COMPRESSED, RATE};
 use crate::{
     Error, Result,
@@ -13,6 +13,7 @@ use crate::{
     playback::engine::{
         Cancellation, StereoPcmControl, StereoPcmReader,
         limiter_segment::{DecodedPacket, DecoderPayload},
+        pcm_wave::PcmWave,
         stereo_pcm::{Shared, channel, native_channel},
     },
 };
@@ -34,6 +35,7 @@ use std::{
 };
 
 const QUANTUM: usize = 2048;
+const PACKET_FRAMES: usize = FLAC_BLOCK as usize;
 const WAIT: Duration = Duration::from_secs(3);
 
 pub enum ColdStereoSelection {
@@ -137,9 +139,13 @@ enum Start<R> {
 }
 struct HeldSource<R> {
     reader: R,
-    api: Api,
+    decoder: DecoderKind,
     graph: SourceGraph,
     total: u64,
+}
+enum DecoderKind {
+    Flac(Api),
+    Wave(PcmWave),
 }
 struct HeldPass<R> {
     reader: Option<StereoPcmReader>,
@@ -188,6 +194,17 @@ impl<R: HeldInput> HeldSource<R> {
             authority.validate()?;
             return Ok(Selection::Stock(reader));
         };
+        Self::qualified(reader, DecoderKind::Flac(api), total, graph)
+    }
+
+    fn qualified(
+        reader: R,
+        decoder: DecoderKind,
+        total: u64,
+        graph: impl FnOnce(Format) -> Result<SourceGraph>,
+    ) -> Result<Selection<R>> {
+        let authority = reader.source_authority();
+        authority.validate()?;
         let graph = match graph(Format::new(RATE as f32, 2, QUANTUM as u32)?) {
             Ok(graph) => graph,
             Err(_) => {
@@ -197,7 +214,7 @@ impl<R: HeldInput> HeldSource<R> {
         };
         Ok(Selection::Qualified(Box::new(Self {
             reader,
-            api,
+            decoder,
             graph,
             total,
         })))
@@ -211,7 +228,7 @@ impl<R: HeldInput> HeldSource<R> {
 
     /// A replacement pass can only be made from a reclaimed source. Reclaim
     /// withholds ownership until the old native reader really closed and the
-    /// old libFLAC worker exited. Same-graph reset retains the original gains.
+    /// old decoder worker exited. Same-graph reset retains the original gains.
     fn start(self, first: u64, cancel: &Cancellation) -> Result<Start<R>> {
         self.reader.source_authority().validate()?;
         cancel.check()?;
@@ -249,7 +266,7 @@ impl<R: HeldInput> HeldSource<R> {
         let source_slot = Arc::new(Mutex::new(Some(self)));
         let worker_source = source_slot.clone();
         let worker = match thread::Builder::new()
-            .name("cumulus-stereo-flac".into())
+            .name("cumulus-stereo-pcm".into())
             .spawn(move || {
                 let Some(mut source) = worker_source.lock().ok().and_then(|mut slot| slot.take())
                 else {
@@ -261,7 +278,7 @@ impl<R: HeldInput> HeldSource<R> {
                 if result.is_err() {
                     shared.fail();
                 }
-                // run has dropped the libFLAC decoder before returning the sole
+                // run has dropped the decoder before returning the sole
                 // held reader and the original graph to the retirement channel.
                 let _ = retire.send(source);
             }) {
@@ -357,47 +374,68 @@ fn run<R: HeldInput>(
     shared: &Arc<Shared>,
     ready: &mpsc::SyncSender<bool>,
 ) -> Result<()> {
-    let authority = shared_authority(shared);
-    let mut decoder = match Decoder::open(
-        &source.api,
-        Box::new(&mut source.reader),
-        Generation(1),
-        authority,
-    ) {
-        Ok(decoder) if decoder.total == source.total => decoder,
-        _ => {
-            let _ = ready.send(false);
-            return Err(Error::Media("stereo decoder preparation failed"));
-        }
-    };
     let generation = if first == 0 {
         Generation(1)
     } else {
         Generation(2)
     };
-    if first > 0 && decoder.seek(generation, first).is_err() {
-        let _ = ready.send(false);
-        return Err(Error::Media("stereo decoder seek preparation failed"));
+    let next = &mut source.reader;
+    let graph = &mut source.graph;
+    let total = source.total;
+    match &source.decoder {
+        DecoderKind::Flac(api) => {
+            let mut decoder =
+                match Decoder::open(api, Box::new(next), Generation(1), shared.authority_clone()) {
+                    Ok(decoder) if decoder.total == total => decoder,
+                    _ => {
+                        let _ = ready.send(false);
+                        return Err(Error::Media("stereo decoder preparation failed"));
+                    }
+                };
+            if first > 0 && decoder.seek(generation, first).is_err() {
+                let _ = ready.send(false);
+                return Err(Error::Media("stereo decoder seek preparation failed"));
+            }
+            run_ready(graph, first, total, shared, ready, || {
+                let packet = decoder.next()?;
+                if packet.as_ref().is_some_and(|p| p.generation != generation) {
+                    return Err(io::Error::other("wrong stereo decoder generation"));
+                }
+                Ok(packet)
+            })
+        }
+        DecoderKind::Wave(layout) => {
+            let mut decoder = match PcmWave::inspect(next).and_then(|current| {
+                if current != *layout {
+                    return Err(Error::Media("held PCM WAV layout changed"));
+                }
+                wave::WavePackets::open(next, current, first, generation)
+            }) {
+                Ok(decoder) => decoder,
+                Err(error) => {
+                    let _ = ready.send(false);
+                    return Err(error);
+                }
+            };
+            run_ready(graph, first, total, shared, ready, || decoder.next())
+        }
     }
-    source.graph.prepare(first)?;
+}
+
+fn run_ready(
+    graph: &mut SourceGraph,
+    first: u64,
+    total: u64,
+    shared: &Shared,
+    ready: &mpsc::SyncSender<bool>,
+    next: impl FnMut() -> io::Result<Option<DecodedPacket>>,
+) -> Result<()> {
+    graph.prepare(first)?;
     shared.check()?;
     if ready.send(true).is_err() {
         return Err(Error::Cancelled);
     }
-    pump(&mut source.graph, first, source.total, shared, || {
-        let packet = decoder.next()?;
-        if packet.as_ref().is_some_and(|p| p.generation != generation) {
-            return Err(io::Error::other("wrong stereo decoder generation"));
-        }
-        Ok(packet)
-    })
-}
-
-fn shared_authority(shared: &Arc<Shared>) -> Cancellation {
-    // The decoder's source already checks the actual source lifetime. Its
-    // operation budget bounds work; the pipe gate is additionally checked
-    // before each decoder step and publication below.
-    shared.authority_clone()
+    pump(graph, first, total, shared, next)
 }
 
 fn pump(
@@ -409,7 +447,7 @@ fn pump(
 ) -> Result<()> {
     let mut input = VecDeque::new();
     input
-        .try_reserve_exact((QUANTUM + FLAC_BLOCK as usize) * 2)
+        .try_reserve_exact((QUANTUM + PACKET_FRAMES) * 2)
         .map_err(|_| Error::Media("stereo decoder FIFO allocation failed"))?;
     let mut block = PlanarBlock::new(graph.format());
     let mut output = [0.0; QUANTUM * 2];
@@ -430,11 +468,11 @@ fn pump(
                 DecoderPayload::Samples(pcm) => {
                     let frames = pcm.len() / 2;
                     if frames == 0
-                        || frames > FLAC_BLOCK as usize
+                        || frames > PACKET_FRAMES
                         || !pcm.len().is_multiple_of(2)
                         || pcm.iter().any(|v| !v.is_finite())
                         || cursor + frames as u64 > total
-                        || input.len() + pcm.len() > (QUANTUM + FLAC_BLOCK as usize) * 2
+                        || input.len() + pcm.len() > (QUANTUM + PACKET_FRAMES) * 2
                     {
                         return Err(Error::Media("invalid stereo decoder output"));
                     }

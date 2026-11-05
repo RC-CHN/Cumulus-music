@@ -156,6 +156,54 @@ library entries without the native-open receipt, CUE/preview/room audio,
 unsupported FLAC, independently owned PEQ or missing/wrong SDK remain
 on their prior route. This adds no downloads, rights checks or mutations.
 
+Held PCM WAV input
+------------------
+
+The PC 3.1.42.205594 recovered M163 `createSourcePlayInfo` hands an
+ordinary local filename to the native player without CUE offset/duration
+fields (see recovered product 18-cue-local-playback). The recovered local
+bridge does not prove an official OS file-association list. The original
+M4 WAV picker is for cloud uploads. Cumulus already supports scanning WAV
+in `library/mod.rs` and identifies RIFF/WAVE for pinned playback in
+`playback/engine/mod.rs`. This is a narrow extension of that Cumulus
+behavior; Windows and Linux file associations are unchanged.
+
+The private native file-open path (`--play`, including the existing Linux
+warm relay) also accepts a standalone RIFF PCM tag-1 file with exactly two
+channels, 44,100 Hz, signed 16-bit little endian samples, one `fmt ` chunk
+and one complete interleaved `data` extent. Core validates block alignment,
+byte rate, chunk sizes and padding, and the complete RIFF file length. It
+bounds the file to one hour of PCM plus at most 1 MiB for headers and
+padding, and reads at most 128 top-level chunks. JUNK/PAD and bounded
+LIST/INFO are allowed; alternate audio lists, RF64, extensible/compressed
+WAV, unknown chunk kinds and other geometries do not qualify. Queue
+duration comes from the verified frame count; the explicit open uses the
+filename title rather than launching a separate pathname metadata probe.
+The original queue receipt keeps the checked path and fingerprint; the
+renderer still cannot supply one. An unsupported explicit WAV leaves the
+warm queue untouched when no valid file remains. Ordinary library and CUE
+playback retain their existing acceptance and playback rules.
+
+For the active equalizer, the sole checked native file descriptor supplies
+bounded samples by `i16 / 32768.0`, identical to the approved FLAC decoder
+sample conversion. The same 2048-frame graph, control acknowledgements,
+startup credit, source clock, cancellation and actual graph EOF apply.
+The reader checks the layout again before each prepared pass, seeks by
+source frame, and rejects a physical short read rather than reporting EOF.
+No libFLAC runtime is required for this WAV branch; FLAC verification is
+unchanged. Pre-audio recovery and a paused handoff to independent PEQ use
+the same original held file and the verified WAV demuxer. After an audible
+entry, a failed replacement does not replay it as stock.
+
+Core cases cover malformed geometry, signed conversion, seeking and
+truncation, durable receipt validation and an actual held-file rename with
+seven frames remaining. The separate libFLAC 1.5.0 comparison renders both
+formats through active GEQ/BT/SE at frame zero and a sample seek, comparing
+every f32 output byte including the native graph's tail. These checks do not
+by themselves verify desktop PCM, OS association behavior or listening on
+a physical sound device. No online, CUE, 48 kHz or additional EQ graph
+behavior is implied.
+
 The separate SE status is pending before a qualifying load, unavailable
 on a currently unsupported source, and configured/processing only for
 the owned graph; processing requires native sink advancement beyond the

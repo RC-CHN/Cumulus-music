@@ -7,6 +7,7 @@ mod frames;
 mod limiter_segment;
 mod mpv;
 mod output;
+pub(crate) mod pcm_wave;
 mod runtime;
 mod stereo_pcm;
 mod stereo_transport;

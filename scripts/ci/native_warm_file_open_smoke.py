@@ -82,12 +82,18 @@ def main():
     with isolated_audio(root, env) as seed:
         first = root / '1 合成 原曲.flac'
         second = root / '2 合成 转交.mp3'
+        pcm_wave = root / '3 合成 转交.WAV'
+        unsupported_wave = root / '4 合成 其他采样率.wav'
         bad = root / '0 无效.flac'
         first.write_bytes(seed.read_bytes())
         bad.write_text('https://example.invalid/never-open.flac\n', encoding='ascii')
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
                         '-i', 'sine=frequency=10000:sample_rate=48000:duration=45', str(second)],
                        check=True, timeout=20)
+        for path, rate in [(pcm_wave, 44100), (unsupported_wave, 48000)]:
+            subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
+                            '-i', f'sine=frequency=440:sample_rate={rate}:duration=15',
+                            '-ac', '2', '-c:a', 'pcm_s16le', str(path)], check=True, timeout=20)
         alias = root / 'same-canonical-state-root'
         alias.symlink_to(state_dir, target_is_directory=True)
         sender_env = dict(env, CUMULUS_DATA_DIR=str(alias))
@@ -121,7 +127,7 @@ def main():
                 assert playback()['queue'] == before['queue']
                 assert not (root / 'unused-legacy-session').exists()
                 rejected = activation(warm_env, f'--play={bad}')
-                assert rejected.returncode == 3 and 'readable MP3 or FLAC' in rejected.stderr
+                assert rejected.returncode == 3 and 'readable MP3, FLAC or supported PCM WAV' in rejected.stderr
                 unchanged = wait_for('rejected warm open leaves original track playing', lambda: selected(first, 1.5))
                 assert unchanged['queue'] == before['queue']
 
@@ -147,6 +153,19 @@ def main():
                 denied = activation(sender_env)
                 assert denied.returncode == 2 and 'already running for this app profile' in denied.stderr
                 assert playback()['queue'] == after['queue']
+
+                unsupported = activation(warm_env, '--play', str(unsupported_wave))
+                assert unsupported.returncode == 3
+                assert playback()['queue'] == after['queue']
+                result = activation(warm_env, '--play', str(pcm_wave))
+                assert result.returncode == 0, result.returncode
+                wave_after = wait_for('warm PCM WAV is actually playing', lambda: selected(pcm_wave, .6))
+                assert wave_after['queue']['current'] != after['queue']['current']
+                wait_for('same window is still focused', lambda: active(app) == window)
+                assert list(windows().values()) == [app.pid]
+                wait_for('held WAV is linked to the private monitor', lambda: private_pipewire_stream(app.pid, env))
+                wave_tone = sink_tone(env)
+                assert wave_tone['amplitude440Hz'] > 200 and wave_tone['amplitude10000Hz'] < new_tone['amplitude10000Hz'] * .1
             finally:
                 stop(app)
 
@@ -158,6 +177,7 @@ def main():
                   invalidWarmSelectionPreservedExistingQueue=True, invalidFirstFileSkipped=True,
                   originalWindowRevealed=True, originalProcessOnly=True, onlyOnePlayingQueue=True,
                   ordinaryDuplicateDenied=True, beforePcm=old_tone, afterPcm=new_tone,
+                  warmPcmWave=wave_tone, unsupportedWavePreservedExistingQueue=True,
                   successfulMusicServiceRequests=0, associationMetadataChanged=False,
                   physicalOutputVerified=False, windowsNativeVerified=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

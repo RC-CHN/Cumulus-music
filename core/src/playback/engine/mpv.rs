@@ -57,6 +57,7 @@ pub struct MpvEngine {
     pinned_bmff_options: bool,
     stereo_pcm: Option<super::StereoPcmControl>,
     local_flac: Option<super::TrustedFlacRuntime>,
+    local_wave: bool,
     local_equalizer: Option<local_equalizer::LocalEqualizer>,
 }
 impl Drop for MpvEngine {
@@ -215,6 +216,7 @@ impl MpvEngine {
             pinned_bmff_options: false,
             stereo_pcm: None,
             local_flac: None,
+            local_wave: false,
             local_equalizer: None,
         })
     }
@@ -902,7 +904,7 @@ impl AudioEngine for MpvEngine {
         result
     }
     fn supports_local_equalizer(&self) -> bool {
-        self.local_flac.is_some()
+        self.local_flac.is_some() || self.local_wave
     }
     fn local_equalizer_entry(&self) -> Option<i64> {
         self.local_equalizer.as_ref().and(self.entry)

@@ -1,10 +1,14 @@
 //! Explicit files supplied by the native application entry, not a library scan.
 use super::{
-    LocalResource, LocalRevision,
+    AudioMetadata, LocalResource, LocalRevision,
     identity::{FileFingerprint, fingerprint_metadata, path_id},
     probe::AudioProbe,
 };
-use crate::{Error, Result, media::open_regular, playback::engine::pinned_audio_format};
+use crate::{
+    Error, Result,
+    media::open_regular,
+    playback::engine::{pcm_wave, pinned_audio_format},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -44,6 +48,8 @@ fn format_from_path(path: &Path) -> Result<&'static str> {
         Ok("flac")
     } else if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("mp3")) {
         Ok("mp3")
+    } else if extension.is_some_and(|ext| ext.eq_ignore_ascii_case("wav")) {
+        Ok("wav")
     } else {
         Err(Error::InvalidInput("unsupported native open audio format"))
     }
@@ -63,6 +69,12 @@ pub(crate) fn checked_audio_file(
     {
         return Err(Error::State("native local audio changed"));
     }
+    if format == "wav" {
+        pcm_wave::PcmWave::inspect(&mut file)?;
+        if fingerprint_metadata(file.metadata()?)? != *expected {
+            return Err(Error::State("native local audio changed"));
+        }
+    }
     Ok((file, format))
 }
 
@@ -77,17 +89,43 @@ pub(crate) fn inspect_opened_file(path: &Path, probe: &dyn AudioProbe) -> Result
             "native local audio target changed format",
         ));
     }
-    let file = open_regular(&path)?;
+    let mut file = open_regular(&path)?;
     let fingerprint = fingerprint_metadata(file.metadata()?)?;
-    checked_audio_file(&path, &fingerprint)?;
-    let metadata = probe.inspect(&path)?;
-    if metadata.format.as_deref() != Some(format)
-        || metadata.duration <= 0.0
-        || !metadata.duration.is_finite()
-    {
-        return Err(Error::Media("invalid native local audio metadata"));
-    }
-    checked_audio_file(&path, &fingerprint)?;
+    let metadata = if format == "wav" {
+        // The same native PCM layout defines the queue duration and decoder.
+        // No path-based probe or alternate audio stream gets to pick either.
+        let layout = pcm_wave::PcmWave::inspect(&mut file)?;
+        if fingerprint_metadata(file.metadata()?)? != fingerprint {
+            return Err(Error::State("native local audio changed"));
+        }
+        AudioMetadata {
+            format: Some("pcm_s16le".into()),
+            duration: layout.frames as f64 / f64::from(pcm_wave::RATE),
+            title: path
+                .file_stem()
+                .and_then(|v| v.to_str())
+                .unwrap_or("")
+                .into(),
+            album: String::new(),
+            artists: Vec::new(),
+            bitrate: Some(u64::from(pcm_wave::BYTE_RATE) * 8),
+            sample_rate: Some(pcm_wave::RATE),
+            channels: Some(2),
+            container: format.into(),
+            cover_bytes: None,
+        }
+    } else {
+        checked_audio_file(&path, &fingerprint)?;
+        let metadata = probe.inspect(&path)?;
+        if metadata.format.as_deref() != Some(format)
+            || metadata.duration <= 0.0
+            || !metadata.duration.is_finite()
+        {
+            return Err(Error::Media("invalid native local audio metadata"));
+        }
+        checked_audio_file(&path, &fingerprint)?;
+        metadata
+    };
 
     let local = LocalResource {
         local_id: path_id(&path)?,
@@ -118,6 +156,43 @@ impl OpenedFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::playback::engine::pcm_wave::tests::wave;
+
+    struct NoPathProbe;
+    impl AudioProbe for NoPathProbe {
+        fn inspect(&self, _: &Path) -> Result<AudioMetadata> {
+            panic!("PCM WAV must get metadata from its native file")
+        }
+    }
+
+    #[test]
+    fn native_pcm_wav_receipt_round_trips_and_rejects_the_replaced_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().canonicalize().unwrap().join("合成 波形.WAV");
+        let bytes = wave(std::iter::repeat_n([256, -128], 22050));
+        std::fs::write(&path, &bytes).unwrap();
+        let resource = inspect_opened_file(&path, &NoPathProbe).unwrap();
+        let local: LocalResource = serde_json::from_value(resource.clone()).unwrap();
+        let opened: OpenedFile =
+            serde_json::from_value(resource["native_open_file"].clone()).unwrap();
+        opened.check_resource(&local).unwrap();
+        assert_eq!(local.metadata.title, "合成 波形");
+        assert_eq!(local.metadata.duration, 0.5);
+        assert_eq!(local.metadata.format.as_deref(), Some("pcm_s16le"));
+        assert_eq!(
+            checked_audio_file(&opened.path, &opened.fingerprint)
+                .unwrap()
+                .1,
+            "wav"
+        );
+
+        let mut incompatible = bytes;
+        incompatible[24..28].copy_from_slice(&48_000u32.to_le_bytes());
+        std::fs::write(&path, incompatible).unwrap();
+        let fingerprint = super::super::identity::fingerprint(&path).unwrap();
+        assert!(checked_audio_file(&path, &fingerprint).is_err());
+        assert!(inspect_opened_file(&path, &NoPathProbe).is_err());
+    }
 
     #[test]
     fn pinned_file_refuses_changed_identity_and_extension_spoof() {

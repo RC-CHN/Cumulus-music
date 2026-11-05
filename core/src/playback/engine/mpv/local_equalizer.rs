@@ -1,4 +1,4 @@
-//! Combined M3091 local material on one held, explicitly opened FLAC.
+//! Combined M3091 material on one held, explicitly opened FLAC or PCM WAV.
 use super::{
     AudioEngine, Cancellation, Error, LoadRequest, LoadedMedia, MediaInput, MpvEngine, Result,
 };
@@ -16,6 +16,7 @@ const CONTROL_WAIT: Duration = Duration::from_secs(2);
 
 pub(super) struct LocalEqualizer {
     pass: Box<NativeStereoPass>,
+    original_demuxer: &'static str,
     settings: EqualizerSettings,
     // Only claim the new settings after the native clock has passed audio
     // which could already have been queued when the worker applied them.
@@ -28,6 +29,13 @@ pub(super) struct LocalEqualizer {
 impl MpvEngine {
     pub fn with_local_equalizer_decoder(mut self, runtime: TrustedFlacRuntime) -> Self {
         self.local_flac = Some(runtime);
+        self
+    }
+
+    /// Opt in to the built-in, strictly validated native PCM WAV source.
+    /// No separately installed decoder or path input is required.
+    pub fn with_local_equalizer_pcm_wave(mut self) -> Self {
+        self.local_wave = true;
         self
     }
 
@@ -66,20 +74,24 @@ impl MpvEngine {
         {
             return self.load_inner(request, cancel);
         }
-        let Some(library) = self
-            .local_flac
-            .as_ref()
-            .and_then(|runtime| runtime.verified_path().ok())
-        else {
-            return self.load_inner(request, cancel);
-        };
         let (file, format) = crate::library::native_open::checked_audio_file(path, fingerprint)?;
         let authority = cancel.clone();
-        if format != "flac" {
-            return self.load_open_file(file, format, authority, 0.0, cancel);
-        }
         let plan = LocalEqualizerMaterialPlan::from_saved(settings);
-        let source = match NativeStereoSource::select(file, authority, library, plan)? {
+        let selection = match format {
+            "wav" if self.local_wave => NativeStereoSource::select_wave(file, authority, plan)?,
+            "flac" => {
+                let Some(library) = self
+                    .local_flac
+                    .as_ref()
+                    .and_then(|runtime| runtime.verified_path().ok())
+                else {
+                    return self.load_open_file(file, format, Cancellation::default(), 0.0, cancel);
+                };
+                NativeStereoSource::select(file, authority, library, plan)?
+            }
+            _ => return self.load_open_file(file, format, authority, 0.0, cancel),
+        };
+        let source = match selection {
             NativeStereoSelection::Qualified(source) => source,
             NativeStereoSelection::Stock(held) => {
                 let (file, authority) = held.into_stock()?;
@@ -99,7 +111,7 @@ impl MpvEngine {
                 if self.loudness_reserved {
                     self.detach_loudness()?;
                 }
-                self.load_local_equalizer_pass(pass, settings, total, true, cancel)
+                self.load_local_equalizer_pass(pass, format, settings, total, true, cancel)
             }
             NativeStereoStart::Stock(source) => {
                 let (file, authority) = source.into_reader()?.into_stock()?;
@@ -111,6 +123,7 @@ impl MpvEngine {
     fn load_local_equalizer_pass(
         &mut self,
         mut pass: Box<NativeStereoPass>,
+        original_demuxer: &'static str,
         settings: EqualizerSettings,
         total: u64,
         allow_unplayed_fallback: bool,
@@ -123,7 +136,7 @@ impl MpvEngine {
                 cancel.check()?;
                 if let Ok(source) = pass.reclaim() {
                     let (file, authority) = source.into_reader()?.into_stock()?;
-                    return self.load_open_file(file, "flac", authority, 0.0, cancel);
+                    return self.load_open_file(file, original_demuxer, authority, 0.0, cancel);
                 }
                 return Err(error);
             }
@@ -132,6 +145,7 @@ impl MpvEngine {
         media.duration = Some(total as f64 / f64::from(RATE));
         self.local_equalizer = Some(LocalEqualizer {
             pass,
+            original_demuxer,
             settings,
             watermark: 0,
             pending: false,
@@ -161,6 +175,7 @@ impl MpvEngine {
         let frame = (frame as u64).min(total.saturating_sub(1));
         let LocalEqualizer {
             pass,
+            original_demuxer,
             settings,
             pending,
             ..
@@ -176,9 +191,14 @@ impl MpvEngine {
             )?;
         }
         match source.start(frame, cancel)? {
-            NativeStereoStart::Ready(pass) => {
-                self.load_local_equalizer_pass(pass, settings, total, false, cancel)
-            }
+            NativeStereoStart::Ready(pass) => self.load_local_equalizer_pass(
+                pass,
+                original_demuxer,
+                settings,
+                total,
+                false,
+                cancel,
+            ),
             NativeStereoStart::Stock(_) => {
                 // No replay or silent graph change after an audible entry.
                 Err(Error::Media("local equalizer seek could not prepare PCM"))
@@ -207,7 +227,7 @@ impl MpvEngine {
         self.native_mut()?;
         self.load_open_file(
             file,
-            "flac",
+            local.original_demuxer,
             authority,
             first as f64 / f64::from(RATE),
             cancel,
