@@ -14,11 +14,11 @@ mod relay_fixture;
 mod settings_fixture;
 
 use cumulus_core::{
-    Error,
+    Error, Result,
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
     protocol::{
-        api::{Api, ApiFuture},
+        api::{Api, ApiFuture, PodcastProgressPermission},
         http::ApiOrigin,
     },
 };
@@ -33,6 +33,8 @@ use std::{
 };
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
+const PROGRESS: &str = "/api/dj/playrecord/upload";
+const PROOF_REVISION: &str = "podcast-progress-fixture";
 const RECENT: &str = "/api/social/my/recent/update/voice/list/v1";
 const CURSOR: u64 = 1_700_000_000_123;
 const MEDIA: &str = "https://m1.music.126.net/cumulus-relay-fixture.wav";
@@ -43,6 +45,8 @@ struct Library {
     first: AtomicUsize,
     next: AtomicUsize,
     calls: Mutex<Vec<Value>>,
+    progress_enabled: bool,
+    progress_uploads: Mutex<Vec<Value>>,
 }
 
 fn radio() -> Value {
@@ -54,11 +58,46 @@ fn voice(id: u64) -> Value {
         "disPlayStatus":if id==505 {"REMOVED"}else{"NORMAL"}})
 }
 impl Api for Library {
+    fn podcast_progress_revision(&self) -> Result<Option<String>> {
+        Ok(self.progress_enabled.then(|| PROOF_REVISION.to_owned()))
+    }
+
+    fn upload_podcast_progress<'a>(
+        &'a self,
+        payload: Value,
+        revision: &'a str,
+        allowed: &'a PodcastProgressPermission,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            assert!(self.progress_enabled && revision == PROOF_REVISION);
+            if !allowed()? {
+                return Err(Error::StaleResponse);
+            }
+            assert!(payload.as_object().is_some_and(|body| body.len() == 3));
+            assert!(matches!(
+                payload["programId"].as_u64(),
+                Some(501 | 503 | 504 | 506)
+            ));
+            assert!(payload["listenLocation"].as_f64().is_some_and(|position| {
+                (0.0..=30_000.0).contains(&position) && position.fract() == 0.0
+            }));
+            assert!(payload["isListened"].is_boolean());
+            self.progress_uploads
+                .lock()
+                .unwrap()
+                .push(json!([PROGRESS, payload]));
+            Ok(())
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if path.contains("clear")
                 || path.contains("submit")
-                || path == "/api/djradio/my/radio/recommend"
+                || matches!(
+                    path,
+                    PROGRESS | "/api/djradio/my/radio/recommend" | "/api/user/setting/update"
+                )
             {
                 panic!("unexpected synthetic remote action: {path}");
             }
@@ -72,6 +111,11 @@ impl Api for Library {
                 self.calls.lock().unwrap().push(json!([path, body]));
             }
             Ok(match path {
+                RECENT if self.progress_enabled => {
+                    assert_eq!(body, json!({}));
+                    let rows = [501, 503, 504, 506].map(voice);
+                    json!({"code":200,"data":{"data":rows,"hasMore":false,"newVoiceCount":0}})
+                }
                 RECENT if body == json!({}) => match self.first.fetch_add(1, Ordering::SeqCst) {
                     0 => return Err(Error::Transport("synthetic first failure".into())),
                     1 => {
@@ -120,6 +164,11 @@ impl Api for Library {
                     assert!(
                         matches!(ids[0].as_u64(), Some(1501 | 1503 | 1504 | 1506))
                             || matches!(ids[0].as_str(), Some("1501" | "1503" | "1504" | "1506"))
+                            || self.progress_enabled
+                                && ids[0]
+                                    .as_u64()
+                                    .or_else(|| ids[0].as_str().and_then(|id| id.parse().ok()))
+                                    .is_some_and(|id| (1..=40).contains(&id))
                     );
                     json!({"code":200,"data":[{"id":ids[0],"url":MEDIA,"code":200,"md5":"fixture","level":"standard","expi":120}]})
                 }
@@ -133,6 +182,16 @@ impl Api for Library {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn locale(category: libc::c_int) -> String {
+    // SAFETY: null reads the initialized locale; copy the C string immediately.
+    let value = unsafe { libc::setlocale(category, std::ptr::null()) };
+    assert!(!value.is_null());
+    unsafe { std::ffi::CStr::from_ptr(value) }
+        .to_string_lossy()
+        .into_owned()
+}
+
 fn main() {
     // SAFETY: before GTK/runtime initialization and any worker thread.
     unsafe { cumulus_desktop::prepare_graphics() };
@@ -143,7 +202,11 @@ fn main() {
     let output = root.join("first");
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
-    let api = Arc::new(Library::default());
+    let progress_enabled = std::env::var_os("CUMULUS_PODCAST_PROGRESS_PROOF").is_some();
+    let api = Arc::new(Library {
+        progress_enabled,
+        ..Default::default()
+    });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     let wave = relay_fixture::wave(&root).unwrap();
     let client = MusicClient::with_session(session, registry)
@@ -154,7 +217,13 @@ fn main() {
     config.height = 640.0;
     context.config_mut().app.windows[0].create = false;
     let source = std::env::var_os("CUMULUS_UX_SCRIPT").map_or_else(
-        || include_str!("podcast_recent_ui_probe.js").to_owned(),
+        || {
+            if progress_enabled {
+                include_str!("podcast_progress_ui_probe.js").to_owned()
+            } else {
+                include_str!("podcast_recent_ui_probe.js").to_owned()
+            }
+        },
         |path| fs::read_to_string(path).expect("explicit synthetic script"),
     );
     let source = if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
@@ -164,12 +233,29 @@ fn main() {
     };
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
+            #[cfg(target_os = "linux")]
+            if progress_enabled {
+                fs::write(output.join("locale.json"), serde_json::to_vec(&json!({
+                    "numeric":locale(libc::LC_NUMERIC),
+                    "messages":locale(libc::LC_MESSAGES),
+                    "characters":locale(libc::LC_CTYPE),
+                }))?)?;
+            }
             app.manage(client);
             app.add_capability(r#"{"identifier":"podcast-recent-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
             let handle = app.handle().clone();
             app.listen("ux-proof", move |event| {
                 let mut value: Value = serde_json::from_str(event.payload()).unwrap();
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
+                if progress_enabled && stage == "progress_poll" {
+                    if let Some(nonce) = value["nonce"].as_u64() {
+                        let count = api.progress_uploads.lock().unwrap().len();
+                        handle.get_webview_window("main").unwrap().eval(format!(
+                            "window.__podcastProgressCount = [{nonce}, {count}];",
+                        )).unwrap();
+                    }
+                    return;
+                }
                 if !(["complete", "failed"].contains(&stage.as_str())
                     || stage.starts_with("ux_") && stage.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
                     return;
@@ -177,14 +263,22 @@ fn main() {
                 if stage == "complete" {
                     value["calls"] = json!(api.calls.lock().unwrap().clone());
                 }
+                if progress_enabled {
+                    value["progressUploads"] = json!(api.progress_uploads.lock().unwrap().clone());
+                }
                 fs::write(output.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let handle = handle.clone();
                 let output = output.clone();
                 tauri::async_runtime::spawn(async move {
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" {0} else {1});
-                    } else {
-                        capture_ack::acknowledge(&handle, &output, &stage, true).await;
+                    } else if capture_ack::acknowledge(&handle, &output, &stage, true).await
+                        && progress_enabled
+                    {
+                        handle.get_webview_window("main").unwrap().eval(format!(
+                            "window.__podcastProgressStage = {};",
+                            json!(stage)
+                        )).unwrap();
                     }
                 });
             });
