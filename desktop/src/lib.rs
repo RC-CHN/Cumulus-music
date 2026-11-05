@@ -38,6 +38,7 @@ pub mod mini;
 mod mv;
 mod network_diagnostics;
 mod platform;
+mod playback_cache;
 pub mod playback_keep_awake;
 mod player;
 mod playlist_cover;
@@ -69,6 +70,7 @@ pub use updates::UpdateAdapters;
 pub mod watchman;
 pub use effects::configure_native_audio;
 pub use graphics::prepare_process as prepare_graphics;
+pub use playback_cache::configure_streaming_cache;
 use tauri::Manager;
 
 /// Shared by the desktop runtime and IPC contract verification.
@@ -407,6 +409,9 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 lifecycle::window_close_command,
                 settings::output_settings,
                 settings::output_command,
+                playback_cache::playback_cache_state,
+                playback_cache::playback_cache_set_capacity,
+                playback_cache::playback_cache_clear,
                 settings::startup_preferences_command,
                 settings::account_settings_command,
                 relay::relay_view,
@@ -609,7 +614,7 @@ pub fn run() {
             let client = configure_native_im(client, &app.path().resource_dir()?);
             let resources = app.path().resource_dir()?;
             app.manage(effect_activation::Host::new(&resources));
-            let client = configure_native_audio(client, &resources, false);
+            let client = configure_streaming_cache(configure_native_audio(client, &resources, false));
             #[cfg(windows)]
             let client = match playback_keep_awake::DesktopPlaybackPower::start_windows() {
                 Ok(host) => {
