@@ -1,6 +1,8 @@
 import { computed, getCurrentScope, onScopeDispose, ref, watch } from 'vue';
 
 export interface CoverImageSource {
+  // Account epoch only. A new play/voice with the same URL reuses the loaded
+  // image or its error fallback, matching the official source dependency.
   owner: string;
   source: string | null | undefined;
 }

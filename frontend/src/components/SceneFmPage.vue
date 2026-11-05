@@ -23,7 +23,7 @@ const { view, loading, busy, error } = props.model;
 const category = computed(() => view.value?.scenes.find((s) => s.id === view.value?.activeId));
 const panel = ref<HTMLElement>();
 const cover = useCoverImage(() => ({
-  owner: JSON.stringify([props.epoch, view.value?.episode?.id]),
+  owner: props.epoch,
   source: view.value?.episode?.coverUrl,
 }));
 const palette = useSceneFmPalette(useCore());

@@ -6,7 +6,9 @@ import { useCoverImage } from '../src/composables/useCoverImage.ts';
 function fixture() {
   const scope = effectScope();
   const current = shallowRef({
-    owner: 'account-1/play-a',
+    owner: 'account-1',
+    playId: 'play-a',
+    voiceId: '601',
     source: 'https://p1.music.126.net/a.png',
   });
   const image = scope.run(() => useCoverImage(() => current.value))!;
@@ -55,11 +57,11 @@ test('a different source resets the placeholder and ignores late load/error from
   f.scope.stop();
 });
 
-test('an account/play change invalidates even a late event with the identical cover URL', () => {
+test('an account change invalidates even a late event with the identical cover URL', () => {
   const f = fixture(),
     old = f.event();
   f.image.load(old);
-  f.current.value = { ...f.current.value, owner: 'account-2/play-b' };
+  f.current.value = { ...f.current.value, owner: 'account-2' };
   assert.equal(f.image.state.value, 'loading');
   f.image.error(old);
   assert.equal(f.image.state.value, 'loading');
@@ -81,4 +83,30 @@ test('empty sources and disposed components expose no image or late state change
   f.current.value = { ...f.current.value, source: 'https://p1.music.126.net/c.png' };
   f.image.error(old);
   assert.equal(f.image.state.value, 'empty');
+});
+
+test('a new play and voice keep both ready and failed state for the same account and URL', () => {
+  for (const outcome of ['ready', 'error'] as const) {
+    const f = fixture();
+    if (outcome === 'ready') f.image.load(f.event());
+    else f.image.error(f.event());
+    const generation = f.image.generation.value;
+    f.current.value = { ...f.current.value, playId: 'play-b', voiceId: '602' };
+    assert.equal(f.image.generation.value, generation);
+    assert.equal(f.image.state.value, outcome);
+    assert.equal(f.image.loaded.value, outcome === 'ready');
+    assert.equal(f.image.showImage.value, outcome === 'ready');
+    f.scope.stop();
+  }
+});
+
+test('an in-flight image for the same public URL may complete after the voice changes', () => {
+  const f = fixture(),
+    originalNode = f.event();
+  const generation = f.image.generation.value;
+  f.current.value = { ...f.current.value, playId: 'play-b', voiceId: '602' };
+  assert.equal(f.image.generation.value, generation);
+  f.image.load(originalNode);
+  assert.equal(f.image.state.value, 'ready');
+  f.scope.stop();
 });

@@ -1,0 +1,31 @@
+播放器封面加载与失败占位
+2026-11-05；官方网易云音乐 Windows x64 3.1.42.205594。
+
+恢复依据
+M182（hybrid_app.chunk）1234–1344 的 FastImageX 接收 src，1320–1326 的
+onError 设置失败状态；1328–1330 的重置只依赖 src/enablePrefetch。1330–1344
+在失败、缺失 URL 或默认空白时选择官方本地默认图片，而非暴露浏览器破图标。
+VoiceCover 的实际使用见 M182:6545–6551。场景卡使用 M3096:724 的 M41 Image；
+M41:263–269 也在图片错误后选择本地默认资源。
+
+Cumulus 行为
+useCoverImage 在每个持久组件中只保留一个账号代次和 URL 的状态。PlayerBar、
+LyricsPanel、SceneFmPage 使用账号代次作为 owner，不能把 playId、voiceId 或队列
+revision 纳入这个 owner。相同账号、相同 URL 切换播放/节目时，复用已经成功或失败
+的状态，不新建 img、不重新请求、不暂时闪回加载占位；同 URL 的在途加载可以正常
+完成。只有 URL 变化或账号代次变化时重置。组件销毁后重新挂载也会自然尝试一次。
+
+src 变化与账号隔离使 generation 递增；img 的 VNode key 和 data-cover-generation
+绑定这个代次。load/error 从事件 currentTarget 读取原节点的 URL 和代次，只接受
+匹配当前源的事件。旧源或旧账号的迟到事件无法改变新的图片状态。同一账号、相同 URL
+没有被错误当作旧图片。账号代次导致的额外重置是本客户端的隔离要求。
+
+本客户端复用已有 music Icon 作为本地占位资产，未复制官方专有默认图片。原有 img
+仍加载同一个公开封面地址；本改动不添加预取、候选地址、轮询或重试。加载期间先展示
+本地 Icon，load 成功才显示图片；error 后移除失败的 img 并保留 Icon。不会将封面失败
+作为音频、账号或显卡错误，也不影响取色、播放授权、音源或播放时钟。
+
+验证
+frontend/tests/cover-image.test.ts 覆盖同源成功/失败复用、同源在途加载跨节目完成、
+换 URL、换账号、旧原节点的迟到事件、空 URL 和销毁清理。实际 GUI 占位与封面尺寸
+仍使用当前批次的真实 WebView 证据，不把状态单测称为浏览器图片加载实测。

@@ -104,7 +104,7 @@ const source = computed(() => playbackSource(view.value));
 const voiceMetadata = computed(() => playbackVoiceDetail(view.value));
 const creatorTarget = computed(() => voiceCreatorTarget(view.value));
 const cover = useCoverImage(() => ({
-  owner: JSON.stringify([view.value?.epoch, view.value?.playId]),
+  owner: view.value?.epoch ?? '',
   source: view.value?.track?.coverUrl,
 }));
 function openVoiceCreator() {

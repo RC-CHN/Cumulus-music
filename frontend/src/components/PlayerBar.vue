@@ -76,7 +76,7 @@ const {
   loadingStepBusy,
 } = props.player;
 const cover = useCoverImage(() => ({
-  owner: JSON.stringify([view.value?.epoch, view.value?.playId]),
+  owner: view.value?.epoch ?? '',
   source: view.value?.track?.coverUrl,
 }));
 const chorusMarker = usePlaybackChorus(view, loaded);
