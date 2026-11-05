@@ -649,6 +649,8 @@ async fn listened_books_replays_matching_departed_chapter_in_official_around_ord
     let next_epoch = f.epoch();
     let other = open(&next_epoch).await;
     assert_eq!(other["rows"][0]["chapter"]["recent"], false);
+    // Deliberately no player snapshot or warm-up on the new account: its
+    // first source-bound action must take a fence from the new owner.
     let other_playback = f
         .client
         .play_selection(&next_epoch, select(&other))

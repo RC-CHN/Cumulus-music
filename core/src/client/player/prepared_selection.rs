@@ -285,13 +285,23 @@ impl MusicClient {
             let lease = lease.ok_or(Error::StaleResponse)?;
             self.focus.check(lease, Owner::Audio)?;
             if let Some(source) = source_guard {
+                // The last published view can still belong to the prior
+                // account. Bind and sync the actor before taking its fence.
+                let current = controller.command(token, PlaybackCommand::Snapshot).await?;
+                if source.is_cancelled() {
+                    return Err(Error::QueueChanged);
+                }
+                if self.player.selection.load(Ordering::Acquire) != attempt {
+                    return Err(Error::StaleResponse);
+                }
+                self.focus.check(lease, Owner::Audio)?;
                 let focus = self.focus.clone();
                 let selection = self.player.selection.clone();
                 return controller
                     .command_guarded(
                         token,
                         command,
-                        controller.snapshot().fence(),
+                        current.fence(),
                         Cancellation::new(move || {
                             !source.is_cancelled()
                                 && selection.load(Ordering::Acquire) == attempt
