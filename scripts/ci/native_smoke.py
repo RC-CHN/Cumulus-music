@@ -45,6 +45,52 @@ def read_native_report(report):
     return json.loads(report.read_text(encoding='utf-8'))
 
 
+def verify_stereo_native(proof):
+    assert proof['stereoNativeBoundary'] and proof['syntheticMediaOnly']
+    assert proof['nativeNullOutputOnly'] and proof['remoteRequests'] == 0 and proof['accountWrites'] == 0
+    assert not proof['productionStereoAttachment'] and not proof['wholeMaterialVerified']
+    assert not proof['physicalAudioOutputVerified']
+    component = proof['dynamicComponent']
+    assert component['ok'] and component['realDynamicLibrary'] and component['versionCheckedByHost'] == 1
+    assert component['validPcmBitIdenticalToCore'] and component['configurationRevoked']
+    assert component['retainedInstanceMuted'] and component['reopenedFreshInstance']
+    assert (component['sampleRate'], component['channels'], component['capacity']) == (48000, 2, 2048)
+    assert len(component['librarySha256']) == 64
+    source = [block for block in component['blocks'] if block['phase'] == 'source']
+    tail = [block for block in component['blocks'] if block['phase'] == 'eof']
+    assert len(source) == 20 and 1 < len(tail) <= 128
+    assert sum(block['reset'] for block in source) == 1
+    assert len({block['revision'] for block in source}) == 4
+    assert all(not block['end'] and block['inputFrames'] == block['outputFrames'] for block in source)
+    assert all(block['inputFrames'] == 0 for block in tail)
+    assert all(not block['end'] for block in tail[:-1]) and tail[-1]['end']
+    assert sum(block['outputFrames'] for block in tail) == component['tailFrames'] == 48000
+    assert component['tailNonzero'] and component['completeEof']
+    assert all(0 <= block['outputFrames'] <= 2048 and len(block['validPcmSha256']) == 64
+               for block in component['blocks'])
+    stats = component['finalStats']
+    assert stats['revision'] == stats['observed_revision'] == 4
+    assert stats['instances_created'] == 2 and stats['active_instances'] == 1
+    assert stats['failed_blocks'] == 0 and stats['resets'] == 1
+    assert stats['input_frames'] == sum(block['inputFrames'] for block in source)
+    assert stats['output_frames'] == sum(block['outputFrames'] for block in component['blocks'])
+    formats = proof['actualDecodedFormats']
+    assert formats['ok'] and formats['monoPreserved'] and not formats['outputDeviceCoercionUsed']
+    assert formats['staleEntryRejected'] and formats['stoppedEntryRejected']
+    assert len(formats['cases']) == 2
+    assert [case['channels'] for case in formats['cases']] == [1, 2]
+    assert len({case['entryId'] for case in formats['cases']}) == 2
+    for case in formats['cases']:
+        assert case['channels'] == case['expectedChannels']
+        assert case['nativeStereoQualification'] == (case['channels'] == 2)
+        assert case['sampleRate'] == 48000 and case['decoder'] == 'pcm_s16le'
+        assert case['output'] == 'null' and case['actualPosition'] > .08
+    qualification = formats['observedFormatQualification']
+    assert qualification['instances_created'] == 1 and qualification['active_instances'] == 0
+    assert qualification['observed_revision'] == 0
+    assert qualification['input_frames'] == qualification['output_frames'] == 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -55,6 +101,8 @@ def main():
     mode.add_argument('--filter-library', type=Path, help='verify recovered loudness PCM after GUI initialization')
     mode.add_argument('--bound-peq-library', type=Path,
                       help='verify supervised PEQ and real PCM after GUI initialization')
+    mode.add_argument('--stereo-native-library', type=Path,
+                      help='verify dynamic stereo ABI and actual decoder format, without attachment')
     args = parser.parse_args()
     report = args.report.resolve()
     assert not report.exists(), 'proof report must be new'
@@ -75,11 +123,19 @@ def main():
         env['CUMULUS_LOUDNESS_LIBRARY'] = str(args.filter_library.resolve(strict=True))
     if args.bound_peq_library:
         env['CUMULUS_BOUND_PEQ_LIBRARY'] = str(args.bound_peq_library.resolve(strict=True))
+    if args.stereo_native_library:
+        env['CUMULUS_STEREO_NATIVE_LIBRARY'] = str(args.stereo_native_library.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     run_native([str(args.binary.resolve())], env, report)
     proof = read_native_report(report)
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
+    if args.stereo_native_library:
+        verify_stereo_native(proof)
+        print(json.dumps({'ok': True, 'desktopStereoNativeBoundary': True,
+                          'sourceBlocks': 20, 'completeTailFrames': 48000,
+                          'decodedChannels': [1, 2], 'productionAttachment': False}))
+        return
     if args.bound_peq_library:
         assert proof['boundParametric'] and proof['actualDecoder']
         assert not proof['physicalAudioOutputVerified'] and proof['realMusicRequests'] == 0

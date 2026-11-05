@@ -11,6 +11,9 @@ mod native_media;
 #[allow(dead_code)]
 #[path = "../../core/examples/output_device_roundtrip.rs"]
 mod output_devices;
+#[allow(dead_code)]
+#[path = "../../core/examples/stereo_native_roundtrip.rs"]
+mod stereo_native;
 
 use std::{
     io::Write,
@@ -91,7 +94,16 @@ fn main() {
             }
             let handle = app.handle().clone();
             std::thread::spawn(move || {
-                let result = if let Some(library) = std::env::var_os("CUMULUS_BOUND_PEQ_LIBRARY") {
+                let result = if let Some(library) =
+                    std::env::var_os("CUMULUS_STEREO_NATIVE_LIBRARY")
+                {
+                    setup_trace.record("stereo_native_start");
+                    stereo_native::verify_with_observer(
+                        &PathBuf::from(library),
+                        &output.with_extension("fixture"),
+                        |stage| setup_trace.record(stage),
+                    )
+                } else if let Some(library) = std::env::var_os("CUMULUS_BOUND_PEQ_LIBRARY") {
                     setup_trace.record("bound_peq_start");
                     bound_peq::verify(&PathBuf::from(library), &output.with_extension("fixture"))
                 } else if let Some(library) = std::env::var_os("CUMULUS_LOUDNESS_LIBRARY") {

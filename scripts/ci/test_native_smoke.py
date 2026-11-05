@@ -1,5 +1,6 @@
 """Native process failures retain evidence and still fail the CI job."""
 import contextlib
+import copy
 import io
 import json
 import os
@@ -9,7 +10,74 @@ import sys
 import tempfile
 import unittest
 
-from native_smoke import run_native, read_native_report
+from native_smoke import run_native, read_native_report, verify_stereo_native
+
+
+def stereo_report_fixture():
+    """Validator-only fixture; never execution evidence for native playback."""
+    blocks = [{'phase': 'source', 'reset': index == 9,
+               'revision': 1 if index < 3 else 2 if index < 5 else 3 if index == 5 else 4,
+               'inputFrames': 64, 'outputFrames': 64, 'end': False,
+               'validPcmSha256': 'a' * 64} for index in range(20)]
+    remaining = 48000
+    while remaining:
+        frames = min(remaining, 2048)
+        remaining -= frames
+        blocks.append({'phase': 'eof', 'inputFrames': 0, 'outputFrames': frames,
+                       'end': remaining == 0, 'validPcmSha256': 'b' * 64})
+    return {'stereoNativeBoundary': True, 'syntheticMediaOnly': True,
+            'nativeNullOutputOnly': True, 'remoteRequests': 0, 'accountWrites': 0,
+            'productionStereoAttachment': False, 'wholeMaterialVerified': False,
+            'physicalAudioOutputVerified': False,
+            'dynamicComponent': {'ok': True, 'realDynamicLibrary': True,
+                'versionCheckedByHost': 1, 'validPcmBitIdenticalToCore': True,
+                'configurationRevoked': True, 'retainedInstanceMuted': True,
+                'reopenedFreshInstance': True, 'sampleRate': 48000, 'channels': 2,
+                'capacity': 2048, 'librarySha256': 'c' * 64, 'blocks': blocks,
+                'tailFrames': 48000, 'tailNonzero': True, 'completeEof': True,
+                'finalStats': {'revision': 4, 'observed_revision': 4,
+                    'instances_created': 2, 'active_instances': 1,
+                    'failed_blocks': 0, 'resets': 1, 'input_frames': 1280,
+                    'output_frames': 49280}},
+            'actualDecodedFormats': {'ok': True, 'monoPreserved': True,
+                'outputDeviceCoercionUsed': False, 'staleEntryRejected': True,
+                'stoppedEntryRejected': True,
+                'cases': [{'channels': channels, 'expectedChannels': channels,
+                           'entryId': channels, 'sampleRate': 48000,
+                           'decoder': 'pcm_s16le', 'output': 'null',
+                           'actualPosition': .2, 'nativeStereoQualification': channels == 2}
+                          for channels in [1, 2]],
+                'observedFormatQualification': {'instances_created': 1,
+                    'active_instances': 0, 'observed_revision': 0,
+                    'input_frames': 0, 'output_frames': 0}}}
+
+
+class StereoBoundaryReport(unittest.TestCase):
+    def test_complete_boundary_report_is_validated_without_promoting_it_to_attachment(self):
+        verify_stereo_native(stereo_report_fixture())
+
+    def test_tail_cannot_be_shortened_even_if_native_flags_and_totals_claim_success(self):
+        proof = stereo_report_fixture()
+        proof['dynamicComponent']['blocks'][-1]['outputFrames'] -= 1
+        proof['dynamicComponent']['tailFrames'] -= 1
+        proof['dynamicComponent']['finalStats']['output_frames'] -= 1
+        with self.assertRaises(AssertionError):
+            verify_stereo_native(proof)
+
+    def test_mono_cannot_be_reported_as_stereo_or_qualified_from_output_layout(self):
+        proof = stereo_report_fixture()
+        for forged in ['channels', 'nativeStereoQualification']:
+            case = copy.deepcopy(proof)
+            case['actualDecodedFormats']['cases'][0][forged] = 2 if forged == 'channels' else True
+            with self.assertRaises(AssertionError):
+                verify_stereo_native(case)
+
+    def test_component_and_separate_decoder_proof_cannot_claim_complete_live_attachment(self):
+        for flag in ['productionStereoAttachment', 'wholeMaterialVerified', 'physicalAudioOutputVerified']:
+            proof = stereo_report_fixture()
+            proof[flag] = True
+            with self.assertRaises(AssertionError):
+                verify_stereo_native(proof)
 
 
 class NativeDiagnostics(unittest.TestCase):

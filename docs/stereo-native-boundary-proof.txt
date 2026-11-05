@@ -1,0 +1,66 @@
+Dynamic SE1 ABI and actual decoded-format proof
+==============================================
+
+This is a runnable boundary proof, not production player attachment. It uses
+the separately built cumulus_audio_filter shared library through the real
+StereoHost::open/Library::new/versioned symbols, rather than calling exports
+linked into the same test executable. No original DLL, account or network is
+required. The reference is the core SE1 component already compared against
+the frozen official vectors; this new proof does not regenerate those vectors.
+
+core/examples/stereo_native_roundtrip.rs provides a CLI and a shared helper:
+ stereo_native_roundtrip <trusted-filter-library> <new-fixture-directory>
+
+At48kHz/stereo/capacity2048, the dynamic instance and a separate core stage
+receive identical complete initialized planar allocations. Twenty source
+blocks include short1/3/7frame input, changed controls, off/on transitions and
+reset of the same instance. Valid PCM is compared bit-for-bit and frame/EOF
+results must match. Each block retains a valid-PCM SHA256 in the report.
+
+Explicit zero-input EOF then drains until the native component ends, with a
+128block ceiling. The proof requires exactly48000extra output frames and a
+nonzero real tail. No input frame is fabricated to finish the tail. Initial
+revision remains unobserved before processing; changed tuples are observed
+only after actual calls, identical updates do not manufacture revisions, and
+input/output/reset/active-instance counters must match the complete sequence.
+
+The proof creates and destroys a second instance, drops the host while the
+main instance is retained, checks that revoked processing returns an error
+and mutes all output, and checks reset cannot revive that instance. Destruction
+still executes while its Arc owns the module. A new dynamic host/instance is
+then opened and compared against a freshly initialized reference again.
+
+The same helper separately generates four-second mono and stereo PCM WAVs,
+loads both through the real MpvEngine/null output, waits for the real clock
+and stable non-seeking decoder metadata, and checks audio-params reports
+48000Hz/1channel then48000Hz/2channels. Actual decoded mono is rejected by
+StereoHost::instantiate; actual decoded stereo is accepted. The observed
+stereo qualification instance does not process audio, and counters must stay
+zero. Previous/stopped native entry IDs are rejected. No audio-out-params,
+output-device layout, forced aformat or stereo upmix supplies eligibility.
+
+desktop/examples/native_audio_probe.rs exposes the same helper ONLY when the
+explicit native test environment CUMULUS_STEREO_NATIVE_LIBRARY is present.
+It runs after a real Tauri/GTK window is created and the normal startup locale
+handling is checked. Linux requires a non-C locale; only numeric locale may
+be changed toC. The regular native-media/loudness/PEQ branches remain intact.
+
+Use the existing isolated native runner (inside the usual network namespace
+and Xvfb/dbus session on Linux, or the Windows runtime environment):
+ python3 scripts/ci/native_smoke.py --binary <native_audio_probe> \
+   --stereo-native-library <cumulus_audio_filter.so-or-dll> \
+   --report <new-report.json> [--runtime <Windows-runtime-directory>]
+The runner owns fresh profile/WebView/media paths, retains progress/log/failure
+artifacts and strictly checks complete tail, native stats, typed decoder
+channel counts, zero service writes and the explicit non-attachment boundary.
+
+Limitations
+-----------
+The dynamically processed PCM and the mpv WAV playback are separate checks.
+The SE1 component is NOT attached to that decoder; no GUI slider or production
+playback flow is completed here. The full local material still requires its
+real GEQ/BT/SE/RVB/Rotate/default-limiter graph, source ownership, seek/format
+lifecycle, variable-frame FIFO and source/sink clock handling. No physical
+sound card, subjective listening result or Windows result is inferred from
+an eventual Linux run. Source-only delivery is not execution evidence; the
+integration owner builds and runs this candidate with matching artifacts.
