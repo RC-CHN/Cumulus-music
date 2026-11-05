@@ -55,6 +55,18 @@ impl Fixture {
         group: &str,
         replies: impl IntoIterator<Item = HttpResponse>,
     ) -> (Self, PlayerView) {
+        Self::start_at(rows, mode, group, 0, None, replies).await
+    }
+
+    async fn start_at(
+        rows: Vec<Value>,
+        mode: PlaybackMode,
+        group: &str,
+        current: usize,
+        order: Option<&[usize]>,
+        replies: impl IntoIterator<Item = HttpResponse>,
+    ) -> (Self, PlayerView) {
+        let initial = rows[current]["id"].as_u64().unwrap();
         let root = tempfile::tempdir().unwrap();
         let (api, wire) = vinyl_http(
             root.path(),
@@ -63,7 +75,7 @@ impl Fixture {
                 json!({"code":200,"data":[{"expName":"PH-PC-skipSongs2","expGroupName":group}]})
                     .into(),
                 json!({"code":200,"msg":0,"comment":0,"forward":0,"notice":0}).into(),
-                url(1, true).into(),
+                url(initial, true).into(),
             ]
             .into_iter()
             .chain(replies),
@@ -72,7 +84,26 @@ impl Fixture {
         let store = registry.store();
         let mut queue = PlaybackQueue::new(Some(store.clone()), "71").unwrap();
         queue.set_mode(mode).unwrap();
-        queue.replace(rows, 0, json!({"kind":"playlist"})).unwrap();
+        queue
+            .replace(rows, current, json!({"kind":"playlist"}))
+            .unwrap();
+        if let Some(order) = order {
+            // Use an explicit persisted native deck, not a lucky RNG draw.
+            assert_eq!(mode, PlaybackMode::Random);
+            let mut snapshot = queue.snapshot();
+            snapshot.order = order
+                .iter()
+                .map(|&i| snapshot.items[i].entry_id.clone())
+                .collect();
+            store
+                .put(
+                    "71",
+                    "playback",
+                    "queue",
+                    &serde_json::to_value(snapshot).unwrap(),
+                )
+                .unwrap();
+        }
         let session = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
         session
             .adopt(api, json!({"userId":71}), &session.token().unwrap())
@@ -389,6 +420,116 @@ async fn signed_eof_honors_the_original_hundred_denial_stop_limit() {
     let stopped = f.wait(|view| view.state == PlaybackStatus::Idle).await;
     assert_eq!(stopped.entry_id, before.entry_id);
     assert!(stopped.play_id.is_none());
+    assert_eq!(f.loads(), 1);
+    f.assert_wire(&["1", "2"]);
+    f.assert_durable_end(before.entry_id.as_deref());
+    f.poll.shutdown().await;
+}
+
+#[tokio::test]
+async fn signed_loop_eof_follows_display_or_persisted_random_order_when_wrapping() {
+    for (mode, rows, order, denied, target) in [
+        (
+            PlaybackMode::OrderLoop,
+            vec![song(1, false), song(2, true), song(3, true)],
+            None,
+            1,
+            2,
+        ),
+        (
+            PlaybackMode::Random,
+            vec![song(1, true), song(2, false), song(3, true)],
+            Some(&[1, 0, 2][..]),
+            2,
+            1,
+        ),
+    ] {
+        let (f, before) = Fixture::start_at(
+            rows,
+            mode,
+            "t1",
+            2,
+            order,
+            [url(denied, false).into(), url(target, true).into()],
+        )
+        .await;
+        let denied = denied.to_string();
+        let target = target.to_string();
+        f.wire.wait(4).await;
+        f.assert_wire(&["3", &denied]);
+        let original = PlaybackQueue::new(Some(f.store.clone()), "71")
+            .unwrap()
+            .snapshot();
+        f.eof();
+        let after = f
+            .wait(|view| view.state == PlaybackStatus::Playing && view.play_id != before.play_id)
+            .await;
+        assert_eq!(after.track.unwrap().id, target);
+        assert_eq!(after.mode, mode);
+        assert_eq!(f.loads(), 2);
+        let actual = PlaybackQueue::new(Some(f.store.clone()), "71")
+            .unwrap()
+            .snapshot();
+        assert_eq!(actual.order, original.order);
+        assert_eq!(actual.items, original.items);
+        assert_eq!(actual.current, after.entry_id);
+        assert_eq!(
+            actual
+                .items
+                .iter()
+                .find(|row| Some(&row.entry_id) == actual.current.as_ref())
+                .unwrap()
+                .resource["id"]
+                .as_u64(),
+            target.parse::<u64>().ok()
+        );
+        f.assert_wire(&["3", &denied, &target]);
+        f.poll.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn signed_loop_control_clears_only_the_finished_identity_after_a_denied_wrap() {
+    for mode in [PlaybackMode::OrderLoop, PlaybackMode::Random] {
+        let (f, before) = Fixture::start_at(
+            vec![song(1, false), song(2, true), song(3, true)],
+            mode,
+            "c",
+            2,
+            (mode == PlaybackMode::Random).then_some(&[0, 1, 2][..]),
+            [url(1, false).into()],
+        )
+        .await;
+        f.wire.wait(4).await;
+        let stops = f.device.state.lock().unwrap().stops;
+        f.eof();
+        let after = f
+            .wait(|view| view.state == PlaybackStatus::Ended && view.play_id.is_none())
+            .await;
+        assert_eq!(after.track.unwrap().id, "3");
+        assert_eq!(after.entry_id, before.entry_id);
+        assert_eq!(after.queue_revision, before.queue_revision);
+        assert_eq!(after.position, Some(120.0));
+        assert_eq!(after.timeline.unwrap().total, Some(120.0));
+        assert_eq!(f.device.state.lock().unwrap().stops, stops);
+        assert_eq!(f.loads(), 1);
+        f.assert_wire(&["3", "1"]);
+        f.assert_durable_end(before.entry_id.as_deref());
+        f.poll.shutdown().await;
+    }
+}
+
+#[tokio::test]
+async fn signed_loop_honors_the_denied_attempt_cap_without_leaving_the_old_row() {
+    let rows = (1..=102).map(|id| song(id, id == 1 || id == 102)).collect();
+    let (f, before) =
+        Fixture::start(rows, PlaybackMode::OrderLoop, "t1", [url(2, false).into()]).await;
+    f.wire.wait(4).await;
+    f.eof();
+    let after = f.wait(|view| view.state == PlaybackStatus::Idle).await;
+    assert_eq!(after.entry_id, before.entry_id);
+    assert_eq!(after.queue_revision, before.queue_revision);
+    assert!(after.play_id.is_none());
     assert_eq!(f.loads(), 1);
     f.assert_wire(&["1", "2"]);
     f.assert_durable_end(before.entry_id.as_deref());

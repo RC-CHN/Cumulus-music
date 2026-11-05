@@ -50,6 +50,7 @@ struct Ticket {
 
 enum Outcome {
     KeepFinished,
+    ControlKeepFinished,
     StopFinished,
     PlayExisting(String),
 }
@@ -67,8 +68,10 @@ impl Actor {
         let (Some(provider), Some(loaded)) = (&self.ordinary_eof, &self.loaded) else {
             return false;
         };
-        if self.queue.mode() != PlaybackMode::Sequential
-            || self.queue.len() > crate::playback::intelligence::MAX_QUEUE_TRACKS
+        if !matches!(
+            self.queue.mode(),
+            PlaybackMode::Sequential | PlaybackMode::OrderLoop | PlaybackMode::Random
+        ) || self.queue.len() > crate::playback::intelligence::MAX_QUEUE_TRACKS
             || self.play_id.is_none()
             || !self.ordinary_online_song(&loaded.item)
             || self.queue.selected().as_ref() != Some(&loaded.item)
@@ -89,7 +92,8 @@ impl Actor {
             return false;
         };
         if attempted != &adjacent
-            || !queue.items.iter().map(|row| &row.entry_id).eq(&queue.order)
+            || (queue.mode != PlaybackMode::Random
+                && !queue.items.iter().map(|row| &row.entry_id).eq(&queue.order))
             || queue.items.iter().any(|row| {
                 // No original replacement audio, video, or local handoff in
                 // this first branch. M59 reads existing native evidence only.
@@ -135,7 +139,7 @@ impl Actor {
                     return Ok(Outcome::PlayExisting(attempted.entry_id));
                 }
                 if !verified.groups.skip_songs_assigned() {
-                    return Ok(Outcome::KeepFinished);
+                    return Ok(Outcome::ControlKeepFinished);
                 }
                 let scan = resolver
                     .ordinary_queue_preflight(&ticket.token, &ticket.queue, ENVIRONMENT)
@@ -201,6 +205,14 @@ impl Actor {
             return Ok(());
         }
         match value.result {
+            Ok(Outcome::ControlKeepFinished) => {
+                // M308's PlayOrder branch returns; PlayRandom/playCycle fall
+                // through onPlayEnd and clear the old playId (3833–3838).
+                // Keep the completed row and timeline; no new engine command.
+                if queue.mode != PlaybackMode::Sequential {
+                    self.play_id = None;
+                }
+            }
             Ok(Outcome::StopFinished) => {
                 // Stop retires the actual decoder and play identity, but does
                 // not clear the row or overwrite the saved completion.
