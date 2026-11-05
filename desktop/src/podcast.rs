@@ -91,6 +91,48 @@ pub fn set_scene_fm_autoplay_preference<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn scene_fm_palette_read<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    voice_id: String,
+    pixel_ratio: f64,
+) -> Result<AccountData<SceneFmPaletteRead>, ClientError> {
+    require_scene_main(&window)?;
+    client
+        .scene_fm_palette_read(&epoch, &revision, &voice_id, pixel_ratio)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub fn scene_fm_palette_sample<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    width: u32,
+    height: u32,
+    rgba: SceneFmPalettePixels,
+) -> Result<AccountData<SceneFmPaletteResult>, ClientError> {
+    require_scene_main(&window)?;
+    client
+        .scene_fm_palette_sample(&epoch, &receipt, width, height, rgba.into_vec())
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub fn scene_fm_palette_cancel<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+) -> Result<(), ClientError> {
+    require_scene_main(&window)?;
+    client
+        .scene_fm_palette_cancel(&epoch, &receipt)
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn podcast_search_membership(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

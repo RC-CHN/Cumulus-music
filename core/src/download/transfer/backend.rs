@@ -24,9 +24,18 @@ pub trait MediaBackend: Send + Sync {
 
 pub struct ReqwestMediaBackend {
     client: reqwest::Client,
+    artwork_metadata: bool,
 }
 impl ReqwestMediaBackend {
     pub fn new(timeout: Duration) -> Result<Self> {
+        Self::build(timeout, false)
+    }
+    /// Credential-free artwork only. Existing audio/download clients retain
+    /// their original strict header allowlist and response behavior.
+    pub fn with_artwork_metadata(timeout: Duration) -> Result<Self> {
+        Self::build(timeout, true)
+    }
+    fn build(timeout: Duration, artwork_metadata: bool) -> Result<Self> {
         if timeout.is_zero() || timeout > Duration::from_secs(300) {
             return Err(Error::InvalidInput(
                 "media timeout must be within 0..300 seconds",
@@ -36,7 +45,10 @@ impl ReqwestMediaBackend {
             .https_only(true)
             .build()
             .map_err(|_| Error::Transport("media client initialization failed".into()))?;
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            artwork_metadata,
+        })
     }
 }
 fn client_builder(timeout: Duration) -> reqwest::ClientBuilder {
@@ -94,6 +106,18 @@ impl MediaBackend for ReqwestMediaBackend {
                             .map_err(|_| Error::Response("non-text media header"))?
                             .into(),
                     );
+                }
+            }
+            if self.artwork_metadata {
+                for key in ["content-type", "x-nos-meta-n-m-cl"] {
+                    let mut values = response.headers().get_all(key).iter();
+                    if let Some(value) = values.next() {
+                        // Keep malformed/ambiguous metadata distinguishable
+                        // from absence without widening ordinary media reads.
+                        let text = value.to_str().ok().filter(|_| values.next().is_none());
+                        let text = text.map(|s| if s.len() > 4096 { "V:bounded" } else { s });
+                        headers.insert(key.into(), text.unwrap_or("M").to_owned());
+                    }
                 }
             }
             Ok(MediaReply {

@@ -86,7 +86,8 @@ pub use super::relay::{
 };
 pub use super::remote_skins::{RemoteSkinCatalog, RemoteSkinImage};
 pub use super::scene_fm::{
-    SceneFmCategoryView, SceneFmCommand, SceneFmView, home::SceneFmHomeView,
+    SceneFmCategoryView, SceneFmCommand, SceneFmPalettePixels, SceneFmPaletteRead,
+    SceneFmPaletteResult, SceneFmView, home::SceneFmHomeView,
 };
 pub use super::search::{
     ReasonTarget, SearchCategory, SearchHistoryCommand, SearchHotAction, SearchHotTarget,

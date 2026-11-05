@@ -1,9 +1,11 @@
 //! Official audio home Scene FM: a finite voice queue, separate from music FM.
 mod actions;
 pub(super) mod home;
+mod palette;
 mod view;
 use super::dto::EpisodeView;
 use crate::{Error, Result, account::SessionToken};
+pub use palette::{SceneFmPalettePixels, SceneFmPaletteRead, SceneFmPaletteResult};
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 
@@ -12,6 +14,7 @@ pub(super) struct SceneFmHost {
     attempted: Mutex<Option<SessionToken>>,
     operation: tokio::sync::Mutex<()>,
     home: Mutex<home::HomeState>,
+    palette: palette::PaletteHost,
 }
 impl SceneFmHost {
     fn attempt(&self, token: &SessionToken, automatic: bool) -> Result<bool> {

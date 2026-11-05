@@ -51,6 +51,7 @@ async fn actual_http_has_no_cookie_replay_redirect_retry_or_transparent_decompre
     });
     // Only this private unit test bypasses HTTPS/CDN URL construction.
     let backend = ReqwestMediaBackend {
+        artwork_metadata: false,
         client: client_builder(Duration::from_secs(2))
             .no_proxy()
             .build()
@@ -90,4 +91,78 @@ async fn actual_http_has_no_cookie_replay_redirect_retry_or_transparent_decompre
     }
     assert!(requests[1].contains("range: bytes=2-\r\n"));
     assert!(requests[1].contains("if-range: \"fixture\"\r\n"));
+}
+
+#[tokio::test]
+async fn scene_fm_palette_metadata_retains_only_safe_headers_without_credentials() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                    assert!(Instant::now() < deadline, "metadata client did not connect");
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                Err(error) => panic!("metadata server accept: {error}"),
+            }
+        };
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+        let mut data = Vec::new();
+        while !data.ends_with(b"\r\n\r\n") {
+            let mut byte = [0];
+            assert_eq!(stream.read(&mut byte).unwrap(), 1);
+            data.push(byte[0]);
+            assert!(data.len() < 8192);
+        }
+        let request = String::from_utf8(data).unwrap().to_ascii_lowercase();
+        assert!(!request.contains("cookie:"));
+        assert!(!request.contains("authorization:"));
+        assert!(!request.contains("referer:"));
+        assert!(request.contains("accept-encoding: identity"));
+        stream.write_all(b"HTTP/1.1 200 OK\r\nX-Nos-Meta-N-M-Cl: M:0A141E\r\nContent-Type: image/png\r\nSet-Cookie: private=discard\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+    });
+    // Only this closed unit test bypasses HTTPS/CDN URL construction.
+    let backend = ReqwestMediaBackend {
+        client: client_builder(Duration::from_secs(2))
+            .no_proxy()
+            .build()
+            .unwrap(),
+        artwork_metadata: true,
+    };
+    let reply = backend
+        .get(MediaRequest {
+            url: MediaUrl(format!("http://{address}/art")),
+            offset: 0,
+            if_range: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        reply.headers.get("x-nos-meta-n-m-cl").map(String::as_str),
+        Some("M:0A141E")
+    );
+    assert_eq!(
+        reply.headers.get("content-type").map(String::as_str),
+        Some("image/png")
+    );
+    assert!(!reply.headers.contains_key("set-cookie"));
+    server.join().unwrap();
+    assert!(
+        !ReqwestMediaBackend::new(Duration::from_secs(1))
+            .unwrap()
+            .artwork_metadata
+    );
+    assert!(
+        ReqwestMediaBackend::with_artwork_metadata(Duration::from_secs(1))
+            .unwrap()
+            .artwork_metadata
+    );
 }
