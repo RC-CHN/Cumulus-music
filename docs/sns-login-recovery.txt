@@ -29,6 +29,13 @@ Cumulus SNS 登录恢复契约与后续实现边界
   /sso/login 打开外部链接。这是通用外链分支，不是微信或 QQ 的成功票据生产者；
   隔离的 SNS 授权窗口不得沿用此分支传递已有账号状态或票据。
 
+  M52:51–72 的 globalDispatch@<windowUUID> 是本地应用的窗口间通道，信封包含
+  action/isSrcMain/srcUUID/distUUID/route。M290:713–725 消费的是这层信封，不是
+  浏览器消息；它只取 action。M3143 先把浏览器消息转成本地 action，期间没有检查
+  event.origin 或 event.source。因此即使核对应用子窗的 UUID，也不能证明远端消息
+  实际由哪个文档或 iframe 发出。M52 的 SHA256：
+    f4336dc38da03f9e2380e5b395bdb5af06ed7b7b07af83d9b98ea27ca6a0cc72
+
   从第 5 节的历史无会话响应离线解析 Location：微信 /back/weichat 与 QQ /back/qq
   分别返回 HTTP 302，指向 http://music.163.com/back/sns；二者查询均为 code=401、
   message=授权出现异常，并含不公开的 key。另一次直接请求 HTTPS /back/sns（无查询）
@@ -170,6 +177,16 @@ Cumulus SNS 登录恢复契约与后续实现边界
   legacy 回调是 code=200/account/profile/bindings/token 等账户响应，走 page:sns/login；
   code702 走验证；10004 走风险提示。不能拿 legacy 响应结构替代 JSK 桌面 code。
 
+  入口也分支：Other.jsx:141–171 仅在 isJskLoginEnabled 为真时设 fromPage=jsk
+  并调用 loginWithThirdParty。否则先删除该标记，再开同尺寸 sns 窗口，路由只传
+  snsType，Hosted 查询不带 callbackType=login。M3143:296–305 的 legacy 成功分支
+  直接把账号响应交给 M3144:52–142；它调用 host/updateAutoLogin，并依 profile
+  切换账号或进入 /login/captcha?from=sns。M198:731–750 在选择记住登录时读取
+  官方域的浏览器 Cookie，确认 MUSIC_U 并排除 MUSIC_A 后再保存。此分支没有 M290
+  的桌面票据交换；第 5 节的入口样本都带 callbackType=login，不能用来认定 legacy
+  的成功回调或 Cookie 归属。若单独接入 legacy，必须另证本次授权窗口可取得成功
+  响应、凭据的 Domain/Path，以及候选身份的核对，不能以 JSK 交换作为静默回退。
+
 5. 本次有限官方入口读取（无真实登录）
 
   私有证据目录：references/sns-login-recovery/20261103-no-session/。
@@ -223,6 +240,13 @@ Cumulus SNS 登录恢复契约与后续实现边界
   M1368:2887–2900 从 Set-Cookie 读 MUSIC_U/MUSIC_A，从 x-refresh-token 读 RT，
   body 取 account/profile/bindings；本机必须继续使用真实凭据回包与 candidate 身份核对。
 
+  服务明确返回业务码 8821 是独立分支。M1368:8641–8669 在本机构造
+  originRequestInfo（原 URL、参数、方法、选项）；同模块 :3350–3385 只在易盾挑战
+  返回成功后，以相同请求和桌面票据追加 secureCaptcha，再交回通用登录响应处理。
+  这是服务器要求验证后的继续提交；断网、HTTP 回包丢失或身份核验 301 不具备
+  同样条件。未来 Rust 接入只允许当前授权尝试从已验证挑战继续，不套用普通凭据登录
+  的通用待核对重放逻辑；应从本机已发送请求保留上下文，不采信响应中自报的路由。
+
   body.code=200 且第三方无 profile：NEED_REGISTER；保存私有 registration 上下文，
   包含 externalUser/loginType/ursToken/hasAccount/canSkipSetNickname/canSkipBindPhone 等。
   不能因为 code200、收到 token、绑定成功或昵称提交完成就采用未注册 candidate。
@@ -265,6 +289,10 @@ Cumulus SNS 登录恢复契约与后续实现边界
 
   M1368 PcPlatform.fetch 总加 fromPage=JSK，method/data/query、expandSetCookies，
   并声明 needsGuardianToken=true/tokenKey=checkToken；挑战时可带 attempt-local x-music-tu。
+  同一组登录字段在 PC 桥同时送入 query 和 POST data；M402:386–394 先解码再合并，
+  body 同名字段覆盖 query。M48:30–44 的表单助手对对象值先做一次 JSON.stringify 再
+  URL 编码。未来合成向量需核对嵌套对象、中文及票据中的 `+`、`%`、`&`，避免把两组
+  字段重复发送，或把桌面对象和 code 都再套一层 JSON。
   M1890 保留选项，但 M290 HTTP normalizer/request builder 仅消费
   path/method/query/data/header，丢弃 Guardian flags。M402 的 MConfig 路径匹配
   另行取得 checkToken/X-antiCheatToken，不能当成消费上述选项的等价证据。
@@ -345,6 +373,7 @@ Cumulus SNS 登录恢复契约与后续实现边界
     wrong origin/source/provider/window/generation、伪造 type、自报 URL、frame 混淆均拒绝；
     空/超长/deep payload、重复回调、超时/close/cancel 后迟到消息不采用；
     native exchange 回码/challenge/无 profile/缺 RT/身份301/未知结果保持旧账号；
+    8821 只有本次验证成功才能按原 SNS 请求追加 secureCaptcha；未决和取消不自动重发；
     挂住身份后 cancel 释放 MusicClient 实际 gate、新登录可开始；
     registration guard、显式绑定/抢绑、状态未知不自动重试写操作；
     JSON/日志/前端事件中没有 code/desktopLoginSnsParam/完整授权 URL/Cookie/RT。

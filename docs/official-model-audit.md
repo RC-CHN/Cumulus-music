@@ -40,7 +40,7 @@
 | `async:petDesktop` (18) | `models/async_petDesktop.txt` | [仅恢复](desktop-pet-contracts.txt) | 窗口/素材和透明探针；无正式桌宠。 |
 | `async:petGenerate` (48) | `models/async_petGenerate.txt` | [仅恢复](desktop-pet-contracts.txt) | 预设、照片生成、抽奖等无生产流程。 |
 | `async:playingListHandoff` (53) | `models/async_playingListHandoff.txt` | [已接入口](relay-contracts.txt) | 接续、回执和恢复；缺真实另一端记录。 |
-| `async:update` (16) | `models/async_update.txt` | [部分](manual-update-contracts.txt) | Cumulus 显式版本检查；不移植官方升级器，不自动下载或安装。 |
+| `async:update` (16) | `models/async_update.txt` | [范围外](manual-update-contracts.txt) | 不移植网易的更新查询、下载或安装。Cumulus 自己的显式版本检查保留。 |
 | `audioEffect` (61) | `models/audioEffect.txt` | [部分](core-effects-material-routing.txt) | 算法、材料与部分实时处理；整图未接。 |
 | `configCenter` (3) | `models/configCenter.txt` | [部分](core-pc-request-context-contracts.txt) | 只读配置/实验按业务接入；缺完整预加载与更新覆盖。 |
 | `dbPlayingList` (15) | `models/dbPlayingList.txt` | [已接入口](core-playback-contracts.txt) | 原生队列、存储和恢复；保留与官方 SQLite 实现差异。 |
