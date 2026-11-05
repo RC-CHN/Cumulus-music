@@ -87,8 +87,17 @@ export interface PodcastState {
   likedIds: string[] | null;
   operations: PodcastMutation[];
 }
+export type PodcastRadioOrder =
+  | { kind: 'read'; id: string }
+  | {
+      kind: 'set';
+      scope: Extract<PodcastScope, { kind: 'radio' }>;
+      revision: string;
+      ascending: boolean;
+    };
 export interface PodcastClient {
   podcastState(epoch: string, refresh: boolean): Promise<AccountData<PodcastState>>;
+  podcastRadioOrder(epoch: string, query: PodcastRadioOrder): Promise<AccountData<boolean | null>>;
   podcastPage(epoch: string, query: PodcastQuery, refresh: boolean): Promise<PodcastPage>;
   podcastCommand(epoch: string, command: PodcastCommand): Promise<AccountData<PodcastMutation>>;
 }

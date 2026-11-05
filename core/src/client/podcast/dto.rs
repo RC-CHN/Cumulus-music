@@ -26,6 +26,18 @@ pub struct PodcastQuery {
     pub limit: usize,
     pub revision: Option<String>,
 }
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum PodcastRadioOrder {
+    Read {
+        id: String,
+    },
+    Set {
+        scope: PodcastScope,
+        revision: String,
+        ascending: bool,
+    },
+}
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PodcastCard {

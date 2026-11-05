@@ -107,18 +107,21 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     loading.value = true;
     error.value = '';
     try {
-      const value = await core.podcastPage(
-        e,
-        { ...query.value, revision: refresh ? null : query.value.revision },
-        refresh,
-      );
+      let request = { ...query.value, revision: refresh ? null : query.value.revision };
+      if (request.scope.kind === 'radio' && request.revision === null) {
+        const preference = await core.podcastRadioOrder(e, { kind: 'read', id: request.scope.id });
+        if (!valid(g, e) || n !== read || preference.epoch !== e) return;
+        if (preference.value !== null)
+          request = { ...request, scope: { ...request.scope, ascending: preference.value } };
+      }
+      const value = await core.podcastPage(e, request, refresh);
       if (valid(g, e) && n === read && value.epoch === e) {
         stateRead++;
         page.value = value;
         liked.value = new Set(value.likedIds);
         likesKnown.value = true;
         operations.value = value.operations;
-        query.value = { ...query.value, revision: value.revision };
+        query.value = { ...request, revision: value.revision };
       }
     } catch (value) {
       if (valid(g, e) && n === read) {
@@ -197,6 +200,53 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     query.value = { ...query.value, offset };
     return load();
   }
+  async function toggleRadioOrder() {
+    const scope = query.value.scope;
+    const shown = page.value;
+    if (
+      !epoch.value ||
+      busy.value ||
+      loading.value ||
+      scope.kind !== 'radio' ||
+      shown?.scope.kind !== 'radio' ||
+      shown.epoch !== epoch.value ||
+      shown.scope.id !== scope.id ||
+      shown.scope.ascending !== scope.ascending ||
+      shown.radio?.id !== scope.id ||
+      shown.radio.unavailable
+    )
+      return;
+    const g = generation,
+      e = epoch.value,
+      n = ++write,
+      before = ++read;
+    busy.value = true;
+    error.value = '';
+    let applied = false;
+    try {
+      const result = await core.podcastRadioOrder(e, {
+        kind: 'set',
+        scope: shown.scope,
+        revision: shown.revision,
+        ascending: !shown.scope.ascending,
+      });
+      if (!valid(g, e) || n !== write || result.epoch !== e) return;
+      if (result.value !== !shown.scope.ascending)
+        throw { code: 'stale', message: '播客排序未保存', retryable: false };
+      applied = true;
+      // Keep the old displayed list bound to its order until the replacement
+      // page arrives. The next read must resolve the committed preference.
+      if (before === read) query.value = { ...query.value, revision: null };
+    } catch (value) {
+      if (valid(g, e) && n === write && before === read) issue(value);
+    } finally {
+      if (valid(g, e) && n === write) {
+        busy.value = false;
+        // Navigation may have waited behind the explicit disk write.
+        if (visible && (applied || before !== read)) await load(true);
+      }
+    }
+  }
   function pending(action: PodcastAction, id: string) {
     return operations.value.some((v) => v.action === action && v.id === id);
   }
@@ -271,6 +321,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     back,
     search,
     paginate,
+    toggleRadioOrder,
     pending,
     command,
     change,

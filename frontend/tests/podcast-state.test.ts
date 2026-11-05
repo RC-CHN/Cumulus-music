@@ -44,6 +44,7 @@ function deferred<T>() {
 function client(extra: Partial<PodcastClient> = {}): PodcastClient {
   return {
     podcastPage: async (e) => page(e),
+    podcastRadioOrder: async (e) => ({ epoch: e, value: null }),
     podcastState: async (e) => ({ epoch: e, value: { likedIds: [], operations: [] } }),
     podcastCommand: async (e) => ({ epoch: e, value: operation('confirmed') }),
     ...extra,
@@ -193,4 +194,109 @@ test('radio references preserve large IDs and reject other resources and hostile
   m.open('https://example.test/?id=9');
   assert.match(m.error.value, /有效/);
   assert.equal(m.query.value.scope.kind, 'radio');
+});
+
+function detail(epoch: string, q: Parameters<PodcastClient['podcastPage']>[1]): PodcastPage {
+  if (q.scope.kind !== 'radio') return page(epoch);
+  return {
+    ...page(epoch),
+    scope: q.scope,
+    offset: q.offset,
+    revision: `radio:${q.scope.id}:${q.scope.ascending}`,
+    radio: {
+      id: q.scope.id,
+      name: '合成播客',
+      coverUrl: null,
+      creator: '',
+      description: '',
+      programCount: 2,
+      subscribed: false,
+      feeType: 0,
+      unavailable: false,
+    },
+  };
+}
+
+test('only an explicit radio sort writes; retries, reload and Back retain the committed order', async () => {
+  const writes: unknown[] = [];
+  const orders = new Map<string, boolean>();
+  let fail = true;
+  const api = client({
+    podcastRadioOrder: async (epoch, value) => {
+      const key = `${epoch}:${value.kind === 'read' ? value.id : value.scope.id}`;
+      if (value.kind === 'read') return { epoch, value: orders.get(key) ?? null };
+      writes.push(value);
+      orders.set(key, value.ascending);
+      return { epoch, value: value.ascending };
+    },
+    podcastPage: async (epoch, query) => {
+      if (query.scope.kind === 'radio' && !query.scope.ascending && fail)
+        throw { code: 'network', message: '列表暂时不可用' };
+      return detail(epoch, query);
+    },
+  });
+  const m = usePodcasts(api);
+  m.connect(account());
+  m.show(true);
+  const radio = { kind: 'radio', id: '7', ascending: true } as const;
+  m.navigate(radio);
+  await new Promise<void>((done) => setImmediate(done));
+  await m.search('合成');
+  await m.paginate(50);
+  await m.toggleRadioOrder();
+  assert.equal(m.error.value, '列表暂时不可用');
+  assert.deepEqual(
+    m.page.value?.scope,
+    radio,
+    'failed read keeps the displayed list and scope together',
+  );
+  assert.deepEqual(writes, [
+    { kind: 'set', scope: radio, revision: 'radio:7:true', ascending: false },
+  ]);
+  fail = false;
+  await m.load(true);
+  assert.deepEqual(m.page.value?.scope, { ...radio, ascending: false });
+  assert.equal(m.query.value.keyword, '合成');
+  assert.equal(m.query.value.offset, 50);
+  m.back();
+  await new Promise<void>((done) => setImmediate(done));
+  assert.equal(m.page.value?.scope.kind, 'liked');
+
+  const reopened = usePodcasts(api);
+  reopened.connect(account());
+  reopened.navigate(radio);
+  await reopened.load(true);
+  assert.deepEqual(reopened.page.value?.scope, { ...radio, ascending: false });
+  reopened.connect(account('2'));
+  reopened.navigate(radio);
+  await reopened.load(true);
+  assert.deepEqual(reopened.page.value?.scope, radio);
+  assert.equal(writes.length, 1);
+});
+
+test('late saved-order read cannot issue a request for the abandoned radio', async () => {
+  const held = deferred<AccountData<boolean | null>>();
+  const radioReads: string[] = [];
+  const m = usePodcasts(
+    client({
+      podcastRadioOrder: async (epoch, query) => {
+        assert.equal(query.kind, 'read');
+        return query.id === '7' ? held.promise : { epoch, value: true };
+      },
+      podcastPage: async (epoch, query) => {
+        if (query.scope.kind === 'radio') radioReads.push(query.scope.id);
+        return detail(epoch, query);
+      },
+    }),
+  );
+  m.connect(account());
+  m.show(true);
+  m.navigate({ kind: 'radio', id: '7', ascending: true });
+  m.navigate({ kind: 'radio', id: '8', ascending: false });
+  await new Promise<void>((done) => setImmediate(done));
+  held.resolve({ epoch: '1', value: false });
+  await new Promise<void>((done) => setImmediate(done));
+  assert.deepEqual(radioReads, ['8']);
+  assert.deepEqual(m.page.value?.scope, { kind: 'radio', id: '8', ascending: true });
+  assert.equal(m.loading.value, false);
 });

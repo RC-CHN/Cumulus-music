@@ -4,7 +4,7 @@ use crate::{
     Error, Result,
     account::SessionToken,
     playback::engine::Cancellation,
-    podcast::{Episode, PodcastApi, Radio, progress::latest},
+    podcast::{Episode, PodcastApi, Radio, progress::latest, radio_order},
     protocol::api::{Api, identifier},
 };
 use serde::{Deserialize, Serialize};
@@ -150,7 +150,12 @@ fn local_chapter(chapter: &mut Chapter, local: latest::LatestVoice) {
     chapter.completed = local.time > 0 && local.time >= local.duration;
 }
 
-async fn by_radio(api: &dyn Api, radio: &str, source: &Cancellation) -> Result<Vec<Episode>> {
+async fn by_radio(
+    api: &dyn Api,
+    radio: &str,
+    ascending: Option<bool>,
+    source: &Cancellation,
+) -> Result<Vec<Episode>> {
     let mut voices = Vec::new();
     let mut seen = HashSet::new();
     // M/404 uses 250 per page and leaves asc absent without a saved order.
@@ -158,13 +163,12 @@ async fn by_radio(api: &dyn Api, radio: &str, source: &Cancellation) -> Result<V
         if source.is_cancelled() {
             return Err(Error::QueueChanged);
         }
+        let mut args = json!({"radioId":radio,"offset":offset,"limit":PROGRAM_PAGE});
+        if let Some(ascending) = ascending {
+            args["asc"] = json!(ascending);
+        }
         let response = api
-            .call(
-                "/api/v6/dj/program/byradio",
-                json!({"radioId":radio,"offset":offset,"limit":PROGRAM_PAGE}),
-                false,
-                &[200],
-            )
+            .call("/api/v6/dj/program/byradio", args, false, &[200])
             .await?;
         let data = &response["data"];
         let rows = data["programs"]
@@ -192,7 +196,7 @@ async fn by_radio(api: &dyn Api, radio: &str, source: &Cancellation) -> Result<V
     Ok(voices)
 }
 
-async fn around(api: &dyn Api, chapter: &str) -> Result<Vec<Episode>> {
+async fn around(api: &dyn Api, chapter: &str, ascending: bool) -> Result<Vec<Episode>> {
     let response = api
         .call(
             AROUND,
@@ -217,7 +221,7 @@ async fn around(api: &dyn Api, chapter: &str) -> Result<Vec<Episode>> {
     }
     // M/71: in the absence of a saved sort or caller asc, desired is false.
     // Missing asc is not identical to false in the original strict comparison.
-    if data["asc"] != false {
+    if data["asc"] != ascending {
         voices.reverse();
     }
     Ok(voices)
@@ -405,10 +409,13 @@ impl MusicClient {
             self.with_listened_chapter(token, revision, key, |radio, chapter, source| {
                 (radio.clone(), chapter.clone(), source.clone())
             })?;
-        let locally_latest = self.session.with_token(token, |owner| {
+        let (locally_latest, ascending) = self.session.with_token(token, |owner| {
             let store = self.session.persistent_store()?;
             store.read_snapshot(|tx| {
-                Ok(latest::read(tx, owner, &radio.id)?.is_some_and(|value| value.id == chapter.id))
+                Ok((
+                    latest::read(tx, owner, &radio.id)?.is_some_and(|value| value.id == chapter.id),
+                    radio_order::read(tx, owner, &radio.id)?,
+                ))
             })
         })?;
         let (resources, selected) = self.session.run_for(token, |api, _| async {
@@ -418,9 +425,9 @@ impl MusicClient {
             // M/404 rechecks the book's latest record when resolving the
             // clicked chapter. It must never change the chapter selected.
             let voices = if locally_latest {
-                around(api.as_ref(), &chapter.id).await?
+                around(api.as_ref(), &chapter.id, ascending.unwrap_or(false)).await?
             } else {
-                by_radio(api.as_ref(), &radio.id, &source).await?
+                by_radio(api.as_ref(), &radio.id, ascending, &source).await?
             };
             let mut resources = Vec::with_capacity(voices.len());
             let mut selected = None;

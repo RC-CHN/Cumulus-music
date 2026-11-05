@@ -74,6 +74,64 @@ impl PodcastLibrary {
             session,
         })
     }
+    pub(crate) fn radio_order_for(&self, token: &SessionToken, id: &str) -> Result<Option<bool>> {
+        let id = identifier(&json!(id))?;
+        self.session.with_token(token, |owner| {
+            self.store
+                .read_snapshot(|tx| super::radio_order::read(tx, owner, &id))
+        })
+    }
+    pub(crate) fn set_radio_order_for(
+        &self,
+        token: &SessionToken,
+        scope: &PodcastScope,
+        revision: &str,
+        ascending: bool,
+    ) -> Result<()> {
+        let PodcastScope::Radio {
+            id,
+            ascending: displayed,
+        } = scope
+        else {
+            return Err(Error::InvalidInput("podcast order requires a radio view"));
+        };
+        identifier(&json!(id))?;
+        if *displayed == ascending {
+            return Err(Error::InvalidInput("podcast order must change"));
+        }
+        let key = serde_json::to_string(scope)?;
+        self.session.with_token(token, |owner| {
+            self.store.transaction(|tx| {
+                let version = tx
+                    .get(owner, VERSION, "current")?
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0);
+                let valid_view = tx
+                    .get(owner, CACHE, &key)?
+                    .map(serde_json::from_value::<PodcastSnapshot>)
+                    .transpose()?
+                    .is_some_and(|snapshot| {
+                        &snapshot.scope == scope
+                            && snapshot.revision == revision
+                            && snapshot.generation == version
+                            && snapshot.radios.first().is_some_and(|radio| {
+                                &radio.id == id
+                                    && radio.raw["grayDisplay"] != true
+                                    && radio.raw["underShelf"] != true
+                            })
+                    });
+                // No side effects on cached snapshots or the active player.
+                // A differently sorted detail in another process is stale.
+                if !valid_view
+                    || super::radio_order::read(tx, owner, id)?
+                        .is_some_and(|saved| saved != *displayed)
+                {
+                    return Err(Error::QueueChanged);
+                }
+                super::radio_order::write(tx, owner, id, ascending)
+            })
+        })
+    }
     pub fn cached_for(
         &self,
         token: &SessionToken,

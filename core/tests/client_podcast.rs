@@ -1027,3 +1027,90 @@ async fn recent_podcast_restores_snapshot_fences_account_and_preserves_first_cou
     assert_ne!(new["revision"], first["revision"]);
     assert_eq!(new["episodes"].as_array().unwrap().len(), 2);
 }
+
+#[tokio::test]
+async fn radio_order_requires_a_current_view_and_survives_reopening_only_for_its_owner() {
+    let (root, api, session, client) = fixture();
+    let read = || PodcastRadioOrder::Read { id: "7".into() };
+    assert_eq!(client.podcast_radio_order("1", read()).unwrap().value, None);
+    let original = client
+        .podcast_page("1", query(scope(), 0), true)
+        .await
+        .unwrap();
+    assert_eq!(original.episodes[0].id, "1");
+    let set = |revision: &str| PodcastRadioOrder::Set {
+        scope: original.scope.clone(),
+        revision: revision.into(),
+        ascending: false,
+    };
+    api.offline.store(true, Ordering::SeqCst);
+    let calls = api.calls.lock().unwrap().len();
+    assert!(matches!(
+        client.podcast_radio_order("1", set("obsolete")),
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(
+        client
+            .podcast_radio_order("1", set(&original.revision))
+            .unwrap()
+            .value,
+        Some(false)
+    );
+    assert!(matches!(
+        client.podcast_radio_order("1", set(&original.revision)),
+        Err(Error::QueueChanged)
+    ));
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+
+    let reopened = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
+    let bound = Arc::new(AccountSession::new(api.clone(), Some(reopened.store())));
+    bound
+        .adopt(api.clone(), json!({"userId":9}), &bound.token().unwrap())
+        .unwrap();
+    let reopened = MusicClient::with_session(bound, reopened);
+    let saved = reopened.podcast_radio_order("1", read()).unwrap().value;
+    assert_eq!(saved, Some(false));
+    assert_eq!(
+        reopened
+            .podcast_radio_order("1", PodcastRadioOrder::Read { id: "8".into() })
+            .unwrap()
+            .value,
+        None
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), calls);
+    api.offline.store(false, Ordering::SeqCst);
+    let ordered = PodcastScope::Radio {
+        id: "7".into(),
+        ascending: saved.unwrap(),
+    };
+    let reopened_view = reopened
+        .podcast_page("1", query(ordered, 0), true)
+        .await
+        .unwrap();
+    assert_eq!(reopened_view.episodes[0].id, "205");
+    assert_ne!(reopened_view.revision, original.revision);
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(path, _)| path == "/api/v6/dj/program/byradio")
+            .map(|(_, payload)| payload.clone())
+            .collect::<Vec<_>>(),
+        [
+            json!({"radioId":"7","limit":200,"offset":0,"asc":true}),
+            json!({"radioId":"7","limit":200,"offset":200,"asc":true}),
+            json!({"radioId":"7","limit":200,"offset":0,"asc":false}),
+            json!({"radioId":"7","limit":200,"offset":200,"asc":false}),
+        ]
+    );
+    drop(calls);
+
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert_eq!(client.podcast_radio_order("2", read()).unwrap().value, None);
+    assert!(matches!(
+        client.podcast_radio_order("1", read()),
+        Err(Error::StaleResponse)
+    ));
+}

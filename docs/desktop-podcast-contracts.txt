@@ -43,6 +43,36 @@ podcast_command(epoch,command)：change{action:subscribe|like|resume,id,desired}
 已有未决操作禁止change；reconcile只读，不重发请求。失败后先读磁盘日志，离线也能显示责任。
 详情、状态、操作投影均剔除Cookie、用户私有字段及授权URL，封面使用现有白名单处理。
 
+按播客或有声书记住排序（账号本机）
+- 官方 3.1.42.205594：恢复 VoiceList.jsx:66–77、94–147 与 M3117:155–167
+  将序号列的 forward/reverse 转为 bool，先 dispatch updateAsc，再异步写 M16:230、
+  492–524 的本机 radioOrderMap[radioId]，没有独立远端排序接口。批量与购买页
+  M3117:673–685、906–918 也写同一表；原 key 是 renderer 本机固定键，未加 UID。
+- M3018:285–350 每个新 radio 先清 asc；未指定从本机表读取布尔值，选择缓存
+  正/倒序数组。普通声音页 limit=100、offset=(page−1)×100；无已知排序发送
+  asc=""、updateOrder=false，有已知值发送 asc=bool、updateOrder=true，经
+  M2156:27–31/M15:1876–1897 的 POST /api/v6/dj/program/byradio。表单编码
+  M48:37–44/M32:60–68 保留空 asc 与两个布尔值。现有 28-podcast-functional-validation
+  只实测含 asc 的读取，未确认 updateOrder=true 的上游持久效果。
+- Cumulus 仅在详情明确点击「正序／倒序」时，经主窗口 podcast_radio_order
+  set {scope,revision,ascending} 写本机 SQLite，按已验证账号与原生 radio ID 分键。
+  校验当前缓存版本、原生 radio 和旧排序；拒绝过期页或其他进程已改排序的旧操作。
+  重新打开或刷新读取保存值，保留筛选、页码和既有播放队列；加载失败可重试读取，
+  不重复写偏好。无保存值时保留现有 Cumulus 正序起点；不发送 updateOrder，不导入
+  官方浏览器本机键，也不新增远端写。正常详情仍按原有 200 分块读完整快照，并严格
+  核对响应排序；未移植官方的未知详情顺序请求、批量或购买页排序入口。
+- 「听过的书」点击在同一账号读快照取偏好与最近章节：M404:202–259 全量分支只在
+  有保存值时传 asc（包括 false），继续 limit=250/原服务端列表顺序；匹配最近章
+  则按 M71:162、202–221 请求原 around programId/roundNum，排序不入请求体。
+  服务端 asc 严格等于保存值时保留，否则反转；未保存时仍默认 false。
+- 合成测试 client_podcast 计划验证离线本机写、旧版本拒绝、真正重开和跨账号；
+  client_history 核对同一真实 actor 当前暂停队列不变、下次选择才改变顺序及精确请求体。
+  WebView 复验可扩 catalog_smoke.py --ordinary-essential：合成书 691 播放后暂停，
+  从书名打开详情，切换顺序确认当前 playId/entryId/queueRevision 未变；返回再开
+  保持排序，点章节核对 byradio 携带 false，Stop 形成最近章节后切回 true、重开历史，
+  再点同章核对 around 仍只有 programId/roundNum，原升序 [791,792,793] 不反转。
+  真实声卡、实际账号及上游 updateOrder 行为不在此验证范围。
+
 播放器续播
 M/308 先判断续播开关，再以 isListened、listenLocation（毫秒）和 duration 判断起点。
 本次迁移：开始新的节目选择时重新请求resumeplay/get；开关关闭从起点播；开启时优先

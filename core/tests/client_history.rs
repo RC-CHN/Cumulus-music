@@ -7,6 +7,7 @@ use cumulus_core::{
     client::{MusicClient, dto::*},
     history::{HistoryKind, HistoryRecord, HistoryService},
     membership::Quality,
+    podcast::PodcastScope,
     protocol::{
         api::{Api, ApiFuture},
         http::ApiOrigin,
@@ -21,6 +22,7 @@ use tokio::sync::Notify;
 #[derive(Default)]
 struct Backend {
     calls: Mutex<Vec<String>>,
+    chapter_reads: Mutex<Vec<Value>>,
     deny: AtomicBool,
     hold: AtomicBool,
     resume_books: AtomicBool,
@@ -81,13 +83,29 @@ impl Api for Backend {
                 }
                 "/api/v6/dj/program/byradio" => {
                     if p["radioId"] == "22" {
-                        assert_eq!(p, json!({"radioId":"22","limit":250,"offset":0}));
+                        let limit = p["limit"].as_u64().unwrap();
+                        assert!(matches!(limit, 200 | 250));
+                        let mut expected = json!({"radioId":"22","limit":limit,"offset":0});
+                        if let Some(asc) = p["asc"].as_bool() {
+                            expected["asc"] = json!(asc);
+                        } else {
+                            assert_eq!(limit, 250);
+                        }
+                        assert_eq!(p, expected);
+                        self.chapter_reads.lock().unwrap().push(p.clone());
                     }
                     let mut second = voice(6, &p["radioId"]);
                     if p["radioId"] == "22" {
                         second["name"] = json!("本机保存的章节名");
                     }
-                    json!({"code":200,"data":{"programs":[voice(5,&p["radioId"]),second],"count":2,"more":false,"asc":p["asc"]}})
+                    let mut rows = vec![voice(5, &p["radioId"]), second];
+                    if p["asc"] == false {
+                        rows.reverse();
+                    }
+                    json!({"code":200,"data":{"programs":rows,"count":2,"more":false,"asc":p["asc"]}})
+                }
+                "/api/content/my/liked/voice" => {
+                    json!({"code":200,"data":{"data":[],"hasMore":false}})
                 }
                 "/api/dj/around/program/v1" => {
                     assert_eq!(p, json!({"programId":"6","roundNum":250}));
@@ -663,5 +681,108 @@ async fn listened_books_replays_matching_departed_chapter_in_official_around_ord
             .get("10", "podcast-latest-voice-v1", "22")
             .unwrap()
             .is_none()
+    );
+}
+
+#[tokio::test]
+async fn listened_books_applies_saved_radio_order_without_reordering_the_active_queue() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let open = || async {
+        let response = f
+            .client
+            .listened_books(&epoch, ListenedBooksQuery::Open)
+            .await
+            .unwrap();
+        let page = serde_json::to_value(response.value).unwrap();
+        PlaySelection::ListenedBookChapter {
+            revision: page["revision"].as_str().unwrap().into(),
+            key: 0,
+        }
+    };
+    let queue = || async {
+        let value = f.client.player_queue(&epoch).await.unwrap();
+        value
+            .tracks
+            .into_iter()
+            .map(|row| row.track.voice_id.unwrap())
+            .collect::<Vec<_>>()
+    };
+    let scope = |ascending| PodcastScope::Radio {
+        id: "22".into(),
+        ascending,
+    };
+    let load_detail = |ascending| {
+        let query = PodcastQuery {
+            scope: scope(ascending),
+            keyword: String::new(),
+            limit: 50,
+            offset: 0,
+            revision: None,
+        };
+        let (client, epoch) = (&f.client, &epoch);
+        async move { client.podcast_page(epoch, query, true).await.unwrap() }
+    };
+    let save_order = |page: PodcastPage, ascending| {
+        f.client
+            .podcast_radio_order(
+                &epoch,
+                PodcastRadioOrder::Set {
+                    scope: page.scope,
+                    revision: page.revision,
+                    ascending,
+                },
+            )
+            .unwrap()
+    };
+
+    let selected = f.client.play_selection(&epoch, open().await).await.unwrap();
+    assert_eq!(queue().await, ["5", "6"]);
+    let held = f
+        .client
+        .player_action(&epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    assert_eq!(held.play_id, selected.play_id);
+    let detail = load_detail(true).await;
+    assert_eq!(save_order(detail, false).value, Some(false));
+    let still_held = f.client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(still_held.state, held.state);
+    assert_eq!(still_held.position, held.position);
+    assert_eq!(still_held.play_id, held.play_id);
+    assert_eq!(still_held.queue_revision, held.queue_revision);
+    assert_eq!(queue().await, ["5", "6"]);
+
+    // Pause was not a departure, so the next request still uses byradio.
+    let full = f.client.play_selection(&epoch, open().await).await.unwrap();
+    assert_eq!(full.track.unwrap().voice_id.as_deref(), Some("6"));
+    assert_eq!(queue().await, ["6", "5"]);
+    f.client
+        .player_action(&epoch, PlayerAction::Stop)
+        .await
+        .unwrap();
+    let detail = load_detail(false).await;
+    assert_eq!(save_order(detail, true).value, Some(true));
+    let around = f.client.play_selection(&epoch, open().await).await.unwrap();
+    assert_eq!(around.track.unwrap().voice_id.as_deref(), Some("6"));
+    assert_eq!(queue().await, ["5", "6", "7"]);
+    assert_eq!(
+        *f.api.chapter_reads.lock().unwrap(),
+        [
+            json!({"radioId":"22","limit":250,"offset":0}),
+            json!({"radioId":"22","limit":200,"offset":0,"asc":true}),
+            json!({"radioId":"22","limit":250,"offset":0,"asc":false}),
+            json!({"radioId":"22","limit":200,"offset":0,"asc":false}),
+        ]
+    );
+    assert_eq!(
+        f.api
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| *path == "/api/dj/around/program/v1")
+            .count(),
+        1
     );
 }

@@ -6,6 +6,7 @@ mod library;
 mod model;
 mod mutations;
 pub(crate) mod progress;
+pub(crate) mod radio_order;
 mod rights;
 pub mod scene;
 mod skip;

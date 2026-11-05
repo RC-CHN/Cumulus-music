@@ -312,6 +312,7 @@ export function createTauriClient(): CoreClient {
     togetherStatistics: (epoch, relationKey) =>
       invoke('together_statistics', { epoch, relationKey }),
     togetherCommand: (epoch, command) => invoke('together_command', { epoch, command }),
+    podcastRadioOrder: (epoch, query) => invoke('podcast_radio_order', { epoch, query }),
     podcastPage: (epoch, query, refresh) => invoke('podcast_page', { epoch, query, refresh }),
     audiobookSkipSettings: (epoch, context, action) =>
       invoke('audiobook_skip_settings', { epoch, context, action }),

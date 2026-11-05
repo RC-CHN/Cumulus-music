@@ -94,6 +94,29 @@ impl MusicClient {
         self.session.with_token(&token, |_| Ok(()))?;
         Ok(token)
     }
+    pub fn podcast_radio_order(
+        &self,
+        epoch: &str,
+        query: PodcastRadioOrder,
+    ) -> Result<super::dto::AccountData<Option<bool>>> {
+        let token = self.podcast_token(epoch)?;
+        let library = PodcastLibrary::new(self.session.clone())?;
+        let value = match query {
+            PodcastRadioOrder::Read { id } => library.radio_order_for(&token, &id)?,
+            PodcastRadioOrder::Set {
+                scope,
+                revision,
+                ascending,
+            } => {
+                library.set_radio_order_for(&token, &scope, &revision, ascending)?;
+                Some(ascending)
+            }
+        };
+        Ok(super::dto::AccountData {
+            epoch: epoch.into(),
+            value,
+        })
+    }
     pub async fn podcast_page(
         &self,
         epoch: &str,

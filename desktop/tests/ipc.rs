@@ -287,6 +287,10 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         ),
         ("podcast_state", json!({"epoch":"0","refresh":false})),
         (
+            "podcast_radio_order",
+            json!({"epoch":"0","query":{"kind":"read","id":"81"}}),
+        ),
+        (
             "podcast_page",
             json!({"epoch":"0","query":{"scope":{"kind":"podcasts"},"keyword":"","offset":0,"limit":50,"revision":null},"refresh":false}),
         ),

@@ -116,9 +116,6 @@ function play(id: string | null = null) {
   if (page.value) emit('play', scope.value, page.value.revision, id);
 }
 const pending = props.model.pending;
-function order() {
-  if (scope.value.kind === 'radio') tab({ ...scope.value, ascending: !scope.value.ascending });
-}
 </script>
 <template>
   <section ref="root" class="podcast-page" aria-label="我的播客" @scroll.passive="scrolled">
@@ -274,7 +271,12 @@ function order() {
         <span v-else class="muted"
           >{{ page?.total ?? 0 }} {{ scope.kind === 'liked' ? '集' : '个' }}</span
         >
-        <button v-if="detail" class="text-button" :disabled="loading" @click="order">
+        <button
+          v-if="detail"
+          class="text-button"
+          :disabled="loading || busy || !page?.radio || page.radio.unavailable"
+          @click="model.toggleRadioOrder"
+        >
           {{ scope.kind === 'radio' && scope.ascending ? '正序' : '倒序' }}
         </button>
         <button
