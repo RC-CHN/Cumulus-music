@@ -178,6 +178,7 @@ impl MpvEngine {
         // A seek to the displayed end still needs one real source frame for
         // the native decoder to load and emit a genuine EOF.
         let frame = (frame as u64).min(total.saturating_sub(1));
+        let retirement = self.retire_local_equalizer_pinned(entry, cancel);
         let LocalEqualizer {
             pass,
             original_demuxer,
@@ -185,7 +186,8 @@ impl MpvEngine {
             pending,
             ..
         } = self.local_equalizer.take().expect("local seek selected");
-        self.retire_pinned();
+        retirement?;
+        cancel.check()?;
         let mut source = pass.reclaim()?;
         self.native_mut()?;
         cancel.check()?;
@@ -222,13 +224,20 @@ impl MpvEngine {
         cancel.check()?;
         self.pause(true)?;
         self.observe_local_equalizer_clock()?;
-        let local = self.local_equalizer.take().expect("checked exact entry");
-        let control = local.pass.control();
+        let control = self
+            .local_equalizer
+            .as_ref()
+            .expect("checked exact entry")
+            .pass
+            .control();
         let snapshot = control.snapshot()?;
         let first = snapshot
             .native_source_frame
             .min(snapshot.source_end.saturating_sub(1));
-        self.retire_pinned();
+        let retirement = self.retire_local_equalizer_pinned(entry, cancel);
+        let local = self.local_equalizer.take().expect("checked exact entry");
+        retirement?;
+        cancel.check()?;
         let (file, authority) = local.pass.reclaim()?.into_reader()?.into_stock()?;
         self.native_mut()?;
         self.load_open_file(

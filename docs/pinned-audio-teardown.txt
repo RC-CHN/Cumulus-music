@@ -8,7 +8,7 @@ opening the source cannot leave an unpublished native output alive.
 The protected lifetime also participates in load, pause and seek waits;
 the engine rechecks it before publishing native position or events.
 
-When authority expires or the protected entry is stopped, the engine
+When authority expires or the protected entry is stopped normally, the engine
 cancels its gate and clears staged input. A successful command reply is
 not sufficient to reuse the sink. The engine also requires native
 END_FILE Stop with error zero for the exact active playlist entry. The
@@ -16,6 +16,19 @@ command and confirmation share a short deadline. An unrelated entry,
 natural EOF, nonzero error, missing confirmation, or shutdown cannot
 stand in for a successful Stop. Old clock and event state are retired;
 only a matching acknowledged Stop may be kept as an event.
+
+The deliberate ordinary held-file equalizer handoff for seek or independent
+PEQ is narrower. It verifies the exact bound native entry and live source,
+then asks libmpv to stop before cancelling the old raw PCM pass itself.
+libmpv's stream cancel callback interrupts blocked PCM reads. Its expected
+pass cancellation is independent of the held-file lifetime used while
+waiting for Stop; a concurrent source or command revoke still rejects the
+handoff. Cold/protected revocation and general Stop remain cancel-first.
+The command and exact Stop share the existing 750 ms bound. Native command
+rejection, timeout, shutdown or a different terminal reason fails the
+ordinary handoff and preserves the native failure rather than replacing it
+with a later "native sink retired" error. The old reader must also close and
+its worker return the sole source before a replacement can start.
 
 If Stop cannot be confirmed, or the pinned load was not yet published
 with an entry ID, the engine synchronously destroys the native handle.

@@ -386,6 +386,17 @@ impl StereoPcmControl {
         self.0.check()
     }
 
+    /// Only an already-bound ordinary pass can begin a deliberate native
+    /// handoff. Stop's own callback cancels the pass reader; that expected
+    /// cancellation must not invalidate the held file's separate lifetime.
+    pub(crate) fn local_handoff_authority(&self, entry: i64) -> Result<Cancellation> {
+        if !self.0.local_controls || self.snapshot()?.native_entry != Some(entry) {
+            return Err(Error::StaleResponse);
+        }
+        self.validate_host()?;
+        Ok(self.0.authority.clone())
+    }
+
     pub(crate) fn bind_entry(&self, entry: i64) -> Result<()> {
         self.validate_host()?;
         let mut state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
