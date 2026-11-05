@@ -163,6 +163,7 @@ import {
   type SongRowDoubleClickSelection,
 } from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
+import { readVinylDisplayMode, storeVinylDisplayMode } from './services/vinylDisplay';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistImportPreview from './components/playlist/PlaylistImportPreview.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
@@ -1506,6 +1507,8 @@ async function playMvRelated(mvId: string, songId: string) {
   if (player.view.value?.track?.id === songId && !player.error.value && !player.lyricsOpen.value)
     player.toggleLyrics();
 }
+const vinylDisplayMode = ref(readVinylDisplayMode());
+watch(vinylDisplayMode, (value) => storeVinylDisplayMode(value));
 const player = usePlayer(undefined, () => {
   void music.bootstrap(false);
 });
@@ -5225,6 +5228,7 @@ onUnmounted(() => {
     <Transition name="lyrics-panel" @before-enter="lyricPanelEnter" @before-leave="lyricPanelLeave">
       <LyricsPanel
         v-if="player.lyricsOpen.value && currentTrackId"
+        v-model:mode="vinylDisplayMode"
         :player="player"
         @report="reportLyrics"
         @source="openPlaybackSource"

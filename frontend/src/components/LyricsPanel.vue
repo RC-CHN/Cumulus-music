@@ -6,6 +6,9 @@ import Icon from './Icon.vue';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import LyricFontSize from './LyricFontSize.vue';
 import ActionMenu from './ActionMenu.vue';
+import ModalTransition from './ModalTransition.vue';
+import VinylModeSheet from './VinylModeSheet.vue';
+import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
 import {
@@ -14,6 +17,7 @@ import {
   type PlaybackSourceDestination,
 } from '../services/playbackMetadata';
 const props = defineProps<{ player: PlayerModel }>();
+const preferredMode = defineModel<VinylDisplayMode>('mode', { required: true });
 const emit = defineEmits<{
   report: [];
   catalog: [target: CatalogResource];
@@ -21,7 +25,29 @@ const emit = defineEmits<{
 }>();
 const { view, lyrics, lyricLoading, lyricUpdating, lyricError, loaded, busy } = props.player;
 const container = ref<HTMLElement>(),
-  close = ref<HTMLButtonElement>();
+  close = ref<HTMLButtonElement>(),
+  modeEntry = ref<HTMLButtonElement>();
+const modeSheetOpen = ref(false);
+const modeAvailable = computed(
+  () => !!view.value?.track && view.value.resourceKind !== 'voice' && !view.value.track.voiceId,
+);
+const displayMode = computed(() => (modeAvailable.value ? preferredMode.value : 'classic'));
+watch(modeAvailable, (available) => {
+  if (!available) modeSheetOpen.value = false;
+});
+function closeModeSheet() {
+  modeSheetOpen.value = false;
+}
+function modeEntryFocus() {
+  return modeEntry.value ?? null;
+}
+function panelCloseFocus() {
+  return close.value ?? null;
+}
+function escapePanel() {
+  // Native modal cancel closes only the mode sheet.
+  if (!modeSheetOpen.value) props.player.lyricsOpen.value = false;
+}
 const metadata = computed(() => playbackMetadata(view.value?.track));
 const source = computed(() => playbackSource(view.value));
 const wordMode = ref(true);
@@ -103,14 +129,48 @@ type LyricSeekTarget = Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>;
 const currentEpoch = computed(() => view.value?.epoch);
 const currentPlayId = computed(() => view.value?.playId);
 const currentQueueRevision = computed(() => view.value?.queueRevision);
-const lines = computed(() => {
+const currentLyric = computed(() => {
   const document = lyrics.value;
+  return document?.epoch === currentEpoch.value && document?.playId === currentPlayId.value
+    ? document
+    : undefined;
+});
+const coverPosition = ref<number>();
+watch(
+  [displayMode, currentLyric],
+  ([mode, document], _previous, onCleanup) => {
+    coverPosition.value = undefined;
+    if (mode !== 'cover' || !document?.playId) return;
+    let tick: ReturnType<typeof setTimeout> | undefined;
+    const stop = watch(
+      () => view.value?.position,
+      () => {
+        tick ??= setTimeout(() => {
+          coverPosition.value = view.value?.position ?? undefined;
+          tick = undefined;
+        }, 500);
+      },
+      { immediate: true },
+    );
+    onCleanup(() => {
+      stop();
+      clearTimeout(tick);
+    });
+  },
+  { immediate: true },
+);
+const coverLine = computed(() =>
+  coverPosition.value === undefined
+    ? ''
+    : vinylCoverLyric(currentLyric.value?.lines ?? [], coverPosition.value),
+);
+const lines = computed(() => {
+  const document = currentLyric.value;
   if (!document) return [];
   const revision = currentQueueRevision.value;
-  const target: LyricSeekTarget | undefined =
-    document.epoch === currentEpoch.value && document.playId === currentPlayId.value && revision
-      ? { epoch: document.epoch, playId: document.playId, queueRevision: revision }
-      : undefined;
+  const target: LyricSeekTarget | undefined = revision
+    ? { epoch: document.epoch, playId: document.playId, queueRevision: revision }
+    : undefined;
   const rows = timedWords.value
     ? document.wordLines.map((l) => ({ time: l.time - document.offset, lyric: l.text }))
     : document.lines;
@@ -229,7 +289,7 @@ watch(motion.reduced, (reduced) => {
 watch(active, () => {
   if (!manual.value) void scroll();
 });
-watch([currentEpoch, currentPlayId], followLyrics);
+watch([currentEpoch, currentPlayId, displayMode], followLyrics);
 watch(lines, () => void nextTick(selectBrowsedLine));
 watch(container, (scroller, _previous, onCleanup) => {
   if (!scroller) return;
@@ -267,24 +327,39 @@ const displayedAuxiliary = computed(() =>
 <template>
   <section
     class="lyrics-panel"
+    :data-vinyl-mode="displayMode"
     :style="{ '--lyric-font-gain': `${lyricFontGain}px` }"
     aria-label="播放详情与歌词"
-    @keydown.esc.stop="player.lyricsOpen.value = false"
+    @keydown.esc.stop="escapePanel"
   >
     <header>
-      <span>{{ view?.playId ? '正在播放' : '播放详情' }}</span
-      ><DesktopLyricToggle v-if="view" :epoch="view.epoch" /><button
-        ref="close"
-        class="icon-button"
-        aria-label="收起播放详情"
-        @click="player.lyricsOpen.value = false"
-      >
-        <Icon name="down" />
-      </button>
+      <span>{{ view?.playId ? '正在播放' : '播放详情' }}</span>
+      <DesktopLyricToggle v-if="view" :epoch="view.epoch" />
+      <div class="vinyl-header-actions">
+        <button
+          v-if="modeAvailable"
+          ref="modeEntry"
+          class="secondary vinyl-mode-entry"
+          type="button"
+          aria-haspopup="dialog"
+          :aria-expanded="modeSheetOpen"
+          @click="modeSheetOpen = true"
+        >
+          播放器模式
+        </button>
+        <button
+          ref="close"
+          class="icon-button"
+          aria-label="收起播放详情"
+          @click="player.lyricsOpen.value = false"
+        >
+          <Icon name="down" />
+        </button>
+      </div>
     </header>
     <div class="lyrics-body">
       <div class="vinyl-info">
-        <div class="vinyl-record">
+        <div v-if="displayMode !== 'lyric'" class="vinyl-record">
           <img
             v-if="view?.track?.coverUrl"
             :src="view.track.coverUrl"
@@ -309,7 +384,7 @@ const displayedAuxiliary = computed(() =>
             <span v-else class="vinyl-credit" :title="artist.name">{{ artist.name }}</span>
           </template>
         </p>
-        <small v-if="view?.track" class="vinyl-album">
+        <small v-if="displayMode === 'classic' && view?.track" class="vinyl-album">
           <button
             v-if="metadata.album.target"
             type="button"
@@ -324,7 +399,7 @@ const displayedAuxiliary = computed(() =>
             metadata.album.name
           }}</span>
         </small>
-        <small v-if="source" class="vinyl-source">
+        <small v-if="displayMode === 'classic' && source" class="vinyl-source">
           <span>来源：</span>
           <button
             v-if="source.target"
@@ -339,8 +414,9 @@ const displayedAuxiliary = computed(() =>
           <span v-else>{{ source.name }}</span>
         </small>
         <span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
+        <p v-if="displayMode === 'cover'" class="vinyl-cover-line">{{ coverLine }}</p>
       </div>
-      <div class="lyrics-column">
+      <div v-if="displayMode !== 'cover'" class="lyrics-column">
         <div v-if="lyricLoading" class="empty-state" role="status">
           <span class="spinner" />正在加载歌词…
         </div>
@@ -412,7 +488,7 @@ const displayedAuxiliary = computed(() =>
           </div>
         </template>
         <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
-        <div class="lyric-tools">
+        <div v-if="displayMode === 'classic'" class="lyric-tools">
           <template v-if="lyrics">
             <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
             <template v-if="lyrics.scrollable">
@@ -468,5 +544,13 @@ const displayedAuxiliary = computed(() =>
         </div>
       </div>
     </div>
+    <ModalTransition :return-focus="modeEntryFocus" :fallback-focus="panelCloseFocus">
+      <VinylModeSheet
+        v-if="modeSheetOpen && modeAvailable"
+        :mode="preferredMode"
+        @select="preferredMode = $event"
+        @close="closeModeSheet"
+      />
+    </ModalTransition>
   </section>
 </template>
