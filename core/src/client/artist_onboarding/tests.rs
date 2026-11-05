@@ -69,15 +69,13 @@ fn verified(
     scene: Option<Scene>,
 ) -> String {
     session
-        .adopt_registered(
+        .adopt_for_artist_onboarding_test(
             api,
             crate::account::identity::VerifiedAccount::profile_only(
                 json!({"userId":uid,"nickname":"Synthetic"}),
             ),
-            &session.token().unwrap(),
             &registry.store(),
-            Some(ArtistLogin { scene }),
-            |_| Ok(()),
+            ArtistLogin { scene },
         )
         .unwrap();
     session.token().unwrap().generation.to_string()

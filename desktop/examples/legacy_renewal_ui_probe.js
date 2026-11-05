@@ -8,6 +8,8 @@
       payload,
     });
   const account = () => document.querySelector('.account-button');
+  const dialog = () => document.querySelector('.account-dialog[open]');
+  const menu = () => document.querySelector('[role="menu"][aria-label="账号菜单"]');
   const renewal = () => document.querySelector('.session-renewal')?.dataset.state;
   const restored = () => account()?.textContent.includes('合成续期账号');
   async function waitFor(predicate, step) {
@@ -19,8 +21,16 @@
     throw new Error(step);
   }
   try {
-    await waitFor(restored, 'restored_account');
+    await waitFor(() => restored() && !account().disabled, 'restored_account_ready');
     account().click();
+    await waitFor(() => dialog() || menu(), 'account_entry');
+    if (!dialog()) {
+      const item = [...menu().querySelectorAll('[role="menuitem"]')].find(
+        (node) => node.textContent.trim() === '切换账号',
+      );
+      if (!item) throw new Error('account_switch_item');
+      item.click();
+    }
     await waitFor(() => renewal() === 'missing_credentials', 'account_dialog');
     // Real elapsed time, shared by both cohorts. No fake native or JS clock.
     await sleep(4400);

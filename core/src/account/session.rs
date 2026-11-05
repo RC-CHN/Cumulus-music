@@ -496,6 +496,27 @@ impl AccountSession {
         self.adopt_inner(api, identity, expected, Some(registry), activation, select)
     }
 
+    #[cfg(test)]
+    pub(crate) fn adopt_for_artist_onboarding_test(
+        &self,
+        api: Arc<dyn Api>,
+        identity: VerifiedAccount,
+        registry: &Arc<StateStore>,
+        artist_login: ArtistLogin,
+    ) -> Result<Value> {
+        self.adopt_registered(
+            api,
+            identity,
+            &self.token()?,
+            registry,
+            Adoption {
+                artist_login: Some(artist_login),
+                quick_exchange: false,
+            },
+            |_| Ok(()),
+        )
+    }
+
     fn adopt_inner(
         &self,
         api: Arc<dyn Api>,
