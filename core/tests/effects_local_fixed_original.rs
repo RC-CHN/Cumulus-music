@@ -42,8 +42,8 @@ struct Block {
     output_frames: usize,
     output_end: bool,
     output_sha256: String,
-    output_prefix_frames: usize,
-    output_prefix_interleaved_bits: Vec<u32>,
+    output_prefix_frames: Option<usize>,
+    output_prefix_interleaved_bits: Option<Vec<u32>>,
     child_order: Vec<String>,
 }
 #[derive(Clone, Copy, Deserialize)]
@@ -87,7 +87,27 @@ impl Drop for Ftz {
         unsafe { std::arch::asm!("ldmxcsr [{}]",in(reg)&self.0,options(nostack,preserves_flags)) };
     }
 }
-fn compare(compressed: &[u8], expected_cases: usize, expected_blocks: usize) {
+fn compare_prefix(block: &Block, interleaved: &[u32], label: &str) -> usize {
+    match (
+        block.output_prefix_frames,
+        &block.output_prefix_interleaved_bits,
+    ) {
+        (None, None) => 0,
+        (Some(frames), Some(bits)) => {
+            assert!(frames <= block.output_frames, "{label} prefix bounds");
+            assert_eq!(bits.len(), frames * 2, "{label} complete prefix");
+            assert_eq!(&interleaved[..frames * 2], bits, "{label} selected PCM");
+            1
+        }
+        _ => panic!("{label} incomplete selected prefix receipt"),
+    }
+}
+fn compare(
+    compressed: &[u8],
+    expected_cases: usize,
+    expected_blocks: usize,
+    expected_prefixes: usize,
+) {
     let mut bytes = Vec::new();
     flate2::read::GzDecoder::new(compressed)
         .take(16 * 1024 * 1024)
@@ -101,6 +121,7 @@ fn compare(compressed: &[u8], expected_cases: usize, expected_blocks: usize) {
     assert!(!corpus.dsp_replaced);
     assert_eq!(corpus.cases.len(), expected_cases);
     let mut calls = 0;
+    let mut prefixes = 0;
     for case in corpus.cases {
         let _ftz = Ftz::off();
         let label = format!("{} rate{} cap{}", case.name, case.rate, case.capacity);
@@ -146,15 +167,10 @@ fn compare(compressed: &[u8], expected_cases: usize, expected_blocks: usize) {
                 block.output_sha256,
                 "{label} block{index} all valid PCM"
             );
-            assert_eq!(
-                block.output_prefix_interleaved_bits.len(),
-                block.output_prefix_frames * 2
-            );
-            assert_eq!(
-                &interleaved[..block.output_prefix_frames * 2],
-                block.output_prefix_interleaved_bits,
-                "{label} block{index} selected PCM bits"
-            );
+            // Every block's complete valid-PCM SHA above is mandatory. The
+            // compact original corpus additionally stores raw prefix bits on
+            // selected blocks only; missing paired fields are intentional.
+            prefixes += compare_prefix(block, &interleaved, &format!("{label} block{index}"));
             let expected_order = [
                 "0x8", "0x18", "0x58", "0x48", "0x50", "0x70", "0x68", "0x60", "0xa0", "0x90",
                 "0x98", "0x28", "0x30", "0x40", "0x78", "0x20", "0xa8", "0x38", "0xb0", "0x10",
@@ -176,6 +192,7 @@ fn compare(compressed: &[u8], expected_cases: usize, expected_blocks: usize) {
         assert_eq!(total, case.output_frames, "{label} total output frames");
     }
     assert_eq!(calls, expected_blocks);
+    assert_eq!(prefixes, expected_prefixes);
 }
 #[test]
 fn full_original_fixed_scope_pcm_off_edges_seek_and_eof() {
@@ -183,6 +200,7 @@ fn full_original_fixed_scope_pcm_off_edges_seek_and_eof() {
         include_bytes!("fixtures/effects-local-stereo-full-official.json.gz"),
         24,
         1002,
+        78,
     );
 }
 #[test]
@@ -191,6 +209,7 @@ fn first_short_or_empty_eof_keeps_real_environment_tail_and_limiter_protocol() {
         include_bytes!("fixtures/effects-local-stereo-first-eof-official.json.gz"),
         4,
         92,
+        12,
     );
 }
 #[test]
