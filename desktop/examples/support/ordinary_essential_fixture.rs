@@ -9,6 +9,7 @@ const PLAYLISTS: &str = "/api/playlist/category/list";
 const SONGS: &str = "/api/personalized/newsong";
 const BOOKS: &str = "/api/podcast/common/single/block/get";
 const VOICES: &str = "/api/pc/voicelist/rcmd/list";
+const LISTENED: &str = "/api/voice/book/recent";
 
 fn actions_enabled() -> bool {
     std::env::var_os("CUMULUS_ORDINARY_ESSENTIAL_ACTIONS_PROOF").is_some()
@@ -118,6 +119,15 @@ impl Api for Library {
                 {
                     return Err(Error::Transport("synthetic choice block failure".into()));
                 }
+            }
+            if path == LISTENED
+                || (path == "/api/v6/dj/program/byradio" && args["radioId"] == "691")
+            {
+                self.reads
+                    .lock()
+                    .unwrap()
+                    .push(json!({"owner":owner,"mode":mode,"path":path,"args":args}));
+                assert_ne!(owner, 0);
             }
             let actions = actions_enabled();
             if actions && matches!(path, "/api/v6/playlist/detail" | "/api/v3/song/detail") {
@@ -231,7 +241,17 @@ impl Api for Library {
                 "/api/content/my/liked/voice" => {
                     json!({"code":200,"data":{"data":[],"hasMore":false}})
                 }
-                "/api/voice/book/recent" => json!({"code":200,"data":{"djPrograms":[]}}),
+                LISTENED => {
+                    assert_eq!(args, json!({}));
+                    let mut chapter = voice(702, 691);
+                    chapter["radio"]["name"] = json!("合成听书 691");
+                    chapter["radio"]["subCount"] = json!(123);
+                    chapter["djPlayRecordVo"] =
+                        json!({"id":"702","listenLocation":2500,"isListened":false});
+                    chapter["url"] = json!("https://blocked.invalid/private");
+                    let group = (670..690).map(|id| voice(701, id)).collect::<Vec<_>>();
+                    json!({"code":200,"data":{"currentList":[chapter],"yesterdayList":group[..19],"passingList":group[19..]}})
+                }
                 "/api/play-record/voice/book/timeline/list" => json!({"code":200,"data":{"data":{
                     "todayRecords":[],"yesterdayRecords":[],"theDayBeforeYesterdayRecords":[],"earlierRecords":[]
                 }}}),

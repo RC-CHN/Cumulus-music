@@ -16,6 +16,7 @@ export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
 type Destination =
   | { kind: 'decoration' }
   | { kind: 'settings'; accountDetail?: AccountDetailKind }
+  | { kind: 'listened_books' }
   | { kind: 'history'; scope: import('../services/history').HistoryKind }
   | {
       kind: 'collections';
@@ -249,6 +250,7 @@ export function useMusic(
         target.kind === 'cloud' ||
         target.kind === 'mvs' ||
         target.kind === 'podcasts' ||
+        target.kind === 'listened_books' ||
         target.kind === 'podcast_category' ||
         target.kind === 'podcast_discovery' ||
         target.kind === 'podcast_rankings' ||
@@ -366,6 +368,7 @@ export function useMusic(
             'profile_notes',
             'community_topic',
             'profile_podcasts',
+            'listened_books',
             'profile_play_record',
             'profile_relations',
             'comments',

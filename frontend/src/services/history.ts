@@ -68,6 +68,7 @@ export type HistoryCommand =
   | { kind: 'reconcile'; id: string }
   | { kind: 'accept_current'; id: string; expected_revision: string };
 export interface HistoryClient {
+  listenedBooks(epoch: string, query: ListenedBooksQuery): Promise<AccountData<ListenedBooksPage>>;
   historyPage(
     epoch: string,
     kind: HistoryKind,
@@ -187,3 +188,19 @@ export function historyTime(value: number, now = new Date()) {
     full: date.toLocaleString('zh-CN', { hour12: false }),
   };
 }
+
+export interface ListenedBooksPage {
+  revision: string;
+  number: number;
+  pages: number;
+  total: number;
+  rows: {
+    key: number;
+    radio: PodcastCard;
+    subscribers: number | null;
+    chapter: { name: string; percent: number | null; completed: boolean; playable: boolean } | null;
+  }[];
+}
+export type ListenedBooksQuery =
+  | { kind: 'open' }
+  | { kind: 'page'; revision: string; number: number };

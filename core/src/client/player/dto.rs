@@ -235,6 +235,10 @@ pub enum PlaySelection {
         query: crate::client::dto::DownloadQuery,
         start_id: Option<String>,
     },
+    ListenedBookChapter {
+        revision: String,
+        key: usize,
+    },
     History {
         history_kind: crate::history::HistoryKind,
         revision: String,

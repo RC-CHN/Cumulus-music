@@ -38,3 +38,15 @@ pub async fn history_command(
         .await
         .map_err(Into::into)
 }
+
+#[tauri::command]
+pub async fn listened_books(
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    query: ListenedBooksQuery,
+) -> Result<AccountData<ListenedBooksPage>, ClientError> {
+    client
+        .listened_books(&epoch, query)
+        .await
+        .map_err(Into::into)
+}

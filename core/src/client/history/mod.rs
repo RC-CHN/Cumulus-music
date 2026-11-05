@@ -1,4 +1,7 @@
 mod dto;
+mod listened_books;
+pub(super) use listened_books::ListenedBooksHost;
+pub use listened_books::{ListenedBooksPage, ListenedBooksQuery};
 mod selection;
 pub(in crate::client) use selection::Selection;
 mod view;

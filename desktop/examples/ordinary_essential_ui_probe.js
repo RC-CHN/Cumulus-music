@@ -104,7 +104,29 @@
     const scroll = scroller.scrollTop;
     assert(scroll > 0, 'viewport can scroll');
     click(button('books:history:open'));
-    await wait(() => one('.history-page [aria-current="page"]')?.textContent.includes('有声书'), 'recent audiobook history destination');
+    const listened = () => one('.listened-books');
+    const pagination = (label) => all('.listened-books-pagination button').find((node) => node.textContent.trim() === label);
+    await wait(() => all('[data-listened-book]').length === 20, 'dedicated listened books first page');
+    assert(listened().querySelector('h1').textContent.trim() === '听过的书', 'dedicated listened books heading');
+    assert(!one('.history-page') && listened().textContent.includes('已播 10%'), 'recent chapter checkpoint and no timeline controls');
+    click(pagination('下一页'));
+    await wait(() => all('[data-listened-book]').length === 1 && one('[data-listened-book="20"]'), 'twenty rows per page');
+    click(pagination('上一页'));
+    const chapter = () => one('[data-listened-book="0"] [data-listened-chapter]');
+    await wait(() => chapter() && !chapter().disabled, 'chapter back on first page');
+    click(chapter());
+    const { epoch } = await invoke('account_snapshot');
+    let listenedPlayback;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      listenedPlayback = await invoke('player_snapshot', { epoch });
+      if (listenedPlayback.track?.voiceId === '702' && listenedPlayback.state === 'playing'
+          && listenedPlayback.position > .2) break;
+      await sleep(60);
+    }
+    assert(listenedPlayback.track?.voiceId === '702' && listenedPlayback.track?.id === '1702'
+        && listenedPlayback.state === 'playing' && listenedPlayback.queueLen === 2
+        && listenedPlayback.position > .2, 'clicked assigned episode, not first chapter or radio as media');
+    await capture('listened_chapter', { playing: true });
     click(back());
     await wait(() => document.activeElement === button('books:history:open'), 'book return focus');
     assert(one('.ordinary-essential').scrollTop === scroll && bookSelect().value === '2', 'book return scroll/selection');

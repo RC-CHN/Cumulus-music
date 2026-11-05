@@ -232,6 +232,7 @@ export function createTauriClient(): CoreClient {
     releaseNotification: (epoch, artist, action) =>
       invoke('release_notification', { epoch, artist, action }),
     collectionPage: (epoch, query, refresh) => invoke('collection_page', { epoch, query, refresh }),
+    listenedBooks: (epoch, query) => invoke('listened_books', { epoch, query }),
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
     historySyncPreference: (epoch, action) => invoke('history_sync_preference', { epoch, action }),
     accountSettingsPage: (epoch, refresh) => invoke('account_settings_page', { epoch, refresh }),

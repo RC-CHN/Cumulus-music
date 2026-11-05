@@ -135,6 +135,7 @@ import type { CatalogSession } from './composables/useCatalogSession';
 import CollectionsPage from './components/CollectionsPage.vue';
 import FollowNewSongPage from './components/catalog/FollowNewSongPage.vue';
 import HistoryPage from './components/HistoryPage.vue';
+import ListenedBooksPage from './components/history/ListenedBooksPage.vue';
 import SettingsPage from './components/SettingsPage.vue';
 import { useSettings } from './composables/useSettings';
 import { useRelay } from './composables/useRelay';
@@ -354,7 +355,7 @@ function openEssentialSection(rail: EssentialRail) {
 }
 function openEssentialCard(rail: EssentialRail, card: EssentialCard) {
   if (rail === 'playlists') music.navigate({ kind: 'playlist', id: card.id });
-  else if (card.history) music.navigate({ kind: 'history', scope: 'audiobook' });
+  else if (card.history) music.navigate({ kind: 'listened_books' });
   else if (card.radioId) openSceneRadio(card.radioId);
 }
 function choicePlaylistMenu(card: EssentialCard) {
@@ -4442,6 +4443,15 @@ onUnmounted(() => {
                 <span class="spinner" />
                 <p>正在连接你的音乐…</p>
               </div>
+              <ListenedBooksPage
+                v-else-if="page.kind === 'listened_books'"
+                :epoch="account.epoch"
+                :playable="player.ready.value && !player.busy.value"
+                @open="openSceneRadio"
+                @play="
+                  (revision, key) => player.select({ kind: 'listened_book_chapter', revision, key })
+                "
+              />
               <HistoryPage
                 v-else-if="page.kind === 'history'"
                 :model="recent"

@@ -283,3 +283,31 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   的记录 ID（不是点击勾选的顺序，也不是媒体 ID）。没有可播放选项时按钮禁用。
 - 沿用已有 History 播放命令，原生校验账号、快照版本、顺序与可播放性。此动作不会提交历史
   删除或同步变更；队列仍遵循 Cumulus 原有历史播放语义。
+
+精选 → 听过的书（独立在线页面）
+- 官方 3.1.42.205594：M2123:129–163、238–316 的「听过的有声书」卡进入
+  myHistoryAudioOnline；M3009:35–77 与恢复源码 my-history-audio-online/index.tsx:37–71
+  在每次挂载派发一次 fetchHistoryAudioBook，显示「听过的书」，按 20 条做本地分页。
+  M3010:70–119 将 radio 与 extDataVoice/extPlayRecord 组合；M15:3577–3605 调
+  /api/voice/book/recent，空业务参数（原 RequestFactory 接收 null，M12:102–116
+  转成空表单后加协议字段），UID 仅为原格式化上下文。按 currentList、yesterdayList、
+  passingList 拼接；同模块邻近 /api/djradio/buyed 不在此路径。
+- Cumulus 不再将这张卡导入最近播放的有声书时间线。单独的 listened_books 原生读取
+  要求当前账号和 epoch；一份只在内存的有界快照把显示分页与播放绑定到同一版本。
+  翻页不发服务请求；离页后返回重新挂载，保留精选原滚动、分类及触发按钮焦点。
+  新页面呈现书名、章节及读取的进度、收藏量、声音数；无历史删除或多端开关。
+  封面仅用现有公开图床投影，节目 ID、原始资料、授权信息及音源留在原生。
+- M2077:86–109、130–146 选择收藏量和章节标题列；M2120:79–103、196–255 的
+  章节点击提交 audio 和 assignedPlayId，未播完可续听，完成从零开始。对应 M404:
+  202–256 的无匹配本机 recent 分支从 /api/v6/dj/program/byradio 读取节目，
+  limit=250、offset 分页，未指定已存排序时不发送 asc。原生使用快照内行键识别
+  书和章节，网络前后及 actor 提交时检查会话、播放意图与快照；沿用该节目原生权限、
+  音源及续播设置读取。过期/不存在或章节与书冲突不替换队列，节目 ID 不当媒体 ID。
+- 本批没有移植 M71:153–160/M404:208、258 的本机 latestPlayVoiceMap 按书优先/
+  around250 分支、旧 PC 按书排序表、原收藏菜单或 UI 按 AB/Resume 设置隐去进度。
+  Rust 继续用现有单节目本机检查点和实时 Resume 设置，不声称这些未接线分支相同。
+  对于局部节目分页失败，不用不完整列表替换当前队列；原 JS 某些失败会保留部分列表。
+- 合成验证源码：core/tests/client_history.rs 检查请求、分组顺序/20条分页、无远端
+  写、选中第二节目、旧版本及账号隔离。catalog_smoke.py --ordinary-essential
+  新增桌面密闭路径，检查精选进入、20+1 本地分页、已播比例、真实 null 播放的节目/
+  媒体/队列、Back 还原与精确请求次数。未执行实际账号请求或物理输出。

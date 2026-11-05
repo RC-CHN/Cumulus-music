@@ -249,13 +249,16 @@ def main():
         return
     if args.ordinary_essential:
         assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        names = ('initial', 'category_failure', 'history_return', 'native_play', 'paused',
+        names = ('initial', 'category_failure', 'listened_chapter', 'history_return', 'native_play', 'paused',
                  'voice_play', 'book_play', 'partial_fallback', 'other_account_failure', 'retry', 'guest')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         states = {name: json.loads((output / f'ux_{name}.json').read_text(encoding='utf-8'))
                   for name in names}
         assert states['history_return']['scroll'] > 0
+        listened = states['listened_chapter']['nativePlayer']
+        assert listened['state'] == 'playing' and listened['track']['voiceId'] == '702'
+        assert listened['track']['id'] == '1702' and listened['queueLen'] == 2 and listened['position'] > .2
         native = states['native_play']['nativePlayer']
         assert native['state'] == 'playing' and native['track']['id'] == '2'
         assert native['position'] > .2 and native['queueLen'] == 9
@@ -275,6 +278,10 @@ def main():
                 assert observed['messages'] == observed['characters'] == expected
         calls = complete['essentialReads']
         assert not any(call['owner'] == 0 for call in calls)
+        recent = [call for call in calls if call['path'] == '/api/voice/book/recent']
+        assert [(call['owner'], call['args']) for call in recent] == [(2, {})], recent
+        chapters = [call for call in calls if call['path'] == '/api/v6/dj/program/byradio']
+        assert [call['args'] for call in chapters] == [{'radioId': '691', 'limit': 250, 'offset': 0}], chapters
         song_calls = [call for call in calls if call['path'] == '/api/personalized/newsong']
         assert [(call['owner'], call['mode']) for call in song_calls] == [
             (2, 'initial'), (2, 'songs-down'), (3, 'all-down'), (3, 'initial')

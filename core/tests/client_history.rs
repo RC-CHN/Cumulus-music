@@ -68,7 +68,19 @@ impl Api for Backend {
                     json!({"code":200,"playlist":{"trackIds":[{"id":1},{"id":3,"v":-1},{"id":2}]}})
                 }
                 "/api/djradio/v3/get" => json!({"code":200,"data":radio(&p["id"])}),
+                "/api/voice/book/recent" => {
+                    assert_eq!(p, json!({}));
+                    let mut chapter = voice(6, &json!(22));
+                    chapter["radio"]["subCount"] = json!(154);
+                    chapter["djPlayRecordVo"] =
+                        json!({"id":"6","listenLocation":2500,"isListened":false});
+                    let next = (30..50).map(|id| voice(5, &json!(id))).collect::<Vec<_>>();
+                    json!({"code":200,"data":{"currentList":[chapter],"yesterdayList":next[..19],"passingList":next[19..]}})
+                }
                 "/api/v6/dj/program/byradio" => {
+                    if p["radioId"] == "22" {
+                        assert_eq!(p, json!({"radioId":"22","limit":250,"offset":0}));
+                    }
                     json!({"code":200,"data":{"programs":[voice(5,&p["radioId"]),voice(6,&p["radioId"])],"count":2,"more":false,"asc":p["asc"]}})
                 }
                 "/api/dj/program/detail" => json!({"code":200,"program":voice(5,&json!(8))}),
@@ -76,7 +88,11 @@ impl Api for Backend {
                     json!({"code":200,"data":{"resumePlayValue":0}})
                 }
                 "/api/dj/play/url/check" => {
-                    json!({"code":200,"data":{"voiceId":p["voiceId"],"songId":1005,"canPlay":true}})
+                    let id = p["voiceId"]
+                        .as_u64()
+                        .or_else(|| p["voiceId"].as_str()?.parse().ok())
+                        .unwrap();
+                    json!({"code":200,"data":{"voiceId":p["voiceId"],"songId":1000 + id,"canPlay":true}})
                 }
                 "/api/song/enhance/player/url/v1" => {
                     let ids: Vec<Value> = serde_json::from_str(p["ids"].as_str().unwrap()).unwrap();
@@ -350,4 +366,105 @@ async fn unusable_download_reference_falls_back_only_through_fresh_online_metada
         .position(|p| p == "/api/song/enhance/player/url/v1")
         .unwrap();
     assert!(rights < media);
+}
+
+#[tokio::test]
+async fn listened_books_owns_local_pages_and_exact_chapter_selection() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let page = f
+        .client
+        .listened_books(&epoch, ListenedBooksQuery::Open)
+        .await
+        .unwrap();
+    let value = serde_json::to_value(page.value).unwrap();
+    let revision = value["revision"].as_str().unwrap().to_owned();
+    assert_eq!(value["total"], 21);
+    assert_eq!(value["pages"], 2);
+    assert_eq!(value["number"], 1);
+    assert_eq!(value["rows"].as_array().unwrap().len(), 20);
+    assert_eq!(value["rows"][0]["radio"]["id"], "22");
+    assert_eq!(value["rows"][0]["subscribers"], 154);
+    assert_eq!(value["rows"][0]["chapter"]["percent"], 2);
+    assert_eq!(value["rows"][19]["radio"]["id"], "48");
+    assert!(!value.to_string().contains("PRIVATE"));
+    let next = f
+        .client
+        .listened_books(
+            &epoch,
+            ListenedBooksQuery::Page {
+                revision: revision.clone(),
+                number: 2,
+            },
+        )
+        .await
+        .unwrap();
+    let next = serde_json::to_value(next.value).unwrap();
+    assert_eq!(next["rows"].as_array().unwrap().len(), 1);
+    assert_eq!(next["rows"][0]["radio"]["id"], "49");
+    assert_eq!(*f.api.calls.lock().unwrap(), ["/api/voice/book/recent"]);
+
+    let playback = f
+        .client
+        .play_selection(
+            &epoch,
+            PlaySelection::ListenedBookChapter {
+                revision: revision.clone(),
+                key: 0,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(playback.queue_len, 2);
+    let track = serde_json::to_value(playback.track).unwrap();
+    assert_eq!(track["voiceId"], "6");
+    assert_eq!(track["id"], "1006");
+    {
+        let calls = f.api.calls.lock().unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|path| *path == "/api/voice/book/recent")
+                .count(),
+            1
+        );
+        assert!(calls.iter().any(|path| path == "/api/dj/play/url/check"));
+        assert!(!calls.iter().any(|path| path.contains("/play-record/")));
+    }
+
+    f.client
+        .listened_books(&epoch, ListenedBooksQuery::Open)
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.client
+            .play_selection(
+                &epoch,
+                PlaySelection::ListenedBookChapter {
+                    revision: revision.clone(),
+                    key: 0
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    f.session
+        .adopt(
+            f.api.clone(),
+            json!({"userId":10}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        f.client
+            .listened_books(
+                &f.epoch(),
+                ListenedBooksQuery::Page {
+                    revision,
+                    number: 1
+                }
+            )
+            .await,
+        Err(Error::QueueChanged)
+    ));
 }

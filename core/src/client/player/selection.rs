@@ -235,6 +235,9 @@ impl MusicClient {
             }
             _ => (None, None),
         };
+        if let PlaySelection::ListenedBookChapter { revision, key } = &input {
+            self.check_listened_chapter(&token, revision, *key)?;
+        }
         let preserve = if retained.is_some() {
             Some(self.queue_click_snapshot(&token).await?)
         } else {
@@ -390,6 +393,26 @@ impl MusicClient {
                         attempt,
                         lease,
                         prepared.as_ref(),
+                    )
+                    .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+            PlaySelection::ListenedBookChapter { revision, key } => {
+                let (resources, index, source, cancellation) =
+                    self.listened_book_queue(&token, &revision, key).await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        PlaybackCommand::Replace {
+                            resources,
+                            index,
+                            source,
+                        },
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
+                        Some(cancellation),
                     )
                     .await?;
                 self.session.with_token(&token, |_| Ok(()))?;
@@ -685,6 +708,7 @@ impl MusicClient {
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }
                     | PlaySelection::History { .. }
+                    | PlaySelection::ListenedBookChapter { .. }
                     | PlaySelection::Local { .. }
                     | PlaySelection::Podcast { .. }
                     | PlaySelection::PodcastRecent { .. }
