@@ -2,13 +2,18 @@
 import argparse
 import ctypes
 import hashlib
+import http.client
 import json
+import os
 from pathlib import Path, PurePosixPath
 import platform
 import shutil
+import ssl
 import subprocess
 import tarfile
+import tempfile
 import time
+import urllib.error
 import urllib.request
 
 URL = 'https://downloads.xiph.org/releases/flac/flac-1.5.0.tar.xz'
@@ -17,6 +22,7 @@ VERSION = '1.5.0'
 MAX_ARCHIVE = 4 * 1024 * 1024
 MAX_SOURCE = 48 * 1024 * 1024
 MAX_MEMBERS = 4096
+DOWNLOAD_ATTEMPTS = 3
 OPTIONS = (
     '-DCMAKE_BUILD_TYPE=Release', '-DBUILD_SHARED_LIBS=ON', '-DWITH_OGG=OFF',
     '-DBUILD_CXXLIBS=OFF', '-DBUILD_PROGRAMS=OFF', '-DBUILD_TESTING=OFF',
@@ -36,23 +42,77 @@ class HttpsRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(request, fp, code, msg, headers, newurl)
 
 
+class TransientSourceRead(Exception):
+    pass
+
+
+def source_read(operation, *args, **kwargs):
+    try:
+        return operation(*args, **kwargs)
+    except urllib.error.HTTPError as error:
+        if error.code not in {429, 500, 502, 503, 504}:
+            raise
+        error.close()
+        raise TransientSourceRead() from error
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.IncompleteRead,
+            ssl.SSLEOFError) as error:
+        reason = error.reason if isinstance(error, urllib.error.URLError) else error
+        if not isinstance(reason, (TimeoutError, ConnectionError, http.client.IncompleteRead,
+                                   ssl.SSLEOFError)):
+            raise
+        raise TransientSourceRead() from error
+
+
+def download_attempt(opener, path, deadline):
+    temporary = None
+    try:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('FLAC archive download deadline exceeded')
+        with source_read(opener.open, URL, timeout=min(30, remaining)) as response:
+            if not response.geturl().startswith('https://'):
+                raise ValueError('FLAC archive must use HTTPS')
+            declared = response.headers.get('Content-Length')
+            if declared is not None and (not declared.isascii() or not declared.isdecimal()
+                                         or not 0 < int(declared) <= MAX_ARCHIVE):
+                raise ValueError('invalid FLAC archive length')
+            total = 0
+            with tempfile.NamedTemporaryFile(dir=path.parent, prefix=path.name + '.',
+                                             suffix='.part', delete=False) as output:
+                temporary = Path(output.name)
+                while chunk := source_read(response.read, 65536):
+                    total += len(chunk)
+                    if total > MAX_ARCHIVE or time.monotonic() >= deadline:
+                        raise ValueError('FLAC archive exceeds bounded download')
+                    output.write(chunk)
+            if declared is not None and total != int(declared):
+                raise ValueError('FLAC archive length mismatch')
+        if time.monotonic() >= deadline:
+            raise TimeoutError('FLAC archive download deadline exceeded')
+        if sha256(temporary) != ARCHIVE_SHA256:
+            raise ValueError('official FLAC archive SHA256 mismatch')
+        # Same-directory, atomic publication that refuses an existing input.
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
 def download(path):
+    if path.exists() or path.is_symlink():
+        raise FileExistsError(path)
     deadline = time.monotonic() + 90
     opener = urllib.request.build_opener(HttpsRedirect())
-    with opener.open(URL, timeout=30) as response, path.open('xb') as output:
-        if not response.geturl().startswith('https://'):
-            raise ValueError('FLAC archive must use HTTPS')
-        declared = response.headers.get('Content-Length')
-        if declared is not None and int(declared) > MAX_ARCHIVE:
-            raise ValueError('FLAC archive exceeds download limit')
-        total = 0
-        while chunk := response.read(65536):
-            total += len(chunk)
-            if total > MAX_ARCHIVE or time.monotonic() >= deadline:
-                raise ValueError('FLAC archive exceeds bounded download')
-            output.write(chunk)
-    if sha256(path) != ARCHIVE_SHA256:
-        raise ValueError('official FLAC archive SHA256 mismatch')
+    for attempt in range(DOWNLOAD_ATTEMPTS):
+        try:
+            download_attempt(opener, path, deadline)
+            return
+        except TransientSourceRead as error:
+            delay = 2 ** attempt
+            if attempt + 1 == DOWNLOAD_ATTEMPTS or time.monotonic() + delay >= deadline:
+                raise error.__cause__ from None
+            print(f'Retrying pinned FLAC archive GET ({attempt + 2}/{DOWNLOAD_ATTEMPTS})', flush=True)
+            time.sleep(delay)
 
 
 def unpack(archive, destination):

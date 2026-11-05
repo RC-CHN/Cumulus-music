@@ -1,11 +1,106 @@
+import hashlib
 import io
 from pathlib import Path
+import ssl
 import tarfile
 import tempfile
 import unittest
 from unittest.mock import patch
+import urllib.error
 
 import linux_flac150 as proof
+
+
+class DownloadBoundaries(unittest.TestCase):
+    payload = b'pinned FLAC archive fixture'
+
+    class Response(io.BytesIO):
+        def __init__(self, data, *, url=proof.URL, headers=None):
+            super().__init__(data)
+            self.url = url
+            self.headers = headers or {}
+
+        def geturl(self):
+            return self.url
+
+    def setUp(self):
+        work = tempfile.TemporaryDirectory()
+        self.addCleanup(work.cleanup)
+        self.path = Path(work.name) / 'flac-1.5.0.tar.xz'
+        self.enterContext(patch.object(proof, 'ARCHIVE_SHA256', hashlib.sha256(self.payload).hexdigest()))
+        self.opener = self.enterContext(patch.object(proof.urllib.request, 'build_opener')).return_value
+        self.sleep = self.enterContext(patch.object(proof.time, 'sleep'))
+
+    def test_tls_eof_retries_same_source_then_publishes_only_verified_bytes(self):
+        eof = urllib.error.URLError(ssl.SSLEOFError(8, 'synthetic TLS handshake EOF'))
+        self.opener.open.side_effect = [eof, self.Response(self.payload)]
+        proof.download(self.path)
+        self.assertEqual(self.path.read_bytes(), self.payload)
+        self.assertEqual(list(self.path.parent.iterdir()), [self.path])
+        self.assertEqual([call.args for call in self.opener.open.call_args_list], [(proof.URL,)] * 2)
+        self.sleep.assert_called_once_with(1)
+
+    def test_interrupted_partial_bytes_are_discarded_before_each_retry(self):
+        class Broken(self.Response):
+            def read(self, _size):
+                if self.tell():
+                    raise TimeoutError('synthetic body interruption')
+                return super().read(2)
+
+        def open_broken(*_args, **_kwargs):
+            self.assertEqual(list(self.path.parent.iterdir()), [])
+            return Broken(self.payload)
+
+        self.opener.open.side_effect = open_broken
+        with self.assertRaisesRegex(TimeoutError, 'body interruption'):
+            proof.download(self.path)
+        self.assertEqual(self.opener.open.call_count, 3)
+        self.assertEqual(list(self.path.parent.iterdir()), [])
+        self.assertEqual([call.args for call in self.sleep.call_args_list], [(1,), (2,)])
+
+    def test_transient_http_error_cannot_retry_past_the_total_budget(self):
+        self.opener.open.side_effect = urllib.error.HTTPError(proof.URL, 503, 'unavailable', {}, None)
+        with patch.object(proof.time, 'monotonic', side_effect=[0, 0, 89.5]):
+            with self.assertRaises(urllib.error.HTTPError):
+                proof.download(self.path)
+        self.opener.open.assert_called_once_with(proof.URL, timeout=30)
+        self.sleep.assert_not_called()
+        self.assertEqual(list(self.path.parent.iterdir()), [])
+
+    def test_bad_content_and_non_transient_policy_failures_are_not_retried(self):
+        for response, expected in [
+            (self.Response(b'wrong digest'), ValueError),
+            (self.Response(self.payload, url='http://example.invalid/file'), ValueError),
+            (self.Response(self.payload, headers={'Content-Length': '-2'}), ValueError),
+            (self.Response(self.payload, headers={'Content-Length': '300'}), ValueError),
+            (urllib.error.HTTPError(proof.URL, 404, 'missing', {}, None), urllib.error.HTTPError),
+            (urllib.error.URLError(ssl.SSLCertVerificationError('untrusted')), urllib.error.URLError),
+        ]:
+            with self.subTest(response=response, expected=expected):
+                self.opener.open.reset_mock(side_effect=True)
+                self.opener.open.side_effect = [response]
+                with self.assertRaises(expected):
+                    proof.download(self.path)
+                self.opener.open.assert_called_once()
+                self.sleep.assert_not_called()
+                self.assertEqual(list(self.path.parent.iterdir()), [])
+
+    def test_existing_and_concurrent_destinations_are_not_replaced(self):
+        self.path.write_bytes(b'already there')
+        with self.assertRaises(FileExistsError):
+            proof.download(self.path)
+        self.opener.open.assert_not_called()
+        self.path.unlink()
+
+        def open_concurrent(*_args, **_kwargs):
+            self.path.write_bytes(b'concurrent source')
+            return self.Response(self.payload)
+
+        self.opener.open.side_effect = open_concurrent
+        with self.assertRaises(FileExistsError):
+            proof.download(self.path)
+        self.assertEqual(self.path.read_bytes(), b'concurrent source')
+        self.assertEqual(list(self.path.parent.iterdir()), [self.path])
 
 
 class FlacBuildBoundaries(unittest.TestCase):
