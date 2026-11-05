@@ -62,6 +62,7 @@ struct Proof {
     evidence: Evidence,
     offline: Arc<Offline>,
     expect_graph: bool,
+    exercise_peq: bool,
     started: AtomicBool,
 }
 
@@ -79,15 +80,17 @@ fn locale(category: libc::c_int) -> String {
 
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
-    assert!(
-        matches!(args.len(), 4 | 5),
-        "usage: native_local_equalizer_probe trusted|wrong_digest ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]"
-    );
-    let expect_graph = match args[0].to_str() {
-        Some("trusted") => true,
-        Some("wrong_digest") => false,
+    let (expect_graph, exercise_peq) = match args.first().and_then(|value| value.to_str()) {
+        Some("trusted") => (true, false),
+        Some("wrong_digest") => (false, false),
+        Some("paused_peq") => (true, true),
         _ => panic!("invalid proof case"),
     };
+    let required = 4 + usize::from(exercise_peq);
+    assert!(
+        (required..=required + 1).contains(&args.len()),
+        "usage: native_local_equalizer_probe trusted|wrong_digest ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; or paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]"
+    );
     let sdk = PathBuf::from(&args[1]);
     assert!(sdk.is_absolute() && sdk.is_file());
     let digest = args[2].to_str().expect("package decoder SHA256");
@@ -114,7 +117,12 @@ fn main() {
     );
     assert_eq!(manifest["sourceFrames"], 88_207);
     fs::write(&file, FLAC).expect("synthetic native file");
-    let mpv = args.get(4).map(PathBuf::from);
+    let filter = exercise_peq.then(|| {
+        let path = PathBuf::from(&args[4]);
+        assert!(path.is_absolute() && path.is_file());
+        path
+    });
+    let mpv = args.get(required).map(PathBuf::from);
     assert!(
         mpv.as_ref()
             .is_none_or(|path| path.is_absolute() && path.is_file())
@@ -149,6 +157,10 @@ fn main() {
                         null_output: true,
                     })?
                     .with_local_equalizer_decoder(runtime);
+                    let engine = match &filter {
+                        Some(path) => engine.with_effects_library(path.clone()),
+                        None => engine,
+                    };
                     Ok(Box::new(Recorded {
                         engine,
                         evidence: native_evidence.clone(),
@@ -163,6 +175,7 @@ fn main() {
                 evidence,
                 offline,
                 expect_graph,
+                exercise_peq,
                 started: AtomicBool::new(false),
             });
             tauri::WebviewWindowBuilder::from_config(app, &window)?
@@ -193,6 +206,7 @@ fn main() {
                     proof.file.clone(),
                     &proof.evidence,
                     proof.expect_graph,
+                    proof.exercise_peq,
                 )
                 .await;
                 let (name, mut report, code) = match result {

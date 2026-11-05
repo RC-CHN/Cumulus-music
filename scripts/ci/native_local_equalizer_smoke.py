@@ -1,4 +1,4 @@
-"""Run both ordinary held-FLAC actor cases in fresh real Tauri WebViews."""
+"""Run ordinary held-FLAC actor cases in fresh real Tauri WebViews."""
 import argparse
 import hashlib
 import json
@@ -8,7 +8,7 @@ import subprocess
 import sys
 
 
-def read_report(root, *, graph):
+def read_report(root, *, graph, peq):
     report = json.loads((root / 'report.json').read_text(encoding='utf-8'))
     assert report['ok'] and report['kind'] == 'ordinary_native_local_equalizer_v1'
     for flag in ('actualActor', 'explicitNativeFile', 'webviewFinished',
@@ -16,6 +16,7 @@ def read_report(root, *, graph):
         assert report[flag] is True
     assert report['audioOutput'] == 'null' and report['realMusicRequests'] == report['realAccountWrites'] == 0
     assert report['fixedGraphSelected'] is graph and report['wrongDigestStockFallback'] is (not graph)
+    assert report['pausedIndependentPeq'] is peq
     if sys.platform.startswith('linux'):
         assert report['numericLocaleIsC'] and report['messagesLocalePreserved']
     assert int(report['durableEqualizerRevision']) >= 2
@@ -36,11 +37,30 @@ def read_report(root, *, graph):
         assert load['graph_entry'] == load['entry']
         assert seek['replacement'] != load['entry'] and seek['graph_entry'] == seek['replacement']
         assert native['processed_entries'] == sorted([load['entry'], seek['replacement']])
-        assert settings in native['local_updates'] and native['eof_entries'] == [seek['replacement']]
+        assert settings in native['local_updates']
+        eof_entry = seek['replacement']
     else:
         assert load['graph_entry'] is seek['replacement'] is seek['graph_entry'] is None
         assert not native['processed_entries'] and not native['local_updates']
-        assert native['eof_entries'] == [load['entry']]
+        eof_entry = load['entry']
+    if peq:
+        handoff, = native['yields']
+        assert handoff['old_entry'] == seek['replacement'] and handoff['graph_entry'] is None
+        assert handoff['replacement'] not in (load['entry'], seek['replacement'])
+        assert native['peq_processed_entries'] == [handoff['replacement']]
+        assert handoff['replacement'] not in native['processed_entries']
+        clocks = report['peqHandoff']
+        assert clocks['sameLogicalPlayAndQueue'] is True
+        assert clocks['before'] > .65
+        assert abs(clocks['actorPausedAfter'] - clocks['before']) < .1
+        assert abs(clocks['nativePausedAfter'] - clocks['before']) < .1
+        assert clocks['nativePausedAfter'] == native['stock_paused_position']
+        assert clocks['processed'] > clocks['before'] + .05
+        eof_entry = handoff['replacement']
+    else:
+        assert not native['yields'] and not native['peq_processed_entries']
+        assert native['stock_paused_position'] is report['peqHandoff'] is None
+    assert native['eof_entries'] == [eof_entry]
     return report
 
 
@@ -51,6 +71,7 @@ def main():
     parser.add_argument('--flac-sha256', required=True, help='expected digest from the trusted stage')
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--mpv-library', type=Path)
+    parser.add_argument('--filter-library', type=Path, help='also run the independent paused PEQ handoff')
     parser.add_argument('--frontend-dist', type=Path)
     args = parser.parse_args()
     root = args.root.resolve()
@@ -66,8 +87,11 @@ def main():
     if sys.platform == 'win32' and mpv:
         # Native file inspection uses the adjacent package's ffprobe, not PATH.
         env['MPV_DLL_DIR_CUMULUS'] = str(mpv[0].parent)
+    cases = [('trusted', True, []), ('wrong_digest', False, [])]
+    if args.filter_library:
+        cases.append(('paused_peq', True, [args.filter_library.resolve(strict=True)]))
     reports = {}
-    for case, graph in [('trusted', True), ('wrong_digest', False)]:
+    for case, graph, filter_args in cases:
         work = root / case
         case_env = env.copy()
         for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'APPDATA', 'LOCALAPPDATA'):
@@ -75,13 +99,13 @@ def main():
             directory.mkdir(parents=True, mode=0o700)
             case_env[key] = str(directory)
         with (root / f'{case}.log').open('xb') as log:
-            result = subprocess.run([binary, case, library, args.flac_sha256, work, *mpv],
+            result = subprocess.run([binary, case, library, args.flac_sha256, work, *filter_args, *mpv],
                                     env=case_env, stdout=log, stderr=log, timeout=60)
         failed = work / 'failed.json'
         assert result.returncode == 0 and not failed.exists(), (
             case, result.returncode, failed.read_text(encoding='utf-8') if failed.exists() else None,
         )
-        reports[case] = read_report(work, graph=graph)
+        reports[case] = read_report(work, graph=graph, peq=bool(filter_args))
     output = {'ok': True, 'actualWebViewAndActor': True, 'flacSha256': args.flac_sha256,
               'realMusicRequests': 0, 'physicalOutputVerified': False, 'cases': reports}
     (root / 'report.json').write_text(json.dumps(output, indent=2) + '\n', encoding='utf-8')

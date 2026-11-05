@@ -32,7 +32,22 @@ but deliberately passes a different expected digest. The same actor route
 must select the existing native decoder without a local graph, preserve
 the user's EQ preference, pause, seek without a replacement receipt and
 reach the real stock EOF. The driver independently checks the native trace
-and durable-preference fields of both cases. These runs are not an argv or
+and durable-preference fields of both cases.
+
+With --filter-library ABS_FILTER, a third fresh process uses the actual
+independent LADSPA PEQ library. After the held graph has processed on both
+native entries, it pauses again and applies a small synthetic plan using the
+trusted native-only MusicClient method; no entitlement transport is involved.
+The actor must retain the same logical play and queue, acknowledge exactly
+one change from the current raw graph entry to a new stock entry, and keep
+both its logical clock and the settled native paused clock near the prior
+source position. After resume, the native plugin must report real processed
+samples on the new stock entry only. That entry must reach actual EOF and
+the local GEQ/BT edit must remain durable. This checks handoff and isolation
+of native processing, not the full official effect-selection graph or
+audible parity.
+
+These runs are not an argv or
 package-resource-path test; native_file_open_smoke remains the registered
 production entry test. They use null audio, no physical output.
 

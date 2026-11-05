@@ -7,8 +7,14 @@ use cumulus_core::{
         MusicClient,
         dto::{PlayerAction, PlayerResourceKind, PlayerView},
     },
-    effects::equalizer::{EqualizerPreferences, EqualizerSettings, EqualizerStatus},
-    playback::{PlaybackMode, controller::PlaybackStatus},
+    effects::{
+        equalizer::{EqualizerPreferences, EqualizerSettings, EqualizerStatus},
+        parametric::ParametricPlan,
+    },
+    playback::{
+        PlaybackMode,
+        controller::{ParametricApplication, PlaybackStatus},
+    },
     storage::StateStore,
 };
 use serde_json::{Value, json};
@@ -92,12 +98,84 @@ async fn configure(
     Ok(value)
 }
 
+async fn independent_peq(
+    client: &MusicClient,
+    epoch: &str,
+    playing: &PlayerView,
+    evidence: &Evidence,
+) -> Result<Value> {
+    let pause = |paused| PlayerAction::PauseFor {
+        play_id: playing.play_id.clone().expect("selected playback ID"),
+        expected_queue_revision: playing.queue_revision.clone(),
+        paused,
+    };
+    client.player_action(epoch, pause(true)).await?;
+    let before = until(client, epoch, "held_graph_before_peq", |view| {
+        same_play(view, playing) && view.state == PlaybackStatus::Paused && !view.native_seeking
+    })
+    .await?;
+    let before_position = before
+        .position
+        .ok_or(Error::State("missing held source clock"))?;
+    let plan = ParametricPlan::from_material(&json!({
+        "aev2":{"peq":{"on":true,"gain":-2,"f":[{"band":1,"type":6,"freq":440,"gain":-4,"q":0.7}]}}
+    }))?
+    .ok_or(Error::State("missing synthetic PEQ component"))?;
+    require(
+        client
+            .set_native_parametric_component(epoch, Some(plan))
+            .await?
+            == ParametricApplication::Configured,
+        "native actor did not configure the independent PEQ",
+    )?;
+    eprintln!("ordinary local EQ proof: independent_peq_configured");
+    let after = until(client, epoch, "paused_stock_after_peq", |view| {
+        same_play(view, &before)
+            && view.state == PlaybackStatus::Paused
+            && !view.native_seeking
+            && !view.parametric_processing
+            && view
+                .position
+                .is_some_and(|position| (position - before_position).abs() < 0.10)
+            && evidence.lock().unwrap().stock_paused_position.is_some()
+    })
+    .await?;
+    let stock_position = evidence
+        .lock()
+        .unwrap()
+        .stock_paused_position
+        .ok_or(Error::State("missing paused native stock clock"))?;
+    require(
+        (stock_position - before_position).abs() < 0.10,
+        "native stock handoff did not resume the held source position",
+    )?;
+    client.player_action(epoch, pause(false)).await?;
+    let processed = until(client, epoch, "independent_peq_processing", |view| {
+        same_play(view, &before)
+            && view.state == PlaybackStatus::Playing
+            && view.parametric_processing
+            && view
+                .position
+                .is_some_and(|position| position > before_position + 0.05)
+    })
+    .await?;
+    eprintln!("ordinary local EQ proof: independent_peq_processed_native_pcm");
+    Ok(json!({
+        "before": before_position,
+        "actorPausedAfter": after.position,
+        "nativePausedAfter": stock_position,
+        "processed": processed.position,
+        "sameLogicalPlayAndQueue": true,
+    }))
+}
+
 pub async fn verify(
     client: &MusicClient,
     store: &StateStore,
     path: PathBuf,
     evidence: &Evidence,
     expect_graph: bool,
+    exercise_peq: bool,
 ) -> Result<Value> {
     let account = client.account()?;
     require(
@@ -187,6 +265,11 @@ pub async fn verify(
             && (!expect_graph || view.equalizer.status == EqualizerStatus::Processing)
     })
     .await?;
+    let peq_handoff = if exercise_peq {
+        Some(independent_peq(client, &epoch, &resumed, evidence).await?)
+    } else {
+        None
+    };
     let ended = until(client, &epoch, "native_eof", |view| {
         same_play(view, &playing) && view.state == PlaybackStatus::Ended
     })
@@ -242,8 +325,32 @@ pub async fn verify(
         )?;
         load.entry
     };
+    let eof_entry = if exercise_peq {
+        let [handoff] = trace.yields.as_slice() else {
+            return Err(Error::State("expected exactly one held-file handoff"));
+        };
+        require(
+            handoff.old_entry == final_entry
+                && handoff.replacement != load.entry
+                && handoff.replacement != final_entry
+                && handoff.graph_entry.is_none()
+                && !trace.processed_entries.contains(&handoff.replacement)
+                && trace.peq_processed_entries.len() == 1
+                && trace.peq_processed_entries.contains(&handoff.replacement),
+            "independent PEQ did not process just the replacement stock entry",
+        )?;
+        handoff.replacement
+    } else {
+        require(
+            trace.yields.is_empty()
+                && trace.stock_paused_position.is_none()
+                && trace.peq_processed_entries.is_empty(),
+            "baseline unexpectedly handed off to an independent filter",
+        )?;
+        final_entry
+    };
     require(
-        trace.eof_entries == [final_entry],
+        trace.eof_entries == [eof_entry],
         "unexpected native EOF receipt",
     )?;
     require(
@@ -254,7 +361,8 @@ pub async fn verify(
         "ok": true, "kind": "ordinary_native_local_equalizer_v1",
         "localGuest": true, "actualActor": true, "explicitNativeFile": true, "audioOutput": "null",
         "wrongDigestStockFallback": !expect_graph, "fixedGraphSelected": expect_graph,
-        "sameLogicalPlayAcrossSeek": true, "durableEqualizerRevision": edited.equalizer.revision,
+        "sameLogicalPlayAcrossSeek": true, "pausedIndependentPeq": exercise_peq, "peqHandoff": peq_handoff,
+        "durableEqualizerRevision": edited.equalizer.revision,
         "durableEqualizerSettings": saved.settings,
         "positions": {"first":playing.position,"held":held.position,"sought":sought.position,
                       "resumed":resumed.position,"ended":ended.position},

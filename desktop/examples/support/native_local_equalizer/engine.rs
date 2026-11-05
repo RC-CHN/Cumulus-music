@@ -1,7 +1,10 @@
 //! Record only facts observed by the actual native engine behind the actor.
 use cumulus_core::{
     Result,
-    effects::equalizer::{EqualizerSettings, abi::EqualizerStats},
+    effects::{
+        equalizer::{EqualizerSettings, abi::EqualizerStats},
+        parametric::ParametricPlan,
+    },
     playback::engine::{
         AudioEngine, Cancellation, DecodedAudioFormat, EndReason, EngineEvent, EngineSnapshot,
         LoadRequest, LoadedMedia, MediaInput, MpvEngine,
@@ -28,6 +31,12 @@ pub struct Seek {
     pub replacement: Option<i64>,
     pub graph_entry: Option<i64>,
 }
+#[derive(Serialize)]
+pub struct Yield {
+    pub old_entry: i64,
+    pub replacement: i64,
+    pub graph_entry: Option<i64>,
+}
 #[derive(Default, Serialize)]
 pub struct Observations {
     pub ordinary_loads: usize,
@@ -36,6 +45,9 @@ pub struct Observations {
     pub processed_entries: BTreeSet<i64>,
     pub local_updates: Vec<EqualizerSettings>,
     pub eof_entries: Vec<i64>,
+    pub yields: Vec<Yield>,
+    pub stock_paused_position: Option<f64>,
+    pub peq_processed_entries: BTreeSet<i64>,
 }
 pub type Evidence = Arc<Mutex<Observations>>;
 
@@ -108,6 +120,27 @@ impl AudioEngine for Recorded {
         }
         Ok(processing)
     }
+    fn yield_local_equalizer(&mut self, entry: i64, cancel: &Cancellation) -> Result<LoadedMedia> {
+        let media = self.engine.yield_local_equalizer(entry, cancel)?;
+        self.evidence.lock().unwrap().yields.push(Yield {
+            old_entry: entry,
+            replacement: media.entry_id,
+            graph_entry: self.engine.local_equalizer_entry(),
+        });
+        Ok(media)
+    }
+    fn apply_parametric_component(&mut self, plan: ParametricPlan) -> Result<bool> {
+        self.engine.apply_parametric_component(plan)
+    }
+    fn bypass_parametric_component(&mut self) -> Result<()> {
+        self.engine.bypass_parametric_component()
+    }
+    fn restore_parametric_component(&mut self, plan: ParametricPlan) -> Result<()> {
+        self.engine.restore_parametric_component(plan)
+    }
+    fn clear_parametric_component(&mut self) -> Result<()> {
+        self.engine.clear_parametric_component()
+    }
     fn pause(&mut self, paused: bool) -> Result<()> {
         self.engine.pause(paused)
     }
@@ -148,7 +181,23 @@ impl AudioEngine for Recorded {
             } => Some(entry_id),
             _ => None,
         });
-        self.evidence.lock().unwrap().eof_entries.extend(ended);
+        let mut evidence = self.evidence.lock().unwrap();
+        evidence.eof_entries.extend(ended);
+        if let Some(entry) = value.entry_id {
+            if value.paused
+                && !value.seeking
+                && evidence
+                    .yields
+                    .last()
+                    .is_some_and(|handoff| handoff.replacement == entry)
+                && let Some(position) = value.position
+            {
+                evidence.stock_paused_position = Some(position);
+            }
+            if value.parametric_samples.is_some_and(|samples| samples > 0) {
+                evidence.peq_processed_entries.insert(entry);
+            }
+        }
         Ok(value)
     }
 }
