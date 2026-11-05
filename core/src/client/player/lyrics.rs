@@ -115,6 +115,7 @@ pub(super) struct LyricContext {
     pub target: LyricTarget,
     pub downloaded_audio: Option<PathBuf>,
     forgotten_entry: Option<QueueEntry>,
+    native_open: bool,
 }
 
 fn auxiliary(text: Option<&str>) -> Vec<crate::lyrics::LyricLine> {
@@ -223,6 +224,7 @@ impl MusicClient {
         {
             return Err(Error::StaleResponse);
         }
+        let native_open = native.is_some();
         // The remote cache remains keyed by song/cloud ID. A downloaded
         // sidecar must never be a cached UI document for a different source.
         if lyrics.as_ref().is_none_or(|old| {
@@ -256,6 +258,7 @@ impl MusicClient {
             token,
             service: lyrics.as_ref().expect("initialized").service.clone(),
             target,
+            native_open,
             forgotten_entry: download.as_ref().and_then(|source| {
                 source
                     .forgotten
@@ -323,21 +326,26 @@ impl MusicClient {
             target,
             downloaded_audio,
             forgotten_entry,
+            native_open,
         } = self.lyric_context(epoch, play_id).await?;
-        if matches!(target, LyricTarget::Local(_)) || service.snapshot()?.network_failed {
-            service.clear()?;
-        }
-        let value = service
-            .fetch(LyricRequest {
-                target,
-                demand: LyricDemand {
-                    detail_page: true,
-                    ..Default::default()
-                },
-                downloaded_audio,
-                track_mv: false,
-            })
-            .await?;
+        let request = LyricRequest {
+            target,
+            demand: LyricDemand {
+                detail_page: true,
+                ..Default::default()
+            },
+            downloaded_audio,
+            track_mv: false,
+        };
+        let value = if native_open {
+            service.refresh_native_local(request).await?
+        } else {
+            if matches!(request.target, LyricTarget::Local(_)) || service.snapshot()?.network_failed
+            {
+                service.clear()?;
+            }
+            service.fetch(request).await?
+        };
         self.lyric_result(&token, play_id, value, forgotten_entry.as_ref())
             .await
     }

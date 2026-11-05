@@ -457,9 +457,23 @@ async fn native_open_lyrics_use_the_active_file_without_creating_a_library_row()
             .tracks
             .is_empty()
     );
-    let detail = client.player_lyrics("0", &play_id).await.unwrap();
+    let (detail, initial_document) = tokio::join!(
+        client.player_lyrics("0", &play_id),
+        client.desktop_lyric_document("0", &play_id),
+    );
+    let detail = detail.unwrap();
+    let initial_document = initial_document.unwrap();
     assert!(detail.from_sidecar && !detail.from_embedded && !detail.network_failed);
     assert_eq!(detail.lines[0].lyric, "首选相邻歌词");
+    assert_eq!(
+        client
+            .desktop_lyric_frame(&initial_document, &Appearance::default())
+            .unwrap()
+            .frame
+            .lines[0]
+            .text,
+        "首选相邻歌词"
+    );
     assert_eq!(detail.lines[1].time, 1.0);
     let serialized = serde_json::to_string(&detail).unwrap();
     assert!(!serialized.contains("native_open_file") && !serialized.contains(".wav"));
@@ -474,7 +488,7 @@ async fn native_open_lyrics_use_the_active_file_without_creating_a_library_row()
     assert_eq!(view.frame.lines[0].text, "最深文件夹");
     let cached = client.player_cached_lyrics("0", &play_id).await.unwrap();
     assert_eq!(cached.lines[0].lyric, "最深文件夹");
-    client.lyric_offset("0", &play_id, -0.5).await.unwrap();
+    client.lyric_offset("0", &play_id, -1.0).await.unwrap();
     assert!(
         client
             .refresh_desktop_lyric_document(&mut document)
@@ -489,6 +503,15 @@ async fn native_open_lyrics_use_the_active_file_without_creating_a_library_row()
         client.player_lyrics("0", &play_id).await,
         Err(Error::QueueChanged)
     ));
+    let retained = client.player_cached_lyrics("0", &play_id).await.unwrap();
+    assert_eq!(retained.lines[0].lyric, "最深文件夹");
+    assert_eq!(retained.offset, -0.5);
+    assert!(
+        !client
+            .refresh_desktop_lyric_document(&mut document)
+            .await
+            .unwrap()
+    );
     let next = client
         .play_native_open_files_warm("0", vec![path], Cancellation::default())
         .await

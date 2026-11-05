@@ -32,6 +32,7 @@ pub struct LyricsService {
     store: Arc<StateStore>,
     files: Arc<dyn LocalLyrics>,
     state: Mutex<State>,
+    native_refresh: tokio::sync::Mutex<()>,
 }
 
 struct Loading<'a> {
@@ -73,6 +74,7 @@ impl LyricsService {
             token,
             store,
             files,
+            native_refresh: tokio::sync::Mutex::new(()),
             state: Mutex::new(State {
                 attempt: Uuid::new_v4(),
                 revision: Uuid::new_v4(),
@@ -249,6 +251,23 @@ impl LyricsService {
     }
 
     pub async fn fetch(&self, input: LyricRequest) -> Result<LyricSnapshot> {
+        self.fetch_inner(input, false).await
+    }
+
+    /// The main and floating windows may open the same native document at
+    /// once. Do not clear the first attempt, or a usable old document on a
+    /// failed filesystem refresh. Each native play has its own service.
+    pub(crate) async fn refresh_native_local(&self, input: LyricRequest) -> Result<LyricSnapshot> {
+        if !matches!(input.target, LyricTarget::Local(_)) {
+            return Err(Error::InvalidInput(
+                "native lyric refresh requires a local target",
+            ));
+        }
+        let _refresh = self.native_refresh.lock().await;
+        self.fetch_inner(input, true).await
+    }
+
+    async fn fetch_inner(&self, input: LyricRequest, refresh_local: bool) -> Result<LyricSnapshot> {
         if !matches!(input.target, LyricTarget::Local(_)) {
             self.session.with_token(&self.token, |_| Ok(()))?;
         }
@@ -256,27 +275,31 @@ impl LyricsService {
             return self.clear();
         }
         let key = request::key(&input.target)?;
-        if let Some(view) = self.with_state(|state, _| {
-            Ok(
-                (!state.view.is_loading && state.view.resource_key.as_ref() == Some(&key))
-                    .then(|| state.view.clone()),
-            )
-        })? {
+        if !refresh_local
+            && let Some(view) = self.with_state(|state, _| {
+                Ok(
+                    (!state.view.is_loading && state.view.resource_key.as_ref() == Some(&key))
+                        .then(|| state.view.clone()),
+                )
+            })?
+        {
             return Ok(view);
         }
         let _lock = self.resource_lock(&key)?;
         let (attempt, cached) = self.with_state(|state, uid| {
             let cached = cache::read(&self.store, uid, &key)?;
             state.attempt = Uuid::new_v4();
-            state.revision = Uuid::new_v4();
-            state.selected = Some(key.clone());
-            state.sidecar_key = None;
-            state.view = LyricSnapshot {
-                is_loading: true,
-                preferences: state.view.preferences,
-                ..Default::default()
-            };
-            state.raw = None;
+            if !refresh_local || state.view.resource_key.as_ref() != Some(&key) {
+                state.revision = Uuid::new_v4();
+                state.selected = Some(key.clone());
+                state.sidecar_key = None;
+                state.view = LyricSnapshot {
+                    is_loading: true,
+                    preferences: state.view.preferences,
+                    ..Default::default()
+                };
+                state.raw = None;
+            }
             Ok((state.attempt, cached))
         })?;
         let _loading = Loading {
