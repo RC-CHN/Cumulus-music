@@ -86,7 +86,7 @@
 | `page:messagesheet` (66) | `models/page_messagesheet.txt` | [部分](message-drawer-contracts.txt) | 读/附件、已有会话文本回复与删除；已接账号隔离的原生未读计数与顶栏红点，受信 WebView 恢复可重启同一计时器；无实时推送、新会话发送。 |
 | `page:modListenToSong` (9) | `models/page_modListenToSong.txt` | [仅原型](song-recognition-authority.txt) | 实际封闭回采、指纹和请求对照；无生产采集、提交或独立域权限。 |
 | `page:musicDesktop` (0) | `models/page_musicDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 装扮桌面与歌词窗是不同宿主。 |
-| `page:myAudio` (16) | `models/page_myAudio.txt` | [已接入口](desktop-podcast-contracts.txt) | 我的播客/收藏/节目管理边界。 |
+| `page:myAudio` (16) | `models/page_myAudio.txt` | [已接入口](desktop-podcast-contracts.txt) | 我的播客、收藏和节目管理；已接[有声书片头片尾设置](audiobook-skip-ui-contracts.txt)和原生时钟应用。 |
 | `page:myFavorite` (8) | `models/page_myFavorite.txt` | [已接入口](collection-library-contracts.txt) | 收藏、已购及对应列表；每个资源写入另验。 |
 | `page:myHistoryAudioOnline` (3) | `models/page_myHistoryAudioOnline.txt` | [部分](play-history-contracts.txt) | 声音类历史有独立播放身份；未完成官方该页各态逐一对照。 |
 | `page:myLikedVoice` (5) | `models/page_myLikedVoice.txt` | [已接入口](desktop-podcast-mutations-contracts.txt) | 喜欢声音与写入恢复。 |
