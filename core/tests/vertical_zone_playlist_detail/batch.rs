@@ -53,6 +53,15 @@ impl Batch {
 }
 
 async fn ordinary(f: &Fixture, ids: &[&str]) -> PlayerView {
+    let (value, calls) = ordinary_observed(f, ids).await;
+    if let Some(next) = ids.get(1) {
+        let calls = await_recorded_url(&f.wire, next, -1, calls).await;
+        assert_player_url(&calls, next, -1);
+    }
+    value
+}
+
+async fn ordinary_observed(f: &Fixture, ids: &[&str]) -> (PlayerView, Vec<(String, Value)>) {
     let value = f
         .client
         .play_selection(
@@ -71,7 +80,34 @@ async fn ordinary(f: &Fixture, ids: &[&str]) -> PlayerView {
             .iter()
             .any(|(path, args)| path == SONG && args.get("trialMode").is_none())
     );
-    value
+    (value, calls)
+}
+
+// A load's reply precedes the actor's asynchronous next-track prefetch. Queue
+// edits also change that next source while paused. Wait for the exact observed
+// URL request, not a wall-clock delay, before asserting a later action has no
+// traffic. Register first so a request between the journal read and await is
+// never lost, including on a differently scheduled Windows runner.
+async fn await_recorded_url(
+    wire: &Wire,
+    id: &str,
+    trial: i32,
+    mut calls: Vec<(String, Value)>,
+) -> Vec<(String, Value)> {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let requested = wire.requested.notified();
+            tokio::pin!(requested);
+            requested.as_mut().enable();
+            calls.extend(wire.take_calls());
+            if calls.iter().any(|call| player_url_matches(call, id, trial)) {
+                return calls;
+            }
+            requested.await;
+        }
+    })
+    .await
+    .expect("exact native next-track prefetch request")
 }
 
 fn order(queue: &QueueView) -> Vec<&str> {
@@ -82,15 +118,17 @@ fn order(queue: &QueueView) -> Vec<&str> {
         .collect()
 }
 
+fn player_url_matches((path, args): &(String, Value), id: &str, mode: i32) -> bool {
+    path == URL
+        && args["trialMode"] == mode
+        && serde_json::from_str::<Vec<Value>>(args["ids"].as_str().unwrap())
+            .unwrap()
+            .first()
+            .is_some_and(|value| value == id)
+}
+
 fn assert_player_url(calls: &[(String, Value)], id: &str, mode: i32) {
-    assert!(calls.iter().any(|(path, args)| {
-        path == URL
-            && args["trialMode"] == mode
-            && serde_json::from_str::<Vec<Value>>(args["ids"].as_str().unwrap())
-                .unwrap()
-                .first()
-                .is_some_and(|value| value == id)
-    }));
+    assert!(calls.iter().any(|call| player_url_matches(call, id, mode)));
 }
 
 #[tokio::test]
@@ -458,7 +496,9 @@ async fn detail_header_and_single_row_next_keep_paused_queue_and_scope_own_liked
     f.wire.own.store(true, Ordering::Release);
     f.client.playlists().await.unwrap();
     let batch = Batch::open(&f, 2).await;
-    ordinary(&f, &["900", "901"]).await;
+    let (_, ordinary_calls) = ordinary_observed(&f, &["900", "901"]).await;
+    let ordinary_calls = await_recorded_url(&f.wire, "901", -1, ordinary_calls).await;
+    assert_player_url(&ordinary_calls, "901", -1);
     let paused = f
         .client
         .player_action(&batch.epoch, PlayerAction::Pause { paused: true })
@@ -481,6 +521,12 @@ async fn detail_header_and_single_row_next_keep_paused_queue_and_scope_own_liked
         (&added.play_id, added.state, added.position),
         (&paused.play_id, paused.state, paused.position)
     );
+    let header_prefetch = await_recorded_url(&f.wire, "101", 43, Vec::new()).await;
+    assert!(
+        header_prefetch
+            .iter()
+            .all(|call| player_url_matches(call, "101", 43))
+    );
     let moved = f
         .client
         .player_action(
@@ -495,6 +541,12 @@ async fn detail_header_and_single_row_next_keep_paused_queue_and_scope_own_liked
         (&moved.play_id, moved.state, moved.position),
         (&paused.play_id, paused.state, paused.position)
     );
+    let row_prefetch = await_recorded_url(&f.wire, "102", 43, Vec::new()).await;
+    assert!(
+        row_prefetch
+            .iter()
+            .all(|call| player_url_matches(call, "102", 43))
+    );
     for id in ["103", "900"] {
         assert!(matches!(
             f.client
@@ -504,7 +556,8 @@ async fn detail_header_and_single_row_next_keep_paused_queue_and_scope_own_liked
         ));
     }
     assert!(f.wire.take_calls().is_empty());
-    f.client
+    let selected = f
+        .client
         .player_action(
             &batch.epoch,
             PlayerAction::QueueFor {
@@ -517,7 +570,13 @@ async fn detail_header_and_single_row_next_keep_paused_queue_and_scope_own_liked
         )
         .await
         .unwrap();
-    assert_player_url(&await_url(&f.wire, 43).await, "102", 43);
+    assert_eq!(selected.track.unwrap().id, "102");
+    assert_eq!(selected.state, PlaybackStatus::Playing);
+    assert_eq!(f.device.state.lock().unwrap().loads, 2);
+    assert_player_url(&row_prefetch, "102", 43);
+    // Selecting the prefetched row must reuse that same scoped authorization;
+    // a wrong/default trial mode would issue another URL and fail this check.
+    assert!(f.wire.take_calls().is_empty());
 }
 
 #[tokio::test]

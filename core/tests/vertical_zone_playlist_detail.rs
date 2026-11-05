@@ -36,6 +36,7 @@ const URL: &str = "/api/song/enhance/player/url/v1";
 #[derive(Default)]
 struct Wire {
     calls: Mutex<Vec<(String, Value)>>,
+    requested: tokio::sync::Notify,
     revision: AtomicU64,
     removed: AtomicBool,
     own: AtomicBool,
@@ -79,6 +80,7 @@ impl Api for Wire {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         self.calls.lock().unwrap().push((path.into(), args.clone()));
+        self.requested.notify_waiters();
         Box::pin(async move {
             Ok(match path {
                 "/api/secondary/tab/list" => {
