@@ -47,3 +47,38 @@ updates remain a separate required implementation; this explicit read runner
 does not claim to complete it. Current source and execution evidence are recorded
 separately after the exact new example is built; older generic search CLI results
 do not validate this signed path.
+
+2026-11-05 scoped execution and actual boundary
+---------------------------------------------
+Runner code 79cea114 is based on business source 53b9ef12 (the phase57 signed
+full-batch/footer/latest-global-catch implementation). The scoped example's two
+synthetic tests, strict Clippy (-D warnings), build and rustfmt check passed.
+The no-argument executable returned skipped with no reads. An initial synthetic
+test compilation used unsupported u64 FromSql; it was corrected to i64 before
+the two tests passed and before any existing-state attempt.
+
+Explicit existing-state execution stopped with
+  {"status":"setup_failed","failure":"saved_installation_identity_missing","writes":0}
+Private evidence is .build/ui-proof/phase58-search-signed-live-20261105-b.
+The current installation had selected PC credentials and a persisted PC config,
+but no device/identity/client_sign installation record. The SQLite backup
+snapshots were created; HTTP backend construction occurs strictly after the
+missing-record check, so there were zero music/SDK/renewal/config HTTP requests.
+No real assignment, live search/footer result or service rejection is claimed.
+
+An older formal-start proof had persisted identity/config, but no selected
+credential profile. The runner did not splice those installation contexts.
+Requiring an existing primary identity is this evidence runner's explicit
+reuse-only precondition: production IdentityService can initialize a genuinely
+local hardware-derived identity when absent. Doing so in a future isolated read
+must be labeled fresh local initialization, not restoration of an observed
+installation profile. This finding does not show the derivation is impossible.
+It does not justify a default-UA, fabricated-sign, configuration or SDK fallback.
+
+Reproduction for this code, using the repository toolchain and existing cache:
+  cargo test --locked --offline -p cumulus-core --example search_signed_read
+  cargo clippy --locked --offline -p cumulus-core --example search_signed_read -- -D warnings
+  cargo build --locked --offline -p cumulus-core --example search_signed_read
+These scoped checks do not replace the full batch/release checks. No frontend,
+desktop GUI, Windows native execution or real service success was established
+by this runner attempt.
