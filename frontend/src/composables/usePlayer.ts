@@ -23,6 +23,7 @@ import type { CatalogSelectionPage } from '../services/catalog.ts';
 import type { CloudQuery } from '../services/cloud.ts';
 import type { LocalQuery } from '../services/local.ts';
 import { useEqualizerDraft } from './useEqualizerDraft.ts';
+import type { VinylSimilarAction, VinylSimilarSeed } from '../services/vinylSimilar.ts';
 
 function sameSelection(a: PlayerView | undefined, b: PlayerView | undefined) {
   return (
@@ -665,6 +666,30 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   }
   const runSelection = (operation: PlaybackOperation) => run(operation, operation, true);
   const select = (input: PlaySelection) => runSelection((e) => core.playSelection(e, input));
+  async function playVinylSimilar(
+    seed: VinylSimilarSeed,
+    receipt: string,
+    action: VinylSimilarAction,
+  ) {
+    const selected = view.value;
+    if (
+      !ready.value ||
+      busy.value ||
+      seed.epoch !== epoch ||
+      selected?.playId !== seed.playId ||
+      selected.track?.id !== seed.songId
+    )
+      return false;
+    const quality = selected.qualityPreferences.quality;
+    // A play action is tied to the visible native receipt. A general player
+    // retry must never replay it after the source or recommendation view changes.
+    const next = await run(
+      (e) => core.playerVinylSimilarPlay(e, seed.playId, receipt, action, quality),
+      null,
+      true,
+    );
+    return !!next && next.state !== 'error';
+  }
   async function controlPendingSource(current: PlayerView, input: PlayerAction) {
     if (pendingTransportBusy.value || loadingStepBusy.value) return;
     // The original selection still owns busy/retry until decode completes.
@@ -1231,6 +1256,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     intelligence,
     syncPlayback,
     select,
+    playVinylSimilar,
     toggleSource,
     primaryTransportKey,
     primaryTransportPauses,

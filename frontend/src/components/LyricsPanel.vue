@@ -9,6 +9,7 @@ import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
 import VinylModeSheet from './VinylModeSheet.vue';
 import VinylCommentsPane from './VinylCommentsPane.vue';
+import VinylSimilarPane from './VinylSimilarPane.vue';
 import VinylCommentDialog from './VinylCommentDialog.vue';
 import type {
   VinylCommentComposer,
@@ -16,6 +17,8 @@ import type {
   VinylComposerTarget,
 } from '../composables/useVinylCommentComposer';
 import type { VinylCommentsModel } from '../composables/useVinylComments';
+import type { VinylSimilarModel } from '../composables/useVinylSimilar';
+import type { VinylDetailTab } from '../services/vinylSimilar';
 import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
@@ -26,6 +29,8 @@ import {
 } from '../services/playbackMetadata';
 const props = defineProps<{
   player: PlayerModel;
+  similarAvailable: boolean;
+  similarModel: VinylSimilarModel;
   commentsAvailable: boolean;
   commentModel: VinylCommentsModel;
   commentCount?: number;
@@ -33,6 +38,7 @@ const props = defineProps<{
   commentComposer: VinylCommentComposer;
 }>();
 const commentsOpen = defineModel<boolean>('commentsOpen', { required: true });
+const detailTab = defineModel<VinylDetailTab>('detailTab', { required: true });
 const preferredMode = defineModel<VinylDisplayMode>('mode', { required: true });
 const emit = defineEmits<{
   report: [];
@@ -40,6 +46,7 @@ const emit = defineEmits<{
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
   fullComments: [hot: boolean];
+  relatedPlaylist: [id: string];
 }>();
 function independentComment(opening: VinylComposerOpening) {
   if (!props.commentComposer.live(opening)) return;
@@ -96,6 +103,31 @@ watch(lyricFontGain, (value) => {
 });
 const motion = useMotion();
 const commentsVisible = computed(() => props.commentsAvailable && commentsOpen.value);
+const similarSelected = computed(() => props.similarAvailable && detailTab.value === 'similar');
+const lyricTab = ref<HTMLButtonElement>();
+const similarTab = ref<HTMLButtonElement>();
+function detailKey(event: KeyboardEvent) {
+  const tab =
+    event.key === 'Home'
+      ? 'lyrics'
+      : event.key === 'End'
+        ? 'similar'
+        : ['ArrowLeft', 'ArrowRight'].includes(event.key)
+          ? similarSelected.value
+            ? 'lyrics'
+            : 'similar'
+          : undefined;
+  if (!tab) return;
+  event.preventDefault();
+  detailTab.value = tab;
+  void nextTick(() => (tab === 'lyrics' ? lyricTab.value : similarTab.value)?.focus());
+}
+watch(similarSelected, async (active) => {
+  if (!active) {
+    await nextTick();
+    if (!manual.value) void scroll();
+  }
+});
 const commentPane = ref<InstanceType<typeof VinylCommentsPane>>();
 const commentEntry = ref<HTMLButtonElement>();
 const wheelNudge = ref(0);
@@ -425,7 +457,7 @@ const displayedAuxiliary = computed(() =>
   <section
     class="lyrics-panel"
     :data-vinyl-mode="displayMode"
-    :data-vinyl-tab="commentsVisible ? 'comments' : 'lyrics'"
+    :data-vinyl-tab="commentsVisible ? 'comments' : similarSelected ? 'similar' : 'lyrics'"
     :style="{ '--lyric-font-gain': `${lyricFontGain}px` }"
     aria-label="播放详情与歌词"
     @keydown.esc.stop="escapePanel"
@@ -530,136 +562,212 @@ const displayedAuxiliary = computed(() =>
             <p v-if="displayMode === 'cover'" class="vinyl-cover-line">{{ coverLine }}</p>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
-            <div v-if="lyricLoading" class="empty-state" role="status">
-              <span class="spinner" />正在加载歌词…
-            </div>
-            <div v-else-if="lyricError" class="empty-state">
-              {{ lyricError
-              }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
-            </div>
-            <template v-else-if="lyrics">
-              <div
-                v-if="lyrics.fromSidecar || lyrics.fromEmbedded || lyrics.networkFailed"
-                class="lyric-cache-note"
+            <div
+              v-if="similarAvailable"
+              class="vinyl-detail-tabs"
+              role="tablist"
+              aria-label="播放详情"
+              @keydown="detailKey"
+            >
+              <button
+                id="vinyl-lyrics-tab"
+                ref="lyricTab"
+                type="button"
+                role="tab"
+                data-vinyl-lyrics-tab
+                aria-controls="vinyl-lyrics-content"
+                :aria-selected="!similarSelected"
+                :tabindex="similarSelected ? -1 : 0"
+                @click="detailTab = 'lyrics'"
               >
-                {{
-                  lyrics.fromSidecar || lyrics.fromEmbedded
-                    ? '正在显示本地歌词'
-                    : lyrics.fromCache
-                      ? '网络暂不可用，正在显示缓存歌词'
-                      : '暂未获取到歌词'
-                }}<button
-                  v-if="lyrics.networkFailed"
-                  class="text-button"
-                  @click="player.loadLyrics"
-                >
-                  重试
-                </button>
+                歌词
+              </button>
+              <button
+                id="vinyl-similar-tab"
+                ref="similarTab"
+                type="button"
+                role="tab"
+                data-vinyl-similar-tab
+                aria-controls="vinyl-similar-content"
+                :aria-selected="similarSelected"
+                :tabindex="similarSelected ? 0 : -1"
+                @click="detailTab = 'similar'"
+              >
+                相似推荐
+              </button>
+            </div>
+            <div
+              v-show="!similarSelected"
+              id="vinyl-lyrics-content"
+              class="vinyl-detail-content"
+              :role="similarAvailable ? 'tabpanel' : undefined"
+              :aria-labelledby="similarAvailable ? 'vinyl-lyrics-tab' : undefined"
+            >
+              <div v-if="lyricLoading" class="empty-state" role="status">
+                <span class="spinner" />正在加载歌词…
               </div>
-              <div v-if="!lines.length" class="empty-state">
-                {{ lyrics.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
+              <div v-else-if="lyricError" class="empty-state">
+                {{ lyricError
+                }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
               </div>
-              <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
+              <template v-else-if="lyrics">
                 <div
-                  ref="container"
-                  class="lyric-scroll"
-                  tabindex="-1"
-                  @wheel.stop.passive="pauseLyricFollow"
-                  @touchmove.passive="pauseLyricFollow"
-                  @scroll.passive="selectBrowsedLine"
+                  v-if="lyrics.fromSidecar || lyrics.fromEmbedded || lyrics.networkFailed"
+                  class="lyric-cache-note"
                 >
-                  <div class="lyric-padding" />
-                  <button
-                    v-for="(line, index) in lines"
-                    :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
-                    class="lyric-line"
-                    :class="{ current: index === active, browsed: index === browsedIndex }"
-                    :data-line="index"
-                    :disabled="!seekable(line)"
-                    @click="seekLine(line)"
-                  >
-                    <span
-                      v-if="timedWords && lyrics.wordLines[index]?.words.length"
-                      class="word-line"
-                      ><span
-                        v-for="(word, wi) in lyrics.wordLines[index]?.words"
-                        :key="wi"
-                        class="timed-word"
-                        :style="{ '--word-progress': wordProgress(word) }"
-                        >{{ word.text }}</span
-                      ></span
-                    >
-                    <span v-else>{{ line.lyric || '♪' }}</span>
-                    <small v-if="displayedAuxiliary[index]">{{ displayedAuxiliary[index] }}</small>
-                  </button>
-                  <div class="lyric-padding" />
-                </div>
-                <button
-                  v-if="browsingLine && browsingTime"
-                  ref="browseButton"
-                  type="button"
-                  class="lyric-browse-time"
-                  :aria-label="`从歌词时间 ${browsingTime} 播放`"
-                  :disabled="!seekable(browsingLine)"
-                  @click="playBrowsedLine"
-                >
-                  <Icon name="play" />{{ browsingTime }}
-                </button>
-              </div>
-            </template>
-            <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
-            <div v-if="displayMode === 'classic'" class="lyric-tools">
-              <template v-if="lyrics">
-                <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
-                <template v-if="lyrics.scrollable">
-                  <button
-                    class="icon-button"
-                    aria-label="歌词延后半秒"
-                    :aria-disabled="changingLyric"
-                    @click="changeLyric(() => player.offset(-1))"
-                  >
-                    −
-                  </button>
-                  <small>{{ lyrics.offset.toFixed(1) }}s</small>
-                  <button
-                    class="icon-button"
-                    aria-label="歌词提前半秒"
-                    :aria-disabled="changingLyric"
-                    @click="changeLyric(() => player.offset(1))"
-                  >
-                    +
-                  </button>
-                </template>
-                <template v-for="auxiliary in auxiliaries" :key="auxiliary.key">
-                  <button
-                    v-if="auxiliaryAvailable[auxiliary.key]"
+                  {{
+                    lyrics.fromSidecar || lyrics.fromEmbedded
+                      ? '正在显示本地歌词'
+                      : lyrics.fromCache
+                        ? '网络暂不可用，正在显示缓存歌词'
+                        : '暂未获取到歌词'
+                  }}<button
+                    v-if="lyrics.networkFailed"
                     class="text-button"
-                    :aria-label="auxiliary.name"
-                    :title="auxiliary.name"
-                    :aria-pressed="activeAuxiliary === auxiliary.key"
-                    :aria-disabled="changingLyric"
-                    @click="toggleAuxiliary(auxiliary.key)"
+                    @click="player.loadLyrics"
                   >
-                    {{ auxiliary.label }}
+                    重试
+                  </button>
+                </div>
+                <div v-if="!lines.length" class="empty-state">
+                  {{ lyrics.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
+                </div>
+                <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
+                  <div
+                    ref="container"
+                    class="lyric-scroll"
+                    tabindex="-1"
+                    @wheel.stop.passive="pauseLyricFollow"
+                    @touchmove.passive="pauseLyricFollow"
+                    @scroll.passive="selectBrowsedLine"
+                  >
+                    <div class="lyric-padding" />
+                    <button
+                      v-for="(line, index) in lines"
+                      :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
+                      class="lyric-line"
+                      :class="{ current: index === active, browsed: index === browsedIndex }"
+                      :data-line="index"
+                      :disabled="!seekable(line)"
+                      @click="seekLine(line)"
+                    >
+                      <span
+                        v-if="timedWords && lyrics.wordLines[index]?.words.length"
+                        class="word-line"
+                        ><span
+                          v-for="(word, wi) in lyrics.wordLines[index]?.words"
+                          :key="wi"
+                          class="timed-word"
+                          :style="{ '--word-progress': wordProgress(word) }"
+                          >{{ word.text }}</span
+                        ></span
+                      >
+                      <span v-else>{{ line.lyric || '♪' }}</span>
+                      <small v-if="displayedAuxiliary[index]">{{
+                        displayedAuxiliary[index]
+                      }}</small>
+                    </button>
+                    <div class="lyric-padding" />
+                  </div>
+                  <button
+                    v-if="browsingLine && browsingTime"
+                    ref="browseButton"
+                    type="button"
+                    class="lyric-browse-time"
+                    :aria-label="`从歌词时间 ${browsingTime} 播放`"
+                    :disabled="!seekable(browsingLine)"
+                    @click="playBrowsedLine"
+                  >
+                    <Icon name="play" />{{ browsingTime }}
+                  </button>
+                </div>
+              </template>
+              <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
+              <div v-if="displayMode === 'classic'" class="lyric-tools">
+                <template v-if="lyrics">
+                  <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
+                  <template v-if="lyrics.scrollable">
+                    <button
+                      class="icon-button"
+                      aria-label="歌词延后半秒"
+                      :aria-disabled="changingLyric"
+                      @click="changeLyric(() => player.offset(-1))"
+                    >
+                      −
+                    </button>
+                    <small>{{ lyrics.offset.toFixed(1) }}s</small>
+                    <button
+                      class="icon-button"
+                      aria-label="歌词提前半秒"
+                      :aria-disabled="changingLyric"
+                      @click="changeLyric(() => player.offset(1))"
+                    >
+                      +
+                    </button>
+                  </template>
+                  <template v-for="auxiliary in auxiliaries" :key="auxiliary.key">
+                    <button
+                      v-if="auxiliaryAvailable[auxiliary.key]"
+                      class="text-button"
+                      :aria-label="auxiliary.name"
+                      :title="auxiliary.name"
+                      :aria-pressed="activeAuxiliary === auxiliary.key"
+                      :aria-disabled="changingLyric"
+                      @click="toggleAuxiliary(auxiliary.key)"
+                    >
+                      {{ auxiliary.label }}
+                    </button>
+                  </template>
+                  <button
+                    v-if="lyrics.wordLines.length"
+                    class="text-button"
+                    :aria-pressed="wordMode"
+                    @click="wordMode = !wordMode"
+                  >
+                    逐字
+                  </button>
+                  <button
+                    v-if="manual"
+                    ref="resumeButton"
+                    class="text-button"
+                    @click="followLyrics"
+                  >
+                    回到当前
                   </button>
                 </template>
-                <button
-                  v-if="lyrics.wordLines.length"
-                  class="text-button"
-                  :aria-pressed="wordMode"
-                  @click="wordMode = !wordMode"
-                >
-                  逐字
-                </button>
-                <button v-if="manual" ref="resumeButton" class="text-button" @click="followLyrics">
-                  回到当前
-                </button>
-              </template>
-              <ActionMenu
-                v-if="!view?.track?.voiceId"
-                label="歌词操作"
-                :items="[{ key: 'report', label: '歌词报错', icon: 'edit' }]"
-                @select="emit('report')"
+                <ActionMenu
+                  v-if="!view?.track?.voiceId"
+                  label="歌词操作"
+                  :items="[{ key: 'report', label: '歌词报错', icon: 'edit' }]"
+                  @select="emit('report')"
+                />
+              </div>
+            </div>
+            <div
+              v-if="similarAvailable && view?.playId"
+              v-show="similarSelected"
+              id="vinyl-similar-content"
+              class="vinyl-detail-content vinyl-detail-similar"
+              role="tabpanel"
+              aria-labelledby="vinyl-similar-tab"
+              @wheel.stop.passive
+            >
+              <VinylSimilarPane
+                v-if="similarSelected"
+                :play-id="view.playId"
+                :songs="similarModel.songs.value"
+                :playlists="similarModel.playlists.value"
+                :songs-state="similarModel.songsState.value"
+                :playlists-state="similarModel.playlistsState.value"
+                :notice="similarModel.notice.value"
+                :pending="similarModel.pending.value"
+                :expanded="similarModel.expanded.value"
+                :can-play="similarModel.canPlay.value && loaded && !busy"
+                @play="similarModel.select"
+                @retry="similarModel.retry"
+                @expand="similarModel.expand"
+                @open-playlist="emit('relatedPlaylist', $event)"
+                @open-artist="emit('catalog', { kind: 'artist', id: $event })"
               />
             </div>
           </div>

@@ -166,6 +166,8 @@ import LyricsPanel from './components/LyricsPanel.vue';
 import { readVinylDisplayMode, storeVinylDisplayMode } from './services/vinylDisplay';
 import { usePlaybackCommentInfo } from './composables/usePlaybackCommentCount';
 import { useVinylComments } from './composables/useVinylComments';
+import { useVinylSimilar } from './composables/useVinylSimilar';
+import { readVinylDetailTab, storeVinylDetailTab } from './services/vinylSimilar';
 import {
   useVinylCommentComposer,
   type VinylComposerTarget,
@@ -1521,6 +1523,49 @@ const player = usePlayer(undefined, () => {
 const { count: playbackCommentCount, notePublished: notePlaybackCommentPublished } =
   usePlaybackCommentInfo(player.view, player.loaded, () => music.account.value.epoch);
 const vinylCommentsOpen = ref(false);
+const vinylDetailTab = ref(readVinylDetailTab());
+watch(vinylDetailTab, storeVinylDetailTab);
+const vinylSimilarSeed = computed(() => {
+  const current = player.view.value;
+  if (
+    !music.signedIn.value ||
+    !current?.playId ||
+    !current.track?.id ||
+    current.resourceKind !== 'catalog' ||
+    current.fm ||
+    current.epoch !== music.account.value.epoch
+  )
+    return undefined;
+  return { epoch: current.epoch, playId: current.playId, songId: current.track.id };
+});
+const vinylSimilarGroupQuery = computed(() =>
+  player.lyricsOpen.value && vinylDisplayMode.value === 'classic'
+    ? vinylSimilarSeed.value?.epoch
+    : undefined,
+);
+const vinylSimilarAssignment = shallowRef<{ epoch: string; available: boolean }>();
+watch(
+  vinylSimilarGroupQuery,
+  async (epoch, _, cleanup) => {
+    if (!epoch) return;
+    let live = true;
+    cleanup(() => (live = false));
+    try {
+      const available = await core.playerVinylSimilarAvailable(epoch);
+      if (live && epoch === music.account.value.epoch)
+        vinylSimilarAssignment.value = { epoch, available };
+    } catch {
+      if (live) vinylSimilarAssignment.value = undefined;
+    }
+  },
+  { immediate: true },
+);
+const vinylSimilarAvailable = computed(
+  () =>
+    !!vinylSimilarGroupQuery.value &&
+    vinylSimilarAssignment.value?.epoch === vinylSimilarGroupQuery.value &&
+    vinylSimilarAssignment.value.available,
+);
 const vinylCommentAssignment = shallowRef<{ epoch: string; available: boolean }>();
 const vinylAssignmentQuery = computed(() =>
   music.signedIn.value &&
@@ -1561,6 +1606,22 @@ const vinylCommentTarget = computed(() => {
 const vinylCommentVisible = computed(
   () => player.lyricsOpen.value && vinylCommentsOpen.value && !!vinylCommentTarget.value,
 );
+const vinylSimilarVisible = computed(
+  () =>
+    vinylSimilarAvailable.value && vinylDetailTab.value === 'similar' && !vinylCommentVisible.value,
+);
+const vinylSimilar = useVinylSimilar(
+  core,
+  vinylSimilarSeed,
+  vinylSimilarVisible,
+  player.playVinylSimilar,
+);
+function openVinylRelatedPlaylist(id: string) {
+  if (!vinylSimilarVisible.value || !vinylSimilar.playlists.value.some((item) => item.id === id))
+    return;
+  player.lyricsOpen.value = false;
+  music.navigate({ kind: 'playlist', id });
+}
 const vinylComments = useVinylComments(
   core,
   vinylCommentTarget,
@@ -5363,13 +5424,17 @@ onUnmounted(() => {
         v-if="player.lyricsOpen.value && currentTrackId"
         v-model:mode="vinylDisplayMode"
         v-model:comments-open="vinylCommentsOpen"
+        v-model:detail-tab="vinylDetailTab"
         :player="player"
+        :similar-available="vinylSimilarAvailable"
+        :similar-model="vinylSimilar"
         :comments-available="!!vinylCommentTarget"
         :comment-model="vinylComments"
         :comment-count="playbackCommentCount"
         :comment-write-target="vinylCommentWriteTarget"
         :comment-composer="vinylCommentComposer"
         @full-comments="openFullVinylComments"
+        @related-playlist="openVinylRelatedPlaylist"
         @report="reportLyrics"
         @comment-report-expired="music.bootstrap(false)"
         @source="openPlaybackSource"

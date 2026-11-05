@@ -2,6 +2,7 @@ import type { TrackView, CoreFailure, AccountData } from './contracts';
 import type { CloudQuery } from './cloud';
 import type { CommentOperation, VinylCommentLikeAction, VinylCommentPage } from './comments';
 import type { ProfileReportView, ReportCommand } from './profileReport';
+import type { VinylSimilarClient } from './vinylSimilar';
 export type Quality =
   | '64aac'
   | 'standard'
@@ -668,7 +669,7 @@ export type QueueMoreTipAction =
   | { kind: 'begin'; play_id: string }
   | { kind: 'seen'; ticket: string };
 
-export interface PlayerClient {
+export interface PlayerClient extends VinylSimilarClient {
   playerSnapshot(epoch: string): Promise<PlayerView>;
   playerIntelligence(epoch: string, command: IntelligenceCommand): Promise<PlayerView>;
   playerIntelligenceCancel(epoch: string, operationId: string): Promise<boolean>;
