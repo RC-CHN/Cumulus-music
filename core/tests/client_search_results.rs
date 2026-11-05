@@ -639,7 +639,7 @@ async fn only_comprehensive_service_405_becomes_a_bounded_empty_explanation() {
 }
 
 #[tokio::test]
-async fn comprehensive_song_hints_project_only_safe_lyric_matches_or_aliases() {
+async fn unverified_comprehensive_response_cannot_enable_song_hints() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;
     *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[{
@@ -661,14 +661,15 @@ async fn comprehensive_song_hints_project_only_safe_lyric_matches_or_aliases() {
         .value;
     let projected = serde_json::to_value(&view).unwrap();
     let rows = &projected["sections"][0]["items"];
-    assert_eq!(
-        rows[0]["hint"],
-        json!({"kind":"lyric","parts":[
-        {"text":"🎵","highlight":false},{"text":"合成","highlight":true},{"text":"歌词","highlight":false}]})
+    assert_eq!(rows.as_array().unwrap().len(), 4);
+    assert!(
+        rows.as_array()
+            .unwrap()
+            .iter()
+            .all(|row| row.get("hint").is_none())
     );
-    assert_eq!(rows[1]["hint"], json!({"kind":"alias","text":"新合成别名"}));
-    assert!(rows[2].get("hint").is_none());
-    assert!(rows[3].get("hint").is_none());
+    // Positive normalization and UTF-16 assertions now use the real signed
+    // transport in pc_experiment_transport/search_footer.rs, not this Api.
     assert!(!projected.to_string().contains("PRIVATE"));
     assert_eq!(api.calls.lock().unwrap().len(), 1);
 }
@@ -708,7 +709,7 @@ async fn comprehensive_song_badges_respect_official_numeric_values() {
 }
 
 #[tokio::test]
-async fn reason_tags_project_safe_targets_and_use_the_official_detail_endpoint() {
+async fn unverified_search_has_no_reason_entry_and_existing_explicit_detail_stays_typed() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;
     *api.reply.lock().unwrap() = json!({"code":200,"data":{"blocks":[
@@ -724,21 +725,17 @@ async fn reason_tags_project_safe_targets_and_use_the_official_detail_endpoint()
     ]}});
     let response = client.search_results(&epoch, query(C::All)).await.unwrap();
     let value = serde_json::to_value(response.value).unwrap();
-    let tags = &value["sections"][0]["items"][0]["reasons"];
-    assert_eq!(
-        tags[0]["target"],
-        json!({"kind":"recommendation","reasonId":"r-9","songId":"3","name":"推荐"})
-    );
-    assert_eq!(
-        tags[1]["target"],
-        json!({"kind":"city","chartCode":"top-1","targetId":"77","targetType":"4"})
-    );
-    assert_eq!(tags[2], json!({"label":"无路由"}));
-    assert!(!tags.to_string().contains("example.invalid"));
+    assert!(value["sections"][0]["items"][0].get("reasons").is_none());
+    // This existing read-only detail API remains a separate typed use case.
+    // A generic search Api cannot advertise its entry; positive tag projection
+    // is covered through the native signed full-batch transport separately.
     *api.reply.lock().unwrap() = json!({"code":200,"data":{"title":"推荐详情","playCount":"34",
         "reasonRcmdSongCommonVOS":[{"songData":{"id":21,"name":"推荐曲目","url":"https://private.invalid/token"}}]
     }});
-    let target = serde_json::from_value(tags[0]["target"].clone()).unwrap();
+    let target = serde_json::from_value(json!({
+        "kind":"recommendation","reasonId":"r-9","songId":"3","name":"推荐"
+    }))
+    .unwrap();
     let page = client.search_reason_page(&epoch, target).await.unwrap();
     let page = serde_json::to_value(page.value).unwrap();
     assert_eq!(page["tracks"][0]["id"], "21");

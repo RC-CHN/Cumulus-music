@@ -72,6 +72,45 @@ fn legacy() -> Expected {
 }
 
 #[tokio::test]
+async fn generic_search_assignment_cannot_grant_the_independent_signed_footer() {
+    let root = tempfile::tempdir().unwrap();
+    let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
+    let mut unverified = assign("c", "t1", "t1");
+    unverified.2["data"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"expName":"PH-PC-search-result","expGroupName":"t1"}));
+    let mut result = legacy();
+    result.2 = json!({"code":200,"data":{"blocks":[{
+        "blockCode":"search_block_song","resources":[{"type":"song","baseInfo":{
+            "id":3,"name":"普通曲目","extInfo":{"songAlias":"无授权别名",
+                "algClickableTags":[{"text":"无授权入口","reasonType":1,"reasonId":"r-9",
+                    "resourceId":3,"clickable":true}]}
+        }}]
+    }]}});
+    let api = Arc::new(Script(Mutex::new(VecDeque::from([unverified, result]))));
+    let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
+    session
+        .adopt(api.clone(), json!({"userId":2}), &session.token().unwrap())
+        .unwrap();
+    let client = MusicClient::with_session(session, registry).with_official_search_experiment();
+    let view = serde_json::to_value(
+        client
+            .search_results(&client.account().unwrap().epoch, query())
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    assert_eq!(view["previewLayout"], "compact_carousel");
+    let song = &view["sections"][0]["items"][0];
+    assert_eq!(song["track"]["id"], "3");
+    assert!(song.get("hint").is_none());
+    assert!(song.get("reasons").is_none());
+    assert!(api.0.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn native_search_assignment_tabs_fallback_and_account_fence_follow_the_recovered_routes() {
     let root = tempfile::tempdir().unwrap();
     let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();

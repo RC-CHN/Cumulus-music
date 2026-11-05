@@ -39,6 +39,23 @@ impl Assigned {
 }
 
 impl PcExperimentHost {
+    /// Passive coherence check for consumers with an optional-read backoff.
+    /// This never extends the shared assignment's original refresh deadline.
+    pub(super) fn observed_groups(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        credentials: &str,
+    ) -> Result<Option<PcExperimentGroups>> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|current| current.matches(token, api, credentials))
+            .map(|current| current.groups.clone()))
+    }
+
     /// A playback actor can fence an already authorized operation without
     /// taking the network single-flight gate or issuing another request.
     pub(super) fn observed_group(

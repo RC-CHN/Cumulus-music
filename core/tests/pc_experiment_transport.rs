@@ -1,3 +1,5 @@
+#[path = "pc_experiment_transport/search_footer.rs"]
+mod search_footer;
 mod support;
 #[path = "pc_experiment_transport/vinyl_wiki.rs"]
 mod vinyl_wiki;
@@ -193,7 +195,6 @@ async fn v3_hotspot_requires_current_signed_zone_registry_and_reuses_it_for_tab_
     const PAGE: &str = "Rock_12";
     const DISPLAY: &str = "独立音乐";
     const KEY: &str = "indie_37";
-    const SHORT_GROUPS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
     const WORD: &str = "合成专区热点";
 
     let tabs = || json!({"code":200,"data":{"algTabs":[{"title":"综合"},{"title":"单曲"}]}});
@@ -215,6 +216,7 @@ async fn v3_hotspot_requires_current_signed_zone_registry_and_reuses_it_for_tab_
     };
     let zone_groups = |group| {
         json!({"code":200,"data":[
+            {"expName":"PH-PC-searchHot","expGroupName":"t1"},
             {"expName":"PH-PC-zhuanqu","expGroupName":group},
             {"expName":"PH-PC-zhuanquTab","expGroupName":"t1"}
         ]})
@@ -235,14 +237,14 @@ async fn v3_hotspot_requires_current_signed_zone_registry_and_reuses_it_for_tab_
     };
     let f = Fixture::new(
         [
-            json!({"code":200,"data":[{"expName":"PH-PC-searchHot","expGroupName":"t1"}]}).into(),
+            // M147's signed full batch assigns both search and zone keys.
+            zone_groups("t1").into(),
             tabs().into(),
             v3("orpheus://album/33").into(),
             tabs().into(),
             v3("orpheus://rnpage?component=unknown&page=Rock_12").into(),
             tabs().into(),
             zone_action(PAGE).into(),
-            zone_groups("t1").into(),
             menu.into(),
             json!({"code":200,"setting":{"personalServiceSetting":0}}).into(),
             zone_tab("default", "全部").into(),
@@ -251,9 +253,9 @@ async fn v3_hotspot_requires_current_signed_zone_registry_and_reuses_it_for_tab_
             zone_action("Ghost").into(),
             tabs().into(),
             zone_action(PAGE).into(),
+            json!({"code":403}).into(),
             tabs().into(),
             zone_action(PAGE).into(),
-            json!({"code":403}).into(),
             tabs().into(),
             zone_action(PAGE).into(),
             zone_groups("c").into(),
@@ -319,7 +321,7 @@ async fn v3_hotspot_requires_current_signed_zone_registry_and_reuses_it_for_tab_
         matches!(ordinary.hot_explanation.unwrap().action.unwrap().target, SearchHotTarget::Album { id } if id == "33")
     );
     check(&[
-        (ASSIGNMENT_PATH, json!({"expNames":SHORT_GROUPS})),
+        (ASSIGNMENT_PATH, assignment_arguments()),
         search_tab(),
         search_v3(),
     ]);
@@ -327,12 +329,7 @@ async fn v3_hotspot_requires_current_signed_zone_registry_and_reuses_it_for_tab_
     check(&[search_tab(), search_v3()]);
 
     let hotspot = search().await;
-    check(&[
-        search_tab(),
-        search_v3(),
-        (ASSIGNMENT_PATH, assignment_arguments()),
-        (ZONE_MENU, json!({})),
-    ]);
+    check(&[search_tab(), search_v3(), (ZONE_MENU, json!({}))]);
     let target = |view: SearchResultView| {
         let safe = serde_json::to_string(&view).unwrap();
         assert!(
@@ -390,9 +387,9 @@ async fn v3_hotspot_requires_current_signed_zone_registry_and_reuses_it_for_tab_
     tokio::time::advance(Duration::from_secs(1)).await;
     assert!(search().await.hot_explanation.is_none());
     check(&[
+        (ASSIGNMENT_PATH, assignment_arguments()),
         search_tab(),
         search_v3(),
-        (ASSIGNMENT_PATH, assignment_arguments()),
     ]);
     assert!(search().await.hot_explanation.is_none());
     assert!(matches!(

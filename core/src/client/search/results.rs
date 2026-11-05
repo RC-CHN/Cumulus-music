@@ -237,6 +237,7 @@ impl MusicClient {
                 } else {
                     None
                 };
+                let mut footer_revision = None;
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
@@ -253,10 +254,9 @@ impl MusicClient {
                             default_receipt,
                         )
                     };
-                    let flags = self
-                        .search
-                        .assignment_for(&self.session, token, api.as_ref())
-                        .await?;
+                    let assignment = self.search_assignment_for(token, &api).await?;
+                    let flags = assignment.flags;
+                    footer_revision = assignment.footer_revision;
                     let layout = flags.expanded.then_some(if flags.dense {
                         SearchPreviewLayout::CompactCarousel
                     } else {
@@ -269,7 +269,9 @@ impl MusicClient {
                             .await?;
                         let raw = api::v3::fetch(api.as_ref(), &query, default_context()?).await;
                         let projected = match raw {
-                            Ok(raw) if raw.has_zone_candidate() => {
+                            Ok(raw)
+                                if raw.has_zone_candidate() && !assignment.optional_read_failed =>
+                            {
                                 let context = match self.vertical_zone_search_registry(epoch).await
                                 {
                                     Ok(context) => context,
@@ -358,6 +360,30 @@ impl MusicClient {
                 };
                 view.tabs = tabs;
                 view.preview_layout = preview_layout;
+                // TrackCard M2071:255/480 gates the complete footer separately
+                // from searchHot, including both hints and clickable reasons.
+                // A credential change during search cannot publish an older
+                // assignment; the ordinary search result itself remains usable.
+                if view.query.category == SearchCategory::All
+                    && !footer_revision.as_deref().is_some_and(|revision| {
+                        !self.login_pending().unwrap_or(true)
+                            && api
+                                .verified_pc_experiment_revision()
+                                .ok()
+                                .flatten()
+                                .as_deref()
+                                == Some(revision)
+                    })
+                {
+                    for section in &mut view.sections {
+                        for item in &mut section.items {
+                            if let SearchItem::Song { hint, reasons, .. } = item {
+                                *hint = None;
+                                reasons.clear();
+                            }
+                        }
+                    }
+                }
                 if view.query.category == SearchCategory::Songs {
                     self.session.with_token(token, |_| {
                         view.publish_drop_receipts(&self.search.queue_drops, token)
