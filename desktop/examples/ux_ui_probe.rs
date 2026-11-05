@@ -35,6 +35,8 @@ mod library_fixture;
 mod like_recovery_fixture;
 #[path = "support/media_shortcuts.rs"]
 mod media_shortcuts;
+#[path = "support/member_lifecycle_fixture.rs"]
+mod member_lifecycle_fixture;
 #[path = "support/member_sign_fixture.rs"]
 mod member_sign_fixture;
 #[path = "support/member_welfare_fixture.rs"]
@@ -346,6 +348,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = search_mv_fixture::response(path, &args) {
+                return response;
+            }
+            if let Some(response) = member_lifecycle_fixture::response(path, &args, cached).await {
                 return response;
             }
             if let Some(response) = search_privilege_fixture::response(path, &args, cached) {
@@ -782,6 +787,10 @@ fn main() {
             || (motion_proof && library_fixture::enabled() && search_fixture::enabled()),
         "card source proof requires isolated library/search/audio fixtures"
     );
+    assert!(
+        !member_lifecycle_fixture::enabled() || search_privilege_fixture::enabled(),
+        "membership lifecycle proof requires the sealed search fixture"
+    );
     let output = root.join(
         if motion_proof && std::env::var_os("CUMULUS_MOTION_NATIVE_REDUCED").is_some() {
             "native-reduced"
@@ -909,6 +918,11 @@ fn main() {
         app.manage(cumulus_desktop::effect_activation::Host::new(&app.path().resource_dir()?));
         system_master_volume_fixture::install(app);
         app.manage(if motion_proof { client } else { cumulus_desktop::configure_native_audio(client,&app.path().resource_dir()?,true) });
+        if member_lifecycle_fixture::enabled() {
+            let client = app.state::<MusicClient>();
+            let owner = tauri::async_runtime::block_on(client.start_membership_lifecycle())?;
+            app.manage(std::sync::Mutex::new(owner));
+        }
         if message_fixture::enabled() {
             cumulus_desktop::start_message_count_polling(app.handle())?;
         }
@@ -1019,6 +1033,7 @@ fn main() {
             }
             if search_mv_fixture::enabled() { value["searchMvCalls"]=json!(search_mv_fixture::calls()); }
             if search_privilege_fixture::enabled() { value["searchPrivilegeFixture"]=search_privilege_fixture::report(); }
+            if member_lifecycle_fixture::enabled() { value["membershipLifecycleFixture"]=member_lifecycle_fixture::report(); }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             if playlist_tag_browse_proof() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
@@ -1061,6 +1076,10 @@ fn main() {
             }
             if voice_download_fixture::enabled() { value["voiceDownloadService"]=voice_download_fixture::report(); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if member_lifecycle_fixture::enabled() && stage=="member-lifecycle-release" {
+                member_lifecycle_fixture::release();
+                return;
+            }
             if ordinary_source_bypass_proof && stage=="ordinary-peq-source-native" {
                 let sequence=value["sequence"].as_u64().unwrap();
                 let stats=&value["nativePeq"];
