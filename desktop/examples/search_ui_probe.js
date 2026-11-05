@@ -272,73 +272,104 @@
       return;
     }
     if (window.__cumulusSearchSuggestionMatchesProof) {
-      await fixture("good");
-      const provides = one("#app").__vue_app__._context.provides;
-      const core = provides[Reflect.ownKeys(provides).find((k) =>
-        typeof k === "symbol" && k.description === "core-client")];
-      const read = core.searchDiscovery;
-      const label = "İ A+B 和 a+b <plain>";
-      const noMatch = "aab 不匹配";
-      core.searchDiscovery = async (...args) => {
-        const result = await read(...args);
-        if (args[1].kind !== "suggestions") return result;
-        return { ...result, value: { ...result.value, suggestions: [
-          { keyword: "合成精确词", label, tag: null },
-          { keyword: "合成另一个词", label: noMatch, tag: null },
-        ] } };
+      await fixture("suggestion_matches");
+      const row = (group, index = 0) =>
+        panel()?.querySelector(`[data-suggestion-key="${group}:${index}"]`);
+      const point = (node) =>
+        node.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" }));
+      const marks = (node) => [...node.querySelectorAll("mark.search-match-text")];
+      const verifyRow = (node, label, expected) => {
+        assert(node?.title === label && node.textContent.trim() === label &&
+          node.firstElementChild.textContent === label && !node.querySelector("plain"),
+          "typed segments keep the exact label as text: " + label);
+        const actual = marks(node).map((mark) => mark.textContent);
+        assert(JSON.stringify(actual) === JSON.stringify(expected),
+          `wrong marks for ${label}: ${JSON.stringify(actual)}`);
       };
-      try {
+      const open = async (query, ordinary) => {
         input().focus();
         input().click();
-        type("A+B");
-        await wait(() => panel()?.textContent.includes(label), "synthetic suggestion labels");
-        const row = one(".search-suggestion[title='" + label + "']");
-        const unmatched = one(".search-suggestion[title='" + noMatch + "']");
-        assert(row.textContent.trim() === label && !row.querySelector("plain"),
-          "suggestion keeps its exact text without treating markup as HTML");
-        const marks = [...row.querySelectorAll("mark.search-match-text")];
-        assert(marks.map((mark) => mark.textContent).join("|") === "A+B|a+b",
-          "both literal hits retain original offsets after İ");
-        assert(unmatched && !unmatched.querySelector("mark"), "no empty or regex wildcard mark");
-        assert(getComputedStyle(marks[0]).color === getComputedStyle(marks[1]).color,
-          "both hits use the same color");
-        await capture("suggestion_literal_matches");
-        const point=(node)=>node.dispatchEvent(new PointerEvent("pointerenter",{pointerType:"mouse"}));
-        assert(hit(row)&&hit(unmatched),"both suggestion rows accept pointer input");
-        point(row);
-        await wait(()=>row.classList.contains("search-suggestion-pointed"),"pointer activation is visible");
-        assert(document.activeElement===input(),"pointer does not steal text focus");
-        key(input(), "ArrowDown");
-        assert(document.activeElement===unmatched,"arrow navigation advances from the pointer's active row");
-        input().focus();
-        point(row);
-        await wait(()=>row.classList.contains("search-suggestion-pointed"),"hover before Enter");
-        await capture("suggestion_pointer_active");
-        key(input(),"Enter");
-        await wait(() => !panel() && one(".search-heading-copy h1")?.textContent === "合成精确词",
-          "Enter chooses the hovered suggestion's canonical keyword");
-        assert(input().value === label, "hover selection preserves the display label");
-        input().click();
-        type("退出悬停");
-        await wait(()=>one(".search-suggestion[title='"+noMatch+"']"),"reopen hover suggestions");
-        point(one(".search-suggestion[title='"+noMatch+"']"));
-        one(".search-suggestions").dispatchEvent(new PointerEvent("pointerleave",{pointerType:"mouse"}));
-        key(input(),"Enter");
-        await wait(()=>!panel()&&one(".search-heading-copy h1")?.textContent==="退出悬停",
-          "leaving the suggestion list restores raw Enter");
-        input().click();
-        type("第一词");
-        await wait(()=>one(".search-suggestion[title='"+noMatch+"']"),"reopen for stale pointer check");
-        point(one(".search-suggestion[title='"+noMatch+"']"));
-        type("更改后的原词");
-        key(input(),"Enter");
-        await wait(()=>!panel()&&one(".search-heading-copy h1")?.textContent==="更改后的原词",
-          "editing cannot submit a stale hovered suggestion");
-      } finally {
-        core.searchDiscovery = read;
-      }
-      await emit("complete", { ok: true, suggestionMatchesVerified: true, suggestionPointerVerified:true, stageCount: count,
-        realMusicRequests: 0, realAccountWrites: 0 });
+        type(query);
+        await wait(() => row("suggestions")?.title === ordinary, "native suggestion for " + query);
+      };
+      const result = async (keyword) => {
+        await wait(() => !panel() &&
+          one(".search-heading-copy h1")?.textContent === keyword &&
+          one("#search-result-panel")?.getAttribute("aria-busy") === "false" &&
+          !one(".search-results-leave-active") && one(".search-track-card"),
+          "native result for " + keyword);
+      };
+
+      const literal = "İ A+B 和 a+b <plain>";
+      await open("A+B", literal);
+      const first = row("suggestions");
+      const unmatched = row("suggestions", 1);
+      verifyRow(first, literal, ["A+B", "a+b"]);
+      verifyRow(unmatched, "aab 不匹配", []);
+      verifyRow(row("recommendations"), "推荐 a+b", ["a+b"]);
+      const [upper, lower] = marks(first);
+      assert(getComputedStyle(upper).color === getComputedStyle(lower).color,
+        "both literal hits use the same color");
+      await capture("suggestion_literal_matches");
+      assert(hit(first) && hit(unmatched), "both suggestion rows accept pointer input");
+      point(first);
+      await wait(() => first.classList.contains("search-suggestion-pointed"), "pointer activation is visible");
+      assert(document.activeElement === input(), "pointer does not steal text focus");
+      key(input(), "ArrowDown");
+      assert(document.activeElement === unmatched, "arrow navigation advances from the pointer's active row");
+      input().focus();
+      point(first);
+      await wait(() => first.classList.contains("search-suggestion-pointed"), "hover before Enter");
+      await capture("suggestion_pointer_active");
+      key(input(), "Enter");
+      await result("合成精确词");
+      assert(input().value === literal, "hover selection preserves the display label");
+
+      await open("音樂", "原字形 音樂 / 音乐");
+      verifyRow(row("suggestions"), "原字形 音樂 / 音乐", ["音乐"]);
+      verifyRow(row("recommendations"), "推荐 音乐与音樂", ["音乐"]);
+      await capture("suggestion_traditional_query");
+
+      await open("音乐", "反向 音樂");
+      verifyRow(row("suggestions"), "反向 音樂", []);
+      verifyRow(row("recommendations"), "推薦 音樂之聲", []);
+      await capture("suggestion_simplified_query_not_reversed");
+
+      await open("a b c", "A / B C / B / C / a b c");
+      verifyRow(row("suggestions"), "A / B C / B / C / a b c", ["A", "B C", "a", "b c"]);
+      const recommendation = row("recommendations");
+      verifyRow(recommendation, "B / C / A / b c", ["A", "b c"]);
+      await capture("suggestion_first_space");
+      const ordinary = row("suggestions");
+      ordinary.focus({ preventScroll: true });
+      key(ordinary, "ArrowDown");
+      assert(document.activeElement === recommendation, "keyboard advances to the recommendation");
+      key(recommendation, "Enter");
+      await result("合成分支推荐");
+      assert(input().value === "B / C / A / b c",
+        "recommended keyboard selection preserves the display label");
+
+      await open("退出悬停", "退出候选");
+      point(row("suggestions"));
+      one(".search-suggestions").dispatchEvent(new PointerEvent("pointerleave", { pointerType: "mouse" }));
+      key(input(), "Enter");
+      await result("退出悬停");
+      await open("第一词", "过期候选");
+      point(row("suggestions"));
+      type("更改后的原词");
+      key(input(), "Enter");
+      await result("更改后的原词");
+      await emit("complete", {
+        ok: true,
+        suggestionMatchesVerified: true,
+        suggestionPointerVerified: true,
+        suggestionGlyphDirectionVerified: true,
+        suggestionFirstSpaceVerified: true,
+        suggestionRecommendationKeyboardVerified: true,
+        stageCount: count,
+        realMusicRequests: 0,
+        realAccountWrites: 0,
+      });
       return;
     }
     if (window.__cumulusSearchExactFallbackProof) {

@@ -9,6 +9,7 @@ static MODE: Mutex<String> = Mutex::new(String::new());
 static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static PRESENTATION_QUERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static SUGGESTION_MATCH_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
 static AUDIO_TOPLIST_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -182,6 +183,7 @@ pub fn control(value: &Value) {
             "chart_play",
             "hot_source",
             "selection_source",
+            "suggestion_matches",
             "audio_ranks",
             "podcast_top_classic",
             "podcast_home_disabled",
@@ -298,6 +300,21 @@ fn subscribable_playlist() -> Value {
 }
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if enabled()
+        && matches!(
+            path,
+            "/api/search/pc/suggest/keyword/get"
+                | "/api/search/pc/result/tab"
+                | "/api/search/pc/complex/page"
+                | "/api/search/pc/complex/page/v3"
+        )
+        && MODE.lock().unwrap().as_str() == "suggestion_matches"
+    {
+        SUGGESTION_MATCH_CALLS
+            .lock()
+            .unwrap()
+            .push(json!({"path":path,"args":args}));
+    }
     if super::search_signed_fixture::presentation_enabled()
         && matches!(
             path,
@@ -507,6 +524,17 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         "/api/search/pc/chart/detail" => {
             json!({"itemList":if empty{vec![]}else{(1..=20).map(|n|json!({"searchWord":format!("热搜关键词{n}"),"toUserWord":format!("{n} · SyntheticLongSongTitleWithoutSpacesAndWithExtraText"),"iconType":if n==1{1}else if n==2{2}else{0}})).collect::<Vec<_>>()}})
         }
+        "/api/search/pc/suggest/keyword/get" if mode == "suggestion_matches" => {
+            let q = args["keyword"].as_str().unwrap_or("");
+            match suggestion_match_rows(q) {
+                Some(rows) => rows,
+                None => {
+                    return Some(Err(Error::InvalidInput(
+                        "unexpected suggestion match query",
+                    )));
+                }
+            }
+        }
         "/api/search/pc/suggest/keyword/get" => {
             let q = args["keyword"].as_str().unwrap_or("");
             json!({"recTitle":"猜你想搜","recs":if empty{vec![]}else{vec![json!({"keyword":format!("{q}推荐"),"name":format!("{q} · 推荐结果")})]},"suggests":if empty{vec![]}else{(1..=6).map(|n|json!({"keyword":format!("{q}联想{n}"),"name":format!("{q} · 联想结果 {n}")})).collect::<Vec<_>>()}})
@@ -518,6 +546,47 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         }
     };
     Some(Ok(json!({"code":200,"data":data})))
+}
+
+pub fn suggestion_match_calls() -> Option<Vec<Value>> {
+    (MODE.lock().unwrap().as_str() == "suggestion_matches")
+        .then(|| SUGGESTION_MATCH_CALLS.lock().unwrap().clone())
+}
+
+fn suggestion_match_rows(keyword: &str) -> Option<Value> {
+    let (suggests, recs) = match keyword {
+        "A+B" => (
+            json!([
+                {"keyword":"合成精确词","name":"İ A+B 和 a+b <plain>"},
+                {"keyword":"合成另一个词","name":"aab 不匹配"}
+            ]),
+            json!([{"keyword":"合成符号推荐","name":"推荐 a+b"}]),
+        ),
+        "音樂" => (
+            json!([{"keyword":"合成繁体普通","name":"原字形 音樂 / 音乐"}]),
+            json!([{"keyword":"合成繁体推荐","name":"推荐 音乐与音樂"}]),
+        ),
+        "音乐" => (
+            json!([{"keyword":"合成简体普通","name":"反向 音樂"}]),
+            json!([{"keyword":"合成简体推荐","name":"推薦 音樂之聲"}]),
+        ),
+        "a b c" => (
+            json!([{"keyword":"合成分支普通","name":"A / B C / B / C / a b c"}]),
+            json!([{"keyword":"合成分支推荐","name":"B / C / A / b c"}]),
+        ),
+        "退出悬停" => (
+            json!([{"keyword":"不应提交退出项","name":"退出候选"}]),
+            json!([]),
+        ),
+        "第一词" => (
+            json!([{"keyword":"不应提交旧项","name":"过期候选"}]),
+            json!([]),
+        ),
+        _ => return None,
+    };
+    // The backend supplies only official-shaped raw rows. The real Rust
+    // discovery projection must supply the typed highlight parts.
+    Some(json!({"recTitle":"猜你想搜","suggests":suggests,"recs":recs}))
 }
 
 fn podcast_response(path: &str, args: &Value) -> Option<Result<Value>> {

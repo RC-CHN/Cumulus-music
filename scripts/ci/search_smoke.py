@@ -55,15 +55,56 @@ def main():
         flag = ('podcastTopClassicVerified' if args.podcast_top_classic else
                 'historyLastVerified' if args.history_last else
                 'suggestionMatchesVerified' if args.suggestion_matches else 'exactFallbackVerified')
-        count = 2 if args.suggestion_matches else 3
+        count = 5 if args.suggestion_matches else 3
         assert complete['ok'] and complete[flag] and complete['stageCount'] == count
-        if args.suggestion_matches:
-            assert complete['suggestionPointerVerified']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list((root / 'first').glob('ux_*.png'))) == (count if args.screenshots else 0)
+        if args.suggestion_matches:
+            verify_suggestion_matches(root, complete, args.screenshots)
         print(json.dumps(dict(ok=True, actualWebView=True, **{flag: True})))
         return
     verify(root, args.screenshots)
+
+
+def verify_suggestion_matches(root, complete, capture):
+    for name in ('suggestionPointerVerified', 'suggestionGlyphDirectionVerified',
+                 'suggestionFirstSpaceVerified', 'suggestionRecommendationKeyboardVerified'):
+        assert complete[name] is True
+    stages = [
+        'suggestion_literal_matches', 'suggestion_pointer_active', 'suggestion_traditional_query',
+        'suggestion_simplified_query_not_reversed', 'suggestion_first_space',
+    ]
+    assert sorted(path.stem for path in (root / 'first').glob('ux_*.json')) == [
+        f'ux_{index:02d}_{name}' for index, name in enumerate(stages, 1)
+    ]
+    # These requests are recorded by the native synthetic backend, not by the
+    # injected JS. The last edit and immediate Enter must not send a suggestion.
+    expected = [
+        ('suggestion', 'A+B', None),
+        ('result', '合成精确词', 'suggest'),
+        ('suggestion', '音樂', None),
+        ('suggestion', '音乐', None),
+        ('suggestion', 'a b c', None),
+        ('result', '合成分支推荐', 'rec_query'),
+        ('suggestion', '退出悬停', None),
+        ('result', '退出悬停', 'typing'),
+        ('suggestion', '第一词', None),
+        ('result', '更改后的原词', 'typing'),
+    ]
+    calls = complete['suggestionMatchCalls']
+    assert len(calls) == len(expected), calls
+    for call, (kind, keyword, channel) in zip(calls, expected):
+        if kind == 'suggestion':
+            assert call == {'path': '/api/search/pc/suggest/keyword/get',
+                            'args': {'keyword': keyword}}, call
+        else:
+            assert call['path'] == '/api/search/pc/complex/page', call
+            assert (call['args']['keyword'], call['args']['channel']) == (keyword, channel), call
+    result = dict(complete, actualWebView=True, screenshots=len(stages) if capture else 0,
+                  physicalDisplayVerified=False, windowsVisualVerified=False)
+    (root / 'audit.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n',
+                                    encoding='utf-8')
+
 
 def verify(root, capture):
     complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
