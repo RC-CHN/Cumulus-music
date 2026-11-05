@@ -73,8 +73,14 @@ fn raw_reader_keeps_partial_bytes_and_only_verified_graph_end_returns_eof() {
         .publish(&[0.25, -0.5, 1.0, -1.0], 1002, false)
         .unwrap();
     let mut actual = [0u8; 16];
+    let mut returned = 0;
     for chunk in actual.chunks_mut(3) {
         reader.read_exact(chunk).unwrap();
+        returned += chunk.len();
+        assert_eq!(
+            control.snapshot().unwrap().delivered_frames,
+            (returned / 8) as u64
+        );
     }
     let expected = [0.25f32, -0.5, 1.0, -1.0]
         .into_iter()
@@ -91,15 +97,17 @@ fn raw_reader_keeps_partial_bytes_and_only_verified_graph_end_returns_eof() {
 
 #[test]
 fn producer_failure_zeros_even_an_already_encoded_partial_read_window() {
-    let (mut reader, _control, shared) =
+    let (mut reader, control, shared) =
         channel(44100, 0, 5000, Cancellation::default(), None).unwrap();
     shared.publish(&[0.25, -0.5], 2, false).unwrap();
     let mut byte = [0];
     reader.read_exact(&mut byte).unwrap();
+    assert_eq!(control.snapshot().unwrap().delivered_frames, 0);
     shared.fail();
     let mut pending = [9; 7];
     assert!(reader.read(&mut pending).is_err());
     assert_eq!(pending, [0; 7]);
+    assert_eq!(control.snapshot().unwrap().delivered_frames, 0);
 }
 
 #[test]

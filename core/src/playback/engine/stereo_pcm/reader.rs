@@ -51,7 +51,6 @@ impl StereoPcmReader {
                             .to_le_bytes(),
                     );
                 }
-                state.delivered += (samples / 2) as u64;
                 self.offset = 0;
                 self.length = samples * 4;
                 self.shared.wake.notify_all();
@@ -85,7 +84,20 @@ impl Read for StereoPcmReader {
             }
             let count = output.len().min(self.length - self.offset);
             output[..count].copy_from_slice(&self.window[self.offset..self.offset + count]);
+            let mut state = self
+                .shared
+                .state
+                .lock()
+                .map_err(|_| io::Error::other("stereo PCM lock poisoned"))?;
             self.shared.check().map_err(io::Error::other)?;
+            // Filling the private byte window is only prefetch. Count whole
+            // frames actually returned by Read, including split-byte reads,
+            // before admitting any corresponding real native clock later.
+            let frames = (self.offset + count) / 8 - self.offset / 8;
+            state.delivered = state
+                .delivered
+                .checked_add(frames as u64)
+                .ok_or_else(|| io::Error::other("stereo delivered clock exhausted"))?;
             self.offset += count;
             Ok(count)
         })();

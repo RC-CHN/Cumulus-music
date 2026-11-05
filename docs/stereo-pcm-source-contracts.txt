@@ -86,6 +86,10 @@ and cannot acknowledge frames the reader has not delivered. Decoder, produced,
 delivered and cache counters never create clock credit. EOF tail frames use
 the same credit instead of bypassing it. The PCM queue is fallibly allocated
 from that bound; full queues and stopped native clocks block the worker.
+delivered_frames counts complete frames actually returned by the PCM Reader,
+including split byte reads; prefetched private-window bytes are not delivered.
+Failed reads add no delivery credit. Native clocks remain independent of this
+counter; it can only reject a clock ahead of bytes the reader has returned.
 
 This initial-sync distinction follows mpv0.41.0 demux/demux_raw.c (packets are
 floor(rate/8)), player/audio.c (STATUS_SYNCING waits for full AO queue or EOF),
