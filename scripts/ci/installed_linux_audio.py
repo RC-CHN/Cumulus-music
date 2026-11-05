@@ -348,7 +348,10 @@ def pipewire_snapshot(output):
     while (position := whitespace.match(data, position).end()) < len(data):
         document, position = decoder.raw_decode(data, position)
         if not isinstance(document, list) or any(
-            not isinstance(item, dict) or 'id' not in item for item in document
+            not isinstance(item, dict)
+            or type(item.get('id')) is not int
+            or not 0 <= item['id'] < 2**32
+            for item in document
         ):
             raise ValueError('pw-dump frame must be an array of identified objects')
         frames.append(document)

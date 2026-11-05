@@ -99,6 +99,7 @@ class PipeWireObservation(unittest.TestCase):
         for invalid in (b'', b'{"id":1}', graph + graph, graph + b'[]',
                         b'[{"id":42,"info":null}]\nnot JSON',
                         b'[{"id":42,"info":null}]\n[null]',
+                        b'[{"id":42,"info":null}]\n[{"id":[]}]',
                         b'[{"id":true,"info":null}]\n' + graph):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 pipewire_snapshot(invalid)
