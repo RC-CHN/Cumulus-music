@@ -102,6 +102,28 @@
       "status": "native_tests_and_live_desktop_playback_reopen_passed"
     },
     {
+      "id": "classic_podcast_home_and_playback_preference",
+      "official": "PageHome/Top/TopNew; SceneFm.tsx:244–289,475–487; M3004:192–251,308–351; Play.jsx:441–449",
+      "rust": [
+        "core/src/client/podcast/rankings.rs",
+        "core/src/client/scene_fm/home.rs",
+        "core/src/client/scene_fm/actions.rs",
+        "desktop/src/podcast.rs"
+      ],
+      "frontend": [
+        "frontend/src/components/PodcastDiscoveryPage.vue",
+        "frontend/src/components/SceneFmPage.vue",
+        "frontend/src/components/settings/PlaybackStartup.vue"
+      ],
+      "evidence": [
+        "docs/podcast-home-scene-fm.txt",
+        "core/tests/client_scene_fm.rs",
+        "scripts/ci/podcast_scene_home_smoke.py",
+        ".build/ui-proof/phase54-podcast-home/webview-r4/report.json"
+      ],
+      "status": "linux_webview_libmpv_null_synthetic_passed"
+    },
+    {
       "id": "linked_radio_comments_download_dialog",
       "official": "SceneFm.tsx voice/radio links; M15.Et preserves cross-radio program identities",
       "rust": [
@@ -123,7 +145,7 @@
   ],
   "limits": [
     "Fixed gradient; official cover color extraction still to migrate",
-    "Standalone page; complete audio discovery homepage and voice detail/vinyl remain",
+    "Classic home and standalone share the Scene FM card; full audio discovery and voice detail parity remain",
     "No remote history upload or cross-device relay proof",
     "Real libmpv/null on Linux only; no Windows/macOS acceptance",
     "Automatic start additionally protects loading/video/together and is scoped per account session"

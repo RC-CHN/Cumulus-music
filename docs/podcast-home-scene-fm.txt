@@ -1,0 +1,85 @@
+播客发现首页：经典布局的「随心听 FM」与首次自动播放
+====================================================
+
+对照：网易云音乐 PC 3.1.42.205594。Cumulus 支持 Linux x86_64 和 Windows x86_64。
+这是播客发现首页的行为，和「我的播客」、私人漫游、程序启动时自动播歌各自独立。
+
+官方恢复证据
+- M147:1317–1331 把 podcast_tab_better 的初始组名设为 ""。PageHome.tsx:15–17,46
+  只在组名恰为 t1 时选 TopNew，否则选 Top。Top.tsx:46–62 的第一张卡是 SceneFm，
+  后接榜单；TopNew.tsx 不挂载它。页面路由恢复文件位于
+  references/ui-recovery/sources/packages/pc/src/pages/audio/。
+- SceneFm.tsx:475–487 在卡片挂载或用户刷新时派发 page:audio/requestSceneFm。
+  M3004:192–251 有活动分类则复用缓存；否则读取场景目录。先按本机已听记录选择单集，
+  再执行 syncActiveFmFromPlaying，最后按「当前不是 Playing」及已开启 sceneFmAutoPlay
+  决定是否 dispatch playSceneFm {checkAutoStart:true}。
+- M3004:308–351 在首次真正进入 playSceneFm 时写模块标志。以后自动分支只返回，
+  手动播放可继续使用。因为处于 Playing 跳过时尚未进入 playSceneFm，下次进入仍可尝试。
+  选中条目是首个未听单集（全已听则第一集），队列是该分类所有单集，forceClear=true，
+  scene=sceneFm，needOpenVinylPage=false；不会先把节目详情页弹到前台。
+- Play.jsx:441–449 的播放设置为「首次进入播客页时自动播放（不播歌时）」；保存只改设置。
+  M116:237 缺省 false，:287 读取旧 NM_SETTING_CUSTOM.scenefmautoplay，:321 注入设置。
+  它与 M116 的 autoPlay（程序启动播歌）是不同属性。
+- M3004:252–259 显示目录失败，SceneFm.tsx:483–506 的「刷新找回」再次派发同一动作，
+  可在读取恢复后执行尚未消费的首次自动播放。
+
+离线执行原官方模型
+使用 Node vm 载入恢复的 M3004 工厂，给 DVA generator 注入合成目录、已听列表、播放器和
+设置。被测的是该版本的 generator；不运行安装包、不读取账号、不访问外网。6 个用例
+核对目录请求/本机同步/自动判断/入队顺序、默认关闭、开启后只执行一次、正在播不消耗
+机会、设置保存不立即播放、手动播放消耗标志、目录失败后显式刷新。所有有播放的用例
+首个未听单集为第二项，保留完整三集队列和正确索引。
+在仓库根运行 node references/recovered-client/scripts/netease_podcast_home_scene_fm_oracle.cjs，
+输出为 .build/ui-proof/phase54-podcast-home/official-oracle.json。M3004 SHA-256：
+f527cd6026e16774414fb71c14545b6f779835c5b4af93cc610da92684affce8
+
+Rust、窗口及账号边界
+- 顶部配置沿用 POST /api/rtrs/abt/front/expinfo/list {expNames:"podcast_tab_better"}。
+  成功响应中仅唯一 t1 切到新版；视觉经典的未知组、失败和超时也能展示可手动播放的
+  场景卡。只有唯一明确的 c 且请求前后都是同一已验证 PC 凭据版本，才返回自动权限。
+  此限制避免在不确定的布局、错误回退或凭据变更时启动音频。原版统一请求多个实验，
+  当前播客入口复用 Cumulus 已有的单键读取，不宣称迁移了启动时的整套实验初始化。
+- Settings → 播放保存到原有按账号划分的 scene-fm-v1/autoplay。纯本地默认关闭；
+  scene_fm_autoplay_preference 与 set_scene_fm_autoplay_preference 只读写这个设置，
+  不构造目录、音源或播放器。不把官方 NM_SETTING_CUSTOM 路径当成 Cumulus 的账号隔离存储。
+- 进入确认经典首页时，scene_fm_home_enter(epoch) 生成仅本次页面的 visit；只有账号、API
+  实例、已验证 PC 凭据版本仍一致才签发。离开时 scene_fm_home_leave(epoch,visit)
+  仅撤销相符 visit；迟到释放不能撤销新页面。进入时先记录原生播放/队列、选择意图和焦点，
+  再允许前端读取目录。home_automatic{revision,visit} 和最终 actor 提交均重查该资格。
+- 开播中、缓冲/加载、新选歌或停止、视频焦点、一起听待清理及切账号时保护现有播放。
+  用户离开期间完成的目录不能启动；本次目录失败可以在卡片显式刷新后再尝试，已经发出且
+  结果未知的自动指令不重放。当前分类已有节目仍沿用旧缓存，之后的手动控件复用相同原生逻辑。
+- 选中当前场景单集时，封面只暂停/继续；标题正在播则直接开详情，暂停则续播再开详情。
+  不是当前单集时，标题先按官方整组队列启动，再核对当前账号及单集，打开播放详情。
+  手动新建队列消耗一次性标志，保留当前解码的切换播放状态不消耗。新版不读取场景目录；
+  独立 FM 页面保留手动动作，独立页不触发首次自动播放。
+- 未增加任何新服务路径。场景目录、懒加载、续播读取、音源授权及单集身份见
+  desktop-scene-fm-contracts.txt。固定渐变并未还原官方 useImageColor；没有官方同账号截图，
+  不宣称像素一致。若签名凭据变化，旧实验观察不再授权自动播；重新获取本账号的布局分组后
+  才能再授权；已展示卡仍可手动播。场景播放原生队列已保存 source.kind=scene_fm；
+  现有播放器来源 DTO 还没映射该场景，详情截图中显示「来源：未知」。卡片取色和
+  详情来源映射仍需独立对照。取色的下一批对照已冻结：实际 M54/M258 与 SceneFm
+  渐变代码在 .build/ui-proof/scene-fm-color-official-oracle/ 离线通过 17 组工作流、
+  9 组 HSV、11 组量化；canvas 只供应 1:1 合成像素，未验证浏览器解码或缩放。
+  vectors.json SHA-256：
+  79a3a2ff105b242bcd770f154b9892f27d04e69a0caef60710a7e805cae5d7fd
+
+验证
+- core/tests/client_scene_fm.rs：9 项通过，含默认关闭、纯本地偏好及重开／切号隔离、
+  已明确 c 与无权限分支、伪造和过期 visit、凭据变化、整组队列及回读、首访正播放
+  不消耗机会、目录延迟时较新的停止、错误后的同次显式刷新、准备期间离开不改队列。
+- frontend/tests/scene-fm-state.test.ts 与 scene-fm-autoplay-preference.test.ts：覆盖已离开
+  页面晚返回的 visit、账号切换、目录失败后重试、自动命令未决不重放、设置丢回包只读核对。
+- 2026-11-05：产品源 4992848860ea45ddabecdac0311d5bac053b9a5e，在隔离 Linux X11
+  上使用真实 GTK/WebKitGTK 与 libmpv null 输出。4 次独立启动、13 个截图检查点；验证
+  设置保存时播放器 Idle、c 首次自动／关闭后手动、t1 零目录请求、显式刷新恢复、暂停后
+  重访不再开播、标题恢复同一 playId 和队列并打开详情。媒体为合成音频，不发真实账号请求、
+  不写真实远端资源。另有 3 个经典回退截图检查榜单切换和回程，以及无账号的普通二进制启动。
+  证据：.build/ui-proof/phase54-podcast-home/{webview-r4/report.json,search-fallback/,startup/report.json}。
+  截图在相同目录下每个用例的 run/first/。等待当前页面和详情动画完成后再采集实际帧。
+- 重跑：先 npm --prefix frontend ci、npm --prefix frontend run build，再
+  cargo build -p cumulus-desktop --features custom-protocol --example podcast_recent_ui_probe --locked。
+  Linux 在专用 Xvfb（GDK_BACKEND=x11、LC_ALL=en_US.UTF-8、独立 dbus）中运行
+  python3 scripts/ci/podcast_scene_home_smoke.py --binary <probe> --root <新目录> --screenshots。
+  本次还隔离了网络和声卡设备。Windows CI 使用相同原生探针、额外指定 --runtime <native>，
+  不用 Linux 取图器；Windows 实际运行结果须看各次 CI。

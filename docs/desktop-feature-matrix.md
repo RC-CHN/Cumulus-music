@@ -61,6 +61,7 @@
 - [歌手 MV](artist-mv-discovery-contracts.txt)按官方 MV 数量门槛显示页签，用原游标续页和重试。Linux 合成桌面验证精确评论线程、原生视频画面和返回焦点；普通视频与全站 MV 发现没有用歌手列表冒充。
 - [识曲峰值选择](song-recognition-signal-contracts.txt)及[可选 zlib 封包](song-recognition-contracts.txt)有官方原生合成对照。峰值阶段接受已中心化矩阵，不接设备采集、FFT 或真实服务。
 - [经典发现首页](discovery-home-contracts.txt)接通 11 类可确认的官方区块。首页与目录详情往返保留横向和纵向位置及焦点，隐私关闭时不继续请求个性化推荐；游客和实验布局按独立证据追踪。
+- [经典播客首页随心听 FM](podcast-home-scene-fm.txt)接入完整队列、播放设置与首次自动播放。新版不加载该卡；经典回退允许手动播；Rust 保留正在播放和较新的控制。Linux 真实 WebView 和合成音频通过自动、手动、更新布局及目录失败刷新，标题验证保留播放实例。
 - [播客最近更新](podcast-recent-contracts.txt)用官方更新游标读取订阅单集；Linux 合成桌面验证原生声音、暂停、两种双击队列策略和返回位置。逐播客更新红点和旧版推荐仍有独立边界。
 - [离线识曲声谱](song-recognition-signal-contracts.txt)从已经转换好的 8 kHz 单声道 PCM 到封包经过官方对照。[设备回采与请求](song-recognition-host-contracts.txt)目前有恢复契约，尚无产品识别。
 - [榜单精选和首页风格卡](discovery-home-contracts.txt)使用官方实验和原生种子，真实 PC 会话只读样本显示六张榜单卡。

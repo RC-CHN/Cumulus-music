@@ -53,7 +53,7 @@
 | `page:algPlaylist` (9) | `models/page_algPlaylist.txt` | [部分](search-preview-ui-contracts.txt) | 区分搜索专题预览、整页、资源种类及菜单，不等于全组合。 |
 | `page:artistDetail` (21) | `models/page_artistDetail.txt` | [已接入口](artist-detail-ui-contracts.txt) | 艺人资料/歌曲/专辑/视频导航；普通视频单独。 |
 | `page:artistsGallery` (8) | `models/page_artistsGallery.txt` | [已接入口](artist-gallery-contracts.txt) | 官方筛选和分页；逐平台视觉另验。 |
-| `page:audio` (20) | `models/page_audio.txt` | [已接入口](desktop-podcast-contracts.txt) | 播客和有声书列表；付费权益及全部推荐布局待核。 |
+| `page:audio` (20) | `models/page_audio.txt` | [已接入口](desktop-podcast-contracts.txt) | 播客和有声书列表；[经典首页随心听 FM 与首次播放设置](podcast-home-scene-fm.txt)已接，付费权益及其余推荐布局待核。 |
 | `page:audioDetail` (24) | `models/page_audioDetail.txt` | [已接入口](desktop-podcast-contracts.txt) | 节目详情/权限/播放；下载及续播有独立证据。 |
 | `page:banners` (9) | `models/page_banners.txt` | [部分](discovery-home-contracts.txt) | 首页已证实的轮播；广告、跟踪和第三方回填未复刻。 |
 | `page:bind` (2) | `models/page_bind.txt` | [已接入口](account-binding-settings.txt) | 设置快捷标识、独立绑定页、按注册方式分组和官方 App 扫码交接；不接上游动态第三方地址，不在客户端内执行解绑、改密。 |

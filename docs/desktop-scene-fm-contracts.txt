@@ -11,8 +11,9 @@ references/ui-recovery/sources/packages/pc/src/pages/audio/components/SceneFm.ts
 本批不使用 YesPlayMusic。下列程序使用恢复材料推导的业务，不启动归档 Python 实现。
 
 独立 Rust：podcast/scene/{api,types,service}；客户端协调：client/scene_fm/{mod,view,actions}。
-desktop/podcast.rs 转发两个正式命令，frontend/services/sceneFm.ts 是公开类型，
-useSceneFm 管账号/请求代次和缓存，SceneFmPage 提供正式“随心听 FM”入口。
+desktop/podcast.rs 转发类型化命令，frontend/services/sceneFm.ts 是公开类型，
+useSceneFm 管账号/请求代次和缓存，SceneFmPage 同时提供播客首页卡片与独立入口。
+首页布局、设置、native visit 和验证见 podcast-home-scene-fm.txt。
 
 接口、字段与顺序
 1. /api/voice/homepage/block/content
@@ -58,7 +59,8 @@ OperationLock 串行本账号跨进程修改，事务比较 revision 再提交�
 接口上限：最多200分类、每组5000节目；分类ID最多128字节，仅ASCII字母数字、_和-。
 
 自动播放和并发
-进入页面且已开启本地自动播放时尝试一次；官方模块级 b 标志在本实现按账号会话代次隔离，
+仅已确认的经典播客首页可在开启本地自动播放后尝试一次；独立入口和实验读取失败只提供手动播放。
+官方模块级 b 标志在本实现按账号会话代次隔离，
 手动播放也消耗本会话的自动尝试。开关本身不立即播放，重启后的新宿主允许新一次尝试。
 播放中、缓冲、准备/加载中的音频、当前视频所有者、一起听未清理状态均阻止自动切换。
 比官方单一 Playing 判断增加加载和视频门控，避免迟到自动操作抢占新选择。
@@ -81,16 +83,17 @@ scene_fm_view(epoch,refresh) -> AccountData<SceneFmView>。
   返回 revision 十进制字符串、activeId、scenes{id,name,label,count}、选中 EpisodeView、
   active/playing/pending/autoplay；不返回 Cookie、算法追踪参数、完整授权 URL 或原始数据。
 scene_fm_command(epoch,command)：
-  select {revision,scene_id}；play/toggle/automatic/cancel {revision}；autoplay {enabled}。
+  select {revision,scene_id}；play/toggle/cancel {revision}；home_automatic {revision,visit}。
+  自动动作另核对 Rust 签发的首页 visit；旧不带 visit 的 automatic 不接受。
   命令带判别字段 kind（snake_case）；拒绝未知字段和非规范十进制 revision。
   账号代次、展示 revision、实际来源和原生播放 fence 分别保护账号、目录和当前播放意图。
 
 界面与差异
-独立“随心听 FM”入口展示官方结构的渐变卡片、封面按钮、标题、播单、横向分类和听众提示；
-附单集评论、下载入口和自动播放设置。播单链接进入既有详情；评论/下载复用已验证流程。
+经典播客首页和独立“随心听 FM”均展示渐变卡片、封面按钮、标题、播单、横向分类和听众提示。
+设置 → 播放的自动播放开关只保存偏好；独立页面另附单集评论、下载入口。播单链接进入既有详情；评论/下载复用已验证流程。
 错误、首次加载、空场景、失败重试、未完成选择、取消均有实际入口；小窗口可滚动。
 目前采用固定渐变，未迁移官方 useImageColor 封面取色；横向分类替代原 Slider 组件。
-当前独立页面尚未整合官方完整播客发现首页，标题未接官方声音详情/大黑胶页。
+标题按当前场景播放状态启动或恢复整组并打开播放详情。尚未对照完整播客发现首页的全部卡片。
 没有同账号同页面官方运行截图，因此不声称像素一致；这些UI差异继续属于完整目标。
 
 验证入口
@@ -115,7 +118,7 @@ frontend/tests/scene-fm-state.test.ts 验证迟到回包、离开页面、切号
     --binary .build/target/debug/examples/scene_fm_ui_probe --stage-prefix scene_
     --screenshots 8 --reopen-screenshots 2 --timeout 360 [--small]
   相同目录加 --reopen 运行真实持久队列恢复。驱动仅截图与进程协调，业务由正式DOM/IPC/Rust执行。
-  audio/null 使用实际 libmpv 解码，不能证明实体扬声器听感或 Windows/macOS 通过。
+  audio/null 使用实际 libmpv 解码，不能证明实体扬声器听感或 Windows 通过。
 独立校验：python3 desktop/examples/audit_scene_fm_probe.py <证据目录> [--native|--reopen]。
 入口专项：设 CUMULUS_SCENE_LINKS=1，使用新目录与 --screenshots 3；以 --links 独立核对。
 它验证播单详情、节目评论、下载弹窗内容与取消，不冒称这次再次执行了完整节目文件下载。
