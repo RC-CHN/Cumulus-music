@@ -54,7 +54,8 @@ def main():
         if local:
             stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(output.glob('ux_*.json'))]
             assert [stage['surface'] for stage in stages] == ['main', 'lyric']
-            assert stages[0]['timedLine'] and stages[0]['nativeClockAdvanced'] and stages[1]['paintedRow']
+            assert (stages[0]['timedLine'] and stages[0]['nativeClockAdvanced'] and
+                    stages[0]['paintedMain'] and stages[1]['paintedRow'])
             assert all(stage['fromEmbedded'] == args.embedded and stage['fromSidecar'] == args.native_sidecar
                        and not stage['overflow']
                        and stage['lyricRequests'] == 0 for stage in stages)

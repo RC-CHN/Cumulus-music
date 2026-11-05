@@ -86,9 +86,20 @@
       !main.networkFailed && main.scrollable && main.lines.some(line => line.time === 0 && line.lyric === expectedText),
     'main IPC local provenance and timestamp');
     if (nativeSidecar) assert(!JSON.stringify(main).includes('.wav'), 'no native file path in lyric DTO');
+    const paintedMain = await wait(() => {
+      const panel = one('.lyrics-panel');
+      if (!panel || panel.classList.contains('lyrics-panel-enter-active') ||
+        getComputedStyle(panel).opacity !== '1' || document.visibilityState !== 'visible') return false;
+      const row = [...panel.querySelectorAll('.lyric-line')].find(node =>
+        node.textContent.includes(expectedText));
+      if (!row) return false;
+      const rect = row.getBoundingClientRect();
+      if (!rect.width || !rect.height || rect.top < 0 || rect.bottom > innerHeight) return false;
+      return row.contains(document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2));
+    }, 'lyrics entrance settled and main lyric row is topmost');
     await capture(`ux_01_${caseName}_main`, 'main', {
       fromEmbedded: main.fromEmbedded, fromSidecar: main.fromSidecar, timedLine: true,
-      nativeClockAdvanced: true, unindexed: opened?.unindexed ?? false,
+      nativeClockAdvanced: true, paintedMain, unindexed: opened?.unindexed ?? false,
       playId: playback.playId, overflow: document.documentElement.scrollWidth > innerWidth,
     });
 
