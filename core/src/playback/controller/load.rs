@@ -7,7 +7,7 @@ use crate::{
     effects::equalizer::EqualizerStatus,
     playback::{
         QueueEntry, Timeline, TimelineMode,
-        engine::{Cancellation, LoadRequest, LoadedMedia},
+        engine::{Cancellation, LoadRequest, LoadedMedia, MediaInput},
         failure::PlaybackFailure,
         source::{ResolvedSource, StreamingSelection},
     },
@@ -37,6 +37,7 @@ pub(super) struct Prepared {
     pub item: QueueEntry,
     pub source: Arc<ResolvedSource>,
     pub media: LoadedMedia,
+    pub local_equalizer: bool,
     pub timeline: Timeline,
     pub position: f64,
     pub reset: bool,
@@ -179,6 +180,18 @@ impl Actor {
         self.error = None;
         self.reset = false;
         self.parametric.discard_paused_device();
+        let local_equalizer = (item.resource.get("native_open_file").is_some()
+            && self.independent_transport(&item)
+            && constraint.is_none()
+            && self.parametric.admits_local_equalizer()
+            && !self.equalizer.damaged
+            && self.equalizer.preferences.settings.effective().enabled())
+        .then_some(self.equalizer.preferences.settings);
+        if local_equalizer.is_some() {
+            // If preparation displaced a stock filter and then failed, the
+            // next accepted source still reconciles the durable EQ controls.
+            self.local_equalizer_needs_sync = true;
+        }
         self.play_id = Some(uuid::Uuid::new_v4().simple().to_string());
         self.state = PlaybackStatus::Preparing;
         let generation = self.generation();
@@ -320,14 +333,23 @@ impl Actor {
                     None
                 };
                 let load_cancel = with_stock_fallback(cancel.clone(), stock_fallback.clone());
-                let media = super::engine(engine.clone(), load_cancel.clone(), move |engine| {
-                    if let Some(reader) = stream_reader {
-                        engine.load_streaming_audio(reader, &load_cancel)
-                    } else {
-                        engine.load(load, &load_cancel)
-                    }
-                })
-                .await?;
+                let (media, local_equalizer) =
+                    super::engine(engine.clone(), load_cancel.clone(), move |engine| {
+                        let media = if let Some(reader) = stream_reader {
+                            engine.load_streaming_audio(reader, &load_cancel)?
+                        } else if let Some(settings) = local_equalizer
+                            && matches!(&load.source, MediaInput::NativeFile { .. })
+                            && snapshot.mode == TimelineMode::Full
+                            && engine.supports_local_equalizer()
+                        {
+                            engine.load_with_local_equalizer(load, settings, &load_cancel)?
+                        } else {
+                            engine.load(load, &load_cancel)?
+                        };
+                        let bound = engine.local_equalizer_entry() == Some(media.entry_id);
+                        Ok((media, bound))
+                    })
+                    .await?;
                 let timeline = crate::playback::PlaybackConstraint::apply(
                     constraint.as_ref(),
                     source.timeline(media.duration)?,
@@ -353,6 +375,7 @@ impl Actor {
                     item,
                     source,
                     media,
+                    local_equalizer,
                     timeline,
                     position,
                     reset,
@@ -424,6 +447,24 @@ impl Actor {
                     }
                     return;
                 }
+                if prepared.local_equalizer && self.parametric.has_deferred_filter() {
+                    match self.local_equalizer_stock(prepared.media.entry_id).await {
+                        Ok(media) => {
+                            prepared.media = media;
+                            prepared.local_equalizer = false;
+                        }
+                        Err(error) => {
+                            self.stop_after_poll_failure(&error).await;
+                            if let Some(reply) = pending.reply {
+                                let _ = reply.send(Err(error));
+                            }
+                            return;
+                        }
+                    }
+                }
+                if self.local_equalizer_needs_sync {
+                    self.equalizer.status = EqualizerStatus::Pending;
+                }
                 if self.equalizer.status == EqualizerStatus::Pending
                     && let Err(error) = self.equalizer_apply().await
                 {
@@ -433,6 +474,7 @@ impl Actor {
                     }
                     return;
                 }
+                self.local_equalizer_needs_sync = prepared.local_equalizer;
                 if let Err(error) = self.parametric_finish_load(&prepared.source).await {
                     let _ = self.stop(false).await;
                     self.state = PlaybackStatus::Error;
@@ -465,24 +507,55 @@ impl Actor {
                         let stock_fallback = prepared.stock_fallback.clone();
                         let transport =
                             with_stock_fallback(self.cancel.clone(), stock_fallback.clone());
+                        let seek_cancel = transport.clone();
+                        let entry = prepared.media.entry_id;
+                        let local_equalizer = prepared.local_equalizer;
                         let result = self
                             .parametric_transport(paused, transport.clone(), move |engine| {
-                                if (target - initial).abs() > f64::EPSILON {
-                                    engine.seek(target)?;
-                                }
+                                let replacement = if (target - initial).abs() > f64::EPSILON {
+                                    engine.seek_with_receipt(target, entry, &seek_cancel)?
+                                } else {
+                                    None
+                                };
                                 engine.volume(prefs.volume)?;
                                 engine.speed(speed)?;
                                 if let Some(guard) = stock_fallback {
                                     guard.check()?;
                                 }
-                                engine.pause(paused)
+                                if !local_equalizer {
+                                    engine.pause(paused)?;
+                                }
+                                Ok(replacement)
                             })
                             .await;
                         async {
-                            result?;
+                            if let Some(media) = result? {
+                                prepared.media = media;
+                            }
                             self.queue.reload()?;
                             if self.queue.selected().as_ref() != Some(&prepared.item) {
                                 return Err(Error::QueueChanged);
+                            }
+                            if local_equalizer {
+                                if pending
+                                    .reply
+                                    .as_ref()
+                                    .is_some_and(|reply| reply.is_closed())
+                                {
+                                    return Err(Error::Cancelled);
+                                }
+                                let entry = prepared.media.entry_id;
+                                self.parametric_transport(
+                                    paused,
+                                    transport.clone(),
+                                    move |engine| {
+                                        if engine.local_equalizer_entry() != Some(entry) {
+                                            return Err(Error::StaleResponse);
+                                        }
+                                        engine.pause(paused)
+                                    },
+                                )
+                                .await?;
                             }
                             // M/308 obtains current persisted setting after
                             // native Play. A peer may have saved while loading.
@@ -561,6 +634,7 @@ impl Actor {
                     item: prepared.item,
                     source: prepared.source,
                     media: prepared.media,
+                    local_equalizer: prepared.local_equalizer,
                     timeline: prepared.timeline,
                 });
                 if let Some(radio) = refresh_radio {

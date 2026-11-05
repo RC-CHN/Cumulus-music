@@ -19,6 +19,8 @@ fn already_destroyed_native_sink_does_not_strand_unpublished_pcm_ownership() {
         pinned_authority: None,
         pinned_bmff_options: false,
         stereo_pcm: None,
+        local_flac: None,
+        local_equalizer: None,
     };
     let (reader, control, _) = channel(44100, 0, 5000, Cancellation::default(), None).unwrap();
     assert!(matches!(

@@ -32,6 +32,7 @@ pub(super) struct Loaded {
     pub item: QueueEntry,
     pub source: Arc<ResolvedSource>,
     pub media: LoadedMedia,
+    pub local_equalizer: bool,
     pub timeline: Timeline,
 }
 pub(super) struct Pending {
@@ -62,6 +63,7 @@ pub(super) struct Actor {
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub equalizer_initialized: bool,
     pub equalizer_source_latch: bool,
+    pub local_equalizer_needs_sync: bool,
     pub parametric: super::parametric::State,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub loudness_initialized: bool,
@@ -150,6 +152,7 @@ impl Actor {
             equalizer: Default::default(),
             equalizer_initialized: false,
             equalizer_source_latch: false,
+            local_equalizer_needs_sync: false,
             parametric: Default::default(),
             loudness: Default::default(),
             loudness_initialized: false,
@@ -446,8 +449,10 @@ impl Actor {
         publisher: watch::Sender<PlaybackSnapshot>,
     ) {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(200));
+        let mut pcm = tokio::time::interval(std::time::Duration::from_millis(40));
         self.power_after_event();
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        pcm.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         while let Some(revision) = self.revision.checked_add(1) {
             self.revision = revision;
             tokio::select! {
@@ -491,6 +496,18 @@ impl Actor {
                         self.stop_after_poll_failure(&error).await;
                     }
                 },
+                _ = pcm.tick(), if matches!(self.state, PlaybackStatus::Playing | PlaybackStatus::Buffering)
+                    && self.loaded.as_ref().is_some_and(|loaded| loaded.local_equalizer) => {
+                    let result = super::engine(self.engine.clone(), self.guard(), |engine| {
+                        engine.pump_local_equalizer()
+                    }).await;
+                    if let Err(error) = result {
+                        self.stop_after_poll_failure(&error).await;
+                    } else {
+                        // Credit sampling has no queue/DB/UI side effects.
+                        continue;
+                    }
+                }
             }
             self.power_after_event();
             self.observe_queue_more();

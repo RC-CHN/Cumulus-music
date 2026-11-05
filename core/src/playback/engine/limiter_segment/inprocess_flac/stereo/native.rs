@@ -59,6 +59,20 @@ impl NativeStereoSource {
         self.0.into_reader()
     }
 
+    pub(crate) fn configure_reclaimed(
+        &mut self,
+        plan: LocalEqualizerMaterialPlan,
+        master_bypassed: bool,
+    ) -> Result<()> {
+        self.0.reader.source_authority().validate()?;
+        self.0.graph.apply(if master_bypassed {
+            StereoGraphControl::DisableLocalMaster
+        } else {
+            StereoGraphControl::ApplyLocal(plan)
+        })?;
+        self.0.reader.source_authority().validate()
+    }
+
     /// A live pass remains bound to its source authority, not the request
     /// that successfully finished preparing it.
     pub(crate) fn start(self, first: u64, cancel: &Cancellation) -> Result<NativeStereoStart> {

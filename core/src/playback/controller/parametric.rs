@@ -1,4 +1,4 @@
-use super::{Message, PlaybackController, PlaybackFence, state::Actor};
+use super::{Message, PlaybackController, PlaybackFence, PlaybackStatus, state::Actor};
 use crate::{
     Error, Result,
     account::SessionToken,
@@ -153,6 +153,15 @@ enum Selection {
     ClearDevice(DeviceActivationId),
     CompareDevice(DeviceActivationId, String, uuid::Uuid, bool),
 }
+impl Selection {
+    fn needs_native_filter(&self) -> bool {
+        match self {
+            Self::Plain(Some(plan)) => plan.enabled(),
+            Self::Bound(_) | Self::Device(_) => true,
+            _ => false,
+        }
+    }
+}
 
 #[derive(Default)]
 pub(super) struct State {
@@ -181,6 +190,20 @@ struct ProcessingObservation {
 }
 
 impl State {
+    pub(super) fn has_deferred_filter(&self) -> bool {
+        self.deferred
+            .as_ref()
+            .is_some_and(Selection::needs_native_filter)
+    }
+
+    pub(super) fn admits_local_equalizer(&self) -> bool {
+        self.deferred.is_none()
+            && self.applied.is_none()
+            && self.installing.is_none()
+            && self.device.is_none()
+            && !self.possibly_attached
+            && !self.detach_required
+    }
     pub(super) fn reset_activity(&mut self) {
         self.activity = None;
     }
@@ -609,7 +632,56 @@ impl Actor {
             self.parametric.release_unused_fence();
             return Ok(ParametricApplication::DeferredUntilLoaded);
         }
-        self.parametric_apply_selection(selection).await
+        let switching = selection.needs_native_filter()
+            && self
+                .loaded
+                .as_ref()
+                .is_some_and(|loaded| loaded.local_equalizer);
+        if !switching {
+            return self.parametric_apply_selection(selection).await;
+        }
+        let paused = self.state == PlaybackStatus::Paused;
+        let switched = async {
+            let loaded = self.loaded.as_ref().ok_or(Error::StaleResponse)?;
+            let item = loaded.item.clone();
+            let media = self.local_equalizer_stock(loaded.media.entry_id).await?;
+            self.queue.reload()?;
+            if self.queue.selected().as_ref() != Some(&item) {
+                return Err(Error::QueueChanged);
+            }
+            let loaded = self.loaded.as_mut().ok_or(Error::StaleResponse)?;
+            loaded.media = media;
+            loaded.local_equalizer = false;
+            self.native_seeking = false;
+            self.deferred_events.clear();
+            self.buffered_through = None;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = switched {
+            self.stop_after_poll_failure(&error).await;
+            return Err(error);
+        }
+        let applied = self.parametric_apply_selection(selection).await;
+        // A failed optional selection may have cleaned itself up or stopped
+        // the actor. Only a still-current stock entry may resume.
+        if let Some(loaded) = &self.loaded {
+            let item = loaded.item.clone();
+            let resume = async {
+                self.queue.reload()?;
+                if self.queue.selected().as_ref() != Some(&item) {
+                    return Err(Error::QueueChanged);
+                }
+                self.parametric_transport(paused, self.guard(), move |engine| engine.pause(paused))
+                    .await
+            }
+            .await;
+            if let Err(error) = resume {
+                self.stop_after_poll_failure(&error).await;
+                return Err(error);
+            }
+        }
+        applied
     }
 
     async fn parametric_clear_device(

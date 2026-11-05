@@ -18,6 +18,7 @@ mod cold_fallback;
 mod effect_order_tests;
 #[cfg(test)]
 mod limiter_host_probe;
+mod local_equalizer;
 mod loudness;
 mod parametric;
 mod pinned_stop;
@@ -55,6 +56,8 @@ pub struct MpvEngine {
     pinned_authority: Option<Cancellation>,
     pinned_bmff_options: bool,
     stereo_pcm: Option<super::StereoPcmControl>,
+    local_flac: Option<super::TrustedFlacRuntime>,
+    local_equalizer: Option<local_equalizer::LocalEqualizer>,
 }
 impl Drop for MpvEngine {
     fn drop(&mut self) {
@@ -211,6 +214,8 @@ impl MpvEngine {
             pinned_authority: None,
             pinned_bmff_options: false,
             stereo_pcm: None,
+            local_flac: None,
+            local_equalizer: None,
         })
     }
     pub fn api_version(&self) -> u64 {
@@ -575,16 +580,13 @@ impl MpvEngine {
                 }
                 let (file, format) =
                     crate::library::native_open::checked_audio_file(&path, &fingerprint)?;
-                let loaded =
-                    self.load_pinned(Box::new(file), format, Cancellation::default(), cancel)?;
-                cancel.check()?;
-                if request.start > 0.0
-                    && let Err(error) = self.seek(request.start)
-                {
-                    self.retire_pinned();
-                    return Err(error);
-                }
-                return Ok(loaded);
+                return self.load_open_file(
+                    file,
+                    format,
+                    Cancellation::default(),
+                    request.start,
+                    cancel,
+                );
             }
             source => Self::source(source)?,
         };
@@ -766,6 +768,9 @@ impl AudioEngine for MpvEngine {
         &mut self,
         plan: crate::effects::parametric::ParametricPlan,
     ) -> Result<bool> {
+        if self.local_equalizer.is_some() {
+            return Ok(false);
+        }
         if !plan.enabled() {
             self.bypass_parametric_component()?;
             return Ok(true);
@@ -860,6 +865,9 @@ impl AudioEngine for MpvEngine {
         &mut self,
         settings: crate::effects::loudness::LoudnessSettings,
     ) -> Result<bool> {
+        if self.local_equalizer.is_some() {
+            return Ok(false);
+        }
         self.configure_loudness(settings)
     }
     fn clear_loudness(&mut self) -> Result<()> {
@@ -880,6 +888,39 @@ impl AudioEngine for MpvEngine {
             let _ = self.stop();
         }
         result
+    }
+    fn load_with_local_equalizer(
+        &mut self,
+        request: LoadRequest,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let result = self.load_local_equalizer(request, settings, cancel);
+        if result.is_err() {
+            let _ = self.stop();
+        }
+        result
+    }
+    fn supports_local_equalizer(&self) -> bool {
+        self.local_flac.is_some()
+    }
+    fn local_equalizer_entry(&self) -> Option<i64> {
+        self.local_equalizer.as_ref().and(self.entry)
+    }
+    fn pump_local_equalizer(&mut self) -> Result<()> {
+        self.observe_local_equalizer_clock()
+    }
+    fn apply_local_equalizer(
+        &mut self,
+        settings: crate::effects::equalizer::EqualizerSettings,
+    ) -> Result<()> {
+        self.update_local_equalizer(settings)
+    }
+    fn local_equalizer_processing(&mut self) -> Result<bool> {
+        self.observe_local_equalizer_processing()
+    }
+    fn yield_local_equalizer(&mut self, entry: i64, cancel: &Cancellation) -> Result<LoadedMedia> {
+        self.resume_stock_for_independent_filter(entry, cancel)
     }
     fn streaming_audio_available(&mut self) -> bool {
         self.native_mut()
@@ -1011,6 +1052,18 @@ impl AudioEngine for MpvEngine {
         }
         self.control_authorized(&["seek", &seconds.to_string(), "absolute+exact"])
     }
+    fn seek_with_receipt(
+        &mut self,
+        seconds: f64,
+        entry: i64,
+        cancel: &Cancellation,
+    ) -> Result<Option<LoadedMedia>> {
+        if self.local_equalizer.is_none() {
+            self.seek(seconds)?;
+            return Ok(None);
+        }
+        self.seek_local_equalizer(seconds, entry, cancel).map(Some)
+    }
     fn volume(&mut self, value: f64) -> Result<()> {
         if !value.is_finite() || !(0.0..=100.0).contains(&value) {
             return Err(Error::InvalidInput("volume outside 0..100"));
@@ -1026,8 +1079,10 @@ impl AudioEngine for MpvEngine {
     fn stop(&mut self) -> Result<()> {
         if self.pinned_authority.is_some() {
             self.retire_pinned();
+            self.local_equalizer = None;
             return Ok(());
         }
+        self.local_equalizer = None;
         let Some(native) = &self.native else {
             return Ok(()); // destruction has already completed
         };
@@ -1076,7 +1131,7 @@ impl AudioEngine for MpvEngine {
         let seeking_before = self.property(c"seeking").as_deref() != Some("no");
         let position = self.number(c"time-pos");
         let seeking = seeking_before || self.property(c"seeking").as_deref() != Some("no");
-        let snapshot = EngineSnapshot {
+        let mut snapshot = EngineSnapshot {
             entry_id: self.entry,
             position,
             duration: self.number(c"duration"),
@@ -1100,6 +1155,14 @@ impl AudioEngine for MpvEngine {
             && let Some(entry) = snapshot.entry_id
         {
             control.observe(entry, snapshot.position, snapshot.paused, snapshot.seeking)?;
+            if self.local_equalizer.is_some() {
+                let pcm = control.snapshot()?;
+                snapshot.position = snapshot
+                    .position
+                    .map(|_| pcm.native_source_frame as f64 / f64::from(local_equalizer::RATE));
+                snapshot.duration = Some(pcm.source_end as f64 / f64::from(local_equalizer::RATE));
+                snapshot.buffered_through = None;
+            }
         }
         if self.entry.is_some_and(|active| snapshot.events.iter().any(|event| {
                 matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof | EndReason::Stop, error: 0 } if *entry_id == active)
@@ -1110,6 +1173,7 @@ impl AudioEngine for MpvEngine {
             // is no pinned entry left to stop on the next ordinary load.
             gate.cancel();
             if let Some(control) = self.stereo_pcm.take() { control.retire_sink(); control.cancel(); }
+            self.local_equalizer = None;
         }
         Ok(snapshot)
     }

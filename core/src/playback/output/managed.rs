@@ -267,6 +267,53 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
         }
         self.observe_successful_load(result)
     }
+    fn load_with_local_equalizer(
+        &mut self,
+        request: LoadRequest,
+        settings: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        request.validate()?;
+        let cancel = self.lease.cancellation(cancel);
+        cancel.check()?;
+        let deadline = Instant::now() + request.timeout;
+        self.synchronize(true)?;
+        cancel.check()?;
+        // An output error must never reopen an already-selected descriptor.
+        let result =
+            self.inner
+                .load_with_local_equalizer(remaining(&request, deadline)?, settings, &cancel);
+        if cancel.is_cancelled() {
+            let _ = self.inner.stop();
+            return Err(Error::Cancelled);
+        }
+        if result.as_ref().is_err_and(output_failure) {
+            self.record_load_failure();
+        }
+        self.observe_successful_load(result)
+    }
+    fn supports_local_equalizer(&self) -> bool {
+        self.inner.supports_local_equalizer()
+    }
+    fn local_equalizer_entry(&self) -> Option<i64> {
+        self.inner.local_equalizer_entry()
+    }
+    fn pump_local_equalizer(&mut self) -> Result<()> {
+        self.inner.pump_local_equalizer()
+    }
+    fn apply_local_equalizer(
+        &mut self,
+        settings: crate::effects::equalizer::EqualizerSettings,
+    ) -> Result<()> {
+        self.inner.apply_local_equalizer(settings)
+    }
+    fn local_equalizer_processing(&mut self) -> Result<bool> {
+        self.inner.local_equalizer_processing()
+    }
+    fn yield_local_equalizer(&mut self, entry: i64, cancel: &Cancellation) -> Result<LoadedMedia> {
+        self.inner
+            .yield_local_equalizer(entry, &self.lease.cancellation(cancel))
+    }
 
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         request.validate()?;
@@ -305,6 +352,15 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     fn seek(&mut self, seconds: f64) -> Result<()> {
         self.inner.seek(seconds)
     }
+    fn seek_with_receipt(
+        &mut self,
+        seconds: f64,
+        entry: i64,
+        cancel: &Cancellation,
+    ) -> Result<Option<LoadedMedia>> {
+        self.inner
+            .seek_with_receipt(seconds, entry, &self.lease.cancellation(cancel))
+    }
     fn volume(&mut self, value: f64) -> Result<()> {
         self.inner.volume(value)
     }
@@ -319,7 +375,10 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
         let mut value = self.inner.poll()?;
         if let Some(entry) = value.entry_id {
             let failed = value.events.iter().any(|e| matches!(e, EngineEvent::Ended { entry_id, error: -14, reason: EndReason::Error } if *entry_id == entry));
-            if failed && self.recover_output().is_ok() {
+            if failed
+                && self.inner.local_equalizer_entry() != Some(entry)
+                && self.recover_output().is_ok()
+            {
                 for event in &mut value.events {
                     if matches!(event, EngineEvent::Ended { entry_id, error: -14, reason: EndReason::Error } if *entry_id == entry)
                     {

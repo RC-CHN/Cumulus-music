@@ -1,5 +1,5 @@
 use super::{
-    PlaybackCommand, PlaybackSpeedScope, PlaybackStatus, Reply, Request,
+    PlaybackCommand, PlaybackSpeedScope, PlaybackStatus, Reply, Request, Response,
     load::{LoadOptions, LoadSource},
     state::Actor,
 };
@@ -225,9 +225,10 @@ impl Actor {
             PlaybackCommand::RetryLoudness => self.loudness_retry().await,
             PlaybackCommand::RepairLoudness => self.loudness_repair().await,
             PlaybackCommand::RepairQuality => self.quality_repair(),
-            PlaybackCommand::UpdateQueue(value) => {
-                self.update_queue(value).await.map(|value| options = value)
-            }
+            PlaybackCommand::UpdateQueue(value) => self
+                .update_queue(value, Some(&request.reply))
+                .await
+                .map(|value| options = value),
             PlaybackCommand::RetainCurrentQueueAndPlay(queue) => self
                 .retain_current_queue_and_play(queue)
                 .await
@@ -257,9 +258,10 @@ impl Actor {
                 .intelligence(value.action)
                 .await
                 .map(|value| options = value),
-            PlaybackCommand::ApplyRemote(value) => {
-                self.apply_remote(value).await.map(|value| options = value)
-            }
+            PlaybackCommand::ApplyRemote(value) => self
+                .apply_remote(value, Some(&request.reply))
+                .await
+                .map(|value| options = value),
             PlaybackCommand::Replace {
                 mut resources,
                 index,
@@ -341,10 +343,18 @@ impl Actor {
                 }
             }
             PlaybackCommand::Pause(paused) => self.pause(paused).await,
-            PlaybackCommand::Seek(seconds) => self.seek(seconds).await,
+            PlaybackCommand::Seek(seconds) => {
+                self.seek(
+                    seconds,
+                    &request.reply,
+                    request.guard.map(|(_, cancel)| cancel),
+                )
+                .await
+            }
             PlaybackCommand::SeekDuringLoad(seconds) => {
                 if let Some((_, authority)) = request.guard {
-                    self.seek_during_load(seconds, authority).await
+                    self.seek_during_load(seconds, authority, &request.reply)
+                        .await
                 } else {
                     Err(Error::InvalidInput(
                         "loading seek requires a playback fence",
@@ -631,18 +641,68 @@ impl Actor {
         };
         self.persist_transport().await
     }
-    async fn seek(&mut self, seconds: f64) -> Result<()> {
+    async fn seek(
+        &mut self,
+        seconds: f64,
+        reply: &Response,
+        authority: Option<crate::playback::engine::Cancellation>,
+    ) -> Result<()> {
         self.require_loaded()?;
-        let media = self
-            .loaded
-            .as_ref()
-            .expect("checked")
-            .timeline
-            .to_media(seconds)?;
-        super::engine(self.engine.clone(), self.guard(), move |engine| {
-            engine.seek(media)
+        let loaded = self.loaded.as_ref().expect("checked");
+        let media = loaded.timeline.to_media(seconds)?;
+        let entry = loaded.media.entry_id;
+        let local_equalizer = loaded.local_equalizer;
+        let item = loaded.item.clone();
+        let paused = self.state == PlaybackStatus::Paused;
+        let cancel = self.guard();
+        let cancel = match authority.filter(|_| local_equalizer) {
+            Some(authority) => crate::playback::engine::Cancellation::new(move || {
+                !cancel.is_cancelled() && !authority.is_cancelled()
+            }),
+            None => cancel,
+        };
+        let seek_cancel = cancel.clone();
+        let result = super::engine(self.engine.clone(), cancel.clone(), move |engine| {
+            engine.seek_with_receipt(media, entry, &seek_cancel)
         })
-        .await?;
+        .await;
+        match result {
+            Ok(Some(media)) => {
+                let finish = async {
+                    if reply.is_closed() {
+                        return Err(Error::Cancelled);
+                    }
+                    self.queue.reload()?;
+                    if self.queue.selected().as_ref() != Some(&item) {
+                        return Err(Error::QueueChanged);
+                    }
+                    let replacement = media.entry_id;
+                    super::engine(self.engine.clone(), cancel, move |engine| {
+                        if engine.local_equalizer_entry() != Some(replacement) {
+                            return Err(Error::StaleResponse);
+                        }
+                        // This unpause goes through native focus/output.
+                        engine.pause(paused)
+                    })
+                    .await
+                }
+                .await;
+                if let Err(error) = finish {
+                    self.stop_after_poll_failure(&error).await;
+                    return Err(error);
+                }
+                self.loaded.as_mut().expect("checked").media = media;
+                self.native_seeking = false;
+                self.deferred_events.clear();
+            }
+            Ok(None) => {}
+            Err(error) => {
+                if local_equalizer {
+                    self.stop_after_poll_failure(&error).await;
+                }
+                return Err(error);
+            }
+        }
         self.parametric.reset_activity();
         self.position = Some(seconds);
         self.paused_seek = self.state == PlaybackStatus::Paused;
@@ -654,13 +714,14 @@ impl Actor {
         &mut self,
         seconds: f64,
         authority: crate::playback::engine::Cancellation,
+        reply: &Response,
     ) -> Result<()> {
         if self.queue.is_fm() {
             return Err(Error::State("FM queue requires its coordinator"));
         }
         let Some(pending) = &mut self.pending else {
             // The decoder may complete after the client captured the fence.
-            return self.seek(seconds).await;
+            return self.seek(seconds, reply, Some(authority)).await;
         };
         let timeline = pending
             .timeline

@@ -100,6 +100,9 @@ impl EqualizerSettings {
     pub(crate) fn requests_activation(self) -> bool {
         !self.master_bypassed && (self.enabled || self.tone_enabled())
     }
+    pub(crate) fn master_bypassed(self) -> bool {
+        self.master_bypassed
+    }
     pub fn with_tone_enabled(mut self, enabled: bool) -> Self {
         self.tone_enabled = Some(enabled);
         self

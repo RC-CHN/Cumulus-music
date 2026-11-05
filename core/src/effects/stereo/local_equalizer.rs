@@ -11,6 +11,19 @@ pub struct LocalEqualizerMaterialPlan {
 }
 
 impl LocalEqualizerMaterialPlan {
+    pub(crate) fn from_saved(settings: crate::effects::equalizer::EqualizerSettings) -> Self {
+        let (bass, treble) = settings.tone();
+        Self {
+            geq: settings.geq_active().then(|| *settings.gains()),
+            tone: if settings.tone_active() {
+                [bass, treble]
+            } else {
+                [0, 0]
+            },
+            stereo: [0, 0],
+        }
+    }
+
     /// Parse the old M3091 local equalizer contract. An off RVB object may
     /// still contain inactive controls, as the official None preset does.
     /// This parses settings only; it does not authorize a source or effect.

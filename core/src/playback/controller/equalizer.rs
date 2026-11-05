@@ -4,7 +4,10 @@ use crate::{
     effects::equalizer::{
         EqualizerPreferences, EqualizerPreset, EqualizerSettings, EqualizerStatus,
     },
-    playback::{engine::Cancellation, source::ResolvedSource},
+    playback::{
+        engine::{Cancellation, LoadedMedia},
+        source::ResolvedSource,
+    },
 };
 
 impl Actor {
@@ -107,6 +110,19 @@ impl Actor {
             .await
     }
 
+    pub(super) async fn local_equalizer_stock(&mut self, entry: i64) -> Result<LoadedMedia> {
+        let guard = self.guard();
+        let cancel = guard.clone();
+        let media = super::engine(self.engine.clone(), guard, move |engine| {
+            engine.yield_local_equalizer(entry, &cancel)
+        })
+        .await?;
+        self.equalizer_read()?;
+        self.equalizer_apply().await?;
+        self.local_equalizer_needs_sync = false;
+        Ok(media)
+    }
+
     /// M/308 checks the accepted source after native Play, using the actual
     /// online representation. Ge is a latch, not a permanent format ban.
     pub(super) fn equalizer_source_transition(&self, source: &ResolvedSource) -> Option<bool> {
@@ -132,12 +148,19 @@ impl Actor {
         source_bypassed: bool,
         cancel: Cancellation,
     ) -> Result<()> {
-        let settings = self.equalizer.preferences.settings.effective();
+        let settings = self.equalizer.preferences.settings;
         let result = super::engine(self.engine.clone(), cancel, move |engine| {
+            if engine.local_equalizer_entry().is_some() {
+                if let Err(error) = engine.apply_local_equalizer(settings) {
+                    let _ = engine.stop();
+                    return Err(error);
+                }
+                return Ok(EqualizerStatus::Configured);
+            }
             let apply = if source_bypassed {
                 engine.bypass_equalizer_for_source()
             } else {
-                engine.apply_equalizer(settings)
+                engine.apply_equalizer(settings.effective())
             };
             match apply {
                 Ok(available) => Ok(if available {
@@ -183,6 +206,7 @@ impl Actor {
         self.equalizer = Default::default();
         self.equalizer_initialized = false;
         self.equalizer_source_latch = false;
+        self.local_equalizer_needs_sync = false;
         super::engine(self.engine.clone(), Cancellation::default(), |engine| {
             engine.clear_equalizer()
         })
@@ -197,6 +221,13 @@ impl Actor {
         }
         let source_bypassed = self.equalizer.source_bypassed;
         let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
+            if engine.local_equalizer_entry().is_some() {
+                return Ok(if engine.local_equalizer_processing()? {
+                    EqualizerStatus::Processing
+                } else {
+                    EqualizerStatus::Configured
+                });
+            }
             match engine.observe_equalizer() {
                 Ok(Some(stats)) if stats.failed_blocks == 0 => Ok(
                     if !source_bypassed

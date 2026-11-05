@@ -6,7 +6,7 @@ use cumulus_core::{
         directory::{EffectDirectoryDetail, EffectDirectoryRow},
         service::DeviceMaterialCheck,
     },
-    playback::engine::{MpvConfig, MpvEngine},
+    playback::engine::{MpvConfig, MpvEngine, TrustedFlacRuntime},
 };
 use std::path::{Path, PathBuf};
 
@@ -40,6 +40,27 @@ fn resolve_library(resources: &Path, executable: Option<&Path>, filename: &str) 
     bundled.is_file().then_some(bundled)
 }
 
+fn packaged_flac(resources: &Path) -> Option<TrustedFlacRuntime> {
+    #[cfg(target_os = "linux")]
+    const PACKAGED: Option<(&str, &str)> = match option_env!("CUMULUS_PACKAGED_LINUX_FLAC_SHA256") {
+        Some(sha) => Some(("libcumulus_flac150.so.14", sha)),
+        None => None,
+    };
+    #[cfg(target_os = "windows")]
+    const PACKAGED: Option<(&str, &str)> = match option_env!("CUMULUS_PACKAGED_WINDOWS_FLAC_SHA256")
+    {
+        Some(sha) => Some(("libFLAC.dll", sha)),
+        None => None,
+    };
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    const PACKAGED: Option<(&str, &str)> = None;
+
+    let (filename, sha) = PACKAGED?;
+    let executable = std::env::current_exe().ok();
+    let path = resolve_library(resources, executable.as_deref(), filename)?;
+    TrustedFlacRuntime::new(path, sha).ok()
+}
+
 /// Native launch/package paths only; no IPC accepts a dynamic-library path.
 /// null_output is used by native desktop verification, never a UI setting.
 pub fn configure_native_audio(
@@ -48,15 +69,21 @@ pub fn configure_native_audio(
     null_output: bool,
 ) -> MusicClient {
     let path = library(resources);
+    let resources = resources.to_path_buf();
     client.with_audio_factory(move || {
         let engine = MpvEngine::open(MpvConfig {
             null_output,
             ..Default::default()
         })?;
-        Ok(Box::new(match &path {
+        let engine = match &path {
             Some(path) => engine.with_effects_library(path.clone()),
             None => engine,
-        }))
+        };
+        let engine = match packaged_flac(&resources) {
+            Some(runtime) => engine.with_local_equalizer_decoder(runtime),
+            None => engine,
+        };
+        Ok(Box::new(engine))
     })
 }
 

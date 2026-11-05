@@ -1,5 +1,5 @@
 use super::{
-    PlaybackStatus, RemotePlayback,
+    PlaybackStatus, RemotePlayback, Response,
     load::{LoadOptions, LoadSource},
     state::Actor,
 };
@@ -47,7 +47,7 @@ impl Actor {
             || self.quality_task.is_some()
             || !self.state.active()
         {
-            return self.update_queue(value).await;
+            return self.update_queue(value, None).await;
         }
         value.queue.validate()?;
         self.save_position()?;
@@ -156,6 +156,7 @@ impl Actor {
     pub(super) async fn update_queue(
         &mut self,
         value: super::QueueUpdate,
+        reply: Option<&Response>,
     ) -> Result<Option<LoadOptions>> {
         value.queue.validate()?;
         if value
@@ -217,12 +218,15 @@ impl Actor {
             }));
         }
         if let Some(transport) = value.transport {
-            self.apply_remote(RemotePlayback {
-                expected: value.expected,
-                entry_id: after.expect("checked").entry_id,
-                position: transport.position.or(self.position).unwrap_or(0.0),
-                paused,
-            })
+            self.apply_remote(
+                RemotePlayback {
+                    expected: value.expected,
+                    entry_id: after.expect("checked").entry_id,
+                    position: transport.position.or(self.position).unwrap_or(0.0),
+                    paused,
+                },
+                reply,
+            )
             .await
         } else {
             Ok(None)
@@ -252,6 +256,7 @@ impl Actor {
     pub(super) async fn apply_remote(
         &mut self,
         value: RemotePlayback,
+        reply: Option<&Response>,
     ) -> Result<Option<LoadOptions>> {
         if !value.position.is_finite() || value.position < 0.0 {
             return Err(Error::InvalidInput("invalid remote playback position"));
@@ -274,28 +279,62 @@ impl Actor {
                 ..Default::default()
             }));
         }
-        let position = self
-            .loaded
-            .as_ref()
-            .expect("checked")
-            .timeline
-            .to_media(value.position)?;
+        let loaded = self.loaded.as_ref().expect("checked");
+        let position = loaded.timeline.to_media(value.position)?;
+        let entry = loaded.media.entry_id;
+        let local_equalizer = loaded.local_equalizer;
+        let item = loaded.item.clone();
+        let cancel = self.guard();
+        let seek_cancel = cancel.clone();
         let result = self
-            .parametric_transport(value.paused, self.guard(), move |engine| {
+            .parametric_transport(value.paused, cancel.clone(), move |engine| {
                 if value.paused {
                     engine.pause(true)?;
                 }
-                engine.seek(position)?;
-                engine.pause(value.paused)
+                let replacement = engine.seek_with_receipt(position, entry, &seek_cancel)?;
+                if !local_equalizer {
+                    engine.pause(value.paused)?;
+                }
+                Ok(replacement)
             })
             .await;
-        if let Err(error) = result {
-            // Never present a partly applied command as success. Stop after an
-            // engine failure; the together inbox retains recovery responsibility.
-            let _ = self.stop(false).await;
-            self.state = PlaybackStatus::Error;
-            self.record_failure(&error);
-            return Err(error);
+        match result {
+            Ok(Some(media)) => {
+                let resume = async {
+                    if reply.is_some_and(Response::is_closed) {
+                        return Err(Error::Cancelled);
+                    }
+                    self.queue.reload()?;
+                    if self.queue.selected().as_ref() != Some(&item) {
+                        return Err(Error::QueueChanged);
+                    }
+                    let entry = media.entry_id;
+                    self.parametric_transport(value.paused, cancel, move |engine| {
+                        if engine.local_equalizer_entry() != Some(entry) {
+                            return Err(Error::StaleResponse);
+                        }
+                        engine.pause(value.paused)
+                    })
+                    .await
+                }
+                .await;
+                if let Err(error) = resume {
+                    self.stop_after_poll_failure(&error).await;
+                    return Err(error);
+                }
+                self.loaded.as_mut().expect("checked").media = media;
+                self.native_seeking = false;
+                self.deferred_events.clear();
+            }
+            Ok(None) => {}
+            Err(error) => {
+                // Never present a partly applied command as success. Stop after an
+                // engine failure; the together inbox retains recovery responsibility.
+                let _ = self.stop(false).await;
+                self.state = PlaybackStatus::Error;
+                self.record_failure(&error);
+                return Err(error);
+            }
         }
         self.position = Some(value.position);
         self.paused_seek = value.paused;

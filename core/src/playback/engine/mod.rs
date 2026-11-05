@@ -2,6 +2,7 @@
 //! blocking worker, never the WebView thread. No shell or Python process.
 mod bmff;
 mod ffi;
+mod flac_runtime;
 mod frames;
 mod limiter_segment;
 mod mpv;
@@ -12,6 +13,7 @@ mod stereo_transport;
 mod types;
 mod video;
 use crate::Result;
+pub use flac_runtime::TrustedFlacRuntime;
 pub use frames::{VideoFrame, VideoFrames};
 pub use limiter_segment::ColdLimiterWave;
 pub(crate) use limiter_segment::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
@@ -150,6 +152,40 @@ pub trait AudioEngine: Send {
         Ok(())
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia>;
+    fn supports_local_equalizer(&self) -> bool {
+        false
+    }
+    /// A native, explicitly opened file can use the recovered combined EQ
+    /// material. Backends without that decoder keep their ordinary load.
+    fn load_with_local_equalizer(
+        &mut self,
+        request: LoadRequest,
+        _: crate::effects::equalizer::EqualizerSettings,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.load(request, cancel)
+    }
+    /// Identifies the bound native entry, never a queue item or UI authority.
+    fn local_equalizer_entry(&self) -> Option<i64> {
+        None
+    }
+    fn pump_local_equalizer(&mut self) -> Result<()> {
+        Ok(())
+    }
+    fn apply_local_equalizer(
+        &mut self,
+        _: crate::effects::equalizer::EqualizerSettings,
+    ) -> Result<()> {
+        Err(crate::Error::State("native local equalizer is unavailable"))
+    }
+    fn local_equalizer_processing(&mut self) -> Result<bool> {
+        Ok(false)
+    }
+    /// An explicit request for an independent filter can leave the combined
+    /// graph without reopening the file. Returns a new, paused stock entry.
+    fn yield_local_equalizer(&mut self, _: i64, _: &Cancellation) -> Result<LoadedMedia> {
+        Err(crate::Error::State("native local equalizer is unavailable"))
+    }
     /// A native reader pilot can use only a verified read-only stream adapter.
     fn streaming_audio_available(&mut self) -> bool {
         false
@@ -199,6 +235,17 @@ pub trait AudioEngine: Send {
     }
     fn pause(&mut self, paused: bool) -> Result<()>;
     fn seek(&mut self, seconds: f64) -> Result<()>;
+    /// A held source replaces the native decoder entry while retaining the
+    /// logical play. Its caller re-applies pause intent through the outer host.
+    fn seek_with_receipt(
+        &mut self,
+        seconds: f64,
+        _: i64,
+        _: &Cancellation,
+    ) -> Result<Option<LoadedMedia>> {
+        self.seek(seconds)?;
+        Ok(None)
+    }
     fn volume(&mut self, value: f64) -> Result<()>;
     fn speed(&mut self, value: f64) -> Result<()>;
     fn stop(&mut self) -> Result<()>;
