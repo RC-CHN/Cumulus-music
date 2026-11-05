@@ -2,6 +2,8 @@ mod audio_toplist;
 mod default_context;
 pub(crate) mod experiment;
 mod lyrics;
+mod queue_drop;
+pub use queue_drop::SearchDropRow;
 mod reason;
 mod results;
 pub use reason::{ReasonTarget, SearchReasonPage};
@@ -25,6 +27,15 @@ pub enum SearchHistoryCommand {
 }
 
 impl MusicClient {
+    pub(super) fn search_drop_rows(
+        &self,
+        token: &crate::account::SessionToken,
+        rows: &[SearchDropRow],
+    ) -> Result<Vec<super::dto::TrackView>> {
+        self.session
+            .with_token(token, |_| self.search.queue_drops.resolve(token, rows))
+    }
+
     pub async fn search_discovery(
         &self,
         epoch: &str,

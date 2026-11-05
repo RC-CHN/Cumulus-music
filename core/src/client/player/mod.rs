@@ -543,6 +543,25 @@ impl MusicClient {
         }
         use queue_drop::{DropSource, DropTarget};
         match action {
+            PlayerAction::DropSearchSongsIntoQueue {
+                rows,
+                quality,
+                expected_queue_revision,
+                expected_play_id,
+                before_entry_id,
+            } => {
+                return self
+                    .drop_into_queue(
+                        epoch,
+                        DropSource::Search { rows, quality },
+                        DropTarget {
+                            expected_queue_revision,
+                            expected_play_id,
+                            before_entry_id,
+                        },
+                    )
+                    .await;
+            }
             PlayerAction::DropLocalIntoQueue {
                 query,
                 revision,
@@ -1341,6 +1360,7 @@ impl MusicClient {
             | PlayerAction::DropLocalIntoQueue { .. }
             | PlayerAction::DropPlaylistSongIntoQueue { .. }
             | PlayerAction::DropPlaylistSongsIntoQueue { .. }
+            | PlayerAction::DropSearchSongsIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
             | PlayerAction::QueueVerticalZonePlaylistAll { .. }
             | PlayerAction::QueueVerticalZonePlaylistNext { .. }

@@ -63,6 +63,7 @@ const props = defineProps<{
   busyLikes: Set<string>;
   playable: boolean;
   queueable: boolean;
+  queueDropEnabled: boolean;
   voiceQueueable: boolean;
   voiceQueueFeedback: string;
   playlistActionBusy: boolean;
@@ -112,6 +113,11 @@ const emit = defineEmits<{
   playCard: [item: SearchItem];
   togglePendingVoice: [target: SearchPendingVoiceToggle, anchor: HTMLButtonElement];
   queueCard: [request: SearchQueueRequest];
+  queueDrag: [
+    event: PointerEvent,
+    rows: { receipt: string; trackId: string }[],
+    current: () => boolean,
+  ];
   queueVoice: [id: string];
   cardComments: [item: SearchItem];
   cardDownload: [item: SearchItem];
@@ -174,6 +180,34 @@ const visibleTabs = computed(() => displayedSearchCategories(model.tabs.value, c
 const selected = computed(() => visibleTabs.value.find((c) => c.key === category.value)!);
 const tracks = (section: SearchSection) =>
   section.items.flatMap((i) => (i.kind === 'song' ? [i.track] : []));
+function startQueueDrop(
+  event: PointerEvent,
+  section: SearchSection,
+  rows: { track: TrackView; index: number }[],
+  selectionCurrent: () => boolean,
+) {
+  if (category.value !== 'songs' || !props.queueDropEnabled || loading.value) return;
+  const snapshot = view.value;
+  const items = section.items.filter((item) => item.kind === 'song');
+  const page = props.searchId;
+  const epoch = props.account.epoch;
+  const current = () =>
+    props.queueDropEnabled &&
+    category.value === 'songs' &&
+    !loading.value &&
+    page === props.searchId &&
+    epoch === props.account.epoch &&
+    view.value === snapshot &&
+    selectionCurrent();
+  const tickets = rows.flatMap(({ track, index }) => {
+    const item = items[index];
+    return item?.track === track && item.queueDropReceipt
+      ? [{ receipt: item.queueDropReceipt, trackId: track.id }]
+      : [];
+  });
+  if (tickets.length && tickets.length === rows.length && current())
+    emit('queueDrag', event, tickets, current);
+}
 const originalRecordings = computed(
   () =>
     new Set(
@@ -921,6 +955,12 @@ onBeforeUnmount(() => {
               v-else-if="section.items.some((i) => i.kind === 'song')"
               ref="searchSongTables"
               :tracks="tracks(section)"
+              :queue-drop-enabled="category === 'songs' && queueDropEnabled"
+              :playlist-selection-scope="
+                category === 'songs'
+                  ? JSON.stringify([account.epoch, searchId, keyword, offset, section.id])
+                  : undefined
+              "
               :original-recordings="originalRecordings"
               :match-keyword="matchKeyword"
               :liked="liked"
@@ -930,6 +970,7 @@ onBeforeUnmount(() => {
               :current-toggle="currentToggle"
               :pending-toggle="pendingTrackToggle"
               navigable
+              @queue-drag="(event, rows, current) => startQueueDrop(event, section, rows, current)"
               @play="
                 (index, gesture) => playTrack(tracks(section)[index], gesture === 'double_click')
               "

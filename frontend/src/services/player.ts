@@ -267,7 +267,16 @@ export type PlaylistQueueDropSource = {
   sourceChanged: () => void;
   current: () => boolean;
 };
-export type QueueDropSource = LocalQueueDropSource | PlaylistQueueDropSource;
+export type SearchQueueDropSource = {
+  kind: 'search';
+  rows: { receipt: string; trackId: string }[];
+  quality: Quality;
+  current: () => boolean;
+};
+export type QueueDropSource =
+  | LocalQueueDropSource
+  | PlaylistQueueDropSource
+  | SearchQueueDropSource;
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
 export type SongRowDoubleClickSelection =
   | ({
@@ -469,6 +478,14 @@ export type PlayerAction =
       id: string;
       revision: string;
       rows: { track_id: string; track_index: number }[];
+      quality: Quality;
+      expected_queue_revision: string;
+      expected_play_id: string | null;
+      before_entry_id: string | null;
+    }
+  | {
+      kind: 'drop_search_songs_into_queue';
+      rows: { receipt: string; track_id: string }[];
       quality: Quality;
       expected_queue_revision: string;
       expected_play_id: string | null;

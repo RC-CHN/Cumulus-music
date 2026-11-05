@@ -587,12 +587,17 @@ impl MusicClient {
 
 pub(super) fn catalog_queue_resource(song: &Value, quality: Quality) -> Result<Value> {
     let v = mapping::track(song)?;
-    Ok(
-        json!({"id":v.id,"level":quality.as_str(),"dt":v.duration_ms,
-        "song":{"id":v.id,"name":v.name,"dt":v.duration_ms,"fee":v.fee,
-        "ar":v.artist_refs.iter().map(|a|json!({"id":a.id,"name":a.name})).collect::<Vec<_>>(),
-        "al":{"id":v.album_id,"name":v.album,"picUrl":v.cover_url}}}),
-    )
+    Ok(queue_resource_for_track(&v, quality))
+}
+
+pub(super) fn queue_resource_for_track(
+    v: &super::super::dto::TrackView,
+    quality: Quality,
+) -> Value {
+    json!({"id":v.id,"level":quality.as_str(),"dt":v.duration_ms,
+    "song":{"id":v.id,"name":v.name,"dt":v.duration_ms,"fee":v.fee,
+    "ar":v.artist_refs.iter().map(|a|json!({"id":a.id,"name":a.name})).collect::<Vec<_>>(),
+    "al":{"id":v.album_id,"name":v.album,"picUrl":v.cover_url}}})
 }
 
 fn resource_key(resource: &Value, downloaded: bool) -> Option<(PlayerResourceKind, &str)> {

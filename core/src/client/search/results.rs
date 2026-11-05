@@ -17,6 +17,8 @@ use std::sync::Arc;
 pub enum SearchItem {
     Song {
         track: TrackView,
+        #[serde(rename = "queueDropReceipt", skip_serializing_if = "Option::is_none")]
+        queue_drop_receipt: Option<String>,
         #[serde(rename = "mvId", skip_serializing_if = "Option::is_none")]
         mv_id: Option<String>,
         #[serde(rename = "replacementMv", skip_serializing_if = "std::ops::Not::not")]
@@ -336,6 +338,11 @@ impl MusicClient {
                 };
                 view.tabs = tabs;
                 view.preview_layout = preview_layout;
+                if view.query.category == SearchCategory::Songs {
+                    self.session.with_token(token, |_| {
+                        view.publish_drop_receipts(&self.search.queue_drops, token)
+                    })?;
+                }
                 Ok(view)
             })
             .await?;
@@ -531,6 +538,7 @@ fn item(
             };
             SearchItem::Song {
                 track,
+                queue_drop_receipt: None,
                 mv_id,
                 replacement_mv: is_replacement,
                 hint,
@@ -605,6 +613,41 @@ fn correction(v: &Value) -> Option<String> {
         .find_map(|key| crate::catalog::search::keyword(v[key].as_str()?).ok())
 }
 impl SearchResultView {
+    fn publish_drop_receipts(
+        &mut self,
+        pages: &super::queue_drop::SearchDropPages,
+        token: &crate::account::SessionToken,
+    ) -> Result<()> {
+        let candidates = self
+            .sections
+            .iter()
+            .flat_map(|section| &section.items)
+            .filter_map(|item| match item {
+                SearchItem::Song {
+                    track,
+                    queue_drop_receipt: Some(_),
+                    ..
+                } => Some(track.clone()),
+                _ => None,
+            })
+            .collect();
+        let receipt = pages.capture(token, candidates)?;
+        for item in self
+            .sections
+            .iter_mut()
+            .flat_map(|section| &mut section.items)
+        {
+            if let SearchItem::Song {
+                queue_drop_receipt: ticket @ Some(_),
+                ..
+            } = item
+            {
+                *ticket = receipt.clone();
+            }
+        }
+        Ok(())
+    }
+
     fn empty(query: SearchResultQuery) -> Self {
         Self {
             next_offset: query.offset,
@@ -799,7 +842,24 @@ fn project(
             item(kind, base, uid, lyric, None, false)
         };
         match projected {
-            Ok(Some(item)) => section.items.push(item),
+            Ok(Some(mut item)) => {
+                if query.category == Songs
+                    && let SearchItem::Song {
+                        track,
+                        queue_drop_receipt,
+                        ..
+                    } = &mut item
+                    && !track.missing
+                    && !track.local
+                    && track.voice_id.is_none()
+                    && !js_truthy(&base["privilege"]["cs"])
+                    && super::queue_drop::bounded_track(track)
+                {
+                    // Only the song-tab projector may mark a row for issuance.
+                    *queue_drop_receipt = Some(String::new());
+                }
+                section.items.push(item);
+            }
             Ok(None) | Err(_) => result.unavailable_count += 1,
         }
     }

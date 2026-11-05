@@ -17,6 +17,10 @@ use std::{
 use super::{identity::collection_key, queue_playlist::QUEUE_LIMIT};
 
 pub(super) enum DropSource {
+    Search {
+        rows: Vec<super::super::search::SearchDropRow>,
+        quality: Quality,
+    },
     Local {
         query: LocalQuery,
         revision: String,
@@ -84,6 +88,17 @@ impl MusicClient {
         };
         let attempt = self.player.selection.load(Ordering::Acquire);
         let (resources, origin) = match source {
+            DropSource::Search { rows, quality } => {
+                let rows = self.search_drop_rows(&token, &rows)?;
+                let resources = rows
+                    .iter()
+                    .map(|row| super::queue_playlist::queue_resource_for_track(row, quality))
+                    .collect();
+                (
+                    resources,
+                    json!({"kind":"songs","scene":"search","label":"搜索页"}),
+                )
+            }
             DropSource::Local {
                 mut query,
                 revision,

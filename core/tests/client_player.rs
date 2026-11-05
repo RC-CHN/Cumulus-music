@@ -144,6 +144,7 @@ impl Api for Backend {
                     json!({"code":200,"comments":comments,"hotComments":(4..10).map(row).collect::<Vec<_>>(),
                            "topComments":[row(10)],"total":3,"more":first,"moreHot":true})
                 }
+                "/api/search/song/list/page" => search_queue_drop::response(&payload),
                 "/api/w/nuser/account/get" => json!({"code":200,"profile":{"userId":9}}),
                 "/api/rtrs/abt/front/expinfo/list" => {
                     assert_eq!(payload, json!({"expNames":"StandardAudio_VIPLogo_PCV2"}));
@@ -360,6 +361,9 @@ mod vinyl_comments;
 
 #[path = "client_player/vinyl_composer.rs"]
 mod vinyl_composer;
+
+#[path = "client_player/search_queue_drop.rs"]
+mod search_queue_drop;
 
 #[path = "client_player/queue_click.rs"]
 mod queue_click;

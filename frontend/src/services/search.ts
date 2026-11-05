@@ -56,6 +56,7 @@ export type SearchItem =
       kind: 'song';
       track: TrackView;
       excerpt: string[];
+      queueDropReceipt?: string;
       excerptTruncated?: boolean;
       mvId?: string;
       replacementMv?: boolean;

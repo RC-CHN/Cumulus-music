@@ -3046,6 +3046,33 @@ const canDropPlaylistSong = computed(
     queuePanel.value?.canDrop === true &&
     !loading.value,
 );
+const canDropSearchSong = computed(
+  () =>
+    account.value.status === 'authenticated' &&
+    page.value.kind === 'search' &&
+    page.value.category === 'songs' &&
+    player.queueOpen.value &&
+    queuePanel.value?.canDrop === true,
+);
+function startSearchQueueDrop(
+  event: PointerEvent,
+  rows: { receipt: string; trackId: string }[],
+  selectionCurrent: () => boolean,
+) {
+  if (!canDropSearchSong.value) return;
+  const route = page.value;
+  const epoch = account.value.epoch;
+  queuePanel.value?.beginDrop(event, {
+    kind: 'search',
+    rows,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+    current: () =>
+      canDropSearchSong.value &&
+      page.value === route &&
+      account.value.epoch === epoch &&
+      selectionCurrent(),
+  });
+}
 function startPlaylistQueueDrop(
   event: PointerEvent,
   rows: { track: TrackView; index: number }[],
@@ -4422,6 +4449,7 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
                 :queueable="searchCollectionQueueable"
+                :queue-drop-enabled="canDropSearchSong"
                 :voice-queueable="ordinaryVoiceQueueable"
                 :voice-queue-feedback="searchVoiceQueueFeedback"
                 :playlist-action-busy="
@@ -4470,6 +4498,7 @@ onUnmounted(() => {
                 @play-card="playSearchCard"
                 @queue-card="queueSearchCard"
                 @queue-voice="queueSearchVoice"
+                @queue-drag="startSearchQueueDrop"
                 @playlist-download="
                   (list) => page.kind === 'search' && signedIn && playlistAction(list, 'download')
                 "

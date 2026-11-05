@@ -427,6 +427,13 @@ pub enum PlayerAction {
         expected_play_id: Option<String>,
         before_entry_id: Option<String>,
     },
+    DropSearchSongsIntoQueue {
+        rows: Vec<super::super::search::SearchDropRow>,
+        quality: Quality,
+        expected_queue_revision: String,
+        expected_play_id: Option<String>,
+        before_entry_id: Option<String>,
+    },
     QueueDownloads {
         task_ids: Vec<String>,
         expected_queue_revision: String,

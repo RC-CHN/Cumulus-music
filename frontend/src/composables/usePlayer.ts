@@ -989,6 +989,13 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             ...target,
           };
         }
+        if (source.kind === 'search')
+          return {
+            kind: 'drop_search_songs_into_queue',
+            rows: source.rows.map(({ receipt, trackId }) => ({ receipt, track_id: trackId })),
+            quality: source.quality,
+            ...target,
+          };
         const rows = source.rows.map(({ trackId, trackIndex }) => ({
           track_id: trackId,
           track_index: trackIndex,
