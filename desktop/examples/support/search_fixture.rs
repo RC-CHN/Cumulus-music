@@ -241,6 +241,16 @@ pub fn initialize(store: &StateStore) -> Result<()> {
                     .collect::<Vec<_>>()
             ),
         )?;
+        // A failed signed refresh keeps an older layout in M/147. This is only
+        // layout history: the native footer gate must still reject the failure.
+        if std::env::var("CUMULUS_SEARCH_FOOTER_PROOF").as_deref() == Ok("error") {
+            store.put(
+                "2",
+                "search-experiment-v1",
+                "assignment-v2",
+                &json!({"v3":true,"expanded":false,"dense":false,"attempted_at":0}),
+            )?;
+        }
     }
     Ok(())
 }
