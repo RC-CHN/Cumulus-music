@@ -32,10 +32,7 @@
   function choices() {
     return [...(choiceGroup()?.querySelectorAll('label') ?? [])].map((label) => {
       const radio = one('input', label);
-      const name = [...label.childNodes]
-        .filter((node) => node.nodeType === Node.TEXT_NODE)
-        .map((node) => node.textContent.trim())
-        .join('');
+      const name = one('.download-quality-name', label).textContent.trim();
       return { name, radio, disabled: radio.matches(':disabled'), checked: radio.checked,
         caption: one('small', label)?.textContent.trim() ?? '' };
     });
@@ -46,6 +43,24 @@
     assert(rows.slice(0, 2).every((row) => row.disabled && row.caption === (verified ? '需黑胶 SVIP' : '权益待核对')), 'SVIP rows');
     assert(rows.slice(2, 5).every((row) => row.disabled === !verified && row.caption === (verified ? '' : '权益待核对')), 'verified VIP rows');
     assert(rows.slice(5).every((row) => !row.disabled && !row.caption), 'free rows');
+    const firstRow = new Map();
+    const textBox = (node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getBoundingClientRect();
+    };
+    for (const row of rows) {
+      const label = row.radio.closest('label');
+      const name = textBox(one('.download-quality-name', label));
+      const captionNode = one('small', label);
+      const caption = captionNode && textBox(captionNode);
+      const top = Math.round(label.getBoundingClientRect().top);
+      assert(!caption || (caption.top >= name.bottom && Math.abs(caption.left - name.left) < 1),
+        'rights caption stays under the name');
+      assert(!firstRow.has(top) || Math.abs(firstRow.get(top) - name.top) < 1,
+        'quality names align even when a neighbour has an access caption');
+      firstRow.set(top, name.top);
+    }
   }
   function retainedVivid() {
     return dialog()?.textContent.includes('保留已保存的音质：臻音全景声') &&

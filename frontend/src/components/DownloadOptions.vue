@@ -41,7 +41,7 @@ const captions = {
         <label
           v-for="choice in qualitySettings.choices"
           :key="choice.quality"
-          class="private-checkbox"
+          class="private-checkbox download-quality-choice"
         >
           <input
             type="radio"
@@ -50,8 +50,12 @@ const captions = {
             :disabled="choice.access !== 'allowed'"
             @change="model.quality = choice.quality"
           />
-          {{ label(choice.quality) }}
-          <small v-if="captions[choice.access]" class="muted">{{ captions[choice.access] }}</small>
+          <span class="download-quality-copy">
+            <span class="download-quality-name">{{ label(choice.quality) }}</span>
+            <small v-if="captions[choice.access]" class="muted">{{
+              captions[choice.access]
+            }}</small>
+          </span>
         </label>
       </div>
       <p v-if="retained" class="muted">保留已保存的音质：{{ retained }}</p>
@@ -93,8 +97,23 @@ const captions = {
   grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr));
   gap: 8px 12px;
 }
-.download-quality-choices label {
-  flex-wrap: wrap;
-  align-items: center;
+.download-quality-choices .download-quality-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: start;
+  align-items: start;
+  gap: 0 8px;
+  margin: 0;
+  padding-block: 4px;
+}
+.download-quality-choice input {
+  margin-block-start: 2px;
+}
+.download-quality-copy {
+  display: grid;
+  gap: 2px;
+}
+.download-quality-copy small {
+  text-align: start;
 }
 </style>
