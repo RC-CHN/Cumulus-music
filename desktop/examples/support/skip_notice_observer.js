@@ -6,9 +6,12 @@ window.__observeOrdinarySkipNotice = () => {
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (condition, message) => { if (!condition) throw new Error(message); };
   const now = () => performance.now();
+  // Vue's TransitionGroup briefly inserts a shallow display:none clone to
+  // measure its move style. It is not an announced or painted notice.
+  const realNotice = (node) => node.style.display !== 'none';
   let frame;
   function record(node) {
-    if (!records.has(node)) records.set(node, {
+    if (realNotice(node) && !records.has(node)) records.set(node, {
       text: node.textContent.trim(), role: node.getAttribute('role'),
       mountedAt: now(), visibleAt: null, removedAt: null,
     });
@@ -25,7 +28,7 @@ window.__observeOrdinarySkipNotice = () => {
       node.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2));
   }
   function scan() {
-    const active = [...document.querySelectorAll(selector)];
+    const active = [...document.querySelectorAll(selector)].filter(realNotice);
     for (const node of active) {
       record(node);
       const row = records.get(node);
@@ -81,7 +84,8 @@ window.__observeOrdinarySkipNotice = () => {
     if (expect) {
       while (now() - start < 5000 && (scan().length || [...records.values()].some((row) => row.removedAt === null)))
         await sleep(45);
-      assert(scan().length === 0 && records.size === 1, 'ordinary notice removed once with no overlap or replay');
+      assert(scan().length === 0 && records.size === 1,
+        'ordinary notice removed once with no overlap or replay: ' + JSON.stringify([...records.values()]));
       const [row] = records.values();
       const elapsed = row.removedAt - row.mountedAt;
       assert(row.visibleAt !== null && elapsed >= 2500 && elapsed <= 4400, 'ordinary notice expired near three seconds');
