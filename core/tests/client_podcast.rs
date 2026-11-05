@@ -1,3 +1,5 @@
+#[path = "client_podcast/audiobook.rs"]
+mod audiobook;
 #[allow(dead_code)]
 #[path = "support/playback/mod.rs"]
 mod engine;
@@ -32,6 +34,7 @@ struct Backend {
     progress_started: tokio::sync::Notify,
     progress_released: tokio::sync::Notify,
     trial: AtomicBool,
+    audiobook: AtomicBool,
 }
 fn program(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"djPlayRecordVo":{"listenLocation":15000,"isListened":false},"cookie":"SECRET"})
@@ -129,7 +132,7 @@ impl Api for Backend {
                     if p["asc"] == false {
                         ids.reverse();
                     }
-                    json!({"code":200,"data":{"programs":ids.into_iter().skip(offset).take(limit).map(program).collect::<Vec<_>>(),"count":count,"more":offset+limit<count,"asc":p["asc"]}})
+                    json!({"code":200,"data":{"programs":ids.into_iter().skip(offset).take(limit).map(|id| self.episode(id)).collect::<Vec<_>>(),"count":count,"more":offset+limit<count,"asc":p["asc"]}})
                 }
                 "/api/content/my/liked/voice" => {
                     json!({"code":200,"data":{"data":self.liked.lock().unwrap().iter().map(|id|json!({"voiceId":id,"voiceName":"Liked","likeTime":1234})).collect::<Vec<_>>(),"hasMore":false}})
@@ -138,7 +141,11 @@ impl Api for Backend {
                     json!({"code":200,"data":{"resumePlayValue":u8::from(self.resume.load(Ordering::SeqCst))}})
                 }
                 "/api/dj/program/detail" => {
-                    json!({"code":200,"program":program(p["id"].as_str().unwrap().parse().unwrap())})
+                    json!({"code":200,"program":self.episode(p["id"].as_str().unwrap().parse().unwrap())})
+                }
+                "/api/voice/alg/skip/info/get" if self.audiobook.load(Ordering::SeqCst) => {
+                    assert_eq!(p, json!({"programIdsStr":["1"]}));
+                    json!({"code":200,"data":[{"programId":1,"skipBeginDuration":26,"skipEndDuration":16}]})
                 }
                 "/api/dj/play/url/check" => {
                     let id = p["voiceId"].as_str().unwrap().parse::<u64>().unwrap();
@@ -174,6 +181,17 @@ impl Api for Backend {
                 _ => panic!("unexpected {path} {p}"),
             })
         })
+    }
+}
+impl Backend {
+    fn episode(&self, id: u64) -> Value {
+        let mut value = program(id);
+        if self.audiobook.load(Ordering::SeqCst) {
+            value["radio"]["categoryId"] = json!(10001);
+            value["duration"] = json!(240000);
+            value["mainSong"]["duration"] = json!(240000);
+        }
+        value
     }
 }
 fn fixture() -> (

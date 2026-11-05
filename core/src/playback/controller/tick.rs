@@ -224,12 +224,32 @@ impl Actor {
                 matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Stop, .. }
                 if *entry_id == loaded.media.entry_id)
             });
-        let ended = failure.is_none()
+        let native_ended = failure.is_none()
             && !stopped
             && events.iter().any(|event| {
                 matches!(event, EngineEvent::Ended { entry_id, reason: EndReason::Eof, .. }
                 if *entry_id == loaded.media.entry_id)
             });
+        let skipped_outro = failure.is_none()
+            && !stopped
+            && !native_ended
+            && current_entry
+            && !view.paused
+            && !view.buffering
+            && !view.seeking
+            && !was_paused
+            && loaded.audiobook_skip.is_some_and(|intervals| {
+                current_position
+                    .and_then(|position| loaded.timeline.from_media(position).ok())
+                    .zip(loaded.timeline.display_end())
+                    .is_some_and(|(position, duration)| intervals.reaches_outro(position, duration))
+            });
+        if skipped_outro {
+            // The tail is a completed episode only after the actual native
+            // output has accepted Stop. A failed stop is a playback failure.
+            super::engine(self.engine.clone(), self.guard(), |engine| engine.stop()).await?;
+        }
+        let ended = native_ended || skipped_outro;
         let failed = failure.is_some();
         let failed_native_play = failed && !quitting
             && events.iter().any(|event| {

@@ -26,6 +26,7 @@ use tokio::{
 };
 
 pub(super) struct Loaded {
+    pub audiobook_skip: Option<crate::podcast::AudiobookIntervals>,
     pub history: crate::history::playback::Checkpoint,
     pub podcast_progress: Option<super::podcast_progress::Capture>,
     pub item: QueueEntry,
@@ -92,6 +93,8 @@ pub(super) struct Actor {
     pub error: Option<crate::playback::failure::PlaybackFailure>,
     pub history_error: Option<String>,
     pub podcast_publisher: Option<super::podcast_progress::Publisher>,
+    pub audiobook_skip_sequence: u64,
+    pub audiobook_skip_task: Option<JoinHandle<()>>,
     pub reset: bool,
     pub loaded: Option<Loaded>,
     pub source_retry: Option<SourceRetryPoint>,
@@ -175,6 +178,8 @@ impl Actor {
             error: None,
             history_error: None,
             podcast_publisher: None,
+            audiobook_skip_sequence: 0,
+            audiobook_skip_task: None,
             reset: false,
             loaded: None,
             source_retry: None,
@@ -324,6 +329,9 @@ impl Actor {
         )
     }
     pub async fn cancel_load(&mut self) -> Result<()> {
+        if let Some(task) = self.audiobook_skip_task.take() {
+            task.abort();
+        }
         self.cancel.cancel();
         self.paused_seek = false;
         self.native_seeking = false;
@@ -460,6 +468,8 @@ impl Actor {
                         }
                     },
                     Some(Message::Loaded { generation, result }) => self.loaded(generation,result).await,
+                    Some(Message::AudiobookSkipChanged { token, radio }) => self.refresh_audiobook_skip(token, radio),
+                    Some(Message::AudiobookSkipRefreshed(value)) => self.refreshed_audiobook_skip(value),
                     Some(Message::Quality(value)) => self.quality_ready(value).await,
                     Some(Message::Prefetched(value)) => self.prefetched(value),
                     Some(Message::QueueMoreGroups(value)) => self.queue_more_groups(value),

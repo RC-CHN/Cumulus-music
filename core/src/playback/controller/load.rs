@@ -39,6 +39,9 @@ pub(super) struct Prepared {
     pub timeline: Timeline,
     pub position: f64,
     pub reset: bool,
+    audiobook_skip: Option<crate::podcast::AudiobookIntervals>,
+    audiobook_skip_sequence: u64,
+    apply_audiobook_intro: bool,
 }
 
 fn loading_timeline(source: &ResolvedSource, item: &QueueEntry, timeline: Timeline) -> Timeline {
@@ -183,6 +186,9 @@ impl Actor {
         });
         self.power_pending();
         let resolver = self.resolver.clone();
+        let session = self.session.clone();
+        let audiobook_skip_sequence = self.audiobook_skip_sequence;
+        let apply_audiobook_intro = !same_play && item.source["scene"] != "playlistHandoff";
         let token = self.token.clone();
         let engine = self.engine.clone();
         let sender = self.sender.clone();
@@ -273,6 +279,10 @@ impl Actor {
                     position = timeline.snapshot().start;
                     reset = true;
                 }
+                let audiobook_skip =
+                    super::audiobook_skip::prepare(&session, &token, &item, &source, timeline)
+                        .await;
+                cancel.check()?;
                 Ok(Prepared {
                     item,
                     source,
@@ -280,6 +290,9 @@ impl Actor {
                     timeline,
                     position,
                     reset,
+                    audiobook_skip,
+                    audiobook_skip_sequence,
+                    apply_audiobook_intro,
                 })
             }
             .await;
@@ -320,6 +333,16 @@ impl Actor {
         let mut applied_seek = None;
         let result = match result {
             Ok(mut prepared) => {
+                if prepared.audiobook_skip_sequence == self.audiobook_skip_sequence
+                    && prepared.apply_audiobook_intro
+                    && let Some(intervals) = prepared.audiobook_skip
+                    && let Some(duration) = prepared.timeline.display_end()
+                {
+                    let adjusted = intervals.start_position(prepared.position, duration);
+                    if prepared.timeline.to_media(adjusted).is_ok() {
+                        prepared.position = adjusted;
+                    }
+                }
                 if prepared.item.entry_id == pending.item.entry_id
                     && prepared.item.resource == pending.item.resource
                 {
@@ -415,7 +438,15 @@ impl Actor {
                 {
                     capture.reload(play_id);
                 }
+                let needs_skip_refresh =
+                    prepared.audiobook_skip_sequence != self.audiobook_skip_sequence;
+                let refresh_radio = needs_skip_refresh
+                    .then(|| super::audiobook_skip::radio_id(&prepared.item))
+                    .flatten();
                 self.loaded = Some(Loaded {
+                    audiobook_skip: (!needs_skip_refresh)
+                        .then_some(prepared.audiobook_skip)
+                        .flatten(),
                     history: pending.history,
                     podcast_progress,
                     item: prepared.item,
@@ -423,6 +454,9 @@ impl Actor {
                     media: prepared.media,
                     timeline: prepared.timeline,
                 });
+                if let Some(radio) = refresh_radio {
+                    self.refresh_audiobook_skip(self.token.clone(), radio);
+                }
                 let saved = self.save_position();
                 if let Err(error) = &saved {
                     let _ = self.stop(false).await;

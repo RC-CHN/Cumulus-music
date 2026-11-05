@@ -1,6 +1,7 @@
 //! Native playback actor. Queue/persistence transitions are serialized, while
 //! resolving and decoding run outside the actor. A generation cancels old loads.
 mod actions;
+mod audiobook_skip;
 mod effect_runtime;
 mod equalizer;
 mod history;
@@ -73,6 +74,11 @@ enum Message {
         generation: u64,
         result: Result<load::Prepared>,
     },
+    AudiobookSkipChanged {
+        token: SessionToken,
+        radio: String,
+    },
+    AudiobookSkipRefreshed(audiobook_skip::Refreshed),
     Quality(quality::QualityReady),
     Prefetched(tick::Prefetched),
     QueueMoreGroups(queue_more::GroupsReady),

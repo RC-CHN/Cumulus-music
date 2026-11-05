@@ -28,6 +28,11 @@ pub struct AudiobookIntervals {
 }
 
 impl AudiobookIntervals {
+    pub(crate) fn fits(self, duration: f64) -> bool {
+        self.intro < duration
+            && (duration < SHORT_PROGRAM_SECONDS || self.intro + self.outro < duration)
+    }
+
     /// M/308 applies this at startup, not when the user moves a slider or seeks.
     pub fn start_position(self, current: f64, duration: f64) -> f64 {
         if !duration.is_finite() || duration <= 0.0 || self.intro > duration {
