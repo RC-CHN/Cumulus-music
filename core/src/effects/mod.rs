@@ -20,3 +20,4 @@ mod remembered_headphone;
 pub use remembered_headphone::RememberedHeadphone;
 pub mod rights;
 pub mod service;
+pub mod stereo;

@@ -1,6 +1,7 @@
 //! LADSPA 1.1 ABI. `unsigned long` is deliberately c_ulong (LLP64 != LP64).
 use crate::{control::contain, processor::Processor};
 use std::ffi::{c_char, c_int, c_ulong, c_void};
+mod stereo;
 
 #[repr(C)]
 pub struct PortRange {
@@ -17,8 +18,8 @@ pub struct Descriptor {
     name: *const c_char,
     maker: *const c_char,
     copyright: *const c_char,
-    port_count: c_ulong,
-    port_descriptors: *const c_int,
+    pub(crate) port_count: c_ulong,
+    pub(crate) port_descriptors: *const c_int,
     port_names: *const *const c_char,
     port_range_hints: *const PortRange,
     implementation_data: *mut c_void,
@@ -101,6 +102,7 @@ pub extern "C" fn ladspa_descriptor(index: c_ulong) -> *const Descriptor {
         0 => &DESCRIPTOR,
         1 => &LOUDNESS_DESCRIPTOR,
         2 => &PARAMETRIC_DESCRIPTOR,
+        3 => &stereo::DESCRIPTOR,
         _ => std::ptr::null(),
     }
 }

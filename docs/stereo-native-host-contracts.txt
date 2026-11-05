@@ -1,0 +1,124 @@
+Native stereo component host: intermediate production boundary
+===============================================================
+This adds an actual callable adapter for the recovered fixed-bank1 SE1 DSP.
+It does not yet attach SE1 to ordinary playback or claim the complete local
+equalizer material. No frontend controls, source authorization, remote preset
+capability or production experimental switch is added.
+
+Why the existing mono adapter is insufficient
+--------------------------------------------
+The existing GEQ/loudness/PEQ descriptors each have input/output/config ports;
+FFmpeg creates one instance per decoded channel. SE1 instead needs shared L/R
+history, both inputs and both outputs in one instance. The new descriptor at
+index3 is cumulus_se1 with five ports, in exact order:
+ Input L, Input R, Output L, Output R, Configuration.
+Old descriptor indices and ABI exports are unchanged.
+
+It owns StereoAmbienceOneStage, a full initialized stereo block and an
+independent typed configuration registry. Mono Settings variants/processor
+settling are not reused. Configuration is copied before acknowledgement;
+updates retain the native stage and parent gain/filter/environment history.
+The control ID remains a precisely representable integer in the float port.
+
+activate performs original reset in the SAME object, not recreation. It
+preserves parent gain history, ring cursors and EOF budget. Initial disabled
+settings call native set_bypass(true) and leave the first real A80D0 edge
+intact: no zero-sample settle or fake one-frame input is processed. Counters
+remain zero/unobserved before actual processing. New-object initialization
+and resetting an existing object are intentionally different operations.
+
+No allocator runs in process/run/reset. Creation/configuration and initial
+registry binding occur outside run. Once activated, the callback only tries
+the configuration lock; contention retains the last acknowledged revision.
+Unknown/revoked/poisoned configurations or DSP failure mute and quarantine.
+The callback stages both inputs before either output; exact channelwise or
+cross-channel in-place alias is safe. Output/output alias and partial input/
+output overlap across the full callback extent are rejected. Guarded native
+pointer contracts still require the host to supply actual live port storage.
+
+EOF is an explicit limitation of the five-port descriptor
+---------------------------------------------------------
+LADSPA run returns void and cannot expose valid-output length or EOF. Its
+ordinary callback therefore invokes the component only with end=false and
+requires exactly the requested output frames. It cannot drain the real extra
+one-second environment tail. It is not installed into MpvEngine's ordinary
+af chain, and there is deliberately no 'full material filter_graph()' facade.
+
+The fixed FFmpeg n8.0.1 source confirms that its LADSPA wrapper calls run with
+the input frame length; optional latency compensation trims the beginning
+and pads the same duration at EOF. It does not expose the recovered variable
+frame/EOF protocol or its separate source clock:
+ https://github.com/FFmpeg/FFmpeg/blob/n8.0.1/libavfilter/af_ladspa.c#L161-L265
+Two-input plugins use one shared instance, unlike mono-per-channel plugins:
+ https://github.com/FFmpeg/FFmpeg/blob/n8.0.1/libavfilter/af_ladspa.c#L326-L355
+These facts are not a reason to silently discard the environment tail.
+
+Callable variable-frame native ABI
+----------------------------------
+The same processor is also exposed through version1 native-only exports:
+ cumulus_se1_create/update/stats/release_v1 (independent config);
+ cumulus_se1_instantiate/reset/process/destroy_v1 (owned instance).
+process takes a complete in-place planar allocation of 2*2048 initialized
+floats plus explicit valid input frames/end, and returns produced frames/end.
+This full allocation remains mandatory for frames0; the original internal
+retained-cache detector behavior is preserved, not fabricated audio.
+The ABI supports the actual child tail, and an explicit reset of the existing
+handle can preserve native gain history across a controlled logical seek.
+No output frame count is inferred from a void LADSPA callback.
+
+StereoHost/StereoInstance are safe core wrappers around the trusted library.
+Symbol version and every required export are checked before configuration.
+An Arc retains the library until all copied callbacks and instance destruction
+finish. Dropping a configuration revokes retained instances; their own Arc
+still keeps code alive for acknowledged destruction. No pointer into PCM or
+result DTO survives its call. Mutation uses &mut; the owned native state is
+Send, not Sync. Input/output/format validation and failure silencing apply.
+
+This component/configuration capability grants no account/media authorization.
+The future producer/sink owner must additionally retain exact source, account,
+generation and cancellation fences. A registry revision is not a playId or a
+fresh media-authority receipt. It cannot be used to play unowned media.
+
+Actual decoded channel observation
+----------------------------------
+AudioEngine::decoded_audio_format(entry_id) defaults to unknown. MpvEngine
+reads one native MPV_FORMAT_NODE audio-params map, copies only integer sample
+rate/channel count, then frees the caller-owned node even if shape is invalid.
+It checks the expected current entry and pinned authority around the read;
+idle/unavailable metadata is unknown. Mono remains mono. No output layout is
+used and no aformat=stereo/forced upmix is introduced.
+mpv v0.41.0 documents audio-params as decoder output and audio-out-params as
+the device format; these are different eligibility sources:
+ https://github.com/mpv-player/mpv/blob/v0.41.0/DOCS/man/input.rst#audio-params
+StereoHost rejects decoded count other than2; the DSP rejects unsupported
+rates. A one-time observation is not proof that a changing live stream can
+never renegotiate later. Production attachment still needs a source/format
+lifecycle owner that stops/requalifies before processing a changed source.
+
+Tests prepared, not executed in this isolated source branch
+----------------------------------------------------------
+Synthetic tests call the actual exported native process API and compare valid
+frame/EOF/PCM with the real Rust/C SE1 stage; they cover initial bypass, updates,
+reset, zero inputs, tail, config release/revocation and quarantine. A second
+test calls the five-port descriptor, uses real linked stereo in-place buffers,
+and re-activates the SAME instance against original reset semantics. Separate
+node-shape tests preserve mono and reject mistyped/duplicate decoder metadata.
+These tests do not launch mpv/WebView and are not claimed as native playback
+proof. Cargo checks/tests have intentionally not been run: the integration
+owner batches them after freezing the complete candidate.
+
+Next required playback closure
+-------------------------------
+The free local material subset EQflat/BToff/RVBNone/SE1on is evidenced, but
+the official graph still has the default linked limiter enabled after SE.
+1AA50 PCM order is GEQ -> BT -> SE -> Rotate -> RVB -> default limiter;
+1BBA0/68000/6C1A0 initialize the latter to0dB/5ms/100ms. Configuration setter
+order is not this signal order. Only SE1 with no default limiter cannot be
+called equivalent to the whole local material.
+
+The real source-bound variable-frame producer/FIFO/sink boundary must compose
+SE1 -> the proven default limiter (plus enabled loudness where applicable),
+propagate real zero EOF/drain, preserve original reset/gain history and separate
+source frames from host/sink clock. It must validate original whole/subgraph
+PCM/flow and actual Linux/Windows native output, before normal playback or UI
+activation. Five ports alone cannot make those prerequisites disappear.

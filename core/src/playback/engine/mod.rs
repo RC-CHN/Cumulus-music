@@ -67,6 +67,11 @@ trait PinnedReader: std::io::Read + std::io::Seek + Send {}
 impl<T: std::io::Read + std::io::Seek + Send> PinnedReader for T {}
 
 pub trait AudioEngine: Send {
+    /// Observe the actual decoder format for this entry; unknown never implies
+    /// stereo. Implementations must not report a forced output-device layout.
+    fn decoded_audio_format(&mut self, _entry_id: i64) -> Result<Option<DecodedAudioFormat>> {
+        Ok(None)
+    }
     /// Device preference maintenance when no decoder load is holding the
     /// engine. Adapters throttle read-only discovery; plain engines do nothing.
     fn maintain_output(&mut self) -> Result<()> {

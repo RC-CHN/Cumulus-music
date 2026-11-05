@@ -2,6 +2,7 @@
 //! mpv v0.40.0 include/mpv/client.h (API 2.5), compatible with 1.108+/2.x.
 //! Every borrowed event is copied before another mpv_wait_event call.
 use super::{EndReason, EngineEvent, MpvRuntime};
+mod audio_format;
 mod devices;
 mod node;
 mod render;

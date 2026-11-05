@@ -286,7 +286,8 @@ fn abi_rejects_unsupported_rate_invalid_token_and_null_arguments() {
         let d = &*ladspa_descriptor(0);
         assert!(!ladspa_descriptor(1).is_null());
         assert!(!ladspa_descriptor(2).is_null());
-        assert!(ladspa_descriptor(3).is_null());
+        assert!(!ladspa_descriptor(3).is_null());
+        assert!(ladspa_descriptor(4).is_null());
         assert!(d.instantiate.unwrap()(d, 7999).is_null());
         assert!(d.instantiate.unwrap()(d, 384001).is_null());
         assert_ne!(

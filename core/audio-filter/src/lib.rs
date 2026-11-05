@@ -6,9 +6,11 @@ mod loudness;
 mod parametric;
 mod processor;
 mod processor_stage;
+mod stereo;
 pub use control::*;
 pub use ladspa::ladspa_descriptor;
 pub use loudness::*;
 pub use parametric::*;
+pub use stereo::*;
 #[cfg(test)]
 mod tests;

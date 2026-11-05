@@ -89,6 +89,15 @@ pub struct LoadedMedia {
     pub duration: Option<f64>,
     pub codec: Option<String>,
 }
+
+/// Native decoder output, before output-device/channel filter conversions.
+/// This is an observation of one exact media entry, not a rights receipt.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DecodedAudioFormat {
+    pub entry_id: i64,
+    pub sample_rate: u32,
+    pub channels: u32,
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EndReason {
     Eof,

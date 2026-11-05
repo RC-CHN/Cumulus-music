@@ -599,6 +599,27 @@ impl MpvEngine {
 }
 
 impl AudioEngine for MpvEngine {
+    fn decoded_audio_format(&mut self, entry_id: i64) -> Result<Option<super::DecodedAudioFormat>> {
+        self.require_pinned_authority()?;
+        if self.entry != Some(entry_id) {
+            return Err(Error::StaleResponse);
+        }
+        if self.property(c"idle-active").as_deref() != Some("no") {
+            return Ok(None);
+        }
+        let value = self.native_mut()?.decoded_audio_format()?;
+        self.require_pinned_authority()?;
+        if self.entry != Some(entry_id) {
+            return Err(Error::StaleResponse);
+        }
+        Ok(
+            value.map(|(sample_rate, channels)| super::DecodedAudioFormat {
+                entry_id,
+                sample_rate,
+                channels,
+            }),
+        )
+    }
     fn output_devices(&mut self) -> Result<Option<OutputDevices>> {
         if self.null_output {
             return Ok(None);
