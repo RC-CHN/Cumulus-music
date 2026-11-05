@@ -368,6 +368,36 @@ async fn unknown_waits_then_definite_fresh_301_registers_before_ab_without_promo
     assert_batch(&f.http);
 }
 
+#[tokio::test]
+async fn unknown_with_stored_account_cookie_waits_for_authoritative_restore() {
+    let f = Fixture::new(
+        false,
+        [
+            json!({"code":200,"profile":{"userId":71}}).into(),
+            groups(true).into(),
+        ],
+    );
+    let target = ApiOrigin::Pc.url();
+    let stored = f.native.credentials();
+    let revision = stored.request_credentials(&target).unwrap().revision;
+    stored
+        .record_response(&target, &[COOKIE.into()], None, &revision)
+        .unwrap();
+    let lease = f.client.start_pc_presentation_runtime().unwrap();
+    tokio::task::yield_now().await;
+    assert!(f.http.calls().is_empty());
+    f.session.refresh().await.unwrap();
+    status(
+        &mut lease.subscribe_status(),
+        PcPresentationRuntimeStatus::Ready,
+    )
+    .await;
+    assert_eq!(f.session.token().unwrap().uid.as_deref(), Some("71"));
+    assert_eq!(f.paths(), [ACCOUNT, ASSIGNMENT_PATH]);
+    assert!(f.client.pc_presentation().unwrap().search_footer);
+    lease.shutdown().await.unwrap();
+}
+
 impl Fixture {
     fn session_native(&self) -> Arc<dyn Api> {
         // Reopen only for inspection: production transport remains privately
