@@ -427,10 +427,12 @@ async fn search_row_encrypted_download_needs_current_offline_rights_without_rene
         assert_eq!(view.state, PlaybackStatus::Playing);
         if active {
             let encrypted = fs::canonicalize(encrypted).unwrap();
-            assert!(matches!(
-                &f.device.state.lock().unwrap().last_source,
-                Some(MediaInput::File(loaded)) if loaded == &encrypted
-            ));
+            let native = f.device.state.lock().unwrap();
+            let Some(MediaInput::File(loaded)) = &native.last_source else {
+                panic!("expected the verified NCM's decoded local audio");
+            };
+            assert_ne!(loaded, &encrypted, "stock engine receives decoded audio");
+            assert_eq!(fs::read(loaded).unwrap(), fs::read(&original).unwrap());
             assert_eq!(f.api.count(SEARCH_URL), 0);
         } else {
             assert_search_online(&f, "standard");
