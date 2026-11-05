@@ -254,6 +254,12 @@ V3 热点说明的歌曲和声音操作（PC 3.1.42.205594）
     另有联网、账号、付费与试用条件。该在线弹窗若允许切换，会先发
     setting/updateQuantity（M/116:519–529 写存储）再切换，不从「本地」
     推断相关权限；本补丁不改变 Cumulus 已有在线偏好提交时机。
+  - Linux 实际 WebKitGTK／libmpv：`search_download_row_smoke.py --local-marker`
+    通过真实搜索卡封面开始、暂停、重新播放。第一段原生 FLAC 时钟前进，普通歌曲
+    队列仍为原 ID，底栏「本地」不可点击，在线音源读取为 0；仅破坏私有测试文件
+    后，回退以 trialMode=42 发出 1 次音源授权，实际加载另一个合成 WAV，恢复
+    普通音质按钮。3 个状态和实拍在 `.build/ui-proof/phase72-search-download-row-r1/`；
+    不访问真实服务。Linux 与 Windows CI 均加入这条用例，Windows 实际运行独立核对。
 
 搜索歌曲命中词：PC recommend.jsx:503–515、恢复 M/87、M/123、M/352、M/134
   支持对综合单曲标题、歌手以及单曲/歌词表的歌曲、歌手和专辑显示命中词。

@@ -150,6 +150,8 @@
 - [默认下载音质](desktop-download-contracts.txt)按已核实的本账号权益列档，允许显式恢复失败的会员读取。Linux 实际桌面已验证一次单曲授权、服务降档、真实发布及默认值不变，另验 Windows。
 - [综合搜索音质角标](search-results-ui-contracts.txt)按官方曲目规格投影，会员变化仅重读普通前六首。Linux 实拍核对更新、失败保留、滚动焦点和原生暂停时钟；[歌词](search-lyrics-ui-contracts.txt)按满批继续，短批保持本页状态并结束。
 - [原生打开 PCM WAV](ordinary-native-local-equalizer-proof.txt)支持符合条件的 44.1 kHz 双声道 16 位文件。Linux 核对实际空间音效、暂停定位和自然结束，以及向现有进程交接后的测试输出；不改变系统文件关联，Windows 独立验收。
+- [搜索单曲使用已完成下载](search-results-ui-contracts.txt)在 Linux 实拍中以普通歌曲身份直接解码文件，暂停仍不请求在线音源；损坏后重新选择才走一次授权。已核文件显示不可点击的「本地」，在线后恢复音质菜单。
+- [均衡器拖动](desktop-equalizer-contracts.txt)仅预览，放开或键盘确认才保存。普通 Linux 程序经系统鼠标核对了低音和 500 Hz 的预览、各一次持久写入及继续播放。
 - [随机或列表循环播完后的底栏](desktop-minibar-skip.txt)使用原生结束回执，即使原播放标识已经清除。Linux 桌面验证了切换到顺序播放后的新队列版本及再次点击。
 - [按播客或有声书保存排序](desktop-podcast-contracts.txt)在真实 Linux 桌面核对了详情重开、账号隔离、暂停队列不变，以及有声书全量和相邻请求的排序规则。
 - [普通底栏方向键](desktop-minibar-skip.txt)已接官方 M308 判权：同一已知无版权候选在 t1 跳到后续可播行，在控制组保留当前播放。自然 EOF、完整 Windows 联网观察和真实账号分组仍独立验收。

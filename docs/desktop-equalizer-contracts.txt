@@ -60,6 +60,12 @@ Cumulus 的十段、低高音和环绕滑块均用浏览器 input 更新本地�
 关闭面板仍保留已经提交的调整。只有已确认的 revision 用于下一次 CAS。
 失败后保留草稿，须显式重新读取并应用；若回读已经是目标曲线，不重复写入。
 账号代次变化时停止旧草稿和迟到回复；Escape关闭并恢复入口焦点。
+本轮 Linux 实际 WebView 的 `equalizer_live_smoke.py` 核对低音和一段频率在按住
+及取消时无原生写入，也验证键盘、待确认草稿、重启恢复和缺库回退。独立的普通程序
+测试通过 X11 XTest 真正按住并拖动低音至 6 dB、500 Hz 至 6.58 dB：画面已预览时
+SQLite 仍为原版本，松手分别只增加一次版本（0→1、1→2），同一原生曲目继续播放。
+截图与私有日志见 `.build/ui-proof/phase72-equalizer-real-pointer-r3/` 和
+`.build/phase72-equalizer-real-pointer-r3.log`。没有使用物理声卡或 Windows 窗口。
 竖向range采用旋转的原生水平控件并明确轨道/滑块样式，兼容当前WebKit。
 早期截图b暴露writing-mode控件画成水平滑块的问题，不能以DOM值正确代替视觉验收。
 
