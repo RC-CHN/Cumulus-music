@@ -450,6 +450,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::player_comment_count,
                 player::player_vinyl_comments_available,
                 player::vinyl_similar::player_vinyl_similar_available,
+                player::vinyl_similar::player_vinyl_recommendation_placement,
+                player::vinyl_similar::player_vinyl_wiki,
                 player::vinyl_similar::player_vinyl_similar_songs,
                 player::vinyl_similar::player_vinyl_related_playlists,
                 player::vinyl_similar::player_vinyl_similar_play,

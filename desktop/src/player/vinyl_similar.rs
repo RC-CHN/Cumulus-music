@@ -1,8 +1,8 @@
 use cumulus_core::{
     Error,
     client::{
-        ClientError, MusicClient, VinylRelatedPlaylistsView, VinylSimilarAction,
-        VinylSimilarSongsView, dto::PlayerView,
+        ClientError, MusicClient, VinylRecommendationPlacement, VinylRelatedPlaylistsView,
+        VinylSimilarAction, VinylSimilarSongsView, VinylWikiView, dto::PlayerView,
     },
     membership::Quality,
 };
@@ -24,6 +24,33 @@ pub async fn player_vinyl_similar_available<R: tauri::Runtime>(
     require_main(&window)?;
     client
         .player_vinyl_similar_available(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn player_vinyl_recommendation_placement<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<VinylRecommendationPlacement, ClientError> {
+    require_main(&window)?;
+    client
+        .player_vinyl_recommendation_placement(&epoch)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn player_vinyl_wiki<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<VinylWikiView, ClientError> {
+    require_main(&window)?;
+    client
+        .player_vinyl_wiki(&epoch, &play_id)
         .await
         .map_err(Into::into)
 }
