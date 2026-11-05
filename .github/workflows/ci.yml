@@ -613,6 +613,7 @@ jobs:
           python scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-progress-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_scene_home_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-scene-home-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/scene_palette_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-scene-palette-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/voice_detail_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-voice-detail-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --mv-play --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-mv-play-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --mv-fallback --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-mv-fallback-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/search_results_smoke.py --playlist-creator --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-search-playlist-creator-windows --runtime .build/package-stage/windows-x64/native
@@ -990,6 +991,7 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-progress-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_scene_home_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-scene-home-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/scene_palette_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-scene-palette-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/voice_detail_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-voice-detail-linux
           cargo build -p cumulus-desktop --example audiobook_skip_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe --root .build/ci-audiobook-skip-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/search_results_smoke.py --mv-play --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-search-mv-play-linux

@@ -16,6 +16,8 @@ mod scene_palette_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
+#[path = "support/voice_detail_fixture.rs"]
+mod voice_detail_fixture;
 
 use cumulus_core::{
     Error, Result,
@@ -54,6 +56,7 @@ struct Library {
     scene_home: Option<scene_home_fixture::SceneHome>,
     scene_baseline: settings_fixture::Library,
     palette: Option<Arc<scene_palette_fixture::PaletteMedia>>,
+    voice_detail: Option<voice_detail_fixture::VoiceDetail>,
 }
 
 fn radio() -> Value {
@@ -110,6 +113,11 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(voice) = &self.voice_detail {
+                if let Some(response) = voice.profile(path, &body) {
+                    return Ok(response);
+                }
+            }
             if let Some(scene) = &self.scene_home {
                 return match scene.response(path, &body) {
                     Some(response) => {
@@ -119,7 +127,14 @@ impl Api for Library {
                                 "/api/voice/homepage/block/content" | "/api/dj/program/detail"
                             )
                         {
-                            response.map(scene_palette_fixture::artwork_response)
+                            response.map(|response| {
+                                let response = scene_palette_fixture::artwork_response(response);
+                                if self.voice_detail.is_some() {
+                                    voice_detail_fixture::enrich(response)
+                                } else {
+                                    response
+                                }
+                            })
                         } else {
                             response
                         }
@@ -240,7 +255,10 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let progress_enabled = std::env::var_os("CUMULUS_PODCAST_PROGRESS_PROOF").is_some();
-    let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF").ok();
+    let voice_detail_enabled = std::env::var_os("CUMULUS_VOICE_DETAIL_PROOF").is_some();
+    let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
+        .ok()
+        .or_else(|| voice_detail_enabled.then(|| "header".to_owned()));
     let palette = palette_case
         .clone()
         .map(|case| Arc::new(scene_palette_fixture::PaletteMedia::new(case)));
@@ -255,6 +273,7 @@ fn main() {
         progress_enabled,
         scene_home,
         palette: palette.clone(),
+        voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -271,7 +290,9 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let source = std::env::var_os("CUMULUS_UX_SCRIPT").map_or_else(
         || {
-            if palette_enabled {
+            if voice_detail_enabled {
+                include_str!("voice_detail_ui_probe.js").to_owned()
+            } else if palette_enabled {
                 include_str!("scene_palette_ui_probe.js").to_owned()
             } else if scene_enabled {
                 include_str!("podcast_scene_home_ui_probe.js").to_owned()
@@ -316,6 +337,9 @@ fn main() {
                 if !(["complete", "failed"].contains(&stage.as_str())
                     || stage.starts_with("ux_") && stage.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
                     return;
+                }
+                if let Some(voice)=&api.voice_detail {
+                    value["voiceDetailCalls"]=json!(voice.calls());
                 }
                 if let Some(palette) = &api.palette {
                     value["paletteRequests"] = palette.snapshot();
