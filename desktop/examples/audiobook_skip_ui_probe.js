@@ -109,13 +109,19 @@
   }
   async function pauseSeek(playing, seconds) {
     await click(() => labelled('暂停', footer()), 'pause the native decoder');
-    await wait(async () => (await player()).state === 'paused', 'native pause settles');
-    const seek = labelled('播放进度', footer());
+    const seek = await wait(async () => {
+      const p = await player();
+      const slider = labelled('播放进度', footer());
+      return p.state === 'paused' && p.playId === playing.playId &&
+        p.queueRevision === playing.queueRevision && !p.nativeSeeking &&
+        visible(slider) && slider.isConnected && slider;
+    }, 'paused native play and its rendered seek control settle');
     range(seek, seconds);
     seek.dispatchEvent(new Event('change', { bubbles: true }));
     return wait(async () => {
       const p = await player();
       return p.state === 'paused' && p.playId === playing.playId &&
+        p.queueRevision === playing.queueRevision &&
         !p.nativeSeeking && Math.abs(p.position - seconds) < .12 && p;
     }, 'paused native seek settles');
   }

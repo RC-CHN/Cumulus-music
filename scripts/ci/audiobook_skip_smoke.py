@@ -1,10 +1,12 @@
-"""Prove audiobook skip behavior in Linux WebKitGTK with real, null-output libmpv."""
+"""Prove audiobook skip behavior in WebKitGTK or WebView2 with null-output libmpv."""
 import argparse
 import json
 import os
 from pathlib import Path
 import sys
 
+from motion_smoke import launch as launch_webview
+from playback_power_smoke import windows_runtime
 from window_manager import launch
 
 
@@ -75,20 +77,26 @@ def check_short(stages, complete):
     assert complete['reads'] == [[SWITCH, {'radioId': 8}]] and complete['checkpoints'] == []
 
 
-def run_case(binary, root, name, base, script, capture):
+def run_case(binary, root, name, base, script, capture, windows):
     directory = root / name
     directory.mkdir()
     run = directory / 'run'
     env = {**base, 'CUMULUS_PROOF_DIR': str(run), 'CUMULUS_UX_SCRIPT': str(script),
            'CUMULUS_AUDIOBOOK_SKIP_CASE': name}
-    for key in ('XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR'):
+    profiles = ('APPDATA', 'LOCALAPPDATA', 'TEMP') if windows else (
+        'XDG_DATA_HOME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_RUNTIME_DIR',
+    )
+    for key in profiles:
         location = directory / key
         location.mkdir(mode=0o700)
         env[key] = str(location)
+    if windows:
+        env['TMP'] = env['TEMP']
     output = run / 'first'
     host = directory / 'host.log'
     with host.open('x', encoding='utf-8') as log:
-        status = launch(binary, env, log, output, capture)
+        launcher = launch_webview if windows else launch
+        status = launcher(binary, env, log, output, capture)
     failed = output / 'failed.json'
     assert not failed.exists(), read(failed) if failed.exists() else None
     assert status == 0 and 'panicked at' not in host.read_text(encoding='utf-8'), host
@@ -103,10 +111,11 @@ def run_case(binary, root, name, base, script, capture):
     for row in (*rows.values(), complete):
         assert row['localOrdinarySetting'] == row['localOtherAccountSetting'] == OFF
     (check_long if name == 'long' else check_short)(rows, complete)
-    locale = read(output / 'locale.json')
-    assert locale['numeric'] == 'C'
-    assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
-               for key in ('messages', 'characters')), locale
+    if not windows:
+        locale = read(output / 'locale.json')
+        assert locale['numeric'] == 'C'
+        assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
+                   for key in ('messages', 'characters')), locale
     screenshots = len(list(output.glob('ux_*.png')))
     assert not capture or screenshots == len(rows)
     return {**complete, 'states': list(rows), 'screenshots': screenshots}
@@ -117,22 +126,37 @@ def main():
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--frontend-dist', type=Path)
+    parser.add_argument('--runtime', type=Path, help='exact staged Windows media runtime')
     parser.add_argument('--case', choices=('long', 'short'))
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
-    if sys.platform != 'linux':
-        parser.error('this synthetic GUI proof is currently Linux only')
+    windows = sys.platform == 'win32'
+    if not windows and sys.platform != 'linux':
+        parser.error('this synthetic GUI proof supports Linux and Windows')
+    if windows and (not args.runtime or args.screenshots):
+        parser.error('Windows requires --runtime and supports no GTK screenshot capture')
+    if not windows and args.runtime:
+        parser.error('--runtime identifies the Windows native media stage only')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    base = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    base.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
+    binary = args.binary.resolve(strict=True)
+    base = {key: value for key, value in os.environ.items()
+            if not key.upper().startswith(('CUMULUS_', 'WEBVIEW2_'))
+            and key.upper() != 'MPV_DLL_DIR_CUMULUS'}
+    windows_media = None
+    if windows:
+        stage, windows_media = windows_runtime(binary, args.runtime)
+        base['MPV_DLL_DIR_CUMULUS'] = str(stage)
+    else:
+        base.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
     if args.frontend_dist:
         base['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     script = Path(__file__).resolve().parents[2] / 'desktop/examples/audiobook_skip_ui_probe.js'
-    binary = args.binary.resolve(strict=True)
     cases = (args.case,) if args.case else ('long', 'short')
     report = {'actualWebView': True, 'decoder': 'libmpv', 'audioOutput': 'null',
-              'cases': {name: run_case(binary, root, name, base, script, args.screenshots)
+              'webViewRuntime': 'WebView2' if windows else 'WebKitGTK',
+              'windowsMediaRuntime': windows_media, 'physicalAudioOutputVerified': False,
+              'cases': {name: run_case(binary, root, name, base, script, args.screenshots, windows)
                         for name in cases}}
     (root / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n',
                                       encoding='utf-8')

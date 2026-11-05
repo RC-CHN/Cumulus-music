@@ -42,5 +42,7 @@ desktop/examples/audiobook_skip_ui_probe.rs 和 scripts/ci/audiobook_skip_smoke.
 帐号的设置始终为空。
 
 该验证在隔离网络运行，不向真实账号读写；原生数字 locale 为 C，消息和
-字符 locale 仍为 en_US.UTF-8。Linux CI 持续运行该用例；Windows 可由
-独立 runner 编译和运行工作区测试，本例当前没有 Windows GUI 验证。
+字符 locale 仍为 en_US.UTF-8。Linux CI 持续运行该用例。Windows 打包 runner
+也运行同一 220/199 秒合成场景，指定本次打包的 libmpv，并在独立用户数据目录
+启动 WebView2；保留相同原生播放、进度和请求断言，不使用 GTK 截图。
+Windows 的通过状态以实际 CI 回执为准，不能从 Linux 结果推断。

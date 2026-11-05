@@ -496,6 +496,10 @@ jobs:
           cargo build -p cumulus-desktop --example minibar_skip_ui_probe --example ux_ui_probe --features custom-protocol --locked
           python scripts/ci/natural_eof_smoke.py --binary .build/target/debug/examples/minibar_skip_ui_probe.exe --root .build/ci-natural-eof-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/pc_presentation_smoke.py --history-settings --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-history-settings-cohort-windows --runtime .build/package-stage/windows-x64/native
+      - name: Verify audiobook intro and tail controls in Windows WebView2
+        run: |
+          cargo build -p cumulus-desktop --example audiobook_skip_ui_probe --features custom-protocol --locked
+          python scripts/ci/audiobook_skip_smoke.py --binary .build/target/debug/examples/audiobook_skip_ui_probe.exe --root .build/ci-audiobook-skip-windows --runtime .build/package-stage/windows-x64/native
       - name: Windows native media and desktop WebView regression
         if: runner.os == 'Windows'
         run: |
