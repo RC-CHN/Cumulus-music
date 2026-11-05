@@ -1,0 +1,175 @@
+Cumulus: fixed bank-1 environment child of official SE ambience=1
+================================================================
+
+Status and scope
+----------------
+This is an independently initialized, executable PCM component in core/, not
+an SE slider wired to the player. It restores the reachable fixed bank-1
+environment child in stereo planar format 0x3102, including its real tail.
+The component loads no official DLL, parameter blob, Python process or asset
+at runtime. It does not create an entitlement or activate a material graph.
+
+Official PC 3.1.42.205594 source:
+  neaudioeffects.dll x64 SHA256
+  c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be
+  original investigation: recovered-client/docs/product/
+  38-stereo-multiband-validation.txt, especially the stereo SE child creation.
+
+The official Equalizer.tsx controls at 140–168 and 288–325 write a complete
+material containing GEQ/BT/RVB/SE; their SE fields include sshaper:true and
+ambience:1. M342:1607–1639 persists equalizer_data and invokes native
+AudioPlayer.setAudioEffectParams(type:2). A85B0 selects SE bank 1 for this
+ambience value. These UI controls are not equivalent to the ambience=0
+component and must not be enabled by substituting that component.
+
+Restored native chain
+---------------------
+The environment factory B6D10 allocates 0x200 bytes (vtable 24D148).
+Original B7270 is GetPluginInfo(type3/version0x7e102); it is NOT reset.
+The real reset slot +0x10 is BE020. B72B0 initializes the child; B6EB0
+dispatches 0x3102 stereo planar blocks to BA4C0. The parent creates it only
+for the supported stereo SE branch (A80D0/B28E0).
+
+The 186-byte parameter parser B49B0 writes a 0xC8 parameter object; 48 fields
+cover that wire block (38 floats, 8 raw32/count fields, 2 bytes). Its length
+argument is not checked in the original. B4190 is the signed-16-bit ID setter
+and has different clamp semantics. B4D50 is copy/init machinery, not an ID
+setter. This implementation accepts neither wire blobs nor arbitrary IDs:
+the proven bank-1 constants are named inputs to recovered initialization.
+That removes the parser's unchecked-length behavior from the safe API.
+
+Independent initialization performs:
+  B62C0 fixed-seed float length generation -> original B6620 odd-factor loop;
+  B6020 geometric/jittered allpass lengths -> the same B6620 conversion;
+  BEC90 -> C5150 -> C1080 ring allocation geometry;
+  C5050 high-damping ratio and C4F30 filter coefficient calculation;
+  Init followed by Reset before processing, with stable old/current gains.
+All storage is a single bounded Rust-owned arena; no original state is copied.
+
+Length generation preserves f32 rounding, sort order and unsigned LCG casts.
+It deliberately does not use a conventional next-prime helper: B6620 computes
+the sqrt trial bound once, changes the candidate afterwards, and prevents only
+an adjacent duplicate. The original 384kHz allpass length 1681 (=41 squared)
+is therefore retained. Seeds, generated values and operation order are in
+ambience_one/lengths.h. The added 4096-iteration bound is a safety rejection;
+the frozen supported geometries do not reach it.
+
+BA4C0's proven bank-1 processing order is retained, in chunks <=256 frames:
+  normalized stereo downmix (BF880/C6630, rounded prefix of four);
+  four serial allpass sections (C47F0);
+  16 feedback nodes, each first delaying the SAME mutable mono input (C1240),
+    then applying C5FA0 and accumulating into alternating output channels;
+  per-output damping (C4CA0);
+  C6C00 stable-gain stereo output mix, including its rounded prefix of four.
+The cumulative input mutation between feedback nodes is important. Reusing
+the original mono input for every node produces a different signal.
+The C5FA0 prefix-four and scalar wrap/tail summation orders are separate.
+
+Bank 1 disables the extra EQ (+0x98) and early reflections (+0x99). Dirty
+flags +0x58/+0x9A are not effect enables. First-process B77A0/BDD70 handling
+has the same resulting immutable coefficients as the independent Init/Reset
+used here. No arbitrary parameter transition, extra EQ or ER is claimed.
+
+Reset, frame count and failure boundary
+--------------------------------------
+BE020 -> BE260 -> C6550 clears feedback ring contents and four filter
+histories; C1340 clears single delays; C4A60 clears allpass histories. It
+preserves ring cursors, coefficients, and the active EOF budget. Recreating
+the object is a different operation and is not used as a substitute for reset.
+
+B6EB0 receives normal state0x2d or EOF state0x11. It may append zero input,
+increase valid_frames to capacity and clear EOF while draining the one-second
+bank-1 tail. Call process with frames=0/end=true until end remains true; a
+completed drain returns zero frames on the next zero-input EOF. Re-supplying
+nonempty EOF input starts a new budget, as in the original. A non-EOF block
+resets the remaining-tail sentinel. Reset during EOF does not extend the tail.
+
+AmbienceOneEnvironment accepts integer sample rates 8000..384000, exactly
+two channels and capacities 4..4096 divisible by four. Unsupported shapes
+are rejected before allocation. PlanarBlock owns full-capacity padded storage;
+the native rounded prefix stays within each channel's capacity. Only returned
+valid frames are audio. Padded output is not part of the equality claim.
+process is intentionally in place. The safe API cannot alias the PCM block
+with the internal arena or state. No raw pointer or parameter setter escapes.
+
+The private C ABI borrows the owned arena for the full object's lifetime.
+Checked geometry is <=4,194,304 floats; fallible Rust allocation precedes init.
+The object is Send and not Sync, and all mutation requires &mut. There is no
+per-block allocation, callback or external lifetime. Input size/nonfinite
+validation is atomic. Arithmetic failure silences the full owned output and
+quarantines the component; reset does not make a partially failed state valid.
+The caller must construct a new object after such a failure.
+
+This child inherits and preserves caller FTZ. It does not set FTZ as the outer
+SE wrapper does. Standalone callers must choose their environment explicitly;
+the frozen vectors cover both FTZ states. No global floating-point mode change
+is introduced by core.
+
+Executable boundary
+-------------------
+  cargo run -p cumulus-core --example effect_dsp_render --locked -- ambience-one
+
+stdin is bounded JSON, for example:
+  {"sampleRate":8000,"maxFrames":64,"blocks":[
+    {"samples":[0.5,-0.25]},
+    {"samples":[],"end":true},
+    {"samples":[],"end":true,"reset":true}
+  ]}
+
+Samples are interleaved input, while the core/native storage is planar. The
+result reports the actual valid frame count, EOF, interleaved output and a
+numeric state snapshot for each supplied block. Supply further explicit empty
+EOF blocks to finish draining; the tool does not invent an unbounded loop.
+Requests are limited to 4096 blocks / 1,048,576 input floats and the example's
+16MiB input limit. Output identifies component=se-bank1-environment, bank=1,
+ambience=1, completeGraph=false. It accepts no ambience/bank overrides.
+
+Evidence and verification
+-------------------------
+The manual scripts/research/freeze_ambience_one.py requires the hash-pinned
+locally extracted DLL and runs its real original node in unshare -Urn. Public
+CI uses only the frozen synthetic fixture, not the DLL or this oracle.
+The original executable arithmetic and bank data are unmodified. There are
+no CRT/math/algorithm hooks. Only allocator/free, bounded capacity context,
+PE mapping and the TEB stack bound are host adapters. DllMain, Windows CPU
+initialization, services/accounts and sound output are not executed.
+
+The public corpus has 14 cases / 1764 blocks: five rates, capacities 4..4096,
+FTZ0/1, impulse, deterministic synthetic signal, subnormal samples, nonzero
+padding, short/zero frames, reset before/within EOF and complete tail drains
+for the larger-capacity cases. Every returned PCM block has an exact SHA256;
+transition/mid-tail/final PCM also has explicit float bits. Every block has
+87 cursor/tail indices and 70 numeric history bits. The manifest pins the
+generator, native oracle source, source DLL and corpus hashes. No proprietary
+wire parameter blob or original image is included.
+
+Executed directly against the new production C on Linux x86_64:
+  - original-node differential matrix: 14 full streams / 19394 blocks; exact
+    valid PCM, flow, all actually used AP/FDN/delay contents, cursor/config and
+    damping/filter histories, including all capacities' full one-second EOF;
+  - independent length/filter init: 80 original node records across five rates;
+  - public frozen corpus: all 1764 PCM receipts and numeric snapshots match;
+  - standalone owned-arena ASan/UBSan and sentinels: 35 rate/capacity cases,
+    invalid count/capacity, NaN atomicity, reset preservation, short and EOF.
+
+These are direct C/native comparisons, not yet a Rust test or desktop proof.
+core/tests/effects_ambience_one.rs adds the safe wrapper/CLI tests; its strict
+original bit comparison is explicitly Linux x86_64. Portable tests exercise
+shape rejection, atomic validation, reset/tail, failure quarantine and real
+interleaved CLI wiring on Windows too. Their actual execution belongs to the
+integration batch; compile success must not be reported as DSP validation.
+
+Remaining work
+--------------
+This restores the environment child, not complete SE ambience1. Parent M/S,
+bank-1 PEQ/dynamics/shaper, parameter transitions and whole-node EOF propagation
+still need a direct composed original-node proof. The bank-0 dynamics target
+cannot be silently reused: bank1 old/current gain values differ from the
+existing ambience=0 initialization. Other environment banks, ER, extra EQ and
+arbitrary RVB presets remain separate work. No renderer/player/UI attachment
+or material activation is added here.
+
+Linux GCC/glibc exact vectors do not prove MSVC libm bit equivalence or real
+Windows host lifecycle. The actual Windows original math/output comparison,
+composed graph, decoder clock/seek/reset/EOF integration and physical listening
+remain required before claiming a live official surround implementation.

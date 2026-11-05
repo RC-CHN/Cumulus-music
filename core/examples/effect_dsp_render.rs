@@ -1,4 +1,6 @@
 //! Offline probe of actual Rust wrappers. No DLL, Python or account at runtime.
+#[path = "support/ambience_one_wire.rs"]
+mod ambience_one_wire;
 #[path = "support/limiter_wire.rs"]
 mod limiter_wire;
 #[path = "support/stereo_zero_wire.rs"]
@@ -10,7 +12,7 @@ use std::io::{Read, Write};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mode = std::env::args().nth(1).ok_or(
-        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq, stereo-zero or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,limiter-plan,limiter-flow,dly,alc,spspatial}; for NCAE PCM use material-render-active-peq PATH or material-limiter-{render,stream} PATH",
+        "supply coeff, peq-coeff, biquad, bt, geq-outer, peq, stereo-zero, ambience-one or material-{route,eq,bt,peq,rotate,stereo,cmp,limiter,limiter-plan,limiter-flow,dly,alc,spspatial}; for NCAE PCM use material-render-active-peq PATH or material-limiter-{render,stream} PATH",
     )?;
     let mut input = Vec::new();
     std::io::stdin()
@@ -41,6 +43,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!(
             "{}",
             serde_json::to_string(&stereo_zero_wire::render(&input)?)?
+        );
+        return Ok(());
+    }
+    if mode == "ambience-one" {
+        println!(
+            "{}",
+            serde_json::to_string(&ambience_one_wire::render(&input)?)?
         );
         return Ok(());
     }

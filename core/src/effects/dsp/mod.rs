@@ -1,6 +1,7 @@
 //! Safe owned boundaries around the recovered C filter/GEQ/BassTreble/PEQ.
 //! These components do not choose an entire material graph or grant rights.
 
+mod ambience_one;
 mod block;
 mod dynamics;
 mod dynamics_parameters;
@@ -16,6 +17,7 @@ mod rotation_resampled;
 mod state;
 mod stereo_zero;
 
+pub use ambience_one::{AmbienceOneEnvironment, AmbienceOneResult, AmbienceOneSnapshot};
 pub use block::{Format, PlanarBlock};
 pub use dynamics::MultibandDynamics;
 pub use dynamics_parameters::{DynamicsBand, DynamicsParameters, DynamicsSettings};

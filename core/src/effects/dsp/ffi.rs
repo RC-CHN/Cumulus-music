@@ -1,6 +1,26 @@
 use std::ffi::c_void;
 
 unsafe extern "C" {
+    pub fn cumulus_ambience_one_storage(rate: u32) -> usize;
+    pub fn cumulus_ambience_one_init(
+        state: *mut c_void,
+        rate: u32,
+        capacity: u32,
+        storage: *mut f32,
+        count: usize,
+    ) -> i32;
+    pub fn netease_ambience_one_reset(state: *mut c_void) -> i32;
+    pub fn netease_ambience_one_process(
+        state: *mut c_void,
+        data: *mut f32,
+        frames: *mut u32,
+        end: *mut u32,
+    ) -> i32;
+    pub fn netease_ambience_one_snapshot(
+        state: *const c_void,
+        indices: *mut u32,
+        history: *mut f32,
+    ) -> i32;
     pub fn cumulus_stereo_zero_init(state: *mut c_void, rate: f32, capacity: u32) -> i32;
     pub fn netease_stereo_zero_parameters(
         state: *mut c_void,
