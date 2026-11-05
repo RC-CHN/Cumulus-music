@@ -100,6 +100,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .manage(together::CloseCoordinator::default())
         .manage(renewal::RenewalPump::default())
         .manage(pc_presentation::Host::default())
+        .manage(history::sync_observer::Host::default())
         .manage(search::RightsPump::default())
         .manage(messages::counts::Host::default())
         .manage(watchman::EventHost::default())
@@ -141,6 +142,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                     shortcuts::stop(window.app_handle());
                     renewal::stop(window.app_handle());
                     pc_presentation::stop(window.app_handle());
+                    history::sync_observer::stop(window.app_handle());
                     member::stop_lifecycle(window.app_handle());
                     messages::counts::stop(window.app_handle());
                     for (label, child) in window.app_handle().webview_windows() {

@@ -83,11 +83,15 @@ export interface HistoryClient {
 export interface HistorySyncState {
   enabled: boolean;
   firstDisableConfirmed: boolean;
+  revision: string;
 }
 export type HistorySyncAction =
   | { kind: 'read' }
   | { kind: 'set'; enabled: boolean; confirmed_first_disable: boolean };
 export interface HistorySyncClient {
+  onHistorySyncChanged(
+    listener: (change: AccountData<HistorySyncState>) => void,
+  ): Promise<() => void>;
   historySyncPreference(
     epoch: string,
     action: HistorySyncAction,

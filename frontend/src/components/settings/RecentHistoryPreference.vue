@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
-import { failure, type AccountView } from '../../services/contracts';
+import { ref } from 'vue';
+import type { AccountView } from '../../services/contracts';
 import { useCore } from '../../services/core';
-import { useAccountRead } from '../../composables/useAccountRead';
+import { useHistorySyncPreference } from '../../composables/useHistorySyncPreference';
 import { useControlFocus } from '../../composables/useControlFocus';
 import ModalTransition from '../ModalTransition.vue';
 import SettingsConfirm from './SettingsConfirm.vue';
@@ -11,70 +11,14 @@ const props = defineProps<{ account: AccountView }>();
 const emit = defineEmits<{ expired: [] }>();
 const core = useCore();
 const owner = () => (props.account.status === 'authenticated' ? props.account.epoch : null);
-const { value, state, error, refresh } = useAccountRead(
-  owner,
-  (epoch) => core.historySyncPreference(epoch, { kind: 'read' }),
-  undefined,
-  () => emit('expired'),
-);
+const { value, state, error, refresh, saving, saved, saveError, confirmOff, save, prepareChange } =
+  useHistorySyncPreference(core, owner, () => emit('expired'));
 const checkbox = ref<HTMLInputElement>();
 const heading = ref<HTMLElement>();
 const focus = useControlFocus(owner, () => checkbox.value ?? heading.value);
-const confirmOff = ref(false);
-const saving = ref(false);
-const saveError = ref('');
-const saved = ref(false);
-watch(
-  owner,
-  () => {
-    confirmOff.value = false;
-    saving.value = false;
-    saved.value = false;
-    saveError.value = '';
-  },
-  { flush: 'sync' },
-);
-
-async function save(enabled: boolean, confirmedFirstDisable: boolean) {
-  const epoch = owner();
-  if (!epoch || saving.value || !value.value || state.value !== 'ready') return;
-  saved.value = false;
-  saveError.value = '';
-  saving.value = true;
-  try {
-    const next = await core.historySyncPreference(epoch, {
-      kind: 'set',
-      enabled,
-      confirmed_first_disable: confirmedFirstDisable,
-    });
-    if (owner() !== epoch) return;
-    if (next.epoch !== epoch || next.value.enabled !== enabled)
-      throw { code: 'invalid_response', message: '设置结果不匹配，请重新读取。' };
-    value.value = next.value;
-    saved.value = true;
-  } catch (cause) {
-    if (owner() !== epoch) return;
-    const issue = failure(cause);
-    saveError.value = issue.message;
-    // A missing IPC result could have committed locally. Read the stored state
-    // once before showing another enabled control, without resubmitting.
-    await refresh();
-  } finally {
-    if (owner() === epoch) {
-      saving.value = false;
-      confirmOff.value = false;
-    }
-  }
-}
-
 function select(event: Event) {
-  if (!value.value || saving.value || state.value !== 'ready') return;
-  if (value.value.enabled && !value.value.firstDisableConfirmed) {
-    confirmOff.value = true;
-    return;
-  }
-  const desired = !value.value.enabled;
-  void focus.run(event, () => save(desired, false));
+  const desired = prepareChange();
+  if (desired !== undefined) void focus.run(event, () => save(desired, false));
 }
 </script>
 

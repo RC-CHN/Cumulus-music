@@ -35,6 +35,7 @@ struct ScopeContext {
     session: Arc<AccountSession>,
     host: Arc<PcExperimentHost>,
     store: Arc<StateStore>,
+    history_sync: Arc<super::history::HistorySyncHost>,
 }
 
 struct Assigned {
@@ -165,6 +166,7 @@ impl MusicClient {
             session: self.session.clone(),
             host: self.pc_experiments.clone(),
             store: self.registry.store(),
+            history_sync: self.history_sync.clone(),
         }
     }
 
@@ -258,29 +260,33 @@ impl ScopeContext {
         {
             return Err(Error::StaleResponse);
         }
-        let result = self.session.with_verified_profile(token, api, |owner, _| {
-            if api.verified_pc_experiment_revision()?.as_deref() != Some(credentials.as_str()) {
-                return Err(Error::StaleResponse);
-            }
-            if let Ok(history_store) = self.session.persistent_store() {
+        let result =
+            self.session.with_verified_profile(token, api, |owner, _| {
+                if api.verified_pc_experiment_revision()?.as_deref() != Some(credentials.as_str()) {
+                    return Err(Error::StaleResponse);
+                }
                 // A settings persistence failure does not invalidate a valid
                 // signed assignment or other consumers of its live groups.
-                let _ = crate::history::HistoryService::apply_verified_sync_default(
-                    &history_store,
-                    owner,
-                    groups.group("PH-PC-setting-multiterminal-record") == Some("t1"),
-                );
-            }
-            let result = groups.clone();
-            *self.host.state.lock().map_err(|_| Error::LockPoisoned)? = Some(Assigned {
-                token: token.clone(),
-                api: Arc::downgrade(api),
-                credentials: credentials.clone(),
-                fetched: Instant::now(),
-                groups,
-            });
-            Ok((credentials, result))
-        })?;
+                if let Ok(history_store) = self.session.persistent_store()
+                    && let Ok(Some(value)) =
+                        crate::history::HistoryService::apply_verified_sync_default(
+                            &history_store,
+                            owner,
+                            groups.group("PH-PC-setting-multiterminal-record") == Some("t1"),
+                        )
+                {
+                    self.history_sync.publish(token.generation, value);
+                }
+                let result = groups.clone();
+                *self.host.state.lock().map_err(|_| Error::LockPoisoned)? = Some(Assigned {
+                    token: token.clone(),
+                    api: Arc::downgrade(api),
+                    credentials: credentials.clone(),
+                    fetched: Instant::now(),
+                    groups,
+                });
+                Ok((credentials, result))
+            })?;
         let _ = self.commit_presentation(token, api, &result.0, &result.1);
         Ok(result)
     }

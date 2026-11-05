@@ -676,17 +676,28 @@ async fn history_sync_default_follows_successful_signed_refresh_until_an_explici
             .unwrap()
             .value
     };
+    let mut observations = f.client.subscribe_history_sync();
     let initial = pref(Read);
     assert!(initial.enabled && !initial.first_disable_confirmed);
-    assert!(f.paths().is_empty());
+    assert!(f.paths().is_empty() && !observations.has_changed().unwrap());
     // A missing setting row in a successful full batch uses M147's empty group.
     f.client.refresh_pc_presentation().await.unwrap();
     let control = pref(Read);
     assert!(!control.enabled && !control.first_disable_confirmed);
+    assert!(control.revision > initial.revision);
+    assert_eq!(
+        *observations.borrow_and_update(),
+        Some((epoch.parse().unwrap(), control))
+    );
     f.client.refresh_pc_presentation().await.unwrap();
-    assert!(pref(Read).enabled);
+    let treatment = pref(Read);
+    assert!(treatment.enabled && treatment.revision > control.revision);
+    assert_eq!(
+        *observations.borrow_and_update(),
+        Some((epoch.parse().unwrap(), treatment))
+    );
     assert!(f.client.refresh_pc_presentation().await.is_err());
-    assert!(pref(Read).enabled);
+    assert!(pref(Read).enabled && !observations.has_changed().unwrap());
     f.client.refresh_pc_presentation().await.unwrap();
     assert!(!pref(Read).enabled);
 
@@ -775,6 +786,44 @@ async fn history_sync_default_never_overwrites_an_existing_account_setting() {
             .get("local-guest", "play-history-v1", "sync-experiment-default")
             .unwrap()
             .is_none()
+    );
+    assert_eq!(f.paths(), [ASSIGNMENT_PATH]);
+}
+
+#[tokio::test]
+async fn history_sync_confirmation_after_observed_experiment_off_is_a_distinct_user_commit() {
+    use cumulus_core::history::HistorySyncAction::{Read, Set};
+    let f = Fixture::new(true, [json!({"code":200,"data":[]}).into()]);
+    let epoch = f.epoch();
+    let mut changes = f.client.subscribe_history_sync();
+    let before = f
+        .client
+        .history_sync_preference(&epoch, Read)
+        .unwrap()
+        .value;
+    assert!(before.enabled && !before.first_disable_confirmed);
+
+    // Modal opened on the original on state. Only the live cohort turns it
+    // off, and the original confirmation remains a user action.
+    f.client.refresh_pc_presentation().await.unwrap();
+    let (_, auto) = changes.borrow_and_update().unwrap();
+    assert!(!auto.enabled && !auto.first_disable_confirmed);
+    let confirmed = f
+        .client
+        .history_sync_preference(
+            &epoch,
+            Set {
+                enabled: false,
+                confirmed_first_disable: true,
+            },
+        )
+        .unwrap()
+        .value;
+    assert!(!confirmed.enabled && confirmed.first_disable_confirmed);
+    assert!(confirmed.revision > auto.revision);
+    assert_eq!(
+        *changes.borrow_and_update(),
+        Some((epoch.parse().unwrap(), confirmed))
     );
     assert_eq!(f.paths(), [ASSIGNMENT_PATH]);
 }

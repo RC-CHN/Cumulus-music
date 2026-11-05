@@ -2,6 +2,8 @@ mod dto;
 mod listened_books;
 pub(super) use listened_books::ListenedBooksHost;
 pub use listened_books::{ListenedBooksPage, ListenedBooksQuery};
+mod sync_observer;
+pub(super) use sync_observer::HistorySyncHost;
 mod selection;
 pub(in crate::client) use selection::Selection;
 mod view;
@@ -22,6 +24,9 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         let value = HistoryService::new(self.session.clone())?.sync_setting_for(&token, action)?;
         self.session.with_token(&token, |_| {
+            if matches!(action, HistorySyncAction::Set { .. }) {
+                self.history_sync.publish(token.generation, value);
+            }
             Ok(AccountData {
                 epoch: epoch.into(),
                 value,
@@ -118,7 +123,17 @@ impl MusicClient {
             } => {
                 service.cancel_unseen_for(&token, &id, kind, &expected_revision, action)?;
             }
-            HistoryCommand::SetSync { enabled } => service.set_sync_for(&token, enabled)?,
+            HistoryCommand::SetSync { enabled } => {
+                service.set_sync_for(&token, enabled)?;
+                if token.uid.is_some()
+                    && let Ok(value) = service.sync_setting_for(&token, HistorySyncAction::Read)
+                {
+                    self.session.with_token(&token, |_| {
+                        self.history_sync.publish(token.generation, value);
+                        Ok(())
+                    })?;
+                }
+            }
             HistoryCommand::Mutate {
                 id,
                 expected_revision,

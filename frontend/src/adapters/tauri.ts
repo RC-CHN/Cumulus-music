@@ -1,10 +1,17 @@
+import type { HistorySyncState } from '../services/history';
 import type { SearchPrivilegeObservation } from '../services/search';
 import type { PcPresentationView } from '../services/pcPresentation';
 import type { NativeLikeChanged } from '../services/nativeLikes';
 import { invoke, Channel } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import type { PlayerUpdate } from '../services/player';
-import type { AccountView, AppInfo, CoreClient, CoreFailure } from '../services/contracts';
+import type {
+  AccountData,
+  AccountView,
+  AppInfo,
+  CoreClient,
+  CoreFailure,
+} from '../services/contracts';
 import { decodeVideoFrame } from '../services/mv';
 import type { WindowLifecycleView } from '../services/window';
 import type { SystemMediaStatus } from '../services/systemMedia';
@@ -235,6 +242,10 @@ export function createTauriClient(): CoreClient {
     listenedBooks: (epoch, query) => invoke('listened_books', { epoch, query }),
     historyPage: (epoch, kind, refresh) => invoke('history_page', { epoch, kind, refresh }),
     historySyncPreference: (epoch, action) => invoke('history_sync_preference', { epoch, action }),
+    onHistorySyncChanged: (handler) =>
+      listen<AccountData<HistorySyncState>>('cumulus:history-sync-changed', (event) =>
+        handler(event.payload),
+      ),
     accountSettingsPage: (epoch, refresh) => invoke('account_settings_page', { epoch, refresh }),
     accountProfileDetail: (epoch) => invoke('account_profile_detail', { epoch }),
     accountAvatarTasks: (epoch) => invoke('account_avatar_tasks', { epoch }),

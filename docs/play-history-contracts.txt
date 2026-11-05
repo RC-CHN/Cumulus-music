@@ -330,7 +330,12 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   访客不写该账号偏好，匿名实验不能授予多端历史。
 - 有效开关变化在同一 SQLite 事务提升 privacy revision；在途历史读回只在
   同一连续开启区间提交。它不改历史条目、不触发额外实验/历史 HTTP、不自动
-  重放写。设置页下一次打开或重新读取显示生效值；本增量没有新增对已打开
-  设置页的实时推送。
+  重放写。M3097:1573–1605 的 connect 直接读取 reducer 后的
+  setting.allowMultiterminalRecord；Play.jsx:704–708 的受控 checkbox
+  在设置页已打开时也更新。Cumulus 在真正提交后经 main-window 定向
+  cumulus:history-sync-changed 观察当前账号的有效值和确认状态，仅发送
+  epoch 与本机设置 revision，不发送原实验分组。先订阅再读取，并用
+  epoch/revision 拒绝迟到快照、旧观察和跨账号值。实验观察不提交用户选择、
+  不关闭已打开的首次确认、不标记已保存。无定时器或新增 HTTP。
 - 合成测试源码：真实签名测试 transport 覆盖缺键→t1→失败→控制→手动保护、
   旧偏好/账号隔离/确认，history 测试覆盖启→停→启期间旧回包失效。
