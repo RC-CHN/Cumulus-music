@@ -4897,3 +4897,46 @@ CAPTCHA探针也已按新协议门槛显式勾选，但本轮未重新打开在�
   和合成账号/媒体完成，真实GTK/WebKit与libmpv/null；数字locale=C，消息和字符保持
   en_US.UTF-8。没有实际服务音乐请求、真实账号写入、物理声卡或Windows实机验收，
   不据虚拟显示器推断刷新率。全局AB调度与缓存页联动仍按契约继续，不宣称整目标完成。
+
+2026-11-05 phase58：全局搜索表现及播放竞态的整批实际验证
+- 最终原生产物来源0318bfac；frontend业务源码同该提交，904项前端测试之后未变。
+  原生、filter及22个前端文件的hash见
+  .build/ui-proof/phase58-global-presentation/build-final-provenance.json。
+  构建时脏项只有验证文档，不包含业务源码或测试脚本修改。
+- final-gui-batch.log记录四组独立脚本全部终态0；每组均用bwrap独立网络、X11
+  Xvfb/独立DBus、en_US.UTF-8，以及合成账号/合成音频。实际GTK/WebKitGTK和
+  libmpv/null输出，消息与字符locale保留、仅数字为C；不是实体声卡或Windows验证。
+- final-presentation-r1/report.json：10阶段/10PNG。native startup全190键分配后，
+  单次综合搜索，保持同一decoder暂停位置，再依次切c/t1/失败保留、离开详情、
+  c时Back等待真实本地receipt、恢复当前页、再切t1。严格6次完整分配、2次搜索
+  逻辑读取、4次本地投影，未重搜；playId、entryId、queue revision/条目及暂停
+  位置不变。验证2/3最佳匹配、6/10候选、dense、三类footer、滚动70及键盘焦点。
+- 原gui-r2组合断言误把关闭扩展时的单行可见节点数当作6个候选数，报错文字误指
+  焦点。两个原失败诊断都保留；focus-diagnostic-v2证明焦点已在同卡片封面、
+  loaded-count=6但四列仅挂4个节点。只修取证指标：同时严格检查6候选和
+  min(6,实际CSS列数)的首ID顺序/单行；产品焦点保护未改，旧焦点/滚动/原生断言保留。
+- final-footer-r1/report.json：真实签名合成transport的t1/c/unknown/error四组
+  14阶段/14PNG。仅t1出现歌词、别名、可点击理由；其他分组可继续播放/暂停，
+  error仅恢复旧布局而不产生footer许可。t1的推荐详情/Back仍保持同一暂停队列。
+- final-queue-r3/audit.json：8阶段/8PNG、两次真实进程启动。此前main CI失败的
+  sealed凭据重开路径已在整批新binary上通过，保留曲目/队列长度/版本/播放位置
+  和关闭后SQLite偏好核对。不是因放宽fresh账号隔离来允许任意Cookie重开。
+  r1功能断言已过，但逐张看图发现首次/重开设置两张尚为空白，不能证明radio可见。
+  仅外部queue_click_ui_probe.js补充同源页面、透明度、动画、真实命中及互斥选中
+  检查，双RAF复核后再截帧；产品与原功能断言未改。r2的三个radio状态已可见，
+  但ux05整窗黑帧，不能据该图确认视觉。r3每阶段增加两个实际DOM不透明背景采样，
+  复用已有最多3秒的被动截图读取并留paint记录；8份记录各2点均匹配，等待约
+  0.10–0.19秒，没有重放业务。二进制仍来自0318bfac，外部脚本aa19d5e9，
+  精确hash及业务树相同核对见queue-r3-provenance.json。所有问题原图保留。
+- final-palette-r1/report.json：7case、23阶段/23PNG，header/only_tb/sample/late
+  和pending header/image/canvas全部通过。标题开详情保留当前playId/整组entryId/
+  position，已修旧sample被过期卡片状态重建队列的问题；同URL在途复用、旧声音
+  拒绝、迟到取色不污染新声音的原断言继续保留。
+- 最终以队列r3替代r1/r2，合计55阶段/55PNG，原文件在各根的first或case/run/first目录。
+  人工看图记录为final-visual-review.json、final-palette-queue-visual-review.json和
+  final-queue-r3-visual-review.json；r1/r2的独立记录也保留旧空白/黑帧的发现。人工记录与
+  自动DOM/原生断言分开；关键帧通过不代表连续帧无闪烁、官方像素一致或刷新率实测。
+  较早gui-preview-metric通过时使用f81958cc二进制与后来前端，其来源差异已保留，
+  本次最终结果不以那一轮替代。没有真实服务音乐请求、账号写入、支付或邀请。
+- 官方全局其他实验消费者、匿名搜索界面及全应用逐项一致性审计继续；最新主线CI
+  需在推送后独立完成，Linux本机通过不能替代Windows或CI gate。没有发布新版本。

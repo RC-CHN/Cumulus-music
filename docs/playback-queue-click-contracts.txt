@@ -71,3 +71,17 @@ Xvfb 1280x850、LC_ALL=en_US.UTF-8 下，原 queue_click_smoke.py 及全部严�
 旧 main 2528e823 的 run 41984290134 另有 Windows vinyl_display 的普通音频
 起播失败与 Linux scene_palette sample 的声音详情保留播放失败。它们是另外
 两处待定位失败；本修复没有更改相应产品/脚本，也不宣称它们或 CI gate 已通过。
+
+2026-11-05 phase58整批回归：0318bfac二进制已完成两次进程、8个严格功能阶段，
+原生队列/SQLite偏好均通过。逐张看图发现r1首次和重开设置在页面过渡期间截成空白，
+所以两张旧图不作radio可见证明。仅外部queue_click_ui_probe.js补充同源设置页、
+无inert/完整透明度、动画结束、两radio中心命中和选中/原生偏好一致的等待，双RAF
+后复核；保留原队列、曲目、时钟、重开和存储断言。r2三个radio状态可见，但ux05
+抓到整窗黑帧，所以未作8图全部视觉通过结论。aa19d5e9再补每阶段两个实际DOM
+不透明背景样点，复用原有最多3秒的被动截图读取校验，不重放业务。与原0318bfac
+二进制重跑r3，8态/8PNG及两进程均通过，8份paint记录各2点全匹配（约0.10–0.19秒）。
+证据 .build/ui-proof/phase58-global-presentation/final-queue-r3/ 和
+queue-r3-provenance.json；所有问题旧图保留，无产品改动，仍是合成媒体/null输出，
+不是Windows实机，也不据关键帧证明连续画面从无黑帧。
+旧Linux sample标题竞态另已修复并过23阶段取色回归，见podcast-home-scene-fm.txt；
+旧Windows vinyl起播失败仍不作已解决结论，精确main提交的CI还须单独完成。

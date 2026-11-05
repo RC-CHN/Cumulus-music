@@ -97,8 +97,8 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   另验证已知凭据变更清空/失败不复活旧表现，新宿主仍可 bootstrap、同上下文
   新成功可恢复；自响应 Churn 后真正外部 credential commit 可重新触发一次读。
 - 私有 unit tests 覆盖事务已完成注册不可重送、legacy migration、新 cache 优先、
-  无睡眠的 generation 在 watch 取样后前进重绑。这里只记测试设计；提交时未运行
-  Rust 测试或桌面 GUI，等待根分支集中编译/执行后单独记录实际结果。
+  无睡眠的 generation 在 watch 取样后前进重绑。上述 core 用例已纳入0318bfac的
+  完整Rust执行，实际结果见rust-core-validation.txt；桌面验证另行记录。
   runtime_races 使用普通 request 会 panic 的合成原生能力，精确注入最终 read
   fence 之后、订阅期间、actual 取样之后三种 commit 窗口，均要求同一 lease
   恰好两次读取并落到 r2 的 c；该 unit 不代替真实签名/EAPI 的 integration tests。
@@ -106,7 +106,7 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   合成 transport/paused-time 测试称为实服/真实声卡验证。桌面 event/main-window
   与 cached search 页重投影由独立上层集成，未由这些 core 测试单独覆盖。
 
-空撤销屏障回归修复候选（2026-11-05）
+空撤销屏障回归修复（2026-11-05）
 - 本批 full Rust 检查实际抓到已有 credentials::logout_rejects_late_cookie_and_
   token_resurrection_in_same_or_another_instance 的原断言失败：空会话 clear()
   被普通 no-op 优化跳过，旧 revision 仍可接受迟到的登录 Cookie/refresh pair。
@@ -125,4 +125,4 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   重复/错 ID 仍 StaleResponse。没有泛化所有本地 setter 为撤销。
 - 新增两个 lib 单元测试：空 clear/连续 clear 的持久版本与 watch、旧实例和旧
   回包拒绝、普通空响应不通知；同字段显式 import 与重复 invalidate 仍有屏障。
-  本候选只做 rustfmt/diff 检查，等待 root 统一 Rust 验证，不提前记录通过。
+  两个新增单元与原有credentials回归均在0318bfac完整Rust测试中通过，未替换原断言。

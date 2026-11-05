@@ -91,7 +91,7 @@ Rust、窗口及账号边界
   本次还隔离了网络和声卡设备。Windows CI 使用相同原生探针、额外指定 --runtime <native>，
   不用 Linux 取图器；Windows 实际运行结果须看各次 CI。
 
-2026-11-05 标题与原生起播确认之间的竞态修复候选
+2026-11-05 标题与原生起播确认之间的竞态修复
 - 旧 main 2528e823 的 CI run 41984290134、Linux WebView job 127110228854，
   scene_palette sample 第三阶段失败。必要诊断 artifact 13398997223 的 head 与
   该提交一致；ZIP SHA256=bb21324d985702f38246fe95887386ed9f63fd986a726d7da3e40a17b0fa3999，
@@ -120,7 +120,10 @@ Rust、窗口及账号边界
   scene-fm-state 定向 10 测试通过，包含三种过期 card 状态和等待时换号。
   新增 3 个 native 集成测试，核对已装入 pending 恢复、native load/playId/
   position/queue 不变、Paused 恢复、非当前同声源完整三集及新 pending 仍需应用；
-  该候选尚未运行 Rust/真实 WebView，等待与下一批统一验证，未修改原 GUI 断言。
+  三项native回归在0318bfac的完整Rust测试中通过；同一业务源码的七个取色case、
+  23阶段/23PNG也在实际WebView通过，标题保持原playId/queue/position。证据
+  .build/ui-proof/phase58-global-presentation/final-palette-r1/；未修改原GUI断言，
+  使用libmpv/null输出，不代表真实声卡或Windows实机。
 - 当前 main 2b0bbb13 的 run 41992095683 则在 Linux/Windows 的队列第二进程
   return-code 断言失败，属于另一 sealed 凭据夹具重开问题；见
   playback-queue-click-contracts.txt，不能把此旧 sample 原因当作当前 job 根因。

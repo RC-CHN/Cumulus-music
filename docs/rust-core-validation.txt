@@ -1848,3 +1848,41 @@ RT下发/轮换或真实浏览器网页已打开。细节、失败修正和界�
   签名搜索用例入口及七场景取色入口仍须精确提交的远端CI通过，不从本地结果推断。
 - 全局实验初次/周期更新、缓存搜索页的反应式联动和持久启动恢复仍是必要后续工作，
   不把每次search读取正确或上述测试数量写成整个目标完成。没有发布新版本。
+
+2026-11-05 phase58：原生表现生命周期、搜索本地联动和标题播放竞态
+- 在0318bfac执行完整workspace/all-targets/custom-protocol、locked、no-fail-fast测试，
+  cargo终态0：384个程序，2371 passed、0 failed、19按既定条件忽略。证据
+  .build/ui-proof/phase58-global-presentation/rust-test-r3.log及同名-summary.json。
+  零测试的例程序不计作桌面功能通过；桌面运行另由实际WebView记录。
+- 采用与仓库CI一致的CARGO_INCREMENTAL=0、CARGO_PROFILE_DEV_DEBUG=0、
+  CARGO_PROFILE_TEST_DEBUG=0，本机CARGO_BUILD_JOBS=4。未删减目标/feature或忽略失败。
+  此前完整调试缓存耗尽磁盘的日志，
+  以及随后credentials退出回归失败的rust-test-r2.log均保留，不作为通过凭据。
+  已删除旧调试缓存，保留源码、账号、原始证明和发行文件；先前三个GUI二进制的
+  hardlink及hash核对见cache-cleanup-provenance.json。
+- 本批普通相同凭据响应保持no-op，但明确clear/invalidate/import使用持久化版本
+  屏障；修复空会话退出不推进版本导致旧回包可接受的问题。原credentials断言未改，
+  私有watch测试另验证连续空clear、同字段导入、重复撤销及普通空响应不通知。
+- 新增真实MusicHttpClient/EAPI的生命周期和搜索候选回归，覆盖30分钟paused-time、
+  凭据自更新一次重读上限、账号取消/重绑、guest注册未知回执防重和UID不提升、
+  持久展示与fresh权限分离、同凭据本地t1/c重投影、凭据改变后旧receipt永久失效。
+  三个窄竞态用可信NativeApi单元夹具，不将其单独称为签名传输证明。
+- 原匿名编码器38个合成输入/实际原核心输出的来源、CRT适配边界和公开冻结向量见
+  anonymous-identity-native-contracts.txt；完整Rust测试包含相应向量，不依赖研究
+  Python进程。没有真实匿名注册服务或实际30分钟墙钟验收。
+- 同源SceneFM标题新增三项native回归，保持原playId/queue/position、暂停续播，
+  已装入但本地未确认的pending可核对，其他来源仍整组播放；实际GUI另列。
+- 前端Node24.16.0、锁文件npm ci、format:check、904项测试及类型/生产构建通过；
+  对应frontend-*-r3.log。桌面watchman Node测试8项、CI Python脚本96项、公开源码
+  审计与非发行release_guard通过。没有以旧Python测试替代Rust迁移验收。
+- 0318bfac的Windows GNU严格Clippy两段通过：core库、受影响传输/SceneFM测试及
+  只读例程序，desktop库与UX/podcast_recent例程序；完整命令、hash及边界见
+  windows-gnu-provenance-r2.json。没有执行Windows/MSVC/WebView或实体声卡。
+- 真实当前账号搜索四次只读成功发生于689b83ab，见search-signed-live-read-proof.txt；
+  它不是最终原生定时生命周期的实服证明。四个搜索表现键之外的实验消费者、
+  尚未完整恢复的专有DSP及其他逐项审计仍继续；完整目标未完成，也没有发布新版本。
+- 同一业务源码的最终Linux cargo fmt、严格workspace/all-targets/custom-protocol
+  Clippy再次通过；普通cumulus、ux_ui_probe、podcast_recent_ui_probe和原生filter
+  实际构建成功。命令日志为rust-fmt-after-barrier.log、rust-clippy-final.log、
+  desktop-build-final.log、filter-build-final.log；二进制/前端hash与仅文档脏项见
+  build-final-provenance.json。该构建结果不单独证明桌面业务或实体输出听感。
