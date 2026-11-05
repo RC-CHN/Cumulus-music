@@ -117,3 +117,4 @@
 - [下载批量页](download-batch-ui-contracts.txt)已覆盖实体删除和多选播放；批量移动不由单文件移动或整目录迁移代替。
 - [内嵌评论举报](vinyl-comment-report-contracts.txt)在精彩和最新评论复用当前播放及同账号回执；Linux WebView 核对取消、预设、原文和回包不明时不重发。
 - [会员权益自动读取](core-membership-contracts.txt)由原生登录生命周期触发；Linux WebView 核对首次加载和按官方日期规则复查，综合搜索即时更新，日期不变时不轮询。
+- [在线播放缓存](streaming-media-cache-contracts.txt)为少数已获授权的普通 MP3 保留本进程临时字节；Linux 核对原生播放、再次授权、清理和设置持久化，未将缓存当作离线授权。官方动态策略、原生缓存格式和更改缓存目录不由本实现冒充。
