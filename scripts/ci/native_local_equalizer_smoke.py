@@ -64,6 +64,19 @@ def read_report(root, *, graph, peq):
     return report
 
 
+
+def verify_paused_native_clock(polls, replacement, target, rate):
+    # At .5 s, one stale 44.1/48 kHz conversion shifts the actual native
+    # clock by 40–45 ms. Keep the existing 44.1 kHz case unchanged.
+    tolerance = .02 if rate == 48_000 else .06
+    settled = [row['position'] for row in polls
+               if row['entry'] == replacement and row['paused'] and not row['seeking']
+               and row['position'] is not None and (rate != 48_000 or not row['buffering'])]
+    assert any(abs(position - target) < tolerance for position in settled), {
+        'replacement': replacement, 'rate': rate, 'target': target,
+        'tolerance': tolerance, 'settledNativePositions': settled,
+    }
+
 def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100):
     directory = root / 'spatial'
     names = [
@@ -166,9 +179,8 @@ def read_spatial_report(root, capture=False, source_kind='flac', rate=44_100):
         assert native['decoded_formats'] == expected_formats
         assert stock['native']['decoded_formats'] == {str(stock_entry): [rate, 2]}
         assert sought['native']['decoded_formats'] == expected_formats
-    assert any(row['entry'] == seek['replacement'] and row['paused'] and not row['seeking']
-               and abs(row['position'] - seek_target['accepted']) < .06
-               for row in sought['native']['last_polls'] if row['position'] is not None)
+    verify_paused_native_clock(sought['native']['last_polls'], seek['replacement'],
+                               seek_target['accepted'], rate)
     updates = [(row.get('presence', 0), row.get('stereoizer', 0), row.get('master_bypassed', False))
                for row in on['native']['local_updates']]
     assert updates[-3:] == [(6, 8, False), (6, 8, True), (6, 8, False)], updates
