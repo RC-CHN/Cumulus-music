@@ -198,6 +198,10 @@ pub trait AudioEngine: Send {
     ) -> Result<LoadedMedia> {
         Err(crate::Error::State("native streaming audio is unavailable"))
     }
+    /// The exact native host supports the catalog's pinned plain and NCM paths.
+    fn supports_pinned_search_download(&self) -> bool {
+        false
+    }
     /// Native-only, already-opened and verified local audio; default engines
     /// fail closed instead of reopening by path or using a URL.
     fn load_pinned_audio(

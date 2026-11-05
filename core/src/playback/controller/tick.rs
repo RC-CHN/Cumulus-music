@@ -146,6 +146,16 @@ impl Actor {
             }
             return Ok(());
         }
+        if let Some(loaded) = &self.loaded
+            && let MediaInput::SearchPublication(source) = &loaded.source.input
+        {
+            // Queue sync above covers the selected identity. The active
+            // handle cannot silently survive durable grant revocation.
+            let source = source.clone();
+            tokio::task::spawn_blocking(move || source.revalidate_playback(None))
+                .await
+                .map_err(|_| Error::State("catalog download authority worker stopped"))??;
+        }
         self.equalizer_observe().await?;
         self.loudness_observe().await?;
         let view = self.poll_with_effect_recovery().await?;
@@ -388,7 +398,7 @@ impl Actor {
                 // Its catalog identity does not make the loaded file a URL.
                 && !self.loaded.as_ref().is_some_and(|loaded| {
                     loaded.item.entry_id == next.entry_id
-                        && matches!(&loaded.source.input, MediaInput::File(_))
+                        && matches!(&loaded.source.input, MediaInput::SearchPublication(_))
                 })
         }) else {
             self.prefetch_key = None;

@@ -2,6 +2,7 @@
 mod cold;
 mod detached;
 mod records;
+mod search_playback;
 mod service;
 pub use cold::{
     ColdOfflineAudio, ColdOfflineAudioPage, ColdOfflineAudioRow, ColdOfflineCursor,
@@ -10,5 +11,7 @@ pub use cold::{
 pub(crate) use cold::{list_audio, open_audio};
 pub(crate) use detached::{detach_download_queue, move_inline_download_queue};
 pub use records::{OfflineCheck, OfflineRecord, PublishedDownload};
+pub(crate) use search_playback::HeldSearchFile;
+pub use search_playback::SearchPublication;
 pub use service::OfflineLibrary;
 pub(in crate::download) use service::verify as verify_detached_audio;

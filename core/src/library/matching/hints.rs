@@ -38,8 +38,16 @@ impl MetadataProbe for FileMetadataProbe {
 
 /// Read the existing official container metadata without a fuzzy network match.
 pub(crate) fn file_metadata_hint(path: &std::path::Path, is_ncm: bool) -> Result<MatchHint> {
+    opened_metadata_hint(&mut open_regular(path)?, is_ncm, HeaderPolicy::Compatible)
+}
+
+pub(crate) fn opened_metadata_hint(
+    file: &mut std::fs::File,
+    is_ncm: bool,
+    header: HeaderPolicy,
+) -> Result<MatchHint> {
     if is_ncm {
-        let reader = NcmReader::open(path, HeaderPolicy::Compatible)?;
+        let reader = NcmReader::new(file, header)?;
         return Ok(match &reader.info().metadata {
             Some(value) => metadata_song(
                 if value.get("programId").is_some() {
@@ -54,8 +62,7 @@ pub(crate) fn file_metadata_hint(path: &std::path::Path, is_ncm: bool) -> Result
             None => MatchHint::Absent,
         });
     }
-    let mut file = open_regular(path)?;
-    let probe = Probe::new(&mut file).guess_file_type()?;
+    let probe = Probe::new(file).guess_file_type()?;
     if probe.file_type().is_none() {
         return Ok(MatchHint::Absent);
     }

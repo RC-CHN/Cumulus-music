@@ -112,6 +112,7 @@ pub struct DeviceState {
     pub view: EngineSnapshot,
     pub loads: usize,
     pub last_source: Option<cumulus_core::playback::engine::MediaInput>,
+    pub last_pinned: Option<(bool, Vec<u8>)>,
     pub stops: usize,
     pub polls: usize,
     pub duration: f64,
@@ -151,6 +152,7 @@ pub struct Device {
     pub equalizer_clears: AtomicU64,
     pub state: Mutex<DeviceState>,
     pub hold_load: AtomicBool,
+    pub pinned_search_supported: AtomicBool,
     pub load_failure_code: AtomicI32,
     pub required_url_version: AtomicU64,
     pub fail_seek: AtomicBool,
@@ -204,6 +206,7 @@ impl Default for Device {
                 },
                 loads: 0,
                 last_source: None,
+                last_pinned: None,
                 stops: 0,
                 polls: 0,
                 duration: 120.0,
@@ -211,6 +214,7 @@ impl Default for Device {
                 pauses: vec![],
             }),
             hold_load: AtomicBool::new(false),
+            pinned_search_supported: AtomicBool::new(false),
             load_failure_code: AtomicI32::new(0),
             required_url_version: AtomicU64::new(0),
             fail_seek: AtomicBool::new(false),
@@ -221,6 +225,56 @@ impl Default for Device {
     }
 }
 struct Engine(Arc<Device>);
+impl Engine {
+    fn wait_load(&self, cancel: &Cancellation, authority: &Cancellation) -> Result<()> {
+        self.0.started.notify_one();
+        while self.0.hold_load.load(Ordering::SeqCst) {
+            cancel.check()?;
+            authority.check()?;
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        cancel.check()?;
+        authority.check()
+    }
+
+    fn finish_load(state: &mut DeviceState, start: f64, end: Option<f64>) -> LoadedMedia {
+        let entry_id = state.loads as i64;
+        state.bounds.push((start, end));
+        state.view.entry_id = Some(entry_id);
+        state.view.position = Some(start);
+        state.view.duration = Some(state.duration);
+        state.view.buffered_through = None;
+        state.view.seeking = false;
+        state.view.paused = true;
+        LoadedMedia {
+            entry_id,
+            duration: Some(state.duration),
+            codec: Some("fixture".into()),
+        }
+    }
+
+    fn read_pinned(
+        &self,
+        file: std::fs::File,
+        encrypted: bool,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        use std::io::Read;
+        assert!(self.0.pinned_search_supported.load(Ordering::Acquire));
+        self.wait_load(cancel, &authority)?;
+        let mut data = Vec::new();
+        file.take(2 * 1024 * 1024 + 1).read_to_end(&mut data)?;
+        assert!(data.len() <= 2 * 1024 * 1024);
+        cancel.check()?;
+        authority.check()?;
+        let mut state = self.0.state.lock().unwrap();
+        state.loads += 1;
+        state.last_source = None;
+        state.last_pinned = Some((encrypted, data));
+        Ok(Self::finish_load(&mut state, 0.0, None))
+    }
+}
 #[allow(dead_code)]
 pub fn audio_engine(device: Arc<Device>) -> Box<dyn AudioEngine> {
     Box::new(Engine(device))
@@ -328,12 +382,7 @@ impl AudioEngine for Engine {
         }))
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
-        self.0.started.notify_one();
-        while self.0.hold_load.load(Ordering::SeqCst) {
-            cancel.check()?;
-            std::thread::sleep(Duration::from_millis(2));
-        }
-        cancel.check()?;
+        self.wait_load(cancel, &Cancellation::default())?;
         let mut state = self.0.state.lock().unwrap();
         state.loads += 1;
         let code = self.0.load_failure_code.load(Ordering::SeqCst);
@@ -354,19 +403,27 @@ impl AudioEngine for Engine {
             });
         }
         state.last_source = Some(request.source);
-        let entry_id = state.loads as i64;
-        state.bounds.push((request.start, request.end));
-        state.view.entry_id = Some(entry_id);
-        state.view.position = Some(request.start);
-        state.view.duration = Some(state.duration);
-        state.view.buffered_through = None;
-        state.view.seeking = false;
-        state.view.paused = true;
-        Ok(LoadedMedia {
-            entry_id,
-            duration: Some(state.duration),
-            codec: Some("fixture".into()),
-        })
+        state.last_pinned = None;
+        Ok(Self::finish_load(&mut state, request.start, request.end))
+    }
+    fn supports_pinned_search_download(&self) -> bool {
+        self.0.pinned_search_supported.load(Ordering::Acquire)
+    }
+    fn load_pinned_audio(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.read_pinned(file, false, authority, cancel)
+    }
+    fn load_pinned_ncm(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.read_pinned(file, true, authority, cancel)
     }
     fn pause(&mut self, paused: bool) -> Result<()> {
         if !paused && self.0.fail_unpause.load(Ordering::SeqCst) {

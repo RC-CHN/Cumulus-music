@@ -17,6 +17,8 @@ pub enum MediaInput {
         path: PathBuf,
         fingerprint: crate::library::identity::FileFingerprint,
     },
+    /// Internal publication receipt. A generic path/URL load must reject it.
+    SearchPublication(Arc<crate::download::offline::SearchPublication>),
     Url(MediaUrl),
 }
 

@@ -356,7 +356,7 @@ impl MpvEngine {
     fn source(source: MediaInput) -> Result<CString> {
         match source {
             MediaInput::Url(url) => string(url.as_str()),
-            MediaInput::NativeFile { .. } => {
+            MediaInput::NativeFile { .. } | MediaInput::SearchPublication(_) => {
                 Err(Error::InvalidInput("native local file must be pinned"))
             }
             MediaInput::File(path) => {
@@ -947,6 +947,10 @@ impl AudioEngine for MpvEngine {
             acceptance.confirm();
         }
         Ok(media)
+    }
+
+    fn supports_pinned_search_download(&self) -> bool {
+        self.native.is_some()
     }
 
     fn load_pinned_audio(

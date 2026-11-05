@@ -236,23 +236,25 @@ impl Actor {
             .and_then(|cache| cache.store.revision().ok());
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
-                let streaming_revision =
+                let (streaming_revision, pinned_search) =
                     super::engine(engine.clone(), cancel.clone(), move |engine| {
                         engine.stop()?;
                         // Discard the previous track's gain before priming a new decoder.
                         engine.reset_track_loudness()?;
-                        Ok(streaming_revision.filter(|_| engine.streaming_audio_available()))
+                        Ok((
+                            streaming_revision.filter(|_| engine.streaming_audio_available()),
+                            engine.supports_pinned_search_download(),
+                        ))
                     })
                     .await?;
                 cancel.check()?;
-                let download = if prefer_search_download {
-                    let download = resolver
-                        .search_catalog_download(&item.resource, &token)
-                        .await?;
-                    cancel.check()?;
-                    download
+                let (download, initial_file) = if prefer_search_download && pinned_search {
+                    resolver
+                        .search_catalog_download(&item.resource, &token, &cancel)
+                        .await?
+                        .map_or((None, None), |(source, file)| (Some(source), Some(file)))
                 } else {
-                    None
+                    (None, None)
                 };
                 let StreamingSelection {
                     source,
@@ -356,10 +358,37 @@ impl Actor {
                 } else {
                     None
                 };
+                let held_file = match (&source.input, initial_file) {
+                    (MediaInput::SearchPublication(_), Some(file)) => Some(file),
+                    (MediaInput::SearchPublication(publication), None) => {
+                        // Retained transport is a publication identity, never
+                        // an old handle, cursor, path fallback or online grant.
+                        let publication = publication.clone();
+                        let fence = cancel.clone();
+                        Some(
+                            tokio::task::spawn_blocking(move || publication.open(&fence))
+                                .await
+                                .map_err(|_| {
+                                    Error::State("catalog download reopen worker stopped")
+                                })??,
+                        )
+                    }
+                    (_, None) => None,
+                    (_, Some(_)) => return Err(Error::State("unexpected held catalog file")),
+                };
                 let load_cancel = with_stock_fallback(cancel.clone(), stock_fallback.clone());
+                let held_file = held_file.map(|file| (file, item.clone()));
                 let (media, local_equalizer) =
                     super::engine(engine.clone(), load_cancel.clone(), move |engine| {
-                        let media = if let Some(reader) = stream_reader {
+                        let media = if let Some((file, expected)) = held_file {
+                            let (file, encrypted, authority) =
+                                file.into_native(&expected, &load_cancel)?;
+                            if encrypted {
+                                engine.load_pinned_ncm(file, authority, &load_cancel)?
+                            } else {
+                                engine.load_pinned_audio(file, authority, &load_cancel)?
+                            }
+                        } else if let Some(reader) = stream_reader {
                             engine.load_streaming_audio(reader, &load_cancel)?
                         } else if let Some(settings) = local_equalizer
                             && matches!(&load.source, MediaInput::NativeFile { .. })
@@ -534,6 +563,12 @@ impl Actor {
                         let seek_cancel = transport.clone();
                         let entry = prepared.media.entry_id;
                         let local_equalizer = prepared.local_equalizer;
+                        let publication = match &prepared.source.input {
+                            MediaInput::SearchPublication(source) => {
+                                Some((source.clone(), prepared.item.clone()))
+                            }
+                            _ => None,
+                        };
                         let result = self
                             .parametric_transport(paused, transport.clone(), move |engine| {
                                 let replacement = if (target - initial).abs() > f64::EPSILON {
@@ -545,6 +580,10 @@ impl Actor {
                                 engine.speed(speed)?;
                                 if let Some(guard) = stock_fallback {
                                     guard.check()?;
+                                }
+                                if let Some((source, entry)) = publication {
+                                    source.revalidate_playback(Some(&entry))?;
+                                    seek_cancel.check()?;
                                 }
                                 if !local_equalizer {
                                     engine.pause(paused)?;

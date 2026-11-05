@@ -15,7 +15,12 @@ use cumulus_core::{
     protocol::http::ApiOrigin,
 };
 use serde_json::json;
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 const FLAC: &[u8] = include_bytes!("fixtures/tag_audio/seed.flac");
 struct Fixture {
     root: tempfile::TempDir,
@@ -38,6 +43,9 @@ impl Fixture {
             .unwrap();
         let store = registry.store();
         let device = Arc::new(playback_support::Device::default());
+        device
+            .pinned_search_supported
+            .store(true, Ordering::Release);
         let native = device.clone();
         let client = MusicClient::with_session(session.clone(), registry)
             .with_download_backend(backend.clone())
@@ -319,10 +327,11 @@ async fn search_row_verified_download_keeps_catalog_and_disables_quality_switch(
     assert_eq!(queue.current, local.entry_id);
     assert_eq!(queue.tracks.len(), 1);
     assert_eq!(queue.tracks[0].track.id, "123");
-    assert!(matches!(
-        &f.device.state.lock().unwrap().last_source,
-        Some(MediaInput::File(loaded)) if loaded == &path
-    ));
+    {
+        let native = f.device.state.lock().unwrap();
+        assert!(native.last_source.is_none());
+        assert_eq!(native.last_pinned, Some((false, fs::read(path).unwrap())));
+    }
     assert_eq!(f.api.count(SEARCH_URL), 0);
     assert_eq!(f.api.count(MEMBERSHIP_INFO), 0);
 
@@ -467,6 +476,222 @@ async fn search_row_online_quality_still_authorizes_selected_level_and_preserves
     assert_search_online(&f, "exhigh");
 }
 
+async fn native_search_state(f: &Fixture, want: impl Fn(&PlayerView) -> bool) -> PlayerView {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut tick = tokio::time::interval(Duration::from_millis(15));
+        loop {
+            tick.tick().await;
+            let view = f.client.player_snapshot("1").await.unwrap();
+            if want(&view) {
+                return view;
+            }
+        }
+    })
+    .await
+    .expect("wait for the selected native search state")
+}
+
+#[tokio::test]
+async fn search_row_reads_the_held_file_even_if_the_published_name_is_replaced() {
+    use cumulus_core::playback::engine::EngineEvent;
+
+    let f = Fixture::new();
+    let (_, completed) = f.completed().await;
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    let original = fs::read(&path).unwrap();
+    f.device.hold_load.store(true, Ordering::Release);
+    let (selected, ()) = tokio::join!(f.client.play_selection("1", search_row(false)), async {
+        tokio::time::timeout(Duration::from_secs(5), f.device.started.notified())
+            .await
+            .expect("the native adapter owns the checked descriptor");
+        fs::rename(&path, path.with_file_name("still-open.flac")).unwrap();
+        // Same size and pathname; a stat-only check cannot prove equality.
+        let mut changed = original.clone();
+        *changed.last_mut().unwrap() ^= 0x55;
+        fs::write(&path, changed).unwrap();
+        f.device.hold_load.store(false, Ordering::Release);
+    });
+    let playing = selected.unwrap();
+    assert!(playing.catalog_file_source);
+    assert_eq!(playing.state, PlaybackStatus::Playing);
+    let entry = {
+        let mut native = f.device.state.lock().unwrap();
+        assert!(native.last_source.is_none());
+        assert_eq!(native.last_pinned, Some((false, original)));
+        let entry = native.view.entry_id.unwrap();
+        native
+            .view
+            .events
+            .push(EngineEvent::OutputReload { entry_id: entry });
+        entry
+    };
+    assert!(entry > 0);
+    // Explicit native reopen must hash a new descriptor from the same
+    // publication. It cannot reuse the old cursor or accept the changed path.
+    let failed = native_search_state(&f, |view| view.state == PlaybackStatus::Error).await;
+    assert!(!failed.catalog_file_source);
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    assert_eq!(f.api.count(SEARCH_URL), 0);
+}
+
+#[tokio::test]
+async fn search_row_valid_native_reopen_keeps_the_same_publication_and_pause() {
+    use cumulus_core::playback::engine::EngineEvent;
+
+    let f = Fixture::new();
+    f.completed().await;
+    f.client
+        .play_selection("1", search_row(false))
+        .await
+        .unwrap();
+    f.client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let previous = f
+        .client
+        .player_action("1", PlayerAction::Seek { seconds: 12.0 })
+        .await
+        .unwrap();
+    {
+        let mut native = f.device.state.lock().unwrap();
+        let entry_id = native.view.entry_id.unwrap();
+        native
+            .view
+            .events
+            .push(EngineEvent::OutputReload { entry_id });
+    }
+    let resumed = native_search_state(&f, |view| {
+        view.state == PlaybackStatus::Paused && view.play_id != previous.play_id
+    })
+    .await;
+    assert!(resumed.catalog_file_source);
+    assert_eq!(resumed.entry_id, previous.entry_id);
+    assert_eq!(resumed.position, Some(12.0));
+    assert_eq!(f.device.state.lock().unwrap().loads, 2);
+    assert_eq!(f.api.count(SEARCH_URL), 0);
+}
+
+#[tokio::test]
+async fn search_row_ledger_or_queue_revocation_never_unpauses_the_prepared_file() {
+    use cumulus_core::download::offline::OfflineLibrary;
+
+    for revoke_queue in [false, true] {
+        let f = Fixture::new();
+        let (_, completed) = f.completed().await;
+        let path = completed.tasks[0].path.as_ref().unwrap();
+        let offline = OfflineLibrary::new(f.session.clone()).unwrap();
+        let token = f.session.token().unwrap();
+        let record = offline.record(&token, path).unwrap().unwrap();
+        f.device.hold_load.store(true, Ordering::Release);
+        let (selected, ()) = tokio::join!(f.client.play_selection("1", search_row(false)), async {
+            tokio::time::timeout(Duration::from_secs(5), f.device.started.notified())
+                .await
+                .expect("paused native load has started");
+            if revoke_queue {
+                f.store
+                    .put(
+                        "1",
+                        "playback",
+                        "queue",
+                        &json!({
+                            "items": [], "order": [], "current": null, "mode": "order_loop"
+                        }),
+                    )
+                    .unwrap();
+            } else {
+                offline.forget(&token, &record).unwrap();
+            }
+            f.device.hold_load.store(false, Ordering::Release);
+        });
+        let error = selected.err().expect("obsolete publication cannot start");
+        if revoke_queue {
+            assert!(matches!(
+                error.root(),
+                Error::QueueChanged | Error::Cancelled
+            ));
+        } else {
+            assert!(matches!(
+                error.root(),
+                Error::State("published search download changed")
+            ));
+        }
+        let view = f.client.player_snapshot("1").await.unwrap();
+        assert!(!view.catalog_file_source);
+        assert_ne!(view.state, PlaybackStatus::Playing);
+        assert!(!f.device.state.lock().unwrap().pauses.contains(&false));
+        assert_eq!(f.api.count(SEARCH_URL), 0);
+    }
+}
+
+#[tokio::test]
+async fn search_row_host_without_pinned_playback_uses_only_authorized_online_source() {
+    let f = Fixture::new();
+    f.completed().await;
+    f.device
+        .pinned_search_supported
+        .store(false, Ordering::Release);
+    let view = f
+        .client
+        .play_selection("1", search_row(false))
+        .await
+        .unwrap();
+    assert!(!view.catalog_file_source);
+    assert!(view.can_change_quality);
+    assert_search_online(&f, "standard");
+    assert!(f.device.state.lock().unwrap().last_pinned.is_none());
+}
+
+#[tokio::test]
+async fn search_row_unsupported_pinned_format_is_not_sent_to_a_path_decoder() {
+    use cumulus_core::{
+        download::offline::{OfflineLibrary, PublishedDownload},
+        media::integrity::inspect_file,
+    };
+
+    let f = Fixture::new();
+    let (task_id, completed) = f.completed().await;
+    let path =
+        PathBuf::from(completed.tasks[0].path.as_ref().unwrap()).with_file_name("unsupported.ogg");
+    fs::write(&path, b"OggS sealed non-pinned format fixture").unwrap();
+    let integrity = inspect_file(&path).unwrap();
+    let record = OfflineLibrary::new(f.session.clone())
+        .unwrap()
+        .register(
+            &f.session.token().unwrap(),
+            &PublishedDownload {
+                task_id: task_id.clone(),
+                song_id: "123".into(),
+                requested_quality: Quality::Standard,
+                target: path,
+                song: json!({"id":123}),
+                resource: json!({"id":123,"level":"standard"}),
+                encrypted: false,
+                integrity: integrity.clone(),
+            },
+        )
+        .unwrap();
+    let mut task = f
+        .store
+        .get("1", "download_tasks_v1", &task_id)
+        .unwrap()
+        .unwrap();
+    task["target"] = json!(record.path);
+    task["output_integrity"] = json!(integrity);
+    f.store
+        .put("1", "download_tasks_v1", &task_id, &task)
+        .unwrap();
+
+    let view = f
+        .client
+        .play_selection("1", search_row(false))
+        .await
+        .unwrap();
+    assert!(!view.catalog_file_source);
+    assert_search_online(&f, "standard");
+    assert!(f.device.state.lock().unwrap().last_pinned.is_none());
+}
+
 #[tokio::test]
 async fn search_row_missing_or_corrupt_download_uses_only_authorized_online_fallback() {
     for missing in [true, false] {
@@ -519,7 +744,6 @@ async fn search_row_never_guesses_between_two_completed_publications() {
 #[tokio::test]
 async fn search_row_encrypted_download_needs_current_offline_rights_without_renewal() {
     use cumulus_core::download::offline::OfflineLibrary;
-    use std::sync::atomic::Ordering;
     for (known, active) in [(false, false), (true, false), (true, true)] {
         let f = Fixture::new();
         f.api.resource.lock().unwrap()["flag"] = json!(0);
@@ -543,13 +767,12 @@ async fn search_row_encrypted_download_needs_current_offline_rights_without_rene
             .unwrap();
         assert_eq!(view.state, PlaybackStatus::Playing);
         if active {
-            let encrypted = fs::canonicalize(encrypted).unwrap();
             let native = f.device.state.lock().unwrap();
-            let Some(MediaInput::File(loaded)) = &native.last_source else {
-                panic!("expected the verified NCM's decoded local audio");
-            };
-            assert_ne!(loaded, &encrypted, "stock engine receives decoded audio");
-            assert_eq!(fs::read(loaded).unwrap(), fs::read(&original).unwrap());
+            assert!(native.last_source.is_none());
+            assert_eq!(
+                native.last_pinned,
+                Some((true, fs::read(encrypted).unwrap()))
+            );
             assert_eq!(f.api.count(SEARCH_URL), 0);
         } else {
             assert_search_online(&f, "standard");

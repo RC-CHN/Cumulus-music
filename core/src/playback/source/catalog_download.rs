@@ -1,6 +1,15 @@
 //! Exact already-published song selection for an explicit catalog search row.
-use super::{ResolvedSource, SourceResolver};
-use crate::{Error, Result, account::SessionToken, download::service::DownloadService};
+use super::{ResolvedSource, SourceResolver, loudness};
+use crate::{
+    Error, Result,
+    account::SessionToken,
+    download::{
+        offline::{HeldSearchFile, SearchPublication},
+        service::DownloadService,
+    },
+    library::matching::MatchHint,
+    playback::engine::{Cancellation, MediaInput},
+};
 use serde_json::{Value, json};
 use std::sync::Arc;
 
@@ -9,14 +18,52 @@ impl SourceResolver {
         &self,
         resource: &Value,
         token: &SessionToken,
-    ) -> Result<Option<Arc<ResolvedSource>>> {
+        cancel: &Cancellation,
+    ) -> Result<Option<(Arc<ResolvedSource>, HeldSearchFile)>> {
         let Some(song) = resource["id"].as_str() else {
             return Ok(None);
         };
-        let candidate = self.published_search_song(song, token).await;
+        let session = self.session.clone();
+        let account = token.clone();
+        let song = song.to_owned();
+        let fence = cancel.clone();
+        let candidate = tokio::task::spawn_blocking(move || -> Result<_> {
+            let task = DownloadService::published_catalog_song(&session, &account, &song)?;
+            // No guess based on filename, mtime, quality or a different resource.
+            let Some(task) = task else {
+                return Ok(None);
+            };
+            let publication = SearchPublication::bind(session, account, &task, &song)?;
+            let mut file = publication.open(&fence)?;
+            let (gain, invalid) = if let Some(gain) = publication.gain() {
+                (gain.clone(), false)
+            } else {
+                match file.metadata_hint() {
+                    Ok(MatchHint::Song(value)) => (value["volumeDelta"].clone(), false),
+                    Ok(MatchHint::Absent) => (Value::Null, false),
+                    Ok(MatchHint::Invalid) | Err(_) => (Value::Null, true),
+                }
+            };
+            let info = loudness::with_gain(
+                json!({"kind":"local","resource_info":{"level":publication.quality()}}),
+                (gain, invalid),
+            );
+            fence.check()?;
+            Ok(Some((
+                Arc::new(ResolvedSource {
+                    input: MediaInput::SearchPublication(publication),
+                    info,
+                    expires_at: None,
+                }),
+                file,
+            )))
+        })
+        .await
+        .map_err(|_| Error::State("catalog download lookup worker stopped"))?;
         // Even missing/corrupt publications cannot permit an online load for
-        // a replaced account. Other readers on this source still check the token.
+        // a replaced account. Unsupported formats have not reached a decoder.
         self.session.check_generation(token)?;
+        cancel.check()?;
         match candidate {
             Ok(value) => Ok(value),
             Err(error) => match error.root() {
@@ -32,38 +79,5 @@ impl SourceResolver {
                 _ => Err(error),
             },
         }
-    }
-
-    async fn published_search_song(
-        &self,
-        song: &str,
-        token: &SessionToken,
-    ) -> Result<Option<Arc<ResolvedSource>>> {
-        let session = self.session.clone();
-        let account = token.clone();
-        let id = song.to_owned();
-        let task = tokio::task::spawn_blocking(move || {
-            DownloadService::published_catalog_song(&session, &account, &id)
-        })
-        .await
-        .map_err(|_| Error::State("catalog download lookup worker stopped"))??;
-        // No guess based on filename, mtime, quality or a different resource.
-        let Some(task) = task else {
-            return Ok(None);
-        };
-        if task.output_integrity.is_none() {
-            return Ok(None);
-        }
-        let path = task.playback_target()?;
-        let Some(path) = path.to_str() else {
-            return Ok(None);
-        };
-        self.local(
-            json!({"id": song, "download_task_id": task.id, "path": path}),
-            token,
-            Some(song),
-        )
-        .await
-        .map(Some)
     }
 }

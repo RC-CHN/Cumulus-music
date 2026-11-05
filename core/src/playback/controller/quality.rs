@@ -50,7 +50,7 @@ impl Actor {
                     && loaded.item.resource["trial_mode"] == 42
                     && matches!(
                         &loaded.source.input,
-                        crate::playback::engine::MediaInput::File(_)
+                        crate::playback::engine::MediaInput::SearchPublication(_)
                     )
             })
     }

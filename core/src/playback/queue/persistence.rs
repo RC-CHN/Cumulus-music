@@ -10,6 +10,30 @@ struct FmCommit<'a> {
 }
 
 impl PlaybackQueue {
+    /// Same durable queue snapshot as the task/ledger observation immediately
+    /// before a catalog file is submitted to a native decoder.
+    pub(crate) fn verify_search_file_target(
+        tx: &crate::storage::StateTransaction<'_>,
+        owner: &str,
+        expected: &QueueEntry,
+        song: &str,
+    ) -> Result<()> {
+        let raw = tx.get(owner, "playback", "queue")?;
+        let queue = QueueSnapshot::load(raw.as_ref())?;
+        if queue.fm_source.is_some()
+            || queue.intelligence.is_some()
+            || queue.selected().as_ref() != Some(expected)
+            || expected.resource["id"].as_str() != Some(song)
+            || !expected.resource["playback_constraint"].is_null()
+            || expected.source["kind"] != "songs"
+            || expected.source["scene"] != "search"
+            || expected.resource["trial_mode"] != 42
+        {
+            return Err(Error::QueueChanged);
+        }
+        Ok(())
+    }
+
     pub(crate) fn install_fm_restore(&mut self, input: &FmRestore) -> Result<FmRestoreOutcome> {
         let restore =
             crate::fm::player::source(&self.state)?.is_some() || self.state.items.is_empty();
