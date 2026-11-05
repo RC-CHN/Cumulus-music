@@ -36,6 +36,8 @@ pub use vinyl_similar::{
     VinylRecommendationPlacement, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
 };
 mod vinyl_wiki;
+mod voice_detail;
+pub use voice_detail::{PlayerVoiceCreator, PlayerVoiceDetail};
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
@@ -299,6 +301,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .as_ref()
             .map(|i| track(&i.resource))
             .transpose()?,
+        voice_detail: voice_detail::project(value),
         origin: value
             .selected
             .as_ref()

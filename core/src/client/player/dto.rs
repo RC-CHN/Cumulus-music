@@ -44,6 +44,10 @@ pub struct PlayerView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download_task_id: Option<String>,
     pub track: Option<TrackView>,
+    /// Public episode header metadata bound to this snapshot's native play ID,
+    /// episode and main song. Raw podcast records never cross the boundary.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice_detail: Option<super::PlayerVoiceDetail>,
     pub origin: Option<PlayerOrigin>,
     /// Known non-navigable playback provenance; no raw source data is exposed.
     #[serde(skip_serializing_if = "std::ops::Not::not")]

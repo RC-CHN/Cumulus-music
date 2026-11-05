@@ -37,11 +37,11 @@ pub use super::ordinary_essential::{EssentialBooks, OrdinaryEssentialView};
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
-    PlayerResourceKind, PlayerView, PlaylistDropRow, QualityChoiceView, QualityDetailsView,
-    QualityTrialCommand, QualityTrialOutcome, QualityTrialView, QueueClearContext,
-    QueueClickPreferencesCommand, QueueClickPreferencesView, QueueCollectionView, QueueEdit,
-    QueueMoreTipAction, QueueTrack, QueueView, SearchResultPlayback, SongRowSelection,
-    StartupPreferencesCommand, StartupPreferencesView,
+    PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlaylistDropRow,
+    QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
+    QualityTrialView, QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,
+    QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack, QueueView,
+    SearchResultPlayback, SongRowSelection, StartupPreferencesCommand, StartupPreferencesView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlist_creator::PlaylistCreatorProfile;

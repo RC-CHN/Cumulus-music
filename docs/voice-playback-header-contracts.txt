@@ -1,0 +1,50 @@
+声音播放详情：主播与发布时间
+==========================
+
+官方 PC 3.1.42.205594；本专项只接当前声音的标题信息，不新增节目读取、账号请求、
+下载或远端写入，也不把普通歌曲的歌手/专辑当成主播和发布时间。
+
+官方证据
+- VoicePage/components/VoiceTitle.tsx:77–104：标题用 currentVoice.name，存在 creator
+  才显示「主播：nickname」，点击以 user 资源进入 /userDetail/user/{creator.id}；
+  发布时间来自 currentVoice.createTime。:105–117 的来源行被注释，不重新打开它。
+- 恢复 M21 E:429–478：用户名称为 nickname || nickName || userName；用户 ID 来自
+  userId，而非 artistId 或不明来源的 id。W:931–1010：声音 id/programId、mainTrackId
+  与 track、createTime 及 dj || creator 进入声音记录。没有用文件修改时间补日期。
+- core/podcast/model.rs 的 Episode::normalized/playback_resource/download_metadata
+  保留这些节目字段。下载服务原本也保存完整声音 metadata，重新授权时核对主歌曲。
+
+原生投影
+- PlayerView.voiceDetail 为可选字段；存在时是
+  {id,creator:{id:string|null,name:string}|null,releaseTime:number|null}。
+  releaseTime 仍为原始整数毫秒，不进行日期或时区格式化。
+- 投影只读取同一个 PlaybackSnapshot 的非空 playId 和 selected.resource。节目声明 ID、
+  voice.id（及存在时的 programId）必须相同；resource.id、存在的 song.id 和声音
+  mainTrackId/track.id/mainSong.id 必须相同，且至少有一个声音主歌曲字段证明关联。
+- 普通在线声音必须属于原生 Voice 命名空间。下载声音额外要求合法本地任务身份、
+  download_voice_id 与 song.voice_id 一致。download_voice_id 只在 native
+  download_resources 从 DownloadOrigin::Voice 填入；Song/Cloud 任务不能靠任意
+  原始 voice JSON 自称节目。该内部标记不进入 PlayerView、TrackView 或队列 IPC。
+- 本地音乐/CUE、云盘、普通歌曲及含有冲突身份的下载记录不借用声音标题信息。
+  没有增加每次时钟更新的数据库读取，也没有通过 UI 接收此内部标记。
+- 主播名字按官方优先级取字符串；缺有效 userId 时保留纯文字名称，不猜导航目标。
+  ID 最多128个十进制字符；昵称最多512个 UTF-16 单元，不投影空白或控制字符名称。
+  原始 creator 对象中的头像、权限、账号和授权字段均不经过 IPC。
+- 发布时间只接受 1…8640000000000000 的整数毫秒，缺失、0、负数、字符串、分数
+  或超出 JS Date 范围均为 null。不能拿 publishTime/scheduledPublishTime、歌曲
+  专辑日期、文件 mtime 或当前时间替代。缺失时间的界面占位由前端单独说明。
+
+兼容边界
+- 历史已经恢复的下载队列可能没有 download_voice_id；不在播放时猜其原始下载种类。
+  用户从原生下载列表重新选择后会从既有本地任务重建此标记，才显示声音标题详情。
+  既有音频播放、song/voice 身份和下载文件保持原有行为。
+- 本次没有复刻完整 VoicePage、节目来源、主播页的全部功能或浏览器日期实现。
+  前端负责以当前 account/playId/voiceId 再核对点击后的导航，不能把该对象用于 artist 页。
+
+验证
+- voice_detail 模块使用真正的 Episode 播放/下载 metadata 构造器与合成字段检查在线和
+  下载投影；逐一破坏节目、主歌曲、任务、playId、命名空间，确认没有借用外来元数据。
+- 同组检查无链接昵称、官方名称回退、缺失/非法时间及 JSON 白名单；没有真实账号、
+  文件下载、音源请求或远端资源修改。实际桌面交互与集成结果随完整批次补充。
+- 本分支实际编译的核心库单测二进制中5项定向检查通过；核心库 Clippy -D warnings、
+  cargo fmt --all --check 通过。没有把它们记作完整工作区或桌面 WebView 验收。
