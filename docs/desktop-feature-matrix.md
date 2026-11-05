@@ -115,3 +115,5 @@
 - [内嵌评论发表／回复](vinyl-comment-compose-contracts.txt)用真实 Linux WebView 验证当前歌曲约束、单次发送和丢回包后的独立页核对。没有使用真实账号公开发布。
 - [已登记的普通参数均衡旁路](effects-directory-desktop.txt)按已获授权的实际音质触发，下一次成功装载恢复。Linux 合成 PCM 和桌面控件均已复验，未扩大至整张专有效果图。
 - [下载批量页](download-batch-ui-contracts.txt)已覆盖实体删除和多选播放；批量移动不由单文件移动或整目录迁移代替。
+- [内嵌评论举报](vinyl-comment-report-contracts.txt)在精彩和最新评论复用当前播放及同账号回执；Linux WebView 核对取消、预设、原文和回包不明时不重发。
+- [会员权益自动读取](core-membership-contracts.txt)由原生登录生命周期触发；Linux WebView 核对首次加载和按官方日期规则复查，综合搜索即时更新，日期不变时不轮询。
