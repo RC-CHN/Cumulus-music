@@ -20,6 +20,7 @@ struct Scope<'a> {
     environment: OrdinaryQueueEnvironment,
     authority: Cancellation,
     publish: bool,
+    ended: bool,
 }
 
 impl PlaybackController {
@@ -47,6 +48,7 @@ impl PlaybackController {
                 environment,
                 authority,
                 publish: false,
+                ended: false,
             },
         )
         .await
@@ -59,6 +61,7 @@ impl PlaybackController {
         expected: PlaybackFence,
         step: Step,
         verified: VerifiedOrdinarySkip,
+        ended: bool,
     ) -> Result<OrdinarySkipOutcome> {
         self.ordinary_minibar_skip_inner(
             token,
@@ -71,6 +74,7 @@ impl PlaybackController {
                 },
                 authority: verified.authority,
                 publish: true,
+                ended,
             },
         )
         .await
@@ -88,11 +92,15 @@ impl PlaybackController {
             environment,
             authority,
             publish,
+            ended,
         } = scope;
-        fn unchanged(boundary: SkipBoundary) -> OrdinarySkipOutcome {
+        fn unchanged(
+            boundary: SkipBoundary,
+            preserved: Option<PlaybackSnapshot>,
+        ) -> OrdinarySkipOutcome {
             OrdinarySkipOutcome {
                 decision: Decision::Unchanged(boundary),
-                applied: None,
+                applied: preserved,
             }
         }
         authority.check()?;
@@ -100,11 +108,16 @@ impl PlaybackController {
         if before.fence() != expected {
             return Err(Error::StaleResponse);
         }
+        let source_matches = if ended {
+            before.ended_minibar_receipt.is_some()
+        } else {
+            before.play_id.is_some()
+        };
         if matches!(environment, OrdinaryQueueEnvironment::Unresolved)
             || groups.group("PH-PC-Blacklist") == Some("t1")
             || before.fm
             || before.intelligence.is_some()
-            || before.play_id.is_none()
+            || !source_matches
             || queue.items.iter().any(|row| {
                 // M23.Z can make a denied song playable via M21.D. The
                 // native ordinary audio scan must not substitute that MV.
@@ -115,19 +128,22 @@ impl PlaybackController {
             })
             || !before.state.permits_minibar_step()
         {
-            return Ok(unchanged(SkipBoundary::ContextUnresolved));
+            return Ok(unchanged(
+                SkipBoundary::ContextUnresolved,
+                ended.then_some(before),
+            ));
         }
         let trigger = OrdinarySkipTrigger::MiniBar(step);
         let item = match skip_policy::initial_row(&queue, trigger) {
             Ok(item) => item,
-            Err(boundary) => return Ok(unchanged(boundary)),
+            Err(boundary) => return Ok(unchanged(boundary, ended.then_some(before))),
         };
         if !self
             .resolver
             .confirmed_plain_skip_denial(token, item)
             .await?
         {
-            return Ok(unchanged(SkipBoundary::InitialRightsNotProven));
+            return Ok(unchanged(SkipBoundary::InitialRightsNotProven, None));
         }
         authority.check()?;
         let scan = if groups.skip_songs_assigned() {
@@ -157,6 +173,20 @@ impl PlaybackController {
             });
         };
         let decision = skip_policy::after_initial_denial(&queue, &scan, trigger)?;
+        if ended
+            && matches!(
+                decision,
+                Decision::PauseCurrent { .. } | Decision::Unchanged(_)
+            )
+        {
+            // There is no active decoder to pause. Once plain denial was
+            // proved, an incomplete or unsupported scan must not start that
+            // row through the generic fallback either.
+            return Ok(OrdinarySkipOutcome {
+                decision,
+                applied: Some(after),
+            });
+        }
         if publish && let Decision::PlayExisting { target, .. } = &decision {
             let applied = self
                 .select_verified_skip(token, target.clone(), expected, authority)

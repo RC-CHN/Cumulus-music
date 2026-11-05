@@ -90,6 +90,7 @@ export interface PlayerView {
   state: PlaybackStatus;
   pendingPaused?: boolean;
   playId: string | null;
+  endedMinibarReceipt?: string;
   entryId: string | null;
   downloadTaskId?: string;
   track: TrackView | null;
@@ -406,6 +407,13 @@ export type PlayerAction =
   | {
       kind: 'step_mini_bar';
       play_id: string;
+      expected_queue_revision: string;
+      direction: 'next' | 'previous';
+    }
+  | {
+      kind: 'step_ended_mini_bar';
+      receipt: string;
+      entry_id: string;
       expected_queue_revision: string;
       direction: 'next' | 'previous';
     }

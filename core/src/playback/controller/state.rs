@@ -111,6 +111,7 @@ pub(super) struct Actor {
     pub ordinary_eof: Option<super::OrdinaryEofAuthority>,
     pub skip_notices: tokio::sync::broadcast::Sender<super::skip_notice::CommittedSkip>,
     pub eof_flight: Option<super::eof::Flight>,
+    pub(super) ended_minibar: Option<super::eof::EndedMinibar>,
     pub prefetch: PrefetchSnapshot,
     pub prefetch_key: Option<super::tick::PrefetchKey>,
     pub refresh_at: Option<std::time::Duration>,
@@ -201,6 +202,7 @@ impl Actor {
             ordinary_eof: None,
             skip_notices: super::skip_notice::publisher(),
             eof_flight: None,
+            ended_minibar: None,
             prefetch: PrefetchSnapshot {
                 state: "idle",
                 entry_id: None,
@@ -283,6 +285,7 @@ impl Actor {
             paused: self.state == PlaybackStatus::Paused
                 || self.pending.as_ref().is_some_and(|pending| pending.paused),
             play_id: self.play_id.clone(),
+            ended_minibar_receipt: self.ended_minibar_receipt(selected.as_ref()),
             quality_preferences: self.quality_preferences.clone(),
             can_change_quality: selected
                 .as_ref()
@@ -347,6 +350,7 @@ impl Actor {
     }
     pub async fn cancel_load(&mut self) -> Result<()> {
         self.eof_flight = None;
+        self.ended_minibar = None;
         if let Some(task) = self.audiobook_skip_task.take() {
             task.abort();
         }

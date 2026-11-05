@@ -38,6 +38,11 @@ impl Drop for Flight {
     }
 }
 
+pub(super) struct EndedMinibar {
+    receipt: Uuid,
+    native_entry: i64,
+}
+
 struct Ticket {
     token: SessionToken,
     generation: u64,
@@ -62,6 +67,26 @@ pub(super) struct Ready {
 }
 
 impl Actor {
+    pub(super) fn ended_minibar_receipt(
+        &self,
+        selected: Option<&crate::playback::QueueEntry>,
+    ) -> Option<Uuid> {
+        let ended = self.ended_minibar.as_ref()?;
+        let loaded = self.loaded.as_ref()?;
+        (self.state == PlaybackStatus::Ended
+            && self.play_id.is_none()
+            && matches!(
+                self.queue.mode(),
+                PlaybackMode::OrderLoop | PlaybackMode::Random
+            )
+            && loaded.media.entry_id == ended.native_entry
+            && selected == Some(&loaded.item)
+            && self.ordinary_online_song(&loaded.item)
+            && loaded.source.info["kind"] == "online"
+            && loaded.timeline.snapshot().mode == TimelineMode::Full)
+            .then_some(ended.receipt)
+    }
+
     /// Invoked only after a matching successful native EOF has been accepted
     /// and the old row's completion saved. A generic host has no admission.
     pub(super) fn schedule_ordinary_eof(&mut self, was_paused: bool) -> bool {
@@ -217,6 +242,10 @@ impl Actor {
                 // Keep the completed row and timeline; no new engine command.
                 if queue.mode != PlaybackMode::Sequential {
                     self.play_id = None;
+                    self.ended_minibar = Some(EndedMinibar {
+                        receipt: Uuid::new_v4(),
+                        native_entry,
+                    });
                 }
             }
             Ok(Outcome::StopFinished) => {

@@ -61,6 +61,7 @@ pub struct PlaybackSnapshot {
     /// Includes a pause accepted while the source/decoder is still loading.
     pub paused: bool,
     pub play_id: Option<String>,
+    pub(crate) ended_minibar_receipt: Option<uuid::Uuid>,
     pub selected: Option<QueueEntry>,
     pub position: Option<f64>,
     pub buffered_through: Option<f64>,
@@ -92,6 +93,7 @@ pub struct PlaybackFence {
     pub control_revision: u64,
     pub queue_revision: u64,
     pub play_id: Option<String>,
+    ended_minibar_receipt: Option<uuid::Uuid>,
 }
 impl PlaybackSnapshot {
     pub(crate) fn headphone_restore_ready(&self) -> bool {
@@ -109,6 +111,7 @@ impl PlaybackSnapshot {
             control_revision: self.control_revision,
             queue_revision: self.queue_revision,
             play_id: self.play_id.clone(),
+            ended_minibar_receipt: self.ended_minibar_receipt,
         }
     }
 }

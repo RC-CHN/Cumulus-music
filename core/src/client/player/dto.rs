@@ -39,6 +39,8 @@ pub struct PlayerView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pending_paused: Option<bool>,
     pub play_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ended_minibar_receipt: Option<String>,
     pub entry_id: Option<String>,
     /// Local download task identity only; never expose the media file locator.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -394,6 +396,12 @@ pub struct PlaylistDropRow {
 pub enum PlayerAction {
     StepMiniBar {
         play_id: String,
+        expected_queue_revision: String,
+        direction: crate::playback::Step,
+    },
+    StepEndedMiniBar {
+        receipt: String,
+        entry_id: String,
         expected_queue_revision: String,
         direction: crate::playback::Step,
     },

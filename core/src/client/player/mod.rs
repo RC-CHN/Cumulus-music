@@ -300,6 +300,9 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         )
         .then_some(value.paused),
         play_id: value.play_id.clone(),
+        ended_minibar_receipt: value
+            .ended_minibar_receipt
+            .map(|id| id.simple().to_string()),
         entry_id: value.selected.as_ref().map(|i| i.entry_id.clone()),
         download_task_id: value
             .selected
@@ -611,6 +614,28 @@ impl MusicClient {
             }
             return self
                 .play_missing_download_online(epoch, &play_id, &expected_queue_revision)
+                .await;
+        }
+        if let PlayerAction::StepEndedMiniBar {
+            receipt,
+            entry_id,
+            expected_queue_revision,
+            direction,
+        } = action
+        {
+            if native.is_some() || policy != NativeTransportPolicy::Ordinary {
+                return Err(Error::InvalidInput(
+                    "bottom bar control used as native media command",
+                ));
+            }
+            return self
+                .step_ended_minibar(
+                    epoch,
+                    &receipt,
+                    &entry_id,
+                    &expected_queue_revision,
+                    direction,
+                )
                 .await;
         }
         if let PlayerAction::StepLoading {
@@ -1602,7 +1627,9 @@ impl MusicClient {
             }
             PlayerAction::Next => PlaybackCommand::Next,
             PlayerAction::Previous => PlaybackCommand::Previous,
-            PlayerAction::StepLoading { .. } | PlayerAction::StepMiniBar { .. } => {
+            PlayerAction::StepLoading { .. }
+            | PlayerAction::StepMiniBar { .. }
+            | PlayerAction::StepEndedMiniBar { .. } => {
                 unreachable!("handled before generic action")
             }
             PlayerAction::Stop => PlaybackCommand::Stop,

@@ -73,6 +73,7 @@ const {
   pendingTransportBusy,
   primaryTransportPauses,
   loadingStepKey,
+  endedStepKey,
   loadingStepBusy,
 } = props.player;
 const cover = useCoverImage(() => ({
@@ -269,7 +270,8 @@ function primaryTransport(event: MouseEvent) {
   return transport(event, () => props.player.togglePrimaryTransport(key));
 }
 function stepTransport(event: MouseEvent, direction: 'next' | 'previous') {
-  const key = (event.currentTarget as HTMLButtonElement).dataset.loadingStepKey;
+  const { loadingStepKey, endedStepKey } = (event.currentTarget as HTMLButtonElement).dataset;
+  const key = loadingStepKey ?? endedStepKey;
   if (key && props.togetherActive) return;
   return transport(event, () => props.player.stepDisplayed(direction, key));
 }
@@ -571,6 +573,7 @@ async function seek(event: Event) {
           aria-label="上一首"
           :disabled="!canStep"
           :data-loading-step-key="loadingStepKey"
+          :data-ended-step-key="endedStepKey"
           @click="stepTransport($event, 'previous')"
         >
           <Icon name="previous" />
@@ -593,6 +596,7 @@ async function seek(event: Event) {
           aria-label="下一首"
           :disabled="!canStep"
           :data-loading-step-key="loadingStepKey"
+          :data-ended-step-key="endedStepKey"
           @click="stepTransport($event, 'next')"
         >
           <Icon name="next" />

@@ -148,6 +148,24 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (current && pendingTransport.value && current.queueLen > 1 && !current.intelligence)
       return stepIdentity(current);
   });
+  const endedStepKey = computed(() => {
+    const current = view.value;
+    if (
+      current?.state === 'ended' &&
+      !current.playId &&
+      current.endedMinibarReceipt &&
+      current.entryId &&
+      !current.fm &&
+      !current.intelligence
+    ) {
+      return JSON.stringify([
+        current.epoch,
+        current.endedMinibarReceipt,
+        current.entryId,
+        current.queueRevision,
+      ]);
+    }
+  });
   const loadingStepBusy = computed(
     () => !!loadingStepCommand.value && loadingStepCommand.value.key === loadingStepKey.value,
   );
@@ -788,6 +806,22 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   async function stepDisplayed(direction: 'next' | 'previous', displayedKey?: string) {
     const current = view.value;
     if (!ready.value || !current?.queueLen) return;
+    if (endedStepKey.value) {
+      if (
+        busy.value ||
+        displayedKey !== endedStepKey.value ||
+        !current.endedMinibarReceipt ||
+        !current.entryId
+      )
+        return;
+      return action({
+        kind: 'step_ended_mini_bar',
+        receipt: current.endedMinibarReceipt,
+        entry_id: current.entryId,
+        expected_queue_revision: current.queueRevision,
+        direction,
+      });
+    }
     if (!displayedKey) {
       if (busy.value || current.state === 'preparing' || current.state === 'loading') return;
       if (
@@ -1313,6 +1347,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     pendingTransport,
     pendingTransportBusy,
     loadingStepKey,
+    endedStepKey,
     loadingStepBusy,
     stepDisplayed,
     togglePrimaryTransport,

@@ -2133,3 +2133,46 @@ test('typed copyright skip notices expire separately and cannot replay across a 
     f.player.dispose();
   }
 });
+
+test('the finished looping bottom bar uses the rendered EOF receipt without a legacy retry', async () => {
+  const actions: PlayerAction[] = [];
+  const finished: PlayerView = {
+    ...state('3', '1', 'old-play'),
+    state: 'ended',
+    playId: null,
+    endedMinibarReceipt: 'retained-native-eof',
+    entryId: 'retained-row',
+    queueRevision: '7',
+    queueLen: 3,
+  };
+  const f = fixture({
+    playerAction: async (_epoch, action) => {
+      actions.push(action);
+      return { ...finished, revision: '5', queueRevision: '8' };
+    },
+  });
+  await f.player.connect(account());
+  f.emit(finished);
+  const old = f.player.endedStepKey.value;
+  assert.ok(old);
+  await f.player.stepDisplayed('next');
+  f.emit({ ...finished, revision: '4', queueRevision: '8' });
+  await f.player.stepDisplayed('next', old);
+  assert.deepEqual(actions, []);
+  const key = f.player.endedStepKey.value;
+  assert.ok(key);
+  await f.player.stepDisplayed('previous', key);
+  assert.deepEqual(actions, [
+    {
+      kind: 'step_ended_mini_bar',
+      receipt: 'retained-native-eof',
+      entry_id: 'retained-row',
+      expected_queue_revision: '8',
+      direction: 'previous',
+    },
+  ]);
+  f.emit({ ...state('6', '1', 'new-play'), queueRevision: '9', queueLen: 3 });
+  await f.player.stepDisplayed('next', key);
+  assert.equal(actions.length, 1);
+  f.player.dispose();
+});

@@ -514,6 +514,18 @@ async fn signed_loop_eof_follows_display_or_persisted_random_order_when_wrapping
     }
 }
 
+fn ended_step(view: &PlayerView, direction: cumulus_core::playback::Step) -> PlayerAction {
+    PlayerAction::StepEndedMiniBar {
+        receipt: view
+            .ended_minibar_receipt
+            .clone()
+            .expect("retained native EOF receipt"),
+        entry_id: view.entry_id.clone().unwrap(),
+        expected_queue_revision: view.queue_revision.clone(),
+        direction,
+    }
+}
+
 #[tokio::test]
 async fn signed_loop_control_clears_only_the_finished_identity_after_a_denied_wrap() {
     for mode in [PlaybackMode::OrderLoop, PlaybackMode::Random] {
@@ -532,17 +544,162 @@ async fn signed_loop_control_clears_only_the_finished_identity_after_a_denied_wr
         let after = f
             .wait(|view| view.state == PlaybackStatus::Ended && view.play_id.is_none())
             .await;
-        assert_eq!(after.track.unwrap().id, "3");
+        assert_eq!(after.track.as_ref().unwrap().id, "3");
         assert_eq!(after.entry_id, before.entry_id);
         assert_eq!(after.queue_revision, before.queue_revision);
         assert_eq!(after.position, Some(120.0));
-        assert_eq!(after.timeline.unwrap().total, Some(120.0));
+        assert_eq!(after.timeline.as_ref().unwrap().total, Some(120.0));
+        let action = ended_step(&after, cumulus_core::playback::Step::Next);
+        let mut notices = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
+        let pauses = f.device.state.lock().unwrap().pauses.len();
+        let clicked = f.client.player_action(&f.epoch, action).await.unwrap();
+        assert_eq!(clicked.state, PlaybackStatus::Ended);
+        assert!(clicked.play_id.is_none());
+        assert_eq!(clicked.ended_minibar_receipt, after.ended_minibar_receipt);
+        assert_eq!(clicked.entry_id, before.entry_id);
+        assert_eq!(clicked.queue_revision, before.queue_revision);
+        assert_eq!(clicked.position, Some(120.0));
         assert_eq!(f.device.state.lock().unwrap().stops, stops);
+        assert_eq!(f.device.state.lock().unwrap().pauses.len(), pauses);
+        // Detaching the actual browser lease removes current signed-read
+        // admission for this receipt; there is no legacy step on expiry.
+        f.poll.try_browser_lifecycle(None).unwrap();
+        assert!(matches!(
+            f.client.player_action(&f.epoch, ended_step(&after, cumulus_core::playback::Step::Next)).await,
+            Err(error) if matches!(error.root(), cumulus_core::Error::StaleResponse)
+        ));
+        assert_eq!(f.view().await.state, PlaybackStatus::Ended);
         assert_eq!(f.loads(), 1);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(60), notices.next())
+                .await
+                .is_err()
+        );
         f.assert_wire(&["3", "1"]);
         f.assert_durable_end(before.entry_id.as_deref());
         f.poll.shutdown().await;
     }
+}
+
+#[tokio::test]
+async fn ended_bottom_bar_requires_the_current_receipt_and_rechecks_signed_treatment() {
+    use cumulus_core::{Error, playback::Step};
+
+    let (f, before) = Fixture::start_at(
+        vec![song(1, false), song(2, true), song(3, true)],
+        PlaybackMode::Random,
+        "c",
+        2,
+        Some(&[0, 1, 2]),
+        [
+            url(1, false).into(),
+            json!({"code":200,"data":[{"expName":"PH-PC-skipSongs2","expGroupName":"t1"}]}).into(),
+            url(2, true).into(),
+        ],
+    )
+    .await;
+    assert!(before.ended_minibar_receipt.is_none());
+    f.wire.wait(4).await;
+    f.eof();
+    let finished = f.wait(|view| view.ended_minibar_receipt.is_some()).await;
+    let wrong = |receipt: String, entry_id: String, expected_queue_revision: String| {
+        PlayerAction::StepEndedMiniBar {
+            receipt,
+            entry_id,
+            expected_queue_revision,
+            direction: Step::Next,
+        }
+    };
+    let receipt = finished.ended_minibar_receipt.clone().unwrap();
+    for action in [
+        wrong(
+            "foreign".into(),
+            finished.entry_id.clone().unwrap(),
+            finished.queue_revision.clone(),
+        ),
+        wrong(receipt, "foreign".into(), finished.queue_revision.clone()),
+    ] {
+        assert!(matches!(
+            f.client.player_action(&f.epoch, action).await,
+            Err(error) if matches!(error.root(), Error::StaleResponse)
+        ));
+    }
+    // A real durable queue write supersedes the version rendered by the old
+    // footer, even though the original completed row still exists.
+    PlaybackQueue::new(Some(f.store.clone()), "71")
+        .unwrap()
+        .append(vec![song(4, false)], json!({"kind":"playlist"}))
+        .unwrap();
+    assert!(matches!(
+        f.client.player_action(&f.epoch, ended_step(&finished, Step::Next)).await,
+        Err(error) if matches!(error.root(), Error::StaleResponse)
+    ));
+    let another_epoch = (f.epoch.parse::<u64>().unwrap() + 1).to_string();
+    assert!(
+        f.client
+            .player_action(&another_epoch, ended_step(&finished, Step::Next))
+            .await
+            .is_err()
+    );
+    assert_eq!(f.loads(), 1);
+    f.assert_wire(&["3", "1"]);
+
+    let current = f.view().await;
+    assert_ne!(current.queue_revision, finished.queue_revision);
+    assert_eq!(current.entry_id, finished.entry_id);
+    // This actual signed full-batch refresh changes native assignment without
+    // a new selection, EOF or playback ID for the already-finished row.
+    f.client.refresh_pc_presentation().await.unwrap();
+    let mut notices = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
+    let played = f
+        .client
+        .player_action(&f.epoch, ended_step(&current, Step::Next))
+        .await
+        .unwrap();
+    assert_eq!(played.state, PlaybackStatus::Playing);
+    assert_eq!(played.track.unwrap().id, "2");
+    assert!(played.play_id.is_some());
+    assert!(played.ended_minibar_receipt.is_none());
+    assert_ne!(played.entry_id, finished.entry_id);
+    assert_eq!(f.loads(), 2);
+    assert!(matches!(
+        f.client.player_action(&f.epoch, ended_step(&current, Step::Previous)).await,
+        Err(error) if matches!(error.root(), Error::StaleResponse)
+    ));
+    let notice = tokio::time::timeout(Duration::from_secs(2), notices.next())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(notice.epoch, f.epoch);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(60), notices.next())
+            .await
+            .is_err()
+    );
+    let calls = f.wire.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .map(|call| call.path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            ASSIGNMENT_PATH,
+            "/api/pl/count",
+            AUTH,
+            AUTH,
+            ASSIGNMENT_PATH,
+            AUTH,
+        ]
+    );
+    for (call, expected) in [&calls[2], &calls[3], &calls[5]]
+        .into_iter()
+        .zip(["3", "1", "2"])
+    {
+        let ids: Vec<Value> = serde_json::from_str(call.payload["ids"].as_str().unwrap()).unwrap();
+        assert_eq!(ids.len(), 1);
+        assert_eq!(identifier(&ids[0]).unwrap(), expected);
+    }
+    f.poll.shutdown().await;
 }
 
 #[tokio::test]
