@@ -93,6 +93,8 @@ mod system_master_volume_fixture;
 mod vertical_zone_fixture;
 #[path = "support/vinyl_comments_fixture.rs"]
 mod vinyl_comments_fixture;
+#[path = "support/vinyl_similar_fixture.rs"]
+mod vinyl_similar_fixture;
 #[path = "support/voice_download_fixture.rs"]
 mod voice_download_fixture;
 #[path = "support/volume_fixture.rs"]
@@ -182,6 +184,7 @@ fn playlist(id: u64) -> Value {
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(vinyl_comments_fixture::group()
+            .or_else(vinyl_similar_fixture::revision)
             .or_else(search_artist_top50_fixture::revision)
             .or_else(|| vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into())))
     }
@@ -193,11 +196,35 @@ impl Api for Library {
         Box::pin(async move {
             if vinyl_comments_fixture::group().is_some() {
                 vinyl_comments_fixture::assignment(revision)
+            } else if vinyl_similar_fixture::enabled() {
+                vinyl_similar_fixture::groups(revision)
             } else if search_artist_top50_fixture::enabled() {
                 search_artist_top50_fixture::groups(revision)
             } else {
                 vertical_zone_fixture::groups(revision)
             }
+        })
+    }
+
+    fn request_vinyl_similar_songs<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::VinylSimilarSongsRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, args) = read.into_request();
+            vinyl_similar_fixture::songs(path, args, revision).await
+        })
+    }
+
+    fn request_vinyl_related_playlists<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::VinylRelatedPlaylistsRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let (path, args) = read.into_request();
+            vinyl_similar_fixture::playlists(path, args, revision)
         })
     }
 
@@ -298,6 +325,9 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(response) = vinyl_similar_fixture::ordinary_request(path, &args) {
+                return response;
+            }
             if let Some(response) = vinyl_comments_fixture::response(path, &args) {
                 return response;
             }
@@ -741,6 +771,7 @@ fn main() {
     assert!(!playback_cache_proof || motion_proof);
     assert!(!vertical_zone_fixture::enabled() || motion_proof);
     let queue_ui_proof = std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some();
+    assert!(!vinyl_similar_fixture::enabled() || (queue_ui_proof && motion_proof));
     let queue_click_proof = std::env::var_os("CUMULUS_QUEUE_CLICK_PROOF").is_some();
     assert!(!queue_click_proof || (queue_ui_proof && motion_proof));
     assert!(
@@ -813,6 +844,7 @@ fn main() {
         || vertical_zone_fixture::playlist_batch()
         || vertical_zone_fixture::playlist_queue_menu()
         || search_privilege_fixture::enabled()
+        || vinyl_similar_fixture::enabled()
     {
         zone_fm_preview_fixture::restrict_artwork(&mut context);
     }
@@ -820,7 +852,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() {
+        if ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1021,6 +1053,7 @@ fn main() {
             }
             if style_home_fixture::enabled() {value["styleHomeCalls"]=json!(style_home_fixture::calls());}
             if vinyl_comments_fixture::group().is_some() {value["vinylCommentsCalls"]=json!(vinyl_comments_fixture::report());}
+            if vinyl_similar_fixture::enabled() {value["vinylSimilarFixture"]=vinyl_similar_fixture::report();}
             if vertical_zone_fixture::enabled() {value["verticalZoneCalls"]=json!(vertical_zone_fixture::calls());}
             if zone_fm_preview_fixture::enabled() {value["zoneFmPreview"]=zone_fm_preview_fixture::report();}
             if style_recommendations_fixture::enabled() {value["styleRecommendationCalls"]=json!(style_recommendations_fixture::calls());}
@@ -1083,6 +1116,16 @@ fn main() {
             }
             if voice_download_fixture::enabled() { value["voiceDownloadService"]=voice_download_fixture::report(); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if vinyl_similar_fixture::enabled() && stage=="vinyl-similar-fixture" {
+                let id=value["id"].as_u64().unwrap();
+                let action=value["action"].as_str().unwrap();
+                let result=match vinyl_similar_fixture::control(action) {
+                    Ok(reply)=>json!({"id":id,"reply":reply}),
+                    Err(error)=>json!({"id":id,"error":error.to_string()}),
+                };
+                handle.get_webview_window("main").unwrap().eval(format!("window.__vinylSimilarFixtureAck={result};")).unwrap();
+                return;
+            }
             if member_lifecycle_fixture::enabled() && stage=="member-lifecycle-release" {
                 member_lifecycle_fixture::release();
                 return;
@@ -1379,6 +1422,9 @@ fn main() {
                     }
                     if (vinyl_comments_fixture::composer() || vinyl_comments_fixture::likes() || vinyl_comments_fixture::reports()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__vinylComposerRecorded={};",json!(stage))).unwrap();
+                    }
+                    if vinyl_similar_fixture::enabled() && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__vinylSimilarRecorded={};",json!(stage))).unwrap();
                     }
                     if search_artist_top50_fixture::enabled() && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__searchArtistTop50Recorded={};",serde_json::json!(stage))).unwrap();
