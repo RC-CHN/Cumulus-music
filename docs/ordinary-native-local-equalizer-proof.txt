@@ -113,3 +113,34 @@ execution of this route, or the native opener's remote sources. The
 package resource checks and proof using the concrete native decoder are
 separate. The local aggregate is in
 .build/ui-proof/phase65-ordinary-local-equalizer-r4/report.json.
+
+Paused replacement startup regression
+-------------------------------------
+
+Linux CI 42092833982 verified its packaged library and then timed out waiting
+for the paused 0.5 s seek in the trusted case. Its failure receipt had real
+entry 1 → 2 and both saved EQ settings; no successful EOF was recorded. That
+receipt did not expose per-poll seeking state. A bounded producer/reader test
+reproduced the deadlock before the fix: the new paused entry could not supply
+two raw audio packets, even though its native clock had not advanced.
+
+libmpv 0.37 reads about 5,512 frames per raw packet at 44.1 kHz
+(demux/demux_raw.c:164–171). Its null output defaults to a 0.2 s soft buffer;
+the audio readiness path requires a full queue or actual EOF before restart
+(audio/out/ao_null.c:195–200, player/audio.c:830–856,
+player/playloop.c:1024–1059). The old startup credit could supply less than
+the soft-buffer target; binding the new entry paused then froze production.
+The same fixed budget used during unpaused startup can now supply at most
+the quarter-second lead plus one processing quantum while the newly bound
+paused entry is seeking. A matching, valid native clock sample ends this
+allowance permanently, even at zero. No synthetic clock or unpause is sent.
+The actor keeps its seek indicator until the replacement entry reports its
+actual state; ordinary settled pause and later seeks retain their old limits.
+
+The updated real WebView probe requires two distinct native polls at the
+replacement ID with pause true, seeking false and clock near 0.5 s before
+explicit Resume. It also keeps a bounded tail of native poll observations in
+failures. All three cases passed on local libmpv 0.41 with the same FLAC 1.5.0
+decoder/filter bytes from CI 42092833982. Evidence:
+.build/ui-proof/phase68-native-eq-r2/report.json. This local result does not
+substitute for a repeat on the CI runner's libmpv 0.37 or physical output.

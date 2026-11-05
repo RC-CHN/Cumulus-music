@@ -97,3 +97,15 @@ audioplayer.onFetchPreloadInfo 另走 M/163:670–755；相邻行可能在 EOF �
 运行 scripts/ci/natural_eof_smoke.py --binary ABS_PROBE --root NEW。Linux 使用 CI 中同名步骤的
 私有 Xvfb/D-Bus 与无外联路由，--screenshots 可取图；Windows 由独立 runner 加
 --runtime SAME_RUN_NATIVE_STAGE，保留 WebView2 验收结果，不使用 GTK 截图。
+
+循环、随机与提示的增量验收：
+- 在 Linux WebKitGTK 实际运行六个自然结束场景，13 个检查点及 13 张图。列表循环
+  的显示顺序为 2、3、1；从 1 回绕，拒绝 2，装载 3。随机队列显示 1、3、2，
+  SQLite 的实际顺序为 3、1、2，从 1 检查 2 再回绕到 3。随机对照仅清原播放标识，
+  仍停在 1 的 8 秒处，不请求或装载其他歌曲。独立 SQLite 查询核对原行与实际顺序。
+- 另两个底栏方向场景有四张图。自动跳过三个成功场景及手动跳过各显示一次原文，
+  约 3.16–3.18 秒后从 DOM 移除；顺序/随机对照及不可播队尾没有提示。观察器验证
+  可见正文和屏幕取样，不把 Vue 用于测量动画的隐藏节点计为播报。
+- 证据 .build/ui-proof/phase68-natural-eof-r3/report.json 与
+  .build/ui-proof/phase68-minibar-notice-r2/report.json。真实 libmpv null，合成权限与文件，
+  无真实账号操作。独立迷你窗、专有替代弹窗及真实服务分组另验。

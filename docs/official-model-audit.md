@@ -88,7 +88,7 @@
 | `page:musicDesktop` (0) | `models/page_musicDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 装扮桌面与歌词窗是不同宿主。 |
 | `page:myAudio` (16) | `models/page_myAudio.txt` | [已接入口](desktop-podcast-contracts.txt) | 我的播客、收藏和节目管理；已接[有声书片头片尾设置](audiobook-skip-ui-contracts.txt)和原生时钟应用。 |
 | `page:myFavorite` (8) | `models/page_myFavorite.txt` | [已接入口](collection-library-contracts.txt) | 收藏、已购及对应列表；每个资源写入另验。 |
-| `page:myHistoryAudioOnline` (3) | `models/page_myHistoryAudioOnline.txt` | [部分](play-history-contracts.txt) | 精选的「听过的书」按 M3009/M3010 独立读取、分页和章节播放；按书本机最近章节及 around250 另列。 |
+| `page:myHistoryAudioOnline` (3) | `models/page_myHistoryAudioOnline.txt` | [部分](play-history-contracts.txt) | 精选的「听过的书」独立读取、分页和章节播放；同书同章的本机最近记录及相邻章节请求（`roundNum=250`）已接。按书保存排序另验。 |
 | `page:myLikedVoice` (5) | `models/page_myLikedVoice.txt` | [已接入口](desktop-podcast-mutations-contracts.txt) | 喜欢声音与写入恢复。 |
 | `page:myRecentUpdateVoice` (4) | `models/page_myRecentUpdateVoice.txt` | [已接入口](podcast-recent-contracts.txt) | 订阅更新及游标；红点和部分旧版逻辑待做。 |
 | `page:newUserFavor` (9) | `models/page_newUserFavor.txt` | [已接入口](artist-onboarding-contracts.txt) | 按触发条件进入偏好引导；外部实验状态独立。 |
@@ -114,7 +114,7 @@
 | `page:vinylPage` (24) | `models/page_vinylPage.txt` | [部分](desktop-member-contracts.txt) | 会员权益、部分动态开通；无原生收银台/兑换。 |
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
 | `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、原地展开/收起、详情和移除；未对真实用户设备执行删除。 |
-| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；[主窗底栏](desktop-minibar-skip.txt)和[普通顺序队列的自然结束](ordinary-native-eof.txt)已接原生判权；其余模式、替代音源及专有播放器故障分开验证。 |
+| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；[主窗底栏](desktop-minibar-skip.txt)和[普通顺序、随机、列表循环的自然结束](ordinary-native-eof.txt)已接原生判权及跳歌提示；替代音源及专有播放器故障分开验证。 |
 | `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作、本地单行、普通在线歌单及[搜索单曲多选拖入](queue-drop-contracts.txt)；普通队列的[更多推荐](queue-more-recommendations.txt)已接自动补歌、开关、分隔和自然续播。同步、特殊队列和其他来源另验。 |
 | `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | [最近播放同步](play-history-contracts.txt)保留官方默认与明确选择；[Windows 播放防休眠](playback-keep-awake-contracts.txt)已接设备偏好与原生播放；其他系统和音效项分别核对。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |

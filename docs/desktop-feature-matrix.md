@@ -143,5 +143,8 @@
 - [听过的书](play-history-contracts.txt)由精选卡进入独立在线列表，20 条本地分页。隔离 Linux 桌面核对了节目和媒体 ID、两章队列及返回精选的分类、滚动和焦点。它与六类最近播放独立；官方本机按书 recent/around250 分支另列。
 - [顺序队列自然播完](ordinary-native-eof.txt)在原生成功 EOF 后按经核验的版权分组继续、保留或停止；真实 Linux WebView 核对三组结果及对照组播完后再按下一首。缺授权证据、特殊音源和非顺序模式分开。
 - [最近播放同步设置](play-history-contracts.txt)只对尚未明确选择的账号应用官方实验默认。真实 Linux WebView 核对打开设置页时的实时更新、首次关闭弹窗及手动选择优先，SQLite 只记录一次明确保存。
+- [列表循环、随机和跳歌提示](ordinary-native-eof.txt)已在 Linux 桌面核对实际回绕顺序、对照组停止推进、原文提示的出现与到期。
+- [听过的书续听](play-history-contracts.txt)在账号本机记录与服务行匹配同一章时读取官方相邻章节接口，从记录的整秒处续听；缺章不替换原队列。同书不同章继续用原章节列表。
+- [本地 FLAC 暂停定位](ordinary-native-local-equalizer-proof.txt)修复原生新流启动等待；本机用 CI 包内同一解码器和实际 WebView 验证可信解码、摘要回退及暂停 PEQ 交接。CI 的旧版 libmpv 另验。
 - [普通底栏方向键](desktop-minibar-skip.txt)已接官方 M308 判权：同一已知无版权候选在 t1 跳到后续可播行，在控制组保留当前播放。自然 EOF、完整 Windows 联网观察和真实账号分组仍独立验收。
 - [搜索表现](search-reactive-presentation-contracts.txt)在原生凭据轮换时不把旧响应签发为新表现候选；综合端点在 Tab 返回后重新看全局分组。实际 Linux WebView 复验控制组与 t1、返回缓存、滚动与焦点，凭据轮换另有封闭签名对照。
