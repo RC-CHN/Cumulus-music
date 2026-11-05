@@ -7,6 +7,14 @@ requires the existing desktop state root and a new private output directory:
 
   search_signed_read --existing-pc-state EXISTING_STATE NEW_PRIVATE_OUTPUT
 
+An explicit final --fresh-local-identity flag permits a second mode: real local
+hardware facts initialize a new, empty identity store under NEW_PRIVATE_OUTPUT.
+It uses the production IdentityService::resolve and Windows compatibility
+profile construction. It never imports a historical installation identity or
+changes either original credentials or the copied primary record. Reports label
+this fresh_local_initialization, not restored_installation. This flag does not
+relax native PC configuration, signature, Cookie scope or HTTP/SDK restrictions.
+
 The original state is opened read-only. SQLite's native backup API snapshots
 the registry/context database and selected credential database, including any
 committed WAL content; it never copies live database files directly. Persistent
@@ -40,8 +48,9 @@ hardware facts, full authorization URLs and raw replies. The isolated state is
 private evidence under .build and must not be committed. Errors are classified;
 raw error Display strings are never printed.
 
-Two synthetic runner tests cover the full-vector/fixed-search allowlist and a
-live committed-WAL backup. They do not establish a live service result. The
+Synthetic runner tests cover the full-vector/fixed-search allowlist, a live
+committed-WAL backup and fresh-identity isolation from an existing primary.
+They do not establish a live service result. The
 global M147 startup/30-minute reactive experiment lifecycle and cached Vue footer
 updates remain a separate required implementation; this explicit read runner
 does not claim to complete it. Current source and execution evidence are recorded

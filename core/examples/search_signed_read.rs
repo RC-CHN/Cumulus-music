@@ -214,7 +214,29 @@ fn failure(error: &Error) -> &'static str {
         _ => "unavailable",
     }
 }
-async fn verify(source: &Path, output: &Path) -> Result<Value> {
+fn native_profile(
+    store: Arc<StateStore>,
+    output: &Path,
+    fresh: bool,
+    facts: &cumulus_core::identity::HardwareFacts,
+) -> Result<ClientProfile> {
+    let identity = if fresh {
+        // A separate, initially empty installation store. Never overwrite the
+        // copied primary identity or borrow another installation's record.
+        Arc::new(StateStore::open(output.join("fresh-local-identity"))?)
+    } else {
+        if store.get("device", "identity", "client_sign")?.is_none() {
+            return Err(Error::State("saved installation identity unavailable"));
+        }
+        store
+    };
+    IdentityService::new(identity)
+        .resolve(facts)?
+        .profile(ClientProfile::windows_compatibility(
+            WINDOWS_COMPATIBILITY_DESCRIPTION,
+        )?)
+}
+async fn verify(source: &Path, output: &Path, fresh: bool) -> Result<Value> {
     if !cfg!(target_os = "linux") || !fs::symlink_metadata(source)?.is_dir() {
         return Err(Error::State("existing Linux desktop state required"));
     }
@@ -247,16 +269,13 @@ async fn verify(source: &Path, output: &Path) -> Result<Value> {
         &source.join("sessions").join(id).join("core.sqlite3"),
         &profile.join("core.sqlite3"),
     )?;
-    // Reuse an existing installation identity; do not invent a fresh primary ID.
-    if store.get("device", "identity", "client_sign")?.is_none() {
+    // Reuse-only mode still checks before collecting hardware, preserving its
+    // original explicit no-network preflight boundary.
+    if !fresh && store.get("device", "identity", "client_sign")?.is_none() {
         return Err(Error::State("saved installation identity unavailable"));
     }
     let facts = collect_linux_identity(Path::new("/sys"))?;
-    let native = IdentityService::new(store.clone())
-        .resolve(&facts)?
-        .profile(ClientProfile::windows_compatibility(
-            WINDOWS_COMPATIBILITY_DESCRIPTION,
-        )?)?;
+    let native = native_profile(store.clone(), output, fresh, &facts)?;
     let denied_auxiliary = Arc::new(DenyAuxiliary::default());
     let config = PcConfig::new(store, denied_auxiliary.clone())?;
     let saved = config.snapshot()?;
@@ -281,6 +300,11 @@ async fn verify(source: &Path, output: &Path) -> Result<Value> {
     )?
     .with_official_search_experiment();
     let mut report = json!({"status":"unavailable","sourceCommit":option_env!("CUMULUS_READ_PROOF_COMMIT"),"writes":0,"sdkRequests":0,"renewalRequests":0,"savedNativePcConfig":true});
+    report["identityMode"] = json!(if fresh {
+        "fresh_local_initialization"
+    } else {
+        "restored_installation"
+    });
     match client.restore_account().await {
         Ok(account) if account.status == SessionStatus::Authenticated => {
             match client
@@ -360,9 +384,19 @@ async fn main() -> ExitCode {
     let report = match args.as_slice() {
         [] => json!({"status":"skipped","reads":[],"writes":0}),
         [flag, source, output] if flag == "--existing-pc-state" => {
-            match verify(&PathBuf::from(source), &PathBuf::from(output)).await {
+            match verify(&PathBuf::from(source), &PathBuf::from(output), false).await {
                 Ok(value) => value,
                 Err(error) => json!({"status":"setup_failed","failure":failure(&error),"writes":0}),
+            }
+        }
+        [flag, source, output, mode]
+            if flag == "--existing-pc-state" && mode == "--fresh-local-identity" =>
+        {
+            match verify(&PathBuf::from(source), &PathBuf::from(output), true).await {
+                Ok(value) => value,
+                Err(error) => {
+                    json!({"status":"setup_failed","identityMode":"fresh_local_initialization","failure":failure(&error),"writes":0})
+                }
             }
         }
         _ => json!({"status":"invalid_arguments","writes":0}),
@@ -443,5 +477,46 @@ mod tests {
             .query_row("SELECT count(*) FROM evidence", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn fresh_identity_uses_its_own_store_and_preserves_existing_primary() {
+        use cumulus_core::identity::{HardwareFacts, IdentitySource};
+        let root = tempfile::tempdir().unwrap();
+        let copied = Arc::new(StateStore::open(root.path().join("copied-installation")).unwrap());
+        let original = json!({"persistent_id":"a".repeat(64)});
+        copied
+            .put("device", "identity", "client_sign", &original)
+            .unwrap();
+        let facts = HardwareFacts::from_encoded(
+            [
+                "synthetic-local-mac".into(),
+                "synthetic-local-disk".into(),
+                "synthetic-board".into(),
+            ],
+            b"synthetic-local-hardware".to_vec(),
+            b"synthetic-local-host".to_vec(),
+            IdentitySource {
+                platform: "synthetic-test".into(),
+                interface: String::new(),
+                disk_device: String::new(),
+                host_description_available: true,
+            },
+        )
+        .unwrap();
+        let native = native_profile(copied.clone(), root.path(), true, &facts).unwrap();
+        assert!(native.client_sign.as_ref().is_some_and(|s| !s.is_empty()));
+        assert_eq!(
+            copied.get("device", "identity", "client_sign").unwrap(),
+            Some(original)
+        );
+        let fresh = StateStore::open(root.path().join("fresh-local-identity")).unwrap();
+        assert_eq!(
+            fresh
+                .get("device", "identity", "client_sign")
+                .unwrap()
+                .unwrap()["persistent_id"],
+            facts.derived_persistent_id()
+        );
     }
 }
