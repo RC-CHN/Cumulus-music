@@ -125,9 +125,9 @@ def verify(output, case, screenshots):
 def run(case, binary, root, dist, runtime, screenshots):
     root.mkdir()
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
+    script = 'scene_palette_pending_ui_probe.js' if case in PENDING_CASES else 'scene_palette_ui_probe.js'
     env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_SCENE_FM_PALETTE_PROOF=case,
-               CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] /
-                                    'desktop/examples/scene_palette_ui_probe.js'))
+               CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
     if sys.platform == 'linux':
         env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
     if dist:

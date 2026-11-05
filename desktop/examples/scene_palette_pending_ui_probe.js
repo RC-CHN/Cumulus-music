@@ -4,19 +4,7 @@
   const nativeInvoke = window.__TAURI_INTERNALS__.invoke.bind(window.__TAURI_INTERNALS__);
   const calls = { reads: 0, samples: 0, cancels: 0 };
   let releaseCanvas, canvasHeld = false, sampledSize, epoch, count = 0, nonce = 0;
-  window.__TAURI_INTERNALS__.invoke = async (command, args, ...rest) => {
-    if (command === 'scene_fm_palette_read') calls.reads++;
-    if (command === 'scene_fm_palette_cancel') calls.cancels++;
-    if (command === 'scene_fm_palette_sample') {
-      calls.samples++;
-      sampledSize = { width: args.width, height: args.height, bytes: args.rgba.length };
-      if (mode === 'pending_canvas' && !canvasHeld) {
-        canvasHeld = true;
-        await new Promise((resolve) => { releaseCanvas = resolve; });
-      }
-    }
-    return nativeInvoke(command, args, ...rest);
-  };
+  let core, original;
   const invoke = (...args) => nativeInvoke(...args);
   const emit = (stage, data = {}) => invoke('plugin:event|emit', {
     event: 'ux-proof', payload: { stage, ...data },
@@ -77,6 +65,22 @@
       epoch = account.epoch;
       return visible(one('input[aria-label="搜索音乐"]'));
     }, 'isolated signed-in shell');
+    const provides = one('#app').__vue_app__._context.provides;
+    core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
+    assert(core, 'real typed frontend core adapter is available');
+    original = { read: core.sceneFmPaletteRead, sample: core.sceneFmPaletteSample,
+      cancel: core.sceneFmPaletteCancel };
+    core.sceneFmPaletteRead = (...args) => { calls.reads++; return original.read.apply(core, args); };
+    core.sceneFmPaletteCancel = (...args) => { calls.cancels++; return original.cancel.apply(core, args); };
+    core.sceneFmPaletteSample = async (...args) => {
+      calls.samples++;
+      sampledSize = { width: args[2], height: args[3], bytes: args[4].length };
+      if (mode === 'pending_canvas' && !canvasHeld) {
+        canvasHeld = true;
+        await new Promise((resolve) => { releaseCanvas = resolve; });
+      }
+      return original.sample.apply(core, args);
+    };
     await click(() => one('input[aria-label="搜索音乐"]'), 'open search chart');
     await click(() => one('button[aria-label="播客榜：更多"]'), 'enter classic podcast home');
     await wait(() => card() && bg()?.pending === 'true', 'palette work starts');
@@ -133,6 +137,10 @@
     await emit('failed', { ok: false, case: mode, error: String(cause), stageCount: count,
       ipc: calls, background: bg(), page: one('.main-content')?.innerText.slice(0, 1200) });
   } finally {
-    window.__TAURI_INTERNALS__.invoke = nativeInvoke;
+    if (original) {
+      core.sceneFmPaletteRead = original.read;
+      core.sceneFmPaletteSample = original.sample;
+      core.sceneFmPaletteCancel = original.cancel;
+    }
   }
 })();
