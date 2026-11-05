@@ -61,9 +61,14 @@
 
     await emit('resize', { width: 1000, height: 680 });
     await wait(() => innerWidth === 1000 && innerHeight === 680, 'bounded viewport');
-    await wait(() => one('.daily-track-actions') && one('.track-row') && footer('列表循环') &&
-      !footer('列表循环').disabled, 'ordinary recommendations ready');
-    one('.track-row').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await wait(() => {
+      const row = one('.track-row[data-track-id="1"]');
+      if (!row || !one('.daily-track-actions') || !footer('列表循环') || footer('列表循环').disabled)
+        return false;
+      // Trigger before a pending render can replace this virtual row.
+      row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      return true;
+    }, 'ordinary recommendations ready');
     await wait(async () => {
       const now = await player();
       return now.state === 'playing' && now.track?.id === '1' && now.position > .16;
