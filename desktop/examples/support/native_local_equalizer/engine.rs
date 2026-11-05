@@ -12,7 +12,7 @@ use cumulus_core::{
 };
 use serde::Serialize;
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -37,6 +37,16 @@ pub struct Yield {
     pub replacement: i64,
     pub graph_entry: Option<i64>,
 }
+#[derive(Serialize)]
+pub struct Poll {
+    pub sequence: u64,
+    pub entry: Option<i64>,
+    pub position: Option<f64>,
+    pub paused: bool,
+    pub seeking: bool,
+    pub buffering: bool,
+    pub ended: Vec<(i64, String, i32)>,
+}
 #[derive(Default, Serialize)]
 pub struct Observations {
     pub ordinary_loads: usize,
@@ -48,6 +58,8 @@ pub struct Observations {
     pub yields: Vec<Yield>,
     pub stock_paused_position: Option<f64>,
     pub peq_processed_entries: BTreeSet<i64>,
+    pub last_polls: VecDeque<Poll>,
+    poll_sequence: u64,
 }
 pub type Evidence = Arc<Mutex<Observations>>;
 
@@ -187,6 +199,31 @@ impl AudioEngine for Recorded {
         });
         let mut evidence = self.evidence.lock().unwrap();
         evidence.eof_entries.extend(ended);
+        if evidence.last_polls.len() == 8 {
+            evidence.last_polls.pop_front();
+        }
+        evidence.poll_sequence += 1;
+        let sequence = evidence.poll_sequence;
+        evidence.last_polls.push_back(Poll {
+            sequence,
+            entry: value.entry_id,
+            position: value.position,
+            paused: value.paused,
+            seeking: value.seeking,
+            buffering: value.buffering,
+            ended: value
+                .events
+                .iter()
+                .filter_map(|event| match event {
+                    EngineEvent::Ended {
+                        entry_id,
+                        reason,
+                        error,
+                    } => Some((*entry_id, format!("{reason:?}"), *error)),
+                    _ => None,
+                })
+                .collect(),
+        });
         if let Some(entry) = value.entry_id {
             if value.paused
                 && !value.seeking

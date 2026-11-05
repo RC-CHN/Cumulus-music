@@ -35,6 +35,7 @@ async fn until(
     stage: &'static str,
     observe: impl Fn(&PlayerView) -> bool,
 ) -> Result<PlayerView> {
+    let mut last = None;
     let result = tokio::time::timeout(Duration::from_secs(8), async {
         loop {
             let view = client.player_snapshot(epoch).await.inspect_err(|error| {
@@ -50,6 +51,12 @@ async fn until(
             if observe(&view) {
                 return Ok(view);
             }
+            last = Some((
+                view.state,
+                view.position,
+                view.native_seeking,
+                view.play_id.is_some(),
+            ));
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
     })
@@ -57,7 +64,9 @@ async fn until(
     match result {
         Ok(result) => result,
         Err(_) => {
-            eprintln!("ordinary local EQ proof timed out at {stage}");
+            eprintln!(
+                "ordinary local EQ proof timed out at {stage}; last state/clock/seeking/playing identity: {last:?}"
+            );
             Err(Error::State(stage))
         }
     }
@@ -68,6 +77,19 @@ fn same_play(value: &PlayerView, expected: &PlayerView) -> bool {
         && value.play_id == expected.play_id
         && value.queue_revision == expected.queue_revision
         && value.queue_len == 1
+}
+
+fn settled_replacement(evidence: &Evidence, after: u64) -> Option<u64> {
+    let trace = evidence.lock().unwrap();
+    let entry = trace.seeks.last()?.replacement?;
+    trace.last_polls.back().and_then(|poll| {
+        (poll.sequence > after
+            && poll.entry == Some(entry)
+            && poll.paused
+            && !poll.seeking
+            && poll.position.is_some_and(|p| (p - 0.5).abs() < 0.06))
+        .then_some(poll.sequence)
+    })
 }
 
 fn curve(gain: f32) -> Result<EqualizerSettings> {
@@ -272,8 +294,20 @@ pub async fn verify(
             && view.state == PlaybackStatus::Paused
             && !view.native_seeking
             && view.position.is_some_and(|p| (p - 0.5).abs() < 0.06)
+            && (!expect_graph || settled_replacement(evidence, 0).is_some())
     })
     .await?;
+    if expect_graph {
+        let first_poll = settled_replacement(evidence, 0)
+            .ok_or(Error::State("lost the settled replacement clock"))?;
+        until(client, &epoch, "paused_seek_held_native", |view| {
+            same_play(view, &sought)
+                && view.state == PlaybackStatus::Paused
+                && !view.native_seeking
+                && settled_replacement(evidence, first_poll).is_some()
+        })
+        .await?;
+    }
     eprintln!("ordinary local EQ proof: paused_seek_verified");
     client.player_action(&epoch, pause(false)).await?;
     let resumed = until(client, &epoch, "resume_position", |view| {
