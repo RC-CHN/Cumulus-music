@@ -82,6 +82,8 @@
     const row = (id) => one(`.track-row[data-track-id="${id}"]`);
     const detailMarker = () => one('[data-zone-playlist-detail]');
     const description = () => one('.playlist-description-preview p')?.textContent.trim();
+    const subscribers = () => all('.playlist-toolbar .playlist-section')
+      .find((section) => section.textContent.trim().startsWith('收藏者'))?.querySelector('small')?.textContent.trim() ?? null;
     const { epoch } = await invoke('account_snapshot');
     const player = () => invoke('player_snapshot', { epoch });
     let priorPlay;
@@ -98,7 +100,8 @@
       assert(!!detailMarker() === isPersonalized, 'the native detail source is scoped to the clicked occurrence');
       assert(description() === (isPersonalized ? '合成个性化歌单详情' : '合成普通歌单详情'),
         'playlist description came from the expected detail reader');
-      await capture(state, { personalized: !!detailMarker(), description: description() });
+      assert(subscribers() === (isPersonalized ? '135' : null), 'dynamic count is projected only for the personalized visit');
+      await capture(state, { personalized: !!detailMarker(), description: description(), subscribers: subscribers() });
       return before;
     }
     async function started(id, state, target) {
@@ -113,6 +116,7 @@
       priorPlay = snapshot.playId;
       const queue = (await invoke('player_queue', { epoch })).tracks.map(({ track }) => track.id);
       assert(queue.join() === '81,84,87', 'playlist order retained at each chosen start');
+      await wait(() => target() === document.activeElement, `${state} restores focus after playback is ready`);
       await capture(state, { playId: snapshot.playId, trackId: id, position: snapshot.position, queue,
         personalized: !!detailMarker(), focusRetained: target() === document.activeElement });
       await invoke('player_action', { epoch, action: { kind: 'stop' } });

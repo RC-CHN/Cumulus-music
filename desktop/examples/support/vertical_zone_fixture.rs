@@ -42,13 +42,11 @@ pub fn observe(path: &str, args: &Value) {
             "/api/album/v3/detail"
                 | "/api/album/v4/detail"
                 | "/api/v6/playlist/detail"
+                | "/api/playlist/v4/detail"
+                | "/api/playlist/detail/dynamic"
                 | "/api/song/enhance/player/url/v1"
                 | "/api/user/setting/update"
-        ) || playlist_detail()
-            && matches!(
-                path,
-                "/api/playlist/v4/detail" | "/api/playlist/detail/dynamic" | "/api/v3/song/detail"
-            ))
+        ) || playlist_detail() && path == "/api/v3/song/detail")
     {
         record(path, args);
     }
@@ -174,12 +172,15 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                     "trackIds":[{"id":81,"v":0},{"id":84,"v":0}]}})
             }
         }
-        "/api/playlist/v4/detail"
-            if playlist_detail() && *args == json!({"id":"204","n":0,"s":0}) =>
-        {
-            playlist("合成个性化歌单详情", &[81, 84, 87])
+        "/api/playlist/v4/detail" if *args == json!({"id":"204","n":0,"s":0}) => {
+            let ids: &[u64] = if playlist_detail() {
+                &[81, 84, 87]
+            } else {
+                &[81, 84]
+            };
+            playlist("合成个性化歌单详情", ids)
         }
-        "/api/playlist/detail/dynamic" if playlist_detail() && *args == json!({"id":"204"}) => {
+        "/api/playlist/detail/dynamic" if *args == json!({"id":"204"}) => {
             json!({"code":200,"bookedCount":135,"subscribed":false})
         }
         "/api/song/enhance/player/url/v1" if playlist_detail() => {

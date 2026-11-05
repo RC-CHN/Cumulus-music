@@ -53,15 +53,14 @@ def check_playlist_detail(rows):
             mgc = name == "mgc_detail"
             assert row["personalized"] == mgc
             assert row["description"] == ("合成个性化歌单详情" if mgc else "合成普通歌单详情")
+            assert row["subscribers"] == ("135" if mgc else None)
             if mgc:
                 assert paths == [PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG], delta
                 assert delta[0][1] == {"id": "204", "n": 0, "s": 0}
                 assert delta[1][1] == {"id": "204"}
-            elif name == "normal_detail":
+            else:
                 assert paths == [PLAYLIST, SONG], delta
                 assert delta[0][1] == {"id": "204", "n": 100000, "s": 0}
-            else:
-                assert all(path in {PLAYLIST, SONG} for path in paths), delta
             for path, args in delta:
                 if path == SONG:
                     assert json.loads(args["c"]) == [{"id": value, "v": 0} for value in ids], delta
@@ -75,6 +74,7 @@ def check_playlist_detail(rows):
             assert player["playId"] == row["playId"] and player["playId"] not in play_ids
             assert player["track"]["id"] == selected and player["origin"]["id"] == "204"
             assert row["audioFactoryCount"] == 1
+            assert row["focusRetained"], name
             play_ids.add(player["playId"])
             assert PLAYLIST_V4 not in paths and PLAYLIST_DYNAMIC not in paths, delta
             if trial == 121:
