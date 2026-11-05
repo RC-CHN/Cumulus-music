@@ -116,23 +116,82 @@
     click(pagination('上一页'));
     const chapter = () => one('[data-listened-book="0"] [data-listened-chapter]');
     await wait(() => chapter() && !chapter().disabled, 'chapter back on first page');
-    click(chapter());
     const { epoch } = await invoke('account_snapshot');
-    let listenedPlayback;
-    for (let attempt = 0; attempt < 100; attempt++) {
-      listenedPlayback = await invoke('player_snapshot', { epoch });
-      if (listenedPlayback.track?.voiceId === '792' && listenedPlayback.state === 'playing'
-          && listenedPlayback.position > .2) break;
-      await sleep(60);
+    const player = () => invoke('player_snapshot', { epoch });
+    const action = (action) => invoke('player_action', { epoch, action });
+    async function waitPlayer(predicate, label) {
+      let state;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        state = await player();
+        if (predicate(state)) return state;
+        await sleep(60);
+      }
+      throw Error(`${label}: ${state?.state} ${state?.track?.voiceId} @${state?.position}`);
     }
-    assert(listenedPlayback.track?.voiceId === '792' && listenedPlayback.track?.id === '1792'
-        && listenedPlayback.state === 'playing' && listenedPlayback.queueLen === 2
-        && listenedPlayback.position > .2, 'clicked assigned episode, not first chapter or radio as media');
-    await capture('listened_chapter', { playing: true });
-    click(back());
-    await wait(() => document.activeElement === button('books:history:open'), 'book return focus');
-    assert(one('.ordinary-essential').scrollTop === scroll && bookSelect().value === '2', 'book return scroll/selection');
+    async function playChapter(id, queue, earlier) {
+      await wait(() => chapter() && !chapter().disabled, 'chapter ready: ' + id);
+      click(chapter());
+      return waitPlayer((state) => state.state === 'playing' && !state.nativeSeeking
+        && state.playId !== earlier && state.track?.voiceId === id
+        && state.track?.id === String(Number(id) + 1000) && state.queueLen === queue
+        && state.position > .2 && state.timeline?.mode === 'full' && !state.error, 'playing chapter ' + id);
+    }
+    async function backFromBooks() {
+      click(back());
+      await wait(() => document.activeElement === button('books:history:open'), 'book return focus');
+      assert(one('.ordinary-essential').scrollTop === scroll && bookSelect().value === '2', 'book return scroll/selection');
+    }
+    async function reopenBooks() {
+      click(button('books:history:open'));
+      await wait(() => all('[data-listened-book]').length === 20 && chapter() && !chapter().disabled, 'reopened books');
+    }
+
+    assert(chapter().textContent.trim() === '目录章节 792', 'initial row uses the remote chapter title');
+    const original = await playChapter('792', 2);
+    assert(original.position >= 2.45 && original.position < 4.5, 'remote checkpoint starts at 2.5');
+    await capture('listened_chapter', { playing: true, initialPosition: original.position });
+    await action({ kind: 'pause', paused: true });
+    await action({ kind: 'seek', seconds: 11.75 });
+    const sought = await waitPlayer((state) => state.state === 'paused' && !state.nativeSeeking
+      && state.playId === original.playId && Math.abs(state.position - 11.75) < .15, 'paused chapter seek');
+    const stopped = await action({ kind: 'stop' });
+    assert(stopped.state === 'idle' && !stopped.playId && stopped.queueRevision === sought.queueRevision,
+      'stop leaves the exact played chapter before reopening');
+    await backFromBooks();
     await capture('history_return', { scroll });
+
+    await reopenBooks();
+    const localTitle = chapter().textContent.trim();
+    const progress = Math.floor(1100 / Math.floor(sought.timeline.total));
+    assert(localTitle === '最近播放：合成声音 792'
+      && one('[data-listened-book="0"]').textContent.includes(`已播 ${progress}%`), 'matching departed chapter shows local title and progress');
+    await capture('listened_saved', { localTitle, progress, soughtPosition: sought.position, duration: sought.timeline.total });
+    const resumed = await playChapter('792', 3, original.playId);
+    assert(resumed.position >= 10.9 && resumed.position < 13, 'around resumes near the saved whole second');
+    await capture('listened_around', { playing: true, initialPosition: resumed.position });
+    const held = await action({ kind: 'pause', paused: true });
+    assert(held.state === 'paused' && held.playId === resumed.playId, 'hold around playback for rejection');
+    await fixture(2, 'listened-around-missing');
+    await wait(() => chapter() && !chapter().disabled, 'chapter ready to validate missing anchor');
+    click(chapter());
+    await wait(() => all('.playback-message[role=status]')
+      .some((node) => node.textContent.includes('列表已更新，请刷新后重试')), 'missing around anchor shows failure');
+    const preserved = await player();
+    assert(preserved.state === 'paused' && preserved.playId === held.playId
+      && preserved.entryId === held.entryId && preserved.queueRevision === held.queueRevision
+      && Math.abs(preserved.position - held.position) < .15, 'missing anchor preserves paused native playback and queue');
+    await capture('listened_around_rejected', { playing: true, notice: '列表已更新，请刷新后重试' });
+
+    await fixture(2, 'listened-different');
+    await backFromBooks();
+    await reopenBooks();
+    assert(chapter().textContent.trim() === '目录章节 791'
+      && one('[data-listened-book="0"]').textContent.includes('已播 10%'), 'same-book different chapter uses remote row');
+    const other = await playChapter('791', 2, resumed.playId);
+    assert(other.position >= 2.45 && other.position < 4.5, 'different chapter keeps its own breakpoint');
+    await capture('listened_mismatch', { playing: true, initialPosition: other.position });
+    await fixture(2, 'initial');
+    await backFromBooks();
 
     const play = button('songs:2:play');
     await wait(() => !play.disabled, 'native player is ready');

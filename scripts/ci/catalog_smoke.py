@@ -249,16 +249,41 @@ def main():
         return
     if args.ordinary_essential:
         assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-        names = ('initial', 'category_failure', 'listened_chapter', 'history_return', 'native_play', 'paused',
-                 'voice_play', 'book_play', 'partial_fallback', 'other_account_failure', 'retry', 'guest')
+        names = ('initial', 'category_failure', 'listened_chapter', 'history_return', 'listened_saved',
+                 'listened_around', 'listened_around_rejected', 'listened_mismatch', 'native_play',
+                 'paused', 'voice_play', 'book_play', 'partial_fallback', 'other_account_failure',
+                 'retry', 'guest')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         states = {name: json.loads((output / f'ux_{name}.json').read_text(encoding='utf-8'))
                   for name in names}
         assert states['history_return']['scroll'] > 0
-        listened = states['listened_chapter']['nativePlayer']
-        assert listened['state'] == 'playing' and listened['track']['voiceId'] == '792'
-        assert listened['track']['id'] == '1792' and listened['queueLen'] == 2 and listened['position'] > .2
+        def chapter(name, episode, order, state='playing'):
+            payload = states[name]
+            player, queue = payload['nativePlayer'], payload['nativeQueue']
+            assert player['state'] == state and player['track']['voiceId'] == episode
+            assert player['track']['id'] == str(1000 + int(episode)) and player['position'] > .2
+            assert player['origin'] == {'kind': 'podcast', 'id': '691'}
+            assert player['timeline']['mode'] == 'full' and player['queueLen'] == len(order)
+            assert [row['track']['voiceId'] for row in queue['tracks']] == order
+            assert queue['current'] == player['entryId'] == queue['tracks'][order.index(episode)]['entryId']
+            assert queue['revision'] == player['queueRevision']
+            return player
+
+        listened = chapter('listened_chapter', '792', ['791', '792'])
+        saved = states['listened_saved']
+        assert saved['localTitle'] == '最近播放：合成声音 792'
+        assert 11.6 < saved['soughtPosition'] < 11.9 and saved['progress'] == 1100 // int(saved['duration'])
+        resumed = chapter('listened_around', '792', ['793', '792', '791'])
+        assert resumed['playId'] != listened['playId']
+        assert 10.9 <= states['listened_around']['initialPosition'] < 13
+        rejected = chapter('listened_around_rejected', '792', ['793', '792', '791'], 'paused')
+        assert all(rejected[key] == resumed[key] for key in ('playId', 'entryId', 'queueRevision'))
+        assert states['listened_around_rejected']['notice'] == '列表已更新，请刷新后重试'
+        mismatch = chapter('listened_mismatch', '791', ['791', '792'])
+        assert mismatch['playId'] != resumed['playId']
+        for name in ('listened_chapter', 'listened_mismatch'):
+            assert 2.45 <= states[name]['initialPosition'] < 4.5
         native = states['native_play']['nativePlayer']
         assert native['state'] == 'playing' and native['track']['id'] == '2'
         assert native['position'] > .2 and native['queueLen'] == 9
@@ -278,10 +303,20 @@ def main():
                 assert observed['messages'] == observed['characters'] == expected
         calls = complete['essentialReads']
         assert not any(call['owner'] == 0 for call in calls)
-        recent = [call for call in calls if call['path'] == '/api/voice/book/recent']
-        assert [(call['owner'], call['args']) for call in recent] == [(2, {})], recent
-        chapters = [call for call in calls if call['path'] == '/api/v6/dj/program/byradio']
-        assert [call['args'] for call in chapters] == [{'radioId': '691', 'limit': 250, 'offset': 0}], chapters
+        recent, byradio, around = ('/api/voice/book/recent', '/api/v6/dj/program/byradio',
+                                   '/api/dj/around/program/v1')
+        book_flow = [call for call in calls if call['path'] in (recent, byradio, around)]
+        byradio_args = {'radioId': '691', 'limit': 250, 'offset': 0}
+        around_args = {'programId': '792', 'roundNum': 250}
+        assert [(call['owner'], call['mode'], call['path'], call['args']) for call in book_flow] == [
+            (2, 'initial', recent, {}),
+            (2, 'initial', byradio, byradio_args),
+            (2, 'initial', recent, {}),
+            (2, 'initial', around, around_args),
+            (2, 'listened-around-missing', around, around_args),
+            (2, 'listened-different', recent, {}),
+            (2, 'listened-different', byradio, byradio_args),
+        ], book_flow
         song_calls = [call for call in calls if call['path'] == '/api/personalized/newsong']
         assert [(call['owner'], call['mode']) for call in song_calls] == [
             (2, 'initial'), (2, 'songs-down'), (3, 'all-down'), (3, 'initial')
@@ -293,7 +328,12 @@ def main():
             default, female, female, female, default, default
         ], book_calls
         result = dict(ok=True, actualWebView=True, states=len(names), screenshots=captures,
-                      nativeNullPlaybackVerified=True, realMusicRequests=0, realAccountWrites=0)
+                      nativeNullPlaybackVerified=True, realMusicRequests=0, realAccountWrites=0,
+                      listenedBookFlow=dict(calls=book_flow,
+                                            savedSeekSeconds=saved['soughtPosition'],
+                                            resumedSeconds=states['listened_around']['initialPosition'],
+                                            resumedQueue=['793', '792', '791'],
+                                            missingTargetPreserved=True, differentChapter='791'))
         (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))
         return

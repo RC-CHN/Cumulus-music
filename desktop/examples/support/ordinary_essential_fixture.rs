@@ -10,6 +10,8 @@ const SONGS: &str = "/api/personalized/newsong";
 const BOOKS: &str = "/api/podcast/common/single/block/get";
 const VOICES: &str = "/api/pc/voicelist/rcmd/list";
 const LISTENED: &str = "/api/voice/book/recent";
+const AROUND: &str = "/api/dj/around/program/v1";
+const BY_RADIO: &str = "/api/v6/dj/program/byradio";
 
 fn actions_enabled() -> bool {
     std::env::var_os("CUMULUS_ORDINARY_ESSENTIAL_ACTIONS_PROOF").is_some()
@@ -36,7 +38,13 @@ impl Library {
         assert!(matches!(owner, 0 | 2 | 3));
         assert!(matches!(
             mode,
-            "initial" | "all-down" | "songs-down" | "books-down" | "detail-down"
+            "initial"
+                | "all-down"
+                | "songs-down"
+                | "books-down"
+                | "detail-down"
+                | "listened-around-missing"
+                | "listened-different"
         ));
         *self.settings.lock().unwrap() = (owner, mode.into());
     }
@@ -120,9 +128,7 @@ impl Api for Library {
                     return Err(Error::Transport("synthetic choice block failure".into()));
                 }
             }
-            if path == LISTENED
-                || (path == "/api/v6/dj/program/byradio" && args["radioId"] == "691")
-            {
+            if matches!(path, LISTENED | AROUND) || (path == BY_RADIO && args["radioId"] == "691") {
                 self.reads
                     .lock()
                     .unwrap()
@@ -223,19 +229,33 @@ impl Api for Library {
                 "/api/djradio/v3/get" => {
                     json!({"code":200,"data":{"id":args["id"],"name":format!("合成播单 {}",args["id"].as_str().unwrap_or("")),"programCount":2}})
                 }
-                "/api/v6/dj/program/byradio" if args["radioId"] == "691" => {
+                AROUND => {
+                    assert_eq!(owner, 2);
+                    assert_eq!(args, json!({"programId":"792","roundNum":250}));
+                    assert!(matches!(
+                        mode.as_str(),
+                        "initial" | "listened-around-missing"
+                    ));
+                    let programs = if mode == "listened-around-missing" {
+                        vec![voice(791, 691), voice(793, 691)]
+                    } else {
+                        vec![voice(791, 691), voice(792, 691), voice(793, 691)]
+                    };
+                    json!({"code":200,"data":{"list":programs,"asc":true}})
+                }
+                BY_RADIO if args["radioId"] == "691" => {
                     assert_eq!(args, json!({"radioId":"691","limit":250,"offset":0}));
                     json!({"code":200,"data":{"programs":[voice(791,691),voice(792,691)],"count":2,"more":false}})
                 }
-                "/api/v6/dj/program/byradio" => {
+                BY_RADIO => {
                     json!({"code":200,"data":{"programs":[voice(701, number(&args["radioId"])),voice(702, number(&args["radioId"]))],"count":2,"more":false,"asc":args["asc"]}})
                 }
                 "/api/dj/user/setting/resumeplay/get" => {
-                    json!({"code":200,"data":{"resumePlayValue":0}})
+                    json!({"code":200,"data":{"resumePlayValue":u8::from(args["radioId"] == "691")}})
                 }
                 "/api/dj/program/detail" => {
                     let id = number(&args["id"]);
-                    let radio = if matches!(id, 791 | 792) { 691 } else { 600 };
+                    let radio = if matches!(id, 791..=793) { 691 } else { 600 };
                     json!({"code":200,"program":voice(id,radio)})
                 }
                 "/api/dj/play/url/check" => {
@@ -249,11 +269,17 @@ impl Api for Library {
                 }
                 LISTENED => {
                     assert_eq!(args, json!({}));
-                    let mut chapter = voice(792, 691);
+                    let id = if mode == "listened-different" {
+                        791
+                    } else {
+                        792
+                    };
+                    let mut chapter = voice(id, 691);
+                    chapter["name"] = json!(format!("目录章节 {id}"));
                     chapter["radio"]["name"] = json!("合成听书 691");
                     chapter["radio"]["subCount"] = json!(123);
                     chapter["djPlayRecordVo"] =
-                        json!({"id":"792","listenLocation":2500,"isListened":false});
+                        json!({"id":id.to_string(),"listenLocation":2500,"isListened":false});
                     chapter["url"] = json!("https://blocked.invalid/private");
                     let group = (670..690).map(|id| voice(701, id)).collect::<Vec<_>>();
                     json!({"code":200,"data":{"currentList":[chapter],"yesterdayList":group[..19],"passingList":group[19..]}})
@@ -262,6 +288,7 @@ impl Api for Library {
                     "todayRecords":[],"yesterdayRecords":[],"theDayBeforeYesterdayRecords":[],"earlierRecords":[]
                 }}}),
                 "/api/v2/discovery/new/songs" => json!({"code":200,"data":[]}),
+                "/api/dj/playrecord/upload" => panic!("choice proof cannot send podcast progress"),
                 "/api/ad/sdk/pc/visible" | "/api/v2/banner/get" => {
                     panic!("choice proof must never invoke ad/banner services")
                 }
