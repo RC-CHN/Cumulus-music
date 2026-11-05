@@ -111,7 +111,9 @@ export function useVinylCommentLikes(
         if (current())
           issue.value = {
             id: item.id,
-            message: operations.value.has(item.id) ? '点赞结果尚未确认，请核对状态。' : problem.message,
+            message: operations.value.has(item.id)
+              ? '点赞结果尚未确认，请核对状态。'
+              : problem.message,
           };
       }
     } finally {
