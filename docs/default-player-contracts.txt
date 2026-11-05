@@ -126,3 +126,11 @@ Debian 桌面候选验证使用 scripts/ci/linux_file_candidate_smoke.py --deb �
 合成进程使用原生身份模式，成功报告前审计数据库，发现设备身份记录即失败。
 这是隔离 Linux GIO 行为证明；不代表所有文件管理器的菜单外观、物理声卡、
 Windows 暖转交/Explorer 或服务登录。
+
+2026-11-05，托管 Linux Debian 验收复启动已经推进本机合成音频到 3.435 秒，
+但采集音频流的 PipeWire 1.0.5 pw-dump 在单次查询中先输出对象删除数组，
+随后输出完整图；旧脚本把两段当一个 JSON 文档而失败。仅识别完整且类型相符
+的已知删除帧，弃用该次采样并等待下一次读回；错误 JSON、两个完整图和未知
+帧仍失败。包内进程 PID、实际音频流到私有输出设备的连线、持久播放时钟和
+后续 PCM 断言未改变。合成测试复现了原错误的位置；不以此替代托管打包验收。
+PipeWire 源：https://github.com/PipeWire/pipewire/blob/1.0.5/src/tools/pw-dump.c#L1316-L1338

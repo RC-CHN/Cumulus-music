@@ -1,12 +1,16 @@
 """Verify narrow missed observations in the installed Linux probes."""
 from contextlib import closing
+import json
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
-from installed_linux_audio import read_playback, stale_accessible_lookup, wait_for
+from installed_linux_audio import (
+    pipewire_snapshot, private_pipewire_stream, read_playback, stale_accessible_lookup, wait_for,
+)
 
 
 class PlaybackObservation(unittest.TestCase):
@@ -62,3 +66,39 @@ class AccessibilityObservation(unittest.TestCase):
             error(1, 'Timeout was reached'),
         ):
             self.assertFalse(stale_accessible_lookup(unexpected))
+
+
+class PipeWireObservation(unittest.TestCase):
+    @staticmethod
+    def graph():
+        return [
+            {'id': 20, 'info': {'props': {'application.process.id': 123}}},
+            {'id': 21, 'info': {'props': {'client.id': 20, 'media.class': 'Stream/Output/Audio'}}},
+            {'id': 22, 'info': {'props': {'node.name': 'cumulus_private'}}},
+            {'id': 23, 'info': {'output-node-id': 21, 'input-node-id': 22}},
+        ]
+
+    def test_known_removal_before_snapshot_requires_another_live_sample(self):
+        removal = (json.dumps([{'id': 42, 'info': None}], indent=2) + '\n').encode()
+        graph = json.dumps(self.graph()).encode()
+        with self.assertRaises(json.JSONDecodeError) as old:
+            json.loads(removal + graph)
+        self.assertEqual((old.exception.msg, old.exception.lineno, old.exception.pos),
+                         ('Extra data', 7, 43))
+        self.assertIsNone(pipewire_snapshot(removal + graph))
+        self.assertIsNone(pipewire_snapshot(b'[{"id":1,"props":null}]\n' + removal + graph))
+        self.assertIsNone(pipewire_snapshot(removal))
+        with patch('installed_linux_audio.subprocess.check_output',
+                   side_effect=[removal + graph, graph, graph]):
+            self.assertFalse(private_pipewire_stream(123, {}), 'raced data never proves a stream')
+            self.assertFalse(private_pipewire_stream(321, {}), 'unrelated playback never proves a stream')
+            self.assertTrue(private_pipewire_stream(123, {}))
+
+    def test_unexpected_multiple_graphs_and_malformed_output_remain_failures(self):
+        graph = json.dumps(self.graph()).encode()
+        for invalid in (b'', b'{"id":1}', graph + graph, graph + b'[]',
+                        b'[{"id":42,"info":null}]\nnot JSON',
+                        b'[{"id":42,"info":null}]\n[null]',
+                        b'[{"id":true,"info":null}]\n' + graph):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                pipewire_snapshot(invalid)

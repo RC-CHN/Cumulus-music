@@ -325,8 +325,46 @@ def read_playback(database):
     return {key: json.loads(value) for key, value in rows}
 
 
+def pipewire_snapshot(output):
+    """Return one coherent one-shot graph, or None for a removal race."""
+    def removal(document):
+        if len(document) != 1:
+            return False
+        row = document[0]
+        return (
+            set(row) in ({'id'}, {'id', 'info'}, {'id', 'props'})
+            and type(row['id']) is int and 0 <= row['id'] < 2**32
+            and row.get('info') is None and row.get('props') is None
+        )
+
+    # PipeWire 1.0.5 pw-dump prints a separate removal array even without
+    # --monitor, before on_core_done prints the graph. Never combine these
+    # frames or use the raced graph as proof. Other malformed output is fatal.
+    data = output.decode('utf-8')
+    decoder = json.JSONDecoder()
+    whitespace = re.compile(r'[ \t\r\n]*')
+    position = 0
+    frames = []
+    while (position := whitespace.match(data, position).end()) < len(data):
+        document, position = decoder.raw_decode(data, position)
+        if not isinstance(document, list) or any(
+            not isinstance(item, dict) or 'id' not in item for item in document
+        ):
+            raise ValueError('pw-dump frame must be an array of identified objects')
+        frames.append(document)
+    if not frames:
+        raise ValueError('pw-dump returned no graph')
+    if len(frames) == 1:
+        return None if removal(frames[0]) else frames[0]
+    if all(removal(frame) for frame in frames[:-1]):
+        return None
+    raise ValueError('unexpected multiple pw-dump graph snapshots')
+
+
 def private_pipewire_stream(pid, env):
-    objects = json.loads(subprocess.check_output(['pw-dump'], env=env, timeout=4))
+    objects = pipewire_snapshot(subprocess.check_output(['pw-dump'], env=env, timeout=4))
+    if objects is None:
+        return False  # The existing bounded read-only poll must observe a fresh graph.
     props = {item['id']: item.get('info', {}).get('props', {}) for item in objects}
     own_clients = {str(key) for key, row in props.items() if str(row.get('application.process.id')) == str(pid)}
     sink = {item for item, row in props.items() if row.get('node.name') == 'cumulus_private'}
