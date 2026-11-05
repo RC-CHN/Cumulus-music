@@ -636,6 +636,50 @@ async fn wait(
 }
 
 #[tokio::test]
+async fn explicit_download_quality_refresh_recovers_unavailable_membership_without_media_reads() {
+    use std::sync::atomic::Ordering;
+    const MEMBERSHIP: &str = "/api/music-vip-membership/client/vip/info";
+    let f = Fixture::new();
+    let before = f.client.download_quality_preferences("1").unwrap();
+    assert!(f.api.calls.lock().unwrap().is_empty());
+    f.api.membership_fails.store(true, Ordering::Release);
+    assert!(matches!(
+        f.client.refresh_download_quality_preferences("1").await,
+        Err(Error::Transport(_))
+    ));
+    let still_unknown = f.client.download_quality_preferences("1").unwrap();
+    assert_eq!(still_unknown.revision, before.revision);
+    f.api.membership_fails.store(false, Ordering::Release);
+    let recovered = f
+        .client
+        .refresh_download_quality_preferences("1")
+        .await
+        .unwrap();
+    assert_ne!(recovered.revision, before.revision);
+    assert_eq!(recovered.options.quality, before.options.quality);
+    assert!(
+        serde_json::to_value(&recovered).unwrap()["choices"]
+            .as_array()
+            .unwrap()
+            .contains(&json!({"quality":"lossless","access":"allowed"}))
+    );
+    let current = f
+        .client
+        .refresh_download_quality_preferences("1")
+        .await
+        .unwrap();
+    assert_eq!(current.revision, recovered.revision);
+    assert!(matches!(
+        f.client.refresh_download_quality_preferences("0").await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(
+        *f.api.calls.lock().unwrap(),
+        vec![(MEMBERSHIP.to_owned(), json!({"userId":"1"})); 2],
+    );
+}
+
+#[tokio::test]
 async fn default_download_quality_is_current_account_preference_not_media_permission() {
     use cumulus_core::membership::Quality;
     let f = Fixture::new();

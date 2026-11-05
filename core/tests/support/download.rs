@@ -15,7 +15,7 @@ use std::{
     path::Path,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
@@ -31,6 +31,7 @@ pub struct Server {
     pub lyric: Mutex<Result<Value>>,
     pub play: Mutex<Result<Value>>,
     pub follow_latest: Mutex<Value>,
+    pub membership_fails: AtomicBool,
     pub play_gate: Mutex<Option<Arc<PlaybackGate>>>,
     pub calls: Mutex<Vec<(String, Value)>>,
 }
@@ -51,6 +52,7 @@ impl Server {
                 "level":"standard","expi":120}]}))),
             play_gate: Mutex::new(None),
             follow_latest: Mutex::new(json!([])),
+            membership_fails: AtomicBool::new(false),
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -99,6 +101,9 @@ impl Api for Server {
                     Err(_) => return Err(Error::Transport("synthetic lyric failure".into())),
                 },
                 "/api/music-vip-membership/client/vip/info" => {
+                    if self.membership_fails.load(Ordering::Acquire) {
+                        return Err(Error::Transport("synthetic membership failure".into()));
+                    }
                     json!({"code":200,"data":{"now":2000000,"userId":1,"associator":{"expireTime":9999999999999u64,"vipLevel":7}}})
                 }
                 _ => panic!("unexpected endpoint {path}"),

@@ -22,11 +22,12 @@ const quality = shallowRef<DownloadQualityPreferences>();
 const loadingQuality = ref(false);
 const qualityError = ref('');
 let dialogOpen = true;
-async function loadQuality() {
+async function loadQuality(refresh = false) {
+  if (loadingQuality.value) return;
   loadingQuality.value = true;
   qualityError.value = '';
   try {
-    const current = await props.model.qualityPreferences();
+    const current = await props.model.qualityPreferences(refresh);
     if (!dialogOpen) return;
     if (!current) {
       qualityError.value = '下载音质设置暂不可用';
@@ -288,7 +289,12 @@ async function fileAction() {
         </p>
         <div v-if="target.kind === 'settings' && qualityError" class="error-state" role="alert">
           {{ qualityError }}
-          <button type="button" class="text-button" :disabled="loadingQuality" @click="loadQuality">
+          <button
+            type="button"
+            class="text-button"
+            :disabled="loadingQuality"
+            @click="loadQuality(true)"
+          >
             重试
           </button>
         </div>
@@ -322,7 +328,7 @@ async function fileAction() {
             v-if="target.kind === 'settings' && quality && !qualityError"
             class="text-button"
             type="button"
-            @click="loadQuality"
+            @click="loadQuality(true)"
           >
             刷新下载音质
           </button>

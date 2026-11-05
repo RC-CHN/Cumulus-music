@@ -29,7 +29,7 @@ fn revision(page: &MemberPage) -> Result<String> {
     Ok(hex::encode(Sha256::digest(serde_json::to_vec(page)?)))
 }
 impl MusicClient {
-    async fn membership_manager(&self) -> Result<Arc<MembershipManager>> {
+    pub(super) async fn membership_manager(&self) -> Result<Arc<MembershipManager>> {
         self.membership
             .get_or_try_init(|| async {
                 MembershipManager::new(self.session.clone()).map(Arc::new)

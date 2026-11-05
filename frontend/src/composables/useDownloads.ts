@@ -163,12 +163,12 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     moreError.value = '';
     return refresh();
   }
-  async function qualityPreferences() {
+  async function qualityPreferences(refresh = false) {
     if (!epoch) return;
     const captured = epoch,
       version = generation;
     try {
-      const result = await core.downloadQualityPreferences(captured);
+      const result = await core.downloadQualityPreferences(captured, refresh);
       if (version === generation && result.epoch === captured) return result;
     } catch (value) {
       if (version === generation) throw value;

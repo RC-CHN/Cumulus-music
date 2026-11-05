@@ -45,14 +45,18 @@ test('a previous account cannot supply default download quality after an account
     options: state('2').options,
     choices: [{ quality: 'standard', access: 'allowed' }],
   };
+  const reads: [string, boolean][] = [];
   const model = useDownloads({
     downloads: async (epoch) => state(epoch),
-    downloadQualityPreferences: async (epoch) => (epoch === '1' ? pending.promise : current),
+    downloadQualityPreferences: async (epoch, refresh) => {
+      reads.push([epoch, refresh]);
+      return epoch === '1' ? pending.promise : current;
+    },
   } as DownloadClient);
   await model.connect(account());
   const obsolete = model.qualityPreferences();
   await model.connect(account('2'));
-  assert.deepEqual(await model.qualityPreferences(), current);
+  assert.deepEqual(await model.qualityPreferences(true), current);
   pending.resolve({
     epoch: '1',
     revision: 'old',
@@ -60,6 +64,10 @@ test('a previous account cannot supply default download quality after an account
     choices: [{ quality: 'vivid', access: 'allowed' }],
   });
   assert.equal(await obsolete, undefined);
+  assert.deepEqual(reads, [
+    ['1', false],
+    ['2', true],
+  ]);
   model.dispose();
 });
 test('a visit guard rejects old timers and returns preserve explicit continuation failure', async () => {

@@ -4,11 +4,15 @@ use crate::{
     Error, Result,
     account::SessionToken,
     download::service::DownloadOptions,
-    membership::{MembershipManager, MembershipState, Quality},
+    membership::{MembershipCommit, MembershipManager, MembershipState, Quality},
     storage::StateTransaction,
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use std::time::Duration;
+use tokio::time::Instant;
+
+const MEMBERSHIP_READ_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -86,6 +90,15 @@ fn revision(epoch: &str, options: &DownloadOptions, choices: &[Choice]) -> Resul
     ))?)))
 }
 
+fn download_membership_expired(commit: &MembershipCommit, now: Instant) -> bool {
+    let server_now =
+        commit.server_now + now.saturating_duration_since(commit.at).as_secs_f64() * 1000.0;
+    let [_, plus, vinyl, music_package, _] = commit.expiries;
+    [plus, vinyl, music_package]
+        .into_iter()
+        .any(|expiry| expiry > commit.server_now && expiry <= server_now)
+}
+
 impl MusicClient {
     fn download_quality_token(&self, epoch: &str) -> Result<SessionToken> {
         let token = self.session.token()?;
@@ -144,6 +157,36 @@ impl MusicClient {
         })
     }
 
+    /// Explicit settings retry only. Reuse the startup/expiry worker's native
+    /// reader and its coalescing gate; opening the form is still passive.
+    pub async fn refresh_download_quality_preferences(
+        &self,
+        epoch: &str,
+    ) -> Result<DownloadQualityPreferences> {
+        let token = self.download_quality_token(epoch)?;
+        let mut accounts = self.session.subscribe()?;
+        let commits = self.session.subscribe_membership_commits()?;
+        let due = commits
+            .borrow()
+            .as_ref()
+            .filter(|commit| commit.token == token)
+            .is_none_or(|commit| download_membership_expired(commit, Instant::now()))
+            || MembershipManager::new(self.session.clone())?
+                .snapshot()
+                .is_err();
+        if due {
+            let manager = self.membership_manager().await?;
+            let refresh =
+                tokio::time::timeout(MEMBERSHIP_READ_TIMEOUT, manager.refresh_for(token.clone()));
+            tokio::select! {
+                biased;
+                _ = accounts.wait_for(|current| current != &token) => return Err(Error::StaleResponse),
+                result = refresh => result.map_err(|_| Error::Transport("download membership read timed out".into()))??,
+            };
+        }
+        self.download_quality_preferences(epoch)
+    }
+
     pub(super) fn save_download_quality_preferences(
         &self,
         epoch: &str,
@@ -186,6 +229,36 @@ mod tests {
     use super::*;
     use crate::membership::membership_state;
     use serde_json::json;
+
+    #[test]
+    fn download_membership_rechecks_crossed_not_already_known_expiry() {
+        let at = Instant::now();
+        let commit = MembershipCommit {
+            token: SessionToken {
+                generation: 1,
+                uid: Some("1".into()),
+            },
+            expiries: [1_005.0, 0.0, 1_100.0, 900.0, 1_002.0],
+            server_now: 1_000.0,
+            at,
+        };
+        assert!(!download_membership_expired(
+            &commit,
+            at + Duration::from_millis(99)
+        ));
+        assert!(download_membership_expired(
+            &commit,
+            at + Duration::from_millis(100)
+        ));
+        let checked_expired = MembershipCommit {
+            server_now: 1_110.0,
+            ..commit
+        };
+        assert!(!download_membership_expired(
+            &checked_expired,
+            at + Duration::from_secs(10)
+        ));
+    }
 
     #[test]
     fn music_package_only_applies_to_the_two_recovered_download_qualities() {

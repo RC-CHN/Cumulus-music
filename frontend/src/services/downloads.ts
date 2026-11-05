@@ -155,7 +155,7 @@ export interface DownloadQualityPreferences {
 }
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
-  downloadQualityPreferences(epoch: string): Promise<DownloadQualityPreferences>;
+  downloadQualityPreferences(epoch: string, refresh: boolean): Promise<DownloadQualityPreferences>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;
   pickDownloadDirectory(epoch: string): Promise<string | null>;
