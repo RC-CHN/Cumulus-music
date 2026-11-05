@@ -1,7 +1,7 @@
-//! Foreground notification adapter; scheduling and credential decisions stay
-//! in core. No periodic token rotation and no automatic mutation retry.
+//! Native ownership for foreground JSK and scheduled legacy renewal.
+//! Scheduling, cohort checks and credential decisions stay in core.
 use cumulus_core::{
-    account::refresh::{DesktopDeviceToken, DeviceInfo},
+    account::refresh::{DesktopDeviceToken, DeviceInfo, LegacyRenewal},
     client::{ClientError, MusicClient, dto::*},
     protocol::http::{ClientProfile, OFFICIAL_WINDOWS_USER_AGENT},
 };
@@ -13,6 +13,7 @@ pub(crate) struct RenewalPump {
     notify: Arc<tokio::sync::Notify>,
     task: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
     observer: Mutex<Option<tauri::async_runtime::JoinHandle<()>>>,
+    legacy: Mutex<Option<LegacyRenewal>>,
 }
 
 pub fn configure(client: MusicClient, profile: &ClientProfile) -> MusicClient {
@@ -104,12 +105,34 @@ pub fn start<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     host.notify.notify_one();
 }
 
+/// Native setup only, after managing the same policy-configured MusicClient
+/// as the foreground JSK pump. Generic builders and other probes stay opt-in.
+pub fn start_legacy<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> cumulus_core::Result<()> {
+    let host = app.state::<RenewalPump>();
+    let mut owner = host
+        .legacy
+        .lock()
+        .map_err(|_| cumulus_core::Error::LockPoisoned)?;
+    if owner.is_none() {
+        let client = app.state::<MusicClient>();
+        *owner = Some(tauri::async_runtime::block_on(async {
+            client.start_legacy_session_renewal()
+        })?);
+    }
+    Ok(())
+}
+
 pub(crate) fn wake<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(host) = app.try_state::<RenewalPump>() {
         host.notify.notify_one();
     }
 }
 pub(crate) fn stop<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(host) = app.try_state::<RenewalPump>()
+        && let Ok(mut legacy) = host.legacy.lock()
+    {
+        drop(legacy.take());
+    }
     if let Some(host) = app.try_state::<RenewalPump>()
         && let Ok(mut observer) = host.observer.lock()
         && let Some(observer) = observer.take()

@@ -637,6 +637,9 @@ pub fn run() {
             shortcuts::install(app.handle());
             desktop_lyrics::start(app.handle());
             renewal::start(app.handle());
+            if renewal::start_legacy(app.handle()).is_err() {
+                eprintln!("Cumulus scheduled legacy session renewal is unavailable.");
+            }
             if member::start_lifecycle(app.handle()).is_err() {
                 eprintln!("Cumulus membership refresh is unavailable.");
             }
@@ -650,11 +653,14 @@ pub fn run() {
         })
         .build(context)
         .expect("could not start Cumulus")
-        .run(|_app, _event| {
+        .run(|app, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                renewal::stop(app);
+            }
             #[cfg(windows)]
-            if matches!(_event, tauri::RunEvent::Exit)
+            if matches!(event, tauri::RunEvent::Exit)
                 && let Some(host) =
-                    _app.try_state::<std::sync::Arc<playback_keep_awake::DesktopPlaybackPower>>()
+                    app.try_state::<std::sync::Arc<playback_keep_awake::DesktopPlaybackPower>>()
                 && host.stop().is_err()
             {
                 eprintln!("Cumulus could not release playback power state cleanly.");

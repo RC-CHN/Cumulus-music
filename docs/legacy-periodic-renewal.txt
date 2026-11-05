@@ -1,5 +1,5 @@
-旧版 PC 定期 Cookie 续期（核心原生 opt-in）
-===========================================
+旧版 PC 定期 Cookie 续期
+======================
 
 依据为官方 PC 3.1.42.205594 的 hybrid_app：
 - M/198:693–729、1051–1063：确认登录且 host.userName 非空后，双实验未开启 JSK
@@ -16,8 +16,10 @@
   业务 301 的 /api/middle/account/token/refresh。
 
 Rust 与可验证边界：
-- MusicClient::start_legacy_session_renewal 由原生宿主持有，尚未接到生产桌面
-  setup 或 IPC。该账号没有成功返回两个明确且不冲突的实验分组时不发旧版续期；
+- 生产桌面 setup 在管理配置过登录策略的 MusicClient 后，调用
+  desktop/src/renewal.rs::start_legacy 持有独立 worker；主窗口销毁和应用退出时
+  与 JSK 一起停止。通用 configure 和 IPC 不启动或暴露该 worker。窗口聚焦沿用
+  JSK 通知，不重排旧版周期。该账号没有成功返回两个明确且不冲突的实验分组时不发旧版续期；
   现有登录路由仍可使用持久缓存/默认值，定期自动写不沿用该 fallback。
 - 只接受当前已核验账号的 PC 凭据。同一 MUSIC_U 必须适用续期与身份回读路径；
   旧账号/API/凭据代次不能派发给新账号。冷启动可信恢复及实际服务端快捷登录/
@@ -36,5 +38,4 @@ Rust 与可验证边界：
 
 验证入口（仅合成、不发真实请求）：
   cargo test --locked -p cumulus-core --test legacy_periodic_renewal --test refresh --test client_renewal --test client_login_policy
-该批不代表真实上游旧版续期已通过；JSK 成对轮换的真实服务边界见
-refresh-control-contracts.txt，生产启用需另验证桌面生命周期和授权账号上的响应。
+真实上游旧版续期回包尚未验证；JSK 成对轮换的真实服务边界见 refresh-control-contracts.txt。
