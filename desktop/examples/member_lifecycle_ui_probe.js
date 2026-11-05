@@ -38,6 +38,9 @@
       const value = await invoke('account_snapshot');
       return value.status === 'authenticated' && value;
     }, 'synthetic account/get completes through the shell');
+    await awaitValue(() => one('.track-row') &&
+      one('.playerbar button[aria-label="列表循环"]')?.disabled === false,
+      'signed-in shell finished starting');
     const input = await awaitValue(() => one('[aria-label="搜索音乐"]'), 'search input');
     input.value = QUERY;
     input.dispatchEvent(new Event('input', { bubbles: true }));
