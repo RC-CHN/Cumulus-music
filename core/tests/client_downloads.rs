@@ -1586,6 +1586,119 @@ async fn downloaded_mini_projection_preserves_the_service_like_identity_without_
 }
 
 #[tokio::test]
+async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_metadata() {
+    use cumulus_core::{
+        download::service::{DownloadOrigin, DownloadTask},
+        playback::controller::PlaybackStatus,
+        podcast::Episode,
+    };
+
+    let f = Fixture::new();
+    let (task_id, _) = f.completed().await;
+    let mut task: DownloadTask = serde_json::from_value(
+        f.store
+            .get("1", "download_tasks_v1", &task_id)
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    let episode = Episode::from_official(&json!({
+        "id":71,"name":"合成下载声音","mainSong":{"id":123,"duration":1000},
+        "createTime":1735787045000_u64,
+        "dj":{"userId":42,"nickname":"合成主播","avatarUrl":"PRIVATE_AVATAR"},
+        "authorization":"PRIVATE_TOKEN"
+    }))
+    .unwrap();
+    task.song = Some(episode.download_metadata().unwrap());
+    // Identical raw voice JSON in a normal Song task must not grant voice detail.
+    task.origin = DownloadOrigin::Song;
+    f.store
+        .put(
+            "1",
+            "download_tasks_v1",
+            &task_id,
+            &serde_json::to_value(&task).unwrap(),
+        )
+        .unwrap();
+    let calls = f.api.calls.lock().unwrap().len();
+    let media_calls = f.backend.audio.calls().len();
+    let select = |category| PlaySelection::Downloads {
+        query: DownloadQuery {
+            tab: DownloadTab::Completed,
+            category,
+            ..Default::default()
+        },
+        start_id: Some(task_id.clone()),
+    };
+    let song = f
+        .client
+        .play_selection("1", select(DownloadCategory::Song))
+        .await
+        .unwrap();
+    assert_eq!(song.state, PlaybackStatus::Playing);
+    assert_eq!(song.resource_kind, Some(PlayerResourceKind::Downloaded));
+    assert_eq!(song.download_task_id.as_deref(), Some(task_id.as_str()));
+    assert!(song.play_id.is_some());
+    assert!(song.voice_detail.is_none());
+    let queue: cumulus_core::playback::QueueSnapshot =
+        serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
+    assert!(queue.items[0].resource["download_voice_id"].is_null());
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+
+    // Only the typed native task origin changes. No marker is supplied here:
+    // download_resources must derive it while rebuilding the real selection.
+    task.origin = DownloadOrigin::Voice {
+        voice_id: "71".into(),
+    };
+    f.store
+        .put(
+            "1",
+            "download_tasks_v1",
+            &task_id,
+            &serde_json::to_value(&task).unwrap(),
+        )
+        .unwrap();
+    let voice = f
+        .client
+        .play_selection("1", select(DownloadCategory::Voice))
+        .await
+        .unwrap();
+    assert_eq!(voice.state, PlaybackStatus::Playing);
+    assert_eq!(voice.resource_kind, Some(PlayerResourceKind::Downloaded));
+    assert_eq!(voice.download_task_id.as_deref(), Some(task_id.as_str()));
+    assert_ne!(voice.play_id, song.play_id);
+    assert_eq!(voice.track.as_ref().unwrap().id, "123");
+    assert_eq!(
+        voice.track.as_ref().unwrap().voice_id.as_deref(),
+        Some("71")
+    );
+    assert_eq!(
+        serde_json::to_value(&voice.voice_detail).unwrap(),
+        json!({"id":"71","creator":{"id":"42","name":"合成主播"},"releaseTime":1735787045000_u64})
+    );
+    let queue: cumulus_core::playback::QueueSnapshot =
+        serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
+    assert_eq!(queue.items[0].resource["download_voice_id"], "71");
+    assert_eq!(
+        f.client.player_snapshot("1").await.unwrap().voice_detail,
+        voice.voice_detail
+    );
+    let public = serde_json::to_string(&voice).unwrap();
+    assert!(!public.contains("download_voice_id"));
+    assert!(!public.contains("PRIVATE"));
+    assert!(!public.contains(f.root.path().to_str().unwrap()));
+    assert_eq!(f.api.calls.lock().unwrap().len(), calls);
+    assert_eq!(f.backend.audio.calls().len(), media_calls);
+    f.client
+        .player_action("1", PlayerAction::Stop)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
 async fn downloaded_batch_queue_keeps_the_offline_entry_current_and_rejects_old_revisions() {
     let f = Fixture::new();
     let (id, _) = f.completed().await;

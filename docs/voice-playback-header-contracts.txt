@@ -45,6 +45,13 @@
 - voice_detail 模块使用真正的 Episode 播放/下载 metadata 构造器与合成字段检查在线和
   下载投影；逐一破坏节目、主歌曲、任务、playId、命名空间，确认没有借用外来元数据。
 - 同组检查无链接昵称、官方名称回退、缺失/非法时间及 JSON 白名单；没有真实账号、
-  文件下载、音源请求或远端资源修改。实际桌面交互与集成结果随完整批次补充。
+  实服音源请求或远端资源修改。实际桌面交互与集成结果随完整批次补充。
 - 本分支实际编译的核心库单测二进制中5项定向检查通过；核心库 Clippy -D warnings、
   cargo fmt --all --check 通过。没有把它们记作完整工作区或桌面 WebView 验收。
+- client_downloads::downloaded_voice_header_comes_from_native_task_origin_not_raw_song_metadata
+  另通过正式下载服务和合成传输取得已完成的 FLAC 任务，附上 Episode 构造的同一份节目
+  metadata；Song 类型实际选择、加载后没有声音详情。只把本机记录的类型改为
+  DownloadOrigin::Voice，再经 download_resources/播放器选择，持久队列才有原生标记，
+  PlayerView 才显示匹配的节目、主播和日期。测试没有手工给播放器传标记，核对额外 API/
+  媒体请求为0，公开结果没有内部标记或私密字段。此定向测试1项通过，不代表实服下载
+  或真实解码器/声卡；后两者由桌面批次分别验证。
