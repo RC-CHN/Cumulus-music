@@ -70,6 +70,8 @@ pub struct PlaybackSnapshot {
     pub timeline: Option<TimelineSnapshot>,
     pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub can_change_quality: bool,
+    /// A catalog search row is currently decoded from its verified publication.
+    pub catalog_file_source: bool,
     pub quality_preferences_apply: bool,
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,

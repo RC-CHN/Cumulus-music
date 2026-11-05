@@ -111,7 +111,13 @@ function leave(action?: 'refresh' | 'member') {
 function dialogLeft() {
   const action = afterDialog;
   afterDialog = undefined;
-  if (!action || action.epoch !== view.value?.epoch || !props.player.ready.value) return;
+  if (
+    !action ||
+    action.epoch !== view.value?.epoch ||
+    !props.player.ready.value ||
+    view.value?.catalogFileSource
+  )
+    return;
   if (action.action === 'member') emit('member');
   else void menu.value?.show();
 }
@@ -123,9 +129,24 @@ watch(
   ],
   () => menu.value?.close(),
 );
+watch(
+  () => view.value?.catalogFileSource,
+  (local) => {
+    if (!local) return;
+    model.hide();
+    model.closePrompt();
+  },
+);
 </script>
 <template>
-  <span v-if="!view?.track?.local" class="quality-control">
+  <span
+    v-if="view?.catalogFileSource"
+    class="quality-control quality-source-label"
+    data-quality-source="local"
+    title="本地"
+    >本地</span
+  >
+  <span v-else-if="!view?.track?.local" class="quality-control">
     <ActionMenu
       ref="menu"
       label="音质"

@@ -29,12 +29,14 @@ impl MusicClient {
         if current.play_id.as_deref() != Some(play_id) || !current.quality_preferences_apply {
             return Err(Error::StaleResponse);
         }
-        if !matches!(
-            current.state,
-            crate::playback::controller::PlaybackStatus::Playing
-                | crate::playback::controller::PlaybackStatus::Paused
-                | crate::playback::controller::PlaybackStatus::Buffering
-        ) {
+        if current.catalog_file_source
+            || !matches!(
+                current.state,
+                crate::playback::controller::PlaybackStatus::Playing
+                    | crate::playback::controller::PlaybackStatus::Paused
+                    | crate::playback::controller::PlaybackStatus::Buffering
+            )
+        {
             return Err(Error::State("quality requires loaded online track"));
         }
         let resource = &current

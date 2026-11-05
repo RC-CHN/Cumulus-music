@@ -254,6 +254,7 @@ impl Actor {
             ) || device_parametric
                 .as_ref()
                 .is_some_and(|device| device.status == super::DeviceParametricStatus::Configured));
+        let catalog_file_source = self.search_catalog_file_active();
         PlaybackSnapshot {
             startup_pending: self.startup_pending,
             startup_autoplay: self.startup_autoplay,
@@ -288,9 +289,11 @@ impl Actor {
             play_id: self.play_id.clone(),
             ended_minibar_receipt: self.ended_minibar_receipt(selected.as_ref()),
             quality_preferences: self.quality_preferences.clone(),
-            can_change_quality: selected
-                .as_ref()
-                .is_some_and(|i| super::quality::online_resource(&i.resource)),
+            can_change_quality: !catalog_file_source
+                && selected
+                    .as_ref()
+                    .is_some_and(|i| super::quality::online_resource(&i.resource)),
+            catalog_file_source,
             quality_preferences_apply: selected
                 .as_ref()
                 .is_some_and(|i| super::quality::song_resource(&i.resource)),

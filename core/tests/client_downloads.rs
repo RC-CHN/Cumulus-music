@@ -295,7 +295,7 @@ fn assert_search_online(f: &Fixture, level: &str) {
 }
 
 #[tokio::test]
-async fn search_row_prefers_verified_download_but_keeps_catalog_and_explicit_quality() {
+async fn search_row_verified_download_keeps_catalog_and_disables_quality_switch() {
     let f = Fixture::new();
     let (_task, completed) = f.completed().await;
     let path = fs::canonicalize(completed.tasks[0].path.as_ref().unwrap()).unwrap();
@@ -309,7 +309,12 @@ async fn search_row_prefers_verified_download_but_keeps_catalog_and_explicit_qua
     assert!(local.download_task_id.is_none());
     assert_eq!(local.actual_quality.as_deref(), Some("lossless"));
     assert_eq!(local.requested_quality.as_deref(), Some("standard"));
-    assert!(local.can_change_quality);
+    assert!(local.catalog_file_source);
+    assert!(!local.can_change_quality);
+    let wire = serde_json::to_value(&local).unwrap();
+    assert_eq!(wire["catalogFileSource"], true);
+    assert!(wire.get("downloadTaskId").is_none());
+    assert!(wire.get("path").is_none());
     let queue = f.client.player_queue("1").await.unwrap();
     assert_eq!(queue.current, local.entry_id);
     assert_eq!(queue.tracks.len(), 1);
@@ -333,18 +338,130 @@ async fn search_row_prefers_verified_download_but_keeps_catalog_and_explicit_qua
     assert_eq!(f.api.count("/api/v3/song/detail"), detail_reads);
     assert_eq!(f.api.count(SEARCH_URL), 0);
 
+    let expected_calls = f.api.calls.lock().unwrap().len();
+    let play_id = paused.play_id.clone().unwrap();
+    let revision = paused.quality_preferences.revision.clone().unwrap();
+    for action in [
+        PlayerAction::Quality {
+            level: Quality::ExHigh,
+        },
+        PlayerAction::QualityFor {
+            play_id: play_id.clone(),
+            expected_revision: revision.clone(),
+            level: Quality::ExHigh,
+        },
+    ] {
+        assert!(matches!(
+            f.client
+                .player_action("1", action)
+                .await
+                .err()
+                .unwrap()
+                .root(),
+            Error::State("quality requires loaded online track")
+        ));
+    }
+    let late = f
+        .client
+        .player_action(
+            "1",
+            PlayerAction::QualityFor {
+                play_id: "superseded-online-play".into(),
+                expected_revision: revision.clone(),
+                level: Quality::ExHigh,
+            },
+        )
+        .await;
+    assert!(matches!(late.err().unwrap().root(), Error::StaleResponse));
+    assert!(matches!(
+        f.client
+            .player_quality_details("1", &play_id)
+            .await
+            .err()
+            .unwrap()
+            .root(),
+        Error::State("quality requires loaded online track")
+    ));
+    assert!(matches!(
+        f.client
+            .player_quality_trial(
+                "1",
+                QualityTrialCommand::Start {
+                    play_id: play_id.clone(),
+                    details_revision: "old-offer".into(),
+                    level: Quality::JyMaster,
+                }
+            )
+            .await
+            .err()
+            .unwrap()
+            .root(),
+        Error::State("quality requires loaded online track")
+    ));
+    assert_eq!(f.api.calls.lock().unwrap().len(), expected_calls);
+    let after = f.client.player_snapshot("1").await.unwrap();
+    assert_eq!(after.state, PlaybackStatus::Paused);
+    assert_eq!(after.play_id.as_deref(), Some(play_id.as_str()));
+    assert_eq!(after.entry_id, local.entry_id);
+    assert_eq!(
+        after.quality_preferences.revision.as_deref(),
+        Some(revision.as_str())
+    );
+    assert_eq!(after.requested_quality.as_deref(), Some("standard"));
+    assert_eq!(after.actual_quality.as_deref(), Some("lossless"));
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    assert_eq!(f.api.count(SEARCH_URL), 0);
+}
+
+#[tokio::test]
+async fn search_row_online_quality_still_authorizes_selected_level_and_preserves_clock() {
+    let f = Fixture::new();
+    let online = f
+        .client
+        .play_selection("1", search_row(false))
+        .await
+        .unwrap();
+    assert!(online.can_change_quality);
+    assert!(!online.catalog_file_source);
+    assert!(
+        serde_json::to_value(&online)
+            .unwrap()
+            .get("catalogFileSource")
+            .is_none()
+    );
+    assert_search_online(&f, "standard");
+    let paused = f
+        .client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let seek = f
+        .client
+        .player_action("1", PlayerAction::Seek { seconds: 15.0 })
+        .await
+        .unwrap();
+    assert_eq!(seek.state, PlaybackStatus::Paused);
+    assert_eq!(seek.position, Some(15.0));
+    assert_eq!(seek.play_id, paused.play_id);
+
+    f.api.calls.lock().unwrap().clear();
     let changed = f
         .client
         .player_action(
             "1",
-            PlayerAction::Quality {
+            PlayerAction::QualityFor {
+                play_id: seek.play_id.unwrap(),
+                expected_revision: seek.quality_preferences.revision.unwrap(),
                 level: Quality::ExHigh,
             },
         )
         .await
         .unwrap();
     assert_eq!(changed.state, PlaybackStatus::Paused);
-    assert_eq!(changed.entry_id, local.entry_id);
+    assert_eq!(changed.position, Some(15.0));
+    assert_eq!(changed.entry_id, online.entry_id);
+    assert!(changed.can_change_quality);
+    assert!(!changed.catalog_file_source);
     assert_eq!(changed.requested_quality.as_deref(), Some("exhigh"));
     assert_eq!(changed.actual_quality.as_deref(), Some("standard"));
     assert_search_online(&f, "exhigh");

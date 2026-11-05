@@ -203,6 +203,32 @@ test('old-song reads cannot replace the new song even after the old response arr
   assert.equal(f.model.details.value?.songId, '8');
   f.scope.stop();
 });
+test('a file-backed catalog row cannot use a pending online quality menu', async () => {
+  const f = fixture(),
+    pending = deferred<QualityDetailsView>();
+  f.read(() => pending.promise);
+  f.model.show();
+  assert.equal(f.reads(), 1);
+  f.view.value = {
+    ...current(),
+    playId: 'download-backed-song',
+    actualQuality: 'lossless',
+    canChangeQuality: false,
+    catalogFileSource: true,
+  };
+  pending.resolve(details());
+  await turn();
+  assert.equal(f.model.details.value, undefined);
+  f.model.choose('exhigh');
+  f.model.show();
+  f.model.choose('jymaster');
+  await turn();
+  assert.equal(f.reads(), 1);
+  assert.equal(f.model.prompt.value, undefined);
+  assert.deepEqual(f.actions, []);
+  assert.deepEqual(f.commands, []);
+  f.scope.stop();
+});
 test('an offer needs confirmation and cancellation makes no activation request', async () => {
   const f = fixture();
   f.model.show();

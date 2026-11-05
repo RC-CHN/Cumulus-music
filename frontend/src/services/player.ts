@@ -105,6 +105,7 @@ export interface PlayerView {
     appliesToCurrent: boolean;
   };
   canChangeQuality: boolean;
+  catalogFileSource?: boolean;
   requestedQuality: Quality | null;
   actualQuality: Quality | null;
   volume: number;

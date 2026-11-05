@@ -348,6 +348,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             damaged: value.quality_preferences.damaged,
         },
         can_change_quality: value.can_change_quality,
+        catalog_file_source: value.catalog_file_source,
         requested_quality: value.requested_quality.clone(),
         actual_quality: value.actual_quality.clone(),
         volume: value.volume,
@@ -1281,17 +1282,25 @@ impl MusicClient {
         let together_action = super::together::signal(&action);
         // Reject obsolete popup input before it can supersede another pending
         // selection. The actor fence below still covers the later race.
-        if let PlayerAction::QualityFor {
-            play_id,
-            expected_revision,
-            ..
-        } = &action
-        {
+        if matches!(
+            action,
+            PlayerAction::Quality { .. } | PlayerAction::QualityFor { .. }
+        ) {
             let controller = self.player.controller().await?;
             let current = controller
                 .command(&token, PlaybackCommand::Snapshot)
                 .await?;
-            validate_quality_target(&current, play_id, expected_revision)?;
+            if let PlayerAction::QualityFor {
+                play_id,
+                expected_revision,
+                ..
+            } = &action
+            {
+                validate_quality_target(&current, play_id, expected_revision)?;
+            }
+            if current.catalog_file_source {
+                return Err(Error::State("quality requires loaded online track"));
+            }
         }
         let fm_transport = if matches!(
             action,

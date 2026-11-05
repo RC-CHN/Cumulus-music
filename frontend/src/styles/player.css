@@ -1356,7 +1356,8 @@ input[type='range'] {
   position: relative;
 }
 
-.player-tools .quality-control .menu-trigger {
+.player-tools .quality-control .menu-trigger,
+.player-tools .quality-source-label {
   width: auto;
   min-width: 48px;
   max-width: 88px;
@@ -1369,6 +1370,10 @@ input[type='range'] {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.player-tools .quality-source-label {
+  display: inline-grid;
+  place-items: center;
 }
 .player-tools .quality-control .menu-trigger span {
   overflow: hidden;

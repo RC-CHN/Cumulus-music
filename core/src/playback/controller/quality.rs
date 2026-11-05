@@ -42,6 +42,19 @@ pub(super) struct QualityReady {
 }
 
 impl Actor {
+    pub(super) fn search_catalog_file_active(&self) -> bool {
+        self.state.active()
+            && self.loaded.as_ref().is_some_and(|loaded| {
+                self.ordinary_online_song(&loaded.item)
+                    && loaded.item.source["scene"] == "search"
+                    && loaded.item.resource["trial_mode"] == 42
+                    && matches!(
+                        &loaded.source.input,
+                        crate::playback::engine::MediaInput::File(_)
+                    )
+            })
+    }
+
     pub(super) fn quality_sync(&mut self) -> Result<()> {
         self.quality_preferences = self.session.with_local_owner(&self.token, |owner| {
             QualityPreferencesSnapshot::read(&self.store, owner)
@@ -124,6 +137,7 @@ impl Actor {
             return;
         };
         if !self.state.active()
+            || self.search_catalog_file_active()
             || !online_resource(&selected.resource)
             || (song_resource(&selected.resource) && self.quality_preferences.damaged)
         {

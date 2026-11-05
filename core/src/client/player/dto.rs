@@ -65,6 +65,8 @@ pub struct PlayerView {
     pub timeline: Option<TimelineSnapshot>,
     pub quality_preferences: QualityPreferencesView,
     pub can_change_quality: bool,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub catalog_file_source: bool,
     pub requested_quality: Option<String>,
     pub actual_quality: Option<String>,
     pub volume: f64,
