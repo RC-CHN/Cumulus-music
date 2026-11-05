@@ -173,6 +173,33 @@ fn quota_evicts_only_unleased_oldest_complete_object() {
 }
 
 #[test]
+fn shrinking_over_active_capacity_retires_pending_and_returns_held_space_on_close() {
+    let (_root, cache) = open(96);
+    let data = [27; 32];
+    let a = key("11", "22", "standard", &data);
+    let b = key("11", "23", "standard", &data);
+    let mut first = fill(&cache, &a);
+    first.write_block(0, &data).unwrap();
+    assert!(first.publish_if_complete().unwrap());
+    drop(first);
+    let playing = hit(&cache, &a);
+    let mut pending = fill(&cache, &b);
+    cache.change_capacity(40).unwrap();
+    assert_eq!(cache.usage().unwrap().reserved, 64);
+    assert!(fresh(&cache, &a).is_none());
+    pending.write_block(0, &data).unwrap();
+    assert!(!pending.publish_if_complete().unwrap());
+    let mut scratch = [0; 5];
+    playing.read_at(0, &mut scratch).unwrap();
+    assert_eq!(scratch, [27; 5]);
+    drop(pending);
+    assert_eq!(cache.usage().unwrap().reserved, 32);
+    assert!(fresh(&cache, &a).is_none(), "cannot exceed reduced quota");
+    drop(playing);
+    assert!(matches!(fresh(&cache, &a), Some(Admission::Fill(_))));
+}
+
+#[test]
 fn repeatedly_cleared_handles_remain_bounded_even_for_tiny_objects() {
     let (_root, cache) = open(1024 * 1024);
     let identity = key("11", "22", "standard", &[0; 16]);
@@ -470,11 +497,13 @@ async fn actual_native_streaming_cache_reauthorizes_each_play() -> crate::Result
     resolver.streaming_cache = Some(Arc::new(StreamingCache {
         store: cache.clone(),
         backend: backend.clone(),
+        settings: None,
     }));
+    let resolver = Arc::new(resolver);
     let player = PlaybackController::start(
         session,
         store,
-        Arc::new(resolver),
+        resolver.clone(),
         Box::new(ClosedMpv(MpvEngine::open(MpvConfig {
             null_output: true,
             ..Default::default()
@@ -526,6 +555,9 @@ async fn actual_native_streaming_cache_reauthorizes_each_play() -> crate::Result
     .expect("clear must not interrupt the held native stream");
     assert_eq!(active.state, PlaybackStatus::Playing);
     assert_eq!(*backend.requests.lock().unwrap(), fetched);
+    // A memory-only stock authorization after clear is not a reason to
+    // ask for a separate cache authorization. Simulate the next fresh source.
+    resolver.invalidate(Some("1"))?;
     let third = player.command(&token, song()).await?;
     assert_eq!(third.state, PlaybackStatus::Playing);
     assert!(backend.requests.lock().unwrap().len() > fetched.len());
@@ -540,5 +572,11 @@ async fn actual_native_streaming_cache_reauthorizes_each_play() -> crate::Result
     let before = backend.requests.lock().unwrap().len();
     assert!(player.command(&token, song()).await.is_err());
     assert_eq!(backend.requests.lock().unwrap().len(), before);
+    let requests = api.calls.load(Ordering::SeqCst);
+    assert!(resolver.resolve(&json!({"id":"1"}), &token).await.is_err());
+    assert!(
+        api.calls.load(Ordering::SeqCst) > requests,
+        "refusal cannot leave the earlier stock URL cached"
+    );
     Ok(())
 }

@@ -381,15 +381,57 @@ impl MusicClient {
         Ok(self)
     }
 
+    /// Enable the device-scoped cache settings before playback starts.
+    /// A failed setup leaves the existing stock host and its player intact.
+    pub fn configure_streaming_media_cache(&mut self) -> Result<()> {
+        if self.player.controller.get().is_some() {
+            return Err(Error::State(
+                "streaming media cache needs an unstarted player",
+            ));
+        }
+        let cache =
+            crate::playback::stream_cache::StreamingCache::configured(self.player.store.clone())?;
+        self.player.streaming_cache = Some(cache);
+        Ok(())
+    }
+
+    pub fn streaming_media_cache_status(
+        &self,
+    ) -> Result<Option<crate::playback::StreamingMediaCacheStatus>> {
+        match &self.player.streaming_cache {
+            Some(cache) => cache.status(),
+            None => Ok(None),
+        }
+    }
+
+    pub fn set_streaming_media_cache_capacity(
+        &self,
+        expected_revision: &str,
+        capacity_bytes: u64,
+    ) -> Result<crate::playback::StreamingMediaCacheStatus> {
+        self.playback_cache_settings()?
+            .set_capacity(expected_revision, capacity_bytes)
+    }
+
+    pub fn clear_streaming_media_cache_checked(
+        &self,
+        expected_revision: &str,
+    ) -> Result<crate::playback::StreamingMediaCacheStatus> {
+        self.playback_cache_settings()?
+            .clear_checked(expected_revision)
+    }
+
+    fn playback_cache_settings(&self) -> Result<&crate::playback::stream_cache::StreamingCache> {
+        self.player
+            .streaming_cache
+            .as_deref()
+            .ok_or(Error::State("streaming cache preferences are unavailable"))
+    }
+
     /// Retire only this native host's process-owned playback cache. An
     /// already-opened stream retains its handle until the decoder closes it.
     pub fn clear_streaming_media_cache(&self) -> Result<()> {
-        self.player
-            .streaming_cache
-            .as_ref()
-            .ok_or(Error::State("streaming media cache is not configured"))?
-            .store
-            .clear()
+        self.playback_cache_settings()?.clear_native()
     }
 
     pub fn validate_player_epoch(&self, epoch: &str) -> Result<()> {

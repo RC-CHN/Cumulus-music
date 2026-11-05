@@ -13,7 +13,7 @@ use std::{
 
 pub(crate) const BLOCK: usize = 64 * 1024;
 const MAX_OBJECT: u64 = 8 * 1024 * 1024;
-const MAX_BUDGET: u64 = 10 * 1024 * 1024 * 1024;
+pub(super) const MAX_BUDGET: u64 = 10 * 1024 * 1024 * 1024;
 const MAX_ENTRIES: usize = 128;
 const MAX_FILLS: usize = 4;
 
@@ -67,12 +67,12 @@ impl Key {
 }
 
 struct Budget {
-    max: u64,
     reserved: AtomicU64,
+    occupied: AtomicU64,
     files: AtomicUsize,
 }
 impl Budget {
-    fn reserve(self: &Arc<Self>, bytes: u64) -> Option<Reservation> {
+    fn reserve(self: &Arc<Self>, bytes: u64, capacity: u64) -> Option<Reservation> {
         self.files
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
                 (count < MAX_ENTRIES).then_some(count + 1)
@@ -81,7 +81,7 @@ impl Budget {
         if self
             .reserved
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
-                current.checked_add(bytes).filter(|sum| *sum <= self.max)
+                current.checked_add(bytes).filter(|sum| *sum <= capacity)
             })
             .is_err()
         {
@@ -91,15 +91,28 @@ impl Budget {
         Some(Reservation {
             budget: self.clone(),
             bytes,
+            written: AtomicU64::new(0),
         })
     }
 }
 struct Reservation {
     budget: Arc<Budget>,
     bytes: u64,
+    written: AtomicU64,
+}
+impl Reservation {
+    fn record_write(&self, bytes: usize) {
+        self.written.fetch_add(bytes as u64, Ordering::AcqRel);
+        self.budget
+            .occupied
+            .fetch_add(bytes as u64, Ordering::AcqRel);
+    }
 }
 impl Drop for Reservation {
     fn drop(&mut self) {
+        self.budget
+            .occupied
+            .fetch_sub(*self.written.get_mut(), Ordering::AcqRel);
         self.budget.reserved.fetch_sub(self.bytes, Ordering::AcqRel);
         self.budget.files.fetch_sub(1, Ordering::AcqRel);
     }
@@ -115,13 +128,30 @@ impl DecoderAcceptance {
 struct Payload {
     file: Mutex<File>,
     native_accepted: Arc<AtomicBool>,
-    _reservation: Reservation,
+    reservation: Reservation,
 }
 impl Payload {
     fn read_at(&self, offset: u64, output: &mut [u8]) -> Result<()> {
         let mut file = self.file.lock().map_err(|_| Error::LockPoisoned)?;
         file.seek(SeekFrom::Start(offset))?;
         file.read_exact(output)?;
+        Ok(())
+    }
+
+    fn write_at(&self, offset: u64, mut bytes: &[u8]) -> Result<()> {
+        let mut file = self.file.lock().map_err(|_| Error::LockPoisoned)?;
+        file.seek(SeekFrom::Start(offset))?;
+        while !bytes.is_empty() {
+            match file.write(bytes) {
+                Ok(0) => return Err(std::io::Error::from(std::io::ErrorKind::WriteZero).into()),
+                Ok(n) => {
+                    self.reservation.record_write(n);
+                    bytes = &bytes[n..];
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => (),
+                Err(error) => return Err(error.into()),
+            }
+        }
         Ok(())
     }
 }
@@ -133,6 +163,7 @@ struct Record {
 struct State {
     revision: u64,
     access: u64,
+    capacity: u64,
     entries: HashMap<Key, Record>,
     fills: HashMap<Key, u64>,
 }
@@ -144,6 +175,16 @@ impl State {
             .checked_add(1)
             .ok_or(Error::State("cache access exhausted"))?;
         Ok(self.access)
+    }
+
+    fn retire(&mut self) -> Result<()> {
+        self.revision = self
+            .revision
+            .checked_add(1)
+            .ok_or(Error::State("streaming cache revision exhausted"))?;
+        self.entries.clear();
+        self.fills.clear();
+        Ok(())
     }
 
     fn evict_unleased(&mut self) -> bool {
@@ -161,6 +202,13 @@ pub(crate) struct Cache {
     root: PathBuf,
     budget: Arc<Budget>,
     state: Mutex<State>,
+}
+
+pub(super) struct Usage {
+    pub capacity: u64,
+    pub occupied: u64,
+    pub reserved: u64,
+    pub reclaimable: u64,
 }
 
 pub(crate) enum Admission {
@@ -186,11 +234,14 @@ impl Cache {
         Ok(Arc::new(Self {
             root,
             budget: Arc::new(Budget {
-                max: bytes,
                 reserved: AtomicU64::new(0),
+                occupied: AtomicU64::new(0),
                 files: AtomicUsize::new(0),
             }),
-            state: Mutex::new(State::default()),
+            state: Mutex::new(State {
+                capacity: bytes,
+                ..State::default()
+            }),
         }))
     }
 
@@ -199,14 +250,62 @@ impl Cache {
     }
 
     pub(crate) fn clear(&self) -> Result<()> {
+        self.state.lock().map_err(|_| Error::LockPoisoned)?.retire()
+    }
+
+    pub(super) fn directory(&self) -> &Path {
+        &self.root
+    }
+
+    pub(super) fn usage(&self) -> Result<Usage> {
+        let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        let reclaimable = state
+            .entries
+            .values()
+            .filter(|entry| Arc::strong_count(&entry.payload) == 1)
+            .map(|entry| entry.payload.reservation.bytes)
+            .sum();
+        // A retired file can be released while taking this snapshot. Reading
+        // reserved before occupied preserves the bound under that release.
+        let reserved = self.budget.reserved.load(Ordering::Acquire);
+        let occupied = self.budget.occupied.load(Ordering::Acquire);
+        Ok(Usage {
+            capacity: state.capacity,
+            occupied,
+            reserved,
+            reclaimable,
+        })
+    }
+
+    pub(super) fn change_capacity(&self, capacity: u64) -> Result<()> {
+        if !(1..=MAX_BUDGET).contains(&capacity) {
+            return Err(Error::InvalidInput(
+                "streaming cache budget is out of bounds",
+            ));
+        }
         let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-        state.revision = state
-            .revision
-            .checked_add(1)
-            .ok_or(Error::State("streaming cache revision exhausted"))?;
-        state.entries.clear();
-        state.fills.clear();
+        if capacity < state.capacity {
+            while self.budget.reserved.load(Ordering::Acquire) > capacity {
+                if !state.evict_unleased() {
+                    // Only active/retired handles or pending fills remain.
+                    // Do not stop the player; retire their ability to become
+                    // a future hit so their space is returned on close.
+                    state.retire()?;
+                    break;
+                }
+            }
+        }
+        state.capacity = capacity;
         Ok(())
+    }
+
+    pub(crate) fn has_hit(&self, revision: u64, key: &Key) -> Result<bool> {
+        let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+        Ok(state.revision == revision
+            && state
+                .entries
+                .get(key)
+                .is_some_and(|entry| entry.payload.native_accepted.load(Ordering::Acquire)))
     }
 
     /// Called on a blocking I/O worker with a fresh native admission. Count
@@ -235,7 +334,7 @@ impl Cache {
                 size: key.size,
             })));
         }
-        if key.size > self.budget.max
+        if key.size > state.capacity
             || state.fills.contains_key(&key)
             || state.fills.len() >= MAX_FILLS
         {
@@ -247,7 +346,7 @@ impl Cache {
             }
         }
         let reservation = loop {
-            if let Some(value) = self.budget.reserve(key.size) {
+            if let Some(value) = self.budget.reserve(key.size, state.capacity) {
                 break value;
             }
             if !state.evict_unleased() {
@@ -269,7 +368,7 @@ impl Cache {
                 payload: Arc::new(Payload {
                     file: Mutex::new(file),
                     native_accepted: Arc::new(AtomicBool::new(false)),
-                    _reservation: reservation,
+                    reservation,
                 }),
                 authority,
                 size,
@@ -371,16 +470,10 @@ impl Fill {
         {
             return Err(Error::InvalidInput("invalid streaming cache block"));
         }
-        {
-            let mut file = self
-                .lease
-                .payload
-                .file
-                .lock()
-                .map_err(|_| Error::LockPoisoned)?;
-            file.seek(SeekFrom::Start(offset))?;
-            file.write_all(bytes)?;
-        }
+        self.lease
+            .payload
+            .write_at(offset, bytes)
+            .inspect_err(|_| self.lease.authority.cancel())?;
         self.lease.authority.check()?;
         self.blocks[(offset / BLOCK as u64) as usize] = true;
         self.ready += 1;

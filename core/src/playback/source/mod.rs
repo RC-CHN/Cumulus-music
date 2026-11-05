@@ -13,7 +13,7 @@ use crate::{
     download::service::{DownloadService, MissingCatalogDownload},
     library::{LocalLibrary, LocalResource},
     membership::Quality,
-    protocol::api::identifier,
+    protocol::api::{Api, identifier},
 };
 use cache::{CacheState, Key, Outcome, Owner, PendingKey};
 use serde_json::{Value, json};
@@ -449,6 +449,18 @@ impl SourceResolver {
         token: &SessionToken,
         fresh: bool,
     ) -> Result<Arc<ResolvedSource>> {
+        self.resolve_online_observed(resource, token, fresh, None)
+            .await
+            .map(|(source, _)| source)
+    }
+
+    async fn resolve_online_observed(
+        &self,
+        resource: &Value,
+        token: &SessionToken,
+        fresh: bool,
+        expected: Option<&Arc<dyn Api>>,
+    ) -> Result<(Arc<ResolvedSource>, Option<Arc<dyn Api>>)> {
         let key = self.key(resource, token)?;
         let (pending, mut receiver, owner) = {
             let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
@@ -470,7 +482,7 @@ impl SourceResolver {
                 let value = cached.value.clone();
                 drop(state);
                 self.session.with_token(token, |_| Ok(()))?;
-                return Ok(value);
+                return Ok((value, None));
             }
             if let Some(sender) = state.pending.get(&pending) {
                 (pending, sender.subscribe(), None)
@@ -482,14 +494,19 @@ impl SourceResolver {
         };
         if let Some(owner) = owner {
             let guard = Owner::new(self.state.clone(), pending.clone(), owner);
-            let result = self.fetch(resource, &key).await.and_then(|value| {
-                self.session.with_token(token, |_| Ok(()))?;
-                let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
-                if !guard.current(&state) {
-                    return Err(Error::StaleResponse);
-                }
-                Ok(Arc::new(value))
-            });
+            let mut provenance = None;
+            let result = self
+                .fetch(resource, &key, expected)
+                .await
+                .and_then(|(value, api)| {
+                    self.session.with_token(token, |_| Ok(()))?;
+                    let state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+                    if !guard.current(&state) {
+                        return Err(Error::StaleResponse);
+                    }
+                    provenance = Some(api);
+                    Ok(Arc::new(value))
+                });
             let outcome: Outcome = result.map_err(Arc::new);
             if let Ok(value) = &outcome {
                 let deadline = value
@@ -522,6 +539,7 @@ impl SourceResolver {
             }
             let outcome = guard.finish(outcome)?;
             self.finish_outcome(outcome, token)
+                .map(|source| (source, provenance))
         } else {
             let outcome = loop {
                 if let Some(outcome) = receiver.borrow().clone() {
@@ -533,6 +551,7 @@ impl SourceResolver {
                 return Err(Error::StaleResponse);
             }
             self.finish_outcome(outcome, token)
+                .map(|source| (source, None))
         }
     }
 }

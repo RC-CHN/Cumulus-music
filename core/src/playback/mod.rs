@@ -20,7 +20,7 @@ mod queue_move;
 pub mod skip_policy;
 pub mod source;
 pub(crate) mod stream_cache;
-pub use stream_cache::StreamingAudioReader;
+pub use stream_cache::{StreamingAudioReader, StreamingMediaCacheStatus};
 mod timeline;
 pub(crate) use queue::{FM_BACKUP_POSITION, FM_BACKUP_QUEUE, FmRestoreOutcome, QueueResetPlan};
 pub use queue::{PlaybackMode, PlaybackQueue, QueueEntry, QueueSnapshot, Step};

@@ -10,53 +10,40 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 impl SourceResolver {
-    pub(super) async fn fetch(&self, resource: &Value, key: &Key) -> Result<ResolvedSource> {
-        self.fetch_bound(resource, key, None).await
-    }
-
-    pub(super) async fn fetch_bound(
+    pub(super) async fn fetch(
         &self,
         resource: &Value,
         key: &Key,
         expected: Option<&Arc<dyn Api>>,
-    ) -> Result<ResolvedSource> {
-        let info = self
+    ) -> Result<(ResolvedSource, Arc<dyn Api>)> {
+        let (info, authorization_api) = self
             .session
             .run_for(&key.token, |api, _| async move {
                 if expected.is_some_and(|expected| !Arc::ptr_eq(expected, &api)) {
                     return Err(Error::StaleResponse);
                 }
-                if let Some(voice_id) = &key.voice_id {
-                    let api = crate::podcast::PodcastApi::new(api);
-                    let episode = api.episode(&json!(voice_id)).await?;
+                let options = PlayOptions {
+                    level: &key.level,
+                    encode_type: &key.encode,
+                    trial_mode: key.trial,
+                };
+                let info = if let Some(voice_id) = &key.voice_id {
+                    let podcast = crate::podcast::PodcastApi::new(api.clone());
+                    let episode = podcast.episode(&json!(voice_id)).await?;
                     if episode.media_id()? != key.id {
                         return Err(Error::Response("queued program main song changed"));
                     }
-                    return api
-                        .play_url(
-                            &episode,
-                            PlayOptions {
-                                level: &key.level,
-                                encode_type: &key.encode,
-                                trial_mode: key.trial,
-                            },
-                        )
-                        .await
-                        .map(Some);
-                }
-                CatalogApi::new(api)
-                    .play_url(
-                        &json!(key.id),
-                        PlayOptions {
-                            level: &key.level,
-                            encode_type: &key.encode,
-                            trial_mode: key.trial,
-                        },
-                    )
-                    .await
+                    Some(podcast.play_url(&episode, options).await?)
+                } else {
+                    CatalogApi::new(api.clone())
+                        .play_url(&json!(key.id), options)
+                        .await?
+                };
+                let info =
+                    info.ok_or(Error::Response("no playback resource for requested track"))?;
+                Ok((info, api))
             })
-            .await?
-            .ok_or(Error::Response("no playback resource for requested track"))?;
+            .await?;
         // M/163 requires all three facts, independently of fee/trial flags.
         if info["code"].as_i64() != Some(200)
             || info["url"].as_str().is_none_or(|s| s.is_empty())
@@ -117,6 +104,6 @@ impl SourceResolver {
             source.info["track_duration"] = json!(duration);
             source.timeline(None)?;
         }
-        Ok(source)
+        Ok((source, authorization_api))
     }
 }

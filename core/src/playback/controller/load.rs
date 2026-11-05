@@ -203,20 +203,19 @@ impl Actor {
             .and_then(|cache| cache.store.revision().ok());
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
-                let native_streaming =
+                let streaming_revision =
                     super::engine(engine.clone(), cancel.clone(), move |engine| {
                         engine.stop()?;
                         // Discard the previous track's gain before priming a new decoder.
                         engine.reset_track_loudness()?;
-                        Ok(streaming_revision.is_some() && engine.streaming_audio_available())
+                        Ok(streaming_revision.filter(|_| engine.streaming_audio_available()))
                     })
                     .await?;
                 cancel.check()?;
-                let (source, streaming_api) = if native_streaming {
-                    let (source, api) = resolver
-                        .fresh_streaming_source(&item.resource, &token)
-                        .await?;
-                    (source, Some(api))
+                let (source, streaming_api) = if let Some(revision) = streaming_revision {
+                    resolver
+                        .resolve_streaming_source(&item.resource, &token, revision)
+                        .await?
                 } else {
                     let source = match options.source {
                         LoadSource::RenewIfExpired(source)
