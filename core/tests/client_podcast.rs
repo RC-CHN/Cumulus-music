@@ -545,11 +545,22 @@ async fn wait_for_progress(api: &Backend, count: usize) -> Vec<Value> {
 
 #[tokio::test]
 async fn episode_progress_uses_the_departed_program_and_distinguishes_manual_skip_from_eof() {
-    use cumulus_core::playback::engine::EndReason;
+    use cumulus_core::playback::{PlaybackMode, controller::PlaybackStatus, engine::EndReason};
     let (_dir, api, _session, client, device) = fixture_with_device();
     api.count.store(2, Ordering::SeqCst);
     api.progress_revision.store(1, Ordering::SeqCst);
     api.progress_hold.store(true, Ordering::SeqCst);
+    // The terminal Stop below must not stop a newly looped first episode.
+    // OrderLoop is the default, so explicitly select the non-wrapping mode.
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::Sequential,
+            },
+        )
+        .await
+        .unwrap();
     let first = played_voice(&client, "1").await.track.unwrap();
     let id: u64 = first.voice_id.unwrap().parse().unwrap();
     let first_native = device.state.lock().unwrap().view.entry_id.unwrap();
@@ -573,16 +584,23 @@ async fn episode_progress_uses_the_departed_program_and_distinguishes_manual_ski
     )
     .await
     .unwrap()
-    .unwrap()
-    .track
     .unwrap();
-    let next_id: u64 = next.voice_id.unwrap().parse().unwrap();
+    let next_id: u64 = next
+        .track
+        .as_ref()
+        .unwrap()
+        .voice_id
+        .as_ref()
+        .unwrap()
+        .parse()
+        .unwrap();
     assert_ne!(id, next_id);
     assert_eq!(
         wait_for_progress(&api, 1).await,
         [json!({"programId": id, "listenLocation": 17000.0, "isListened": false})]
     );
     let second_native = device.state.lock().unwrap().view.entry_id.unwrap();
+    let loads = device.state.lock().unwrap().loads;
     engine::event(&device, first_native, EndReason::Eof);
     engine::event(&device, second_native, EndReason::Eof);
     api.progress_hold.store(false, Ordering::SeqCst);
@@ -594,7 +612,28 @@ async fn episode_progress_uses_the_departed_program_and_distinguishes_manual_ski
             json!({"programId": next_id, "listenLocation": 120000.0, "isListened": true})
         ]
     );
+    // The progress sender runs independently from the player actor. Observe
+    // the settled EOF rather than relying on the sender's scheduling order.
+    let ended = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        loop {
+            let view = client.player_snapshot("1").await.unwrap();
+            if view.state == PlaybackStatus::Ended {
+                break view;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("second episode did not reach terminal EOF");
+    assert_eq!(ended.mode, PlaybackMode::Sequential);
+    assert_eq!(ended.play_id, next.play_id);
+    assert_eq!(ended.entry_id, next.entry_id);
+    assert_eq!(ended.queue_revision, next.queue_revision);
+    assert_eq!(ended.track.unwrap().voice_id, Some(next_id.to_string()));
+    assert_eq!(ended.position, Some(120.0));
+    assert_eq!(device.state.lock().unwrap().loads, loads);
     client.player_action("1", PlayerAction::Stop).await.unwrap();
+    assert_eq!(device.state.lock().unwrap().loads, loads);
     assert_eq!(api.progress.lock().unwrap().len(), 2);
 }
 
