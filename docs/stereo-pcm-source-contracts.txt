@@ -326,6 +326,7 @@ ignored `native_flac_` tests exercise real libFLAC 1.5.0 startup, exact sample
 seek, master-off PCM across both nonzero seek and rewind, invalid metadata
 fallback, and buffered revocation with a synthetic
 sink owner. They are not an mpv, real WebView, actor, packaging, speaker or
-ordinary playback proof. Native setup/engine/actor attachment is a separate
-step. A timeout or ambiguous retirement cannot hand the descriptor to a
-second sink; after publication, error does not authorize an audible retry.
+ordinary playback proof. See ordinary-native-local-equalizer-proof.txt for
+the separate native setup, engine and actor integration. A timeout or
+ambiguous retirement cannot hand the descriptor to a second sink; after
+publication, error does not authorize an audible retry.

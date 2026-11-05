@@ -1,6 +1,36 @@
 Ordinary native file / local equalizer actor probe
 =================================================
 
+Product scope
+-------------
+
+The ordinary native file-open route can pass the saved GEQ and bass/treble
+controls into the recovered M3091 local material graph. See
+core-effects-local-equalizer.txt for the original reset, enable, bypass and
+B0 processing order. Ordinary settings do not enable SE or RVB. The decoder
+must be a verified packaged libFLAC 1.5.0; only the supported 44.1 kHz stereo
+FLAC geometry with a full independent source timeline qualifies. An absent
+or mismatched packaged decoder keeps the ordinary stock decoder.
+
+The checked audio handle remains owned by one source. Before the first
+unpause, a recoverable optional preparation failure can return that same
+handle to the stock decoder. A seek retires the original native stream,
+reclaims the source, resets the graph and publishes a replacement native
+entry while retaining the queue item and logical play. A failed replacement
+does not restart the audible source. If an independent PEQ is explicitly
+selected, the paused handoff retains the held file and source clock, restores
+the ordinary GEQ controls, and then applies the independent component.
+
+The worker acknowledges controls separately from the native playback clock.
+Buffered samples keep the setting that produced them. Edits after the graph
+has finished are kept for a later seek or load; the native sink may still
+play its already generated tail. Online tracks, CUE/trial windows, library
+items without a native open handle, and other audio geometries retain their
+existing paths.
+
+Reproducible desktop checks
+---------------------------
+
 The dedicated native_local_equalizer_probe example starts a real Tauri
 WebView with the production frontend, numeric locale setup and the
 production MusicClient. Its registry is a new isolated guest profile and
@@ -62,3 +92,24 @@ Put the command in the established no-egress CI namespace; the Python
 launcher does not independently create one. An explicit --mpv-library can
 select the same verified package libmpv for a native runner, and
 --frontend-dist is only for an already built exact frontend snapshot.
+
+Observed Linux results
+----------------------
+
+With the locked Linux libFLAC 1.5.0 stage and the frontend assets unchanged
+from 47a85d71, the real Linux WebView example built from 4e5c2e77 passed all
+three isolated cases. In the qualified case the native raw entry 1 was
+replaced by entry 2 after a paused seek to 0.5 s. The actor kept the same
+logical play and reached real EOF at 88207/44100 s. The stock case used the
+same audio with an intentionally mismatched decoder digest. Its seek and
+EOF stayed on the original stock entry. The independent PEQ case went from
+raw entry 1 to seek entry 2 to paused stock entry 3. Only entry 3 reported
+PEQ processing samples and EOF; the handoff retained playback position,
+queue identity and the durable GEQ/BT edit.
+
+These results use a local guest, a real GTK/WebView and null audio output.
+They do not cover the OS file picker gesture, physical output, Windows
+execution of this route, or the native opener's remote sources. The
+package resource checks and proof using the concrete native decoder are
+separate. The local aggregate is in
+.build/ui-proof/phase65-ordinary-local-equalizer-r4/report.json.

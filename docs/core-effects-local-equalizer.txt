@@ -122,5 +122,7 @@ selected prefixes and the unsupported-schema/geometry checks. The preceding
 61 SE-only master and1204 fixed graph block comparisons also passed in the
 same full workspace execution. No code or fixture was changed after that
 execution to produce those comparisons. Local evidence is under
-.build/ui-proof/phase64-local-material-search. This does not establish
-Windows execution, the outer FIFO or ordinary player attachment.
+.build/ui-proof/phase64-local-material-search. These vectors do not establish
+Windows execution, the outer FIFO or player attachment. The separate
+ordinary-native-local-equalizer-proof.txt covers the narrow native file-open
+route, which uses saved GEQ and BT with SE and RVB off.
