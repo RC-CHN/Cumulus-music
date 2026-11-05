@@ -92,8 +92,10 @@ core/lyrics/desktop/{mod,prepared}.rs：
 - 此修正是代码与合成多通道用例发现的缺口；本地侧车仍只提供普通 LRC。
   本地库后续支持读取 FLAC、MP3、MP4 的嵌入文本；有效侧车仍优先。
   侧车无法读取或解码时回退嵌入文本；若两者都不可用且侧车读取出错，
-  仍返回原错误。普通歌词页与桌面歌词窗口共享此规则。逐 CUE 曲目的
-  独立侧车及本地多语言/YRC 文件读取仍需独立实现。
+  仍返回原错误。普通歌词页与桌面歌词窗口共享此规则。未扫描的原生打开也可按
+  已选定的文件凭据读取相同旁挂顺序，不依赖曲库索引，见 core-lyrics-contracts.txt。
+  官方本地接口只给文件名和一段 LRC；逐 CUE 曲目独立旁挂及本地多语言/YRC
+  文件名规则仍未获证，不引入推测格式。
 
 验证入口与剩余工作
 - cargo test -p cumulus-core --test desktop_lyric_preferences --test desktop_lyrics

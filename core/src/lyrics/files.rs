@@ -1,5 +1,9 @@
 //! Local library lyric lookup and the separate published download boundary.
-use crate::{Error, Result, protocol::api::ApiFuture};
+use crate::{
+    Error, Result,
+    library::native_open::{OpenedFile, checked_audio_file},
+    protocol::api::ApiFuture,
+};
 use std::{
     fs::File,
     io::Read,
@@ -46,6 +50,43 @@ impl LocalLyrics for SidecarLyrics {
 /// Read embedded metadata only for a local-library selection. The ordinary
 /// sidecar method remains available to the separately guarded download path.
 pub(crate) struct LibraryLyrics;
+
+/// An explicit native selection does not create a local-library row. It can
+/// read the same filename-based official sidecar lane through its own receipt.
+pub(crate) struct NativeOpenLyrics(pub(crate) OpenedFile);
+
+impl LocalLyrics for NativeOpenLyrics {
+    fn read<'a>(&'a self, _: &'a Path) -> ApiFuture<'a, Option<String>> {
+        // This source never owns a downloaded-track attachment.
+        Box::pin(async { Ok(None) })
+    }
+
+    fn read_local<'a>(
+        &'a self,
+        audio: &'a Path,
+    ) -> ApiFuture<'a, Option<(String, LocalLyricSource)>> {
+        Box::pin(async move {
+            if audio != self.0.path {
+                return Err(Error::StaleResponse);
+            }
+            let file = self.0.clone();
+            tokio::task::spawn_blocking(move || {
+                let check = || {
+                    checked_audio_file(&file.path, &file.fingerprint)
+                        .map_err(|_| Error::QueueChanged)
+                };
+                let (_held, _) = check()?;
+                let text = local_sidecars::read(&file.path);
+                // Do not publish or cache any text from a replacement file
+                // selection while this filesystem read was in progress.
+                check()?;
+                Ok(text?.map(|text| (text, LocalLyricSource::Sidecar)))
+            })
+            .await
+            .map_err(|_| Error::State("native lyric file worker stopped"))?
+        })
+    }
+}
 
 impl LocalLyrics for LibraryLyrics {
     fn read<'a>(&'a self, audio: &'a Path) -> ApiFuture<'a, Option<String>> {

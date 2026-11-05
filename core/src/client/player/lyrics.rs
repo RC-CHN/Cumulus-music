@@ -2,8 +2,10 @@ mod segment;
 use super::*;
 use crate::{
     download::{completed::CompletedDownloads, offline::OfflineRecord},
+    library::{LocalResource, native_open::OpenedFile},
     lyrics::{
-        LyricDemand, LyricPreferences, LyricRequest, LyricSnapshot, LyricTarget, files::LocalLyrics,
+        LyricDemand, LyricPreferences, LyricRequest, LyricSnapshot, LyricTarget,
+        files::{LocalLyrics, NativeOpenLyrics},
     },
     playback::QueueEntry,
     protocol::api::ApiFuture,
@@ -97,7 +99,14 @@ fn require_current_entry(
 pub(super) struct ActiveLyrics {
     token: SessionToken,
     download: Option<DownloadLyricSource>,
+    native: Option<NativeLyricSelection>,
     service: Arc<LyricsService>,
+}
+
+#[derive(PartialEq, Eq)]
+struct NativeLyricSelection {
+    file: OpenedFile,
+    play_id: String,
 }
 
 pub(super) struct LyricContext {
@@ -130,9 +139,21 @@ impl MusicClient {
             .selected
             .as_ref()
             .ok_or(Error::State("no selected song"))?;
-        let target = if selected.resource["local_id"].is_string() {
-            let resource: crate::library::LocalResource =
-                serde_json::from_value(selected.resource.clone())?;
+        let native = if let Some(value) = selected.resource.get("native_open_file") {
+            let file: OpenedFile = serde_json::from_value(value.clone())?;
+            let local: LocalResource = serde_json::from_value(selected.resource.clone())?;
+            file.check_resource(&local)?;
+            Some(NativeLyricSelection {
+                file,
+                play_id: play_id.into(),
+            })
+        } else {
+            None
+        };
+        let target = if let Some(native) = &native {
+            LyricTarget::Local(native.file.path.clone())
+        } else if selected.resource["local_id"].is_string() {
+            let resource: LocalResource = serde_json::from_value(selected.resource.clone())?;
             let context = self.local.context().await?;
             let path = tokio::task::spawn_blocking(move || {
                 let item = context.library.item(&resource.local_id)?;
@@ -196,15 +217,17 @@ impl MusicClient {
         };
         let mut lyrics = self.player.lyrics.lock().map_err(|_| Error::LockPoisoned)?;
         let current = controller.snapshot();
-        if current.account != token || current.play_id.as_deref() != Some(play_id) {
+        if current.account != token
+            || current.play_id.as_deref() != Some(play_id)
+            || (native.is_some() && current.selected.as_ref() != Some(selected))
+        {
             return Err(Error::StaleResponse);
         }
         // The remote cache remains keyed by song/cloud ID. A downloaded
         // sidecar must never be a cached UI document for a different source.
-        if lyrics
-            .as_ref()
-            .is_none_or(|old| old.token != token || old.download != download)
-        {
+        if lyrics.as_ref().is_none_or(|old| {
+            old.token != token || old.download != download || old.native != native
+        }) {
             let service = if let Some(source) = &download {
                 LyricsService::with_files(
                     self.session.clone(),
@@ -214,12 +237,18 @@ impl MusicClient {
                         source: source.clone(),
                     }),
                 )?
+            } else if let Some(native) = &native {
+                LyricsService::with_files(
+                    self.session.clone(),
+                    Arc::new(NativeOpenLyrics(native.file.clone())),
+                )?
             } else {
                 LyricsService::new(self.session.clone())?
             };
             *lyrics = Some(ActiveLyrics {
                 token: token.clone(),
                 download: download.clone(),
+                native,
                 service: Arc::new(service),
             });
         }

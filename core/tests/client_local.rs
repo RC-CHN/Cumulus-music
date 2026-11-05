@@ -2,6 +2,8 @@
 mod lyric_reports;
 #[path = "support/lyric_wave.rs"]
 mod lyric_wave;
+#[path = "support/native_lyric_wave.rs"]
+mod native_lyric_wave;
 #[path = "client_local/queue_drop.rs"]
 mod queue_drop;
 #[allow(dead_code)]
@@ -425,6 +427,82 @@ async fn local_play_selection_publishes_embedded_lyrics_to_both_views() {
     let repaired = client.player_lyrics("0", &play_id).await.unwrap();
     assert!(repaired.from_sidecar && !repaired.from_embedded);
     assert_eq!(repaired.lines[0].lyric, "修复后的侧车歌词");
+}
+
+#[tokio::test]
+async fn native_open_lyrics_use_the_active_file_without_creating_a_library_row() {
+    use cumulus_core::{playback::engine::Cancellation, preferences::desktop_lyrics::Appearance};
+
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media").join("合成 专辑.session.wav");
+    let nested = media.parent().unwrap().join("lyric/lrc");
+    std::fs::create_dir_all(&nested).unwrap();
+    std::fs::write(&media, native_lyric_wave::native_stereo_wave(4)).unwrap();
+    let path = media.canonicalize().unwrap();
+    let nested = nested.join(path.file_name().unwrap()).with_extension("lrc");
+    std::fs::write(&nested, "[00:00]最深文件夹\n[00:01]第二行").unwrap();
+    let adjacent = path.with_extension("lrc");
+    std::fs::write(&adjacent, "[00:00]首选相邻歌词\n[00:01]第二行").unwrap();
+    let (_, client, _) = client(&dir.path().join("state"), Arc::new(Probe::default()));
+    let play = client
+        .play_native_open_files_warm("0", vec![path.clone()], Cancellation::default())
+        .await
+        .unwrap();
+    let play_id = play.play_id.unwrap();
+    assert!(
+        client
+            .local_page(LocalQuery::default())
+            .await
+            .unwrap()
+            .tracks
+            .is_empty()
+    );
+    let detail = client.player_lyrics("0", &play_id).await.unwrap();
+    assert!(detail.from_sidecar && !detail.from_embedded && !detail.network_failed);
+    assert_eq!(detail.lines[0].lyric, "首选相邻歌词");
+    assert_eq!(detail.lines[1].time, 1.0);
+    let serialized = serde_json::to_string(&detail).unwrap();
+    assert!(!serialized.contains("native_open_file") && !serialized.contains(".wav"));
+
+    std::fs::remove_file(&adjacent).unwrap();
+    let mut document = client.desktop_lyric_document("0", &play_id).await.unwrap();
+    let view = client
+        .desktop_lyric_frame(&document, &Appearance::default())
+        .unwrap();
+    assert_eq!(view.play_id, play_id);
+    assert!(view.info.from_sidecar && !view.info.from_embedded);
+    assert_eq!(view.frame.lines[0].text, "最深文件夹");
+    let cached = client.player_cached_lyrics("0", &play_id).await.unwrap();
+    assert_eq!(cached.lines[0].lyric, "最深文件夹");
+    client.lyric_offset("0", &play_id, -0.5).await.unwrap();
+    assert!(
+        client
+            .refresh_desktop_lyric_document(&mut document)
+            .await
+            .unwrap()
+    );
+
+    std::fs::rename(&path, path.with_extension("moved")).unwrap();
+    std::fs::write(&path, native_lyric_wave::native_stereo_wave(5)).unwrap();
+    std::fs::write(&adjacent, "[00:00]另一个文件").unwrap();
+    assert!(matches!(
+        client.player_lyrics("0", &play_id).await,
+        Err(Error::QueueChanged)
+    ));
+    let next = client
+        .play_native_open_files_warm("0", vec![path], Cancellation::default())
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    assert_ne!(next, play_id);
+    assert!(matches!(
+        client.player_lyrics("0", &play_id).await,
+        Err(Error::StaleResponse)
+    ));
+    let new_detail = client.player_lyrics("0", &next).await.unwrap();
+    assert_eq!(new_detail.lines[0].lyric, "另一个文件");
+    assert_eq!(new_detail.offset, 0.0);
 }
 
 #[tokio::test]

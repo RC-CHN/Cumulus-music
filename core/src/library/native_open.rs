@@ -18,7 +18,7 @@ use std::{
 
 pub(crate) const MAX_NATIVE_FILES: usize = 8;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OpenedFile {
     pub path: PathBuf,
