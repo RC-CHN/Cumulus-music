@@ -1,5 +1,6 @@
 use super::*;
 use cumulus_core::playback::controller::PlaybackStatus;
+use std::time::Duration;
 
 pub(super) fn response(payload: &Value) -> Value {
     let ids = if payload["offset"] == 0 {
@@ -45,6 +46,10 @@ fn search_row(section: &Value, index: usize) -> Value {
 #[tokio::test]
 async fn search_drag_inserts_only_native_observed_rows_from_both_pages_without_restarting() {
     let (_dir, api, session, client, _) = fixture();
+    // Song 2 is the original queue's ordinary next-track prefetch. Confirm
+    // its request was already recorded, and hold it while checking the drop
+    // so neither the old nor the new neighbor races the wire journal.
+    api.hold_url_id.store(2, Ordering::SeqCst);
     let _ = client
         .play_selection(
             "1",
@@ -60,6 +65,9 @@ async fn search_drag_inserts_only_native_observed_rows_from_both_pages_without_r
         .player_action("1", PlayerAction::Pause { paused: true })
         .await
         .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), api.url_started.notified())
+        .await
+        .expect("the original next track reached URL prefetch");
     let before = client.player_queue("1").await.unwrap();
     let p1 =
         serde_json::to_value(client.search_results("1", query(0)).await.unwrap().value).unwrap();
@@ -72,6 +80,7 @@ async fn search_drag_inserts_only_native_observed_rows_from_both_pages_without_r
     let rows = vec![search_row(&p2, 1), search_row(&p1, 0), search_row(&p2, 0)];
     let mut forged = rows[0].clone();
     forged["track_id"] = json!("4");
+    api.calls.lock().unwrap().clear();
     assert!(
         client
             .player_action("1", drop(&playing, Some(next.clone()), vec![forged]))
@@ -82,7 +91,6 @@ async fn search_drag_inserts_only_native_observed_rows_from_both_pages_without_r
         client.player_queue("1").await.unwrap().revision,
         before.revision
     );
-    api.calls.lock().unwrap().clear();
     let result = client
         .player_action("1", drop(&playing, Some(next.clone()), rows.clone()))
         .await
@@ -102,13 +110,18 @@ async fn search_drag_inserts_only_native_observed_rows_from_both_pages_without_r
     assert_eq!(queue.current, before.current);
     assert_eq!(queue.tracks[3].entry_id, before.tracks[1].entry_id);
     assert!(queue.tracks[1].track.name.contains("合成搜索"));
-    assert!(api.calls.lock().unwrap().is_empty());
     assert!(matches!(
         client
             .player_action("1", drop(&playing, Some(next), rows.clone()))
             .await,
         Err(Error::QueueChanged)
     ));
+    {
+        let calls = api.calls.lock().unwrap();
+        assert!(calls.is_empty(), "search drop issued requests: {calls:?}");
+    }
+    api.hold_url_id.store(0, Ordering::SeqCst);
+    api.url_release.notify_one();
 
     let token = session.token().unwrap();
     session
