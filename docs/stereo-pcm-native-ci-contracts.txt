@@ -8,6 +8,8 @@ libFLAC 1.5.0 decode, unknown-size raw PCM, paced SE1 -> defaultB0 subgraph,
 same-entry controls, stop/join/seek, exact tail frames and buffered revocation.
 This does not enable production attachment, verify the complete material graph,
 claim a physical audio device or replace shipping build artifacts.
+The existing60s outer process limit and8s individual native waits are retained;
+no source-specific timeout extension is used to mask startup failures.
 
 Linux
 -----

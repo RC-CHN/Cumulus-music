@@ -192,8 +192,7 @@ def main():
         env['CUMULUS_STEREO_PCM_MPV_LIBRARY'] = str(args.mpv_library.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    run_native([str(args.binary.resolve())], env, report,
-               timeout=90 if args.stereo_pcm_flac_library else 60)
+    run_native([str(args.binary.resolve())], env, report)
     proof = read_native_report(report)
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
     if args.stereo_native_library:
