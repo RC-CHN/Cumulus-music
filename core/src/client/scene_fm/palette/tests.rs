@@ -25,6 +25,9 @@ struct Backend {
     hold: AtomicBool,
     started: Notify,
     release: Notify,
+    hold_image: AtomicBool,
+    image_started: Notify,
+    image_release: Notify,
     reads: Arc<AtomicUsize>,
 }
 struct Body {
@@ -59,6 +62,10 @@ impl MediaBackend for Backend {
             if self.hold.swap(false, Ordering::SeqCst) {
                 self.started.notify_one();
                 self.release.notified().await;
+            }
+            if !header && self.hold_image.swap(false, Ordering::SeqCst) {
+                self.image_started.notify_one();
+                self.image_release.notified().await;
             }
             let mut headers = BTreeMap::new();
             let bytes = if header { vec![0x42; 16] } else { png() };
@@ -170,6 +177,34 @@ impl Fixture {
             )
             .unwrap();
     }
+    fn change_shared_cover(&self, selected: &str) {
+        let token = self.client.session.token().unwrap();
+        let mut state = SceneFmService::new(self.client.session.clone())
+            .unwrap()
+            .cached_for(&token)
+            .unwrap()
+            .unwrap();
+        let cover = state.selected().unwrap().cover_url.clone();
+        let voice = state.scenes[0]
+            .voices
+            .iter_mut()
+            .find(|voice| voice.id == selected)
+            .unwrap();
+        voice.cover_url = cover.clone();
+        voice.raw["coverUrl"] = json!(cover);
+        state.revision += 1;
+        state.scenes[0].selected = Some(selected.into());
+        self.client
+            .registry
+            .store()
+            .put(
+                "9",
+                "scene-fm-v1",
+                "current",
+                &serde_json::to_value(state).unwrap(),
+            )
+            .unwrap();
+    }
     async fn read(&self, revision: &str, voice: &str) -> Result<SceneFmPaletteRead> {
         Ok(self
             .client
@@ -210,6 +245,149 @@ async fn native_header_truthiness_and_exact_credential_free_targets() {
         assert!(calls[0].if_range.is_none());
         assert!(!serde_json::to_string(&value).unwrap().contains("PRIVATE"));
     }
+}
+
+#[tokio::test]
+async fn pending_header_follows_current_native_cover_but_new_old_voice_admission_stays_rejected() {
+    let f = Fixture::new();
+    f.backend.hold.store(true, Ordering::SeqCst);
+    let pending = {
+        let client = f.client.clone();
+        tokio::spawn(async move { client.scene_fm_palette_read("1", "1", "1", 1.25).await })
+    };
+    f.backend.started.notified().await;
+    f.change_shared_cover("2");
+    assert!(matches!(f.read("2", "1").await, Err(Error::StaleResponse)));
+    f.backend.release.notify_one();
+    let value = pending.await.unwrap().unwrap().value;
+    assert_eq!(background_json(value)["kind"], "gradient");
+    assert_eq!(f.backend.calls.lock().unwrap().len(), 1);
+    assert_eq!(f.backend.reads.load(Ordering::SeqCst), 0);
+    // A newly admitted current voice may also use the completed same-art cache.
+    assert_eq!(
+        background_json(f.read("2", "2").await.unwrap())["kind"],
+        "gradient"
+    );
+    assert_eq!(f.backend.calls.lock().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn pending_image_and_returned_canvas_receipt_survive_same_cover_voice_changes() {
+    for change_during_image in [false, true] {
+        let f = Fixture::new();
+        f.backend.mode.store(3, Ordering::SeqCst);
+        let value = if change_during_image {
+            f.backend.hold_image.store(true, Ordering::SeqCst);
+            let pending = {
+                let client = f.client.clone();
+                tokio::spawn(async move { client.scene_fm_palette_read("1", "1", "1", 1.25).await })
+            };
+            f.backend.image_started.notified().await;
+            f.change_shared_cover("2");
+            f.backend.image_release.notify_one();
+            pending.await.unwrap().unwrap().value
+        } else {
+            let value = f.read("1", "1").await.unwrap();
+            f.change_shared_cover("2");
+            value
+        };
+        let SceneFmPaletteRead::Sample {
+            receipt,
+            width,
+            height,
+            ..
+        } = value
+        else {
+            panic!("expected the original image receipt");
+        };
+        // A rejected old-voice read must not replace the already-admitted image.
+        assert!(matches!(f.read("2", "1").await, Err(Error::StaleResponse)));
+        let result = f
+            .client
+            .scene_fm_palette_sample(
+                "1",
+                &receipt,
+                width,
+                height,
+                [128, 64, 32, 255].repeat((width * height) as usize),
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(result.value).unwrap()["background"]["kind"],
+            "gradient"
+        );
+        assert!(
+            f.client
+                .scene_fm_palette_sample(
+                    "1",
+                    &receipt,
+                    width,
+                    height,
+                    vec![0; (width * height * 4) as usize]
+                )
+                .is_err()
+        );
+        assert_eq!(f.backend.calls.lock().unwrap().len(), 2);
+        assert_eq!(
+            background_json(f.read("2", "2").await.unwrap())["kind"],
+            "gradient"
+        );
+        assert_eq!(f.backend.calls.lock().unwrap().len(), 2);
+    }
+}
+
+#[tokio::test]
+async fn a_b_a_sequence_and_old_receipt_cancel_cannot_reopen_or_clear_a_new_task() {
+    let f = Fixture::new();
+    f.backend.mode.store(3, Ordering::SeqCst);
+    let SceneFmPaletteRead::Sample { receipt: old_a, .. } = f.read("1", "1").await.unwrap() else {
+        panic!()
+    };
+    f.change("2");
+    let SceneFmPaletteRead::Sample { receipt: old_b, .. } = f.read("2", "2").await.unwrap() else {
+        panic!()
+    };
+    f.change("1");
+    let SceneFmPaletteRead::Sample {
+        receipt: current_a, ..
+    } = f.read("3", "1").await.unwrap()
+    else {
+        panic!()
+    };
+    assert_ne!(old_a, current_a);
+    f.client.scene_fm_palette_cancel("1", &old_a).unwrap();
+    f.client.scene_fm_palette_cancel("1", &old_b).unwrap();
+    for receipt in [&old_a, &old_b] {
+        assert!(matches!(
+            f.client
+                .scene_fm_palette_sample("1", receipt, 16, 16, vec![0; 1024]),
+            Err(Error::StaleResponse)
+        ));
+    }
+    assert!(
+        f.client
+            .scene_fm_palette_sample("1", &current_a, 16, 16, vec![0; 1024])
+            .is_ok()
+    );
+    assert_eq!(f.backend.calls.lock().unwrap().len(), 6);
+}
+
+#[tokio::test]
+async fn a_b_a_keeps_an_old_header_future_obsolete_even_after_its_cover_returns() {
+    let f = Fixture::new();
+    f.backend.hold.store(true, Ordering::SeqCst);
+    let old_a = {
+        let client = f.client.clone();
+        tokio::spawn(async move { client.scene_fm_palette_read("1", "1", "1", 1.25).await })
+    };
+    f.backend.started.notified().await;
+    f.change("2");
+    f.read("2", "2").await.unwrap();
+    f.change("1");
+    f.read("3", "1").await.unwrap();
+    f.backend.release.notify_one();
+    assert!(matches!(old_a.await.unwrap(), Err(Error::StaleResponse)));
+    assert_eq!(f.backend.calls.lock().unwrap().len(), 3);
 }
 #[tokio::test]
 async fn missing_or_throwing_header_uses_bounded_canvas_receipt_once_and_caches_same_source() {

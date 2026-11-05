@@ -149,7 +149,108 @@ test('ordinary native/image failures settle the official default for later voice
   }
 });
 
-test('pending or stale old-voice work cannot count as a settled same-cover palette', async () => {
+test('same-cover voice changes retain the in-flight header or image read', async () => {
+  for (const kind of ['header', 'fallback', 'image'] as const) {
+    const f = fixture(),
+      late = deferred<AccountData<SceneFmPaletteRead>>();
+    f.core.sceneFmPaletteRead = (...args) => {
+      f.reads.push(args);
+      return late.promise;
+    };
+    const model = useSceneFmPalette(f.core, async () => ({
+      width: 1,
+      height: 1,
+      rgba: [11, 13, 17, 255],
+    }));
+    const first = scope();
+    const pending = model.show(first, 1);
+    await model.show({ ...scope('602'), coverKey: first.coverKey, revision: '3' }, 1);
+    assert.equal(f.reads.length, 1);
+    assert.equal(model.pending.value, true);
+    assert.deepEqual(f.cancelled, []);
+    late.resolve({
+      epoch: '1',
+      value:
+        kind === 'image'
+          ? sample()
+          : {
+              kind: 'ready',
+              background: kind === 'fallback' ? { kind: 'theme_fallback' } : gradient,
+            },
+    });
+    await pending;
+    assert.deepEqual(
+      model.background.value,
+      kind === 'image' ? other : kind === 'fallback' ? { kind: 'theme_fallback' } : gradient,
+    );
+    assert.equal(model.pending.value, false);
+    assert.equal(f.reads.length, 1);
+    assert.equal(f.samples.length, kind === 'image' ? 1 : 0);
+    assert.deepEqual(f.cancelled, []);
+    model.dispose();
+  }
+});
+
+test('same-cover voice changes keep the original local canvas and exact sample receipt', async () => {
+  const f = fixture(),
+    pixels = deferred<{ width: number; height: number; rgba: number[] }>();
+  let signal: AbortSignal | undefined;
+  f.core.sceneFmPaletteRead = async (...args) => {
+    f.reads.push(args);
+    return { epoch: args[0], value: sample('same-artwork') };
+  };
+  const model = useSceneFmPalette(f.core, (_, owner) => {
+    signal = owner;
+    return pixels.promise;
+  });
+  const first = scope();
+  const pending = model.show(first, 1);
+  await Promise.resolve();
+  assert.ok(signal);
+  await model.show({ ...scope('602'), coverKey: first.coverKey }, 1);
+  assert.equal(signal.aborted, false);
+  assert.equal(f.reads.length, 1);
+  assert.deepEqual(f.cancelled, []);
+  pixels.resolve({ width: 1, height: 1, rgba: [11, 13, 17, 255] });
+  await pending;
+  assert.deepEqual(f.samples, [['1', 'same-artwork', 1, 1, [11, 13, 17, 255]]]);
+  assert.deepEqual(model.background.value, other);
+  assert.equal(model.pending.value, false);
+  model.dispose();
+});
+
+test('same-cover voice change after sample dispatch still accepts the same artwork result once', async () => {
+  const f = fixture(),
+    late = deferred<AccountData<{ background: SceneFmBackground }>>();
+  f.core.sceneFmPaletteRead = async (...args) => {
+    f.reads.push(args);
+    return { epoch: args[0], value: sample('same-artwork') };
+  };
+  f.core.sceneFmPaletteSample = (...args) => {
+    f.samples.push(args);
+    return late.promise;
+  };
+  const model = useSceneFmPalette(f.core, async () => ({
+    width: 1,
+    height: 1,
+    rgba: [11, 13, 17, 255],
+  }));
+  const first = scope(),
+    pending = model.show(first, 1);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(f.samples.length, 1);
+  await model.show({ ...scope('602'), coverKey: first.coverKey }, 1);
+  late.resolve({ epoch: '1', value: { background: other } });
+  await pending;
+  assert.equal(f.reads.length, 1);
+  assert.equal(f.samples.length, 1);
+  assert.deepEqual(f.cancelled, []);
+  assert.deepEqual(model.background.value, other);
+  model.dispose();
+});
+
+test('genuine native stale or account failure never settles the reused same-cover work', async () => {
   for (const code of ['stale', 'profile_changed', 'session_expired']) {
     for (const staleBeforeSwitch of [false, true]) {
       const f = fixture(),
@@ -164,15 +265,22 @@ test('pending or stale old-voice work cannot count as a settled same-cover palet
       const first = scope();
       const old = model.show(first, 1);
       const reject = () =>
-        late.reject({ code, message: 'Synthetic native voice changed', retryable: false });
+        late.reject({
+          code,
+          message: 'Synthetic native artwork ownership expired',
+          retryable: false,
+        });
       if (staleBeforeSwitch) {
         reject();
         await old;
       }
       await model.show({ ...scope('602'), coverKey: first.coverKey }, 1);
       if (!staleBeforeSwitch) {
+        assert.equal(f.reads.length, 1, 'same URL does not supersede pending artwork');
         reject();
         await old;
+        // A new authoritative observation recovers from the real invalidation.
+        await model.show({ ...scope('602'), coverKey: first.coverKey }, 1);
       }
       assert.deepEqual(
         f.reads.map((args) => args[2]),
@@ -183,6 +291,31 @@ test('pending or stale old-voice work cannot count as a settled same-cover palet
       model.dispose();
     }
   }
+});
+
+test('A to B to A retires the original promise even though its URL is current again', async () => {
+  const f = fixture(),
+    late = deferred<AccountData<SceneFmPaletteRead>>();
+  f.core.sceneFmPaletteRead = (...args) => {
+    f.reads.push(args);
+    return f.reads.length === 1
+      ? late.promise
+      : Promise.resolve({
+          epoch: args[0],
+          value: { kind: 'ready', background: args[2] === '602' ? other : gradient },
+        });
+  };
+  const model = useSceneFmPalette(f.core);
+  const old = model.show(scope(), 1);
+  await model.show(scope('602'), 1);
+  await model.show(scope(), 1);
+  late.resolve({ epoch: '1', value: sample('old-A') });
+  await old;
+  assert.equal(f.reads.length, 3);
+  assert.deepEqual(f.cancelled, ['1:old-A']);
+  assert.deepEqual(f.samples, []);
+  assert.deepEqual(model.background.value, gradient);
+  model.dispose();
 });
 
 test('same-account cover changes keep old color until the replacement finishes, then use native fallback on failure', async () => {

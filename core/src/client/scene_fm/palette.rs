@@ -86,14 +86,23 @@ struct Source {
     voice: String,
     cover: String,
 }
+/// Once a current voice has admitted the read, only its public artwork is
+/// processed. Another current voice can own the identical canonical cover;
+/// this does not transfer any playback, episode or account authorization.
+#[derive(Clone, PartialEq, Eq)]
+struct ArtworkSource {
+    token: SessionToken,
+    cover: String,
+}
 struct Pending {
-    source: Source,
+    source: ArtworkSource,
+    sequence: u64,
     receipt: String,
     width: u32,
     height: u32,
 }
 struct Cache {
-    source: Source,
+    source: ArtworkSource,
     background: SceneFmBackground,
 }
 #[derive(Default)]
@@ -192,6 +201,19 @@ impl MusicClient {
         }
         Ok(())
     }
+    fn scene_palette_artwork_check(&self, source: &ArtworkSource, sequence: u64) -> Result<()> {
+        self.scene_fm.palette.current(sequence)?;
+        let state = SceneFmService::new(self.session.clone())?
+            .cached_for(&source.token)?
+            .ok_or(Error::StaleResponse)?;
+        let current = state.selected().ok_or(Error::StaleResponse)?;
+        if artwork::source(&current.cover_url).ok().as_deref() != Some(source.cover.as_str()) {
+            return Err(Error::StaleResponse);
+        }
+        // A new request must invalidate an older A even after A -> B -> A.
+        self.scene_fm.palette.current(sequence)?;
+        self.session.check_generation(&source.token)
+    }
     pub async fn scene_fm_palette_read(
         &self,
         epoch: &str,
@@ -201,10 +223,17 @@ impl MusicClient {
     ) -> Result<AccountData<SceneFmPaletteRead>> {
         let token = self.player_token(epoch)?;
         let size = artwork::thumbnail_size(pixel_ratio)?;
-        let source =
+        let admitted =
             self.scene_palette_source(&token, Some(revision(expected_revision)?), voice_id)?;
         let mut superseded = self.scene_fm.palette.begin()?;
         let sequence = *superseded.borrow_and_update();
+        // Keep the original exact current-voice admission; only its completed
+        // admission is converted into the narrower public-artwork identity.
+        self.scene_palette_check(&admitted, sequence)?;
+        let source = ArtworkSource {
+            token: admitted.token,
+            cover: admitted.cover,
+        };
         let cached = {
             let state = self
                 .scene_fm
@@ -219,7 +248,7 @@ impl MusicClient {
                 .map(|cache| cache.background)
         };
         if let Some(background) = cached {
-            self.scene_palette_check(&source, sequence)?;
+            self.scene_palette_artwork_check(&source, sequence)?;
             return Ok(AccountData {
                 epoch: epoch.into(),
                 value: SceneFmPaletteRead::Ready { background },
@@ -241,14 +270,14 @@ impl MusicClient {
                 }
                 Err(_) => HeaderDecision::Sample,
             };
-            self.scene_palette_check(&source, sequence)?;
+            self.scene_palette_artwork_check(&source, sequence)?;
             match decision {
                 HeaderDecision::Parsed(colors) => Ok(SceneFmPaletteRead::Ready {
                     background: palette::background(colors.dominant),
                 }),
                 HeaderDecision::Sample => {
                     let image = artwork::image(backend.as_ref(), &source.cover, size).await?;
-                    self.scene_palette_check(&source, sequence)?;
+                    self.scene_palette_artwork_check(&source, sequence)?;
                     let receipt = uuid::Uuid::new_v4().simple().to_string();
                     let mut state = self
                         .scene_fm
@@ -259,6 +288,7 @@ impl MusicClient {
                     self.scene_fm.palette.current(sequence)?;
                     state.pending = Some(Pending {
                         source: source.clone(),
+                        sequence,
                         receipt: receipt.clone(),
                         width: image.width,
                         height: image.height,
@@ -279,7 +309,7 @@ impl MusicClient {
             _ = superseded.changed() => return Err(Error::StaleResponse),
             result = tokio::time::timeout(LIMIT, fetch) => result.map_err(|_| Error::Transport("artwork color request timed out".into()))??,
         };
-        self.scene_palette_check(&source, sequence)?;
+        self.scene_palette_artwork_check(&source, sequence)?;
         if let SceneFmPaletteRead::Ready { background } = &value {
             let mut state = self
                 .scene_fm
@@ -338,9 +368,7 @@ impl MusicClient {
                 "artwork color sample dimensions changed",
             ));
         }
-        if self.scene_palette_source(&token, None, &pending.source.voice)? != pending.source {
-            return Err(Error::StaleResponse);
-        }
+        self.scene_palette_artwork_check(&pending.source, pending.sequence)?;
         let color = palette::sample_rgba(&rgba)
             .map_err(|_| Error::InvalidInput("invalid artwork color sample"))?;
         let background = palette::background(color);

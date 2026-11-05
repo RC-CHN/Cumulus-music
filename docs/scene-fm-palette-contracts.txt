@@ -38,23 +38,24 @@
   按官方尺寸取样；不调用远端图片 URL。量化与 HSV 仍交 Rust。不能声称 Rust 图片缩放
   等同浏览器，本实现没有用 image::thumbnail 代替 canvas。Tauri CSP 只为 img-src 增加
   blob:，没有放宽 connect-src 或脚本来源。
-- 请求等待期间保留同账号的旧背景；切账号和销毁清空。单集/封面键变化会取消旧取样，
-  丢弃迟到结果；暂停等视图版本变化不重复取色。原生已有完成结果只按当前来源缓存一项。
+- 请求等待期间保留同账号的旧背景；切账号和销毁清空。同账号同一规范封面URL换节目，
+  保留已完成或在途的同一颜色读取/本地采样，不按节目ID取消；URL改变才退休旧取色。
+  暂停等视图版本变化不重复取色，原生已有完成结果按账号与规范封面只缓存一项。
   图片取色和卡片展示均不构造音频队列、不更改播放、音量、效果或远端账号资源。
 - 同账号且同一封面 URL 的已完成颜色，在节目 ID 改变时直接保留；包含正式返回的主题
   底色、原生媒体限额拒绝、普通网络/图片失败及本地解码失败后的官方默认色，不重复读取。
-  只按明确完成状态复用，不能把 pending=false 当成成功：原生 stale/profile_changed/
-  session_expired 和被替换、取消的工作不算完成，新权威视图仍可发起请求。
-  等待中的同封面切节目仍重新发起，以保留原生旧节目绑定的请求和采样凭据校验；这与
-  M2060 仅按 URL 依赖、不重发等待请求仍有差别，本次没有声称完成整条 URL 生命周期。
+  普通失败与正在读取的同URL都保持这一次尝试；原生 stale/profile_changed/session_expired
+  或错误账号回包不使尝试完成，新权威视图仍可发起请求。不同账号/URL、取消、销毁后的
+  旧工作不能更新当前卡片。以下在途身份拆分是phase56之后的实现候选，待统一验证。
 
 类型化 IPC（仅主窗口）
 1. scene_fm_palette_read {epoch,revision,voiceId,pixelRatio}：
    AccountData<Ready{background}|Sample{receipt,mimeType,bytes,width,height}>。
    revision 必须规范、不能在未来；可接受同一当前单集的较旧观察版本，避免目录读取到自动
-   播放提交间的版本变化使取色永久失效。实际来源始终从当前原生快照取得，旧单集拒绝。
+   播放提交间的版本变化使取色永久失效。新请求实际来源始终从当前原生快照取得，
+   旧单集准入仍拒绝；准入后只处理封面，当前换成同URL的另一节目不使该图片变为旧来源。
 2. scene_fm_palette_sample {epoch,receipt,width,height,rgba}：
-   AccountData<{background}>。一次性 receipt 绑定账号代次、当前单集和规范封面，接受的
+   AccountData<{background}>。一次性 receipt 绑定账号代次、请求sequence和规范封面，接受的
    canvas 尺寸必须等于该原生图片的官方采样尺寸。完成后消费凭据并缓存结果。
 3. scene_fm_palette_cancel {epoch,receipt}：
    只取消相符的本机待取样；迟到取消不能撤销新来源。图片请求会在来源 supersede、
@@ -125,3 +126,26 @@ Cumulus 对 voice 以及带正式 voiceId 的下载节目隐藏该行；普通�
   这些复用与过期分支有定向Node状态用例，本批GUI没有单独触发同URL切节目。
   等待中的同封面切节目仍重新发起，保留原生旧节目请求与采样凭据的绑定；这条与官方
   M2060仅按URL的在途生命周期仍有差异，没有扩大IPC地址权限或放宽原生来源校验。
+
+同URL在途生命周期：phase56之后的候选（待统一运行验证）
+- scene_palette_source 与 scene_palette_check 的原始当前节目/版本准入保持不变；
+  scene_fm_palette_read 开始时仍要求传入voiceId是本账号原生快照的当前单集。
+  不允许在已经切到602后，再用601发起新读取，即使二者封面URL相同。
+- 准入后拆为 ArtworkSource{SessionToken,规范cover}。header、image的完成及采样结果
+  再从当前原生SceneFM选中项核对规范cover；只允许同账号同URL跨单集继续原在途工作。
+  这不是把当前节目、主歌曲或播放权限改按封面判断。scene_fm/actions的播放fence与
+  SourceResolver的节目到主歌曲校验没有改动，前端也没有新增可传任意URL的IPC。
+- Pending保留原image宽高、唯一receipt和sequence。新读取递增sequence并撤销旧待取样；
+  A→B→A时，即使原A的URL重新成为当前封面，旧A的promise/receipt也不能重新有效。
+  旧receipt的精确取消不能撤销新任务；尺寸、RGBA反序列化和图片/域名限额保持原样。
+- useSceneFmPalette以账号与coverKey管理generation。601→602但coverKey相同，保留
+  原header/image promise、Blob/canvas与receipt，不新发取色；账号或URL变化、销毁
+  仍退休旧generation。原生stale/身份失败仍允许新权威视图恢复，不当成已确认默认色。
+- 取色使用独立、无Cookie的公共媒体transport，不读取业务Api或credential revision。
+  同账号、同一原生规范URL不变时，仅Cookie/API对象更换不改变这张公开图片的来源；
+  不为此新增PC实验或账号权限门槛。若账号generation或当前原生封面改变，仍拒绝旧结果。
+  业务API自己的凭据版本、账号与音源身份校验继续独立执行，图片不获取或替代它们。
+- 新增原生/Node用例覆盖header待回、image待回、canvas/采样待回、旧voice新准入、
+  换账号/换URL、A→B→A、一次性receipt及旧取消。预期header命中仅1次媒体请求，
+  图片回退仅header+image共2次，同URL切节目不增加请求。此候选仅做格式/静态检查，
+  用例尚待下批统一运行；没有新增实服、真实WebView或Windows运行通过结论。

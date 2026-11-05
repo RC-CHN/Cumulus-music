@@ -25,7 +25,6 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
   let current: SceneFmPaletteScope | undefined;
   let generation = 0;
   let requested = false;
-  let settled = false;
   let disposed = false;
   let abort: AbortController | undefined;
   let receipt: { epoch: string; id: string } | undefined;
@@ -43,18 +42,11 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
     const previous = current;
     current = { ...next };
     // The official hook depends on image URL, not playback pause or view
-    // revision. Completed colors can survive a voice change; pending work must
-    // still be superseded because native receipts bind its original voice.
-    if (
-      previous?.epoch === next.epoch &&
-      previous.coverKey === next.coverKey &&
-      requested &&
-      (previous.voiceId === next.voiceId || settled)
-    )
-      return;
+    // revision. Native admission validates the starting voice; the in-flight
+    // artwork and receipt remain valid for the same current account and URL.
+    if (previous?.epoch === next.epoch && previous.coverKey === next.coverKey && requested) return;
     const serial = ++generation;
     requested = false;
-    settled = false;
     abort?.abort();
     cancelReceipt();
     if (previous?.epoch !== next.epoch) background.value = { kind: 'theme_fallback' };
@@ -73,12 +65,12 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
         pixelRatio,
       );
       if (!live() || read.epoch !== next.epoch) {
+        if (live()) requested = false;
         if (read.value.kind === 'sample')
           void core.sceneFmPaletteCancel(next.epoch, read.value.receipt).catch(() => {});
         return;
       }
       if (read.value.kind === 'ready') {
-        settled = true;
         background.value = read.value.background;
         return;
       }
@@ -93,17 +85,19 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
         pixels.height,
         pixels.rgba,
       );
-      if (!live() || sampled.epoch !== next.epoch) return;
+      if (!live() || sampled.epoch !== next.epoch) {
+        if (live()) requested = false;
+        return;
+      }
       receipt = undefined; // A successful native completion consumes the receipt.
-      settled = true;
       background.value = sampled.value.background;
     } catch (cause) {
       if (live()) {
         // M54 catches ordinary metadata/image failures and resolves its default
         // color. Native account/source cancellation is not a completed color:
         // a fresh authoritative scope must still be able to request it.
-        settled = !['stale', 'profile_changed', 'session_expired'].includes(failure(cause).code);
-        if (!settled) requested = false;
+        if (['stale', 'profile_changed', 'session_expired'].includes(failure(cause).code))
+          requested = false;
         background.value = { kind: 'theme_fallback' };
       }
     } finally {
@@ -116,7 +110,6 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
   }
   function dispose() {
     disposed = true;
-    settled = false;
     generation++;
     abort?.abort();
     abort = undefined;
