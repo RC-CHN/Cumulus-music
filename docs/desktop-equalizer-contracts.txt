@@ -115,6 +115,8 @@ Cumulus 对已确认、非内置的当前曲线提供显式保存。save_custom_
 曲线 CAS，并正常开启均衡器。旧记录没有此可选字段时照常读取；未新增远端调用。
 
 低音与高音增强
+官方普通在线歌曲经旧 MAudioPlayer 设备链的节点证据和当前滤镜边界，见
+`core-effects-online-tone-boundary.txt`。该原生节点对照不代表正式在线路径已替换。
 Equalizer.tsx:256–286、429–484 与恢复 M3091 的 bt 参数桥显示两个 ±10 dB 整数
 滑杆；cloudmusic EF8CA0 仅读取 bass/treble 两个增益。neaudioeffects 1AA50 处理顺序
 是响度、十段 GEQ、BT，见 core-effects-material-routing.txt。使用已恢复的 120Hz/5kHz
