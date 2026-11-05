@@ -1,12 +1,13 @@
-//! Native-only held-FLAC adapter. This is a qualified subgraph, not SDK/UI
-//! activation. libFLAC and the held descriptor stay on one bounded worker.
+//! Native-only held-FLAC adapter for the complete fixed local equalizer scope.
+//! No general SDK/UI activation. One worker retains libFLAC and the descriptor.
+mod graph;
 use super::{Api, Decoder, FLAC_BLOCK, Generation, MAX_COMPRESSED, RATE};
 use crate::{
     Error, Result,
     download::offline::ColdOfflineFlacReader,
     effects::{
         dsp::{Format, PlanarBlock},
-        stereo::{LocalStereoMaterialPlan, LocalStereoSubgraph},
+        stereo::LocalStereoMaterialPlan,
     },
     playback::engine::{
         Cancellation, StereoPcmControl, StereoPcmReader,
@@ -14,6 +15,7 @@ use crate::{
         stereo_pcm::{Shared, channel},
     },
 };
+use graph::SourceGraph;
 use std::{
     collections::VecDeque,
     io::{self, Read, Seek, SeekFrom},
@@ -45,7 +47,7 @@ pub enum ColdStereoStart {
 pub struct ColdStereoSource {
     reader: ColdOfflineFlacReader,
     api: Api,
-    graph: LocalStereoSubgraph,
+    graph: SourceGraph,
     total: u64,
 }
 
@@ -100,14 +102,13 @@ impl ColdStereoSource {
             authority.validate()?;
             return Ok(ColdStereoSelection::Stock(reader));
         };
-        let graph =
-            match LocalStereoSubgraph::new(Format::new(RATE as f32, 2, QUANTUM as u32)?, plan) {
-                Ok(graph) => graph,
-                Err(_) => {
-                    authority.validate()?;
-                    return Ok(ColdStereoSelection::Stock(reader));
-                }
-            };
+        let graph = match SourceGraph::new(Format::new(RATE as f32, 2, QUANTUM as u32)?, plan) {
+            Ok(graph) => graph,
+            Err(_) => {
+                authority.validate()?;
+                return Ok(ColdStereoSelection::Stock(reader));
+            }
+        };
         Ok(ColdStereoSelection::Qualified(Box::new(Self {
             reader,
             api,
@@ -296,7 +297,7 @@ fn run(
         let _ = ready.send(false);
         return Err(Error::Media("stereo decoder seek preparation failed"));
     }
-    source.graph.reset()?;
+    source.graph.prepare(first)?;
     shared.check()?;
     if ready.send(true).is_err() {
         return Err(Error::Cancelled);
@@ -317,8 +318,8 @@ fn shared_authority(shared: &Arc<Shared>) -> Cancellation {
     shared.authority_clone()
 }
 
-pub(super) fn pump(
-    graph: &mut LocalStereoSubgraph,
+fn pump(
+    graph: &mut SourceGraph,
     first: u64,
     total: u64,
     shared: &Shared,
@@ -335,7 +336,7 @@ pub(super) fn pump(
     let mut first_end = true;
     let mut zero_steps = 0;
     loop {
-        shared.wait_for_credit(graph)?;
+        shared.wait_for_credit(|plan| graph.configure(plan))?;
         while input.len() < QUANTUM * 2 && !source_end {
             shared.check()?;
             let packet = next()?.ok_or(Error::Media("stereo decoder omitted verified EOF"))?;
@@ -414,8 +415,8 @@ mod tests {
         let producer = shared.clone();
         let worker = thread::spawn(move || {
             let mut graph =
-                LocalStereoSubgraph::new(Format::new(RATE as f32, 2, 2048).unwrap(), plan(3))
-                    .unwrap();
+                SourceGraph::new(Format::new(RATE as f32, 2, 2048).unwrap(), plan(3)).unwrap();
+            graph.prepare(first).unwrap();
             let mut cursor = first;
             let mut ended = false;
             pump(&mut graph, first, total, &producer, || {

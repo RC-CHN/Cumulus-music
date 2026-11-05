@@ -144,7 +144,9 @@ class StereoPcmContract(unittest.TestCase):
 
     def proof(self):
         return {
-            'ok': True, 'kind': 'stereo_pcm_native_v1', 'subgraph': 'SE1->defaultB0',
+            'ok': True, 'kind': 'stereo_pcm_fixed_local_native_v2',
+            'graphScope': 'complete_fixed_local_equalizer', 'fixedLocalMaterial': True,
+            'generalSdkGraph': False, 'settingWriteApplyOrderVerified': False,
             'productionDesktopStartup': True, 'numericLocaleCompatible': True, 'guiInitialized': True,
             'actualDecoder': True, 'unknownLength': True, 'strictNcm': True,
             'syntheticDownloadPublished': True, 'syntheticMediaTransfers': 1,
@@ -189,10 +191,17 @@ class StereoPcmContract(unittest.TestCase):
             with self.subTest(key=key):
                 self.rejected(lambda p: p.update({key: False}))
 
-    def test_subgraph_cannot_be_claimed_as_whole_material_ui_or_physical_audio(self):
-        for key in ['fullSdkGraph', 'wholeMaterial', 'officialUiTested', 'physicalAudioOutputVerified']:
+    def test_fixed_scope_cannot_claim_arbitrary_sdk_setting_workflow_ui_or_physical_audio(self):
+        for key in ['fullSdkGraph', 'wholeMaterial', 'generalSdkGraph', 'settingWriteApplyOrderVerified',
+                    'officialUiTested', 'physicalAudioOutputVerified']:
             with self.subTest(key=key):
                 self.rejected(lambda p: p.update({key: True}))
+
+    def test_old_two_node_report_or_missing_fixed_material_claim_is_not_upgraded(self):
+        self.rejected(lambda p: p.update(kind='stereo_pcm_native_v1'))
+        self.rejected(lambda p: p.update(subgraph='SE1->defaultB0'))
+        self.rejected(lambda p: p.update(graphScope='SE1->defaultB0'))
+        self.rejected(lambda p: p.update(fixedLocalMaterial=False))
 
     def test_stale_entry_unapplied_control_and_unbounded_render_lead_fail(self):
         self.rejected(lambda p: p['live'].update(nativeEntry=12))

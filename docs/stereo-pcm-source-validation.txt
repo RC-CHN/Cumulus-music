@@ -1,6 +1,14 @@
 Paced SE1/B0 held-source validation — 2026-11-05
 ==============================================
 
+Historical source validation: SE1/B0, before complete fixed attachment
+--------------------------------------------------------------------
+This record remains tied to the exact sources and binaries below. The later
+ColdStereoSource switch to LocalFixedStereoMaterial is not covered by these
+passes. Its report v2 and pending attachment checks are documented in
+stereo-pcm-source-contracts.txt; this history must not be relabelled as a
+complete fixed material native/GUI run.
+
 Outcome and scope
 -----------------
 A real, explicitly opted-in native source now carries an authorized held

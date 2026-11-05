@@ -308,7 +308,9 @@ pub fn verify(
     drop(engine);
     stage("stereo_pcm_native_closed");
     Ok(json!({
-        "ok":true,"kind":"stereo_pcm_native_v1","subgraph":"SE1->defaultB0",
+        "ok":true,"kind":"stereo_pcm_fixed_local_native_v2",
+        "graphScope":"complete_fixed_local_equalizer","fixedLocalMaterial":true,
+        "generalSdkGraph":false,"settingWriteApplyOrderVerified":false,
         "fullSdkGraph":false,"wholeMaterial":false,"officialUiTested":false,"physicalAudioOutputVerified":false,
         "nativeRuntime":native_runtime,"guiInitialized":false,"actualDecoder":true,"unknownLength":true,"strictNcm":true,
         "syntheticDownloadPublished":true,"syntheticMediaTransfers":publication["mediaTransfers"],

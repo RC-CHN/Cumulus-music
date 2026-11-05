@@ -1,9 +1,7 @@
 use super::StereoPcmReader;
 use crate::{
-    Error, Result,
-    download::offline::ColdOfflineFlacAuthority,
-    effects::stereo::{LocalStereoMaterialPlan, LocalStereoSubgraph},
-    playback::engine::Cancellation,
+    Error, Result, download::offline::ColdOfflineFlacAuthority,
+    effects::stereo::LocalStereoMaterialPlan, playback::engine::Cancellation,
 };
 use std::{
     collections::VecDeque,
@@ -157,7 +155,10 @@ impl Shared {
 
     /// Apply every accepted control in order, even while no audio credit is
     /// available. No graph mutation happens on libmpv's callback/actor thread.
-    pub(crate) fn wait_for_credit(&self, graph: &mut LocalStereoSubgraph) -> Result<()> {
+    pub(crate) fn wait_for_credit(
+        &self,
+        mut configure: impl FnMut(LocalStereoMaterialPlan) -> Result<()>,
+    ) -> Result<()> {
         loop {
             self.check()?;
             let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
@@ -166,7 +167,7 @@ impl Shared {
             }
             if let Some((revision, plan)) = state.controls.pop_front() {
                 drop(state);
-                graph.configure(plan)?;
+                configure(plan)?;
                 let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
                 state.applied = revision;
                 self.wake.notify_all();

@@ -102,15 +102,17 @@ STEREO_PCM_STAGES = [
 
 
 def verify_stereo_pcm(proof):
-    assert proof['kind'] == 'stereo_pcm_native_v1' and proof['subgraph'] == 'SE1->defaultB0'
+    assert proof['kind'] == 'stereo_pcm_fixed_local_native_v2'
+    assert proof['graphScope'] == 'complete_fixed_local_equalizer' and 'subgraph' not in proof
     assert all(proof[key] is True for key in [
         'ok', 'productionDesktopStartup', 'numericLocaleCompatible', 'guiInitialized',
-        'actualDecoder', 'unknownLength', 'strictNcm', 'syntheticDownloadPublished',
+        'actualDecoder', 'unknownLength', 'strictNcm', 'syntheticDownloadPublished', 'fixedLocalMaterial',
         'workerJoinedBeforeSeek', 'sourcePathReplaced', 'reopenRejected',
         'actualNativeEof', 'revokedReclaimDenied',
     ])
     assert all(proof[key] is False for key in [
-        'fullSdkGraph', 'wholeMaterial', 'officialUiTested', 'physicalAudioOutputVerified',
+        'fullSdkGraph', 'wholeMaterial', 'generalSdkGraph', 'settingWriteApplyOrderVerified',
+        'officialUiTested', 'physicalAudioOutputVerified',
     ])
     assert proof['realMusicRequests'] == proof['coldHttpAttempts'] == 0
     assert proof['syntheticMediaTransfers'] == 1
@@ -161,7 +163,7 @@ def main():
     mode.add_argument('--stereo-native-library', type=Path,
                       help='verify dynamic stereo ABI and actual decoder format, without attachment')
     mode.add_argument('--stereo-pcm-flac-library', type=Path,
-                      help='verify sealed cold NCM/FLAC paced SE1/B0 through unknown-size PCM after GUI initialization')
+                      help='verify sealed cold NCM/FLAC complete fixed local equalizer scope through unknown-size PCM after GUI initialization')
     args = parser.parse_args()
     if args.mpv_library and not args.stereo_pcm_flac_library:
         parser.error('--mpv-library requires --stereo-pcm-flac-library')
@@ -210,7 +212,9 @@ def main():
             assert os.path.samefile(runtime['libmpvModule'], args.mpv_library)
         print(json.dumps({'ok': True, 'desktopPacedStereoPcm': True,
                           'outputFrames': proof['eof']['producedFrames'],
-                          'wholeMaterial': False, 'physicalAudioOutputVerified': False}))
+                          'graphScope': 'complete_fixed_local_equalizer', 'fixedLocalMaterial': True,
+                          'generalSdkGraph': False, 'officialUiTested': False,
+                          'physicalAudioOutputVerified': False}))
         return
     if args.bound_peq_library:
         assert proof['boundParametric'] and proof['actualDecoder']

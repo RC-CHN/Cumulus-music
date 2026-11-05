@@ -202,7 +202,7 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
     );
     assert_eq!(fixture.service.0.load(Ordering::Acquire), 1);
     eprintln!(
-        "cold NCM-FLAC same held descriptor -> paced SE1/default-B0 -> unknown-size raw native sink: actual first clock {before_seek}, in-place control revisions {revision}/{live_revision}, stop/close/join before seek {first}, {} real EOF frames including tail; buffered revoke stopped native entry; no GUI/physical-output claim",
+        "cold NCM-FLAC same held descriptor -> paced complete fixed local equalizer scope -> unknown-size raw native sink: actual first clock {before_seek}, in-place control revisions {revision}/{live_revision}, stop/close/join before seek {first}, {} real EOF frames including tail; buffered revoke stopped native entry; no GUI/physical-output claim",
         complete.produced_frames
     );
 }

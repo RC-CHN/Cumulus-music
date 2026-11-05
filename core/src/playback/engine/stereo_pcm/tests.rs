@@ -3,7 +3,7 @@ use crate::{
     Error,
     effects::{
         dsp::Format,
-        stereo::{LocalStereoMaterialPlan, LocalStereoSubgraph},
+        stereo::{LocalFixedStereoMaterial, LocalStereoMaterialPlan, LocalStereoSubgraph},
     },
     playback::engine::Cancellation,
 };
@@ -25,8 +25,8 @@ fn paused_credit_applies_controls_but_decoder_and_reader_counts_cannot_advance_n
     let worker_shared = shared.clone();
     let worker = thread::spawn(move || {
         let mut graph =
-            LocalStereoSubgraph::new(Format::new(44100.0, 2, 2048).unwrap(), plan(3)).unwrap();
-        let result = worker_shared.wait_for_credit(&mut graph);
+            LocalFixedStereoMaterial::new(Format::new(44100.0, 2, 2048).unwrap(), plan(3)).unwrap();
+        let result = worker_shared.wait_for_credit(|plan| graph.configure(plan));
         stop.send(result).unwrap();
     });
     // The applied revision is a deterministic acknowledgement that the worker
@@ -127,7 +127,7 @@ fn first_native_sync_can_fill_two_real_packets_without_forging_a_clock_or_loosen
         let mut output = [0.0; 4096];
         let mut decoded = 0;
         loop {
-            match worker_shared.wait_for_credit(&mut graph) {
+            match worker_shared.wait_for_credit(|plan| graph.configure(plan)) {
                 Err(Error::Cancelled) => break,
                 result => result.unwrap(),
             }
