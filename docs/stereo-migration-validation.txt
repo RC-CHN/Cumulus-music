@@ -1,0 +1,80 @@
+官方 SE 固定 bank1 迁移与桌面边界验证（2026-11-05）
+
+范围与来源
+----------
+优先使用官方 3.1.42 解包逻辑。Rust 负责材料校验、参数、状态、缓冲、所有权和宿主；
+恢复 C 内核通过有界安全 FFI 复用。不加载原官方 DLL，不调用 Python 业务进程。
+本批新增的是 Environment bank1、完整 SE bank1 组件、动态库宿主边界、以及严格受限的
+SE1→默认 B0 子图。没有把整个 neaudioeffects SDK、一般材料、在线音源或音效 UI 标成通过。
+来源和细节见 core-effects-ambience-one.txt、core-effects-stereo-one.txt、
+stereo-native-host-contracts.txt 和 local-stereo-subgraph-transport.txt。
+
+与官方对照
+----------
+- Environment 的 14 组合成输入、1764 块冻结原机器码结果覆盖初始化、处理、重置和尾音。
+- 完整 SE bank1 的 14 组、1764 块冻结结果覆盖父级预处理、双声道环境、参数和状态。
+  已有 SE0 对照仍单独回归；SE1 的零输入 EOF 语义不向 SE0 公共入口扩散。
+- 子图的 12 组覆盖 44.1/48/96kHz、512/2048 容量、连续和同实例重置；
+  1032 次 B0 调用、796718 输出帧逐块哈希对照。SE 实际调用 1044 次，984 次截至
+  各用例首个 EOF，其后零输入调用独立保留，不能混写成同一个数量。
+- 以上是合成 PCM 和独立子节点对照，不是执行完整 SDK 的证明。原 SDK 关闭节点的
+  首块也不能任意省略：正在恢复的原对象实验已观察到 GEQ、BT、RVB 首块有变化。
+  该发现用于保留边界，没有据此臆造完整总图或放开正式入口。
+
+本批实际构建与检查
+------------------
+原生业务与宿主验证源为 f8b0e2a7a2eb087ddf91f3fd89e7831f19027e0a；其后
+7c4839b2 仅增加 CI 命令、报告归档测试和说明，不改变这些业务与探针二进制输入。
+固定 Rust/Cargo1.96.0 和锁文件，独立 target-main-integration，关闭增量和调试符号：
+- cargo fmt --all --check 通过。
+- 严格 workspace/all-targets/custom-protocol Clippy 通过，无忽略 warning。
+- 完整同范围 cargo test：390 个程序，2397 passed、0 failed、19 ignored。
+  忽略项目需要各自的原生运行前提，不能用此计数宣称这些项目执行过。
+- filter 动态库、正式 cumulus、native_audio_probe、ux_ui_probe 和两个独立 core CLI
+  均实际构建。源码、产物 SHA256 与日志保存在本地 build-final-provenance.json。
+- 前端业务未变，22 份资源与 phase58 已验证的产物逐字节相同；沿用该批固定
+  Node24.16.0、npm ci/format/904 项测试/类型检查/生产构建，不伪称本批重新执行。
+- 早期 GNU 交叉检查只覆盖其记录源码中的内核和部分宿主，不替代本批 Windows/MSVC。
+
+真实桌面初始化后的动态库验证
+----------------------------
+Linux 真实 Tauri/GTK/WebKit 窗口已创建，系统 locale 为 en_US.UTF-8，正常启动仅调整
+数字 locale 为 C。运行在独立无外网网络命名空间、Xvfb/X11、dbus 和新隔离 profile。
+native_smoke.py --stereo-native-library 实际通过：
+- 真 dlopen/versioned ABI 实例与独立 core SE1 逐有效采样 to_bits 比较。
+- 20 个源块含 1/3/7 帧短块、4 个参数修订、同实例重置和开关。
+- 显式零输入 EOF 排空 24 块、48000 帧真实非零尾音，不补造输入帧。
+- 16424 源帧、64424 输出帧；实例、修订、重置、撤销、静音和新实例重开计数均核对。
+- 真 libmpv/null 输出分别读取 48kHz 单声道和双声道 WAV，实际时钟前进，NODE
+  解码元数据保留 1/2 声道。单声道拒绝、双声道接纳，旧 entry 和 stopped entry 拒绝。
+  资格实例没有处理 PCM；这条解码流与上述动态库 PCM 对照是两条明确独立的检查。
+报告明确 productionStereoAttachment=false、wholeMaterialVerified=false、
+physicalAudioOutputVerified=false。这不是音效已附着该解码器、正式 UI 或实际声卡的证明。
+
+CI 失败场景与实际 WebView 复核
+----------------------------
+- HotExplain：封闭合成夹具原先未进入 legacy_layout 外层门，丢失已设定的搜索展示
+  实验值；修正夹具分派，没有放宽产品权限。专区和返回共 2 个状态实际通过。
+- 黑胶：探针现在等待前端播放器、唯一当前 daily 页面、非 inert、可用按钮、全祖先
+  可见且 opacity=1、真实命中点、两帧后同一行，再且仅再发一次双击；保留最近有界
+  就绪观测和失败时页面信息。Linux 7 态、两个真实进程及持久化重开通过，实际
+  原生暂停、同 play/queue/position 与焦点检查保留。本批 9 张截图均逐张查看。
+  旧 f872 与 c451 Windows 失败都在首次普通起播、idle 空队列。两次都不含新探针，
+  不足以确定根因或声称 Windows 已修复；新 CI 必须验证这条分支。
+- PipeWire：官方 pw-dump 可在同次非 monitor 输出中出现独立删除通知数组。一个
+  graph 加严格单 id 删除通知视为竞态快照，回到既有有界重采样，不把旧 graph
+  当证明。多 graph、graph+空数组、畸形输入继续拒绝；单独空数组仍有效。
+  当前失败没有保存实际 stdout，不能倒推其具体排列；窄解析回归有独立测试。
+- CI 追加 Linux GTK 与 Windows/MSVC 的动态库边界命令，复用各 runner 同批打包
+  产物，不另建一次冒充。报告/失败/进度仅按固定名称归档，相似私有邻名继续排除。
+
+证据与未完成边界
+----------------
+本地证据根 .build/ui-proof/phase59-se-one（不提交）：Rust/构建日志、CLI 原始输入输出、
+GUI native 报告、HotExplain2态、黑胶7态、9张已查看截图以及两次远端失败的精确诊断。
+实际桌面运行未接真实账号，没有真实业务请求或账号写入；合成 EAPI 是隔离夹具。
+后续仍需完整 SDK 的初始化/首块/关闭兄弟节点、源/解码/未知长度尾音的真实原生播放
+接入与恢复、正式 actor/滑块/UI、其他材料和平台验证。实时双账号一起听仍暂排除。
+客服、官方反馈/日志上传、通用官方 H5 宿主和官方更新安装按用户范围不迁移；微信/QQ
+仍需成功回调及凭据隔离证据，不能用猜测参数或固定 token 开放生产登录入口。
+完整目标继续，不因这批通过而完成目标，不创建发布标记、标签或版本。

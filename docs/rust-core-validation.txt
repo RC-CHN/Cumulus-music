@@ -1,6 +1,11 @@
 Rust core 迁移验证记录
 2026-10-26；本记录不代替完整目标验收。
 
+2026-11-05 更新：官方 SE 固定 bank1 / 动态宿主 / 受限子图整合完整检查为
+390个程序、2397 passed、0 failed、19 ignored；严格workspace Clippy和格式通过。
+真实GTK初始化后的动态库/48000帧尾音/实际解码声道，以及9态WebView实测已完成，
+源码与平台边界见 stereo-migration-validation.txt；整图与正式音效接入继续。
+
 最新累计结果（音效授权登记、停止与回收检查批次）
 Rust590项（core587/desktop3），80条suite、77条非空，0失败/忽略；
 .build/effects-authorization-workspace-tests2.log。新增14项含直接执行官方M/28 U/G/Z的
