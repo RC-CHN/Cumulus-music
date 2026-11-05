@@ -1,7 +1,9 @@
 use super::StereoPcmReader;
 use crate::{
-    Error, Result, download::offline::ColdOfflineFlacAuthority,
-    effects::stereo::LocalStereoMaterialPlan, playback::engine::Cancellation,
+    Error, Result,
+    download::offline::ColdOfflineFlacAuthority,
+    effects::stereo::{LocalEqualizerMaterialPlan, LocalStereoMaterialPlan},
+    playback::engine::Cancellation,
 };
 use std::{
     collections::VecDeque,
@@ -15,6 +17,13 @@ use std::{
 pub(super) const QUANTUM: usize = 2048;
 const WAIT: Duration = Duration::from_millis(20);
 const MAX_CONTROLS: usize = 32;
+
+#[derive(Clone, Copy)]
+pub(crate) enum StereoGraphControl {
+    Cold(LocalStereoMaterialPlan),
+    ApplyLocal(LocalEqualizerMaterialPlan),
+    DisableLocalMaster,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StereoPcmSnapshot {
@@ -50,7 +59,7 @@ pub(super) struct State {
     seeking: bool,
     pub(super) end: bool,
     pub(super) failed: bool,
-    controls: VecDeque<(u64, LocalStereoMaterialPlan)>,
+    controls: VecDeque<(u64, StereoGraphControl)>,
     requested: u64,
     applied: u64,
 }
@@ -64,6 +73,7 @@ pub(crate) struct Shared {
     sink_retired: AtomicBool,
     pub(super) authority: Cancellation,
     host_authority: Option<ColdOfflineFlacAuthority>,
+    local_controls: bool,
     rate: u32,
     first: u64,
     end: u64,
@@ -81,6 +91,26 @@ pub(crate) fn channel(
     end: u64,
     authority: Cancellation,
     host_authority: Option<ColdOfflineFlacAuthority>,
+) -> Result<(StereoPcmReader, StereoPcmControl, Arc<Shared>)> {
+    channel_with_controls(rate, first, end, authority, host_authority, false)
+}
+
+pub(crate) fn native_channel(
+    rate: u32,
+    first: u64,
+    end: u64,
+    authority: Cancellation,
+) -> Result<(StereoPcmReader, StereoPcmControl, Arc<Shared>)> {
+    channel_with_controls(rate, first, end, authority, None, true)
+}
+
+fn channel_with_controls(
+    rate: u32,
+    first: u64,
+    end: u64,
+    authority: Cancellation,
+    host_authority: Option<ColdOfflineFlacAuthority>,
+    local_controls: bool,
 ) -> Result<(StereoPcmReader, StereoPcmControl, Arc<Shared>)> {
     authority.check()?;
     if !(8000..=384000).contains(&rate) || first >= end {
@@ -121,6 +151,7 @@ pub(crate) fn channel(
         sink_retired: AtomicBool::new(true),
         authority,
         host_authority,
+        local_controls,
         rate,
         first,
         end,
@@ -157,7 +188,7 @@ impl Shared {
     /// available. No graph mutation happens on libmpv's callback/actor thread.
     pub(crate) fn wait_for_credit(
         &self,
-        mut configure: impl FnMut(LocalStereoMaterialPlan) -> Result<()>,
+        mut configure: impl FnMut(StereoGraphControl) -> Result<()>,
     ) -> Result<()> {
         loop {
             self.check()?;
@@ -167,8 +198,10 @@ impl Shared {
             }
             if let Some((revision, plan)) = state.controls.pop_front() {
                 drop(state);
+                self.check()?;
                 configure(plan)?;
                 let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
+                self.check()?;
                 state.applied = revision;
                 self.wake.notify_all();
                 continue;
@@ -245,8 +278,18 @@ impl StereoPcmControl {
     /// Accepted revision, not a claim of audible application. The worker's
     /// applied_revision acknowledges the real same-instance configuration.
     pub fn configure(&self, plan: LocalStereoMaterialPlan) -> Result<u64> {
+        self.queue_graph_control(StereoGraphControl::Cold(plan))
+    }
+
+    pub(crate) fn queue_graph_control(&self, control: StereoGraphControl) -> Result<u64> {
         self.0.check()?;
+        if self.0.local_controls == matches!(control, StereoGraphControl::Cold(_)) {
+            return Err(Error::InvalidInput(
+                "control belongs to another stereo graph",
+            ));
+        }
         let mut state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
+        self.0.check()?;
         if state.failed || state.end || state.controls.len() == MAX_CONTROLS {
             return Err(Error::State("stereo controls unavailable"));
         }
@@ -254,7 +297,7 @@ impl StereoPcmControl {
             .requested
             .checked_add(1)
             .ok_or(Error::State("stereo control revision exhausted"))?;
-        state.controls.push_back((revision, plan));
+        state.controls.push_back((revision, control));
         state.requested = revision;
         self.0.wake.notify_all();
         Ok(revision)

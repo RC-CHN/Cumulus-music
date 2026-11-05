@@ -16,6 +16,9 @@ pub use frames::{VideoFrame, VideoFrames};
 pub use limiter_segment::ColdLimiterWave;
 pub(crate) use limiter_segment::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
 pub use limiter_segment::{ColdStereoPass, ColdStereoSelection, ColdStereoSource, ColdStereoStart};
+pub(crate) use limiter_segment::{
+    NativeStereoPass, NativeStereoSelection, NativeStereoSource, NativeStereoStart,
+};
 pub use mpv::{MpvConfig, MpvEngine};
 pub use output::{OutputDevice, OutputDevices};
 pub use runtime::MpvRuntime;

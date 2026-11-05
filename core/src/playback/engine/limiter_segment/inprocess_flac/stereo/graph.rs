@@ -1,38 +1,73 @@
 //! Single held-source graph lifetime. Preparing a decoder is not PCM use.
 use crate::{
-    Result,
+    Error, Result,
     effects::{
         dsp::{AmbienceOneResult, Format, PlanarBlock},
-        stereo::{LocalFixedStereoMaterial, LocalStereoMaterialPlan},
+        stereo::{
+            LocalEqualizerMaterialPlan, LocalEqualizerStereoMaterial, LocalFixedStereoMaterial,
+            LocalStereoMaterialPlan,
+        },
     },
+    playback::engine::stereo_pcm::StereoGraphControl,
 };
 
 pub(super) struct SourceGraph {
-    material: LocalFixedStereoMaterial,
+    material: Material,
     driven: bool,
+}
+enum Material {
+    Cold(LocalFixedStereoMaterial),
+    Local(LocalEqualizerStereoMaterial),
 }
 impl SourceGraph {
     pub fn new(format: Format, plan: LocalStereoMaterialPlan) -> Result<Self> {
         Ok(Self {
-            material: LocalFixedStereoMaterial::new(format, plan)?,
+            material: Material::Cold(LocalFixedStereoMaterial::new(format, plan)?),
+            driven: false,
+        })
+    }
+    pub fn new_local(format: Format, plan: LocalEqualizerMaterialPlan) -> Result<Self> {
+        Ok(Self {
+            material: Material::Local(LocalEqualizerStereoMaterial::new(format, plan)?),
             driven: false,
         })
     }
     pub fn format(&self) -> Format {
-        self.material.format()
+        match &self.material {
+            Material::Cold(graph) => graph.format(),
+            Material::Local(graph) => graph.format(),
+        }
     }
-    /// Fresh zero-start preserves every original cold off transition. A real
-    /// logical seek, including rewinding an already used source, calls1B960.
-    /// Failed/cancelled decoder setup before any PCM does not consume fresh.
+    /// Fresh zero-start preserves the graph's initial transition: cold keeps
+    /// its original off edges, ordinary Init has already reset then applied
+    /// the selected material. A real seek resets without reapplying settings.
     pub fn prepare(&mut self, first: u64) -> Result<()> {
         if self.driven || first != 0 {
-            self.material.reset()?;
+            match &mut self.material {
+                Material::Cold(graph) => graph.reset()?,
+                Material::Local(graph) => graph.reset()?,
+            }
             self.driven = true;
         }
         Ok(())
     }
+    #[cfg(test)]
     pub fn configure(&mut self, plan: LocalStereoMaterialPlan) -> Result<()> {
-        self.material.configure(plan)
+        self.apply(StereoGraphControl::Cold(plan))
+    }
+    pub fn apply(&mut self, control: StereoGraphControl) -> Result<()> {
+        match (&mut self.material, control) {
+            (Material::Cold(graph), StereoGraphControl::Cold(plan)) => graph.configure(plan),
+            (Material::Local(graph), StereoGraphControl::ApplyLocal(plan)) => {
+                graph.apply_material(plan)
+            }
+            (Material::Local(graph), StereoGraphControl::DisableLocalMaster) => {
+                graph.disable_master()
+            }
+            _ => Err(Error::InvalidInput(
+                "control belongs to another stereo graph",
+            )),
+        }
     }
     pub fn process(
         &mut self,
@@ -43,7 +78,10 @@ impl SourceGraph {
         // A failed invocation cannot be treated as an unused graph either;
         // the underlying material's numerical quarantine remains authoritative.
         self.driven = true;
-        self.material.process(pcm, frames, end)
+        match &mut self.material {
+            Material::Cold(graph) => graph.process(pcm, frames, end),
+            Material::Local(graph) => graph.process(pcm, frames, end),
+        }
     }
 }
 

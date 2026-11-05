@@ -294,3 +294,37 @@ the old desktop seed still returns the unchanged public summary. The corrected
 attempt passed all11 stages after real GTK initialization. The same core CLI
 also passed without a display. No production authorization or file gate was
 changed to make either test pass; exact results are in the validation record.
+
+Separate ordinary native-file held-source seam
+----------------------------------------------
+NativeStereoSource accepts only the sole File already returned by the native
+path/fingerprint check, a callback-safe caller Cancellation for that source
+lifetime, the trusted host libFLAC path, and a LocalEqualizerMaterialPlan.
+It does not accept paths for media, acquire cold rights, inspect a UID or
+reopen anything. It shares the fixed STREAMINFO, libFLAC callback, paced PCM,
+seek and retirement bounds above. Its separate NativeStereoFile stock result
+rewinds and moves the same original descriptor with its current lifetime.
+A lifetime observed revoked stays denied. Source authority is distinct from
+the per-attempt preparation fence and from canceling an individual pass.
+
+The ordinary source graph uses LocalEqualizerStereoMaterial, with constructor
+node reset then full material apply (core-effects-local-equalizer.txt). An
+unused frame-zero preparation preserves the new enabled edges; it does not
+invoke Reset a second time after apply. An actual first nonzero or subsequent
+logical seek resets the same graph rather than reapplying settings. Full apply
+and master off are separate worker commands with checked revisions. The old
+ColdStereoSource still takes its original plan and has its original fresh
+transition. A native pass cannot enqueue old cold configuration and a cold
+pass cannot enqueue native configuration. Revocation during worker apply does
+not publish an applied revision. Queue caps, native clock credit, packet/EOF
+flow, explicit sink retirement and worker join are shared; none is bypassed.
+
+Scoped tests cover same-descriptor stock fallback after pathname replacement,
+sticky source denial and lost worker ACK, and frozen original PCM through the
+new graph's initial, full-apply, master and seek-reset operations. Two explicit
+ignored `native_flac_` tests exercise real libFLAC 1.5.0 startup, exact sample
+seek, invalid metadata fallback, and buffered revocation with a synthetic
+sink owner. They are not an mpv, real WebView, actor, packaging, speaker or
+ordinary playback proof. Native setup/engine/actor attachment is a separate
+step. A timeout or ambiguous retirement cannot hand the descriptor to a
+second sink; after publication, error does not authorize an audible retry.

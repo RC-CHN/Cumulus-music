@@ -43,10 +43,11 @@ fn full() -> &'static Value {
     })
 }
 fn step(graph: &mut SourceGraph, row: &Value) {
+    step_using(graph, row, row["inputInterleavedBits"].as_array().unwrap());
+}
+fn step_using(graph: &mut SourceGraph, row: &Value, input: &[Value]) {
     let mut pcm = PlanarBlock::new(graph.format());
-    let values = row["inputInterleavedBits"]
-        .as_array()
-        .unwrap()
+    let values = input
         .iter()
         .map(|v| f32::from_bits(v.as_u64().unwrap() as u32))
         .collect::<Vec<_>>();
@@ -295,6 +296,56 @@ fn complete_eof_source_is_reused_for_another_original_tail_after_logical_seek() 
                     .unwrap();
             }
             step(&mut graph, row);
+        }
+    }
+}
+
+#[test]
+fn native_graph_preserves_original_initial_edges_and_same_owner_control_reset() {
+    let _ftz = Ftz::off();
+    let source = decode(include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/effects-local-equalizer-full-official.json.gz"
+    )));
+    let inputs = source["inputBlocks"].as_array().unwrap();
+    let cases = source["cases"].as_array().unwrap();
+    for name in [
+        "geq_only_hot_and_seek_reset",
+        "geq_bt_se1_master_off_reopen",
+    ] {
+        let case = cases.iter().find(|case| case["name"] == name).unwrap();
+        let plan =
+            LocalEqualizerMaterialPlan::from_equalizer_json(&case["initialMaterial"]).unwrap();
+        let mut graph =
+            SourceGraph::new_local(Format::new(44100.0, 2, 2048).unwrap(), plan).unwrap();
+        // Constructor already reset then applied. Decoder preparation alone
+        // must not settle the new dry-to-wet wrappers or invoke a fake block.
+        graph.prepare(0).unwrap();
+        graph.prepare(0).unwrap();
+        assert!(!graph.driven);
+        for row in case["blocks"].as_array().unwrap() {
+            let action = &row["actionBefore"];
+            match action["kind"].as_str() {
+                None => assert!(action.is_null()),
+                Some("full_apply") => graph
+                    .apply(StereoGraphControl::ApplyLocal(
+                        LocalEqualizerMaterialPlan::from_equalizer_json(&action["material"])
+                            .unwrap(),
+                    ))
+                    .unwrap(),
+                Some("master_off") => graph.apply(StereoGraphControl::DisableLocalMaster).unwrap(),
+                Some("seek_reset") => graph
+                    .prepare(row["sourceFirstFrame"].as_u64().unwrap())
+                    .unwrap(),
+                Some(other) => panic!("unexpected original action: {other}"),
+            }
+            step_using(
+                &mut graph,
+                row,
+                inputs[row["inputBlock"].as_u64().unwrap() as usize]
+                    .as_array()
+                    .unwrap(),
+            );
         }
     }
 }

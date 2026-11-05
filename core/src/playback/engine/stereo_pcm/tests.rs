@@ -26,7 +26,10 @@ fn paused_credit_applies_controls_but_decoder_and_reader_counts_cannot_advance_n
     let worker = thread::spawn(move || {
         let mut graph =
             LocalFixedStereoMaterial::new(Format::new(44100.0, 2, 2048).unwrap(), plan(3)).unwrap();
-        let result = worker_shared.wait_for_credit(|plan| graph.configure(plan));
+        let result = worker_shared.wait_for_credit(|control| match control {
+            StereoGraphControl::Cold(plan) => graph.configure(plan),
+            _ => panic!("unexpected ordinary graph control"),
+        });
         stop.send(result).unwrap();
     });
     // The applied revision is a deterministic acknowledgement that the worker
@@ -127,7 +130,10 @@ fn first_native_sync_can_fill_two_real_packets_without_forging_a_clock_or_loosen
         let mut output = [0.0; 4096];
         let mut decoded = 0;
         loop {
-            match worker_shared.wait_for_credit(|plan| graph.configure(plan)) {
+            match worker_shared.wait_for_credit(|control| match control {
+                StereoGraphControl::Cold(plan) => graph.configure(plan),
+                _ => panic!("unexpected ordinary graph control"),
+            }) {
                 Err(Error::Cancelled) => break,
                 result => result.unwrap(),
             }
@@ -191,4 +197,38 @@ fn first_native_sync_can_fill_two_real_packets_without_forging_a_clock_or_loosen
     drop(reader);
     assert!(!control.snapshot().unwrap().native_sink_retired);
     control.retire_sink();
+}
+
+#[test]
+fn native_control_ack_cannot_escape_revocation_during_worker_apply() {
+    let lifetime = Cancellation::default();
+    let (_reader, control, shared) = native_channel(44100, 0, 10000, lifetime.clone()).unwrap();
+    control.bind_entry(42).unwrap();
+    assert!(control.configure(plan(3)).is_err());
+    assert_eq!(control.snapshot().unwrap().requested_revision, 0);
+    let revision = control
+        .queue_graph_control(StereoGraphControl::DisableLocalMaster)
+        .unwrap();
+    let (entered, start) = mpsc::sync_channel(1);
+    let (release, proceed) = mpsc::sync_channel(1);
+    let worker = thread::spawn(move || {
+        shared.wait_for_credit(|command| {
+            assert!(matches!(command, StereoGraphControl::DisableLocalMaster));
+            entered.send(()).unwrap();
+            proceed.recv_timeout(Duration::from_secs(2)).unwrap();
+            Ok(())
+        })
+    });
+    start.recv_timeout(Duration::from_secs(2)).unwrap();
+    lifetime.cancel();
+    release.send(()).unwrap();
+    assert!(matches!(worker.join().unwrap(), Err(Error::Cancelled)));
+    assert!(matches!(
+        control.wait_applied(revision, Duration::from_secs(2)),
+        Err(Error::Cancelled)
+    ));
+    let snapshot = control.snapshot().unwrap();
+    assert_eq!(snapshot.requested_revision, revision);
+    assert_eq!(snapshot.applied_revision, 0);
+    assert_eq!(snapshot.produced_frames, 0);
 }

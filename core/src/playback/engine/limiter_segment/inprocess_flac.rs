@@ -23,6 +23,9 @@ use abi::{Api, FrameHeader, Handle};
 pub use cold::ColdLimiterWave;
 pub(crate) use cold::{ColdLimiterConfig, ColdLimiterRender, ColdLimiterSource};
 pub use stereo::{ColdStereoPass, ColdStereoSelection, ColdStereoSource, ColdStereoStart};
+pub(crate) use stereo::{
+    NativeStereoPass, NativeStereoSelection, NativeStereoSource, NativeStereoStart,
+};
 
 const RATE: u32 = 44_100;
 const CHANNELS: usize = 2;

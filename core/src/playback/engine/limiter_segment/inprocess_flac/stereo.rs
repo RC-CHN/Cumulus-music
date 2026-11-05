@@ -1,10 +1,11 @@
 //! Native-only held-FLAC adapter for the complete fixed local equalizer scope.
 //! No general SDK/UI activation. One worker retains libFLAC and the descriptor.
 mod graph;
+mod native;
 use super::{Api, Decoder, FLAC_BLOCK, Generation, MAX_COMPRESSED, RATE};
 use crate::{
     Error, Result,
-    download::offline::ColdOfflineFlacReader,
+    download::offline::{ColdOfflineFlacAuthority, ColdOfflineFlacReader},
     effects::{
         dsp::{Format, PlanarBlock},
         stereo::LocalStereoMaterialPlan,
@@ -12,10 +13,13 @@ use crate::{
     playback::engine::{
         Cancellation, StereoPcmControl, StereoPcmReader,
         limiter_segment::{DecodedPacket, DecoderPayload},
-        stereo_pcm::{Shared, channel},
+        stereo_pcm::{Shared, channel, native_channel},
     },
 };
 use graph::SourceGraph;
+pub(crate) use native::{
+    NativeStereoPass, NativeStereoSelection, NativeStereoSource, NativeStereoStart,
+};
 use std::{
     collections::VecDeque,
     io::{self, Read, Seek, SeekFrom},
@@ -44,41 +48,123 @@ pub enum ColdStereoStart {
     Stock(Box<ColdStereoSource>),
 }
 
-pub struct ColdStereoSource {
-    reader: ColdOfflineFlacReader,
-    api: Api,
-    graph: SourceGraph,
-    total: u64,
-}
-
-pub struct ColdStereoPass {
-    reader: Option<StereoPcmReader>,
-    control: StereoPcmControl,
-    retired: Receiver<ColdStereoSource>,
-    worker: Option<JoinHandle<()>>,
-}
+pub struct ColdStereoSource(HeldSource<ColdOfflineFlacReader>);
+pub struct ColdStereoPass(HeldPass<ColdOfflineFlacReader>);
 
 impl ColdStereoSource {
     /// Native opt-in only. Inspect the actual authenticated STREAMINFO first;
     /// unknown/mono/other formats or absent trusted runtime preserve stock.
     /// No account cookies, fresh authorization URL, path reopen or child is used.
     pub fn select(
-        mut reader: ColdOfflineFlacReader,
+        reader: ColdOfflineFlacReader,
         library: &Path,
         plan: LocalStereoMaterialPlan,
     ) -> Result<ColdStereoSelection> {
-        let authority = reader.authority();
+        Ok(
+            match HeldSource::select(reader, library, |format| SourceGraph::new(format, plan))? {
+                Selection::Qualified(source) => {
+                    ColdStereoSelection::Qualified(Box::new(Self(*source)))
+                }
+                Selection::Stock(reader) => ColdStereoSelection::Stock(reader),
+            },
+        )
+    }
+
+    pub fn total_frames(&self) -> u64 {
+        self.0.total
+    }
+
+    pub fn into_reader(self) -> Result<ColdOfflineFlacReader> {
+        self.0.into_reader()
+    }
+
+    /// A replacement pass can only be made from a reclaimed source.
+    pub fn start(self, first: u64, cancel: &Cancellation) -> Result<ColdStereoStart> {
+        Ok(match self.0.start(first, cancel)? {
+            Start::Ready(pass) => ColdStereoStart::Ready(Box::new(ColdStereoPass(*pass))),
+            Start::Stock(source) => ColdStereoStart::Stock(Box::new(Self(*source))),
+        })
+    }
+}
+
+impl ColdStereoPass {
+    pub fn control(&self) -> StereoPcmControl {
+        self.0.control.clone()
+    }
+    pub fn take_reader(&mut self) -> Result<StereoPcmReader> {
+        self.0.take_reader()
+    }
+    pub fn reclaim(self) -> Result<ColdStereoSource> {
+        self.0.reclaim().map(ColdStereoSource)
+    }
+}
+
+// The cold grant and the native file lifetime are deliberately distinct;
+// sharing the decoder owner never transfers account/download authority.
+enum SourceAuthority {
+    Cold(ColdOfflineFlacAuthority),
+    Native(Cancellation),
+}
+impl SourceAuthority {
+    fn validate(&self) -> Result<()> {
+        match self {
+            Self::Cold(authority) => authority.validate(),
+            Self::Native(lifetime) => lifetime.check(),
+        }
+    }
+    fn lifetime(&self) -> Cancellation {
+        match self {
+            Self::Cold(authority) => authority.cancellation(),
+            Self::Native(lifetime) => lifetime.clone(),
+        }
+    }
+}
+trait HeldInput: Read + Seek + Send + 'static {
+    fn source_authority(&self) -> SourceAuthority;
+}
+impl HeldInput for ColdOfflineFlacReader {
+    fn source_authority(&self) -> SourceAuthority {
+        SourceAuthority::Cold(self.authority())
+    }
+}
+enum Selection<R> {
+    Qualified(Box<HeldSource<R>>),
+    Stock(R),
+}
+enum Start<R> {
+    Ready(Box<HeldPass<R>>),
+    Stock(Box<HeldSource<R>>),
+}
+struct HeldSource<R> {
+    reader: R,
+    api: Api,
+    graph: SourceGraph,
+    total: u64,
+}
+struct HeldPass<R> {
+    reader: Option<StereoPcmReader>,
+    control: StereoPcmControl,
+    retired: Receiver<HeldSource<R>>,
+    worker: Option<JoinHandle<()>>,
+}
+impl<R: HeldInput> HeldSource<R> {
+    fn select(
+        mut reader: R,
+        library: &Path,
+        graph: impl FnOnce(Format) -> Result<SourceGraph>,
+    ) -> Result<Selection<R>> {
+        let authority = reader.source_authority();
         authority.validate()?;
         let length = reader.seek(SeekFrom::End(0))?;
         reader.rewind()?;
         if !(42..=MAX_COMPRESSED).contains(&length) {
-            return Ok(ColdStereoSelection::Stock(reader));
+            return Ok(Selection::Stock(reader));
         }
         let mut header = [0; 42];
         reader.read_exact(&mut header)?;
         reader.rewind()?;
         if &header[..4] != b"fLaC" || header[4] & 127 != 0 || header[5..8] != [0, 0, 34] {
-            return Ok(ColdStereoSelection::Stock(reader));
+            return Ok(Selection::Stock(reader));
         }
         let min_block = u16::from_be_bytes([header[8], header[9]]);
         let max_block = u16::from_be_bytes([header[10], header[11]]);
@@ -96,20 +182,20 @@ impl ColdStereoSource {
             || bits != 16
             || !(1..=u64::from(RATE) * 3600).contains(&total)
         {
-            return Ok(ColdStereoSelection::Stock(reader));
+            return Ok(Selection::Stock(reader));
         }
         let Ok(api) = Api::open(library) else {
             authority.validate()?;
-            return Ok(ColdStereoSelection::Stock(reader));
+            return Ok(Selection::Stock(reader));
         };
-        let graph = match SourceGraph::new(Format::new(RATE as f32, 2, QUANTUM as u32)?, plan) {
+        let graph = match graph(Format::new(RATE as f32, 2, QUANTUM as u32)?) {
             Ok(graph) => graph,
             Err(_) => {
                 authority.validate()?;
-                return Ok(ColdStereoSelection::Stock(reader));
+                return Ok(Selection::Stock(reader));
             }
         };
-        Ok(ColdStereoSelection::Qualified(Box::new(Self {
+        Ok(Selection::Qualified(Box::new(Self {
             reader,
             api,
             graph,
@@ -117,12 +203,8 @@ impl ColdStereoSource {
         })))
     }
 
-    pub fn total_frames(&self) -> u64 {
-        self.total
-    }
-
-    pub fn into_reader(mut self) -> Result<ColdOfflineFlacReader> {
-        self.reader.authority().validate()?;
+    fn into_reader(mut self) -> Result<R> {
+        self.reader.source_authority().validate()?;
         self.reader.rewind()?;
         Ok(self.reader)
     }
@@ -130,14 +212,14 @@ impl ColdStereoSource {
     /// A replacement pass can only be made from a reclaimed source. Reclaim
     /// withholds ownership until the old native reader really closed and the
     /// old libFLAC worker exited. Same-graph reset retains the original gains.
-    pub fn start(self, first: u64, cancel: &Cancellation) -> Result<ColdStereoStart> {
-        self.reader.authority().validate()?;
+    fn start(self, first: u64, cancel: &Cancellation) -> Result<Start<R>> {
+        self.reader.source_authority().validate()?;
         cancel.check()?;
         if first >= self.total {
             return Err(Error::InvalidInput("stereo seek outside source"));
         }
-        let actual = self.reader.authority();
-        let source = actual.cancellation();
+        let actual = self.reader.source_authority();
+        let source = actual.lifetime();
         let request = cancel.clone();
         let preparing = Arc::new(AtomicBool::new(true));
         let in_prepare = preparing.clone();
@@ -148,13 +230,16 @@ impl ColdStereoSource {
             !source.is_cancelled()
                 && (!in_prepare.load(Ordering::Acquire) || !request.is_cancelled())
         });
-        let (reader, control, shared) = match channel(RATE, first, self.total, guard, Some(actual))
-        {
+        let pipe = match actual {
+            SourceAuthority::Cold(grant) => channel(RATE, first, self.total, guard, Some(grant)),
+            SourceAuthority::Native(_) => native_channel(RATE, first, self.total, guard),
+        };
+        let (reader, control, shared) = match pipe {
             Ok(pipe) => pipe,
             Err(_) => {
-                self.reader.authority().validate()?;
+                self.reader.source_authority().validate()?;
                 cancel.check()?;
-                return Ok(ColdStereoStart::Stock(Box::new(self)));
+                return Ok(Start::Stock(Box::new(self)));
             }
         };
         let (ready, status) = mpsc::sync_channel(1);
@@ -190,12 +275,12 @@ impl ColdStereoSource {
                     .ok_or(Error::State(
                         "stereo source ownership missing after failed spawn",
                     ))?;
-                source.reader.authority().validate()?;
+                source.reader.source_authority().validate()?;
                 cancel.check()?;
-                return Ok(ColdStereoStart::Stock(Box::new(source)));
+                return Ok(Start::Stock(Box::new(source)));
             }
         };
-        let pass = ColdStereoPass {
+        let pass = HeldPass {
             reader: Some(reader),
             control,
             retired,
@@ -206,30 +291,27 @@ impl ColdStereoSource {
                 pass.control.validate_host()?;
                 cancel.check()?;
                 preparing.store(false, Ordering::Release);
-                Ok(ColdStereoStart::Ready(Box::new(pass)))
+                Ok(Start::Ready(Box::new(pass)))
             }
             Ok(false) => {
                 let source = pass.reclaim()?;
-                source.reader.authority().validate()?;
+                source.reader.source_authority().validate()?;
                 cancel.check()?;
-                Ok(ColdStereoStart::Stock(Box::new(source)))
+                Ok(Start::Stock(Box::new(source)))
             }
             Err(_) => Err(Error::State("stereo decoder preparation timed out")),
         }
     }
 }
 
-impl ColdStereoPass {
-    pub fn control(&self) -> StereoPcmControl {
-        self.control.clone()
-    }
-    pub fn take_reader(&mut self) -> Result<StereoPcmReader> {
+impl<R: HeldInput> HeldPass<R> {
+    fn take_reader(&mut self) -> Result<StereoPcmReader> {
         self.control.validate_host()?;
         self.reader
             .take()
             .ok_or(Error::State("stereo reader was already published"))
     }
-    pub fn reclaim(mut self) -> Result<ColdStereoSource> {
+    fn reclaim(mut self) -> Result<HeldSource<R>> {
         // A reader still held here was never published to a sink.
         drop(self.reader.take());
         let state = self.control.snapshot()?;
@@ -253,11 +335,11 @@ impl ColdStereoPass {
         worker
             .join()
             .map_err(|_| Error::State("stereo worker panicked"))?;
-        source.reader.authority().validate()?;
+        source.reader.source_authority().validate()?;
         Ok(source)
     }
 }
-impl Drop for ColdStereoPass {
+impl<R> Drop for HeldPass<R> {
     fn drop(&mut self) {
         self.control.cancel();
         drop(self.reader.take());
@@ -269,8 +351,8 @@ impl Drop for ColdStereoPass {
     }
 }
 
-fn run(
-    source: &mut ColdStereoSource,
+fn run<R: HeldInput>(
+    source: &mut HeldSource<R>,
     first: u64,
     shared: &Arc<Shared>,
     ready: &mpsc::SyncSender<bool>,
@@ -312,7 +394,7 @@ fn run(
 }
 
 fn shared_authority(shared: &Arc<Shared>) -> Cancellation {
-    // The decoder's source already checks the actual cold grant. Its native
+    // The decoder's source already checks the actual source lifetime. Its
     // operation budget bounds work; the pipe gate is additionally checked
     // before each decoder step and publication below.
     shared.authority_clone()
@@ -336,7 +418,7 @@ fn pump(
     let mut first_end = true;
     let mut zero_steps = 0;
     loop {
-        shared.wait_for_credit(|plan| graph.configure(plan))?;
+        shared.wait_for_credit(|control| graph.apply(control))?;
         while input.len() < QUANTUM * 2 && !source_end {
             shared.check()?;
             let packet = next()?.ok_or(Error::Media("stereo decoder omitted verified EOF"))?;
