@@ -9,10 +9,11 @@ controls into the recovered M3091 local material graph. See
 core-effects-local-equalizer.txt for the original reset, enable, bypass and
 B0 processing order. These original proof cases leave SE and RVB off. The
 additional source-bound SE controls are specified in that contract; the
-original proof cases below are unchanged. The decoder
-must be a verified packaged libFLAC 1.5.0; only the supported 44.1 kHz stereo
-FLAC geometry with a full independent source timeline qualifies. An absent
-or mismatched packaged decoder keeps the ordinary stock decoder.
+original proof cases below use 44.1 kHz. The held ordinary FLAC path requires
+verified packaged libFLAC 1.5.0 and supported 44.1/48 kHz stereo geometry with
+a full independent source timeline. An absent or mismatched packaged decoder
+keeps the ordinary stock decoder. The separate cold FLAC authority stays
+44.1 kHz only.
 
 The checked audio handle remains owned by one source. Before the first
 unpause, a recoverable optional preparation failure can return that same
@@ -228,8 +229,9 @@ Neither test installs a file association or measures a physical device.
 Windows WebView2 uses the same synthetic spatial scenario with the packaged
 mpv runtime; an actual run on the exact commit is required for a Windows claim.
 
-With 48 kHz support, the Linux warm-open probe uses 96 kHz for its out-of-scope
-case. It must still reject the file and leave the preceding queue intact.
+With 48 kHz support, the Linux warm-open probe accepts a 48 kHz file and checks
+the original window, persisted source rate and private monitor PCM. It uses
+96 kHz for the out-of-scope case, which must leave the preceding queue intact.
 
 The same runner has separate `--spatial-wav-48k-only` and
 `--spatial-flac-48k-only` cases. For FLAC pass `--flac-library` and its

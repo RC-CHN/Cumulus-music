@@ -93,7 +93,7 @@ def main():
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
                         '-i', 'sine=frequency=10000:sample_rate=48000:duration=45', str(second)],
                        check=True, timeout=20)
-        for path, rate in [(pcm_wave, 44100), (unsupported_wave, 96000)]:
+        for path, rate in [(pcm_wave, 48000), (unsupported_wave, 96000)]:
             subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
                             '-i', f'sine=frequency=440:sample_rate={rate}:duration=15',
                             '-ac', '2', '-c:a', 'pcm_s16le', str(path)], check=True, timeout=20)
@@ -164,6 +164,8 @@ def main():
                 assert result.returncode == 0, result.returncode
                 wave_after = wait_for('warm PCM WAV is actually playing', lambda: selected(pcm_wave, .6))
                 assert wave_after['queue']['current'] != after['queue']['current']
+                wave_entry, = wave_after['queue']['items']
+                assert wave_entry['resource']['metadata']['sample_rate'] == 48000
                 wait_for('same window is still focused', lambda: active(app) == window)
                 assert list(windows().values()) == [app.pid]
                 wait_for('held WAV is linked to the private monitor', lambda: private_pipewire_stream(app.pid, env))
@@ -180,7 +182,8 @@ def main():
                   invalidWarmSelectionPreservedExistingQueue=True, invalidFirstFileSkipped=True,
                   originalWindowRevealed=True, originalProcessOnly=True, onlyOnePlayingQueue=True,
                   ordinaryDuplicateDenied=True, beforePcm=old_tone, afterPcm=new_tone,
-                  warmPcmWave=wave_tone, unsupportedWavePreservedExistingQueue=True,
+                  warmPcmWave=wave_tone, warmPcmWaveSampleRate=48000,
+                  unsupportedWavePreservedExistingQueue=True,
                   successfulMusicServiceRequests=0, associationMetadataChanged=False,
                   physicalOutputVerified=False, windowsNativeVerified=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
