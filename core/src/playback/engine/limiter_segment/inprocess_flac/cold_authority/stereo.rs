@@ -9,7 +9,19 @@ use crate::{
     },
 };
 use serde_json::json;
-use std::{fs, path::PathBuf, sync::atomic::Ordering, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::Ordering,
+    time::{Duration, Instant},
+};
+
+fn wait_stage<T>(stage: &str, poll: impl FnMut() -> Option<T>) -> T {
+    eprintln!("stereo native stage: {stage}");
+    let value = until(poll);
+    eprintln!("stereo native verified: {stage}");
+    value
+}
 
 fn plan(presence: i32) -> LocalStereoMaterialPlan {
     LocalStereoMaterialPlan::from_equalizer_json(&json!({"eq":{"on":false,"eqs":vec![0;10]},"bt":{"on":false,"bass":0,"treble":0},"rvb":{"on":false},"se":{"on":true,"presence":presence,"stereoizer":5,"sshaper":true,"ambience":1}})).unwrap()
@@ -75,11 +87,17 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
     assert!(prepared.decoded_source_frame < total && !prepared.graph_end);
     assert!(prepared.produced_frames <= u64::from(RATE.div_ceil(8)) + 4096);
     assert_eq!(prepared.native_output_frame, 0);
+    eprintln!("stereo native prepared: {paused:?}; {prepared:?}");
     native.pause(false).unwrap();
-    let before_seek = until(|| {
+    let mut traced = Instant::now();
+    let before_seek = wait_stage("first native clock", || {
         let view = native.poll().unwrap();
         assert_eq!(view.entry_id, Some(old.entry_id));
         let state = control.snapshot().unwrap();
+        if traced.elapsed() >= Duration::from_millis(500) {
+            eprintln!("stereo first clock: {view:?}; {state:?}");
+            traced = Instant::now();
+        }
         assert!(
             state.produced_frames <= state.native_output_frame + u64::from(RATE.div_ceil(4)) + 2048
         );
@@ -102,7 +120,9 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
         "raw bytes must not bypass the logical source handoff"
     );
     native.stop().unwrap();
-    until(|| control.snapshot().unwrap().reader_closed.then_some(()));
+    wait_stage("stopped reader closed", || {
+        control.snapshot().unwrap().reader_closed.then_some(())
+    });
     assert!(control.snapshot().unwrap().native_sink_retired);
     let source = initial.reclaim().unwrap();
     let first = u64::from(RATE) / 2;
@@ -117,8 +137,16 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
         "logical seek preserves the caller's paused state"
     );
     native.pause(false).unwrap();
-    until(|| {
+    traced = Instant::now();
+    wait_stage("seeked native EOF", || {
         let view = native.poll().unwrap();
+        if traced.elapsed() >= Duration::from_millis(500) {
+            eprintln!(
+                "stereo seeked EOF: {view:?}; {:?}",
+                resumed_control.snapshot().unwrap()
+            );
+            traced = Instant::now();
+        }
         view.events.iter().any(|event|matches!(event,EngineEvent::Ended{entry_id,reason:EndReason::Eof,error:0} if *entry_id==new.entry_id)).then_some(())
     });
     let complete = resumed_control.snapshot().unwrap();
@@ -126,7 +154,7 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
     assert_eq!(complete.decoded_source_frame, total);
     assert_eq!(complete.produced_frames, total - first + u64::from(RATE));
     assert_eq!(complete.native_source_frame, total);
-    until(|| {
+    wait_stage("EOF reader closed", || {
         resumed_control
             .snapshot()
             .unwrap()
@@ -140,7 +168,7 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
         .load_stereo_pcm(revoked.take_reader().unwrap(), &Cancellation::default())
         .unwrap();
     native.pause(false).unwrap();
-    until(|| {
+    wait_stage("revocation native clock", || {
         native
             .poll()
             .unwrap()
@@ -151,7 +179,7 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
     assert!(revoke_control.snapshot().unwrap().buffered_frames > 0);
     fixture.cold.detach().unwrap();
     assert!(matches!(native.poll(), Err(Error::Cancelled)));
-    until(|| {
+    wait_stage("revoked reader closed", || {
         revoke_control
             .snapshot()
             .unwrap()
