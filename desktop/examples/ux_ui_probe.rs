@@ -74,6 +74,8 @@ mod relay_fixture;
 mod remote_skin_fixture;
 #[path = "support/search_artist_top50_fixture.rs"]
 mod search_artist_top50_fixture;
+#[path = "support/search_download_ui_fixture.rs"]
+mod search_download_ui_fixture;
 #[path = "support/search_fixture.rs"]
 mod search_fixture;
 #[path = "support/search_mv_fixture.rs"]
@@ -446,6 +448,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = search_mv_fixture::response(path, &args) {
+                return response;
+            }
+            if let Some(response) = search_download_ui_fixture::response(path, &args, cached) {
                 return response;
             }
             if let Some(response) = search_fixture::mv_preview_privileges(path, &args, cached) {
@@ -841,6 +846,11 @@ fn main() {
     let playback_cache_proof = std::env::var_os("CUMULUS_PLAYBACK_CACHE_PROOF").is_some();
     assert!(!playback_cache_proof || motion_proof);
     assert!(!vertical_zone_fixture::enabled() || motion_proof);
+    let search_download_row_proof = search_download_ui_fixture::enabled();
+    assert!(
+        !search_download_row_proof
+            || (motion_proof && !search_fixture::enabled() && !download_page_fixture::enabled())
+    );
     let queue_ui_proof = std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some();
     let search_footer_ui_proof = std::env::var_os("CUMULUS_SEARCH_FOOTER_UI_PROOF").is_some();
     assert!(!search_footer_ui_proof || (motion_proof && search_fixture::hot_playback_enabled()));
@@ -918,6 +928,7 @@ fn main() {
         || vertical_zone_fixture::playlist_batch()
         || vertical_zone_fixture::playlist_queue_menu()
         || search_privilege_fixture::enabled()
+        || search_download_row_proof
         || vinyl_similar_fixture::enabled()
     {
         zone_fm_preview_fixture::restrict_artwork(&mut context);
@@ -926,7 +937,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() {
+        if search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -991,6 +1002,9 @@ fn main() {
         if voice_download_fixture::enabled() {
             client=client.with_download_backend(Arc::new(voice_download_fixture::Media));
         }
+        if search_download_row_proof {
+            client=client.with_download_backend(Arc::new(search_download_ui_fixture::Media));
+        }
         if let Some(fixture)=transfer.as_ref() { client=client.with_playlist_cover_backend(fixture.clone()); }
         else if playlist_cover_layout_fixture::enabled() {
             client=client.with_playlist_cover_backend(Arc::new(playlist_cover_layout_fixture::NoNetwork));
@@ -1014,7 +1028,8 @@ fn main() {
             let card_control=card_audio.clone();
             let wave = root.join("relay-synthetic.wav");
             let wave = if wave.exists() { wave } else if queue_more_fixture::tip_enabled() { relay_fixture::wave_seconds(&root,45)? } else { relay_fixture::wave(&root)? };
-            let download_directory = download_page_fixture::enabled().then(||root.join("media"));
+            let download_directory = if search_download_row_proof { Some(root.join("search-download-media")) }
+                else { download_page_fixture::enabled().then(||root.join("media")) };
             client = client.with_audio_factory(move || {
                 let start = std::time::Instant::now();
                 std::thread::sleep(std::time::Duration::from_millis(startup_delay));
@@ -1022,7 +1037,7 @@ fn main() {
                 if let Some(directory)=download_directory.as_ref() { audio=audio.allow_download_directory(directory.clone()); }
                 elapsed.store(start.elapsed().as_millis() as u64, std::sync::atomic::Ordering::Release);
                 count.fetch_add(1,std::sync::atomic::Ordering::AcqRel);
-                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if audio_status_proof || queue_more_fixture::enabled() {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
+                let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if search_download_row_proof {Box::new(search_download_ui_fixture::Audio::new(audio))}else if audio_status_proof || queue_more_fixture::enabled() {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
                 Ok(audio)
             });
         }
@@ -1303,6 +1318,15 @@ fn main() {
                     handle.get_webview_window("main").unwrap().eval(format!("window.__searchClipboardAck={matches};")).unwrap();
                 });return;
             }
+            if search_download_row_proof && stage=="search-download-fixture" {
+                let handle=handle.clone();let session=fixture_session.clone();let store=proof_store.clone();
+                let root=cover_root.clone();let mode=value["mode"].as_str().unwrap_or_default().to_owned();
+                tauri::async_runtime::spawn(async move {
+                    let result=search_download_ui_fixture::control(&handle.state::<MusicClient>(),&session,&store,&root,&mode).await;
+                    let ack=match result {Ok(())=>json!({"ok":true}),Err(error)=>json!({"ok":false,"message":error.to_string()})};
+                    handle.get_webview_window("main").unwrap().eval(format!("window.__searchDownloadFixtureAck={ack};")).unwrap();
+                });return;
+            }
             if let Some(fixture)=download_page.as_ref() && stage=="download-page-fixture" {
                 let handle=handle.clone();let fixture=fixture.clone();
                 tauri::async_runtime::spawn(async move {
@@ -1441,6 +1465,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if search_download_row_proof { value["searchDownloadFixture"]=search_download_ui_fixture::report(); }
             if download_page_fixture::quality_enabled() {
                 value["downloadQualityFixture"] = download_page_fixture::quality_report(&proof_store).unwrap();
             }
@@ -1491,7 +1516,7 @@ fn main() {
                     };
                     if let Ok(snapshot)=player {
                         value["nativePlayer"]=serde_json::to_value(snapshot).unwrap();
-                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() {
+                        if std::env::var_os("CUMULUS_PLAYLIST_QUEUE_UI_PROOF").is_some() || queue_ui_proof || search_footer_ui_proof || search_download_row_proof || download_page_fixture::enabled() || card_source_proof || profile_play_record_fixture::enabled() || search_artist_top50_fixture::enabled() {
                             value["nativeQueue"] = serde_json::to_value(client.player_queue(&epoch).await.unwrap()).unwrap();
                         }
                         if profile_play_record_fixture::play_card_enabled() {
@@ -1546,6 +1571,9 @@ fn main() {
                     }
                     if search_artist_top50_fixture::enabled() && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__searchArtistTop50Recorded={};",serde_json::json!(stage))).unwrap();
+                    }
+                    if search_download_row_proof && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__searchDownloadStageRecorded={};",json!(stage))).unwrap();
                     }
                     if search_footer_ui_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__searchFooterRecorded={};",json!(stage))).unwrap();
