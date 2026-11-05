@@ -1,4 +1,4 @@
-use super::{ASSIGNMENT_PATH, vinyl_http};
+use super::{ASSIGNMENT_PATH, playback, vinyl_http};
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -8,10 +8,6 @@ use cumulus_core::{
 };
 use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
-
-#[allow(dead_code)]
-#[path = "../support/playback/mod.rs"]
-mod playback;
 
 fn song(id: u64, playable: bool) -> Value {
     json!({"id":id,"song":{"id":id,"name":format!("合成 {id}"),"dt":120000,

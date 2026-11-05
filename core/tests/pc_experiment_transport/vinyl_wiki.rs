@@ -1,4 +1,4 @@
-use super::{HttpResponse, ScriptHttp, gate, reply, vinyl_http};
+use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http};
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -14,10 +14,6 @@ use cumulus_core::{
 };
 use serde_json::{Value, json};
 use std::{future::poll_fn, sync::Arc, task::Poll};
-
-#[allow(dead_code)]
-#[path = "../support/playback/mod.rs"]
-mod playback;
 
 const WIKI: &str = "/api/music/wiki/home/song/desktop/get";
 const HOLD: &str = "/api/w/nuser/account/get";

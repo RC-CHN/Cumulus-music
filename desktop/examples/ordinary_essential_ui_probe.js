@@ -20,6 +20,8 @@
   const states = [];
   async function capture(stage, extra = {}) {
     const name = 'ux_' + stage;
+    await wait(() => !one('.page-enter-active,.page-leave-active'), 'settled page ' + stage);
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     assert(document.documentElement.scrollWidth <= innerWidth, 'application must not scroll horizontally');
     await emit(name, { state: stage, ...extra });
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === name, 'capture ' + stage);

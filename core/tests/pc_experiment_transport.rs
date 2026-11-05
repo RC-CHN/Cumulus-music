@@ -2,6 +2,9 @@
 mod minibar_skip;
 #[path = "pc_experiment_transport/pc_presentation.rs"]
 mod pc_presentation;
+#[allow(dead_code)]
+#[path = "support/playback/mod.rs"]
+mod playback;
 #[path = "pc_experiment_transport/search_footer.rs"]
 mod search_footer;
 #[path = "pc_experiment_transport/search_presentation.rs"]
