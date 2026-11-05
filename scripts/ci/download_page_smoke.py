@@ -21,6 +21,35 @@ def verify_mv_coverage(value):
     assert len(found) == len(set(found.values())) == 129, 'all 129 MV records reachable'
 
 
+def verify_download_quality(output, result, screenshots):
+    stages = ('startup_unknown', 'manual_failure', 'membership_recovered', 'default_saved',
+              'single_download_choice', 'default_preserved')
+    values = [json.loads((output / f'ux_{index:02d}_{stage}.json').read_text(encoding='utf-8'))
+              for index, stage in enumerate(stages, 1)]
+    assert result['ok'] and result['downloadQualityUi']
+    assert result['realMusicRequests'] == result['realAccountWrites'] == 0
+    assert result['stageCount'] == len(list(output.glob('ux_*.json'))) == len(stages)
+    if screenshots:
+        assert len(list(output.glob('ux_*.png'))) == len(stages)
+    reports = [value['downloadQualityFixture'] for value in values]
+    assert [report['membershipReads'] for report in reports] == [1, 2, 3, 3, 3, 3]
+    assert [report['savedQuality'] for report in reports] == ['vivid'] * 3 + ['lossless'] * 3
+    assert all(value['retained'] for value in values[:3])
+    assert values[1]['message']
+    assert [row['name'] for row in values[2]['rows'] if not row['disabled']] == [
+        '高清臻音', 'Hi-Res', '无损', '极高', '标准',
+    ]
+    assert values[4]['selected'] == values[5]['requested'] == 'exhigh'
+    assert values[5]['actual'] == 'standard'
+    assert all(not report['downloadReads'] and not report['tasks'] for report in reports[:-1])
+    assert reports[-1]['downloadReads'] == [{'id': '1', 'level': 'exhigh', 'immerseType': 'c51'}]
+    assert reports[-1]['tasks'] == [{
+        'songId': '1', 'status': 'complete', 'requested': 'exhigh', 'actual': 'standard',
+        'authorizations': 1, 'published': True,
+    }]
+    assert result['downloadQualityFixture'] == reports[-1]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -33,12 +62,15 @@ def main():
     parser.add_argument('--batch', action='store_true', help='Verify full-category batch UI and real local file actions')
     parser.add_argument('--navigation', action='store_true', help='Verify download detail return, focus and resized anchors')
     parser.add_argument('--menu', action='store_true', help='Verify resource menus, confirmations and actual file operations')
+    parser.add_argument('--quality-settings', action='store_true', help='Verify native default-download preferences, membership recovery and a separate single download')
     parser.add_argument('--seed-delay-ms', type=int, default=0, help='Inject a bounded synthetic setup delay; never affects the application')
     args = parser.parse_args()
     if not 0 <= args.seed_delay_ms <= 30000:
         parser.error('seed delay must be between 0 and 30000 ms')
-    if sum([args.table, args.batch, args.navigation, args.menu, args.mv_replay]) > 1:
+    if sum([args.table, args.batch, args.navigation, args.menu, args.mv_replay, args.quality_settings]) > 1:
         parser.error('select a single proof')
+    if args.quality_settings and args.seed_delay_ms:
+        parser.error('--seed-delay-ms is for inventory fixtures')
     expected = 36 if args.menu else 24 if args.navigation else 53 if args.batch else 72 if args.table else 69
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -54,7 +86,9 @@ def main():
         env[key] = str(directory)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    script = 'mv_replay_ui_probe.js' if args.mv_replay else 'download_menu_ui_probe.js' if args.menu else 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
+    script = 'download_quality_ui_probe.js' if args.quality_settings else 'mv_replay_ui_probe.js' if args.mv_replay else 'download_menu_ui_probe.js' if args.menu else 'download_navigation_ui_probe.js' if args.navigation else 'download_batch_ui_probe.js' if args.batch else 'download_table_ui_probe.js' if args.table else 'download_page_ui_probe.js'
+    if args.quality_settings:
+        env['CUMULUS_DOWNLOAD_QUALITY_UI_PROOF'] = '1'
     if script == 'download_page_ui_probe.js':
         env['CUMULUS_DOWNLOAD_LYRIC_REPAIR_PROOF'] = '1'
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script)
@@ -64,6 +98,12 @@ def main():
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert status == 0, f'probe exit {status}'
     result = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
+    if args.quality_settings:
+        verify_download_quality(root / 'first', result, args.screenshots)
+        result.update(actualWebView=True, physicalDisplayVerified=False, windowsVisualVerified=False)
+        (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps({k: result[k] for k in ['ok', 'stageCount', 'actualWebView', 'downloadQualityFixture']}))
+        return
     if args.mv_replay:
         assert result['ok'] and result['nativeMvReplay'] and result['local'] and result['frames']
         ended, restarted = [

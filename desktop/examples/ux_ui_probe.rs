@@ -1037,7 +1037,7 @@ fn main() {
         if search_signed_fixture::presentation_enabled() {
             cumulus_desktop::pc_presentation::start(app.handle())?;
         }
-        if member_lifecycle_fixture::enabled() {
+        if member_lifecycle_fixture::enabled() || download_page_fixture::quality_enabled() {
             let client = app.state::<MusicClient>();
             let owner = tauri::async_runtime::block_on(client.start_membership_lifecycle())?;
             app.manage(std::sync::Mutex::new(owner));
@@ -1441,6 +1441,9 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if download_page_fixture::quality_enabled() {
+                value["downloadQualityFixture"] = download_page_fixture::quality_report(&proof_store).unwrap();
+            }
             if let Some(signed)=signed_search.as_ref() { value["signedSearch"] = signed.report(); }
             if message_fixture::enabled() { value["messageRequests"] = message_fixture::report(); }
             if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }

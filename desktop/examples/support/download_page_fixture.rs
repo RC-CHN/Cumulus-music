@@ -10,6 +10,7 @@ use cumulus_core::{
         },
         transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
     },
+    membership::Quality,
     protocol::api::ApiFuture,
     storage::StateStore,
 };
@@ -25,6 +26,12 @@ use std::{
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_DOWNLOAD_PAGE_UI_PROOF").is_some()
 }
+pub fn quality_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_DOWNLOAD_QUALITY_UI_PROOF").is_some()
+}
+static QUALITY_MEMBERSHIP_READS: AtomicUsize = AtomicUsize::new(0);
+static QUALITY_STARTUP_READ: tokio::sync::Notify = tokio::sync::Notify::const_new();
+static QUALITY_DOWNLOAD_READS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static DATA: OnceLock<Arc<Vec<u8>>> = OnceLock::new();
 static SEED_LYRIC_FAILURE: AtomicBool = AtomicBool::new(false);
 static CHUNK: AtomicUsize = AtomicUsize::new(512);
@@ -32,6 +39,21 @@ static MV_DETAIL: AtomicUsize = AtomicUsize::new(0);
 static MV_STREAM: AtomicUsize = AtomicUsize::new(0);
 const MEDIA: &str = "https://m1.music.126.net/cumulus-download-fixture.wav";
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if quality_enabled() && path == "/api/music-vip-membership/client/vip/info" {
+        assert_eq!(*args, json!({"userId":"2"}));
+        let attempt = QUALITY_MEMBERSHIP_READS.fetch_add(1, Ordering::SeqCst);
+        if attempt == 0 {
+            QUALITY_STARTUP_READ.notify_one();
+        }
+        return Some(match attempt {
+            0 | 1 => Err(Error::Transport("synthetic membership read failed".into())),
+            2 => Ok(
+                json!({"code":200,"data":{"userId":2,"now":1_900_000_000_000u64,
+                "associator":{"expireTime":1_900_086_400_000u64,"vipLevel":7}}}),
+            ),
+            _ => panic!("unrequested synthetic membership refresh"),
+        });
+    }
     if enabled() && path == "/api/mlog/detail/v1" {
         MV_DETAIL.fetch_add(1, Ordering::SeqCst);
         return Some(Err(Error::Transport(
@@ -54,10 +76,41 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() || path != "/api/song/enhance/download/url/v1" {
         return None;
     }
+    if quality_enabled() {
+        assert_eq!(
+            *args,
+            json!({"id":"1","level":"exhigh","immerseType":"c51"})
+        );
+        QUALITY_DOWNLOAD_READS.lock().unwrap().push(args.clone());
+    }
     let data = DATA.get().expect("seed first");
     Some(Ok(
         json!({"code":200,"data":{"id":args["id"],"code":200,"url":MEDIA,"type":"wav","size":data.len(),"level":"standard"}}),
     ))
+}
+pub fn quality_report(store: &StateStore) -> Result<Value> {
+    let stored = store.get("2", "download_preferences_v1", "options")?;
+    let tasks = store.values("2", "download_tasks_v1")?;
+    let tasks: Vec<_> = tasks
+        .values()
+        .map(|task| {
+            let published = task["status"] == "complete"
+                && task["target"].as_str().is_some_and(|target| {
+                    std::fs::read(target).is_ok_and(|bytes| {
+                        DATA.get()
+                            .is_some_and(|seed| bytes.as_slice() == seed.as_slice())
+                    })
+                });
+            json!({"songId":task["song_id"],"status":task["status"],
+                "requested":task["options"]["quality"],"actual":task["resource"]["level"],
+                "authorizations":task["authorization_count"],"published":published})
+        })
+        .collect();
+    Ok(
+        json!({"membershipReads":QUALITY_MEMBERSHIP_READS.load(Ordering::SeqCst),
+        "downloadReads":*QUALITY_DOWNLOAD_READS.lock().unwrap(),
+        "savedQuality":stored.map(|row| row["quality"].clone()),"tasks":tasks}),
+    )
 }
 pub struct NoNetwork;
 impl MediaBackend for NoNetwork {
@@ -129,6 +182,46 @@ impl Fixture {
         eprintln!("download UI fixture {mode}: started");
         let epoch = client.account()?.epoch;
         match value["mode"].as_str().unwrap() {
+            "seed_quality" if quality_enabled() => {
+                assert_eq!(self.session.token()?.uid.as_deref(), Some("2"));
+                assert!(self.store.values("2", "download_tasks_v1")?.is_empty());
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(5),
+                    QUALITY_STARTUP_READ.notified(),
+                )
+                .await
+                .map_err(|_| Error::State("synthetic membership startup read did not dispatch"))?;
+                assert_eq!(QUALITY_MEMBERSHIP_READS.load(Ordering::SeqCst), 1);
+                client
+                    .download_command(
+                        &epoch,
+                        DownloadCommand::Configure {
+                            root: self.root.join("media").to_string_lossy().into_owned(),
+                            path_type: 0,
+                            file_type: 0,
+                        },
+                    )
+                    .await?;
+                let wave = self.root.join("relay-synthetic.wav");
+                let wave = if wave.is_file() {
+                    wave
+                } else {
+                    super::relay_fixture::wave_seconds(&self.root, 1)?
+                };
+                DATA.set(Arc::new(std::fs::read(wave)?)).unwrap();
+                CHUNK.store(usize::MAX, Ordering::Relaxed);
+                self.store.put(
+                    "2",
+                    "download_preferences_v1",
+                    "options",
+                    &serde_json::to_value(DownloadOptions {
+                        quality: Quality::Vivid,
+                        tags: false,
+                        cover: false,
+                        ..Default::default()
+                    })?,
+                )?;
+            }
             "seed" => {
                 assert!(self.records.lock().unwrap().is_empty());
                 let delay = std::env::var("CUMULUS_DOWNLOAD_SEED_DELAY_MS")
