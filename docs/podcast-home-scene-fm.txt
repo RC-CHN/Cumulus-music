@@ -78,6 +78,12 @@ Rust、窗口及账号边界
   不写真实远端资源。另有 3 个经典回退截图检查榜单切换和回程，以及无账号的普通二进制启动。
   证据：.build/ui-proof/phase54-podcast-home/{webview-r4/report.json,search-fallback/,startup/report.json}。
   截图在相同目录下每个用例的 run/first/。等待当前页面和详情动画完成后再采集实际帧。
+- 本批 Linux 全量 cargo fmt、workspace/all-targets 严格 Clippy 与测试通过：
+  2,298 passed、0 failed、19 条默认忽略；849 项前端测试、格式与生产构建通过。
+  修正过期 IPC 夹具后重跑完整测试，并新增首页四条命令的非主窗口与旧账号拒绝检查。
+  Windows GNU 做了桌面 lib 和受影响示例的严格跨平台检查；这不是 Windows 现场运行证明。
+  日志 .build/ui-proof/phase54-podcast-home/ 下 rust-test-final.log、rust-clippy.log、
+  rust-clippy-ipc-final.log、rust-clippy-windows-gnu.log 和 frontend-{test,build,format}.log。
 - 重跑：先 npm --prefix frontend ci、npm --prefix frontend run build，再
   cargo build -p cumulus-desktop --features custom-protocol --example podcast_recent_ui_probe --locked。
   Linux 在专用 Xvfb（GDK_BACKEND=x11、LC_ALL=en_US.UTF-8、独立 dbus）中运行
