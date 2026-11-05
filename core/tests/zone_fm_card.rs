@@ -20,18 +20,38 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+use tokio::sync::oneshot;
 
 const AUTH: &str = "/api/song/enhance/player/url/v1";
+type MenuGate = (oneshot::Sender<()>, oneshot::Receiver<()>);
 
 #[derive(Default)]
-struct Wire(Mutex<Vec<(String, Value)>>);
+struct Wire {
+    calls: Mutex<Vec<(String, Value)>>,
+    menu_gate: Mutex<Option<MenuGate>>,
+}
 impl Wire {
     fn record(&self, path: &str, args: Value) {
-        self.0.lock().unwrap().push((path.into(), args));
+        self.calls.lock().unwrap().push((path.into(), args));
     }
     fn trace(&self) -> Vec<(String, Value)> {
-        self.0.lock().unwrap().clone()
+        self.calls.lock().unwrap().clone()
+    }
+    fn hold_next_menu(&self) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+        let (arrived, entered) = oneshot::channel();
+        let (resume, held) = oneshot::channel();
+        assert!(
+            self.menu_gate
+                .lock()
+                .unwrap()
+                .replace((arrived, held))
+                .is_none()
+        );
+        (entered, resume)
     }
     fn urls(&self) -> Vec<(String, Value)> {
         self.trace()
@@ -60,6 +80,13 @@ impl Api for Wire {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
         self.record(path, args.clone());
         Box::pin(async move {
+            if path == "/api/secondary/tab/list" {
+                let gate = self.menu_gate.lock().unwrap().take();
+                if let Some((arrived, release)) = gate {
+                    arrived.send(()).unwrap();
+                    release.await.unwrap();
+                }
+            }
             Ok(match path {
                 "/api/secondary/tab/list" => json!({"code":200,"data":{"hints":[{
                     "position":{"code":"music_top_tab_full"},"data":{"extra":{"nowChannelItems":[
@@ -138,8 +165,10 @@ async fn cover_and_overlay_use_actual_transport_and_only_compatible_fm_reuses_a_
         .unwrap();
     let epoch = session.token().unwrap().generation.to_string();
     let device = Arc::<engine::Device>::default();
-    let player = MusicClient::with_session(session, registry)
-        .with_audio_factory(move || Ok(engine::audio_engine(device.clone())));
+    let player = Arc::new(
+        MusicClient::with_session(session, registry)
+            .with_audio_factory(move || Ok(engine::audio_engine(device.clone()))),
+    );
     let view = player
         .vertical_zone_page(&epoch, "ROCK", ZoneEntry::Tab("default"))
         .await
@@ -172,8 +201,21 @@ async fn cover_and_overlay_use_actual_transport_and_only_compatible_fm_reuses_a_
     assert_open(&a, "11", "81");
     let a_play = a.playback.play_id;
     assert_ne!(a_play, ordinary.play_id);
+    let (entered, resume) = wire.hold_next_menu();
+    let menu_refresh = {
+        let player = player.clone();
+        let epoch = epoch.clone();
+        tokio::spawn(async move { player.vertical_zone_menu(&epoch).await })
+    };
+    tokio::time::timeout(Duration::from_secs(2), entered)
+        .await
+        .expect("menu refresh entered the transport")
+        .unwrap();
     let before = wire.trace();
-    let cover_b = run("0:1", Cover).await.unwrap();
+    let cover_b = tokio::time::timeout(Duration::from_secs(2), run("0:1", Cover))
+        .await
+        .expect("cover does not wait for a pending menu refresh")
+        .unwrap();
     assert_open(&cover_b, "11", "81");
     assert_eq!(cover_b.playback.play_id, a_play);
     assert_eq!(
@@ -181,6 +223,8 @@ async fn cover_and_overlay_use_actual_transport_and_only_compatible_fm_reuses_a_
         before,
         "a different cover opens actual Zone FM without reads"
     );
+    resume.send(()).unwrap();
+    menu_refresh.await.unwrap().unwrap();
     let paused = run("0:0", Overlay).await.unwrap();
     assert_eq!(paused.playback.state, PlaybackStatus::Paused);
     assert_eq!(paused.playback.play_id, a_play);

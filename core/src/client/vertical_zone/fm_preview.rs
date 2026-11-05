@@ -73,7 +73,7 @@ fn cover(track: &FmTrack) -> Option<String> {
 }
 
 impl MusicClient {
-    pub(super) async fn verify_zone_fm_card(
+    pub(super) fn verify_zone_fm_card(
         &self,
         authority: &ZoneAuthority,
         view: &str,
@@ -86,10 +86,9 @@ impl MusicClient {
             view,
             card_key,
         )
-        .await
     }
 
-    pub(super) async fn verify_local_zone_fm_card(
+    pub(super) fn verify_local_zone_fm_card(
         &self,
         token: &SessionToken,
         api: &Arc<dyn Api>,
@@ -100,11 +99,18 @@ impl MusicClient {
         if view.len() > 20 || card_key.len() > 20 {
             return Err(Error::InvalidInput("invalid zone FM card receipt"));
         }
-        let registry = self.vertical_zone.registry.lock().await;
         self.session.with_verified_profile(token, api, |_, _| {
             if api.verified_pc_experiment_revision()?.as_deref() != Some(revision) {
                 return Err(Error::CredentialChanged);
             }
+            // A pending menu request has not changed the native card
+            // authority. In particular, opening already playing FM must
+            // not wait for that unrelated network request to complete.
+            let registry = self
+                .vertical_zone
+                .published_registry
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?;
             let current = registry
                 .as_ref()
                 .filter(|item| item.owner.matches(token, api, revision))
@@ -129,7 +135,7 @@ impl MusicClient {
             .ok_or(Error::StaleResponse)?;
         let owner = &authority.token;
         let api = &authority.api;
-        let rule = self.verify_zone_fm_card(&authority, view, card_key).await?;
+        let rule = self.verify_zone_fm_card(&authority, view, card_key)?;
         let service = self.player.fm_service().await?;
         let mut changes = self.session.subscribe()?;
         self.session.require_api(owner, api)?;
@@ -138,7 +144,7 @@ impl MusicClient {
             _ = changes.changed() => return Err(Error::StaleResponse),
             gate = service.zone_rule_gate(owner, &rule.id) => gate,
         };
-        self.verify_zone_fm_card(&authority, view, card_key).await?;
+        self.verify_zone_fm_card(&authority, view, card_key)?;
         if let Some(first) = service.cached_zone_first(
             owner,
             api,
@@ -146,7 +152,7 @@ impl MusicClient {
             &rule.id,
             rule.preferred_trial,
         )? {
-            self.verify_zone_fm_card(&authority, view, card_key).await?;
+            self.verify_zone_fm_card(&authority, view, card_key)?;
             return Ok(AccountData {
                 epoch: epoch.into(),
                 value: ZoneFmPreview {

@@ -41,8 +41,7 @@ impl MusicClient {
         let revision = api
             .verified_pc_experiment_revision()?
             .ok_or(Error::StaleResponse)?;
-        self.verify_local_zone_fm_card(&token, &api, &revision, view, card_key)
-            .await?;
+        self.verify_local_zone_fm_card(&token, &api, &revision, view, card_key)?;
         let controller = self.player.controller().await?;
         let (before, queue) = controller.queue_with_state(&token).await?;
         let is_cover = gesture == ZoneFmCardGesture::Cover;
@@ -53,8 +52,7 @@ impl MusicClient {
         {
             // The original cover opens *the already playing* Zone FM even
             // when this card represents another rule. Local receipts only.
-            self.verify_local_zone_fm_card(&token, &api, &revision, view, card_key)
-                .await?;
+            self.verify_local_zone_fm_card(&token, &api, &revision, view, card_key)?;
             if controller.snapshot().fence() != before.fence() {
                 return Err(Error::StaleResponse);
             }
@@ -72,7 +70,7 @@ impl MusicClient {
             .await?
             .filter(|bound| bound.token == token && bound.revision == revision)
             .ok_or(Error::StaleResponse)?;
-        let rule = self.verify_zone_fm_card(&authority, view, card_key).await?;
+        let rule = self.verify_zone_fm_card(&authority, view, card_key)?;
         let source = FmSource::Zone {
             rule_id: rule.id,
             trial_mode: rule.preferred_trial,
@@ -90,7 +88,7 @@ impl MusicClient {
         let lease = self.claim_media(&token, Owner::Audio).await?;
         let verify = || async {
             self.focus.check(lease, Owner::Audio)?;
-            self.verify_zone_fm_card(&authority, view, card_key).await?;
+            self.verify_zone_fm_card(&authority, view, card_key)?;
             Ok(())
         };
         verify().await?;
@@ -107,7 +105,7 @@ impl MusicClient {
                 verify,
             )
             .await?;
-        self.verify_zone_fm_card(&authority, view, card_key).await?;
+        self.verify_zone_fm_card(&authority, view, card_key)?;
         if controller.snapshot().fence() != selected.fence()
             || self.player.selection.load(Ordering::Acquire) != intent
         {
