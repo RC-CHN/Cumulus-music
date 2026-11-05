@@ -114,6 +114,13 @@ through the existing Rust B0 CLI, starting a fresh limiter only on the
 observed 1B960 boundaries; all 98 final hashes, frame counts and EOF matched.
 The preceding SE-only master C path also still matches its 61 original
 pre-B0 blocks after the shared helper extraction.
-This is a composed offline proof. The new safe Rust API tests are provided
-for the integration batch; the C/CLI proof does not run those tests or
-establish Windows execution, an outer FIFO or ordinary player attachment.
+The composed C/CLI proof and the subsequent integrated safe Rust API check
+are independent. On combined source5fecaaa8 the actual
+`effects_local_equalizer_original` program passed both tests, including all
+98 final valid-PCM SHA/frame/EOF comparisons through the Rust B0, 43 exact
+selected prefixes and the unsupported-schema/geometry checks. The preceding
+61 SE-only master and1204 fixed graph block comparisons also passed in the
+same full workspace execution. No code or fixture was changed after that
+execution to produce those comparisons. Local evidence is under
+.build/ui-proof/phase64-local-material-search. This does not establish
+Windows execution, the outer FIFO or ordinary player attachment.

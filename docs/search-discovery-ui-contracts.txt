@@ -179,8 +179,15 @@ core/tests/fixtures/search-suggestion-marks-official.manifest.json 的原文件�
 scripts/research/freeze_search_suggestion_marks.cjs <recovered-module-dir> <new-output-dir>：
 执行原 M123/M87、静态固定 M623，未运行完整原 CEF，不证明其他 Unicode 版本
 逐字一致。公开 Rust 测试读取合成冻结向量，不需要恢复包或真实服务。
-search_smoke.py --suggestion-matches 是既有重复命中、特殊符号、原样显示的 GUI
-回归；它不单独覆盖全量字形表。
+5fecaaa8 的完整 Rust 实跑包含 30 个原工厂片段/UTF-16 对照、3 个有意边界和
+2351 个原表映射检查，`client_search` 七项全过。固定 Node24.16 的前端 907 项也过。
+`search_smoke.py --suggestion-matches` 实际 Linux WebView 使用真实 Rust IPC，
+不再用 renderer 替换建议响应。五态确认字面特殊符号、指针、繁→简与反向不匹配、
+首空格两分支、普通/推荐各自 `<mark>` 和原文，六次建议与四次提交按原生 receipt
+核对顺序、原词、渠道（suggest/rec_query/typing）。其它启动读取另计。0 实服请求
+或账号写入。五张原图逐张看过；记录
+.build/ui-proof/phase64-local-material-search/search-suggestion-marks-r1/audit.json。
+原表/边界由 Rust 对照覆盖，不从五张图推断 Windows 或每个字形。
 
 搜索建议的鼠标与键盘接续
 官方 SearchBox/view/searchResultsItems.jsx:126–127 和 M623:363–390、694–770

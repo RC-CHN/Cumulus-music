@@ -1,6 +1,14 @@
 Rust core 迁移验证记录
 2026-10-26；本记录不代替完整目标验收。
 
+2026-11-06 固定域联合音效与建议高亮：5fecaaa8 的格式、严格workspace Clippy、
+396程序/2432 passed/0 failed/20 ignored、前端固定Node npm ci/format/907 tests/
+类型构建与124项CI脚本通过。总开关61块、联合EQ/BT/SE1的98块经实际Rust末端B0
+对照，旧固定图1204块同批通过。建议原工厂30向量及2351字对覆盖原规则。
+真实Linux WebView五态建议、九态综合V3以及受控V2原生播放复验均过；资料
+.build/ui-proof/phase64-local-material-search。组合音效仍是独立组件，未接普通播放器；
+无真实账号写入、物理输出、Windows GUI或任意SDK材料承诺。
+
 2026-11-06 普通均衡器实际音质旁路：e839bd94 通过格式、严格workspace Clippy，
 完整394程序/2427 passed/0 failed/20 ignored。新增8项源状态机及1项EQ/PEQ/响度
 隔离回归全通过。固定Node24.16的npm ci、format、906 tests、类型及构建通过；

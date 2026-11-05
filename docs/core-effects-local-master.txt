@@ -103,5 +103,8 @@ A strict Linux C build of the new path independently matched all61 block
 n/end and complete valid PCM hashes at original child0x38, immediately
 before B0. The new Rust integration test `effects_local_master_original`
 compares all61 through actual Rust B0, including exact final tail and the
-stable empty EOF. The C result alone does not verify that Rust test, Windows,
-ordinary playback, speakers or the unexecuted outer FIFO.
+stable empty EOF. Both integration tests actually passed on combined source
+5fecaaa8, including all61 final PCM blocks, exact selected prefixes and
+rejection outside the supported plan/format. This is separate from the
+pre-B0 C evidence and does not establish Windows, ordinary playback,
+speakers or the unexecuted outer FIFO.
