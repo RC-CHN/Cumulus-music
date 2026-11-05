@@ -228,6 +228,22 @@ impl Api for Library {
         })
     }
 
+    fn request_vinyl_wiki<'a>(
+        &'a self,
+        read: cumulus_core::protocol::api::VinylWikiRead,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::VinylWikiReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.verified_pc_experiment_revision()?.as_deref() != Some(revision) {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            permission()?;
+            let (path, args) = read.into_request();
+            vinyl_similar_fixture::wiki(path, args, revision).await
+        })
+    }
+
     fn request_vinyl_comment_page<'a>(
         &'a self,
         read: cumulus_core::protocol::api::VinylCommentRead,

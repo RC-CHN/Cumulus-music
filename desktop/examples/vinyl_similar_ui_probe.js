@@ -30,7 +30,9 @@
   const top = (label) => one('button[aria-label="' + label + '"]');
   const lyrics = () => one('.lyrics-panel:not(.lyrics-panel-leave-active)');
   const tab = () => one('[data-vinyl-similar-tab]', lyrics() || document);
+  const wikiTab = () => one('[data-vinyl-wiki-tab]', lyrics() || document);
   const pane = () => one('[data-vinyl-similar]', lyrics() || document);
+  const wikiPane = () => one('[data-vinyl-wiki-pane]', lyrics() || document);
   const row = (id) => one('[data-vinyl-similar-track="' + id + '"]', pane() || document);
   const songIds = () => all('[data-vinyl-similar-track]', pane() || document)
     .map((node) => node.getAttribute('data-vinyl-similar-track'));
@@ -38,6 +40,16 @@
     .map((node) => node.getAttribute('data-vinyl-similar-playlist'));
   const songState = () => one('[data-vinyl-similar-songs]', pane() || document)
     ?.getAttribute('data-vinyl-similar-state');
+  const wikiState = () => wikiPane()?.dataset.state;
+  const wikiMetas = () => all('[data-vinyl-wiki-meta]', wikiPane() || document)
+    .map((meta) => [one('dt', meta)?.textContent.trim(), one('dd', meta)?.textContent.trim()]);
+  function wikiOrder() {
+    const scroll = lyrics() && one('.vinyl-detail-wiki-scroll', lyrics());
+    if (!scroll) return [];
+    return all('[data-vinyl-wiki-pane],[data-vinyl-similar-songs],[data-vinyl-similar-playlists]', scroll)
+      .map((node) => node.hasAttribute('data-vinyl-wiki-pane') ? 'wiki'
+        : node.hasAttribute('data-vinyl-similar-songs') ? 'songs' : 'playlists');
+  }
   const choice = (value) => one('[data-queue-click-choice="' + value + '"]');
   const queueIds = (value) => value.tracks.map((entry) => entry.track.id);
   let epoch, stages = 0, step = 'restore', actionId = 0;
@@ -94,6 +106,13 @@
       songState: songState() ?? null,
       songIds: songIds(),
       playlistIds: playlistIds(),
+      ...(window.__vinylWikiProof && {
+        wikiState: wikiState() ?? null,
+        wikiMetas: wikiMetas(),
+        wikiOrder: wikiOrder(),
+        hasSimilarTab: !!tab(),
+        hasWikiTab: !!wikiTab(),
+      }),
       captureHandshake: true,
       ...more,
     });
@@ -109,6 +128,38 @@
       click(await wait(tab, 'treatment recommendation tab'));
     }
     await wait(() => lyrics()?.dataset.vinylTab === 'similar' && pane(), 'mounted recommendation pane');
+  }
+  async function showWiki() {
+    await showLyrics();
+    if (lyrics().dataset.vinylTab !== 'wiki') {
+      click(await wait(wikiTab, 'verified encyclopedia tab'));
+    }
+    await wait(() => lyrics()?.dataset.vinylTab === 'wiki' && wikiPane(), 'mounted encyclopedia pane');
+  }
+  async function readyWiki(id) {
+    const wanted = [
+      ['演唱', '合成百科 ' + id], ['曲风', '轻音乐、钢琴'], ['原样文本', '<b>合成内容</b>'],
+    ];
+    await wait(() => wikiState() === 'ready' && equal(wikiMetas(), wanted), 'native Wiki metadata for ' + id);
+    assert(!one('b', wikiPane()) && !wikiPane().outerHTML.includes('NOT_PUBLIC_WIKI'),
+      'Wiki uses plain text and excludes the native-only link');
+  }
+  async function firstWiki(native, control) {
+    await showWiki();
+    await wait(() => wikiState() === 'error' && one('[data-vinyl-wiki-retry]', wikiPane()), 'Wiki retry offered');
+    if (control) {
+      await wait(() => songState() === 'ready' && equal(songIds(), ['51', '52', '53', '54', '55']) &&
+        playlistIds().length === 6, 'control siblings loaded independently of Wiki failure');
+      assert(equal(wikiOrder(), ['wiki', 'songs', 'playlists']), 'control uses one scroll in official card order');
+      const songLane = one('[data-vinyl-similar-songs]', pane());
+      assert(!one('[data-vinyl-similar-expand]', songLane), 'control has no invented song expansion');
+    } else {
+      assert(!pane(), 'treatment Wiki is independent of the recommendation pane');
+    }
+    await capture('wiki_failed', native);
+    click(one('[data-vinyl-wiki-retry]', wikiPane()));
+    await readyWiki('1');
+    await capture('wiki_retried', native);
   }
   async function songs(ids) {
     await showSimilar();
@@ -154,13 +205,40 @@
     if (window.__vinylSimilarControl) {
       await sleep(600);
       assert(!tab() && !pane(), 'control does not mount the treatment tab or pane');
+      if (window.__vinylWikiProof) {
+        await wait(wikiTab, 'control encyclopedia tab available');
+        assert(one('[data-vinyl-lyrics-tab]', lyrics()), 'control also retains the lyrics tab');
+      }
       await capture('control_lyrics', first);
+      if (window.__vinylWikiProof) {
+        step = 'control Wiki and independent recommendation cards';
+        await firstWiki(first, true);
+        await expandPlaylists();
+        await capture('wiki_playlists_expanded', first);
+        step = 'control Wiki header starts all five songs';
+        const title = one('[data-vinyl-similar-play-all]', pane());
+        title.scrollIntoView({ block: 'nearest' });
+        click(title);
+        const played = await pauseAfterPlayback('51');
+        retained(first, played);
+        assert(equal(queueIds(played.queue), ['1', '51', '52', '53', '54', '55', ...queueIds(first.queue).slice(1)]),
+          'control title inserts the full list after current');
+        await wait(() => one('.vinyl-source')?.textContent.includes('相似歌曲'), 'control playback source label');
+        await readyWiki('51');
+        await wait(() => songState() === 'ready' && playlistIds().length === 6, 'new seed resets playlist expansion');
+        await capture('wiki_title_queued', played);
+      }
       await emit('complete', { ok: true, stageCount: stages, realMusicRequests: 0 });
       return;
     }
     await wait(tab, 'treatment tab is visible');
     assert(!pane(), 'inactive recommendation pane has not mounted');
     await capture('before_read', first);
+    if (window.__vinylWikiProof) {
+      step = 'treatment Wiki reads independently';
+      assert(wikiTab() && one('[data-vinyl-lyrics-tab]', lyrics()), 'treatment has three visible tabs');
+      await firstWiki(first, false);
+    }
 
     step = 'read failure and retry';
     await showSimilar();
@@ -236,6 +314,22 @@
       await wait(() => !lyrics() && one('.playlist-hero')?.textContent.includes('合成歌单 108'),
         'related card opened the stock playlist route');
       await capture('playlist_route', latest, { openedPlaylist: '108' });
+    }
+    if (window.__vinylWikiProof) {
+      step = 'old Wiki read arrives after a new native play';
+      await showWiki();
+      await wait(async () => wikiState() === 'loading' && (await fixture('status')).wikiHolding,
+        'old Wiki read entered the held backend');
+      await capture('wiki_old_pending', latest);
+      click(footer('上一首'));
+      const current = await pauseAfterPlayback('61');
+      await readyWiki('61');
+      await fixture('release-wiki');
+      await wait(async () => (await fixture('status')).wikiHeldReturned, 'old Wiki response returned');
+      await sleep(350);
+      await readyWiki('61');
+      assert(!pane() && !one('[data-vinyl-wiki-retry]', wikiPane()), 'late Wiki did not replace the card or surface an error');
+      await capture('wiki_late_discarded', current);
     }
     await emit('complete', { ok: true, stageCount: stages, realMusicRequests: 0 });
   } catch (error) {

@@ -11,6 +11,7 @@ from window_manager import launch
 
 SONGS = "/api/v1/discovery/simiSong"
 PLAYLISTS = "/api/discovery/simiPlaylist"
+WIKI = "/api/music/wiki/home/song/desktop/get"
 EXP = "PH-PC-playPage-recommendMore-new"
 BASE_STAGES = ("before_read", "read_failed", "read_retried", "title_queued", "cover_queued",
                "row_replaced", "preference_add", "row_added", "late_discarded")
@@ -38,6 +39,15 @@ def playlist_reads(record):
         seed = call["args"]["songid"]
         assert call == dict(lane="playlists", path=PLAYLISTS, args=dict(songid=seed)) and seed.isdecimal()
     return [call["args"]["songid"] for call in values]
+
+
+def wiki_reads(record):
+    values = calls(record, "wiki")
+    for call in values:
+        seed = call["songId"]
+        assert call == dict(lane="wiki", path=WIKI, songId=seed, signatureVerified=True)
+        assert seed.isdecimal()
+    return [call["songId"] for call in values]
 
 
 def ids(row):
@@ -117,6 +127,65 @@ def audit_treatment(rows, complete, related):
         assert not playlist_reads(complete)
 
 
+def wiki_metas(seed):
+    return [["演唱", "合成百科 " + seed], ["曲风", "轻音乐、钢琴"], ["原样文本", "<b>合成内容</b>"]]
+
+
+def audit_wiki_treatment(rows, complete):
+    baseline = rows["before_read"]
+    failed, retried = rows["wiki_failed"], rows["wiki_retried"]
+    assert baseline["tab"] == "lyrics" and baseline["hasSimilarTab"] and baseline["hasWikiTab"]
+    assert not wiki_reads(baseline)
+    for stage in (failed, retried):
+        assert_play(stage, "1")
+        assert stage["playId"] == baseline["playId"] and stage["tab"] == "wiki"
+        assert not song_reads(stage) and not playlist_reads(stage)
+        assert not stage["songIds"] and not stage["playlistIds"]
+    assert failed["wikiState"] == "error" and wiki_reads(failed) == ["1"]
+    assert retried["wikiState"] == "ready" and retried["wikiMetas"] == wiki_metas("1")
+    assert wiki_reads(retried) == ["1", "1"]
+    assert wiki_reads(rows["playlist_route"]) == ["1", "1"], "standalone recommendations must not request Wiki"
+
+    held, late = rows["wiki_old_pending"], rows["wiki_late_discarded"]
+    assert_play(held, "59")
+    assert_play(late, "61")
+    assert held["tab"] == late["tab"] == "wiki"
+    assert held["wikiState"] == "loading" and held["vinylSimilarFixture"]["wikiHolding"]
+    assert not held["vinylSimilarFixture"]["wikiReleased"] and wiki_reads(held) == ["1", "1", "59"]
+    assert late["wikiState"] == "ready" and late["wikiMetas"] == wiki_metas("61")
+    assert late["vinylSimilarFixture"]["wikiReleased"] and late["vinylSimilarFixture"]["wikiHeldReturned"]
+    assert wiki_reads(complete) == ["1", "1", "59", "61"]
+    assert song_reads(complete) == song_reads(rows["playlist_route"])
+    assert playlist_reads(complete) == playlist_reads(rows["playlist_route"])
+
+
+def audit_wiki_control(rows, complete):
+    baseline, failed, retried, expanded, played = [rows[key] for key in (
+        "control_lyrics", "wiki_failed", "wiki_retried", "wiki_playlists_expanded", "wiki_title_queued")]
+    assert baseline["tab"] == "lyrics" and baseline["hasWikiTab"] and not baseline["hasSimilarTab"]
+    assert not song_reads(baseline) and not playlist_reads(baseline) and not wiki_reads(baseline)
+    ids_visible = [str(identifier) for identifier in range(101, 109)]
+    for stage in (failed, retried, expanded):
+        assert_play(stage, "1")
+        assert stage["playId"] == baseline["playId"] and stage["tab"] == "wiki"
+        assert stage["wikiOrder"] == ["wiki", "songs", "playlists"]
+        assert stage["songIds"] == ["51", "52", "53", "54", "55"]
+        assert song_reads(stage) == playlist_reads(stage) == ["1"]
+    assert failed["wikiState"] == "error" and wiki_reads(failed) == ["1"]
+    assert retried["wikiState"] == "ready" and retried["wikiMetas"] == wiki_metas("1")
+    assert wiki_reads(retried) == wiki_reads(expanded) == ["1", "1"]
+    assert failed["playlistIds"] == retried["playlistIds"] == ids_visible[:6]
+    assert expanded["playlistIds"] == ids_visible
+
+    assert_play(played, "51")
+    assert played["tab"] == "wiki" and played["wikiOrder"] == ["wiki", "songs", "playlists"]
+    assert played["wikiMetas"] == wiki_metas("51") and played["playlistIds"] == ids_visible[:6]
+    assert ids(played) == ["1", "51", "52", "53", "54", "55", *ids(baseline)[1:]]
+    preserved(baseline, played)
+    assert wiki_reads(complete) == ["1", "1", "51"]
+    assert song_reads(complete) == playlist_reads(complete) == ["1", "51"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -125,10 +194,13 @@ def main():
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--screenshots", action="store_true")
     parser.add_argument("--related", action="store_true", help="also prove the related playlist lane")
+    parser.add_argument("--wiki", action="store_true", help="also prove both encyclopedia placements")
     args = parser.parse_args()
     windows = sys.platform == "win32"
     if sys.platform not in {"linux", "win32"} or windows != bool(args.runtime) or (windows and args.screenshots):
         parser.error("Windows needs --runtime; screenshots are Linux only")
+    if args.wiki and not args.related:
+        parser.error("--wiki requires --related for the full control card grouping")
     binary = args.binary.resolve(strict=True)
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -148,19 +220,27 @@ def main():
     if args.related:
         expected.insert(expected.index("title_queued"), "related_first_expanded")
         expected.extend(("related_expanded", "playlist_route"))
+    control = ["control_lyrics"]
+    if args.wiki:
+        expected[1:1] = ["wiki_failed", "wiki_retried"]
+        expected.extend(("wiki_old_pending", "wiki_late_discarded"))
+        control.extend(("wiki_failed", "wiki_retried", "wiki_playlists_expanded", "wiki_title_queued"))
     counts = {}
-    for group, stages in [("t1", expected), ("c", ["control_lyrics"])]:
+    for group, stages in [("t1", expected), ("c", control)]:
         directory = root / group
         directory.mkdir()
         script = directory / "probe.js"
         script.write_text("window.__vinylSimilarControl=" + json.dumps(group == "c") + ";\n" +
-                          "window.__vinylSimilarRelated=" + json.dumps(args.related) + ";\n" + source,
+                          "window.__vinylSimilarRelated=" + json.dumps(args.related) + ";\n" +
+                          "window.__vinylWikiProof=" + json.dumps(args.wiki) + ";\n" + source,
                           encoding="utf-8")
         run = {**env, "CUMULUS_PROOF_DIR": str(directory), "CUMULUS_MOTION_PROOF": "1",
                "CUMULUS_QUEUE_UI_PROOF": "1", "CUMULUS_VINYL_SIMILAR_PROOF": group,
                "CUMULUS_UX_SCRIPT": str(script)}
         if args.related:
             run["CUMULUS_VINYL_SIMILAR_RELATED_PROOF"] = "1"
+        if args.wiki:
+            run["CUMULUS_VINYL_WIKI_PROOF"] = "1"
         for key in profiles:
             isolated = directory / key
             isolated.mkdir(mode=0o700)
@@ -181,6 +261,10 @@ def main():
         assert list(rows) == stages
         if group == "t1":
             audit_treatment(rows, complete, args.related)
+            if args.wiki:
+                audit_wiki_treatment(rows, complete)
+        elif args.wiki:
+            audit_wiki_control(rows, complete)
         else:
             assert not song_reads(complete) and not playlist_reads(complete)
             assert_play(rows["control_lyrics"], "1")
@@ -194,6 +278,7 @@ def main():
             assert len(list(output.glob("ux_*.png"))) == len(stages)
         counts[group] = len(stages)
     result = dict(ok=True, actualWebView=True, syntheticNativeAudio=True, relatedPlaylists=args.related,
+                  wiki=args.wiki,
                   stages=counts, screenshots=sum(counts.values()) if args.screenshots else 0,
                   realMusicRequests=0, physicalAudioOutputVerified=False)
     (root / "report.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
