@@ -65,7 +65,11 @@ impl Api for Backend {
         revision: &'a str,
     ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
         Box::pin(async move {
-            let group = if revision == "1" { "t1" } else { "c" };
+            let group = if matches!(revision, "1" | "3") {
+                "t1"
+            } else {
+                "c"
+            };
             cumulus_core::protocol::pc_experiments::PcExperimentGroups::refreshed(&json!({
                 "data":[{"expName":"PH-PC-optimizeComment","expGroupName":group}]
             }))
@@ -82,6 +86,23 @@ impl Api for Backend {
             }
             let (path, args) = read.into_request();
             self.request(&path, args, false).await
+        })
+    }
+
+    fn request_vinyl_comment_write<'a>(
+        &'a self,
+        write: cumulus_core::protocol::api::VinylCommentWrite,
+        revision: &'a str,
+        permission: &'a cumulus_core::protocol::api::VinylCommentWritePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            self.vinyl_composer.wait_dispatch().await;
+            if self.verified_pc_experiment_revision()?.as_deref() != Some(revision) {
+                return Err(Error::RequestNotSent(Box::new(Error::CredentialChanged)));
+            }
+            permission().map_err(|error| Error::RequestNotSent(Box::new(error)))?;
+            let (path, args) = write.into_request();
+            self.request(path, args, false).await
         })
     }
 

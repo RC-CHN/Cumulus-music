@@ -123,7 +123,7 @@ impl Comments {
         })
     }
     pub async fn submit_write_for(&self, token: &SessionToken, id: &str) -> Result<CommentWrite> {
-        self.submit_write_guarded(token, id, || async { Ok(()) })
+        self.submit_write_guarded(token, id, None, || async { Ok(()) })
             .await
     }
 
@@ -133,6 +133,7 @@ impl Comments {
         &self,
         token: &SessionToken,
         id: &str,
+        vinyl: Option<VinylWriteAuthority<'_>>,
         authorize: impl FnOnce() -> Fut + Send,
     ) -> Result<CommentWrite>
     where
@@ -142,6 +143,9 @@ impl Comments {
         let _lock = self.write_lock(token, &record.resource)?;
         record = self.write_operation_for(token, id)?;
         if record.phase != CommentWritePhase::Prepared {
+            if vinyl.is_some() {
+                return Err(Error::StaleResponse);
+            }
             return if record.phase.pending() {
                 self.settle_write(token, record).await
             } else {
@@ -154,8 +158,10 @@ impl Comments {
             self.check_write_target(token, &record.command, Some(&observed))?;
         }
         authorize().await?;
-        record.phase = CommentWritePhase::Sending;
-        self.save_write_transition(token, &record)?;
+        if vinyl.is_none() {
+            record.phase = CommentWritePhase::Sending;
+            self.save_write_transition(token, &record)?;
+        }
         let owner = token
             .uid
             .as_deref()
@@ -163,9 +169,22 @@ impl Comments {
         let thread = record.resource.thread()?;
         self.session
             .run_for(token, |api, _| async {
-                let result = CommentApi::new(api)
-                    .write(&record.resource, &record.command)
-                    .await;
+                let result = if let Some(authority) = vinyl.as_ref() {
+                    if !std::sync::Arc::ptr_eq(authority.api, &api) {
+                        return Err(Error::RequestNotSent(Box::new(Error::StaleResponse)));
+                    }
+                    // Do not create Sending when run_for could not enter the
+                    // original profile. Persist it before the scoped HTTP gate.
+                    record.phase = CommentWritePhase::Sending;
+                    self.save_write_transition(token, &record)?;
+                    CommentApi::new(api)
+                        .vinyl_write(&record.resource, &record.command, authority)
+                        .await
+                } else {
+                    CommentApi::new(api)
+                        .write(&record.resource, &record.command)
+                        .await
+                };
                 match &result {
                     Ok(value) => {
                         record.acknowledged = true;
@@ -189,6 +208,12 @@ impl Comments {
                                 record.phase = CommentWritePhase::Uncertain;
                             }
                         }
+                    }
+                    Err(error)
+                        if vinyl.is_some() && matches!(error.root(), Error::RequestNotSent(_)) =>
+                    {
+                        // The old owner retains a draft, not an unresolved send.
+                        record.phase = CommentWritePhase::Prepared;
                     }
                     Err(error) => {
                         record.service_code = [250, 301, 403, 404, 405, 480, 505, 506, 511, 512]

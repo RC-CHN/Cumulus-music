@@ -619,3 +619,198 @@ async fn vinyl_comment_rejects_a_different_pc_cookie_scope_at_the_same_revision(
     );
     assert_eq!(http.calls().len(), 1);
 }
+
+#[tokio::test]
+async fn queued_vinyl_composer_writes_recheck_revision_and_live_permission_before_eapi() {
+    use cumulus_core::protocol::api::{Api, VinylCommentWrite};
+    use std::{
+        future::poll_fn,
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+        task::Poll,
+    };
+    const HOLD: &str = "/api/w/nuser/account/get";
+    const TEXT: &str = "  synthetic vinyl 🎵 ";
+
+    for rotate in [false, true] {
+        let root = tempfile::tempdir().unwrap();
+        let (held, release) = gate();
+        let (client, http) = vinyl_http(
+            root.path(),
+            &["MUSIC_U=synthetic-old-composer; Path=/; Secure"],
+            [
+                vinyl_t1().into(),
+                held,
+                vinyl_t1().into(),
+                json!({"code":200}).into(),
+            ],
+        );
+        let original = client.verified_pc_experiment_revision().unwrap().unwrap();
+        assert_eq!(
+            client
+                .verified_pc_experiment_groups(&original)
+                .await
+                .unwrap()
+                .group("PH-PC-optimizeComment"),
+            Some("t1"),
+        );
+        let occupying = {
+            let client = client.clone();
+            tokio::spawn(async move { client.request(HOLD, json!({}), false).await })
+        };
+        http.wait(2).await;
+        let still_current = AtomicBool::new(true);
+        let old_checks = AtomicUsize::new(0);
+        let permission = || {
+            old_checks.fetch_add(1, Ordering::Relaxed);
+            if still_current.load(Ordering::Relaxed) {
+                Ok(())
+            } else {
+                Err(Error::StaleResponse)
+            }
+        };
+        let mut queued = client.request_vinyl_comment_write(
+            VinylCommentWrite::new("71", TEXT, None).unwrap(),
+            &original,
+            &permission,
+        );
+        assert!(
+            poll_fn(|cx| Poll::Ready(queued.as_mut().poll(cx)))
+                .await
+                .is_pending()
+        );
+        assert_eq!(old_checks.load(Ordering::Relaxed), 0);
+        let mut held_response = reply(json!({"code":200}));
+        if rotate {
+            held_response.set_cookies =
+                vec!["MUSIC_U=synthetic-new-composer; Path=/; Secure".into()];
+        } else {
+            still_current.store(false, Ordering::Relaxed);
+        }
+        assert!(release.send(Ok(held_response)).is_ok());
+        occupying.await.unwrap().unwrap();
+        assert!(matches!(queued.await, Err(Error::RequestNotSent(error))
+            if matches!((error.as_ref(), rotate), (Error::CredentialChanged, true) | (Error::StaleResponse, false))));
+        assert_eq!(old_checks.load(Ordering::Relaxed), usize::from(!rotate));
+        assert_eq!(
+            http.calls()
+                .iter()
+                .map(|call| call.path.as_str())
+                .collect::<Vec<_>>(),
+            [ASSIGNMENT_PATH, HOLD]
+        );
+
+        let revision = client.verified_pc_experiment_revision().unwrap().unwrap();
+        assert_eq!(revision != original, rotate);
+        assert_eq!(
+            client
+                .verified_pc_experiment_groups(&revision)
+                .await
+                .unwrap()
+                .group("PH-PC-optimizeComment"),
+            Some("t1"),
+        );
+        let fresh_checks = AtomicUsize::new(0);
+        let fresh_permission = || {
+            assert_eq!(fresh_checks.fetch_add(1, Ordering::Relaxed), 0);
+            Ok(())
+        };
+        let target = if rotate { "71" } else { "72" };
+        client
+            .request_vinyl_comment_write(
+                VinylCommentWrite::new(target, TEXT, rotate.then_some("21")).unwrap(),
+                &revision,
+                &fresh_permission,
+            )
+            .await
+            .unwrap();
+        assert_eq!(fresh_checks.load(Ordering::Relaxed), 1);
+        let calls = http.calls();
+        let write = &calls[3];
+        let (path, expected) = if rotate {
+            (
+                "/api/v1/resource/comments/reply",
+                json!({"threadId":"R_SO_4_71","content":TEXT,"commentId":"21","resourceType":"0","resourceId":"0"}),
+            )
+        } else {
+            (
+                "/api/resource/comments/add",
+                json!({"threadId":"R_SO_4_72","content":TEXT,"resourceType":"0","resourceId":"0",
+                 "expressionPicId":"-1","bubbleId":"-1"}),
+            )
+        };
+        assert_eq!(calls.len(), 4);
+        assert_eq!(write.path, path);
+        assert!(write.cookie.as_deref().unwrap().contains(if rotate {
+            "MUSIC_U=synthetic-new-composer"
+        } else {
+            "MUSIC_U=synthetic-old-composer"
+        }));
+        assert!(write.login_chain.is_none());
+        let mut actual = write.payload.clone();
+        assert!(
+            actual
+                .as_object_mut()
+                .unwrap()
+                .remove("header")
+                .unwrap()
+                .is_string()
+        );
+        assert_eq!(actual, expected);
+    }
+}
+
+#[tokio::test]
+async fn vinyl_composer_scopes_cookies_and_never_returns_not_sent_after_backend_entry() {
+    use cumulus_core::protocol::api::{Api, VinylCommentWrite};
+
+    let root = tempfile::tempdir().unwrap();
+    let (client, http) = vinyl_http(
+        root.path(),
+        &[
+            "MUSIC_U=synthetic-assignment; Path=/eapi/rtrs/abt/front/; Secure",
+            "MUSIC_U=synthetic-other-account; Path=/eapi/resource/comments/; Secure",
+        ],
+        [vinyl_t1().into()],
+    );
+    let revision = client.verified_pc_experiment_revision().unwrap().unwrap();
+    client
+        .verified_pc_experiment_groups(&revision)
+        .await
+        .unwrap();
+    assert!(matches!(
+        client.request_vinyl_comment_write(
+            VinylCommentWrite::new("71", "synthetic", None).unwrap(),
+            &revision,
+            &|| panic!("mismatched scoped credentials cannot consume an intent"),
+        ).await,
+        Err(Error::RequestNotSent(error)) if matches!(*error, Error::CredentialChanged)
+    ));
+    assert_eq!(http.calls().len(), 1);
+
+    let root = tempfile::tempdir().unwrap();
+    let (client, http) = vinyl_http(
+        root.path(),
+        &["MUSIC_U=synthetic-composer; Path=/; Secure"],
+        [
+            vinyl_t1().into(),
+            HttpResponse::Ready(Err(Error::RequestNotSent(Box::new(Error::Cancelled)))),
+        ],
+    );
+    let revision = client.verified_pc_experiment_revision().unwrap().unwrap();
+    client
+        .verified_pc_experiment_groups(&revision)
+        .await
+        .unwrap();
+    assert!(matches!(
+        client
+            .request_vinyl_comment_write(
+                VinylCommentWrite::new("71", "synthetic", Some("21")).unwrap(),
+                &revision,
+                &|| Ok(()),
+            )
+            .await,
+        Err(Error::MutationUncertain)
+    ));
+    assert_eq!(http.calls()[1].path, "/api/v1/resource/comments/reply");
+    assert_eq!(http.calls().len(), 2);
+}

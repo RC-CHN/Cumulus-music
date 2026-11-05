@@ -6,6 +6,14 @@ use std::{future::Future, pin::Pin};
 
 pub type ApiFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 pub type PodcastProgressPermission = dyn Fn() -> Result<bool> + Send + Sync;
+pub type VinylCommentWritePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
+
+fn canonical_vinyl_comment_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 32
+        && !id.starts_with('0')
+        && id.bytes().all(|digit| digit.is_ascii_digit())
+}
 
 /// Fixed logical read from M/182 -> M/438 for the standard vinyl panel.
 /// Constructed from native current-track identity, never deserialized from IPC.
@@ -19,12 +27,7 @@ impl VinylCommentRead {
     pub const LIMIT: usize = 60;
 
     pub fn new(song_id: &str, offset: usize) -> Result<Self> {
-        if song_id.is_empty()
-            || song_id.len() > 32
-            || song_id.starts_with('0')
-            || !song_id.bytes().all(|digit| digit.is_ascii_digit())
-            || offset > 1_000_000
-        {
+        if !canonical_vinyl_comment_id(song_id) || offset > 1_000_000 {
             return Err(Error::InvalidInput("invalid vinyl comment page"));
         }
         Ok(Self {
@@ -40,6 +43,49 @@ impl VinylCommentRead {
                 "compareUserLocation":false,"composeConcert":false,"markReplied":false,
                 "forceFlatComment":false,"showInner":false}),
         )
+    }
+}
+
+/// Plain M/438 publish or reply from an already authorized current track.
+pub struct VinylCommentWrite {
+    song_id: String,
+    content: String,
+    reply_to: Option<String>,
+}
+
+impl VinylCommentWrite {
+    pub fn new(song_id: &str, content: &str, reply_to: Option<&str>) -> Result<Self> {
+        if !canonical_vinyl_comment_id(song_id)
+            || reply_to.is_some_and(|id| !canonical_vinyl_comment_id(id))
+        {
+            return Err(Error::InvalidInput("invalid vinyl comment write target"));
+        }
+        crate::comments::validate_comment_text(content)?;
+        Ok(Self {
+            song_id: song_id.into(),
+            content: content.into(),
+            reply_to: reply_to.map(str::to_owned),
+        })
+    }
+
+    pub fn path(&self) -> &'static str {
+        if self.reply_to.is_some() {
+            "/api/v1/resource/comments/reply"
+        } else {
+            "/api/resource/comments/add"
+        }
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        let path = self.path();
+        let thread_id = format!("R_SO_4_{}", self.song_id);
+        let payload = if let Some(id) = self.reply_to {
+            json!({"threadId":thread_id,"commentId":id,"content":self.content,"resourceType":0,"resourceId":0})
+        } else {
+            json!({"threadId":thread_id,"content":self.content,"resourceType":0,"resourceId":0,
+                "expressionPicId":-1,"bubbleId":-1})
+        };
+        (path, payload)
     }
 }
 
@@ -86,6 +132,21 @@ pub trait Api: Send + Sync + std::any::Any {
         _revision: &'a str,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async { Err(Error::State("vinyl comment dispatch authority unavailable")) })
+    }
+
+    /// Only call permission at the dispatch boundary. It consumes the user's
+    /// live authorization once. RequestNotSent is reserved for pre-backend failures.
+    fn request_vinyl_comment_write<'a>(
+        &'a self,
+        _write: VinylCommentWrite,
+        _revision: &'a str,
+        _permission: &'a VinylCommentWritePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::RequestNotSent(Box::new(Error::State(
+                "vinyl comment write authority unavailable",
+            ))))
+        })
     }
 
     /// The two official search-box long-audio charts are hidden by default.

@@ -1,10 +1,37 @@
 use super::*;
 use crate::{
-    Result,
-    comments::{CommentApi, CommentResource},
+    Error, Result,
+    comments::{CommentApi, CommentResource, ResourceKind},
+    protocol::api::{VinylCommentWrite, validate_response},
 };
 use serde_json::{Value, json};
 impl CommentApi {
+    pub(super) async fn vinyl_write(
+        &self,
+        resource: &CommentResource,
+        command: &CommentWriteCommand,
+        authority: &VinylWriteAuthority<'_>,
+    ) -> Result<Value> {
+        let CommentWriteCommand::Publish { content, reply_to } = command else {
+            return Err(Error::RequestNotSent(Box::new(Error::InvalidInput(
+                "vinyl composer accepts only publication",
+            ))));
+        };
+        if resource.kind != ResourceKind::Track || resource.owner.is_some() {
+            return Err(Error::RequestNotSent(Box::new(Error::InvalidInput(
+                "invalid vinyl comment write scope",
+            ))));
+        }
+        let write = VinylCommentWrite::new(&resource.id, content, reply_to.as_deref())
+            .map_err(|error| Error::RequestNotSent(Box::new(error)))?;
+        let path = write.path();
+        let value = self
+            .api
+            .request_vinyl_comment_write(write, authority.revision, authority.permission)
+            .await?;
+        validate_response(path, value, &[200])
+    }
+
     /// Official M438 v/h and M3085 delete, with plain-text M438 defaults.
     pub async fn write(
         &self,

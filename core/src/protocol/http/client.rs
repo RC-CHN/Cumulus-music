@@ -6,7 +6,7 @@ use crate::{
     Error, Result,
     account::credentials::Credentials,
     protocol::{
-        api::{Api, ApiFuture, VinylCommentRead},
+        api::{Api, ApiFuture, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission},
         context::RequestContext,
         wire::eapi,
     },
@@ -14,7 +14,10 @@ use crate::{
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -58,6 +61,10 @@ impl Jsk {
 enum RequestBinding<'a> {
     Login(&'a super::JskLoginContext),
     VinylComment,
+    VinylCommentWrite {
+        permission: &'a VinylCommentWritePermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
     Switch {
         source: &'a MusicHttpClient,
@@ -380,7 +387,10 @@ impl MusicHttpClient {
         {
             return Err(Error::CredentialChanged);
         }
-        if matches!(binding, Some(RequestBinding::VinylComment)) {
+        if matches!(
+            binding,
+            Some(RequestBinding::VinylComment | RequestBinding::VinylCommentWrite { .. })
+        ) {
             // A single revision covers all URL scopes. The same revision
             // alone does not prove both endpoints see the same MUSIC_U.
             let assignment_target = super::ApiOrigin::Pc.request_url(
@@ -514,6 +524,15 @@ impl MusicHttpClient {
                 && !allowed()?
             {
                 return Err(Error::Cancelled);
+            }
+            if let Some(RequestBinding::VinylCommentWrite {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                permission()?;
+                // No await or fallible work follows before the backend call.
+                dispatched.store(true, Ordering::Relaxed);
             }
             let response = wire.backend.post(plan).await?;
             check_wire_source()?;
@@ -705,6 +724,51 @@ impl Api for MusicHttpClient {
                 Some(RequestBinding::VinylComment),
             )
             .await
+        })
+    }
+
+    fn request_vinyl_comment_write<'a>(
+        &'a self,
+        write: VinylCommentWrite,
+        revision: &'a str,
+        permission: &'a VinylCommentWritePermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let dispatched = AtomicBool::new(false);
+            let result = async {
+                if self.pc_experiment_revision()? != revision {
+                    return Err(Error::CredentialChanged);
+                }
+                let (path, payload) = write.into_request();
+                self.execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::VinylCommentWrite {
+                        permission,
+                        dispatched: &dispatched,
+                    }),
+                )
+                .await
+            }
+            .await;
+            match result {
+                Err(error) if !dispatched.load(Ordering::Relaxed) => {
+                    if matches!(error.root(), Error::RequestNotSent(_)) {
+                        Err(error)
+                    } else {
+                        Err(Error::RequestNotSent(Box::new(error)))
+                    }
+                }
+                Err(error) if matches!(error.root(), Error::RequestNotSent(_)) => {
+                    // A backend result cannot prove this scoped intent never
+                    // crossed our dispatch boundary.
+                    Err(Error::MutationUncertain)
+                }
+                other => other,
+            }
         })
     }
 

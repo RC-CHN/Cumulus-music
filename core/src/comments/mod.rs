@@ -14,6 +14,7 @@ pub use model::{
     ResourceKind,
 };
 pub use service::Comments;
+pub(crate) use writes::VinylWriteAuthority;
 pub use writes::{CommentWrite, CommentWriteCommand, CommentWritePhase, validate_comment_text};
 
 pub(crate) fn vinyl_query(offset: usize) -> CommentQuery {

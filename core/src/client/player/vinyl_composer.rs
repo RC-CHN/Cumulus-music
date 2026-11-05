@@ -11,7 +11,9 @@ use crate::{
         comments::{CommentWriteAction, CommentWriteView, write_view},
         dto::AccountData,
     },
-    comments::{CommentResource, CommentWriteCommand, CommentWritePhase, Comments},
+    comments::{
+        CommentResource, CommentWriteCommand, CommentWritePhase, Comments, VinylWriteAuthority,
+    },
     protocol::api::Api,
 };
 use std::sync::Arc;
@@ -47,6 +49,42 @@ impl Target {
         client
             .session
             .with_verified_profile(&self.token, &self.api, |_, _| Ok(()))
+    }
+
+    fn check_published_play(&self, play_id: &str) -> Result<()> {
+        let current = self.controller.snapshot();
+        if current.account != self.token || song(&current, play_id)? != self.resource {
+            return Err(Error::StaleResponse);
+        }
+        Ok(())
+    }
+
+    fn permit_dispatch(
+        &self,
+        client: &MusicClient,
+        play_id: &str,
+        draft: &VinylDraft,
+    ) -> Result<()> {
+        if client.login_pending()? {
+            return Err(Error::StaleResponse);
+        }
+        client
+            .session
+            .with_verified_profile(&self.token, &self.api, |_, _| {
+                // The HTTP gate must not await an actor command that could need
+                // this same transport. Inspect the already-published native state.
+                self.check_published_play(play_id)?;
+                let mut intent = client
+                    .player
+                    .vinyl_draft
+                    .lock()
+                    .map_err(|_| Error::LockPoisoned)?;
+                if intent.as_ref() != Some(draft) {
+                    return Err(Error::StaleResponse);
+                }
+                *intent = None;
+                Ok(())
+            })
     }
 
     fn draft(&self, play_id: &str, id: &str) -> VinylDraft {
@@ -162,23 +200,20 @@ impl MusicClient {
         {
             return Err(Error::StaleResponse);
         }
+        let permission = || target.permit_dispatch(self, play_id, &draft);
+        let authority = VinylWriteAuthority {
+            api: &target.api,
+            revision: &target.revision,
+            permission: &permission,
+        };
         let record = service
-            .submit_write_guarded(&target.token, id, || async {
-                target.check(self, play_id).await?;
-                let mut current = self
-                    .player
-                    .vinyl_draft
-                    .lock()
-                    .map_err(|_| Error::LockPoisoned)?;
-                if current.as_ref() != Some(&draft) {
-                    return Err(Error::StaleResponse);
-                }
-                // Consume once before dispatch. A lost acknowledgement can only
-                // be reconciled by the independent page; it cannot be replayed.
-                *current = None;
-                Ok(())
+            .submit_write_guarded(&target.token, id, Some(authority), || {
+                target.check(self, play_id)
             })
             .await?;
+        // The journal already holds the original owner's acknowledgement;
+        // only project the result while this is still the displayed play.
+        target.check_published_play(play_id)?;
         self.session.with_token(&target.token, |owner| {
             Ok(AccountData {
                 epoch: epoch.into(),

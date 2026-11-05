@@ -9,9 +9,22 @@ pub(super) struct Server {
     hold: AtomicU64,
     held: Notify,
     released: Notify,
+    dispatch_hold: AtomicU64,
+    dispatch_held: Notify,
+    dispatch_release: Notify,
+    post_hold: AtomicU64,
+    post_held: Notify,
+    post_release: Notify,
 }
 
 impl Server {
+    pub(super) async fn wait_dispatch(&self) {
+        if self.dispatch_hold.swap(0, Ordering::SeqCst) == 1 {
+            self.dispatch_held.notify_one();
+            self.dispatch_release.notified().await;
+        }
+    }
+
     pub(super) async fn response(
         &self,
         path: &str,
@@ -49,6 +62,10 @@ impl Server {
                         "content":"合成原文","user":{"userId":"20","nickname":"Fixture"}}]);
                 }
                 *self.receipt.lock().unwrap() = Some(row.clone());
+                if self.post_hold.swap(0, Ordering::SeqCst) == 1 {
+                    self.post_held.notify_one();
+                    self.post_release.notified().await;
+                }
                 Some(if self.lose_receipt.load(Ordering::SeqCst) == 1 {
                     Err(Error::Transport("synthetic lost response".into()))
                 } else {
@@ -217,4 +234,157 @@ async fn vinyl_composer_rejects_track_changes_during_reply_target_revalidation()
         .unwrap()
         .value;
     assert_eq!(old[0].phase, CommentWritePhase::Prepared);
+}
+
+#[tokio::test]
+async fn vinyl_composer_rejects_a_held_dispatch_and_keeps_the_original_draft_prepared() {
+    for change_credentials in [false, true] {
+        let (_dir, api, _, client, _) = fixture();
+        api.vinyl_comment_group.store(1, Ordering::SeqCst);
+        let first = client
+            .play_selection("1", songs("1"))
+            .await
+            .unwrap()
+            .play_id
+            .unwrap();
+        let draft = client
+            .player_vinyl_prepare_write("1", &first, publish(false))
+            .await
+            .unwrap()
+            .value;
+        api.vinyl_composer.dispatch_hold.store(1, Ordering::SeqCst);
+        let pending = tokio::spawn({
+            let client = client.clone();
+            let first = first.clone();
+            let id = draft.id.clone();
+            async move {
+                client
+                    .player_vinyl_write_command("1", &first, &id, CommentWriteAction::Submit)
+                    .await
+            }
+        });
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            api.vinyl_composer.dispatch_held.notified(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            client
+                .comments_write_operations("1", draft.resource.clone())
+                .unwrap()
+                .value[0]
+                .phase,
+            CommentWritePhase::Sending
+        );
+        if change_credentials {
+            api.vinyl_comment_group.store(3, Ordering::SeqCst);
+        } else {
+            client.play_selection("1", songs("2")).await.unwrap();
+        }
+        api.vinyl_composer.dispatch_release.notify_one();
+        let result = pending.await.unwrap();
+        assert!(matches!(result, Err(Error::RequestNotSent(error))
+            if matches!(*error, Error::CredentialChanged | Error::StaleResponse)));
+        let old = client
+            .comments_write_operations("1", draft.resource)
+            .unwrap()
+            .value;
+        assert_eq!(old[0].phase, CommentWritePhase::Prepared);
+        assert!(!old[0].acknowledged && old[0].receipt_id.is_none());
+        assert!(api.vinyl_composer.calls.lock().unwrap().is_empty());
+        assert!(
+            client
+                .player_vinyl_write_command("1", &first, &draft.id, CommentWriteAction::Submit)
+                .await
+                .is_err()
+        );
+
+        client
+            .comments_write_command("1", &draft.id, CommentWriteAction::Abandon)
+            .await
+            .unwrap();
+        let fresh_play = if change_credentials {
+            first
+        } else {
+            client
+                .play_selection("1", songs("1"))
+                .await
+                .unwrap()
+                .play_id
+                .unwrap()
+        };
+        let fresh = client
+            .player_vinyl_prepare_write("1", &fresh_play, publish(false))
+            .await
+            .unwrap()
+            .value;
+        assert_ne!(fresh.id, draft.id);
+        let settled = client
+            .player_vinyl_write_command("1", &fresh_play, &fresh.id, CommentWriteAction::Submit)
+            .await
+            .unwrap()
+            .value;
+        assert_eq!(settled.phase, CommentWritePhase::Confirmed);
+        assert_eq!(api.vinyl_composer.calls.lock().unwrap().len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn vinyl_composer_retains_ack_after_dispatch_when_play_changes() {
+    let (_dir, api, _, client, _) = fixture();
+    api.vinyl_comment_group.store(1, Ordering::SeqCst);
+    let first = client
+        .play_selection("1", songs("1"))
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    let draft = client
+        .player_vinyl_prepare_write("1", &first, publish(false))
+        .await
+        .unwrap()
+        .value;
+    api.vinyl_composer.post_hold.store(1, Ordering::SeqCst);
+    let pending = tokio::spawn({
+        let client = client.clone();
+        let first = first.clone();
+        let id = draft.id.clone();
+        async move {
+            client
+                .player_vinyl_write_command("1", &first, &id, CommentWriteAction::Submit)
+                .await
+        }
+    });
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        api.vinyl_composer.post_held.notified(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(api.vinyl_composer.calls.lock().unwrap().len(), 1);
+    let second = client
+        .play_selection("1", songs("2"))
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    api.vinyl_composer.post_release.notify_one();
+    assert!(matches!(pending.await.unwrap(), Err(Error::StaleResponse)));
+    let old = client
+        .comments_write_operations("1", draft.resource)
+        .unwrap()
+        .value;
+    assert_eq!(old[0].phase, CommentWritePhase::Confirmed);
+    assert!(old[0].acknowledged && old[0].receipt_id.as_deref() == Some("102"));
+    assert_eq!(
+        client
+            .player_snapshot("1")
+            .await
+            .unwrap()
+            .play_id
+            .as_deref(),
+        Some(second.as_str())
+    );
+    assert_eq!(api.vinyl_composer.calls.lock().unwrap().len(), 1);
 }
