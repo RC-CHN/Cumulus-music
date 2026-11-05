@@ -36,8 +36,11 @@
   async function capture(stage, data) {
     await wait(() => {
       const page = one('.page-view');
+      const panel = detail();
       return page && !page.matches('.page-enter-active,.page-leave-active') &&
-        getComputedStyle(page).opacity === '1';
+        getComputedStyle(page).opacity === '1' &&
+        (!panel || (!panel.matches('.lyrics-panel-enter-active,.lyrics-panel-leave-active') &&
+          getComputedStyle(panel).opacity === '1'));
     }, `painted page for ${stage}`);
     await sleep(100);
     await emit(stage, { ...data, captureHandshake: true });
