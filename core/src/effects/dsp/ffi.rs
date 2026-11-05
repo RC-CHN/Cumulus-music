@@ -10,6 +10,17 @@ unsafe extern "C" {
         storage: *mut f32,
         count: usize,
     ) -> i32;
+    pub fn cumulus_local_fixed_master_init(
+        state: *mut c_void,
+        storage: *mut f32,
+        count: usize,
+    ) -> i32;
+    pub fn netease_local_fixed_master_off(state: *mut c_void) -> i32;
+    pub fn netease_local_fixed_master_material(
+        state: *mut c_void,
+        presence: f32,
+        stereoizer: f32,
+    ) -> i32;
     pub fn netease_local_fixed_parameters(
         state: *mut c_void,
         presence: f32,

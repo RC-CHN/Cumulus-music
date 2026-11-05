@@ -28,6 +28,10 @@ separate from those later Rust checks; neither installs a production effect.
 Windows x64 vector tests are enabled. GNU cross-Clippy passed, including the
 new FFI and test code, but actual Windows/MSVC execution remains a CI check.
 
+The separately scoped LocalFixedStereoMaster API reproduces original outer
+Init reset and the fixed old-schema master off/full material re-apply; see
+core-effects-local-master.txt. It does not change this standalone/held graph.
+
 Official sources and actual processing order
 -------------------------------------------
 neaudioeffects.dll 3.1.42.205594 x64 SHA256:

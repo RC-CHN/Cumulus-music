@@ -21,7 +21,9 @@ pub struct LocalFixedStereoMaterial {
 }
 impl LocalFixedStereoMaterial {
     pub fn new(format: Format, plan: LocalStereoMaterialPlan) -> Result<Self> {
-        let stage = LocalFixedStage::new(format, plan.stereo())?;
+        Self::with_stage(format, LocalFixedStage::new(format, plan.stereo())?)
+    }
+    fn with_stage(format: Format, stage: LocalFixedStage) -> Result<Self> {
         let p = MATERIAL_BEGIN_LIMITER;
         let limiter = LimiterStage::new(
             format,
@@ -101,5 +103,54 @@ impl LocalFixedStereoMaterial {
                 ))
             }
         }
+    }
+}
+
+/// Explicit old-schema master lifecycle in the witnessed stereo 44.1 kHz,
+/// capacity-2048 scope. Device ownership, source rights, the outer FIFO and
+/// ordinary player activation remain with the caller and are not provided here.
+pub struct LocalFixedStereoMaster {
+    graph: LocalFixedStereoMaterial,
+}
+impl LocalFixedStereoMaster {
+    /// Outer Init's node reset, followed by a full fixed local material apply.
+    pub fn new(format: Format, plan: LocalStereoMaterialPlan) -> Result<Self> {
+        if !plan.stereo().enabled() {
+            return Err(Error::InvalidInput(
+                "fixed master scope requires enabled SE1",
+            ));
+        }
+        let mut graph =
+            LocalFixedStereoMaterial::with_stage(format, LocalFixedStage::new_master(format)?)?;
+        graph.reset()?;
+        graph.stage.apply_master_material(plan.stereo())?;
+        Ok(Self { graph })
+    }
+    pub fn format(&self) -> Format {
+        self.graph.format()
+    }
+    pub fn lookahead_frames(&self) -> u32 {
+        self.graph.lookahead_frames()
+    }
+    /// Master off retains enabled/cached SE1, its state and the pending bypass
+    /// edge. B0 is already permanently configured to the same native defaults;
+    /// keep the existing PCM lookahead and gain envelope.
+    pub fn disable_master(&mut self) -> Result<()> {
+        self.graph.available()?;
+        self.graph.stage.master_off()
+    }
+    /// Re-open via begin/defaults + the fixed component setters, not a raw
+    /// master flag toggle. The final default B0 keeps its current stream state.
+    pub fn apply_material(&mut self, plan: LocalStereoMaterialPlan) -> Result<()> {
+        self.graph.available()?;
+        self.graph.stage.apply_master_material(plan.stereo())
+    }
+    pub fn process(
+        &mut self,
+        block: &mut PlanarBlock,
+        frames: usize,
+        end: bool,
+    ) -> Result<AmbienceOneResult> {
+        self.graph.process(block, frames, end)
     }
 }

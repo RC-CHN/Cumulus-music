@@ -1,0 +1,66 @@
+{
+  "schema": "cumulus-original-fixed-master-controls-v1",
+  "fixtureSha256": "92b4336bd5992a9f629d189afa211c5f6954e9e6a778a71eb6ca7befa013b60d",
+  "uncompressedBytes": 753185,
+  "officialCloudmusicSha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+  "officialNeaudioeffectsSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "rateHz": 44100,
+  "channels": 2,
+  "capacityFrames": 2048,
+  "nativeInputFormatEnum": 3,
+  "nativeSeFormat": "0x3102",
+  "nativeVmSourceSha256": "793bacf013802f6524a78e68e9a647d5fb2477a308eb4c46a142cda3f8aa171c",
+  "nativePcmTraceSourceSha256": "50385f42c5174dde5d05c4c0561eab33e3d0d6318a98f937ff4bd193ae71049f",
+  "nativeCaptures": [
+    {
+      "privateCompactSha256": "35ce9ab0d280f6183d5771215b214ff96eb87a546c54bbc4ed84272b0f81efcf",
+      "privateScenarioSha256": "75135bb9d92576824eef7ba895770c843cc7d5e874c695fafad82e5402bed48c"
+    },
+    {
+      "privateCompactSha256": "518966b1e288e6ab88b8ebe34648cd056a0d384a23086ce4831953fde340ea50",
+      "privateScenarioSha256": "3db3b1debb4e108cce77744382c85b78799af5f8ad475509b7d88dd47d8f748b"
+    }
+  ],
+  "privateLeafTraceSha256": "b50d532b90c4d4099a978022e0d6d3ddedded33d2e772ba36ed083bb7efb047e",
+  "privateLeafTraceSourceSha256": "bed2da6c5eb9d259d94032e0abba6d2ae3077d48d9cb29b42f80734536ad2777",
+  "privatePackerSourceSha256": "c64cf17e5fcd6563ca82e9c6c8bf3cf383d79e1f9eb65fb7a4c73c847d11f3ad",
+  "originalTextPatched": false,
+  "originalOuterPcmFifoExecuted": false,
+  "cloudCefJsonExecuted": false,
+  "realWindowsExecution": false,
+  "physicalAudio": false,
+  "dspReplaced": false,
+  "host": "Unicorn x64 original code with bounded reviewed Windows host/CRT memory and allocation adapters; original DSP and native control code unmodified, C locale requests and no Windows NLS replies",
+  "originalEntries": {
+    "factory": "65B60",
+    "init": "670E0",
+    "graphReset": "1B960",
+    "graphProcess": "1AA50",
+    "masterOff": "68770 -> 6B960(true) -> 1D410 -> 1C590(true)",
+    "fullMaterial": "68000 -> 692E0(0) -> 68600(0) -> 6ABE0 -> 6AB30(1) -> 6A490(0) -> 65BC0"
+  },
+  "caseCount": 3,
+  "blocks": 61,
+  "selectedPcmPrefixes": 13,
+  "pureCBeforeLimiterComparedBlocks": 61,
+  "cases": [
+    {
+      "name": "master_off_through_eof",
+      "inputFrames": 8199,
+      "outputFrames": 8199,
+      "blocks": 5
+    },
+    {
+      "name": "master_off_then_full_material_reopen",
+      "inputFrames": 12295,
+      "outputFrames": 56395,
+      "blocks": 28
+    },
+    {
+      "name": "master_reopen_changed_controls_with_retained_b0_peaks",
+      "inputFrames": 12295,
+      "outputFrames": 56395,
+      "blocks": 28
+    }
+  ]
+}

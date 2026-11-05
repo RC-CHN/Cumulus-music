@@ -1,0 +1,107 @@
+Fixed local equalizer master lifecycle
+======================================
+
+LocalFixedStereoMaster is a separate owned Rust/C component for the official
+3.1.42.205594 fixed local material, decoded stereo f32 at 44,100 Hz, capacity
+2048. The typed plan requires flat/off GEQ, off BT and RVB, enabled SE with
+ambience=1 and spectrum shaper, and the official integer slider ranges. The
+older LocalFixedStereoMaterial, held ColdStereoSource, and ordinary playback
+keep their existing behavior. This API does not select sources or enable any
+player or UI setting. Other formats, arbitrary effects and SE-component-off
+material are outside this new master scope.
+
+Original control and processing chain
+-------------------------------------
+cloudmusic.dll SHA256 557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493;
+neaudioeffects.dll SHA256 c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be.
+All addresses are RVAs. M4:15808–15819 marshals the audioeffect bridge;
+cloud EFAB90 handles isOpen and EFB760 dispatches the old local type-2 material.
+See core-effects-material-routing.txt for the larger routing contract.
+
+The original AudioEffects outer factory65B60 and Init670E0 create the
+stereo processor (input enum3, internal SE format0x3102), configure the
+stereo 44.1 kHz/2048 geometry and call 6B060/1B960 to reset node histories.
+The oracle then applies the native old material transaction. This Init reset
+settles the otherwise default-off sibling wrapper edges before any sample.
+It does not make the subsequent SE enable transition disappear. By design
+this component starts with that reset, unlike the standalone held source's
+first unused zero-position prepare. The ordinary cloud device caller also
+invokes SDK+28 after successful Init (1055791–10557B5); that additional call
+and outer FIFO/device lifetime are outside the captured constructor path.
+
+Master off: EFACAB–EFACE1 → outer68770 → 6B960(true). The helper first writes
+B0 defaults (0 dB threshold, 5 ms attack, 100 ms release, 0 dB output gain,
+infinite ratio, ratio4) and calls 1D410, then applies 1C590(true). 1C590 replays
+cached node enable flags: 1DD00 bypasses the SE wrapper while the SE enable
+cache and its bank remain set. 1D360 uses the cached B0 enable independently
+of master. In this graph B0 is already enabled with those exact defaults, so
+Rust retains the same limiter object, envelope and pending 219 frames. Do not
+infer that master off enables B0 in every material or bypasses the whole DSP.
+
+Full material apply: EFB760 → 68000, whose inner transaction includes
+1BBA0 defaults, 1C590(false), 6B0C0 and the default B0 parameters. The
+old-schema setters then run in order: 692E0(eq off), 68600(bt off),
+6ABE0(SE slider values, shaper true, ambience1), 6AB30(SE on),
+6A490(rvb off), 65BC0(end). 65BC0 is not an atomic native commit. This Rust
+component accepts only the subset whose non-SE values already match the
+immutable defaults. It reproduces the SE bank1→0→1 control transitions
+and A8550 enable. A raw 1C590(false) would skip the bank/default application.
+
+A passive trace of the original first five PCM blocks verifies the leaf
+behavior against the original final PCM hashes. Closing calls none of the
+observed reset leaves. Reopening calls B3990 twice via A86AA when A85B0
+changes banks, and once via A8586 when A8550 enables the wrapper. Those
+calls clear SE sub-plugin histories including the environment, while
+retaining its wrapper's previous flag and recovered prior-gain semantics.
+Neither transition invokes graph Reset1B960, wrapper ResetA8510, or B0
+reset marker65490. Only actual initialization hits the broader graph reset
+in these flows. The absence of a named Reset call does not establish that
+every internal value is unchanged; the native setter writes and subsequent
+PCM are part of the evidence.
+
+The Rust API uses separate disable_master and apply_material operations.
+Material validation precedes state mutation; invalid settings do not change
+an existing graph. The new FFI accepts a single owned, aligned native state
+and fixed-sized SE arena. It takes no PCM pointer during control calls and
+cannot run concurrently with process through the safe mutable Rust owner.
+Native control failure quarantines the state. PCM inherits the finite input,
+format/frame bounds, private dry-buffer and failure quarantine of the fixed
+graph. The ordinary actor, source switches, engine takeover, seek and
+renderer transitions are deliberately not attached by this component.
+
+Original oracle and reproducible comparison
+-------------------------------------------
+The original outer factory, Init and the exact native control calls above
+were executed in an isolated Unicorn x64 host. The original 1AA50 graph
+processed finite synthetic interleaved float PCM through all original
+children and original B0. PE text was unmodified, no DSP was replaced, and
+bounded Windows host adapters supplied allocation, CRT memory and locks.
+The original static CRT requested C locale; no NLS answers were used.
+This did not execute cloud CEF/JSON, the outer PCM FIFO (67C00/68120),
+Windows device output or native Windows. The original processing order
+and the distinction between SE and top-level RVB are documented in
+core-effects-local-fixed.txt.
+
+Input and final output frame totals:
+* Close at source frame4096; remain closed through EOF: 8199 → 8199, 5
+  blocks. The first block outputs 1829; final short input7 yields 226/EOF.
+* Close4096; apply the same 3/5 material at8192: 12295 → 56395, 28 blocks,
+  including 44100 SE tail frames. Reopen emits a full2048 without B0 re-prime.
+* Same cut points; reopen with 6/8 after >0 dB synthetic peaks adjacent to
+  both controls: 12295 → 56395, 28 blocks. The final PCM checks include the
+  B0 envelope around the retained lookahead, not only an EOF length.
+
+The public fixture and manifest are in core/tests/fixtures under
+`effects-local-stereo-master-official`. The manifest binds the original DLL
+hashes, the private VM/trace/capture sources and their receipts. The fixture
+contains synthetic source samples, numeric controls, final full valid-PCM
+SHA256 for every block, and 13 selected bitwise output prefixes. It contains
+no original code, parameter blobs, account or device material. Public tests
+consume only this fixture; they do not invoke the private oracle.
+
+A strict Linux C build of the new path independently matched all61 block
+n/end and complete valid PCM hashes at original child0x38, immediately
+before B0. The new Rust integration test `effects_local_master_original`
+compares all61 through actual Rust B0, including exact final tail and the
+stable empty EOF. The C result alone does not verify that Rust test, Windows,
+ordinary playback, speakers or the unexecuted outer FIFO.

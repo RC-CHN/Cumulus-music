@@ -17,16 +17,26 @@ typedef struct {
 #pragma warning(pop)
 #endif
 
-int cumulus_local_fixed_init(NeteaseLocalFixed *s,uint32_t rate,unsigned cap,
-                             float *arena,size_t count) {
+static int local_fixed_init(NeteaseLocalFixed *s,uint32_t rate,unsigned cap,
+                            float *arena,size_t count,unsigned initial_bank) {
     if(!s || !arena)return -1;
     memset(s,0,sizeof(*s));
     if(cumulus_local_off_init(&s->off,(float)rate,cap) ||
        cumulus_stereo_one_init(&s->stereo,rate,cap,arena,count))return -1;
-    /* Actual 1BBA0 calls SE parameters(0,0,true,ambience=0), bypass=true.
-     * EFF390 on=false does not read or apply the JSON's ambience field. */
-    s->stereo.shared.dynamics[1].config.input=db_gain(1.5f);
+    s->bank_one=initial_bank;
+    if(!initial_bank)s->stereo.shared.dynamics[1].config.input=db_gain(1.5f);
     return netease_stereo_one_bypass(&s->stereo,1);
+}
+int cumulus_local_fixed_init(NeteaseLocalFixed *s,uint32_t rate,unsigned cap,
+                             float *arena,size_t count) {
+    /* Existing graph starts after the 1BBA0 defaults; cold-source edge
+     * semantics intentionally remain separate from outer device Init. */
+    return local_fixed_init(s,rate,cap,arena,count,0);
+}
+int cumulus_local_fixed_master_init(NeteaseLocalFixed *s,float *arena,size_t count) {
+    /* Outer Init before material apply: default bank1, SE wrapper off.
+     * The Rust owner performs the native node reset before applying material. */
+    return local_fixed_init(s,44100,2048,arena,count,1);
 }
 int netease_local_fixed_parameters(NeteaseLocalFixed *s,float presence,float stereoizer,unsigned enabled) {
     if(!s || !s->off.capacity || enabled>1 || !isfinite(presence) || !isfinite(stereoizer) ||
@@ -40,6 +50,33 @@ int netease_local_fixed_parameters(NeteaseLocalFixed *s,float presence,float ste
     /* On=false preserves parameters/bank as the original cloud parser does. */
     return netease_stereo_one_bypass(&s->stereo,!enabled);
 }
+/* Outer 68770/6B960(true) in the fixed defaults scope: the only
+ * master-sensitive active node is SE. Keep its controls/bank and history,
+ * leave wrapper previous untouched, and let B0 continue with its defaults. */
+int netease_local_fixed_master_off(NeteaseLocalFixed *s) {
+    if(!s || !s->off.capacity)return -1;
+    return netease_stereo_one_bypass(&s->stereo,1);
+}
+
+/* 68000 -> 1BBA0, then the old local material setters. All non-SE
+ * component controls here are already the required immutable defaults.
+ * A85B0 resets the SE plugin on each bank change (without syncing the
+ * wrapper edge); A8550 can reset once more when enabling that wrapper. */
+int netease_local_fixed_master_material(NeteaseLocalFixed *s,float presence,float stereoizer) {
+    if(!s || !s->off.capacity || !isfinite(presence) || !isfinite(stereoizer) ||
+       presence < -10 || presence > 10 || stereoizer < 0 || stereoizer > 10)return -1;
+    if(netease_stereo_one_parameters(&s->stereo,0,0,1))return -1;
+    if(s->bank_one) {
+        s->bank_one=0;s->stereo.shared.dynamics[1].config.input=db_gain(1.5f);
+        if(netease_stereo_one_reset(&s->stereo))return -1;
+    }
+    if(netease_stereo_one_bypass(&s->stereo,1) ||
+       netease_stereo_one_parameters(&s->stereo,presence,stereoizer,1))return -1;
+    s->bank_one=1;s->stereo.shared.dynamics[1].config.input=db_gain(1.0f);
+    if(netease_stereo_one_reset(&s->stereo))return -1;
+    return netease_stereo_one_bypass(&s->stereo,0);
+}
+
 int netease_local_fixed_reset(NeteaseLocalFixed *s) {
     if(!s || !s->off.capacity || netease_local_off_reset(&s->off) ||
        netease_stereo_one_reset(&s->stereo))return -1;
