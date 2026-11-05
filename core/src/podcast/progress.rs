@@ -35,7 +35,7 @@ pub(crate) fn program_id(resource: &Value) -> Option<u64> {
         return None;
     }
     let number = id.parse::<u64>().ok()?;
-    (number > 0 && number <= (1_u64 << 53) - 1).then_some(number)
+    (number > 0 && number < (1_u64 << 53)).then_some(number)
 }
 
 /// M/308 passes the last stored progress for an interruption; native M/110
