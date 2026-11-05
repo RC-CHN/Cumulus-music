@@ -70,6 +70,8 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "scene_fm_palette_read",
             "scene_fm_palette_sample",
             "scene_fm_palette_cancel",
+            "pc_presentation",
+            "search_presentation",
             "copy_text",
         ] {
             assert_ipc_response(
@@ -216,6 +218,11 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","revision":"stale","key":"0:1:0"}),
         ),
         ("scene_fm_view", json!({"epoch":"0","refresh":true})),
+        ("pc_presentation", json!({"epoch":"0"})),
+        (
+            "search_presentation",
+            json!({"epoch":"0","receipt":"0123456789abcdef0123456789abcdef","revision":"1"}),
+        ),
         (
             "scene_fm_palette_read",
             json!({"epoch":"0","revision":"1","voiceId":"601","pixelRatio":1.0}),

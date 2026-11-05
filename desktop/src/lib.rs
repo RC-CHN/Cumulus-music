@@ -37,6 +37,7 @@ pub use messages::counts::{
 pub mod mini;
 mod mv;
 mod network_diagnostics;
+pub mod pc_presentation;
 mod platform;
 mod playback_cache;
 pub mod playback_keep_awake;
@@ -98,6 +99,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
         .manage(player::PlayerStreams::default())
         .manage(together::CloseCoordinator::default())
         .manage(renewal::RenewalPump::default())
+        .manage(pc_presentation::Host::default())
         .manage(search::RightsPump::default())
         .manage(messages::counts::Host::default())
         .manage(watchman::EventHost::default())
@@ -138,6 +140,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                     system_media::stop(window.app_handle());
                     shortcuts::stop(window.app_handle());
                     renewal::stop(window.app_handle());
+                    pc_presentation::stop(window.app_handle());
                     member::stop_lifecycle(window.app_handle());
                     messages::counts::stop(window.app_handle());
                     for (label, child) in window.app_handle().webview_windows() {
@@ -343,6 +346,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 commands::search_songs,
                 search::search_discovery,
                 search::search_results,
+                pc_presentation::pc_presentation,
+                pc_presentation::search_presentation,
                 search::search_refresh_privileges,
                 search::search_reason_page,
                 search::search_history,
@@ -650,6 +655,9 @@ pub fn run() {
             shortcuts::install(app.handle());
             desktop_lyrics::start(app.handle());
             renewal::start(app.handle());
+            if pc_presentation::start(app.handle()).is_err() {
+                eprintln!("Cumulus PC presentation refresh is unavailable.");
+            }
             if renewal::start_legacy(app.handle()).is_err() {
                 eprintln!("Cumulus scheduled legacy session renewal is unavailable.");
             }
@@ -669,6 +677,7 @@ pub fn run() {
         .run(|app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 renewal::stop(app);
+                pc_presentation::stop(app);
             }
             #[cfg(windows)]
             if matches!(event, tauri::RunEvent::Exit)
