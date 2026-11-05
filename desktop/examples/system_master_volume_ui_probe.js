@@ -37,7 +37,7 @@
   }
   async function activate(lookup, label) {
     // Resolve and activate in the same DOM turn. Waiting for a previous query
-    // then querying again allowed a route update to remove that control.
+    // then querying again can let a route update remove that control.
     last = label;
     await wait(() => {
       const node = lookup();
@@ -83,9 +83,12 @@
     }, 'ready after synthetic account recovery');
     await activate(daily, 'open synthetic Daily');
     last = 'wait for current Daily receipt';
-    await wait(() => one('.track-row[data-track-id="1"]') &&
-      playAll()?.getAttribute('data-recommendation-play') && enabled(playAll()),
-      'synthetic Daily rows and authoritative play receipt');
+    await wait(() => {
+      const encoded = playAll()?.getAttribute('data-recommendation-play');
+      const source = encoded && JSON.parse(encoded)[0];
+      return one('.track-row[data-track-id="1"]') && typeof source === 'string' &&
+        source.startsWith(account.epoch + ':daily:') && enabled(playAll());
+    }, 'synthetic Daily rows and authoritative account-bound play receipt');
     await activate(playAll, 'play confirmed Daily receipt');
     last = 'wait for native Daily playback';
     const playing = await wait(async () => {
