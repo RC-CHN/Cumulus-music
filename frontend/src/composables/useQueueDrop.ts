@@ -121,7 +121,7 @@ export function useQueueDrop(options: {
       y = e.clientY;
       if (!dragging.value && Math.hypot(x - event.clientX, y - event.clientY) >= 6) {
         dragging.value = true;
-        itemCount.value = source.kind === 'playlist' ? source.rows.length : 1;
+        itemCount.value = source.kind === 'local' ? 1 : source.rows.length;
         // Preserve cancellation even if the pointer returns to the title
         // after Escape and WebView dispatches its compatibility click.
         if (owner instanceof Element) suppressReleasedClick(owner, event.pointerId);
