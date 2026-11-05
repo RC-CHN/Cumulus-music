@@ -23,6 +23,18 @@ Cumulus SNS 登录恢复契约与后续实现边界
   x86/x64 PE 的 ASCII/UTF-16LE 关键字，未找到成功票据生成文档。静态阴性结果
   不能证明真实回调或后端脚本不存在。
 
+  M3143:373–375 的 beforepopup 只把目标 URL 交给通用 openUrl。其实现 M73:20–43
+  默认交给 Os.openExternal；不会建立 SNS 子窗口回传通道。若当时仍有登录态且目标
+  满足该工具的 SSO 条件，还会尝试 GET /api/sso/login/token，取得 token 后经
+  /sso/login 打开外部链接。这是通用外链分支，不是微信或 QQ 的成功票据生产者；
+  隔离的 SNS 授权窗口不得沿用此分支传递已有账号状态或票据。
+
+  从第 5 节的历史无会话响应离线解析 Location：微信 /back/weichat 与 QQ /back/qq
+  分别返回 HTTP 302，指向 http://music.163.com/back/sns；二者查询均为 code=401、
+  message=授权出现异常，并含不公开的 key。另一次直接请求 HTTPS /back/sns（无查询）
+  才返回 HTTP 200、业务 code=400。两类结果只能用于各自的失败夹具；没有跟随降级
+  URL，也不证明任何一方成功时的地址、frame、票据字段或 Cookie/state 绑定。
+
   当前锁定宿主有专用适配点：Tauri 2.11.5 的 PlatformWebview 可取 Windows
   WebView2 controller 或 Linux WebKitGTK。WebView2 0.38.2 的 FrameCreated、
   frame WebMessageReceived 和原生消息 Source 可作为具体 frame 的核对输入，
@@ -95,6 +107,8 @@ Cumulus SNS 登录恢复契约与后续实现边界
   M402 = hybrid_app.chunk.1482700000000.js/402.js
     SHA256 c759837f6de9c3f6b108edd1b9c22da8202d8cf7bb861f58454f7f4b9a054a37
     346–355 MConfig yidun#paths；395–405 独立 checkToken/X-antiCheatToken。
+  M73 = hybrid_app.chunk.1482700000000.js/73.js
+    20–43 openUrl 的默认系统浏览器分支及有条件的外链 SSO。
 
   可读父页：references/ui-recovery/sources/packages/pc/src/pages/sns/index.js
     SHA256 cb3547f674bd21d15c5ab2755f1873570051e1e9f6305eea3d41dd41d68c68c0
