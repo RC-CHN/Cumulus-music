@@ -188,6 +188,10 @@ name = "renewal_ui_probe"
 required-features = ["custom-protocol"]
 
 [[example]]
+name = "legacy_renewal_ui_probe"
+required-features = ["custom-protocol"]
+
+[[example]]
 name = "login_interception_ui_probe"
 required-features = ["custom-protocol"]
 

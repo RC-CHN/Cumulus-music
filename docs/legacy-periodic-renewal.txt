@@ -38,4 +38,11 @@ Rust 与可验证边界：
 
 验证入口（仅合成、不发真实请求）：
   cargo test --locked -p cumulus-core --test legacy_periodic_renewal --test refresh --test client_renewal --test client_login_policy
+  cargo build --locked -p cumulus-desktop --features custom-protocol --example legacy_renewal_ui_probe
+  python3 scripts/ci/legacy_session_renewal_smoke.py --binary /path/to/legacy_renewal_ui_probe --root /path/to/new-proof
+桌面探针使用真实 Vue/WebView 冷恢复、账号对话框、IPC 与正式的两个续期宿主；
+音乐 HTTP 完全在进程内，不加载真实会话、不注入时钟或更改 3 秒条件。两组唯一差异
+为 PH-PC-loginJsk=c/t1，账户 Cookie 作用域一致，均无 RT。分别核对正式账户
+回读起点、实验回包、旧版 dispatch 时间和同账号回读；JSK 组覆盖相同等待窗口，
+其旧版请求和 SQLite 记录均应为零。Linux 可加 --screenshots；Windows 可用 --runtime。
 真实上游旧版续期回包尚未验证；JSK 成对轮换的真实服务边界见 refresh-control-contracts.txt。
