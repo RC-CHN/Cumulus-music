@@ -18,6 +18,17 @@
     }
     throw Error(label);
   }
+  const settings = () => one('button[aria-label="打开设置"]');
+  function inspectSettings(node) {
+    const rect = node?.getBoundingClientRect();
+    const hit = rect && document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    return {
+      connected: !!node?.isConnected, disabled: node?.disabled ?? null, inert: !!node?.closest('[inert]'),
+      rect: rect ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height } : null,
+      hit: !!(node && hit && node.contains(hit)), hitTag: hit?.tagName ?? null,
+      viewport: [innerWidth, innerHeight], heading: one('.main-content h1')?.textContent ?? null,
+    };
+  }
   const pref = () => one('input[name="recent-history-sync"]');
   const dialog = () => one('.settings-confirm[open]');
   const section = () => pref()?.closest('section');
@@ -25,6 +36,7 @@
   const ready = () => pref() && !pref().disabled && !one('.page-enter-active,.page-leave-active');
   let epoch, stage = 'startup', nonce = 0, count = 0, core, original, unlisten, checkbox;
   const observations = [], componentRequests = [], commands = [];
+  let startupControl;
   const read = async () => {
     const reply = await invoke('history_sync_preference', { epoch, action: { kind: 'read' } });
     assert(reply.epoch === epoch, 'native settings receipt epoch');
@@ -73,7 +85,7 @@
   try {
     await wait(async () => {
       const account = await invoke('account_snapshot');
-      if (account.status !== 'authenticated' || !one('[aria-label="打开设置"]')) return false;
+      if (account.status !== 'authenticated') return false;
       epoch = account.epoch;
       return true;
     }, 'verified account startup');
@@ -90,7 +102,18 @@
     };
     await emit('resize', { width: 900, height: 650 });
     await wait(() => innerWidth === 900 && innerHeight === 650, 'bounded settings viewport');
-    click(one('[aria-label="打开设置"]'));
+    // Account and signed startup can settle before the shell finishes its
+    // resource load. Use the actual enabled header control after resizing.
+    stage = 'settings_control_ready';
+    let trigger;
+    await wait(() => {
+      trigger = settings();
+      const state = startupControl = inspectSettings(trigger);
+      return state.connected && state.disabled === false && !state.inert &&
+        state.rect.width > 0 && state.rect.height > 0 && state.hit;
+    }, 'connected and enabled Settings control at the bounded viewport');
+    stage = 'settings_open';
+    click(trigger);
     await wait(ready, 'settings preference mounted');
     checkbox = pref();
     checkbox.scrollIntoView({ block: 'center' });
@@ -145,7 +168,8 @@
       realMusicRequests: 0, realAccountWrites: 0,
     });
   } catch (error) {
-    await emit('failed', { ok: false, at: stage, error: String(error), observations, commands, componentRequests });
+    await emit('failed', { ok: false, at: stage, error: String(error), observations, commands, componentRequests,
+      startupControl, currentSettingsControl: inspectSettings(settings()) });
   } finally {
     if (core && original) core.historySyncPreference = original;
     unlisten?.();
