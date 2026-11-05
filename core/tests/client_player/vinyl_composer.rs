@@ -19,6 +19,7 @@ pub(super) struct Server {
     pub(super) scoped_like_reads: AtomicU64,
     likes_enabled: AtomicU64,
     liked: AtomicU64,
+    reports_enabled: AtomicU64,
 }
 
 impl Server {
@@ -61,6 +62,27 @@ impl Server {
                     let mut row = row("23", "20", "其他线程合成评论");
                     row["threadId"] = json!("R_SO_4_2");
                     row
+                } else if self.reports_enabled.load(Ordering::SeqCst) == 1 {
+                    match selected {
+                        "22" => row("22", "9", "合成自己的评论"),
+                        "23" => {
+                            let mut removed = row("23", "20", "合成已移除评论");
+                            removed["status"] = json!(-10);
+                            removed
+                        }
+                        "25" | "26" => row(selected, "20", "合成举报目标"),
+                        "27" => {
+                            let mut other = row("27", "20", "合成其他线程评论");
+                            other["threadId"] = json!("R_SO_4_2");
+                            other
+                        }
+                        "28" => {
+                            let mut unknown = row("28", "20", "合成不可用作者");
+                            unknown["user"]["accountStatus"] = json!(30);
+                            unknown
+                        }
+                        _ => Value::Null,
+                    }
                 } else {
                     self.receipt
                         .lock()
@@ -72,6 +94,20 @@ impl Server {
                 Some(Ok(
                     json!({"code":200,"comments":[],"total":0,"more":false,"currentComment":row}),
                 ))
+            }
+            "/api/report/reportcomment" if self.reports_enabled.load(Ordering::SeqCst) == 1 => {
+                assert_eq!(payload.as_object().unwrap().len(), 3);
+                assert_eq!(payload["threadId"], "R_SO_4_1");
+                self.calls
+                    .lock()
+                    .unwrap()
+                    .push((path.into(), payload.clone()));
+                Some(match payload["commentId"].as_str().unwrap() {
+                    "21" => Ok(json!({"code":200})),
+                    "25" => Ok(json!({"code":"-1"})),
+                    "26" => Err(Error::Transport("synthetic report reply lost".into())),
+                    _ => panic!("unreportable comment reached transport"),
+                })
             }
             "/api/v1/comment/like" | "/api/v1/comment/unlike"
                 if self.likes_enabled.load(Ordering::SeqCst) == 1 =>
@@ -124,6 +160,229 @@ fn publish(reply: bool) -> CommentWriteCommand {
     CommentWriteCommand::Publish {
         content: "  合成内容 🎵 ".into(),
         reply_to: reply.then(|| "21".into()),
+    }
+}
+
+const REPORT: &str = "/api/report/reportcomment";
+
+async fn prepare_report(
+    client: &MusicClient,
+    play_id: &str,
+    id: &str,
+    reason: CommentReportReason,
+) -> String {
+    let result = client
+        .player_vinyl_comment_report("1", play_id, id, CommentReportCommand::Prepare { reason })
+        .await
+        .unwrap();
+    serde_json::to_value(result.value).unwrap()["receipt"]
+        .as_str()
+        .unwrap()
+        .into()
+}
+
+#[tokio::test]
+async fn vinyl_report_uses_current_native_thread_and_shares_only_durable_status() {
+    use cumulus_core::comments::{CommentResource, ResourceKind};
+    let (_dir, api, _, client, _) = fixture();
+    let server = &api.vinyl_composer;
+    server.reports_enabled.store(1, Ordering::SeqCst);
+    api.vinyl_comment_group.store(2, Ordering::SeqCst);
+    let play_id = client
+        .play_selection("1", songs("1"))
+        .await
+        .unwrap()
+        .play_id
+        .unwrap();
+    assert!(
+        client
+            .player_vinyl_comment_report("1", &play_id, "21", CommentReportCommand::Inspect)
+            .await
+            .is_err()
+    );
+    api.vinyl_comment_group.store(1, Ordering::SeqCst);
+    let inspect = || CommentReportCommand::Inspect;
+    let resource = CommentResource {
+        kind: ResourceKind::Track,
+        id: "1".into(),
+        owner: None,
+    };
+    let submit = |receipt| CommentReportCommand::Submit { receipt };
+    let cancelled = prepare_report(&client, &play_id, "21", CommentReportReason::Political).await;
+    client
+        .player_vinyl_comment_report(
+            "1",
+            &play_id,
+            "21",
+            CommentReportCommand::Cancel {
+                receipt: cancelled.clone(),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(
+        client
+            .player_vinyl_comment_report("1", &play_id, "21", submit(cancelled))
+            .await
+            .is_err()
+    );
+    for unavailable in ["22", "23", "24", "28"] {
+        let receipt = prepare_report(
+            &client,
+            &play_id,
+            unavailable,
+            CommentReportReason::Advertising,
+        )
+        .await;
+        let result = client
+            .player_vinyl_comment_report("1", &play_id, unavailable, submit(receipt))
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(result.value).unwrap()["status"],
+            "target_unavailable"
+        );
+    }
+    let other_thread =
+        prepare_report(&client, &play_id, "27", CommentReportReason::Meaningless).await;
+    assert!(
+        client
+            .player_vinyl_comment_report("1", &play_id, "27", submit(other_thread))
+            .await
+            .is_err()
+    );
+    assert!(server.calls.lock().unwrap().is_empty());
+    let raw = "  合成举报理由 🎵\n保留原文  ";
+    for (id, reason, wire, outcome) in [
+        (
+            "21",
+            CommentReportReason::Meaningless,
+            "段子或者无意义的评论",
+            "accepted",
+        ),
+        (
+            "25",
+            CommentReportReason::PersonalAttack,
+            "恶意人身攻击",
+            "duplicate",
+        ),
+        (
+            "26",
+            CommentReportReason::Other {
+                description: raw.into(),
+            },
+            raw,
+            "uncertain",
+        ),
+    ] {
+        let receipt = prepare_report(&client, &play_id, id, reason).await;
+        assert!(
+            client
+                .comment_report("1", resource.clone(), id, submit(receipt.clone()))
+                .await
+                .is_err()
+        );
+        for _ in 0..2 {
+            let result = client
+                .player_vinyl_comment_report("1", &play_id, id, submit(receipt.clone()))
+                .await
+                .unwrap();
+            assert_eq!(
+                serde_json::to_value(result.value).unwrap(),
+                json!({"status":outcome,"receipt":null})
+            );
+        }
+        let independent = client
+            .comment_report("1", resource.clone(), id, inspect())
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(independent.value).unwrap()["status"],
+            outcome
+        );
+        assert_eq!(
+            server.calls.lock().unwrap().last(),
+            Some(&(
+                REPORT.into(),
+                json!({"threadId":"R_SO_4_1","commentId":id,"reason":wire})
+            ))
+        );
+    }
+    assert_eq!(server.calls.lock().unwrap().len(), 3);
+}
+
+#[tokio::test]
+async fn vinyl_report_proven_not_sent_does_not_poison_original_journal_after_scope_changes() {
+    use cumulus_core::comments::{CommentResource, ResourceKind};
+    for scenario in ["play", "credentials", "account"] {
+        let (_dir, api, session, client, _) = fixture();
+        let server = &api.vinyl_composer;
+        server.reports_enabled.store(1, Ordering::SeqCst);
+        api.vinyl_comment_group.store(1, Ordering::SeqCst);
+        let first = client
+            .play_selection("1", songs("1"))
+            .await
+            .unwrap()
+            .play_id
+            .unwrap();
+        let receipt = prepare_report(&client, &first, "21", CommentReportReason::Meaningless).await;
+        server.dispatch_hold.store(1, Ordering::SeqCst);
+        let task = tokio::spawn({
+            let client = client.clone();
+            let first = first.clone();
+            async move {
+                client
+                    .player_vinyl_comment_report(
+                        "1",
+                        &first,
+                        "21",
+                        CommentReportCommand::Submit { receipt },
+                    )
+                    .await
+            }
+        });
+        tokio::time::timeout(Duration::from_secs(2), server.dispatch_held.notified())
+            .await
+            .unwrap();
+        match scenario {
+            "play" => {
+                client.play_selection("1", songs("2")).await.unwrap();
+            }
+            "credentials" => api.vinyl_comment_group.store(3, Ordering::SeqCst),
+            "account" => {
+                session
+                    .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+                    .unwrap();
+            }
+            _ => unreachable!(),
+        }
+        server.dispatch_release.notify_one();
+        assert!(task.await.unwrap().is_err(), "{scenario}");
+        if scenario == "account" {
+            session
+                .adopt(api.clone(), json!({"userId":9}), &session.token().unwrap())
+                .unwrap();
+        }
+        let current_epoch = session.token().unwrap().generation.to_string();
+        let view = client
+            .comment_report(
+                &current_epoch,
+                CommentResource {
+                    kind: ResourceKind::Track,
+                    id: "1".into(),
+                    owner: None,
+                },
+                "21",
+                CommentReportCommand::Inspect,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(view.value).unwrap()["status"],
+            "ready",
+            "{scenario}"
+        );
+        assert!(server.calls.lock().unwrap().is_empty(), "{scenario}");
     }
 }
 

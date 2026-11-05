@@ -424,6 +424,8 @@ export function createTauriClient(): CoreClient {
       invoke('player_vinyl_comment_like_operations', { epoch, playId }),
     playerVinylCommentLike: (epoch, playId, id, action) =>
       invoke('player_vinyl_comment_like', { epoch, playId, id, action }),
+    playerVinylCommentReport: (epoch, playId, id, command) =>
+      invoke('player_vinyl_comment_report', { epoch, playId, id, command }),
     playerVinylPrepareWrite: (epoch, playId, command) =>
       invoke('player_vinyl_prepare_write', { epoch, playId, command }),
     playerVinylWriteOperations: (epoch, playId) =>

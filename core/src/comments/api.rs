@@ -49,12 +49,12 @@ impl CommentApi {
         Self::project(&value, query)
     }
 
-    pub(super) async fn vinyl_like_target(
+    pub(crate) async fn vinyl_target(
         &self,
         resource: &CommentResource,
         id: &str,
         revision: &str,
-    ) -> Result<Comment> {
+    ) -> Result<Option<Comment>> {
         if resource.kind != ResourceKind::Track || resource.owner.is_some() {
             return Err(Error::InvalidInput("invalid vinyl comment scope"));
         }
@@ -84,12 +84,7 @@ impl CommentApi {
                 ..Default::default()
             },
         )?;
-        let target =
-            Self::located(page, id).ok_or(Error::State("comment is no longer readable"))?;
-        if target.status.is_some_and(|status| status < 0) {
-            return Err(Error::State("comment target is unavailable"));
-        }
-        Ok(target)
+        Ok(Self::located(page, id))
     }
 
     async fn vinyl_read(

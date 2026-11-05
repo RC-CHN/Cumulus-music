@@ -62,7 +62,7 @@ impl VinylCommentRead {
     }
 }
 
-/// Fixed mutations from an already authorized current track (M/438, M/232).
+/// Fixed mutations from an already authorized current track (M/438, M/232, M/55).
 pub struct VinylCommentWrite {
     song_id: String,
     action: VinylCommentWriteAction,
@@ -76,6 +76,10 @@ enum VinylCommentWriteAction {
     Like {
         comment_id: String,
         desired: bool,
+    },
+    Report {
+        comment_id: String,
+        reason: String,
     },
 }
 
@@ -109,6 +113,17 @@ impl VinylCommentWrite {
         })
     }
 
+    pub(crate) fn report(song_id: &str, comment_id: &str, reason: String) -> Result<Self> {
+        VinylCommentRead::target(song_id, comment_id)?;
+        Ok(Self {
+            song_id: song_id.into(),
+            action: VinylCommentWriteAction::Report {
+                comment_id: comment_id.into(),
+                reason,
+            },
+        })
+    }
+
     pub fn path(&self) -> &'static str {
         match &self.action {
             VinylCommentWriteAction::Publish {
@@ -117,6 +132,7 @@ impl VinylCommentWrite {
             VinylCommentWriteAction::Publish { reply_to: None, .. } => "/api/resource/comments/add",
             VinylCommentWriteAction::Like { desired: true, .. } => "/api/v1/comment/like",
             VinylCommentWriteAction::Like { desired: false, .. } => "/api/v1/comment/unlike",
+            VinylCommentWriteAction::Report { .. } => "/api/report/reportcomment",
         }
     }
 
@@ -137,6 +153,9 @@ impl VinylCommentWrite {
                     "expressionPicId":-1,"bubbleId":-1}),
             VinylCommentWriteAction::Like { comment_id, .. } => {
                 json!({"threadId":thread_id,"commentId":comment_id})
+            }
+            VinylCommentWriteAction::Report { comment_id, reason } => {
+                json!({"threadId":thread_id,"commentId":comment_id,"reason":reason})
             }
         };
         (path, payload)

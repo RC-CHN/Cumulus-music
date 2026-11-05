@@ -36,6 +36,7 @@ const commentsOpen = defineModel<boolean>('commentsOpen', { required: true });
 const preferredMode = defineModel<VinylDisplayMode>('mode', { required: true });
 const emit = defineEmits<{
   report: [];
+  commentReportExpired: [];
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
   fullComments: [hot: boolean];
@@ -675,6 +676,7 @@ const displayedAuxiliary = computed(() =>
           @full="emit('fullComments', false)"
           @hot="emit('fullComments', true)"
           @compose="commentComposer.open"
+          @report-expired="emit('commentReportExpired')"
         />
       </div>
     </div>

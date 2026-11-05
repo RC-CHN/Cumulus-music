@@ -15,6 +15,7 @@ const props = defineProps<{
   resource: CommentResource;
   item: CommentItem;
   canDelete: boolean;
+  vinylPlayId?: string;
 }>();
 const emit = defineEmits<{ expired: []; remove: [] }>();
 const core = useCore();
@@ -26,11 +27,18 @@ const choice = ref<ReportChoice | null>(null);
 const visited = ref(false);
 const position = ref({ left: '0px', top: '0px' });
 const leftFlyout = ref(false);
-const scope = computed(() => resourceKey(props.resource));
+const scope = computed(() =>
+  props.vinylPlayId
+    ? JSON.stringify(['vinyl', props.vinylPlayId, resourceKey(props.resource)])
+    : resourceKey(props.resource),
+);
 const dispatch = computed(() => {
   const resource = props.resource;
+  const playId = props.vinylPlayId;
   return (epoch: string, uid: string, command: ReportCommand) =>
-    core.commentReport(epoch, resource, uid, command);
+    playId
+      ? core.playerVinylCommentReport(epoch, playId, uid, command)
+      : core.commentReport(epoch, resource, uid, command);
 });
 const reportable = computed(() => !!props.item.reportable && !props.item.owned && !!props.epoch);
 let context = false;
@@ -164,6 +172,7 @@ defineExpose({ contextMenu });
       v-if="reportable"
       ref="trigger"
       class="text-button"
+      :class="{ 'vinyl-comment-report': vinylPlayId }"
       type="button"
       data-comment-report
       aria-haspopup="menu"
@@ -245,6 +254,7 @@ defineExpose({ contextMenu });
     duplicate-message="重复举报"
     :return-focus="returnFocus"
     :dispatch="dispatch"
+    :auto-submit-preset="!!vinylPlayId"
     @close="choice = null"
     @expired="emit('expired')"
   />

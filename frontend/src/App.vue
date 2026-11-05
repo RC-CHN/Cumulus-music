@@ -5371,6 +5371,7 @@ onUnmounted(() => {
         :comment-composer="vinylCommentComposer"
         @full-comments="openFullVinylComments"
         @report="reportLyrics"
+        @comment-report-expired="music.bootstrap(false)"
         @source="openPlaybackSource"
         @catalog="
           (target) => {

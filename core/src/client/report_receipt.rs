@@ -2,8 +2,9 @@
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
+    comments::VinylWriteAuthority,
     error::code_matches,
-    protocol::api::Api,
+    protocol::api::{Api, VinylCommentWrite, validate_response},
     storage::{OperationLock, StateStore},
 };
 use serde::{Deserialize, Serialize};
@@ -219,6 +220,38 @@ impl ReportJournal<'_> {
             &[200, -1]
         };
         let result = api.call(endpoint, payload, false, accepted).await;
+        self.finish(result, endpoint, official_account_code, None)
+    }
+
+    pub(super) async fn send_vinyl(
+        &self,
+        write: VinylCommentWrite,
+        authority: VinylWriteAuthority<'_>,
+    ) -> Result<ReportStatus> {
+        self.session.require_api(self.token, authority.api)?;
+        let owner = self.session.with_token(self.token, |owner| {
+            self.store
+                .put(owner, self.kind, &self.key, &json!(Recorded::Uncertain))?;
+            Ok(owner.to_owned())
+        })?;
+        let endpoint = write.path();
+        let result = authority
+            .api
+            .request_vinyl_comment_write(write, authority.revision, authority.permission)
+            .await
+            .and_then(|response| validate_response(endpoint, response, &[200, -1]));
+        // The target lock outlives dispatch. A change of account must neither
+        // erase a sent result nor leave a provably unsent intent stuck.
+        self.finish(result, endpoint, false, Some(&owner))
+    }
+
+    fn finish(
+        &self,
+        result: Result<Value>,
+        endpoint: &str,
+        official_account_code: bool,
+        original_owner: Option<&str>,
+    ) -> Result<ReportStatus> {
         let observed = match result {
             Ok(value) if code_matches(&value["code"], 200) => Recorded::Accepted,
             Ok(value) if code_matches(&value["code"], -1) => Recorded::Duplicate,
@@ -227,7 +260,7 @@ impl ReportJournal<'_> {
             }
             Err(error) => match error.root() {
                 Error::RequestNotSent(_) => {
-                    self.session.with_token(self.token, |owner| {
+                    self.finish_for(original_owner, |owner| {
                         self.store.delete(owner, self.kind, &self.key)
                     })?;
                     return Ok(ReportStatus::NotSent);
@@ -256,10 +289,22 @@ impl ReportJournal<'_> {
             _ => Recorded::Uncertain,
         };
         // Persist only this bounded status, without reason, target text or credentials.
-        self.session.with_token(self.token, |owner| {
+        self.finish_for(original_owner, |owner| {
             self.store
                 .put(owner, self.kind, &self.key, &json!(observed))
         })?;
         Ok(observed.into())
+    }
+
+    fn finish_for(
+        &self,
+        original_owner: Option<&str>,
+        operation: impl FnOnce(&str) -> Result<()>,
+    ) -> Result<()> {
+        if let Some(owner) = original_owner {
+            operation(owner)
+        } else {
+            self.session.with_token(self.token, operation)
+        }
     }
 }

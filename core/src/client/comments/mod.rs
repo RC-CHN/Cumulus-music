@@ -14,6 +14,7 @@ use crate::{
     comments::{Comment, CommentLike, Comments},
 };
 pub use floor::CommentFloorView;
+pub(super) use report::reportable;
 pub use report::{CommentReportCommand, CommentReportReason, CommentReportView};
 pub use resource::{CommentResourceCard, CommentResourceView};
 use serde::Serialize;

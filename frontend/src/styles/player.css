@@ -1413,6 +1413,19 @@ input[type='range'] {
   flex-wrap: wrap;
   gap: 12px;
 }
+.vinyl-comment-controls .vinyl-comment-report {
+  font-size: 12px;
+}
+@media (hover: hover) {
+  .vinyl-comment-controls .vinyl-comment-report {
+    opacity: 0;
+  }
+  .vinyl-comment-row:hover .vinyl-comment-report,
+  .vinyl-comment-row:focus-within .vinyl-comment-report,
+  .vinyl-comment-report[aria-expanded='true'] {
+    opacity: 1;
+  }
+}
 .vinyl-comment-like {
   width: auto;
   min-width: 32px;

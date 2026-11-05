@@ -20,6 +20,7 @@ const props = defineProps<{
   choice: ReportChoice | null;
   choices: readonly (readonly [ReportChoice, string])[];
   duplicateMessage: string;
+  autoSubmitPreset?: boolean;
   dispatch: (
     epoch: string,
     uid: string,
@@ -39,6 +40,7 @@ const status = ref<ProfileReportStatus>();
 const checking = ref(false);
 const busy = ref(false);
 const issue = ref('');
+const presetNeedsConfirmation = ref(false);
 let request = 0;
 let alive = true;
 const label = computed(() => props.choices.find(([key]) => key === props.choice)?.[1] ?? '');
@@ -69,7 +71,7 @@ function handleFailure(error: unknown) {
   if (detail.code === 'session_expired' || detail.code === 'profile_changed') emit('expired');
 }
 
-async function inspect() {
+async function inspect(submitPreset = false) {
   const { epoch, uid, choice, scope, dispatch } = props;
   if (!epoch || !uid || !choice || checking.value || busy.value) return;
   const ticket = ++request;
@@ -87,13 +89,15 @@ async function inspect() {
     if (current() && reply.epoch === epoch) status.value = reply.value.status;
   } catch (error) {
     if (!current()) return;
+    if (submitPreset) presetNeedsConfirmation.value = true;
     issue.value = '暂无法核对本机举报回执。';
     handleFailure(error);
   } finally {
     if (current()) {
       checking.value = false;
       await nextTick();
-      if (current() && status.value && !['ready', 'not_sent'].includes(status.value))
+      if (current() && submitPreset && status.value === 'ready') void submit();
+      else if (current() && status.value && !['ready', 'not_sent'].includes(status.value))
         closeButton.value?.focus({ preventScroll: true });
     }
   }
@@ -137,7 +141,10 @@ async function submit() {
     if (submitted) {
       status.value = 'uncertain';
       text.value = '';
-    } else issue.value = '无法准备举报，请检查输入或稍后重试。';
+    } else {
+      if (props.autoSubmitPreset && choice !== 'other') presetNeedsConfirmation.value = true;
+      issue.value = '无法准备举报，请检查输入或稍后重试。';
+    }
     handleFailure(error);
   } finally {
     if (current()) {
@@ -159,13 +166,16 @@ watch(
     text.value = issue.value = '';
     status.value = undefined;
     checking.value = busy.value = false;
+    presetNeedsConfirmation.value = false;
     const choice = props.choice;
     if (!choice || !props.epoch || !props.uid) return;
     await nextTick();
     if (choice !== props.choice || !dialog.value?.isConnected) return;
     if (!dialog.value.open) dialog.value.showModal();
     (choice === 'other' ? input.value : cancel.value)?.focus({ preventScroll: true });
-    void inspect();
+    // The preset selection itself is the official explicit action. Recovery
+    // reads never auto-send; only this opening can consume the selected preset.
+    void inspect(props.autoSubmitPreset && choice !== 'other');
   },
   { flush: 'post', immediate: true },
 );
@@ -189,7 +199,9 @@ onBeforeUnmount(() => {
         @cancel.prevent="close"
       >
         <header>
-          <h2 :id="headingId">{{ choice === 'other' ? '举报原因' : '确认举报' }}</h2>
+          <h2 :id="headingId">
+            {{ choice === 'other' ? '举报原因' : autoSubmitPreset ? '举报' : '确认举报' }}
+          </h2>
           <button
             ref="closeButton"
             class="icon-button"
@@ -238,7 +250,7 @@ onBeforeUnmount(() => {
             class="text-button"
             type="button"
             :disabled="busy || checking"
-            @click="inspect"
+            @click="inspect()"
           >
             核对本机回执
           </button>
@@ -246,7 +258,13 @@ onBeforeUnmount(() => {
             {{ status && !['ready', 'not_sent'].includes(status) ? '关闭' : '取消' }}
           </button>
           <button
-            v-if="!status || status === 'ready' || status === 'not_sent'"
+            v-if="
+              (!autoSubmitPreset ||
+                choice === 'other' ||
+                status === 'not_sent' ||
+                presetNeedsConfirmation) &&
+              (!status || status === 'ready' || status === 'not_sent')
+            "
             class="primary"
             type="button"
             :disabled="!maySubmit"

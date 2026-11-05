@@ -28,6 +28,7 @@ mod startup;
 mod vinyl_comments;
 mod vinyl_composer;
 mod vinyl_likes;
+mod vinyl_report;
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;

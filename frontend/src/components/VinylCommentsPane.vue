@@ -5,6 +5,7 @@ import { vinylLikeCount, type CommentItem } from '../services/comments';
 import type { VinylComposerTarget } from '../composables/useVinylCommentComposer';
 import type { VinylCommentsModel } from '../composables/useVinylComments';
 import CommentText from './CommentText.vue';
+import CommentReportMenu from './CommentReportMenu.vue';
 import Icon from './Icon.vue';
 
 const props = defineProps<{
@@ -18,11 +19,13 @@ const emit = defineEmits<{
   back: [];
   full: [];
   hot: [];
+  reportExpired: [];
   compose: [target: VinylComposerTarget, reply: CommentItem | undefined, opener: HTMLElement];
 }>();
 const scroller = ref<HTMLElement>();
 const next = ref<HTMLElement>();
 const back = ref<HTMLButtonElement>();
+const reportMenus = new Map<string, InstanceType<typeof CommentReportMenu>>();
 const artists = computed(() => props.track.artists.join(' / '));
 const groups = computed(() => [
   { key: 'hot', comments: props.model.hot.value },
@@ -53,6 +56,13 @@ function wheel(event: WheelEvent) {
 }
 function focusBack() {
   back.value?.focus({ preventScroll: true });
+}
+function rowKey(group: string, id: string, index: number) {
+  return `${group}:${id}:${index}`;
+}
+function bindReportMenu(key: string, menu: unknown) {
+  if (menu) reportMenus.set(key, menu as InstanceType<typeof CommentReportMenu>);
+  else reportMenus.delete(key);
 }
 function compose(event: MouseEvent, item?: CommentItem) {
   const target = props.writeTarget;
@@ -130,6 +140,10 @@ defineExpose({ focusBack });
             :key="`${item.id}:${index}`"
             class="vinyl-comment-row"
             :data-vinyl-comment-id="item.id"
+            @contextmenu="reportMenus.get(rowKey(group.key, item.id, index))?.contextMenu($event)"
+            @keydown.shift.f10="
+              reportMenus.get(rowKey(group.key, item.id, index))?.contextMenu($event)
+            "
           >
             <img
               v-if="item.author?.avatarUrl"
@@ -150,6 +164,16 @@ defineExpose({ focusBack });
               <div class="vinyl-comment-actions">
                 <small>{{ item.timeText }}</small>
                 <div v-if="writeTarget" class="vinyl-comment-controls">
+                  <CommentReportMenu
+                    v-if="item.reportable && !item.owned"
+                    :ref="(menu) => bindReportMenu(rowKey(group.key, item.id, index), menu)"
+                    :epoch="writeTarget.epoch"
+                    :resource="writeTarget.resource"
+                    :vinyl-play-id="writeTarget.playId"
+                    :item="item"
+                    :can-delete="false"
+                    @expired="emit('reportExpired')"
+                  />
                   <button
                     v-if="model.likes.operations.value.has(item.id)"
                     type="button"

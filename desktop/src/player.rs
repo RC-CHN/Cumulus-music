@@ -349,6 +349,23 @@ pub async fn player_vinyl_comment_like<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_vinyl_comment_report<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    id: String,
+    command: CommentReportCommand,
+) -> Result<AccountData<CommentReportView>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_comment_report(&epoch, &play_id, &id, command)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_vinyl_prepare_write<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

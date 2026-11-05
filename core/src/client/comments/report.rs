@@ -2,6 +2,7 @@
 use super::{AccountData, CommentResource, MusicClient};
 use crate::{
     Error, Result,
+    account::SessionToken,
     comments::{Comment, CommentApi, ResourceKind},
     protocol::api::identifier,
     storage::OperationLock,
@@ -25,7 +26,7 @@ pub enum CommentReportReason {
     Other { description: String },
 }
 impl CommentReportReason {
-    fn into_wire(self) -> Result<String> {
+    pub(in crate::client) fn into_wire(self) -> Result<String> {
         let shared = match self {
             Self::Meaningless => return Ok("段子或者无意义的评论".into()),
             Self::Advertising => ProfileReportReason::Advertising,
@@ -40,7 +41,7 @@ impl CommentReportReason {
 pub type CommentReportCommand = ReportCommand<CommentReportReason>;
 pub type CommentReportView = super::super::report_receipt::ReportView;
 
-pub(super) fn reportable(comment: &Comment, owner: &str) -> bool {
+pub(in crate::client) fn reportable(comment: &Comment, owner: &str) -> bool {
     comment.status.is_none_or(|status| status >= 0)
         && comment.author.as_ref().is_some_and(|author| {
             !author.unavailable
@@ -49,6 +50,24 @@ pub(super) fn reportable(comment: &Comment, owner: &str) -> bool {
 }
 
 impl MusicClient {
+    pub(in crate::client) fn comment_report_journal<'a>(
+        &'a self,
+        token: &'a SessionToken,
+        thread: &str,
+        id: &str,
+        draft_scope: Option<String>,
+    ) -> Result<ReportJournal<'a>> {
+        Ok(ReportJournal {
+            session: &self.session,
+            token,
+            store: self.session.persistent_store()?,
+            kind: "comment-report-receipt-v1",
+            lock_prefix: "comment-report",
+            key: serde_json::to_string(&(thread, id))?,
+            draft_scope,
+        })
+    }
+
     pub async fn comment_report(
         &self,
         epoch: &str,
@@ -69,15 +88,7 @@ impl MusicClient {
         {
             return Err(Error::InvalidInput("noncanonical comment identifier"));
         }
-        let journal = ReportJournal {
-            session: &self.session,
-            token: &token,
-            store: self.session.persistent_store()?,
-            kind: "comment-report-receipt-v1",
-            lock_prefix: "comment-report",
-            key: serde_json::to_string(&(&thread, &id))?,
-            draft_scope: None,
-        };
+        let journal = self.comment_report_journal(&token, &thread, &id, None)?;
         let value = self
             .comment_report
             .act(

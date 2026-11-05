@@ -286,9 +286,14 @@ impl Comments {
                     if !Arc::ptr_eq(scope.api, &api) {
                         return Err(Error::StaleResponse);
                     }
-                    CommentApi::new(api)
-                        .vinyl_like_target(resource, id, scope.revision)
-                        .await
+                    let target = CommentApi::new(api)
+                        .vinyl_target(resource, id, scope.revision)
+                        .await?
+                        .ok_or(Error::State("comment is no longer readable"))?;
+                    if target.status.is_some_and(|status| status < 0) {
+                        return Err(Error::State("comment target is unavailable"));
+                    }
+                    Ok(target)
                 })
                 .await
         } else {

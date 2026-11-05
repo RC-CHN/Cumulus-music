@@ -51,8 +51,9 @@ FM 当前歌曲使用同一 Catalog 作用域。语音、下载、本地、云�
 精彩区可进入现有独立评论页的精彩排序（官方按钮导航 /hotComments/
 <threadId>，独立页的专用外观和回来后的官方焦点未验证）。内嵌版面
 最初一批仅展示与分页；内嵌发布、回复见下文，点赞和取消点赞见
-vinyl-comment-like-contracts.txt。删除、举报、楼中楼、作者跳转及分享
-仍由现有独立评论页负责。没有使用真实账号进行评论操作，未参考其它客户端。
+vinyl-comment-like-contracts.txt，举报见 vinyl-comment-report-contracts.txt。
+删除、楼中楼、作者跳转及分享仍由现有独立评论页负责。没有使用真实账号
+进行评论操作，未参考其它客户端。
 
 验证：Rust client_player::vinyl_comments 两项通过，冻结 t1/c、语音禁止
 嵌入、第一/续页参数和切歌/凭据更换后丢弃迟到结果。Vue 作用域测试验证

@@ -446,6 +446,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::player_vinyl_comments,
                 player::player_vinyl_comment_like_operations,
                 player::player_vinyl_comment_like,
+                player::player_vinyl_comment_report,
                 player::player_vinyl_prepare_write,
                 player::player_vinyl_write_operations,
                 player::player_vinyl_write_command,
