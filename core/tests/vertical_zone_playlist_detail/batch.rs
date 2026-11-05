@@ -357,3 +357,49 @@ async fn account_change_cancels_hydration_and_detail_refresh_discards_same_diges
             .any(|(path, args)| path == URL && args["trialMode"] == 121)
     );
 }
+
+#[tokio::test]
+async fn an_in_flight_menu_read_does_not_revoke_committed_batch_authority() {
+    let f = Fixture::new();
+    let batch = Batch::open(&f, 1).await;
+    f.wire.hold_trial.store(121, Ordering::Release);
+    let (completed, wait_completed) = tokio::sync::oneshot::channel();
+    let start = async {
+        let result = f
+            .client
+            .play_selection(&batch.epoch, batch.selection(&["101"]))
+            .await;
+        completed.send(()).unwrap();
+        result
+    };
+    let refresh = async {
+        f.wire.held.notified().await;
+        f.wire.hold_menu.store(true, Ordering::Release);
+        let menu = f.client.vertical_zone_menu(&batch.epoch);
+        let during_refresh = async {
+            f.wire.menu_held.notified().await;
+            f.wire.release.notify_one();
+            wait_completed.await.unwrap();
+            f.wire.menu_release.notify_one();
+        };
+        let (menu, ()) = tokio::join!(menu, during_refresh);
+        assert!(menu.unwrap().value.available);
+    };
+    let (played, ()) = tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::join!(start, refresh)
+    })
+    .await
+    .unwrap();
+    assert_eq!(played.unwrap().track.unwrap().id, "101");
+
+    f.wire.removed.store(true, Ordering::Release);
+    f.client.vertical_zone_menu(&batch.epoch).await.unwrap();
+    f.wire.take_calls();
+    assert!(matches!(
+        f.client
+            .play_selection(&batch.epoch, batch.selection(&["101"]))
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert!(f.wire.take_calls().is_empty());
+}

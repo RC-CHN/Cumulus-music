@@ -43,18 +43,16 @@ impl MusicClient {
                     .ok_or(Error::QueueChanged)
             })
             .await?;
-        let registry = self.vertical_zone.registry.clone();
+        let registry = self.vertical_zone.published_registry.clone();
         let session = self.session.clone();
         let visits = self.vertical_zone_detail.visits.clone();
         let receipt = receipt.to_owned();
         let expected = snapshot.clone();
         let guard = Cancellation::new(move || {
-            let Ok(registry) = registry.try_lock() else {
-                return false;
-            };
             session
                 .with_verified_profile(&authority.token, &authority.api, |_, _| {
                     authority.check_revision()?;
+                    let registry = registry.lock().map_err(|_| Error::LockPoisoned)?;
                     let visits = visits.lock().map_err(|_| Error::LockPoisoned)?;
                     Ok(visits.iter().any(|visit| {
                         visit.receipt == receipt

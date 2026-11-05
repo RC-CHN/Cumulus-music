@@ -49,6 +49,9 @@ struct Wire {
     hold_trial: AtomicI32,
     held: tokio::sync::Notify,
     release: tokio::sync::Notify,
+    hold_menu: AtomicBool,
+    menu_held: tokio::sync::Notify,
+    menu_release: tokio::sync::Notify,
 }
 
 impl Wire {
@@ -79,6 +82,10 @@ impl Api for Wire {
         Box::pin(async move {
             Ok(match path {
                 "/api/secondary/tab/list" => {
+                    if self.hold_menu.swap(false, Ordering::AcqRel) {
+                        self.menu_held.notify_one();
+                        self.menu_release.notified().await;
+                    }
                     let page = if self.removed.load(Ordering::Acquire) {
                         "rock"
                     } else {

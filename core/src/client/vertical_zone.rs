@@ -18,7 +18,8 @@ use tokio::sync::Mutex as AsyncMutex;
 #[derive(Default)]
 pub(super) struct ZoneHost {
     cache: Mutex<ZoneCache>,
-    registry: Arc<AsyncMutex<Option<Registry>>>,
+    registry: AsyncMutex<Option<Registry>>,
+    published_registry: Arc<Mutex<Option<Registry>>>,
 }
 
 #[derive(Default)]
@@ -35,6 +36,7 @@ struct CacheItem {
     page: VerticalZonePage,
 }
 
+#[derive(Clone)]
 struct Binding {
     token: SessionToken,
     api: Weak<dyn Api>,
@@ -59,6 +61,7 @@ impl Binding {
     }
 }
 
+#[derive(Clone)]
 struct Registry {
     owner: Binding,
     menu: VerticalZoneMenu,
@@ -92,6 +95,22 @@ fn cannot_fallback(error: &Error) -> bool {
 }
 
 impl ZoneHost {
+    // The audio actor must inspect committed authority synchronously. A menu
+    // refresh serializes its network read under the async registry lock; it
+    // must not transiently revoke the last successfully committed menu.
+    fn publish_registry(
+        &self,
+        current: &mut Option<Registry>,
+        next: Option<Registry>,
+    ) -> Result<()> {
+        *self
+            .published_registry
+            .lock()
+            .map_err(|_| Error::LockPoisoned)? = next.clone();
+        *current = next;
+        Ok(())
+    }
+
     fn enter(&self, token: &SessionToken, api: &Arc<dyn Api>, revision: &str) -> Result<u64> {
         let mut cache = self.cache.lock().map_err(|_| Error::LockPoisoned)?;
         if !cache
@@ -285,7 +304,7 @@ impl MusicClient {
                     .as_ref()
                     .is_some_and(|entry| entry.owner.matches(&token, &api, &revision))
                 {
-                    *registry = None;
+                    self.vertical_zone.publish_registry(&mut registry, None)?;
                 }
                 let mut cache = self
                     .vertical_zone
@@ -380,10 +399,13 @@ impl MusicClient {
                     None => return Err(error),
                 },
             };
-            *registry = Some(Registry {
-                owner: Binding::new(token, api, &authority.revision),
-                menu: value.clone(),
-            });
+            self.vertical_zone.publish_registry(
+                &mut registry,
+                Some(Registry {
+                    owner: Binding::new(token, api, &authority.revision),
+                    menu: value.clone(),
+                }),
+            )?;
             Ok(value)
         })
     }
