@@ -542,7 +542,7 @@ impl Api for Library {
                 "/api/v3/song/detail" => {
                     let rows: Vec<Value> =
                         serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
-                    let mut response = json!({"code":200,"songs":rows.iter().map(|row|row["id"].as_str().and_then(|s|s.parse().ok()).or_else(||row["id"].as_u64()).unwrap()).filter(|id| !search_fixture::missing_song() || *id != 2).map(song).collect::<Vec<_>>()});
+                    let mut response = json!({"code":200,"songs":rows.iter().map(|row|row["id"].as_str().and_then(|s|s.parse().ok()).or_else(||row["id"].as_u64()).unwrap()).filter(|id| (!search_fixture::missing_song() || *id != 2) && !vertical_zone_fixture::batch_omit_song(*id, &args)).map(song).collect::<Vec<_>>()});
                     if intelligence_start_fixture::enabled() {
                         response["privileges"]=json!(rows.iter().map(|row|json!({"id":row["id"],"pl":320000,"maxbr":999000,"flag":0})).collect::<Vec<_>>());
                     }
@@ -696,7 +696,10 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
     let mut context = assets::context();
-    if zone_fm_preview_fixture::enabled() || vertical_zone_fixture::playlist_v6() {
+    if zone_fm_preview_fixture::enabled()
+        || vertical_zone_fixture::playlist_v6()
+        || vertical_zone_fixture::playlist_batch()
+    {
         zone_fm_preview_fixture::restrict_artwork(&mut context);
     }
     let window_config = context.config().app.windows[0].clone();

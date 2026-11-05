@@ -21,8 +21,21 @@ pub fn playlist_v6() -> bool {
     std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("playlist-v6")
 }
 
+pub fn playlist_batch() -> bool {
+    std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("playlist-batch")
+}
+
 pub fn playlist_stage_ack() -> bool {
-    playlist_detail() || playlist_v6()
+    playlist_detail() || playlist_v6() || playlist_batch()
+}
+
+pub fn batch_omit_song(id: u64, args: &Value) -> bool {
+    playlist_batch()
+        && id == 87
+        && args["trialMode"] == 121
+        && args["c"].as_str().is_some_and(|rows| {
+            serde_json::from_str::<Vec<Value>>(rows).is_ok_and(|rows| rows.len() == 3)
+        })
 }
 
 pub fn groups(revision: &str) -> Result<PcExperimentGroups> {
@@ -228,7 +241,9 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             json!({"code":200,"data":[content("default","全部",vec![module])]})
         }
         "/api/v6/playlist/detail" if args["id"] == "204" || args["id"] == 204 => {
-            if playlist_detail() {
+            if playlist_batch() {
+                playlist("合成批量测试普通歌单", &[92, 93])
+            } else if playlist_detail() {
                 playlist("合成普通歌单详情", &[81, 84, 87])
             } else {
                 json!({"code":200,"playlist":{"id":204,"name":"专区打开后的合成歌单",
@@ -237,7 +252,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             }
         }
         "/api/playlist/v4/detail" if *args == json!({"id":"204","n":0,"s":0}) => {
-            let ids: &[u64] = if playlist_detail() {
+            let ids: &[u64] = if playlist_detail() || playlist_batch() {
                 &[81, 84, 87]
             } else {
                 &[81, 84]

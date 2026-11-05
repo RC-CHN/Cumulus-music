@@ -39,7 +39,7 @@
     return page && !page.matches('.page-enter-active,.page-leave-active') &&
       getComputedStyle(page).opacity === '1';
   };
-  const playlistStages = ['playlist-detail', 'playlist-v6'].includes(window.__verticalZoneCase);
+  const playlistStages = ['playlist-detail', 'playlist-v6', 'playlist-batch'].includes(window.__verticalZoneCase);
   let count = 0;
   async function capture(name, values = {}) {
     await wait(settled, `settled page before ${name}`);
@@ -151,6 +151,92 @@
     await open(normal, false, 'normal_reopen');
     click(heading(), 'normal playlist Play All after personalized entry');
     await started('81', 'normal_replay', heading);
+  }
+  async function playlistBatchCase() {
+    const { epoch } = await invoke('account_snapshot');
+    const player = () => invoke('player_snapshot', { epoch });
+    const queue = () => invoke('player_queue', { epoch });
+    const batch = () => one('.playlist-batch-page');
+    const row = (index) => one(`.playlist-batch-page [data-batch-index="${index}"]`);
+    const contextMenu = () => one('button[aria-label="更多歌单操作"]');
+    const named = (label, scope) => [...scope.querySelectorAll('button')]
+      .find((entry) => entry.textContent.trim() === label);
+    const heading = () => one('.playlist-actions button.primary');
+    const marker = () => one('[data-zone-playlist-detail]');
+    const toolbar = () => one('.playlist-batch-page .batch-toolbar');
+    async function open(label, personalized, expected) {
+      const card = button(label);
+      assert(card, label);
+      card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      await wait(() => hit(card), label);
+      click(card, label);
+      await wait(() => settled() && heading() && !heading().disabled &&
+        !!marker() === personalized && one(`.track-row[data-track-id="${expected}"]`), 'playlist detail');
+    }
+    async function started(id, previous) {
+      let playing;
+      await wait(async () => {
+        const snapshot = await player();
+        if (snapshot.state !== 'playing' || snapshot.track?.id !== id ||
+            snapshot.playId === previous || !(snapshot.position > 0.15)) return false;
+        playing = snapshot;
+        return true;
+      }, `native sound starts ${id}`);
+      return playing.playId;
+    }
+    await open('专区普通同号歌单', false, '92');
+    click(heading(), 'start ordinary queue');
+    const original = await started('92');
+    const before = (await queue()).tracks.map((item) => item.track.id);
+    assert(before.join() === '92,93', 'independent existing queue');
+    await capture('ordinary_play', { queue: before, playId: original });
+    back();
+    await wait(() => button('专区合成歌单 204'), 'return to zone');
+    await open('专区合成歌单 204', true, '81');
+    await capture('zone_detail', { personalized: !!marker() });
+    click(contextMenu(), 'playlist More');
+    await wait(() => one('.action-menu')?.style.visibility === 'visible', 'playlist More menu');
+    click(named('批量操作', one('.action-menu')), 'batch page');
+    await wait(() => batch() && !batch().matches('.page-enter-active,.page-leave-active') &&
+      row(2)?.querySelector('input') && !row(2).classList.contains('unavailable'), 'missing song hydrated for batch');
+    const names = all('.batch-track-name').map((node) => node.textContent.trim());
+    await capture('batch_hydrated', { names });
+    click(row(2), 'select 87');
+    const play = () => one('.playlist-batch-page .batch-play');
+    await wait(() => !play().disabled && row(2).getAttribute('aria-selected') === 'true', 'single selection');
+    click(play(), 'play selected 87');
+    const selected = await started('87', original);
+    const playQueue = (await queue()).tracks.map((item) => item.track.id);
+    assert(playQueue.join() === '92,87,93', 'selected song inserts after current and preserves both existing rows');
+    await capture('batch_play', { queue: playQueue, playId: selected });
+    click(row(2), 'unselect 87');
+    click(row(1), 'select 84');
+    const add = () => one('.playlist-batch-page .batch-queue');
+    await wait(() => !add().disabled && row(1).getAttribute('aria-selected') === 'true', 'append available');
+    click(add(), 'add selected 84');
+    await wait(() => one('.batch-operation-feedback')?.textContent.includes('已添加至播放列表'), 'native append accepted');
+    const after = (await queue()).tracks;
+    const queued = after.find((item) => item.track.id === '84');
+    assert(queued && after.map((item) => item.track.id).join() === '92,87,84,93' &&
+      (await player()).playId === selected, 'append inserts after current without interrupting');
+    await capture('batch_append', { queue: after.map((item) => item.track.id), playId: selected });
+    click(named('下载', toolbar()), 'download selected 84');
+    await wait(() => one('.download-dialog[open] .download-selection'), 'independent download dialog');
+    const download = one('.download-dialog[open]');
+    await capture('batch_download', {
+      title: download.querySelector('h2').textContent.trim(),
+      selection: download.querySelector('.download-selection').textContent.trim(),
+    });
+    download.dispatchEvent(new Event('cancel', { cancelable: true }));
+    await wait(() => !one('.download-dialog[open]'), 'download cancelled without a task');
+    click(named('完成', toolbar()), 'finish batch');
+    await wait(() => !batch() && !!marker() && document.activeElement === contextMenu(), 'return to the same visit and menu focus');
+    click(one('button[aria-label="播放队列"]'), 'open playback queue');
+    const queuedButton = () => one(`.queue-row[data-entry-id="${queued.entryId}"] .queue-play`);
+    await wait(() => queuedButton() && !queuedButton().disabled, 'appended row available');
+    click(queuedButton(), 'play appended 84');
+    const queuedPlay = await started('84', selected);
+    await capture('batch_queued_play', { playId: queuedPlay });
   }
   async function playlistV6Case() {
     const entries = [
@@ -271,6 +357,7 @@
     assert(zone().textContent.includes('专区榜单歌曲') && !zone().textContent.includes('禁止出现的远程动作'), 'rank preview and unknown target filtering');
     if (playlistStages) {
       if (window.__verticalZoneCase === 'playlist-v6') await playlistV6Case();
+      else if (window.__verticalZoneCase === 'playlist-batch') await playlistBatchCase();
       else await playlistDetailCase();
       await emit('complete', { ok: true, stageCount: count });
       return;

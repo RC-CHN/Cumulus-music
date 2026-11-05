@@ -29,6 +29,8 @@ CASES = {
                         "mgc_row", "mgc_double", "mgc_back", "normal_reopen", "normal_replay"),
     "playlist-v6": ("ordinary_detail", "ordinary_play", "preflight_detail", "preflight_play",
                     "promoted_detail", "promoted_play", "liked_detail", "liked_play"),
+    "playlist-batch": ("ordinary_play", "zone_detail", "batch_hydrated", "batch_play", "batch_append",
+                       "batch_download", "batch_queued_play"),
 }
 DEFAULT_CASES = ("full", "privacy", "hotspot")
 
@@ -160,6 +162,32 @@ def check_playlist_v6(rows):
     assert len(play_ids) == len(specs)
 
 
+def check_playlist_batch(rows):
+    ordinary, detail, hydrated, play, append, download, queued = rows.values()
+    assert ordinary["queue"] == ["92", "93"] and ordinary["nativePlayer"]["track"]["id"] == "92"
+    assert detail["personalized"] and len(hydrated["names"]) == 3 and "87" in hydrated["names"][2]
+    assert play["queue"] == ["92", "87", "93"] and play["nativePlayer"]["track"]["id"] == "87"
+    assert append["queue"] == ["92", "87", "84", "93"] and append["playId"] == play["playId"]
+    assert download["title"] == "下载 1 首歌曲" and "84" in download["selection"]
+    assert queued["nativePlayer"]["track"]["id"] == "84" and queued["playId"] != append["playId"]
+    for snapshot in (ordinary, play, append, queued):
+        assert snapshot["nativePlayer"]["state"] == "playing"
+        assert snapshot["nativePlayer"]["playId"] == snapshot["playId"]
+        assert snapshot["nativePlayer"]["position"] > 0.15
+    calls = queued["verticalZoneCalls"]
+    relevant = {PLAYLIST, PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG}
+    hydrated_delta = [call for call in hydrated["verticalZoneCalls"][len(detail["verticalZoneCalls"]):]
+                      if call["path"] in relevant]
+    assert len(hydrated_delta) == 1 and hydrated_delta[0]["path"] == SONG, hydrated_delta
+    args = hydrated_delta[0]["args"]
+    assert args["trialMode"] == -1 and json.loads(args["c"]) == [{"id": "87", "v": 0}], args
+    after_detail = calls[len(detail["verticalZoneCalls"]):]
+    assert all(call["path"] not in {PLAYLIST, PLAYLIST_V4, PLAYLIST_DYNAMIC} for call in after_detail)
+    auth = {str(json.loads(call["args"]["ids"])[0]): call["args"]["trialMode"]
+            for call in calls if call["path"] == PLAY}
+    assert auth["92"] == -1 and auth["87"] == auth["84"] == 121, auth
+
+
 def check_case(directory, case, screenshots, windows):
     output = directory / "first"
     complete = read(output / "complete.json")
@@ -225,6 +253,8 @@ def check_case(directory, case, screenshots, windows):
         assert not any(call["path"] == PLAY for call in calls)
     elif case == "playlist-v6":
         check_playlist_v6(rows)
+    elif case == "playlist-batch":
+        check_playlist_batch(rows)
     else:
         check_playlist_detail(rows)
     if not windows:
