@@ -44,6 +44,7 @@ pub struct SearchPresentationPatch {
 struct Page {
     token: SessionToken,
     api: Weak<dyn Api>,
+    credentials: Option<String>,
     receipt: String,
     bytes: usize,
     sections: Vec<SearchPresentationSection>,
@@ -58,13 +59,20 @@ impl SearchPresentationPages {
         api: &Arc<dyn Api>,
         view: &SearchResultView,
     ) -> Result<Option<String>> {
+        let credentials = api.pc_presentation_credential_revision()?;
         let sections = candidates(view);
         let bytes = serde_json::to_vec(&sections)?.len();
         if bytes > PAGE_BYTES {
             return Ok(None);
         }
+        if api.pc_presentation_credential_revision()? != credentials {
+            return Err(Error::StaleResponse);
+        }
         let mut pages = self.0.lock().map_err(|_| Error::LockPoisoned)?;
-        if pages.back().is_some_and(|page| !owns(page, token, api)) {
+        if pages
+            .back()
+            .is_some_and(|page| !owns(page, token, api, credentials.as_deref()))
+        {
             pages.clear();
         }
         while pages.len() >= PAGE_LIMIT
@@ -76,10 +84,15 @@ impl SearchPresentationPages {
         pages.push_back(Page {
             token: token.clone(),
             api: Arc::downgrade(api),
+            credentials: credentials.clone(),
             receipt: receipt.clone(),
             bytes,
             sections,
         });
+        drop(pages);
+        if api.pc_presentation_credential_revision()? != credentials {
+            return Err(Error::StaleResponse);
+        }
         Ok(Some(receipt))
     }
     fn resolve(
@@ -91,19 +104,28 @@ impl SearchPresentationPages {
         if receipt.len() != 32 || !receipt.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err(Error::InvalidInput("invalid search presentation receipt"));
         }
+        let credentials = api.pc_presentation_credential_revision()?;
         let mut pages = self.0.lock().map_err(|_| Error::LockPoisoned)?;
         let position = pages
             .iter()
-            .position(|page| page.receipt == receipt && owns(page, token, api))
+            .position(|page| {
+                page.receipt == receipt && owns(page, token, api, credentials.as_deref())
+            })
             .ok_or(Error::StaleResponse)?;
         let page = pages.remove(position).ok_or(Error::StaleResponse)?;
         let rows = page.sections.clone();
         pages.push_back(page);
+        drop(pages);
+        if api.pc_presentation_credential_revision()? != credentials {
+            return Err(Error::StaleResponse);
+        }
         Ok(rows)
     }
 }
-fn owns(page: &Page, token: &SessionToken, api: &Arc<dyn Api>) -> bool {
-    page.token == *token && page.api.upgrade().is_some_and(|old| Arc::ptr_eq(&old, api))
+fn owns(page: &Page, token: &SessionToken, api: &Arc<dyn Api>, credentials: Option<&str>) -> bool {
+    page.token == *token
+        && page.api.upgrade().is_some_and(|old| Arc::ptr_eq(&old, api))
+        && page.credentials.as_deref() == credentials
 }
 fn candidates(view: &SearchResultView) -> Vec<SearchPresentationSection> {
     view.sections

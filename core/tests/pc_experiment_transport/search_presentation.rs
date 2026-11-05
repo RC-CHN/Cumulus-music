@@ -1,5 +1,5 @@
 //! Re-project safe candidates against live native cohorts without re-searching.
-use super::{HttpResponse, vinyl_http};
+use super::{HttpResponse, vinyl_http, vinyl_http_with_credentials};
 use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::{
@@ -110,4 +110,105 @@ async fn current_and_cached_candidates_follow_live_cohorts_without_search_or_pri
             .is_err()
     );
     assert_eq!(http.calls().len(), 5);
+}
+
+#[tokio::test]
+async fn rotated_credentials_retire_old_candidates_even_after_fresh_treatment_without_research() {
+    let root = tempfile::tempdir().unwrap();
+    let (api, http, credentials) = vinyl_http_with_credentials(
+        root.path(),
+        &["MUSIC_U=synthetic-candidate-original"],
+        [
+            groups(true),
+            json!({"code":200,"data":{"algTabs":[{"title":"综合"}]}}).into(),
+            json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":[{
+                "type":"song","baseInfo":{"simpleSongData":{"id":1,"name":"合成保留曲目"}},
+                "extInfo":{"songAlias":"<em>合成</em>旧候选"}
+            }]}]}})
+            .into(),
+            groups(true),
+        ],
+    );
+    let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
+    let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
+    session
+        .adopt(api.clone(), json!({"userId":71}), &session.token().unwrap())
+        .unwrap();
+    let token = session.token().unwrap();
+    let epoch = token.generation.to_string();
+    let client =
+        MusicClient::with_session(session.clone(), registry).with_official_search_experiment();
+    let page = client
+        .search_results(
+            &epoch,
+            SearchResultQuery {
+                keyword: "合成".into(),
+                category: SearchCategory::All,
+                offset: 0,
+                limit: 30,
+                correct: true,
+                channel: None,
+            },
+        )
+        .await
+        .unwrap()
+        .value;
+    let receipt = page.presentation_receipt.as_deref().unwrap();
+    let original = serde_json::to_value(&page).unwrap();
+    let first = client
+        .search_presentation(
+            &epoch,
+            receipt,
+            page.presentation_revision.as_deref().unwrap(),
+        )
+        .unwrap();
+    assert!(first.value.sections[0].items[0].hint.is_some());
+    assert_eq!(http.calls().len(), 3);
+
+    let target = ApiOrigin::Pc.url();
+    let revision = credentials.request_credentials(&target).unwrap().revision;
+    credentials
+        .record_response(
+            &target,
+            &["MUSIC_U=synthetic-candidate-rotated; Path=/; Secure".into()],
+            None,
+            &revision,
+        )
+        .unwrap();
+    assert_eq!(session.token().unwrap(), token);
+    let refreshed = client.refresh_pc_presentation().await.unwrap();
+    assert!(refreshed.search_footer);
+    assert_ne!(
+        refreshed.revision,
+        page.presentation_revision.as_deref().unwrap()
+    );
+    assert_eq!(http.calls().len(), 4);
+    assert!(matches!(
+        client.search_presentation(&epoch, receipt, &refreshed.revision),
+        Err(cumulus_core::Error::StaleResponse)
+    ));
+    assert_eq!(
+        http.calls().len(),
+        4,
+        "local stale-receipt handling cannot replay search"
+    );
+    assert_eq!(
+        serde_json::to_value(&page).unwrap(),
+        original,
+        "ordinary returned rows are unchanged"
+    );
+    let paths = http
+        .calls()
+        .iter()
+        .map(|call| call.path.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        paths,
+        [
+            "/api/rtrs/abt/front/expinfo/list",
+            "/api/search/pc/result/tab",
+            "/api/search/pc/complex/page/v3",
+            "/api/rtrs/abt/front/expinfo/list",
+        ]
+    );
 }
