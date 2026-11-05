@@ -77,19 +77,23 @@ impl MpvEngine {
         let (file, format) = crate::library::native_open::checked_audio_file(path, fingerprint)?;
         let authority = cancel.clone();
         let plan = LocalEqualizerMaterialPlan::from_saved(settings);
-        let selection = match format {
-            "wav" if self.local_wave => NativeStereoSource::select_wave(file, authority, plan)?,
-            "flac" => {
-                let Some(library) = self
-                    .local_flac
-                    .as_ref()
-                    .and_then(|runtime| runtime.verified_path().ok())
-                else {
-                    return self.load_open_file(file, format, Cancellation::default(), 0.0, cancel);
-                };
-                NativeStereoSource::select(file, authority, library, plan)?
+        let selection = if format == "wav" && self.local_wave {
+            NativeStereoSource::select_wave(file, authority, plan)?
+        } else {
+            let Some(library) = self
+                .local_flac
+                .as_ref()
+                .and_then(|runtime| runtime.verified_path().ok())
+            else {
+                // This is the old load_inner stock authority. A verified WAV
+                // capability must not make a non-graph MP3/FLAC load depend on
+                // the preparation request after it has already committed.
+                return self.load_open_file(file, format, Cancellation::default(), 0.0, cancel);
+            };
+            if format != "flac" {
+                return self.load_open_file(file, format, authority, 0.0, cancel);
             }
-            _ => return self.load_open_file(file, format, authority, 0.0, cancel),
+            NativeStereoSource::select(file, authority, library, plan)?
         };
         let source = match selection {
             NativeStereoSelection::Qualified(source) => source,
