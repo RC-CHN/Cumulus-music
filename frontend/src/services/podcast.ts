@@ -197,7 +197,7 @@ export type PodcastRankQuery =
   | { kind: 'menu'; group: PodcastRankGroup }
   | ({ kind: 'entries'; preview?: boolean } & PodcastRankTarget);
 export type PodcastRanks =
-  | { kind: 'top_config'; layout: PodcastTopLayout }
+  | { kind: 'top_config'; layout: PodcastTopLayout; sceneFmAllowed: boolean }
   | { kind: 'book_groups'; groups: PodcastRankMenu[] }
   | { kind: 'menu'; tabs: PodcastRankTab[] }
   | { kind: 'entries'; rows: PodcastRankRow[] };

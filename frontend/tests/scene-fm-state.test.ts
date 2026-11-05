@@ -3,6 +3,12 @@ import assert from 'node:assert/strict';
 import { useSceneFm } from '../src/composables/useSceneFm.ts';
 import type { SceneFmClient, SceneFmCommand, SceneFmView } from '../src/services/sceneFm.ts';
 import type { AccountData } from '../src/services/contracts.ts';
+const homeOperations = {
+  async sceneFmHomeEnter(epoch: string) {
+    return { epoch, value: { visit: `visit-${epoch}` } };
+  },
+  async sceneFmHomeLeave() {},
+} satisfies Pick<SceneFmClient, 'sceneFmHomeEnter' | 'sceneFmHomeLeave'>;
 const account = (epoch = '1') => ({
   epoch,
   status: 'authenticated' as const,
@@ -29,6 +35,7 @@ test('场景FM迟到缓存不能跨账号显示或触发自动播放', async () 
   const late = deferred<AccountData<SceneFmView>>();
   let commands = 0;
   const core: SceneFmClient = {
+    ...homeOperations,
     sceneFmView: async (epoch) => (epoch === '1' ? late.promise : { epoch, value: view() }),
     sceneFmCommand: async (epoch) => {
       commands++;
@@ -37,9 +44,9 @@ test('场景FM迟到缓存不能跨账号显示或触发自动播放', async () 
   };
   const m = useSceneFm(core, () => {});
   m.connect(account());
-  const old = m.show(true);
+  const old = m.show('classic_home');
   m.connect(account('2'));
-  await m.load();
+  await m.show('classic_home');
   late.resolve({ epoch: '1', value: view('100', { autoplay: true }) });
   await old;
   assert.equal(commands, 0);
@@ -50,6 +57,7 @@ test('退出页面时未完成读取不能再自动播放', async () => {
   const late = deferred<AccountData<SceneFmView>>();
   let commands = 0;
   const core: SceneFmClient = {
+    ...homeOperations,
     sceneFmView: async () => late.promise,
     sceneFmCommand: async (epoch) => {
       commands++;
@@ -58,8 +66,8 @@ test('退出页面时未完成读取不能再自动播放', async () => {
   };
   const m = useSceneFm(core, () => {});
   m.connect(account());
-  const pending = m.show(true);
-  await m.show(false);
+  const pending = m.show('classic_home');
+  await m.show(null);
   late.resolve({ epoch: '1', value: view('1', { autoplay: true }) });
   await pending;
   assert.equal(commands, 0);
@@ -71,6 +79,7 @@ test('有缓存和未决选择时不自动重发；错误后只回读并保留�
     commands: SceneFmCommand[] = [];
   let state = view('2', { pending: true, autoplay: true });
   const core: SceneFmClient = {
+    ...homeOperations,
     sceneFmView: async (epoch, refresh) => {
       calls.push(refresh);
       return { epoch, value: state };
@@ -84,7 +93,7 @@ test('有缓存和未决选择时不自动重发；错误后只回读并保留�
   };
   const m = useSceneFm(core, () => {});
   m.connect(account());
-  await m.show(true);
+  await m.show('classic_home');
   assert.deepEqual(calls, [false]);
   assert.equal(commands.length, 0);
   await m.act('play');
@@ -101,6 +110,7 @@ test('命令完成后迟到轮询和旧revision都不能覆盖新场景', async 
   const late = deferred<AccountData<SceneFmView>>();
   let reads = 0;
   const core: SceneFmClient = {
+    ...homeOperations,
     sceneFmView: async (epoch) => {
       reads++;
       return reads === 2 ? late.promise : { epoch, value: view() };
@@ -109,7 +119,7 @@ test('命令完成后迟到轮询和旧revision都不能覆盖新场景', async 
   };
   const m = useSceneFm(core, () => {});
   m.connect(account());
-  await m.show(true);
+  await m.show('classic_home');
   const old = m.poll();
   await m.select('OP_76001');
   late.resolve({ epoch: '1', value: view('2') });
@@ -119,27 +129,116 @@ test('命令完成后迟到轮询和旧revision都不能覆盖新场景', async 
   assert.equal(m.view.value?.revision, '5');
   m.dispose();
 });
-test('自动播放只在有效页面请求中调用；设置变更不会立刻强制播放', async () => {
+test('只有已确认的经典播客页会打开一次原生访问并请求自动播放', async () => {
   const commands: SceneFmCommand[] = [];
+  const visits: string[] = [];
+  const leaves: string[] = [];
   const core: SceneFmClient = {
+    async sceneFmHomeEnter(epoch) {
+      visits.push(epoch);
+      return homeOperations.sceneFmHomeEnter(epoch);
+    },
+    async sceneFmHomeLeave(epoch, visit) {
+      leaves.push(`${epoch}:${visit}`);
+    },
     sceneFmView: async (epoch) => ({ epoch, value: view('1', { autoplay: true }) }),
     sceneFmCommand: async (epoch, command) => {
       commands.push(command);
-      return { epoch, value: view('2', { autoplay: true }) };
+      return { epoch, value: view('2', { autoplay: true, active: true, playing: true }) };
     },
   };
   const m = useSceneFm(core, () => {});
   m.connect(account());
-  await m.show(true);
-  assert.deepEqual(commands, [{ kind: 'automatic', revision: '1' }]);
-  await m.command({ kind: 'autoplay', enabled: false });
-  assert.equal(commands.length, 2);
+  for (const surface of ['fallback_home', 'standalone'] as const) {
+    await m.show(surface);
+    await m.load(true);
+  }
+  assert.deepEqual(visits, []);
+  assert.deepEqual(commands, []);
+  await m.show('classic_home');
+  await m.show('classic_home');
+  await m.load(true);
+  assert.deepEqual(visits, ['1']);
+  assert.deepEqual(commands, [{ kind: 'home_automatic', revision: '1', visit: 'visit-1' }]);
+  await m.show(null);
+  assert.deepEqual(leaves, ['1:visit-1']);
+  m.dispose();
+});
+test('离开后收到的原生访问凭据仅释放，不读取节目或自动播放', async () => {
+  const entered = deferred<AccountData<{ visit: string } | null>>();
+  const leaves: string[] = [];
+  let reads = 0;
+  let commands = 0;
+  const core: SceneFmClient = {
+    sceneFmHomeEnter: () => entered.promise,
+    async sceneFmHomeLeave(epoch, visit) {
+      leaves.push(`${epoch}:${visit}`);
+    },
+    sceneFmView: async (epoch) => {
+      reads++;
+      return { epoch, value: view() };
+    },
+    sceneFmCommand: async (epoch) => {
+      commands++;
+      return { epoch, value: view() };
+    },
+  };
+  const m = useSceneFm(core, () => {});
+  m.connect(account());
+  const showing = m.show('classic_home');
+  await m.show(null);
+  entered.resolve({ epoch: '1', value: { visit: 'late' } });
+  await showing;
+  assert.deepEqual(leaves, ['1:late']);
+  assert.equal(reads, 0);
+  assert.equal(commands, 0);
+  m.dispose();
+});
+test('首次目录失败后显式刷新复用经典播客访问，但不重播丢失回执的自动请求', async () => {
+  const events: string[] = [];
+  let directory = false;
+  const core: SceneFmClient = {
+    ...homeOperations,
+    async sceneFmHomeEnter(epoch) {
+      events.push('enter');
+      return homeOperations.sceneFmHomeEnter(epoch);
+    },
+    async sceneFmView(epoch, refresh) {
+      events.push(refresh ? 'directory' : 'cache');
+      if (refresh && !directory) throw { code: 'connection', message: '目录失败' };
+      return { epoch, value: view('1', { revision: directory ? '1' : null, autoplay: true }) };
+    },
+    async sceneFmCommand(_epoch, command) {
+      assert.deepEqual(command, { kind: 'home_automatic', revision: '1', visit: 'visit-1' });
+      events.push('automatic');
+      throw { code: 'connection', message: '未收到自动播放回执' };
+    },
+  };
+  const m = useSceneFm(core, () => {});
+  m.connect(account());
+  await m.show('classic_home');
+  assert.equal(m.error.value, '目录失败');
+  directory = true;
+  await m.load(true);
+  assert.equal(m.error.value, '未收到自动播放回执');
+  await m.load(true);
+  assert.deepEqual(events, [
+    'enter',
+    'cache',
+    'directory',
+    'cache',
+    'directory',
+    'automatic',
+    'cache',
+    'directory',
+  ]);
   m.dispose();
 });
 test('慢回读只有一个在途请求，定时轮询不能让它永远失效', async () => {
   const late = deferred<AccountData<SceneFmView>>();
   let calls = 0;
   const core: SceneFmClient = {
+    ...homeOperations,
     sceneFmView: async (epoch) => {
       calls++;
       return calls === 1 ? { epoch, value: view() } : late.promise;
@@ -148,7 +247,7 @@ test('慢回读只有一个在途请求，定时轮询不能让它永远失效',
   };
   const m = useSceneFm(core, () => {});
   m.connect(account());
-  await m.show(true);
+  await m.show('classic_home');
   const old = m.poll();
   await m.poll();
   await m.poll();

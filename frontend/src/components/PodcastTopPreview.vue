@@ -14,7 +14,6 @@ const emit = defineEmits<{
   all: [target: PodcastRankTarget];
   radio: [id: string];
   play: [voice: EpisodeView];
-  roam: [];
 }>();
 const root = ref<HTMLElement>();
 const width = ref(0);
@@ -106,16 +105,7 @@ function voiceIcon(resource: PodcastRankResource) {
 <template>
   <div ref="root" class="podcast-top" :data-layout="layout">
     <template v-if="layout">
-      <section
-        v-if="layout === 'classic'"
-        class="podcast-top-panel roam-card"
-        aria-label="私人漫游"
-      >
-        <h2>私人漫游</h2>
-        <button class="secondary" type="button" @click="emit('roam')">
-          <Icon name="headphones" />打开私人漫游
-        </button>
-      </section>
+      <slot v-if="layout === 'classic'" name="scene-fm" />
       <section
         v-for="panel in panels"
         :key="panel.key"
@@ -208,16 +198,6 @@ function voiceIcon(resource: PodcastRankResource) {
   border-radius: 12px;
   padding: 12px;
   background: var(--surface-raised);
-}
-.roam-card {
-  display: flex;
-  flex-direction: column;
-  align-items: start;
-  gap: 12px;
-}
-.roam-card h2 {
-  margin: 0;
-  font-size: 16px;
 }
 .podcast-top-header {
   display: flex;

@@ -22,7 +22,9 @@ export function usePodcastTop(
   expired: () => void,
 ) {
   const core = useCore();
-  const layout = ref<PodcastTopLayout>();
+  const config = ref<{ layout: PodcastTopLayout; sceneFmAllowed: boolean }>();
+  const layout = computed(() => config.value?.layout);
+  const sceneFmAllowed = computed(() => config.value?.sceneFmAllowed === true);
   const previews = reactive<Partial<Record<PodcastPreview, Preview>>>({});
   const ordinary = ref<'score' | 'hot'>('score');
   const bookChoice = ref<'recommended' | 'free'>();
@@ -37,11 +39,12 @@ export function usePodcastTop(
     () => {
       generation++;
       configPending = false;
-      layout.value = undefined;
+      config.value = undefined;
       ordinary.value = 'score';
       bookChoice.value = undefined;
       requests.clear();
       for (const key of Object.keys(TARGETS) as PodcastPreview[]) delete previews[key];
+      if (active) void activate();
     },
     { flush: 'sync' },
   );
@@ -112,7 +115,14 @@ export function usePodcastTop(
       try {
         const result = await core.podcastRankings(epoch, { kind: 'top_config' });
         if (owner !== generation || result.epoch !== epoch) return;
-        layout.value = result.value.kind === 'top_config' ? result.value.layout : 'classic';
+        config.value =
+          result.value.kind === 'top_config'
+            ? {
+                layout: result.value.layout,
+                sceneFmAllowed:
+                  result.value.layout === 'classic' && result.value.sceneFmAllowed === true,
+              }
+            : { layout: 'classic', sceneFmAllowed: false };
       } catch (value) {
         if (owner !== generation) return;
         const issue = failure(value);
@@ -120,7 +130,7 @@ export function usePodcastTop(
           expired();
           return;
         }
-        layout.value = 'classic';
+        config.value = { layout: 'classic', sceneFmAllowed: false };
       } finally {
         if (owner === generation) configPending = false;
       }
@@ -131,6 +141,7 @@ export function usePodcastTop(
   }
   return {
     layout,
+    sceneFmAllowed,
     previews,
     ordinary,
     book,

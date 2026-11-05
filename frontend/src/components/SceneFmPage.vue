@@ -1,20 +1,70 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { useControlFocus } from '../composables/useControlFocus';
 import Icon from './Icon.vue';
 import type { SceneFmModel } from '../composables/useSceneFm';
 import type { EpisodeView } from '../services/podcast';
-const props = defineProps<{ model: SceneFmModel; playable: boolean }>();
-defineEmits<{
+const props = defineProps<{
+  model: SceneFmModel;
+  playable: boolean;
+  epoch: string;
+  embedded?: boolean;
+}>();
+const emit = defineEmits<{
   radio: [id: string];
+  vinyl: [id: string];
   comments: [id: string, title: string];
   download: [voice: EpisodeView];
 }>();
 const { view, loading, busy, error } = props.model;
 const category = computed(() => view.value?.scenes.find((s) => s.id === view.value?.activeId));
+const panel = ref<HTMLElement>();
+const controlFocus = useControlFocus(
+  () => props.epoch,
+  () => panel.value,
+);
+function retry(event: Event) {
+  return controlFocus.run(event, async () => {
+    if (view.value?.pending) await props.model.act('play');
+    else await props.model.load(true);
+  });
+}
+async function openVoice() {
+  const captured = view.value;
+  const id = captured?.episode?.id;
+  const owner = props.epoch;
+  if (
+    !captured ||
+    !id ||
+    !props.playable ||
+    captured.episode?.unavailable ||
+    busy.value ||
+    loading.value
+  )
+    return;
+  const result =
+    captured.active && captured.playing
+      ? captured
+      : await props.model.act(captured.active ? 'toggle' : 'play');
+  if (
+    owner === props.epoch &&
+    result?.active &&
+    result.episode?.id === id &&
+    panel.value?.isConnected
+  )
+    emit('vinyl', id);
+}
 </script>
 <template>
-  <section class="scene-fm-page" aria-label="随心听FM">
-    <header>
+  <section
+    ref="panel"
+    class="scene-fm-page"
+    :class="{ 'scene-fm-embedded': embedded }"
+    :data-podcast-scene-fm="embedded ? '' : undefined"
+    aria-label="随心听FM"
+    tabindex="-1"
+  >
+    <header v-if="!embedded">
       <div>
         <h1>随心听 FM</h1>
         <p class="muted">选个喜欢的频道，让好声音陪伴你</p>
@@ -22,19 +72,16 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
       <button
         class="text-button"
         :disabled="loading || busy || view?.pending"
-        @click="model.load(true)"
+        @click="controlFocus.run($event, () => model.load(true))"
       >
         <Icon name="refresh" />刷新
       </button>
     </header>
+    <h2 v-if="embedded && !view?.revision" class="scene-fm-inline-title">随心听FM</h2>
     <div v-if="error" class="error-state" role="alert">
-      {{ error
-      }}<button
-        class="text-button"
-        :disabled="loading || busy"
-        @click="view?.pending ? model.act('play') : model.load()"
-      >
-        重试
+      {{ embedded ? '随心听走丢了' : error
+      }}<button class="text-button" :disabled="loading || busy" @click="retry">
+        {{ embedded && !view?.pending ? '刷新找回' : '重试' }}
       </button>
     </div>
     <div v-if="loading && !view?.revision" class="empty-state" role="status">
@@ -44,7 +91,8 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
     <template v-else-if="view?.revision">
       <div class="scene-fm-card">
         <div class="scene-fm-top">
-          <span>随心听FM</span><span>{{ category?.label }}</span>
+          <h2>随心听FM</h2>
+          <span>{{ category?.label }}</span>
         </div>
         <div v-if="view.episode" class="scene-fm-content">
           <button
@@ -62,7 +110,18 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
             <span class="scene-fm-play"><Icon :name="view.playing ? 'pause' : 'play'" /></span>
           </button>
           <div class="scene-fm-info">
-            <h2 :title="view.episode.name">{{ view.episode.name }}</h2>
+            <h3>
+              <button
+                type="button"
+                class="scene-fm-episode-title"
+                data-scene-fm-title
+                :title="view.episode.name"
+                :disabled="!playable || busy || loading || view.episode.unavailable"
+                @click="controlFocus.run($event, openVoice)"
+              >
+                {{ view.episode.name }}
+              </button>
+            </h3>
             <button
               v-if="view.episode.radioId"
               class="scene-fm-radio"
@@ -101,7 +160,7 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
           取消这次选择
         </button>
       </div>
-      <div v-if="view.episode" class="scene-fm-actions">
+      <div v-if="!embedded && view.episode" class="scene-fm-actions">
         <button class="text-button" @click="$emit('comments', view.episode.id, view.episode.name)">
           <Icon name="comment" />单集评论</button
         ><button
@@ -112,23 +171,11 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
           <Icon name="down" />下载单集</button
         ><span class="muted">当前频道 {{ category?.count ?? 0 }} 集</span>
       </div>
-      <label class="scene-fm-auto"
-        ><input
-          type="checkbox"
-          :checked="view.autoplay"
-          :disabled="busy || loading"
-          @change="
-            model.command({
-              kind: 'autoplay',
-              enabled: ($event.target as HTMLInputElement).checked,
-            })
-          "
-        />进入页面时自动播放</label
-      >
-      <p class="muted scene-fm-hint">
+      <p v-if="!embedded" class="muted scene-fm-hint">
         正在播放其他内容时不会自动切换。可使用底部播放条切换单集和调整播放进度。
       </p>
     </template>
+    <p v-else-if="!error" class="scene-fm-empty" role="status">暂无随心听节目</p>
   </section>
 </template>
 <style scoped>
@@ -167,6 +214,47 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
   gap: 12px;
   font-size: 12px;
   opacity: 0.85;
+}
+.scene-fm-top h2,
+.scene-fm-inline-title {
+  margin: 0;
+  font-size: 16px;
+}
+.scene-fm-page:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.scene-fm-episode-title {
+  display: inline;
+  padding: 0;
+  text-align: start;
+  color: inherit;
+}
+.scene-fm-episode-title:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.scene-fm-embedded {
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+}
+.scene-fm-embedded .scene-fm-card {
+  max-width: none;
+  padding: 14px 16px;
+}
+.scene-fm-embedded .scene-fm-cover {
+  width: 80px;
+  height: 80px;
+}
+.scene-fm-embedded .scene-fm-content {
+  padding: 12px 0;
+  gap: 12px;
+}
+.scene-fm-embedded .scene-fm-play svg {
+  width: 18px;
+  height: 18px;
+  padding: 8px;
 }
 .scene-fm-content {
   display: flex;
@@ -215,7 +303,7 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
 .scene-fm-info {
   min-width: 0;
 }
-.scene-fm-info h2 {
+.scene-fm-info h3 {
   font-size: 17px;
   line-height: 1.6;
   margin: 0 0 10px;
@@ -277,13 +365,6 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
 .scene-fm-actions > span {
   font-size: 12px;
 }
-.scene-fm-auto {
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  margin-top: 24px;
-}
 .scene-fm-hint {
   font-size: 12px;
   line-height: 1.8;
@@ -304,7 +385,7 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
   outline-offset: 2px;
 }
 @media (max-width: 850px) {
-  .scene-fm-page {
+  .scene-fm-page:not(.scene-fm-embedded) {
     padding: 20px;
   }
   .scene-fm-card {
@@ -318,7 +399,7 @@ const category = computed(() => view.value?.scenes.find((s) => s.id === view.val
     gap: 15px;
     padding: 20px 0;
   }
-  .scene-fm-info h2 {
+  .scene-fm-info h3 {
     font-size: 15px;
   }
   .scene-fm-page h1 {

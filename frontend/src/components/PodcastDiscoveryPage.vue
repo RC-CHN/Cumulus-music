@@ -9,11 +9,15 @@ import { time } from '../services/player';
 import Icon from './Icon.vue';
 import PodcastCategoryStrip from './PodcastCategoryStrip.vue';
 import PodcastTopPreview from './PodcastTopPreview.vue';
+import SceneFmPage from './SceneFmPage.vue';
+import type { SceneFmModel } from '../composables/useSceneFm';
 
 const props = defineProps<{
   model: PodcastHomeModel;
   catalogue: PodcastCatalogueModel;
   top: PodcastTopModel;
+  sceneFm: SceneFmModel;
+  epoch: string;
   playable: boolean;
   currentVoice?: string;
   playing: boolean;
@@ -24,7 +28,7 @@ const emit = defineEmits<{
   settings: [];
   category: [id: string];
   rankings: [target?: PodcastRankTarget];
-  roam: [];
+  sceneVinyl: [id: string];
 }>();
 const root = ref<HTMLElement>();
 const { blocks, enabled, pending, error, continuation, restart } = props.model;
@@ -76,8 +80,18 @@ function scrolled() {
       @all="(target) => emit('rankings', target)"
       @radio="(id) => emit('open', id)"
       @play="(voice) => emit('play', voice)"
-      @roam="emit('roam')"
-    />
+    >
+      <template #scene-fm>
+        <SceneFmPage
+          :model="sceneFm"
+          :epoch="epoch"
+          :playable="playable"
+          embedded
+          @radio="(id) => emit('open', id)"
+          @vinyl="(id) => emit('sceneVinyl', id)"
+        />
+      </template>
+    </PodcastTopPreview>
     <PodcastCategoryStrip
       :model="catalogue"
       :updated="top.layout.value === 'updated'"

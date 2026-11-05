@@ -1,6 +1,10 @@
 import { ref, shallowRef } from 'vue';
 import { failure, type AccountView } from '../services/contracts.ts';
 import type { SceneFmClient, SceneFmCommand, SceneFmView } from '../services/sceneFm.ts';
+
+export type SceneFmSurface = 'standalone' | 'fallback_home' | 'classic_home' | null;
+type ManualSceneFmCommand = Exclude<SceneFmCommand, { kind: 'home_automatic' }>;
+
 export function useSceneFm(core: SceneFmClient, expired: () => void) {
   const view = shallowRef<SceneFmView>(),
     loading = ref(false),
@@ -8,10 +12,29 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
     error = ref('');
   let epoch: string | undefined,
     serial = 0,
-    visible = false,
+    surface: SceneFmSurface = null,
     disposed = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   let pollFlight: object | undefined;
+  let homeEnterAttempted = false;
+  let home: { epoch: string; visit: string; automaticSent: boolean } | undefined;
+
+  function release(owner: string, visit: string) {
+    void core.sceneFmHomeLeave(owner, visit).catch(() => {
+      // A hidden/stale visit must not surface a late error on the new page.
+    });
+  }
+  function retireSurface() {
+    if (timer) clearInterval(timer);
+    timer = undefined;
+    serial++;
+    pollFlight = undefined;
+    loading.value = false;
+    busy.value = false;
+    homeEnterAttempted = false;
+    if (home) release(home.epoch, home.visit);
+    home = undefined;
+  }
   function handle(e: unknown) {
     const issue = failure(e);
     error.value = issue.message;
@@ -23,14 +46,11 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
   function connect(account: AccountView) {
     const next = account.status === 'authenticated' ? account.epoch : undefined;
     if (next === epoch) return;
+    retireSurface();
+    surface = null;
     epoch = next;
-    pollFlight = undefined;
-    serial++;
     view.value = undefined;
-    loading.value = false;
-    busy.value = false;
     error.value = '';
-    if (visible && epoch) void load(false, true);
   }
   function accept(value: SceneFmView) {
     if (
@@ -42,7 +62,7 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
     view.value = value;
   }
   async function poll() {
-    if (!epoch || !visible || busy.value || loading.value || disposed || pollFlight) return;
+    if (!epoch || !surface || busy.value || loading.value || disposed || pollFlight) return;
     const flight = {};
     pollFlight = flight;
     const owner = epoch,
@@ -56,14 +76,32 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
       if (pollFlight === flight) pollFlight = undefined;
     }
   }
-  async function load(refresh = false, automatic = false) {
-    if (!epoch || busy.value || disposed) return;
+  async function load(refresh = false) {
+    if (!epoch || !surface || busy.value || loading.value || disposed) return;
     const owner = epoch,
       current = ++serial,
       valid = () => owner === epoch && current === serial && !disposed;
     loading.value = true;
     error.value = '';
     try {
+      if (surface === 'classic_home' && !homeEnterAttempted) {
+        homeEnterAttempted = true;
+        try {
+          const entered = await core.sceneFmHomeEnter(owner);
+          if (entered.epoch === owner && entered.value) {
+            if (!valid()) {
+              release(owner, entered.value.visit);
+              return;
+            }
+            home = { epoch: owner, visit: entered.value.visit, automaticSent: false };
+          }
+        } catch (e) {
+          if (!valid()) return;
+          if (['session_expired', 'profile_changed'].includes(failure(e).code)) throw e;
+          // An unavailable visit never blocks a manual card read or arms autoplay.
+        }
+      }
+      if (!valid()) return;
       const cached = await core.sceneFmView(owner, false);
       if (!valid() || cached.epoch !== owner) return;
       accept(cached.value);
@@ -72,17 +110,23 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
         if (!valid() || r.epoch !== owner) return;
         accept(r.value);
       }
+      const captured = home;
       if (
         valid() &&
-        automatic &&
-        visible &&
+        captured &&
+        !captured.automaticSent &&
+        surface === 'classic_home' &&
         view.value?.revision &&
         view.value.autoplay &&
         !view.value.pending
       ) {
+        // An explicit refresh after directory failure can still make the
+        // first attempt. Once dispatched, don't retry this visit's playback.
+        captured.automaticSent = true;
         const r = await core.sceneFmCommand(owner, {
-          kind: 'automatic',
+          kind: 'home_automatic',
           revision: view.value.revision,
+          visit: captured.visit,
         });
         if (valid() && r.epoch === owner) accept(r.value);
       }
@@ -92,8 +136,8 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
       if (valid()) loading.value = false;
     }
   }
-  async function command(value: SceneFmCommand) {
-    if (!epoch || busy.value || loading.value || disposed) return;
+  async function command(value: ManualSceneFmCommand) {
+    if (!epoch || !surface || busy.value || loading.value || disposed) return;
     const owner = epoch,
       current = ++serial,
       valid = () => owner === epoch && current === serial && !disposed;
@@ -101,7 +145,10 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
     error.value = '';
     try {
       const r = await core.sceneFmCommand(owner, value);
-      if (valid() && r.epoch === owner) accept(r.value);
+      if (valid() && r.epoch === owner) {
+        accept(r.value);
+        return view.value;
+      }
     } catch (e) {
       if (valid()) {
         handle(e);
@@ -123,24 +170,18 @@ export function useSceneFm(core: SceneFmClient, expired: () => void) {
     if (view.value?.revision)
       return command({ kind: 'select', revision: view.value.revision, scene_id: id });
   }
-  async function show(value: boolean) {
-    visible = value;
-    if (timer) clearInterval(timer);
-    timer = undefined;
-    if (!value) {
-      if (loading.value) {
-        serial++;
-        loading.value = false;
-      }
-      return;
-    }
+  async function show(next: SceneFmSurface) {
+    if (disposed || next === surface) return;
+    retireSurface();
+    surface = next;
+    if (!epoch || !surface) return;
     timer = setInterval(() => void poll(), 1200);
-    await load(false, true);
+    await load();
   }
   function dispose() {
     disposed = true;
-    serial++;
-    if (timer) clearInterval(timer);
+    retireSurface();
+    surface = null;
   }
   return { view, loading, busy, error, connect, show, load, poll, command, act, select, dispose };
 }

@@ -301,6 +301,11 @@ export function createTauriClient(): CoreClient {
     podcastCatalogue: (epoch, query) => invoke('podcast_catalogue', { epoch, query }),
     podcastHome: (epoch, continuation) => invoke('podcast_home', { epoch, continuation }),
     podcastRankings: (epoch, query) => invoke('podcast_rankings', { epoch, query }),
+    sceneFmHomeEnter: (epoch) => invoke('scene_fm_home_enter', { epoch }),
+    sceneFmHomeLeave: (epoch, visit) => invoke('scene_fm_home_leave', { epoch, visit }),
+    sceneFmAutoplayPreference: (epoch) => invoke('scene_fm_autoplay_preference', { epoch }),
+    setSceneFmAutoplayPreference: (epoch, enabled) =>
+      invoke('set_scene_fm_autoplay_preference', { epoch, enabled }),
     sceneFmView: (epoch, refresh) => invoke('scene_fm_view', { epoch, refresh }),
     sceneFmCommand: (epoch, command) => invoke('scene_fm_command', { epoch, command }),
     podcastState: (epoch, refresh) => invoke('podcast_state', { epoch, refresh }),

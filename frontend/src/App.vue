@@ -673,6 +673,24 @@ function playMemberPlaylist(id: string, startId: string | null) {
 const sceneFm = useSceneFm(core, () => {
   void music.bootstrap(false);
 });
+async function openSceneFmVinyl(id: string) {
+  const route = page.value;
+  const owner = account.value.epoch;
+  try {
+    const live = await player.syncPlayback();
+    if (
+      page.value === route &&
+      account.value.epoch === owner &&
+      live.epoch === owner &&
+      live.track?.voiceId === id &&
+      ['playing', 'buffering'].includes(live.state) &&
+      !player.lyricsOpen.value
+    )
+      player.toggleLyrics();
+  } catch {
+    // A stale or failed native read must not open details for another episode.
+  }
+}
 function openSceneRadio(id: string) {
   podcasts.navigate({ kind: 'radio', id, ascending: true });
   music.navigate({ kind: 'podcasts' });
@@ -3754,7 +3772,6 @@ watch([() => account.value.epoch, () => account.value.status], () => {
   together.connect(account.value);
   rankings.connect(account.value);
   fm.connect(account.value);
-  sceneFm.connect(account.value);
   member.connect(account.value);
   if (page.value.kind === 'rankings' && !music.initializing.value)
     void rankings.enter(page.value.query, page.value.rankingState);
@@ -3867,9 +3884,31 @@ watch(
     podcasts.show(kind === 'podcasts');
     together.show(kind === 'together');
     fm.show(kind === 'fm');
-    void sceneFm.show(kind === 'scene_fm');
     member.show(kind === 'member');
   },
+);
+watch(
+  () =>
+    [
+      account.value.epoch,
+      account.value.status,
+      page.value.kind,
+      podcastTop.layout.value,
+      podcastTop.sceneFmAllowed.value,
+    ] as const,
+  ([, , kind, layout, allowed]) => {
+    sceneFm.connect(account.value);
+    void sceneFm.show(
+      kind === 'scene_fm'
+        ? 'standalone'
+        : kind === 'podcast_discovery' && layout === 'classic'
+          ? allowed
+            ? 'classic_home'
+            : 'fallback_home'
+          : null,
+    );
+  },
+  { immediate: true, flush: 'post' },
 );
 watch(
   () => [
@@ -4734,6 +4773,8 @@ onUnmounted(() => {
               <SceneFmPage
                 v-else-if="page.kind === 'scene_fm'"
                 :model="sceneFm"
+                :epoch="account.epoch"
+                @vinyl="openSceneFmVinyl"
                 :playable="player.ready.value && !player.busy.value"
                 @radio="openSceneRadio"
                 @comments="(id, title) => openComments({ kind: 'voice', id }, title)"
@@ -4822,6 +4863,8 @@ onUnmounted(() => {
                 :model="podcastHome"
                 :catalogue="podcastCatalogue"
                 :top="podcastTop"
+                :scene-fm="sceneFm"
+                :epoch="account.epoch"
                 :playable="player.ready.value && !player.busy.value"
                 :current-voice="currentVoiceId"
                 :playing="player.playing.value"
@@ -4830,7 +4873,7 @@ onUnmounted(() => {
                 @settings="openPodcastPrivacy"
                 @category="(id) => music.navigate({ kind: 'podcast_category', id })"
                 @rankings="(target) => music.navigate({ kind: 'podcast_rankings', target })"
-                @roam="music.navigate({ kind: 'scene_fm' })"
+                @scene-vinyl="openSceneFmVinyl"
               />
               <PodcastRankingsPage
                 v-else-if="page.kind === 'podcast_rankings'"
