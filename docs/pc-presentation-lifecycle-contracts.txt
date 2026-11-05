@@ -58,6 +58,13 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   TTL 不变。持久 bootstrap 与 latest-successful display catch 都不能供自动跳歌、
   评论写入、素材/权益等 dispatch 授权。服务 403 后可继续显示旧表现，但同次
   fresh-authority read 必须失败。存储失败不伪装成功落盘；运行期有原生状态区分。
+- phase66 按 M147:2966–2969 区分实际 full reply 与同进程 fresh cache hit：只有
+  实际成功回包更新持久表现，重复读取鲜活 native assignment 不写 SQLite、
+  不发新表现版本。账号/API身份切换与同步的 bootstrap/persist/watch 发布共用
+  native account fence；同一个宿主内在表现锁内取样凭据，避免旧线程盖回新上下文。
+  匿名 UID 读取如发现凭据版本与刚取样不一致，拒绝这次快照；不先掉入 local-guest
+  再为同一匿名 UID 重新读回旧桶。凭据和 registry 仍是分开的存储，本实现不承诺
+  跨数据库事务；凭据版本在持久表现写前后都核对，旧回执不更新当前 watch。
 - 本批只保证已映射四个表现键的 owner/cache/reactive source，不持久完整未知
   官方 localStorage 对象；其他模块的表现迁移继续按具体源逐项接线。
 
@@ -102,6 +109,9 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   runtime_races 使用普通 request 会 panic 的合成原生能力，精确注入最终 read
   fence 之后、订阅期间、actual 取样之后三种 commit 窗口，均要求同一 lease
   恰好两次读取并落到 r2 的 c；该 unit 不代替真实签名/EAPI 的 integration tests。
+- phase66 的两个私有回归覆盖实际 SQLite 更新计数 + watch 不重发、切换 UID/回到
+  旧 UID 只恢复本 owner 的持久表现且 fresh 403 不授权，以及匿名 UID 取样中间
+  确定性换凭据后不回放旧桶。用例不触发真实账号或匿名注册。
 - 当前未测试真实匿名注册服务、真实账号完整 30 分钟墙钟或物理输出设备；不把
   合成 transport/paused-time 测试称为实服/真实声卡验证。桌面 event/main-window
   与 cached search 页重投影由独立上层集成，未由这些 core 测试单独覆盖。

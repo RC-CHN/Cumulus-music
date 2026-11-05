@@ -117,8 +117,8 @@ impl ScopeContext {
                 fetched: Instant::now(),
                 groups: groups.clone(),
             });
+            self.commit_presentation(token, api, &credentials, &groups)?;
         }
-        self.commit_presentation(token, api, &credentials, &groups)?;
         Ok((credentials, groups))
     }
 }

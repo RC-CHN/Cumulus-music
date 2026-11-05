@@ -240,11 +240,11 @@ impl ScopeContext {
             })
             .map(|current| current.groups.clone());
         if let Some(groups) = cached {
-            let result = self
+            // M147 persists its web state only after a real full response.
+            // Reading the same fresh assignment never rewrites that cache.
+            return self
                 .session
-                .with_verified_profile(token, api, |_, _| Ok((credentials, groups)))?;
-            let _ = self.commit_presentation(token, api, &result.0, &result.1);
-            return Ok(result);
+                .with_verified_profile(token, api, |_, _| Ok((credentials, groups)));
         }
         let refresh =
             tokio::time::timeout(TIMEOUT, api.verified_pc_experiment_groups(&credentials));

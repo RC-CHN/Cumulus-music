@@ -312,6 +312,26 @@ impl AccountSession {
         Ok(())
     }
 
+    /// A synchronous PC presentation commit must not cross a native API or
+    /// account handoff. The callback must not re-enter AccountSession.
+    pub(crate) fn with_pc_presentation_identity<T>(
+        &self,
+        expected: &SessionToken,
+        api: &Arc<dyn Api>,
+        operation: impl FnOnce(Option<&str>, bool) -> Result<T>,
+    ) -> Result<T> {
+        let state = self.lock()?;
+        state.require(expected)?;
+        if !Arc::ptr_eq(&state.api, api) {
+            return Err(Error::StaleResponse);
+        }
+        let verified_uid = state
+            .uid
+            .as_deref()
+            .filter(|_| state.status == SessionStatus::Authenticated && state.profile.is_some());
+        operation(verified_uid, state.uid.is_none())
+    }
+
     /// A signed-out guest may move to an isolated native anonymous jar. This
     /// never adopts its anonymous UID as an authenticated account, nor changes
     /// the guest epoch. API and presentation observers must still rebind.
