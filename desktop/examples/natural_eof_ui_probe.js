@@ -6,6 +6,7 @@
   const bar = () => one('.playerbar');
   const primary = () => one('.playerbar .play-toggle');
   const next = () => one('.playerbar button[aria-label="下一首"]');
+  const modeButton = () => one('.playerbar .mode-control > button');
   const unread = () => Boolean(one('[aria-label="消息"] .message-drawer-unread-dot'));
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
   const emit = (stage, payload) => invoke('plugin:event|emit', {
@@ -65,7 +66,7 @@
     't1-tail': ['t1', 'idle', 'sequential', '1,2,3'],
     'order-loop-skip': ['t1', 'playing', 'order_loop', '2,3,1'],
     'random-skip': ['t1', 'playing', 'random', '1,3,2'],
-    'random-control': ['c', 'ended', 'random', '1,3,2'],
+    'random-control': ['c', 'ended', 'random', '1,2,3'],
   }[caseName];
   const [expectedGroup, expectedState, expectedMode, expectedOrder] = scenario || [];
   const skip = expectedState === 'playing';
@@ -94,6 +95,7 @@
       primaryLabel: primary()?.getAttribute('aria-label'), unread: unread(),
       nextLabel: next()?.getAttribute('aria-label'), nextEnabled: visible(next()),
       endedStepKey: next()?.dataset.endedStepKey ?? null,
+      mode: bar()?.dataset.mode, modeLabel: modeButton()?.getAttribute('aria-label'),
     });
     const matching = (view) => {
       const rendered = dom();
@@ -106,6 +108,8 @@
       duration: view.timeline?.total ?? null, timelineMode: view.timeline?.mode ?? null, error: view.error,
     });
     const idsOf = (value) => value.tracks.map((item) => [item.track.id, item.entryId]);
+    const endedKey = (view) =>
+      JSON.stringify([epoch, view.endedMinibarReceipt, view.entryId, view.queueRevision]);
     const stage = async (label, view, q) => {
       await twoFrames();
       assert(matching(view) && document.visibilityState === 'visible', 'visible native and DOM state for ' + label);
@@ -169,7 +173,7 @@
         (skip ? view.position > .2 && view.timeline?.total === 30 && skipNotice.visible() : view.position === 8) &&
         (!randomControl || (view.playId === null &&
           /^[a-f0-9]{32}$/.test(view.endedMinibarReceipt) &&
-          dom().endedStepKey === JSON.stringify([epoch, view.endedMinibarReceipt, view.entryId, view.queueRevision]))) && view;
+          dom().endedStepKey === endedKey(view))) && view;
     }, 'cohort-specific state after natural native EOF');
     const afterQueue = await queue();
     assert(JSON.stringify(idsOf(afterQueue)) === JSON.stringify(ids) &&
@@ -189,8 +193,7 @@
       const button = next();
       assert(visible(button) && matching(after), 'finished control has a visible enabled Next button');
       if (randomControl)
-        assert(button.dataset.endedStepKey ===
-          JSON.stringify([epoch, after.endedMinibarReceipt, after.entryId, after.queueRevision]),
+        assert(button.dataset.endedStepKey === endedKey(after),
         'random control Next is rendered for the exact retained native EOF');
       button.focus({ preventScroll: true });
       button.click();
@@ -217,10 +220,64 @@
         JSON.stringify(idsOf(retainedQueue)) === JSON.stringify(ids),
       'native Next reply retains the same finished clock, play and queue');
       await stage('ux_03_control_next', retained, retainedQueue);
+      if (randomControl) {
+        const mode = modeButton();
+        assert(visible(mode) && mode.getAttribute('aria-label') === '随机播放',
+          'visible current random mode control');
+        mode.focus({ preventScroll: true });
+        mode.click(); // The production footer cycles Random → Sequential.
+        const switched = await wait(async () => {
+          if (replies.length !== 4) return false;
+          const view = await player();
+          const expected = { ...state(retained), mode: 'sequential', queueRevision: view.queueRevision };
+          return view.queueRevision !== retained.queueRevision &&
+            JSON.stringify(state(view)) === JSON.stringify(expected) && matching(view) &&
+            dom().mode === 'sequential' && dom().modeLabel === '顺序播放' &&
+            modeButton()?.getAttribute('aria-busy') === 'false' &&
+            !one('.mode-glyph-enter-active,.mode-glyph-leave-active') &&
+            visible(next()) && dom().endedStepKey === endedKey(view) && view;
+        }, 'actual mode acknowledgment keeps the completed native receipt at a new queue revision');
+        const switchedQueue = await queue();
+        const change = actions[3]?.action;
+        assert(actions.length === 4 && actions[3].epoch === epoch && Object.keys(change).length === 4 &&
+          change.kind === 'mode_for' && change.mode === 'sequential' && change.fm === false &&
+          change.expected_queue_revision === retained.queueRevision,
+        'one real mode action bound to the random queue version');
+        assert(JSON.stringify(replies[3]) === JSON.stringify(state(switched)) &&
+          switchedQueue.current === retainedQueue.current && switchedQueue.revision === switched.queueRevision &&
+          JSON.stringify(idsOf(switchedQueue)) === JSON.stringify(ids),
+        'native mode reply retains the exact finished source and visible queue');
+        await stage('ux_04_random_mode', switched, switchedQueue);
+
+        const newNext = next();
+        assert(visible(newNext) && newNext.dataset.endedStepKey === endedKey(switched),
+          'visible Next is rebound to the new sequential queue version');
+        newNext.focus({ preventScroll: true });
+        newNext.click();
+        const finished = await wait(async () => {
+          if (replies.length !== 5) return false;
+          const view = await player();
+          return JSON.stringify(state(view)) === JSON.stringify(state(switched)) &&
+            matching(view) && dom().endedStepKey === endedKey(view) &&
+            visible(next()) && document.activeElement === next() && view;
+        }, 'real Next in sequential mode retains the ended random source');
+        const finishedQueue = await queue();
+        const step = actions[4]?.action;
+        assert(actions.length === 5 && actions[4].epoch === epoch && Object.keys(step).length === 5 &&
+          step.kind === 'step_ended_mini_bar' && step.direction === 'next' &&
+          step.receipt === switched.endedMinibarReceipt && step.entry_id === switched.entryId &&
+          step.expected_queue_revision === switched.queueRevision,
+        'one real Next uses the same native receipt and the new queue version');
+        assert(JSON.stringify(replies[4]) === JSON.stringify(state(switched)) &&
+          finishedQueue.current === switchedQueue.current && finishedQueue.revision === switchedQueue.revision &&
+          JSON.stringify(idsOf(finishedQueue)) === JSON.stringify(ids),
+        'native Next reply in sequential mode keeps the completed clock and current row');
+        await stage('ux_05_random_next', finished, finishedQueue);
+      }
     }
     const notices = await skipNotice.finish(skip);
     await emit('complete', { ok: true, case: caseName, group, target, notices,
-      stageCount: controlNext ? 3 : 2 });
+      stageCount: randomControl ? 5 : controlNext ? 3 : 2 });
   } catch (error) {
     await emit('failed', { ok: false, case: caseName, error: String(error),
       state: bar()?.dataset.state, trackId: bar()?.dataset.trackId, online: navigator.onLine, actions, replies });

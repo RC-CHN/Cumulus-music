@@ -76,17 +76,22 @@ impl Case {
     }
 
     pub fn displayed_rows(self) -> [u64; 3] {
-        match self.mode() {
-            PlaybackMode::OrderLoop => [2, 3, 1],
-            PlaybackMode::Random => [1, 3, 2],
+        match self {
+            Self::OrderLoopSkip => [2, 3, 1],
+            Self::RandomSkip => [1, 3, 2],
             _ => [1, 2, 3],
         }
     }
 
     pub fn random_deck(self) -> Option<[usize; 3]> {
-        // Persist [3,1,2] on a display [1,3,2], so playing 1 tests denied 2
-        // and wraps to 3. Using display order would authorize 3 directly.
-        (self.mode() == PlaybackMode::Random).then_some([1, 0, 2])
+        // Both random cases use [3,1,2]. In treatment, the different display
+        // order would authorize 3 directly. In control, 2 is denied in both
+        // the random deck and the sequential display order after mode change.
+        match self {
+            Self::RandomSkip => Some([1, 0, 2]),
+            Self::RandomControl => Some([2, 0, 1]),
+            _ => None,
+        }
     }
 
     pub fn playable(self, id: u64) -> bool {

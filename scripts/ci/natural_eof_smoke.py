@@ -19,7 +19,7 @@ CASES = {
     't1-tail': ('t1', '1', 'idle', 'sequential', ['1', '2', '3']),
     'order-loop-skip': ('t1', '3', 'playing', 'order_loop', ['2', '3', '1']),
     'random-skip': ('t1', '3', 'playing', 'random', ['1', '3', '2']),
-    'random-control': ('c', '1', 'ended', 'random', ['1', '3', '2']),
+    'random-control': ('c', '1', 'ended', 'random', ['1', '2', '3']),
 }
 WIRE = '/api/song/enhance/player/url/v1'
 
@@ -33,7 +33,9 @@ def check(directory, case, capture, windows):
     names = ['ux_01_before', 'ux_02_after']
     if case in ('control', 'random-control'):
         names.append('ux_03_control_next')
-        stages.append(read(directory / (names[-1] + '.json')))
+    if case == 'random-control':
+        names.extend(('ux_04_random_mode', 'ux_05_random_next'))
+    stages.extend(read(directory / (name + '.json')) for name in names[2:])
     assert sorted(path.stem for path in directory.glob('ux_*.json')) == names
     complete = read(directory / 'complete.json')
     assert complete['ok'] and complete['case'] == case and complete['group'] == group
@@ -127,7 +129,7 @@ def check(directory, case, capture, windows):
                     current['epoch'], receipt, current['entryId'], current['queueRevision'],
                 ]
                 action.update(kind='step_ended_mini_bar', receipt=receipt, entry_id=current['entryId'])
-            retained = stages[-1]
+            retained = stages[2]
             assert retained['actual'] and retained['online'] and retained['group'] == group
             assert retained['case'] == case and retained['player'] == current
             assert retained['dom'] == after['dom'] and retained['dom']['nextEnabled']
@@ -140,6 +142,38 @@ def check(directory, case, capture, windows):
             assert retained['trace'] == trace, retained['trace']
             assert retained['durablePosition'] == after['durablePosition']
             old_checkpoint(retained['durablePosition'])
+            if case == 'random-control':
+                switched, clicked = stages[3:]
+                new = switched['player']
+                assert new['queueRevision'] != current['queueRevision']
+                assert new == {**current, 'mode': 'sequential',
+                               'queueRevision': new['queueRevision']}, new
+                assert switched['dom'] == {
+                    **retained['dom'], 'mode': 'sequential', 'modeLabel': '顺序播放',
+                    'endedStepKey': switched['dom']['endedStepKey'],
+                }, switched['dom']
+                assert switched['dom']['nextEnabled'] and json.loads(switched['dom']['endedStepKey']) == [
+                    new['epoch'], receipt, new['entryId'], new['queueRevision'],
+                ]
+                assert switched['actions'] == retained['actions'] + [{
+                    'epoch': new['epoch'], 'action': {
+                        'kind': 'mode_for', 'mode': 'sequential',
+                        'expected_queue_revision': current['queueRevision'], 'fm': False,
+                    },
+                }], switched['actions']
+                assert switched['replies'] == retained['replies'] + [new], switched['replies']
+                assert clicked['player'] == new and clicked['dom'] == switched['dom']
+                assert clicked['actions'] == switched['actions'] + [{
+                    'epoch': new['epoch'], 'action': {
+                        **action, 'expected_queue_revision': new['queueRevision'],
+                    },
+                }], clicked['actions']
+                assert clicked['replies'] == switched['replies'] + [new], clicked['replies']
+                for row in (switched, clicked):
+                    assert row['actual'] and row['online'] and row['group'] == group and row['case'] == case
+                    assert row['trace'] == trace and row['durablePosition'] == after['durablePosition']
+                    assert row['ids'] == after['ids'] and row['current'] == after['current']
+                    old_checkpoint(row['durablePosition'])
         else:
             assert current['playId'] is None and current['duration'] is None
             assert stops == [{'kind': 'native_stop', 'entry': old}]
@@ -164,16 +198,30 @@ def check(directory, case, capture, windows):
                 sample['ok'] for sample in paint['samples']
             ), paint
     transport = ['3', '1', '2'] if mode == 'random' else display
+    final_mode, final_transport = mode, transport
+    if case == 'random-control':
+        final_mode, final_transport = 'sequential', display
+        for row in stages[:3]:
+            assert row['durableQueue'] == {
+                'mode': mode, 'order': [entries[item] for item in transport],
+                'current': entries[target],
+            }, row['durableQueue']
+        for row in (*stages[3:], complete):
+            assert row['durableQueue'] == {
+                'mode': final_mode, 'order': [entries[item] for item in final_transport],
+                'current': entries[target],
+            }, row['durableQueue']
     database = (directory.parent / 'state' / 'core.sqlite3').resolve(strict=True)
     with sqlite3.connect(database.as_uri() + '?mode=ro', uri=True) as connection:
         persisted = connection.execute(
             "SELECT value FROM state WHERE owner='2' AND kind='playback' AND key='queue'"
         ).fetchone()
     saved = json.loads(persisted[0])
-    assert saved['order'] == [entries[item] for item in transport], saved['order']
-    assert saved['current'] == entries[target]
+    assert saved['order'] == [entries[item] for item in final_transport], saved['order']
+    assert saved['current'] == entries[target] and saved['mode'] == final_mode
     return {'case': case, 'group': group, 'target': target, 'state': state,
             'displayOrder': display, 'transportOrder': transport,
+            'finalMode': final_mode, 'finalTransportOrder': final_transport,
             'stages': stages, 'notices': notices, 'locale': locale, 'screenshots': len(images)}
 
 

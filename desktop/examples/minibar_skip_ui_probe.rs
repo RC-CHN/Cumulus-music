@@ -264,13 +264,21 @@ fn main() {
                 let stage = value["stage"].as_str().unwrap_or("").to_owned();
                 if !(matches!(stage.as_str(), "ux_01_before" | "ux_02_after" | "complete" | "failed")
                     || matches!(eof, Some(eof_fixture::Case::Control | eof_fixture::Case::RandomControl))
-                        && stage == "ux_03_control_next")
+                        && stage == "ux_03_control_next"
+                    || eof == Some(eof_fixture::Case::RandomControl)
+                        && matches!(stage.as_str(), "ux_04_random_mode" | "ux_05_random_next"))
                 {
                     return;
                 }
                 value["trace"] = json!(*api.trace.lock().unwrap());
                 if eof.is_some() {
                     value["durablePosition"] = json!(store.get("2", "playback", "position").unwrap());
+                }
+                if eof == Some(eof_fixture::Case::RandomControl) {
+                    let saved = store.get("2", "playback", "queue").unwrap().unwrap();
+                    value["durableQueue"] = json!({
+                        "mode": saved["mode"], "order": saved["order"], "current": saved["current"],
+                    });
                 }
                 fs::write(output.join(format!("{stage}.json")), serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let handle = handle.clone();
