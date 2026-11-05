@@ -3,9 +3,10 @@ Fixed local old-schema stereo material — standalone native scope
 
 Scope and status
 ----------------
-LocalFixedStereoMaterial is an explicit standalone Rust/C component. It does
-not replace LocalStereoSubgraph, install a player filter, change a default,
-expose an effect UI or grant source/material rights. Its only accepted plan
+LocalFixedStereoMaterial is an explicit Rust/C component, also selected by the
+native-only held ColdStereoSource. It does not replace the LocalStereoSubgraph
+API, install a normal player setting, change a default, expose an effect UI or
+grant source/material rights. Its only accepted plan
 is the existing LocalStereoMaterialPlan: ten flat GEQ bands with eq.on=false,
 bass=treble=0 and bt.on=false, rvb.on=false, integer presence[-10,10] /
 stereoizer[0,10], sshaper=true, and the official local schema's ambience=1.
@@ -152,10 +153,12 @@ no NLS reply is supplied, text/DSP is unchanged, MXCSR starts1f80 and original
 static CPU dispatch is used. It is not real Windows, the SDK's outer FIFO,
 physical audio output, a libmpv host or a frontend/UI proof. MSVC/Linux libm
 transcendentals elsewhere in the environment still require platform evidence.
-The current native player/source remains the separately named SE1→B0
-subgraph; replacing it and exposing official controls requires the full
-candidate's final tests plus the already scoped decoder/host/seek/authority
-proofs, not this document alone.
+ColdStereoSource now owns this complete fixed graph instead of the former
+SE1→B0 subgraph. That attachment has its own V2 report, source lifecycle tests
+and native/GUI validation recorded in stereo-pcm-source-validation.txt. The
+1204 standalone block comparisons alone cannot prove an installed native
+source or normal setting/UI. The normal production player controls still
+require actor/format/master/write-apply integration and separate evidence.
 
 Local executable
 ----------------

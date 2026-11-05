@@ -1,13 +1,57 @@
-Paced SE1/B0 held-source validation — 2026-11-05
-==============================================
+Paced held-source validation: fixed local graph and historical SE1/B0
+====================================================================
 
-Historical source validation: SE1/B0, before complete fixed attachment
---------------------------------------------------------------------
-This record remains tied to the exact sources and binaries below. The later
-ColdStereoSource switch to LocalFixedStereoMaterial is not covered by these
-passes. Its report v2 and pending attachment checks are documented in
-stereo-pcm-source-contracts.txt; this history must not be relabelled as a
-complete fixed material native/GUI run.
+Current V2 attachment — 2026-11-06 (local time)
+---------------------------------------------
+Business, test and executable source6b12b6734b715fe8ade328bc27409e03be4f9c5d.
+ColdStereoSource owns LocalFixedStereoMaterial in place of the earlier SE1/B0
+subgraph. Scope: an explicit native held-source seam for authenticated cold
+NCM/FLAC,44.1kHz stereo16-bit, FLAC blocks <=1024 and a fixed local equalizer
+plan (GEQ/BT/RVB off; documented SE1 controls). No normal player setting is
+wired here, and there is no general SDK/online/UI/physical-output claim.
+
+- Fixed Rust1.96.0/lockfile: fmt and strict workspace/all-targets/custom-protocol
+  Clippy pass. Full tests:394 programs,2418 passed,0 failed,20 ignored. Six new
+  source-owner tests ran, five with152 original per-block PCM/length/EOF
+  comparisons in total (including the actual paced FIFO reader); one verifies
+  first-nonzero-seek reset dispatch against explicit Rust reset. These cover
+  native graph ownership and PCM; they do not substitute for GUI startup.
+- CI Python124 pass, including V2 scope and V1-rejection checks. Frontend source
+  unchanged; all22 built assets match the fixed Node24.16.0/905-test phase61
+  run by hash. There was no new frontend change or screenshot claim.
+- New native_audio_probe and stereo_pcm_roundtrip executables were built and
+  preserved by hash. Ordinary native baseline and complete fixed-source GUI
+  both ran in separate private Linux X11/Xvfb/D-Bus profiles with no external
+  network route and en_US.UTF-8; numeric locale switched to C, messages stayed
+  unchanged. A parent observer saw the requested private libFLAC1.5.0 file
+  (SHA21b9e7097e0bcd06cac94fb6d6eff8ec485752425eee71dccfc60c3a61a2945d)
+  and actual libmpv0.41.0 (SHA2051bdd3bce70349ffa9513c5db4ac0d7fa4aad869004b243f39da93768e8bc5).
+- V2 GUI: all11 strict stages passed. The synthetic downloader published an
+  88207-frame NCM, the cold grant held the actual descriptor across pathname
+  replacement, and libFLAC decoded while native output stayed at clock0 when
+  paused (8192 decoded,7973 produced). Both control revisions applied in
+  entry1 and the live clock moved0.228500→0.456881s. The exact old native sink
+  retired, callback closed and worker joined before seek22050/new entry2.
+  Real EOF produced110257 frames, including44100 tail, and source clock clamped
+  to88207. On entry3, revocation with2722 already-returned frames ahead of the
+  clock stopped native playback, closed the callback and denied source reclaim.
+  Cold HTTP attempts0, real music requests0, no account writes.
+- The actual standalone CLI ran the same11 stages without a display/session
+  bus (guiInitialized=false;110257 output/44100 tail). The one opt-in core
+  native prerequisite also passed separately with trusted FLAC/mpv; it is not
+  added to the2418 workspace count and is not a GUI proof.
+
+Private evidence:.build/ui-proof/phase62-fixed-source. See central-r1.json,
+rust-test-summary-r1.json, native-artifacts-r1.json, actual-native-v2-r1.json,
+native-full-fixed-r1/report.json, standalone-full-fixed-r1/report.json and
+native-core-prerequisite-r1.log. The core frozen comparison checks PCM values;
+the real GUI proof checks decoder/clock/control/EOF/retirement behavior and
+runtime identity. Actual Windows V2, physical output, additional formats and
+the ordinary setting/write/apply/device Init→Reset integration remain separate.
+The earlier V1 record below is retained at its own source and scope.
+
+Historical V1: SE1/B0, before complete fixed attachment
+------------------------------------------------------
 
 Outcome and scope
 -----------------

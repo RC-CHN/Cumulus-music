@@ -150,7 +150,11 @@ set wrapper previous=current before the first real block and lose the original
 cold off transitions. The worker records actual PCM invocation independently
 from decoder construction. Repeated cancelled/failed decoder preparation
 before any PCM, including accepted configuration before first credit, does
-not consume the fresh transition.
+not consume the fresh transition. This is the explicit held source's graph-
+owner lifecycle, compared to the original fresh component; it is not the
+ordinary player's device-init sequence. The original ordinary decoder/device
+path (AudioDeviceThread10542F0, virtual Init at1055791 then Reset at10557B5)
+needs separate actor integration and its own comparison.
 
 After any actual graph invocation, a reclaimed source start calls the original
 graph Reset, even when rewinding to0. A first nonzero logical seek also calls
@@ -164,20 +168,27 @@ is created. Post-publication decoder/DSP/authority failure clears/fails reads,
 and native polling stops/destroys the sink; it never restarts audible playback
 or retries a remote write as a generic fallback.
 
-Candidate attachment regression and prior executed evidence
+V2 attachment regression and prior executed evidence
 -------------------------------------------------------------
-The new native-only source graph owner has deterministic tests against the
-complete original fixed corpus, including fresh preparation/cancel without
-reset, first nonzero logical seek, source reuse with seek reset, default-off
-to SE1-on, hot controls, off preserving the applied bank, reset while on/off
-is pending, and completed EOF followed by reuse of the same original object.
+Five new native-only graph-owner tests compare complete original fixed PCM
+SHA, frame counts and EOF, covering repeated fresh prepare(0), source reuse
+with seek reset, default-off to SE1-on, hot controls, off preserving the applied
+bank, reset while on/off is pending, and completed EOF followed by reuse.
+Repeated prepare(0) models cancelled decoder setup without real libFLAC
+cancellation; native decoder cancellation is a separate lifecycle boundary.
+A sixth test checks first-nonzero-seek reset dispatch against an explicit Rust
+LocalFixedStereoMaterial.reset(), without a fake PCM invocation. It is a wiring
+check, not an independent original reset-before-first-PCM oracle.
 A decoded-packet FIFO test splits original synthetic input into <=1024-frame
 packets, feeds the actual paced source pump, and checks every returned reader
 block's final PCM SHA against the original complete graph through B0. Its
 host-clock observations are synthetic, not a native decoder/output proof. Paused
 control ACK uses the complete fixed processor; a separate legacy-subgraph
 control test preserves the transport's graph-independent callable contract.
-These new Rust tests are prepared, not executed in this candidate.
+All six tests ran successfully in the full workspace run (2418 passed,
+20 ignored). The five original-output tests make152 per-block comparisons in
+aggregate. The source/GUI runs are recorded separately in
+stereo-pcm-source-validation.txt.
 
 The source proof report is now stereo_pcm_fixed_local_native_v2 with
 graphScope=complete_fixed_local_equalizer and fixedLocalMaterial=true. It must
@@ -186,8 +197,8 @@ settingWriteApplyOrderVerified=false, officialUiTested=false and
 physicalAudioOutputVerified=false. Here wholeMaterial is the legacy arbitrary-
 material claim, not a denial of this explicitly named fixed scope. The strict
 Python validator rejects an old v1/subgraph report and all contrary claims;
-18 synthetic validator tests pass. They are schema tests, not new native PCM
-or GUI execution.
+18 native_smoke synthetic validator tests pass within the124-script-test
+run. They validate reports, separately from actual native playback.
 
 Historical tests before this attachment covered paused control ACK with
 zero producer credit, wrong-entry/undelivered-clock rejection, arbitrary partial raw bytes,
@@ -209,10 +220,10 @@ service, user media or physical audio device is used.
 The actual Linux GTK initialized source proof with non-C system locale
 (numeric C only), first-packet readiness, clock credit and EOF-close behavior
 has also passed; source, reports and caveats are in stereo-pcm-source-validation.txt.
-Still required: execute the changed complete fixed source attachment in Rust
-and actual GUI-initialized Linux/Windows packaged runtimes; check latency and
-recovery under real scheduling/device conditions; and integrate the normal
-current-source/setting actor plus exact setting write/apply order. The official
+The changed complete fixed source passed actual Linux GTK/native and
+standalone CLI V2; the same trusted Windows V2 runtime remains to be executed.
+Device latency/recovery, normal current-source/setting actor integration and
+exact setting write/apply order require separate verification. The official
 M3091:1278-1320 handlers dispatch a full local write before activate; M342:1607-
 1642 awaits Storage.writeFile then re-reads the selected equalizer/isOn before
 native apply. This source seam does not simulate that settings transaction or
@@ -243,15 +254,16 @@ initialization in the final report. No default route or app setting enables it.
 
  scripts/ci/native_smoke.py --binary ABS_NATIVE_AUDIO_PROBE
    --stereo-pcm-flac-library ABS_TRUSTED_FLAC_1_5 --report NEW_REPORT.json
-   [--runtime ABS_PINNED_MEDIA_RUNTIME]
+   [--mpv-library ABS_TRUSTED_MPV] [--runtime ABS_PINNED_MEDIA_RUNTIME]
 
 This mutually exclusive mode preserves the existing isolated app/config/cache
 and WebView directories, clears inherited CUMULUS_* switches and accepts only
 an explicit existing absolute library. The calling Linux harness must provide
 the real display/DBus/WM and non-C locale as for other native_smoke modes;
 Windows uses the same packaged WebView2/native process and staged runtime.
-At this integration point CI source-mode wiring is a separate candidate. The
-existing60s process bound retains progress/log and
+The source-mode CI wiring, explicit Windows SDK path and private Linux FLAC
+build are specified in stereo-pcm-native-ci-contracts.txt. The existing60s
+process bound retains progress/log and
 fails on timeout; individual native waits still use the original8s bound.
 
 The helper reports ordered stages for actual seed/publish/grant, raw load,
@@ -263,9 +275,8 @@ error. It never retries playback or increases a wait to hide a failure.
 The strict Python validator rejects partial reports, missing stages, stale
 entry/control ACK, excessive produced lead, wrong tail/source count, missing
 AO retirement/join, attempted cold HTTP, or an arbitrary-material/UI/speaker
-claim. The current native_smoke suite has18 synthetic tests; prior109 CI-tool
-tests and native execution below are historical and remain distinct from the
-new attachment candidate.
+claim. The V2 native_smoke schema tests remain distinct from the actual
+V2 native/GUI runs and from all historical V1 results.
 
 The initial native failure is retained:7973frames, native time-pos0/seeking=true.
 The bounded first-sync correction above resolved it without increasing any

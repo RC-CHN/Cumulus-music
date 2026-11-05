@@ -2,12 +2,15 @@ Paced stereo PCM native CI boundary
 ===================================
 
 The sealed --stereo-pcm-flac-library native_audio_probe path is run after actual
-GTK/WebView or WebView2 initialization. Its existing strict proof assertions
-remain unchanged: real synthetic NCM download publication, cold held-file grant,
-libFLAC 1.5.0 decode, unknown-size raw PCM, paced SE1 -> defaultB0 subgraph,
-same-entry controls, stop/join/seek, exact tail frames and buffered revocation.
-This does not enable production attachment, verify the complete material graph,
-claim a physical audio device or replace shipping build artifacts.
+GTK/WebView or WebView2 initialization. The current V2 report requires the
+complete fixed local equalizer scope (LocalFixedStereoMaterial), not the former
+SE1 -> defaultB0 subgraph. It retains real synthetic NCM publication, cold held-
+file authorization, libFLAC1.5.0 decode, unknown-size raw PCM, same-entry controls,
+stop/join/seek, exact tail frames and buffered revocation. The validator rejects
+old V1 reports and arbitrary SDK/normal-setting/UI/physical-output claims.
+The complete fixed scope still requires GEQ/BT/RVB off and the documented SE1
+controls; it is not arbitrary SDK material support. This native-only source seam
+does not install a normal production setting or replace shipping artifacts.
 The existing60s outer process limit and8s individual native waits are retained;
 no source-specific timeout extension is used to mask startup failures.
 
@@ -48,8 +51,8 @@ is insufficient: the production Windows loader intentionally ignores ambient
 PATH/CWD for SDK/import selection. This helper is not a frontend/product option.
 The temporary runtime is non-shipping and no downloaded library is repackaged.
 
-Validation of this candidate
-----------------------------
+Runtime helper validation and historical V1 source execution
+-------------------------------------------------------------
 The private Linux CMake build was actually executed on this machine; the copied
 ELF loaded FLAC__VERSION_STRING=1.5.0. Its SHA is build/platform dependent and is
 recorded privately, not treated as a portable upstream binary signature.
@@ -57,9 +60,22 @@ Python boundary tests cover archive links/traversal/duplicates/source bounds,
 wrong runtime version, HTTPS downgrade, and Windows GUI dispatch while the
 verified runtime exists. Existing native_smoke and diagnostics tests also pass.
 The central integration subsequently built the current Rust/desktop and ran
-this exact source GUI mode successfully with that private1.5.0 library. Parent
+the prior V1 SE1/B0 source GUI mode successfully with that private1.5.0 library.
+That execution predates the complete fixed attachment and cannot validate V2. Parent
 process-tree maps confirmed the actual private module/SHA21b9e7097e0bcd06cac94fb6d6eff8ec485752425eee71dccfc60c3a61a2945d,
 alongside system libmpv0.41.0. It retained all11 stages, exact tail/frame counts,
 same-entry controls and buffered revocation. Strict GNU cross-Clippy covers the
 Windows helper's type/layout code; actual Windows/MSVC loading and GUI still
 require the exact hosted CI. No hosted success is inferred from the local run.
+
+
+Current V2 native execution
+--------------------------
+The same trusted Linux libFLAC1.5.0 helper output was used for the new V2
+GUI mode. Process-tree maps verified the actual requested FLAC/mpv files.
+No timeout was increased; strict11-stage proof, exact110257/44100 output/tail,
+same-entry controls and buffered revocation passed after GTK initialization.
+The ordinary baseline, standalone V2 and optional core native case also passed.
+See stereo-pcm-source-validation.txt for executable source and measurements.
+Actual Windows V2 and complete CI for that candidate are not inferred from
+local Linux runs or any previous V1 workflow.

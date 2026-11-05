@@ -1,6 +1,13 @@
 Rust core 迁移验证记录
 2026-10-26；本记录不代替完整目标验收。
 
+2026-11-06 完整固定音效图接入显式受控 NCM-FLAC 源：6b12b673源码在固定Rust上
+通过格式、严格workspace Clippy及394程序/2418 passed/0 failed/20 ignored。
+新增6个源测试包含5个原图PCM逐块对照、1个reset调用核对；124个CI脚本测试通过。
+Linux真实GTK初始化后的普通播放与V2全11阶段、无GUI独立CLI及另行启用的核心原生用例
+均实际通过，见 stereo-pcm-source-validation.txt。前端未变，22个产物沿用905项验证批次
+并按hash核对。V2仍为受控原生源，正式普通设置、Windows V2与实际声卡未在本批实证。
+
 2026-11-05 固定本地音效完整图及界面整合：394程序/2412 passed/0 failed/20 ignored，
 格式与严格workspace Clippy通过；固定Node24.16的npm ci/format/905测试/类型与构建、
 123项CI脚本测试通过。原完整图32流/阶段、1204块经Rust末端B0逐块精确对照，
