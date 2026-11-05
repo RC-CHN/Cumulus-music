@@ -64,7 +64,7 @@ def read_report(root, *, graph, peq):
     return report
 
 
-def read_spatial_report(root):
+def read_spatial_report(root, capture=False):
     directory = root / 'spatial'
     names = [
         'ux_01_stock_saved', 'ux_02_hot_paused', 'ux_03_master_off',
@@ -131,7 +131,17 @@ def read_spatial_report(root):
     updates = [(row.get('presence', 0), row.get('stereoizer', 0), row.get('master_bypassed', False))
                for row in on['native']['local_updates']]
     assert updates[-3:] == [(6, 8, False), (6, 8, True), (6, 8, False)], updates
-    return {**complete, 'stages': stages}
+    if capture:
+        assert sorted(path.stem for path in directory.glob('ux_*.png')) == names
+        for name, row in zip(names, stages, strict=True):
+            expected = (['.equalizer-dialog'] if row['dom']['sliders'] is not None
+                        else ['.sidebar-caption', '.playerbar'])
+            assert [sample['source'] for sample in row['paintSamples']] == expected, row
+            paint = json.loads((directory / ('paint-' + name + '.json')).read_text(encoding='utf-8'))
+            assert len(paint['samples']) == len(expected) and all(
+                sample['ok'] for sample in paint['samples']
+            ), paint
+    return {**complete, 'stages': stages, 'screenshots': len(names) if capture else 0}
 
 
 def main():
@@ -145,7 +155,11 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--spatial-controls-only', action='store_true',
                         help='run the actual EQ UI with the ordinary held FLAC source')
+    parser.add_argument('--screenshots', action='store_true',
+                        help='capture settled spatial stages on isolated Linux GTK')
     args = parser.parse_args()
+    if args.screenshots and (not sys.platform.startswith('linux') or not args.spatial_controls_only):
+        parser.error('--screenshots requires Linux and --spatial-controls-only')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     binary = args.binary.resolve(strict=True)
@@ -173,15 +187,20 @@ def main():
             directory.mkdir(parents=True, mode=0o700)
             case_env[key] = str(directory)
         with (root / f'{case}.log').open('xb') as log:
-            result = subprocess.run([binary, case, library, args.flac_sha256, work, *filter_args, *mpv],
-                                    env=case_env, stdout=log, stderr=log, timeout=60)
+            arguments = [case, library, args.flac_sha256, work, *filter_args, *mpv]
+            if args.screenshots:
+                from window_manager import launch
+                status = launch(binary, case_env, log, work / 'spatial', True, argv=arguments)
+            else:
+                status = subprocess.run([binary, *arguments], env=case_env, stdout=log,
+                                        stderr=log, timeout=60).returncode
         failed = work / 'failed.json'
         if case == 'spatial_controls':
             failed = work / 'spatial' / 'failed.json'
-        assert result.returncode == 0 and not failed.exists(), (
-            case, result.returncode, failed.read_text(encoding='utf-8') if failed.exists() else None,
+        assert status == 0 and not failed.exists(), (
+            case, status, failed.read_text(encoding='utf-8') if failed.exists() else None,
         )
-        reports[case] = (read_spatial_report(work) if case == 'spatial_controls'
+        reports[case] = (read_spatial_report(work, capture=args.screenshots) if case == 'spatial_controls'
                          else read_report(work, graph=graph, peq=bool(filter_args)))
     output = {'ok': True, 'actualWebViewAndActor': True, 'flacSha256': args.flac_sha256,
               'realMusicRequests': 0, 'physicalOutputVerified': False, 'cases': reports}

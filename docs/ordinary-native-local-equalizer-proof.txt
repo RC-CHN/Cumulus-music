@@ -162,3 +162,9 @@ and native EOF. The runner compares each UI state with the local SQLite EQ
 record and the actual engine trace; the original three EQ/PEQ cases retain
 their checks and command line. These are proof expectations pending a
 matching native/WebView run, not physical-audio evidence.
+
+On isolated Linux Xvfb/D-Bus, add --screenshots to --spatial-controls-only
+to capture all seven actual stages. The proof waits for each PNG receipt
+before advancing; actual opaque dialog/footer padding is checked against the
+compositor image, with a bounded wait for GTK paint. These images remain
+separate from the native sink/EOF assertions and do not validate frame rate.

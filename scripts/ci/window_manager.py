@@ -46,11 +46,12 @@ class ManagerCheck:
         self.x11.XCloseDisplay(self.display)
 
 
-def launch(binary, env, log, output: Path, capture, *, before_ack=None, capture_glob='ux_*.json'):
+def launch(binary, env, log, output: Path, capture, *, before_ack=None, capture_glob='ux_*.json',
+           argv=()):
     requested = os.environ.get('CUMULUS_TEST_WINDOW_MANAGER')
     if not requested:
         return motion_smoke.launch(binary, env, log, output, capture, before_ack=before_ack,
-                                   capture_glob=capture_glob)
+                                   capture_glob=capture_glob, argv=argv)
     if os.name == 'nt' or requested != 'openbox':
         raise RuntimeError('unsupported explicit test window manager')
     check = ManagerCheck(env.get('DISPLAY', ''))
@@ -65,7 +66,7 @@ def launch(binary, env, log, output: Path, capture, *, before_ack=None, capture_
                         raise RuntimeError('isolated window manager did not become ready')
                     time.sleep(.05)
         return motion_smoke.launch(binary, env, log, output, capture, before_ack=before_ack,
-                                   capture_glob=capture_glob)
+                                   capture_glob=capture_glob, argv=argv)
     finally:
         if manager is not None and manager.poll() is None:
             manager.terminate()

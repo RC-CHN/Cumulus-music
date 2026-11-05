@@ -101,6 +101,27 @@
         (status === 'off' || spatial()?.dataset.spatialStatus === status) && view;
     }, 'committed spatial controls: ' + status);
   }
+  function paintSample(selector) {
+    const node = one(selector);
+    assert(node?.isConnected && !node.closest('[inert]'), 'connected capture padding');
+    const bounds = node.getBoundingClientRect();
+    const pad = Number.parseFloat(getComputedStyle(node).paddingLeft);
+    const x = bounds.left + Math.min(5, pad / 2), y = bounds.top + bounds.height / 2;
+    assert(pad >= 4 && document.elementFromPoint(x, y) === node, 'uncovered capture padding');
+    let color;
+    for (let current = node; current; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      assert(style.opacity === '1' && style.visibility === 'visible', 'visible paint ancestry');
+      if (color) continue;
+      assert(style.backgroundImage === 'none', 'solid capture padding');
+      const rgb = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(style.backgroundColor);
+      if (rgb) color = 'rgb(' + rgb.slice(1).join(', ') + ')';
+      else assert(style.backgroundColor === 'transparent' ||
+        /^rgba\(\d+,\s*\d+,\s*\d+,\s*0\)$/.test(style.backgroundColor), 'nonopaque padding');
+    }
+    assert(color && color !== 'rgb(0, 0, 0)', 'nonblack opaque background');
+    return { x, y, color, source: selector };
+  }
   async function stage(name, view) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (dialog()) {
@@ -108,7 +129,12 @@
       assert(dialog().scrollWidth <= dialog().clientWidth + 1 &&
         r.top >= 0 && r.bottom <= innerHeight + 1, 'EQ dialog stays in viewport');
     }
-    await emit({ stage: name, epoch, player: view, dom: {
+    const capture = window.__spatialCapture ? {
+      screenX, screenY, ratio: devicePixelRatio,
+      paintSamples: (dialog() ? ['.equalizer-dialog'] : ['.sidebar-caption', '.playerbar'])
+        .map(paintSample),
+    } : {};
+    await emit({ stage: name, epoch, player: view, ...capture, dom: {
       state: bar()?.dataset.state, status: spatial()?.dataset.spatialStatus ?? null,
       sliders: dialog() ? sliderValues(sliders) : null,
       tone: dialog() ? sliderValues(tone) : null,

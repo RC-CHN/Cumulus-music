@@ -1,6 +1,8 @@
 //! Real desktop initialization and the ordinary actor's trusted file-open entry.
 #[path = "support/assets.rs"]
 mod assets;
+#[path = "support/capture_ack.rs"]
+mod capture_ack;
 #[path = "support/native_local_equalizer/engine.rs"]
 mod engine;
 #[path = "support/native_local_equalizer/flow.rs"]
@@ -209,9 +211,8 @@ fn main() {
                 return;
             }
             if proof.exercise_spatial {
-                window
-                    .eval(spatial_ui::SCRIPT)
-                    .expect("spatial controls probe script");
+                let script = spatial_ui::script();
+                window.eval(script).expect("spatial controls probe script");
                 return;
             }
             tauri::async_runtime::spawn(async move {

@@ -14,7 +14,18 @@ use std::{
 };
 use tauri::{Listener, Manager};
 
-pub(super) const SCRIPT: &str = include_str!("spatial_ui.js");
+const SCRIPT: &str = include_str!("spatial_ui.js");
+
+pub(super) fn script() -> String {
+    if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
+        super::capture_ack::script(&format!(
+            "window.__spatialCapture = true;
+{SCRIPT}"
+        ))
+    } else {
+        SCRIPT.to_owned()
+    }
+}
 
 pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
     app.add_capability(r#"{"identifier":"local-spatial-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
@@ -110,12 +121,24 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
         match stage.as_str() {
             "complete" => handle.exit(0),
             "failed" => handle.exit(1),
-            _ => handle
-                .get_webview_window("main")
-                .unwrap()
-                .eval(format!("window.__spatialStageAck={};", json!(stage)))
-                .unwrap(),
+            _ if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") => {
+                let handle = handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if super::capture_ack::acknowledge(&handle, &dir, &stage, true).await {
+                        acknowledge_stage(&handle, &stage);
+                    }
+                });
+            }
+            _ => acknowledge_stage(&handle, &stage),
         }
     });
     Ok(())
+}
+
+fn acknowledge_stage(handle: &tauri::AppHandle, stage: &str) {
+    handle
+        .get_webview_window("main")
+        .unwrap()
+        .eval(format!("window.__spatialStageAck={};", json!(stage)))
+        .unwrap();
 }

@@ -46,16 +46,18 @@ def paint_checks(picture, payload):
     return checks
 
 
-def launch(binary, env, log, output, capture, *, before_ack=None, capture_glob='ux_*.json'):
+def launch(binary, env, log, output, capture, *, before_ack=None, capture_glob='ux_*.json',
+           argv=()):
+    command = [str(binary), *(os.fspath(value) for value in argv)]
     if not capture:
         if before_ack is not None:
             raise ValueError('capture acknowledgement hook requires capture mode')
-        return subprocess.run([str(binary)], env=env, stdout=log, stderr=log, timeout=180).returncode
+        return subprocess.run(command, env=env, stdout=log, stderr=log, timeout=180).returncode
     env = {**env, 'CUMULUS_PROOF_CAPTURE_ACK': '1'}
     import gi
     gi.require_version('Gdk', '3.0')
     from gi.repository import Gdk
-    process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=log)
+    process = subprocess.Popen(command, env=env, stdout=log, stderr=log)
     seen = set()
     try:
         deadline = time.monotonic() + 180
