@@ -139,6 +139,20 @@ allowance permanently, even at zero. No synthetic clock or unpause is sent.
 The actor keeps its seek indicator until the replacement entry reports its
 actual state; ordinary settled pause and later seeks retain their old limits.
 
+Windows CI 42101827974 reported a separate cold-path regression: all 11 Rust
+cold cases passed, but the real WebView/libmpv probe exceeded its first-packet
+bound. The first paused replacement change had allowed additional reads for
+both channels. `native_channel` now supplies that allowance only to an ordinary
+held source; the older cold channel keeps its original first-packet grant.
+The Rust tests exercise both distinct channels and prove a settled zero clock
+closes the ordinary allowance. On real Linux GTK with the packaged libFLAC and
+local libmpv 0.41, the old cold path produced 7,973 paused frames (limit 9,609),
+then reached native EOF; the three ordinary trusted, wrong-digest and paused
+PEQ cases also passed. Exact candidate `e8297a9f`; evidence:
+`.build/ui-proof/phase70-cold-stereo-r1.json` and
+`.build/ui-proof/phase70-ordinary-eq-r1/report.json`. This does not establish the
+same result on Windows or on the older Ubuntu CI libmpv.
+
 The updated real WebView probe requires two distinct native polls at the
 replacement ID with pause true, seeking false and clock near 0.5 s before
 explicit Resume. It also keeps a bounded tail of native poll observations in
@@ -160,11 +174,20 @@ settings with no restart, qualified stereo-only raw PCM, paused hot apply,
 master disable/reapply, actual paused replacement seek, resumed processing,
 and native EOF. The runner compares each UI state with the local SQLite EQ
 record and the actual engine trace; the original three EQ/PEQ cases retain
-their checks and command line. These are proof expectations pending a
-matching native/WebView run, not physical-audio evidence.
+their checks and command line. The ordinary Linux app also started and
+played synthetic local audio in a private PipeWire sink; its monitor had
+nonzero PCM in play and zero PCM in pause. This does not test a physical device.
 
 On isolated Linux Xvfb/D-Bus, add --screenshots to --spatial-controls-only
 to capture all seven actual stages. The proof waits for each PNG receipt
 before advancing; actual opaque dialog/footer padding is checked against the
 compositor image, with a bounded wait for GTK paint. These images remain
 separate from the native sink/EOF assertions and do not validate frame rate.
+
+Linux verification on `e8297a9f` captured 7 real WebKitGTK states and 7 PNGs:
+`.build/ui-proof/phase70-local-spatial-r3/report.json`. The browser range's
+2.00016 ms step accepted 0.50003968 s for a requested 0.5 s; the native seek
+used exactly that accepted value, switched the decoder entry 2→3, preserved
+the logical play, paused correctly and ended on entry 3 at the source's
+2.00015873 s. The same test proved hot changes and the main switch preserve the
+paused play; reset clears all four enhancement controls without modifying GEQ.
