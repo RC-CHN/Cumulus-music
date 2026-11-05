@@ -147,18 +147,23 @@ impl AccountLifecycle {
     pub(crate) fn refresh_evidence(&self) -> Result<RefreshEvidence> {
         let token = self.current()?;
         let credentials = self.client.credentials();
-        let intent = journal::load(
-            &credentials.store(),
-            token.uid.as_deref().ok_or(Error::StaleResponse)?,
-        )?;
+        let uid = token.uid.as_deref().ok_or(Error::StaleResponse)?;
+        let store = credentials.store();
+        let intent = journal::load(&store, uid)?;
+        let legacy_pending =
+            super::legacy::pending(store.get(uid, super::legacy::KIND, super::legacy::KEY)?)?;
         let credentials = credentials.login_credentials()?;
-        let pending = intent.as_ref().filter(|i| i.pending).map(|i| {
-            if fresh_receipt(&credentials, i) {
-                PendingReceipt::NeedsIdentity
-            } else {
-                PendingReceipt::MissingPair
-            }
-        });
+        let pending = intent
+            .as_ref()
+            .filter(|i| i.pending)
+            .map(|i| {
+                if fresh_receipt(&credentials, i) {
+                    PendingReceipt::NeedsIdentity
+                } else {
+                    PendingReceipt::MissingPair
+                }
+            })
+            .or(legacy_pending.then_some(PendingReceipt::MissingPair));
         self.session.require_api(&token, &self.api())?;
         Ok(RefreshEvidence {
             pending,
@@ -258,6 +263,9 @@ impl AccountLifecycle {
             return Ok(RefreshOutcome::MissingCredentials);
         }
         let store = credentials.store();
+        if super::legacy::pending(store.get(uid, super::legacy::KIND, super::legacy::KEY)?)? {
+            return Ok(RefreshOutcome::RecoveryRequired);
+        }
         let previous = journal::load(&store, uid)?;
         if previous.as_ref().is_some_and(|i| i.pending) {
             return Ok(RefreshOutcome::RecoveryRequired);

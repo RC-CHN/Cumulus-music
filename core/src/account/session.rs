@@ -63,6 +63,7 @@ struct SessionState {
     status: SessionStatus,
     login_notice: Option<LoginNotice>,
     initial_restore_generation: Option<u64>,
+    quick_exchange_generation: Option<u64>,
     artist_login: Option<ArtistLogin>,
     registration_type: Option<u32>,
     changes: tokio::sync::watch::Sender<SessionToken>,
@@ -111,6 +112,13 @@ pub struct AccountSession {
     state: Mutex<SessionState>,
     store: Option<Arc<StateStore>>,
     policy: policy::PolicyHost,
+    pub(super) legacy_renewal_running: std::sync::atomic::AtomicBool,
+}
+
+#[derive(Default)]
+pub(super) struct Adoption {
+    pub artist_login: Option<ArtistLogin>,
+    pub quick_exchange: bool,
 }
 
 impl AccountSession {
@@ -128,6 +136,7 @@ impl AccountSession {
                 status: SessionStatus::Unknown,
                 login_notice: None,
                 initial_restore_generation: None,
+                quick_exchange_generation: None,
                 artist_login: None,
                 registration_type: None,
                 changes,
@@ -137,6 +146,7 @@ impl AccountSession {
             }),
             store,
             policy: Default::default(),
+            legacy_renewal_running: Default::default(),
         }
     }
 
@@ -469,28 +479,21 @@ impl AccountSession {
             VerifiedAccount::profile_only(profile),
             expected,
             None,
-            None,
+            Adoption::default(),
             |_| Ok(()),
         )
     }
 
-    pub(crate) fn adopt_registered(
+    pub(super) fn adopt_registered(
         &self,
         api: Arc<dyn Api>,
         identity: VerifiedAccount,
         expected: &SessionToken,
         registry: &Arc<StateStore>,
-        artist_login: Option<ArtistLogin>,
+        activation: Adoption,
         select: impl FnOnce(&mut StateTransaction<'_>) -> Result<()>,
     ) -> Result<Value> {
-        self.adopt_inner(
-            api,
-            identity,
-            expected,
-            Some(registry),
-            artist_login,
-            select,
-        )
+        self.adopt_inner(api, identity, expected, Some(registry), activation, select)
     }
 
     fn adopt_inner(
@@ -499,7 +502,7 @@ impl AccountSession {
         identity: VerifiedAccount,
         expected: &SessionToken,
         registry: Option<&Arc<StateStore>>,
-        artist_login: Option<ArtistLogin>,
+        activation: Adoption,
         select: impl FnOnce(&mut StateTransaction<'_>) -> Result<()>,
     ) -> Result<Value> {
         if let Some(registry) = registry
@@ -528,7 +531,8 @@ impl AccountSession {
         }
         state.generation = generation;
         state.api = api;
-        state.artist_login = artist_login;
+        state.artist_login = activation.artist_login;
+        state.quick_exchange_generation = activation.quick_exchange.then_some(generation);
         state.registration_type = registration_type;
         state.uid = Some(uid);
         state.profile = Some(profile.clone());
@@ -550,6 +554,14 @@ impl AccountSession {
             && previous.uid.is_none()
             && state.token() == *current
             && state.initial_restore_generation == Some(current.generation))
+    }
+
+    pub(crate) fn legacy_refresh_start_immediately(&self, token: &SessionToken) -> Result<bool> {
+        let state = self.lock()?;
+        state.require(token)?;
+        Ok(state.status == SessionStatus::Authenticated
+            && (state.initial_restore_generation == Some(token.generation)
+                || state.quick_exchange_generation == Some(token.generation)))
     }
 
     pub async fn refresh(&self) -> Result<Value> {

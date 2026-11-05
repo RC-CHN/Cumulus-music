@@ -1,8 +1,11 @@
 //! Login renewal from official vendor M/1368; signatures, durable intent and
 //! identity lifecycle are separate. Missing real credentials stop before I/O.
 mod journal;
+mod legacy;
 mod lifecycle;
 mod signature;
+pub(crate) use legacy::LEGACY_PERIODIC_PATH;
+pub use legacy::LegacyRenewal;
 pub(crate) use lifecycle::PendingReceipt;
 pub use lifecycle::{
     AccountLifecycle, DesktopDeviceToken, DeviceTokenProvider, LogoutResult, RefreshOutcome,

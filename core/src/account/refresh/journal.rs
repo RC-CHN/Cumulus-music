@@ -26,6 +26,13 @@ pub(super) fn load(store: &StateStore, uid: &str) -> Result<Option<Intent>> {
         .map_err(Error::from)
 }
 
+pub(super) fn pending(value: Option<serde_json::Value>) -> Result<bool> {
+    Ok(value
+        .map(serde_json::from_value::<Intent>)
+        .transpose()?
+        .is_some_and(|intent| intent.pending))
+}
+
 pub(super) fn begin(
     store: &StateStore,
     uid: &str,
@@ -34,6 +41,9 @@ pub(super) fn begin(
     before_rotation: Option<String>,
 ) -> Result<Begin> {
     store.transaction(|tx| {
+        if super::legacy::pending(tx.get(uid, KIND, super::legacy::KEY)?)? {
+            return Ok(Begin::RecoveryRequired);
+        }
         let previous: Option<Intent> = tx
             .get(uid, KIND, KEY)?
             .map(serde_json::from_value)

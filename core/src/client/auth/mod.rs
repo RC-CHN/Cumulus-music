@@ -85,6 +85,12 @@ impl AuthHost {
     }
 }
 impl MusicClient {
+    /// Native opt-in; no renderer command and no production startup until
+    /// the host has verified this lane independently of JSK renewal.
+    pub fn start_legacy_session_renewal(&self) -> Result<crate::account::refresh::LegacyRenewal> {
+        crate::account::refresh::LegacyRenewal::start(self.session.clone())
+    }
+
     /// Native host clock injection before exposing the client. No renderer
     /// command can reset or advance verification-code cooldowns.
     pub fn with_login_resend_clock(

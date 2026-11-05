@@ -66,6 +66,10 @@ enum RequestBinding<'a> {
         dispatched: &'a AtomicBool,
     },
     PodcastProgress(&'a crate::protocol::api::PodcastProgressPermission),
+    LegacyRenewal {
+        permission: &'a (dyn Fn() -> Result<()> + Sync),
+        dispatched: &'a AtomicBool,
+    },
     Switch {
         source: &'a MusicHttpClient,
         revision: &'a str,
@@ -227,6 +231,26 @@ impl MusicHttpClient {
             .await
     }
 
+    pub(crate) async fn request_legacy_periodic_refresh(
+        &self,
+        revision: &str,
+        permission: &(dyn Fn() -> Result<()> + Sync),
+        dispatched: &AtomicBool,
+    ) -> Result<Value> {
+        self.execute(
+            crate::account::refresh::LEGACY_PERIODIC_PATH,
+            json!({}),
+            false,
+            Some(revision),
+            Jsk::None,
+            Some(RequestBinding::LegacyRenewal {
+                permission,
+                dispatched,
+            }),
+        )
+        .await
+    }
+
     pub(crate) async fn request_jsk(&self, path: &str, payload: Value) -> Result<Value> {
         self.execute(path, payload, false, None, Jsk::Lifecycle, None)
             .await
@@ -355,11 +379,12 @@ impl MusicHttpClient {
                 .insert("fromPage".into(), json!("JSK"));
         }
         let origin = self.credentials.origin();
+        let legacy_renewal = matches!(binding, Some(RequestBinding::LegacyRenewal { .. }));
         let route = select_route_with_policy(
             origin,
             path,
             &payload,
-            if jsk == Jsk::None {
+            if jsk == Jsk::None && !legacy_renewal {
                 self.options.routing
             } else {
                 RoutingPolicy::OfficialEapi
@@ -384,6 +409,7 @@ impl MusicHttpClient {
         if expected.is_some_and(|revision| revision != snapshot.revision)
             || (matches!(binding, Some(RequestBinding::PodcastProgress(_)))
                 && snapshot.unique_music_u().is_none())
+            || (legacy_renewal && snapshot.unique_music_u().is_none())
         {
             return Err(Error::CredentialChanged);
         }
@@ -534,7 +560,18 @@ impl MusicHttpClient {
                 // No await or fallible work follows before the backend call.
                 dispatched.store(true, Ordering::Relaxed);
             }
+            if let Some(RequestBinding::LegacyRenewal {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                permission()?;
+                dispatched.store(true, Ordering::Relaxed);
+            }
             let response = wire.backend.post(plan).await?;
+            if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
+                permission()?;
+            }
             check_wire_source()?;
             response
         };
@@ -591,7 +628,20 @@ impl MusicHttpClient {
             .then(|| SystemTime::now().duration_since(UNIX_EPOCH).ok())
             .flatten()
             .map(|time| time.as_secs());
-        if jsk != Jsk::QuickEligibility
+        let legacy_acknowledged = legacy_renewal
+            && (200..300).contains(&response.status)
+            && parsed
+                .as_ref()
+                .is_ok_and(|body| crate::error::code_matches(&body["code"], 200));
+        if legacy_renewal {
+            if legacy_acknowledged {
+                self.credentials.record_legacy_renewal_response(
+                    &response_url,
+                    &response.set_cookies,
+                    &snapshot.revision,
+                )?;
+            }
+        } else if jsk != Jsk::QuickEligibility
             && (!jsk.quick_exchange() || (200..300).contains(&response.status))
         {
             self.credentials.record_login_response(

@@ -1,0 +1,40 @@
+旧版 PC 定期 Cookie 续期（核心原生 opt-in）
+===========================================
+
+依据为官方 PC 3.1.42.205594 的 hybrid_app：
+- M/198:693–729、1051–1063：确认登录且 host.userName 非空后，双实验未开启 JSK
+  才注册 20 小时周期。每次先等 3 秒，再检查当前是否匿名；冷启动自动登录或
+  isQuickLogin 时也安排第一次 +3 秒检查。2288–2292、2344–2351、2399–2406
+  分别给出 autoLogin、QUICK_LOGIN、SWITCH_LOGIN 的标记。
+- M/100:9–10、59–62 → M/15:1313 → M/12：普通 PC POST
+  /api/login/token/refresh {}，无 fromAPI、fromPage=JSK、x-login-chain-id、
+  RT、设备令牌或 JSK 签名。使用该账号的 PC Cookie 与请求上下文。
+- 上游正常响应归一为数值 200 时更新 tokenTime，随后把有 MUSIC_U 的浏览器
+  Cookie 保存为自动登录材料（M/198:713–750）。此处不检查 x-refresh-token，
+  200 不保证 Cookie 改变。非 200 或异常时，另约 1 小时后重新进入 +3 秒处理。
+- 这条链不同于 JSK 24 小时前台续期的 /api/login/token/refresh/v1，也不同于
+  业务 301 的 /api/middle/account/token/refresh。
+
+Rust 与可验证边界：
+- MusicClient::start_legacy_session_renewal 由原生宿主持有，尚未接到生产桌面
+  setup 或 IPC。该账号没有成功返回两个明确且不冲突的实验分组时不发旧版续期；
+  现有登录路由仍可使用持久缓存/默认值，定期自动写不沿用该 fallback。
+- 只接受当前已核验账号的 PC 凭据。同一 MUSIC_U 必须适用续期与身份回读路径；
+  旧账号/API/凭据代次不能派发给新账号。冷启动可信恢复及实际服务端快捷登录/
+  切换可提前检查；普通二维码、手机号、邮箱及显式本机账号恢复只走正常周期。
+- 每个 native account session 最多一个 worker，宿主关闭、账号换代或 45 秒期限
+  取消本地等待。休眠后不补发多次。响应为 200 后使用真实同账号回读，才记录
+  独立旧版成功时间；没有新 Cookie 的成功不声称 JSK 成对轮换。忽略旧版续期的
+  RT 响应头；如果确实换了适用于 JSK 的 MUSIC_U，清掉旧 RT/轮换回执，以免把
+  新 U 与旧 RT 拼成未核实的凭据对。保持用户自己的自动登录偏好。
+- 原生发请求前在该账号凭据库写独立 legacy-periodic 意图，与 JSK 轮换意图互斥。
+  发送前明确报错或 2xx 正文给出明确拒绝码时按 +1 小时 +3 秒再检查。本地期限
+  超时会停下该代次任务；未派发的意图可释放。已派发后超时、丢回包、无法回读、
+  错误身份都保留未决记录，重启也不自动重发或改走 JSK。
+  这是与原客户端盲目定时重试的有意差异。拒绝、模糊回包不采纳其 Cookie，
+  本流程不递归触发业务 301 校验，不自动注销、注册访客或上传诊断。
+
+验证入口（仅合成、不发真实请求）：
+  cargo test --locked -p cumulus-core --test legacy_periodic_renewal --test refresh --test client_renewal --test client_login_policy
+该批不代表真实上游旧版续期已通过；JSK 成对轮换的真实服务边界见
+refresh-control-contracts.txt，生产启用需另验证桌面生命周期和授权账号上的响应。

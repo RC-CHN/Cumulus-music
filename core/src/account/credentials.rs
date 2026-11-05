@@ -338,6 +338,34 @@ impl Credentials {
         expected_revision: &str,
         last_login_at: Option<u64>,
     ) -> Result<()> {
+        self.record_native_response(
+            url,
+            set_cookies,
+            refresh_token,
+            expected_revision,
+            last_login_at,
+            false,
+        )
+    }
+
+    pub(crate) fn record_legacy_renewal_response(
+        &self,
+        url: &Url,
+        set_cookies: &[String],
+        expected_revision: &str,
+    ) -> Result<()> {
+        self.record_native_response(url, set_cookies, None, expected_revision, None, true)
+    }
+
+    fn record_native_response(
+        &self,
+        url: &Url,
+        set_cookies: &[String],
+        refresh_token: Option<&str>,
+        expected_revision: &str,
+        last_login_at: Option<u64>,
+        legacy_renewal: bool,
+    ) -> Result<()> {
         self.origin.require_url(url)?;
         if let Some(token) = refresh_token {
             validate_token(token)?;
@@ -358,12 +386,36 @@ impl Credentials {
                 record.last_login_at = Some(at);
             }
             let mut store = jar(record)?;
+            let scoped = |jar: &CookieStore, target: &Url| {
+                request_cookies(jar, target)
+                    .into_iter()
+                    .filter(|(name, _)| name == "MUSIC_U")
+                    .collect::<Vec<_>>()
+            };
+            let prior_pair = if legacy_renewal && record.refresh_token.is_some() {
+                let refresh_url = self.origin.request_url(
+                    crate::protocol::http::WireRoute::Eapi,
+                    "/api/login/token/refresh/v1",
+                )?;
+                let user = scoped(&store, &refresh_url);
+                Some((refresh_url, user))
+            } else {
+                None
+            };
             for value in set_cookies {
                 // RFC-invalid cookies are ignored, as a browser would. They
                 // must not make an acknowledged write appear unacknowledged.
                 let _ = store.parse(value, url);
             }
             record.cookies = store.iter_unexpired().cloned().collect();
+            if let Some((target, old_user)) = prior_pair
+                && scoped(&store, &target) != old_user
+            {
+                // Legacy can change the effective MUSIC_U but cannot attest a
+                // corresponding JSK RT. Do not present a mixed old/new pair.
+                record.refresh_token = None;
+                record.login_rotation = None;
+            }
             if let Some(token) = refresh_token {
                 let refresh_url = self.origin.request_url(
                     crate::protocol::http::WireRoute::Eapi,

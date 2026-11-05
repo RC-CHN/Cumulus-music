@@ -1,7 +1,7 @@
 //! Account-scoped official login experiments and intercepted error policy.
 use super::*;
 use crate::account::login_policy::{
-    AB_PATH, InvalidLoginController, InvalidLoginOutcome, LegacyLoginController,
+    AB_PATH, InvalidLoginController, InvalidLoginOutcome, LOGIN_EXPERIMENTS, LegacyLoginController,
     LegacyLoginOutcome, LoginExperiments, REFRESH_PATH, TokenPresence,
 };
 use crate::protocol::http::{MusicHttpClient, WireRoute};
@@ -48,6 +48,7 @@ pub(super) struct PolicyHost {
 struct Cache {
     loaded: bool,
     attempted: Option<u64>,
+    verified: bool,
     flags: LoginExperiments,
 }
 #[derive(Default)]
@@ -109,9 +110,12 @@ impl Scope {
         let response = api
             .request(AB_PATH, LoginExperiments::payload(), false)
             .await
-            .and_then(|v| LoginExperiments::from_response(&v));
+            .and_then(|v| {
+                LoginExperiments::from_response(&v).map(|flags| (flags, has_explicit_groups(&v)))
+            });
         let mut cache = self.cache.lock().map_err(|_| Error::LockPoisoned)?;
-        if let Ok(flags) = response {
+        cache.verified = false;
+        if let Ok((flags, verified)) = response {
             if let Some(store) = store {
                 store.put(
                     owner,
@@ -121,6 +125,7 @@ impl Scope {
                 )?;
             }
             cache.flags = flags;
+            cache.verified = verified;
         }
         // M/147 retains its old/default groups on failure and checks again on
         // the next 30-minute refresh. Never synthesize a t1 assignment.
@@ -128,6 +133,19 @@ impl Scope {
         Ok(cache.flags.enabled())
     }
 }
+fn has_explicit_groups(response: &Value) -> bool {
+    response["data"].as_array().is_some_and(|rows| {
+        LOGIN_EXPERIMENTS.iter().all(|name| {
+            let mut found = rows.iter().filter(|row| row["expName"] == *name);
+            found.next().is_some_and(|row| {
+                row["expGroupName"].as_str().is_some_and(|group| {
+                    !group.is_empty() && group.len() <= 64 && !group.chars().any(char::is_control)
+                })
+            }) && found.next().is_none()
+        })
+    })
+}
+
 impl AccountSession {
     pub(crate) async fn login_sms_middle(&self, token: &SessionToken) -> Result<bool> {
         let api = self.native_api(token)?;
@@ -188,6 +206,28 @@ impl AccountSession {
             .await?;
         self.require_api(token, &api)?;
         Ok(enabled)
+    }
+    /// A cached fallback is adequate for existing login routing, but must
+    /// never start a second, automatic credential exchange on startup.
+    pub(crate) async fn legacy_refresh_assignment(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Option<bool>> {
+        if !self.policy.configured() {
+            return Ok(None);
+        }
+        self.refresh_login_policy(token).await?;
+        self.observed_legacy_refresh_assignment(token)
+    }
+
+    pub(crate) fn observed_legacy_refresh_assignment(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Option<bool>> {
+        self.check_generation(token)?;
+        let scope = self.policy.scope(token)?;
+        let cache = scope.cache.lock().map_err(|_| Error::LockPoisoned)?;
+        Ok(cache.verified.then(|| !cache.flags.enabled()))
     }
     pub(super) async fn intercept_login_error(
         &self,

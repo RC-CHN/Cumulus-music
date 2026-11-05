@@ -301,7 +301,10 @@ impl LoginCandidate {
             identity,
             expected,
             &self.registry.store,
-            artist_login,
+            super::session::Adoption {
+                artist_login,
+                quick_exchange: self.quick_target.is_some(),
+            },
             |tx| {
                 removal::available(tx, &self.id)?;
                 if let Some(value) = tx.get(OWNER, saved::KIND, &uid)? {
