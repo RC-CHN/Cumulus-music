@@ -1,3 +1,4 @@
+mod contributors;
 mod segment;
 use super::*;
 use crate::{
@@ -290,6 +291,7 @@ impl MusicClient {
             }
             require_current_entry(&self.session, token, expected)?;
         }
+        let (lyric_contributor, translation_contributor) = contributors::project(&value, &player);
         let lyric = value.lyric;
         let mut result = LyricsView {
             word_translation: auxiliary(lyric.yrc_info.yrc_trans.as_deref()),
@@ -302,6 +304,8 @@ impl MusicClient {
             lines: lyric.lyric_lines,
             translation: lyric.tlyric_lines,
             romanization: lyric.roma_lyric_lines,
+            lyric_contributor,
+            translation_contributor,
             words: lyric.yrc_info,
             offset: lyric.offset,
             scrollable: lyric.scrollable,

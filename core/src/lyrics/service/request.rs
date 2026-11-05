@@ -1,4 +1,4 @@
-use super::super::response::{normalize_cloud_response, normalize_song_response};
+use super::super::response::{normalize_cloud_response, normalize_fresh_song_response};
 use super::types::LyricTarget;
 use crate::{
     Error, Result,
@@ -41,7 +41,7 @@ pub(super) async fn fetch(
     match target {
         LyricTarget::Song(id) => {
             let raw=api.call("/api/song/lyric/v1",json!({"id":id,"lv":version("lrc"),"tv":version("tlyric"),"rv":version("romalrc"),"yv":version("yrc")}),false,&[200]).await?;
-            normalize_song_response(&raw)
+            normalize_fresh_song_response(&raw)
         }
         LyricTarget::Cloud(id) => {
             let raw = api

@@ -647,6 +647,13 @@ pub enum PlayerAction {
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LyricContributorView {
+    pub nickname: String,
+    pub user_id: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LyricsView {
     pub word_lines: Vec<crate::lyrics::WordLine>,
     pub word_translation: Vec<LyricLine>,
@@ -656,6 +663,8 @@ pub struct LyricsView {
     pub lines: Vec<LyricLine>,
     pub translation: Vec<LyricLine>,
     pub romanization: Vec<LyricLine>,
+    pub lyric_contributor: Option<LyricContributorView>,
+    pub translation_contributor: Option<LyricContributorView>,
     pub words: YrcInfo,
     pub offset: f64,
     pub scrollable: bool,

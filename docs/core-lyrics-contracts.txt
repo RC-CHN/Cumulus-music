@@ -18,6 +18,10 @@ LyricsService 固定账号代次，账号更换后需重新创建。请求/文�
 普通歌曲调用 /api/song/lyric/v1，发送 id、lv/tv/rv/yv；版本取缓存真值，0按官方回退-1。
 云盘调用 /api/cloud/lyric/get，发送 songId、userId、lv、kv=-1，响应字符串 lrc 转规范格式。
 缓存与本次响应浅合并，重新计算 noLyric；网络失败且旧缓存有效可继续展示，并标记 networkFailed。
+官方 M/21:1311–1342 的实时普通歌词响应即使没有 lyricUser/transUser 也带两个
+规范化贡献者属性（值为 undefined）；M/3081:297–309 把它们覆盖同曲缓存。
+实时成功普通歌曲把省略或空值记为 null，以清除旧署名；版本未变化、这次没有返回的歌词
+正文仍从原缓存合并。失败没有新响应，不清除同一账号和来源的已保存署名。
 缓存按账号与 song/cloud/local 来源分开，schema=1 明确已规范化，避免二次除1000。
 显式导入旧官方缓存时：只有YRC而无yromalrc/ytlrc的旧缓存拒收；旧offset>500除1000一次。
 同资源跨实例文件锁防止拉取/改偏移并发覆盖；改变选择、clear、账号代次变化会拒绝迟到结果。
@@ -119,6 +123,31 @@ YRC 保留去除贡献者后的逐字原文及翻译/罗马音；降级行按开
 英文首尾字母片段追加空格；纯 YRC 的 scrollable=false，此处为官方解析事实。
 后续桌面展示另外解析绝对词时钟，具体动画、偏移边界与证据见desktop-player-contracts.txt。
 纯音乐、上传/翻译权限、贡献者、云盘标记按官方条件保留；当前通路不会强造 ask 状态。
+
+播放详情歌词署名
+官方 M/370:55–71 保留这两个线上贡献者对象，与 LRC/YRC 正文中的头尾作者信息不同。
+M/182:4030–4072（恢复 LyricDisplayInner.tsx:594–640）在歌词行后按
+「滚动歌词贡献者：」「翻译贡献者：」显示昵称，站内目标是 /userDetail/user/{userid}；
+M/21 保留的另一字段 id 是署名记录，不是用户主页 ID。经典和歌词模式共享该行组件，
+关闭翻译/音译不会移除这两个署名，纯封面模式和桌面浮窗不额外增加署名行。
+Cumulus 在同一播放实例、同一 song:ID 的普通在线正文/同曲缓存上只投影 nickname 和
+正十进制 userid。无有效用户 ID 可显示纯文本昵称，不借用 id，不向界面下发网址、
+原始贡献者对象或其他字段；本地、云盘、声音与下载文件旁挂不凭空添加这些署名。
+署名行不加入正文时间轴或逐行索引。点击昵称先核对当前路由、账号代次和 playId，
+再使用原生播放器快照和 player_lyrics(cachedOnly=true) 确认仍有该署名；未匹配或
+缓存读失败不导航。成功使用既有站内用户主页，沿用返回历史，不改变当前音频或队列，
+不发新的歌词请求或写请求。
+
+独立验证入口（合成数据，不包含真实账号或线上调用）：
+  cargo test -p cumulus-core --test lyric_service fresh_song_credit_omission --locked
+  cargo test -p cumulus-core --lib public_credit_ --locked
+  node --experimental-strip-types --test frontend/tests/lyric-contributors.test.ts
+  cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
+  GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py
+    --credits --screenshots --binary .build/target/debug/examples/desktop_lyrics_ui_probe
+    --root .build/ui-proof/lyric-credit-webview
+桌面 opt-in 场景检查实际界面、原生 IPC、站内用户请求目标、解码实例、版本请求和缓存分支；
+这是待运行的验收入口，不代表已验证 Windows 或物理音频输出。
 
 导出与本地辅助
 render_lrc 接受时间可选的行；0 是有效时间。format_timestamp 按 JS 数字字符串截取

@@ -611,6 +611,8 @@ export interface LyricsView {
   lines: LyricLine[];
   translation: LyricLine[];
   romanization: LyricLine[];
+  lyricContributor?: import('./lyricContributors').LyricContributor | null;
+  translationContributor?: import('./lyricContributors').LyricContributor | null;
   words: { yrc?: string; yrcRoma?: string; yrcTrans?: string };
   offset: number;
   scrollable: boolean;

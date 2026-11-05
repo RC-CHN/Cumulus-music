@@ -1,5 +1,9 @@
 <script setup lang="ts">
 import { voiceCreatorTargetIsCurrent, type VoiceCreatorTarget } from './services/voiceDetail';
+import {
+  confirmLyricContributorTarget,
+  type LyricContributorTarget,
+} from './services/lyricContributors';
 import OrdinaryEssentialPage from './components/OrdinaryEssentialPage.vue';
 import ChoiceTabs from './components/ChoiceTabs.vue';
 import VerticalZonePage from './components/VerticalZonePage.vue';
@@ -1033,6 +1037,40 @@ async function openPlaybackVoiceCreator(target: VoiceCreatorTarget) {
     music.navigate({ kind: 'playlist_creator', id: target.userId });
   } catch {
     // A stale voice or failed native observation must not open another profile.
+  }
+}
+async function openPlaybackLyricContributor(target: LyricContributorTarget) {
+  const route = page.value;
+  const activeDocument = () => {
+    const current = player.view.value;
+    if (
+      page.value === route &&
+      signedIn.value &&
+      !music.initializing.value &&
+      player.lyricsOpen.value &&
+      vinylDisplayMode.value !== 'cover' &&
+      vinylActiveDetailTab.value === 'lyrics' &&
+      !vinylCommentsOpen.value &&
+      !player.lyricLoading.value &&
+      !player.lyricError.value &&
+      target.epoch === account.value.epoch &&
+      target.epoch === current?.epoch &&
+      target.playId === current.playId
+    )
+      return player.lyrics.value;
+  };
+  try {
+    if (
+      !(await confirmLyricContributorTarget(target, activeDocument, player.syncPlayback, () =>
+        core.playerLyrics(target.epoch, target.playId, true),
+      )) ||
+      activeDocument()?.[target.kind]?.userId !== target.userId
+    )
+      return;
+    player.lyricsOpen.value = false;
+    music.navigate({ kind: 'playlist_creator', id: target.userId });
+  } catch {
+    // A stale, unavailable or superseded lyric cannot open a profile.
   }
 }
 function openPlaybackSource(
@@ -5578,6 +5616,7 @@ onUnmounted(() => {
         @comment-report-expired="music.bootstrap(false)"
         @source="openPlaybackSource"
         @voice-creator="openPlaybackVoiceCreator"
+        @lyric-contributor="openPlaybackLyricContributor"
         @catalog="
           (target) => {
             player.lyricsOpen.value = false;

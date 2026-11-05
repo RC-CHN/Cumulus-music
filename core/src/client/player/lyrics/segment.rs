@@ -170,6 +170,8 @@ mod tests {
         LyricsView {
             epoch: "1".into(),
             play_id: "album".into(),
+            lyric_contributor: None,
+            translation_contributor: None,
             lines: vec![
                 row(10.0 - offset, "first"),
                 row(29.0 - offset, "crossing"),

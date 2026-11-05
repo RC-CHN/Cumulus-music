@@ -7,6 +7,7 @@ use crate::{
 use serde_json::{Map, Value, json};
 
 pub(super) const KINDS: [&str; 4] = ["lrc", "yrc", "tlyric", "romalrc"];
+pub(super) const CONTRIBUTOR_KEYS: [&str; 2] = ["lyricContributor", "translationContributor"];
 
 pub fn normalize_song_response(raw: &Value) -> Result<Value> {
     if !raw.is_object() {
@@ -87,6 +88,18 @@ pub fn normalize_cloud_response(raw: &Value) -> Result<Value> {
         out["code"] = code.clone();
     }
     Ok(out)
+}
+
+/// The live M/21 song response has both contributor properties even when
+/// undefined. Represent that omission as null for the M/3081 cache merge,
+/// without changing the standalone normalizer or legacy cache schema.
+pub(super) fn normalize_fresh_song_response(raw: &Value) -> Result<Value> {
+    let mut value = normalize_song_response(raw)?;
+    let fields = value.as_object_mut().expect("normalizer returns an object");
+    for key in CONTRIBUTOR_KEYS {
+        fields.entry(key).or_insert(Value::Null);
+    }
+    Ok(value)
 }
 
 pub(super) fn local_response(text: &str) -> Value {

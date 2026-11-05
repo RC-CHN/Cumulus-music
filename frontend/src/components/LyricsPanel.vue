@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import { time, type PlayerView } from '../services/player';
+import { lyricContributorRows, type LyricContributorTarget } from '../services/lyricContributors';
 import Icon from './Icon.vue';
 import { useCoverImage } from '../composables/useCoverImage';
 import {
@@ -62,6 +63,7 @@ const emit = defineEmits<{
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
   voiceCreator: [target: VoiceCreatorTarget];
+  lyricContributor: [target: LyricContributorTarget];
   fullComments: [hot: boolean];
   relatedPlaylist: [id: string];
   retryRecommendation: [lane: VinylSimilarLane];
@@ -329,6 +331,7 @@ const currentLyric = computed(() => {
     ? document
     : undefined;
 });
+const contributors = computed(() => lyricContributorRows(currentLyric.value, view.value));
 const coverPosition = ref<number>();
 watch(
   [displayMode, currentLyric],
@@ -782,6 +785,22 @@ const displayedAuxiliary = computed(() =>
                         displayedAuxiliary[index]
                       }}</small>
                     </button>
+                    <p
+                      v-for="credit in contributors"
+                      :key="`${currentEpoch}:${currentPlayId}:${credit.kind}`"
+                      class="lyric-contributor"
+                      :data-lyric-credit="credit.kind"
+                    >
+                      {{ credit.label
+                      }}<button
+                        v-if="credit.target"
+                        type="button"
+                        class="lyric-contributor-link"
+                        @click="emit('lyricContributor', credit.target)"
+                      >
+                        {{ credit.nickname }}</button
+                      ><span v-else>{{ credit.nickname }}</span>
+                    </p>
                     <div class="lyric-padding" />
                   </div>
                   <button

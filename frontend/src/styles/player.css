@@ -1201,6 +1201,30 @@ input[type='range'] {
   font-weight: 400;
   margin-top: 6px;
 }
+.lyric-contributor {
+  margin: 0;
+  padding: 15px 8px;
+  font-size: calc(var(--lyric-base-size, 22px) + var(--lyric-font-gain, 0px));
+  line-height: 1.4;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.lyric-contributor-link {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.17em;
+  overflow-wrap: anywhere;
+}
+.lyric-contributor-link:hover,
+.lyric-contributor-link:focus-visible {
+  color: var(--text);
+}
+.lyrics-panel[data-vinyl-mode='lyric'] .lyric-contributor {
+  text-align: center;
+}
 .timed-word {
   background: linear-gradient(
     to right,

@@ -83,6 +83,62 @@ async fn normalization_versions_cache_merge_offset_and_preferences_survive_reope
 }
 
 #[tokio::test]
+async fn fresh_song_credit_omission_replaces_cache_but_transport_failure_does_not() {
+    let tmp = tempfile::tempdir().unwrap();
+    let store = Arc::new(StateStore::open(tmp.path()).unwrap());
+    let with_credits = json!({
+        "code":200, "lrc":{"version":7,"lyric":"[00:01]same version"},
+        "lyricUser":{"id":11,"userid":21,"nickname":"原词贡献"},
+        "transUser":{"id":12,"userid":22,"nickname":"译词贡献"}
+    });
+    let (_, api, service) = setup(
+        store.clone(),
+        [
+            with_credits.into(),
+            Reply::Ready(Err(Error::Transport("lost".into()))),
+            json!({"code":200,"transUser":null}).into(),
+            Reply::Ready(Err(Error::Transport("lost again".into()))),
+            json!({"code":200,"lrc":{"lyric":"[00:01]other song"}}).into(),
+        ],
+    )
+    .await;
+    let first = service.fetch(song("1")).await.unwrap();
+    assert_eq!(first.lyric.metadata["lyricContributor"]["userid"], "21");
+    assert_eq!(
+        first.lyric.metadata["translationContributor"]["userid"],
+        "22"
+    );
+
+    service.clear().unwrap();
+    let fallback = service.fetch(song("1")).await.unwrap();
+    assert!(fallback.from_cache && fallback.network_failed);
+    assert_eq!(fallback.lyric.metadata, first.lyric.metadata);
+
+    service.clear().unwrap();
+    let refreshed = service.fetch(song("1")).await.unwrap();
+    assert!(!refreshed.network_failed);
+    assert_eq!(refreshed.lyric.lyric_lines, first.lyric.lyric_lines);
+    assert_eq!(refreshed.lyric.metadata["lyricContributor"], Value::Null);
+    assert_eq!(
+        refreshed.lyric.metadata["translationContributor"],
+        Value::Null
+    );
+    assert_eq!(api.calls()[3].payload["lv"], 7);
+    let cached = store.get("1", "lyrics_v1", "song:1").unwrap().unwrap();
+    assert_eq!(cached["response"]["lyricContributor"], Value::Null);
+    assert_eq!(cached["response"]["lrc"]["version"], 7);
+
+    service.clear().unwrap();
+    let fallback = service.fetch(song("1")).await.unwrap();
+    assert!(fallback.from_cache && fallback.network_failed);
+    assert_eq!(fallback.lyric.metadata, refreshed.lyric.metadata);
+    let other = service.fetch(song("2")).await.unwrap();
+    assert_eq!(other.lyric.lyric_lines[0].lyric, "other song");
+    assert_eq!(other.lyric.metadata["lyricContributor"], Value::Null);
+    assert_eq!(other.lyric.metadata["translationContributor"], Value::Null);
+}
+
+#[tokio::test]
 async fn old_selection_cancellation_and_account_switch_cannot_publish_late_lyrics() {
     let tmp = tempfile::tempdir().unwrap();
     let store = Arc::new(StateStore::open(tmp.path()).unwrap());
