@@ -1,0 +1,88 @@
+Standard vinyl: current song's similar songs (official Windows 3.1.42)
+=====================================================================
+
+Recovery sources
+----------------
+
+The official playback page M/182:4372–4405, 4450–4452 and 4510–4545
+(M/46:37–39 for navigation labels) separates 歌词 / 百科 / 相似推荐 when
+PH-PC-playPage-recommendMore-new is t1. The official startup manifest
+(M/147:342–355) defaults the experiment to t1. Cumulus uses that manifest
+through the existing verified signed PC experiment resolver, whose fallback
+requires a valid response and credential context. It does not enable this
+lane without verified context or in an explicitly assigned control group.
+
+SimilarSongCard (M/253:37–74,86–126), M/109:84–91 and M/15:3783–3799,
+1012–1014 show the request on card load:
+
+  POST /api/v1/discovery/simiSong
+  { "songid": "<current ordinary catalog song ID>" }
+
+The request uses the native PC EAPI context and no response cache. The
+successful response supplies top-level songs. UID is an input to the
+formatter, never an additional wire argument. This is not the search
+recommendation service or the queue's “更多推荐” service. No request is made
+from an arbitrary renderer ID. There is no background polling.
+
+Official playback actions
+-------------------------
+
+* Card title play: M/253:89–102 and TitlePlayButton M/537:489–544 pass all
+  returned rows with default Action.play, text 相似歌曲 and Scene.vinyl.
+  M/3085:215–251,309–312,462–481,564–585, M/308:3150–3152 and
+  M/1384:5268–5298 select the first displayed row and insert the eligible
+  list after the current queue entry, retaining unrelated queued songs.
+  An unavailable first row does not silently start a different song.
+* Song artwork: M/113:505–518 passes only that resource and its label,
+  with no parent list. It inserts and starts that one row, retaining
+  unrelated songs. This action does not use the double-click preference.
+* Song row double-click: M/405:225–255, M/225:590–602 and M/3085:180–182,
+  245–251,309–312,431,532–541 pass the displayed parent list. The enabled
+  device preference replaces the queue with the eligible displayed list
+  and starts the clicked row; disabled preference retains the queue and
+  inserts/starts only that row. A double-click on the already active
+  resource toggles its own playback, including its pending pause state.
+  Generic row playback uses the unknown scene plus the 相似歌曲 label; the
+  independent song-song-recommend analytics path (M/352:1575–1594) is
+  not part of playback. Cumulus does not send that analytics event.
+
+Native trust boundary
+---------------------
+
+The native client requires signed-in current generation, the same
+credential revision and API, the native current play ID and catalog
+song, and the verified t1 group. It returns a bounded typed projection
+and a short-lived opaque page receipt. Playback only accepts that
+receipt and a captured row index; callers cannot substitute a song ID,
+authorization URL or raw resource. A newer read supersedes the receipt.
+There is no usable receipt for an empty reply. Malformed responses fail
+closed. Cloud, local, download, podcast, FM, intelligent and together
+queues are not accepted as targets for these ordinary playback actions.
+
+Queue mutation uses the existing player actor/control and queue
+revision fence, account and credential checks, audio ownership, room
+gate, and normal source authorization. The selected row cannot be
+explicitly denied by its known privilege. Only sanitized catalog
+metadata enters the queue. A title action and artwork action do not
+clear unrelated entries; replacement explicitly does.
+
+Scope and verification
+----------------------
+
+This slice is the Rust product contract and the native queue use case;
+desktop IPC, actual mounted t1 tab rendering and native WebView proof
+are separate. The isolated Rust player fixture covers exact seed/path
+and explicit control suppression, authorized and denied rows, receipt
+projection, title/artwork order, both device preferences, native
+same-play pause/resume, and stale response rejection after a newer
+track, credential revision or account.
+
+The old control layout combines this card with 百科. Its recovered fold
+expression M/253:66 selects three rows for canExpand && similarSongExpand
+and all rows otherwise, although new-song setup resets the flag false.
+This native treatment implementation does not make a guessed control
+fold available. The independent IncludeSongCard (recovered IncludeSongCard.tsx:119–159,176–240; M/109:93–97; M/15:3800–3809) uses
+uncached POST /api/discovery/simiPlaylist with songid, top-level playlists,
+three columns and six initially visible cards with local expansion, then
+ordinary /playlist/{id} navigation. That sibling has no product path in
+this change.

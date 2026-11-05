@@ -652,7 +652,7 @@ pub(super) fn insert_zone_batch(
     Ok(queue)
 }
 
-fn insert_collection_bound(
+pub(super) fn insert_collection_bound(
     mut queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,

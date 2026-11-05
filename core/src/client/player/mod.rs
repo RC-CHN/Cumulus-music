@@ -29,6 +29,8 @@ mod vinyl_comments;
 mod vinyl_composer;
 mod vinyl_likes;
 mod vinyl_report;
+mod vinyl_similar;
+pub use vinyl_similar::{VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView};
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
@@ -104,6 +106,7 @@ pub(super) struct PlayerHost {
     lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
     vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
     streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
+    vinyl_similar: Arc<vinyl_similar::Host>,
 }
 impl PlayerHost {
     pub fn new(
@@ -131,6 +134,7 @@ impl PlayerHost {
             lyrics: Mutex::new(None),
             vinyl_draft: Mutex::new(None),
             streaming_cache: None,
+            vinyl_similar: Default::default(),
             focus,
             output,
             inspector: OnceCell::new(),

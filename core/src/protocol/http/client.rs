@@ -6,7 +6,10 @@ use crate::{
     Error, Result,
     account::credentials::Credentials,
     protocol::{
-        api::{Api, ApiFuture, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission},
+        api::{
+            Api, ApiFuture, VinylCommentRead, VinylCommentWrite, VinylCommentWritePermission,
+            VinylSimilarSongsRead,
+        },
         context::RequestContext,
         wire::eapi,
     },
@@ -61,6 +64,7 @@ impl Jsk {
 enum RequestBinding<'a> {
     Login(&'a super::JskLoginContext),
     VinylComment,
+    VinylSimilarSongs,
     VinylCommentWrite {
         permission: &'a VinylCommentWritePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -415,7 +419,11 @@ impl MusicHttpClient {
         }
         if matches!(
             binding,
-            Some(RequestBinding::VinylComment | RequestBinding::VinylCommentWrite { .. })
+            Some(
+                RequestBinding::VinylComment
+                    | RequestBinding::VinylSimilarSongs
+                    | RequestBinding::VinylCommentWrite { .. }
+            )
         ) {
             // A single revision covers all URL scopes. The same revision
             // alone does not prove both endpoints see the same MUSIC_U.
@@ -785,6 +793,28 @@ impl Api for MusicHttpClient {
                 Some(revision),
                 Jsk::None,
                 Some(RequestBinding::VinylComment),
+            )
+            .await
+        })
+    }
+
+    fn request_vinyl_similar_songs<'a>(
+        &'a self,
+        read: VinylSimilarSongsRead,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.pc_experiment_revision()? != revision {
+                return Err(Error::CredentialChanged);
+            }
+            let (path, payload) = read.into_request();
+            self.execute(
+                path,
+                payload,
+                false,
+                Some(revision),
+                Jsk::None,
+                Some(RequestBinding::VinylSimilarSongs),
             )
             .await
         })

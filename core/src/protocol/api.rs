@@ -62,6 +62,22 @@ impl VinylCommentRead {
     }
 }
 
+/// Fixed PC vinyl related-song query. The renderer never selects a seed.
+pub struct VinylSimilarSongsRead(String);
+
+impl VinylSimilarSongsRead {
+    pub(crate) fn new(song_id: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(song_id) {
+            return Err(Error::InvalidInput("invalid vinyl similar-song seed"));
+        }
+        Ok(Self(song_id.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        ("/api/v1/discovery/simiSong", json!({"songid":self.0}))
+    }
+}
+
 /// Fixed mutations from an already authorized current track (M/438, M/232, M/55).
 pub struct VinylCommentWrite {
     song_id: String,
@@ -211,6 +227,18 @@ pub trait Api: Send + Sync + std::any::Any {
         _revision: &'a str,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async { Err(Error::State("vinyl comment dispatch authority unavailable")) })
+    }
+
+    fn request_vinyl_similar_songs<'a>(
+        &'a self,
+        _read: VinylSimilarSongsRead,
+        _revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "vinyl similar-song dispatch authority unavailable",
+            ))
+        })
     }
 
     /// Only call permission at the dispatch boundary. It consumes the user's
