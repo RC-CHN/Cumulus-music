@@ -65,13 +65,15 @@ podcast_command(epoch,command)：change{action:subscribe|like|resume,id,desired}
   有保存值时传 asc（包括 false），继续 limit=250/原服务端列表顺序；匹配最近章
   则按 M71:162、202–221 请求原 around programId/roundNum，排序不入请求体。
   服务端 asc 严格等于保存值时保留，否则反转；未保存时仍默认 false。
-- 合成测试 client_podcast 计划验证离线本机写、旧版本拒绝、真正重开和跨账号；
-  client_history 核对同一真实 actor 当前暂停队列不变、下次选择才改变顺序及精确请求体。
-  WebView 复验可扩 catalog_smoke.py --ordinary-essential：合成书 691 播放后暂停，
-  从书名打开详情，切换顺序确认当前 playId/entryId/queueRevision 未变；返回再开
-  保持排序，点章节核对 byradio 携带 false，Stop 形成最近章节后切回 true、重开历史，
-  再点同章核对 around 仍只有 programId/roundNum，原升序 [791,792,793] 不反转。
-  真实声卡、实际账号及上游 updateOrder 行为不在此验证范围。
+- 合成测试 client_podcast 核对离线本机写、旧版本拒绝、真正重开和跨账号；
+  client_history 核对同一 actor 当前暂停队列不变、下次选择才改变顺序及精确请求体。
+- Linux 实际 WebView 的 catalog_smoke.py --ordinary-essential 通过 19 个检查点和
+  19 张图。合成书 691 的详情切倒序后重开仍倒序，原生暂停曲目、时钟和队列不变；
+  保存正序后，历史同章的 around 仍只发送 programId/roundNum，采用原升序
+  [791,792,793]。后来切回倒序，同书不同章走全量 byradio 并发送 asc:false。
+  换到另一合成账号没有继承倒序。独立 SQLite 读取确认仅原账号保存一条偏好。
+  证据 .build/ui-proof/phase69-radio-order-r1/report.json。真实账号、声卡及上游
+  updateOrder 行为不在该证明范围；Windows runner 独立核对同一流程。
 
 播放器续播
 M/308 先判断续播开关，再以 isListened、listenLocation（毫秒）和 duration 判断起点。

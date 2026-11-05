@@ -88,7 +88,7 @@
 | `page:musicDesktop` (0) | `models/page_musicDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 装扮桌面与歌词窗是不同宿主。 |
 | `page:myAudio` (16) | `models/page_myAudio.txt` | [已接入口](desktop-podcast-contracts.txt) | 我的播客、收藏和节目管理；已接[有声书片头片尾设置](audiobook-skip-ui-contracts.txt)和原生时钟应用。 |
 | `page:myFavorite` (8) | `models/page_myFavorite.txt` | [已接入口](collection-library-contracts.txt) | 收藏、已购及对应列表；每个资源写入另验。 |
-| `page:myHistoryAudioOnline` (3) | `models/page_myHistoryAudioOnline.txt` | [部分](play-history-contracts.txt) | 精选的「听过的书」独立读取、分页和章节播放；同书同章的本机最近记录及相邻章节请求（`roundNum=250`）已接。按书保存排序另验。 |
+| `page:myHistoryAudioOnline` (3) | `models/page_myHistoryAudioOnline.txt` | [部分](play-history-contracts.txt) | 精选的「听过的书」独立读取、分页和章节播放；同书同章的本机最近记录及相邻章节请求（`roundNum=250`）已接，按账号保存的书籍排序用于选择章节。 |
 | `page:myLikedVoice` (5) | `models/page_myLikedVoice.txt` | [已接入口](desktop-podcast-mutations-contracts.txt) | 喜欢声音与写入恢复。 |
 | `page:myRecentUpdateVoice` (4) | `models/page_myRecentUpdateVoice.txt` | [已接入口](podcast-recent-contracts.txt) | 订阅更新及游标；红点和部分旧版逻辑待做。 |
 | `page:newUserFavor` (9) | `models/page_newUserFavor.txt` | [已接入口](artist-onboarding-contracts.txt) | 按触发条件进入偏好引导；外部实验状态独立。 |
