@@ -113,10 +113,10 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            if let Some(voice) = &self.voice_detail {
-                if let Some(response) = voice.profile(path, &body) {
-                    return Ok(response);
-                }
+            if let Some(voice) = &self.voice_detail
+                && let Some(response) = voice.profile(path, &body)
+            {
+                return Ok(response);
             }
             if let Some(scene) = &self.scene_home {
                 return match scene.response(path, &body) {
