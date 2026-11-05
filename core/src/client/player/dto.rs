@@ -184,6 +184,11 @@ pub enum SearchResultPlayback {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum SongRowSelection {
+    AlbumDetail {
+        album: super::super::catalog::AlbumPlaybackScope,
+        row: super::super::catalog::AlbumPlaybackRow,
+        quality: Quality,
+    },
     LatestRelease {
         area: super::super::catalog::NewSongArea,
         revision: String,
@@ -206,6 +211,11 @@ pub enum SongRowSelection {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlaySelection {
+    AlbumDetail {
+        album: super::super::catalog::AlbumPlaybackScope,
+        row: Option<super::super::catalog::AlbumPlaybackRow>,
+        quality: Quality,
+    },
     VerticalZonePlaylist {
         id: String,
         view_id: String,
@@ -552,6 +562,11 @@ pub enum PlayerAction {
         id: String,
         ids: Vec<String>,
         revision: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueAlbumDetail {
+        album: super::super::catalog::AlbumPlaybackScope,
         quality: Quality,
         expected_queue_revision: String,
     },

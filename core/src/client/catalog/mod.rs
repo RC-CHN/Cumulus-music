@@ -1,3 +1,4 @@
+mod album_playback;
 pub(super) mod cards;
 mod dto;
 mod follow_new_song;
@@ -11,6 +12,7 @@ use crate::{
     Error, Result,
     catalog::details::{CatalogDetails, CatalogQuery},
 };
+pub use album_playback::{AlbumDurationOrder, AlbumPlaybackRow, AlbumPlaybackScope};
 pub use dto::*;
 pub(super) use follow_new_song::FollowLatestHost;
 pub use follow_new_song::notification::{ReleaseNotificationAction, ReleaseNotificationState};

@@ -68,6 +68,7 @@ pub enum CatalogPageView {
     Album {
         album: AlbumCard,
         read: Option<crate::catalog::AlbumReadState>,
+        playback_revision: String,
         tracks: Vec<TrackView>,
     },
 }

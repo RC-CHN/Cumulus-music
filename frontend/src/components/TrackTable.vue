@@ -14,10 +14,12 @@ import {
 } from '../services/playlistDragSelection';
 import { useVirtualRows } from '../composables/useVirtualRows';
 import type { TrackView } from '../services/contracts';
+import type { AlbumDurationOrder } from '../services/albumDurationSort';
 import TrackRow from './TrackRow.vue';
 const props = defineProps<{
   tracks: TrackView[];
   matchKeyword?: string;
+  durationOrder?: AlbumDurationOrder;
   originalRecordings?: ReadonlySet<string>;
   liked: Set<string>;
   busy: Set<string>;
@@ -36,6 +38,7 @@ const props = defineProps<{
   scrollScope?: string;
 }>();
 const emit = defineEmits<{
+  sortDuration: [];
   like: [track: TrackView];
   play: [index: number, gesture?: TrackPlayGesture];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
@@ -254,7 +257,21 @@ defineExpose({ locate, restoreScroll });
     <div class="track-columns track-header" role="row">
       <span role="columnheader">#</span><span role="columnheader">歌曲 / 歌手</span
       ><span role="columnheader">专辑</span><span role="columnheader">喜欢</span
-      ><span role="columnheader">时长</span>
+      ><span role="columnheader" :aria-sort="durationOrder === 'original' ? 'none' : durationOrder">
+        <button
+          v-if="durationOrder"
+          type="button"
+          class="track-duration-sort"
+          aria-label="按时长排序"
+          data-catalog-key="duration-sort"
+          @click="emit('sortDuration')"
+        >
+          时长<span v-if="durationOrder !== 'original'" aria-hidden="true">
+            {{ durationOrder === 'ascending' ? '↑' : '↓' }}
+          </span>
+        </button>
+        <template v-else>时长</template>
+      </span>
     </div>
     <div
       ref="scroller"
@@ -329,3 +346,21 @@ defineExpose({ locate, restoreScroll });
     </div>
   </div>
 </template>
+
+<style scoped>
+.track-duration-sort {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 4px 0;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.track-duration-sort:hover {
+  color: var(--text-primary, currentColor);
+}
+</style>

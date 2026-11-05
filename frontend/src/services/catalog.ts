@@ -102,7 +102,13 @@ export type CatalogPage =
       more: boolean;
       concerts: ConcertCard[];
     }
-  | { kind: 'album'; album: AlbumCard; tracks: TrackView[]; read: AlbumReadState | null };
+  | {
+      kind: 'album';
+      album: AlbumCard;
+      tracks: TrackView[];
+      read: AlbumReadState | null;
+      playbackRevision?: string;
+    };
 
 export interface CatalogView {
   query: CatalogQuery;

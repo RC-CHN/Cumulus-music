@@ -50,6 +50,7 @@ pub(super) enum QueueCollection {
     Album {
         id: String,
         quality: Quality,
+        detail: Option<super::super::catalog::AlbumPlaybackScope>,
     },
     Playlist {
         id: String,
@@ -240,17 +241,31 @@ impl MusicClient {
         let local = matches!(collection, QueueCollection::Local { .. });
         let artist = matches!(collection, QueueCollection::ArtistSongs { .. });
         let album_batch = matches!(collection, QueueCollection::AlbumBatch { .. });
+        let album_detail = matches!(
+            collection,
+            QueueCollection::Album {
+                detail: Some(_),
+                ..
+            }
+        );
         let artist_favor = matches!(collection, QueueCollection::ArtistFavor { .. });
         let voice = matches!(collection, QueueCollection::Voice { .. });
-        let ordinary = daily || style || local || artist || album_batch || artist_favor || voice;
+        let ordinary = daily
+            || style
+            || local
+            || artist
+            || album_batch
+            || album_detail
+            || artist_favor
+            || voice;
         let special_queue = if daily {
             "daily recommendations require ordinary playback"
         } else if style {
             "style recommendations require ordinary playback"
         } else if artist || artist_favor {
             "artist songs require ordinary playback"
-        } else if album_batch {
-            "album batch requires ordinary playback"
+        } else if album_batch || album_detail {
+            "album queue requires ordinary playback"
         } else if voice {
             "voice next requires ordinary playback"
         } else {
@@ -280,6 +295,10 @@ impl MusicClient {
                 )?;
                 (Some(ids), Some(guard))
             }
+            QueueCollection::Album {
+                detail: Some(scope),
+                ..
+            } => (None, Some(self.album_playback_guard(&token, scope)?)),
             _ => (None, None),
         };
         if let QueueCollection::Voice { id } = &collection {
@@ -430,26 +449,36 @@ impl MusicClient {
                 }
                 (resources, source, false)
             }
-            QueueCollection::Album { id, quality } => {
+            QueueCollection::Album {
+                id,
+                quality,
+                detail,
+            } => {
                 self.session.with_token(&token, |_| Ok(()))?;
                 let id = identifier(&json!(id))?;
-                let tracks = self
-                    .session
-                    .run_for(&token, |api, _| async {
-                        CatalogApi::new(api).album_playback_tracks(&json!(id)).await
-                    })
-                    .await?;
-                if tracks.len() > 50_000 {
-                    return Err(Error::InvalidInput("album too large"));
-                }
+                let ids = if let Some(scope) = detail {
+                    self.album_playback_selection(&token, &scope, None, false)
+                        .await?
+                        .0
+                } else {
+                    let tracks = self
+                        .session
+                        .run_for(&token, |api, _| async {
+                            CatalogApi::new(api).album_playback_tracks(&json!(id)).await
+                        })
+                        .await?;
+                    if tracks.len() > 50_000 {
+                        return Err(Error::InvalidInput("album too large"));
+                    }
+                    tracks
+                        .iter()
+                        .map(|song| identifier(&song["id"]).map(Value::from))
+                        .collect::<Result<Vec<_>>>()?
+                };
                 let mut seen = HashSet::new();
-                let ids = tracks
-                    .iter()
-                    .map(|song| identifier(&song["id"]))
-                    .collect::<Result<Vec<_>>>()?
+                let ids = ids
                     .into_iter()
                     .filter(|id| seen.insert(id.clone()))
-                    .map(Value::from)
                     .collect::<Vec<_>>();
                 let mut resources = self
                     .online_queue_resources(&token, &ids, quality, attempt)

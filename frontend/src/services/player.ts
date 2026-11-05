@@ -310,7 +310,13 @@ export type QueueDropSource =
   | SearchQueueDropSource
   | AlbumQueueDropSource;
 export type SearchResultPlayback = 'song_tab_all' | 'comprehensive_all';
+type AlbumDetailSelection = {
+  kind: 'album_detail';
+  album: import('./albumDurationSort').AlbumPlaybackScope;
+  quality: Quality;
+};
 export type SongRowDoubleClickSelection =
+  | (AlbumDetailSelection & { row: import('./albumDurationSort').AlbumPlaybackRow })
   | ({
       kind: 'latest_release';
       quality: Quality;
@@ -331,6 +337,7 @@ export type ZonePlaylistBatchSelection = {
 };
 
 export type PlaySelection =
+  | (AlbumDetailSelection & { row: import('./albumDurationSort').AlbumPlaybackRow | null })
   | {
       kind: 'vertical_zone_playlist_detail';
       id: string;
@@ -574,6 +581,12 @@ export type PlayerAction =
       id: string;
       ids: string[];
       revision: string;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'queue_album_detail';
+      album: import('./albumDurationSort').AlbumPlaybackScope;
       quality: Quality;
       expected_queue_revision: string;
     }

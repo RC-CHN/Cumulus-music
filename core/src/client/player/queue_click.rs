@@ -203,7 +203,89 @@ pub(super) struct QueueClickSnapshot {
     before: PlaybackSnapshot,
     queue: QueueSnapshot,
 }
+pub(super) struct AlbumTableRows {
+    pub resources: Vec<Value>,
+    pub index: usize,
+    pub source: Value,
+    pub double_click: bool,
+}
+
 impl MusicClient {
+    pub(super) async fn play_retained_album_rows(
+        &self,
+        token: &SessionToken,
+        snapshot: QueueClickSnapshot,
+        rows: AlbumTableRows,
+        lease: u64,
+        source_guard: Cancellation,
+    ) -> Result<PlaybackSnapshot> {
+        let _room = self
+            .together
+            .gate
+            .try_lock()
+            .map_err(|_| Error::MutationBusy)?;
+        if self.together_attached(token, None)? {
+            return Err(Error::State(
+                "album table playback requires an ordinary queue",
+            ));
+        }
+        if source_guard.is_cancelled() {
+            return Err(Error::QueueChanged);
+        }
+        let QueueClickSnapshot {
+            before,
+            mut queue,
+            attempt,
+            ..
+        } = snapshot;
+        let AlbumTableRows {
+            resources,
+            index,
+            source,
+            double_click,
+        } = rows;
+        let id = resources
+            .get(index)
+            .and_then(|row| row["id"].as_str())
+            .ok_or(Error::QueueChanged)?
+            .to_owned();
+        let expected = before.fence();
+        let command = if before
+            .selected
+            .as_ref()
+            .is_some_and(|entry| online_song(&entry.resource, &id))
+            && matches!(
+                before.state,
+                PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+            ) {
+            if double_click {
+                PlaybackCommand::Pause(!before.paused)
+            } else {
+                PlaybackCommand::Play
+            }
+        } else {
+            queue = super::queue_playlist::insert_collection_bound(
+                queue, resources, source, false, true, false,
+            );
+            let entry = queue
+                .items
+                .iter()
+                .find(|entry| online_song(&entry.resource, &id))
+                .ok_or(Error::State("selected album song exceeds queue limit"))?;
+            queue.current = Some(entry.entry_id.clone());
+            PlaybackCommand::UpdateQueue(QueueUpdate {
+                expected: expected.clone(),
+                queue,
+                transport: Some(QueueTransport {
+                    position: None,
+                    paused: false,
+                }),
+            })
+        };
+        self.submit_retained_row(token, command, expected, attempt, lease, Some(source_guard))
+            .await
+    }
+
     pub(super) async fn queue_click_snapshot(
         &self,
         token: &SessionToken,

@@ -972,6 +972,29 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueAlbumDetail {
+            album,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "album detail queue used as native media command",
+                ));
+            }
+            return self
+                .queue_collection(
+                    epoch,
+                    queue_playlist::QueueCollection::Album {
+                        id: album.id.clone(),
+                        quality,
+                        detail: Some(album),
+                    },
+                    expected_queue_revision,
+                )
+                .await;
+        }
         if let PlayerAction::QueueAlbum {
             id,
             quality,
@@ -981,7 +1004,11 @@ impl MusicClient {
             return self
                 .queue_collection(
                     epoch,
-                    queue_playlist::QueueCollection::Album { id, quality },
+                    queue_playlist::QueueCollection::Album {
+                        id,
+                        quality,
+                        detail: None,
+                    },
                     expected_queue_revision,
                 )
                 .await;
@@ -1586,6 +1613,7 @@ impl MusicClient {
             | PlayerAction::QueuePlaylist { .. }
             | PlayerAction::QueueVoice { .. }
             | PlayerAction::QueueAlbum { .. }
+            | PlayerAction::QueueAlbumDetail { .. }
             | PlayerAction::QueueAlbumBatch { .. }
             | PlayerAction::QueueDailyRecommendations { .. }
             | PlayerAction::QueueStyleRecommendations { .. }

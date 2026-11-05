@@ -139,6 +139,8 @@ impl MusicClient {
             }
             other => (other, None),
         };
+        let mut single_album_row = false;
+        let mut album_double_click = false;
         let (input, retained) = match input {
             PlaySelection::SongRowDoubleClick { selection } => {
                 let keep_queue = !self.replace_queue_on_double_click(&token)?;
@@ -154,6 +156,19 @@ impl MusicClient {
                         PlaySelection::Songs {
                             ids,
                             index,
+                            quality,
+                        }
+                    }
+                    SongRowSelection::AlbumDetail {
+                        album,
+                        row,
+                        quality,
+                    } => {
+                        album_double_click = true;
+                        single_album_row = !keep_queue;
+                        PlaySelection::AlbumDetail {
+                            album,
+                            row: Some(row),
                             quality,
                         }
                     }
@@ -179,6 +194,9 @@ impl MusicClient {
                     },
                 };
                 (input, keep_queue.then_some(RetainedRow::Catalog))
+            }
+            input @ PlaySelection::AlbumDetail { row: Some(_), .. } => {
+                (input, Some(RetainedRow::Catalog))
             }
             input @ PlaySelection::PodcastRecent { double_click, .. } => {
                 let replace = double_click && self.replace_queue_on_double_click(&token)?;
@@ -236,11 +254,16 @@ impl MusicClient {
                 )?;
                 (Some(daily_subset(ids, Some(indices))?), Some(guard))
             }
+            PlaySelection::AlbumDetail { album, .. } => {
+                (None, Some(self.album_playback_guard(&token, album)?))
+            }
             _ => (None, None),
         };
         if let PlaySelection::ListenedBookChapter { revision, key } = &input {
             self.check_listened_chapter(&token, revision, *key)?;
         }
+        let retained_album =
+            retained.is_some() && matches!(&input, PlaySelection::AlbumDetail { row: Some(_), .. });
         let preserve = if retained.is_some() {
             Some(self.queue_click_snapshot(&token).await?)
         } else {
@@ -619,6 +642,16 @@ impl MusicClient {
             .session
             .run_for(&token, |api, uid| async move {
                 match input {
+                    PlaySelection::AlbumDetail {
+                        album,
+                        row,
+                        quality,
+                    } => {
+                        let (ids, index, source) = self
+                            .album_playback_selection(&selection_token, &album, row, single_album_row)
+                            .await?;
+                        Ok((ids, index, quality, source))
+                    }
                     PlaySelection::Catalog {
                         pages,
                         index,
@@ -861,7 +894,7 @@ impl MusicClient {
                 }
             })
             .await?;
-        let (ids, index) = if retained.is_some() {
+        let (ids, index) = if retained.is_some() && !retained_album {
             let id = ids
                 .get(index)
                 .ok_or(Error::State("selected song is unavailable"))?;
@@ -916,11 +949,34 @@ impl MusicClient {
                 return Err(Error::StaleResponse);
             }
             self.focus.check(lease, Owner::Audio)?;
-            let resource = resources
-                .pop()
-                .ok_or(Error::State("selected song is unavailable"))?;
-            self.play_retained_queue_row(&token, snapshot, (resource, source), lease, retained)
+            if retained_album {
+                self.play_retained_album_rows(
+                    &token,
+                    snapshot,
+                    super::queue_click::AlbumTableRows {
+                        resources,
+                        index,
+                        source,
+                        double_click: album_double_click,
+                    },
+                    lease,
+                    source_guard.ok_or(Error::StaleResponse)?,
+                )
                 .await?
+            } else {
+                let resource = resources
+                    .pop()
+                    .ok_or(Error::State("selected song is unavailable"))?;
+                self.play_retained_queue_row_with_source(
+                    &token,
+                    snapshot,
+                    (resource, source),
+                    lease,
+                    retained,
+                    source_guard,
+                )
+                .await?
+            }
         } else {
             self.submit_selection_with_source(
                 &token,

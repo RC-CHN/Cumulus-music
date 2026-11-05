@@ -118,11 +118,19 @@ pub(super) fn page(saved: SavedCatalogPage, cached: bool, viewer: &str) -> Resul
                     .collect::<Result<_>>()?,
             }
         }
-        CatalogQuery::Album { .. } => CatalogPageView::Album {
-            album: cards::album(&value["album"])?,
-            read: saved.album_read,
-            tracks: tracks(&value["songs"])?,
-        },
+        CatalogQuery::Album { .. } => {
+            let playback_revision = super::album_playback::playback_revision(&saved)?;
+            let mut tracks = tracks(&value["songs"])?;
+            for (track, song) in tracks.iter_mut().zip(rows(&value["songs"])?) {
+                track.duration_ms = super::album_playback::duration(song);
+            }
+            CatalogPageView::Album {
+                album: cards::album(&value["album"])?,
+                read: saved.album_read,
+                playback_revision,
+                tracks,
+            }
+        }
     };
     Ok(CatalogView {
         query: saved.query,

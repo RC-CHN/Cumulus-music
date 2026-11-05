@@ -69,16 +69,17 @@
     assert(field()?.value === '合成歌曲 3' && tableRows()[0]?.dataset.trackId === '3',
       'album search persists across album tabs');
 
-    click(tableRows()[0].querySelector('.track-play'));
-    await wait(playing, 'filtered row starts native album playback');
     const invoke = (command, args) => window.__TAURI_INTERNALS__.invoke(command, args);
     const { epoch } = await invoke('account_snapshot');
+    await invoke('player_action', { epoch, action: { kind: 'clear' } });
+    click(tableRows()[0].querySelector('.track-play'));
+    await wait(playing, 'filtered row starts native album playback');
     const player = await invoke('player_snapshot', { epoch });
     const queue = await invoke('player_queue', { epoch });
     assert(player.track?.id === '3' && player.origin?.kind === 'album' && player.origin.id === '8',
       'filtered index maps to source album track');
-    assert(queue.tracks.map(row => row.track.id).join(',') === '1,2,3,4,5,6,7,8,9,10,11',
-      'filtered row preserves full native album queue');
+    assert(queue.tracks.map(row => row.track.id).join(',') === '3',
+      'filtered row uses only the visible album context when the queue was empty');
     const currentRow = () => tableRows()[0]?.querySelector('.track-play');
     await wait(() => currentRow()?.getAttribute('aria-label').startsWith('暂停 ') && !currentRow().disabled, 'filtered current row offers pause');
     click(currentRow());

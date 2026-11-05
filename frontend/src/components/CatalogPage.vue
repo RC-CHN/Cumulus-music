@@ -8,6 +8,7 @@ import type { AlbumCard, ArtistCard } from '../services/catalog';
 import type { AlbumCardRequest } from '../services/catalogCards';
 import type { ArtistCardRequest } from '../services/artistCards';
 import type { AlbumQueueDropGesture, PlayerOrigin, PlayerView } from '../services/player';
+import type { AlbumPlaybackScope, AlbumPlaybackRow } from '../services/albumDurationSort';
 import type { AlbumTab, CatalogPanelKey } from '../services/catalogNavigation';
 import type { CatalogSession } from '../composables/useCatalogSession';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
@@ -44,6 +45,11 @@ const emit = defineEmits<{
   open: [resource: CatalogResource];
   profile: [id: string];
   play: [pages: CatalogSelectionPage[], index: number, gesture?: TrackPlayGesture];
+  playAlbumDetail: [
+    album: AlbumPlaybackScope,
+    row: AlbumPlaybackRow | null,
+    gesture?: TrackPlayGesture,
+  ];
   toggleCurrent: [target: TrackCurrentToggle, anchor: HTMLButtonElement];
   like: [track: TrackView];
   more: [request: TrackMenuRequest];
@@ -70,6 +76,7 @@ const {
   resource,
   tab,
   albumTab,
+  albumOrder,
   positions,
   detail,
   dynamic,
@@ -115,9 +122,27 @@ function openTrackBatch(origin: HTMLElement | null) {
     batchTracks.value = [...usable.values()];
   }
 }
+function albumScope(): AlbumPlaybackScope | undefined {
+  const current = detail.view.value;
+  if (
+    props.model.valid() &&
+    !detail.loading.value &&
+    current?.page.kind === 'album' &&
+    current.query.kind === 'album' &&
+    current.query.id === resource.id &&
+    current.page.album.id === resource.id &&
+    current.page.playbackRevision
+  )
+    return { id: resource.id, revision: current.page.playbackRevision, order: albumOrder.value };
+}
+function playCurrentAlbum(row: AlbumPlaybackRow | null, gesture?: TrackPlayGesture) {
+  const scope = albumScope();
+  if (scope) emit('playAlbumDetail', scope, row, gesture);
+}
 function queueCurrentAlbum(anchor: HTMLElement | null) {
-  if (!props.queueable || !props.model.valid() || !album.value) return;
-  emit('albumAction', { action: 'queue', album: album.value, anchor });
+  const scope = albumScope();
+  if (!props.queueable || !scope || !album.value) return;
+  emit('albumAction', { action: 'queue', album: album.value, anchor, detail: scope });
 }
 const artistQueueNotice = ref('');
 async function artistSongsAction(key: string) {
@@ -337,16 +362,20 @@ const albumControls = computed(() => ({
     !membership.known.value ||
     membership.busy.value ||
     membership.pending.value,
-  playDisabled: !props.playable || props.playBusy || !tracks.value.some((track) => !track.missing),
+  playDisabled:
+    !props.playable ||
+    props.playBusy ||
+    !albumScope() ||
+    !tracks.value.some((track) => !track.missing),
   downloadDisabled: props.downloadBusy || !tracks.value.some((track) => !track.missing),
-  queueDisabled: !props.queueable,
+  queueDisabled: !props.queueable || !albumScope(),
   batchDisabled: !tracks.value.some((track) => !track.missing && !track.local),
   refreshDisabled: detail.loading.value || membership.busy.value,
   refreshing: detail.loading.value,
 }));
 const albumActions = {
   open: (target: CatalogResource) => emit('open', target),
-  play: () => play(tracks.value.findIndex((track) => !track.missing)),
+  play: () => playCurrentAlbum(null),
   collect,
   download: () =>
     emit(
@@ -485,7 +514,7 @@ defineExpose({ checkpoint: () => checkpoint(), resourceKey: `${resource.kind}:${
         :queue-drop-enabled="albumQueueDropEnabled"
         @choose="emit('albumTab', $event)"
         @enter="restore"
-        @play="play"
+        @play="playCurrentAlbum"
         @toggle-current="(target, anchor) => emit('toggleCurrent', target, anchor)"
         @like="emit('like', $event)"
         @more="emit('more', $event)"

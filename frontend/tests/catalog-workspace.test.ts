@@ -353,3 +353,20 @@ test('disposing a visit fences late account-scoped reads after another identity 
   assert.equal(first.valid(), false);
   workspace.clear();
 });
+
+test('album duration order follows the same resource across visits but not another album or account', () => {
+  const { core } = backend();
+  const workspace = useCatalogWorkspace(core);
+  const first = { resource: { kind: 'album' as const, id: '7' }, catalogVisit: 1 };
+  const second = { resource: { kind: 'album' as const, id: '8' }, catalogVisit: 2 };
+  const start = workspace.open(account, first)!;
+  start.albumOrder.value = 'descending';
+  assert.equal(workspace.open(account, second)?.albumOrder.value, 'original');
+  assert.equal(workspace.open(account, first)?.albumOrder.value, 'descending');
+  assert.equal(
+    workspace.open(account, { ...first, catalogVisit: 3 })?.albumOrder.value,
+    'descending',
+  );
+  assert.equal(workspace.open({ ...account, epoch: 'other' }, first)?.albumOrder.value, 'original');
+  workspace.clear();
+});

@@ -495,12 +495,18 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       quality: view.value?.qualityPreferences.quality ?? 'standard',
     });
   }
-  function queueAlbum(id: string, selection?: { ids: string[]; revision: string }) {
+  function queueAlbum(
+    id: string,
+    selection?: { ids: string[]; revision: string },
+    detail?: import('../services/albumDurationSort').AlbumPlaybackScope,
+  ) {
     const quality = view.value?.qualityPreferences.quality ?? 'standard';
     return queueAction(
       selection
         ? { kind: 'queue_album_batch', id, quality, ...selection }
-        : { kind: 'queue_album', id, quality },
+        : detail
+          ? { kind: 'queue_album_detail', album: detail, quality }
+          : { kind: 'queue_album', id, quality },
     );
   }
   // A toolbar may first read multiple catalog pages. Capture the user's player
@@ -554,6 +560,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_cloud_batch'
             | 'queue_album_batch'
             | 'queue_album'
+            | 'queue_album_detail'
             | 'queue_artist_songs';
         }
       >

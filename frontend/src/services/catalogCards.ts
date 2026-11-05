@@ -15,6 +15,7 @@ export interface AlbumCardRequest {
   action: AlbumCardAction;
   anchor: HTMLElement | null;
   selection?: { ids: string[]; revision: string };
+  detail?: import('./albumDurationSort').AlbumPlaybackScope;
 }
 export function albumLink(id: string): string {
   return /^\d+$/.test(id) ? `https://music.163.com/album?id=${id}` : '';

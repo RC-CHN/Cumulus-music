@@ -315,9 +315,10 @@ pub use super::auth::{
     LogoutView, RenewalAction, RenewalState, SavedAccountView, SessionRenewalView,
 };
 pub use super::catalog::{
-    AlbumCard, ArtistCard, CatalogDate, CatalogIntroduction, CatalogMembershipAction,
-    CatalogMembershipOperation, CatalogMembershipView, CatalogPageView, CatalogResource,
-    CatalogSelectionPage, CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
+    AlbumCard, AlbumDurationOrder, AlbumPlaybackRow, AlbumPlaybackScope, ArtistCard, CatalogDate,
+    CatalogIntroduction, CatalogMembershipAction, CatalogMembershipOperation,
+    CatalogMembershipView, CatalogPageView, CatalogResource, CatalogSelectionPage,
+    CatalogVideoCard, CatalogVideoKind, CatalogView, ConcertCard,
 };
 pub use super::catalog::{ArtistGalleryPage, ArtistGalleryQuery, FollowLatest, FollowNewSongPage};
 pub use super::catalog::{

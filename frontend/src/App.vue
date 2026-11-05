@@ -150,6 +150,7 @@ import LikeRecoveryNotice from './components/LikeRecoveryNotice.vue';
 import { useLikeRecovery } from './composables/useLikeRecovery';
 import { useHistory } from './composables/useHistory';
 import type { HistoryKind, HistoryResource } from './services/history';
+import type { AlbumPlaybackRow, AlbumPlaybackScope } from './services/albumDurationSort';
 import type { AlbumCard, CatalogResource, CatalogSelectionPage } from './services/catalog';
 import PlayerBar from './components/PlayerBar.vue';
 import { useIntelligence } from './composables/useIntelligence';
@@ -1269,6 +1270,22 @@ function playCatalog(pages: CatalogSelectionPage[], index: number, gesture?: Tra
   };
   void player.select(
     gesture === 'double_click' ? { kind: 'song_row_double_click', selection } : selection,
+  );
+}
+function playAlbumDetail(
+  album: AlbumPlaybackScope,
+  row: AlbumPlaybackRow | null,
+  gesture?: TrackPlayGesture,
+) {
+  const selection = {
+    kind: 'album_detail' as const,
+    album,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  };
+  void player.select(
+    gesture === 'double_click' && row
+      ? { kind: 'song_row_double_click', selection: { ...selection, row } }
+      : { ...selection, row },
   );
 }
 function playAlbumCard(album: AlbumCard) {
@@ -4847,6 +4864,7 @@ onUnmounted(() => {
                 "
                 @back="backFromPage"
                 @play="playCatalog"
+                @play-album-detail="playAlbumDetail"
                 @toggle-current="toggleVisibleTrack"
                 @play-tracks="playOnlineSongs"
                 :queue-artist-songs="player.queueArtistSongs"

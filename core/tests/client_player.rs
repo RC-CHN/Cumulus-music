@@ -428,6 +428,8 @@ mod search_queue_drop;
 #[path = "client_player/queue_click.rs"]
 mod queue_click;
 
+#[path = "client_player/album_duration_sort.rs"]
+mod album_duration_sort;
 #[path = "client_player/album_queue_drop.rs"]
 mod album_queue_drop;
 #[path = "client_player/queue_album.rs"]
