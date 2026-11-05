@@ -4,6 +4,7 @@ mod dto;
 mod identity;
 mod intelligence;
 mod lyrics;
+mod minibar_skip;
 mod missing_download;
 mod mode;
 mod next_play;
@@ -1026,7 +1027,27 @@ impl MusicClient {
                 )
                 .await;
         }
+        let mut minibar_step = None;
         let (action, source_target) = match action {
+            PlayerAction::StepMiniBar {
+                play_id,
+                expected_queue_revision,
+                direction,
+            } => {
+                if native.is_some() || policy != NativeTransportPolicy::Ordinary {
+                    return Err(Error::InvalidInput(
+                        "bottom bar control used as native media command",
+                    ));
+                }
+                minibar_step = Some(direction);
+                (
+                    match direction {
+                        crate::playback::Step::Next => PlayerAction::Next,
+                        crate::playback::Step::Previous => PlayerAction::Previous,
+                    },
+                    Some((play_id, expected_queue_revision)),
+                )
+            }
             PlayerAction::PauseFor {
                 play_id,
                 expected_queue_revision,
@@ -1431,6 +1452,26 @@ impl MusicClient {
                 return project(&state, &token);
             }
         }
+        let minibar_guard = if let (Some(direction), Some(lease), Some(intent)) =
+            (minibar_step, lease, control_intent)
+        {
+            let focus = self.focus.clone();
+            let selection = self.player.selection.clone();
+            let guard = Cancellation::new(move || {
+                selection.load(std::sync::atomic::Ordering::Acquire) == intent
+                    && focus.check(lease, super::focus::Owner::Audio).is_ok()
+            });
+            if let Some(state) = self
+                .try_minibar_skip(&token, controller, &current, direction, &guard)
+                .await?
+            {
+                self.session.check_generation(&token)?;
+                return project(&state, &token);
+            }
+            Some(guard)
+        } else {
+            None
+        };
         let command = match action {
             PlayerAction::QueueMoreOpened { .. } | PlayerAction::QueueMoreToggle { .. } => {
                 unreachable!("handled before user transport commands")
@@ -1523,7 +1564,9 @@ impl MusicClient {
             }
             PlayerAction::Next => PlaybackCommand::Next,
             PlayerAction::Previous => PlaybackCommand::Previous,
-            PlayerAction::StepLoading { .. } => unreachable!("handled before generic action"),
+            PlayerAction::StepLoading { .. } | PlayerAction::StepMiniBar { .. } => {
+                unreachable!("handled before generic action")
+            }
             PlayerAction::Stop => PlaybackCommand::Stop,
             PlayerAction::Restore => PlaybackCommand::Restore,
             PlayerAction::Refresh => PlaybackCommand::RefreshSource,
@@ -1590,7 +1633,7 @@ impl MusicClient {
                 .await?
         } else if let Some(expected) = quality_guard.or(queue_guard).or(source_guard) {
             controller
-                .command_guarded(&token, command, expected, Cancellation::default())
+                .command_guarded(&token, command, expected, minibar_guard.unwrap_or_default())
                 .await?
         } else {
             controller.command(&token, command).await?

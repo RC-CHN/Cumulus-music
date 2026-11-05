@@ -755,6 +755,14 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     if (!ready.value || !current?.queueLen) return;
     if (!displayedKey) {
       if (busy.value || current.state === 'preparing' || current.state === 'loading') return;
+      if (current.playId && loaded.value && !current.fm && !current.intelligence) {
+        return action({
+          kind: 'step_mini_bar',
+          play_id: current.playId,
+          expected_queue_revision: current.queueRevision,
+          direction,
+        });
+      }
       return action({ kind: direction });
     }
     if (

@@ -86,12 +86,23 @@ impl PcExperimentHost {
         credentials: &str,
     ) -> Result<Option<PcExperimentGroups>> {
         Ok(self
+            .observed_groups_with_version(token, api, credentials)?
+            .map(|(_, groups)| groups))
+    }
+
+    pub(super) fn observed_groups_with_version(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        credentials: &str,
+    ) -> Result<Option<(Instant, PcExperimentGroups)>> {
+        Ok(self
             .state
             .lock()
             .map_err(|_| Error::LockPoisoned)?
             .as_ref()
             .filter(|current| current.matches(token, api, credentials))
-            .map(|current| current.groups.clone()))
+            .map(|current| (current.fetched, current.groups.clone())))
     }
 
     /// A playback actor can fence an already authorized operation without

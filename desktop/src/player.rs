@@ -191,11 +191,15 @@ pub async fn queue_more_tip<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn player_action(
+pub async fn player_action<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     action: PlayerAction,
 ) -> Result<PlayerView, ClientError> {
+    if matches!(&action, PlayerAction::StepMiniBar { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("bottom bar step requires the main window").into());
+    }
     client
         .player_action(&epoch, action)
         .await

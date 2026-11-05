@@ -388,6 +388,11 @@ pub struct PlaylistDropRow {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PlayerAction {
+    StepMiniBar {
+        play_id: String,
+        expected_queue_revision: String,
+        direction: crate::playback::Step,
+    },
     QueueMoreOpened {
         expected_revision: String,
     },

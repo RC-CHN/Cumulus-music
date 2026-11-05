@@ -402,6 +402,12 @@ export type PlaySelection =
       quality: Quality;
     };
 export type PlayerAction =
+  | {
+      kind: 'step_mini_bar';
+      play_id: string;
+      expected_queue_revision: string;
+      direction: 'next' | 'previous';
+    }
   | { kind: 'queue_more_opened'; expected_revision: string }
   | { kind: 'queue_more_toggle'; enabled: boolean; expected_revision: string }
   | {

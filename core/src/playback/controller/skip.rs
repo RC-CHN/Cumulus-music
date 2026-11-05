@@ -16,8 +16,8 @@ use crate::{
 };
 
 impl PlaybackController {
-    /// Optional native handoff; the standard Next/Previous/EOF paths never
-    /// call this. The caller must own a verified PC experiment snapshot and
+    /// Main bottom bar only; standard Next/Previous/EOF paths do not call
+    /// this. The caller must own a verified PC experiment snapshot and
     /// connectivity observation. No renderer API supplies either input.
     ///
     /// Unchanged means this bounded branch did not consume the intent.
@@ -50,6 +50,14 @@ impl PlaybackController {
             || before.fm
             || before.intelligence.is_some()
             || before.play_id.is_none()
+            || queue.items.iter().any(|row| {
+                // M23.Z can make a denied song playable via M21.D. The
+                // native ordinary audio scan must not substitute that MV.
+                let alternative = &row.resource["song"]["noCopyrightRcmd"];
+                alternative["type"].as_i64() == Some(3)
+                    && !alternative["mvInfo"].is_null()
+                    && alternative["expInfo"]["mvPlay"] == true
+            })
             || !matches!(
                 before.state,
                 PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering

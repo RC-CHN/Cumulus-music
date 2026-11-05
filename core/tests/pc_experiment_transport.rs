@@ -1,3 +1,5 @@
+#[path = "pc_experiment_transport/minibar_skip.rs"]
+mod minibar_skip;
 #[path = "pc_experiment_transport/pc_presentation.rs"]
 mod pc_presentation;
 #[path = "pc_experiment_transport/search_footer.rs"]

@@ -1,5 +1,6 @@
 //! Native M/236 playlist count poller. M/119 can be attached for the lifetime
 //! of a verified desktop document without replacing the one count schedule.
+mod playback;
 use super::{MessageCounts, MusicClient, read_counts};
 use crate::{
     Error, Result,
@@ -9,11 +10,12 @@ use crate::{
         PcRequestObservation,
     },
 };
+use playback::{PlaybackConnectivity, Sample};
 use std::{
     future::{Future, pending},
     pin::Pin,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::Duration,
@@ -29,7 +31,10 @@ const DRAWER: Duration = Duration::from_secs(30);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Default)]
-pub(in crate::client) struct PcMessagePollHost(Arc<AtomicBool>);
+pub(in crate::client) struct PcMessagePollHost {
+    active: Arc<AtomicBool>,
+    playback: Mutex<Option<PlaybackConnectivity>>,
+}
 
 struct Lease(Arc<AtomicBool>);
 impl Drop for Lease {
@@ -83,11 +88,36 @@ impl MusicClient {
         &self,
         initial_navigator_online: Option<bool>,
     ) -> Result<PcMessageConnectivity> {
-        let guard = self.message_poll.0.clone();
+        let mut playback = self
+            .message_poll
+            .playback
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?;
+        let guard = self.message_poll.active.clone();
         if guard.swap(true, Ordering::AcqRel) {
             return Err(Error::MutationBusy);
         }
-        PcMessageConnectivity::start(self.session.clone(), initial_navigator_online, Lease(guard))
+        let (poller, binding) = PcMessageConnectivity::start(
+            self.session.clone(),
+            initial_navigator_online,
+            Lease(guard),
+        )?;
+        *playback = Some(binding);
+        Ok(poller)
+    }
+
+    pub(in crate::client) fn pc_playback_connectivity(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Option<crate::playback::engine::Cancellation>> {
+        self.session.check_generation(token)?;
+        Ok(self
+            .message_poll
+            .playback
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .and_then(|binding| binding.authority(token)))
     }
 }
 
@@ -96,7 +126,7 @@ impl PcMessageConnectivity {
         session: Arc<AccountSession>,
         initial_navigator_online: Option<bool>,
         lease: Lease,
-    ) -> Result<Self> {
+    ) -> Result<(Self, PlaybackConnectivity)> {
         let runtime = tokio::runtime::Handle::try_current()
             .map_err(|_| Error::State("connectivity executor requires an async runtime"))?;
         let accounts = session.subscribe()?;
@@ -111,6 +141,15 @@ impl PcMessageConnectivity {
         let (tx, rx) = mpsc::channel(32);
         let (browser, browser_lifecycle) = watch::channel((0, initial_navigator_online));
         let (publisher, view) = watch::channel(initial.clone());
+        let (sample_tx, samples) = watch::channel(Sample {
+            account: token.generation,
+            document: 0,
+            allowed: false,
+        });
+        let binding = PlaybackConnectivity {
+            browser: browser.subscribe(),
+            samples,
+        };
         let mut state = State {
             session,
             token,
@@ -126,14 +165,19 @@ impl PcMessageConnectivity {
         state.rearm(Duration::ZERO);
         let actor = runtime.spawn(async move {
             let _lease = lease;
-            state.run(accounts, browser_lifecycle, rx, publisher).await;
+            state
+                .run(accounts, browser_lifecycle, rx, publisher, sample_tx)
+                .await;
         });
-        Ok(Self {
-            tx,
-            browser,
-            view,
-            actor: Some(actor),
-        })
+        Ok((
+            Self {
+                tx,
+                browser,
+                view,
+                actor: Some(actor),
+            },
+            binding,
+        ))
     }
 
     pub fn subscribe(&self) -> watch::Receiver<PcMessageConnectivityView> {
@@ -254,6 +298,7 @@ impl State {
         mut browser: watch::Receiver<(u64, Option<bool>)>,
         mut commands: mpsc::Receiver<Command>,
         publisher: watch::Sender<PcMessageConnectivityView>,
+        samples: watch::Sender<Sample>,
     ) {
         let start = Instant::now();
         loop {
@@ -307,6 +352,27 @@ impl State {
                     None => break,
                 }
             }
+            let sample = Sample {
+                account: self.token.generation,
+                document: self.browser_generation,
+                // The browser initial sample is not proof of a usable PC
+                // transport. Use the existing successful authenticated read
+                // and deny while this partial signal set is ambiguous.
+                allowed: self.token.uid.is_some()
+                    && self.connectivity.is_some()
+                    && self.navigator
+                    && self.view.online
+                    && self.view.counts.is_some()
+                    && !self.view.last_count_read_failed,
+            };
+            samples.send_if_modified(|current| {
+                if *current == sample {
+                    false
+                } else {
+                    *current = sample;
+                    true
+                }
+            });
             publisher.send_if_modified(|current| {
                 if current == &self.view {
                     false

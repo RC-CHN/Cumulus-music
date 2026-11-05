@@ -2063,3 +2063,25 @@ test('a manual step supersedes a pending source and rejects duplicate or older r
   ]);
   f.player.dispose();
 });
+
+test('the active ordinary bottom bar sends an exact displayed playback step', async () => {
+  const actions: PlayerAction[] = [];
+  const f = fixture({
+    playerAction: async (_epoch, action) => {
+      actions.push(action);
+      return { ...state('4', '1', 'other'), queueRevision: '8', queueLen: 3 };
+    },
+  });
+  await f.player.connect(account());
+  f.emit({ ...state('3', '1', 'displayed'), queueRevision: '7', queueLen: 3 });
+  await f.player.stepDisplayed('previous');
+  assert.deepEqual(actions, [
+    {
+      kind: 'step_mini_bar',
+      play_id: 'displayed',
+      expected_queue_revision: '7',
+      direction: 'previous',
+    },
+  ]);
+  f.player.dispose();
+});
