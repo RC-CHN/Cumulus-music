@@ -114,9 +114,9 @@
 | `page:vinylPage` (24) | `models/page_vinylPage.txt` | [部分](desktop-member-contracts.txt) | 会员权益、部分动态开通；无原生收银台/兑换。 |
 | `page:vipEssential` (3) | `models/page_vipEssential.txt` | [已接入口](desktop-member-contracts.txt) | 会员精选相关模块；并非所有投放与领取。 |
 | `pages:loginDevice` (5) | `models/pages_loginDevice.txt` | [已接入口](account-profile-devices.txt) | 额度、原地展开/收起、详情和移除；未对真实用户设备执行删除。 |
-| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；[主窗底栏手动跳歌](desktop-minibar-skip.txt)已接原生判权；自然 EOF 版权跳过和专有播放器故障另列。 |
+| `playing` (78) | `models/playing.txt` | [已接入口](core-playback-contracts.txt) | 原生播放、队列和恢复；[主窗底栏](desktop-minibar-skip.txt)和[普通顺序队列的自然结束](ordinary-native-eof.txt)已接原生判权；其余模式、替代音源及专有播放器故障分开验证。 |
 | `playingList` (43) | `models/playingList.txt` | [已接入口](playback-queue-ui-contracts.txt) | 队列操作、本地单行、普通在线歌单及[搜索单曲多选拖入](queue-drop-contracts.txt)；普通队列的[更多推荐](queue-more-recommendations.txt)已接自动补歌、开关、分隔和自然续播。同步、特殊队列和其他来源另验。 |
-| `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | [Windows 播放防休眠](playback-keep-awake-contracts.txt)已接设备偏好与原生播放；其他系统和音效项分别核对。 |
+| `setting` (45) | `models/setting.txt` | [部分](settings-mapping.json) | [最近播放同步](play-history-contracts.txt)保留官方默认与明确选择；[Windows 播放防休眠](playback-keep-awake-contracts.txt)已接设备偏好与原生播放；其他系统和音效项分别核对。 |
 | `sidebar` (14) | `models/sidebar.txt` | [已接入口](sidebar-ui-contracts.txt) | 可折叠列表、创建、导航；动线和实验继续逐项核。 |
 | `window:moveDownload` (3) | `models/window_moveDownload.txt` | [已接入口](core-download-directory-contracts.txt) | 任务锁定、搬移及恢复；平台文件系统故障另验。 |
 

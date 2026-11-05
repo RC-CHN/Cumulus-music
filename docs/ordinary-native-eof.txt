@@ -34,7 +34,10 @@ renderer 提交的版权/分组/连接状态。前景媒体必须仍属于现音
 后续队列行后，
 普通原生音源解析仍独立完成授权、装载及播放，URL 或解码失败保持实际错误。
 对照拒绝保持旧曲 Ended（同 playId）；顺序被拒尾部停止并清理原解码和 playId，旧曲
-和完成位置保留，不写成被拒行。检查期间旧音频已经结束，系统可休眠。Random/循环
+和完成位置保留，不写成被拒行。对照状态中主窗的上一首／下一首仍携带原 playId
+及队列版本，沿用 M/308:3868–3892 的底栏预判；用户点击可作废仍在进行的自动判断，
+已明确无权的相邻曲仍不加载。仅无播放标识的普通闲置项继续走原方向动作。
+检查期间旧音频已经结束，系统可休眠。Random/循环
 列表的版权遍历、特殊源、全候选为空时原版 Pause、原生错误编号映射，以及
 M/308 公开提示尚不属于此切片。
 
@@ -42,8 +45,19 @@ M/308:5807–5809 → M/148:88–90 → M/4:16185–16205 的
 audioplayer.onFetchPreloadInfo 另走 M/163:670–755；相邻行可能在 EOF 之前已经被
 查询音源，而未被选中或解码。当前 Rust 保持独立的提前预取，不能用预取 HTTP 调用
 作为 EOF 版权跳歌失败的证据。封闭合成集在预取请求后记检查点，验证被跳过的行没有
-第二次 URL 请求或启动解码。计划测试入口：
+第二次 URL 请求或启动解码。Rust 测试入口：
   cargo test -p cumulus-core --test pc_experiment_transport --locked natural_eof
   cargo test -p cumulus-core --lib --locked playback::controller::eof
-此处的测试使用合成 EAPI 回包/受控原生事件，不等于真实账号、声卡或桌面测试。
-EOF 快照竞争、M119 借用和 GUI 产品验证状态以实际执行结果为准。
+此处的 Rust 测试使用合成 EAPI 回包/受控原生事件。
+
+真实 Linux WebView、Tauri IPC、SQLite 和 libmpv null 验证共七态、七张图：
+1. t1 在 8 秒的第 1 首自然结束后进入第 3 首；先保存第 1 首的完成位置，才装载第 3 首。
+2. 对照组自然结束保持第 1 首及原播放标识；再点真实「下一首」仍停在 00:08，
+   收到精确的旧播放标识和队列版本回执，无新增授权、解码或停止请求。
+3. t1 遇不可播尾部停止，清播放标识、保留第 1 首及 8 秒完成位置。
+第 2 首只有结束前的独立预取；实际 libmpv 报告原解码条目的 error=0 EOF。
+证据 .build/ui-proof/phase67-natural-eof-r1/report.json。没有真实账号请求或实体声卡验证。
+复现：cargo build -p cumulus-desktop --example minibar_skip_ui_probe --features custom-protocol --locked；
+运行 scripts/ci/natural_eof_smoke.py --binary ABS_PROBE --root NEW。Linux 使用 CI 中同名步骤的
+私有 Xvfb/D-Bus 与无外联路由，--screenshots 可取图；Windows 由独立 runner 加
+--runtime SAME_RUN_NATIVE_STAGE，保留 WebView2 验收结果，不使用 GTK 截图。

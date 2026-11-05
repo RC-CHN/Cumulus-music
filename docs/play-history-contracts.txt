@@ -339,3 +339,10 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   不关闭已打开的首次确认、不标记已保存。无定时器或新增 HTTP。
 - 合成测试源码：真实签名测试 transport 覆盖缺键→t1→失败→控制→手动保护、
   旧偏好/账号隔离/确认，history 测试覆盖启→停→启期间旧回包失效。
+- Linux 实际 WebView 七态、七张图：设置页保持挂载，未操作偏好随 t1、c 分组更新；
+  弹窗已打开时实验变为关闭，弹窗仍在；取消不写，重新打开并确认才保存一次，
+  之后再分配 t1 不覆盖用户的关闭选择。封闭夹具用真实 Rust 签名适配器：一条账号回读、
+  七条签名分组读取、六次已提交的原生观察；独立查询 SQLite 核对首次关闭与用户选择。
+  .build/ui-proof/phase67-history-settings-r1/report.json；真实账号请求及远端写入均为零。
+  复现：构建 ux_ui_probe，然后运行 scripts/ci/pc_presentation_smoke.py --history-settings
+  --binary ABS_PROBE --root NEW。Linux/Windows 独立 runner 使用同一审计；本机仅实测 Linux。
