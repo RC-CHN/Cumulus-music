@@ -36,16 +36,20 @@
       return account.status === 'authenticated' && account;
     }, 'synthetic authenticated profile ready');
     const player = () => invoke('player_snapshot', { epoch });
-    async function capture(label, baseline) {
+    async function capture(label, baseline, extras = {}) {
       await sleep(550);
       const actual = await player();
       assert(actual.playId === baseline.playId && actual.queueRevision === baseline.queueRevision &&
         actual.state === baseline.state, 'comment UI preserves native transport');
       if (actual.state === 'paused') assert(Math.abs(actual.position - baseline.position) < .1, 'paused position unchanged');
-      await emit(`ux_${String(++stages).padStart(2, '0')}_${label}`, {
+      const stage = `ux_${String(++stages).padStart(2, '0')}_${label}`;
+      if (window.__vinylComposerRun) window.__vinylComposerRecorded = '';
+      await emit(stage, {
         tab: tab() ?? null, playId: actual.playId, trackId: actual.track?.id,
-        latest: rows('latest').length, hot: rows('hot').length, captureHandshake: true,
+        latest: rows('latest').length, hot: rows('hot').length, captureHandshake: true, ...extras,
       });
+      if (window.__vinylComposerRun)
+        await wait(() => window.__vinylComposerRecorded === stage, 'native stage recorded: ' + stage);
     }
     async function pause() {
       click(footer('暂停'));
@@ -69,6 +73,12 @@
     await wait(() => one('.player-comment-count')?.textContent.trim() === '63', 'authoritative current count');
     click(footer('歌词'));
     await wait(() => tab() === 'lyrics' && one('.lyric-line.current'), 'standard vinyl details');
+    if (window.__vinylComposerRun) {
+      await window.__vinylComposerRun({ epoch, first, player, pause, comment, capture, tab, scroller,
+        rows, footer, pane, wait, click, invoke, assert, one, all });
+      await emit('complete', { ok: true, stageCount: stages, realAccountWrites: 0, realMusicRequests: 0 });
+      return;
+    }
     if (window.__vinylCommentControl) {
       await sleep(400);
       assert(!one('.vinyl-scroll-comment') && comment().getAttribute('aria-pressed') === null,
