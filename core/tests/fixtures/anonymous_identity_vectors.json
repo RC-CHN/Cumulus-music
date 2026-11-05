@@ -1,0 +1,217 @@
+{
+  "provenance": {
+    "officialVersion": "3.1.42.205594",
+    "architecture": "Windows x64 core instructions on Linux x86_64 host",
+    "binarySha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+    "entryRva": "0x33c1d0",
+    "oracleHelperSha256": "5f4d7153f52e6d76f772530d393272cf5e4550e912a34749e36e926aa9b77c79",
+    "officialArithmeticUnmodified": [
+      "0x33c1d0",
+      "0x33d580",
+      "0x632b10",
+      "0x633460",
+      "0x632800",
+      "0x632c70",
+      "0x62c5d0",
+      "0xa53e40",
+      "0x33d000"
+    ],
+    "adapterScope": "MSVC std::string/byte-view and CRT memory helpers; MSVC debug/security check helpers return. Valid UTF-8 supplied at the native core boundary; CEF UTF16 conversion is separately traced, not executed.",
+    "nativeDllInitialization": false,
+    "networkRequests": 0,
+    "registrationRequests": 0,
+    "thirdPartySource": false
+  },
+  "cases": [
+    {
+      "name": "empty",
+      "deviceId": "",
+      "encoded": ""
+    },
+    {
+      "name": "simple",
+      "deviceId": "abc",
+      "encoded": "YWJjIHlmSG5YeDg0YjY0Z3RxZFNhTTlFMUE9PQ=="
+    },
+    {
+      "name": "hex-id",
+      "deviceId": "0123456789abcdef0123456789ABCDEF",
+      "encoded": "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlBQkNERUYgSkpWYUlwLTMyang0OUlWaVpseGo2Zz09"
+    },
+    {
+      "name": "punctuation",
+      "deviceId": "device:{}-_+=/ 19",
+      "encoded": "ZGV2aWNlOnt9LV8rPS8gMTkgS2FTaGRUdkR5TlV3by00b0RKNDRKUT09"
+    },
+    {
+      "name": "chinese",
+      "deviceId": "本机合成设备",
+      "encoded": "5pys5py65ZCI5oiQ6K6-5aSHIE9rLW96WkVWR2ZUQVBZNi15cXVmWEE9PQ=="
+    },
+    {
+      "name": "unicode",
+      "deviceId": "设备-é-🎵-𝄞",
+      "encoded": "6K6-5aSHLcOpLfCfjrUt8J2EniBqaXlxdEU2T1pEVEt6Q1VFRi1LX3JnPT0="
+    },
+    {
+      "name": "combining",
+      "deviceId": "é/é",
+      "encoded": "ZcyBL8OpIG1Pa2ZwdDdEOTFlczNTdmkyS3FCSnc9PQ=="
+    },
+    {
+      "name": "nul-mid",
+      "deviceId": "a\u0000b",
+      "encoded": "YQBiIFpYbmZRZ3BiZDM3cXRRS1hVSTNfNmc9PQ=="
+    },
+    {
+      "name": "nul-only",
+      "deviceId": "\u0000",
+      "encoded": "ACA3TXZJZmt0YzR2NG9NSV9aOHFlNjh3PT0="
+    },
+    {
+      "name": "spaces",
+      "deviceId": " \t\n ",
+      "encoded": "IAkKICBPTGFJSXRqT0k1bEVQUVVudG1IeWtBPT0="
+    },
+    {
+      "name": "ascii-1",
+      "deviceId": "a",
+      "encoded": "YSA0ZUhUMUFWekVuNmU0RWdNcnhLRDFnPT0="
+    },
+    {
+      "name": "ascii-2",
+      "deviceId": "aZ",
+      "encoded": "YVogb05taGh5bDQ3QkhwZVZCOGRWbm5IQT09"
+    },
+    {
+      "name": "ascii-3",
+      "deviceId": "aZ0",
+      "encoded": "YVowIF9YaWFsbVJQSWpYTjNoVkdVUWxFc2c9PQ=="
+    },
+    {
+      "name": "ascii-14",
+      "deviceId": "aZ09_-:.aZ09_-",
+      "encoded": "YVowOV8tOi5hWjA5Xy0gQ1BGcjhBdW9tRm5kSTFCSXMxOGNLQT09"
+    },
+    {
+      "name": "ascii-15",
+      "deviceId": "aZ09_-:.aZ09_-:",
+      "encoded": "YVowOV8tOi5hWjA5Xy06IERKa0R0V3IxaEM0V0xRMmNyWXVZV3c9PQ=="
+    },
+    {
+      "name": "ascii-16",
+      "deviceId": "aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LiBJLTdwNFRXWnRsT3RqYTdPcUlPRnZnPT0="
+    },
+    {
+      "name": "ascii-17",
+      "deviceId": "aZ09_-:.aZ09_-:.a",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmEgU3IxOVRwdmFoQXF6cGF2UXdpWEpDdz09"
+    },
+    {
+      "name": "ascii-18",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaIHFDQlhwb2Y3SUxHNGtiQ2Y1NmRFOWc9PQ=="
+    },
+    {
+      "name": "ascii-19",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ0",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMCAxS1F4UUNta2ZrRkQxdmlENVR1aHJRPT0="
+    },
+    {
+      "name": "ascii-31",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOiBvZHR1VXcwUXFneGpzdnhMZ3V5OEV3PT0="
+    },
+    {
+      "name": "ascii-32",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi4gYWI1OU1Va2J1blFNbERmeVU3SDRUQT09"
+    },
+    {
+      "name": "ascii-33",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.a",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hIC1JTHhuM1RReENmcmpWMnRUdXlMUnc9PQ=="
+    },
+    {
+      "name": "ascii-55",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOiBWNl9Eb3REZVhBdk5UWDBMeFQ5VW1BPT0="
+    },
+    {
+      "name": "ascii-56",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi4gY19CX2RqbW5MQXZqLUlPMHZlaVhPUT09"
+    },
+    {
+      "name": "ascii-57",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.a",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hIGVub00xc1Aya2tfNWxzcUlYVVB6WXc9PQ=="
+    },
+    {
+      "name": "ascii-63",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06IDIyb2VVME5JR1paYkpoQnRqZXU3Q0E9PQ=="
+    },
+    {
+      "name": "ascii-64",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LiBTX3RzdmRNOWZvVFVNNnRZVE1rRVpRPT0="
+    },
+    {
+      "name": "ascii-65",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.a",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmEgRkJLS2pBdm1LMHVVb0tmTUNfWUJyQT09"
+    },
+    {
+      "name": "ascii-127",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOiBRanFNbDBWb29tMlE2Sm1mR1k3XzhnPT0="
+    },
+    {
+      "name": "ascii-128",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi4gZ1YwRF8zWnBmZlM4MWRYQ3BHZzVGZz09"
+    },
+    {
+      "name": "ascii-129",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.a",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hIFZUcXZsOVZpUDcxWU5PWm5YYjhIc3c9PQ=="
+    },
+    {
+      "name": "ascii-255",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06IHJXZ3BWTWV4WXhlcXkzcTF0ZXRyU2c9PQ=="
+    },
+    {
+      "name": "ascii-256",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LiBYZFA4dWxoQ3JoTnBKbW93ZWVyQlZ3PT0="
+    },
+    {
+      "name": "ascii-257",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.a",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmEgOXRrbUIzVjU5aXpxRFpwdXZDa3BjZz09"
+    },
+    {
+      "name": "ascii-511",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOiBFRVYycWY3N0Uza0p5M2ROLTNtRXNRPT0="
+    },
+    {
+      "name": "ascii-512",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi4gT0FDWlJQaXZWRDgtcm9DMjZuOHNvQT09"
+    },
+    {
+      "name": "ascii-513",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.a",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hIHFCdWZUc0NVUlRHajZzOEVqMDk5Y1E9PQ=="
+    },
+    {
+      "name": "ascii-4096",
+      "deviceId": "aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.aZ09_-:.",
+      "encoded": "YVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LmFaMDlfLTouYVowOV8tOi5hWjA5Xy06LiA1VFBpelViNlRFUmVSOWtZR2FMZ1RnPT0="
+    }
+  ]
+}

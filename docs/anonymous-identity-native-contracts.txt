@@ -1,0 +1,75 @@
+Official PC anonymous identity encoding, 3.1.42.205594
+====================================================
+
+ABI: core::account::anonymous_identity::encode_anonymous_id(&str) -> Result<String>.
+This is a pure local encoder. Its output is neither an anonymous UID nor an
+authentication/experiment permission. It does not register, fetch, set Cookies,
+adopt an account, or contact the official native host.
+
+Recovered chain
+- M115:106–110 reuses M18.anonimousToken when present; otherwise invokes
+  EncryptData.encodeAnonymousId(M18.deviceId), then stores the result. M4:3045–3053
+  returns an empty string for a falsy input and otherwise calls the native bridge.
+- x64 cloudmusic.dll: dispatch RVA e55eb8–e55f45 selects encodeAnonymousId;
+  wrapper e4a8f0 reads the first V8 argument, calls 15b1b0, then core 33c1d0.
+  15b1b0 calls the imported cef_string_utf16_to_utf8 via cddbc6/IAT 19f18b0.
+  There is no standalone PE export named encodeAnonymousId; this is a channel
+  dispatch. Adjacent encodeAnonymousId2 selects e4a730 and is a different branch.
+- Core 33c1d0 uses key bytes "3go8&$8*3*3h0k(2)2" from VA 181a08a10;
+  33d580 XORs each input byte with the repeated key. MD5 init/update/final are
+  632b10/633460/632800, with round function 632c70. The raw 16-byte digest is
+  copied by 33d2b0, encoded by 62c5d0 -> a53e40, then 33d000 replaces '/' with '_'
+  and '+' with '-'. '=' padding is retained. The core concatenates the original
+  input, one ASCII space (VA 181da7d3c), and this inner result, then applies the
+  same padded Base64 plus replacements again. Empty byte string returns empty.
+- x86 independently: string VA 10ae0364, dispatch 1d40ea, wrapper 1d1ac0, core
+  6b570, XOR helper 6a6c0, URL replacement 6a770, MD5 init/update/final
+  4ae8c0/4af330/4ae820, Base64 4ab380. Key/space VAs are 10ac8f94/10ac5ba0.
+  This corroborates the sequence; x86 instructions have not been executed here.
+
+The formula, with each URL Base64 retaining padding, is:
+  inner = urlBase64(MD5(utf8(deviceId) XOR repeated-key))
+  result = urlBase64(utf8(deviceId) || ASCII-space || ASCII(inner))
+No trimming, case folding, hexadecimal digest conversion or normalization occurs.
+The 4096 UTF-8-byte bound is our explicit local allocation policy, not a recovered
+native clamp. Valid UTF-8, including whitespace and NUL, is preserved. Rust &str
+does not represent isolated UTF-16 surrogates; malformed CEF conversion behavior
+has not been emulated or claimed.
+
+Actual original-code oracle
+- core/tests/fixtures/anonymous_identity_vectors.json freezes 38 synthetic outputs
+  from executing x64 core 33c1d0. It includes empty/ASCII, Chinese, emoji, combining
+  marks, NUL, key/SSO and MD5 55/56/63/64-byte boundaries through 4096 bytes.
+- Exact x64 DLL SHA-256:
+  557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493.
+  The fixture records the exact authored adapter source SHA too.
+- scripts/research/original_anonymous_identity_oracle.py hash-checks that binary
+  and the C adapter, compiles a bounded Linux x86_64 MS-ABI child, and compares
+  its actual output against the frozen rows. It requires explicitly supplied
+  official material and is not part of automatic public CI:
+    python3 scripts/research/original_anonymous_identity_oracle.py \
+      --dll OFFICIAL_X64_CLOUDMUSIC_DLL --root NEW_PRIVATE_PROOF
+- The original XOR, MD5, Base64, URL replacement and encoder instructions run
+  unmodified. Twenty explicit host seams replace fourteen MSVC string/byte-view
+  helpers, three CRT memory functions, and three MSVC debug/security checks.
+  String lifetime/allocation is adapted; this is not a claim that MSVC heap or
+  exception behavior was reproduced. No DllMain, CEF, TLS, SDK or network starts.
+  Valid UTF-8 is supplied directly at the traced core boundary. The separately
+  traced CEF UTF-16 conversion was not executed by this oracle.
+- The first research adapter jump clobbered the result register in a security
+  check seam; that failed attempt produced no frozen vectors. Checks now use a
+  register-preserving RET. All 38 frozen rows come from the successful adapter.
+  Private source/disassembly evidence: .build/ui-proof/phase58-anonymous-native-
+  20261105-a and phase58-anonymous-native-oracle-20261105-a.
+
+Remaining account lifecycle
+M100.n:54–60 sends M15.Af({username:encoded}); M15:1312 binds the logical route
+/api/register/anonimous. A code-200 response with truthy userId is required for
+its returned UID. M198:645–677 loops until UID, requires native Cookie.getAll,
+removes MUSIC_U before persisting anonymous Cookies, and then switchUser reaches
+the full experiment refresh. A local unregistered guest is not that state.
+Registration recovery, anonymous Cookie/UID adoption and presentation ownership
+belong to the separate native runtime implementation. This encoder and oracle
+do not send registration or prove server acceptance. No third-party client was
+used. Rust focused tests are recorded after they run; original-machine-code
+vectors do not substitute for executing the Rust implementation.
