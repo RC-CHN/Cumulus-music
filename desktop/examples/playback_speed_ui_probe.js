@@ -14,8 +14,50 @@
   const key = value => document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:value,bubbles:true,cancelable:true}));
   const rect = node => { const r=node.getBoundingClientRect();return {left:r.left,top:r.top,right:r.right,bottom:r.bottom,width:r.width,height:r.height}; };
   const hit = node => { const r=rect(node),target=document.elementFromPoint(r.left+r.width/2,r.top+r.height/2);return node===target||node.contains(target); };
-  let count=0;
-  const speeds=[];
+  let count=0,seekDiagnostic=null;
+  const speeds=[],nativeSeeks=[];
+  const pause = () => bar()?.querySelector('[aria-label="暂停"]');
+  const range = () => bar()?.querySelector('input[type="range"][aria-label="播放进度"]');
+  function observeSeek(input=range()) {
+    const player=bar()?.dataset;
+    return {playId:player?.playId,trackId:player?.trackId,state:player?.state,
+      position:Number(player?.position),message:one('.playback-message')?.textContent.trim()??'',
+      input:input?{connected:input.isConnected,disabled:input.disabled,min:Number(input.min),
+        max:Number(input.max),value:Number(input.value)}:null};
+  }
+  async function pauseCurrent(playId,label) {
+    const canPause=()=>!!playId&&bar()?.dataset.playId===playId&&bar().dataset.state==='playing'&&
+      pause()?.isConnected&&!pause().disabled;
+    seekDiagnostic={label,playId,initial:observeSeek()};
+    await wait(canPause,`${label} control ready`);
+    assert(canPause(),'pause control changed before dispatch');
+    click(pause());
+    await wait(()=>bar()?.dataset.playId===playId&&bar().dataset.state==='paused',label);
+  }
+  async function seekPaused(seconds,playId,label) {
+    const trackId=bar()?.dataset.trackId;
+    const ready=(input=range())=>!!playId&&!!trackId&&bar()?.dataset.playId===playId&&
+      bar().dataset.trackId===trackId&&bar().dataset.state==='paused'&&input?.isConnected&&
+      !input.disabled&&Number(input.min)<=seconds&&Number(input.max)>=seconds;
+    seekDiagnostic={label,seconds,playId,trackId,initial:observeSeek()};
+    // The native pause/seek event may precede the renderer's release of the
+    // busy state. Wait for the current range before each one-shot action.
+    await wait(()=>ready(),`${label} control ready`);
+    const input=range();
+    assert(ready(input),'seek control changed before dispatch');
+    input.value=String(seconds);
+    seekDiagnostic.dispatch=observeSeek(input);
+    assert(Math.abs(Number(input.value)-seconds)<.2,'seek input clamps the target');
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    await wait(()=>ready()&&Math.abs(Number(bar().dataset.position)-seconds)<.2&&!button().disabled,label);
+    const {epoch}=await invoke('account_snapshot');
+    const native=await invoke('player_snapshot',{epoch});
+    const observed={seconds,playId:native.playId,trackId:native.track?.id,state:native.state,position:native.position};
+    seekDiagnostic.native=observed;
+    assert(observed.playId===playId&&observed.trackId===trackId&&observed.state==='paused'&&
+      Math.abs(observed.position-seconds)<.2,`${label} native receipt`);
+    nativeSeeks.push(observed);
+  }
   async function capture(label) {
     await sleep(220);
     const popup=panel();
@@ -77,12 +119,10 @@
     assert(button().tagName==='BUTTON','native speed select still present');
     click(one('.track-row .track-play:not(:disabled)'));
     await wait(()=>bar().dataset.state==='playing'&&Number(bar().dataset.position)>.2,'native decoding');
-    click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','native pause');
-    const seek=one('.playerbar [aria-label="播放进度"]'),seekPlay=bar().dataset.playId;
-    seek.value='16';seek.dispatchEvent(new Event('change',{bubbles:true}));
-    await wait(()=>Math.abs(Number(bar().dataset.position)-16)<.2&&!button().disabled,'native forward seek while paused');
-    seek.value='10';seek.dispatchEvent(new Event('change',{bubbles:true}));
-    await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!button().disabled,'native rewind while paused');
+    const seekPlay=bar().dataset.playId;
+    await pauseCurrent(seekPlay,'native pause');
+    await seekPaused(16,seekPlay,'native forward seek while paused');
+    await seekPaused(10,seekPlay,'native rewind while paused');
     assert(bar().dataset.state==='paused'&&bar().dataset.playId===seekPlay,'rewind keeps the same paused native play');
     const provides=one('#app').__vue_app__._context.provides;
     const core=provides[Reflect.ownKeys(provides).find(key=>typeof key==='symbol'&&key.description==='core-client')];
@@ -149,9 +189,8 @@
     const voice=await core.playSelection(epoch,{kind:'voice',id:'402'});
     assert(voice.speedScope==='voice'&&voice.speed===1,'podcast starts at its independent default rate');
     await wait(()=>bar().dataset.state==='playing'&&bar().dataset.playId===voice.playId&&Number(bar().dataset.position)>.2,'podcast native clock');
-    click(one('.playerbar [aria-label="暂停"]'));await wait(()=>bar().dataset.state==='paused','native podcast pause');
-    const voiceSeek=one('.playerbar [aria-label="播放进度"]');voiceSeek.value='10';voiceSeek.dispatchEvent(new Event('change',{bubbles:true}));
-    await wait(()=>Math.abs(Number(bar().dataset.position)-10)<.2&&!button().disabled,'native podcast seek');
+    await pauseCurrent(voice.playId,'native podcast pause');
+    await seekPaused(10,voice.playId,'native podcast seek');
     await choose(1.5);
     const voiceAfter=await core.playerSnapshot(epoch);
     assert(voiceAfter.speedScope==='voice'&&voiceAfter.speed===1.5,'podcast menu writes the voice rate');
@@ -160,6 +199,7 @@
     await wait(()=>bar().dataset.state==='playing'&&bar().dataset.playId===songAgain.playId&&Number(bar().dataset.position)>.2,'returned song native clock');
     const voiceAgain=await core.playSelection(epoch,{kind:'voice',id:'402'});
     assert(voiceAgain.speedScope==='voice'&&voiceAgain.speed===1.5,'podcast rate restored after song');
-    await emit('complete',{ok:true,stageCount:count,speeds,resumedPosition,resumeElapsed:elapsed,resumedFromSeek:true,speedFailureIsolated:true,independentSongAndPodcastRates:true,realMusicRequests:0,accountWrites:0});
-  } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount:count,width:innerWidth,height:innerHeight,ratio:devicePixelRatio});}
+    await emit('complete',{ok:true,stageCount:count,speeds,nativeSeeks,resumedPosition,resumeElapsed:elapsed,resumedFromSeek:true,speedFailureIsolated:true,independentSongAndPodcastRates:true,realMusicRequests:0,accountWrites:0});
+  } catch(error) {await emit('failed',{ok:false,error:String(error),stageCount:count,width:innerWidth,height:innerHeight,ratio:devicePixelRatio,
+    seekDiagnostic:seekDiagnostic?{...seekDiagnostic,after:observeSeek()}:null});}
 })();

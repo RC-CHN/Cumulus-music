@@ -65,11 +65,19 @@ def main():
     if not args.baseline:
         assert complete['speeds'] == [2, 1.5, 1.25, 1, .75, .5, .25, 3, 4]
         assert complete['resumedFromSeek'] and complete['speedFailureIsolated'] and complete['independentSongAndPodcastRates']
+        forward, rewind, podcast = complete['nativeSeeks']
+        assert [row['seconds'] for row in (forward, rewind, podcast)] == [16, 10, 10]
+        assert forward['playId'] == rewind['playId'] != podcast['playId']
+        assert forward['trackId'] == rewind['trackId'] != podcast['trackId']
+        for row in (forward, rewind, podcast):
+            assert row['playId'] and row['trackId'] and row['state'] == 'paused'
+            assert abs(row['position'] - row['seconds']) < .2
         assert abs(complete['resumedPosition'] - 10 - complete['resumeElapsed'] * 1.25) < .35
         assert complete['realMusicRequests'] == complete['accountWrites'] == 0
         stages = [json.loads(p.read_text(encoding='utf-8')) for p in sorted((root / 'first').glob('ux_*.json'))]
         report = verify(stages)
         report['independentSongAndPodcastRates'] = True
+        report['nativeSeekTargets'] = [row['seconds'] for row in (forward, rewind, podcast)]
     else:
         report = {'ok': True, 'baseline': True}
     if args.screenshots:
