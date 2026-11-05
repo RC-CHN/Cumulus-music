@@ -7,9 +7,9 @@ use gio::{
     },
 };
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
@@ -17,6 +17,9 @@ use std::{
 const WATCHER: &str = "org.kde.StatusNotifierWatcher";
 const PATH: &str = "/StatusNotifierWatcher";
 const ITEM: &str = "org.kde.StatusNotifierItem";
+const MENU: &str = "com.canonical.dbusmenu";
+const AYATANA_ITEMS: &str = "/org/ayatana/NotificationItem";
+const MAX_RECOVERY_OWNERS: usize = 16;
 type Properties = HashMap<String, glib::Variant>;
 
 // libappindicator-sys panics if neither library is present. Preflight the same
@@ -51,6 +54,7 @@ struct Shared {
     stopped: AtomicBool,
     generation: AtomicU64,
     changed: Box<dyn Fn(bool) + Send + Sync>,
+    recovery_owners: Mutex<HashSet<String>>,
 }
 pub struct Monitor {
     watcher: u32,
@@ -78,6 +82,18 @@ impl Shared {
             (self.changed)(false);
         }
     }
+
+    fn may_recover(&self, owner: &str) -> bool {
+        self.recovery_owners.lock().is_ok_and(|attempted| {
+            attempted.len() < MAX_RECOVERY_OWNERS && !attempted.contains(owner)
+        })
+    }
+
+    fn begin_recovery(&self, owner: &str) -> bool {
+        self.recovery_owners.lock().is_ok_and(|mut attempted| {
+            attempted.len() < MAX_RECOVERY_OWNERS && attempted.insert(owner.into())
+        })
+    }
 }
 
 pub fn monitor(
@@ -89,10 +105,22 @@ pub fn monitor(
         stopped: AtomicBool::new(false),
         generation: AtomicU64::new(0),
         changed: Box::new(changed),
+        recovery_owners: Mutex::new(HashSet::new()),
     });
     let appeared = shared.clone();
     let vanished = shared.clone();
     let expected = format!("tray-icon tray app {id}");
+    let recovery_path = format!(
+        "{AYATANA_ITEMS}/{}",
+        expected
+            .bytes()
+            .map(|b| if b.is_ascii_alphanumeric() {
+                char::from(b)
+            } else {
+                '_'
+            })
+            .collect::<String>()
+    );
     let appeared = glib::Closure::new(move |args| {
         let connection = args
             .first()
@@ -102,6 +130,7 @@ pub fn monitor(
             let generation = appeared.generation.fetch_add(1, Ordering::AcqRel) + 1;
             let shared = appeared.clone();
             let expected = expected.clone();
+            let recovery_path = recovery_path.clone();
             let owner = owner.to_owned();
             if !shared.current(generation) {
                 return None;
@@ -110,8 +139,31 @@ pub fn monitor(
             glib::MainContext::default().spawn_local(async move {
                 // Bounded, sequential reads avoid signal storms and also detect
                 // hosts that omit PropertiesChanged or disappear without a signal.
+                let mut first = true;
                 while shared.current(generation) {
-                    let available = registered(&connection, &owner, &expected).await;
+                    let mut available = false;
+                    if let Some(state) = watcher_state(&connection, &owner).await {
+                        available = registered(&connection, &expected, &state).await;
+                        if !first
+                            && !available
+                            && shared.current(generation)
+                            && shared.may_recover(&owner)
+                            && recover_registration(
+                                &connection,
+                                &owner,
+                                &expected,
+                                &recovery_path,
+                                &state,
+                                &shared,
+                                generation,
+                            )
+                            .await
+                            && let Some(confirmed) = watcher_state(&connection, &owner).await
+                        {
+                            available = registered(&connection, &expected, &confirmed).await;
+                        }
+                    }
+                    first = false;
                     if !shared.current(generation) {
                         break;
                     }
@@ -170,46 +222,146 @@ async fn properties(
         .get::<(Properties,)>()
         .map(|p| p.0)
 }
-async fn registered(connection: &gio::DBusConnection, owner: &str, expected: &str) -> bool {
-    let Some(props) = properties(connection, owner, PATH, WATCHER).await else {
-        return false;
-    };
-    if props
-        .get("IsStatusNotifierHostRegistered")
-        .and_then(|p| p.get::<bool>())
-        != Some(true)
-    {
+struct WatcherState {
+    host: bool,
+    items: Vec<String>,
+}
+
+impl WatcherState {
+    fn own_paths<'a>(&'a self, own: &'a str) -> impl Iterator<Item = &'a str> {
+        self.items
+            .iter()
+            .filter_map(|item| item.strip_prefix(own))
+            .filter(|path| path.starts_with('/'))
+    }
+}
+
+async fn watcher_state(connection: &gio::DBusConnection, owner: &str) -> Option<WatcherState> {
+    let props = properties(connection, owner, PATH, WATCHER).await?;
+    Some(WatcherState {
+        host: props.get("IsStatusNotifierHostRegistered")?.get::<bool>()?,
+        items: props
+            .get("RegisteredStatusNotifierItems")?
+            .get::<Vec<String>>()?,
+    })
+}
+
+async fn active_menu(
+    connection: &gio::DBusConnection,
+    own: &str,
+    path: &str,
+    expected: &str,
+) -> Option<String> {
+    let item = properties(connection, own, path, ITEM).await?;
+    if item.get("Id")?.str()? != expected || item.get("Status")?.str()? != "Active" {
+        return None;
+    }
+    let menu = item.get("Menu")?.str()?;
+    (menu.starts_with('/') && menu != "/").then(|| menu.to_owned())
+}
+
+async fn registered(
+    connection: &gio::DBusConnection,
+    expected: &str,
+    state: &WatcherState,
+) -> bool {
+    if !state.host {
         return false;
     }
     let Some(own) = connection.unique_name() else {
         return false;
     };
-    let Some(items) = props
-        .get("RegisteredStatusNotifierItems")
-        .and_then(|p| p.get::<Vec<String>>())
-    else {
-        return false;
-    };
     // libappindicator and gio use the shared session bus connection. Restrict
     // reads to our own registered objects, never arbitrary other services.
-    for path in items
-        .iter()
-        .filter_map(|item| item.strip_prefix(own.as_str()))
-        .filter(|path| path.starts_with('/'))
-        .take(4)
-    {
-        let Some(item) = properties(connection, own.as_str(), path, ITEM).await else {
-            continue;
-        };
-        if item.get("Id").and_then(|p| p.str()) == Some(expected)
-            && item.get("Status").and_then(|p| p.str()) == Some("Active")
-            && item
-                .get("Menu")
-                .and_then(|p| p.str())
-                .is_some_and(|path| path.starts_with('/') && path != "/")
+    for path in state.own_paths(&own).take(4) {
+        if active_menu(connection, &own, path, expected)
+            .await
+            .is_some()
         {
             return true;
         }
     }
     false
+}
+
+async fn recover_registration(
+    connection: &gio::DBusConnection,
+    owner: &str,
+    expected: &str,
+    path: &str,
+    initial: &WatcherState,
+    shared: &Shared,
+    generation: u64,
+) -> bool {
+    let Some(own) = connection.unique_name() else {
+        return false;
+    };
+    if initial.own_paths(&own).next().is_some() {
+        return false;
+    }
+    // Ayatana can export its real StatusNotifierItem/DBusMenu yet miss the
+    // registration when its watcher callback beats its private bus callback.
+    let Some(menu) = active_menu(connection, &own, path, expected).await else {
+        return false;
+    };
+    if menu != format!("{path}/Menu")
+        || connection
+            .call_future(
+                Some(&own),
+                &menu,
+                MENU,
+                "GetLayout",
+                Some(&(0_i32, 0_i32, vec!["visible"]).to_variant()),
+                Some(glib::VariantTy::new("(u(ia{sv}av))").expect("DBusMenu layout type")),
+                DBusCallFlags::NO_AUTO_START,
+                500,
+            )
+            .await
+            .is_err()
+    {
+        return false;
+    }
+    // Native registration may have caught up during the menu read. A failed
+    // watcher read is not proof of absence, and a host is only needed to hide.
+    if watcher_state(connection, owner)
+        .await
+        .is_none_or(|latest| latest.own_paths(&own).next().is_some())
+    {
+        return false;
+    }
+    let current_owner = connection
+        .call_future(
+            Some("org.freedesktop.DBus"),
+            "/org/freedesktop/DBus",
+            "org.freedesktop.DBus",
+            "GetNameOwner",
+            Some(&(WATCHER,).to_variant()),
+            None,
+            DBusCallFlags::NO_AUTO_START,
+            500,
+        )
+        .await
+        .ok()
+        .and_then(|value| value.get::<(String,)>());
+    if current_owner.as_ref().map(|value| value.0.as_str()) != Some(owner)
+        || !shared.current(generation)
+        || !shared.begin_recovery(owner)
+    {
+        return false;
+    }
+    // Target the verified unique owner, never an activated or replacement
+    // service. No replay, even if the method reply is lost.
+    connection
+        .call_future(
+            Some(owner),
+            PATH,
+            WATCHER,
+            "RegisterStatusNotifierItem",
+            Some(&(path,).to_variant()),
+            Some(glib::VariantTy::UNIT),
+            DBusCallFlags::NO_AUTO_START,
+            500,
+        )
+        .await
+        .is_ok()
 }
