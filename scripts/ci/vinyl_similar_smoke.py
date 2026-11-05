@@ -162,8 +162,12 @@ def audit_wiki_treatment(rows, complete):
     assert late["wikiState"] == "ready" and late["wikiMetas"] == wiki_metas("61")
     assert late["vinylSimilarFixture"]["wikiReleased"] and late["vinylSimilarFixture"]["wikiHeldReturned"]
     assert wiki_reads(complete) == ["1", "1", "1", "59", "61"]
-    assert song_reads(complete) == song_reads(rows["playlist_route"])
-    assert playlist_reads(complete) == playlist_reads(rows["playlist_route"])
+    # Reopening vinyl restores the previously selected Similar tab. Its two
+    # scoped reads finish before the user changes tabs to Wiki.
+    assert song_reads(held) == [*song_reads(rows["playlist_route"]), "59"]
+    assert playlist_reads(held) == [*playlist_reads(rows["playlist_route"]), "59"]
+    assert song_reads(complete) == song_reads(held)
+    assert playlist_reads(complete) == playlist_reads(held)
 
 
 def audit_wiki_control(rows, complete):

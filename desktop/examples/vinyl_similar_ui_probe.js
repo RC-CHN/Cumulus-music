@@ -342,6 +342,11 @@
       await capture('playlist_route', latest, { openedPlaylist: '108' });
     }
     if (window.__vinylWikiProof) {
+      step = 'reopening vinyl restores the last recommendation tab';
+      await showLyrics();
+      await wait(() => lyrics()?.dataset.vinylTab === 'similar' && songState() === 'ready'
+        && equal(songIds(), ['84', '85', '86']) && playlistIds().length >= 6,
+        'restored Similar tab rereads both cards for seed 59');
       step = 'old Wiki read arrives after a new native play';
       await showWiki();
       await wait(async () => wikiState() === 'loading' && (await fixture('status')).wikiHolding,
