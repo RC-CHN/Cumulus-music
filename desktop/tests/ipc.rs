@@ -67,6 +67,9 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "scene_fm_home_leave",
             "scene_fm_autoplay_preference",
             "set_scene_fm_autoplay_preference",
+            "scene_fm_palette_read",
+            "scene_fm_palette_sample",
+            "scene_fm_palette_cancel",
             "copy_text",
         ] {
             assert_ipc_response(
@@ -213,6 +216,18 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","revision":"stale","key":"0:1:0"}),
         ),
         ("scene_fm_view", json!({"epoch":"0","refresh":true})),
+        (
+            "scene_fm_palette_read",
+            json!({"epoch":"0","revision":"1","voiceId":"601","pixelRatio":1.0}),
+        ),
+        (
+            "scene_fm_palette_sample",
+            json!({"epoch":"0","receipt":"old","width":1,"height":1,"rgba":[0,0,0,255]}),
+        ),
+        (
+            "scene_fm_palette_cancel",
+            json!({"epoch":"0","receipt":"old"}),
+        ),
         ("scene_fm_home_enter", json!({"epoch":"0"})),
         ("scene_fm_home_leave", json!({"epoch":"0","visit":"old"})),
         ("scene_fm_autoplay_preference", json!({"epoch":"0"})),
