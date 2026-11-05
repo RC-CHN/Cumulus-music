@@ -394,6 +394,18 @@ mod tests {
         let store = Arc::new(StateStore::open(root.path()).unwrap());
         let credentials = seed_or_restore_credentials(store.clone(), "t1", false).unwrap();
         assert!(seed_or_restore_credentials(store.clone(), "c", true).is_err());
+        let marker = store
+            .get(PROOF_MARKER.0, PROOF_MARKER.1, PROOF_MARKER.2)
+            .unwrap()
+            .unwrap();
+        store
+            .delete(PROOF_MARKER.0, PROOF_MARKER.1, PROOF_MARKER.2)
+            .unwrap();
+        // The fixed synthetic token alone cannot authorize fixture recovery.
+        assert!(seed_or_restore_credentials(store.clone(), "t1", true).is_err());
+        store
+            .put(PROOF_MARKER.0, PROOF_MARKER.1, PROOF_MARKER.2, &marker)
+            .unwrap();
         let snapshot = credentials
             .request_credentials(&ApiOrigin::Pc.url())
             .unwrap();
@@ -406,9 +418,5 @@ mod tests {
             )
             .unwrap();
         assert!(seed_or_restore_credentials(store.clone(), "t1", true).is_err());
-        store
-            .delete(PROOF_MARKER.0, PROOF_MARKER.1, PROOF_MARKER.2)
-            .unwrap();
-        assert!(seed_or_restore_credentials(store, "t1", true).is_err());
     }
 }
