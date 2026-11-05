@@ -1,6 +1,23 @@
 use std::ffi::c_void;
 
 unsafe extern "C" {
+    pub fn cumulus_stereo_zero_init(state: *mut c_void, rate: f32, capacity: u32) -> i32;
+    pub fn netease_stereo_zero_parameters(
+        state: *mut c_void,
+        presence: f32,
+        stereoizer: f32,
+        shaper: u32,
+    ) -> i32;
+    pub fn netease_stereo_zero_bypass(state: *mut c_void, bypass: u32) -> i32;
+    pub fn netease_stereo_zero_reset(state: *mut c_void) -> i32;
+    pub fn netease_stereo_zero_process(
+        state: *mut c_void,
+        data: *mut f32,
+        frames: usize,
+        dry: *mut f32,
+    ) -> i32;
+    pub fn netease_stereo_zero_history(state: *const c_void, history: *mut f32) -> i32;
+
     pub fn netease_rotate_init(
         state: *mut c_void,
         tables: *const f32,

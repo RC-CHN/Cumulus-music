@@ -1,0 +1,65 @@
+{
+  "schema": "cumulus-se-no-ambience-v1",
+  "dllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "fixtureSha256": "f66f9d6a49747b79d1d49956492da3e406cea13dd3515a9145d4295417dd5b6e",
+  "oracleSourceSha256": "d5037bd8b60063a5779ba56bf4b93505d7e28bbe82b3d6080715f26be29bb043",
+  "generatorSha256": "bc28ac0acb3ba33d896a3c703fdb00f538a9b28f292068ec47b2baeeb9ecb2ef",
+  "sourceReferences": [
+    "A82B0",
+    "B34C0",
+    "B28E0",
+    "B3060",
+    "A80D0",
+    "A85B0",
+    "A8550",
+    "B3990"
+  ],
+  "executedRoots": [
+    "B2030",
+    "B1780",
+    "B1AE0",
+    "B34C0",
+    "B3990",
+    "A85B0",
+    "A8550",
+    "A80D0"
+  ],
+  "initializationAdapter": "host reproduces A82B0 ctor/init/reset order and bank1 using bounded allocator/context; A82B0 global allocator entry itself is not executed",
+  "initialBank": 1,
+  "activeBank": 0,
+  "ambience": 0,
+  "frames": "1..capacity",
+  "channels": 2,
+  "capacities": "4..4096, multiples of four",
+  "inputPacking": "full-capacity planar f32 bits",
+  "outputPacking": "valid mid-transformed L then R; full padded tail not compared",
+  "statePacking": "parent side gain, applied presence, M then S five envelope/power pairs",
+  "ftz": "original wrapper enables FTZ during plugin processing; caller FTZ0/1 preserved",
+  "adapters": [
+    "allocator/free",
+    "block-context",
+    "TEB stack lower bound",
+    "PE mapping"
+  ],
+  "untouched": "original RX machine code, PE data/bank table, actual EQ/dynamics/environment initialization",
+  "excludes": [
+    "DllMain/imports/Windows CPU-init",
+    "sound device",
+    "services/accounts",
+    "ambience>0 PCM",
+    "custom banks"
+  ],
+  "compilerFlags": [
+    "-std=c11",
+    "-O2",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-ffp-contract=off",
+    "-fno-fast-math"
+  ],
+  "compiler": "cc (Ubuntu 15.2.0-16ubuntu1) 15.2.0",
+  "platform": "Linux-7.0.0-38-generic-x86_64-with-glibc2.43",
+  "caseCount": 42,
+  "blockCount": 378
+}

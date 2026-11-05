@@ -1,0 +1,135 @@
+Standalone SE without ambience: actual PCM component
+2026-11-05; official PC 3.1.42.205594 x64, neaudioeffects.dll SHA256
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be.
+
+Scope and source
+This restores the reachable ambience=0 / parameter-bank-0 processor, not the
+complete StereoEnhancer, environment/reverb child, material graph or desktop
+sound effect. There is no player attachment, UI switch, account API, permission
+expansion or DLL/Python dependency at runtime. No YesPlayMusic source is used.
+
+Primary evidence: recovered report 38-stereo-multiband-validation.txt; original
+B28E0 and split regions through B322D, A80D0, A8550, A85B0 and B3990. B34C0
+creates four EQs through 31ED -> AD4D0, the actual recovered nine-slot plugin,
+and two mono dynamics through C2AA0/C3450/C2B20. Serialized SE EQ blocks fill
+three slots; the remaining six retain their disabled defaults. The same PEQ
+and dynamics C implementations are reused, with their existing numerical order.
+The original seven-child initialization executes in the research oracle; only
+the ambience=0 PCM branch is compared. The environment child is not ported.
+
+A82B0 initializes bank 1 at 29C510. A85B0 selects bank 0 when ambience becomes
+0, reparses the child parameters and resets them. Reset preserves prior linear
+gains. Bank 1 and bank 0 have the same supported EQ/dynamics fields except the
+side dynamics input changes 1 dB -> 1.5 dB. Starting directly at the latter
+linear gain changed first-shaper-block PCM in the initial investigation (up to
+about 0.014); the implementation preserves the actual 1 dB previous gain.
+Parent side gain starts at zero, so its first enabled block also has a real
+ramp even when the requested stereoizer is zero. No flat-curve shortcut is used.
+
+Exact supported computation
+- Changed presence creates f32(presence * 0.6). Its difference from the last
+  applied increment adjusts M-main-EQ slot 1, using the native PEQ setter and
+  clamp. Bank 0 leaves this slot disabled: presence changes bookkeeping but
+  MUST NOT be made audible by silently enabling that filter.
+- M=L+R, S=L-R. S uses the existing native-shaped gain ramp towards
+  powf(10, f32(stereoizer * 0.05)). The SIMD prefix distributes over the rounded
+  multiple-of-four prefix; a short tail restarts from the old gain.
+- sshaper=true copies M/S independently, filters those copies with the bank-0
+  sidechain EQs, then feeds each original stream and its copy to its own mono
+  multiband dynamics. The recovered detector's per-block first-sample behavior
+  is retained. Disabling only sshaper retains child history for its next use.
+- M/S then pass their own main EQs. Ambience=0 reconstructs stereo directly.
+  Vector L uses M*0.5 + S*0.5; the scalar tail uses (M+S)*0.5. R uses
+  (M-S)*0.5. This ordering is deliberate, not a generic M/S replacement.
+- Bypass edges render wet and blend against dry across full block capacity,
+  not just valid frames. Re-enabling resets child filters/detectors while
+  preserving parent side/presence gains and child prior gain values. Explicit
+  reset has the same preservation. Stable bypass does not advance DSP state.
+- With no environment child, valid frames and the caller's EOF pass through;
+  there is no separate reverb-tail drain in this component.
+
+The C initialization uses typed numeric constants for the supported bank,
+not an embedded opaque proprietary bank blob or a user-supplied bank loader.
+No arbitrary ambience, alternate bank, response assets or environment structure
+can be passed to the production API. The official Equalizer.tsx sliders always
+write sshaper=true, ambience=1; this component does not implement those controls
+and is deliberately absent from that UI.
+
+Safe ownership and boundaries
+core/native/effects/netease_stereo_zero.c is compiled through the existing C11
+bridge. Layout kind 7 returns real sizeof/alignment, never an assumed Rust
+layout. Its four EQs, two dynamics and full-capacity scratch buffers are owned
+inside one aligned allocation. No borrowed native pointers, callbacks, asset
+lifetimes, allocation in the process function or cross-thread shared mutation
+are introduced. State may be moved between threads, not accessed concurrently.
+
+StereoNoAmbienceStage accepts stereo, integer 8000..384000 Hz rates, capacity
+4..4096 divisible by four, and 1..capacity valid frames. Unsupported shapes are
+rejected before allocating the native state. Non-multiple capacities can let
+original rounded SIMD stores cross a channel stride; they are not treated as
+safe originals. Zero-frame original dynamics behavior remains unverified and
+is rejected without advancing state. Only returned valid frames may be consumed;
+unused padded output is not part of the native PCM equality claim.
+
+Controls are presence[-10,10], stereoizer[0,10], bool spectrum shaper. NaN/Inf,
+wrong formats, invalid frames and unsupported controls reject before processing
+or changing a complete control tuple. Planar input/output is intentionally in
+place; the separate dry storage cannot overlap it, including partial overlaps.
+Safe Rust supplies exclusive, finite, full-capacity buffers. Finite extreme
+input can still overflow native arithmetic: any non-finite PCM/detector history
+silences the whole block and quarantines the stage. Reset does not repair that
+state; reconstruct it explicitly. These are defined community safety failures,
+not a claim to reproduce original undefined/invalid-input behavior.
+
+Executable flow
+cargo build --locked -p cumulus-core --example effect_dsp_render
+effect_dsp_render stereo-zero < request.json
+Request:
+{"sampleRate":48000,"maxFrames":64,"blocks":[
+ {"samples":[0.25,-0.125,0.5,0.125],
+  "controls":{"presence":0,"stereoizer":5,"sshaper":true},
+  "bypass":false,"reset":false,"end":true}]}
+Samples are interleaved f32-compatible numbers. Each response block has actual
+interleaved PCM, timing(validFrames/end), and side/presence/detector state.
+The response labels ambience=0 and completeGraph=false. Input is capped at
+16 MiB, 4096 blocks and 1,048,576 sample values; no partial output is printed
+on a later error. Unknown fields such as ambience=1 are rejected.
+
+Frozen original proof and limitations
+fixtures/effects-stereo-zero-official.json.gz contains 42 original streams,
+378 blocks, full synthetic planar inputs, valid PCM bits and 22 state floats
+per block. Coverage includes 8/44.1/48/96/384 kHz, capacity 4/64/512/4096,
+short 1/3/7-frame blocks, initial/changed gains, on/off/on shaper history,
+explicit reset, fade/steady bypass/re-enable, EOF, silence/subnormal input and
+caller FTZ both off/on. The original wrapper enables FTZ only while processing
+and restores the caller's FTZ bit. Every frozen valid PCM and state f32 bit
+matches on the local Linux x86_64/GCC15.2/glibc2.43 toolchain. This is not an
+all-input proof or a claim about MSVC/libm, physical speakers or Windows output.
+Manifest hashes record the DLL, oracle, generator, corpus, flags and adapters.
+
+Manual regeneration (never an automatic public CI step):
+python3 scripts/research/freeze_stereo_zero.py --dll /path/to/pinned/neaudioeffects.dll \
+  --output core/tests/fixtures/effects-stereo-zero-official.json.gz
+The script verifies the full source hash, maps the pinned PE, compiles the
+reviewed address-only native host, and runs each stream under unshare -Urn.
+Actual original child graph/math execute. The host reproduces A82B0's bank-1
+constructor/init/reset sequence through real B2030/B1780/B1AE0/B34C0/B3990;
+it does not call A82B0's global allocator entry itself. Adapters are
+allocation/free, block context, PE mapping and TEB stack lower bound. DllMain, Windows import/CPU
+initialization, audio hardware, services, accounts and ambience>0 PCM are not
+exercised. Official binaries, parameter blobs and original response assets are
+not committed or needed for the frozen public tests.
+
+Scoped tests: cargo test --locked -p cumulus-core --test effects_stereo_zero.
+The test also exercises the real interleaved CLI handler and invalid/failure
+boundaries; standalone executable output is separately compared against the
+frozen original case in .build/evidence/se-zero-1aa03507/report.json.
+Optional source-only memory proof:
+cc -std=c11 -O1 -g -Wall -Wextra -Werror -ffp-contract=off -fno-fast-math \
+  -fsanitize=address,undefined,float-cast-overflow -fno-omit-frame-pointer \
+  scripts/research/check_stereo_zero_memory.c -lm -o /tmp/check-stereo-zero
+ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=halt_on_error=1 /tmp/check-stereo-zero
+Local 300 blocks/15 formats passed with guards, unchanged state/input on
+rejected partial overlaps and invalid parameters, and no sanitizer/leak error.
+Whole-workspace checks, combined desktop proof and Windows execution are left
+to the integration batch; they are not claimed by this isolated delivery.

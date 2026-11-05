@@ -14,6 +14,7 @@ mod rotation;
 mod rotation_rate;
 mod rotation_resampled;
 mod state;
+mod stereo_zero;
 
 pub use block::{Format, PlanarBlock};
 pub use dynamics::MultibandDynamics;
@@ -29,3 +30,8 @@ pub use parametric::{ParametricBand, ParametricEq};
 pub use rotation::{RotationKernel, RotationResponses, RotationResult, RotationStage};
 pub use rotation_rate::{ROTATION_KERNEL_RATE, RotationRateConversion, RotationRatePlan};
 pub use rotation_resampled::{ResampledRotationStage, RotationRateConverter};
+
+pub use stereo_zero::{
+    StereoNoAmbienceControls, StereoNoAmbienceResult, StereoNoAmbienceSnapshot,
+    StereoNoAmbienceStage,
+};

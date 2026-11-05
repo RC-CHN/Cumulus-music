@@ -45,3 +45,15 @@ float. A glibc 2.39 versus 2.43 comparison isolated tanf as the sole cause of
 2296 differing valid PCM samples in the 102 multiband vectors. The single
 substitution restored exact PCM and detector history on both systems; no test
 tolerance was widened. See docs/dsp-platform-validation.json.
+
+netease_stereo_zero.c adds only the verified reachable ambience=0 StereoEnhancer
+branch from B28E0/A80D0 (PC 3.1.42.205594 x64). Four existing PEQs and two existing
+mono dynamics are composed with the original M/S, gain, reset and bypass order.
+Typed bank-0 constants preserve the initial bank-1 previous side input gain;
+no opaque bank blob or reverb code is included. Layout kind7 owns all children
+and scratch space. Integer rates, aligned stereo capacity and finite controls
+are checked; the Rust wrapper owns disjoint dry storage and quarantines any
+non-finite PCM/state. See docs/core-effects-stereo-zero.txt for exact native
+vectors, manual oracle/regenerator, valid-frame/padding limits and sanitizers.
+This does not implement ambience1, the official enhancement sliders or the full
+SE/effect graph. No live playback filter is enabled by this addition.

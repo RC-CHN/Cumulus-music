@@ -1,6 +1,7 @@
 /* Layout queries keep private recovered structs out of Rust's public ABI. */
 #include "netease_multiband.c"
 #include "netease_rotate.c"
+#include "netease_stereo_zero.c"
 
 size_t cumulus_dsp_size(unsigned kind) {
     switch(kind) {
@@ -11,6 +12,7 @@ size_t cumulus_dsp_size(unsigned kind) {
         case 4:return sizeof(NeteaseRotate);
         case 5:return sizeof(NeteaseRotateStage);
         case 6:return sizeof(NeteaseMultiband);
+        case 7:return sizeof(NeteaseStereoZero);
         default:return 0;
     }
 }
@@ -23,6 +25,7 @@ size_t cumulus_dsp_alignment(unsigned kind) {
         case 4:return _Alignof(NeteaseRotate);
         case 5:return _Alignof(NeteaseRotateStage);
         case 6:return _Alignof(NeteaseMultiband);
+        case 7:return _Alignof(NeteaseStereoZero);
         default:return 0;
     }
 }

@@ -195,3 +195,9 @@ effect_spatial_render material-resampled RESPONSES.bin MATERIAL.ncae 48000 /abso
 4109 帧输入分别比较 48000 Hz 的 4109 帧和 96000 Hz 的 3825 帧有效输出，
 并核对关闭时逐字节透传。仍仅渲染被选中的 Rotate3D 组件，不是 SE/完整音效图，
 不进入桌面实时播放器、Windows DLL 分发或物理声卡。
+
+2026-11-05: independently verified SE ambience=0 PCM is now a standalone safe
+component and executable tool. See core-effects-stereo-zero.txt. It preserves
+the reachable bank1->bank0 initialization transient and composes the existing
+PEQ/dynamics. Ambience1/reverb, the official fixed-ambience slider UI, live host
+attachment and the full StereoEnhancer graph remain outside that proof.

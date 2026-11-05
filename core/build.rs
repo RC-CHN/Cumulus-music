@@ -16,4 +16,5 @@ fn main() {
     println!("cargo:rerun-if-changed=native/effects/netease_dsp.c");
     println!("cargo:rerun-if-changed=native/effects/netease_multiband.c");
     println!("cargo:rerun-if-changed=native/effects/netease_rotate.c");
+    println!("cargo:rerun-if-changed=native/effects/netease_stereo_zero.c");
 }
