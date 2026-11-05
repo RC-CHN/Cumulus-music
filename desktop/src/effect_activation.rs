@@ -52,6 +52,7 @@ enum Phase {
     Prepared,
     Unsupported,
     Configured,
+    BypassedForSource,
     Deferred,
     PausedLocally,
     ProcessorFailed,
@@ -185,10 +186,13 @@ impl State {
                         can_resume = status.is_detached();
                         can_pause = matches!(
                             status,
-                            ParametricBindingStatus::Configured | ParametricBindingStatus::Deferred
+                            ParametricBindingStatus::Configured
+                                | ParametricBindingStatus::BypassedForSource
+                                | ParametricBindingStatus::Deferred
                         );
                         phase = match status {
                             ParametricBindingStatus::Configured => Phase::Configured,
+                            ParametricBindingStatus::BypassedForSource => Phase::BypassedForSource,
                             ParametricBindingStatus::Deferred => Phase::Deferred,
                             ParametricBindingStatus::ProcessorFailed => Phase::ProcessorFailed,
                             ParametricBindingStatus::Absent
@@ -611,7 +615,9 @@ pub async fn effect_peq_pause<R: tauri::Runtime>(
         client
             .inspect_native_bound_parametric(&epoch, target)
             .await?,
-        ParametricBindingStatus::Configured | ParametricBindingStatus::Deferred
+        ParametricBindingStatus::Configured
+            | ParametricBindingStatus::BypassedForSource
+            | ParametricBindingStatus::Deferred
     ) {
         return Err(Error::StaleResponse.into());
     }

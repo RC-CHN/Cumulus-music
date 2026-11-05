@@ -124,6 +124,7 @@ pub struct Device {
     pub parametric_attached: AtomicBool,
     pub parametric_bypassed: AtomicBool,
     pub parametric_bypass_fail: AtomicBool,
+    pub parametric_restore_fail: AtomicBool,
     pub parametric_bypassed_at_unpause: Mutex<Vec<bool>>,
     pub parametric_clear_fail: AtomicBool,
     pub parametric_poll_fault: AtomicBool,
@@ -161,6 +162,7 @@ impl Default for Device {
             parametric_attached: AtomicBool::new(false),
             parametric_bypassed: AtomicBool::new(false),
             parametric_bypass_fail: AtomicBool::new(false),
+            parametric_restore_fail: AtomicBool::new(false),
             parametric_bypassed_at_unpause: Mutex::new(Vec::new()),
             parametric_clear_fail: AtomicBool::new(false),
             parametric_poll_fault: AtomicBool::new(false),
@@ -233,6 +235,19 @@ impl AudioEngine for Engine {
         if self.0.parametric_attached.load(Ordering::SeqCst) {
             self.0.parametric_bypassed.store(true, Ordering::SeqCst);
         }
+        Ok(())
+    }
+    fn restore_parametric_component(
+        &mut self,
+        plan: cumulus_core::effects::parametric::ParametricPlan,
+    ) -> Result<()> {
+        assert!(plan.enabled());
+        assert!(self.0.parametric_attached.load(Ordering::SeqCst));
+        assert!(self.0.parametric_bypassed.load(Ordering::SeqCst));
+        if self.0.parametric_restore_fail.load(Ordering::SeqCst) {
+            return Err(Error::State("injected parametric restore failure"));
+        }
+        self.0.parametric_bypassed.store(false, Ordering::SeqCst);
         Ok(())
     }
     fn clear_parametric_component(&mut self) -> Result<()> {

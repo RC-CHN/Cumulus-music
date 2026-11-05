@@ -131,6 +131,12 @@ impl AudioEngine for Engine {
     fn apply_parametric_component(&mut self, plan: ParametricPlan) -> Result<bool> {
         self.inner.apply_parametric_component(plan)
     }
+    fn bypass_parametric_component(&mut self) -> Result<()> {
+        self.inner.bypass_parametric_component()
+    }
+    fn restore_parametric_component(&mut self, plan: ParametricPlan) -> Result<()> {
+        self.inner.restore_parametric_component(plan)
+    }
     fn clear_parametric_component(&mut self) -> Result<()> {
         let attached = self.inner.parametric_equalizer_stats().is_ok();
         self.inner.clear_parametric_component()?;

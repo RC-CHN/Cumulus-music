@@ -30,6 +30,7 @@ const current = computed(() => view.value?.equalizer);
 const parametric = computed(() => view.value?.boundParametric);
 const parametricStatus = {
   configured: '播放器已配置独立参数均衡。',
+  bypassed_for_source: '当前音源已旁路独立参数均衡。',
   deferred: '独立参数均衡等待音频加载。',
   detach_required: '独立参数均衡需要清理。',
   processor_failed: '独立参数均衡处理失败，已在本机停用。',

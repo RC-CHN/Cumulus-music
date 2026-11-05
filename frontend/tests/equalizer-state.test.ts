@@ -190,6 +190,10 @@ test('footer reports bound PEQ even while the ordinary equalizer is off', () => 
     state: 'configured',
     label: '独立参数均衡已配置',
   });
+  assert.deepEqual(effectLauncher(view(), 'bypassed_for_source', true), {
+    state: 'off',
+    label: '当前音源已旁路独立参数均衡',
+  });
   assert.deepEqual(effectLauncher(view(), 'deferred'), {
     state: 'pending',
     label: '独立参数均衡等待音频加载',

@@ -4,6 +4,7 @@ use libloading::Library;
 use std::path::{Path, PathBuf};
 
 type Bypass = unsafe extern "C" fn(u32) -> i32;
+type Restore = unsafe extern "C" fn(u32, *const PeqOperation, u32) -> i32;
 type Create = unsafe extern "C" fn(*const PeqOperation, u32, *mut u32) -> i32;
 
 /// Owns one immutable material component, independent of GEQ/loudness.
@@ -13,6 +14,7 @@ pub struct ParametricHost {
     id: u32,
     stats: abi::Stats,
     bypass: Option<Bypass>,
+    restore: Option<Restore>,
     release: abi::Release,
 }
 fn status(code: i32) -> Result<()> {
@@ -59,6 +61,10 @@ impl ParametricHost {
                 .get::<Bypass>(b"cumulus_peq_bypass_v1\0")
                 .ok()
                 .map(|f| *f);
+            let restore = library
+                .get::<Restore>(b"cumulus_peq_restore_v1\0")
+                .ok()
+                .map(|f| *f);
             let (operations, count) = plan.operations();
             let mut id = 0;
             status(create(operations.as_ptr(), count, &mut id))?;
@@ -71,6 +77,7 @@ impl ParametricHost {
                 id,
                 stats,
                 bypass,
+                restore,
                 release,
             })
         }
@@ -80,6 +87,16 @@ impl ParametricHost {
         let bypass = self.bypass.ok_or(Error::State("PEQ bypass ABI missing"))?;
         // SAFETY: optional symbol belongs to our retained, version-checked library.
         status(unsafe { bypass(self.id) })
+    }
+
+    pub fn restore(&self, plan: ParametricPlan) -> Result<()> {
+        let restore = self
+            .restore
+            .ok_or(Error::State("PEQ restore ABI missing"))?;
+        let (operations, count) = plan.operations();
+        // SAFETY: owned bounded operations are read only while the retained
+        // ABI-checked function runs.
+        status(unsafe { restore(self.id, operations.as_ptr(), count) })
     }
 
     pub fn stats(&self) -> Result<abi::EqualizerStats> {

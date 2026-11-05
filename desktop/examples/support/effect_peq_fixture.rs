@@ -278,6 +278,9 @@ impl AudioEngine for Audio {
         trace.stats = Some(after);
         Ok(())
     }
+    fn restore_parametric_component(&mut self, plan: ParametricPlan) -> Result<()> {
+        self.engine.restore_parametric_component(plan)
+    }
     fn clear_parametric_component(&mut self) -> Result<()> {
         self.engine.clear_parametric_component()?;
         let mut trace = TRACE.lock().unwrap();

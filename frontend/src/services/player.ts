@@ -48,6 +48,7 @@ export interface Timeline {
 export type BoundParametricStatus =
   | 'deferred'
   | 'configured'
+  | 'bypassed_for_source'
   | 'detach_required'
   | 'processor_failed';
 
@@ -56,7 +57,7 @@ export interface DeviceParametricView {
   model: number;
   activationId: string;
   modelName?: string;
-  status: BoundParametricStatus | 'paused_locally' | 'bypassed_for_source';
+  status: BoundParametricStatus | 'paused_locally';
   comparison?: { playId: string; receipt: string };
   selectionSaveFailed?: boolean;
 }

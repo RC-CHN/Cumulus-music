@@ -650,6 +650,15 @@ impl AudioEngine for MpvEngine {
         }
         Ok(())
     }
+    fn restore_parametric_component(
+        &mut self,
+        plan: crate::effects::parametric::ParametricPlan,
+    ) -> Result<()> {
+        self.parametric
+            .as_ref()
+            .ok_or(Error::State("parametric equalizer adapter is not attached"))?
+            .restore(plan)
+    }
     fn clear_parametric_component(&mut self) -> Result<()> {
         self.detach_parametric_equalizer()
     }

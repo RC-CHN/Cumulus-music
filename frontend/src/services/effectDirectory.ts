@@ -56,6 +56,7 @@ export type EffectPeqPhase =
   | 'prepared'
   | 'unsupported'
   | 'configured'
+  | 'bypassed_for_source'
   | 'deferred'
   | 'paused_locally'
   | 'processor_failed'

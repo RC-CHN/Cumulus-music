@@ -397,3 +397,62 @@ fn native_late_loudness_keeps_the_combined_pcm_transition() -> Result<()> {
     assert!((restored - dry).abs() < 0.4);
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicit trusted filter library and libmpv with LADSPA"]
+fn native_parametric_source_bypass_restores_without_replacing_filter() -> Result<()> {
+    let library = PathBuf::from(std::env::var_os("CUMULUS_PROOF_EFFECT_FILTER").ok_or(
+        Error::InvalidInput("supply trusted filter library via CUMULUS_PROOF_EFFECT_FILTER"),
+    )?);
+    let root = tempfile::tempdir()?;
+    let media = root.path().join("source.wav");
+    wav(&media)?;
+    let plan = ParametricPlan::from_material(&json!({
+        "aev2":{"peq":{"on":true,"gain":-8,"f":[{"band":1,"type":6,"freq":440,"gain":-4,"q":0.7}]}}
+    }))?
+    .unwrap();
+    let mut engine = MpvEngine::open(MpvConfig {
+        null_output: true,
+        ..Default::default()
+    })?
+    .with_effects_library(library);
+    engine.control(&["set", "audio-buffer", "0.12"])?;
+    assert!(engine.apply_parametric_component(plan)?);
+    let loaded = engine.load(
+        LoadRequest::new(MediaInput::File(media)),
+        &Cancellation::default(),
+    )?;
+    engine.pause(false)?;
+    let filter = engine.property(c"af").unwrap();
+    let check = |engine: &mut MpvEngine, pos, revision| -> Result<EqualizerStats> {
+        let deadline = Instant::now() + Duration::from_secs(4);
+        loop {
+            let native = engine.poll()?;
+            let stats = engine.parametric_equalizer_stats()?;
+            assert_eq!(native.entry_id, Some(loaded.entry_id));
+            assert_eq!(engine.property(c"af").unwrap(), filter);
+            assert_eq!(stats.failed_blocks, 0);
+            if stats.revision == revision
+                && stats.observed_revision == revision
+                && native.position.is_some_and(|position| position >= pos)
+            {
+                return Ok(stats);
+            }
+            assert!(
+                Instant::now() < deadline,
+                "PEQ revision {revision} not observed"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    let wet = check(&mut engine, 0.30, 1)?;
+    engine.bypass_parametric_component()?;
+    let dry = check(&mut engine, 0.80, 2)?;
+    engine.restore_parametric_component(plan)?;
+    let restored = check(&mut engine, 1.40, 3)?;
+    assert!(wet.processed_samples > 1024);
+    assert!(restored.processed_samples > dry.processed_samples + 1024);
+    assert_eq!(wet.instances_created, dry.instances_created);
+    assert_eq!(wet.instances_created, restored.instances_created);
+    Ok(())
+}

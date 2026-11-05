@@ -310,6 +310,12 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     fn bypass_parametric_component(&mut self) -> Result<()> {
         self.inner.bypass_parametric_component()
     }
+    fn restore_parametric_component(
+        &mut self,
+        plan: crate::effects::parametric::ParametricPlan,
+    ) -> Result<()> {
+        self.inner.restore_parametric_component(plan)
+    }
     fn clear_parametric_component(&mut self) -> Result<()> {
         self.inner.clear_parametric_component()
     }

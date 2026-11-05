@@ -133,6 +133,7 @@ export function effectLauncher(
   if (!parametric) return equalizer;
   const label = {
     configured: processing ? '独立参数均衡正在处理音频' : '独立参数均衡已配置',
+    bypassed_for_source: '当前音源已旁路独立参数均衡',
     deferred: '独立参数均衡等待音频加载',
     detach_required: '独立参数均衡需要清理',
     processor_failed: '独立参数均衡处理失败，已在本机停用',
@@ -147,7 +148,9 @@ export function effectLauncher(
           ? 'processing'
           : parametric === 'deferred'
             ? 'pending'
-            : 'configured',
+            : parametric === 'bypassed_for_source'
+              ? equalizer.state
+              : 'configured',
     label:
       equalizer.state === 'off' || equalizer.state === 'loading'
         ? label

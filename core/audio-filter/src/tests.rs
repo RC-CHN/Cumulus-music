@@ -575,8 +575,26 @@ fn parametric_bypass_keeps_wet_history_for_the_recovered_transition_then_goes_dr
     assert_eq!(transition, block.samples());
     assert_ne!(transition, pcm);
     assert_eq!(instance.process(&pcm, true), pcm);
+
+    assert_ne!(
+        unsafe { cumulus_peq_restore_v1(id, operations.as_ptr(), 1) },
+        0
+    );
+    assert_eq!(config.stats().revision, 2);
+    assert_eq!(
+        unsafe { cumulus_peq_restore_v1(id, operations.as_ptr(), 2) },
+        0
+    );
+    ParametricPlan::from_operations(&operations)
+        .unwrap()
+        .apply(&mut reference)
+        .unwrap();
+    block.load_interleaved(&pcm).unwrap();
+    reference.process(&mut block, pcm.len()).unwrap();
+    assert_eq!(instance.process(&pcm, false), block.samples());
+    assert_ne!(instance.process(&pcm, true), pcm);
     let stats = config.stats();
     assert_eq!(stats.instances_created, 1);
-    assert_eq!(stats.observed_revision, 2);
+    assert_eq!(stats.observed_revision, 3);
     assert_eq!(stats.failed_blocks, 0);
 }

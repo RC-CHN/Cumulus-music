@@ -121,6 +121,13 @@ pub trait AudioEngine: Send {
     fn bypass_parametric_component(&mut self) -> Result<()> {
         Ok(())
     }
+    /// Restore the existing native component without replacing its graph node.
+    fn restore_parametric_component(
+        &mut self,
+        _: crate::effects::parametric::ParametricPlan,
+    ) -> Result<()> {
+        Err(crate::Error::State("parametric restore is unavailable"))
+    }
     fn clear_parametric_component(&mut self) -> Result<()> {
         Ok(())
     }

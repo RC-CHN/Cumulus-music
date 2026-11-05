@@ -2354,3 +2354,6 @@ async fn native_activation_consumes_the_receipt_and_submits_the_exact_binding() 
     );
     assert_eq!(api.calls().len(), 6);
 }
+
+#[path = "support/bound_parametric_source.rs"]
+mod bound_parametric_source;

@@ -31,6 +31,7 @@ const labels: Record<EffectPeqPhase, string> = {
   prepared: '已验证为独立参数均衡组件，可启用',
   unsupported: '此音效不支持作为独立参数均衡组件启用',
   configured: '播放器已确认配置独立参数均衡',
+  bypassed_for_source: '当前音源已旁路独立参数均衡，登记仍保留。',
   deferred: '等待音频加载后应用',
   paused_locally: '本机音效已暂停，登记仍保留。',
   processor_failed: '音效处理失败，已在本机停用，登记仍保留。',
@@ -125,6 +126,7 @@ watch(
     const phase = view.value?.phase;
     if (
       phase !== 'configured' &&
+      phase !== 'bypassed_for_source' &&
       phase !== 'deferred' &&
       phase !== 'paused_locally' &&
       phase !== 'processor_failed' &&

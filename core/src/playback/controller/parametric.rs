@@ -33,6 +33,7 @@ pub enum ParametricBindingStatus {
     Absent,
     Deferred,
     Configured,
+    BypassedForSource,
     DetachRequired,
     ProcessorFailed,
 }
@@ -164,6 +165,7 @@ pub(super) struct State {
     possibly_attached: bool,
     detach_required: bool,
     failed_binding: Option<(SessionToken, BoundParametricTarget)>,
+    bound_bypassed_for_source: bool,
     device: Option<DeviceActivation>,
     device_bypassed_for_source: bool,
     device_paused: bool,
@@ -269,13 +271,21 @@ impl State {
         {
             Some(Status::DetachRequired)
         } else if self.applied.is_some() {
-            Some(Status::Configured)
+            Some(self.attached_bound_status())
         } else if matches!(self.deferred, Some(Selection::Bound(_))) {
             Some(Status::Deferred)
         } else if self.failed_binding.is_some() {
             Some(Status::ProcessorFailed)
         } else {
             None
+        }
+    }
+
+    fn attached_bound_status(&self) -> ParametricBindingStatus {
+        if self.bound_bypassed_for_source {
+            ParametricBindingStatus::BypassedForSource
+        } else {
+            ParametricBindingStatus::Configured
         }
     }
 
@@ -468,7 +478,7 @@ impl Actor {
                 return if !self.parametric.detach_required
                     && binding.with_current(&self.session, &request.token, |_| Ok(())).is_ok()
                 {
-                    Status::Configured
+                    self.parametric.attached_bound_status()
                 } else {
                     Status::DetachRequired
                 };
@@ -732,7 +742,44 @@ impl Actor {
             }
         }
         self.parametric_supervise().await?;
-        self.parametric_device_source(source).await
+        self.parametric_device_source(source).await?;
+        self.parametric_bound_source(source).await
+    }
+
+    async fn parametric_bound_source(
+        &mut self,
+        source: &crate::playback::source::ResolvedSource,
+    ) -> Result<()> {
+        let Some(binding) = self.parametric.applied.clone() else {
+            return Ok(());
+        };
+        let bypassed = self.parametric.bound_bypassed_for_source;
+        let special = source.info["kind"] == "online" && special_effect_quality(source);
+        if !bypassed && !special {
+            return Ok(());
+        }
+        self.parametric.reset_activity();
+        let (session, token) = (self.session.clone(), self.token.clone());
+        let outcome = super::engine(self.engine.clone(), self.guard(), move |engine| {
+            binding.with_current(&session, &token, |plan| {
+                Ok(if bypassed {
+                    engine.restore_parametric_component(plan)
+                } else {
+                    engine.bypass_parametric_component()
+                })
+            })
+        })
+        .await;
+        match outcome {
+            Ok(Ok(())) => self.parametric.bound_bypassed_for_source = !bypassed,
+            Ok(Err(_)) => self.detach_failed_parametric().await?,
+            Err(_) => {
+                // Lost authority, or a superseded native operation. Confirm
+                // removal rather than trying to resume this exact binding.
+                self.parametric_reset().await?;
+            }
+        }
+        self.session.check_generation(&self.token)
     }
 
     async fn parametric_device_source(
@@ -745,12 +792,7 @@ impl Actor {
         let Some(activation) = self.parametric.device.as_ref() else {
             return Ok(());
         };
-        // M/163 maps the authorized response's level, not the requested level
-        // or the response's physical br, to M/308's playInfo.bitrate.
-        let special = matches!(
-            source.actual_quality(),
-            Some("dolby" | "jyeffect" | "sky" | "vivid")
-        );
+        let special = special_effect_quality(source);
         let bypassed = self.parametric.device_bypassed_for_source;
         if special && !bypassed {
             self.parametric.reset_activity();
@@ -983,6 +1025,7 @@ impl Actor {
     }
 
     fn parametric_record_applied_clear(&mut self) {
+        self.parametric.bound_bypassed_for_source = false;
         if let Some(binding) = self.parametric.applied.take() {
             self.parametric.record_clear(&self.token, &binding);
         }
@@ -1022,4 +1065,13 @@ impl Actor {
         self.parametric.release_unused_fence();
         Ok(())
     }
+}
+
+fn special_effect_quality(source: &crate::playback::source::ResolvedSource) -> bool {
+    // M/163 maps the authorized response's level, not the requested level
+    // or the response's physical br, to M/308's playInfo.bitrate.
+    matches!(
+        source.actual_quality(),
+        Some("dolby" | "jyeffect" | "sky" | "vivid")
+    )
 }
