@@ -63,6 +63,10 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "relay_command",
             "relay_setting_command",
             "catalog_membership",
+            "scene_fm_home_enter",
+            "scene_fm_home_leave",
+            "scene_fm_autoplay_preference",
+            "set_scene_fm_autoplay_preference",
             "copy_text",
         ] {
             assert_ipc_response(
@@ -209,9 +213,16 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             json!({"epoch":"0","revision":"stale","key":"0:1:0"}),
         ),
         ("scene_fm_view", json!({"epoch":"0","refresh":true})),
+        ("scene_fm_home_enter", json!({"epoch":"0"})),
+        ("scene_fm_home_leave", json!({"epoch":"0","visit":"old"})),
+        ("scene_fm_autoplay_preference", json!({"epoch":"0"})),
+        (
+            "set_scene_fm_autoplay_preference",
+            json!({"epoch":"0","enabled":true}),
+        ),
         (
             "scene_fm_command",
-            json!({"epoch":"0","command":{"kind":"automatic","revision":"1"}}),
+            json!({"epoch":"0","command":{"kind":"home_automatic","revision":"1","visit":"old"}}),
         ),
         (
             "fm_discovery",
