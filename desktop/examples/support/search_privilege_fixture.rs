@@ -117,11 +117,15 @@ pub fn response(path: &str, args: &Value, cached: bool) -> Option<Result<Value>>
 fn comprehensive() -> Value {
     let songs = (601..=607)
         .map(|id| {
-            let extension = if id == 601 {
-                json!({"privilege":{"st":-200},
-                    "noCopyrightRcmd":{"type":3,"expInfo":{"mvPlay":true},"mvInfo":{"id":955}}})
-            } else {
-                json!({"privilege":{"st":0}})
+            let extension = match id {
+                601 => json!({"privilege":{"st":-200,"flag":4096},
+                    "noCopyrightRcmd":{"type":3,"expInfo":{"mvPlay":true},"mvInfo":{"id":955}}}),
+                602 => json!({"privilege":{"st":0,"maxbr":320001}}),
+                603 => json!({"privilege":{"st":0,"flag":462848}}),
+                604 => json!({"privilege":{"st":0,"flag":393216}}),
+                605 => json!({"privilege":{"st":0,"flag":2097152,"maxbr":6999000}}),
+                606 => json!({"privilege":{"st":0,"fee":1,"flag":131072}}),
+                _ => json!({"privilege":{"st":0}}),
             };
             json!({"type":"song",
                 "baseInfo":{"simpleSongData":{"id":id,"name":format!("合成会员歌曲 {id}"),
@@ -143,10 +147,18 @@ fn privileges() -> Value {
     let rows = (601..=606)
         .map(|id| {
             let mut row = json!({"id":id,"st":0,"fee":0});
-            if id == 601 {
-                row["fee"] = json!(1);
-                row["freeTrialPrivilege"] = json!({"userConsumable":true,"resConsumable":true,
-                    "freeLimitTagType":"VIP_AND_FREE_TAG"});
+            match id {
+                601 => {
+                    row["fee"] = json!(1);
+                    row["flag"] = json!(65536);
+                    row["freeTrialPrivilege"] = json!({"userConsumable":true,"resConsumable":true,
+                        "freeLimitTagType":"VIP_AND_FREE_TAG"});
+                }
+                602 => row["flag"] = json!(262144),
+                604 => row["maxbr"] = json!(1998000),
+                605 => row["flag"] = json!(4096),
+                606 => row["flag"] = json!(131072),
+                _ => {}
             }
             row
         })

@@ -64,6 +64,9 @@ def main():
     assert first['labels']['mv'].startswith('查看替代 MV') and not first['refreshes']
     assert changed['labels']['mv'].startswith('播放 MV')
     assert changed['labels']['vip'] == 'VIP' and changed['labels']['free']
+    assert first['quality'] == ['hires', 'sq', 'jymaster', 'sky', None, None]
+    assert changed['quality'] == [None, 'sky', None, 'sq', 'hires', 'jyeffect']
+    assert rows['same_tuple']['quality'] == rows['failed_privilege_read']['quality'] == changed['quality']
     assert changed['refreshes'] == [{'ok': True, 'fromNativeObservation': True,
         'ids': [str(i) for i in range(601, 607)], 'mvId': '951'}]
     assert rows['same_tuple']['refreshes'] == changed['refreshes']

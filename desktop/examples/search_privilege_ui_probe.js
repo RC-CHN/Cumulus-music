@@ -30,6 +30,11 @@
     free: [...(card()?.querySelectorAll('.search-original-tag') ?? [])]
       .some((tag) => tag.textContent === '限免'),
   });
+  const cardQuality = () => [...panel().querySelectorAll('.search-track-card[data-result-key]')]
+    .map((row) => row.querySelector('[data-search-quality-badge]')?.dataset.searchQualityBadge ?? null);
+  const coldQuality = ['hires', 'sq', 'jymaster', 'sky', null, null];
+  const freshQuality = [null, 'sky', null, 'sq', 'hires', 'jyeffect'];
+  const qualityMatches = (expected) => JSON.stringify(cardQuality()) === JSON.stringify(expected);
   const bar = () => one('.playerbar');
   const footer = (name) => bar()?.querySelector(`button[aria-label="${name}"]`);
   const played = (epoch) => invoke('player_snapshot', { epoch });
@@ -71,6 +76,7 @@
     await emit(`ux_${String(++count).padStart(2, '0')}_${label}`, {
       labels: labels(), focused: document.activeElement.getAttribute('aria-label'),
       native, sameDom, scrollTop: panel().scrollTop,
+      quality: cardQuality(),
       rowKeys: [...panel().querySelectorAll('.search-track-card[data-result-key]')]
         .map((row) => row.dataset.resultKey),
       refreshes,
@@ -124,6 +130,7 @@
       'cold comprehensive search and stable card');
     assert(mv()?.startsWith('查看替代 MV') && refreshes.length === 0,
       'restricted initial card comes from search, without extra privilege request');
+    assert(qualityMatches(coldQuality), 'V3 track-only quality order, no bitrate-only Vivid, and VIP precedence');
     targetPanel = panel();
     original = card();
     focused = more();
@@ -146,7 +153,8 @@
 
     await membership(epoch);
     await wait(() => refreshes.length === 1 && mv()?.startsWith('播放 MV') &&
-      labels().vip === 'VIP' && labels().free, 'native rights event updates the ordinary preview');
+      labels().vip === 'VIP' && labels().free && qualityMatches(freshQuality),
+      'native rights event updates the ordinary preview and replaces/removes quality tags');
     assert(refreshes[0].fromNativeObservation && refreshes[0].ok &&
       refreshes[0].mvId === '951' && refreshes[0].ids.join(',') === '601,602,603,604,605,606',
       'precisely six ordinary rows and original MV were projected by Rust');
@@ -154,14 +162,16 @@
 
     await membership(epoch);
     await sleep(480);
-    assert(refreshes.length === 1 && mv()?.startsWith('播放 MV'), 'same tuple does not refresh');
+    assert(refreshes.length === 1 && mv()?.startsWith('播放 MV') && qualityMatches(freshQuality),
+      'same tuple does not refresh');
     await capture('same_tuple');
 
     await membership(epoch);
     await wait(() => refreshes.length === 2, 'rights event read failure observed');
     await sleep(480);
     assert(refreshes.length === 2 && refreshes[1].fromNativeObservation && !refreshes[1].ok &&
-      mv()?.startsWith('播放 MV') && labels().free, 'failed privilege read retains prior labels and does not retry');
+      mv()?.startsWith('播放 MV') && labels().free && qualityMatches(freshQuality),
+      'failed privilege read retains prior labels and does not retry');
     await capture('failed_privilege_read');
 
     const playAll = card().closest('.search-result-section')
