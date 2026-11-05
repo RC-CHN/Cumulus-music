@@ -48,6 +48,16 @@ fn paused_credit_applies_controls_but_decoder_and_reader_counts_cannot_advance_n
         control.observe(8, Some(0.0), false, false),
         Err(Error::StaleResponse)
     ));
+    // A real settled zero clock still counts as the first sync. A later
+    // seek signal while paused must not reopen startup buffering.
+    control.observe(7, Some(0.0), true, false).unwrap();
+    control.observe(7, Some(0.0), true, true).unwrap();
+    let revision = control.configure(plan(6)).unwrap();
+    control
+        .wait_applied(revision, Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(control.snapshot().unwrap().produced_frames, 0);
+    assert!(matches!(done.try_recv(), Err(mpsc::TryRecvError::Empty)));
     control.cancel();
     assert!(matches!(
         done.recv_timeout(Duration::from_secs(2)).unwrap(),
@@ -115,20 +125,29 @@ fn producer_failure_zeros_even_an_already_encoded_partial_read_window() {
 
 #[test]
 fn first_native_sync_can_fill_two_real_packets_without_forging_a_clock_or_loosening_later_seek() {
+    assert_first_native_sync(false, 0);
+}
+
+#[test]
+fn paused_replacement_can_prefill_two_native_packets_without_advancing_the_old_seek_clock() {
+    assert_first_native_sync(true, 22_050);
+}
+
+fn assert_first_native_sync(paused: bool, first: u64) {
     use crate::effects::dsp::PlanarBlock;
     let rate = 44100u32;
     let (mut reader, control, shared) =
-        channel(rate, 0, 200000, Cancellation::default(), None).unwrap();
+        channel(rate, first, 200000, Cancellation::default(), None).unwrap();
     control.publish_sink().unwrap();
     control.bind_entry(77).unwrap();
-    control.observe(77, Some(0.0), false, true).unwrap();
+    control.observe(77, Some(0.0), paused, true).unwrap();
     let worker_shared = shared.clone();
     let worker = thread::spawn(move || {
         let mut graph =
             LocalStereoSubgraph::new(Format::new(rate as f32, 2, 2048).unwrap(), plan(3)).unwrap();
         let mut block = PlanarBlock::new(graph.format());
         let mut output = [0.0; 4096];
-        let mut decoded = 0;
+        let mut decoded = first;
         loop {
             match worker_shared.wait_for_credit(|control| match control {
                 StereoGraphControl::Cold(plan) => graph.configure(plan),
@@ -173,11 +192,14 @@ fn first_native_sync_can_fill_two_real_packets_without_forging_a_clock_or_loosen
         .unwrap();
     let initial = control.snapshot().unwrap();
     assert_eq!(initial.native_output_frame, 0);
+    assert_eq!(initial.native_source_frame, first);
+    assert_eq!(initial.paused, paused);
+    assert!(initial.seeking);
     assert_eq!(initial.delivered_frames, u64::from((rate / 8) * 2));
     assert!(initial.produced_frames <= u64::from(rate.div_ceil(4)) + 2048);
     assert!(!initial.graph_end);
-    control.observe(77, Some(0.05), false, false).unwrap();
-    control.observe(77, Some(0.05), false, true).unwrap();
+    control.observe(77, Some(0.05), paused, false).unwrap();
+    control.observe(77, Some(0.05), paused, true).unwrap();
     let revision = control.configure(plan(7)).unwrap();
     control
         .wait_applied(revision, Duration::from_secs(2))

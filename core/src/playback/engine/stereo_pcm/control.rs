@@ -57,6 +57,7 @@ pub(super) struct State {
     pub(super) entry: Option<i64>,
     pub(super) paused: bool,
     seeking: bool,
+    native_clock_observed: bool,
     pub(super) end: bool,
     pub(super) failed: bool,
     controls: VecDeque<(u64, StereoGraphControl)>,
@@ -138,6 +139,7 @@ fn channel_with_controls(
             entry: None,
             paused: true,
             seeking: false,
+            native_clock_observed: false,
             end: false,
             failed: false,
             controls,
@@ -208,6 +210,12 @@ impl Shared {
             }
             let credit = if state.entry.is_none() {
                 self.startup
+            } else if state.paused && state.seeking && !state.native_clock_observed {
+                // FILE_LOADED can precede AO startup even while paused.
+                // Supply the same bounded lead as unpaused startup so the
+                // native demuxer can finish its first sync. This allowance
+                // ends at the first valid clock sample (even at time zero).
+                self.lead
             } else if state.paused || (state.seeking && state.native > 0) {
                 state.produced
             } else {
@@ -428,6 +436,7 @@ impl StereoPcmControl {
             // delivered. Do not convert inconsistent/native-seek values into
             // new producer credit.
             if frames <= state.delivered as f64 {
+                state.native_clock_observed = true;
                 state.native = state.native.max(frames as u64);
             }
         }

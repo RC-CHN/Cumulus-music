@@ -722,7 +722,9 @@ impl Actor {
                     return Err(error);
                 }
                 self.loaded.as_mut().expect("checked").media = media;
-                self.native_seeking = false;
+                // The new entry has loaded, but only its matching native
+                // poll can report that startup synchronization is complete.
+                self.native_seeking = true;
                 self.deferred_events.clear();
             }
             Ok(None) => {}

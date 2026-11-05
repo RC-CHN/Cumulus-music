@@ -323,7 +323,7 @@ impl Actor {
                     return Err(error);
                 }
                 self.loaded.as_mut().expect("checked").media = media;
-                self.native_seeking = false;
+                self.native_seeking = true;
                 self.deferred_events.clear();
             }
             Ok(None) => {}
