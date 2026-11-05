@@ -293,6 +293,21 @@ async fn run(
     }
 }
 
+async fn continue_wait(
+    cancelled: &mut watch::Receiver<bool>,
+    accounts: &mut watch::Receiver<crate::account::SessionToken>,
+    credentials: &mut Option<watch::Receiver<String>>,
+    timer: &mut tokio::time::Interval,
+) {
+    tokio::select! {
+        biased;
+        _ = cancelled.changed() => (),
+        _ = accounts.changed() => (),
+        changed = credentials_changed(credentials) => { if !changed { *credentials = None; } },
+        _ = timer.tick() => (),
+    }
+}
+
 #[cfg(test)]
 #[path = "runtime_races.rs"]
 mod races;
@@ -348,20 +363,5 @@ mod tests {
                 .unwrap(),
             &third
         ));
-    }
-}
-
-async fn continue_wait(
-    cancelled: &mut watch::Receiver<bool>,
-    accounts: &mut watch::Receiver<crate::account::SessionToken>,
-    credentials: &mut Option<watch::Receiver<String>>,
-    timer: &mut tokio::time::Interval,
-) {
-    tokio::select! {
-        biased;
-        _ = cancelled.changed() => (),
-        _ = accounts.changed() => (),
-        changed = credentials_changed(credentials) => { if !changed { *credentials = None; } },
-        _ = timer.tick() => (),
     }
 }
