@@ -54,6 +54,27 @@ The runner owns fresh profile/WebView/media paths, retains progress/log/failure
 artifacts and strictly checks complete tail, native stats, typed decoder
 channel counts, zero service writes and the explicit non-attachment boundary.
 
+CI candidate wiring
+-------------------
+The Windows package runner reuses its native_audio_probe MSVC executable and
+the exact package-stage native runtime/filter DLL. The independent Linux
+WebView runner uses the filter exported by the Linux package job in the same
+workflow run, its existing GTK/Xvfb/dbus session and en_US.UTF-8 locale. Neither
+invocation adds a second build, a filter from another run, an account, or a
+physical audio-output claim. They write distinct ci-native-audio-stereo-{linux,windows}
+reports; the existing failure archive admits only those two fixed prefixes,
+with the same logs/progress/profile rules and database identity rejection.
+
+Public-source review: source_audit.py already examines every tracked path,
+including both Rust examples, without an example-specific exemption. The
+shared helper generates only synthetic PCM/WAV in its explicit proof path;
+it includes no references archive, original DLL, session or frozen private
+capture. The native filter is selected at execution from the built package.
+release_guard.py still checks all version files, unique release commits and
+tag targets; no release or source-audit exception is required for this proof.
+This wiring is a candidate until integration executes it; editing the workflow
+or passing validator-only unit tests is not a native Linux/Windows result.
+
 Limitations
 -----------
 The dynamically processed PCM and the mpv WAV playback are separate checks.

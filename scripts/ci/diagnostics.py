@@ -31,6 +31,7 @@ FIXED_PATHS = (
 NATIVE_REPORTS = (
     'ci-native-audio-linux', 'ci-native-audio-windows',
     'ci-native-audio-loudness-linux', 'ci-native-audio-loudness-windows',
+    'ci-native-audio-stereo-linux', 'ci-native-audio-stereo-windows',
 )
 
 
