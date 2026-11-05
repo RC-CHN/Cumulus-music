@@ -4,6 +4,7 @@ use super::{
 };
 use crate::{
     Error, Result,
+    effects::equalizer::EqualizerStatus,
     playback::{
         QueueEntry, Timeline, TimelineMode,
         engine::{Cancellation, LoadRequest, LoadedMedia},
@@ -423,7 +424,7 @@ impl Actor {
                     }
                     return;
                 }
-                if self.equalizer.status == crate::effects::equalizer::EqualizerStatus::Pending
+                if self.equalizer.status == EqualizerStatus::Pending
                     && let Err(error) = self.equalizer_apply().await
                 {
                     let _ = self.stop(false).await;
@@ -462,30 +463,64 @@ impl Actor {
                     Ok(target) => {
                         let initial = prepared.timeline.snapshot().media_start;
                         let stock_fallback = prepared.stock_fallback.clone();
+                        let transport =
+                            with_stock_fallback(self.cancel.clone(), stock_fallback.clone());
                         let result = self
-                            .parametric_transport(
-                                paused,
-                                with_stock_fallback(self.cancel.clone(), stock_fallback.clone()),
-                                move |engine| {
-                                    if (target - initial).abs() > f64::EPSILON {
-                                        engine.seek(target)?;
-                                    }
-                                    engine.volume(prefs.volume)?;
-                                    engine.speed(speed)?;
-                                    if let Some(guard) = stock_fallback {
-                                        guard.check()?;
-                                    }
-                                    engine.pause(paused)
-                                },
-                            )
+                            .parametric_transport(paused, transport.clone(), move |engine| {
+                                if (target - initial).abs() > f64::EPSILON {
+                                    engine.seek(target)?;
+                                }
+                                engine.volume(prefs.volume)?;
+                                engine.speed(speed)?;
+                                if let Some(guard) = stock_fallback {
+                                    guard.check()?;
+                                }
+                                engine.pause(paused)
+                            })
                             .await;
-                        result.and_then(|_| {
+                        async {
+                            result?;
                             self.queue.reload()?;
                             if self.queue.selected().as_ref() != Some(&prepared.item) {
                                 return Err(Error::QueueChanged);
                             }
+                            // M/308 obtains current persisted setting after
+                            // native Play. A peer may have saved while loading.
+                            self.equalizer_read()?;
+                            let transition = self.equalizer_source_transition(&prepared.source);
+                            if transition.is_some()
+                                || self.equalizer.status == EqualizerStatus::Pending
+                            {
+                                self.equalizer_apply_configuration(
+                                    transition.unwrap_or(false),
+                                    transport.clone(),
+                                )
+                                .await?;
+                                // Applying to the engine can wait. Do not let a
+                                // superseded selection publish or consume Ge.
+                                transport.check()?;
+                                if pending
+                                    .reply
+                                    .as_ref()
+                                    .is_some_and(|reply| reply.is_closed())
+                                {
+                                    return Err(Error::Cancelled);
+                                }
+                                self.queue.reload()?;
+                                if self.queue.selected().as_ref() != Some(&prepared.item) {
+                                    return Err(Error::QueueChanged);
+                                }
+                                transport.check()?;
+                                self.equalizer_read()?;
+                                if let Some(bypass) = transition
+                                    && self.equalizer.status == EqualizerStatus::Configured
+                                {
+                                    self.equalizer_source_latch = bypass;
+                                }
+                            }
                             Ok(prepared)
-                        })
+                        }
+                        .await
                     }
                     Err(error) => Err(error),
                 }

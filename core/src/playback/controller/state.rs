@@ -61,6 +61,7 @@ pub(super) struct Actor {
     pub relay_hint: crate::relay::publisher::player::Hint,
     pub equalizer: crate::effects::equalizer::EqualizerSnapshot,
     pub equalizer_initialized: bool,
+    pub equalizer_source_latch: bool,
     pub parametric: super::parametric::State,
     pub loudness: crate::effects::loudness::LoudnessSnapshot,
     pub loudness_initialized: bool,
@@ -148,6 +149,7 @@ impl Actor {
             relay_hint: Default::default(),
             equalizer: Default::default(),
             equalizer_initialized: false,
+            equalizer_source_latch: false,
             parametric: Default::default(),
             loudness: Default::default(),
             loudness_initialized: false,
@@ -252,7 +254,13 @@ impl Actor {
                 .queue
                 .intelligence_session()
                 .and_then(|s| s.operation_id.clone()),
-            equalizer: self.equalizer,
+            equalizer: crate::effects::equalizer::EqualizerSnapshot {
+                source_bypassed: self.loaded.is_some()
+                    && self.equalizer.source_bypassed
+                    && self.equalizer.status
+                        == crate::effects::equalizer::EqualizerStatus::Configured,
+                ..self.equalizer
+            },
             bound_parametric,
             device_parametric,
             parametric_processing,

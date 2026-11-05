@@ -48,6 +48,7 @@ impl Actor {
             match fault {
                 ProcessorFault::Equalizer => {
                     self.equalizer.status = EqualizerStatus::Failed;
+                    self.equalizer.source_bypassed = false;
                     super::engine(self.engine.clone(), self.guard(), |engine| {
                         engine.clear_equalizer()
                     })

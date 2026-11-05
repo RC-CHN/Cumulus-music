@@ -97,6 +97,11 @@ pub trait AudioEngine: Send {
     fn apply_equalizer(&mut self, _: crate::effects::equalizer::EqualizerSettings) -> Result<bool> {
         Ok(false)
     }
+    /// A source conflict must not detach/reinsert the ordinary EQ host while
+    /// a decoder initializes. Unsupported engines cannot acknowledge it.
+    fn bypass_equalizer_for_source(&mut self) -> Result<bool> {
+        Ok(false)
+    }
     fn clear_equalizer(&mut self) -> Result<()> {
         Ok(())
     }

@@ -4,11 +4,11 @@ use crate::{
     effects::equalizer::{
         EqualizerPreferences, EqualizerPreset, EqualizerSettings, EqualizerStatus,
     },
-    playback::engine::Cancellation,
+    playback::{engine::Cancellation, source::ResolvedSource},
 };
 
 impl Actor {
-    pub(super) async fn equalizer_sync(&mut self) -> Result<()> {
+    pub(super) fn equalizer_read(&mut self) -> Result<()> {
         match self.session.with_local_owner(&self.token, |owner| {
             EqualizerPreferences::read(&self.store, owner)
         }) {
@@ -36,8 +36,13 @@ impl Actor {
             }
             Err(error) => return Err(error),
         }
-        // A decoder can hold the engine mutex. Save while loading, apply before
-        // first unpause in loaded(), instead of blocking the actor's cancel path.
+        Ok(())
+    }
+    pub(super) async fn equalizer_sync(&mut self) -> Result<()> {
+        self.equalizer_read()?;
+        // A decoder can hold the engine mutex. An observed pending edit is
+        // applied before first unpause in loaded(); source policy is separate
+        // and waits for accepted native Play. Do not block load cancellation.
         if self.equalizer.status == EqualizerStatus::Pending && self.pending.is_none() {
             self.equalizer_apply().await?;
         }
@@ -54,6 +59,7 @@ impl Actor {
         })?;
         let changed = !self.equalizer_initialized
             || self.equalizer.damaged
+            || (self.equalizer.source_bypassed && settings.requests_activation())
             || preferences.dsp_revision() != self.equalizer.preferences.dsp_revision()
             || !preferences
                 .settings
@@ -97,9 +103,43 @@ impl Actor {
         self.equalizer_sync().await
     }
     pub(super) async fn equalizer_apply(&mut self) -> Result<()> {
+        self.equalizer_apply_configuration(false, self.guard())
+            .await
+    }
+
+    /// M/308 checks the accepted source after native Play, using the actual
+    /// online representation. Ge is a latch, not a permanent format ban.
+    pub(super) fn equalizer_source_transition(&self, source: &ResolvedSource) -> Option<bool> {
+        if self.equalizer.damaged
+            || self.equalizer.status == EqualizerStatus::Failed
+            || !self.equalizer.preferences.settings.requests_activation()
+        {
+            return None;
+        }
+        let special =
+            source.info["kind"] == "online" && super::parametric::special_effect_quality(source);
+        // The restore branch also applies to a second special source. Direct
+        // equalizer writes can reapply while this latch remains set, just as
+        // M/342 re-reads isOn after the full local material write completes.
+        // A source superseded during native application can leave a dry
+        // adapter without owning the latch. Reconcile at the next valid load.
+        (self.equalizer_source_latch || special || self.equalizer.source_bypassed)
+            .then_some(special && !self.equalizer_source_latch)
+    }
+
+    pub(super) async fn equalizer_apply_configuration(
+        &mut self,
+        source_bypassed: bool,
+        cancel: Cancellation,
+    ) -> Result<()> {
         let settings = self.equalizer.preferences.settings.effective();
-        let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
-            match engine.apply_equalizer(settings) {
+        let result = super::engine(self.engine.clone(), cancel, move |engine| {
+            let apply = if source_bypassed {
+                engine.bypass_equalizer_for_source()
+            } else {
+                engine.apply_equalizer(settings)
+            };
+            match apply {
                 Ok(available) => Ok(if available {
                     EqualizerStatus::Configured
                 } else {
@@ -117,6 +157,9 @@ impl Actor {
             }
         })
         .await;
+        self.equalizer.source_bypassed = !self.equalizer.damaged
+            && source_bypassed
+            && matches!(&result, Ok(EqualizerStatus::Configured));
         match result {
             Ok(status) => {
                 self.equalizer.status = if self.equalizer.damaged {
@@ -139,6 +182,7 @@ impl Actor {
     pub(super) async fn equalizer_clear(&mut self) -> Result<()> {
         self.equalizer = Default::default();
         self.equalizer_initialized = false;
+        self.equalizer_source_latch = false;
         super::engine(self.engine.clone(), Cancellation::default(), |engine| {
             engine.clear_equalizer()
         })
@@ -151,10 +195,12 @@ impl Actor {
         ) {
             return Ok(());
         }
-        let result = super::engine(self.engine.clone(), self.guard(), |engine| {
+        let source_bypassed = self.equalizer.source_bypassed;
+        let result = super::engine(self.engine.clone(), self.guard(), move |engine| {
             match engine.observe_equalizer() {
                 Ok(Some(stats)) if stats.failed_blocks == 0 => Ok(
-                    if stats.active_instances != 0
+                    if !source_bypassed
+                        && stats.active_instances != 0
                         && stats.processed_samples != 0
                         && stats.observed_revision == stats.revision
                     {
@@ -174,6 +220,9 @@ impl Actor {
         })
         .await;
         self.equalizer.status = result.as_ref().copied().unwrap_or(EqualizerStatus::Failed);
+        if self.equalizer.status == EqualizerStatus::Failed {
+            self.equalizer.source_bypassed = false;
+        }
         result.map(|_| ())
     }
 }

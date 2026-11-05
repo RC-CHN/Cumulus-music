@@ -4,10 +4,13 @@ use cumulus_core::{
     account::profiles::ProfileRegistry,
     client::{
         MusicClient, NativeParametricActivation, NativeParametricActivationAttempt,
-        dto::{PlaySelection, PlayerView},
+        dto::{PlaySelection, PlayerAction, PlayerView},
     },
     download::transfer::RunOptions,
-    effects::service::{EffectsLibrary, StandaloneParametricPreflight},
+    effects::{
+        equalizer::EqualizerSettings,
+        service::{EffectsLibrary, StandaloneParametricPreflight},
+    },
     membership::Quality,
     playback::controller::{ParametricBindingStatus as Status, ParametricBindingStatus},
     protocol::http::ApiOrigin,
@@ -27,6 +30,10 @@ struct Proof {
 
 impl Proof {
     async fn open(levels: &[(&str, u64)]) -> Self {
+        Self::open_with_gain(levels, None).await
+    }
+
+    async fn open_with_gain(levels: &[(&str, u64)], gain: Option<f32>) -> Self {
         let root = tempfile::tempdir().unwrap();
         let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
         let (bytes, _) = sample("first");
@@ -43,7 +50,7 @@ impl Proof {
                     let song = index + 1;
                     [
                         json!({"code":200,"songs":[{"id":song,"name":"Fixture","dt":120000,"ar":[],"al":{"id":1,"name":"Fixture"}}],"privileges":[]}).into(),
-                        json!({"code":200,"data":[{"id":song,"code":200,"url":"https://m1.music.126.net/fixture.mp3","md5":"abcd","expi":120,"level":level,"br":br}]}).into(),
+                        json!({"code":200,"data":[{"id":song,"code":200,"url":"https://m1.music.126.net/fixture.mp3","md5":"abcd","expi":120,"level":level,"br":br,"gain":gain}]}).into(),
                     ]
                 })),
         ));
@@ -102,6 +109,78 @@ impl Proof {
             .await
             .unwrap()
     }
+}
+
+#[tokio::test]
+async fn ordinary_eq_reapply_does_not_restore_bound_peq_or_change_track_loudness() {
+    let proof = Proof::open_with_gain(&[("vivid", 128000), ("dolby", 128000)], Some(-6.0)).await;
+    proof.device.equalizer_supported.store(true, SeqCst);
+    proof.device.loudness_supported.store(true, SeqCst);
+    let before = proof.client.player_snapshot(&proof.epoch).await.unwrap();
+    let eq = EqualizerSettings::new(true, [2.0; 10])
+        .unwrap()
+        .with_tone(3, -2)
+        .unwrap();
+    proof
+        .client
+        .player_action(
+            &proof.epoch,
+            PlayerAction::Equalizer {
+                expected_revision: before.equalizer.revision,
+                settings: eq,
+                preset: None,
+            },
+        )
+        .await
+        .unwrap();
+    proof
+        .client
+        .player_action(
+            &proof.epoch,
+            PlayerAction::Loudness {
+                expected_revision: before.loudness.revision.unwrap(),
+                enabled: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    let dry = proof.play(1, Quality::Standard).await.unwrap();
+    assert!(dry.equalizer.source_bypassed);
+    assert_eq!(dry.bound_parametric, Some(Status::BypassedForSource));
+    assert!(proof.device.parametric_bypassed.load(SeqCst));
+    assert_eq!(
+        *proof.device.equalizer.lock().unwrap(),
+        Some(EqualizerSettings::default())
+    );
+    let loudness = proof.device.loudness.lock().unwrap().unwrap();
+    assert!(loudness.enabled());
+    assert_eq!(loudness.gain_db(), -6.0);
+
+    let reapply = proof
+        .client
+        .player_action(&proof.epoch, PlayerAction::RetryEqualizer)
+        .await
+        .unwrap();
+    assert_eq!(reapply.play_id, dry.play_id);
+    assert_eq!(reapply.equalizer.revision, dry.equalizer.revision);
+    assert!(!reapply.equalizer.source_bypassed);
+    assert_eq!(
+        *proof.device.equalizer.lock().unwrap(),
+        Some(eq.effective())
+    );
+    assert_eq!(reapply.bound_parametric, Some(Status::BypassedForSource));
+    assert!(proof.device.parametric_bypassed.load(SeqCst));
+    assert_eq!(*proof.device.loudness.lock().unwrap(), Some(loudness));
+
+    let next = proof.play(2, Quality::Standard).await.unwrap();
+    assert!(!next.equalizer.source_bypassed);
+    assert_eq!(next.bound_parametric, Some(Status::Configured));
+    assert!(!proof.device.parametric_bypassed.load(SeqCst));
+    assert_eq!(*proof.device.loudness.lock().unwrap(), Some(loudness));
+    assert_eq!(proof.device.state.lock().unwrap().loads, 2);
+    assert_eq!(proof.api.calls().len(), 10);
+    assert_eq!(proof.origin.calls().len(), 1);
 }
 
 #[tokio::test]

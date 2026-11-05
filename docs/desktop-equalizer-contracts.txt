@@ -23,7 +23,8 @@ equalizer-preferences-v1/current，游客使用local-guest。每次修改事务�
 
 播放器与账号隔离
 core/src/playback/controller/equalizer.rs处理读取、CAS修改、重试、修复、应用与观察。
-解码期间仍可保存设置，不阻塞取消；加载结束后在第一次解除暂停前应用最新曲线。
+解码期间仍可保存设置，不阻塞取消；加载结束后在第一次解除暂停前应用已观察到的
+待处理曲线。实际音质旁路另在原生 Play 成功后执行，见后文，不是首样本屏障。
 本地均衡器修改不改变播放控制代次，不取消正在解析的播放选择，不发送一起听控制。
 切换账号先停止旧播放并移除旧过滤器，然后读取新账号；迟到结果不能写入新账号视图。
 设置已保存与引擎已应用分开：pending/unavailable/configured/processing/failed。
@@ -175,3 +176,61 @@ equalizer 写入。回读失败时保留草稿及两种后续选择；成功后�
 账号回执不会影响当前面板。原生探针在持续播放中模拟写入成功后回执丢失及首次回读
 失败，核对第二次回读恢复原生曲线、没有重写且焦点留在面板。平直曲线无需 DSP，组件
 不可用时也不显示重试或“音效已应用”。
+
+普通均衡器的实际音质 latch
+--------------------------
+官方 PC 3.1.42.205594：M308:2141 原生 AudioPlayer.play 成功后才发布 playId，
+:2172 初始化歌曲分配音效，:2176–2222 读取当前持久音效设置。isOn=false 不推进
+Ge；启用的普通本地均衡器进入 type=2，使用同一 equalizer_data 路径。模块 Ge 在
+:243 初始 false，:2190–2197 若实际 playInfo.bitrate 是 2999/3999/5999/6999
+且 Ge=false，发 isOpen=false 并置 true；其余普通路径在 Ge=true 时发 isOpen=true，
+然后置 false。因此紧接的另一首特殊音质也可恢复，不能改成四档永久黑名单。
+:4770 的启用设置恢复会清 Ge；本机控制器新建和账号换代也不继承另一账号的 latch。
+Stop、暂停、同条目 seek、native clock 与同条目参数更新均不是新的 native Play。
+
+M163:511、576 将授权响应的 level 映射成数字 bitrate，:593 的实际 br 是另一字段；
+M59:177–185 的四个 level 是 dolby/jyeffect/sky/vivid，jymaster=4999 不属于本分支。
+未知响应 level 不当特殊档；不能按请求 level 或文件物理码率关效果。M308:2084
+调用 M59.b；M59:306–333 对标准四种特殊请求返回 level 字符串或 hires 字符串。
+M163:373–379 本地 type=0 将该值原样放 bitrate，物理文件码率另在 playbrt，
+M308 的数字 includes 不强转。因此普通已证本地/下载 source 不开启新 Ge，
+却可在成功换源时结束旧 Ge；未将客户端附带的任意数字当可信 native 事实。
+
+M3091/Equalizer.tsx:140–185 先 dispatch 整份 {eq,bt,rvb,se} 写入，再激活选中
+的均衡器；dispatch 并不 await 文件。M342:1607–1642 等待 Storage.writeFile 后
+重读当前 type/isOn，再调用 type=2/pathType=2 的原生入口。M342:366–382
+独立按当前 requested listenReg 冲突临时发 isOpen=false，不改持久 isOn 或 Ge；
+不能据此说后续已完成的写入永远保持关闭。M4:15808–15822 的 native bridge 调用
+audioeffect.setParams(type,pathInfo,isOpen,data,callback)。M28:434–454 的本地
+均衡器选择为免费，不取得下载音效材料的授权。保存自定义槽不走材料写入。
+
+本机行为：保留现有完整 GEQ/BT 曲线 SQLite CAS 写入与状态确认。已成功的 native
+Play/队列选择通过校验后才给同一 EQ adapter 提交关闭或恢复，不重新加载源、不
+变更队列/设置 revision、不新增请求。应用等待后重新校验账号/请求、持久队列和最新 EQ 参数，
+只有仍当前且配置确认才推进 Ge。他窗保存的新参数优先，旧确认不覆盖其设置。失败打开、失败 native transport、迟到回复和
+新账号不消耗旧 latch；若旧源被替换前已有 dry ACK，停止旧 sink，下一次有效
+加载确认自己的配置。缺库或失败不冒称已旁路；沿用失败清理/显式重试机制。
+临时旁路经 bypass_equalizer_for_source 更新已有配置 ID，即使当前尚无活跃
+DSP 实例也不使用手动关闭的失效滤镜移除逻辑，不重建邻接 PEQ/响度节点。
+显式成功修改或 Retry 应用当前保存曲线，清除实际 source_bypassed，保留 Ge
+直到下次成功换源。同值但明确选择另一个预设也可退出实际旁路；仅保存槽不会。
+不增加一个无意义的临时关闭调用来模拟 M342 两个异步 effect 的竞争。
+
+source_bypassed 是当前已装载源的原生配置确认，不是 SQLite 字段或扬声器测量。
+已旁路的 dry 样本不报告 EQ 正在处理。面板和入口保留用户曲线与开关，单独说明
+当前源旁路；同时有独立 PEQ 时保留两条说明，明确不是普通总开关已关闭。
+本机 GEQ/BT、独立注册 PEQ 与响度是不同宿主；这个路径只调用 GEQ/BT adapter，
+不碰独立注册授权或其它节点。三者并存是本机实现，不声称等同官方单选音效模型。
+
+本批不把 GEQ/BT 插件叫作完整旧材料。cloudmusic.dll EFAB90 isOpen=false 经
+SDK outer 68770/6B960 到 1C590，恢复默认 B0 参数并重放组件旁路；不是 1AA50
+整图短路或把 se.on 清零。固定 SE1/默认 B0 的真实变帧、EOF 与已恢复完整 fixed
+图仍走独立受控源，不能通过固定帧单声道 LADSPA 接入普通播放。活跃 GEQ/BT 与
+SE1 叠加的完整图、总开关 native transition、RVB-on 及真实普通/在线 source
+decoder 接线需要各自对照；本次无 SE 或环境音效 UI。
+
+候选回归：equalizer_controller::source_latch 检查实际档/请求档/物理 br 的区别，
+连续特殊档、合成普通本地源、显式重应用、保存槽、总开关、失败和迟到加载、持久
+队列换源、新 CAS 和切账号；effects_service 的联合 fixture 核对独立 PEQ 仍旁路、响度仍保持
+同样 track gain，显式 EQ 重应用只改变 EQ。前端状态测试覆盖联合文案/错误优先级，
+这些是已准备的回归源码，真实合成桌面和集中构建结果另行记录。

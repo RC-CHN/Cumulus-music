@@ -1067,7 +1067,7 @@ impl Actor {
     }
 }
 
-fn special_effect_quality(source: &crate::playback::source::ResolvedSource) -> bool {
+pub(super) fn special_effect_quality(source: &crate::playback::source::ResolvedSource) -> bool {
     // M/163 maps the authorized response's level, not the requested level
     // or the response's physical br, to M/308's playInfo.bitrate.
     matches!(

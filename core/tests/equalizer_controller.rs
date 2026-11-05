@@ -612,3 +612,6 @@ async fn an_unconfirmed_disable_persists_the_dry_request_and_can_be_retried() {
     assert_eq!(retried.equalizer.preferences, failed.equalizer.preferences);
     assert!(!f.device.equalizer.lock().unwrap().unwrap().enabled());
 }
+
+#[path = "support/equalizer_source_latch.rs"]
+mod source_latch;

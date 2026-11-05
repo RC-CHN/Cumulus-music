@@ -268,6 +268,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             saved_custom: value.equalizer.preferences.saved_custom.map(|s| *s.gains()),
             status: value.equalizer.status,
             damaged: value.equalizer.damaged,
+            source_bypassed: value.equalizer.source_bypassed,
         },
         bound_parametric: value.bound_parametric,
         parametric_processing: value.parametric_processing,

@@ -95,6 +95,11 @@ impl EqualizerSettings {
     pub fn tone_enabled(self) -> bool {
         self.tone_enabled.unwrap_or(self.enabled)
     }
+    /// A selected local EQ can request activation even with a flat curve.
+    /// Keep its saved master switch separate from a transient source bypass.
+    pub(crate) fn requests_activation(self) -> bool {
+        !self.master_bypassed && (self.enabled || self.tone_enabled())
+    }
     pub fn with_tone_enabled(mut self, enabled: bool) -> Self {
         self.tone_enabled = Some(enabled);
         self

@@ -146,4 +146,6 @@ pub struct EqualizerSnapshot {
     pub preferences: EqualizerPreferences,
     pub status: EqualizerStatus,
     pub damaged: bool,
+    /// Acknowledged native source bypass; never part of persisted preferences.
+    pub source_bypassed: bool,
 }

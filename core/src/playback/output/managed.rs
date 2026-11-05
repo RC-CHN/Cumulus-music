@@ -356,6 +356,9 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     ) -> Result<bool> {
         self.inner.apply_equalizer(value)
     }
+    fn bypass_equalizer_for_source(&mut self) -> Result<bool> {
+        self.inner.bypass_equalizer_for_source()
+    }
     fn clear_equalizer(&mut self) -> Result<()> {
         self.inner.clear_equalizer()
     }

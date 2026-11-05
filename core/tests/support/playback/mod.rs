@@ -31,6 +31,7 @@ impl ResolverClock for Clock {
 #[derive(Default)]
 pub struct Backend {
     pub gains: Mutex<std::collections::BTreeMap<u64, Value>>,
+    pub representations: Mutex<std::collections::BTreeMap<u64, (Value, u32)>>,
     pub calls: Mutex<Vec<(u64, String)>>,
     pub hold: AtomicU64,
     pub url_version: AtomicU64,
@@ -82,13 +83,18 @@ impl Api for Backend {
             } else {
                 200
             };
-            Ok(json!({"code":200,"data":[{
+            let mut response = json!({"code":200,"data":[{
                 "id":id,"code":code,
                 "url":format!("https://m1.music.126.net/fixture.mp3?secret=private&version={}", self.url_version.load(Ordering::SeqCst)),
                 "md5":"abcd","expi":10,"level":"standard",
                 "gain":self.gains.lock().unwrap().get(&id).cloned().unwrap_or(Value::Null),
                 "freeTrialInfo":if self.trial.load(Ordering::SeqCst) {json!({"start":30,"end":60})} else {Value::Null}
-            }]}))
+            }]});
+            if let Some((actual, br)) = self.representations.lock().unwrap().get(&id) {
+                response["data"][0]["level"] = actual.clone();
+                response["data"][0]["br"] = json!(br);
+            }
+            Ok(response)
         })
     }
 }
@@ -138,6 +144,7 @@ pub struct Device {
     pub equalizer_hold: AtomicBool,
     pub equalizer_started: Notify,
     pub equalizer: Mutex<Option<cumulus_core::effects::equalizer::EqualizerSettings>>,
+    pub equalizer_applications: Mutex<Vec<cumulus_core::effects::equalizer::EqualizerSettings>>,
     pub equalizer_at_unpause:
         Mutex<Vec<Option<cumulus_core::effects::equalizer::EqualizerSettings>>>,
     pub equalizer_clears: AtomicU64,
@@ -176,6 +183,7 @@ impl Default for Device {
             equalizer_hold: AtomicBool::new(false),
             equalizer_started: Notify::new(),
             equalizer: Mutex::new(None),
+            equalizer_applications: Mutex::new(Vec::new()),
             equalizer_at_unpause: Mutex::new(Vec::new()),
             equalizer_clears: AtomicU64::new(0),
             state: Mutex::new(DeviceState {
@@ -293,7 +301,11 @@ impl AudioEngine for Engine {
             return Err(Error::State("injected equalizer failure"));
         }
         *self.0.equalizer.lock().unwrap() = Some(settings);
+        self.0.equalizer_applications.lock().unwrap().push(settings);
         Ok(true)
+    }
+    fn bypass_equalizer_for_source(&mut self) -> Result<bool> {
+        self.apply_equalizer(Default::default())
     }
     fn clear_equalizer(&mut self) -> Result<()> {
         if self.0.equalizer_clear_fail.load(Ordering::SeqCst) {

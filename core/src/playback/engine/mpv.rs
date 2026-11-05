@@ -830,6 +830,21 @@ impl AudioEngine for MpvEngine {
         }
         Ok(!settings.tone_active() || self.equalizer.as_ref().is_some_and(|h| h.supports_tone()))
     }
+    fn bypass_equalizer_for_source(&mut self) -> Result<bool> {
+        if self.equalizer_library.is_none() {
+            return Ok(false);
+        }
+        if let Some(host) = &self.equalizer {
+            if host.stats()?.failed_blocks != 0 {
+                return Err(Error::EqualizerProcessorFailed);
+            }
+            // Native Play can acknowledge before the new decoder has an
+            // active LADSPA instance. Preserve the handle and effect order;
+            // the ordinary manual-disable recovery may remove it at zero.
+            self.set_equalizer(Default::default())?;
+        }
+        Ok(true)
+    }
     fn clear_equalizer(&mut self) -> Result<()> {
         self.detach_equalizer()
     }

@@ -119,6 +119,7 @@ pub struct EqualizerView {
     pub saved_custom: Option<[f32; 10]>,
     pub status: crate::effects::equalizer::EqualizerStatus,
     pub damaged: bool,
+    pub source_bypassed: bool,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
