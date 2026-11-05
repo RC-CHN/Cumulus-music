@@ -479,5 +479,7 @@ impl MusicClient {
     }
 }
 
+pub(super) mod detail;
+
 #[cfg(test)]
 mod tests;

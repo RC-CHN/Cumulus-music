@@ -350,6 +350,7 @@ pub use super::desktop_lyric_preferences::{
     DesktopLyricPreferencesCommand, DesktopLyricPreferencesView,
 };
 pub use super::player::LyricReportView;
+pub use super::vertical_zone::detail::ZonePlaylistOrigin;
 pub use crate::account::login::presentation::{LoginCountry, LoginDocument};
 pub use crate::account::profile::avatar::{AvatarImage, AvatarTaskView};
 pub use crate::account::profiles::{QuickLoginAccountView, QuickLoginEligibilityView};

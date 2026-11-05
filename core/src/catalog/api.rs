@@ -78,6 +78,15 @@ impl CatalogApi {
     }
 
     pub async fn songs(&self, ids: &[Value], batch_size: usize) -> Result<SongBatch> {
+        self.songs_with_trial(ids, batch_size, None).await
+    }
+
+    pub(crate) async fn songs_with_trial(
+        &self,
+        ids: &[Value],
+        batch_size: usize,
+        trial_mode: Option<i32>,
+    ) -> Result<SongBatch> {
         if !(1..=500).contains(&batch_size) {
             return Err(Error::InvalidInput("invalid song batch size"));
         }
@@ -88,14 +97,13 @@ impl CatalogApi {
         let mut privileges = BTreeMap::new();
         for chunk in unique.chunks(batch_size) {
             let c: Vec<_> = chunk.iter().map(|id| json!({"id":id,"v":0})).collect();
+            let mut payload = json!({"c":serde_json::to_string(&c)?});
+            if let Some(trial) = trial_mode {
+                payload["trialMode"] = json!(trial);
+            }
             let response = self
                 .api
-                .call(
-                    "/api/v3/song/detail",
-                    json!({"c":serde_json::to_string(&c)?}),
-                    false,
-                    &[200],
-                )
+                .call("/api/v3/song/detail", payload, false, &[200])
                 .await?;
             let rows = response["songs"]
                 .as_array()

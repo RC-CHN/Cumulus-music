@@ -4,10 +4,97 @@ use crate::{
     account::resources::{AccountResources, ResourceKind},
     catalog::{CatalogApi, SearchOptions},
     playlist::PlaylistApi,
-    protocol::api::identifier,
+    protocol::api::{Api, identifier},
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::sync::Arc;
+
+pub(super) fn playlist_track_revision(id: &str, detail: &Value) -> Result<String> {
+    let ids = detail["trackIds"]
+        .as_array()
+        .ok_or(Error::Response("missing trackIds"))?;
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(&json!([
+        id, ids
+    ]))?)))
+}
+
+pub(super) async fn playlist_track_page(
+    api: Arc<dyn Api>,
+    uid: &str,
+    id: &str,
+    detail: &Value,
+    page: &PageRequest,
+    trial_mode: Option<i32>,
+) -> Result<TrackPage> {
+    let playlist = mapping::playlist(detail, uid)?;
+    let ids = detail["trackIds"]
+        .as_array()
+        .ok_or(Error::Response("missing trackIds"))?;
+    let revision = playlist_track_revision(id, detail)?;
+    if page
+        .revision
+        .as_ref()
+        .is_some_and(|expected| expected != &revision)
+    {
+        return Err(Error::QueueChanged);
+    }
+    let slice: Vec<_> = ids.iter().skip(page.offset).take(page.limit).collect();
+    let wanted: Vec<_> = slice
+        .iter()
+        .filter(|v| v["v"].as_i64() != Some(-1))
+        .map(|v| v["id"].clone())
+        .collect();
+    let songs = CatalogApi::new(api)
+        .songs_with_trial(
+            &wanted,
+            if trial_mode.is_some() { 500 } else { 100 },
+            trial_mode,
+        )
+        .await?;
+    let mut returned = songs.songs.into_iter();
+    let mut tracks = Vec::with_capacity(slice.len());
+    for item in slice {
+        let local = item["v"].as_i64() == Some(-1);
+        let song = if local {
+            None
+        } else {
+            returned.next().flatten()
+        };
+        tracks.push(match song {
+            Some(song) => mapping::track(&song)?,
+            None => TrackView {
+                id: identifier(&item["id"])?,
+                voice_id: None,
+                name: if local {
+                    "本地音乐"
+                } else {
+                    "暂不可用的歌曲"
+                }
+                .into(),
+                artists: vec![],
+                artist_refs: vec![],
+                album: String::new(),
+                album_id: None,
+                cover_url: None,
+                duration_ms: 0,
+                fee: 0,
+                missing: true,
+                local,
+            },
+        });
+    }
+    Ok(TrackPage {
+        daily: None,
+        style_tags: None,
+        revision: Some(revision),
+        more: page.offset.saturating_add(tracks.len()) < ids.len(),
+        tracks,
+        total: ids.len(),
+        offset: page.offset,
+        playlist: Some(playlist),
+    })
+}
 
 impl MusicClient {
     pub async fn playlists(&self) -> Result<AccountData<Vec<PlaylistView>>> {
@@ -182,67 +269,7 @@ impl MusicClient {
                 // Read authoritative trackIds, never assume the preview `tracks`
                 // contains the complete playlist. Page song detail separately.
                 let detail = PlaylistApi::new(api.clone()).detail(&json!(id)).await?;
-                let playlist = mapping::playlist(&detail, &uid)?;
-                let ids = detail["trackIds"]
-                    .as_array()
-                    .ok_or(Error::Response("missing trackIds"))?;
-                let revision = hex::encode(Sha256::digest(serde_json::to_vec(&json!([id, ids]))?));
-                if page
-                    .revision
-                    .as_ref()
-                    .is_some_and(|expected| expected != &revision)
-                {
-                    return Err(Error::QueueChanged);
-                }
-                let slice: Vec<_> = ids.iter().skip(page.offset).take(page.limit).collect();
-                let wanted: Vec<_> = slice
-                    .iter()
-                    .filter(|v| v["v"].as_i64() != Some(-1))
-                    .map(|v| v["id"].clone())
-                    .collect();
-                let songs = CatalogApi::new(api).songs(&wanted, 100).await?;
-                let mut returned = songs.songs.into_iter();
-                let mut tracks = Vec::with_capacity(slice.len());
-                for item in slice {
-                    let local = item["v"].as_i64() == Some(-1);
-                    let song = if local {
-                        None
-                    } else {
-                        returned.next().flatten()
-                    };
-                    tracks.push(match song {
-                        Some(song) => mapping::track(&song)?,
-                        None => TrackView {
-                            id: identifier(&item["id"])?,
-                            voice_id: None,
-                            name: if local {
-                                "本地音乐"
-                            } else {
-                                "暂不可用的歌曲"
-                            }
-                            .into(),
-                            artists: vec![],
-                            artist_refs: vec![],
-                            album: String::new(),
-                            album_id: None,
-                            cover_url: None,
-                            duration_ms: 0,
-                            fee: 0,
-                            missing: true,
-                            local,
-                        },
-                    });
-                }
-                Ok(TrackPage {
-                    daily: None,
-                    style_tags: None,
-                    revision: Some(revision),
-                    more: page.offset.saturating_add(tracks.len()) < ids.len(),
-                    tracks,
-                    total: ids.len(),
-                    offset: page.offset,
-                    playlist: Some(playlist),
-                })
+                playlist_track_page(api, &uid, &id, &detail, &page, None).await
             })
             .await?;
         Ok(AccountData {

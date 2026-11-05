@@ -68,6 +68,70 @@ impl PlaylistApi {
             .ok_or(Error::Response("missing playlist"))
     }
 
+    /// M/2997 -> M/444.b ordinary third-party MGC playlist visit. The
+    /// initial v4/dynamic reads never carry the song trial context.
+    pub(crate) async fn zone_mgc_detail(&self, id: &str, owner: &str) -> Result<Value> {
+        let initial = self
+            .api
+            .call(
+                "/api/playlist/v4/detail",
+                json!({"id":id,"n":0,"s":0}),
+                false,
+                &[200],
+            )
+            .await?;
+        let mut playlist = initial["playlist"]
+            .as_object()
+            .cloned()
+            .ok_or(Error::Response("missing MGC playlist"))?;
+        if identifier(&initial["playlist"]["id"])? != id {
+            return Err(Error::Response("MGC playlist identity mismatch"));
+        }
+        let creator = identifier(&initial["playlist"]["creator"]["userId"])
+            .map_err(|_| Error::Response("MGC playlist creator unavailable"))?;
+        if identifier(&initial["playlist"]["userId"]).is_ok_and(|owner| owner != creator) {
+            return Err(Error::Response("MGC playlist creator identity mismatch"));
+        }
+        if creator == owner || initial["playlist"]["specialType"].as_i64() == Some(100) {
+            return Err(Error::State(
+                "owned and special MGC playlist details are not supported",
+            ));
+        }
+        match self
+            .api
+            .call(
+                "/api/playlist/detail/dynamic",
+                json!({"id":id}),
+                false,
+                &[200],
+            )
+            .await
+        {
+            Ok(dynamic) => {
+                for (source, target) in [
+                    ("bookedCount", "subscribedCount"),
+                    ("commentCount", "commentCount"),
+                    ("gradeStatus", "gradeStatus"),
+                    ("playCount", "playCount"),
+                    ("shareCount", "shareCount"),
+                    ("subscribed", "subscribed"),
+                ] {
+                    if let Some(value) = dynamic.get(source) {
+                        playlist.insert(target.into(), value.clone());
+                    }
+                }
+            }
+            Err(error)
+                if error.is_service_code(301)
+                    || matches!(error, Error::StaleResponse | Error::CredentialChanged) =>
+            {
+                return Err(error);
+            }
+            Err(_) => {}
+        }
+        Ok(Value::Object(playlist))
+    }
+
     pub async fn tracks(&self, pid: &Value) -> Result<PlaylistTracks> {
         let playlist = self.detail(pid).await?;
         let tracks = playlist["trackIds"]

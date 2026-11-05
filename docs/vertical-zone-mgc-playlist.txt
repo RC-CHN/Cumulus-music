@@ -1,0 +1,45 @@
+PC 3.1.42.205594｜专区 MGC 歌单详情和播放来源
+
+官方链路
+- M/3089:3757–3794：仅横排的 MGC 模块或卡片有
+  hideAfterClosePersonalized 时设置 zoneMGC；M/91:11 给出 121。播放按钮
+  用 from.trialMode；封面/标题链接用 to.state.trialMode。普通网格不带该值。
+- PlaylistCard/index.tsx:902–912 转发链接状态。歌单 views/index.jsx:133–162、
+  292–310、351–363 在详情、子标签及头部/歌曲列表保留状态。自身喜欢的歌单
+  优先使用 43；本批不模拟其 43/AI 分支。
+- M/2997:247–280 → M/444:131–174：普通第三方歌单先
+  POST /api/playlist/v4/detail {id,n:0,s:0}，再
+  POST /api/playlist/detail/dynamic {id} 合并动态展示字段；动态普通失败保留
+  首次详情。仅自身或 useV6（雷达场景 37 或 specialType=100）走 v6 并可能
+  在详情中带 trialMode。通常的第三方 MGC 121 不改变首次 v4 请求。
+- TrackList.jsx:184–192、202–207、235–240 和 M/2997:415–449 把试用来源
+  传给分页歌曲详情和行操作；M/120:12–35 的 /api/v3/song/detail 发送
+  {c:JSON.stringify([{id,v:0},…]),trialMode:121}。Common.jsx:299–321
+  的播放全部同样保留来源。M/3085:215–237、309–316、564–585 将来源放进
+  原生播放动作；M/86:135–155 的 /api/song/enhance/player/url/v1 送 trialMode，
+  由服务决定实际音源和权益。
+
+Cumulus 原生契约
+- vertical_zone_playlist_origin(epoch,viewId,cardKey,id) 仅主窗口可用；用
+  当前签名实验、菜单、页面和该卡片核对同一歌单，签发无账号信息的 visit receipt。
+  普通网格、别的卡片、旧专区页面和任意 ID 不能签发。账号代次、原生 API、
+  凭据版本及已登记专区不变时，从该卡片打开的详情可跨子标签使用此凭据；
+  普通入口打开同一 ID 不会继承。最近 24 个访问凭据只留在本次进程。
+- vertical_zone_playlist_detail(epoch,receipt,id,page) 第一次读取 v4、
+  dynamic 和指定页的歌曲详情；后续分页必须带当前轨道版本，仅读取该页歌曲。
+  动态数据不能改 trackIds 或歌单身份；会话失效、取消、凭据变化不作普通回退。
+  缺权威作者或发现是自身/specialType=100 时停止，不猜测 v6 的前置资格。
+  详情和行投影复用现有 TrackPage、分页边界及本地项占位；首次读取失败由现有
+  整页重试表达。
+- play_selection 的 vertical_zone_playlist_detail 分支接受 receipt、同
+  歌单 ID 和当前详情版本、可选 start_id 与 double_click。Rust 从已确认访问
+  导出 121 给歌曲详情与播放器资源，客户端不提交数字 trialMode。队列仍遵循
+  普通双击偏好。播放前后检查同一访问、登记和数据快照。普通详情、普通播放、
+  卡片直接播放的既有请求不改；不自动写账号、下载、分享或扩张订阅权益。
+- 这里是详情初读、分页、头部播放和歌曲行的原生契约。详情批量操作、添加下一首、
+  下载、卡片直接播放的旧元数据路径，以及与 GUI 的路由/返回集成单独验收。
+
+隔离验证：vertical_zone_playlist_detail 3 项、vertical_zone 2 项、client_player
+88 项通过。对照同一 ID 的两类入口、动态失败、分页、旧账号/凭据/菜单、真实
+原生播放选择发出的 121 和普通选择的 -1。音频输出和 HTTP 为合成夹具；
+没有真实账号、外部写入、Windows/GTK UI 或实体音频验证。

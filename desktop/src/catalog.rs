@@ -48,6 +48,38 @@ pub async fn vertical_zone_page<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn vertical_zone_playlist_origin<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    view_id: String,
+    card_key: String,
+    id: String,
+) -> Result<AccountData<ZonePlaylistOrigin>, ClientError> {
+    require_main(window.label())?;
+    client
+        .vertical_zone_playlist_origin(&epoch, &view_id, &card_key, &id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn vertical_zone_playlist_detail<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    receipt: String,
+    id: String,
+    page: PageRequest,
+) -> Result<AccountData<TrackPage>, ClientError> {
+    require_main(window.label())?;
+    client
+        .vertical_zone_playlist_detail(&epoch, &receipt, &id, page)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn artist_gallery(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

@@ -1,6 +1,7 @@
 use super::super::recommendations::{
     RecommendationSource, daily_source, daily_subset, style_source,
 };
+use super::super::vertical_zone::detail::MGC_TRIAL;
 use super::{prepared_selection::PreparedSelection, queue_click::RetainedRow, *};
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
 use serde_json::{Value, json};
@@ -61,6 +62,40 @@ impl MusicClient {
         prepared: Option<PreparedSelection>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
+        let (input, zone_detail) = match input {
+            PlaySelection::VerticalZonePlaylistDetail {
+                id,
+                receipt,
+                revision,
+                start_id,
+                double_click,
+                quality,
+            } => {
+                let snapshot = self
+                    .vertical_zone_playlist_snapshot(&token, &receipt, &id, &revision)
+                    .await?;
+                let input = if double_click {
+                    PlaySelection::SongRowDoubleClick {
+                        selection: SongRowSelection::Playlist {
+                            id: id.clone(),
+                            start_id: start_id
+                                .ok_or(Error::InvalidInput("MGC double-click requires a song"))?,
+                            revision: Some(revision.clone()),
+                            quality,
+                        },
+                    }
+                } else {
+                    PlaySelection::Playlist {
+                        id: id.clone(),
+                        start_id,
+                        revision: Some(revision.clone()),
+                        quality,
+                    }
+                };
+                (input, Some((receipt, id, revision, snapshot)))
+            }
+            other => (other, None),
+        };
         let (input, zone_playlist) = match input {
             PlaySelection::VerticalZonePlaylist {
                 id,
@@ -505,9 +540,14 @@ impl MusicClient {
         };
         let selection_token = token.clone();
         let clears_playlist = retained.is_none();
-        let zone_trial = zone_playlist
+        let zone_detail_trial = zone_detail.is_some();
+        let zone_snapshot = zone_detail
             .as_ref()
-            .is_some_and(|(_, _, _, trial)| *trial);
+            .map(|(_, _, _, snapshot)| snapshot.clone());
+        let zone_trial = zone_detail_trial
+            || zone_playlist
+                .as_ref()
+                .is_some_and(|(_, _, _, trial)| *trial);
         let (ids, index, quality, source) = self
             .session
             .run_for(&token, |api, uid| async move {
@@ -598,6 +638,7 @@ impl MusicClient {
                     | PlaySelection::FollowLatest { .. }
                     | PlaySelection::ProfileRankPlaylist { .. }
                     | PlaySelection::VerticalZonePlaylist { .. }
+                    | PlaySelection::VerticalZonePlaylistDetail { .. }
                     | PlaySelection::Cloud { .. }
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }
@@ -700,7 +741,13 @@ impl MusicClient {
                         quality,
                     } => {
                         let id = identifier(&json!(id))?;
-                        let detail = PlaylistApi::new(api).detail(&json!(id)).await?;
+                        let fetched;
+                        let detail = if let Some(snapshot) = &zone_snapshot {
+                            &snapshot.detail
+                        } else {
+                            fetched = PlaylistApi::new(api).detail(&json!(id)).await?;
+                            &fetched
+                        };
                         let tracks = detail["trackIds"]
                             .as_array()
                             .ok_or(Error::Response("missing playlist tracks"))?;
@@ -732,11 +779,11 @@ impl MusicClient {
                             "description":detail["description"],"trackCount":detail["trackCount"]});
                         let mut source = json!({"kind":"playlist","id":id,"history_resource":history});
                         if zone_trial {
-                            source["trial_mode"] = json!(121);
+                            source["trial_mode"] = json!(MGC_TRIAL);
                         }
                         if clears_playlist {
                             self.attach_queue_more_playlist(
-                                &selection_token, &uid, &id, &detail, &mut source,
+                                &selection_token, &uid, &id, detail, &mut source,
                             )?;
                         }
                         Ok((ids, index, quality, source))
@@ -760,7 +807,9 @@ impl MusicClient {
             let songs = self
                 .session
                 .run_for(&token, |api, _| async {
-                    CatalogApi::new(api).songs(chunk, 100).await
+                    CatalogApi::new(api)
+                        .songs_with_trial(chunk, 100, zone_detail_trial.then_some(MGC_TRIAL))
+                        .await
                 })
                 .await?;
             for (id, song) in chunk.iter().zip(songs.songs) {
@@ -779,6 +828,14 @@ impl MusicClient {
         if let Some((view, card_key, id, _)) = zone_playlist {
             self.vertical_zone_playlist_trial(&token, &view, &card_key, &id)
                 .await?;
+        }
+        if let Some((receipt, id, revision, previous)) = zone_detail {
+            let current = self
+                .vertical_zone_playlist_snapshot(&token, &receipt, &id, &revision)
+                .await?;
+            if !std::sync::Arc::ptr_eq(&previous, &current) {
+                return Err(Error::StaleResponse);
+            }
         }
         if resources.get(index).is_none_or(|v| v["missing"] == true) {
             return Err(Error::State("selected song is unavailable"));

@@ -349,6 +349,8 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 catalog::ordinary_essential,
                 catalog::vertical_zone_menu,
                 catalog::vertical_zone_page,
+                catalog::vertical_zone_playlist_origin,
+                catalog::vertical_zone_playlist_detail,
                 catalog::ordinary_essential_books,
                 catalog::discovery_home_rankings,
                 catalog::followed_new_song_page,

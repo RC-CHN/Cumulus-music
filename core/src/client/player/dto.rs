@@ -193,6 +193,14 @@ pub enum PlaySelection {
         card_key: String,
         quality: Quality,
     },
+    VerticalZonePlaylistDetail {
+        id: String,
+        receipt: String,
+        revision: String,
+        start_id: Option<String>,
+        double_click: bool,
+        quality: Quality,
+    },
     ProfileRankPlaylist {
         uid: Option<String>,
         quality: Quality,
