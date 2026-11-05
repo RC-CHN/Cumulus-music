@@ -147,6 +147,10 @@ export function createTauriClient(): CoreClient {
     autostartChange: (enabled, observed) =>
       invoke('autostart_change', { change: { enabled, observed } }),
     windowPreferences: (epoch) => invoke('window_preferences', { epoch }),
+    playbackCacheState: () => invoke('playback_cache_state'),
+    playbackCacheSetCapacity: (expectedRevision, capacityBytes) =>
+      invoke('playback_cache_set_capacity', { expectedRevision, capacityBytes }),
+    playbackCacheClear: (expectedRevision) => invoke('playback_cache_clear', { expectedRevision }),
     windowPreferencesCommand: (epoch, command) =>
       invoke('window_preferences_command', { epoch, command }),
     windowLifecycle: () => invoke('window_lifecycle'),

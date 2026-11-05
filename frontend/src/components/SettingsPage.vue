@@ -23,6 +23,7 @@ import RelaySettings from './settings/RelaySettings.vue';
 import QueueClickPreferences from './settings/QueueClickPreferences.vue';
 import RecentHistoryPreference from './settings/RecentHistoryPreference.vue';
 import PlaybackStartup from './settings/PlaybackStartup.vue';
+import PlaybackCache from './settings/PlaybackCache.vue';
 import AudioOutput from './settings/AudioOutput.vue';
 import LoudnessBalance from './settings/LoudnessBalance.vue';
 import type { PlayerModel } from '../composables/usePlayer';
@@ -506,6 +507,7 @@ function accept(op: SettingsOperation) {
           <button class="secondary" @click="emit('downloads')">打开下载管理</button>
         </div>
       </section>
+      <PlaybackCache />
       <AboutSupport />
     </div>
     <ModalTransition :fallback-focus="fallbackFocus"

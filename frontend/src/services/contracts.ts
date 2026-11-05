@@ -64,6 +64,7 @@ import type { AccountProfileEditClient } from './accountProfileEdit';
 import type { QueueClickPreferencesClient } from './queueClickPreferences';
 import type { StartupPreferencesClient } from './startup';
 import type { PlaybackPowerClient } from './playbackPower';
+import type { PlaybackCacheClient } from './playbackCache';
 import type { AutostartClient, WindowPreferencesClient, WindowLifecycleClient } from './window';
 import type { SystemMediaClient } from './systemMedia';
 import type { ShortcutsClient } from './shortcuts';
@@ -175,6 +176,7 @@ export interface CoreClient
     AccountProfileEditClient,
     StartupPreferencesClient,
     PlaybackPowerClient,
+    PlaybackCacheClient,
     QueueClickPreferencesClient,
     OutputClient,
     SystemMasterVolumeClient,
