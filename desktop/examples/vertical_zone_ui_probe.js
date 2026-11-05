@@ -39,6 +39,7 @@
     return page && !page.matches('.page-enter-active,.page-leave-active') &&
       getComputedStyle(page).opacity === '1';
   };
+  const playlistStages = ['playlist-detail', 'playlist-v6'].includes(window.__verticalZoneCase);
   let count = 0;
   async function capture(name, values = {}) {
     await wait(settled, `settled page before ${name}`);
@@ -46,14 +47,14 @@
     // captures the actual X11 pixels. The DOM can be ready during enter.
     await sleep(100);
     const stage = `ux_${String(++count).padStart(2, '0')}_${name}`;
-    if (window.__verticalZoneCase === 'playlist-detail') window.__zonePlaylistStageRecorded = null;
+    if (playlistStages) window.__zonePlaylistStageRecorded = null;
     await emit(stage, {
       ...values, captureHandshake: true,
       width: innerWidth, height: innerHeight,
       zoneTitle: zone()?.getAttribute('aria-label'),
       modules: all('[data-zone-module]').map((node) => node.dataset.zoneModule),
     });
-    if (window.__verticalZoneCase === 'playlist-detail')
+    if (playlistStages)
       await wait(() => window.__zonePlaylistStageRecorded === stage, `native evidence saved for ${stage}`);
   }
   function viewport() {
@@ -151,6 +152,66 @@
     click(heading(), 'normal playlist Play All after personalized entry');
     await started('81', 'normal_replay', heading);
   }
+  async function playlistV6Case() {
+    const entries = [
+      ['ordinary', '专区普通同号歌单', '204', '合成普通同号详情', false, '81'],
+      ['preflight', '专区合成歌单 204', '204', '合成卡片直达 V6', true, '81'],
+      ['promoted', '专区合成歌单 205', '205', '合成发现特殊类型后 V6', true, '81'],
+      ['liked', '专区合成歌单 206', '206', '合成本人红心 V6', true, '87'],
+    ];
+    const ids = ['81', '84', '87'];
+    const { epoch } = await invoke('account_snapshot');
+    const player = () => invoke('player_snapshot', { epoch });
+    const title = () => one('.playlist-title h1')?.textContent.trim();
+    const heading = () => one('.playlist-actions button.primary');
+    const row = (id) => one(`.track-row[data-track-id="${id}"]`);
+    const detailMarker = () => one('[data-zone-playlist-detail]');
+    const description = () => one('.playlist-description-preview p')?.textContent.trim();
+    const subscribers = () => all('.playlist-toolbar .playlist-section')
+      .find((section) => section.textContent.trim().startsWith('收藏者'))?.querySelector('small')?.textContent.trim() ?? null;
+    let priorPlay;
+    for (const [name, label, id, text, personalized, selected] of entries) {
+      const card = button(label);
+      assert(card, `zone card ${label}`);
+      card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      await sleep(200);
+      const before = viewport();
+      click(card, label);
+      await wait(() => title() === `专区 V6 详情 ${id}` && ids.every(row) &&
+        heading() && !heading().disabled, `${name} detail and tracks loaded in Vue`);
+      assert(!!detailMarker() === personalized && description() === text, `${name} route and response origin`);
+      await capture(`${name}_detail`, {
+        id, personalized: !!detailMarker(), description: description(), subscribers: subscribers(),
+      });
+
+      const target = name === 'liked' ? () => row(selected)?.querySelector('.track-play') : heading;
+      target().scrollIntoView({ block: 'nearest' });
+      await wait(() => hit(target()), `${name} selected play action is visible`);
+      click(target(), `${name} play`);
+      let native;
+      await wait(async () => {
+        const next = await player();
+        if (next.state !== 'playing' || next.track?.id !== selected || next.playId === priorPlay ||
+          !(next.position > 0.15) || next.origin?.kind !== 'playlist' || next.origin.id !== id) return false;
+        native = next;
+        return true;
+      }, `${name} native authorization and decode clock`);
+      priorPlay = native.playId;
+      const queue = (await invoke('player_queue', { epoch })).tracks.map(({ track }) => track.id);
+      assert(queue.join() === ids.join(), `${name} keeps playlist order`);
+      await wait(() => target() === document.activeElement, `${name} retains playback focus`);
+      await capture(`${name}_play`, {
+        id, personalized: !!detailMarker(), playId: native.playId, trackId: selected,
+        position: native.position, queue, focusRetained: target() === document.activeElement,
+      });
+      await invoke('player_action', { epoch, action: { kind: 'stop' } });
+      await wait(async () => (await player()).state === 'idle', 'native player stopped between visits');
+      if (name !== 'liked') {
+        back();
+        await restored(label, before);
+      }
+    }
+  }
   try {
     const curated = () => all('.sidebar button:not(:disabled)').find((node) => node.textContent.trim() === '精选');
     await wait(curated, 'enabled sidebar');
@@ -208,8 +269,9 @@
     await wait(() => zone()?.getAttribute('aria-label') === '摇滚' && tab('default')?.getAttribute('aria-current') === 'page' &&
       all('[data-zone-module]').length === 4, 'Rock default and four module kinds');
     assert(zone().textContent.includes('专区榜单歌曲') && !zone().textContent.includes('禁止出现的远程动作'), 'rank preview and unknown target filtering');
-    if (window.__verticalZoneCase === 'playlist-detail') {
-      await playlistDetailCase();
+    if (playlistStages) {
+      if (window.__verticalZoneCase === 'playlist-v6') await playlistV6Case();
+      else await playlistDetailCase();
       await emit('complete', { ok: true, stageCount: count });
       return;
     }

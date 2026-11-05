@@ -696,7 +696,7 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
     let mut context = assets::context();
-    if zone_fm_preview_fixture::enabled() {
+    if zone_fm_preview_fixture::enabled() || vertical_zone_fixture::playlist_v6() {
         zone_fm_preview_fixture::restrict_artwork(&mut context);
     }
     let window_config = context.config().app.windows[0].clone();
@@ -1202,7 +1202,7 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
-                    if vertical_zone_fixture::playlist_detail() && stage.starts_with("ux_") {
+                    if vertical_zone_fixture::playlist_stage_ack() && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__zonePlaylistStageRecorded={};",json!(stage))).unwrap();
                     }
                     // An emit reply does not wait for this spawned snapshot.

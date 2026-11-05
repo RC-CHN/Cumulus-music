@@ -10,6 +10,7 @@ from motion_smoke import launch
 from playback_power_smoke import windows_runtime
 
 MENU = "/api/secondary/tab/list"
+HOST_LIST = "/api/user/playlist"
 PRIVACY = "/api/user/setting"
 TAB = "/api/zone/tab/get"
 CLASSIC = "/api/zone/get"
@@ -26,6 +27,8 @@ CASES = {
     "hotspot": ("hotspot_zone", "hotspot_back"),
     "playlist-detail": ("normal_detail", "normal_header", "normal_back", "mgc_detail", "mgc_header",
                         "mgc_row", "mgc_double", "mgc_back", "normal_reopen", "normal_replay"),
+    "playlist-v6": ("ordinary_detail", "ordinary_play", "preflight_detail", "preflight_play",
+                    "promoted_detail", "promoted_play", "liked_detail", "liked_play"),
 }
 DEFAULT_CASES = ("full", "privacy", "hotspot")
 
@@ -101,6 +104,62 @@ def check_playlist_detail(rows):
     assert len(play_ids) == len(scopes)
 
 
+def check_playlist_v6(rows):
+    specs = {
+        "ordinary": ("204", "合成普通同号详情", False, "81", None),
+        "preflight": ("204", "合成卡片直达 V6", True, "81", 121),
+        "promoted": ("205", "合成发现特殊类型后 V6", True, "81", 121),
+        "liked": ("206", "合成本人红心 V6", True, "87", 43),
+    }
+    ids = ["81", "84", "87"]
+    relevant = {PLAYLIST, PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG, PLAY}
+    previous = []
+    play_ids = set()
+    for stage, row in rows.items():
+        name, step = stage.split("_")
+        id_, description, personalized, selected, trial = specs[name]
+        assert row["id"] == id_ and row["personalized"] == personalized, row
+        wire = row["verticalZoneCalls"]
+        assert wire[:len(previous)] == previous, stage
+        delta = [(call["path"], call["args"]) for call in wire[len(previous):] if call["path"] in relevant]
+        previous = wire
+        paths = [path for path, _ in delta]
+        if step == "detail":
+            assert row["description"] == description, row
+            assert row["subscribers"] == "7", (stage, "final detail subscriber count", row)
+            detail = {"id": id_, "n": 100000, "s": 0} if trial is None else {
+                "id": id_, "n": 500, "s": 0, "newStyle": True, "trialMode": trial,
+            }
+            expected = [(PLAYLIST, detail)]
+            if name == "promoted":
+                expected[:0] = [(PLAYLIST_V4, {"id": id_, "n": 0, "s": 0}),
+                                (PLAYLIST_DYNAMIC, {"id": id_})]
+            assert delta[:-1] == expected and paths[-1:] == [SONG], (stage, delta)
+            assert delta[-1][1].get("trialMode") == trial, (stage, delta)
+            assert json.loads(delta[-1][1]["c"]) == [{"id": value, "v": 0} for value in ids], (stage, delta)
+            if name == "liked":
+                assert any(call["path"] == HOST_LIST and call["args"]["uid"] == "2" for call in wire), wire
+            continue
+        assert row["queue"] == ids and row["trackId"] == selected and row["position"] > 0.15, row
+        player = row["nativePlayer"]
+        assert player["state"] == "playing" and not player["error"] and player["position"] > 0.15, player
+        assert player["track"]["id"] == selected and player["origin"]["id"] == id_, player
+        assert player["playId"] == row["playId"] and player["playId"] not in play_ids, player
+        assert row["audioFactoryCount"] == 1 and row["focusRetained"], row
+        play_ids.add(player["playId"])
+        allowed = {SONG, PLAY} if personalized else {PLAYLIST, SONG, PLAY}
+        assert all(path in allowed for path in paths), (stage, delta)
+        assert SONG in paths and PLAY in paths and paths.index(SONG) < paths.index(PLAY), (stage, delta)
+        for path, args in delta:
+            if path == SONG:
+                assert args.get("trialMode") == trial, (stage, delta)
+            elif path == PLAY:
+                assert args["trialMode"] == (trial if trial is not None else -1), (stage, delta)
+        authorized = [str(value) for path, args in delta if path == PLAY for value in json.loads(args["ids"])]
+        assert selected in authorized, (stage, delta)
+    assert len(play_ids) == len(specs)
+
+
 def check_case(directory, case, screenshots, windows):
     output = directory / "first"
     complete = read(output / "complete.json")
@@ -164,6 +223,8 @@ def check_case(directory, case, screenshots, windows):
         assert any(call["path"] == "/api/search/pc/complex/page/v3" and
                    call["args"]["keyword"] == "合成专区热点" for call in calls)
         assert not any(call["path"] == PLAY for call in calls)
+    elif case == "playlist-v6":
+        check_playlist_v6(rows)
     else:
         check_playlist_detail(rows)
     if not windows:

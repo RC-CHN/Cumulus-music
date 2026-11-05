@@ -17,6 +17,14 @@ pub fn playlist_detail() -> bool {
     std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("playlist-detail")
 }
 
+pub fn playlist_v6() -> bool {
+    std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("playlist-v6")
+}
+
+pub fn playlist_stage_ack() -> bool {
+    playlist_detail() || playlist_v6()
+}
+
 pub fn groups(revision: &str) -> Result<PcExperimentGroups> {
     if revision != "synthetic-vertical-zone" || !enabled() {
         return Err(Error::CredentialChanged);
@@ -46,7 +54,8 @@ pub fn observe(path: &str, args: &Value) {
                 | "/api/playlist/detail/dynamic"
                 | "/api/song/enhance/player/url/v1"
                 | "/api/user/setting/update"
-        ) || playlist_detail() && path == "/api/v3/song/detail")
+        ) || playlist_stage_ack() && path == "/api/v3/song/detail"
+            || playlist_v6() && path == "/api/user/playlist")
     {
         record(path, args);
     }
@@ -58,16 +67,19 @@ fn content(key: &str, title: &str, blocks: Vec<Value>) -> Value {
 
 fn blocks() -> Vec<Value> {
     let mut albums = vec![json!({"resourceType":"album","resourceId":7,"name":"专区合成专辑"})];
-    albums.extend(
-        (204..=212).map(
-            |id| json!({"resourceType":"playlist","id":id,"name":format!("专区合成歌单 {id}")}),
-        ),
-    );
+    albums.extend((204..=212).map(|id| {
+        let mut card =
+            json!({"resourceType":"playlist","id":id,"name":format!("专区合成歌单 {id}")});
+        if playlist_v6() && id == 204 {
+            card["specialType"] = json!(100);
+        }
+        card
+    }));
     let mut grid = vec![
         json!({"resourceType":"playlist","id":206,"name":"专区常规歌单"}),
         json!({"resourceType":"playlist","id":207,"name":"仅个性化网格卡片","hideAfterClosePersonalized":true}),
     ];
-    if playlist_detail() {
+    if playlist_stage_ack() {
         grid.push(json!({"resourceType":"playlist","id":204,"name":"专区普通同号歌单"}));
     }
     vec![
@@ -91,11 +103,63 @@ fn playlist(version: &str, ids: &[u64]) -> Value {
         "trackCount":ids.len(),"trackIds":ids.iter().map(|id|json!({"id":id,"v":0})).collect::<Vec<_>>()}})
 }
 
+fn playlist_v6_response(path: &str, args: &Value) -> Option<Result<Value>> {
+    fn detail(id: u64, description: &str, owner: u64, special: u64) -> Value {
+        json!({"code":200,"playlist":{"id":id,"name":format!("专区 V6 详情 {id}"),
+            "description":description,"userId":owner,"creator":{"userId":owner,"nickname":"合成作者"},
+            "specialType":special,"privacy":0,"subscribedCount":7,"trackCount":99,
+            "trackIds":[{"id":81,"v":0},{"id":84,"v":0},{"id":87,"v":0}]}})
+    }
+
+    let result = match path {
+        "/api/user/playlist" if args["uid"] == "2" => {
+            json!({"code":200,"more":false,"playlist":[{"id":206,"userId":2,
+                "creator":{"userId":2,"nickname":"合成作者"},"specialType":5,"name":"专区夹具红心歌单"}]})
+        }
+        "/api/v6/playlist/detail" if *args == json!({"id":"204","n":100000,"s":0}) => {
+            detail(204, "合成普通同号详情", 3, 100)
+        }
+        "/api/v6/playlist/detail"
+            if *args == json!({"id":"204","n":500,"s":0,"newStyle":true,"trialMode":121}) =>
+        {
+            detail(204, "合成卡片直达 V6", 3, 100)
+        }
+        "/api/playlist/v4/detail" if *args == json!({"id":"205","n":0,"s":0}) => {
+            detail(205, "合成待提升 V4", 3, 100)
+        }
+        "/api/playlist/detail/dynamic" if *args == json!({"id":"205"}) => {
+            json!({"code":200,"bookedCount":902})
+        }
+        "/api/v6/playlist/detail"
+            if *args == json!({"id":"205","n":500,"s":0,"newStyle":true,"trialMode":121}) =>
+        {
+            detail(205, "合成发现特殊类型后 V6", 3, 100)
+        }
+        "/api/v6/playlist/detail"
+            if *args == json!({"id":"206","n":500,"s":0,"newStyle":true,"trialMode":43}) =>
+        {
+            detail(206, "合成本人红心 V6", 2, 5)
+        }
+        "/api/v6/playlist/detail" | "/api/playlist/v4/detail" | "/api/playlist/detail/dynamic" => {
+            return Some(Err(Error::InvalidInput(
+                "unexpected sealed V6 playlist request",
+            )));
+        }
+        _ => return None,
+    };
+    Some(Ok(result))
+}
+
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     if !enabled() {
         return None;
     }
     observe(path, args);
+    if playlist_v6()
+        && let Some(response) = playlist_v6_response(path, args)
+    {
+        return Some(response);
+    }
     let result = match path {
         "/api/rtrs/abt/front/expinfo/list"
             if hotspot()
@@ -183,7 +247,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         "/api/playlist/detail/dynamic" if *args == json!({"id":"204"}) => {
             json!({"code":200,"bookedCount":135,"subscribed":false})
         }
-        "/api/song/enhance/player/url/v1" if playlist_detail() => {
+        "/api/song/enhance/player/url/v1" if playlist_stage_ack() => {
             let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
             assert_eq!(ids.len(), 1);
             // Don't share URL cache between the three UI gestures: each one
