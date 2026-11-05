@@ -171,6 +171,8 @@
             state.playId === remount.state.playId && state.track?.voiceId === '601' &&
             state.position > remount.state.position + .1;
         }, 'title resumes the same paused decoder and opens the actual playback detail');
+        assert(!one('.vinyl-source', one('.lyrics-panel:not(.lyrics-panel-leave-active)')),
+          'official voice detail omits provenance instead of showing unknown');
         const opened = await capture('title_resumes_detail');
         assert(opened.state.playId === remount.state.playId &&
           opened.rows.revision === remount.rows.revision && opened.rows.current === remount.rows.current &&

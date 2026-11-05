@@ -28,7 +28,9 @@ export function playbackSource(view: PlayerView | undefined): {
   name: string;
   target?: PlaybackSourceDestination;
 } | null {
-  if (!view?.track || view.fm) return null;
+  // Official VoiceTitle omits provenance for every voice namespace, including
+  // downloaded voices. Keep native origins intact for non-display consumers.
+  if (!view?.track || view.fm || view.resourceKind === 'voice' || view.track.voiceId) return null;
   if (view.vinylSimilarOrigin && view.resourceKind === 'catalog') return { name: '相似歌曲' };
   const { origin, track } = view;
   if (origin && /^[0-9]*[1-9][0-9]*$/.test(origin.id)) {
