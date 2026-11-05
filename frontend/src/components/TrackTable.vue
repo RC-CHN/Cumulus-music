@@ -275,7 +275,7 @@ defineExpose({ locate, restoreScroll });
           start + index,
           currentId === track.id,
           currentToggle?.trackId === track.id ? currentToggle : undefined,
-          currentToggle?.trackId === track.id && toggleBusy,
+          toggleBusy,
           pendingToggle?.trackId === track.id ? pendingToggle : undefined,
           liked.has(track.id),
           busy.has(track.id),

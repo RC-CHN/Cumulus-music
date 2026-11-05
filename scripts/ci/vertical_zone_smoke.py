@@ -36,6 +36,11 @@ CASES = {
         "zone_filtered_detail", "whole_added", "row_moved", "row_playing",
     ),
 }
+CASES["playlist-detail-focus"] = (
+    "normal_detail", "normal_header", "normal_back", "mgc_detail", "mgc_header", "mgc_row",
+    "row_current_paused", "row_current_resumed", "row_focus_yielded", "mgc_double", "mgc_back",
+    "normal_reopen", "normal_replay", "row_pending_left",
+)
 DEFAULT_CASES = ("full", "privacy", "hotspot")
 
 
@@ -309,6 +314,29 @@ def check_case(directory, case, screenshots, windows):
         check_playlist_batch(rows)
     elif case == "playlist-queue-menu":
         check_playlist_queue_menu(rows)
+    elif case == "playlist-detail-focus":
+        check_playlist_detail({name: rows[name] for name in CASES["playlist-detail"]})
+        for name, state in [("row_current_paused", "paused"), ("row_current_resumed", "playing")]:
+            row = rows[name]
+            assert row["nativePlayer"]["playId"] == row["expectedPlayId"] == rows["mgc_row"]["playId"]
+            assert row["nativePlayer"]["state"] == state and row["focusRetained"]
+            assert row["nativePlayer"]["track"]["id"] == "87"
+            assert row["nativePlayer"]["entryId"] == rows["mgc_row"]["nativePlayer"]["entryId"]
+            assert row["nativePlayer"]["queueRevision"] == rows["mgc_row"]["nativePlayer"]["queueRevision"]
+        yielded = rows["row_focus_yielded"]
+        assert yielded["userFocusRetained"]
+        assert yielded["nativePlayer"]["state"] == "playing" and yielded["nativePlayer"]["track"]["id"] == "84"
+        assert yielded["nativePlayer"]["playId"] == yielded["playId"] != rows["mgc_row"]["playId"]
+        assert yielded["nativePlayer"]["position"] > .15
+        left = rows["row_pending_left"]
+        assert left["detached"] and left["focus"] == "专区普通同号歌单"
+        holds = left["focusHolds"]
+        assert [(hold["id"], hold["mode"]) for hold in holds] == [("87", "restore"), ("84", "other"), ("84", "leave")]
+        assert all(hold["disabledObserved"] and hold["disabledBlurInjected"] and hold["trackId"] == hold["id"] for hold in holds)
+        assert holds[-1]["detachedBeforeReply"]
+        assert left["nativePlayer"]["state"] == "playing" and left["nativePlayer"]["track"]["id"] == "84"
+        assert left["nativePlayer"]["playId"] == holds[-1]["playId"] and left["nativePlayer"]["position"] > .15
+        assert left["audioFactoryCount"] == 1
     else:
         check_playlist_detail(rows)
     if not windows:
@@ -352,10 +380,12 @@ def main():
         directory = root / case
         directory.mkdir()
         script = directory / "probe.js"
-        script.write_text(f"window.__verticalZoneCase={json.dumps(case)};\n" + script_source,
-                          encoding="utf-8")
+        native_case = "playlist-detail" if case == "playlist-detail-focus" else case
+        script.write_text(f"window.__verticalZoneCase={json.dumps(native_case)};\n"
+                          + ("window.__verticalZoneRowFocusProof=true;\n" if case == "playlist-detail-focus" else "")
+                          + script_source, encoding="utf-8")
         env = {**base_env, "CUMULUS_PROOF_DIR": str(directory), "CUMULUS_MOTION_PROOF": "1",
-               "CUMULUS_VERTICAL_ZONE_PROOF": case, "CUMULUS_UX_SCRIPT": str(script)}
+               "CUMULUS_VERTICAL_ZONE_PROOF": native_case, "CUMULUS_UX_SCRIPT": str(script)}
         for key in profiles:
             isolated = directory / "profile" / key
             isolated.mkdir(parents=True, mode=0o700)

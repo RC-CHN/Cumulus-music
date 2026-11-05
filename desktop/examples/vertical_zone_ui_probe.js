@@ -11,6 +11,7 @@
   const wait = async (predicate, label, interval = 65) => {
     const deadline = performance.now() + 9750;
     while (performance.now() < deadline) {
+      if (window.__verticalZoneRowFocusError) throw new Error(window.__verticalZoneRowFocusError);
       if (await predicate()) return;
       await sleep(interval);
     }
@@ -40,6 +41,53 @@
       getComputedStyle(page).opacity === '1';
   };
   const playlistStages = ['playlist-detail', 'playlist-v6', 'playlist-batch', 'playlist-queue-menu'].includes(window.__verticalZoneCase);
+  const rowFocusProof = window.__verticalZoneRowFocusProof === true;
+  const focusHolds = [];
+  let pendingFocusHold;
+  if (rowFocusProof) {
+    const nativeInvoke = window.__TAURI_INTERNALS__.invoke.bind(window.__TAURI_INTERNALS__);
+    const callbacks = window.__TAURI_INTERNALS__.callbacks;
+    assert(callbacks instanceof Map, 'pinned Tauri exposes the native callback map');
+    const nativeSet = callbacks.set;
+    // invoke itself is read-only in pinned Tauri. Arm exactly the next success
+    // callback synchronously before click; validate its actual native reply.
+    // Delay only delivery of that unchanged reply, never the native operation.
+    callbacks.set = function (id, callback) {
+      const hold = pendingFocusHold;
+      if (!hold) return nativeSet.call(this, id, callback);
+      pendingFocusHold = undefined;
+      return nativeSet.call(this, id, (reply) => {
+        (async () => {
+          assert(reply?.state === 'playing' && reply.track?.id === hold.id, 'armed callback is the real selected-track reply');
+          const target = () => one(`.track-row[data-track-id="${hold.id}"] .track-play`);
+          await wait(() => target()?.disabled, 'real native current-row event disables the initiating button before IPC completion');
+          const trigger = target();
+          const native = await nativeInvoke('player_snapshot', { epoch: reply.epoch });
+          assert(native.state === 'playing' && native.track?.id === hold.id, 'held reply retains real native playing selection');
+          // Reproduce the actual Windows disabled-control blur on Linux too.
+          trigger.blur();
+          assert(document.activeElement === document.body, 'disabled initiator loses focus to body');
+          if (hold.mode === 'other') {
+            const other = one('.playlist-track-search input');
+            assert(other && !other.disabled, 'playlist search remains a separate usable control');
+            other.focus({ preventScroll: true });
+          } else if (hold.mode === 'leave') {
+            back();
+            await wait(() => !trigger.isConnected && zone() && document.activeElement === button('专区普通同号歌单'), 'old row unmounts and Back restores the zone card during the pending reply');
+          }
+          await new Promise(resolve => requestAnimationFrame(resolve));
+          focusHolds.push({ id: hold.id, mode: hold.mode, disabledObserved: true,
+            disabledBlurInjected: true, playId: native.playId, trackId: native.track.id,
+            detachedBeforeReply: !trigger.isConnected });
+        })().then(() => callback(reply), error => {
+          window.__verticalZoneRowFocusError = String(error);
+          callback(reply);
+        });
+      });
+    };
+    assert(callbacks.set !== nativeSet, 'native reply delivery fence was installed');
+  }
+
   let count = 0;
   async function capture(name, values = {}) {
     await wait(settled, `settled page before ${name}`);
@@ -120,10 +168,30 @@
       await wait(() => target() === document.activeElement, `${state} restores focus after playback is ready`);
       await capture(state, { playId: snapshot.playId, trackId: id, position: snapshot.position, queue,
         personalized: !!detailMarker(), focusRetained: target() === document.activeElement });
+      if (rowFocusProof && state === 'mgc_row') await currentRowFocusCases(snapshot, target);
       await invoke('player_action', { epoch, action: { kind: 'stop' } });
       await wait(async () => (await player()).state === 'idle', 'native player stopped between gestures');
     }
 
+
+    async function currentRowFocusCases(initial, target) {
+      click(target(), 'current row pause');
+      await wait(async () => { const view = await player(); return view.state === 'paused' && view.playId === initial.playId && !target()?.disabled; }, 'current row pauses same native play entry');
+      await wait(() => document.activeElement === target(), 'current pause restores initiating row');
+      await capture('row_current_paused', { expectedPlayId: initial.playId, focusRetained: true });
+      click(target(), 'current row resume');
+      await wait(async () => { const view = await player(); return view.state === 'playing' && view.playId === initial.playId && !target()?.disabled; }, 'current row resumes same native play entry');
+      await wait(() => document.activeElement === target(), 'current resume restores initiating row');
+      await capture('row_current_resumed', { expectedPlayId: initial.playId, focusRetained: true });
+      pendingFocusHold = { id: '84', mode: 'other' };
+      click(row('84').querySelector('.track-play'), 'different row with explicit focus move');
+      let snapshot;
+      await wait(async () => { const view = await player(); if (view.state !== 'playing' || view.track?.id !== '84' || view.playId === initial.playId || !(view.position > .15) || row('84').querySelector('.track-play').disabled) return false; snapshot=view; return true; }, 'different real track completes while user chose playlist search');
+      assert(document.activeElement === one('.playlist-track-search input'), 'selection completion cannot steal focus back from another control');
+      priorPlay = snapshot.playId;
+      await capture('row_focus_yielded', { playId: snapshot.playId, trackId: '84', userFocusRetained: true,
+        focusHolds: [...focusHolds] });
+    }
     const ordinaryScroll = await open(normal, false, 'normal_detail');
     click(heading(), 'normal playlist Play All');
     await started('81', 'normal_header', heading);
@@ -136,6 +204,7 @@
     const rowPlay = () => row('87')?.querySelector('.track-play');
     rowPlay().scrollIntoView({ block: 'nearest' });
     await wait(() => hit(rowPlay()), 'row play button can be clicked');
+    if (rowFocusProof) pendingFocusHold = { id: '87', mode: 'restore' };
     click(rowPlay(), 'personalized playlist row play');
     await started('87', 'mgc_row', rowPlay);
     const double = () => row('84');
@@ -151,6 +220,16 @@
     await open(normal, false, 'normal_reopen');
     click(heading(), 'normal playlist Play All after personalized entry');
     await started('81', 'normal_replay', heading);
+    if (rowFocusProof) {
+      const old = row('84').querySelector('.track-play');
+      pendingFocusHold = { id: '84', mode: 'leave' };
+      click(old, 'normal row followed by Back while IPC is pending');
+      await wait(async () => { const view = await player(); return view.state === 'playing' && view.track?.id === '84' && view.position > .15 && focusHolds.some(hold => hold.mode === 'leave'); }, 'native selection continues after leaving the old component');
+      await wait(() => !old.isConnected && document.activeElement === button(normal), 'pending completion cannot focus a detached row or steal the restored zone card');
+      await capture('row_pending_left', { detached: !old.isConnected, focus: document.activeElement.getAttribute('aria-label'), focusHolds: [...focusHolds] });
+      await invoke('player_action', { epoch, action: { kind: 'stop' } });
+    }
+
   }
   async function playlistBatchCase() {
     const { epoch } = await invoke('account_snapshot');

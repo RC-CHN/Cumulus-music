@@ -126,3 +126,45 @@ Next 只开始该曲并使用 121；普通同号歌单整单添加沿用默认 -
 返回触发按钮。Rust 隔离验证另覆盖空队列整单补齐（元数据 -1、授权 121）、
 本人红心保留 43、本地及非成员歌曲拒绝；旧批量场景 7 个真实 WebView 状态回归。
 未使用真实账号或实体音频，本批未单独执行 Windows WebView。
+
+歌曲行异步播放的焦点恢复（本次修复）
+----------------------------------
+官方 TrackList.jsx:184–192、235–240 保留歌单/歌曲来源与 trialMode，
+M/3085:215–237、309–316、564–585 转成原生播放动作；点击不应另开页面
+或重复发送播放。已有返回流程继续恢复发起的专区卡片及其二维滚动。
+未从这些来源推断新的“播放完成焦点通知”或额外服务接口。这里修的是
+Cumulus 使用原生 button/temporary disabled 时的本地键盘可访问性边界。
+
+Windows 的 c9742b61 打包回归实际到第5态后失败于
+mgc_row restores focus after playback is ready。原生已播放歌曲87，来源
+歌单204、队列3、position10.149、error=null；因此不能归类成音源/解码
+失败。新曲的 native current 事件可能先于 play_selection 的 IPC 回执，
+此时 currentToggle 已属于该行而 player.busy 仍为true，行按钮短暂disabled，
+WebView2 会把焦点移到body。头部播放全部已有恢复机制，歌曲行没有。
+
+TrackRow 现在复用 usePlaybackTriggerFocus，记录实际发起控件，等待该控件
+可用且最终选择请求不再busy才恢复。另一控件已有焦点、track对象已替换、
+组件已离开/卸载或处于inert/leave时不恢复。没有重放原生请求。当前曲的
+暂停/继续仍走既有精确playId命令。TrackTable 的v-memo也必须记录真实
+全局toggleBusy：此前只记录“本行已经current且busy”，导致非当前行发起
+选择时收不到首个busy=true，使焦点记录被过早消费。列表仍使用原有界虚拟行。
+
+新增 --case playlist-detail-focus：继续使用封闭的playlist-detail原生夹具，
+在实际原生选择成功、事件真正使按钮disabled时，只暂缓同一成功回执的
+JavaScript交付并注入一次Windows的disabled-control blur。Tauri invoke是
+只读方法；探针通过固定Tauri版本公开的callbacks Map只包裹下一次成功
+回调，校验其真实曲目/播放状态后放行原样回执。它不替换命令结果、原生
+事件、请求、解码器或播放器。普通 --case playlist-detail 的断言和超时不变。
+
+Linux 旧22资产在该确定性交付窗口下精确复现Windows同一stage5/空焦点
+失败；修复后真实WebKitGTK/Tauri/libmpv-null通过14态/14PNG：原有10态，
+加当前87同playId暂停与继续、选择84未决时用户移至歌单搜索而不被抢回、
+普通行选择未决时Back卸载旧行且专区卡片焦点保持。另有Node测试覆盖最后
+回执、竞争焦点、track替换及scope销毁。Node24.16.0下905测试、format、
+typecheck及生产build通过。没有Cargo构建、真实账号或服务写入。
+
+这轮Linux试验复用保留的f8b0e2a7原生ux_ui_probe，通过--frontend-dist加载
+新资产。它与当前8bc0ac93的专区夹具、IPC DTO及歌曲选择源码一致；新的
+mpv/source集成不由旧二进制代验。它也不等于实际Windows复跑通过；父级
+集中构建/CI必须继续使用最新完整源码验证两个平台。原始失败、修复中失败
+和最终成功证据均保留在phase61-mgc-row-focus，未用延时或重试掩盖旧断言。

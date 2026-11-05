@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import { usePlaybackTriggerFocus } from '../composables/usePlaybackTriggerFocus';
 import SearchMatchText from './search/SearchMatchText.vue';
 import type {
   TrackCurrentToggle,
@@ -36,11 +37,34 @@ const emit = defineEmits<{
 }>();
 const cellRole = computed(() => (props.selection === undefined ? 'cell' : 'gridcell'));
 const shownToggle = computed(() => props.pendingToggle ?? props.currentToggle);
+const root = ref<HTMLElement>();
+const track = props.track;
+const primaryDisabled = computed(
+  () =>
+    props.track.missing ||
+    (props.pendingToggle
+      ? props.pendingToggle.disabled
+      : !props.playable || (!!props.currentToggle && props.toggleBusy)),
+);
+const playbackFocus = usePlaybackTriggerFocus(
+  () => !primaryDisabled.value,
+  root,
+  () =>
+    props.track === track &&
+    !!root.value?.isConnected &&
+    !root.value.closest('[inert], .page-leave-active'),
+  // A newly selected row can become the current row before select's IPC
+  // completes. Do not consume its focus owner at that intermediate readiness.
+  () => !props.toggleBusy,
+);
+
 function primary(event: MouseEvent) {
   const anchor = event.currentTarget as HTMLButtonElement;
-  if (props.pendingToggle) emit('togglePending', props.pendingToggle, anchor);
-  else if (props.currentToggle) emit('toggleCurrent', props.currentToggle, anchor);
-  else emit('play', props.index);
+  playbackFocus.start(() => {
+    if (props.pendingToggle) emit('togglePending', props.pendingToggle, anchor);
+    else if (props.currentToggle) emit('toggleCurrent', props.currentToggle, anchor);
+    else emit('play', props.index);
+  }, anchor);
 }
 function more(event: MouseEvent | KeyboardEvent) {
   emit('more', { track: props.track, event, play: () => emit('play', props.index) });
@@ -54,6 +78,7 @@ function duration(ms: number) {
 </script>
 <template>
   <div
+    ref="root"
     class="track-columns track-row"
     :class="{
       unavailable: track.missing,
@@ -73,10 +98,7 @@ function duration(ms: number) {
         class="track-play icon-button"
         data-result-action="play"
         :aria-label="`${shownToggle ? (shownToggle.pause ? '暂停' : '继续播放') : '播放'} ${track.name}`"
-        :disabled="
-          track.missing ||
-          (pendingToggle ? pendingToggle.disabled : !playable || (!!currentToggle && toggleBusy))
-        "
+        :disabled="primaryDisabled"
         @click.stop="primary"
         @dblclick.stop
       >
