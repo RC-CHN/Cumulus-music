@@ -121,7 +121,11 @@ impl LocalFixedStage {
     }
 }
 
-#[cfg(all(test, target_os = "linux", target_arch = "x86_64"))]
+#[cfg(all(
+    test,
+    any(target_os = "linux", target_os = "windows"),
+    target_arch = "x86_64"
+))]
 mod tests {
     use super::ffi;
     use serde::Deserialize;

@@ -1,6 +1,9 @@
 //! Full original 1AA50 graph receipts for one explicit old-schema local scope.
 //! No DLL or original parameter blobs are required in public CI.
-#![cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#![cfg(all(
+    any(target_os = "linux", target_os = "windows"),
+    target_arch = "x86_64"
+))]
 use cumulus_core::effects::{
     dsp::{Format, PlanarBlock},
     stereo::{LocalFixedStereoMaterial, LocalStereoMaterialPlan},
