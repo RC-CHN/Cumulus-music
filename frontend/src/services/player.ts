@@ -3,6 +3,7 @@ import type { CloudQuery } from './cloud';
 import type { CommentOperation, VinylCommentLikeAction, VinylCommentPage } from './comments';
 import type { ProfileReportView, ReportCommand } from './profileReport';
 import type { VinylSimilarClient } from './vinylSimilar';
+import type { VoiceDetail } from './voiceDetail';
 export type Quality =
   | '64aac'
   | 'standard'
@@ -65,6 +66,7 @@ export interface DeviceParametricView {
 }
 
 export interface PlayerView {
+  voiceDetail?: VoiceDetail | null;
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   audiobookSkipAvailable?: boolean;
   origin?: PlayerOrigin | null;

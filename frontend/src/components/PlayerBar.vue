@@ -11,6 +11,7 @@ import type {
 import type { AccountView, TrackView } from '../services/contracts';
 import type { CatalogResource } from '../services/catalog';
 import Icon from './Icon.vue';
+import { useCoverImage } from '../composables/useCoverImage';
 import EqualizerPanel from './EqualizerPanel.vue';
 import EffectDirectory from './EffectDirectory.vue';
 import ModalTransition from './ModalTransition.vue';
@@ -74,6 +75,10 @@ const {
   loadingStepKey,
   loadingStepBusy,
 } = props.player;
+const cover = useCoverImage(() => ({
+  owner: JSON.stringify([view.value?.epoch, view.value?.playId]),
+  source: view.value?.track?.coverUrl,
+}));
 const chorusMarker = usePlaybackChorus(view, loaded);
 const showQueueMoreTip = useQueueMoreTip(
   view,
@@ -480,16 +485,22 @@ async function seek(event: Event) {
     <div class="now-playing">
       <button
         class="player-cover"
+        :data-cover-state="cover.state.value"
         :disabled="!view?.track"
         aria-label="打开播放详情"
         @click="player.toggleLyrics"
       >
         <img
-          v-if="view?.track?.coverUrl"
-          :src="view.track.coverUrl"
+          v-if="cover.showImage.value"
+          v-show="cover.loaded.value"
+          :key="cover.generation.value"
+          :src="cover.source.value!"
+          :data-cover-generation="cover.generation.value"
           alt=""
           referrerpolicy="no-referrer"
-        /><Icon v-else name="music" />
+          @load="cover.load"
+          @error="cover.error"
+        /><Icon v-if="!cover.loaded.value" name="music" data-cover-placeholder />
       </button>
       <div class="now-copy">
         <button

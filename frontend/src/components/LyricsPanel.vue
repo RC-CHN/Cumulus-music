@@ -3,6 +3,12 @@ import { computed, ref, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import { time, type PlayerView } from '../services/player';
 import Icon from './Icon.vue';
+import { useCoverImage } from '../composables/useCoverImage';
+import {
+  playbackVoiceDetail,
+  voiceCreatorTarget,
+  type VoiceCreatorTarget,
+} from '../services/voiceDetail';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import LyricFontSize from './LyricFontSize.vue';
 import ActionMenu from './ActionMenu.vue';
@@ -55,6 +61,7 @@ const emit = defineEmits<{
   commentReportExpired: [];
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
+  voiceCreator: [target: VoiceCreatorTarget];
   fullComments: [hot: boolean];
   relatedPlaylist: [id: string];
   retryRecommendation: [lane: VinylSimilarLane];
@@ -94,6 +101,16 @@ function escapePanel() {
 }
 const metadata = computed(() => playbackMetadata(view.value?.track));
 const source = computed(() => playbackSource(view.value));
+const voiceMetadata = computed(() => playbackVoiceDetail(view.value));
+const creatorTarget = computed(() => voiceCreatorTarget(view.value));
+const cover = useCoverImage(() => ({
+  owner: JSON.stringify([view.value?.epoch, view.value?.playId]),
+  source: view.value?.track?.coverUrl,
+}));
+function openVoiceCreator() {
+  const target = voiceCreatorTarget(view.value);
+  if (target) emit('voiceCreator', target);
+}
 const wordMode = ref(true);
 const lyricFontKey = 'cumulus.playback.lyric-font-gain.v1';
 const lyricFontGain = ref(0);
@@ -567,16 +584,56 @@ const displayedAuxiliary = computed(() =>
             <Icon name="down" />滚动查看评论<Icon name="down" />
           </button>
           <div class="vinyl-info">
-            <div v-if="displayMode !== 'lyric'" class="vinyl-record">
+            <div
+              v-if="displayMode !== 'lyric'"
+              class="vinyl-record"
+              :data-cover-state="cover.state.value"
+            >
               <img
-                v-if="view?.track?.coverUrl"
-                :src="view.track.coverUrl"
-                alt="专辑封面"
+                v-if="cover.showImage.value"
+                v-show="cover.loaded.value"
+                :key="cover.generation.value"
+                :src="cover.source.value!"
+                :data-cover-generation="cover.generation.value"
+                :alt="voiceMetadata ? '节目封面' : '专辑封面'"
                 referrerpolicy="no-referrer"
-              /><Icon v-else name="music" />
+                @load="cover.load"
+                @error="cover.error"
+              /><Icon v-if="!cover.loaded.value" name="music" data-cover-placeholder />
             </div>
-            <h1 :title="view?.track?.name">{{ view?.track?.name }}</h1>
-            <p v-if="view?.track" class="vinyl-credits" aria-label="歌手">
+            <h1 :title="view?.track?.name">
+              {{ view?.track?.name }}
+            </h1>
+            <ul
+              v-if="voiceMetadata"
+              class="vinyl-voice-meta"
+              aria-label="节目资料"
+              data-voice-detail
+            >
+              <li v-if="voiceMetadata.creator" class="voice-creator">
+                <span>主播：</span>
+                <button
+                  v-if="creatorTarget"
+                  type="button"
+                  class="text-button vinyl-credit"
+                  data-voice-creator
+                  :aria-label="`查看主播：${voiceMetadata.creator.name}`"
+                  :title="voiceMetadata.creator.name"
+                  @click="openVoiceCreator"
+                >
+                  {{ voiceMetadata.creator.name }}
+                </button>
+                <span v-else :title="voiceMetadata.creator.name" data-voice-creator-name>
+                  {{ voiceMetadata.creator.name }}
+                </span>
+              </li>
+              <li class="voice-release" data-voice-release>
+                <span>发布时间：</span
+                ><time v-if="voiceMetadata.releaseDate">{{ voiceMetadata.releaseDate }}</time>
+                <span v-else>—</span>
+              </li>
+            </ul>
+            <p v-else-if="view?.track" class="vinyl-credits" aria-label="歌手">
               <template v-for="(artist, index) in metadata.artists" :key="index">
                 <span v-if="index > 0" aria-hidden="true"> / </span>
                 <button
@@ -592,7 +649,10 @@ const displayedAuxiliary = computed(() =>
                 <span v-else class="vinyl-credit" :title="artist.name">{{ artist.name }}</span>
               </template>
             </p>
-            <small v-if="displayMode === 'classic' && view?.track" class="vinyl-album">
+            <small
+              v-if="displayMode === 'classic' && view?.track && !voiceMetadata"
+              class="vinyl-album"
+            >
               <button
                 v-if="metadata.album.target"
                 type="button"

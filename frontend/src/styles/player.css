@@ -988,6 +988,37 @@ input[type='range'] {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.vinyl-info .vinyl-voice-meta {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 100%;
+  flex-shrink: 0;
+  gap: 6px 14px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+.vinyl-voice-meta li {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+}
+.vinyl-voice-meta .voice-creator {
+  overflow: hidden;
+}
+.voice-creator button,
+.voice-creator [data-voice-creator-name] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-creator > span:first-child,
+.vinyl-voice-meta .voice-release {
+  flex-shrink: 0;
+}
 .vinyl-info .vinyl-credits {
   display: flex;
   flex-wrap: wrap;

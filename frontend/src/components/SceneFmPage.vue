@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useSceneFmPalette } from '../composables/useSceneFmPalette';
 import { useCore } from '../services/core';
+import { useCoverImage } from '../composables/useCoverImage';
 import { useControlFocus } from '../composables/useControlFocus';
 import Icon from './Icon.vue';
 import type { SceneFmModel } from '../composables/useSceneFm';
@@ -21,6 +22,10 @@ const emit = defineEmits<{
 const { view, loading, busy, error } = props.model;
 const category = computed(() => view.value?.scenes.find((s) => s.id === view.value?.activeId));
 const panel = ref<HTMLElement>();
+const cover = useCoverImage(() => ({
+  owner: JSON.stringify([props.epoch, view.value?.episode?.id]),
+  source: view.value?.episode?.coverUrl,
+}));
 const palette = useSceneFmPalette(useCore());
 watch(
   () =>
@@ -119,16 +124,22 @@ async function openVoice() {
         <div v-if="view.episode" class="scene-fm-content">
           <button
             class="scene-fm-cover"
+            :data-cover-state="cover.state.value"
             :disabled="!playable || busy || loading || view.episode.unavailable"
             :aria-label="view.playing ? '暂停随心听FM' : '播放随心听FM'"
             @click="model.act('toggle')"
           >
             <img
-              v-if="view.episode.coverUrl"
-              :src="view.episode.coverUrl"
+              v-if="cover.showImage.value"
+              v-show="cover.loaded.value"
+              :key="cover.generation.value"
+              :src="cover.source.value!"
+              :data-cover-generation="cover.generation.value"
               alt=""
               referrerpolicy="no-referrer"
-            /><Icon v-else name="music" />
+              @load="cover.load"
+              @error="cover.error"
+            /><Icon v-if="!cover.loaded.value" name="music" data-cover-placeholder />
             <span class="scene-fm-play"><Icon :name="view.playing ? 'pause' : 'play'" /></span>
           </button>
           <div class="scene-fm-info">

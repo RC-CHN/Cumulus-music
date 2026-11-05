@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { voiceCreatorTargetIsCurrent, type VoiceCreatorTarget } from './services/voiceDetail';
 import OrdinaryEssentialPage from './components/OrdinaryEssentialPage.vue';
 import ChoiceTabs from './components/ChoiceTabs.vue';
 import VerticalZonePage from './components/VerticalZonePage.vue';
@@ -1004,6 +1005,31 @@ function openDiscoveryHomeCard(card: DiscoveryHomeCard, section: DiscoveryHomeSe
 }
 function openCatalog(resource: CatalogResource) {
   music.navigate({ kind: 'catalog', resource });
+}
+async function openPlaybackVoiceCreator(target: VoiceCreatorTarget) {
+  const route = page.value;
+  if (
+    target.epoch !== account.value.epoch ||
+    !signedIn.value ||
+    music.initializing.value ||
+    !player.lyricsOpen.value
+  )
+    return;
+  try {
+    const current = await player.syncPlayback();
+    if (
+      route !== page.value ||
+      target.epoch !== account.value.epoch ||
+      !signedIn.value ||
+      !player.lyricsOpen.value ||
+      !voiceCreatorTargetIsCurrent(target, current)
+    )
+      return;
+    player.lyricsOpen.value = false;
+    music.navigate({ kind: 'playlist_creator', id: target.userId });
+  } catch {
+    // A stale voice or failed native observation must not open another profile.
+  }
 }
 function openPlaybackSource(
   target: import('./services/playbackMetadata').PlaybackSourceDestination,
@@ -5535,6 +5561,7 @@ onUnmounted(() => {
         @report="reportLyrics"
         @comment-report-expired="music.bootstrap(false)"
         @source="openPlaybackSource"
+        @voice-creator="openPlaybackVoiceCreator"
         @catalog="
           (target) => {
             player.lyricsOpen.value = false;
