@@ -1,0 +1,49 @@
+Explicit existing PC state: signed full-batch search read proof
+===========================================================
+
+core/examples/search_signed_read.rs is an opt-in research/native read runner.
+No arguments performs no account/profile/network access. An explicit invocation
+requires the existing desktop state root and a new private output directory:
+
+  search_signed_read --existing-pc-state EXISTING_STATE NEW_PRIVATE_OUTPUT
+
+The original state is opened read-only. SQLite's native backup API snapshots
+the registry/context database and selected credential database, including any
+committed WAL content; it never copies live database files directly. Persistent
+identity and real local hardware feed the same recovered clientSign/profile
+construction as desktop Linux Windows compatibility. An existing native PC
+configuration with nonzero version/data is mandatory. Neither a default UA nor
+a fabricated configuration/signature can satisfy that requirement.
+
+Only these exact PC EAPI reads may leave the process:
+  /api/w/nuser/account/get
+  /api/rtrs/abt/front/expinfo/list (the complete checked-in 190-key vector)
+  /api/search/pc/result/tab
+  /api/search/pc/complex/page or /api/search/pc/complex/page/v3
+The three search paths require one fixed public keyword. Account verification
+precedes the native full-batch consumer; search then consumes that same shared
+assignment through the production search assignment/footer gate. No short-bucket
+fallback, playback source, login, refresh, SDK/challenge, payment or write route
+is allowed. Redirects and transport retries remain disabled.
+
+Saved native path policy is respected: a path requiring a fresh SDK token stops
+before dispatch. TokenProvider never obtains or fabricates a token. Configuration
+downloads also stop locally; a failed ancillary config update does not replay a
+music request. The report records these demands as explicit boundaries. A stale
+or rejected session is not repaired by QR, renewal, expanded Cookie scope or a
+different protocol.
+
+Only aggregate result counts, four t1 booleans (searchHot, searchMore2,
+searchPageEfficiency, search-result), fixed logical read paths and HTTP/service
+codes enter the report. It excludes account IDs/names, Cookie, tokens, clientSign,
+hardware facts, full authorization URLs and raw replies. The isolated state is
+private evidence under .build and must not be committed. Errors are classified;
+raw error Display strings are never printed.
+
+Two synthetic runner tests cover the full-vector/fixed-search allowlist and a
+live committed-WAL backup. They do not establish a live service result. The
+global M147 startup/30-minute reactive experiment lifecycle and cached Vue footer
+updates remain a separate required implementation; this explicit read runner
+does not claim to complete it. Current source and execution evidence are recorded
+separately after the exact new example is built; older generic search CLI results
+do not validate this signed path.
