@@ -101,8 +101,12 @@
       assert(initial.length >= 1, 'first observation explicitly clears');
       assert(option()?.closest('label').textContent.trim() === '音乐播放时不自动休眠或熄屏',
         'official checkbox label');
-      assert(all('.playback-startup fieldset input').map((node) => node.name).join() ===
-        'startup-auto-play,playback-keep-awake,startup-remember-position', 'official relative placement');
+      const inputOrder = all('.playback-startup fieldset input').map((node) => node.name);
+      // Official Play.jsx:376,407,443,453; the sealed fixture has no handoff control.
+      const expectedOrder = ['startup-auto-play', 'playback-keep-awake',
+        'scene-fm-autoplay', 'startup-remember-position'];
+      assert(inputOrder.join() === expectedOrder.join(), 'official relative placement: ' +
+        JSON.stringify({ actual: inputOrder, expected: expectedOrder }));
       assert(option()?.checked === (phase === 'reopen'), 'default or SQLite persistence');
     }
     if (phase === 'initial') {
