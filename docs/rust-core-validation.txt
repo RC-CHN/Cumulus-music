@@ -1809,3 +1809,22 @@ RT下发/轮换或真实浏览器网页已打开。细节、失败修正和界�
 - 正式cumulus与10个原生探针已构建。新增JSK/旧链各35态WebView和各29库独立只读审计，
   本机KDE125%另35态/29库审计通过，所有35张物理窗口截图逐张复核；仅合成HTTP/账号/令牌。
 - 没有真实SMS/注册/RT轮换或音乐账号写入，不用这些测试替代本人令牌发放、完整SDK或Windows实机证明。
+
+2026-11-05 phase56：声音投影、下载来源及独立SE内核
+- 最终业务源码3b54a793（之后只有文档）。完整workspace/all-targets/custom-protocol
+  共383个测试程序，2322 passed、0 failed、19按既定条件忽略；cargo退出0。
+  .build/ui-proof/phase56-voice-detail/rust-test-origin-final.log。
+- cargo fmt与同范围Clippy -D warnings通过，最终普通cumulus、podcast_recent_ui_probe、
+  playback_power_ui_probe及ux_ui_probe构建通过；对应rust-{format,clippy,build}-origin-final.log。
+  artifacts-origin-final.sha256记录实际二进制，没有将只构建作为功能验证。
+- 原生新增声音投影检查、实际下载服务的类型来源/无效字段/冲突字段检查，以及独立SE的5项
+  对照和失败边界均包含在最终全量结果内；详见voice-playback-header-contracts.txt与
+  core-effects-stereo-zero.txt。原始下载任务不被投影重写，旧恢复队列仍须原生重选才能补标记。
+- 前端同一最终源码881 passed/0 failed/0 skipped，npm ci、format:check、类型和Vite构建通过。
+  新GUI为5阶段声音详情、3阶段sample取色、18阶段设置回归；独立SE实际CLI为9块，
+  具体截图、真实解码/合成请求分层与平台边界见ui-ux-validation.txt，不混成一项实服验收。
+- Windows GNU的桌面库/相关示例及核心库/受影响测试严格交叉检查通过。未执行Windows
+  SE数值运行或WebView；编译不能替代原生Windows运行，后续精确CI仍须重新执行。
+- CI工具96项、actionlint、源码公开审计与非发行release_guard通过。原远端运行
+  41977111356仍为失败；Linux与Windows停在旧3项设置断言，修复与18态本机证据见
+  desktop-ci-race-audit.txt。没有创建标签、发布或宣布完整目标完成。

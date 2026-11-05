@@ -666,3 +666,19 @@ login-entry-contracts.txt及ui-ux-validation.txt，来源散列见login-entry-of
 老用户继续实际主登录；普通注册force=false与8860 force=true分开，已知拒绝/未决/取消/重启边界共用持久守护。
 新旧链各35态WebView/29库审计、本机125%35截图全部查看；原生完整测试1578通过。
 接口和来源见phone-entry-contracts.txt/phone-entry-official-mapping.json。本人真实注册/RT发放与轮换、其余SDK仍继续。
+
+2026-11-05 声音信息与独立无混响SE迁移增量
+- 官方VoiceTitle/M21 -> client/player/voice_detail -> PlayerView.voiceDetail ->
+  LyricsPanel主播/发布日期 -> 当前原生身份复核后进入用户资料；原版注释掉的节目来源
+  继续隐藏。下载列表与播放器资源从typed DownloadOrigin规范节目字段，不借任意原始JSON
+  赋予节目布局；源下载记录不变。调用、未知字段、历史队列和验证见voice-playback-header-contracts.txt。
+- 官方FastImageX/场景Image的按URL复用及本地错误占位 -> useCoverImage，接场景卡、
+  底栏和详情。社区Icon资产差异明确；取色已完成结果按账号/URL复用，等待中同URL换节目
+  的差异仍保留。详见player-cover-fallback-contracts.txt、scene-fm-palette-contracts.txt。
+- 官方SE的可达ambience0/bank0 PCM路径 -> C安全FFI kind7/StereoNoAmbienceStage ->
+  独立effect_dsp_render stereo-zero。原始初始化bank1到bank0、M/S、子均衡/动态、参数
+  历史与重置/旁路均有冻结原生数值对照；不包含混响、ambience1、完整效果图或正式播放器
+  接入。详细来源映射effects-stereo-zero-mapping.json及core-effects-stereo-zero.txt。
+- 最终业务源码3b54a793的完整Rust2322/0/19、严格检查及前端881通过，真实WebView和
+  独立CLI证据按层记录于rust-core-validation.txt、ui-ux-validation.txt。Windows交叉编译
+  不等于运行，原远端CI失败与新精确CI必须分别记录；没有借阶段结果宣布整个goal完成。

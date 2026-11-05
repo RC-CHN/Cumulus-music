@@ -40,3 +40,20 @@ Windows 系统音量探针的启动
 
 所有失败仍计入原运行失败；没有 continue-on-error、删除必需 job 或用本地Linux结果冒充Windows。
 后续推送会让精确提交重新执行完整CI。这里只修复验证的同步与诊断，不宣称全客户端目标完成。
+
+同日后续：设置项新增后的严格顺序
+- CI 41977111356，精确提交 1aa03507198fe5bdb8d5d86d9cd11e07249a8160，
+  Linux/Windows Native、前端及 Linux Package 成功；Linux WebView 与 Windows Package
+  都在 playback_power_smoke 的 initial/startup 报 official relative placement，CI gate 失败。
+  没有把两个 Native job 成功写成完整 CI 成功。
+- 新的播客首次自动播放设置已在正式页面增加，探针仍只接受旧的3项。现在严格检查4项及顺序：
+  startup-auto-play、playback-keep-awake、scene-fm-autoplay、startup-remember-position。
+  失败还会记录实际与预期顺序；没有把检查改成只包含、跳过或接受任意数量。
+- 源码3b54a793的专用 playback_power_ui_probe 在 Linux GTK/WebKit 实际跑过 initial、
+  reopen、control、unsupported 共4进程、18状态/18张PNG。报告
+  .build/ui-proof/phase56-voice-detail/power-regression/audit.json；覆盖保存失败与明确刷新、
+  已保存设置重开，以及不支持/控制组隐藏电源选项时仍保留独立播客设置。
+- 最终电源 sink 为合成，真实 OS 电源调用、音乐请求及账号写入均0。它不证明 Windows
+  SetThreadExecutionState 或物理设备不会休眠。新提交的 Windows 与完整 CI 仍须独立执行。
+- 一次本机启动误传 ux_ui_probe 而非专用二进制，不能作为功能验证。失败证据保存在
+  power-regression-harness-mismatch，随后用新构建的专用示例实际完整重跑，未覆盖该记录。

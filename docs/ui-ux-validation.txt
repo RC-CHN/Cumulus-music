@@ -4856,3 +4856,13 @@ CAPTCHA探针也已按新协议门槛显式勾选，但本轮未重新打开在�
 - 契约索引：voice-playback-header-contracts.txt、player-cover-fallback-contracts.txt、
   scene-fm-palette-contracts.txt、core-effects-stereo-zero.txt。完整工作区检查与精确提交
   CI 按批次另外记录；本条没有新增 Windows 实机/实际 WebView 通过或整体目标完成结论。
+
+2026-11-05 设置顺序回归（phase56）
+- .build/ui-proof/phase56-voice-detail/power-regression/audit.json：正式 Vue/IPC、实际
+  GTK/WebKit 与 libmpv/null，4个进程、18个状态、18张PNG通过。二进制源码3b54a793，
+  SHA256 4247d06dc2ca8e27ec52e2a1160c729fdd791c1ad4f0e69cadf65c1d8d9d98b2。
+- 检查新增播客设置后的完整4项顺序、保存失败后的禁用与焦点/错误提示、刷新恢复、重开持久化、
+  控制组与 unsupported 隐藏分支。复核代理实际查看其中5张代表性原图，未声称18张均人工查看。
+  图为1440×1000虚拟桌面中的1120×760应用窗口，外部黑色为无窗口管理器的桌面背景。
+- 四次启动均仅数字 locale 为 C，消息与字符 locale 保留 en_US.UTF-8。最终 OS 电源 sink
+  为合成且实际 OS 电源调用、音乐请求、账号写入均0；不是 Windows 实机或物理声卡验收。

@@ -67,3 +67,17 @@
   没有 voice、song.voice_id 或下载声音标记，原始任务不变。再切换为 Voice，检查
   canonical song.voice_id 与完整详情；保留冲突 raw voice.id 时继续播放，但不授予
   声音详情。新增断言随本次完整集成批次验证，此处不把先前单项通过移用于扩展后测试。
+
+本批最终集成结果
+- 3b54a793 已包含上述下载来源修复。完整工作区/custom-protocol/all-targets 为
+  2322 passed、0 failed、19默认忽略，扩展后的下载集成测试实际通过；
+  cargo fmt、workspace严格Clippy及普通产品/相关示例构建通过。
+- 前端881项通过、format:check与类型/生产构建通过，未因原生下载修复重新改前端源码。
+  voiceDetail.ts 按本地时区显示YYYY-MM-DD；日期未知显示「—」，不把今天冒充发布日期。
+  LyricsPanel 只为节目显示主播/日期，普通歌曲继续使用歌手/专辑。
+- 点击主播前后均核对 account epoch、playId、voiceId、userId；await原生同步期间换曲、
+  换账号、离开路由或关闭详情均拒绝导航，目标始终是用户资料而非同编号歌手。
+- 实际GTK/WebKit、正式Vue/IPC与null libmpv已完成5阶段/5PNG，包含封面失败、当前节目
+  主播日期、资料页只读三请求与返回后同一播放ID/队列。证据与具体接口见
+  ui-ux-validation.txt 的phase56记录。本次服务为合成，未写真实账号或验证实服节目下载。
+- Windows GNU对应核心库及下载测试严格跨平台检查通过；不当作Windows运行验收。
