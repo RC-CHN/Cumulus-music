@@ -1,14 +1,20 @@
 use cumulus_core::{Error, Result, protocol::pc_experiments::PcExperimentGroups};
 use serde_json::{Value, json};
-use std::sync::Mutex;
+use std::sync::{
+    Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 static CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 const THREAD: &str = "R_SO_4_1";
 const ZERO_THREAD: &str = "R_SO_4_2";
 const ADD: &str = "/api/resource/comments/add";
 const REPLY: &str = "/api/v1/resource/comments/reply";
+const LIKE: &str = "/api/v1/comment/like";
+const UNLIKE: &str = "/api/v1/comment/unlike";
 const LOST: &str = "合成回复已送达，回包丢失";
 static WRITTEN: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static LIKED: AtomicBool = AtomicBool::new(false);
 
 pub fn group() -> Option<String> {
     std::env::var("CUMULUS_VINYL_COMMENTS_PROOF")
@@ -17,6 +23,9 @@ pub fn group() -> Option<String> {
 }
 pub fn composer() -> bool {
     std::env::var_os("CUMULUS_VINYL_COMPOSER_PROOF").is_some() && group().as_deref() == Some("t1")
+}
+pub fn likes() -> bool {
+    std::env::var_os("CUMULUS_VINYL_LIKES_PROOF").is_some() && group().as_deref() == Some("t1")
 }
 
 pub fn assignment(revision: &str) -> Result<PcExperimentGroups> {
@@ -37,6 +46,11 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     group()?;
     if composer()
         && let Some(response) = composer_response(path, args)
+    {
+        return Some(response);
+    }
+    if likes()
+        && let Some(response) = likes_response(path, args, "unbound")
     {
         return Some(response);
     }
@@ -79,6 +93,68 @@ fn row(id: &str, thread: &str, content: &str, owner: u64) -> Value {
     json!({"commentId":id,"threadId":thread,"content":content,"time":1700000000123_u64,
         "timeStr":"合成时间","liked":false,"likedCount":2,"beReplied":[],
         "user":{"userId":owner,"nickname":if owner==2 {"合成自己"} else {"合成作者"}}})
+}
+
+pub fn bound_like_read(path: &str, args: &Value) -> Result<Value> {
+    likes_response(path, args, "bound_read")
+        .unwrap_or(Err(Error::InvalidInput("unexpected vinyl like read")))
+}
+
+pub fn bound_like_write(path: &str, args: &Value) -> Result<Value> {
+    likes_response(path, args, "bound_write")
+        .unwrap_or(Err(Error::InvalidInput("unexpected vinyl like write")))
+}
+
+fn likes_response(path: &str, args: &Value, lane: &str) -> Option<Result<Value>> {
+    let liked = LIKED.load(Ordering::SeqCst);
+    let mut target = row("1", THREAD, "合成点赞评论", 9);
+    target["liked"] = json!(liked);
+    target["likedCount"] = json!(u8::from(liked));
+    let reply = match path {
+        LIKE | UNLIKE
+            if lane == "bound_write" && *args == json!({"threadId":THREAD,"commentId":"1"}) =>
+        {
+            LIKED.store(path == LIKE, Ordering::SeqCst);
+            if path == UNLIKE {
+                Err(Error::Transport(
+                    "synthetic accepted unlike with no receipt".into(),
+                ))
+            } else {
+                Ok(json!({"code":200}))
+            }
+        }
+        "/api/v1/resource/comments/R_SO_4_1"
+            if lane == "bound_read" && args["commentId"] == "1" && args["limit"] == 1 =>
+        {
+            Ok(json!({"code":200,"comments":[],"total":63,"more":false,"currentComment":target}))
+        }
+        "/api/v1/resource/comments/R_SO_4_1"
+            if lane == "bound_read" && args["offset"] == 0 && args["limit"] == 60 =>
+        {
+            let mut latest = vec![target.clone()];
+            latest.extend((2..=60).map(|id| row(&id.to_string(), THREAD, "合成评论", 9)));
+            latest[1]["liked"] = Value::Null;
+            Ok(
+                json!({"code":200,"comments":latest,"hotComments":[target],"total":63,
+                "more":true,"moreHot":false}),
+            )
+        }
+        "/api/v1/resource/comments/R_SO_4_1"
+        | LIKE
+        | UNLIKE
+        | ADD
+        | REPLY
+        | "/api/resource/comments/delete"
+        | "/api/report/reportcomment" => Err(Error::InvalidInput(
+            "vinyl like proof refused this dispatch",
+        )),
+        _ => return None,
+    };
+    CALLS
+        .lock()
+        .unwrap()
+        .push(json!({"path":path,"args":args,"lane":lane}));
+    Some(reply)
 }
 
 fn track_rows(written: &[Value], thread: &str) -> Vec<Value> {

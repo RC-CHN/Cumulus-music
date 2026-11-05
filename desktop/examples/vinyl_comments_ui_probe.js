@@ -43,12 +43,13 @@
         actual.state === baseline.state, 'comment UI preserves native transport');
       if (actual.state === 'paused') assert(Math.abs(actual.position - baseline.position) < .1, 'paused position unchanged');
       const stage = `ux_${String(++stages).padStart(2, '0')}_${label}`;
-      if (window.__vinylComposerRun) window.__vinylComposerRecorded = '';
+      const acknowledged = window.__vinylComposerRun || (window.__vinylLikeRun && !window.__vinylCommentControl);
+      if (acknowledged) window.__vinylComposerRecorded = '';
       await emit(stage, {
         tab: tab() ?? null, playId: actual.playId, trackId: actual.track?.id,
         latest: rows('latest').length, hot: rows('hot').length, captureHandshake: true, ...extras,
       });
-      if (window.__vinylComposerRun)
+      if (acknowledged)
         await wait(() => window.__vinylComposerRecorded === stage, 'native stage recorded: ' + stage);
     }
     async function pause() {
@@ -78,8 +79,9 @@
     await wait(() => one('.player-comment-count')?.textContent.trim() === '63', 'authoritative current count');
     click(footer('歌词'));
     await wait(() => tab() === 'lyrics' && one('.lyric-line.current'), 'standard vinyl details');
-    if (window.__vinylComposerRun) {
-      await window.__vinylComposerRun({ epoch, first, player, pause, comment, capture, tab, scroller,
+    const mutationRun = window.__vinylComposerRun || (!window.__vinylCommentControl && window.__vinylLikeRun);
+    if (mutationRun) {
+      await mutationRun({ epoch, first, player, pause, comment, capture, tab, scroller,
         rows, footer, pane, wait, click, invoke, assert, one, all });
       await emit('complete', { ok: true, stageCount: stages, realAccountWrites: 0, realMusicRequests: 0 });
       return;

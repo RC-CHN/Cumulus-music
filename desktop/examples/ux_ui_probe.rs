@@ -207,6 +207,9 @@ impl Api for Library {
                 return Err(cumulus_core::Error::CredentialChanged);
             }
             let (path, args) = read.into_request();
+            if vinyl_comments_fixture::likes() {
+                return vinyl_comments_fixture::bound_like_read(&path, &args);
+            }
             self.request(&path, args, false).await
         })
     }
@@ -219,13 +222,16 @@ impl Api for Library {
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             use cumulus_core::Error;
-            if !vinyl_comments_fixture::composer()
+            if !(vinyl_comments_fixture::composer() || vinyl_comments_fixture::likes())
                 || self.verified_pc_experiment_revision()?.as_deref() != Some(revision)
             {
                 return Err(Error::RequestNotSent(Box::new(Error::CredentialChanged)));
             }
             permission().map_err(|error| Error::RequestNotSent(Box::new(error)))?;
             let (path, args) = write.into_request();
+            if vinyl_comments_fixture::likes() {
+                return vinyl_comments_fixture::bound_like_write(path, &args);
+            }
             self.request(path, args, false).await
         })
     }
@@ -1326,7 +1332,7 @@ fn main() {
                     if queue_click_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueClickRecorded={};",serde_json::json!(stage))).unwrap();
                     }
-                    if vinyl_comments_fixture::composer() && stage.starts_with("ux_") {
+                    if (vinyl_comments_fixture::composer() || vinyl_comments_fixture::likes()) && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__vinylComposerRecorded={};",json!(stage))).unwrap();
                     }
                     if search_artist_top50_fixture::enabled() && stage.starts_with("ux_") {

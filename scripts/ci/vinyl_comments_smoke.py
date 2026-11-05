@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+import sqlite3
 import sys
 
 from motion_smoke import launch
@@ -15,13 +16,17 @@ HOT = "/api/v1/resource/hotcomments/R_SO_4_1"
 SECOND = "/api/v1/resource/comments/R_SO_4_2"
 ADD = "/api/resource/comments/add"
 REPLY = "/api/v1/resource/comments/reply"
-MUTATIONS = {ADD, REPLY, "/api/resource/comments/delete", "/api/v1/comment/like",
-             "/api/v1/comment/unlike", "/api/report/reportcomment"}
+LIKE = "/api/v1/comment/like"
+UNLIKE = "/api/v1/comment/unlike"
+MUTATIONS = {ADD, REPLY, LIKE, UNLIKE, "/api/resource/comments/delete",
+             "/api/report/reportcomment"}
 COMPOSER_STAGES = (
     "composer_zero", "cancelled", "utf16_rejected", "published", "stale_open", "stale_closed",
     "reply_target", "reply_confirmed", "reply_uncertain", "independent_recovery",
     "independent_unresolved",
 )
+
+LIKES_STAGES = ("like_initial", "like_confirmed", "unlike_uncertain", "unlike_reconciled")
 
 
 def read(path):
@@ -77,6 +82,52 @@ def check_composer(rows, complete):
                for call in rows["independent_recovery"]["vinylCommentsCalls"])
 
 
+def check_likes(rows, complete, directory):
+    page = dict(limit=60, offset=0, beforeTime=0, commentId="0",
+                compareUserLocation=False, composeConcert=False, markReplied=False,
+                forceFlatComment=False, showInner=False)
+    target = dict(page, limit=1, commentId="1")
+    list_read = dict(path=LATEST, args=page, lane="bound_read")
+    target_read = dict(path=LATEST, args=target, lane="bound_read")
+    like = dict(path=LIKE, args=dict(threadId="R_SO_4_1", commentId="1"), lane="bound_write")
+    unlike = dict(path=UNLIKE, args=like["args"], lane="bound_write")
+    calls = [dict(path=COUNT, args=dict(resourceType=4, resourceIds='["1"]')), list_read]
+    expected = [
+        calls, calls + [target_read, like, target_read, target_read],
+        calls + [target_read, like, target_read, target_read, target_read, unlike],
+        calls + [target_read, like, target_read, target_read, target_read, unlike,
+                 target_read, target_read],
+    ]
+    assert complete["realAccountWrites"] == complete["realMusicRequests"] == 0
+    first = rows[LIKES_STAGES[0]]
+    assert first["scroll"] >= 35 and first["nativePlayer"]["entryId"]
+    for key, wire, pressed, count in zip(LIKES_STAGES, expected, (False, True, True, False),
+                                         ("", "1", "1", "")):
+        row = rows[key]
+        assert row["vinylCommentsCalls"] == wire, (key, row["vinylCommentsCalls"])
+        assert row["pressed"] is pressed and row["shownCount"] == count
+        assert row["tab"] == "comments" and row["trackId"] == "1"
+        assert row["latest"] == 60 and row["hot"] == 1
+        assert row["playId"] == first["playId"]
+        assert row["nativePlayer"]["queueRevision"] == first["nativePlayer"]["queueRevision"]
+        assert row["nativePlayer"]["entryId"] == first["nativePlayer"]["entryId"]
+        assert abs(row["nativePlayer"]["position"] - first["nativePlayer"]["position"]) < .1
+        assert abs(row["scroll"] - first["scroll"]) < 1
+    assert rows["unlike_uncertain"]["phase"] == "uncertain"
+    assert complete["vinylCommentsCalls"] == expected[-1]
+
+    database = (directory / "state/core.sqlite3").resolve(strict=True)
+    with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as conn:
+        journal = conn.execute(
+            "SELECT owner,key,value FROM state WHERE kind='comment-likes-v1'"
+        ).fetchall()
+    assert len(journal) == 1 and journal[0][:2] == ("2", "R_SO_4_1:1")
+    receipt = json.loads(journal[0][2])
+    assert receipt["phase"] == "confirmed" and receipt["before"] and not receipt["desired"]
+    assert not receipt["acknowledged"], "readback must not fabricate the lost acknowledgement"
+    assert receipt["observed"]["liked"] is False
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -84,7 +135,9 @@ def main():
     parser.add_argument("--frontend-dist", type=Path)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--screenshots", action="store_true")
-    parser.add_argument("--composer", action="store_true", help="run the sealed composer write scenario")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--composer", action="store_true", help="run the sealed composer write scenario")
+    modes.add_argument("--likes", action="store_true", help="run sealed inline like/unlike and reconciliation")
     args = parser.parse_args()
     windows = sys.platform == "win32"
     if sys.platform not in {"linux", "win32"} or windows != bool(args.runtime) or (windows and args.screenshots):
@@ -112,6 +165,9 @@ def main():
     if args.composer:
         source = (examples / "vinyl_composer_ui_probe.js").read_text(encoding="utf-8") + "\n" + source
         expected = {"t1": COMPOSER_STAGES}
+    elif args.likes:
+        source = (examples / "vinyl_likes_ui_probe.js").read_text(encoding="utf-8") + "\n" + source
+        expected = {"t1": LIKES_STAGES}
     summary = {}
     for group, names in expected.items():
         directory = root / group
@@ -123,6 +179,8 @@ def main():
                "CUMULUS_VINYL_COMMENTS_PROOF": group, "CUMULUS_UX_SCRIPT": str(script)}
         if args.composer:
             run["CUMULUS_VINYL_COMPOSER_PROOF"] = "1"
+        elif args.likes:
+            run["CUMULUS_VINYL_LIKES_PROOF"] = "1"
         for key in profiles:
             isolated = directory / key
             isolated.mkdir(mode=0o700)
@@ -140,6 +198,8 @@ def main():
             assert row["nativePlayer"]["playId"] == row["playId"] and row["nativePlayer"]["state"] == "paused"
         if args.composer:
             check_composer(rows, complete)
+        elif args.likes:
+            check_likes(rows, complete, directory)
         elif group == "t1":
             assert [call["path"] for call in rows["standard_before_read"]["vinylCommentsCalls"]] == [COUNT]
             calls = rows["zero_count"]["vinylCommentsCalls"]
@@ -169,6 +229,9 @@ def main():
         summary[group] = list(rows)
     report = dict(ok=True, actualWebView=True, nativeLibmpvNull=True, states=summary,
                   realMusicRequests=0, realAccountWrites=0)
+    if args.likes:
+        report.update(syntheticLikeWrites=2, lostUnlikeAcknowledgement=True,
+                      readOnlyReconciled=True, preservedPlaybackAndScroll=True)
     (root / "audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report))
 
