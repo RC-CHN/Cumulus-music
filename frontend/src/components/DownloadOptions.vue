@@ -1,12 +1,62 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { qualities } from '../services/player';
-import type { DownloadOptions } from '../services/downloads';
+import type { DownloadOptions, DownloadQualityPreferences } from '../services/downloads';
 const model = defineModel<DownloadOptions>({ required: true });
-defineProps<{ voice?: boolean }>();
+const props = defineProps<{
+  voice?: boolean;
+  settings?: boolean;
+  qualitySettings?: DownloadQualityPreferences;
+}>();
+const displayed = computed(() =>
+  model.value.quality === 'higher' ? 'standard' : model.value.quality,
+);
+const retained = computed(() => {
+  const settings = props.qualitySettings;
+  if (!settings || model.value.quality !== settings.options.quality) return undefined;
+  if (model.value.quality === 'higher') return '较高（设置中显示为标准）';
+  const choice = settings.choices.find((choice) => choice.quality === model.value.quality);
+  if (choice?.access !== 'allowed') return label(model.value.quality);
+  return undefined;
+});
+function label(quality: DownloadOptions['quality']) {
+  return qualities.find((choice) => choice.value === quality)?.label ?? quality;
+}
+const captions = {
+  allowed: '',
+  requires_vip: '需黑胶 VIP',
+  requires_svip: '需黑胶 SVIP',
+  unknown: '权益待核对',
+};
 </script>
 <template>
   <div class="download-options">
-    <label
+    <template v-if="settings">
+      <div
+        v-if="qualitySettings"
+        class="download-quality-choices"
+        role="group"
+        aria-label="下载音质"
+      >
+        <label
+          v-for="choice in qualitySettings.choices"
+          :key="choice.quality"
+          class="private-checkbox"
+        >
+          <input
+            type="radio"
+            name="default-download-quality"
+            :checked="displayed === choice.quality"
+            :disabled="choice.access !== 'allowed'"
+            @change="model.quality = choice.quality"
+          />
+          {{ label(choice.quality) }}
+          <small v-if="captions[choice.access]" class="muted">{{ captions[choice.access] }}</small>
+        </label>
+      </div>
+      <p v-if="retained" class="muted">保留已保存的音质：{{ retained }}</p>
+    </template>
+    <label v-else
       >下载音质<select v-model="model.quality" aria-label="下载音质">
         <option v-for="quality in qualities" :key="quality.value" :value="quality.value">
           {{ quality.label }}
@@ -36,3 +86,15 @@ defineProps<{ voice?: boolean }>();
     </div>
   </div>
 </template>
+
+<style scoped>
+.download-quality-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr));
+  gap: 8px 12px;
+}
+.download-quality-choices label {
+  flex-wrap: wrap;
+  align-items: center;
+}
+</style>

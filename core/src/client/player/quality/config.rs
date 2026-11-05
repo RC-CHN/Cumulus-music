@@ -28,7 +28,7 @@ fn hide_track_size(data: Option<&Value>) -> bool {
         .unwrap_or(true)
 }
 
-fn music_package_hires(data: Option<&Value>) -> Option<bool> {
+pub(in crate::client) fn music_package_hires(data: Option<&Value>) -> Option<bool> {
     match data.and_then(|data| data.get(MUSIC_PACKAGE_HIRES)) {
         // M/247 merges verified remote settings over its built-in PC defaults.
         None => Some(true),

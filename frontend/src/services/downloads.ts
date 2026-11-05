@@ -130,7 +130,7 @@ export type DownloadCommand =
   | { kind: 'start'; song_ids: string[]; options: DownloadOptions }
   | { kind: 'control'; task_ids: string[]; action: DownloadControl }
   | { kind: 'all'; action: Exclude<DownloadControl, 'repair'> }
-  | { kind: 'preferences'; options: DownloadOptions }
+  | { kind: 'preferences'; revision: string; options: DownloadOptions }
   | { kind: 'configure'; root: string; path_type: number; file_type: number }
   | { kind: 'migrate'; root: string }
   | { kind: 'migration' | 'file_operation'; operation_id: string; cancel: boolean }
@@ -144,8 +144,18 @@ export interface DownloadResult {
   failed: { id: string; message: string }[];
   operationId: string | null;
 }
+export interface DownloadQualityPreferences {
+  epoch: string;
+  revision: string;
+  options: DownloadOptions;
+  choices: {
+    quality: Quality;
+    access: 'allowed' | 'requires_vip' | 'requires_svip' | 'unknown';
+  }[];
+}
 export interface DownloadClient {
   downloads(epoch: string, query: DownloadQuery): Promise<DownloadsView>;
+  downloadQualityPreferences(epoch: string): Promise<DownloadQualityPreferences>;
   downloadCommand(epoch: string, command: DownloadCommand): Promise<DownloadResult>;
   playDownloads(epoch: string, taskIds: string[], index: number): Promise<PlayerView>;
   pickDownloadDirectory(epoch: string): Promise<string | null>;

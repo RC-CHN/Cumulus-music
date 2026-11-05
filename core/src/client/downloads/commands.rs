@@ -10,6 +10,13 @@ impl MusicClient {
         epoch: &str,
         command: DownloadCommand,
     ) -> Result<DownloadResult> {
+        if let DownloadCommand::Preferences { revision, options } = command {
+            self.save_download_quality_preferences(epoch, &revision, &options)?;
+            return Ok(DownloadResult {
+                epoch: epoch.into(),
+                ..Default::default()
+            });
+        }
         let context = self.downloads.inner.context(epoch)?;
         let host = self.downloads.inner.clone();
         match command {
@@ -293,16 +300,6 @@ fn execute(context: &Context, command: DownloadCommand) -> Result<DownloadResult
                 .service
                 .restart_failed_transfer_for(&context.token, &task_id)?;
             result.accepted.push(task_id);
-        }
-        DownloadCommand::Preferences { options } => {
-            context.session.with_token(&context.token, |_| {
-                context.store.put(
-                    &context.owner,
-                    PREFERENCES,
-                    "options",
-                    &serde_json::to_value(options)?,
-                )
-            })?;
         }
         DownloadCommand::Configure {
             root,

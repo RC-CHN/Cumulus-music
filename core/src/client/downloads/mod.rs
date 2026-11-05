@@ -1,6 +1,7 @@
 mod commands;
 mod dto;
 mod jobs;
+mod quality;
 mod song_status;
 mod view;
 use super::MusicClient;
@@ -16,6 +17,7 @@ use crate::{
     storage::StateStore,
 };
 pub use dto::*;
+pub use quality::DownloadQualityPreferences;
 pub use song_status::SongDownloadState;
 use std::{
     collections::HashMap,

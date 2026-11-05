@@ -163,6 +163,7 @@ pub enum DownloadCommand {
         action: TaskControl,
     },
     Preferences {
+        revision: String,
         options: DownloadOptions,
     },
     Configure {

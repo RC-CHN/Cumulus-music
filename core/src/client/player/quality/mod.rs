@@ -1,4 +1,4 @@
-mod config;
+pub(super) mod config;
 mod trial;
 mod view;
 use super::{MusicClient, PlaybackCommand, PlaybackSnapshot};

@@ -391,6 +391,7 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
             "downloads",
             json!({"epoch":"0","query":{"tab":"active","keyword":"","sort":"completed","descending":true,"offset":0,"limit":100}}),
         ),
+        ("download_quality_preferences", json!({"epoch":"0"})),
         (
             "download_command",
             json!({"epoch":"0","command":{"kind":"all","action":"cancel"}}),

@@ -5,6 +5,7 @@ import { downloadViewportKey } from '../src/services/downloadViewport.ts';
 import type { AccountView } from '../src/services/contracts.ts';
 import type {
   DownloadClient,
+  DownloadQualityPreferences,
   DownloadResult,
   DownloadsView,
   DownloadTask,
@@ -36,6 +37,31 @@ function state(epoch = '1', total = 0, offset = 0): DownloadsView {
   };
 }
 const turn = () => new Promise((r) => setImmediate(r));
+test('a previous account cannot supply default download quality after an account switch', async () => {
+  const pending = deferred<DownloadQualityPreferences>();
+  const current: DownloadQualityPreferences = {
+    epoch: '2',
+    revision: 'new',
+    options: state('2').options,
+    choices: [{ quality: 'standard', access: 'allowed' }],
+  };
+  const model = useDownloads({
+    downloads: async (epoch) => state(epoch),
+    downloadQualityPreferences: async (epoch) => (epoch === '1' ? pending.promise : current),
+  } as DownloadClient);
+  await model.connect(account());
+  const obsolete = model.qualityPreferences();
+  await model.connect(account('2'));
+  assert.deepEqual(await model.qualityPreferences(), current);
+  pending.resolve({
+    epoch: '1',
+    revision: 'old',
+    options: { ...current.options, quality: 'vivid' },
+    choices: [{ quality: 'vivid', access: 'allowed' }],
+  });
+  assert.equal(await obsolete, undefined);
+  model.dispose();
+});
 test('a visit guard rejects old timers and returns preserve explicit continuation failure', async () => {
   const model = useDownloads({ downloads: async (e) => state(e) } as DownloadClient);
   await model.connect(account());

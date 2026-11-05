@@ -137,6 +137,46 @@ fn assert_batch(http: &ScriptHttp) {
     }
 }
 
+#[tokio::test]
+async fn download_vivid_visibility_uses_both_live_signed_assignments_without_extra_requests() {
+    let groups = |high, audio| {
+        json!({"code":200,"data":[
+            {"expName":"PH-PC-hyyinzhi","expGroupName":high},
+            {"expName":"PH-PC-zhenyingn","expGroupName":audio}
+        ]})
+    };
+    let f = Fixture::new(
+        true,
+        [
+            groups("c", "t1").into(),
+            groups("t1", "t1").into(),
+            groups("t1", "c").into(),
+        ],
+    );
+    let choice = || {
+        let result = f.client.download_quality_preferences(&f.epoch()).unwrap();
+        let view = serde_json::to_value(result).unwrap();
+        view["choices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["quality"] == "vivid")
+            .cloned()
+    };
+    assert_eq!(choice(), None);
+    assert!(f.paths().is_empty());
+    for expected in [
+        None,
+        Some(json!({"quality":"vivid","access":"unknown"})),
+        None,
+    ] {
+        f.client.refresh_pc_presentation().await.unwrap();
+        assert_eq!(choice(), expected);
+    }
+    assert_eq!(f.paths(), [ASSIGNMENT_PATH; 3]);
+    assert_batch(&f.http);
+}
+
 #[tokio::test(start_paused = true)]
 async fn startup_single_lease_fixed_thirty_minutes_and_shutdown_share_actual_full_batch() {
     let f = Fixture::new(

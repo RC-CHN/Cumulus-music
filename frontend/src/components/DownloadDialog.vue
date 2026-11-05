@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue';
 import type { DownloadModel } from '../composables/useDownloads';
-import type { DownloadDialogTarget, DownloadCommand } from '../services/downloads';
+import type {
+  DownloadDialogTarget,
+  DownloadCommand,
+  DownloadQualityPreferences,
+} from '../services/downloads';
+import { failure } from '../services/contracts';
 import { defaultDownloadOptions, downloadStatus } from '../services/downloads';
 import DownloadOptions from './DownloadOptions.vue';
 import Icon from './Icon.vue';
@@ -13,6 +18,29 @@ const dialog = ref<HTMLDialogElement>(),
 const options = ref({ ...(view.value?.options ?? defaultDownloadOptions) });
 if (props.target.kind === 'voice')
   Object.assign(options.value, { container: 'audio', lyrics: false });
+const quality = shallowRef<DownloadQualityPreferences>();
+const loadingQuality = ref(false);
+const qualityError = ref('');
+let dialogOpen = true;
+async function loadQuality() {
+  loadingQuality.value = true;
+  qualityError.value = '';
+  try {
+    const current = await props.model.qualityPreferences();
+    if (!dialogOpen) return;
+    if (!current) {
+      qualityError.value = '下载音质设置暂不可用';
+      return;
+    }
+    if (!quality.value) options.value = { ...current.options };
+    else options.value.quality = current.options.quality;
+    quality.value = current;
+  } catch (value) {
+    if (dialogOpen) qualityError.value = failure(value).message;
+  } finally {
+    if (dialogOpen) loadingQuality.value = false;
+  }
+}
 const pathType = ref(view.value?.directory?.path_type ?? 0),
   fileType = ref(view.value?.directory?.file_type ?? 1);
 const directoryMode = ref<'future' | 'migrate'>('future');
@@ -43,6 +71,8 @@ const blocked = computed(
   () =>
     busy.value ||
     choosing.value ||
+    (props.target.kind === 'settings' &&
+      (loadingQuality.value || !quality.value || !!qualityError.value)) ||
     !!view.value?.migration ||
     stale.value ||
     (!!original && !!props.model.readError.value) ||
@@ -76,6 +106,7 @@ let focus: HTMLElement | null = null;
 onMounted(() => {
   focus = document.activeElement as HTMLElement;
   dialog.value?.showModal();
+  if (props.target.kind === 'settings') void loadQuality();
   rename.value =
     task.value?.path
       ?.split(/[\\/]/)
@@ -86,7 +117,10 @@ onMounted(() => {
   error.value = '';
   if (confirmation.value) void focusForm();
 });
-onUnmounted(() => focus?.focus());
+onUnmounted(() => {
+  dialogOpen = false;
+  focus?.focus();
+});
 async function focusForm() {
   await nextTick();
   dialog.value
@@ -140,6 +174,7 @@ async function save() {
   ) {
     const settings = await props.model.command({
       kind: 'preferences',
+      revision: quality.value!.revision,
       options: { ...options.value },
     });
     if (!settings || settings.failed.length) return;
@@ -177,15 +212,20 @@ async function save() {
     });
     return;
   }
-  const saved = await props.model.command({ kind: 'preferences', options: { ...options.value } });
-  if (!saved || saved.failed.length) return;
-  if (props.target.kind === 'start')
+  if (props.target.kind === 'start') {
     await perform({
       kind: 'start',
       song_ids: props.target.tracks.map((t) => t.id),
       options: { ...options.value },
     });
-  else emit('close');
+    return;
+  }
+  if (quality.value)
+    await perform({
+      kind: 'preferences',
+      revision: quality.value.revision,
+      options: { ...options.value },
+    });
 }
 async function fileAction() {
   if (!task.value || !confirmation.value || blocked.value || task.value.cleanupPending) return;
@@ -243,6 +283,15 @@ async function fileAction() {
       @submit.prevent="save"
     >
       <div class="download-settings-body">
+        <p v-if="target.kind === 'settings' && loadingQuality" class="muted" role="status">
+          正在读取下载音质…
+        </p>
+        <div v-if="target.kind === 'settings' && qualityError" class="error-state" role="alert">
+          {{ qualityError }}
+          <button type="button" class="text-button" :disabled="loadingQuality" @click="loadQuality">
+            重试
+          </button>
+        </div>
         <fieldset :disabled="blocked">
           <p
             v-if="target.kind === 'start' || target.kind === 'cloud' || target.kind === 'voice'"
@@ -262,7 +311,21 @@ async function fileAction() {
               ><input type="checkbox" v-model="options.lyrics" /> 另存歌词文件</label
             >
           </template>
-          <DownloadOptions v-else v-model="options" :voice="target.kind === 'voice'" />
+          <DownloadOptions
+            v-else
+            v-model="options"
+            :voice="target.kind === 'voice'"
+            :settings="target.kind === 'settings'"
+            :quality-settings="quality"
+          />
+          <button
+            v-if="target.kind === 'settings' && quality && !qualityError"
+            class="text-button"
+            type="button"
+            @click="loadQuality"
+          >
+            刷新下载音质
+          </button>
           <label
             >下载目录
             <div class="download-path">

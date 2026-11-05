@@ -12,6 +12,19 @@ pub async fn downloads(
     client.downloads(&epoch, query).await.map_err(Into::into)
 }
 #[tauri::command]
+pub fn download_quality_preferences<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<DownloadQualityPreferences, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("download quality settings require main window").into());
+    }
+    client
+        .download_quality_preferences(&epoch)
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn song_download_state(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
@@ -38,11 +51,15 @@ pub async fn voice_download_state<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn download_command(
+pub async fn download_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     command: DownloadCommand,
 ) -> Result<DownloadResult, ClientError> {
+    if matches!(command, DownloadCommand::Preferences { .. }) && window.label() != "main" {
+        return Err(Error::InvalidInput("download quality settings require main window").into());
+    }
     client
         .download_command(&epoch, command)
         .await

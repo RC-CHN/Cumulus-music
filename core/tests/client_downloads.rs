@@ -636,11 +636,124 @@ async fn wait(
 }
 
 #[tokio::test]
+async fn default_download_quality_is_current_account_preference_not_media_permission() {
+    use cumulus_core::membership::Quality;
+    let f = Fixture::new();
+    let read = || f.client.download_quality_preferences("1").unwrap();
+    let access = |view: &DownloadQualityPreferences, quality: &str| {
+        serde_json::to_value(view).unwrap()["choices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|choice| choice["quality"] == quality)
+            .and_then(|choice| choice["access"].as_str().map(str::to_owned))
+    };
+    let save = |revision, options| {
+        f.client
+            .download_command("1", DownloadCommand::Preferences { revision, options })
+    };
+
+    let unknown = read();
+    assert_eq!(access(&unknown, "lossless").as_deref(), Some("unknown"));
+    assert_eq!(access(&unknown, "exhigh").as_deref(), Some("allowed"));
+    assert_eq!(access(&unknown, "vivid"), None);
+    let mut lossless = unknown.options.clone();
+    lossless.quality = Quality::Lossless;
+    assert!(matches!(
+        save(unknown.revision, lossless.clone()).await,
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(read().options.quality, Quality::Standard);
+
+    let saved = DownloadOptions {
+        quality: Quality::Vivid,
+        ..options()
+    };
+    f.store
+        .put(
+            "1",
+            "download_preferences_v1",
+            "options",
+            &serde_json::to_value(saved).unwrap(),
+        )
+        .unwrap();
+    let unavailable = read();
+    assert_eq!(unavailable.options.quality, Quality::Vivid);
+    assert_eq!(access(&unavailable, "vivid"), None);
+    let mut edited = unavailable.options.clone();
+    edited.tags = !edited.tags;
+    save(unavailable.revision.clone(), edited.clone())
+        .await
+        .unwrap();
+    assert_eq!(read().options.quality, Quality::Vivid);
+    assert_eq!(read().options.tags, edited.tags);
+    assert!(matches!(
+        save(unavailable.revision, edited).await,
+        Err(Error::QueueChanged)
+    ));
+    assert!(f.api.calls.lock().unwrap().is_empty());
+
+    let before_membership = read().revision;
+    let mut observations = f.client.subscribe_membership_observations().unwrap();
+    let lifecycle = f.client.start_membership_lifecycle().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while observations.borrow_and_update().is_none() {
+            observations.changed().await.unwrap();
+        }
+    })
+    .await
+    .expect("native account startup did not commit membership");
+    drop(lifecycle);
+    let member = read();
+    assert_eq!(access(&member, "lossless").as_deref(), Some("allowed"));
+    assert_eq!(access(&member, "jyeffect").as_deref(), Some("allowed"));
+    assert_eq!(
+        access(&member, "jymaster").as_deref(),
+        Some("requires_svip")
+    );
+    assert!(matches!(
+        save(before_membership, lossless.clone()).await,
+        Err(Error::QueueChanged)
+    ));
+    save(member.revision, lossless).await.unwrap();
+    assert_eq!(f.api.count("/api/music-vip-membership/client/vip/info"), 1);
+    assert_eq!(f.api.calls.lock().unwrap().len(), 1);
+
+    let (_, completed) = f.completed().await;
+    assert_eq!(completed.tasks[0].requested_quality, "standard");
+    assert_eq!(
+        completed.tasks[0].actual_quality.as_deref(),
+        Some("lossless")
+    );
+    assert_eq!(read().options.quality, Quality::Lossless);
+    f.session
+        .adopt(
+            f.api.clone(),
+            json!({"userId":2}),
+            &f.session.token().unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        f.client.download_quality_preferences("1"),
+        Err(Error::StaleResponse)
+    ));
+    let other = f.client.download_quality_preferences("2").unwrap();
+    assert_eq!(other.options.quality, Quality::Standard);
+    assert_eq!(access(&other, "lossless").as_deref(), Some("unknown"));
+}
+
+#[tokio::test]
 async fn native_downloads_publish_real_time_whitelist_data_and_preserve_preferences() {
     let f = Fixture::new();
     f.configure().await;
     f.client
-        .download_command("1", DownloadCommand::Preferences { options: options() })
+        .download_command(
+            "1",
+            DownloadCommand::Preferences {
+                revision: f.client.download_quality_preferences("1").unwrap().revision,
+                options: options(),
+            },
+        )
         .await
         .unwrap();
     let (id, view) = f.completed().await;

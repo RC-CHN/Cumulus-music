@@ -223,6 +223,11 @@ impl From<Error> for ClientError {
                     "当前播放列表最多容纳 5000 首，请先缩小下载搜索范围",
                     false,
                 ),
+                Error::InvalidInput("download quality preference is unavailable") => (
+                    "download_quality_unavailable",
+                    "当前账号无法选择此下载音质，请重新读取音质后再选",
+                    true,
+                ),
                 Error::Media("invalid cloud cover attachment") => (
                     "cloud_cover_invalid",
                     "封面无法识别，请重新选择有效的 JPG 或 PNG 图片",

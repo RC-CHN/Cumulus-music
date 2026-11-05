@@ -163,6 +163,17 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     moreError.value = '';
     return refresh();
   }
+  async function qualityPreferences() {
+    if (!epoch) return;
+    const captured = epoch,
+      version = generation;
+    try {
+      const result = await core.downloadQualityPreferences(captured);
+      if (version === generation && result.epoch === captured) return result;
+    } catch (value) {
+      if (version === generation) throw value;
+    }
+  }
   async function command(input: DownloadCommand): Promise<DownloadResult | undefined> {
     if (!epoch || busy.value) return;
     const version = generation,
@@ -292,6 +303,7 @@ export function useDownloads(core: DownloadClient = useCore(), sessionChanged = 
     readError,
     notice,
     connect,
+    qualityPreferences,
     refresh,
     show,
     filter,
