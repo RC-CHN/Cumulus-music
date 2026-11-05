@@ -88,3 +88,14 @@ M/437:18–86、M/400:141–166，hybrid_40 M/3089:3447–3500,3670–3930,4020�
   修正前返回焦点留顶栏，修正后回到原「查看专区」按钮。截图及报告位于
   .build/ui-proof/phase41/zone-webview/。23 次封闭加密读取也独立核对触发
   顺序；未访问真实账号，不把该结果说成 Windows 或实体声卡验证。
+
+合成 HotExplain 分组恢复（2026-11-05）
+- main f8721dca 的 CI run 42015203234 / Linux WebView job 127215243057
+  在热点首帧等待失败，尚未发出专区请求。搜索改为读取统一原生 PC 实验快照后，
+  热点夹具只提供 zhuanqu/zhuanquTab；旧的三项搜索实验模拟接口已不再使用。
+  search_signed_fixture::legacy_layout 本来已为 hotspot 构造 searchHot=t1，
+  但外层只接受 SEARCH_UI_PROOF，漏了仅启用 VERTICAL_ZONE_PROOF=hotspot 的入口。
+- 夹具现仅将这个既有 hotspot 模式也送入同一分组投影，保留专区分组，提供已声明的
+  搜索布局三桶；不授予 search-result footer 分组，不修改正式客户端门控、路由或请求。
+  本次只作静态格式/差异检查；实际 HotExplain WebView 回归留给统一桌面构建批次，
+  不沿用上面 phase41 的历史截图作为本次修复已通过的证据。

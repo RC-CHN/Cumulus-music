@@ -338,7 +338,7 @@ fn layout_rows() -> Vec<Value> {
 /// keeping its search layout in the same full registry read. This deliberately
 /// never grants the new footer cohort to a mocked legacy fixture.
 pub fn legacy_layout(groups: PcExperimentGroups) -> Result<PcExperimentGroups> {
-    if !super::search_fixture::enabled() {
+    if !super::search_fixture::enabled() && !super::vertical_zone_fixture::hotspot() {
         return Ok(groups);
     }
     let names = assignment_arguments();
