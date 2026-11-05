@@ -63,7 +63,9 @@ impl ColdStereoSource {
         plan: LocalStereoMaterialPlan,
     ) -> Result<ColdStereoSelection> {
         Ok(
-            match HeldSource::select(reader, library, |format| SourceGraph::new(format, plan))? {
+            match HeldSource::select_flac(reader, library, FlacRates::Cold, |format| {
+                SourceGraph::new(format, plan)
+            })? {
                 Selection::Qualified(source) => {
                     ColdStereoSelection::Qualified(Box::new(Self(*source)))
                 }
@@ -141,7 +143,17 @@ struct HeldSource<R> {
     reader: R,
     decoder: DecoderKind,
     graph: SourceGraph,
+    rate: u32,
     total: u64,
+}
+enum FlacRates {
+    Cold,
+    Local,
+}
+impl FlacRates {
+    fn allows(&self, rate: u32) -> bool {
+        rate == RATE || (matches!(self, Self::Local) && rate == 48_000)
+    }
 }
 enum DecoderKind {
     Flac(Api),
@@ -154,9 +166,10 @@ struct HeldPass<R> {
     worker: Option<JoinHandle<()>>,
 }
 impl<R: HeldInput> HeldSource<R> {
-    fn select(
+    fn select_flac(
         mut reader: R,
         library: &Path,
+        rates: FlacRates,
         graph: impl FnOnce(Format) -> Result<SourceGraph>,
     ) -> Result<Selection<R>> {
         let authority = reader.source_authority();
@@ -175,7 +188,7 @@ impl<R: HeldInput> HeldSource<R> {
         let min_block = u16::from_be_bytes([header[8], header[9]]);
         let max_block = u16::from_be_bytes([header[10], header[11]]);
         let format = u64::from_be_bytes(header[18..26].try_into().expect("STREAMINFO"));
-        let rate = format >> 44;
+        let rate = (format >> 44) as u32;
         let channels = ((format >> 41) & 7) + 1;
         let bits = ((format >> 36) & 31) + 1;
         let total = format & ((1 << 36) - 1);
@@ -183,10 +196,10 @@ impl<R: HeldInput> HeldSource<R> {
         if min_block < 16
             || min_block > max_block
             || u32::from(max_block) > FLAC_BLOCK
-            || rate != u64::from(RATE)
+            || !rates.allows(rate)
             || channels != 2
             || bits != 16
-            || !(1..=u64::from(RATE) * 3600).contains(&total)
+            || !(1..=u64::from(rate) * 3600).contains(&total)
         {
             return Ok(Selection::Stock(reader));
         }
@@ -194,18 +207,19 @@ impl<R: HeldInput> HeldSource<R> {
             authority.validate()?;
             return Ok(Selection::Stock(reader));
         };
-        Self::qualified(reader, DecoderKind::Flac(api), total, graph)
+        Self::qualified(reader, DecoderKind::Flac(api), rate, total, graph)
     }
 
     fn qualified(
         reader: R,
         decoder: DecoderKind,
+        rate: u32,
         total: u64,
         graph: impl FnOnce(Format) -> Result<SourceGraph>,
     ) -> Result<Selection<R>> {
         let authority = reader.source_authority();
         authority.validate()?;
-        let graph = match graph(Format::new(RATE as f32, 2, QUANTUM as u32)?) {
+        let graph = match graph(Format::new(rate as f32, 2, QUANTUM as u32)?) {
             Ok(graph) => graph,
             Err(_) => {
                 authority.validate()?;
@@ -216,6 +230,7 @@ impl<R: HeldInput> HeldSource<R> {
             reader,
             decoder,
             graph,
+            rate,
             total,
         })))
     }
@@ -249,7 +264,7 @@ impl<R: HeldInput> HeldSource<R> {
         });
         let pipe = match actual {
             SourceAuthority::Cold(grant) => channel(RATE, first, self.total, guard, Some(grant)),
-            SourceAuthority::Native(_) => native_channel(RATE, first, self.total, guard),
+            SourceAuthority::Native(_) => native_channel(self.rate, first, self.total, guard),
         };
         let (reader, control, shared) = match pipe {
             Ok(pipe) => pipe,
@@ -381,17 +396,23 @@ fn run<R: HeldInput>(
     };
     let next = &mut source.reader;
     let graph = &mut source.graph;
+    let rate = source.rate;
     let total = source.total;
     match &source.decoder {
         DecoderKind::Flac(api) => {
-            let mut decoder =
-                match Decoder::open(api, Box::new(next), Generation(1), shared.authority_clone()) {
-                    Ok(decoder) if decoder.total == total => decoder,
-                    _ => {
-                        let _ = ready.send(false);
-                        return Err(Error::Media("stereo decoder preparation failed"));
-                    }
-                };
+            let mut decoder = match Decoder::open_with_rate(
+                api,
+                Box::new(next),
+                Generation(1),
+                shared.authority_clone(),
+                rate,
+            ) {
+                Ok(decoder) if decoder.total == total => decoder,
+                _ => {
+                    let _ = ready.send(false);
+                    return Err(Error::Media("stereo decoder preparation failed"));
+                }
+            };
             if first > 0 && decoder.seek(generation, first).is_err() {
                 let _ = ready.send(false);
                 return Err(Error::Media("stereo decoder seek preparation failed"));

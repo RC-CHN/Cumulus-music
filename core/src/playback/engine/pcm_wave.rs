@@ -2,16 +2,20 @@
 use crate::{Error, Result};
 use std::io::{Read, Seek, SeekFrom};
 
-pub(crate) const RATE: u32 = 44_100;
 pub(crate) const BYTES_PER_FRAME: usize = 4;
-pub(crate) const BYTE_RATE: u32 = RATE * BYTES_PER_FRAME as u32;
-const MAX_FRAMES: u64 = RATE as u64 * 3600;
-const MAX_FILE_BYTES: u64 = MAX_FRAMES * BYTES_PER_FRAME as u64 + 1024 * 1024;
 const MAX_CHUNKS: usize = 128;
+
+const fn max_frames(rate: u32) -> u64 {
+    rate as u64 * 3600
+}
+const fn max_file_bytes(rate: u32) -> u64 {
+    max_frames(rate) * BYTES_PER_FRAME as u64 + 1024 * 1024
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct PcmWave {
     data_start: u64,
+    pub(crate) rate: u32,
     pub(crate) frames: u64,
 }
 
@@ -25,7 +29,7 @@ impl PcmWave {
     /// chunk when we yield this same handle to an independent filter.
     pub(crate) fn inspect(reader: &mut (impl Read + Seek)) -> Result<Self> {
         let length = reader.seek(SeekFrom::End(0))?;
-        if !(44..=MAX_FILE_BYTES).contains(&length) {
+        if !(44..=max_file_bytes(48_000)).contains(&length) {
             return Err(invalid());
         }
         reader.rewind()?;
@@ -38,7 +42,7 @@ impl PcmWave {
             return Err(invalid());
         }
         let mut cursor = 12;
-        let mut have_format = false;
+        let mut format_rate = None;
         let mut audio = None;
         for _ in 0..MAX_CHUNKS {
             if cursor == length {
@@ -57,26 +61,33 @@ impl PcmWave {
                 return Err(invalid());
             }
             match &chunk[..4] {
-                b"fmt " if !have_format && matches!(size, 16 | 18) => {
+                b"fmt " if format_rate.is_none() && matches!(size, 16 | 18) => {
                     let mut fmt = [0; 18];
                     reader.read_exact(&mut fmt[..size as usize])?;
+                    let rate = u32::from_le_bytes(fmt[4..8].try_into().unwrap());
                     if fmt[..4] != [1, 0, 2, 0]
-                        || fmt[4..8] != RATE.to_le_bytes()
-                        || fmt[8..12] != BYTE_RATE.to_le_bytes()
+                        || !matches!(rate, 44_100 | 48_000)
+                        || fmt[8..12] != (rate * BYTES_PER_FRAME as u32).to_le_bytes()
                         || fmt[12..] != [4, 0, 16, 0, 0, 0]
+                        || length > max_file_bytes(rate)
                     {
                         return Err(invalid());
                     }
-                    have_format = true;
+                    format_rate = Some(rate);
                 }
-                b"data" if have_format && audio.is_none() => {
+                b"data" if audio.is_none() => {
+                    let rate = format_rate.ok_or_else(invalid)?;
                     let frames = size / BYTES_PER_FRAME as u64;
                     if !size.is_multiple_of(BYTES_PER_FRAME as u64)
-                        || !(1..=MAX_FRAMES).contains(&frames)
+                        || !(1..=max_frames(rate)).contains(&frames)
                     {
                         return Err(invalid());
                     }
-                    audio = Some(Self { data_start, frames });
+                    audio = Some(Self {
+                        data_start,
+                        rate,
+                        frames,
+                    });
                 }
                 b"JUNK" | b"PAD " => (),
                 b"LIST" if (4..=65_536).contains(&size) => {

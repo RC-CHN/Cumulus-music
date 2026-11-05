@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
     library::{identity::fingerprint, native_open::checked_audio_file},
-    playback::engine::pcm_wave::tests::wave,
+    playback::engine::pcm_wave::tests::{wave, wave_at},
 };
 use serde_json::json;
 use std::{
@@ -166,40 +166,47 @@ fn native_pcm_wav_cannot_recover_to_stock_if_held_layout_changed() {
     ));
 }
 
+fn drain_active_pcm(source: NativeStereoSource, first: u64, rate: u32) -> Vec<u8> {
+    let total = source.total_frames();
+    let NativeStereoStart::Ready(mut pass) = source.start(first, &Cancellation::default()).unwrap()
+    else {
+        panic!("trusted source must prepare")
+    };
+    let mut reader = pass.take_reader().unwrap();
+    let control = pass.control();
+    assert_eq!(reader.rate(), rate);
+    assert_eq!(control.rate(), rate);
+    control.publish_sink().unwrap();
+    control.bind_entry(18).unwrap();
+    control.observe(18, Some(0.0), false, true).unwrap();
+    let mut pcm = Vec::new();
+    let mut chunk = [0; 8192];
+    loop {
+        let n = reader.read(&mut chunk).unwrap();
+        if n == 0 {
+            break;
+        }
+        pcm.extend_from_slice(&chunk[..n]);
+        control
+            .observe(
+                18,
+                Some(pcm.len() as f64 / 8.0 / f64::from(rate)),
+                false,
+                false,
+            )
+            .unwrap();
+    }
+    let state = control.snapshot().unwrap();
+    assert_eq!(state.decoded_source_frame, total);
+    assert_eq!(state.native_source_frame, total);
+    assert!(state.graph_end);
+    assert_eq!(pcm.len() as u64 / 8, total - first + u64::from(rate));
+    pcm
+}
+
 #[test]
 #[ignore = "compares full real WAV and libFLAC 1.5.0 PCM with the same source; no audio device"]
 fn active_wav_and_trusted_flac_match_every_graph_sample_and_tail() {
-    fn drain(source: NativeStereoSource, first: u64) -> Vec<u8> {
-        let total = source.total_frames();
-        let NativeStereoStart::Ready(mut pass) =
-            source.start(first, &Cancellation::default()).unwrap()
-        else {
-            panic!("trusted source must prepare")
-        };
-        let mut reader = pass.take_reader().unwrap();
-        let control = pass.control();
-        control.publish_sink().unwrap();
-        control.bind_entry(18).unwrap();
-        control.observe(18, Some(0.0), false, true).unwrap();
-        let mut pcm = Vec::new();
-        let mut chunk = [0; 8192];
-        loop {
-            let n = reader.read(&mut chunk).unwrap();
-            if n == 0 {
-                break;
-            }
-            pcm.extend_from_slice(&chunk[..n]);
-            control
-                .observe(18, Some(pcm.len() as f64 / 8.0 / 44_100.0), false, false)
-                .unwrap();
-        }
-        let state = control.snapshot().unwrap();
-        assert_eq!(state.decoded_source_frame, total);
-        assert!(state.graph_end);
-        assert_eq!(pcm.len() as u64 / 8, total - first + 44_100);
-        pcm
-    }
-
     let library = super::super::super::sdk_path();
     let dir = tempfile::tempdir().unwrap();
     let bytes = wave((0..88207).map(frozen_samples));
@@ -215,7 +222,66 @@ fn active_wav_and_trusted_flac_match_every_graph_sample_and_tail() {
         else {
             panic!("a qualified FLAC reference is required")
         };
-        assert_eq!(drain(*wav, first), drain(*flac, first));
+        assert_eq!(
+            drain_active_pcm(*wav, first, 44_100),
+            drain_active_pcm(*flac, first, 44_100)
+        );
+    }
+}
+
+#[test]
+#[ignore = "real trusted libFLAC 1.5.0 encoder/decoder and paced output, no audio device"]
+fn native_48k_flac_and_wave_share_source_rate_but_not_cold_flac_authority() {
+    use super::super::super::{Api, Decoder, Generation};
+    let library = super::super::super::sdk_path();
+    let api = Api::open(&library).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("equivalent-48000.flac");
+    let total = 96_007;
+    api.encode_fixture_with_index(&path, 48_000, 1024, total, Some(1024), |frame| {
+        frozen_samples(frame).map(i32::from)
+    })
+    .unwrap();
+    let fingerprint = fingerprint(&path).unwrap();
+    let (file, _) = checked_audio_file(&path, &fingerprint).unwrap();
+    let reader = NativeStereoFile::new(file, Cancellation::default()).unwrap();
+    assert!(matches!(
+        HeldSource::select_flac(reader, &library, FlacRates::Cold, |_| panic!(
+            "cold rejects 48 kHz"
+        ))
+        .unwrap(),
+        Selection::Stock(_)
+    ));
+    let (file, _) = checked_audio_file(&path, &fingerprint).unwrap();
+    let mut old_decoder =
+        Decoder::open(&api, Box::new(file), Generation(1), Cancellation::default()).unwrap();
+    assert!(
+        old_decoder.next().is_err(),
+        "cold decoder callback must still reject 48 kHz"
+    );
+
+    let bytes = wave_at(48_000, (0..total).map(frozen_samples));
+    for first in [0, 24_000] {
+        let wav = wave_source(
+            &dir.path().join("equivalent-48000.wav"),
+            &bytes,
+            Cancellation::default(),
+        );
+        let (file, format) = checked_audio_file(&path, &fingerprint).unwrap();
+        assert_eq!(format, "flac");
+        let NativeStereoSelection::Qualified(flac) =
+            NativeStereoSource::select(file, Cancellation::default(), &library, plan(3)).unwrap()
+        else {
+            panic!("48 kHz is allowed on native files only")
+        };
+        assert_eq!(
+            drain_active_pcm(*wav, first, 48_000),
+            drain_active_pcm(*flac, first, 48_000)
+        );
     }
 }
 

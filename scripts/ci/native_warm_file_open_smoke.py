@@ -93,7 +93,7 @@ def main():
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
                         '-i', 'sine=frequency=10000:sample_rate=48000:duration=45', str(second)],
                        check=True, timeout=20)
-        for path, rate in [(pcm_wave, 44100), (unsupported_wave, 48000)]:
+        for path, rate in [(pcm_wave, 44100), (unsupported_wave, 96000)]:
             subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi',
                             '-i', f'sine=frequency=440:sample_rate={rate}:duration=15',
                             '-ac', '2', '-c:a', 'pcm_s16le', str(path)], check=True, timeout=20)

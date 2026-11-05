@@ -1,7 +1,7 @@
 //! Ordinary native file owner. No path can be opened through this module.
 use super::{
-    DecoderKind, HeldInput, HeldPass, HeldSource, PcmWave, Selection, SourceAuthority, SourceGraph,
-    Start,
+    DecoderKind, FlacRates, HeldInput, HeldPass, HeldSource, PcmWave, Selection, SourceAuthority,
+    SourceGraph, Start,
 };
 use crate::{
     Error, Result,
@@ -43,7 +43,7 @@ impl NativeStereoSource {
     ) -> Result<NativeStereoSelection> {
         let reader = NativeStereoFile::new(file, authority)?;
         Ok(
-            match HeldSource::select(reader, library, |format| {
+            match HeldSource::select_flac(reader, library, FlacRates::Local, |format| {
                 SourceGraph::new_local(format, plan)
             })? {
                 Selection::Qualified(source) => {
@@ -66,6 +66,7 @@ impl NativeStereoSource {
             match HeldSource::qualified(
                 reader,
                 DecoderKind::Wave(layout),
+                layout.rate,
                 layout.frames,
                 |format| SourceGraph::new_local(format, plan),
             )? {

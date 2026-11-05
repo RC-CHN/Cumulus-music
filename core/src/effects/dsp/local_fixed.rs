@@ -32,6 +32,15 @@ impl LocalFixedStage {
         }
         Self::allocate(format, true)
     }
+    pub fn new_equalizer(format: Format) -> Result<Self> {
+        if !matches!(format.rate(), 44100.0 | 48000.0)
+            || format.channels() != 2
+            || format.capacity() != 2048
+        {
+            return Err(Error::InvalidInput("unsupported local equalizer format"));
+        }
+        Self::allocate(format, true)
+    }
     fn allocate(format: Format, master: bool) -> Result<Self> {
         let mut storage = allocate_storage(format.rate() as u32)?;
         let mut state = State::new(10)?;
@@ -41,6 +50,7 @@ impl LocalFixedStage {
             if master {
                 ffi::cumulus_local_fixed_master_init(
                     state.pointer(),
+                    format.rate() as u32,
                     storage.as_mut_ptr(),
                     storage.len(),
                 )

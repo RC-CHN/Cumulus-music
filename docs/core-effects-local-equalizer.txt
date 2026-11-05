@@ -3,11 +3,12 @@ Fixed stereo old-schema local equalizer
 
 LocalEqualizerMaterialPlan and LocalEqualizerStereoMaterial implement the
 local old-schema GEQ, bass/treble and SE controls with RVB off. The only
-accepted decoded format is stereo f32, 44,100 Hz, capacity 2048. The typed
+accepted decoded format is stereo f32, 44,100 or 48,000 Hz, capacity 2048. The typed
 plan does not establish a user's material rights, actual decoder format,
-source identity or selection. The new API is independent of existing
+source identity or selection. The graph API is independent of existing
 LocalStereoMaterialPlan, LocalFixedStereoMaster, ColdStereoSource and the
-ordinary desktop GEQ/BT adapter. No automatic player/UI attachment is added.
+ordinary desktop GEQ/BT adapter. The ordinary held-file attachment below
+owns its source eligibility and actual playback state separately.
 
 Official schema and order
 -------------------------
@@ -201,8 +202,45 @@ seven frames remaining. The separate libFLAC 1.5.0 comparison renders both
 formats through active GEQ/BT/SE at frame zero and a sample seek, comparing
 every f32 output byte including the native graph's tail. These checks do not
 by themselves verify desktop PCM, OS association behavior or listening on
-a physical sound device. No online, CUE, 48 kHz or additional EQ graph
-behavior is implied.
+a physical sound device. This section describes the initial 44.1 kHz proof;
+the expansion below has separate source and original SDK evidence.
+
+48 kHz ordinary held file
+-------------------------
+
+For 48 kHz, the original 3.1.42.205594 SDK create/init (`65B60`/`670E0`)
+accepted stereo float input enum 3 and the same 2048-frame block capacity
+and SE format `0x3102`. The isolated Unicorn host ran the unmodified x64
+text, original begin/default/set/end controls, master-off, seek reset and
+inner `1AA50` graph. The same cases distinguish GEQ-only, BT-only, SE-only,
+partial and combined material, off/reopen, reset, short input and verified
+EOF. Active SE has a 48,000-frame environment tail when retained to EOF;
+default B0 lookahead is 238 frames. `1B960` resets B0 lookahead as in the
+44.1 kHz domain. No original outer FIFO, CEF JSON, Windows device or
+acoustic test is inferred.
+
+`effects-local-equalizer-48k-official.json.gz` freezes fourteen synthetic
+flows, all 159 final PCM and timing block digests and 54 selected prefixes.
+Its manifest records provenance; the manual compactor only consumes the
+two exact hash-pinned synthetic private reports, never an original binary.
+An independent local comparison of the production C stage plus existing
+Rust B0 matched the 159 final blocks and 1,113 intermediate child hashes;
+33 final blocks and 231 child hashes at 44.1 kHz remained exact. The Rust
+corpus test checks the integrated graph using the public vectors.
+
+Only explicitly opened, checked NativeFile may select this ordinary graph.
+PCM WAV accepts the same strict RIFF/tag-1 signed-16 geometry at 44.1 and
+48 kHz; the file byte and frame limits are calculated at the selected rate.
+Its metadata rate, bitrate and source duration come from that same layout.
+FLAC requires the same trusted libFLAC 1.5.0, 16-bit stereo, known frame
+count, and maximum 1024-frame decoder block; the held STREAMINFO rate and
+every decoder callback must agree. No source is resampled to qualify. The
+verified rate reaches the raw decoder, playback credit, logical duration,
+clock and sample seek, and same-descriptor paused PEQ handoff. Cold offline
+FLAC still requires 44.1 kHz at admission and callback. The standalone
+fixed SE-only master constructor also retains its prior rate boundary.
+Online, CUE, room, 96 kHz and other unsupported formats do not enter this
+graph. No system file associations or release dependencies change.
 
 The separate SE status is pending before a qualifying load, unavailable
 on a currently unsupported source, and configured/processing only for

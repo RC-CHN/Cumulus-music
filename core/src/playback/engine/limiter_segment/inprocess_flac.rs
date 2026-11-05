@@ -46,6 +46,7 @@ struct Stats {
 struct Source<'reader> {
     input: Box<dyn PinnedReader + 'reader>,
     authority: Cancellation,
+    rate: u32,
     size: u64,
     offset: u64,
     scratch: Box<[u8; SCRATCH]>,
@@ -217,7 +218,7 @@ unsafe extern "C" fn write(
         let header = unsafe { frame.as_ref() }?;
         if channels.is_null()
             || header.channels != CHANNELS as u32
-            || header.sample_rate != RATE
+            || header.sample_rate != source.rate
             || header.bits_per_sample != 16
             || header.number_type != abi::SAMPLE_NUMBER
             || !(1..=FLAC_BLOCK).contains(&header.blocksize)
@@ -271,10 +272,23 @@ struct Decoder<'api, 'reader> {
 impl<'api, 'reader> Decoder<'api, 'reader> {
     fn open(
         api: &'api Api,
-        mut input: Box<dyn PinnedReader + 'reader>,
+        input: Box<dyn PinnedReader + 'reader>,
         generation: Generation,
         authority: Cancellation,
     ) -> io::Result<Self> {
+        Self::open_with_rate(api, input, generation, authority, RATE)
+    }
+
+    fn open_with_rate(
+        api: &'api Api,
+        mut input: Box<dyn PinnedReader + 'reader>,
+        generation: Generation,
+        authority: Cancellation,
+        rate: u32,
+    ) -> io::Result<Self> {
+        if !matches!(rate, RATE | 48_000) {
+            return Err(io::Error::other("unsupported pinned FLAC sample rate"));
+        }
         let size = input.seek(SeekFrom::End(0))?;
         input.rewind()?;
         let mut magic = [0; 4];
@@ -290,6 +304,7 @@ impl<'api, 'reader> Decoder<'api, 'reader> {
         let source = NonNull::from(Box::leak(Box::new(Source {
             input,
             authority,
+            rate,
             size,
             offset: 0,
             scratch: Box::new([0; SCRATCH]),

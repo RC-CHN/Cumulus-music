@@ -19,12 +19,19 @@ fn riff(chunks: &[([u8; 4], &[u8])]) -> Vec<u8> {
 const PCM_FORMAT: [u8; 16] = [1, 0, 2, 0, 0x44, 0xac, 0, 0, 0x10, 0xb1, 2, 0, 4, 0, 16, 0];
 
 pub(crate) fn wave(samples: impl IntoIterator<Item = [i16; 2]>) -> Vec<u8> {
+    wave_at(44_100, samples)
+}
+
+pub(crate) fn wave_at(rate: u32, samples: impl IntoIterator<Item = [i16; 2]>) -> Vec<u8> {
+    let mut format = PCM_FORMAT;
+    format[4..8].copy_from_slice(&rate.to_le_bytes());
+    format[8..12].copy_from_slice(&(rate * 4).to_le_bytes());
     let payload: Vec<_> = samples
         .into_iter()
         .flatten()
         .flat_map(i16::to_le_bytes)
         .collect();
-    riff(&[(*b"fmt ", &PCM_FORMAT), (*b"data", &payload)])
+    riff(&[(*b"fmt ", &format), (*b"data", &payload)])
 }
 
 #[test]
@@ -38,6 +45,7 @@ fn signed_pcm_requires_one_bounded_stream_and_honors_riff_padding() {
     let mut reader = Cursor::new(source.clone());
     let layout = PcmWave::inspect(&mut reader).unwrap();
     assert_eq!(layout.frames, 3);
+    assert_eq!(layout.rate, 44_100);
     assert_eq!(reader.position(), 0);
     let last = layout.byte_offset(2).unwrap() as usize;
     assert_eq!(last + 4, source.len());
@@ -60,6 +68,7 @@ fn signed_pcm_requires_one_bounded_stream_and_honors_riff_padding() {
         truncated,
         impossible,
         wrong_magic,
+        wave_at(96_000, [[0, 0]; 2]),
         riff(&[(*b"fmt ", &bad_alignment), (*b"data", &[0; 8])]),
         riff(&[(*b"fmt ", &bad_rate), (*b"data", &[0; 8])]),
         riff(&[(*b"fmt ", &extensible), (*b"data", &[0; 8])]),
@@ -89,4 +98,13 @@ fn signed_pcm_requires_one_bounded_stream_and_honors_riff_padding() {
         (*b"data", [0; 4].as_slice()),
     ]);
     assert!(PcmWave::inspect(&mut Cursor::new(riff(&many))).is_err());
+}
+
+#[test]
+fn qualified_48k_layout_keeps_its_rate_and_exact_source_frames() {
+    let bytes = wave_at(48_000, [[-1, 1]; 48]);
+    let size = bytes.len();
+    let layout = PcmWave::inspect(&mut Cursor::new(bytes)).unwrap();
+    assert_eq!((layout.rate, layout.frames), (48_000, 48));
+    assert_eq!(layout.byte_offset(47).unwrap() + 4, size as u64);
 }

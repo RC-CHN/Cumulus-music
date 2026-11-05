@@ -1,0 +1,37 @@
+{
+  "schema": "cumulus-local-equalizer-full-official-48k-manifest-v1",
+  "officialVersion": "3.1.42.205594",
+  "originalPe": "neaudioeffects.dll",
+  "originalPeSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "fixtureSha256": "e13e5b79ea3eda7591bb634739aa97296270ce8eb95d7da796e9e1fb3f7cc520",
+  "compactor": "scripts/research/freeze_local_equalizer_48k.py",
+  "compactorSha256": "409b45aa708d22a720ccf393a4347223e013557ab21b41c2841636b7bf283edb",
+  "syntheticOriginalReportsSha256": [
+    "4e14e0a17cd2977aafc693f0af89465232d05f82537cd945eb364aa85fcd8ca2",
+    "750aa129734bffcdfc81d8d1a708e14853b049127305c059f303417465cd2095"
+  ],
+  "originalDriverSha256": {
+    "original_geq_bt_active_master.py": "f6e428407ef41620ea3d411de3106987f9f6c1e89fec5ae090cc857878f59024",
+    "original_geq_bt_full.py": "11012786a3c1f655e72671875a4219b9eeca9129dd602b1cd0c611cb4469ee02",
+    "original_geq_bt_active_master_separate.py": "1d10b5034efc40a425ab8feb773f6ea124442ec64a1f4e62ede5c5abd14c9456",
+    "original_geq_bt_active_master_partial_se.py": "b26a719d0098d5d6a7acac30791cf4720cd05cdafac17d6258fdeb7133dfa343"
+  },
+  "sampleRate": 48000,
+  "channels": 2,
+  "capacity": 2048,
+  "inputFormatEnum": 3,
+  "internalSeFormat": "0x3102",
+  "limiterLookaheadFrames": 238,
+  "caseCount": 14,
+  "outputBlockCount": 159,
+  "selectedOutputPrefixes": 54,
+  "nativeChildComparisons": 1113,
+  "originalInnerGraphExecuted": true,
+  "originalOuterCreateInitAndControlsExecuted": true,
+  "originalOuterFifoExecuted": false,
+  "originalTextUnmodified": true,
+  "cloudCefJsonExecuted": false,
+  "nativeWindows": false,
+  "physicalAudio": false,
+  "syntheticOnly": true
+}

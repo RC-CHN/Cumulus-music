@@ -155,7 +155,7 @@ impl LocalFixedStereoMaster {
     }
 }
 
-/// Original old-schema local equalizer in the verified stereo 44.1 kHz,
+/// Original old-schema local equalizer in the verified stereo 44.1/48 kHz,
 /// capacity-2048 domain. No source selection, device, remote preset, outer
 /// FIFO, desktop effect activation, or arbitrary SDK configuration is owned here.
 pub struct LocalEqualizerStereoMaterial {
@@ -165,7 +165,7 @@ impl LocalEqualizerStereoMaterial {
     /// Reset the initialized nodes and apply the verified local material.
     pub fn new(format: Format, plan: LocalEqualizerMaterialPlan) -> Result<Self> {
         let graph =
-            LocalFixedStereoMaterial::with_stage(format, LocalFixedStage::new_master(format)?)?;
+            LocalFixedStereoMaterial::with_stage(format, LocalFixedStage::new_equalizer(format)?)?;
         let mut this = Self { graph };
         this.reset()?;
         this.apply_material(plan)?;

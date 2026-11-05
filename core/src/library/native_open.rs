@@ -100,7 +100,7 @@ pub(crate) fn inspect_opened_file(path: &Path, probe: &dyn AudioProbe) -> Result
         }
         AudioMetadata {
             format: Some("pcm_s16le".into()),
-            duration: layout.frames as f64 / f64::from(pcm_wave::RATE),
+            duration: layout.frames as f64 / f64::from(layout.rate),
             title: path
                 .file_stem()
                 .and_then(|v| v.to_str())
@@ -108,8 +108,8 @@ pub(crate) fn inspect_opened_file(path: &Path, probe: &dyn AudioProbe) -> Result
                 .into(),
             album: String::new(),
             artists: Vec::new(),
-            bitrate: Some(u64::from(pcm_wave::BYTE_RATE) * 8),
-            sample_rate: Some(pcm_wave::RATE),
+            bitrate: Some(u64::from(layout.rate) * pcm_wave::BYTES_PER_FRAME as u64 * 8),
+            sample_rate: Some(layout.rate),
             channels: Some(2),
             container: format.into(),
             cover_bytes: None,
@@ -156,13 +156,25 @@ impl OpenedFile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::playback::engine::pcm_wave::tests::wave;
+    use crate::playback::engine::pcm_wave::tests::{wave, wave_at};
 
     struct NoPathProbe;
     impl AudioProbe for NoPathProbe {
         fn inspect(&self, _: &Path) -> Result<AudioMetadata> {
             panic!("PCM WAV must get metadata from its native file")
         }
+    }
+
+    #[test]
+    fn native_wav_metadata_uses_the_selected_48k_geometry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().canonicalize().unwrap().join("48000.wav");
+        std::fs::write(&path, wave_at(48_000, std::iter::repeat_n([0, 0], 24_000))).unwrap();
+        let resource = inspect_opened_file(&path, &NoPathProbe).unwrap();
+        let local: LocalResource = serde_json::from_value(resource).unwrap();
+        assert_eq!(local.metadata.duration, 0.5);
+        assert_eq!(local.metadata.sample_rate, Some(48_000));
+        assert_eq!(local.metadata.bitrate, Some(1_536_000));
     }
 
     #[test]

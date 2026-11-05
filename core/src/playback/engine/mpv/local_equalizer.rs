@@ -11,7 +11,6 @@ use crate::{
 };
 use std::{fs::File, time::Duration};
 
-pub(super) const RATE: u32 = 44_100;
 const CONTROL_WAIT: Duration = Duration::from_secs(2);
 
 pub(super) struct LocalEqualizer {
@@ -133,6 +132,7 @@ impl MpvEngine {
         allow_unplayed_fallback: bool,
         cancel: &Cancellation,
     ) -> Result<LoadedMedia> {
+        let rate = pass.control().rate();
         let reader = pass.take_reader()?;
         let mut media = match self.load_stereo_pcm(reader, cancel) {
             Ok(media) => media,
@@ -146,7 +146,7 @@ impl MpvEngine {
             }
             Err(error) => return Err(error),
         };
-        media.duration = Some(total as f64 / f64::from(RATE));
+        media.duration = Some(total as f64 / f64::from(rate));
         self.local_equalizer = Some(LocalEqualizer {
             pass,
             original_demuxer,
@@ -169,8 +169,9 @@ impl MpvEngine {
         cancel.check()?;
         self.require_pinned_authority()?;
         let local = self.local_equalizer.as_ref().expect("local seek selected");
-        let total = local.pass.control().snapshot()?.source_end;
-        let frame = (seconds * f64::from(RATE)).floor();
+        let control = local.pass.control();
+        let total = control.snapshot()?.source_end;
+        let frame = (seconds * f64::from(control.rate())).floor();
         if !frame.is_finite() || frame < 0.0 || frame > total as f64 {
             return Err(Error::InvalidInput("invalid local equalizer seek"));
         }
@@ -222,7 +223,8 @@ impl MpvEngine {
         self.pause(true)?;
         self.observe_local_equalizer_clock()?;
         let local = self.local_equalizer.take().expect("checked exact entry");
-        let snapshot = local.pass.control().snapshot()?;
+        let control = local.pass.control();
+        let snapshot = control.snapshot()?;
         let first = snapshot
             .native_source_frame
             .min(snapshot.source_end.saturating_sub(1));
@@ -233,7 +235,7 @@ impl MpvEngine {
             file,
             local.original_demuxer,
             authority,
-            first as f64 / f64::from(RATE),
+            first as f64 / f64::from(control.rate()),
             cancel,
         )
     }

@@ -33,10 +33,11 @@ int cumulus_local_fixed_init(NeteaseLocalFixed *s,uint32_t rate,unsigned cap,
      * semantics intentionally remain separate from outer device Init. */
     return local_fixed_init(s,rate,cap,arena,count,0);
 }
-int cumulus_local_fixed_master_init(NeteaseLocalFixed *s,float *arena,size_t count) {
+int cumulus_local_fixed_master_init(NeteaseLocalFixed *s,uint32_t rate,float *arena,size_t count) {
     /* Outer Init before material apply: default bank1, SE wrapper off.
      * The Rust owner performs the native node reset before applying material. */
-    return local_fixed_init(s,44100,2048,arena,count,1);
+    if(rate!=44100 && rate!=48000)return -1;
+    return local_fixed_init(s,rate,2048,arena,count,1);
 }
 int netease_local_fixed_parameters(NeteaseLocalFixed *s,float presence,float stereoizer,unsigned enabled) {
     if(!s || !s->off.capacity || enabled>1 || !isfinite(presence) || !isfinite(stereoizer) ||
@@ -83,7 +84,8 @@ int netease_local_fixed_master_material(NeteaseLocalFixed *s,float presence,floa
 }
 
 static int local_equalizer_format(const NeteaseLocalFixed *s) {
-    return s && s->off.capacity==2048 && s->off.geq.core.rate==44100.0f &&
+    return s && s->off.capacity==2048 &&
+           (s->off.geq.core.rate==44100.0f || s->off.geq.core.rate==48000.0f) &&
            s->off.geq.core.channels==2;
 }
 static int local_equalizer_tone(NeteasePeq *bt,float bass,float treble) {

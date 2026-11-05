@@ -227,3 +227,6 @@ initialize a WebView or an audio device; the desktop checks above are separate.
 Neither test installs a file association or measures a physical device.
 Windows WebView2 uses the same synthetic spatial scenario with the packaged
 mpv runtime; an actual run on the exact commit is required for a Windows claim.
+
+With 48 kHz support, the Linux warm-open probe uses 96 kHz for its out-of-scope
+case. It must still reject the file and leave the preceding queue intact.

@@ -1159,10 +1159,11 @@ impl AudioEngine for MpvEngine {
             control.observe(entry, snapshot.position, snapshot.paused, snapshot.seeking)?;
             if self.local_equalizer.is_some() {
                 let pcm = control.snapshot()?;
+                let rate = f64::from(control.rate());
                 snapshot.position = snapshot
                     .position
-                    .map(|_| pcm.native_source_frame as f64 / f64::from(local_equalizer::RATE));
-                snapshot.duration = Some(pcm.source_end as f64 / f64::from(local_equalizer::RATE));
+                    .map(|_| pcm.native_source_frame as f64 / rate);
+                snapshot.duration = Some(pcm.source_end as f64 / rate);
                 snapshot.buffered_through = None;
             }
         }

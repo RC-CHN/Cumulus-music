@@ -12,6 +12,7 @@ unsafe extern "C" {
     ) -> i32;
     pub fn cumulus_local_fixed_master_init(
         state: *mut c_void,
+        rate: u32,
         storage: *mut f32,
         count: usize,
     ) -> i32;

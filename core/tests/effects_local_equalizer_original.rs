@@ -17,6 +17,7 @@ use std::io::Read;
 #[serde(rename_all = "camelCase")]
 struct Corpus {
     schema: String,
+    sample_rate: Option<u32>,
     original_outer_create_init_and_controls_executed: bool,
     original_inner_graph_executed: bool,
     original_outer_fifo_executed: bool,
@@ -79,23 +80,21 @@ impl Drop for CallerFtz {
     }
 }
 
+fn read_corpus(compressed: &[u8]) -> Corpus {
+    let mut bytes = Vec::new();
+    flate2::read::GzDecoder::new(compressed)
+        .take(2 * 1024 * 1024)
+        .read_to_end(&mut bytes)
+        .unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
 #[test]
 fn original_local_equalizer_pcm_including_hot_apply_reset_and_master_edges() {
-    let mut bytes = Vec::new();
-    flate2::read::GzDecoder::new(
-        &include_bytes!("fixtures/effects-local-equalizer-full-official.json.gz")[..],
-    )
-    .take(2 * 1024 * 1024)
-    .read_to_end(&mut bytes)
-    .unwrap();
-    let corpus: Corpus = serde_json::from_slice(&bytes).unwrap();
+    let corpus = read_corpus(include_bytes!(
+        "fixtures/effects-local-equalizer-full-official.json.gz"
+    ));
     assert_eq!(corpus.schema, "cumulus-local-equalizer-full-official-v1");
-    assert!(corpus.original_outer_create_init_and_controls_executed);
-    assert!(corpus.original_inner_graph_executed);
-    assert!(!corpus.original_outer_fifo_executed);
-    assert!(!corpus.cloud_cef_json_executed);
-    assert!(!corpus.native_windows);
-    assert!(!corpus.dsp_replaced);
     let expected = [
         ("geq_only_hot_and_seek_reset", 5, 8199, 7980, [1, 0, 1]),
         ("bt_only_hot_and_seek_reset", 5, 8199, 7980, [1, 0, 1]),
@@ -122,18 +121,83 @@ fn original_local_equalizer_pcm_including_hot_apply_reset_and_master_edges() {
         ("bt_se1_master_off", 4, 6151, 6151, [0, 1, 0]),
         ("all_components_off_master_off", 4, 6151, 6151, [0, 1, 0]),
     ];
+    assert_eq!(verify_corpus(corpus, 44_100, 219, &expected), 43);
+}
+
+#[test]
+fn original_48k_local_equalizer_pcm_preserves_source_rate_and_master_lifecycle() {
+    let corpus = read_corpus(include_bytes!(
+        "fixtures/effects-local-equalizer-48k-official.json.gz"
+    ));
+    assert_eq!(
+        corpus.schema,
+        "cumulus-local-equalizer-full-official-48k-v1"
+    );
+    assert_eq!(corpus.sample_rate, Some(48_000));
+    let expected = [
+        ("geq_bt_se1_master_off_reopen", 30, 12295, 60295, [1, 1, 0]),
+        (
+            "geq_bt_se1_master_off_through_eof",
+            5,
+            8199,
+            8199,
+            [0, 1, 0],
+        ),
+        ("geq_only_hot_and_seek_reset", 5, 8199, 7961, [1, 0, 1]),
+        ("bt_only_hot_and_seek_reset", 5, 8199, 7961, [1, 0, 1]),
+        (
+            "geq_bt_joint_component_off_edges",
+            6,
+            10247,
+            10247,
+            [3, 0, 0],
+        ),
+        ("geq_bt_se1_joint_hot", 27, 6151, 54151, [1, 0, 0]),
+        (
+            "geq_bt_se1_joint_hot_seek_reset",
+            28,
+            8199,
+            55961,
+            [1, 0, 1],
+        ),
+        ("geq_only_master_off", 4, 6151, 6151, [0, 1, 0]),
+        ("bt_only_master_off", 4, 6151, 6151, [0, 1, 0]),
+        ("geq_bt_master_off", 4, 6151, 6151, [0, 1, 0]),
+        ("geq_se1_master_off", 4, 6151, 6151, [0, 1, 0]),
+        ("bt_se1_master_off", 4, 6151, 6151, [0, 1, 0]),
+        ("all_components_off_master_off", 4, 6151, 6151, [0, 1, 0]),
+        (
+            "se1_only_master_off_reopen_and_seek_reset",
+            29,
+            10247,
+            58009,
+            [1, 1, 1],
+        ),
+    ];
+    assert_eq!(verify_corpus(corpus, 48_000, 238, &expected), 54);
+}
+
+type ExpectedCase = (&'static str, usize, usize, usize, [u32; 3]);
+
+fn verify_corpus(corpus: Corpus, rate: u32, lookahead: u32, expected: &[ExpectedCase]) -> usize {
+    assert!(corpus.original_outer_create_init_and_controls_executed);
+    assert!(corpus.original_inner_graph_executed);
+    assert!(!corpus.original_outer_fifo_executed);
+    assert!(!corpus.cloud_cef_json_executed);
+    assert!(!corpus.native_windows);
+    assert!(!corpus.dsp_replaced);
     assert_eq!(corpus.cases.len(), expected.len());
     assert_eq!(corpus.input_blocks.len(), 14);
-    let format = Format::new(44100.0, 2, 2048).unwrap();
+    let format = Format::new(rate as f32, 2, 2048).unwrap();
     let mut checked_prefixes = 0;
-    for (case, (name, count, input, output, actions)) in corpus.cases.into_iter().zip(expected) {
+    for (case, &(name, count, input, output, actions)) in corpus.cases.into_iter().zip(expected) {
         let _caller = CallerFtz::cleared();
         assert_eq!(case.name, name);
         assert_eq!(case.blocks.len(), count, "{name}");
         assert_eq!((case.input_frames, case.output_frames), (input, output));
         let plan = LocalEqualizerMaterialPlan::from_equalizer_json(&case.initial_material).unwrap();
         let mut graph = LocalEqualizerStereoMaterial::new(format, plan).unwrap();
-        assert_eq!(graph.lookahead_frames(), 219);
+        assert_eq!(graph.lookahead_frames(), lookahead);
         let mut pcm = PlanarBlock::new(format);
         let (mut consumed, mut emitted) = (0, 0);
         let mut observed_actions = [0; 3];
@@ -214,7 +278,7 @@ fn original_local_equalizer_pcm_including_hot_apply_reset_and_master_edges() {
             "{name} repeated EOF"
         );
     }
-    assert_eq!(checked_prefixes, 43);
+    checked_prefixes
 }
 
 #[test]
@@ -226,7 +290,7 @@ fn fixed_local_equalizer_rejects_other_schemas_and_geometry() {
         "rvb":{"on":false,"er":{"on":true,"pattern":15},"rvb":{"density":80}},
     });
     let plan = LocalEqualizerMaterialPlan::from_equalizer_json(&fixture).unwrap();
-    for (rate, channels, capacity) in [(48000.0, 2, 2048), (44100.0, 1, 2048), (44100.0, 2, 512)] {
+    for (rate, channels, capacity) in [(96000.0, 2, 2048), (44100.0, 1, 2048), (48000.0, 2, 512)] {
         assert!(
             LocalEqualizerStereoMaterial::new(Format::new(rate, channels, capacity).unwrap(), plan)
                 .is_err()
