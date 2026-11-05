@@ -1,5 +1,7 @@
 //! Scoped native entry for the proved M/308 miniBar transport branch.
-use super::{PlaybackCommand, PlaybackController, PlaybackFence, VerifiedOrdinarySkip};
+use super::{
+    PlaybackCommand, PlaybackController, PlaybackFence, PlaybackSnapshot, VerifiedOrdinarySkip,
+};
 use crate::{
     Error, Result,
     account::SessionToken,
