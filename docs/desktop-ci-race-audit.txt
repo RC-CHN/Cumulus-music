@@ -1,0 +1,42 @@
+桌面 CI 回归记录：2026-11-05
+============================
+
+失败基线：CI 41968979424，源提交 308b594eac9cb1c7ab17fb229858c56ca925af52。
+原日志和从构建附件按需读取的合成证据保存在
+.build/ui-proof/phase55-scene-palette/ci/，未提交构建附件、账号或截图。
+
+Linux 队列阶段
+- 原 queue_ui_smoke 的 ux_24_clear_pending 实际 rendered=19，在 <40 上限内。
+  nativePlayer 的 queueRevision=7、queueLen=40；nativeQueue 已 revision=8、条数0。
+  原 JS 在 emit 后即继续 releaseClear；宿主另起异步任务取得 watch 快照和 actor 队列，
+  所以后续清空可越过待记录的阶段。不是据此推断列表失去有界渲染。
+- 队列探针改为由 actor 取得播放器状态，按阶段保存后回传 __queueUiStageRecorded，
+  JS 无论是否截图都等待这个回执，才释放下一次编辑。PNG ack 仍是独立的一层。
+  没有修改正式队列或播放器，也没有放宽相等版本、暂停位置、播放ID、行数断言。
+- Linux 无截图 CI 模式实际重跑28阶段通过；日志
+  .build/ui-proof/phase55-scene-palette/queue-regression.log。Windows仍须远端重跑。
+
+Windows 暂停队列的预取
+- 原 Native job 仅 vertical_zone_playlist_detail 的 batch 第506行失败：最终请求表非空。
+  该断言之前已经真实播放并暂停普通列表。原生 load/tick 会在有效暂停态异步预取下一曲；
+  清空 fixture journal 不是预取完成屏障。因调度差异，合法预取可能落在拒绝选择的断言区间。
+  这里是根据被测执行时序定位的原因，不冒称归档已经记录到缺失的逐请求调用栈。
+- fixture 用请求事件等待已知下一曲，确认具体 id/trial 后才进入必须零请求的区间。
+  预期901/-1、101/43、102/43按各步骤独立检查；拒绝103/900仍必须零请求。
+  已选102使用已证实的trial43缓存，仍需真正加载，不新增URL请求。
+  同一 ordinary helper 的另一个自有喜欢歌单测试同步修正同类竞态。
+- Linux 目标16项及严格Clippy通过；没有扩大睡眠或更改生产预取策略。
+  Windows自身结果仍以更新提交的CI为准。
+
+Windows 系统音量探针的启动
+- 原 Package job 首张截图前即报 enabled control: undefined；播放器Idle、系统音量读取0。
+  旧失败数据的 last 一直为startup，没有具体选择器、控件清单和stack，不能确定究竟哪次
+  查找失效，也不能从这个失败推断实际Windows系统音量接口坏了。
+- 修正后的脚本逐步等待当前账号及 Daily 的原生展示回执，要求单次播放点击使用当前账号
+  的 daily source。每次在同一个DOM任务里取得并激活仍连接、可见、启用的控件；
+  不循环点击或重放业务动作。失败会保留具体步骤、控件清单及堆栈，方便继续定位。
+- Linux的合成Windows endpoint与正式unsupported两支共6截图通过；真正的Windows
+  COM设备读取没有因此通过。证据 .build/ui-proof/phase55-scene-palette/system-volume-regression/。
+
+所有失败仍计入原运行失败；没有 continue-on-error、删除必需 job 或用本地Linux结果冒充Windows。
+后续推送会让精确提交重新执行完整CI。这里只修复验证的同步与诊断，不宣称全客户端目标完成。
