@@ -308,6 +308,16 @@ impl<E: AudioEngine + ?Sized> AudioEngine for Focused<E> {
     fn observe_loudness(&mut self) -> Result<Option<crate::effects::loudness::abi::LoudnessStats>> {
         self.inner.observe_loudness()
     }
+    fn streaming_audio_available(&mut self) -> bool {
+        self.inner.streaming_audio_available()
+    }
+    fn load_streaming_audio(
+        &mut self,
+        reader: crate::playback::StreamingAudioReader,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        self.inner.load_streaming_audio(reader, cancel)
+    }
     fn load(&mut self, r: LoadRequest, c: &Cancellation) -> Result<LoadedMedia> {
         // AudioEngine loads paused. Only pause(false) may start presentation.
         self.inner.load(r, c)

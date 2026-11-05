@@ -103,6 +103,7 @@ pub(super) struct PlayerHost {
     focus: Arc<super::focus::MediaFocus>,
     lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
     vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
+    streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
 }
 impl PlayerHost {
     pub fn new(
@@ -129,6 +130,7 @@ impl PlayerHost {
             prepared_generation: Arc::new(AtomicU64::new(0)),
             lyrics: Mutex::new(None),
             vinyl_draft: Mutex::new(None),
+            streaming_cache: None,
             focus,
             output,
             inspector: OnceCell::new(),
@@ -145,7 +147,9 @@ impl PlayerHost {
                     .await
                     .map_err(|_| Error::State("audio initialization failed"))??;
                 let library = Arc::new(LocalLibrary::new(self.store.clone())?);
-                let resolver = Arc::new(SourceResolver::new(self.session.clone(), Some(library)));
+                let mut resolver = SourceResolver::new(self.session.clone(), Some(library));
+                resolver.streaming_cache = self.streaming_cache.clone();
+                let resolver = Arc::new(resolver);
                 Ok(Arc::new(PlaybackController::start_inner(
                     self.session.clone(),
                     self.store.clone(),
@@ -362,6 +366,32 @@ impl MusicClient {
         self.player.queue_more_enabled = true;
         self
     }
+    /// Native opt-in before constructing the audio controller. The desktop
+    /// does not opt in by default and the renderer cannot select this path.
+    pub fn with_streaming_media_cache(mut self, capacity_bytes: u64) -> Result<Self> {
+        if self.player.controller.get().is_some() {
+            return Err(Error::State(
+                "streaming media cache needs an unstarted player",
+            ));
+        }
+        self.player.streaming_cache = Some(crate::playback::stream_cache::StreamingCache::open(
+            &self.player.store,
+            capacity_bytes,
+        )?);
+        Ok(self)
+    }
+
+    /// Retire only this native host's process-owned playback cache. An
+    /// already-opened stream retains its handle until the decoder closes it.
+    pub fn clear_streaming_media_cache(&self) -> Result<()> {
+        self.player
+            .streaming_cache
+            .as_ref()
+            .ok_or(Error::State("streaming media cache is not configured"))?
+            .store
+            .clear()
+    }
+
     pub fn validate_player_epoch(&self, epoch: &str) -> Result<()> {
         self.player_token(epoch).map(|_| ())
     }

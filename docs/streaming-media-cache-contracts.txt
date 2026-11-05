@@ -1,0 +1,74 @@
+普通歌曲的原生播放字节缓存
+
+官方 PC 3.1.42.205594 的设置入口与边界
+references/ui-recovery/sources/packages/pc/src/pages/setting/views/Download.tsx
+419–454、954–1002：手动容量按 0.5 GiB 步进，旧支路 0.5–10 GiB。新版
+用 native 回读给出的上下限；滑动时只更新展示，结束时更新 setting，手动
+动作另经 2 秒防抖保存 isManualSetCache/manualSetSize 并调用 setNativeCache。
+同文件 594–615、673–735：目录选择、空间须大于容量、明确确认；保存新目录
+及 oldCacheDir、重启。M/380:27–40 启动调用 storage.init(downloadPath,
+capacityString,cachePath)，然后把旧目录传给 storage.clearCache。官方 JS 未
+等待这次旧目录清理的回执就清 oldCacheDir，不能据此推断可安全删除任意路径。
+同文件 737–759：立即请求 Storage.clearCache()；成功提示「缓存已清除！」，
+约 300 ms 后派发 playing/clearAllCachedResource。失败提示稍后再试。
+M/308:5470–5493 清空运行时歌曲/声音缓存索引，再从 native 重新读。
+
+M/116:1396–1467、M/100:205–213、M/15:3292–3304：Windows 用
+api/link/position/show/resource（positionCode=audioPlayerStrategy_cache，
+extJson.interactRecords/preData 均为空数组，states.relayInfo 使用 current
+字符串 {"needCheck":true} 与空 prev）取 playerStrategy_git.strategyDetail，与 PH-PC-Cache-Switch、手动标志和字符串
+容量一起送 storage.setPlayCacheConfig。配置存在时 t1 上下限 10/50，其它
+0.5/10；配置缺失则使用内置策略、0.5/10 与用户容量字符串 "1"。调用之后
+发起 storage.playCacheInfo，投影 native 返回的容量与上下限；JS 并未等待
+setPlayCacheConfig 回执后才发起读取。M/4:7237–7254、7327–7353 为 bridge。
+这些配置不等于已证明原生磁盘淘汰、权重或空间计算。
+
+独立音频缓存由 M/4:7357–7408、7488–7503 的 queryCacheTracks/
+queryNewCacheTrack 表明：可见条目需要 cached=100、比特率、MD5 和
+playInfoStr。M/163:403–459 的快速读取另由 PH-PC-playCache2=t1 控制，
+匹配 songId、bitrate、MD5，排除该支路里的声音及试听；离线时可以挑已
+索引的最高缓存音质。M/163:551–570 写入的原版 playInfoStr 可包括 URL。
+x64 cloudmusic.dll RVA 4D1D40 的 cache_index 是 track(tid,fid) 与 segment
+(tid,fid,sid,file,offset,length,hash)；见 references/recovered-client/docs/
+product/09-storage-update.txt。和 HTTP 缓存、下载或 offline_index 是不同库。
+原文件格式、授权有效性、实时回收与旧目录删除范围还没有足够证据复刻。
+
+Cumulus 当前独立 Rust 试验
+- Native host 必须显式调用 MusicClient::with_streaming_media_cache。普通桌面
+  仍用原 URL 路径，无 IPC/前端设置。只选普通、线上、完整、明确非试用、免费
+  MP3 的已授权表示。只认实际 standard/higher/exhigh，严格校验 id、type、fee、
+  flag、trial、size、完整 MD5 和短期过期信息。FM、私人雷达、一起听、云盘、
+  本地、下载、试听、未知字段及其它格式保留原路径。
+- 每一次可命中播放都绕过内存 URL 缓存走原 playback URL 请求，并匹配当前
+  已验证 profile、原生 transport 实例和播放代次。磁盘索引不授权、不离线
+  命中。播放进程只在内存持有 URL 和强 ETag；它们从不写到文件、SQLite、UI
+  或日志。命中键为账号、歌曲、实际音质、长度、完整 MD5（试验格式固定为
+  MP3）。cache hit 不请求媒体字节，但依旧重新请求播放授权。
+- MP3 最多 8 MiB。一个首块 (<=64 KiB) 用来验证范围和媒体头；没有额外
+  全量下载。libmpv 通过其本机只读 stream_cb 读取/定位，按需要取固定窗口，
+  一个未决请求，不重试，不重定向，不接受压缩、重复响应头、弱/变化 ETag、
+  错位或越界范围；后续范围带 If-Match。只有本次播放确实覆盖全部窗口并
+  与来源完整 MD5 一致、且 libmpv 成功确认 MP3 解码后才可复用。仅本机
+  选源前失败可用原 URL；原生已
+  选用此读者后不自动重放第二条路径。未加入生产默认或桌面设置。
+- 私有状态目录内固定 streaming-audio-v1，只为新内容创建 tempfile；Unix
+  不留可重开的文件名，Windows 按句柄关闭时删除。不遍历或删除目录内容。
+  索引在内存，操作系统按实际句柄寿命释放文件；
+  跨重启不保留缓存。预算按整条表示预留，包括未完成、正在使用、已清除
+  但还持有的文件；还限制总持有文件数，容量不足仅逐出无租用的最旧完整对象。
+  clear 让新查找和
+  未完成旧填充失效；当前已授权读者可以继续，结束后归还空间。没有搬运目录、
+  动态改配容量、持久恢复、整套官方 AB/权重、解密或旧缓存导入。
+
+验证入口
+  cargo test --locked -p cumulus-core --lib stream_cache
+可选真实 libmpv/null 验证：先生成一份 64–128 KiB 的合成 MP3，例如
+  ffmpeg -f lavfi -i sine=frequency=439:sample_rate=44100:duration=3.8 \
+    -c:a libmp3lame -b:a 192k /tmp/cumulus-synthetic-cache.mp3
+  CUMULUS_PROOF_STREAM_MP3=/tmp/cumulus-synthetic-cache.mp3 \
+    cargo test --locked -p cumulus-core --lib actual_native_streaming_cache_reauthorizes_each_play -- --ignored
+2026-11-05 Linux 本机验证：92,830 字节合成 MP3，真实 libmpv/播放器 actor
+首次读取两个窗口，再次播放发新授权但读取零远端字节；清理期间同一 playId
+可定位并继续推进，下一次播放重新填充，合成授权 403 时不能播放已有字节。
+验证关闭普通 URL 解码，合成 API/字节传输不访问真实服务；不代表实体音频
+输出、真实 CDN 覆盖、Windows 运行或跨进程磁盘缓存通过。

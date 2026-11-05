@@ -156,11 +156,7 @@ impl Native {
             })
         }
     }
-    pub fn stage_pinned(
-        &mut self,
-        input: Box<dyn super::PinnedReader>,
-        authority: super::Cancellation,
-    ) -> Result<CString> {
+    pub fn prepare_pinned_stream(&mut self) -> Result<()> {
         if self.streams.is_none() {
             let mut registry = Box::new(stream::Registry::default());
             // SAFETY: The ABI matches libmpv stream_cb.h. The boxed registry
@@ -180,6 +176,15 @@ impl Native {
             check("register read-only stream", status)?;
             self.streams = Some(registry);
         }
+        Ok(())
+    }
+
+    pub fn stage_pinned(
+        &mut self,
+        input: Box<dyn super::PinnedReader>,
+        authority: super::Cancellation,
+    ) -> Result<CString> {
+        self.prepare_pinned_stream()?;
         self.streams
             .as_ref()
             .expect("registered stream")

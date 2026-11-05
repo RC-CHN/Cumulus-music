@@ -4,14 +4,28 @@ use crate::{
     catalog::{CatalogApi, PlayOptions},
     download::transfer::MediaUrl,
     playback::engine::MediaInput,
+    protocol::api::Api,
 };
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 impl SourceResolver {
     pub(super) async fn fetch(&self, resource: &Value, key: &Key) -> Result<ResolvedSource> {
+        self.fetch_bound(resource, key, None).await
+    }
+
+    pub(super) async fn fetch_bound(
+        &self,
+        resource: &Value,
+        key: &Key,
+        expected: Option<&Arc<dyn Api>>,
+    ) -> Result<ResolvedSource> {
         let info = self
             .session
             .run_for(&key.token, |api, _| async move {
+                if expected.is_some_and(|expected| !Arc::ptr_eq(expected, &api)) {
+                    return Err(Error::StaleResponse);
+                }
                 if let Some(voice_id) = &key.voice_id {
                     let api = crate::podcast::PodcastApi::new(api);
                     let episode = api.episode(&json!(voice_id)).await?;

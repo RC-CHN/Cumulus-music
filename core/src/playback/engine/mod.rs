@@ -132,6 +132,17 @@ pub trait AudioEngine: Send {
         Ok(())
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia>;
+    /// A native reader pilot can use only a verified read-only stream adapter.
+    fn streaming_audio_available(&mut self) -> bool {
+        false
+    }
+    fn load_streaming_audio(
+        &mut self,
+        _: super::StreamingAudioReader,
+        _: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        Err(crate::Error::State("native streaming audio is unavailable"))
+    }
     /// Native-only, already-opened and verified local audio; default engines
     /// fail closed instead of reopening by path or using a URL.
     fn load_pinned_audio(

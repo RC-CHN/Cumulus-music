@@ -214,6 +214,22 @@ fn remaining(request: &LoadRequest, deadline: Instant) -> Result<LoadRequest> {
         ..request.clone()
     })
 }
+impl<E: AudioEngine + ?Sized> ManagedOutput<E> {
+    fn observe_successful_load(&mut self, result: Result<LoadedMedia>) -> Result<LoadedMedia> {
+        if result.is_ok()
+            && self
+                .policy
+                .as_ref()
+                .is_some_and(|p| p.initialization_failed)
+        {
+            let key = self.policy.as_ref().expect("inspected policy").key.clone();
+            let policy = self.lease.initialization(&key, false)?;
+            self.observation(&policy, OutputPhase::Fallback, policy.fallback, None)?;
+            self.policy = Some(policy);
+        }
+        result
+    }
+}
 impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
     fn maintain_output(&mut self) -> Result<()> {
         self.synchronize(false)
@@ -226,6 +242,32 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
             "managed output must use persisted preferences",
         ))
     }
+    fn streaming_audio_available(&mut self) -> bool {
+        self.inner.streaming_audio_available()
+    }
+
+    fn load_streaming_audio(
+        &mut self,
+        mut reader: crate::playback::StreamingAudioReader,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let cancel = self.lease.cancellation(cancel);
+        cancel.check()?;
+        self.synchronize(true)?;
+        cancel.check()?;
+        reader.restrict(cancel.clone());
+        // This reader is one-shot. Do not replay it on a later output error.
+        let result = self.inner.load_streaming_audio(reader, &cancel);
+        if cancel.is_cancelled() {
+            let _ = self.inner.stop();
+            return Err(Error::Cancelled);
+        }
+        if result.as_ref().is_err_and(output_failure) {
+            self.record_load_failure();
+        }
+        self.observe_successful_load(result)
+    }
+
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         request.validate()?;
         let cancel = self.lease.cancellation(cancel);
@@ -252,18 +294,7 @@ impl<E: AudioEngine + ?Sized> AudioEngine for ManagedOutput<E> {
             let _ = self.inner.stop();
             return Err(Error::Cancelled);
         }
-        if result.is_ok()
-            && self
-                .policy
-                .as_ref()
-                .is_some_and(|p| p.initialization_failed)
-        {
-            let key = self.policy.as_ref().expect("inspected policy").key.clone();
-            let policy = self.lease.initialization(&key, false)?;
-            self.observation(&policy, OutputPhase::Fallback, policy.fallback, None)?;
-            self.policy = Some(policy);
-        }
-        result
+        self.observe_successful_load(result)
     }
     fn pause(&mut self, paused: bool) -> Result<()> {
         if !paused {

@@ -733,6 +733,31 @@ impl AudioEngine for MpvEngine {
         }
         result
     }
+    fn streaming_audio_available(&mut self) -> bool {
+        self.native_mut()
+            .and_then(Native::prepare_pinned_stream)
+            .is_ok()
+    }
+
+    fn load_streaming_audio(
+        &mut self,
+        reader: crate::playback::StreamingAudioReader,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        let authority = reader.authority();
+        let acceptance = reader.decoder_acceptance();
+        let media = self.load_pinned(Box::new(reader), "mp3", authority.clone(), cancel)?;
+        if media.codec.as_deref() != Some("mp3") {
+            self.stop()?;
+            return Err(Error::Response("native streaming source is not MP3"));
+        }
+        authority.check()?;
+        if let Some(acceptance) = acceptance {
+            acceptance.confirm();
+        }
+        Ok(media)
+    }
+
     fn load_pinned_audio(
         &mut self,
         file: std::fs::File,

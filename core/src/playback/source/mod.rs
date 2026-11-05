@@ -5,6 +5,7 @@ mod fetch;
 #[cfg(test)]
 mod fresh_tests;
 mod loudness;
+mod streaming;
 use super::{Timeline, engine::MediaInput};
 use crate::{
     Error, Result,
@@ -60,6 +61,7 @@ pub struct SourceResolver {
     library: Option<Arc<LocalLibrary>>,
     state: Arc<Mutex<CacheState>>,
     clock: Arc<dyn ResolverClock>,
+    pub(crate) streaming_cache: Option<Arc<super::stream_cache::StreamingCache>>,
 }
 impl SourceResolver {
     pub(crate) async fn confirmed_plain_skip_denial(
@@ -142,6 +144,7 @@ impl SourceResolver {
             library,
             state: Arc::new(Mutex::new(CacheState::default())),
             clock,
+            streaming_cache: None,
         }
     }
     pub fn revision(&self) -> Result<u64> {

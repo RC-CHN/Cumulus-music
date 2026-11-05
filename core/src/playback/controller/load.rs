@@ -192,33 +192,52 @@ impl Actor {
         let token = self.token.clone();
         let engine = self.engine.clone();
         let sender = self.sender.clone();
+        let streaming_revision = resolver
+            .streaming_cache
+            .as_ref()
+            .filter(|_| {
+                self.ordinary_online_song(&item)
+                    && token.uid.is_some()
+                    && matches!(&options.source, LoadSource::CurrentPreference)
+            })
+            .and_then(|cache| cache.store.revision().ok());
         self.load_task = Some(tokio::spawn(async move {
             let result = async {
-                super::engine(engine.clone(), cancel.clone(), |engine| {
-                    engine.stop()?;
-                    // Discard the previous track's gain before priming a new decoder.
-                    engine.reset_track_loudness()
-                })
-                .await?;
+                let native_streaming =
+                    super::engine(engine.clone(), cancel.clone(), move |engine| {
+                        engine.stop()?;
+                        // Discard the previous track's gain before priming a new decoder.
+                        engine.reset_track_loudness()?;
+                        Ok(streaming_revision.is_some() && engine.streaming_audio_available())
+                    })
+                    .await?;
                 cancel.check()?;
-                let source = match options.source {
-                    LoadSource::RenewIfExpired(source)
-                        if source.needs_renewal_for_reopen(resolver.now()) =>
-                    {
-                        // The retained entry supplies the original requested
-                        // quality/identity. Its cache may already have been
-                        // renewed by a single-track loop's prefetch.
-                        resolver.resolve(&item.resource, &token).await?
-                    }
-                    LoadSource::RenewIfExpired(source) | LoadSource::Retained(source) => source,
-                    LoadSource::CurrentPreference => {
-                        resolver.resolve(&item.resource, &token).await?
-                    }
-                    LoadSource::FreshOnline => {
-                        resolver
-                            .resolve_fresh_online(&item.resource, &token)
-                            .await?
-                    }
+                let (source, streaming_api) = if native_streaming {
+                    let (source, api) = resolver
+                        .fresh_streaming_source(&item.resource, &token)
+                        .await?;
+                    (source, Some(api))
+                } else {
+                    let source = match options.source {
+                        LoadSource::RenewIfExpired(source)
+                            if source.needs_renewal_for_reopen(resolver.now()) =>
+                        {
+                            // The retained entry supplies the original requested
+                            // quality/identity. Its cache may already have been
+                            // renewed by a single-track loop's prefetch.
+                            resolver.resolve(&item.resource, &token).await?
+                        }
+                        LoadSource::RenewIfExpired(source) | LoadSource::Retained(source) => source,
+                        LoadSource::CurrentPreference => {
+                            resolver.resolve(&item.resource, &token).await?
+                        }
+                        LoadSource::FreshOnline => {
+                            resolver
+                                .resolve_fresh_online(&item.resource, &token)
+                                .await?
+                        }
+                    };
+                    (source, None)
                 };
                 cancel.check()?;
                 let timeline = crate::playback::PlaybackConstraint::apply(
@@ -257,9 +276,42 @@ impl Actor {
                     timeline: loading_timeline(&source, &item, timeline),
                     authorized_position: position,
                 });
+                let stream_reader = if let (Some(revision), Some(api)) =
+                    (streaming_revision, streaming_api)
+                    && snapshot.mode == TimelineMode::Full
+                    && snapshot.media_start == 0.0
+                {
+                    let prepared = resolver
+                        .prepare_streaming_reader(
+                            revision,
+                            &source,
+                            &item.resource,
+                            token.clone(),
+                            api.clone(),
+                            cancel.clone(),
+                        )
+                        .await;
+                    cancel.check()?;
+                    resolver.validate_streaming_source(&token, &api)?;
+                    match prepared {
+                        Ok(reader) => reader,
+                        Err(error @ (Error::Cancelled | Error::StaleResponse)) => {
+                            return Err(error);
+                        }
+                        // Only cache/preflight failures fall back here: no
+                        // media was selected or made audible through the new reader.
+                        Err(_) => None,
+                    }
+                } else {
+                    None
+                };
                 let load_cancel = cancel.clone();
                 let media = super::engine(engine.clone(), cancel.clone(), move |engine| {
-                    engine.load(load, &load_cancel)
+                    if let Some(reader) = stream_reader {
+                        engine.load_streaming_audio(reader, &load_cancel)
+                    } else {
+                        engine.load(load, &load_cancel)
+                    }
                 })
                 .await?;
                 let timeline = crate::playback::PlaybackConstraint::apply(
