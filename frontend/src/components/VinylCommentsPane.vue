@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../services/contracts';
+import type { CommentItem } from '../services/comments';
+import type { VinylComposerTarget } from '../composables/useVinylCommentComposer';
 import type { VinylCommentsModel } from '../composables/useVinylComments';
 import CommentText from './CommentText.vue';
 import Icon from './Icon.vue';
@@ -10,8 +12,14 @@ const props = defineProps<{
   active: boolean;
   count?: number;
   model: VinylCommentsModel;
+  writeTarget?: VinylComposerTarget;
 }>();
-const emit = defineEmits<{ back: []; full: []; hot: [] }>();
+const emit = defineEmits<{
+  back: [];
+  full: [];
+  hot: [];
+  compose: [target: VinylComposerTarget, reply: CommentItem | undefined, opener: HTMLElement];
+}>();
 const scroller = ref<HTMLElement>();
 const next = ref<HTMLElement>();
 const back = ref<HTMLButtonElement>();
@@ -46,11 +54,30 @@ function wheel(event: WheelEvent) {
 function focusBack() {
   back.value?.focus({ preventScroll: true });
 }
+function compose(event: MouseEvent, item?: CommentItem) {
+  const target = props.writeTarget;
+  const opener = event.currentTarget;
+  if (
+    !props.active ||
+    !target ||
+    target.resource.id !== props.track.id ||
+    !(opener instanceof HTMLElement) ||
+    !opener.isConnected ||
+    (item && !props.model.hot.value.includes(item) && !props.model.latest.value.includes(item))
+  )
+    return;
+  emit('compose', target, item, opener);
+}
 defineExpose({ focusBack });
 </script>
 
 <template>
-  <section class="vinyl-comments-pane" aria-label="播放详情评论" :inert="!active">
+  <section
+    class="vinyl-comments-pane"
+    :class="{ 'vinyl-comments-writable': writeTarget }"
+    aria-label="播放详情评论"
+    :inert="!active"
+  >
     <header class="vinyl-comments-track">
       <button
         ref="back"
@@ -74,14 +101,23 @@ defineExpose({ focusBack });
         </h2>
         <button type="button" class="text-button" @click="emit('full')">打开独立评论页</button>
       </header>
-      <p v-if="model.failed.value && !model.loaded.value" class="empty-state">
+      <p
+        v-if="model.failed.value && !model.loaded.value && !model.latest.value.length"
+        class="empty-state"
+      >
         获取评论数据失败。<button class="text-button" type="button" @click="model.load">
           重试
         </button>
       </p>
-      <p v-else-if="count === 0" class="empty-state">暂无评论</p>
+      <p v-else-if="count === 0 && !model.latest.value.length" class="empty-state">暂无评论</p>
       <p v-else-if="count === undefined" class="empty-state">暂无评论信息</p>
-      <p v-else-if="!model.loaded.value" class="empty-state" role="status">正在加载评论…</p>
+      <p
+        v-else-if="!model.loaded.value && !model.latest.value.length"
+        class="empty-state"
+        role="status"
+      >
+        正在加载评论…
+      </p>
       <template v-else>
         <section v-for="group in groups" :key="group.key" :data-vinyl-comment-group="group.key">
           <h3 v-if="group.key === 'latest' && model.hot.value.length">最新评论</h3>
@@ -102,7 +138,22 @@ defineExpose({ focusBack });
             <div>
               <strong>{{ item.author?.name || '云音乐用户' }}</strong>
               <p><CommentText :text="item.content" /></p>
-              <small>{{ item.timeText }}</small>
+              <blockquote v-if="item.replies[0]?.content" class="vinyl-comment-quote">
+                {{ item.replies[0].author?.name || '云音乐用户' }}：
+                <CommentText :text="item.replies[0].content" />
+              </blockquote>
+              <div class="vinyl-comment-actions">
+                <small>{{ item.timeText }}</small>
+                <button
+                  v-if="writeTarget"
+                  type="button"
+                  class="text-button vinyl-comment-reply"
+                  :aria-label="`回复 ${item.author?.name || '云音乐用户'}`"
+                  @click="compose($event, item)"
+                >
+                  回复
+                </button>
+              </div>
             </div>
           </article>
           <button
@@ -122,6 +173,9 @@ defineExpose({ focusBack });
         <p v-else-if="model.working.value" role="status">正在加载更多评论…</p>
         <div ref="next" aria-hidden="true" class="vinyl-comments-sentinel" />
       </template>
+    </div>
+    <div v-if="writeTarget" class="vinyl-comment-publish">
+      <button type="button" class="secondary" @click="compose"><Icon name="edit" />发布评论</button>
     </div>
   </section>
 </template>

@@ -166,6 +166,10 @@ import LyricsPanel from './components/LyricsPanel.vue';
 import { readVinylDisplayMode, storeVinylDisplayMode } from './services/vinylDisplay';
 import { usePlaybackCommentInfo } from './composables/usePlaybackCommentCount';
 import { useVinylComments } from './composables/useVinylComments';
+import {
+  useVinylCommentComposer,
+  type VinylComposerTarget,
+} from './composables/useVinylCommentComposer';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistImportPreview from './components/playlist/PlaylistImportPreview.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
@@ -1514,11 +1518,8 @@ watch(vinylDisplayMode, (value) => storeVinylDisplayMode(value));
 const player = usePlayer(undefined, () => {
   void music.bootstrap(false);
 });
-const playbackCommentCount = usePlaybackCommentInfo(
-  player.view,
-  player.loaded,
-  () => music.account.value.epoch,
-);
+const { count: playbackCommentCount, notePublished: notePlaybackCommentPublished } =
+  usePlaybackCommentInfo(player.view, player.loaded, () => music.account.value.epoch);
 const vinylCommentsOpen = ref(false);
 const vinylCommentAssignment = shallowRef<{ epoch: string; available: boolean }>();
 const vinylAssignmentQuery = computed(() =>
@@ -1565,6 +1566,31 @@ const vinylComments = useVinylComments(
   vinylCommentTarget,
   vinylCommentVisible,
   playbackCommentCount,
+);
+const vinylCommentWriteTarget = computed<VinylComposerTarget | undefined>(() => {
+  const current = player.view.value;
+  if (
+    !vinylCommentVisible.value ||
+    playbackCommentCount.value === undefined ||
+    !current?.playId ||
+    current.resourceKind !== 'catalog' ||
+    !current.track?.id
+  )
+    return undefined;
+  return {
+    epoch: current.epoch,
+    playId: current.playId,
+    resource: { kind: 'track', id: current.track.id },
+    title: current.track.name,
+  };
+});
+const vinylCommentComposer = useVinylCommentComposer(
+  core,
+  vinylCommentWriteTarget,
+  (target, item) => {
+    const key = JSON.stringify([target.epoch, target.playId]);
+    if (vinylComments.prependConfirmed(key, item)) notePlaybackCommentPublished(key, item.id);
+  },
 );
 watch(vinylCommentTarget, (target) => {
   if (!target) vinylCommentsOpen.value = false;
@@ -5312,6 +5338,8 @@ onUnmounted(() => {
         :comments-available="!!vinylCommentTarget"
         :comment-model="vinylComments"
         :comment-count="playbackCommentCount"
+        :comment-write-target="vinylCommentWriteTarget"
+        :comment-composer="vinylCommentComposer"
         @full-comments="openFullVinylComments"
         @report="reportLyrics"
         @source="openPlaybackSource"

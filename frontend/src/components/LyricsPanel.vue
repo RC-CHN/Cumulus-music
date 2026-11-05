@@ -9,6 +9,12 @@ import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
 import VinylModeSheet from './VinylModeSheet.vue';
 import VinylCommentsPane from './VinylCommentsPane.vue';
+import VinylCommentDialog from './VinylCommentDialog.vue';
+import type {
+  VinylCommentComposer,
+  VinylComposerOpening,
+  VinylComposerTarget,
+} from '../composables/useVinylCommentComposer';
 import type { VinylCommentsModel } from '../composables/useVinylComments';
 import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay';
 import { useMotion } from '../composables/useMotion';
@@ -23,6 +29,8 @@ const props = defineProps<{
   commentsAvailable: boolean;
   commentModel: VinylCommentsModel;
   commentCount?: number;
+  commentWriteTarget?: VinylComposerTarget;
+  commentComposer: VinylCommentComposer;
 }>();
 const commentsOpen = defineModel<boolean>('commentsOpen', { required: true });
 const preferredMode = defineModel<VinylDisplayMode>('mode', { required: true });
@@ -32,6 +40,14 @@ const emit = defineEmits<{
   source: [target: PlaybackSourceDestination];
   fullComments: [hot: boolean];
 }>();
+function independentComment(opening: VinylComposerOpening) {
+  if (!props.commentComposer.live(opening)) return;
+  props.commentComposer.close(opening);
+  emit('fullComments', false);
+}
+function commentOpener() {
+  return props.commentComposer.current.value?.opener ?? null;
+}
 const { view, lyrics, lyricLoading, lyricUpdating, lyricError, loaded, busy } = props.player;
 const container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>(),
@@ -654,9 +670,11 @@ const displayedAuxiliary = computed(() =>
           :active="commentsVisible"
           :count="commentCount"
           :model="commentModel"
+          :write-target="commentWriteTarget"
           @back="commentsOpen = false"
           @full="emit('fullComments', false)"
           @hot="emit('fullComments', true)"
+          @compose="commentComposer.open"
         />
       </div>
     </div>
@@ -668,5 +686,16 @@ const displayedAuxiliary = computed(() =>
         @close="closeModeSheet"
       />
     </ModalTransition>
+    <Teleport to="body">
+      <ModalTransition :return-focus="commentOpener" :fallback-focus="panelCloseFocus">
+        <VinylCommentDialog
+          v-if="commentComposer.current.value"
+          :key="commentComposer.current.value.id"
+          :opening="commentComposer.current.value"
+          @close="commentComposer.close"
+          @independent="independentComment"
+        />
+      </ModalTransition>
+    </Teleport>
   </section>
 </template>

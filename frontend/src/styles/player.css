@@ -1320,6 +1320,7 @@ input[type='range'] {
   white-space: nowrap;
 }
 .vinyl-comments-pane {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1391,6 +1392,35 @@ input[type='range'] {
 .vinyl-comment-row p {
   margin: 4px 0;
   overflow-wrap: anywhere;
+}
+.vinyl-comment-quote {
+  margin: 5px 0;
+  padding-inline-start: 8px;
+  border-inline-start: 2px solid var(--line);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.vinyl-comment-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.vinyl-comment-publish {
+  position: absolute;
+  inset-inline: 0;
+  bottom: clamp(28px, 14vh, 103px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.vinyl-comment-publish button {
+  pointer-events: auto;
+  border-radius: 28px;
+  backdrop-filter: blur(20px);
+}
+.vinyl-comments-writable .vinyl-comments-scroll {
+  padding-bottom: calc(clamp(28px, 14vh, 103px) + 42px);
 }
 .vinyl-more-hot {
   margin: 8px 0 14px;

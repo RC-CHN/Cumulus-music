@@ -8,7 +8,17 @@ export function useVinylComments(
   visible: Readonly<Ref<boolean>>,
   count: Readonly<Ref<number | undefined>>,
 ) {
-  const latest = shallowRef<CommentItem[]>([]);
+  const fetched = shallowRef<CommentItem[]>([]);
+  const published = shallowRef<CommentItem[]>([]);
+  const latest = computed(() => {
+    if (!published.value.length) return fetched.value;
+    const seen = new Set<string>();
+    return [...published.value, ...fetched.value].filter((item) => {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      return true;
+    });
+  });
   const hot = shallowRef<CommentItem[]>([]);
   const moreHot = ref(false);
   const nextOffset = ref<number | null>(0);
@@ -32,7 +42,8 @@ export function useVinylComments(
     target,
     () => {
       invalidate();
-      latest.value = [];
+      fetched.value = [];
+      published.value = [];
       hot.value = [];
       moreHot.value = false;
       nextOffset.value = 0;
@@ -77,7 +88,7 @@ export function useVinylComments(
         hot.value = value.hot;
         moreHot.value = value.moreHot;
       }
-      latest.value = [...latest.value, ...value.latest];
+      fetched.value = [...fetched.value, ...value.latest];
       nextOffset.value = value.nextOffset;
       loaded.value = true;
     } catch {
@@ -86,6 +97,13 @@ export function useVinylComments(
       if (current()) working.value = false;
     }
   }
-  return { latest, hot, moreHot, working, failed, loaded, canAppend, load };
+  function prependConfirmed(key: string, item: CommentItem) {
+    if (key !== target.value || !visible.value || published.value.some((row) => row.id === item.id))
+      return false;
+    // Display-only: pagination still advances by rows returned by the server.
+    published.value = [item, ...published.value];
+    return true;
+  }
+  return { latest, hot, moreHot, working, failed, loaded, canAppend, load, prependConfirmed };
 }
 export type VinylCommentsModel = ReturnType<typeof useVinylComments>;

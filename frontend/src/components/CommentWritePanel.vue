@@ -10,7 +10,9 @@ import {
 } from '../services/commentWrites';
 import Icon from './Icon.vue';
 import CommentEmojiPicker from './CommentEmojiPicker.vue';
-const props = defineProps<{ model: CommentWritesModel; sticky?: boolean }>();
+const props = defineProps<{ model: CommentWritesModel; sticky?: boolean; vinyl?: boolean }>();
+const emit = defineEmits<{ independent: [] }>();
+const motion = useMotion();
 const { draft, reply, busy, loading, pending, operations, error, message, validText } = props.model;
 const panel = ref<HTMLElement>(),
   input = ref<HTMLTextAreaElement>(),
@@ -24,13 +26,14 @@ watch(confirmation, async (value) => {
   if (value && confirmation.value === value) dialog.value?.showModal();
 });
 function requestDelete(item: CommentItem) {
-  if (item.owned && !busy.value && !pending.value.length)
+  if (!props.vinyl && item.owned && !busy.value && !pending.value.length)
     confirmation.value = { kind: 'delete', item };
 }
 function focus() {
   const field = input.value;
   if (!field) return;
   field.focus({ preventScroll: true });
+  if (props.vinyl) return;
   if (props.sticky) {
     const viewport = field.closest('.comments-page')?.getBoundingClientRect();
     const box = field.getBoundingClientRect();
@@ -38,7 +41,7 @@ function focus() {
   }
   field.scrollIntoView({
     block: 'nearest',
-    behavior: useMotion().reduced.value ? 'instant' : 'smooth',
+    behavior: motion.reduced.value ? 'instant' : 'smooth',
   });
 }
 async function insertEmoji(token: string) {
@@ -53,7 +56,7 @@ async function insertEmoji(token: string) {
 }
 async function confirm() {
   const action = confirmation.value;
-  if (!action || busy.value) return;
+  if (props.vinyl || !action || busy.value) return;
   confirmation.value = undefined;
   if (action.kind === 'delete') await props.model.remove(action.item);
   else
@@ -67,6 +70,10 @@ function abandon(row: CommentWrite) {
   if (row.phase === 'prepared') void props.model.action(row, { kind: 'abandon' });
   else confirmation.value = { kind: 'abandon', row };
 }
+function submit() {
+  if (!busy.value && !loading.value && !pending.value.length && validText.value)
+    void props.model.publish();
+}
 const label = (row: CommentWrite) =>
   row.command.kind === 'delete' ? '删除评论' : row.command.replyTo ? '回复评论' : '发布评论';
 defineExpose({ requestDelete, focus, panel });
@@ -78,36 +85,53 @@ defineExpose({ requestDelete, focus, panel });
     :class="{ 'comment-write-sticky': sticky }"
     aria-label="发表或回复评论"
   >
-    <div v-if="reply" class="comment-reply-draft">
+    <div v-if="reply && !vinyl" class="comment-reply-draft">
       <span>回复 {{ reply.author?.name || '云音乐用户' }}：{{ reply.content }}</span>
       <button class="text-button" :disabled="busy || !!pending.length" @click="model.setReply()">
         取消回复
       </button>
     </div>
-    <form @submit.prevent="model.publish">
+    <form @submit.prevent="submit">
       <textarea
         ref="input"
         v-model="draft"
         :disabled="busy || !!pending.length"
-        :placeholder="reply ? '写下你的回复' : '说点什么吧'"
+        :placeholder="
+          reply
+            ? vinyl
+              ? `回复 ${reply.author?.name || '云音乐用户'}: `
+              : '写下你的回复'
+            : '说点什么吧'
+        "
         rows="4"
         aria-label="评论内容"
-        @keydown.ctrl.enter.prevent="model.publish"
-        @keydown.meta.enter.prevent="model.publish"
+        @keydown.ctrl.enter.prevent="!vinyl && submit()"
+        @keydown.meta.enter.prevent="!vinyl && submit()"
       ></textarea>
       <div class="comment-compose-footer">
         <CommentEmojiPicker :disabled="busy || !!pending.length" @select="insertEmoji" />
         <span :class="{ overlength: draft.length > 1000 }" aria-live="polite"
           >{{ draft.length }} / 1000</span
         ><button class="primary" :disabled="busy || loading || !!pending.length || !validText">
-          {{ busy ? '正在处理…' : reply ? '发布回复' : '发布评论' }}
+          {{
+            busy ? '正在处理…' : vinyl ? (reply ? '回复' : '发布') : reply ? '发布回复' : '发布评论'
+          }}
         </button>
       </div>
     </form>
     <p v-if="error" class="error-state" role="alert">{{ error }}</p>
     <p v-if="message" class="comment-write-message" role="status">{{ message }}</p>
   </section>
-  <div v-if="pending.length || recent.length || error" class="comment-write-records">
+  <div v-if="vinyl && (pending.length || error)" class="comment-write-records">
+    <p v-if="pending.length" role="status">{{ commentWriteMessage(pending[0]!) }}</p>
+    <button type="button" class="text-button" :disabled="busy" @click="emit('independent')">
+      在独立评论页核对
+    </button>
+  </div>
+  <div
+    v-else-if="!vinyl && (pending.length || recent.length || error)"
+    class="comment-write-records"
+  >
     <section v-if="pending.length" class="comment-write-pending" aria-label="待确认的评论操作">
       <article v-for="row in pending" :key="row.id" :data-write-phase="row.phase">
         <strong>{{ label(row) }}</strong>
@@ -164,7 +188,7 @@ defineExpose({ requestDelete, focus, panel });
     </button>
   </div>
   <dialog
-    v-if="confirmation"
+    v-if="!vinyl && confirmation"
     ref="dialog"
     class="comment-write-confirm"
     aria-labelledby="comment-write-confirm-title"

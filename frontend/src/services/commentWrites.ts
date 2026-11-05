@@ -41,6 +41,20 @@ export interface CommentWriteClient {
     command: CommentWriteAction,
   ): Promise<AccountData<CommentWrite>>;
 }
+export interface VinylCommentWriteClient {
+  playerVinylPrepareWrite(
+    epoch: string,
+    playId: string,
+    command: Extract<CommentWriteCommand, { kind: 'publish' }>,
+  ): Promise<AccountData<CommentWrite>>;
+  playerVinylWriteOperations(epoch: string, playId: string): Promise<AccountData<CommentWrite[]>>;
+  playerVinylWriteCommand(
+    epoch: string,
+    playId: string,
+    id: string,
+    command: { kind: 'submit' },
+  ): Promise<AccountData<CommentWrite>>;
+}
 export function commentWritePending(row: CommentWrite) {
   return ['prepared', 'sending', 'verifying', 'uncertain'].includes(row.phase);
 }

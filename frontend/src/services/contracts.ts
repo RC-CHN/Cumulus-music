@@ -26,7 +26,7 @@ import type {
   ProfileNotesClient,
 } from './community';
 import type { CommentResourceClient } from './commentResource';
-import type { CommentWriteClient } from './commentWrites';
+import type { CommentWriteClient, VinylCommentWriteClient } from './commentWrites';
 import type { CommentFloorClient } from './commentFloor';
 import type { LocalClient } from './local';
 import type { LocalMatchClient } from './localMatching';
@@ -139,6 +139,7 @@ export interface CoreClient
     CommunityNoticeClient,
     CommentResourceClient,
     CommentWriteClient,
+    VinylCommentWriteClient,
     CommentFloorClient,
     LocalClient,
     LocalMatchClient,

@@ -413,6 +413,12 @@ export function createTauriClient(): CoreClient {
     playerVinylCommentsAvailable: (epoch) => invoke('player_vinyl_comments_available', { epoch }),
     playerVinylComments: (epoch, playId, offset) =>
       invoke('player_vinyl_comments', { epoch, playId, offset }),
+    playerVinylPrepareWrite: (epoch, playId, command) =>
+      invoke('player_vinyl_prepare_write', { epoch, playId, command }),
+    playerVinylWriteOperations: (epoch, playId) =>
+      invoke('player_vinyl_write_operations', { epoch, playId }),
+    playerVinylWriteCommand: (epoch, playId, id, command) =>
+      invoke('player_vinyl_write_command', { epoch, playId, id, command }),
     playerLyrics: (epoch, playId, cachedOnly) =>
       invoke('player_lyrics', { epoch, playId, cachedOnly }),
     lyricPreferences: (epoch, playId, preferences) =>
