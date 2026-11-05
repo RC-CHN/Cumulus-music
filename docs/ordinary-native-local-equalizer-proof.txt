@@ -211,8 +211,15 @@ and frontend. Do not pass a FLAC library or SHA for this case:
   python3 scripts/ci/native_local_equalizer_smoke.py --binary ABS_PROBE \
     --spatial-wav-only --screenshots --root NEW_REPORT_ROOT
 
-The Linux production warm-open probe separately opens a verified WAV into
-the actual running window and checks private PipeWire PCM; a 48 kHz WAV
-must leave the previous queue intact. Neither test installs a file
-association or measures a physical device. These are proof expectations
-until executed against the candidate product tree.
+Linux verification on `9ef06185`: the spatial case passed all seven states
+and seven compositor captures without a configured libFLAC decoder
+(`.build/ui-proof/phase71-wav-spatial-r1/report.json`). A separate ordinary
+app run forwarded a Unicode-path WAV to the existing window, stayed in the
+same process and measured 440 Hz PCM at the private PipeWire sink
+(`.build/ui-proof/phase71-wav-warm-open-r2/report.json`). A 48 kHz WAV was
+rejected and preserved the previous queue. The first warm run's group-writable
+test profile correctly disabled the native relay; the rerun used a private
+profile and the fixture now creates its profile at mode 0700 explicitly.
+Neither test installs a file association or measures a physical device.
+Windows WebView2 uses the same synthetic spatial scenario with the packaged
+mpv runtime; an actual run on the exact commit is required for a Windows claim.
