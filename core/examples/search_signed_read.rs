@@ -203,6 +203,10 @@ fn failure(error: &Error) -> &'static str {
         return "session_unavailable";
     }
     match error.root() {
+        Error::State("saved installation identity unavailable") => {
+            "saved_installation_identity_missing"
+        }
+        Error::State("saved native PC config unavailable") => "saved_native_pc_config_missing",
         Error::CredentialChanged | Error::StaleResponse => "identity_changed",
         Error::State("fresh SDK token required; read proof stopped") => "sdk_required_not_sent",
         Error::Transport(_) => "transport_failed",
