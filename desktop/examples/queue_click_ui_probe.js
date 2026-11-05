@@ -37,6 +37,46 @@
   const selected = (value) => value.tracks.find((entry) => entry.entryId === value.current)?.track.id;
   const choice = (value) => one('[data-queue-click-choice="' + value + '"]');
   const settled = () => !one('.page-enter-active,.page-leave-active');
+  const twoFrames = () => new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const pageVisible = (page) => page?.isConnected && !page.closest('[inert]') &&
+    page.getClientRects().length > 0 && getComputedStyle(page).opacity === '1' &&
+    getComputedStyle(page).visibility === 'visible' && settled() &&
+    !page.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
+  async function settingsCapture(expected) {
+    const panel = one('.queue-click-preferences');
+    const source = panel?.closest('.settings-page');
+    const page = source?.closest('.page-view');
+    assert(panel && source && page && source.getAttribute('aria-labelledby') === 'settings-title',
+      'capture owns the actual settings source page');
+    panel.scrollIntoView({ block: 'center' });
+    const ready = () => pageVisible(page) && source.isConnected &&
+      !source.closest('[inert]') && getComputedStyle(source).opacity === '1' &&
+      getComputedStyle(source).visibility === 'visible' &&
+      panel === one('.queue-click-preferences') && panel.getAttribute('aria-busy') === 'false' &&
+      ['replace', 'add'].every((value) => {
+        const control = choice(value);
+        if (!control || !panel.contains(control) || control.matches(':disabled') ||
+            control.checked !== (value === expected)) return false;
+        const r = control.getBoundingClientRect();
+        const x = r.x + r.width / 2, y = r.y + r.height / 2;
+        return r.width > 0 && r.height > 0 && x >= 0 && x < innerWidth &&
+          y >= 0 && y < innerHeight && document.elementFromPoint(x, y) === control;
+      });
+    await wait(ready, 'settings page, selected radios and both hit targets are visible');
+    // elementFromPoint also succeeds on a fully transparent enter frame.
+    // Wait beyond the Vue/compositor boundary, then recheck the same source,
+    // current selection and opacity before asking native to take the frame.
+    await twoFrames();
+    await wait(ready, 'settings enter animation has settled before capture');
+    await twoFrames();
+    assert(ready(), 'same visible settings controls remain settled after two frames');
+    const actual = (await settings()).value.replaceQueue;
+    assert(actual === (expected === 'replace'), 'visible radio matches current native preference');
+    return { sourcePage: 'settings', opacity: getComputedStyle(page).opacity,
+      replaceChecked: choice('replace').checked, addChecked: choice('add').checked,
+      bothRadioHitTargets: true, pageAnimationsSettled: true };
+  }
   async function waitPlayback(id, length) {
     let settled;
     await wait(async () => {
@@ -54,10 +94,14 @@
     return settled;
   }
   async function stage(label, settled) {
+    const settingsChoice = label === 'default_setting' ? 'replace' :
+      ['add_setting', 'reopened_add'].includes(label) ? 'add' : null;
+    const captureReadiness = settingsChoice ? await settingsCapture(settingsChoice) : undefined;
     const name = 'ux_' + String(++count).padStart(2, '0') + '_' + label;
     window.__queueClickRecorded = null;
     await emit(name, {
       preference: (await settings()).value.replaceQueue,
+      ...(captureReadiness && { captureReadiness }),
       ...(settled && { observedPlayback: {
         playId: settled.playId, queueRevision: settled.queue.revision,
         entryId: settled.queue.current, position: settled.position,
