@@ -1,0 +1,24 @@
+{
+  "schema": "cumulus-full-stereo-public-packaging-v1",
+  "packagingNotReexecutedAgainstDll": true,
+  "actualFrozenOracle": {
+    "vmAdapterSourceSha256": "793bacf013802f6524a78e68e9a647d5fb2477a308eb4c46a142cda3f8aa171c",
+    "mainCases": 24,
+    "mainBlocks": 1002,
+    "edgeCases": 4,
+    "edgeBlocks": 92,
+    "sliderCases": 2,
+    "sliderBlocks": 60,
+    "afterEofSameInstancePhases": 2,
+    "afterEofBlocks": 50
+  },
+  "manualReproducer": "scripts/research/freeze_full_stereo_material.py",
+  "manualSourceSha256": {
+    "scripts/research/freeze_full_stereo_material.py": "7b347715bc4dd0f743f13717096c0b4b3935e5c7fc9b33c2d9e7cdf0dfc6e619",
+    "scripts/research/full_stereo_oracle/__init__.py": "f99219d3524cae984f4ae6609f9cede0349c5691c1db381c644ecdea7cb5bf5f",
+    "scripts/research/full_stereo_oracle/image.py": "f986e489c678b25cc3a6f76880236eb9843836e20f23d3d432c4016528328896",
+    "scripts/research/full_stereo_oracle/vm.py": "f1a7b6991bb4f90cedf13cf52f7fde371e7108ace1e4d455ba7d88b1334eaf53"
+  },
+  "inputs": "only synthetic I/O and diagnostics, no original PE/code/parameter/state/RTTI blobs",
+  "newWrapperValidation": "Python AST parsing, --help, SHA/shape audit of32cases/phases1204blocks and corrupt-hash rejection; native replay deliberately not run"
+}

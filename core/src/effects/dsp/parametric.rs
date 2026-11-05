@@ -65,6 +65,12 @@ impl ParametricEq {
         // SAFETY: initialized state and a valid boolean.
         status(unsafe { ffi::netease_peq_bypass(self.0.state.pointer(), bypass.into()) })
     }
+    /// A3E90/AE180: clear filter histories and set previous=current, retaining
+    /// parameters, dirty flags and the current output-gain ramp history.
+    pub fn reset(&mut self) -> Result<()> {
+        // SAFETY: initialized matching state under exclusive ownership.
+        status(unsafe { ffi::netease_peq_reset(self.0.state.pointer()) })
+    }
     pub fn process(&mut self, block: &mut PlanarBlock, frames: usize) -> Result<()> {
         self.0.process(block, frames, ffi::netease_peq_process)
     }

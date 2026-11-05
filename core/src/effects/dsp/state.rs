@@ -15,8 +15,9 @@ pub(super) struct State {
 }
 
 // SAFETY: native states have no callbacks or thread affinity; mutation requires
-// &mut. Rotation's sole external pointer targets immutable response data owned
-// by the containing Rust wrapper for the complete lifetime of this allocation.
+// &mut. Rotation's external pointer targets owned immutable response data;
+// SE1/fixed local pointers target stable owned arenas. Each containing Rust
+// wrapper retains that storage for the complete lifetime of this allocation.
 unsafe impl Send for State {}
 
 impl State {

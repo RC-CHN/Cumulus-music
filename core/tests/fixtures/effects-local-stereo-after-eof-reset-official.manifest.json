@@ -1,0 +1,37 @@
+{
+  "schema": "cumulus-full-local-stereo-after-eof-reset-official-v1",
+  "fixtureSha256": "669f4cefcd1ea28eebf2d0984821e1637646d52a494a760fa83a2c9a9ef1c737",
+  "uncompressedBytes": 357620,
+  "generatorSha256": "60337bf2b288c3153d068d7413856460604e74ba8984a01bb51a3ebe7d5a0a0e",
+  "vmSourceSha256": "793bacf013802f6524a78e68e9a647d5fb2477a308eb4c46a142cda3f8aa171c",
+  "phases": [
+    {
+      "name": "se1_before_complete_eof",
+      "blocks": 25,
+      "inputFrames": 2055,
+      "outputFrames": 50055,
+      "firstFlow": [
+        1810,
+        false
+      ],
+      "lastFlow": [
+        1141,
+        true
+      ]
+    },
+    {
+      "name": "se1_after_complete_eof_reset",
+      "blocks": 25,
+      "inputFrames": 519,
+      "outputFrames": 48519,
+      "firstFlow": [
+        274,
+        false
+      ],
+      "lastFlow": [
+        1141,
+        true
+      ]
+    }
+  ]
+}

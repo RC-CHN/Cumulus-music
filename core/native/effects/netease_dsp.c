@@ -81,6 +81,7 @@ void netease_biquad_process(NeteaseBiquad *s,float *data,size_t n) {
 
 static float from_bits(uint32_t bits) {float f;memcpy(&f,&bits,4);return f;}
 static uint32_t float_bits(float f) {uint32_t bits;memcpy(&bits,&f,4);return bits;}
+#include "filter_peak_trig.h"
 
 /* Scalar translation of the SSE sine fast path at RVA 134110. The filter's
  * frequency clamp keeps both phases below 4.4 radians, within this path.
@@ -137,7 +138,7 @@ static int coefficients(unsigned type,float rate,float frequency,float gain,floa
     } else {
         float w=(f*6.2831854820251465f)/rate;
         float sine,cosine;
-        if(type==1 && !peq) {sine=sinf(w);cosine=cosf(w);}
+        if(type==1 && !peq)filter_peak_trig(w,&sine,&cosine);
         else if(w<0.0001220703125f) {sine=w;cosine=1.0f-(w*w)*0.5f;}
         else {
             /* RVA 133340 computes a pair of sines; rounding the phase offset
@@ -270,6 +271,14 @@ int netease_geq_stage_bypass(NeteaseGeqStage *s,unsigned bypass) {
             netease_biquad_reset(&s->core.filters[ch][b]);
     s->bypass=bypass;return 0;
 }
+/* A3680: reset the plugin histories, then synchronize the wrapper edge.
+ * This is not equivalent to processing an empty block or recreating it. */
+int netease_geq_stage_reset(NeteaseGeqStage *s) {
+    if(!s || !s->capacity || !s->core.channels || s->core.channels>8)return -1;
+    for(unsigned ch=0;ch<s->core.channels;ch++)for(unsigned b=0;b<10;b++)
+        netease_biquad_reset(&s->core.filters[ch][b]);
+    s->previous=s->bypass;return 0;
+}
 
 static void blend_channels(float *planar,const float *dry,unsigned channels,unsigned capacity,unsigned bypass) {
     for(unsigned ch=0;ch<channels;ch++)
@@ -341,6 +350,13 @@ int netease_bt_bypass(NeteaseBassTreble *s,unsigned bypass) {
     if(!bypass && s->bypass)
         for(unsigned ch=0;ch<s->channels;ch++)for(unsigned b=0;b<3;b++)netease_biquad_reset(&s->filters[ch][b]);
     s->bypass=bypass;return 0;
+}
+/* A2DB0 and plugin AE180: clear filter histories, preserve coefficients. */
+int netease_bt_reset(NeteaseBassTreble *s) {
+    if(!s || !s->capacity || !s->channels || s->channels>8)return -1;
+    for(unsigned ch=0;ch<s->channels;ch++)for(unsigned b=0;b<3;b++)
+        netease_biquad_reset(&s->filters[ch][b]);
+    s->previous=s->bypass;return 0;
 }
 int netease_bt_process(NeteaseBassTreble *s,float *planar,size_t frames,float *dry) {
     if(!s || !planar || frames>s->capacity || !s->capacity || !s->channels || s->channels>8)return -1;
@@ -428,6 +444,14 @@ int netease_peq_bypass(NeteasePeq *s,unsigned bypass) {
     if(!bypass && s->bypass)
         for(unsigned ch=0;ch<s->channels;ch++)for(unsigned b=0;b<9;b++)netease_biquad_reset(&s->filters[ch][b]);
     s->bypass=bypass;return 0;
+}
+/* A3E90 -> AE180. Gain/dirty/configuration survive; only sample histories and
+ * wrapper previous=target are reset. Numerical quarantine is Rust-owned. */
+int netease_peq_reset(NeteasePeq *s) {
+    if(!s || !s->capacity || !s->channels || s->channels>8)return -1;
+    for(unsigned ch=0;ch<s->channels;ch++)for(unsigned b=0;b<9;b++)
+        netease_biquad_reset(&s->filters[ch][b]);
+    s->previous=s->bypass;return 0;
 }
 int netease_peq_process(NeteasePeq *s,float *planar,size_t frames,float *dry) {
     if(!s || !planar || !s->capacity || frames>s->capacity || !s->channels || s->channels>8)return -1;

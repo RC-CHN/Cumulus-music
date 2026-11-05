@@ -1,0 +1,209 @@
+{
+  "schema": "cumulus-full-local-stereo-slider-official-v1",
+  "fixtureSha256": "84f9fe4aa35cb8208ff887bac8c050e7d80f2e9d8f9c04628ae065c797072783",
+  "uncompressedBytes": 1349641,
+  "generatorSha256": "dadab8ff6d38a0d9b01d5eadb9a771c34dc62601a1ababa0f7735ba2ed5863e5",
+  "scenarioSourceSha256": "50385f42c5174dde5d05c4c0561eab33e3d0d6318a98f937ff4bd193ae71049f",
+  "vmSourceSha256": "793bacf013802f6524a78e68e9a647d5fb2477a308eb4c46a142cda3f8aa171c",
+  "actualNlsReplyCount": 0,
+  "cases": [
+    {
+      "name": "se_off_on_hot_off_on_both_pending_reset",
+      "rate": 44100,
+      "capacity": 2048,
+      "blocks": 29,
+      "inputFrames": 14343,
+      "outputFrames": 58005,
+      "actions": [
+        [
+          {
+            "kind": "original_se_controls",
+            "rva": "1DDC0",
+            "presence": 3.0,
+            "stereoizer": 5.0,
+            "shaper": true,
+            "ambience": 1
+          },
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": true
+          }
+        ],
+        [
+          {
+            "kind": "original_se_controls",
+            "rva": "1DDC0",
+            "presence": 6.0,
+            "stereoizer": 8.0,
+            "shaper": true,
+            "ambience": 1
+          }
+        ],
+        [
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": false
+          }
+        ],
+        [
+          {
+            "kind": "original_se_controls",
+            "rva": "1DDC0",
+            "presence": 2.0,
+            "stereoizer": 4.0,
+            "shaper": true,
+            "ambience": 1
+          },
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": true
+          }
+        ],
+        [
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": false
+          },
+          {
+            "kind": "original_graph_seek_reset",
+            "rva": "1B960",
+            "newSyntheticSourceFrame": 8000,
+            "seFlagsBeforeReset": [
+              1,
+              0
+            ],
+            "seFlagsAfterReset": [
+              1,
+              1
+            ],
+            "processBetweenSwitchAndReset": false
+          }
+        ],
+        [
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": true
+          },
+          {
+            "kind": "original_graph_seek_reset",
+            "rva": "1B960",
+            "newSyntheticSourceFrame": 16000,
+            "seFlagsBeforeReset": [
+              0,
+              1
+            ],
+            "seFlagsAfterReset": [
+              0,
+              0
+            ],
+            "processBetweenSwitchAndReset": false
+          }
+        ]
+      ]
+    },
+    {
+      "name": "se_off_on_hot_off_on_both_pending_reset",
+      "rate": 48000,
+      "capacity": 2048,
+      "blocks": 31,
+      "inputFrames": 14343,
+      "outputFrames": 61867,
+      "actions": [
+        [
+          {
+            "kind": "original_se_controls",
+            "rva": "1DDC0",
+            "presence": 3.0,
+            "stereoizer": 5.0,
+            "shaper": true,
+            "ambience": 1
+          },
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": true
+          }
+        ],
+        [
+          {
+            "kind": "original_se_controls",
+            "rva": "1DDC0",
+            "presence": 6.0,
+            "stereoizer": 8.0,
+            "shaper": true,
+            "ambience": 1
+          }
+        ],
+        [
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": false
+          }
+        ],
+        [
+          {
+            "kind": "original_se_controls",
+            "rva": "1DDC0",
+            "presence": 2.0,
+            "stereoizer": 4.0,
+            "shaper": true,
+            "ambience": 1
+          },
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": true
+          }
+        ],
+        [
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": false
+          },
+          {
+            "kind": "original_graph_seek_reset",
+            "rva": "1B960",
+            "newSyntheticSourceFrame": 8000,
+            "seFlagsBeforeReset": [
+              1,
+              0
+            ],
+            "seFlagsAfterReset": [
+              1,
+              1
+            ],
+            "processBetweenSwitchAndReset": false
+          }
+        ],
+        [
+          {
+            "kind": "original_se_enable",
+            "rva": "1DD00",
+            "enabled": true
+          },
+          {
+            "kind": "original_graph_seek_reset",
+            "rva": "1B960",
+            "newSyntheticSourceFrame": 16000,
+            "seFlagsBeforeReset": [
+              0,
+              1
+            ],
+            "seFlagsAfterReset": [
+              0,
+              0
+            ],
+            "processBetweenSwitchAndReset": false
+          }
+        ]
+      ]
+    }
+  ]
+}

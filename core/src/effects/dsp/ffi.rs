@@ -1,6 +1,30 @@
 use std::ffi::c_void;
 
 unsafe extern "C" {
+    #[cfg(test)]
+    pub fn cumulus_geq_peak_trig(phase: f32, output: *mut f32) -> i32;
+    pub fn cumulus_local_fixed_init(
+        state: *mut c_void,
+        rate: u32,
+        capacity: u32,
+        storage: *mut f32,
+        count: usize,
+    ) -> i32;
+    pub fn netease_local_fixed_parameters(
+        state: *mut c_void,
+        presence: f32,
+        stereoizer: f32,
+        enabled: u32,
+    ) -> i32;
+    pub fn netease_local_fixed_reset(state: *mut c_void) -> i32;
+    pub fn netease_local_fixed_process(
+        state: *mut c_void,
+        pcm: *mut f32,
+        frames: *mut u32,
+        end: *mut u32,
+        dry: *mut f32,
+    ) -> i32;
+
     pub fn cumulus_stereo_one_init(
         state: *mut c_void,
         rate: u32,
@@ -140,6 +164,7 @@ unsafe extern "C" {
     ) -> i32;
     pub fn netease_geq_stage_set(state: *mut c_void, gains: *const f32) -> i32;
     pub fn netease_geq_stage_bypass(state: *mut c_void, bypass: u32) -> i32;
+    pub fn netease_geq_stage_reset(state: *mut c_void) -> i32;
     pub fn netease_geq_stage_process(
         state: *mut c_void,
         data: *mut f32,
@@ -157,6 +182,7 @@ unsafe extern "C" {
         high_q: f32,
     ) -> i32;
     pub fn netease_bt_bypass(state: *mut c_void, bypass: u32) -> i32;
+    pub fn netease_bt_reset(state: *mut c_void) -> i32;
     pub fn netease_bt_process(
         state: *mut c_void,
         data: *mut f32,
@@ -183,6 +209,7 @@ unsafe extern "C" {
     pub fn netease_peq_set_gain(state: *mut c_void, gain: f32) -> i32;
     pub fn netease_peq_set_lfe(state: *mut c_void, enabled: u32) -> i32;
     pub fn netease_peq_bypass(state: *mut c_void, bypass: u32) -> i32;
+    pub fn netease_peq_reset(state: *mut c_void) -> i32;
     pub fn netease_peq_process(
         state: *mut c_void,
         data: *mut f32,

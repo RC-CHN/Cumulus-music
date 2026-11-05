@@ -9,6 +9,7 @@ mod ffi;
 mod filter;
 mod graphic;
 mod limiter;
+mod local_fixed;
 mod loudness;
 mod parametric;
 mod rotation;
@@ -41,3 +42,5 @@ pub use stereo_zero::{
     StereoNoAmbienceControls, StereoNoAmbienceResult, StereoNoAmbienceSnapshot,
     StereoNoAmbienceStage,
 };
+
+pub(crate) use local_fixed::LocalFixedStage;

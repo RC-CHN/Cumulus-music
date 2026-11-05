@@ -1,0 +1,48 @@
+{
+  "fixtureSha256": "be546e54b7e14c2c21c96faa8e31004dfed211f9f5ac9c1f64920848ccf73aa7",
+  "generatorSha256": "0528a2d774956e2d06693f220e806c55b8d354f1134ab84219e21c7c29667024",
+  "vmSourceSha256": "793bacf013802f6524a78e68e9a647d5fb2477a308eb4c46a142cda3f8aa171c",
+  "uncompressedBytes": 466886,
+  "cases": [
+    {
+      "name": "se1_first_7_eof",
+      "rate": 44100,
+      "blocks": 22,
+      "inputFrames": 7,
+      "outputFrames": 44107,
+      "wetAllEqualDry": true
+    },
+    {
+      "name": "se1_first_0_eof",
+      "rate": 44100,
+      "blocks": 22,
+      "inputFrames": 0,
+      "outputFrames": 44100,
+      "wetAllEqualDry": true
+    },
+    {
+      "name": "se1_first_7_eof",
+      "rate": 48000,
+      "blocks": 24,
+      "inputFrames": 7,
+      "outputFrames": 48007,
+      "wetAllEqualDry": true
+    },
+    {
+      "name": "se1_first_0_eof",
+      "rate": 48000,
+      "blocks": 24,
+      "inputFrames": 0,
+      "outputFrames": 48000,
+      "wetAllEqualDry": true
+    }
+  ],
+  "annotationCorrection": {
+    "field": "sourceFirstFrame on zero-frame drain",
+    "reason": "continue after first input rather than resetting annotation to zero",
+    "priorSourceSha256": "2ff5f666842d1cb2c08439ce1dd37261677e4c85cbf4888ad75ae4d52004cac2",
+    "priorFixtureSha256": "a7d4d15f411b29e3cd2b9c6ac0ba6b16a29075b03bc1d93ea5d3d861087313dd",
+    "DSPInputsAndPerBlockPcmHashesUnchanged": true,
+    "nativeCallsReplayed": false
+  }
+}

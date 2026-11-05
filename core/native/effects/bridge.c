@@ -4,6 +4,8 @@
 #include "netease_stereo_zero.c"
 #include "netease_ambience_one.c"
 #include "netease_stereo_one.c"
+#include "netease_local_off.c"
+#include "netease_local_fixed.c"
 
 size_t cumulus_dsp_size(unsigned kind) {
     switch(kind) {
@@ -17,6 +19,7 @@ size_t cumulus_dsp_size(unsigned kind) {
         case 7:return sizeof(NeteaseStereoZero);
         case 8:return sizeof(NeteaseAmbienceOne);
         case 9:return sizeof(NeteaseStereoOne);
+        case 10:return sizeof(NeteaseLocalFixed);
         default:return 0;
     }
 }
@@ -32,6 +35,7 @@ size_t cumulus_dsp_alignment(unsigned kind) {
         case 7:return _Alignof(NeteaseStereoZero);
         case 8:return _Alignof(NeteaseAmbienceOne);
         case 9:return _Alignof(NeteaseStereoOne);
+        case 10:return _Alignof(NeteaseLocalFixed);
         default:return 0;
     }
 }
@@ -65,4 +69,10 @@ int cumulus_multiband_init(NeteaseMultiband *s,float rate,unsigned capacity,cons
 int cumulus_multiband_set(NeteaseMultiband *s,const unsigned char *raw,size_t bytes) {
     if(!s || !s->initialized || validate_crossovers(s->rate,s->crossover[0].fourth,raw,bytes))return -1;
     return netease_multiband_set(s,raw,bytes);
+}
+
+/* Internal numerical witness entry: finite bounded GEQ peak domain only. */
+int cumulus_geq_peak_trig(float phase,float out[2]) {
+    if(!out || !isfinite(phase) || phase<0.0f || phase>2.827434f)return -1;
+    filter_peak_trig(phase,out,out+1);return 0;
 }

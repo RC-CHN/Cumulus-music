@@ -205,3 +205,13 @@ Linux 合成 48 kHz WAV / libmpv null 验证两种配置（有/无响度）：GE
 另核对未使用预留的清理、GEQ 独立保留和缺库拒绝。插件单测独立核对
 旁路初始和 reset 后逐样本透传。未扩大 PEQ 的权益或 IPC，未测物理输出。
   CUMULUS_PROOF_EFFECT_FILTER=/absolute/trusted/libcumulus_audio_filter.so cargo test --locked -p cumulus-core --lib native_reserved_geq_preserves_loudness_and_peq_instances -- --ignored
+
+Full local fixed-scope follow-up (prepared, centralized Rust checks pending)
+The independent LocalFixedStereoMaterial candidate restores actual SDK reset
+BT/PEQ defaults and off-wrapper first transitions; it does not change the
+existing player/filter/defaults. See core-effects-local-fixed.txt for exact
+scope and tests. Its GEQ investigation recovered the original CRT static-SSE
+peak trigonometry (14E580/14EB80), replacing the earlier host sinf/cosf
+approximation: 10,135 direct original math witnesses and the 648 existing
+coefficient vectors match in manual strict C checks. No general AVX dispatch,
+Windows runtime or complete arbitrary material support is inferred.

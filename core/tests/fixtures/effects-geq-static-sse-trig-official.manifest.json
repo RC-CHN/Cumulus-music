@@ -1,0 +1,19 @@
+{
+  "schema": "cumulus-geq-static-sse-trig-manifest-v1",
+  "fixtureSha256": "b6296353b3773b3877cb6ffe9bd6f3ee540c1df5877e156bbeaf53d35bffff44",
+  "generatorSha256": "1d3c8f27802164db99a701787ba1817342fbcc198ce568e7954faa67595eadde",
+  "dllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "originalEntries": [
+    "14E580",
+    "14EB80"
+  ],
+  "vectors": 10135,
+  "domain": "finite nonnegative phases <=0.9*pi",
+  "host": "Linux x86_64, direct individually reviewed original static-SSE functions only",
+  "originalTextPatched": false,
+  "crtOrOsHooks": 0,
+  "dllStartupExecuted": false,
+  "avxDispatchTested": false,
+  "realWindowsExecution": false,
+  "personalData": false
+}

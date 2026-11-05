@@ -28,6 +28,12 @@ impl GraphicEq {
         // SAFETY: initialized state and a valid boolean.
         status(unsafe { ffi::netease_geq_stage_bypass(self.0.state.pointer(), bypass.into()) })
     }
+    /// Original wrapper reset: clear plugin history, preserve gains and set
+    /// previous bypass=current. Does not process PCM or clear quarantine.
+    pub fn reset(&mut self) -> Result<()> {
+        // SAFETY: initialized, exclusively owned matching state.
+        status(unsafe { ffi::netease_geq_stage_reset(self.0.state.pointer()) })
+    }
     pub fn process(&mut self, block: &mut PlanarBlock, frames: usize) -> Result<()> {
         self.0
             .process(block, frames, ffi::netease_geq_stage_process)
@@ -90,6 +96,12 @@ impl BassTreble {
     pub fn set_bypass(&mut self, bypass: bool) -> Result<()> {
         // SAFETY: initialized state and valid boolean.
         status(unsafe { ffi::netease_bt_bypass(self.0.state.pointer(), bypass.into()) })
+    }
+    /// Clear filter history and synchronize the wrapper edge without changing
+    /// the configured bass/treble or processing an empty settlement block.
+    pub fn reset(&mut self) -> Result<()> {
+        // SAFETY: initialized, exclusively owned matching state.
+        status(unsafe { ffi::netease_bt_reset(self.0.state.pointer()) })
     }
     pub fn process(&mut self, block: &mut PlanarBlock, frames: usize) -> Result<()> {
         self.0.process(block, frames, ffi::netease_bt_process)

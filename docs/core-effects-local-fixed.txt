@@ -1,0 +1,182 @@
+Fixed local old-schema stereo material — native candidate
+========================================================
+
+Scope and status
+----------------
+LocalFixedStereoMaterial is an explicit standalone Rust/C component. It does
+not replace LocalStereoSubgraph, install a player filter, change a default,
+expose an effect UI or grant source/material rights. Its only accepted plan
+is the existing LocalStereoMaterialPlan: ten flat GEQ bands with eq.on=false,
+bass=treble=0 and bt.on=false, rvb.on=false, integer presence[-10,10] /
+stereoizer[0,10], sshaper=true, and the official local schema's ambience=1.
+RVB-on, GEQ/BT-on, normalization, rotation, other optional SDK modules and
+remote/downloaded preset material are not accepted as this implementation.
+
+This candidate admits exactly stereo 44.1/48/96 kHz, capacity512 or2048. These
+are evidence bounds, not the original SDK's complete format capability.
+Unsupported formats reject before state/arena allocation. The caller still
+must establish actual decoded format, local material origin, account/source
+identity, isOpen, native actor authority, and the whole graph's other gates.
+No automatic source/engine switch is made by the new component.
+
+At preparation time, Rust/build tests have not been run in this isolated
+branch: parent integration owns the centralized build. The manual strict C
+checks below are actual executed evidence; they are not Rust or desktop pass.
+
+Official sources and actual processing order
+-------------------------------------------
+neaudioeffects.dll 3.1.42.205594 x64 SHA256:
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be
+
+Actual complete SDK ctor1A050 / Init1AEC0 / default reset1BBA0 /
+master1C590(false), followed by actual1AA50, is the original oracle. Its order:
+08 input converter;18 loudness;58;48 GEQ;50 BT;70 extraPEQ;68 nine-slotPEQ;
+60;A0;90;98;28 SE;30 Rotate;40;78;20 RVB;A8 Hear;38;B0 limiter;
+10 output converter. The named configuration order in cloudmusic EFB760
+is not this PCM order. The other off slots are retained as a scope boundary,
+not invented general kernels; their exact default-off behavior is observed
+in the original complete graph receipts.
+
+The candidate restores all nonidentity off-wrapper transitions in this scope:
+* 58 and60: A1CA0 wrapper / AB050 plugin / linked BFC90→C0170 detector.
+  Actual reset parameters have pre/post gain1, threshold-12dB, ratio4,
+  attack.05s, release.5s, floor0 and linked+LFE flags1/1. C0170's envelope
+  is nonnegative, so max(envelope*(1/4-1),0) is exactly0. Its original
+  fast_power10(0) is 0.9990389943122864, bits3f7fc105, not1. The fixed-off
+  specialization executes this multiply and the actual full-capacity outer
+  dry/wet ramp. AB050 zeroes its full output then writes only valid frames;
+  padding follows that same rule. It does not expose an arbitrary compressor
+  or claim to implement all of its internal detector histories.
+* 48: actual GEQ, including ten flat-gain biquads and the outer transition.
+  Flat gains are not forcibly converted to bitwise identity.
+* 50: actual shared nine-slot PEQ with the SDK's reset BT defaults, not the
+  generic standalone parameter ctor: enabled type7 at120Hz/Q.5, disabled
+  type6 at1000Hz/Q1, enabled type8 at6000Hz/Q.5, remaining slots disabled.
+  Gain is0 throughout. Existing BassTreble::new remains its prior standalone
+  constructor configuration; the new full fixed scope explicitly configures
+  the appropriate shared PEQ instead of silently changing that public API.
+* 68: nine disabled PEQ bands at the actual SDK reset parameters.
+* 78 and20: actual default-off dry==wet, with A9C50 full-capacity mixing still
+  performed once. Equal input buffers do not imply a bitwise identity ramp.
+  This is restricted to these unmodified reset parameters. It is not the
+  general RVB implementation and is not the bank1 SE environment used as RVB.
+* 28: the recovered SE0 or SE1 computation, with the appropriate original bank
+  lifetime described below. The SE1 environment remains independent of the
+  top-level RVB-off setting.
+* B0: the existing recovered Rust limiter, default0dB/5ms/100ms, gain0,
+  infinite ratio, ratio4, linked stereo; receives the exact preceding n/end.
+
+Fresh off is bank0; switching off does not reset the material
+-----------------------------------------------------------
+1BBA0:1C02C–1C03C explicitly sets SE parameters(0,0,true,ambience=0), then
+leaves SE bypassed. The fixed old local JSON includes ambience1, but
+cloudmusic.dll EFF390 reads on atEFF42A–EFF455, tests it atEFF51D–EFF523,
+and on=false jumps directly toEFF92B. Presence/stereoizer/sshaper/ambience
+are read/applied only by the on=true branch. Therefore a fresh all-off graph
+processes its first off edge with SE bank0. After an explicit SE1 enable,
+a later on=false keeps bank1 and applied controls. The new candidate keeps
+these distinct states; it does not derive active bank from a static JSON
+field while off. Master1C590(false) and SE1DD00(false) remain distinct calls.
+
+The original node Reset methods clear sample histories and set wrapper
+previous=target. GEQ A3680, BT A2DB0, PEQ A3E90, SE A8510 and RVB A8DE0
+are not an empty processing call. New GraphicEq/BassTreble/ParametricEq
+reset methods expose that exact boundary; PEQ AE180 preserves current gain,
+dirty/configuration fields. A failed Rust stage remains quarantined after
+reset. LocalFixedStereoMaterial::reset also discards B0 lookahead as original
+1B960 does; it preserves bank and applied gains. Existing standalone SE0's
+public valid_frames=0 rejection and the raw multiband zero behavior remain
+unchanged; any required zero-frame handling is local to this new internal
+parent with complete initialized capacity storage.
+
+GEQ peak trigonometry correction
+-------------------------------
+The GEQ type1 branch in B54D0 uses CRT cosf14E8D0 / sinf14EFD0. The frozen
+original static CPU-dispatch path reaches14E580 /14EB80. Its finite positive
+phase<=0.9*pi domain uses separate double operations, exact reduction
+constants and sine/cosine polynomials before one final f32 rounding. Calling
+host sinf/cosf produced a one-ULP difference at44.1k and contaminated the
+later SE1 environment history. filter_peak_trig.h restores this bounded
+original static-SSE computation, not the different133340 paired-sine PEQ
+helper and not a generic libm substitute. Out-of-domain/nonfinite phase
+rejects before an integer conversion. No AVX/FMA dispatch or large-angle
+math-library behavior is claimed.
+
+The manual freeze_geq_peak_trig.py executes only the two reviewed original
+small-domain functions from the hash-pinned image. No DLL startup, text patch,
+import/OS/CRT adapter or DSP hook is used. 10,135 synthetic phases include
+small/subnormal inputs, polynomial and quadrant boundaries, a fixed-seed
+sample and actual band phases. Every original sine/cosine f32 bit matches
+the new C translation. The previous648 public coefficient vectors also
+match bitwise when exercised directly through the new C coefficient function.
+
+Executed evidence and queued checks
+----------------------------------
+Private research reports (not committed):
+.build/research/local-se1-full-material/peak-trig-original-comparison.json
+.build/research/local-se1-full-material/fixed-matrix-comparison.json
+.build/research/local-se1-full-material/flat-configured-comparison.json
+
+Strict manual C compilation used -std=c11 -O2 -fno-fast-math
+-ffp-contract=off -Wall -Wextra -Werror. Across24 complete original graph
+flows (44.1/48/96k ×512/2048 ×fresh alloff/SE1on/on→off/seek-reset),1002
+blocks have exact valid PCM SHA and n/end immediately before B0. Four extra
+first7/EOF and first0/EOF flows at44.1/48k capacity2048 add92 exact blocks.
+The first zero-input EOF still generates its original environment tail; no
+one-frame audio or premature EOF is fabricated. Original SE1 tail output
+continues into B0, which may need its own later EOF drain.
+
+Manual check_local_fixed_memory.c under ASan+UBSan executed1326 calls across
+three rates/two capacities, including short/zero EOF, repeated drain, reset,
+NaN parameters, oversized frames and overlapping PCM/dry rejection. No
+sanitizer finding occurred. These checks do not execute Rust or libmpv.
+
+The frozen public full-graph receipts contain only synthetic PCM, flow,
+controls/action metadata, per-child output hashes and chosen sample prefixes;
+no DLL, raw original parameter/state blob, user audio or account data. The
+Rust integration tests are prepared to compare final interleaved PCM through
+the actual recovered B0, not merely the pre-limiter C result. Pending parent
+batch compilation/testing must be reported separately before claiming pass.
+
+The original full graph oracle is single-threaded x86_64 machine execution
+under the explicitly bounded VM OS/allocator/CRT-memory/synchronization
+adapters. Original CRT heap/default-C-locale/PTD initialization executes;
+no NLS reply is supplied, text/DSP is unchanged, MXCSR starts1f80 and original
+static CPU dispatch is used. It is not real Windows, the SDK's outer FIFO,
+physical audio output, a libmpv host or a frontend/UI proof. MSVC/Linux libm
+transcendentals elsewhere in the environment still require platform evidence.
+The current native player/source remains the separately named SE1→B0
+subgraph; replacing it and exposing official controls requires the full
+candidate's final tests plus the already scoped decoder/host/seek/authority
+proofs, not this document alone.
+
+Local executable
+----------------
+cargo run -p cumulus-core --example effects_local_fixed --locked -- \
+  44100 2048 local-plan.json synthetic-stereo.f32le rendered.f32le
+
+The explicit CLI reads bounded raw interleaved f32le stereo, validates the
+strict plan and real format constraints, drains actual EOF, and creates a new
+output file. It does not play through a sound device or create credentials.
+No output overwrite is allowed. This example is prepared but not executed in
+this isolated branch pending the centralized Rust build.
+
+Additional complete-graph interaction receipts
+--------------------------------------------
+Two same-instance full SDK flows at44.1/48k capacity2048 add60 exact C
+pre-B0 blocks: fresh bank0 off→SE1 on3/5→hot6/8→off preserving parameters→
+on2/4→pending-off immediately reset→pending-on immediately reset→short EOF.
+No fake processing occurs between switch and reset. The original flags show
+[1,0]→[1,1] and [0,1]→[0,0] for those two reset boundaries. This confirms
+actual bank selection/gain history and the wrapper previous=target behavior.
+
+A further same-instance48k flow adds50 exact C pre-B0 blocks:2055 source
+frames drain to50055, original1B960 then512 non-EOF+7 EOF drain to48519.
+No standalone SE Reset counter is changed. Original B6EB0: B702B–B7035
+sets remaining-tail to the inactive sentinel on fresh non-EOF data. Therefore
+new valid data followed by EOF can produce a new48000-frame tail, while
+Reset followed immediately by empty EOF remains a different sequence. The
+Rust final-B0 tests reuse one actual LocalFixedStereoMaterial for both phases.
+These added tests are prepared, not executed as Rust in this isolated tree.
+The executed C total is now1204 complete-graph blocks; source/reset/EOF/PCM
+comparisons still stop immediately before B0 and do not imply desktop pass.
