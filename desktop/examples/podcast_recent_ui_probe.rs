@@ -11,6 +11,8 @@ mod fixture;
 mod relay_fixture;
 #[path = "support/podcast_scene_home_fixture.rs"]
 mod scene_home_fixture;
+#[path = "support/scene_palette_fixture.rs"]
+mod scene_palette_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
@@ -51,6 +53,7 @@ struct Library {
     progress_uploads: Mutex<Vec<Value>>,
     scene_home: Option<scene_home_fixture::SceneHome>,
     scene_baseline: settings_fixture::Library,
+    palette: Option<Arc<scene_palette_fixture::PaletteMedia>>,
 }
 
 fn radio() -> Value {
@@ -109,7 +112,13 @@ impl Api for Library {
         Box::pin(async move {
             if let Some(scene) = &self.scene_home {
                 return match scene.response(path, &body) {
-                    Some(response) => response,
+                    Some(response) => {
+                        if self.palette.is_some() {
+                            response.map(scene_palette_fixture::artwork_response)
+                        } else {
+                            response
+                        }
+                    }
                     None => {
                         scene_home_fixture::baseline(&self.scene_baseline, path, body, cache).await
                     }
@@ -226,20 +235,30 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let progress_enabled = std::env::var_os("CUMULUS_PODCAST_PROGRESS_PROOF").is_some();
+    let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF").ok();
+    let palette = palette_case
+        .clone()
+        .map(|case| Arc::new(scene_palette_fixture::PaletteMedia::new(case)));
+    let palette_enabled = palette.is_some();
     let scene_home = std::env::var("CUMULUS_PODCAST_SCENE_HOME_PROOF")
         .ok()
+        .or_else(|| palette_enabled.then(|| "automatic".to_owned()))
         .map(scene_home_fixture::SceneHome::new);
     let scene_enabled = scene_home.is_some();
     assert!(!(scene_enabled && progress_enabled));
     let api = Arc::new(Library {
         progress_enabled,
         scene_home,
+        palette: palette.clone(),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     let wave = relay_fixture::wave(&root).unwrap();
-    let client = MusicClient::with_session(session, registry)
+    let mut client = MusicClient::with_session(session, registry)
         .with_audio_factory(move || Ok(Box::new(relay_fixture::NativeAudio::open(wave.clone())?)));
+    if let Some(palette) = palette {
+        client = client.with_scene_fm_palette_backend(palette);
+    }
     let mut context = assets::context();
     let mut config = context.config().app.windows[0].clone();
     config.width = 960.0;
@@ -247,7 +266,9 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let source = std::env::var_os("CUMULUS_UX_SCRIPT").map_or_else(
         || {
-            if scene_enabled {
+            if palette_enabled {
+                include_str!("scene_palette_ui_probe.js").to_owned()
+            } else if scene_enabled {
                 include_str!("podcast_scene_home_ui_probe.js").to_owned()
             } else if progress_enabled {
                 include_str!("podcast_progress_ui_probe.js").to_owned()
@@ -291,6 +312,9 @@ fn main() {
                     || stage.starts_with("ux_") && stage.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
                     return;
                 }
+                if let Some(palette) = &api.palette {
+                    value["paletteRequests"] = palette.snapshot();
+                }
                 if let Some(scene) = &api.scene_home {
                     value["calls"] = json!(scene.calls());
                 } else if stage == "complete" {
@@ -320,7 +344,9 @@ fn main() {
         })
         .on_page_load(move |view, payload| {
             if payload.event() == PageLoadEvent::Finished && view.label() == "main" {
-                if scene_enabled {
+                if palette_enabled {
+                    view.eval(format!("window.__scenePaletteCase = {};", json!(palette_case))).unwrap();
+                } else if scene_enabled {
                     let case = std::env::var("CUMULUS_PODCAST_SCENE_HOME_PROOF").unwrap();
                     view.eval(format!("window.__podcastSceneHomeCase = {};", json!(case))).unwrap();
                 }

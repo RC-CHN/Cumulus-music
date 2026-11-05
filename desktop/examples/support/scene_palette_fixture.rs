@@ -1,0 +1,136 @@
+//! Synthetic-only CDN and palette body; never makes a network request.
+use cumulus_core::{
+    Error,
+    download::transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
+    protocol::api::ApiFuture,
+};
+use serde_json::{Value, json};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
+
+const PNG: &[u8] = &[
+    137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 16, 0, 0, 0, 8, 8, 2, 0,
+    0, 0, 127, 20, 232, 192, 0, 0, 0, 19, 73, 68, 65, 84, 120, 156, 99, 104, 112, 80, 32, 9, 49,
+    140, 106, 160, 133, 6, 0, 246, 131, 112, 1, 96, 184, 25, 28, 0, 0, 0, 0, 73, 69, 78, 68, 174,
+    66, 96, 130,
+];
+
+pub struct PaletteMedia {
+    case: String,
+    calls: Mutex<Vec<String>>,
+    pub body_bytes: Arc<AtomicUsize>,
+}
+impl PaletteMedia {
+    pub fn new(case: String) -> Self {
+        assert!(matches!(
+            case.as_str(),
+            "header" | "only_tb" | "sample" | "late"
+        ));
+        Self {
+            case,
+            calls: Mutex::default(),
+            body_bytes: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+    pub fn snapshot(&self) -> Value {
+        json!({"urls":self.calls.lock().unwrap().clone(),
+            "bodyBytes":self.body_bytes.load(Ordering::SeqCst)})
+    }
+}
+impl MediaBackend for PaletteMedia {
+    fn get(&self, request: MediaRequest) -> ApiFuture<'_, MediaReply> {
+        Box::pin(async move {
+            let url = request.url.as_str();
+            assert!(url.starts_with("https://p1.music.126.net/obj/cumulus-palette/cover"));
+            assert!(url.contains("601.png") || url.contains("602.png"));
+            assert_eq!(request.offset, 0);
+            assert!(request.if_range.is_none());
+            self.calls.lock().unwrap().push(url.to_owned());
+            if self.case == "late" && url.contains("601.png") {
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+            }
+            let mut headers = BTreeMap::from([
+                ("content-type".into(), "image/png".into()),
+                ("content-length".into(), PNG.len().to_string()),
+            ]);
+            if url.contains("xnos=1") {
+                match self.case.as_str() {
+                    "sample" => {}
+                    "only_tb" => {
+                        headers.insert("x-nos-meta-n-m-cl".into(), "T:112233|B:445566".into());
+                    }
+                    _ => {
+                        headers.insert(
+                            "x-nos-meta-n-m-cl".into(),
+                            if url.contains("602.png") {
+                                "M:FF0000"
+                            } else {
+                                "M:0A141E"
+                            }
+                            .into(),
+                        );
+                    }
+                }
+            }
+            Ok(MediaReply {
+                status: 200,
+                headers,
+                body: Box::new(Body {
+                    offset: 0,
+                    read: self.body_bytes.clone(),
+                }),
+            })
+        })
+    }
+}
+struct Body {
+    offset: usize,
+    read: Arc<AtomicUsize>,
+}
+impl MediaBody for Body {
+    fn read<'a>(&'a mut self, output: &'a mut [u8]) -> ApiFuture<'a, usize> {
+        Box::pin(async move {
+            if output.is_empty() {
+                return Ok(0);
+            }
+            let remaining = PNG
+                .get(self.offset..)
+                .ok_or(Error::Media("invalid synthetic image offset"))?;
+            let len = remaining.len().min(output.len());
+            output[..len].copy_from_slice(&remaining[..len]);
+            self.offset += len;
+            self.read.fetch_add(len, Ordering::SeqCst);
+            Ok(len)
+        })
+    }
+}
+
+pub fn artwork_response(mut value: Value) -> Value {
+    fn decorate(voice: &mut Value) {
+        if let Some(id) = voice["id"].as_u64() {
+            assert!(matches!(id, 601 | 602));
+            voice["coverUrl"] = json!(format!(
+                "https://p1.music.126.net/obj/cumulus-palette/cover{id}.png"
+            ));
+        }
+    }
+    if let Some(rows) = value["data"][0]["creatives"].as_array_mut() {
+        for row in rows {
+            if let Some(voices) = row["creativeExtInfoVO"]["djPrograms"].as_array_mut() {
+                for voice in voices {
+                    decorate(voice);
+                }
+            }
+        }
+    }
+    if value["program"].is_object() {
+        decorate(&mut value["program"]);
+    }
+    value
+}
