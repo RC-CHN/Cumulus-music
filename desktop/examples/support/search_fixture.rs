@@ -14,6 +14,7 @@ const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-search
 static AUDIO_TOPLIST_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static CAROUSEL_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static MV_PREVIEW_PRIVILEGE_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static VOICE_QUEUE_CALLS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static VOICE_NEXT_CALLS: Mutex<Vec<(String, Value)>> = Mutex::new(Vec::new());
 static PLAYLIST_SUBSCRIPTIONS: AtomicUsize = AtomicUsize::new(0);
@@ -164,6 +165,38 @@ pub fn carousel_enabled() -> bool {
 }
 pub fn carousel_calls() -> Vec<Value> {
     CAROUSEL_CALLS.lock().unwrap().clone()
+}
+
+pub fn mv_preview_privilege_calls() -> Vec<Value> {
+    MV_PREVIEW_PRIVILEGE_CALLS.lock().unwrap().clone()
+}
+
+pub fn mv_preview_privileges(path: &str, args: &Value, cached: bool) -> Option<Result<Value>> {
+    const IDS: [&str; 6] = ["1", "2", "3", "4", "5", "6"];
+    if path != "/api/song/enhance/privilege"
+        || !super::search_mv_fixture::enabled()
+        || super::search_mv_fixture::fallback_enabled()
+        || MODE.lock().unwrap().as_str() != "good"
+        || *args != json!({"ids":json!(IDS).to_string()})
+    {
+        return None;
+    }
+    if cached {
+        return Some(Err(Error::InvalidInput(
+            "MV preview privilege read must be uncached",
+        )));
+    }
+    // An authoritative refresh replaces the privilege row. Keep this fixture's
+    // explicit song-2 restriction in the refreshed reply as well as the search
+    // body, rather than accidentally changing rights through a missing st.
+    let rows = IDS.map(
+        |id| json!({"id":id,"st":if id=="2" {-200} else {0},"pl":if id=="2" {0} else {320000}}),
+    );
+    MV_PREVIEW_PRIVILEGE_CALLS
+        .lock()
+        .unwrap()
+        .push(json!({"path":path,"args":args,"cached":cached,"rows":rows}));
+    Some(Ok(json!({"code":200,"data":rows})))
 }
 fn hot_card_enabled() -> bool {
     v3_enabled() && std::env::var_os("CUMULUS_SEARCH_HOT_CARD_PROOF").is_some()

@@ -1035,7 +1035,46 @@
     }
     if(window.__cumulusSearchMvProof){
       await wait(()=>one('.track-row'),'daily ready');
+      const provides=one('#app').__vue_app__._context.provides;
+      const core=provides[Reflect.ownKeys(provides).find(k=>typeof k==='symbol'&&k.description==='core-client')];
+      const readResults=core.searchResults, readPrivileges=core.searchRefreshPrivileges;
+      const ids=['1','2','3','4','5','6'];
+      const expectedMv=ids.map(id=>({id,mvId:id==='1'?'601':null,replacement:false}));
+      let previewReceipt;
+      const previews=[], privilegeRefreshes=[];
+      core.searchResults=async function(...args){
+        const reply=await readResults.apply(this,args);
+        if(args[1]?.category==='all'&&args[1]?.keyword==='合成 MV'){
+          const value=reply.value;
+          const section=value.sections.find(b=>b.category==='songs'&&b.id.startsWith('search_block_song:'));
+          previewReceipt??=value.privilegeReceipt;
+          previews.push({receiptPresent:!!value.privilegeReceipt,
+            rows:section?.items.slice(0,6).map(i=>({id:i.track.id,mvId:i.mvId??null,replacement:!!i.replacementMv}))});
+        }
+        return reply;
+      };
+      core.searchRefreshPrivileges=async function(epoch,receipt,observation){
+        const reply=await readPrivileges.call(this,epoch,receipt,observation);
+        const value=reply.value;
+        privilegeRefreshes.push({sameReceipt:!!previewReceipt&&receipt===previewReceipt&&value.receipt===receipt,
+          sameEpoch:reply.epoch===epoch,noObservation:observation==null,ids:value.playAllIds,
+          rows:value.rows.map(i=>({id:i.id,mvId:i.mvId??null,replacement:!!i.replacementMv}))});
+        return reply;
+      };
+      const directBadge=id=>one(`.search-track-card[data-result-key="song:${id}"] .search-track-mv`);
+      async function verifyPrivilegeRefreshes(expected){
+        await wait(()=>privilegeRefreshes.length>=expected,'native comprehensive privilege refresh '+expected);
+        assert(privilegeRefreshes.length===expected&&previews.length===1,'Back only refreshes the existing preview');
+        const reply=privilegeRefreshes[expected-1];
+        assert(reply.sameReceipt&&reply.sameEpoch&&reply.noObservation&&
+          JSON.stringify(reply.ids)===JSON.stringify(ids)&&JSON.stringify(reply.rows)===JSON.stringify(expectedMv),
+          'the native preview receipt preserves the exact six MV rights on Back: '+JSON.stringify(reply));
+        await wait(()=>directBadge(1)&&!directBadge(2)&&!directBadge(3),
+          'refreshed direct, restricted and invalid MV controls remain consistent');
+      }
       await fixture('good');await fresh('合成 MV');
+      assert(previews.length===1&&previews[0].receiptPresent&&
+        JSON.stringify(previews[0].rows)===JSON.stringify(expectedMv),'cold preview owns the expected rights and receipt');
       function checkMvMetadata(card){
         assert(card?.querySelector('.search-video-count')?.textContent.trim()==='1.2万'&&
           card?.querySelector('.search-video-duration')?.textContent.trim()==='04:00','MV badges display available source metadata');
@@ -1061,6 +1100,7 @@
         await capture('search_mv_artist_'+category);
       }
       await checkMvArtist('all');
+      await verifyPrivilegeRefreshes(1);
       await choose('mvs');
       await checkMvArtist('mvs');
       const card=mvCard();
@@ -1095,6 +1135,7 @@
       await wait(()=>ready()&&one('[data-category="mvs"]')?.getAttribute('aria-selected')==='true','return to MV category');
       click(button('返回上一页'));
       await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','return to comprehensive song cards');
+      await verifyPrivilegeRefreshes(2);
       const songCard=one('.search-track-card[data-result-key="song:1"]');
       const badge=songCard?.querySelector('.search-track-mv');
       assert(badge?.getAttribute('aria-label')?.startsWith('播放 MV 合成单曲 1')&&!badge.disabled&&badge.tabIndex===0,
@@ -1111,12 +1152,13 @@
       click(button('关闭视频'));
       click(button('返回上一页'));
       await wait(()=>ready()&&one('[data-category="all"]')?.getAttribute('aria-selected')==='true','return to comprehensive after MV');
+      await verifyPrivilegeRefreshes(3);
       await fixture('unavailable');await fresh('合成不可播放视频');await choose('mvs');
       const invalid=one('.search-video-card');
       assert(invalid?.querySelector('.search-card-open')?.disabled&&!invalid.querySelector('.search-video-play-glyph'),
         'opaque non-MV result stays disabled with no Play cue');
       await capture('search_non_mv_target_disabled');
-      await emit('complete',{ok:true,searchMvVerified:true,searchMvArtistVerified:true,stageCount:count,realMusicRequests:0,realAccountWrites:0});
+      await emit('complete',{ok:true,searchMvVerified:true,searchMvArtistVerified:true,privilegeRefreshes,stageCount:count,realMusicRequests:0,realAccountWrites:0});
       return;
     }
     if(window.__cumulusSearchPodcastFollowProof){

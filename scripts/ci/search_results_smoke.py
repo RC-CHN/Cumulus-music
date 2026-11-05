@@ -479,9 +479,20 @@ def main():
         assert [call for call in category if call['path'] == expected['path']] == [expected]
         assert [call for call in played if call not in details] == [expected, expected]
         assert complete['searchMvCalls'] == played
+        ids = ['1', '2', '3', '4', '5', '6']
+        privilege = {'path': '/api/song/enhance/privilege',
+                     'args': {'ids': json.dumps(ids, separators=(',', ':'))}, 'cached': False,
+                     'rows': [{'id': id_, 'st': -200 if id_ == '2' else 0,
+                               'pl': 0 if id_ == '2' else 320000} for id_ in ids]}
+        assert complete['searchMvPrivilegeCalls'] == [privilege] * 3, complete['searchMvPrivilegeCalls']
+        typed = {'sameReceipt': True, 'sameEpoch': True, 'noObservation': True, 'ids': ids,
+                 'rows': [{'id': id_, 'mvId': '601' if id_ == '1' else None, 'replacement': False}
+                          for id_ in ids]}
+        assert complete['privilegeRefreshes'] == [typed] * 3, complete['privilegeRefreshes']
         assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         assert len(list(first.glob('ux_*.png'))) == (7 if args.screenshots else 0)
-        print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True, searchMvArtistVerified=True, stageCount=7)))
+        print(json.dumps(dict(ok=True, actualWebView=True, actualNativeVideo=True,
+                              searchMvArtistVerified=True, mvPrivilegeRefreshes=3, stageCount=7)))
         return
     if args.podcast_follow:
         first = root / 'first'

@@ -448,6 +448,9 @@ impl Api for Library {
             if let Some(response) = search_mv_fixture::response(path, &args) {
                 return response;
             }
+            if let Some(response) = search_fixture::mv_preview_privileges(path, &args, cached) {
+                return response;
+            }
             if let Some(response) = member_lifecycle_fixture::response(path, &args, cached).await {
                 return response;
             }
@@ -1151,6 +1154,9 @@ fn main() {
                 if let Some(calls) = search_fixture::artist_gallery_calls() { value["artistGalleryCalls"] = json!(calls); }
             }
             if search_mv_fixture::enabled() { value["searchMvCalls"]=json!(search_mv_fixture::calls()); }
+            if search_mv_fixture::enabled() && !search_mv_fixture::fallback_enabled() {
+                value["searchMvPrivilegeCalls"]=json!(search_fixture::mv_preview_privilege_calls());
+            }
             if search_privilege_fixture::enabled() { value["searchPrivilegeFixture"]=search_privilege_fixture::report(); }
             if member_lifecycle_fixture::enabled() { value["membershipLifecycleFixture"]=member_lifecycle_fixture::report(); }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
