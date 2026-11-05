@@ -1392,7 +1392,10 @@ fn main() {
                     if queue_click_proof && value["deferQueueClickObservation"]==true && stage=="ux_06_catalog_added" {
                         tokio::time::sleep(std::time::Duration::from_millis(750)).await;
                     }
-                    let player = if queue_click_proof || search_artist_top50_fixture::enabled() {
+                    // Queue proof stages await this actor barrier before the
+                    // script releases an intentionally held clear/edit. A watch
+                    // snapshot may still describe the previous queue revision.
+                    let player = if queue_ui_proof || queue_click_proof || search_artist_top50_fixture::enabled() {
                         client.player_snapshot(&epoch).await
                     } else {
                         client.subscribe_playback(&epoch).await.and_then(|playback|playback.current())
@@ -1432,6 +1435,16 @@ fn main() {
                         let _=fs::write(output.join("failed.json"),serde_json::to_vec_pretty(&failure).unwrap());
                         handle.exit(1);
                         return;
+                    }
+                    if queue_ui_proof && stage.starts_with("ux_") {
+                        if !handle.get_webview_window("main").is_some_and(|window| {
+                            window.eval(format!("window.__queueUiStageRecorded={};",json!(stage))).is_ok()
+                        }) {
+                            let failure=json!({"ok":false,"stage":stage,"error":"native queue stage acknowledgement failed"});
+                            let _=fs::write(output.join("failed.json"),serde_json::to_vec_pretty(&failure).unwrap());
+                            handle.exit(1);
+                            return;
+                        }
                     }
                     if queue_click_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__queueClickRecorded={};",serde_json::json!(stage))).unwrap();

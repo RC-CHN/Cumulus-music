@@ -64,7 +64,9 @@ def main():
         path = root / 'first' / f'ux_{i:02}_{label}.json'
         row = json.loads(path.read_text(encoding='utf-8'))
         native, queue = row['nativePlayer'], row['nativeQueue']
-        assert row['rendered'] < 40 and queue['revision'] == native['queueRevision']
+        assert row['rendered'] < 40, (label, row['rendered'])
+        assert queue['revision'] == native['queueRevision'], (
+            label, queue['revision'], native['queueRevision'], len(queue['tracks']), native['queueLen'])
         assert native['fm'] == queue['fm'] == row['fm']
         assert len(queue['tracks']) == native['queueLen']
         assert not native['error']
