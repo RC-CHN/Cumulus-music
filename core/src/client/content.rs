@@ -8,7 +8,7 @@ use crate::{
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 pub(super) fn playlist_track_revision(id: &str, detail: &Value) -> Result<String> {
     let ids = detail["trackIds"]
@@ -26,6 +26,7 @@ pub(super) async fn playlist_track_page(
     detail: &Value,
     page: &PageRequest,
     trial_mode: Option<i32>,
+    loaded: Option<&BTreeMap<usize, TrackView>>,
 ) -> Result<TrackPage> {
     let playlist = mapping::playlist(detail, uid)?;
     let ids = detail["trackIds"]
@@ -40,10 +41,12 @@ pub(super) async fn playlist_track_page(
         return Err(Error::QueueChanged);
     }
     let slice: Vec<_> = ids.iter().skip(page.offset).take(page.limit).collect();
+    let loaded_row = |index| loaded.and_then(|rows| rows.get(&(page.offset + index)));
     let wanted: Vec<_> = slice
         .iter()
-        .filter(|v| v["v"].as_i64() != Some(-1))
-        .map(|v| v["id"].clone())
+        .enumerate()
+        .filter(|(index, item)| item["v"].as_i64() != Some(-1) && loaded_row(*index).is_none())
+        .map(|(_, item)| item["id"].clone())
         .collect();
     let songs = CatalogApi::new(api)
         .songs_with_trial(
@@ -54,7 +57,11 @@ pub(super) async fn playlist_track_page(
         .await?;
     let mut returned = songs.songs.into_iter();
     let mut tracks = Vec::with_capacity(slice.len());
-    for item in slice {
+    for (index, item) in slice.into_iter().enumerate() {
+        if let Some(loaded) = loaded_row(index) {
+            tracks.push(loaded.clone());
+            continue;
+        }
         let local = item["v"].as_i64() == Some(-1);
         let song = if local {
             None
@@ -273,7 +280,7 @@ impl MusicClient {
                 // Read authoritative trackIds, never assume the preview `tracks`
                 // contains the complete playlist. Page song detail separately.
                 let detail = PlaylistApi::new(api.clone()).detail(&json!(id)).await?;
-                playlist_track_page(api, &uid, &id, &detail, &page, None).await
+                playlist_track_page(api, &uid, &id, &detail, &page, None, None).await
             })
             .await?;
         Ok(AccountData {

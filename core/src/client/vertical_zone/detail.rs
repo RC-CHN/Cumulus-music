@@ -4,7 +4,7 @@ use crate::{
     Error, Result,
     client::{
         content::{playlist_track_page, playlist_track_revision},
-        dto::{AccountData, PageRequest, TrackPage},
+        dto::{AccountData, PageRequest, TrackPage, TrackView},
         mapping,
     },
     playlist::{PlaylistApi, ZonePlaylistMembership},
@@ -13,12 +13,15 @@ use crate::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 
 const MAX_VISITS: usize = 24;
 const MAX_TRACKS: usize = 50_000;
+const MAX_CACHED_DETAIL_ROWS: usize = 4096;
+
+mod batch;
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ZonePlaylistOrigin {
@@ -27,7 +30,7 @@ pub struct ZonePlaylistOrigin {
 
 #[derive(Default)]
 pub(in crate::client) struct DetailHost {
-    visits: Mutex<VecDeque<Visit>>,
+    visits: Arc<Mutex<VecDeque<Visit>>>,
     membership: Mutex<Option<HostMembership>>,
 }
 
@@ -89,6 +92,38 @@ pub(in crate::client) struct ZonePlaylistSnapshot {
     pub detail: Value,
     pub revision: String,
     pub trial_mode: i32,
+    read_sequence: u64,
+    loaded_detail: Mutex<BTreeMap<usize, TrackView>>,
+}
+
+impl ZonePlaylistSnapshot {
+    fn remember_detail_page(&self, page: &TrackPage) -> Result<()> {
+        let mut loaded = self.loaded_detail.lock().map_err(|_| Error::LockPoisoned)?;
+        for (position, row) in (page.offset..).zip(&page.tracks) {
+            if position >= MAX_CACHED_DETAIL_ROWS {
+                break;
+            }
+            if row.local || row.missing {
+                loaded.remove(&position);
+            } else {
+                loaded.insert(position, row.clone());
+            }
+        }
+        Ok(())
+    }
+
+    fn batch_loaded_prefix(&self, page: &PageRequest) -> Result<BTreeMap<usize, TrackView>> {
+        let loaded = self.loaded_detail.lock().map_err(|_| Error::LockPoisoned)?;
+        // M/2997 starts the full hydration at the first unfilled row. Do
+        // not skip a later cached row on the other side of that gap.
+        Ok((0..)
+            .zip(loaded.iter())
+            .take_while(|(index, (position, _))| index == *position)
+            .skip(page.offset)
+            .take(page.limit)
+            .map(|(_, (position, row))| (*position, row.clone()))
+            .collect())
+    }
 }
 
 impl MusicClient {
@@ -309,11 +344,13 @@ impl MusicClient {
                             revision: playlist_track_revision(id_ref, &detail)?,
                             detail,
                             trial_mode: membership.trial_mode(),
+                            read_sequence: sequence,
+                            loaded_detail: Default::default(),
                         })
                     };
                     authorization.check_revision()?;
                     let value = playlist_track_page(
-                        api, &uid, id_ref, &snapshot.detail, &page, Some(snapshot.trial_mode),
+                        api, &uid, id_ref, &snapshot.detail, &page, Some(snapshot.trial_mode), None,
                     ).await?;
                     Ok((value, snapshot))
                 } => result,
@@ -323,6 +360,7 @@ impl MusicClient {
             if visit.read_sequence != sequence {
                 return Err(Error::StaleResponse);
             }
+            snapshot.remember_detail_page(&value)?;
             if initial {
                 visit.snapshot = Some(snapshot);
             } else if !visit

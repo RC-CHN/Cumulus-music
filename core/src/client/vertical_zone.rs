@@ -18,7 +18,7 @@ use tokio::sync::Mutex as AsyncMutex;
 #[derive(Default)]
 pub(super) struct ZoneHost {
     cache: Mutex<ZoneCache>,
-    registry: AsyncMutex<Option<Registry>>,
+    registry: Arc<AsyncMutex<Option<Registry>>>,
 }
 
 #[derive(Default)]

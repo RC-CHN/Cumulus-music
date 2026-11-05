@@ -334,6 +334,13 @@ pub enum PlaySelection {
         revision: Option<String>,
         quality: Quality,
     },
+    VerticalZonePlaylistBatch {
+        id: String,
+        receipt: String,
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
+    },
     PlaylistBatch {
         id: String,
         ids: Vec<String>,
@@ -417,6 +424,14 @@ pub enum PlayerAction {
     },
     QueueDownloads {
         task_ids: Vec<String>,
+        expected_queue_revision: String,
+    },
+    QueueVerticalZonePlaylistBatch {
+        id: String,
+        receipt: String,
+        ids: Vec<String>,
+        revision: String,
+        quality: Quality,
         expected_queue_revision: String,
     },
     QueuePlaylistBatch {

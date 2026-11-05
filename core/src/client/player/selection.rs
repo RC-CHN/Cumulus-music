@@ -48,6 +48,26 @@ impl MusicClient {
                 self.play_profile_rank_playlist(epoch, uid.as_deref(), quality)
                     .await
             }
+            PlaySelection::VerticalZonePlaylistBatch {
+                id,
+                receipt,
+                ids,
+                revision,
+                quality,
+            } => {
+                self.zone_playlist_batch_action(
+                    epoch,
+                    super::zone_playlist_batch::ZoneBatchSelection {
+                        id,
+                        receipt,
+                        ids,
+                        revision,
+                        quality,
+                    },
+                    None,
+                )
+                .await
+            }
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
@@ -641,6 +661,7 @@ impl MusicClient {
                     | PlaySelection::ProfileRankPlaylist { .. }
                     | PlaySelection::VerticalZonePlaylist { .. }
                     | PlaySelection::VerticalZonePlaylistDetail { .. }
+                    | PlaySelection::VerticalZonePlaylistBatch { .. }
                     | PlaySelection::Cloud { .. }
                     | PlaySelection::CloudBatch { .. }
                     | PlaySelection::Downloads { .. }

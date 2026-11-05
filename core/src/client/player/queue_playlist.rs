@@ -600,10 +600,60 @@ fn resource_key(resource: &Value, downloaded: bool) -> Option<(PlayerResourceKin
 }
 
 fn insert_collection(
+    queue: QueueSnapshot,
+    resources: Vec<Value>,
+    source: Value,
+    downloaded: bool,
+) -> QueueSnapshot {
+    insert_collection_bound(queue, resources, source, downloaded, false, false)
+}
+
+pub(super) fn insert_zone_batch(
+    queue: QueueSnapshot,
+    resources: Vec<Value>,
+    source: Value,
+    play: bool,
+) -> Result<QueueSnapshot> {
+    let first = resources
+        .first()
+        .and_then(|resource| resource_key(resource, false))
+        .ok_or(Error::State("zone playlist batch has no online songs"))?;
+    let first_id = (first.0, first.1.to_owned());
+    let keeps_current = queue.selected().is_some_and(|entry| {
+        let current = resource_key(&entry.resource, false);
+        !resources
+            .iter()
+            .any(|resource| resource_key(resource, false) == current)
+    });
+    if resources.len() > QUEUE_LIMIT - usize::from(keeps_current) {
+        return Err(Error::InvalidInput(
+            "zone playlist batch exceeds queue limit",
+        ));
+    }
+    let mut queue = insert_collection_bound(queue, resources, source, false, true, play);
+    if play {
+        queue.current = Some(
+            queue
+                .items
+                .iter()
+                .find(|entry| {
+                    resource_key(&entry.resource, false) == Some((first_id.0, &first_id.1))
+                })
+                .ok_or(Error::State("missing inserted zone playlist song"))?
+                .entry_id
+                .clone(),
+        );
+    }
+    Ok(queue)
+}
+
+fn insert_collection_bound(
     mut queue: QueueSnapshot,
     resources: Vec<Value>,
     source: Value,
     downloaded: bool,
+    rebind: bool,
+    replace_current: bool,
 ) -> QueueSnapshot {
     let bind_recommendation_origin = matches!(
         source["kind"].as_str(),
@@ -614,6 +664,14 @@ fn insert_collection(
         .iter()
         .find(|e| Some(&e.entry_id) == queue.current.as_ref())
         .cloned();
+    let current_key = current
+        .as_ref()
+        .and_then(|entry| resource_key(&entry.resource, downloaded));
+    let inserts_current = replace_current
+        && current_key.is_some()
+        && resources
+            .iter()
+            .any(|resource| resource_key(resource, downloaded) == current_key);
     let existing: HashMap<_, _> = queue
         .items
         .iter()
@@ -624,10 +682,7 @@ fn insert_collection(
         .into_iter()
         .filter_map(|resource| {
             let id = resource_key(&resource, downloaded)?;
-            if !seen.insert((id.0, id.1.to_owned()))
-                || current
-                    .as_ref()
-                    .is_some_and(|e| resource_key(&e.resource, downloaded) == Some(id))
+            if !seen.insert((id.0, id.1.to_owned())) || !replace_current && current_key == Some(id)
             {
                 return None;
             }
@@ -636,7 +691,8 @@ fn insert_collection(
                     .get(&id)
                     .map(|e| {
                         let mut entry = (*e).clone();
-                        if bind_recommendation_origin
+                        if rebind
+                            || bind_recommendation_origin
                             || id.0 == PlayerResourceKind::Local && entry.resource != resource
                         {
                             entry.resource = resource.clone();
@@ -651,7 +707,7 @@ fn insert_collection(
                     }),
             )
         })
-        .take(QUEUE_LIMIT - usize::from(current.is_some()))
+        .take(QUEUE_LIMIT - usize::from(current.is_some() && !inserts_current))
         .collect();
     // Preserve the loaded entry verbatim, even if the playlist contains it.
     // This avoids restarting or changing the paused position of current audio.
@@ -687,14 +743,17 @@ fn insert_collection(
     items.extend(inserted.iter().cloned());
     items.extend(suffix);
     let retained: HashSet<_> = items.iter().map(|e| &e.entry_id).collect();
-    queue
-        .order
-        .retain(|id| retained.contains(id) && !inserted_ids.contains(id));
-    let next = queue
+    let keep_order = |id: &String| retained.contains(id) && !inserted_ids.contains(id);
+    let anchor = queue
         .order
         .iter()
         .position(|id| Some(id) == queue.current.as_ref())
         .map_or(0, |i| i + 1);
+    let next = queue.order[..anchor]
+        .iter()
+        .filter(|id| keep_order(id))
+        .count();
+    queue.order.retain(keep_order);
     queue
         .order
         .splice(next..next, inserted.into_iter().map(|e| e.entry_id));

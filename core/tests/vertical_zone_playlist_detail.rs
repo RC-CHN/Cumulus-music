@@ -2,6 +2,9 @@
 #[path = "support/playback/mod.rs"]
 mod engine;
 
+#[path = "vertical_zone_playlist_detail/batch.rs"]
+mod batch;
+
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -18,7 +21,7 @@ use serde_json::{Value, json};
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicI32, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -41,6 +44,11 @@ struct Wire {
     returned_special: AtomicBool,
     change_during_dynamic: AtomicBool,
     dynamic_fails: AtomicBool,
+    omit_121: AtomicU64,
+    deny_121: AtomicBool,
+    hold_trial: AtomicI32,
+    held: tokio::sync::Notify,
+    release: tokio::sync::Notify,
 }
 
 impl Wire {
@@ -138,14 +146,33 @@ impl Api for Wire {
                 SONG => {
                     let ids: Vec<Value> =
                         serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"songs":ids.iter().map(|item|
-                        json!({"id":item["id"],"name":"合成歌曲","dt":30000})).collect::<Vec<_>>()})
+                    if args["trialMode"]
+                        .as_i64()
+                        .and_then(|mode| i32::try_from(mode).ok())
+                        .is_some_and(|mode| {
+                            mode != 0
+                                && self
+                                    .hold_trial
+                                    .compare_exchange(mode, 0, Ordering::AcqRel, Ordering::Acquire)
+                                    .is_ok()
+                        })
+                    {
+                        self.held.notify_one();
+                        self.release.notified().await;
+                    }
+                    let omitted = self.omit_121.load(Ordering::Acquire).to_string();
+                    json!({"code":200,"songs":ids.iter().filter(|item| args["trialMode"] != 121 || item["id"] != omitted)
+                        .map(|item| json!({"id":item["id"],"name":"合成歌曲","dt":30000})).collect::<Vec<_>>()})
                 }
                 URL => {
                     let ids: Vec<Value> =
                         serde_json::from_str(args["ids"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"data":[{"id":ids[0],"code":200,
-                        "url":"https://m1.music.126.net/synthetic-zone.mp3","md5":"fixture","expi":120,"level":"standard"}]})
+                    if args["trialMode"] == 121 && self.deny_121.load(Ordering::Acquire) {
+                        json!({"code":200,"data":[{"id":ids[0],"code":403,"url":null}]})
+                    } else {
+                        json!({"code":200,"data":[{"id":ids[0],"code":200,
+                            "url":"https://m1.music.126.net/synthetic-zone.mp3","md5":"fixture","expi":120,"level":"standard"}]})
+                    }
                 }
                 _ => panic!("unrecognized sealed request {path}"),
             })
@@ -158,6 +185,7 @@ struct Fixture {
     wire: Arc<Wire>,
     session: Arc<AccountSession>,
     client: MusicClient,
+    device: Arc<engine::Device>,
 }
 
 impl Fixture {
@@ -166,13 +194,16 @@ impl Fixture {
         let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
         let wire = Arc::new(Wire::default());
         let session = Arc::new(AccountSession::new(wire.clone(), Some(registry.store())));
+        let device: Arc<engine::Device> = Default::default();
+        let output = device.clone();
         let client = MusicClient::with_session(session.clone(), registry)
-            .with_audio_factory(|| Ok(engine::audio_engine(Default::default())));
+            .with_audio_factory(move || Ok(engine::audio_engine(output.clone())));
         let f = Self {
             _root: root,
             wire,
             session,
             client,
+            device,
         };
         f.adopt(7);
         f

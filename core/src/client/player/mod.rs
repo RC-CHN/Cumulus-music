@@ -24,6 +24,7 @@ mod reports;
 mod selection;
 mod source_control;
 mod startup;
+mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
 use crate::{
@@ -781,6 +782,34 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueVerticalZonePlaylistBatch {
+            id,
+            receipt,
+            ids,
+            revision,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "zone playlist batch used as native media command",
+                ));
+            }
+            return self
+                .zone_playlist_batch_action(
+                    epoch,
+                    zone_playlist_batch::ZoneBatchSelection {
+                        id,
+                        receipt,
+                        ids,
+                        revision,
+                        quality,
+                    },
+                    Some(expected_queue_revision),
+                )
+                .await;
+        }
         if let PlayerAction::QueuePlaylistBatch {
             id,
             ids,
@@ -1250,6 +1279,7 @@ impl MusicClient {
             | PlayerAction::DropPlaylistSongIntoQueue { .. }
             | PlayerAction::DropPlaylistSongsIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
+            | PlayerAction::QueueVerticalZonePlaylistBatch { .. }
             | PlayerAction::QueueCloudBatch { .. } => {
                 unreachable!("handled before user transport commands")
             }
