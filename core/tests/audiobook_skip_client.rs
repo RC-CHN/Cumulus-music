@@ -17,6 +17,7 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicU8, Ordering},
 };
+use std::time::Duration;
 
 #[derive(Default)]
 struct ApiFixture {
@@ -40,6 +41,11 @@ impl ApiFixture {
         radio
     }
 
+    fn program(&self) -> Value {
+        json!({"id":71,"name":"测试节目","mainTrackId":801,
+            "duration":300000,"radio":self.radio()})
+    }
+
     fn smart_calls(&self) -> Vec<Value> {
         self.calls
             .lock()
@@ -61,9 +67,12 @@ impl Api for ApiFixture {
             let response = match path {
                 "/api/djradio/v3/get" => json!({"code":200,"data":self.radio()}),
                 "/api/v6/dj/program/byradio" => json!({"code":200,"data":{
-                    "programs":[{"id":71,"name":"测试节目","mainTrackId":801,
-                        "duration":300000,"radio":self.radio()}],
+                    "programs":[self.program()],
                     "count":1,"more":false,"asc":true}}),
+                "/api/dj/program/detail" => {
+                    assert_eq!(payload["id"], "71");
+                    json!({"code":200,"program":self.program()})
+                }
                 "/api/content/my/liked/voice" => {
                     json!({"code":200,"data":{"data":[],"hasMore":false}})
                 }
@@ -313,17 +322,20 @@ async fn player_menu_accepts_the_official_name_and_cannot_save_for_a_departed_pl
     api.category.store(3, Ordering::SeqCst);
     let page = client.podcast_page("1", query(), true).await.unwrap();
     assert_eq!(page.audiobook_skip_enabled, None);
-    let player = client
-        .play_selection(
+    let player = tokio::time::timeout(
+        Duration::from_secs(5),
+        client.play_selection(
             "1",
             PlaySelection::Podcast {
                 scope: page.scope,
                 revision: page.revision,
                 start_id: Some("71".into()),
             },
-        )
-        .await
-        .unwrap();
+        ),
+    )
+    .await
+    .expect("synthetic episode did not load")
+    .unwrap();
     assert!(player.audiobook_skip_available);
     let entry_id = player.entry_id.unwrap();
     let wrong = AudiobookSkipContext::Player {
@@ -350,7 +362,13 @@ async fn player_menu_accepts_the_official_name_and_cannot_save_for_a_departed_pl
             .value
             .smart_available
     );
-    client.player_action("1", PlayerAction::Stop).await.unwrap();
+    tokio::time::timeout(
+        Duration::from_secs(5),
+        client.player_action("1", PlayerAction::Stop),
+    )
+    .await
+    .expect("synthetic episode did not stop")
+    .unwrap();
     assert!(matches!(
         save(
             &client,
@@ -367,7 +385,6 @@ async fn player_menu_accepts_the_official_name_and_cannot_save_for_a_departed_pl
 
 #[tokio::test]
 async fn manual_save_does_not_wait_for_the_independent_smart_read() {
-    use std::time::Duration;
     let (_dir, api, _session, client) = fixture();
     api.category.store(1, Ordering::SeqCst);
     api.hold_smart.store(true, Ordering::SeqCst);
