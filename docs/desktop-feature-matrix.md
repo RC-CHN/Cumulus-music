@@ -127,5 +127,13 @@
 
 - [声音标题信息](voice-playback-header-contracts.txt)从当前原生节目投影主播与发布时间；主播进入用户资料页，缺少有效用户 ID 时保留纯文字，缺日期不补成今天。Linux 隔离 WebView 已完成卡片、底栏、声音详情、主播主页及回到详情的 5 阶段/5 张截图；下载来源证明、歌曲/CUE/冲突元数据的限制按契约分别验收，不用这组在线界面代替它们。
 - [封面失败占位](player-cover-fallback-contracts.txt)覆盖场景卡、播放栏和播放详情；同账号同 URL 复用已有加载结果，失败后使用本地 Icon，不新增重试或影响播放。上述 5 阶段实际核对占位与持续播放，5 张原图均由主代理逐张查看；本地 Icon 与官方专有默认图片仍是明确差异。
-- [场景 FM 取色](scene-fm-palette-contracts.txt)已完成颜色可在同账号同封面切节目时复用，包含默认底色和普通取色失败；原生过期/账号身份失败不作为完成结果。复用和过期分支由定向 Node 状态用例验证；新 GUI 集成只重跑 PNG 本地 canvas→Rust 的 sample 分支，3 阶段/3 张截图、76 字节 PNG，旧批四场景记录独立保留。等待中的同封面切节目仍因旧节目凭据绑定而重新发起，本次未完成这条 URL 生命周期的一致性。
+- [场景 FM 取色](scene-fm-palette-contracts.txt)已完成颜色可在同账号同封面切节目时复用，包含默认底色和普通取色失败；原生过期/账号身份失败不作为完成结果。复用和过期分支由定向 Node 状态用例验证；该批 GUI 集成只重跑 PNG 本地 canvas→Rust 的 sample 分支，3 阶段/3 张截图、76 字节 PNG，旧批四场景记录独立保留。当时等待中的同封面切节目仍因旧节目凭据绑定而重新发起；这条在途差异的后续验收见下方 phase57 补充。
 - [独立 SE bank-0/ambience=0](core-effects-stereo-zero.txt)提供安全 FFI 与离线 PCM CLI，另见[来源到实现映射](effects-stereo-zero-mapping.json)。冻结官方对照为 42 组流/378 块；本批实际 CLI 执行 9 块并按语义 JSON 核对一致。未接播放器或 UI，不包含 ambience=1、混响、任意参数银行或完整效果图；这些结果也不代表 Windows 运行或真实声卡听感。
+
+以 2026-11-05 的 `e93204b8` 产品源码及 `47f2df99` 验证脚本补充 phase57 进度：
+
+- [场景 FM 在途取色](scene-fm-palette-contracts.txt)已补齐同账号同规范封面切节目时的 header、image、canvas 在途复用。Linux 真实 WebView 三个新场景共12阶段/12张PNG，601→602不增加读取或取消；旧节目新请求仍严格拒绝。头命中1请求/0图片body，图片回退2请求/76字节PNG，实际512字节本地RGBA送Rust；取色read各1次、sample为0/1/1、cancel均0。原生播放ID和队列保持、位置前进，不将此说成解码器分配次数或物理声卡证明。
+- 原四种取色场景已有完成记录；旧聚合在第五场景的Python封面URL期待错误处中止。仅按当前verify重新解析旧记录，得到 `.build/ui-proof/phase57-search-and-palette/recovered-original-four-report.json` 的4场景/11阶段/11PNG通过，启动新进程数为0。三种在途场景独立执行于 `palette-pending-r2/report.json`，两根共23阶段/23PNG；保留原失败且不算作七场景同一次完整运行。GUI未验证ABA、实服CDN、Windows实际渲染或真实声卡。
+- [综合搜索单曲页脚](search-preview-ui-contracts.txt)接入独立 `PH-PC-search-result=t1` 门控，实际签名完整PC实验批次同时提供原三桶布局；控制组、未知或过时回包不产生新的歌词命中、别名和推荐原因入口。刷新失败按同身份最近一次全局成功分配回退，不复活搜索本地旧t1；该显示回退不把过期快照变成新鲜授权。真实签名链、原始请求顺序与凭据变更已有原生定向测试源；本批搜索四场景GUI、完整Rust测试和Clippy仍在执行，不提前记通过。
+- 官方实验生命周期仍需衔接：M198:998–1005在用户初始化/切换后刷新；M147:2730–2750从 `abtest-cached-exps` 启动恢复，:2944–2971成功更新全局状态并持久化，:3055–3065每30分钟刷新；M3095:1688的搜索selector随全局分桶变化。当前每次读取有门控，但这些初次/周期/持久bootstrap及已返回Vue缓存页的reactive联动尚未完整迁移。它们是可继续实现的客户端工作，下一步应接原生生命周期并让当前页/缓存页一致更新，不通过前端新增轮询猜分桶；不能把单次读取门控列为搜索模块完成，也不能归为外部条件阻塞。
+- 本批Node测试885项通过。上述取色GUI使用Linux真实GTK/WebKitGTK、隔离合成传输及null libmpv；LC_NUMERIC单独为C，界面消息和字符locale仍为en_US.UTF-8。完整工作区和搜索桌面验证的最终结论须待本批运行完成后另行记录。

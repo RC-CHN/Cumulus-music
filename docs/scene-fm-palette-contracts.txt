@@ -46,7 +46,7 @@
   底色、原生媒体限额拒绝、普通网络/图片失败及本地解码失败后的官方默认色，不重复读取。
   普通失败与正在读取的同URL都保持这一次尝试；原生 stale/profile_changed/session_expired
   或错误账号回包不使尝试完成，新权威视图仍可发起请求。不同账号/URL、取消、销毁后的
-  旧工作不能更新当前卡片。以下在途身份拆分是phase56之后的实现候选，待统一验证。
+  旧工作不能更新当前卡片。以下在途身份拆分已进入phase57；分层验收与未完成项见末节。
 
 类型化 IPC（仅主窗口）
 1. scene_fm_palette_read {epoch,revision,voiceId,pixelRatio}：
@@ -124,10 +124,10 @@ Cumulus 对 voice 以及带正式 voiceId 的下载节目隐藏该行；普通�
   不能把这次单支回归当成重新跑完 header/only_tb/late。
 - 已完成的同账号、同封面颜色及默认色可跨节目复用；过期/账号身份失败不算完成。
   这些复用与过期分支有定向Node状态用例，本批GUI没有单独触发同URL切节目。
-  等待中的同封面切节目仍重新发起，保留原生旧节目请求与采样凭据的绑定；这条与官方
+  当时等待中的同封面切节目仍重新发起，保留原生旧节目请求与采样凭据的绑定；这条与官方
   M2060仅按URL的在途生命周期仍有差异，没有扩大IPC地址权限或放宽原生来源校验。
 
-同URL在途生命周期：phase56之后的候选（待统一运行验证）
+同URL在途生命周期：phase57实现与分层验收
 - scene_palette_source 与 scene_palette_check 的原始当前节目/版本准入保持不变；
   scene_fm_palette_read 开始时仍要求传入voiceId是本账号原生快照的当前单集。
   不允许在已经切到602后，再用601发起新读取，即使二者封面URL相同。
@@ -147,5 +147,31 @@ Cumulus 对 voice 以及带正式 voiceId 的下载节目隐藏该行；普通�
   业务API自己的凭据版本、账号与音源身份校验继续独立执行，图片不获取或替代它们。
 - 新增原生/Node用例覆盖header待回、image待回、canvas/采样待回、旧voice新准入、
   换账号/换URL、A→B→A、一次性receipt及旧取消。预期header命中仅1次媒体请求，
-  图片回退仅header+image共2次，同URL切节目不增加请求。此候选仅做格式/静态检查，
-  用例尚待下批统一运行；没有新增实服、真实WebView或Windows运行通过结论。
+  图片回退仅header+image共2次，同URL切节目不增加请求。真实WebView的新在途场景
+  已按下节核对；不能据此声称原生ABA、全部账号分支或Windows实际运行通过。
+
+2026-11-05 本批验证补充（phase57）
+- 产品源码 e93204b8；本节记录47f2df99脚本核对后的证据。Linux隔离网络与真实
+  GTK/WebKitGTK、合成Api/MediaBackend和实际null libmpv验证三种在途状态：
+  pending_header、pending_image、pending_canvas。601→602保持同一规范封面；
+  每种均有pending_first、pending_second、palette_complete、playing_stable四个
+  检查点，共12阶段/12张PNG。两期之间不重发取色、不取消原任务；旧601在当前602
+  已选中后发起新读取仍被原生拒绝，不能借同封面扩大新请求准入。
+- .build/ui-proof/phase57-search-and-palette/palette-pending-r2/report.json：
+  header只有1次元数据请求、应用层0图片body读取；image/canvas各为header+image
+  共2次请求，消费76字节PNG，经本地Blob/canvas取16×8像素、512字节RGBA再送Rust。
+  三种的取色IPC read均为1、sample依次0/1/1、cancel均为0。原生playId/entry/queue
+  保持，播放位置继续前进；这是现有观察量，不宣称探针具有解码器分配次数计数。
+- 原palette-webview运行已完成header、only_tb、sample、late四场景。旧聚合脚本在
+  第五场景pending_header把规范后的?param=320y320错误期待为无参数URL而失败；
+  该失败记录保留、不计入通过场景。使用47f2df99的verify仅重新解析原四场景记录，
+  没有启动新进程，得到同根recovered-original-four-report.json：4场景全部通过，
+  11阶段/11张PNG。不能把这份回收报告说成新跑了四次或七场景同一次运行。
+- 两个执行根的合格证据分别为旧四场景和新三在途场景，共23阶段/23张PNG。
+  同根palette-visual-review.json记录额外人工查看的10张原图及各场景请求、字节、
+  locale核对；其余图片不据此宣称逐张人工复核。所有场景LC_NUMERIC=C，字符和
+  界面消息locale保持en_US.UTF-8。合成普通封面仍显示本地Icon，不能证明真实CDN图片
+  加载；本地取色PNG由独立原生传输提供并实际解码，与卡片封面成功显示是两件事。
+- 截至本节记录时，本批Node测试885项通过；完整Rust/Clippy与搜索四场景GUI仍在执行，
+  不能提前列为通过。上述GUI不证明ABA原生状态用例、实服取色、Windows实际渲染、物理声卡听感
+  或设备刷新率；不使用播放位置前进代替这些独立要求。
