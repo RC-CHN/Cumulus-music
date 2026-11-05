@@ -46,7 +46,8 @@
     assert(all('.vinyl-mode-choice').map((node) => node.textContent.trim()).join('/') ===
       '标准/黑胶/歌词', 'official PC label order');
     const rect = dialog().getBoundingClientRect();
-    assert(rect.width < innerWidth && rect.height > 350, 'mode picker is a tall side sheet');
+    assert(rect.width === Math.min(386, innerWidth) && rect.height > 350,
+      'mode picker is the recovered 386px right side sheet');
   }
   async function hideSheet() {
     await wait(() => !dialog() && document.activeElement === entry() && panel(),

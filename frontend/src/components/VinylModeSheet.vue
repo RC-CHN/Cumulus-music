@@ -60,7 +60,7 @@ onMounted(() => {
 .vinyl-mode-sheet {
   position: fixed;
   inset: var(--header) 0 var(--player) auto;
-  width: min(440px, 100vw);
+  width: min(386px, 100vw);
   height: auto;
   max-height: none;
   max-width: none;
@@ -95,7 +95,8 @@ onMounted(() => {
 }
 .vinyl-mode-choices {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 92px));
+  justify-content: space-between;
   gap: 8px;
 }
 .vinyl-mode-choice {

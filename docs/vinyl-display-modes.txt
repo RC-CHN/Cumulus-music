@@ -8,7 +8,9 @@ DisplayModeEntry.tsx:226–241 调用 AppModal.openModeSwitcher；M31:
 1226–1238 打开 ModeSwitcherSideV2。ModeSwitcherSideV2.tsx:163–165,
 222–252 以单选卡发出 page:vinylEffect/updateDisplayMode。M46:41–107 的
 实际 PC V2 文案和顺序是「标准」「黑胶」「歌词」，对应 classic、
-cover、lyric。
+cover、lyric。M397:261–273 的通用右侧栏宽 386px；Cumulus 保留此宽度，
+高度贴合本客户端顶栏和播放条，并保留可直接聚焦的关闭按钮。官方该容器
+不显示通用标题及关闭按钮（header:null、closable:false）。
 
 M1210:107–119、156–185、310–347：首次默认标准，同一模式无变化；
 切换会取当前 UID 在该模式下上次选择的材质，访客、缺失或无法恢复的
