@@ -79,6 +79,7 @@ async fn comprehensive_observation_and_request_use_only_the_native_six_song_rows
     let value = serde_json::to_value(fresh.value).unwrap();
     assert_eq!(value["receipt"], receipt);
     assert_eq!(value["section"], "search_block_song:1");
+    assert_eq!(value["playAllIds"], json!(["1", "2", "3", "4", "5", "6"]));
     assert_eq!(
         value["rows"],
         json!([

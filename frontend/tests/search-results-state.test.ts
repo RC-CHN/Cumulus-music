@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { useSearchResults } from '../src/composables/useSearchResults.ts';
 import { createSearchViewportMemory } from '../src/services/searchViewport.ts';
 import {
+  comprehensivePlayAllTracks,
   displayedSearchCategories,
   searchExplanation,
   type SearchResultQuery,
@@ -701,6 +702,7 @@ test('verified rights refresh patches the first six ordinary cards without chang
     value: {
       receipt: 'observed-receipt',
       section: 'search_block_song:1',
+      playAllIds: ['1', '2', '3', '4', '5', '6'],
       rows: [
         {
           id: '1',
@@ -716,6 +718,7 @@ test('verified rights refresh patches the first six ordinary cards without chang
   model.connect(account);
   await model.open(query, true, 23);
   assert.deepEqual(calls, [], 'cold route has no second request');
+  assert.equal(comprehensivePlayAllTracks(model.view.value!.sections[1]).length, 7);
   model.savePosition({ top: 231, tracks: 0, focus: 'song:1', focusAction: 'more' });
   push({ epoch: '2', revision: 'wrong account' });
   push({ epoch: '1', revision: 'confirmed' });
@@ -728,6 +731,10 @@ test('verified rights refresh patches the first six ordinary cards without chang
   assert.equal(section.items[0].kind === 'song' && section.items[0].mvId, '601');
   assert.equal(section.items[0].kind === 'song' && section.items[0].limitedFree, true);
   assert.equal(section.items[6], page.value.sections[1].items[6]);
+  assert.deepEqual(
+    comprehensivePlayAllTracks(section).map((row) => row.id),
+    ['1', '2', '3', '4', '5', '6'],
+  );
   assert.deepEqual(model.position.value, {
     top: 231,
     tracks: 0,

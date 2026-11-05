@@ -50,6 +50,7 @@ pub(super) struct SearchPrivilegePages(Mutex<VecDeque<Arc<Page>>>);
 pub struct SearchPrivilegePatch {
     receipt: String,
     section: String,
+    play_all_ids: Vec<String>,
     rows: Vec<PrivilegeRow>,
 }
 
@@ -179,6 +180,7 @@ impl MusicClient {
             value: SearchPrivilegePatch {
                 receipt: receipt.into(),
                 section: page.preview.section.clone(),
+                play_all_ids: ids,
                 rows,
             },
         })

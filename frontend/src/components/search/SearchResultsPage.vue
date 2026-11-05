@@ -15,6 +15,7 @@ import type { SearchTableKind } from '../../services/searchTableColumns';
 import SearchTrackCard from './SearchTrackCard.vue';
 import type { AccountView, PlaylistView, TrackView } from '../../services/contracts';
 import {
+  comprehensivePlayAllTracks,
   displayedSearchCategories,
   searchExplanation,
   type SearchCategory,
@@ -263,6 +264,11 @@ function oneRowPreview(section: SearchSection) {
 }
 function showTrackMenu(request: TrackMenuRequest) {
   emit('more', { ...request, nextOrigin: 'search' });
+}
+function playComprehensiveAll(section: SearchSection) {
+  const rows = comprehensivePlayAllTracks(section);
+  const first = rows.findIndex((track) => !track.missing);
+  if (first >= 0) emit('play', rows, first, 'comprehensive_all');
 }
 function playTrack(track: TrackView | undefined, toggleCurrent = false) {
   if (track && !track.missing) emit('playTrack', track, toggleCurrent);
@@ -820,15 +826,10 @@ onBeforeUnmount(() => {
                 v-if="section.items.some((i) => i.kind === 'song')"
                 class="icon-button search-section-play"
                 aria-label="播放全部搜索单曲"
-                :disabled="!playable || !tracks(section).some((t) => !t.missing)"
-                @click="
-                  emit(
-                    'play',
-                    tracks(section),
-                    tracks(section).findIndex((t) => !t.missing),
-                    'comprehensive_all',
-                  )
+                :disabled="
+                  !playable || !comprehensivePlayAllTracks(section).some((t) => !t.missing)
                 "
+                @click="playComprehensiveAll(section)"
               >
                 <Icon name="play" />
               </button>

@@ -72,14 +72,28 @@ export function useSearchResults(
     try {
       const reply = await core.searchRefreshPrivileges(epoch, receipt, observation);
       if (!active() || reply.epoch !== epoch || reply.value.receipt !== receipt) return;
-      const { section, rows } = reply.value;
-      if (!/^search_block_song:[0-9]+$/.test(section) || !rows.length) return;
+      const { section, rows, playAllIds } = reply.value;
+      if (
+        !/^search_block_song:[0-9]+$/.test(section) ||
+        !playAllIds.length ||
+        playAllIds.length > 6
+      )
+        return;
       const patches = new Map(rows.map((row) => [row.id, row]));
       const sections = current.sections.map((block) => {
         if (block.id !== section || block.category !== 'songs') return block;
         let songs = 0;
+        const shown = block.items
+          .flatMap((item) => (item.kind === 'song' ? [item.track.id] : []))
+          .slice(0, 6);
+        if (
+          shown.length !== playAllIds.length ||
+          shown.some((id, index) => id !== playAllIds[index])
+        )
+          return block;
         return {
           ...block,
+          playAllIds,
           items: block.items.map((item) => {
             if (item.kind !== 'song' || songs++ >= 6) return item;
             const row = patches.get(item.track.id);

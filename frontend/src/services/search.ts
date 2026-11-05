@@ -80,6 +80,17 @@ export interface SearchSection {
   title: string;
   category: SearchCategory | null;
   items: SearchItem[];
+  /** Only set after a successful native privilege refresh of this block. */
+  playAllIds?: string[];
+}
+export function comprehensivePlayAllTracks(section: SearchSection): TrackView[] {
+  const rows = section.items.flatMap((item) => (item.kind === 'song' ? [item.track] : []));
+  const ids = section.playAllIds;
+  if (!ids) return rows;
+  const selected = rows.slice(0, ids.length);
+  return selected.length === ids.length && selected.every((track, index) => track.id === ids[index])
+    ? selected
+    : [];
 }
 export type SearchHotPlaybackTarget = {
   kind: 'song' | 'voice';
@@ -139,6 +150,7 @@ export interface SearchPrivilegeObservation {
 export interface SearchPrivilegePatch {
   receipt: string;
   section: string;
+  playAllIds: string[];
   rows: {
     id: string;
     coverUrl: string | null;
