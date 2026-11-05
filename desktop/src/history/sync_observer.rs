@@ -35,7 +35,7 @@ pub(super) fn observe<R: tauri::Runtime>(
                     let _ = handle.emit_to(
                         "main",
                         "cumulus:history-sync-changed",
-                        AccountData { epoch, value },
+                        &AccountData { epoch, value },
                     );
                 }
             }

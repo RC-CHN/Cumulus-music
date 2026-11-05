@@ -4,6 +4,7 @@ use cumulus_core::{
     client::{ClientError, MusicClient, dto::*},
     history::{HistorySyncAction, HistorySyncState},
 };
+use tauri::Manager;
 
 #[tauri::command]
 pub async fn history_sync_preference<R: tauri::Runtime>(
