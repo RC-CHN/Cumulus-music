@@ -72,6 +72,12 @@ struct Current {
 }
 
 impl Current {
+    fn same_scope(&self, token: &SessionToken, api: &Arc<dyn Api>, owner: &str) -> bool {
+        self.token == *token
+            && self.api.upgrade().is_some_and(|old| Arc::ptr_eq(&old, api))
+            && self.owner == owner
+    }
+
     fn matches(
         &self,
         token: &SessionToken,
@@ -79,10 +85,7 @@ impl Current {
         credentials: &Option<String>,
         owner: &str,
     ) -> bool {
-        self.token == *token
-            && self.api.upgrade().is_some_and(|old| Arc::ptr_eq(&old, api))
-            && self.credentials == *credentials
-            && self.owner == owner
+        self.same_scope(token, api, owner) && self.credentials == *credentials
     }
     fn snapshot(&self) -> PcPresentationSnapshot {
         PcPresentationSnapshot {
@@ -207,7 +210,16 @@ impl ScopeContext {
         {
             return Ok(current.snapshot());
         }
-        let flags = if domain.is_some() && credentials.is_some() {
+        let credential_changed = state.as_ref().is_some_and(|current| {
+            current.same_scope(token, api, &owner) && current.credentials != credentials
+        });
+        let flags = if credential_changed {
+            // Bootstrap is for a newly observed owner/context. Once this live
+            // context has actually rotated credentials, reloading its old
+            // display cache would resurrect a rejected previous-revision t1.
+            // Only a new successful read may repopulate this context.
+            Flags::default()
+        } else if domain.is_some() && credentials.is_some() {
             let loaded = store::load(&self.store, &owner);
             match loaded {
                 Ok(flags) => flags,

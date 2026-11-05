@@ -29,6 +29,10 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
 - 同一 token/API/credential revision/owner 内表现稳定则保留 revision；身份/实际
   凭据/API/匿名私有 UID 改变先生成新 revision。watch 最新值和 snapshot 竞态可用
   revision 比较；内部 is_current 供投影前后同步验证。此 revision 不是授权 token。
+- 同进程同 token/API/owner 已知发生 credential rotation 时先清空四项表现，直到
+  当前上下文新 live 成功；不得重新加载该 owner 旧 t1 来覆盖本次凭据交付 fence。
+  初次宿主 bootstrap 或正常 owner 切换仍读 owner 最后持久表现，不新增持久化
+  credential hash 权限门槛。新旧凭据之间这种保守清空是明确的分发隔离边界。
 - 初次、账号 watch、实际凭据提交触发读取；固定 30 分钟 interval 不随账号变化
   重置，错过 tick 不补发风暴。generation 在取样后前进只重绑到最新 watch，不让
   一个仍持有的 lease 静默永久停掉。正在读取时 Drop/账号变化取消旧结果。
@@ -36,6 +40,8 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   顺序不同）的内容不换凭据 revision/不发通知。一个 AB 响应自发凭据轮换可立即
   重读一次；连续轮换进入 CredentialChurn，等待后续外部变更或下一周期，避免
   自响应无限请求。这是本实现的有界恢复策略，不声称原客户端同样只有一次。
+  若 Cookie commit 与 refresh 返回发生在同一次 poll，result 分支同样消费实际
+  变更并计入这一次重启，不能在底层 watch 中把它再次当作新外部通知重开预算。
 
 持久表现不等于新鲜权限
 - Registry 根存储按 verified UID 或 anonymous:<privateUID> 分隔四个布尔值；
@@ -83,6 +89,8 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
   未恢复 Unknown 零请求、fresh301→register→fullbatch、guest 每次响应过滤、
   UID 不提升、未知 ACK 不重播、并行注册仅一次、三次确定回执有界、取消与账号
   切换后同 worker 继续 timer、AB 自发 cookie 的一次重启上限。
+  另验证已知凭据变更清空/失败不复活旧表现，新宿主仍可 bootstrap、同上下文
+  新成功可恢复；自响应 Churn 后真正外部 credential commit 可重新触发一次读。
 - 私有 unit tests 覆盖事务已完成注册不可重送、legacy migration、新 cache 优先、
   无睡眠的 generation 在 watch 取样后前进重绑。这里只记测试设计；提交时未运行
   Rust 测试或桌面 GUI，等待根分支集中编译/执行后单独记录实际结果。

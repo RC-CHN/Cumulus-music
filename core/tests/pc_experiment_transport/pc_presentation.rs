@@ -286,6 +286,52 @@ async fn persisted_bootstrap_survives_failure_but_is_never_fresh_authority() {
 }
 
 #[tokio::test]
+async fn known_credential_rotation_clears_live_flags_without_rehydrating_old_owner_cache() {
+    let f = Fixture::new(
+        true,
+        [
+            groups(true).into(),
+            json!({"code":403}).into(),
+            groups(true).into(),
+        ],
+    );
+    let first = f.client.refresh_pc_presentation().await.unwrap();
+    assert!(first.search_footer);
+    let target = ApiOrigin::Pc.url();
+    let revision = f.credentials.request_credentials(&target).unwrap().revision;
+    f.credentials
+        .record_response(
+            &target,
+            &["MUSIC_U=synthetic-presentation-rotated; Path=/; Secure".into()],
+            None,
+            &revision,
+        )
+        .unwrap();
+    let invalidated = f.client.pc_presentation().unwrap();
+    assert!(
+        !invalidated.search_footer && !invalidated.search_dense && !invalidated.search_expanded
+    );
+    assert!(invalidated.revision.parse::<u64>().unwrap() > first.revision.parse::<u64>().unwrap());
+    assert!(f.client.refresh_pc_presentation().await.is_err());
+    assert_eq!(f.client.pc_presentation().unwrap(), invalidated);
+    // Repeated local reads and failed refresh must not reload the old t1.
+    assert_eq!(f.client.pc_presentation().unwrap(), invalidated);
+    // A separate new host may still use the last owner display bootstrap.
+    // It has no fresh authority and is not this known-invalidated context.
+    let restarted = MusicClient::with_session(f.session.clone(), f.registry.clone());
+    assert!(restarted.pc_presentation().unwrap().search_footer);
+    let recovered = f.client.refresh_pc_presentation().await.unwrap();
+    assert!(recovered.search_footer);
+    assert!(
+        recovered.revision.parse::<u64>().unwrap() > invalidated.revision.parse::<u64>().unwrap()
+    );
+    assert_eq!(
+        f.paths(),
+        [ASSIGNMENT_PATH, ASSIGNMENT_PATH, ASSIGNMENT_PATH]
+    );
+}
+
+#[tokio::test]
 async fn unknown_waits_then_definite_fresh_301_registers_before_ab_without_promoting_uid() {
     let mut registered = reply(json!({"code":200,"userId":9001}));
     registered.set_cookies = vec![
@@ -570,6 +616,7 @@ async fn cookie_rotation_from_ab_response_has_one_restart_instead_of_a_self_resp
         [
             HttpResponse::Ready(Ok(first)),
             HttpResponse::Ready(Ok(second)),
+            groups(true).into(),
         ],
     );
     let lease = f.client.start_pc_presentation_runtime().unwrap();
@@ -581,5 +628,25 @@ async fn cookie_rotation_from_ab_response_has_one_restart_instead_of_a_self_resp
     assert_eq!(f.paths(), [ASSIGNMENT_PATH, ASSIGNMENT_PATH]);
     tokio::task::yield_now().await;
     assert_eq!(f.http.calls().len(), 2);
+    let target = ApiOrigin::Pc.url();
+    let revision = f.credentials.request_credentials(&target).unwrap().revision;
+    f.credentials
+        .record_response(
+            &target,
+            &["MUSIC_U=synthetic-external-change; Path=/; Secure".into()],
+            None,
+            &revision,
+        )
+        .unwrap();
+    let mut views = f.client.subscribe_pc_presentation().unwrap();
+    flags(&mut views, true).await;
+    assert_eq!(f.http.calls().len(), 3);
+    assert!(
+        f.http.calls()[2]
+            .cookie
+            .as_ref()
+            .unwrap()
+            .contains("MUSIC_U=synthetic-external-change")
+    );
     lease.shutdown().await.unwrap();
 }

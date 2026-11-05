@@ -241,17 +241,24 @@ async fn run(
                         continue;
                     },
                     result = refresh => {
-                        if anonymous {
+                        let changed = api.pc_presentation_credential_revision().ok().flatten() != before;
+                        if anonymous || changed {
+                            // A response can commit cookies and return Stale
+                            // in the same poll, after the watch arm was polled
+                            // Pending. Consume that notification here as part
+                            // of this read, not as a new external restart.
                             credentials = api.pc_presentation_credential_changes().ok().flatten();
                             if let Some(receiver) = credentials.as_mut() { receiver.borrow_and_update(); }
-                            if matches!(&result, Err(Error::StaleResponse | Error::CredentialChanged))
-                                && api.pc_presentation_credential_revision().ok().flatten() != before
-                                && credential_restarts == 0
-                            {
+                        }
+                        if changed && (!anonymous || matches!(&result, Err(Error::StaleResponse | Error::CredentialChanged))) {
+                            let _ = scope.snapshot(&current, &api);
+                            if credential_restarts == 0 {
                                 credential_restarts = 1;
                                 read_due = true;
                                 continue;
                             }
+                            publish.send_replace(PcPresentationRuntimeStatus::CredentialChurn);
+                            continue;
                         }
                         publish.send_replace(match result {
                             Ok(_) if scope.host.presentation.cache_write_failed.load(Ordering::Acquire) => PcPresentationRuntimeStatus::CacheWriteFailed,
