@@ -1,0 +1,91 @@
+PC 3.1.42.205594 全局实验表现生命周期（phase58）
+
+证据与范围
+- 优先使用 references 中同版本恢复的 hybrid_app M147、M198、M115、M100、
+  M15；未使用其他第三方客户端。M147:2730–2750 先恢复 abtest-cached-exps，
+  2944–2971 成功分配后更新网页全局表现并持久化，3055–3065 使用 1800000ms
+  周期。M147:2925–2931 失败保留此前成功网页分组，仅重置 qingxv。
+- 初次并非 debug reset。M198:2261–2271 subscriptions.init→appStart；
+  2287–2295 有 host 则 switchUser，无 host 则 createAnonimous；
+  switchUser:998–1005 在 hostStateUpdated 后 await refreshAbtest(src:user)。
+  LOGIN_SUCCESS:2339–2352 走同一 switchUser。
+- M147:2784–2802 ignoreAnonymous 只控制曝光；2874–2876 分组请求发生在曝光
+  分支之前。不可把无 MUSIC_U 的未初始化 guest 当成完成的匿名会话，也不可据此
+  省略已完成匿名会话的 fullbatch。曝光、统计、未迁移的网页键/原生配置字段不在
+  当前表现 DTO；不能据本契约声称所有实验消费者已迁移。
+
+原生表现宿主
+- client/pc_experiments/{presentation,store,runtime,anonymous}.rs 与原 shared
+  fullbatch gate 共用实际 transport；不使用 Tauri 或 renderer 轮询。宿主只投影
+  searchHot、search-result、searchMore2、searchPageEfficiency 四项 t1，其他组
+  仍由既有原生消费者各自读取。完整请求保持固定 190 键及顺序，没有新增 short3。
+- pc_presentation() 是本地快照；subscribe_pc_presentation() 是 watch；
+  start_pc_presentation_runtime(&self) 返回唯一 Native RuntimeLease；Drop 取消，
+  shutdown 等待退出。第二 lease 返回 MutationBusy。refresh_pc_presentation()
+  仅供原生启动/主机事件及封闭测试，生产 IPC 不接受 renderer 强制 cohort。
+- View 是 epoch、单进程单调十进制 revision 和 searchFooter/searchExpanded/
+  searchDense。内部 snapshot 另持 search_v3，只有可信 native capability 可供
+  endpoint/reprojection 使用；generic Api 的默认本地 false 不覆盖旧三桶选择。
+- 同一 token/API/credential revision/owner 内表现稳定则保留 revision；身份/实际
+  凭据/API/匿名私有 UID 改变先生成新 revision。watch 最新值和 snapshot 竞态可用
+  revision 比较；内部 is_current 供投影前后同步验证。此 revision 不是授权 token。
+- 初次、账号 watch、实际凭据提交触发读取；固定 30 分钟 interval 不随账号变化
+  重置，错过 tick 不补发风暴。generation 在取样后前进只重绑到最新 watch，不让
+  一个仍持有的 lease 静默永久停掉。正在读取时 Drop/账号变化取消旧结果。
+- Credentials 只在实际存储 CAS 提交成功后通知；逻辑相同（包括 CookieStore
+  顺序不同）的内容不换凭据 revision/不发通知。一个 AB 响应自发凭据轮换可立即
+  重读一次；连续轮换进入 CredentialChurn，等待后续外部变更或下一周期，避免
+  自响应无限请求。这是本实现的有界恢复策略，不声称原客户端同样只有一次。
+
+持久表现不等于新鲜权限
+- Registry 根存储按 verified UID 或 anonymous:<privateUID> 分隔四个布尔值；
+  local-guest 不从别人的 owner 恢复。文件不包含 Cookie、签名、客户端配置、
+  opaque logs 或签名 URL。新 schema 缺失才兼容迁移旧 owner 下
+  search-experiment-v1/assignment-v2 的 v3/expanded/dense，永不从旧数据产生
+  footer。新记录为 c/损坏/不兼容时均不复活旧 t1。
+- 仅成功 live fullbatch 写入 Assigned/fetched，fresh consumer 原本的严格 30 分钟
+  TTL 不变。持久 bootstrap 与 latest-successful display catch 都不能供自动跳歌、
+  评论写入、素材/权益等 dispatch 授权。服务 403 后可继续显示旧表现，但同次
+  fresh-authority read 必须失败。存储失败不伪装成功落盘；运行期有原生状态区分。
+- 本批只保证已映射四个表现键的 owner/cache/reactive source，不持久完整未知
+  官方 localStorage 对象；其他模块的表现迁移继续按具体源逐项接线。
+
+匿名注册前置与安全状态机
+- M115:106–110 先复用已存 anonimousToken，否则 native encodeAnonymousId
+  (M18.deviceId)；M100:54–60 固定 M15.Af({username})，只严格 numeric200 且
+  truthy userId 返回 UID；M15:1312 是 /api/register/anonimous。
+- M198:645–679 的已完成分支要求 UID 与 Cookie.getAll，有界实现保留这两者。
+  官方会循环到 UID；本实现最多重试三次“完整 numeric200 但无 UID”明确回执。
+  网络断开、未知/部分回执、发出后取消/超时均留 durable Sending→Uncertain，
+  不自动重播注册。未实际 dispatch 才恢复 Prepared。事务只允许缺失/Prepared
+  转 Sending；另一个 caller 已完成 Registered 时不能重新打开该写操作。
+- 编码器与真实原 DLL 38 个冻结输出向量见 anonymous-identity-native-contracts.txt；
+  Rust &str 不承诺 UTF16 孤立 surrogate。注册本批没有线上发送；38 个编码器
+  原生向量不代表真实服务注册成功。原生设备/签名上下文继续复用当前安装来源。
+- 默认运行期早于前端 restore。Unknown 未完成恢复不得注册；实际 native
+  account/get 明确 301 且本来无登录时，private guest_ready 通知相同 token，
+  不改公开 Unknown、不给 Expired、不增 generation，不取消并行 QR。SignedOut
+  可进入 guest；已有 MUSIC_U/待恢复登录或 Expired 不借此新建匿名会话。
+- 使用安装私有 guest store 和独立 MusicHttpClient，只复制同安装 deviceId 与
+  已有 PC profile/context，不复制已选账号 Cookie。Guest adapter 的每个响应
+  （包括注册后 AB）均在实际 Cookie commit 前过滤 MUSIC_U，对应 M198:671。
+  正常登录候选使用新 with_backend，anonymous_store=false，真实候选的 MUSIC_U
+  不被该过滤影响。匿名 UID 仅是本地私有表现 owner，不写 SessionToken.uid，
+  不授予账号资源、写入或原生 fresh consumer 的 authenticated eligibility。
+- durable token/UID/unknown receipt 保存在私有 guest 库；同设备已确认身份重启
+  可复用，不重注册。设备变化清理该 guest 的旧身份/凭据；账号切换取消旧结果。
+
+验证与边界
+- 新增 core/tests/pc_experiment_transport/pc_presentation.rs 使用真实
+  MusicHttpClient + PC Context/Windows UA/clientSign + EAPI，后端为封闭 ScriptHttp，
+  验证完整参数/Cookie/顺序，禁止网络。覆盖初次/30 分钟/唯一 lease/退出、其他
+  消费者更新、真实 vs no-op credential commit、持久恢复与 fresh403 对照、
+  未恢复 Unknown 零请求、fresh301→register→fullbatch、guest 每次响应过滤、
+  UID 不提升、未知 ACK 不重播、并行注册仅一次、三次确定回执有界、取消与账号
+  切换后同 worker 继续 timer、AB 自发 cookie 的一次重启上限。
+- 私有 unit tests 覆盖事务已完成注册不可重送、legacy migration、新 cache 优先、
+  无睡眠的 generation 在 watch 取样后前进重绑。这里只记测试设计；提交时未运行
+  Rust 测试或桌面 GUI，等待根分支集中编译/执行后单独记录实际结果。
+- 当前未测试真实匿名注册服务、真实账号完整 30 分钟墙钟或物理输出设备；不把
+  合成 transport/paused-time 测试称为实服/真实声卡验证。桌面 event/main-window
+  与 cached search 页重投影由独立上层集成，未由这些 core 测试单独覆盖。

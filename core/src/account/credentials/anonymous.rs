@@ -127,6 +127,12 @@ impl Credentials {
                     "PC anonymous registration acknowledgement is unknown",
                 ));
             }
+            if matches!(value.state, Phase::Registered { .. }) {
+                // Another caller may have completed registration after this
+                // caller inspected anonymous_state. A completed identity is
+                // immutable for this device; never turn it into a new send.
+                return Err(Error::StaleResponse);
+            }
             value.state = Phase::Sending {
                 attempt: id.clone(),
             };
@@ -205,5 +211,51 @@ impl Drop for AnonymousIntent {
         if !self.dispatched.load(Ordering::Relaxed) {
             let _ = self.finish(None);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn completed_registration_cannot_be_prepared_again_after_a_stale_precheck() {
+        let root = tempfile::tempdir().unwrap();
+        let credentials = Arc::new(
+            Credentials::open(
+                Arc::new(StateStore::open(root.path()).unwrap()),
+                ApiOrigin::Pc,
+            )
+            .unwrap(),
+        );
+        assert!(matches!(
+            credentials.anonymous_state().unwrap(),
+            PcAnonymousState::Unregistered
+        ));
+        let intent = credentials.begin_anonymous().unwrap();
+        intent.dispatched.store(true, Ordering::Release);
+        let target = ApiOrigin::Pc.url();
+        credentials
+            .record_response(
+                &target,
+                &["MUSIC_A=synthetic; Path=/; Secure".into()],
+                None,
+                &intent.revision,
+            )
+            .unwrap();
+        assert!(matches!(
+            intent.acknowledged("9001".into()).unwrap(),
+            PcAnonymousState::Registered { .. }
+        ));
+        // A competing caller may have read Unregistered before the first
+        // transaction committed. The send transaction itself must reject it.
+        assert!(matches!(
+            credentials.begin_anonymous(),
+            Err(Error::StaleResponse)
+        ));
+        assert!(matches!(
+            credentials.anonymous_state().unwrap(),
+            PcAnonymousState::Registered { .. }
+        ));
     }
 }

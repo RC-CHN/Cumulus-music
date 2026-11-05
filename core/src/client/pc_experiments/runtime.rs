@@ -97,6 +97,23 @@ async fn credentials_changed(receiver: &mut Option<watch::Receiver<String>>) -> 
     }
 }
 
+fn api_for_current(
+    session: &crate::account::AccountSession,
+    current: &mut crate::account::SessionToken,
+    accounts: &mut watch::Receiver<crate::account::SessionToken>,
+) -> Result<Option<Arc<dyn crate::protocol::api::Api>>> {
+    match session.native_api(current) {
+        Ok(api) => Ok(Some(api)),
+        Err(Error::StaleResponse) => {
+            // The generation can advance after the watch value was sampled.
+            // It is a normal rebind, not the end of the runtime lease.
+            *current = accounts.borrow_and_update().clone();
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
 async fn run(
     scope: ScopeContext,
     mut accounts: watch::Receiver<crate::account::SessionToken>,
@@ -115,13 +132,9 @@ async fn run(
         }
         if read_due {
             read_due = false;
-            let api = match scope.session.native_api(&current) {
-                Ok(api) => api,
-                Err(Error::StaleResponse) => {
-                    // The generation can advance after the watch value was
-                    // sampled. Rebind instead of permanently stopping a live
-                    // lease during ordinary account restoration or switching.
-                    current = accounts.borrow_and_update().clone();
+            let api = match api_for_current(&scope.session, &mut current, &mut accounts) {
+                Ok(Some(api)) => api,
+                Ok(None) => {
                     credentials = None;
                     credential_restarts = 0;
                     read_due = true;
@@ -269,6 +282,60 @@ async fn run(
             },
             _ = timer.tick() => { read_due = true; credential_restarts = 0; },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        account::AccountSession,
+        protocol::api::{Api, ApiFuture},
+    };
+    use serde_json::{Value, json};
+
+    struct NoRequest;
+    impl Api for NoRequest {
+        fn request<'a>(&'a self, _: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
+            Box::pin(async { panic!("local generation recovery cannot send a request") })
+        }
+    }
+
+    #[test]
+    fn already_advanced_account_watch_rebinds_without_ending_the_lease() {
+        let first: Arc<dyn Api> = Arc::new(NoRequest);
+        let session = AccountSession::new(first, None);
+        let mut current = session.token().unwrap();
+        let mut accounts = session.subscribe().unwrap();
+        let second: Arc<dyn Api> = Arc::new(NoRequest);
+        session
+            .adopt(second.clone(), json!({"userId":71}), &current)
+            .unwrap();
+        assert!(
+            api_for_current(&session, &mut current, &mut accounts)
+                .unwrap()
+                .is_none()
+        );
+        let rebound = api_for_current(&session, &mut current, &mut accounts)
+            .unwrap()
+            .unwrap();
+        assert!(Arc::ptr_eq(&rebound, &second));
+        assert_eq!(current.uid.as_deref(), Some("71"));
+        let third: Arc<dyn Api> = Arc::new(NoRequest);
+        session
+            .adopt(third.clone(), json!({"userId":72}), &current)
+            .unwrap();
+        assert!(
+            api_for_current(&session, &mut current, &mut accounts)
+                .unwrap()
+                .is_none()
+        );
+        assert!(Arc::ptr_eq(
+            &api_for_current(&session, &mut current, &mut accounts)
+                .unwrap()
+                .unwrap(),
+            &third
+        ));
     }
 }
 

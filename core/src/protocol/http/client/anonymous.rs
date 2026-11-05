@@ -23,7 +23,16 @@ impl MusicHttpClient {
         // community lifetime bound; an unreadable/lost ACK is never replayed.
         for _ in 0..3 {
             let intent: crate::account::credentials::AnonymousIntent =
-                self.credentials.begin_anonymous()?;
+                match self.credentials.begin_anonymous() {
+                    Ok(intent) => intent,
+                    Err(Error::StaleResponse) => {
+                        return match self.credentials.anonymous_state()? {
+                            registered @ PcAnonymousState::Registered { .. } => Ok(registered),
+                            _ => Err(Error::StaleResponse),
+                        };
+                    }
+                    Err(error) => return Err(error),
+                };
             let allowed = || {
                 if self.pc_experiment_revision_for(false)? != intent.revision
                     || matches!(
