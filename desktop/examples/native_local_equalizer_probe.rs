@@ -44,7 +44,9 @@ impl Api for Offline {
         Box::pin(async move {
             if path == "/api/w/nuser/account/get" {
                 self.account_reads.fetch_add(1, Ordering::SeqCst);
-                Ok(json!({"code":301}))
+                // The injected API does not have a native credential store.
+                // A synthetic 301 would expire this guest on every restore.
+                Err(Error::LoginDeferred)
             } else {
                 self.denied_other_requests.fetch_add(1, Ordering::SeqCst);
                 Err(Error::Transport(
@@ -200,6 +202,7 @@ fn main() {
             tauri::async_runtime::spawn(async move {
                 let proof = handle.state::<Proof>();
                 let client = handle.state::<MusicClient>();
+                let initial_epoch = client.account().ok().map(|account| account.epoch);
                 let result: Result<Value> = flow::verify(
                     &client,
                     &proof.store,
@@ -214,6 +217,8 @@ fn main() {
                     Err(error) => (
                         "failed.json",
                         json!({"ok":false,"failure":error.to_string(),
+                        "initialEpoch":initial_epoch,
+                        "finalEpoch":client.account().ok().map(|account| account.epoch),
                         "native":&*proof.evidence.lock().unwrap()}),
                         1,
                     ),

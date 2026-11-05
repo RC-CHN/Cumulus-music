@@ -4,8 +4,8 @@ Ordinary native file / local equalizer actor probe
 The dedicated native_local_equalizer_probe example starts a real Tauri
 WebView with the production frontend, numeric locale setup and the
 production MusicClient. Its registry is a new isolated guest profile and
-its Api can only synthesize signed-out account reads; all other requests
-are rejected. On Linux start it with en_US.UTF-8 in the existing private
+its Api can only defer synthetic guest account restoration; all other
+requests are rejected. On Linux start it with en_US.UTF-8 in the existing private
 Xvfb/D-Bus/network harness. The example checks that GTK startup retains the
 message locale while setting LC_NUMERIC to C.
 

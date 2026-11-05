@@ -142,7 +142,9 @@ impl AudioEngine for Recorded {
         self.engine.clear_parametric_component()
     }
     fn pause(&mut self, paused: bool) -> Result<()> {
-        self.engine.pause(paused)
+        self.engine.pause(paused).inspect_err(|error| {
+            eprintln!("ordinary local EQ native pause={paused}: {error}");
+        })
     }
     fn seek(&mut self, seconds: f64) -> Result<()> {
         self.engine.seek(seconds)
@@ -172,7 +174,9 @@ impl AudioEngine for Recorded {
         self.engine.stop()
     }
     fn poll(&mut self) -> Result<EngineSnapshot> {
-        let value = self.engine.poll()?;
+        let value = self.engine.poll().inspect_err(|error| {
+            eprintln!("ordinary local EQ native poll: {error}");
+        })?;
         let ended = value.events.iter().filter_map(|event| match *event {
             EngineEvent::Ended {
                 entry_id,
@@ -194,7 +198,11 @@ impl AudioEngine for Recorded {
             {
                 evidence.stock_paused_position = Some(position);
             }
-            if value.parametric_samples.is_some_and(|samples| samples > 0) {
+            if !value.paused
+                && !value.seeking
+                && !value.buffering
+                && value.parametric_samples.is_some_and(|samples| samples > 0)
+            {
                 evidence.peq_processed_entries.insert(entry);
             }
         }

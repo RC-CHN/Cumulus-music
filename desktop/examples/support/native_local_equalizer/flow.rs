@@ -37,7 +37,9 @@ async fn until(
 ) -> Result<PlayerView> {
     let result = tokio::time::timeout(Duration::from_secs(8), async {
         loop {
-            let view = client.player_snapshot(epoch).await?;
+            let view = client.player_snapshot(epoch).await.inspect_err(|error| {
+                eprintln!("ordinary local EQ snapshot at {stage}: {error}");
+            })?;
             if view.error.is_some() || view.state == PlaybackStatus::Error {
                 eprintln!(
                     "ordinary local EQ actor failed at {stage}: {view:?}",
@@ -153,10 +155,17 @@ async fn independent_peq(
     let processed = until(client, epoch, "independent_peq_processing", |view| {
         same_play(view, &before)
             && view.state == PlaybackStatus::Playing
-            && view.parametric_processing
             && view
                 .position
                 .is_some_and(|position| position > before_position + 0.05)
+            // A native-only plain component has no catalogue/device binding
+            // to expose through PlayerView. Verify its actual sink samples.
+            && {
+                let native = evidence.lock().unwrap();
+                native.yields.last().is_some_and(|handoff| {
+                    native.peq_processed_entries.contains(&handoff.replacement)
+                })
+            }
     })
     .await?;
     eprintln!("ordinary local EQ proof: independent_peq_processed_native_pcm");
@@ -193,7 +202,11 @@ pub async fn verify(
         .await?;
     configure(client, &epoch, &initial, curve(3.0)?).await?;
     eprintln!("ordinary local EQ proof: settings_committed");
-    let selected = client.play_native_open_files(&epoch, vec![path]).await?;
+    let selected = client
+        .play_native_open_files(&epoch, vec![path])
+        .await
+        .inspect_err(|error| eprintln!("ordinary local EQ file selection: {error}"))?;
+    eprintln!("ordinary local EQ proof: native_open_acknowledged");
     require(
         selected.resource_kind == Some(PlayerResourceKind::Local)
             && selected.entry_id.is_some()
@@ -215,7 +228,12 @@ pub async fn verify(
         expected_queue_revision: playing.queue_revision.clone(),
         paused,
     };
-    client.player_action(&epoch, pause(true)).await?;
+    client
+        .player_action(&epoch, pause(true))
+        .await
+        .inspect_err(|error| {
+            eprintln!("ordinary local EQ pause request: {error}");
+        })?;
     let paused = until(client, &epoch, "pause", |view| {
         same_play(view, &playing) && view.state == PlaybackStatus::Paused && !view.native_seeking
     })
