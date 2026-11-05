@@ -31,6 +31,47 @@ pub struct AmbienceOneSnapshot {
     pub feedback_history: [[f32; 4]; 16],
 }
 
+impl AmbienceOneSnapshot {
+    pub(super) fn from_arrays(indices: [u32; 87], history: [f32; 70]) -> Result<Self> {
+        if history.iter().any(|value| !value.is_finite()) {
+            return Err(Error::Media("non-finite ambience1 history"));
+        }
+        Ok(Self {
+            remaining_tail: (indices[0] != u32::MAX).then_some(indices[0]),
+            last_tail: indices[1],
+            total_tail: indices[2],
+            diffusion_positions: indices[3..7].try_into().expect("four positions"),
+            feedback_positions: std::array::from_fn(|i| {
+                indices[7 + 5 * i..12 + 5 * i]
+                    .try_into()
+                    .expect("five positions")
+            }),
+            damping: std::array::from_fn(|i| {
+                history[3 * i..3 * i + 3].try_into().expect("three values")
+            }),
+            feedback_history: std::array::from_fn(|i| {
+                history[6 + 4 * i..10 + 4 * i]
+                    .try_into()
+                    .expect("four values")
+            }),
+        })
+    }
+}
+
+pub(super) fn allocate_storage(rate: u32) -> Result<Box<[f32]>> {
+    // SAFETY: pure bounded geometry query for the validated sample rate.
+    let count = unsafe { ffi::cumulus_ambience_one_storage(rate) };
+    if count == 0 || count > STORAGE_LIMIT {
+        return Err(Error::Media("unsupported ambience1 delay geometry"));
+    }
+    let mut values = Vec::new();
+    values
+        .try_reserve_exact(count)
+        .map_err(|_| Error::Media("ambience1 storage allocation failed"))?;
+    values.resize(count, 0.0);
+    Ok(values.into_boxed_slice())
+}
+
 pub struct AmbienceOneEnvironment {
     state: State,
     format: Format,
@@ -52,17 +93,7 @@ impl AmbienceOneEnvironment {
             ));
         }
         let rate = format.rate() as u32;
-        // SAFETY: pure bounded geometry query for the validated sample rate.
-        let count = unsafe { ffi::cumulus_ambience_one_storage(rate) };
-        if count == 0 || count > STORAGE_LIMIT {
-            return Err(Error::Media("unsupported ambience1 delay geometry"));
-        }
-        let mut values = Vec::new();
-        values
-            .try_reserve_exact(count)
-            .map_err(|_| Error::Media("ambience1 storage allocation failed"))?;
-        values.resize(count, 0.0);
-        let mut storage = values.into_boxed_slice();
+        let mut storage = allocate_storage(rate)?;
         let mut state = State::new(8)?;
         // SAFETY: exclusive aligned C layout and exact owned zeroed arena.
         // The arena remains stable for the full state's lifetime.
@@ -114,28 +145,7 @@ impl AmbienceOneEnvironment {
                 history.as_mut_ptr(),
             )
         })?;
-        if history.iter().any(|value| !value.is_finite()) {
-            return Err(Error::Media("non-finite ambience1 history"));
-        }
-        Ok(AmbienceOneSnapshot {
-            remaining_tail: (indices[0] != u32::MAX).then_some(indices[0]),
-            last_tail: indices[1],
-            total_tail: indices[2],
-            diffusion_positions: indices[3..7].try_into().expect("four positions"),
-            feedback_positions: std::array::from_fn(|i| {
-                indices[7 + 5 * i..12 + 5 * i]
-                    .try_into()
-                    .expect("five positions")
-            }),
-            damping: std::array::from_fn(|i| {
-                history[3 * i..3 * i + 3].try_into().expect("three values")
-            }),
-            feedback_history: std::array::from_fn(|i| {
-                history[6 + 4 * i..10 + 4 * i]
-                    .try_into()
-                    .expect("four values")
-            }),
-        })
+        AmbienceOneSnapshot::from_arrays(indices, history)
     }
 
     /// May append frames and clear EOF while draining the original tail.

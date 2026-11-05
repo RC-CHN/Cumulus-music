@@ -1,7 +1,8 @@
 /* Official PC3.1.42 x64 fixed SE bank1 environment child: B6D10/B72B0,
  * B6EB0/BA4C0/BE020. No ER, arbitrary bank, complete SE or live UI claim.
- * A Rust-owned zeroed arena backs every delay; no allocation or callback is
- * performed by init/reset/process, and no original code/data is loaded. */
+ * A Rust-owned zeroed arena backs every delay. Init uses CRT qsort and a
+ * fixed private C comparator; process/reset allocate nothing or call back
+ * into Rust. No original code/data is loaded. */
 #include <math.h>
 #include <stdint.h>
 #include <stddef.h>

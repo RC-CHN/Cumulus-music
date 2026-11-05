@@ -3,6 +3,7 @@
 #include "netease_rotate.c"
 #include "netease_stereo_zero.c"
 #include "netease_ambience_one.c"
+#include "netease_stereo_one.c"
 
 size_t cumulus_dsp_size(unsigned kind) {
     switch(kind) {
@@ -15,6 +16,7 @@ size_t cumulus_dsp_size(unsigned kind) {
         case 6:return sizeof(NeteaseMultiband);
         case 7:return sizeof(NeteaseStereoZero);
         case 8:return sizeof(NeteaseAmbienceOne);
+        case 9:return sizeof(NeteaseStereoOne);
         default:return 0;
     }
 }
@@ -29,6 +31,7 @@ size_t cumulus_dsp_alignment(unsigned kind) {
         case 6:return _Alignof(NeteaseMultiband);
         case 7:return _Alignof(NeteaseStereoZero);
         case 8:return _Alignof(NeteaseAmbienceOne);
+        case 9:return _Alignof(NeteaseStereoOne);
         default:return 0;
     }
 }

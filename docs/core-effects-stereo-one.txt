@@ -1,0 +1,168 @@
+Fixed-bank1 complete SE component (ambience=1)
+==============================================
+Source: official Windows PC 3.1.42.205594 x64 neaudioeffects.dll,
+SHA256 c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be.
+This follows core-effects-ambience-one.txt and core-effects-stereo-zero.txt.
+
+Scope
+-----
+StereoAmbienceOneStage executes the complete fixed-bank1 SE parent, including
+M/S transform, two sidechain EQs, two dynamics, two main EQs, the real bank1
+environment child, stereo reconstruction, tail propagation and native-shaped
+bypass. It loads no original DLL, opaque parameter table or Python process.
+It is not the full GEQ/BT/RVB/limiter/material graph, arbitrary ambience bank,
+player renderer, sound-device or official UI activation. completeGraph=false
+on the CLI deliberately refers to that larger material graph.
+
+Official call chain and controls
+-------------------------------
+Report38:31–53 identifies NCAudioEffects Init1AEC0 (SE only for stereo),
+SE slot+28, enable/parameters1DD00/1DDC0, A82B0 initialization, A80D0 process,
+A8550 bypass and A85B0 controls; B34C0 initializes the parent; B28E0 processes;
+B3990 resets all seven children while retaining parent gains.
+
+Equalizer.tsx:140–168 writes the full material. Its :288–325 handlers and
+:476–518 sliders send presence[-10,10], stereoizer[0,10], sshaper:true,
+ambience:1. SE.on is separately calculated as either control being nonzero.
+The component does not infer bypass from these controls: callers apply the
+explicit material enable value through set_bypass, preserving A8550 behavior.
+The standalone native object is initially enabled, as in A82B0/A80D0.
+
+Typed initialization reuses the proven bank0/1 common EQ/dynamics constants.
+Bank1's side dynamics previous AND target input gain are 1dB. Bank0 starts
+with previous1dB but targets1.5dB after A85B0 changes bank: using its target
+in SE1 is wrong. The environment is independently initialized with the bank1
+numeric derivation already frozen for kind8. No original state/blob is copied.
+
+Exact parent sequence
+---------------------
+B28E0:2944–299b applies f32(presence*.6) as a difference from the last applied
+increment to M-main-EQ slot1; bank1 leaves that slot disabled. Presence must
+not silently enable the slot. M=L+R, S=L-R, with no .707 normalization.
+S ramps from prior parent side gain (initially0) to powf(10,stereoizer*.05).
+When sshaper is true, copies of M/S run through their sidechain EQs and then
+act as external detector inputs to each original mono dynamics. Both main
+EQs run afterwards. Shaper-off retains its caches/history for later use.
+
+B28E0:2ceb–2d43 copies exactly the original valid S prefix into both planar
+environment channels, forwards the caller's end state, and invokes B6EB0.
+B28E0:2e00–2ff6 reconstructs only the original input prefix and adds the
+corresponding environment output. The vector prefix computes the L half-
+products separately; scalar tail sums then halves. R subtracts then halves.
+B28E0:3012–304b copies ONLY environment output for any appended tail frames
+and propagates the child valid-frame count and end state. It never pretends
+those appended samples were input to the EQ/dynamics.
+
+A80D0 changes bypass through a full-capacity dry/wet blend. Stable bypass
+does not advance parent/child state or drain a pending environment tail; its
+frames/EOF simply pass through. Re-enabling invokes all-child reset before
+the next wet block. Explicit reset and re-enable preserve parent side gain,
+applied presence, child prior gains, ring cursors and active EOF budget.
+The outer plugin enables FTZ only while processing and restores the caller's
+FTZ bit, unlike the standalone environment child that inherits caller mode.
+
+Zero-valid-frame finding and compatibility
+-----------------------------------------
+The first private composition incorrectly treated all shaper work at n=0 as
+a no-op. Original 8kHz/cap64 block4 exposed an actual detector mismatch:
+M band0 power original1.30592671e-5 vs candidate1.12955458e-5. This was not a
+rounding tolerance issue and was not fixed by changing the assertion.
+
+C0650:0750–08fd reads the first retained external band sample and enters a
+sample do-while once even if the descriptor's valid count is0. C2B20 already
+clears the full main allocation and keeps its internal band caches; zero-
+length copy/crossover/gain operations do not refresh those samples. The fixed
+bank1 gains remain stable. A dedicated internal SE1 path reproduces that one
+detector update using the actual retained main/side band-cache first samples.
+It returns zero audio frames when there is no environment tail; it does not
+fabricate a one-frame input or route one invented sample through the graph.
+
+Every cache and complete PCM block is initialized and owned even when valid
+count is zero. The safe Rust API never passes an empty allocation, uninitialized
+sample or out-of-bounds first pointer. Public raw MultibandDynamics zero-frame
+settle remains unchanged (no detector advancement), as does SE0's rejection
+of zero frames. The new behavior is isolated to SE1's proven original internal
+dispatch, not a change to generic synchronization or all native DSP calls.
+
+Ownership and failure boundary
+------------------------------
+C layout kind9 is queried, aligned and owned in Rust. The shared parent state,
+complete band caches and environment-input storage are embedded in that one
+allocation. Rust separately owns the stable bounded delay arena and disjoint
+full-capacity dry buffer. There is no per-process allocation, callback, original
+asset dependency or escaped pointer. Send permits transfer; !Sync and &mut
+prevent concurrent mutation. Stereo, integer8000..384000Hz and capacities
+4..4096 divisible by4 are checked before allocation.
+
+Public controls reject nonfinite/out-of-range tuples before mutation. PCM
+must match the full initialized Format and be finite, including padding.
+Wrong count/format/NaN rejection is atomic. The private C entry rejects full
+and partial dry/output overlap; Rust borrows guarantee disjoint buffers.
+Numerical failure restores the caller FTZ, silences the owned full output,
+quarantines the stage, and requires reconstruction; reset/bypass cannot repair
+a partially failed object. Only returned valid frames may be consumed.
+
+Executable component
+--------------------
+  cargo run --locked -p cumulus-core --example effect_dsp_render -- stereo-one
+
+stdin:
+ {"sampleRate":8000,"maxFrames":64,"blocks":[
+   {"samples":[0.5,-0.25],"controls":{"presence":3,"stereoizer":5,"sshaper":true}},
+   {"samples":[],"end":true}
+ ]}
+
+Samples are interleaved; native storage is planar. Empty EOF blocks explicitly
+continue the real tail until returned end=true. Each response includes actual
+timing, PCM and parent/environment numeric state. Unknown ambience/bank fields
+are rejected. The existing16MiB/4096block/1,048,576input-float limits apply.
+This explicit offline tool does not activate the effect in normal playback.
+
+Evidence
+--------
+scripts/research/stereo_one_native.c executes the real A80D0/B28E0/B6EB0,
+A85B0/A8550 controls and B3990 reset after the original constructor/init chain.
+The manual generator hash-checks the original image and uses unshare -Urn.
+No algorithm, CRT or transcendental function is hooked. PE mapping, bounded
+calloc/free, capacity context and the TEB stack bound are the only adapters.
+Original code and table data stay in the local oracle, never in public CI.
+
+The public parent fixture reuses the pinned synthetic inputs from kind8 to
+avoid duplicating their PCM. Its manifest hashes that input artifact, DLL,
+oracle, generator and output. 14cases/1764blocks freeze all valid PCM SHA256,
+selected complete PCM bits, parent22floats, environment87indices/70historybits.
+They cover actual nonzero tail, controls, on/off shaper, bypass edges/stable,
+reset, zero/short frames, five sample rates, capacities4..4096 and caller FTZ0/1.
+
+Executed directly against the production C, without a Rust/desktop claim:
+  - full original-parent differential:14streams/45,772blocks, all valid PCM,
+    flow, parent/detector histories and all used environment AP/FDN/delay
+    buffers/cursors/coefficient/history bits match, complete EOF on every flow;
+  - public parent frozen corpus:14cases/1764blocks match PCM and all179numeric
+    state fields; extracted common prefix also preserves every bit in the
+    previous SE0 corpus (42cases/378blocks);
+  - source-only ASan/UBSan:35rate/capacity formats, initialized zero-frame
+    caches, internal detector behavior, explicit controls/reset/bypass,
+    in-place PCM, rejected partial dry overlap, guarded delay/PCM/dry arrays.
+
+The new Rust integration tests additionally exercise the public zero-frame
+compatibility, validated controls, quarantine, bypass, actual CLI timing and
+original CLI PCM. Rust tests/compilation belong to the next integration batch;
+they were not run in the isolated source-recovery branch. Strict original
+bitwise tests are Linux x86_64, not an unsupported MSVC equivalence claim.
+
+Manual memory command (no original binary needed):
+ cc -std=c11 -O1 -g -Wall -Wextra -Werror -fno-fast-math -ffp-contract=off \
+  -fsanitize=address,undefined -fno-omit-frame-pointer \
+  scripts/research/check_stereo_one_memory.c -lm -o CHECK
+ CHECK
+
+Remaining product work
+----------------------
+Fixed-bank1 SE PCM is now a candidate, while arbitrary ambience banks, ER,
+extra EQ, RVB and full GEQ/BT/SE/limiter material composition are separate.
+The official slider write/apply/enable eligibility must be bound to its real
+material route, not invented from this kernel. Linux/Windows host audio clock,
+seek/reset, EOF, routing, rollback and real Windows math/output proof are still
+required before live/UI activation. No entitlement bypass or listening result
+is inferred from synthetic native/null-output evidence.

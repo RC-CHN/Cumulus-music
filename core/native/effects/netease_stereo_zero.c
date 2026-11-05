@@ -96,6 +96,43 @@ int netease_stereo_zero_history(const NeteaseStereoZero *s,float out[22]) {
         if(netease_multiband_history(&s->dynamics[channel],out+2+channel*10))return -1;
     return 0;
 }
+/* Shared fixed-bank0/1 prefix. The public SE0 entry still rejects zero.
+ * Internal bank1 EOF keeps complete initialized band caches; C0650's original
+ * do-while consumes their first sample once even when valid_frames==0. */
+static int stereo_shared_prepare(NeteaseStereoZero *s,float *planar,size_t frames,unsigned empty_shaper) {
+    if(s->presence_dirty) {
+        float applied=s->presence*0.60000002384185791015625f;
+        float difference=applied-s->presence_gain;
+        if(difference!=0.0f) {
+            NeteasePeqBand p=s->eq[1].bands[1];
+            netease_peq_band(&s->eq[1],1,p.type,p.gain+difference,p.frequency,p.q,p.enabled);
+            s->presence_gain=applied;
+        }
+        s->presence_dirty=0;
+    }
+    for(size_t i=0;i<frames;i++) {
+        float left=planar[i],right=planar[s->capacity+i];
+        planar[i]=left+right;planar[s->capacity+i]=left-right;
+    }
+    float target=powf(10.0f,s->stereoizer*0.05000000074505806f);
+    netease_peq_gain(planar+s->capacity,frames,s->side_gain,target);s->side_gain=target;
+    if(s->shaper)for(unsigned channel=0;channel<2;channel++) {
+        float *side=s->side+channel*s->capacity;
+        memcpy(side,planar+channel*s->capacity,frames*sizeof(float));
+        netease_peq_process(&s->eq[channel*2],side,frames,s->eq_dry);
+        netease_multiband_process(&s->dynamics[channel],planar+channel*s->capacity,side,frames);
+    }
+    for(unsigned channel=0;channel<2;channel++)
+        netease_peq_process(&s->eq[channel*2+1],planar+channel*s->capacity,frames,s->eq_dry);
+    if(!frames && empty_shaper && s->shaper)for(unsigned channel=0;channel<2;channel++) {
+        NeteaseMultiband *child=&s->dynamics[channel];
+        memset(planar+channel*s->capacity,0,s->capacity*sizeof(float));
+        for(unsigned band=0;band<child->config.count;band++)
+            detector_process(&child->detector[band],child->data[0][band],child->data[1][band],1,
+                child->rate,child->rms,child->config.band[band]);
+    }
+    return 0;
+}
 int netease_stereo_zero_process(NeteaseStereoZero *s,float *planar,size_t frames,float *dry) {
     if(!s || !s->capacity || !planar || !dry || !frames || frames>s->capacity)return -1;
     size_t bytes=2*(size_t)s->capacity*sizeof(float);
@@ -105,30 +142,7 @@ int netease_stereo_zero_process(NeteaseStereoZero *s,float *planar,size_t frames
     if(changing)memcpy(dry,planar,bytes);
     if(changing || !s->bypass) {
         unsigned csr=begin_plugin();
-        if(s->presence_dirty) {
-            float applied=s->presence*0.60000002384185791015625f;
-            float difference=applied-s->presence_gain;
-            if(difference!=0.0f) {
-                NeteasePeqBand p=s->eq[1].bands[1];
-                netease_peq_band(&s->eq[1],1,p.type,p.gain+difference,p.frequency,p.q,p.enabled);
-                s->presence_gain=applied;
-            }
-            s->presence_dirty=0;
-        }
-        for(size_t i=0;i<frames;i++) {
-            float left=planar[i],right=planar[s->capacity+i];
-            planar[i]=left+right;planar[s->capacity+i]=left-right;
-        }
-        float target=powf(10.0f,s->stereoizer*0.05000000074505806f);
-        netease_peq_gain(planar+s->capacity,frames,s->side_gain,target);s->side_gain=target;
-        if(s->shaper)for(unsigned channel=0;channel<2;channel++) {
-            float *side=s->side+channel*s->capacity;
-            memcpy(side,planar+channel*s->capacity,frames*sizeof(float));
-            netease_peq_process(&s->eq[channel*2],side,frames,s->eq_dry);
-            netease_multiband_process(&s->dynamics[channel],planar+channel*s->capacity,side,frames);
-        }
-        for(unsigned channel=0;channel<2;channel++)
-            netease_peq_process(&s->eq[channel*2+1],planar+channel*s->capacity,frames,s->eq_dry);
+        if(stereo_shared_prepare(s,planar,frames,0)){end_plugin(csr);return -2;}
         size_t vector=frames&~(size_t)3;
         for(size_t i=0;i<frames;i++) {
             float mid=planar[i],side=planar[s->capacity+i];

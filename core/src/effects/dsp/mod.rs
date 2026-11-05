@@ -15,6 +15,7 @@ mod rotation;
 mod rotation_rate;
 mod rotation_resampled;
 mod state;
+mod stereo_one;
 mod stereo_zero;
 
 pub use ambience_one::{AmbienceOneEnvironment, AmbienceOneResult, AmbienceOneSnapshot};
@@ -32,6 +33,9 @@ pub use parametric::{ParametricBand, ParametricEq};
 pub use rotation::{RotationKernel, RotationResponses, RotationResult, RotationStage};
 pub use rotation_rate::{ROTATION_KERNEL_RATE, RotationRateConversion, RotationRatePlan};
 pub use rotation_resampled::{ResampledRotationStage, RotationRateConverter};
+pub use stereo_one::{
+    StereoAmbienceOneControls, StereoAmbienceOneSnapshot, StereoAmbienceOneStage,
+};
 
 pub use stereo_zero::{
     StereoNoAmbienceControls, StereoNoAmbienceResult, StereoNoAmbienceSnapshot,

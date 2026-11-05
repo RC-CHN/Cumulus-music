@@ -18,6 +18,7 @@ fn main() {
     println!("cargo:rerun-if-changed=native/effects/netease_rotate.c");
     println!("cargo:rerun-if-changed=native/effects/netease_stereo_zero.c");
     println!("cargo:rerun-if-changed=native/effects/netease_ambience_one.c");
+    println!("cargo:rerun-if-changed=native/effects/netease_stereo_one.c");
     println!("cargo:rerun-if-changed=native/effects/ambience_one/lengths.h");
     println!("cargo:rerun-if-changed=native/effects/ambience_one/network.h");
 }

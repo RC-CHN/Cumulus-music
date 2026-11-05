@@ -44,7 +44,9 @@ Independent initialization performs:
   BEC90 -> C5150 -> C1080 ring allocation geometry;
   C5050 high-damping ratio and C4F30 filter coefficient calculation;
   Init followed by Reset before processing, with stable old/current gains.
-All storage is a single bounded Rust-owned arena; no original state is copied.
+All delay storage is a bounded Rust-owned arena; no original state is copied.
+Initialization also uses CRT qsort with a fixed private C comparator. The CRT
+may allocate sorting workspace; no no-allocation promise is made for init.
 
 Length generation preserves f32 rounding, sort order and unsigned LCG casts.
 It deliberately does not use a conventional next-prime helper: B6620 computes
@@ -161,11 +163,11 @@ integration batch; compile success must not be reported as DSP validation.
 
 Remaining work
 --------------
-This restores the environment child, not complete SE ambience1. Parent M/S,
-bank-1 PEQ/dynamics/shaper, parameter transitions and whole-node EOF propagation
-still need a direct composed original-node proof. The bank-0 dynamics target
-cannot be silently reused: bank1 old/current gain values differ from the
-existing ambience=0 initialization. Other environment banks, ER, extra EQ and
+This kind8 component restores the environment child. The follow-up kind9
+candidate in core-effects-stereo-one.txt adds fixed-bank1 M/S/PEQ/dynamics/
+shaper and whole-node EOF with original-parent comparisons; it does not turn
+kind8 into a live effect or generalize to arbitrary banks. The bank-0 dynamics
+target cannot be silently reused. Other environment banks, ER, extra EQ and
 arbitrary RVB presets remain separate work. No renderer/player/UI attachment
 or material activation is added here.
 
