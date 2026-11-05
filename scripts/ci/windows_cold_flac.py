@@ -3,24 +3,19 @@ import argparse
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
 
 from windows_media import download, sha256, write_json
+from windows_flac import (
+    FLAC, FLAC_ARCHIVE, FLAC_ARCHIVE_SHA256, FLAC_DLL_SHA256, FLAC_IMPORTS,
+    FLAC_PACKAGE, FLAC_RELEASE, FLAC_URL, flac_imports,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
-FLAC = 'libFLAC.dll'
 MPV = 'libmpv-2.dll'
-FLAC_PACKAGE = 'mingw-w64-ucrt-x86_64-flac'
-FLAC_RELEASE = '1.5.0-2'
-FLAC_ARCHIVE = f'{FLAC_PACKAGE}-{FLAC_RELEASE}-any.pkg.tar.zst'
-FLAC_URL = f'https://repo.msys2.org/mingw/ucrt64/{FLAC_ARCHIVE}'
-FLAC_ARCHIVE_SHA256 = '28e8637795bd7d80289ddbb582d6ad350b73eac64390b877149717dd3757ad79'
-FLAC_DLL_SHA256 = 'c01d2adbb5f3a09c27bb6a857553d2f2143293b6e07aab0ac0b2a203337e54eb'
-FLAC_IMPORTS = {'libogg-0.dll', 'libwinpthread-1.dll'}
 RECEIPT = 'CUMULUS_WINDOWS_COLD_FLAC_RUNTIME '
 
 ENGINE = 'playback::engine'
@@ -71,7 +66,7 @@ def ensure_flac(runtime, msys, working):
     return 'pinned-msys2-archive'
 
 
-def stage_runtime(package, msys, working):
+def stage_runtime(package, msys, working, *, require_package_flac=False):
     runtime = working / 'runtime'
     runtime.mkdir()
     dlls = {}
@@ -85,18 +80,12 @@ def stage_runtime(package, msys, working):
             dlls[name] = sha256(destination)
     if MPV not in dlls or not FLAC_IMPORTS <= dlls.keys():
         raise ValueError('missing libmpv or libFLAC non-system imports in package runtime')
+    if require_package_flac and FLAC.lower() not in dlls:
+        raise ValueError('packaged libFLAC is required; refusing a proof-only replacement')
     origin = ensure_flac(runtime, msys, working)
-    objdump = msys / 'ucrt64/bin/objdump.exe'
-    metadata = subprocess.check_output(
-        [objdump, '-p', runtime / FLAC], encoding='utf-8', errors='replace', timeout=20,
-    )
-    imports = {name.lower() for name in re.findall(r'DLL Name:\s*(\S+)', metadata)}
-    non_system = {
-        name for name in imports
-        if not name.startswith(('api-ms-', 'ext-ms-')) and name != 'kernel32.dll'
-    }
-    if 'file format pei-x86-64' not in metadata or non_system != FLAC_IMPORTS:
-        raise ValueError('unexpected architecture or imports for the pinned libFLAC DLL')
+    if require_package_flac and origin != 'package-stage':
+        raise ValueError('native verification did not use the packaged libFLAC DLL')
+    imports = flac_imports(runtime / FLAC, msys / 'ucrt64/bin/objdump.exe')
     dlls[FLAC.lower()] = sha256(runtime / FLAC)
     if dlls[FLAC.lower()] != FLAC_DLL_SHA256:
         raise ValueError('staged libFLAC bytes changed before native verification')
@@ -149,7 +138,7 @@ def check_identity(receipt, runtime):
         raise ValueError('Windows native receipt does not identify the verified runtime')
 
 
-def verify(root, package, msys, native_audio_probe=None):
+def verify(root, package, msys, native_audio_probe=None, *, require_package_flac=False):
     root.mkdir(parents=True, exist_ok=False)
     report = {
         'ok': False,
@@ -166,8 +155,11 @@ def verify(root, package, msys, native_audio_probe=None):
     try:
         with tempfile.TemporaryDirectory(prefix='cold-flac-runtime-', dir=root.parent) as directory, \
                 (root / 'tests.log').open('x', encoding='utf-8') as log:
-            runtime, origin, dlls, imports = stage_runtime(package, msys, Path(directory))
-            report.update(libflacOrigin=origin, dllSha256=dlls, libflacImports=imports)
+            runtime, origin, dlls, imports = stage_runtime(
+                package, msys, Path(directory), require_package_flac=require_package_flac,
+            )
+            report.update(libflacOrigin=origin, libflacPackaged=origin == 'package-stage',
+                          dllSha256=dlls, libflacImports=imports)
             test = test_executable(log)
             system = Path(os.environ['SystemRoot'])
             excluded = {'PATH', 'MPV_DLL_DIR_CUMULUS', 'CUMULUS_FLAC_PROBE_LIBRARY',
@@ -223,6 +215,7 @@ def main():
     parser.add_argument('--runtime', required=True, type=Path)
     parser.add_argument('--report', required=True, type=Path)
     parser.add_argument('--native-audio-probe', type=Path, help='same-build GUI probe inside the verified temporary runtime')
+    parser.add_argument('--require-package-flac', action='store_true', help='reject missing packaged FLAC rather than filling the private proof directory')
     args = parser.parse_args()
     if sys.platform != 'win32':
         parser.error('run native verification on Windows')
@@ -231,7 +224,8 @@ def main():
     sys.stdout.reconfigure(encoding='utf-8')
     verify(args.report.resolve(), args.runtime.resolve(strict=True),
            Path(os.environ['CUMULUS_MSYS2_ROOT']).resolve(strict=True),
-           args.native_audio_probe.resolve(strict=True) if args.native_audio_probe else None)
+           args.native_audio_probe.resolve(strict=True) if args.native_audio_probe else None,
+           require_package_flac=args.require_package_flac)
 
 
 if __name__ == '__main__':

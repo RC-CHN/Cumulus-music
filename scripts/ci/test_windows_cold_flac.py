@@ -10,6 +10,17 @@ import windows_cold_flac as proof
 
 
 class WindowsColdFlacTests(unittest.TestCase):
+    def test_ci_requires_the_packaged_dll_before_any_proof_fallback(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(proof, 'ensure_flac') as fallback:
+            root = Path(directory)
+            package = root / 'package'
+            package.mkdir()
+            for name in {proof.MPV, *proof.FLAC_IMPORTS}:
+                (package / name).write_bytes(b'synthetic DLL')
+            with self.assertRaisesRegex(ValueError, 'packaged libFLAC is required'):
+                proof.stage_runtime(package, root, root, require_package_flac=True)
+            fallback.assert_not_called()
+
     def test_rejects_an_unverified_dll_already_in_the_package(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(proof, 'download') as download:
             root = Path(directory)
@@ -69,7 +80,8 @@ class WindowsColdFlacTests(unittest.TestCase):
             outer = Path(directory)
             gui_runs = []
 
-            def staged(package, msys, working):
+            def staged(package, msys, working, *, require_package_flac):
+                self.assertFalse(require_package_flac)
                 runtime = working / 'runtime'
                 runtime.mkdir()
                 for name in (proof.FLAC, proof.MPV):

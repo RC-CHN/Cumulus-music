@@ -14,8 +14,17 @@ import sys
 import tarfile
 import zipfile
 
+from linux_flac_artifacts import (
+    COMPILE_DIGEST_ENV as LINUX_FLAC_DIGEST_ENV,
+    stage_decoder as stage_linux_decoder,
+    verify_archives as verify_linux_archives,
+)
 from native_receipts import verify_parametric, verify_pinned
 from release_guard import check_versions, git
+from windows_flac import (
+    COMPILE_DIGEST_ENV as WINDOWS_FLAC_DIGEST_ENV,
+    FLAC, FLAC_ARCHIVE_SHA256, FLAC_IMPORTS, FLAC_LICENSE, FLAC_URL, decoder_receipt, stage_decoder,
+)
 from windows_media import copy_provenance
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -34,14 +43,22 @@ def digest(path):
 def windows_media(destination, msys):
     """Copy the PE import closure, not the whole compiler/MSYS2 installation."""
     copy_provenance(destination, msys)
+    licenses = msys / "ucrt64/share/licenses"
+    assert licenses.is_dir(), "MSYS2 license directory missing"
+    shutil.copytree(licenses, destination / "third-party/licenses")
+    flac_imports = stage_decoder(destination, msys)
     binary = msys / "ucrt64/bin"
     candidates = {p.name.lower(): p for pattern in ("*.dll", "ffprobe.exe") for p in binary.glob(pattern)}
     assert "libmpv-2.dll" in candidates, "MSYS2 UCRT64 libmpv is missing"
     assert "ffprobe.exe" in candidates, "MSYS2 UCRT64 ffprobe is missing"
-    pending, copied = ["libmpv-2.dll", "ffprobe.exe"], set()
+    pending, copied = ["libmpv-2.dll", "ffprobe.exe", FLAC.lower()], set()
     while pending:
         name = pending.pop()
         if name in copied:
+            continue
+        if name == FLAC.lower():
+            copied.add(name)
+            pending.extend(sorted(flac_imports))
             continue
         source = candidates.get(name)
         if source is None:
@@ -50,21 +67,23 @@ def windows_media(destination, msys):
         shutil.copy2(source, destination / source.name)
         copied.add(name)
         imports = subprocess.check_output([str(binary / "objdump.exe"), "-p", str(source)], text=True, encoding="utf-8", errors="replace")
+        if name in FLAC_IMPORTS and "file format pei-x86-64" not in imports:
+            raise ValueError(f"wrong PE architecture for libFLAC dependency: {name}")
         pending.extend(name.lower() for name in re.findall(r"DLL Name:\s*(\S+)", imports))
-    licenses = msys / "ucrt64/share/licenses"
-    assert licenses.is_dir(), "MSYS2 license directory missing"
-    shutil.copytree(licenses, destination / "third-party/licenses")
     packages = subprocess.check_output([str(msys / "usr/bin/pacman.exe"), "-Q"], text=True, encoding="utf-8")
     (destination / "third-party/msys2-packages.txt").write_text(packages, encoding="utf-8")
     (destination / "third-party/SOURCES.txt").write_text(
-        "Runtime DLLs are from MSYS2 UCRT64, with exact installed versions in msys2-packages.txt.\n"
+        "Shared runtime DLLs are from MSYS2 UCRT64; see the installed inventory in msys2-packages.txt.\n"
         "Cumulus rebuilds the pinned FFmpeg recipe with LADSPA enabled; corresponding source,\n"
         "original/modified recipes, checksums and runtime provenance are in cumulus-ffmpeg-source/.\n"
+        f"The pinned {FLAC} is extracted independently from {FLAC_URL}\n"
+        f"Archive SHA-256: {FLAC_ARCHIVE_SHA256}\n"
+        f"The decoder's Xiph license is included at {FLAC_LICENSE}.\n"
         "Package metadata, source archives and recipe history: https://packages.msys2.org/\n"
         "Source recipes: https://github.com/msys2/MINGW-packages\n"
         "libmpv: https://github.com/mpv-player/mpv ; FFmpeg: https://ffmpeg.org/\n"
         "The included licenses retain their upstream terms.\n", encoding="utf-8")
-    return sorted(name for name in copied if name.endswith(".dll"))
+    return sorted(name for name in copied if name.endswith(".dll")), decoder_receipt(destination, flac_imports)
 
 
 def main():
@@ -89,17 +108,15 @@ def main():
     filter_name = "cumulus_audio_filter.dll" if windows else "libcumulus_audio_filter.so"
     run(["cargo", "build", "--release", "--locked", "-p", "cumulus-core", "-p", "cumulus-audio-filter", "--lib", "--example", "engine_roundtrip", "--example", "player_probe", "--example", "pinned_audio_probe", "--example", "parametric_probe"])
     shutil.copy2(target / "release" / filter_name, native / filter_name)
-    dlls = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"])) if windows else []
-    flac_decoder = None
-    tauri_options = {}
-    if not windows:
-        from linux_flac_artifacts import COMPILE_DIGEST_ENV, stage_decoder, verify_archives
-        flac_decoder = stage_decoder(native, stage / "flac-source-build")
-        tauri_options["env"] = {
-            **{key: value for key, value in os.environ.items()
-               if key not in {COMPILE_DIGEST_ENV, "CUMULUS_PACKAGED_WINDOWS_FLAC_SHA256"}},
-            COMPILE_DIGEST_ENV: flac_decoder["library"]["sha256"],
-        }
+    if windows:
+        dlls, flac_decoder = windows_media(native, Path(os.environ["CUMULUS_MSYS2_ROOT"]))
+        flac_digest_env = WINDOWS_FLAC_DIGEST_ENV
+    else:
+        dlls, flac_decoder = [], stage_linux_decoder(native, stage / "flac-source-build")
+        flac_digest_env = LINUX_FLAC_DIGEST_ENV
+    build_env = {key: value for key, value in os.environ.items()
+                 if key.upper() not in {LINUX_FLAC_DIGEST_ENV, WINDOWS_FLAC_DIGEST_ENV}}
+    build_env[flac_digest_env] = flac_decoder["library"]["sha256"]
     config = {"build": {"beforeBuildCommand": ""}, "bundle": {"active": True,
         "resources": {str(native): "" if windows else "native", str(ROOT / "LICENSE"): "LICENSE", str(ROOT / f"docs/releases/{version}.txt"): "README.txt"},
         "shortDescription": "Community desktop music client",
@@ -112,7 +129,7 @@ def main():
         "windows": {"nsis": {"installMode": "currentUser", "languages": ["SimpChinese", "English"]}}}}
     config_path = stage / "bundle-config.json"
     config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
-    run(["node", ROOT / "frontend/node_modules/@tauri-apps/cli/tauri.js", "build", "--ci", "--bundles", "nsis" if windows else "deb", "--config", config_path, "--", "--locked"], cwd=ROOT / "desktop", **tauri_options)
+    run(["node", ROOT / "frontend/node_modules/@tauri-apps/cli/tauri.js", "build", "--ci", "--bundles", "nsis" if windows else "deb", "--config", config_path, "--", "--locked"], cwd=ROOT / "desktop", env=build_env)
 
     portable = stage / f"Cumulus-{version}-{args.platform}"
     portable.mkdir()
@@ -174,9 +191,9 @@ def main():
     pinned_probe.unlink()
     (portable / "runtime-manifest.json").write_text(json.dumps({
         "version": version, "commit": sha, "platform": args.platform, "dlls": dlls,
+        "flacDecoder": flac_decoder,
         "nativePlayback": media_report, "equalizerPlayback": eq_report,
         "pinnedPlayback": pinned_report, "parametricPlayback": peq_report,
-        **({"flacDecoder": flac_decoder} if flac_decoder is not None else {}),
     }, indent=2), encoding="utf-8")
     archive_base = f"Cumulus-{version}-{args.platform}"
     if windows:
@@ -191,14 +208,14 @@ def main():
     assert len(installers) == 1, f"expected one installer, found {len(installers)}"
     shutil.copy2(installers[0], output / f"{archive_base}-setup.exe" if windows else output / f"{archive_base}.deb")
     if not windows:
-        verify_archives(output / f"{archive_base}.deb", output / f"{archive_base}.tar.gz",
-                        archive_base, flac_decoder, commit=sha, version=version)
+        verify_linux_archives(output / f"{archive_base}.deb", output / f"{archive_base}.tar.gz",
+                              archive_base, flac_decoder, commit=sha, version=version)
     assert git("rev-parse", "HEAD") == sha and not git("status", "--porcelain", "--untracked-files=normal"), "source changed during packaging"
     manifest = {"version": version, "commit": sha, "platform": args.platform,
         "ciRun": os.environ.get("GITHUB_RUN_ID"), "ciAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"),
+        "flacDecoder": flac_decoder,
         "nativePlayback": media_report, "equalizerPlayback": eq_report,
         "pinnedPlayback": pinned_report, "parametricPlayback": peq_report,
-        **({"flacDecoder": flac_decoder} if flac_decoder is not None else {}),
         "assets": [{"name": p.name, "bytes": p.stat().st_size, "sha256": digest(p)} for p in sorted(output.iterdir())]}
     (output / f"manifest-{args.platform}.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     if windows and (github_env := os.environ.get("GITHUB_ENV")):

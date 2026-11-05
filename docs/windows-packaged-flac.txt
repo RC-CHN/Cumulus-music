@@ -1,0 +1,26 @@
+Windows x64 package: FLAC decoder 1.5.0
+
+The Windows portable ZIP and NSIS staging include libFLAC.dll beside the
+existing media runtime. The release build extracts only that DLL and
+COPYING.Xiph from the pinned MSYS2 UCRT64 flac 1.5.0-2 archive. It does not
+install the archive into the runner, read an ambient FLAC DLL, or bundle the
+FLAC executables/C++ library. scripts/ci/windows_flac.py locks the archive,
+individual member SHA-256 values, PE machine and import table. The matching
+Xiph notice is at third-party/licenses/flac-1.5.0/COPYING.Xiph.
+
+The existing MSYS2 UCRT64 media closure resolves libogg-0.dll and
+libwinpthread-1.dll and their imports. It uses a single copy of each shared
+dependency and records the bytes in flacDecoder.pe.dependencies; these
+dependencies follow the media package inventory, not the FLAC archive pin.
+The Tauri build receives CUMULUS_PACKAGED_WINDOWS_FLAC_SHA256 only from the
+verified staged DLL. The packaged runtime and CI artifact manifests carry the
+same flacDecoder entry. The ZIP proof checks that both manifests agree and
+that the archived DLL, notice and dependency bytes match before launching.
+
+The required Windows cold FLAC CI step uses --require-package-flac. It fails
+if the staged DLL is absent instead of installing a proof-only replacement.
+The independent manual runtime probe may still run against older packages.
+The static PE and archive checks do not execute a Windows DLL; the Windows
+runner tests the actual native module and null output. Packaging alone does
+not prove a DSP preset attaches during ordinary playback or validate output
+on a physical sound device.

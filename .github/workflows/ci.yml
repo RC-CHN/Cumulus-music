@@ -466,7 +466,7 @@ jobs:
           CUMULUS_MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           cargo build -p cumulus-desktop --example native_audio_probe --features custom-protocol --locked
-          python scripts/ci/windows_cold_flac.py --runtime .build/package-stage/windows-x64/native --report .build/ci-windows-cold-flac --native-audio-probe .build/target/debug/examples/native_audio_probe.exe
+          python scripts/ci/windows_cold_flac.py --runtime .build/package-stage/windows-x64/native --report .build/ci-windows-cold-flac --native-audio-probe .build/target/debug/examples/native_audio_probe.exe --require-package-flac
       - name: Preserve the Windows cold FLAC runtime report
         if: always() && !cancelled() && hashFiles('.build/ci-windows-cold-flac/report.json') != ''
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
