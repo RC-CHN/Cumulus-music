@@ -113,7 +113,12 @@ impl Api for Library {
             if let Some(scene) = &self.scene_home {
                 return match scene.response(path, &body) {
                     Some(response) => {
-                        if self.palette.is_some() {
+                        if self.palette.is_some()
+                            && matches!(
+                                path,
+                                "/api/voice/homepage/block/content" | "/api/dj/program/detail"
+                            )
+                        {
                             response.map(scene_palette_fixture::artwork_response)
                         } else {
                             response

@@ -120,7 +120,13 @@ pub fn artwork_response(mut value: Value) -> Value {
             ));
         }
     }
-    if let Some(rows) = value["data"][0]["creatives"].as_array_mut() {
+    if let Some(rows) = value
+        .get_mut("data")
+        .and_then(Value::as_array_mut)
+        .and_then(|data| data.first_mut())
+        .and_then(|block| block.get_mut("creatives"))
+        .and_then(Value::as_array_mut)
+    {
         for row in rows {
             if let Some(voices) = row["creativeExtInfoVO"]["djPrograms"].as_array_mut() {
                 for voice in voices {
