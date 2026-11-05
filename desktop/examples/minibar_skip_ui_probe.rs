@@ -86,8 +86,9 @@ impl Api for ProofApi {
                         .lock()
                         .unwrap()
                         .push(json!({"kind":"authorization","path":path,"id":id}));
-                    // Row 2's catalog privilege is denied. The actual URL read
-                    // is allowed in control so that its ordinary path can play.
+                    // Row 2's catalog privilege is denied and must not reach
+                    // this URL path in either verified group. The runner
+                    // independently asserts the full authorization sequence.
                     json!({"code":200,"data":[{"id":ids[0],"url":MEDIA,"code":200,"md5":"fixture","level":"standard","expi":120}]})
                 }
                 "/api/v3/song/detail" | "/api/rtrs/abt/front/expinfo/list" => {

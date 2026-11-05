@@ -16,7 +16,7 @@ def check(directory, group, capture):
     before = read(directory / 'ux_01_before.json')
     after = read(directory / 'ux_02_after.json')
     complete = read(directory / 'complete.json')
-    expected = '3' if group == 't1' else '2'
+    expected = '3' if group == 't1' else '1'
     assert complete['ok'] and complete['group'] == group and complete['target'] == expected, complete
     assert complete['stageCount'] == 2
     assert before['ids'] == after['ids'], (before, after)
@@ -32,7 +32,16 @@ def check(directory, group, capture):
         assert player['entryId'] == row['current'] == row['ids'][int(track) - 1][1], row
         assert dom['title'] == f'合成底栏歌曲 {track}' and dom['nextLabel'] == '下一首', row
         assert dom['nextEnabled'] and dom['unread'], row
-    assert after['player']['playId'] != before['player']['playId']
+    ack = after['acknowledgement']
+    assert ack['trackId'] == expected and ack['playId'] == after['player']['playId'], ack
+    assert ack['entryId'] == after['player']['entryId'] and ack['state'] == 'playing', ack
+    if group == 't1':
+        assert after['player']['playId'] != before['player']['playId']
+    else:
+        assert after['player']['playId'] == before['player']['playId']
+        assert after['player']['queueRevision'] == before['player']['queueRevision']
+        assert after['current'] == before['current']
+        assert after['player']['position'] > before['player']['position'] + .05
     assert after['actions'] == [{
         'epoch': before['player']['epoch'], 'action': {
             'kind': 'step_mini_bar', 'direction': 'next', 'play_id': before['player']['playId'],
@@ -40,15 +49,15 @@ def check(directory, group, capture):
         },
     }], after['actions']
     auth = lambda trace: [row['id'] for row in trace if row['kind'] == 'authorization']
-    assert auth(before['trace']) == ['1'] and auth(after['trace']) == ['1', expected], after['trace']
+    assert auth(before['trace']) == ['1'], before['trace']
+    assert auth(after['trace']) == (['1', '3'] if group == 't1' else ['1']), after['trace']
     assert after['trace'] == complete['trace'], complete['trace']
     assert [row for row in after['trace'] if row['kind'] == 'verified_assignment'] == [
         {'kind': 'verified_assignment', 'group': group},
     ], after['trace']
     assert sum(row['kind'] == 'count' for row in before['trace']) >= 1, before['trace']
-    assert after['trace'][len(before['trace']):] == [
-        {'kind': 'authorization', 'path': '/api/song/enhance/player/url/v1', 'id': expected},
-    ], after['trace']
+    expected_requests = [{'kind': 'authorization', 'path': '/api/song/enhance/player/url/v1', 'id': '3'}]
+    assert after['trace'][len(before['trace']):] == (expected_requests if group == 't1' else []), after['trace']
     locale = read(directory / 'locale.json')
     assert locale['numeric'] == 'C', locale
     assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'

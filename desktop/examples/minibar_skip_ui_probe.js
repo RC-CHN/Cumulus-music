@@ -29,9 +29,10 @@
     button.click();
   }
   const group = window.__minibarProofGroup;
-  const target = group === 't1' ? '3' : '2';
+  const target = group === 't1' ? '3' : '1';
   let core;
   let original;
+  let acknowledgement;
   const actions = [];
   try {
     assert(group === 't1' || group === 'c', 'fixture cohort');
@@ -82,21 +83,33 @@
     // Observe/delegate the real bridge. Do not change its request or result.
     core.playerAction = (owner, action) => {
       actions.push({ epoch: owner, action: JSON.parse(JSON.stringify(action)) });
-      return original.call(core, owner, action);
+      return original.call(core, owner, action).then((reply) => {
+        acknowledgement = state(reply);
+        return reply;
+      });
     };
     click(next());
-    const after = await wait(readPlaying(target), 'real bottom-bar step must decode the expected track');
+    const after = await wait(async () => {
+      if (!acknowledgement) return false;
+      const value = await readPlaying(target)();
+      return value && (group === 't1' || value.position > before.position + .05) && value;
+    }, 'bottom-bar IPC acknowledgment and expected native clock');
     const afterQueue = await queue();
     assert(actions.length === 1 && actions[0].epoch === epoch, 'exact one real button action');
     const sent = actions[0].action;
     assert(sent.kind === 'step_mini_bar' && sent.direction === 'next' &&
       sent.play_id === before.playId && sent.expected_queue_revision === before.queueRevision,
     'bottom-bar IPC keeps the previous play and queue fence');
-    assert(after.playId !== before.playId && afterQueue.current === ids[Number(target) - 1][1] &&
+    assert(afterQueue.current === ids[Number(target) - 1][1] &&
       JSON.stringify(afterQueue.tracks.map((item) => [item.track.id, item.entryId])) === JSON.stringify(ids),
-    'normal native selection advances without replacing any queue entries');
+    'native step does not replace queue entries');
+    assert(acknowledgement.playId === after.playId && acknowledgement.entryId === after.entryId &&
+      acknowledgement.trackId === target, 'step acknowledgment matches the observed native player');
+    assert(group === 't1' ? after.playId !== before.playId :
+      after.playId === before.playId && after.queueRevision === before.queueRevision &&
+        beforeQueue.current === afterQueue.current, 'treatment steps and control keeps the playing source');
     await emit('ux_02_after', { actual: true, group, online: navigator.onLine,
-      player: state(after), dom: render(), ids, current: afterQueue.current, actions });
+      player: state(after), dom: render(), ids, current: afterQueue.current, actions, acknowledgement });
     await emit('complete', { ok: true, group, target, stageCount: 2 });
   } catch (error) {
     await emit('failed', { ok: false, group, error: String(error), online: navigator.onLine,
