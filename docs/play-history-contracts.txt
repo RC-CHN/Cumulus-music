@@ -311,3 +311,8 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   写、选中第二节目、旧版本及账号隔离。catalog_smoke.py --ordinary-essential
   新增桌面密闭路径，检查精选进入、20+1 本地分页、已播比例、真实 null 播放的节目/
   媒体/队列、Back 还原与精确请求次数。未执行实际账号请求或物理输出。
+- 实际 Linux WebView 复跑通过 12 个检查点和 12 张截图：同一份列表仅一次
+  /api/voice/book/recent，第二页仅一行；返回第一页后点节目 792，原生按
+  书 691 取章节并实际播放媒体 1792，保留两章队列。Back 稳定截图中精选的
+  分类、滚动及原触发按钮焦点保持。证据 .build/ui-proof/phase66-books-r3/；
+  Windows 和真实账号的该读取未在此批验收。

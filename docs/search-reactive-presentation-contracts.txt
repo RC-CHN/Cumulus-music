@@ -68,3 +68,10 @@ Rust 本地候选
   rust-core-validation.txt、ui-ux-validation.txt；测试入口存在不等于通过。
 - 合成测试使用 null 音频输出，不代表实体声卡或真实匿名注册服务；真实账号只读
   搜索的独立证据见 search-signed-live-read-proof.txt。
+
+本轮 Linux 复验：生产前端和 Tauri 在隔离账号中通过 10 个检查点。6 次真实
+签名夹具实验读取、2 次搜索请求（Tab 与综合），4 次本机表现重投影，没有因
+分组切换或返回页面重发搜索。深色实拍中，对照组撤掉歌词/别名/原因，恢复
+t1 后按原位置恢复；保留搜索滚动、播放暂停和卡片焦点。10 张截图与报告见
+.build/ui-proof/phase66-pc-presentation-r1/。Tab 与综合回包各自轮换凭据的
+分支由另行签名传输测试验证，不把该图形复验当作真实账号凭据轮换。

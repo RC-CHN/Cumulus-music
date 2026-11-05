@@ -100,8 +100,8 @@
 - [快速登录许可](quick-login-offer-contracts.txt)独立于启动自动登录和本机恢复；官方 PC 分组开启后才能显式加入，普通新登录不会自动发送快捷历史。主动退出仍清除对应凭据。服务判失效只删除对应快捷资格，保留本机账号和手动恢复。
 - [PC 联网与消息计数](pc-playback-connectivity-contracts.txt)已有官方脚本轨迹对照和按账号生命周期的 Rust 执行器；正式桌面已接入账号未读计数与当前主 WebView 的受信恢复事件；原生网络桥及自动跳歌仍未启用。
 - [Windows 原生文件暖转交实验](windows-native-open-lab.txt)覆盖登录会话、目录和管道帧，独立于正式程序与安装器；Windows 真机运行和音频暖转交仍未通过。
-- [PC 实验分组](official-pc-experiments.txt)恢复了 165 个前端键与 25 个 x64 原生键的精确顺序、分组和回退。已通过隔离签名 EAPI 的真实线格式、30 分钟和账号取消对照；未访问真实服务或接入正式调度。
-- [普通队列来源预判](playback-search-priority.txt)在 Rust 使用已落盘、账户有权的下载优先，核对在线权益及明确提供的同录音候选；普通底栏上一首/下一首的原生命令已有官方顺序和队列代次对照，未启用自动触发；403/503 不当作版权限制。
+- [PC 实验分组](official-pc-experiments.txt)恢复了 165 个前端键与 25 个 x64 原生键的精确顺序、分组和回退。已通过隔离签名 EAPI 的真实线格式、30 分钟和账号取消对照；[正式调度及搜索显示](pc-presentation-lifecycle-contracts.txt)后来已接入，当前账号的真实分组仍需单独实测。
+- [普通队列来源预判](playback-search-priority.txt)在 Rust 使用已落盘、账户有权的下载优先，核对在线权益及明确提供的同录音候选；[主窗底栏的手动方向操作](desktop-minibar-skip.txt)已接签名分组、当前文档联网和版权预判；自然 EOF、原生故障号和不确定条件另列，403/503 不当作版权限制。
 - [续期状态回读](desktop-session-renewal-contracts.txt)在重启、重开弹窗或正常时钟变化后，按持久的登录/已确认续期时间计算 24 小时门槛。查看状态不发续期请求，真实令牌轮换仍待证实。
 - [续期未确认](desktop-session-renewal-contracts.txt)保留当前登录，不把缺失回执标成会话过期；只有收到完整配对回执才提供只读身份核对。不重复发送续期。
 - [风格推荐返回](style-recommendations.txt)恢复原来显示的列表及标签，不自动刷新；旧种子页获得新播放版本。显式刷新仍向同一来源请求。
@@ -135,5 +135,11 @@
 - [场景 FM 在途取色](scene-fm-palette-contracts.txt)已补齐同账号同规范封面切节目时的 header、image、canvas 在途复用。Linux 真实 WebView 三个新场景共12阶段/12张PNG，601→602不增加读取或取消；旧节目新请求仍严格拒绝。头命中1请求/0图片body，图片回退2请求/76字节PNG，实际512字节本地RGBA送Rust；取色read各1次、sample为0/1/1、cancel均0。原生播放ID和队列保持、位置前进，不将此说成解码器分配次数或物理声卡证明。
 - 原四种取色场景已有完成记录；旧聚合在第五场景的Python封面URL期待错误处中止。仅按当前verify重新解析旧记录，得到 `.build/ui-proof/phase57-search-and-palette/recovered-original-four-report.json` 的4场景/11阶段/11PNG通过，启动新进程数为0。三种在途场景独立执行于 `palette-pending-r2/report.json`，两根共23阶段/23PNG；保留原失败且不算作七场景同一次完整运行。GUI未验证ABA、实服CDN、Windows实际渲染或真实声卡。
 - [综合搜索单曲页脚](search-preview-ui-contracts.txt)接入独立 `PH-PC-search-result=t1` 门控，实际签名完整PC实验批次同时提供原三桶布局；控制组、未知或过时回包不产生新的歌词命中、别名和推荐原因入口。刷新失败按同身份最近一次全局成功分配回退，不复活搜索本地旧t1；该显示回退不把过期快照变成新鲜授权。真实签名链的10项原生传输用例与完整Rust2337项、严格Clippy通过；四种分组实际WebView共14阶段/14PNG通过，并核对真实底栏与原生播放一致。Windows运行仍须后续精确CI，不用GNU交叉检查代替。
-- 官方实验生命周期仍需衔接：M198:998–1005在用户初始化/切换后刷新；M147:2730–2750从 `abtest-cached-exps` 启动恢复，:2944–2971成功更新全局状态并持久化，:3055–3065每30分钟刷新；M3095:1688的搜索selector随全局分桶变化。当前每次读取有门控，但这些初次/周期/持久bootstrap及已返回Vue缓存页的reactive联动尚未完整迁移。它们是可继续实现的客户端工作，下一步应接原生生命周期并让当前页/缓存页一致更新，不通过前端新增轮询猜分桶；不能把单次读取门控列为搜索模块完成，也不能归为外部条件阻塞。
+- 此条曾记录 phase57 的缺口。后续 [原生实验生命周期](pc-presentation-lifecycle-contracts.txt) 已覆盖启动、切号、持久显示缓存和 30 分钟定时，四项搜索表现也已[联动当前及缓存页](search-reactive-presentation-contracts.txt)；其他实验消费者独立验收。
 - 本批Node测试885项通过。上述取色GUI使用Linux真实GTK/WebKitGTK、隔离合成传输及null libmpv；LC_NUMERIC单独为C，界面消息和字符locale仍为en_US.UTF-8。完整工作区和搜索桌面验证的来源、失败修正与平台边界另见本批验证记录。
+
+后续主窗验证补充：
+
+- [听过的书](play-history-contracts.txt)由精选卡进入独立在线列表，20 条本地分页。隔离 Linux 桌面核对了节目和媒体 ID、两章队列及返回精选的分类、滚动和焦点。它与六类最近播放独立；官方本机按书 recent/around250 分支另列。
+- [普通底栏方向键](desktop-minibar-skip.txt)已接官方 M308 判权：同一已知无版权候选在 t1 跳到后续可播行，在控制组保留当前播放。自然 EOF、完整 Windows 联网观察和真实账号分组仍独立验收。
+- [搜索表现](search-reactive-presentation-contracts.txt)在原生凭据轮换时不把旧响应签发为新表现候选；综合端点在 Tab 返回后重新看全局分组。实际 Linux WebView 复验控制组与 t1、返回缓存、滚动与焦点，凭据轮换另有封闭签名对照。

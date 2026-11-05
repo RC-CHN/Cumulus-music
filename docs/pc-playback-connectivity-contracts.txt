@@ -163,9 +163,9 @@ Rust 边界与验证
 core/src/pc_connectivity.rs 是无 I/O 的四态模型；宿主提交已区分的通知和请求观察，
 按单调时钟喂给模型，并消费“立即重启消息计数轮询”或“有效联网状态变化”的效果。
 使用单调时间避免宿主系统时钟调校使等待倒退；未声称复刻浏览器墙钟倒跳行为。
-模型不会访问服务、读取账号或切换歌曲。下面的生产计数订阅不发布给播放器或全局
-app 状态。现有网络诊断的默认路由、WebView navigator 初值和已验证的本地下载
-均不能单独作为自动跳歌的在线授权证据。
+模型不会访问服务、读取账号或切换歌曲。正式计数 IPC 不公开原生联网依据；
+后续底栏用例仅在 core 内部使用有界依据。现有网络诊断的默认路由、WebView
+navigator 初值和已验证的本地下载均不能单独作为跳歌的在线证据。
 
 M/236 轮询执行器
 
@@ -196,8 +196,9 @@ M/236 轮询执行器
   route、请求类别、权益、替代歌曲或实验分组的 IPC。
 * 正向生产业务观察只接受本来就通过固定 POST /api/pl/count 的当前账号有效响应；
   403、503、解析/解密失败、取消、超时等都不伪造成 M/12 的失败事件。已证实的
-  浏览器边只用于 M/236 探测，不连接 Linux/Windows 原生桥回调、一般业务请求
-  或播放器。Windows WebView2 实机、完整 M/119 信号和自动跳歌依然未验收。
+  浏览器边仍用于同一 M/236 探测；后续底栏仅消费已确认的本地依据，不新增第二
+  轮询。Linux/Windows 原生桥回调与一般业务请求未并入完整观察。Windows WebView2
+  实机、完整 M/119 信号和自然 EOF 跳歌依然未验收。
 * `pc_message_connectivity` 使用 Tokio 暂停时钟和封闭账号传输，核对完整
   定时替换、显隐、重复请求、通用错误、账号切换、失效和销毁；无真实服务或帐号操作。
   `scripts/research/official_message_count_oracle.mjs` 本机执行恢复的 M/236
@@ -220,7 +221,7 @@ hybrid_app.chunk.1482700000000.js/119.js 与原始 vendors-rudio.pc-new.producti
 core/tests/fixtures/official_pc_connectivity_3_1_42.jsonl 仅冻结合成事件、样本、状态
 通知和探测时刻；公开测试不需安装包，不执行线上探测。
 
-PH-PC-skipSongs2 仍未接通
+PH-PC-skipSongs2 的恢复与底栏入口
 
 M/147:1812–1824 的默认 expGroupName 为空。2890–2974 取得全部打开的前端实验
 名，再拼接 M/34.n 的原生 App.getABTestKeys()；M/15.Rf/fa 声明 GET
@@ -228,5 +229,8 @@ M/147:1812–1824 的默认 expGroupName 为空。2890–2974 取得全部打开
 加密分支可在实际 API 传输强制 POST，不能仅凭逻辑动词推断抓包方法。成功时先匹配
 实验名再取首项，缺项复位默认；失败保留旧分组（另复位情绪音效）。M/147:3055–3065
 每 30 分钟刷新，也有账号变化触发。当前已另行恢复 x64 原生键列表、签名读取及
-按账号的 30 分钟缓存，详见 official-pc-experiments.txt；正式刷新调度、真实 t1
-分配和曝光仍未实测，不把搜索实验的精简查询当作此分配的等价证明。
+按账号的 30 分钟缓存，详见 official-pc-experiments.txt。后续正式调度见
+pc-presentation-lifecycle-contracts.txt。底栏只复用现有观察中可证的部分，
+以当前文档、原生 reducer 和当前账号成功计数为入口；见
+desktop-minibar-skip.txt。完整 Windows 四路观察、一般请求分类、真实 t1
+分配和曝光仍须分别验证。
