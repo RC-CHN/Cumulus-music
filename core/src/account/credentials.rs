@@ -165,7 +165,7 @@ impl Credentials {
         if legacy.origin != self.origin {
             return Err(Error::InvalidInput("legacy session origin mismatch"));
         }
-        self.change(|record| {
+        self.barrier(|record| {
             if !record.cookies.is_empty() || record.refresh_token.is_some() {
                 return Err(Error::State("import requires an empty credential profile"));
             }
@@ -216,7 +216,8 @@ impl Credentials {
     }
 
     /// Native commit observations only. Never contains Cookie/token values;
-    /// failed commits and identical records cannot wake lifecycle readers.
+    /// Failed commits and ordinary identical responses do not wake readers.
+    /// Explicit revocation/replacement barriers always advance the revision.
     pub(crate) fn subscribe_commits(&self) -> tokio::sync::watch::Receiver<String> {
         self.commits.subscribe()
     }
@@ -302,6 +303,21 @@ impl Credentials {
     }
 
     fn change(&self, operation: impl FnOnce(&mut Record) -> Result<()>) -> Result<()> {
+        self.commit_change(false, operation)
+    }
+
+    /// A local revocation/replacement is an authority boundary even when its
+    /// resulting fields are empty or unchanged. In-flight old replies must
+    /// fail their revision CAS, including through another Credentials handle.
+    fn barrier(&self, operation: impl FnOnce(&mut Record) -> Result<()>) -> Result<()> {
+        self.commit_change(true, operation)
+    }
+
+    fn commit_change(
+        &self,
+        force_revision: bool,
+        operation: impl FnOnce(&mut Record) -> Result<()>,
+    ) -> Result<()> {
         let mut state = self.lock()?;
         let mut candidate = state.record.clone();
         operation(&mut candidate)?;
@@ -312,7 +328,7 @@ impl Credentials {
             }
             Ok(value)
         };
-        if canonical(&candidate)? == canonical(&state.record)? {
+        if !force_revision && canonical(&candidate)? == canonical(&state.record)? {
             return self.require_current(&state);
         }
         candidate.revision = Uuid::new_v4().simple().to_string();
@@ -492,7 +508,7 @@ impl Credentials {
     }
 
     pub fn clear(&self) -> Result<()> {
-        self.change(|record| {
+        self.barrier(|record| {
             if record.queue_reset.is_some() {
                 return Err(Error::State(
                     "login queue cleanup must finish before clearing profile",
@@ -543,7 +559,7 @@ impl Credentials {
         if let Some(plan) = &queue_reset {
             plan.validate()?;
         }
-        self.change(|record| {
+        self.barrier(|record| {
             record.cookies.clear();
             record.refresh_token = None;
             record.login_rotation = None;
@@ -635,4 +651,100 @@ fn validate_token(token: &str) -> Result<()> {
         return Err(Error::InvalidInput("invalid refresh/login credential"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_clear_is_a_persisted_notified_barrier_but_ordinary_noop_is_not() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(root.path()).unwrap());
+        let credentials = Credentials::open(store.clone(), ApiOrigin::Pc).unwrap();
+        let other = Credentials::open(store.clone(), ApiOrigin::Pc).unwrap();
+        let mut commits = credentials.subscribe_commits();
+        let endpoint = ApiOrigin::Pc.url();
+        let before = credentials.request_credentials(&endpoint).unwrap();
+        credentials
+            .record_response(&endpoint, &[], None, &before.revision)
+            .unwrap();
+        assert!(!commits.has_changed().unwrap());
+        assert_eq!(
+            credentials.request_credentials(&endpoint).unwrap().revision,
+            before.revision
+        );
+
+        credentials.clear().unwrap();
+        assert!(commits.has_changed().unwrap());
+        let cleared = commits.borrow_and_update().clone();
+        assert_ne!(cleared, before.revision);
+        assert_eq!(
+            credentials.request_credentials(&endpoint).unwrap().revision,
+            cleared
+        );
+        assert_eq!(
+            store.get(OWNER, KIND, KEY).unwrap().unwrap()["revision"],
+            cleared
+        );
+        assert!(matches!(
+            other.cookies_for(&endpoint),
+            Err(Error::CredentialChanged)
+        ));
+        assert!(matches!(
+            credentials.record_response(
+                &endpoint,
+                &["MUSIC_U=synthetic-late; Path=/; Secure".into()],
+                None,
+                &before.revision
+            ),
+            Err(Error::CredentialChanged)
+        ));
+        assert!(!commits.has_changed().unwrap());
+
+        credentials
+            .record_response(&endpoint, &[], None, &cleared)
+            .unwrap();
+        assert!(!commits.has_changed().unwrap());
+        credentials.clear().unwrap();
+        assert!(commits.has_changed().unwrap());
+        let cleared_again = commits.borrow_and_update().clone();
+        assert_ne!(cleared_again, cleared);
+        assert_eq!(
+            store.get(OWNER, KIND, KEY).unwrap().unwrap()["revision"],
+            cleared_again
+        );
+        assert!(credentials.login_credentials().unwrap().token.is_none());
+    }
+
+    #[test]
+    fn explicit_import_and_repeated_invalidation_keep_their_revision_barriers() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(root.path()).unwrap());
+        let credentials = Credentials::open(store, ApiOrigin::Pc).unwrap();
+        let mut commits = credentials.subscribe_commits();
+        let before = commits.borrow_and_update().clone();
+        // A deliberate replacement must invalidate work begun before import,
+        // even if a selected archived guest happens to have identical fields.
+        credentials
+            .import_legacy(super::super::credential_import::LegacySession {
+                origin: ApiOrigin::Pc,
+                device_id: credentials.device_id().unwrap(),
+                cookies: vec![],
+                refresh_token: None,
+            })
+            .unwrap();
+        assert!(commits.has_changed().unwrap());
+        assert_ne!(*commits.borrow_and_update(), before);
+        let notice = super::super::login_policy::LoginNotice {
+            kind: super::super::login_policy::LoginNoticeKind::Expired,
+            title: None,
+            message: "合成会话已失效".into(),
+        };
+        credentials.invalidate_login(&notice, None).unwrap();
+        let invalidated = commits.borrow_and_update().clone();
+        credentials.invalidate_login(&notice, None).unwrap();
+        assert!(commits.has_changed().unwrap());
+        assert_ne!(*commits.borrow_and_update(), invalidated);
+    }
 }

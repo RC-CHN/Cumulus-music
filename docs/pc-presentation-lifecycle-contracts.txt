@@ -36,8 +36,10 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
 - 初次、账号 watch、实际凭据提交触发读取；固定 30 分钟 interval 不随账号变化
   重置，错过 tick 不补发风暴。generation 在取样后前进只重绑到最新 watch，不让
   一个仍持有的 lease 静默永久停掉。正在读取时 Drop/账号变化取消旧结果。
-- Credentials 只在实际存储 CAS 提交成功后通知；逻辑相同（包括 CookieStore
-  顺序不同）的内容不换凭据 revision/不发通知。一个 AB 响应自发凭据轮换可立即
+- Credentials 只在实际存储 CAS 提交成功后通知；普通响应逻辑相同（包括
+  CookieStore 顺序不同）时不换 revision/不发通知。clear、invalidate_login
+  与显式 import_legacy 是撤销/替换屏障，即使结果字段相同仍持久换 revision
+  并通知；空会话退出也必须拒绝此前在途的登录回包。一个 AB 响应自发凭据轮换可立即
   重读一次；连续轮换进入 CredentialChurn，等待后续外部变更或下一周期，避免
   自响应无限请求。这是本实现的有界恢复策略，不声称原客户端同样只有一次。
   若 Cookie commit 与 refresh 返回发生在同一次 poll，result 分支同样消费实际
@@ -103,3 +105,24 @@ PC 3.1.42.205594 全局实验表现生命周期（phase58）
 - 当前未测试真实匿名注册服务、真实账号完整 30 分钟墙钟或物理输出设备；不把
   合成 transport/paused-time 测试称为实服/真实声卡验证。桌面 event/main-window
   与 cached search 页重投影由独立上层集成，未由这些 core 测试单独覆盖。
+
+空撤销屏障回归修复候选（2026-11-05）
+- 本批 full Rust 检查实际抓到已有 credentials::logout_rejects_late_cookie_and_
+  token_resurrection_in_same_or_another_instance 的原断言失败：空会话 clear()
+  被普通 no-op 优化跳过，旧 revision 仍可接受迟到的登录 Cookie/refresh pair。
+  保留既有断言，不通过放宽或删除测试处理。
+- 普通 change 继续用 canonical 内容对照；clear、invalidate_login 和
+  import_legacy 使用同一个持久 CAS 路径的显式 barrier，强制新 UUID revision。
+  只有成功提交后发送 native watch，不给失败提交/普通重复 HTTP 响应制造事件。
+- 该边界来自真实调用职责：clear 用于退出、候选取消、移除和独立 Interface
+  授权撤销；invalidate_login 由 session/invalidation.rs 持久撤销服务器已拒绝
+  的会话；import_legacy 是 host 显式选中的身份/会话替换。这些操作都要让
+  先前版本的在途回包失效，是否本来已有 Cookie 不改变该语义。
+- seed_switch_device 在 quick/exchange.rs 构造 fresh candidate、任何 wire
+  请求前调用；seed_anonymous_device 在独立 jar 同设备重开时复用，不能凭同值
+  初始化触发刷新风暴。两者保持普通 change。set_login_ticket 的同票重复写
+  也保持 no-op；finish_queue_reset 成功必然从 Some→None，本身已有内容变化，
+  重复/错 ID 仍 StaleResponse。没有泛化所有本地 setter 为撤销。
+- 新增两个 lib 单元测试：空 clear/连续 clear 的持久版本与 watch、旧实例和旧
+  回包拒绝、普通空响应不通知；同字段显式 import 与重复 invalidate 仍有屏障。
+  本候选只做 rustfmt/diff 检查，等待 root 统一 Rust 验证，不提前记录通过。
