@@ -62,3 +62,16 @@ character classification stay on the non-C launch locale. The report records
 actual measurements only after all checks pass, including one native EOF and
 no duplicated authorizations. No physical sound, official whole-graph parity,
 proprietary audio activation, rights widening, or Windows execution is proved.
+
+The sealed Linux replay `.build/ui-proof/phase79-tone-geometry-r2/` passed five
+WebView checkpoints and captured 203 native callback events. The 44.1 kHz
+mono filter kept its instance while applying the hot revision; an exact paused
+seek kept the native playback entry, retired that filter instance and activated
+the replacement with the already committed revision. Steady callbacks in both
+mono instances were 2048 frames. On 48 kHz stereo, each of the two opaque lanes
+processed 70 × 2048 plus one 777-frame tail, followed by one native EOF.
+The real callback also processed audio during load before the first unpause;
+choosing a new algorithm after a decoder-format read or merely before resume
+would not establish which filter processed the first queued PCM. The exported
+probe symbols were verified present only in the private instrumented library,
+and absent in the rebuilt default library.

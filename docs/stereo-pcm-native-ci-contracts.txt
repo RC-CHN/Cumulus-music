@@ -22,6 +22,16 @@ https://downloads.xiph.org/releases/flac/flac-1.5.0.tar.xz
 SHA256 f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920
 Official checksum publication: https://www.xiph.org/downloads/
 
+The locked helper allows at most three GET attempts within its original bounded
+download budget for transient connection, read or selected HTTP failures.
+Certificate verification, the HTTPS redirect policy, archive bounds and the
+locked digest remain mandatory. Each attempt uses its own partial file; only
+the complete matching archive is published without replacing a concurrent
+file. Invalid metadata and a checksum mismatch are terminal, never retried.
+The `ec0d030` package runner's TLS handshake EOF motivated the transport case;
+sealed script tests verify the retries and negative cases, separately from an
+actual hosted transfer.
+
 The standalone proof helper can still build its private library from that
 bounded archive. The required Linux WebView job instead receives the exact
 filter, decoder and Xiph notice exported by the package runner, alongside its
@@ -86,7 +96,7 @@ local Linux runs or any previous V1 workflow.
 Linux packaging build and verification
 --------------------------------------
 scripts/ci/linux_flac150_package.py is a build-time helper, independent from
-the unchanged linux_flac150.py proof CLI. It returns one verified runtime
+the linux_flac150.py proof CLI. It returns one verified runtime
 and writes a stage report. It does not itself build a Debian/tar package or
 install libraries. It accepts only the same locked Xiph archive,
 whether fetched through the existing bounded helper or supplied via
