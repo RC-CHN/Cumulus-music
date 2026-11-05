@@ -154,7 +154,8 @@ Windows将binary换为.exe，并通过--runtime指定打包的native目录。--s
 - Linux `8c791d33` 用实际打开的合成 PCM WAV 验证，文件未出现在本地媒体库。
   播放详情和桌面歌词各实际显示嵌套 `lyric/lrc/` 中的同一份文本，且保持
   同一原生播放的暂停时钟。两态、两张截图和实际区域证据在
-  `.build/ui-proof/phase74-native-lyrics-r2/`；无在线歌词请求。Linux `LC_NUMERIC`
+  `.build/ui-proof/phase74-native-sidecar-paint-r3/`；无在线歌词请求。主窗在入场动画
+  结束且实际歌词行无遮挡时才截取，同一探针的内嵌 FLAC 双窗口对照也通过。Linux `LC_NUMERIC`
   为 `C`，消息语言保持 `en_US.UTF-8`。Windows 实际 WebView2 仍须独立核对。
 
 2026-11-01 Windows独立输入验证修正
