@@ -737,6 +737,8 @@ fn main() {
     unsafe { cumulus_desktop::prepare_graphics() };
     let root = PathBuf::from(std::env::var_os("CUMULUS_PROOF_DIR").expect("new proof root"));
     let motion_proof = std::env::var_os("CUMULUS_MOTION_PROOF").is_some();
+    let playback_cache_proof = std::env::var_os("CUMULUS_PLAYBACK_CACHE_PROOF").is_some();
+    assert!(!playback_cache_proof || motion_proof);
     assert!(!vertical_zone_fixture::enabled() || motion_proof);
     let queue_ui_proof = std::env::var_os("CUMULUS_QUEUE_UI_PROOF").is_some();
     let queue_click_proof = std::env::var_os("CUMULUS_QUEUE_CLICK_PROOF").is_some();
@@ -914,6 +916,11 @@ fn main() {
                 let audio:Box<dyn cumulus_core::playback::engine::AudioEngine>=if audio_status_proof || queue_more_fixture::enabled() {Box::new(card_source_fixture::Audio::new(audio,card_control.clone()))}else{Box::new(audio)};
                 Ok(audio)
             });
+        }
+        if playback_cache_proof {
+            client = cumulus_desktop::configure_streaming_cache(client);
+            assert_eq!(client.streaming_media_cache_status()?.is_none(),
+                std::env::var_os("CUMULUS_PLAYBACK_CACHE_BLOCKED").is_some());
         }
         app.manage(cumulus_desktop::effect_activation::Host::new(&app.path().resource_dir()?));
         system_master_volume_fixture::install(app);

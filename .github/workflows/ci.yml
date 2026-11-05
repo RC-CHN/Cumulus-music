@@ -116,6 +116,11 @@ jobs:
       - id: rust-clippy
         run: cargo clippy --keep-going --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings
       - run: cargo test --no-fail-fast --workspace --all-targets --features cumulus-desktop/custom-protocol --locked
+      - name: Verify native streaming cache with generated audio
+        run: |
+          fixture="$RUNNER_TEMP/cumulus-stream-cache-fixture.mp3"
+          ffmpeg -hide_banner -loglevel error -nostdin -f lavfi -i 'sine=frequency=439:sample_rate=44100:duration=3.8' -c:a libmp3lame -b:a 192k "$fixture"
+          CUMULUS_PROOF_STREAM_MP3="$fixture" cargo test --locked -p cumulus-core --lib actual_native_streaming_cache_reauthorizes_each_play -- --ignored
       - name: Verify optional song fingerprint features
         run: cargo test --locked -p cumulus-core --lib --features song-recognition-zlib,song-recognition-resampler song_recognition
       - name: Verify Linux recognition device binding
@@ -536,6 +541,7 @@ jobs:
           python scripts/ci/vinyl_comments_smoke.py --likes --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-likes-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/vinyl_comments_smoke.py --reports --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-vinyl-report-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-speed-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/playback_cache_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-cache-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-native-stop-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-playback-quality-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/quality_trial_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-quality-trial-native-windows --runtime .build/package-stage/windows-x64/native
@@ -905,6 +911,7 @@ jobs:
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --likes --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-likes-linux --screenshots
           LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 GDK_SCALE=1 GDK_DPI_SCALE=1 xvfb-run -a -s '-screen 0 1280x850x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/vinyl_comments_smoke.py --reports --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-vinyl-report-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_speed_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-speed-linux
+          LC_ALL=en_US.UTF-8 GDK_BACKEND=x11 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' dbus-run-session -- /usr/bin/python3 scripts/ci/playback_cache_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-cache-linux --screenshots
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_native_stop_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-native-stop-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/playback_quality_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-playback-quality-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/quality_trial_native_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-quality-trial-native-linux
