@@ -1,0 +1,104 @@
+Paced SE1/B0 held-source validation — 2026-11-05
+==============================================
+
+Outcome and scope
+-----------------
+A real, explicitly opted-in native source now carries an authorized held
+synthetic NCM-FLAC through libFLAC, incremental SE1/default-B0 processing and
+an unknown-size/nonseekable float32-le libmpv sink. Real native time-pos, not
+decoder/read/producer counters, grants bounded render credit. This remains a
+source seam for the documented44.1kHz/2channel/16bit/<=1024FLAC-block scope.
+It is not installed by a normal player setting, a full SDK material, an official
+effect slider, general online decoding or a physical speaker result.
+
+Business code source f4f50224; final full-workspace check and native prerequisite
+source327d4a75; corrected publication-path test helper and actual GUI/CLI source
+ee3d186f1ae3a8052df5c77299007ae2fb7b29ee. The intervening changes are test/proof
+only. Exact source/proof/binary hashes are retained locally. No Python process
+is part of the implemented playback source; Python only orchestrates tests.
+
+Central checks
+--------------
+- Fixed Rust1.96.0/lockfile: fmt and strict workspace/all-targets/custom-protocol
+  Clippy pass.391 test programs:2404 passed,0 failed,20 ignored. Ignored cases
+  are not silently counted as executed by the workspace command.
+- Explicit new native source prerequisite:1 passed. Related prior native
+  source/filter tests:16 passed,0 failed/ignored, including held plain/NCM
+  fallback, active seek retirement, buffered grant revocation, failed/stale
+  Stop destruction, decoder generations and GEQ/PEQ/loudness continuity.
+- The native streaming-cache regression also passed separately with a newly
+  generated3.8s synthetic MP3, requiring fresh authorization for each play.
+  Together these18 opted-in core native tests are supplemental executions,
+  not a reinterpretation of the workspace command's20 ignored count.
+-109 CI Python tests pass. Later proof-path corrections touch no CI Python or
+  production code; strict Clippy and the affected actual executables were rebuilt.
+- Frontend unchanged: the same22 assets and904-test/pinned-Node24.16.0 checks
+  from phase58 are reused by hash, not represented as a fresh frontend run.
+
+Actual Linux GTK initialized source sequence
+-------------------------------------------
+native_smoke.py --stereo-pcm-flac-library ran after the real Tauri/GTK window,
+with en_US.UTF-8, numeric-C-only assertions, fresh app/WebView paths, X11/Xvfb,
+private D-Bus and a namespace without an external network route. The strict
+source validator passed all11 ordered stages:
+1. A normal synthetic account candidate is verified; the real downloader,
+   NCM writer, integrity check and publish ledger complete one88207-frame file.
+2. A separate MusicClient reopens Unknown with a deny-all cold HTTP backend;
+   its public cold grant opens the actual strict NCM reader. Missing libFLAC
+   preserves that same stock reader before qualified selection with1.5.0.
+3. The authoritative completed path is replaced after opening. A new open is
+   rejected, while the held authorized descriptor remains the source.
+4. Native raw load has no finite invented WAV length. Paused processing is
+   bounded at7973 output/8192 decoded source frames, with native clock0.
+5. A paused parameter revision is applied by the worker; real playback and a
+   second live revision keep the same native entry1. The observed clock moves
+   0.221200→0.271423s. Actual decoder metadata is44100Hz/2channels.
+6. Stop acknowledges the exact old native sink, its byte callback closes,
+   and the worker joins before the source/graph are reclaimed for frame22050.
+7. Replacement entry2 stays paused until explicitly resumed. Actual native
+   EOF drains110257 output frames:88207-22050 source frames plus44100 tail.
+   Source-clock clamp remains88207; EOF, callback close and sink retirement
+   are independently required, rather than inferred from producer completion.
+8. A third pass has2810 returned PCM frames ahead of its real native clock
+   when the cold grant is revoked. Native polling rejects it, the output is
+   retired, the callback closes and source reclaim is denied. Cold HTTP stays0.
+
+The observing parent read only this process tree's mapped module paths during
+execution: libFLAC.so.14.0.0 SHA575e74dd5c9f2c3e6acfe7d3647f7dc10eb9c37f106d588c66aba8d7648aae5d,
+libmpv.so.2.5.0 SHA2051bdd3bce70349ffa9513c5db4ac0d7fa4aad869004b243f39da93768e8bc5.
+This actual run used the system1.5.0/0.41.0 libraries, not an assumed ambient
+DLL identity on another platform. Native output is null; no real music/account
+request, account write or physical sound-card validation is claimed.
+
+Independent core and desktop regressions
+---------------------------------------
+The built stereo_pcm_roundtrip CLI also completed the same native source
+flow without DISPLAY, Wayland or session D-Bus, retaining guiInitialized=false,
+the same exact110257/44100 output/tail frame counts and all source/retirement
+checks. Its GUI-free execution is separate from the GTK evidence above.
+The basic desktop native smoke passed with the same business code, checking
+ordinary real decoder/clock operation after GUI startup.
+
+The prior cold_offline_ui_probe then ran once each for plain FLAC, NCM-FLAC
+and NCM-AAC, with separate seed/cold network/filesystem/process namespaces.
+All three real WebViews played with actual null clocks, kept Unknown and
+denied online scope, stopped/closed/reconnected, retained the2 databases and
+did not persist decrypted NCM media. Three complete panel screenshots were
+individually viewed. Plain/NCM-FLAC are pixel-identical; AAC differs only in
+the expected quality text. Screenshots show the pre-play panel; clock movement
+is proved by the separate native/IPC reports, not a static image.
+
+Evidence and remaining work
+---------------------------
+Private local root:.build/ui-proof/phase60-stereo-source. It includes all failed
+attempts, final logs, raw CLI/GUI reports, source and module hashes, preserved
+executables and three cold-offline panel captures. These are not committed.
+The first-sync deadlock, prefetch-accounting regression and proof-path bug were
+diagnosed; no wait was enlarged, no business retry added and no permission
+gate weakened. See stereo-pcm-source-contracts.txt for API/lifecycle details.
+
+Actual Windows GUI execution for this source seam, other formats/runtimes/AO
+buffer sizes, full SDK graph equivalence on the installed path, playback actor
+integration, official write/apply order and effect UI still require their own
+evidence. A separately recovered full fixed graph is a next candidate, not a
+pass inferred from this SE1/B0 source proof. Goal remains active; no release.

@@ -141,7 +141,7 @@ is created. Post-publication decoder/DSP/authority failure clears/fails reads,
 and native polling stops/destroys the sink; it never restarts audible playback
 or retries a remote write as a generic fallback.
 
-Prepared tests and honest remaining evidence
+Executed tests and remaining evidence
 ---------------------------------------------
 New deterministic unit tests cover paused control ACK with zero producer
 credit, wrong-entry/undelivered-clock rejection, arbitrary partial raw bytes,
@@ -154,14 +154,18 @@ registry/ledger/membership, strict NCM, path replacement after opening, actual
 libFLAC and null libmpv: paused/live controls without native ID change, bounded
 prefetch, Stop/close/join -> sample seek -> a new native ID, genuine extended
 EOF and buffered account revocation. It is explicitly not GUI initialized.
-Neither these new Rust tests nor that native prerequisite have been executed
-in this source branch; root batches checks. Static rustfmt is not a native
-playback proof. No real account, service, user media or audio device is used.
+The centralized integration executed these tests and the explicit native
+prerequisite successfully. The workspace result is2404 passed/0failed/20ignored;
+the native source prerequisite and16 prior native source/filter regressions
+were run separately with their trusted runtime inputs. No real account,
+service, user media or physical audio device is used.
 
-Still required: actual Linux WebView/GTK initialized proof with non-C system
-locale (numeric C only), actual Windows packaged runtime, first-packet/load
-readiness and native clock-credit/EOF-close behavior on those binaries, latency
-and recovery under real scheduling, full SDK graph equivalence, and eventual
+The actual Linux GTK initialized source proof with non-C system locale
+(numeric C only), first-packet readiness, clock credit and EOF-close behavior
+has also passed; source, reports and caveats are in stereo-pcm-source-validation.txt.
+Still required: actual Windows packaged-runtime proof for this source seam,
+latency and recovery under other real scheduling/device conditions, full SDK
+graph equivalence in the installed source path, and eventual
 current-source/setting actor integration plus exact setting write/apply order.
 No official SE slider UI is added until those callable seams are proven.
 
@@ -196,7 +200,8 @@ and WebView directories, clears inherited CUMULUS_* switches and accepts only
 an explicit existing absolute library. The calling Linux harness must provide
 the real display/DBus/WM and non-C locale as for other native_smoke modes;
 Windows uses the same packaged WebView2/native process and staged runtime.
-No CI workflow is changed here. A90s process bound retains progress/log and
+At this integration point CI source-mode wiring is a separate candidate. The
+existing60s process bound retains progress/log and
 fails on timeout; individual native waits still use the original8s bound.
 
 The helper reports ordered stages for actual seed/publish/grant, raw load,
@@ -208,13 +213,22 @@ error. It never retries playback or increases a wait to hide a failure.
 The strict Python validator rejects partial reports, missing stages, stale
 entry/control ACK, excessive produced lead, wrong tail/source count, missing
 AO retirement/join, attempted cold HTTP, or a whole-material/UI/speaker claim.
-Its13 synthetic validator/diagnostics tests pass; that is not a native run.
+The merged native_smoke suite has17 synthetic tests;109 CI-tool tests pass.
+Those tests remain distinct from the actual native execution below.
 
-At this source freeze the new Rust helper/example and GUI mode have NOT been
-compiled or executed. Root's separate ignored native prerequisite currently
-stalls at the first real native clock: initial produced/delivered7973 frames,
-time-pos0/seeking=true, then null AO but no native progress. The initial credit
-cannot yet satisfy native startup; a source-backed bounded bootstrap correction
-is being investigated, without changing waits or granting unlimited credit. No
-pass report exists for this new seam yet. Prior dynamic five-port SE component
-and GUI locale proofs do not cover this decoder/credit/raw-sink path.
+The initial native failure is retained:7973frames, native time-pos0/seeking=true.
+The bounded first-sync correction above resolved it without increasing any
+numerical credit or wait. A later regression caught private-window prefetch
+being counted as delivery; only successful returned whole frames now count.
+An old native test also incorrectly required PCM in the producer queue when
+it could already be buffered downstream; it now requires a real running clock
+and >2048 returned frames ahead before revocation, matching the GUI proof.
+
+GUI source attempt1 reached actual normal download and the cold grant, then
+failed a proof-only assumption that NCM lived in the media root. Normal path
+type2 correctly placed it under artist/album directories. The seed now returns
+the authoritative completed row's canonical path privately to this helper;
+the old desktop seed still returns the unchanged public summary. The corrected
+attempt passed all11 stages after real GTK initialization. The same core CLI
+also passed without a display. No production authorization or file gate was
+changed to make either test pass; exact results are in the validation record.
