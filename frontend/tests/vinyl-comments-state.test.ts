@@ -237,9 +237,10 @@ test('the same verified inline like updates Hot and Latest, fences stale pages a
           },
           playerVinylCommentLikeOperations: async (epoch) => ({
             epoch,
-            value: epoch === '1' && pending
-              ? [{ id: item.id, desired: false, phase: 'uncertain', observed: null }]
-              : [],
+            value:
+              epoch === '1' && pending
+                ? [{ id: item.id, desired: false, phase: 'uncertain', observed: null }]
+                : [],
           }),
           playerVinylCommentLike: (epoch, playId, id, action) => {
             assert.deepEqual([epoch, playId, id], ['1', 'play-a', item.id]);
