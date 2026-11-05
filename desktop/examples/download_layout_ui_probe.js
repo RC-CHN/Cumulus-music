@@ -11,6 +11,20 @@
   const input = (node, value) => { node.value = value; node.dispatchEvent(new Event('input', { bubbles: true })); };
   const rect = node => { const r = node.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
   const hit = node => { const r = rect(node); return node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); };
+  const field = node => node && ({ name: node.name, type: node.type,
+    label: node.getAttribute('aria-label') || node.closest('label')?.textContent.trim() || null,
+    disabled: node.matches(':disabled'), box: rect(node) });
+  let focusAttempt = null;
+  async function focusField(node, body) {
+    assert(node?.isConnected && !node.matches(':disabled'), 'enabled download field');
+    node.focus();
+    await wait(() => {
+      const focused = document.activeElement === node, visible = hit(node);
+      focusAttempt = { field: field(node), focused, visible, active: field(document.activeElement),
+        body: rect(body), scrollTop: body.scrollTop, scrollHeight: body.scrollHeight };
+      return focused && visible;
+    }, 'focused download field must receive focus and scroll into view');
+  }
   let stageCount = 0;
   const checks = [];
   const resizeTrace=[];
@@ -80,13 +94,15 @@
       await wait(() => !!button('保存并迁移'), 'migration choice update');
       await capture(`download_migration_${width}_${mode}`);
       if (!window.__downloadLayoutBaseline) {
-        for (const node of all('.download-settings-body input, .download-settings-body select')) {
-          node.focus();
-          await sleep(100);
-          assert(hit(node), `focused field is covered: ${node.getAttribute('aria-label') || node.value}`);
-        }
-        one('[aria-label="下载音质"]').focus();
+        // Disabled rights choices are visible but cannot receive focus or cause
+        // browser focus scrolling. Exercise all enabled fields without scrolling them manually.
+        const fields = [...body.querySelectorAll('input:not(:disabled), select:not(:disabled)')];
+        assert(fields.length > 0, 'download settings has focusable fields');
+        for (const node of fields) await focusField(node, body);
+        const quality = body.querySelector('input[name="default-download-quality"]:not(:disabled)');
+        await focusField(quality, body);
         await capture(`download_focus_${width}_${mode}`);
+        assert(document.activeElement === quality && hit(quality), 'download quality focus survives capture');
       }
       await close();
     }
@@ -106,5 +122,5 @@
       }
     }
     await emit('complete', { ok: true, stageCount, checks, realMusicRequests: 0, downloadsStarted: 0, accountWrites: 0 });
-  } catch (error) { await emit('failed', { ok: false, stageCount, message: String(error), stack: error.stack, resizeTrace, viewport:{width:innerWidth,height:innerHeight}, themeExpanded:one('[aria-label="外观主题"]')?.getAttribute('aria-expanded'), dialogs:[...document.querySelectorAll('dialog')].map(n=>({open:n.open,inert:n.inert,leaving:n.classList.contains('modal-leave-active')})) }); }
+  } catch (error) { await emit('failed', { ok: false, stageCount, message: String(error), stack: error.stack, focusAttempt, resizeTrace, viewport:{width:innerWidth,height:innerHeight}, themeExpanded:one('[aria-label="外观主题"]')?.getAttribute('aria-expanded'), dialogs:[...document.querySelectorAll('dialog')].map(n=>({open:n.open,inert:n.inert,leaving:n.classList.contains('modal-leave-active')})) }); }
 })();
