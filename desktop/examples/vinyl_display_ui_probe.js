@@ -94,9 +94,14 @@
       const daily = () => all('.sidebar button:not(:disabled)').find((node) => node.textContent.trim() === '每日推荐');
       await wait(daily, 'enabled daily navigation');
       click(daily());
-      await wait(() => one('.daily-track-actions') && one('.track-row') &&
-        one('[aria-label="列表循环"]:not(:disabled)'), 'ordinary recommendations and player ready');
-      one('.track-row').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await wait(() => {
+        const row = one('.track-row');
+        if (!row || !one('.daily-track-actions') ||
+            !one('[aria-label="列表循环"]:not(:disabled)')) return false;
+        // Discovery may replace the virtual rows on the next Vue microtask.
+        row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        return true;
+      }, 'ordinary recommendations and player ready');
       await wait(async () => {
         const now = await player();
         return now.state === 'playing' && !now.fm && now.track?.id === '1' && now.position > .16;
