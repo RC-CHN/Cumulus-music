@@ -298,6 +298,14 @@ impl HttpBackend for Backend {
                 }
                 groups.push(json!({"expName":"PH-PC-search-result",
                     "expGroupName":if mode == "unknown" {"future"} else {mode.as_str()}}));
+                if presentation_enabled()
+                    && std::env::var("CUMULUS_HISTORY_SETTINGS_COHORT_PROOF").as_deref() == Ok("1")
+                {
+                    groups.push(json!({
+                        "expName":"PH-PC-setting-multiterminal-record",
+                        "expGroupName":mode
+                    }));
+                }
                 self.calls
                     .lock()
                     .unwrap()

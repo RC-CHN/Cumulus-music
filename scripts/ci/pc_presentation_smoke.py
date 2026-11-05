@@ -1,4 +1,4 @@
-"""Live global PC presentation and cached search via signed synthetic full AB reads.
+"""Open history settings or cached search via signed synthetic full PC AB reads.
 
 Only the sealed host's server response changes. App subscription, native receipt
 projection, route/Back restoration and libmpv/null output remain production code.
@@ -8,6 +8,7 @@ it does not wait 30 minutes or create a renderer-facing production refresh API.
 import argparse
 import json
 import os
+import sqlite3
 from pathlib import Path
 
 from motion_smoke import launch
@@ -18,6 +19,11 @@ from search_footer_smoke import assignment_arguments
 LABELS = ("initial", "paused", "current_control", "current_treatment", "temporary_failure",
           "detail", "detail_control", "back_pending", "back_control", "back_treatment")
 ASSIGNMENT = "/api/rtrs/abt/front/expinfo/list"
+HISTORY_LABELS = (
+    "untouched_treatment", "untouched_control", "untouched_treatment_again",
+    "pending_during_experiment_off", "cancelled_without_choice",
+    "confirmed_while_effectively_off", "manual_choice_retained",
+)
 
 
 def read(path):
@@ -133,6 +139,89 @@ def verify(root, repository, screenshots, windows):
                 lifecycleBoundary="The sealed native refresh trigger exercises the same full signed read; startup/30-minute/account cancellation timing is covered by Rust unit tests, not by waiting here.")
 
 
+def verify_history_settings(root, repository, screenshots, windows):
+    output = root / "first"
+    failed = output / "failed.json"
+    assert not failed.exists(), failed.read_text(encoding="utf-8") if failed.exists() else ""
+    done = read(output / "complete.json")
+    assert done["ok"] and done["stageCount"] == len(HISTORY_LABELS)
+    assert done["realMusicRequests"] == done["realAccountWrites"] == 0
+    paths = sorted(output.glob("ux_*.json"))
+    assert [path.name for path in paths] == [
+        f"ux_{index:02}_{label}.json" for index, label in enumerate(HISTORY_LABELS, 1)
+    ]
+    stages = list(map(read, paths))
+    epoch = done["epoch"]
+    assert [item["label"] for item in stages] == list(HISTORY_LABELS)
+    assert [item["checked"] for item in stages] == [True, False, True, False, False, False, False]
+    assert [item["dialog"] for item in stages] == [False, False, False, True, False, False, False]
+    assert [item["saved"] for item in stages] == [False] * 5 + [True, True]
+    assert [item["native"]["firstDisableConfirmed"] for item in stages] == [False] * 5 + [True, True]
+    assert [item["native"]["enabled"] for item in stages] == [item["checked"] for item in stages]
+    assert stages[4]["focusRestored"] and stages[5]["focusRestored"]
+    assert all(item["nativePlayer"]["state"] == "idle" for item in stages)
+    assert stages[-1]["native"] == stages[-2]["native"]
+
+    component = [{"epoch": epoch, "action": {"kind": "read"}}, {"epoch": epoch, "action": {
+        "kind": "set", "enabled": False, "confirmed_first_disable": True,
+    }}]
+    assert done["componentRequests"] == component
+    assert [item["componentRequests"] for item in stages] == [component[:1]] * 5 + [component] * 2
+    observations = done["observations"]
+    assert len(observations) == 6 and all(item["epoch"] == epoch for item in observations)
+    native_events = [item["value"] for item in observations]
+    assert [item["enabled"] for item in native_events] == [False, True, False, True, False, False]
+    assert [item["firstDisableConfirmed"] for item in native_events] == [False] * 5 + [True]
+    revisions = [int(item["revision"]) for item in native_events]
+    assert revisions == list(range(revisions[0], revisions[0] + 6))
+    assert native_events[-1] == stages[-1]["native"]
+
+    trace = done["signedSearch"]
+    assert trace["transport"] == "MusicHttpClient" and trace["syntheticOnly"] and trace["sameProfileAccountRestore"]
+    assert trace["footerCase"] == trace["serverMode"] == "t1" and trace["serverGeneration"] == 6
+    modes = ("t1", "c", "t1", "c", "t1", "c", "t1")
+    calls = trace["calls"]
+    assert [call["path"] for call in calls] == ["/api/w/nuser/account/get"] + [ASSIGNMENT] * 7
+    assert calls[0]["args"] == {}
+    assert all(call["signedPcContextVerified"] and call["sameAccountCredential"]
+               and call["responseCode"] == 200 for call in calls)
+    for generation, (call, mode) in enumerate(zip(calls[1:], modes)):
+        assert call["args"] == assignment_arguments(repository)
+        assert call["serverMode"] == mode and call["serverGeneration"] == generation
+    assert not done["presentationQueryCalls"], "settings observations must not search or re-run a result"
+    commands = done["commands"]
+    assert [command["mode"] for command in commands] == list(modes[1:])
+    for index, command in enumerate(commands, 1):
+        assert command["beforeFull"] == index and command["afterFull"] == index + 1
+    assert commands[-1]["before"] == commands[-1]["after"] == native_events[-1]
+
+    # Verify the local preference actually persisted and that no other account
+    # or guest record was introduced by this opt-in proof.
+    state = (root / "state" / "core.sqlite3").resolve(strict=True)
+    with sqlite3.connect(state.as_uri() + "?mode=ro", uri=True) as database:
+        rows = database.execute(
+            "SELECT owner,key,value FROM state WHERE kind='play-history-v1' AND key LIKE 'sync-%'"
+        ).fetchall()
+    assert all(owner == "2" for owner, _, _ in rows)
+    stored = {key: json.loads(value) for _, key, value in rows}
+    assert stored == {
+        "sync-enabled": False, "sync-first-off-confirmed": True, "sync-experiment-default": False,
+        "sync-view-revision": revisions[-1], "sync-privacy-revision": revisions[-1] - 1,
+    }, stored
+    locale = None
+    if not windows:
+        locale = read(output / "locale.json")
+        assert locale["numeric"] == "C"
+        assert all(locale[key].casefold().replace("-", "") == "en_us.utf8"
+                   for key in ("messages", "characters"))
+    pictures = len(list(output.glob("ux_*.png")))
+    assert pictures == (len(HISTORY_LABELS) if screenshots else 0)
+    return dict(ok=True, actualWebView=True, genuineSignedPcTransport=True, sameCredentialRestore=True,
+                stageCount=len(HISTORY_LABELS), screenshots=pictures, fullAssignmentReads=7,
+                committedHistoryEvents=6, componentReads=1, explicitLocalSaves=1, locale=locale,
+                realMusicRequests=0, realAccountWrites=0)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -140,6 +229,8 @@ def main():
     parser.add_argument("--frontend-dist", type=Path)
     parser.add_argument("--runtime", type=Path)
     parser.add_argument("--screenshots", action="store_true")
+    parser.add_argument("--history-settings", action="store_true",
+                        help="observe the open history sync setting and explicit confirmation")
     args = parser.parse_args()
     windows = os.name == "nt"
     if windows and (not args.runtime or args.screenshots):
@@ -167,6 +258,9 @@ def main():
                CUMULUS_SEARCH_FOOTER_UI_PROOF="1", CUMULUS_SEARCH_FOOTER_PROOF="t1",
                CUMULUS_PC_PRESENTATION_PROOF="1",
                CUMULUS_UX_SCRIPT=str(repository / "desktop/examples/pc_presentation_ui_probe.js"))
+    if args.history_settings:
+        env["CUMULUS_HISTORY_SETTINGS_COHORT_PROOF"] = "1"
+        env["CUMULUS_UX_SCRIPT"] = str(repository / "desktop/examples/history_sync_cohort_ui_probe.js")
     for key, name in profiles:
         directory = root / "os-profile" / name
         directory.mkdir(parents=True, mode=0o700)
@@ -177,7 +271,8 @@ def main():
         env["CUMULUS_PROOF_FRONTEND_DIST"] = str(args.frontend_dist.resolve(strict=True))
     with (root / "host.log").open("x", encoding="utf-8") as log:
         code = launch(binary, env, log, root / "first", args.screenshots)
-    report = verify(root, repository, args.screenshots, windows)
+    validator = verify_history_settings if args.history_settings else verify
+    report = validator(root, repository, args.screenshots, windows)
     assert code == 0, (code, str(root / "host.log"))
     report["windowsMedia"] = windows_media
     (root / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
