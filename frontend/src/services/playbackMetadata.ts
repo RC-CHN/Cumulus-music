@@ -29,6 +29,7 @@ export function playbackSource(view: PlayerView | undefined): {
   target?: PlaybackSourceDestination;
 } | null {
   if (!view?.track || view.fm) return null;
+  if (view.vinylSimilarOrigin && view.resourceKind === 'catalog') return { name: '相似歌曲' };
   const { origin, track } = view;
   if (origin && /^[0-9]*[1-9][0-9]*$/.test(origin.id)) {
     const { kind, id } = origin;

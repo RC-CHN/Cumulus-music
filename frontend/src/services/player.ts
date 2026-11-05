@@ -68,6 +68,7 @@ export interface PlayerView {
   resourceKind?: 'catalog' | 'cloud' | 'local' | 'downloaded' | 'voice' | null;
   audiobookSkipAvailable?: boolean;
   origin?: PlayerOrigin | null;
+  vinylSimilarOrigin?: boolean;
   profileRankPlaylistUid?: string;
   recommendationOrigin?: { kind: 'daily' | 'style'; revision: string } | null;
   fm: boolean;

@@ -180,6 +180,7 @@
     step = 'title queues all displayed rows';
     click(one('[data-vinyl-similar-play-all]', pane()));
     const title = await pauseAfterPlayback('51');
+    await wait(() => one('.vinyl-source')?.textContent.includes('相似歌曲'), 'official title playback source label');
     retained(first, title);
     assert(equal(queueIds(title.queue), ['1', '51', '52', '53', ...queueIds(first.queue).slice(1)]),
       'title inserts the full displayed list after current');
@@ -189,6 +190,7 @@
     step = 'cover queues only its row';
     click(one('[data-vinyl-similar-track-art]', row('55')));
     const cover = await pauseAfterPlayback('55');
+    await wait(() => one('.vinyl-source')?.textContent.includes('相似歌曲'), 'official cover playback source label');
     retained(title, cover);
     assert(equal(queueIds(cover.queue), ['1', '51', '55', ...queueIds(title.queue).slice(2)]),
       'cover inserts only its selected row even with replacement enabled');

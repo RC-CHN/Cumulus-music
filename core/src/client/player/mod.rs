@@ -286,6 +286,10 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             .filter(|id| id.len() == 32 && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
             .map(str::to_owned),
         resource_kind: value.selected.as_ref().map(|i| identity::kind(&i.resource)),
+        vinyl_similar_origin: value.selected.as_ref().is_some_and(|entry| {
+            identity::kind(&entry.resource) == PlayerResourceKind::Catalog
+                && entry.source["kind"] == "vinyl_similar"
+        }),
         track: value
             .selected
             .as_ref()

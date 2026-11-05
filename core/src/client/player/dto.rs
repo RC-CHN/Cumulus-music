@@ -45,6 +45,9 @@ pub struct PlayerView {
     pub download_task_id: Option<String>,
     pub track: Option<TrackView>,
     pub origin: Option<PlayerOrigin>,
+    /// Known non-navigable playback provenance; no raw source data is exposed.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub vinyl_similar_origin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile_rank_playlist_uid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
