@@ -59,7 +59,7 @@ impl Pending {
 /// Normal launches can coexist as before, but a cold file activation never
 /// claims a profile already in use. The file itself holds no application data.
 pub(crate) struct ProcessGuard {
-    _lock: File,
+    lock: File,
 }
 impl ProcessGuard {
     pub(crate) fn acquire(root: &Path, exclusive: bool) -> io::Result<Self> {
@@ -83,7 +83,15 @@ impl ProcessGuard {
             lock.try_lock_shared()
         }
         .map_err(io::Error::from)?;
-        Ok(Self { _lock: lock })
+        Ok(Self { lock })
+    }
+}
+
+impl Drop for ProcessGuard {
+    fn drop(&mut self) {
+        // A forked child can still hold the same file description until exec,
+        // even with close-on-exec set. Release the lock before closing our fd.
+        let _ = self.lock.unlock();
     }
 }
 
@@ -103,7 +111,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_open_excludes_another_process_using_the_same_root() {
+    fn native_open_excludes_incompatible_handles_using_the_same_root() {
         let root = tempfile::tempdir().unwrap();
         let first = ProcessGuard::acquire(root.path(), false).unwrap();
         assert!(ProcessGuard::acquire(root.path(), false).is_ok());
@@ -116,6 +124,28 @@ mod tests {
         );
         drop(first);
         let active = ProcessGuard::acquire(root.path(), true).unwrap();
+        assert_eq!(
+            ProcessGuard::acquire(root.path(), false)
+                .err()
+                .unwrap()
+                .kind(),
+            io::ErrorKind::WouldBlock
+        );
+        drop(active);
+        assert!(ProcessGuard::acquire(root.path(), false).is_ok());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn native_open_releases_the_lock_while_an_inherited_descriptor_is_open() {
+        let root = tempfile::tempdir().unwrap();
+        let guard = ProcessGuard::acquire(root.path(), false).unwrap();
+        // A duplicate pins the same Linux file description as an inherited fd
+        // in a child before exec. Keeping it open makes the race deterministic.
+        let inherited = guard.lock.try_clone().unwrap();
+        drop(guard);
+        let active = ProcessGuard::acquire(root.path(), true).unwrap();
+        drop(inherited);
         assert_eq!(
             ProcessGuard::acquire(root.path(), false)
                 .err()
