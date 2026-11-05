@@ -280,6 +280,15 @@ export type SongRowDoubleClickSelection =
   | { kind: 'playlist'; id: string; start_id: string; revision: string | null; quality: Quality };
 export type PlaySelection =
   | {
+      kind: 'vertical_zone_playlist_detail';
+      id: string;
+      receipt: string;
+      revision: string;
+      start_id?: string | null;
+      double_click: boolean;
+      quality: Quality;
+    }
+  | {
       kind: 'vertical_zone_playlist';
       id: string;
       view_id: string;

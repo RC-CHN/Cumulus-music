@@ -697,12 +697,67 @@ function openSearchChartRadio(id: string) {
 const fm = useFm(undefined, () => {
   void music.bootstrap(false);
 });
+const zonePlaylistOpening = ref<string>();
+const zonePlaylistIssue = ref('');
+let zonePlaylistNavigation = 0;
+watch(
+  [music.page, () => music.account.value.epoch],
+  () => {
+    zonePlaylistNavigation++;
+    zonePlaylistOpening.value = undefined;
+    zonePlaylistIssue.value = '';
+  },
+  { flush: 'sync' },
+);
+async function openZonePlaylist(card: VerticalZoneCard) {
+  const route = verticalZoneRoute();
+  const data = verticalZone.data.value;
+  const target = card.target;
+  if (!route || !data || !music.signedIn.value || target.kind !== 'playlist') return;
+  if (!target.personalized) {
+    music.navigate({ kind: 'playlist', id: target.id });
+    return;
+  }
+  if (zonePlaylistOpening.value === card.cardKey) return;
+  const epoch = music.account.value.epoch;
+  const attempt = ++zonePlaylistNavigation;
+  const current = () =>
+    attempt === zonePlaylistNavigation &&
+    verticalZoneRoute() === route &&
+    verticalZone.data.value === data &&
+    music.signedIn.value &&
+    music.account.value.epoch === epoch;
+  zonePlaylistOpening.value = card.cardKey;
+  zonePlaylistIssue.value = '';
+  try {
+    const result = await core.verticalZonePlaylistOrigin(
+      epoch,
+      data.viewId,
+      card.cardKey,
+      target.id,
+    );
+    if (current() && result.epoch === epoch && result.value.receipt)
+      music.navigate({
+        kind: 'playlist',
+        id: target.id,
+        zonePlaylistReceipt: result.value.receipt,
+      });
+  } catch (cause) {
+    if (!current()) return;
+    const issue = failure(cause);
+    zonePlaylistIssue.value = issue.message;
+    if (issue.code === 'session_expired' || issue.code === 'profile_changed')
+      void music.bootstrap(false);
+  } finally {
+    if (attempt === zonePlaylistNavigation) zonePlaylistOpening.value = undefined;
+  }
+}
 function openVerticalZoneCard(card: VerticalZoneCard) {
   if (!verticalZoneRoute() || !music.signedIn.value) return;
   const target = card.target;
   switch (target.kind) {
     case 'playlist':
-      music.navigate({ kind: 'playlist', id: target.id });
+      void openZonePlaylist(card);
       break;
     case 'album':
     case 'artist':
@@ -2972,8 +3027,16 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
   if (!item || item.disabled) return;
   if (key === 'view') music.navigate({ kind: 'playlist', id: list.id });
   else if (key === 'batch') openBatch(list);
-  else if (key === 'play') playMemberPlaylist(list.id, null);
-  else if (key === 'edit') editPlaylist(list.id);
+  else if (key === 'play') {
+    if (
+      scene === 'detail' &&
+      page.value.kind === 'playlist' &&
+      page.value.id === list.id &&
+      page.value.zonePlaylistReceipt
+    )
+      playZonePlaylistDetail(null);
+    else playMemberPlaylist(list.id, null);
+  } else if (key === 'edit') editPlaylist(list.id);
   else if (key === 'up' || key === 'down')
     void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
   else playlistActions.value?.show(list, key);
@@ -3156,7 +3219,11 @@ const pageKey = computed(() =>
             : page.value.kind === 'settings'
               ? { kind: 'settings' }
               : page.value.kind === 'playlist'
-                ? { kind: 'playlist', id: page.value.id }
+                ? {
+                    kind: 'playlist',
+                    id: page.value.id,
+                    zonePlaylistReceipt: page.value.zonePlaylistReceipt,
+                  }
                 : page.value,
   }),
 );
@@ -3597,6 +3664,31 @@ function playLatestSongRow(selection: LatestSongRowSelection) {
     },
   });
 }
+function playZonePlaylistDetail(startId: string | null, doubleClick = false) {
+  const current = page.value;
+  const shown = result.value;
+  if (
+    current.kind !== 'playlist' ||
+    !current.zonePlaylistReceipt ||
+    !shown?.revision ||
+    shown.playlist?.id !== current.id
+  )
+    return;
+  void player.select({
+    kind: 'vertical_zone_playlist_detail',
+    id: current.id,
+    receipt: current.zonePlaylistReceipt,
+    revision: shown.revision,
+    start_id: startId,
+    double_click: doubleClick,
+    quality: player.view.value?.qualityPreferences.quality ?? 'standard',
+  });
+}
+function playPlaylistHeader() {
+  const current = page.value;
+  if (current.kind === 'playlist' && current.zonePlaylistReceipt) playZonePlaylistDetail(null);
+  else play(result.value?.tracks.findIndex((track) => !track.missing) ?? -1);
+}
 function play(index = 0, gesture?: TrackPlayGesture) {
   const tracks = result.value?.tracks;
   if (!tracks?.[index] || tracks[index].missing) return;
@@ -3608,6 +3700,10 @@ function play(index = 0, gesture?: TrackPlayGesture) {
       void player.select({ kind, revision, index, quality });
     }
   } else if (page.value.kind === 'playlist') {
+    if (page.value.zonePlaylistReceipt) {
+      playZonePlaylistDetail(tracks[index].id, gesture === 'double_click');
+      return;
+    }
     const selection: SongRowDoubleClickSelection = {
       kind: 'playlist',
       id: page.value.id,
@@ -4007,6 +4103,8 @@ onUnmounted(() => {
                 :model="verticalZone"
                 :viewport="verticalZoneViewport"
                 :selected-tab="page.tabKey"
+                :opening-card="zonePlaylistOpening"
+                :action-issue="zonePlaylistIssue"
                 :playable="player.ready.value && !player.busy.value"
                 @tab="selectVerticalZoneTab"
                 @open="openVerticalZoneCard"
@@ -4610,6 +4708,9 @@ onUnmounted(() => {
                 <PlaylistHero
                   v-if="result?.playlist"
                   :key="result.playlist.id"
+                  :data-zone-playlist-detail="
+                    page.kind === 'playlist' && !!page.zonePlaylistReceipt ? '' : undefined
+                  "
                   :playlist="result.playlist"
                   :total="result.total"
                   :playable="player.ready.value && result.tracks.some((track) => !track.missing)"
@@ -4635,7 +4736,7 @@ onUnmounted(() => {
                   @edit="editPlaylist(result.playlist.id)"
                   @tag="(tag) => music.navigate({ kind: 'playlist_tag', tag })"
                   @creator="(id) => music.navigate({ kind: 'playlist_creator', id })"
-                  @play="play(result.tracks.findIndex((track) => !track.missing))"
+                  @play="playPlaylistHeader"
                   @download="
                     downloadDialog = {
                       kind: 'start',

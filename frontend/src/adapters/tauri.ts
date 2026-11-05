@@ -193,6 +193,12 @@ export function createTauriClient(): CoreClient {
       invoke('ordinary_essential_books', { epoch, category }),
     discoveryHome: (epoch) => invoke('discovery_home', { epoch }),
     verticalZoneMenu: (epoch) => invoke('vertical_zone_menu', { epoch }),
+    verticalZoneFmPreview: (epoch, viewId, cardKey) =>
+      invoke('vertical_zone_fm_preview', { epoch, viewId, cardKey }),
+    verticalZonePlaylistOrigin: (epoch, viewId, cardKey, id) =>
+      invoke('vertical_zone_playlist_origin', { epoch, viewId, cardKey, id }),
+    verticalZonePlaylistDetail: (epoch, receipt, id, page) =>
+      invoke('vertical_zone_playlist_detail', { epoch, receipt, id, page }),
     verticalZonePage: (epoch, pageCode, tabKey, tabKeyName) =>
       invoke('vertical_zone_page', { epoch, pageCode, tabKey, tabKeyName }),
     discoveryHomeRankings: (epoch) => invoke('discovery_home_rankings', { epoch }),

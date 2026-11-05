@@ -24,6 +24,7 @@ export function useVerticalZone(
   const menu = shallowRef<VerticalZoneMenu>();
   const data = shallowRef<VerticalZoneContent>();
   const tabs = shallowRef<VerticalZoneTab[]>([]);
+  const fmArtwork = shallowRef(new Map<string, string>());
   const loading = ref(false);
   const error = ref('');
   const viewports = new Map<string, ZoneViewport>();
@@ -33,6 +34,7 @@ export function useVerticalZone(
   let owner: string | undefined;
   let menuSerial = 0,
     pageSerial = 0;
+  let previewSerial = 0;
 
   function viewport(location: VerticalZoneLocation) {
     const key = JSON.stringify([
@@ -66,6 +68,38 @@ export function useVerticalZone(
     }
   }
 
+  async function previewFm(content: VerticalZoneContent, epoch: string) {
+    const attempt = ++previewSerial;
+    fmArtwork.value = new Map();
+    const candidates = new Map<string, string>();
+    for (const block of content.blocks) {
+      for (const card of block.cards) {
+        if (card.target.kind === 'fm' && !candidates.has(card.target.id))
+          candidates.set(card.target.id, card.cardKey);
+      }
+    }
+    if (!candidates.size) return;
+    const pending = candidates.entries();
+    const current = () => owner === epoch && previewSerial === attempt && data.value === content;
+    async function worker() {
+      for (const [id, key] of pending) {
+        if (!current()) return;
+        try {
+          const response = await core.verticalZoneFmPreview(epoch, content.viewId, key);
+          if (current() && response.epoch === epoch && response.value.coverUrl) {
+            const update = new Map(fmArtwork.value);
+            update.set(id, response.value.coverUrl);
+            fmArtwork.value = update;
+          }
+        } catch {
+          // The card's original art remains usable; a passive preview is not
+          // a foreground page or playback failure.
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(3, candidates.size) }, worker));
+  }
+
   async function read() {
     const location = route(),
       epoch = owner;
@@ -87,6 +121,7 @@ export function useVerticalZone(
           canonicalKeys.set(location, response.value.activeTab.key);
         else if (effectiveKey) canonicalKeys.set(location, 'default');
         data.value = response.value;
+        void previewFm(response.value, epoch);
         if (response.value.layout !== 'fallback' || response.value.tabs.length)
           tabs.value = response.value.tabs;
       }
@@ -123,13 +158,15 @@ export function useVerticalZone(
       if (next?.pageCode !== previous[0]?.pageCode) tabs.value = [];
       pageSerial++;
       data.value = undefined;
+      previewSerial++;
+      fmArtwork.value = new Map();
       error.value = '';
       loading.value = false;
       void read();
     },
     { flush: 'sync', immediate: true },
   );
-  return { menu, data, tabs, loading, error, read, viewport };
+  return { menu, data, tabs, loading, error, read, viewport, fmArtwork };
 }
 
 export type VerticalZoneModel = ReturnType<typeof useVerticalZone>;

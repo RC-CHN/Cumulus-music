@@ -12,6 +12,8 @@ const props = defineProps<{
   viewport: ZoneViewport;
   playable: boolean;
   selectedTab?: string;
+  openingCard?: string;
+  actionIssue?: string;
 }>();
 const emit = defineEmits<{
   tab: [key: string];
@@ -20,7 +22,7 @@ const emit = defineEmits<{
   privacy: [];
 }>();
 const root = ref<HTMLElement>();
-const { data, error, loading } = props.model;
+const { data, error, loading, fmArtwork } = props.model;
 const motion = useMotion();
 const tabs = computed(() => props.model.tabs.value.filter((tab) => tab.name.trim()));
 const active = computed(() => data.value?.activeTab?.key || props.selectedTab || 'default');
@@ -58,6 +60,11 @@ function railScroll(event: Event, index: number) {
 }
 function isCoverPlayback(block: VerticalZoneBlock, card: VerticalZoneCard) {
   return block.kind === 'carousel' && ['song', 'voice'].includes(card.target.kind);
+}
+function artwork(card: VerticalZoneCard) {
+  return (
+    (card.target.kind === 'fm' ? fmArtwork.value.get(card.target.id) : undefined) ?? card.cover
+  );
 }
 function title(card: VerticalZoneCard) {
   return (
@@ -143,6 +150,7 @@ defineExpose({ restore });
         重试
       </button>
     </div>
+    <p v-if="actionIssue" class="vertical-zone-action-issue" role="alert">{{ actionIssue }}</p>
     <div v-if="data && !data.blocks.length" class="empty-state">暂无专区内容</div>
     <section
       v-for="(block, index) in data?.blocks ?? []"
@@ -213,10 +221,11 @@ defineExpose({ restore });
               class="vertical-zone-cover"
               :aria-label="isCoverPlayback(block, card) ? `播放${title(card)}` : title(card)"
               :disabled="isCoverPlayback(block, card) && !playable"
+              :aria-busy="openingCard === card.cardKey"
               :data-zone-focus="`${index}:${row}:open`"
               @click="isCoverPlayback(block, card) ? emit('play', card) : emit('open', card)"
             >
-              <img v-if="card.cover" :src="card.cover" alt="" loading="lazy" />
+              <img v-if="artwork(card)" :src="artwork(card) ?? undefined" alt="" loading="lazy" />
               <Icon v-else :name="card.target.kind === 'fm' ? 'headphones' : 'music'" />
               <span v-if="card.target.kind === 'fm'" class="vertical-zone-fm-mask"
                 >{{ name }}漫游</span
@@ -238,6 +247,7 @@ defineExpose({ restore });
             <button
               class="vertical-zone-card-title"
               type="button"
+              :aria-busy="openingCard === card.cardKey"
               :data-zone-focus="`${index}:${row}:title`"
               @click="emit('open', card)"
             >

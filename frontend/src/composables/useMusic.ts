@@ -69,6 +69,7 @@ type Destination =
       section?: PlaylistSection;
       subscriberReturn?: number;
       initialCommentId?: string;
+      zonePlaylistReceipt?: string;
     }
   | { kind: 'playlist_tag'; tag: string }
   | { kind: 'playlist_essential'; tag: string }
@@ -274,6 +275,7 @@ export function useMusic(
           : null;
       // Do not request a new style list after this Back navigation was replaced.
       if (current !== request) return;
+      const playlistPage = { offset, limit: 100, revision: more ? result.value?.revision : null };
       const data =
         restored ??
         (target.kind === 'daily' || target.kind === 'daily_batch'
@@ -282,11 +284,14 @@ export function useMusic(
             ? target.seed
               ? await core.seededStyleRecommendations(account.value.epoch, target.seed)
               : await core.styleRecommendations(account.value.epoch)
-            : await core.playlistPage(target.id, {
-                offset,
-                limit: 100,
-                revision: more ? result.value?.revision : null,
-              }));
+            : target.kind === 'playlist' && target.zonePlaylistReceipt
+              ? await core.verticalZonePlaylistDetail(
+                  account.value.epoch,
+                  target.zonePlaylistReceipt,
+                  target.id,
+                  playlistPage,
+                )
+              : await core.playlistPage(target.id, playlistPage));
       if (current !== request) return;
       const value = accept(data);
       if (!value) {
@@ -457,7 +462,12 @@ export function useMusic(
     const current = page.value;
     if (current.kind !== 'playlist' || (current.section ?? 'songs') === section) return;
     // The parent detail and its data survive a child route replacement.
-    page.value = { kind: 'playlist', id: current.id, section };
+    page.value = {
+      kind: 'playlist',
+      id: current.id,
+      section,
+      ...(current.zonePlaylistReceipt ? { zonePlaylistReceipt: current.zonePlaylistReceipt } : {}),
+    };
   }
   function replace(next: Page) {
     if (initializing.value) return;

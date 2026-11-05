@@ -1,4 +1,4 @@
-import type { AccountData } from './contracts';
+import type { AccountData, PageRequest, TrackPage } from './contracts';
 
 export type VerticalZoneLocation = {
   pageCode: string;
@@ -53,7 +53,28 @@ export interface VerticalZoneContent {
   blocks: VerticalZoneBlock[];
 }
 
+export interface ZonePlaylistOrigin {
+  receipt: string;
+}
+
 export interface VerticalZoneClient {
+  verticalZoneFmPreview(
+    epoch: string,
+    viewId: string,
+    cardKey: string,
+  ): Promise<AccountData<{ coverUrl: string | null }>>;
+  verticalZonePlaylistOrigin(
+    epoch: string,
+    viewId: string,
+    cardKey: string,
+    id: string,
+  ): Promise<AccountData<ZonePlaylistOrigin>>;
+  verticalZonePlaylistDetail(
+    epoch: string,
+    receipt: string,
+    id: string,
+    page: PageRequest,
+  ): Promise<AccountData<TrackPage>>;
   verticalZoneMenu(epoch: string): Promise<AccountData<VerticalZoneMenu>>;
   verticalZonePage(
     epoch: string,
