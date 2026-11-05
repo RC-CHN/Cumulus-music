@@ -35,3 +35,39 @@ Linux 和 Windows 现有 WebView 烟测；合成账号、真实页面和原生�
 ID、选中条目及进度。保留原有曲目、长度、播放状态与重启 SQLite 断言。相同
 延迟下，Linux Xvfb 普通运行与截图运行均通过 8 态、两次进程启动；没有产品
 播放行为改动。证据：.build/ui-proof/queue-click-stability-78a6cb23/。
+
+2026-11-05 签名搜索夹具重开回归：main 2b0bbb13 的 CI run 41992095683、
+Linux WebView job 127134851612，在 queue_click_smoke.py 的第二进程返回码处失败。
+其 diagnostics-linux-webview artifact 13401295774 的 head 与该提交一致；ZIP
+SHA256 为 ae1868c8b43e412f1f73834f39aff47a7a3b824ee19185e2ffa3638c770e8c94，
+与 GitHub digest 相符，完整读取后核验 ZIP member CRC。只提取该队列流程的
+7 阶段 JSON、complete 和两份 host log；341816078 字节下载归档已删除。
+私有诊断：.build/ui-proof/phase58-ci-diagnosis/current-queue-provenance.json。
+
+最早真实错误是第二进程 app setup 的 Rust panic：
+“signed search proof requires fresh isolated credentials”。第一进程 7 态已完成；
+新增的 sealed 签名搜索夹具对自己的已有 Cookie 也执行 fresh-only 拒绝，
+与队列脚本明确要求 CUMULUS_PROOF_REOPEN=1 的第二次启动冲突。
+原始 binary 在隔离本机重现同一错误，证据保留在
+.build/ui-proof/phase58-ci-local-queue-a/；不是据 AT-SPI 警告推断原因。
+
+修复只在 desktop/examples/support/search_signed_fixture.rs：首次合成初始化
+持久化 owner=synthetic-proof、kind=signed-search-v1、key=native-session 标记，
+包含 schema=1、当前 cohort、实际合成 deviceId 和完整 credentials JSON 的
+SHA256。只有显式 reopen，且标记、完整记录 hash、device、cohort、唯一固定
+合成 MUSIC_U、login token 及无 refresh token 全部吻合才复用。原生 Pc origin
+检查不变；不重签、不改 device/revision，不读取真实 profile。缺标记、外来
+记录、记录被改或 cohort 变化仍拒绝；非 reopen 仍要求空状态。
+
+最小代码提交 55e23ff4、独立缺标记阴性测试 ffa65f30；2 个定向 example 测试
+通过，覆盖同设备/凭据 revision 不变及外来/缺标记/不同 cohort 拒绝。定向
+custom-protocol UX example 构建通过；未据此宣称整个 workspace 或 Windows
+通过。使用该 binary 与原 phase57 frontend/dist，在 bwrap 独立网络、X11
+Xvfb 1280x850、LC_ALL=en_US.UTF-8 下，原 queue_click_smoke.py 及全部严格
+队列/选中条目/playId/revision/位置/SQLite 断言未改，实际通过两进程 8 态、
+真实 WebView、null 音频、0 真实音乐请求。该次未请求截图。
+证据：.build/ui-proof/phase58-ci-local-queue-b/{audit,provenance}.json。
+
+旧 main 2528e823 的 run 41984290134 另有 Windows vinyl_display 的普通音频
+起播失败与 Linux scene_palette sample 的声音详情保留播放失败。它们是另外
+两处待定位失败；本修复没有更改相应产品/脚本，也不宣称它们或 CI gate 已通过。
