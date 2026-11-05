@@ -17,6 +17,7 @@ pub use floor::CommentFloorView;
 pub use report::{CommentReportCommand, CommentReportReason, CommentReportView};
 pub use resource::{CommentResourceCard, CommentResourceView};
 use serde::Serialize;
+pub(crate) use writes::view as write_view;
 pub use writes::{CommentWriteAction, CommentWriteView};
 
 #[derive(Clone, Serialize)]

@@ -317,6 +317,54 @@ pub async fn player_vinyl_comments<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_vinyl_prepare_write<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    command: CommentWriteCommand,
+) -> Result<AccountData<CommentWriteView>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_prepare_write(&epoch, &play_id, command)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_vinyl_write_operations<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<AccountData<Vec<CommentWriteView>>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_write_operations(&epoch, &play_id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_vinyl_write_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    id: String,
+    command: CommentWriteAction,
+) -> Result<AccountData<CommentWriteView>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_write_command(&epoch, &play_id, &id, command)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_lyrics(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

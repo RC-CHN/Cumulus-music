@@ -123,6 +123,21 @@ impl Comments {
         })
     }
     pub async fn submit_write_for(&self, token: &SessionToken, id: &str) -> Result<CommentWrite> {
+        self.submit_write_guarded(token, id, || async { Ok(()) })
+            .await
+    }
+
+    /// Guard an explicit caller's intent after reply-target revalidation and
+    /// immediately before transitioning a Prepared journal record to Sending.
+    pub(crate) async fn submit_write_guarded<Fut>(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        authorize: impl FnOnce() -> Fut + Send,
+    ) -> Result<CommentWrite>
+    where
+        Fut: std::future::Future<Output = Result<()>> + Send,
+    {
         let mut record = self.write_operation_for(token, id)?;
         let _lock = self.write_lock(token, &record.resource)?;
         record = self.write_operation_for(token, id)?;
@@ -138,6 +153,7 @@ impl Comments {
             let observed = self.target_for(token, &record.resource, target).await?;
             self.check_write_target(token, &record.command, Some(&observed))?;
         }
+        authorize().await?;
         record.phase = CommentWritePhase::Sending;
         self.save_write_transition(token, &record)?;
         let owner = token

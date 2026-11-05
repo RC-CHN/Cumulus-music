@@ -48,6 +48,7 @@ struct Backend {
     quality_trial_source: std::sync::atomic::AtomicBool,
     quality_started: Notify,
     quality_release: Notify,
+    vinyl_composer: vinyl_composer::Server,
     vinyl_comment_group: AtomicU64,
     vinyl_comment_calls: Mutex<Vec<(String, Value)>>,
     vinyl_comment_hold: AtomicU64,
@@ -87,6 +88,10 @@ impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
+            if let Some(value) = self.vinyl_composer.response(path, &payload).await {
+                assert!(!cache);
+                return value;
+            }
             Ok(match path {
                 "/api/v1/resource/comments/R_SO_4_1" => {
                     assert!(!cache);
@@ -318,6 +323,9 @@ mod voice_selection;
 
 #[path = "client_player/vinyl_comments.rs"]
 mod vinyl_comments;
+
+#[path = "client_player/vinyl_composer.rs"]
+mod vinyl_composer;
 
 #[path = "client_player/queue_click.rs"]
 mod queue_click;

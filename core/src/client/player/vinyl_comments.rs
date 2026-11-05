@@ -13,7 +13,7 @@ use crate::{
 };
 use serde::Serialize;
 
-const EXPERIMENT: &str = "PH-PC-optimizeComment";
+pub(super) const EXPERIMENT: &str = "PH-PC-optimizeComment";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,7 +24,7 @@ pub struct VinylCommentPageView {
     pub next_offset: Option<usize>,
 }
 
-fn song(snapshot: &PlaybackSnapshot, play_id: &str) -> Result<CommentResource> {
+pub(super) fn song(snapshot: &PlaybackSnapshot, play_id: &str) -> Result<CommentResource> {
     if snapshot.play_id.as_deref() != Some(play_id) {
         return Err(Error::StaleResponse);
     }

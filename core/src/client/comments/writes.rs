@@ -27,7 +27,7 @@ pub enum CommentWriteAction {
     Reconcile,
     Abandon,
 }
-fn view(record: CommentWrite, owner: &str) -> CommentWriteView {
+pub(crate) fn view(record: CommentWrite, owner: &str) -> CommentWriteView {
     CommentWriteView {
         id: record.id,
         resource: record.resource,

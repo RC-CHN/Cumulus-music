@@ -25,6 +25,7 @@ mod selection;
 mod source_control;
 mod startup;
 mod vinyl_comments;
+mod vinyl_composer;
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
@@ -97,6 +98,7 @@ pub(super) struct PlayerHost {
     prepared_generation: Arc<AtomicU64>,
     focus: Arc<super::focus::MediaFocus>,
     lyrics: Mutex<Option<lyrics::ActiveLyrics>>,
+    vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
 }
 impl PlayerHost {
     pub fn new(
@@ -122,6 +124,7 @@ impl PlayerHost {
             prepared_selection: Mutex::new(None),
             prepared_generation: Arc::new(AtomicU64::new(0)),
             lyrics: Mutex::new(None),
+            vinyl_draft: Mutex::new(None),
             focus,
             output,
             inspector: OnceCell::new(),
