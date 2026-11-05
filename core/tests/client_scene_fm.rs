@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use std::{
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -23,6 +23,10 @@ use tokio::sync::Notify;
 struct Backend {
     calls: Mutex<Vec<(String, Value)>>,
     hold: AtomicBool,
+    hold_directory: AtomicBool,
+    fail_directory: AtomicBool,
+    top_mode: AtomicU8,
+    credential_revision: AtomicU64,
     deny: AtomicBool,
     started: Notify,
     release: Notify,
@@ -31,11 +35,43 @@ fn voice(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"cookie":"SECRET"})
 }
 impl Api for Backend {
+    fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
+        let current = self.credential_revision.load(Ordering::SeqCst);
+        Ok((current != u64::MAX).then(|| current.to_string()))
+    }
     fn request<'a>(&'a self, path: &'a str, p: Value, _: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push((path.into(), p.clone()));
             Ok(match path {
+                "/api/rtrs/abt/front/expinfo/list" => {
+                    assert_eq!(p, json!({"expNames":"podcast_tab_better"}));
+                    let group =
+                        |group| json!({"expName":"podcast_tab_better","expGroupName":group});
+                    let rows = match self.top_mode.load(Ordering::SeqCst) {
+                        0 => vec![group("c")],
+                        1 => vec![group("t1")],
+                        2 => {
+                            return Err(cumulus_core::Error::Transport(
+                                "sealed assignment lost".into(),
+                            ));
+                        }
+                        3 => vec![group("c"), group("t1")],
+                        4 => vec![group("")],
+                        _ => panic!("unexpected fixture mode"),
+                    };
+                    json!({"code":200,"data":rows})
+                }
                 "/api/voice/homepage/block/content" => {
+                    assert_eq!(p, json!({"blockCode":"VOICE_HOMEPAGE_BLOCK_SCENE_FM"}));
+                    if self.fail_directory.load(Ordering::SeqCst) {
+                        return Err(cumulus_core::Error::Transport(
+                            "sealed directory lost".into(),
+                        ));
+                    }
+                    if self.hold_directory.swap(false, Ordering::SeqCst) {
+                        self.started.notify_one();
+                        self.release.notified().await;
+                    }
                     let mut v = voice(1);
                     if self.hold.load(Ordering::SeqCst) {
                         v.as_object_mut().unwrap().remove("mainSong");
@@ -93,10 +129,32 @@ fn play(revision: &str) -> SceneFmCommand {
         revision: revision.into(),
     }
 }
-fn auto(revision: &str) -> SceneFmCommand {
-    SceneFmCommand::Automatic {
+fn auto(revision: &str, visit: &str) -> SceneFmCommand {
+    SceneFmCommand::HomeAutomatic {
         revision: revision.into(),
+        visit: visit.into(),
     }
+}
+async fn top(c: &MusicClient) -> Value {
+    serde_json::to_value(
+        c.podcast_rankings("1", PodcastRankQuery::TopConfig)
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap()
+}
+async fn enter(c: &MusicClient) -> String {
+    assert_eq!(
+        top(c).await,
+        json!({"kind":"top_config","layout":"classic","sceneFmAllowed":true})
+    );
+    c.scene_fm_home_enter("1")
+        .await
+        .unwrap()
+        .value
+        .unwrap()
+        .visit
 }
 #[tokio::test]
 async fn whole_voice_queue_toggle_next_history_lazy_switch_and_restart() {
@@ -242,25 +300,36 @@ async fn whole_voice_queue_toggle_next_history_lazy_switch_and_restart() {
 }
 #[tokio::test]
 async fn autoplay_is_off_by_default_once_per_session_and_manual_play_consumes_it() {
-    let (_dir, _api, _s, c, device) = fixture();
+    let (_dir, api, _s, c, device) = fixture();
+    assert!(!c.scene_fm_autoplay_preference("1").unwrap().value);
+    let off = enter(&c).await;
     let v = c.scene_fm_view("1", true).await.unwrap().value;
     let r = v.revision.unwrap();
-    c.scene_fm_command("1", auto(&r)).await.unwrap();
+    c.scene_fm_command("1", auto(&r, &off)).await.unwrap();
     assert_eq!(device.state.lock().unwrap().loads, 0);
-    c.scene_fm_command("1", SceneFmCommand::Autoplay { enabled: true })
+    let before = api.calls.lock().unwrap().len();
+    assert!(c.set_scene_fm_autoplay_preference("1", true).unwrap().value);
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    assert_eq!(device.state.lock().unwrap().loads, 0);
+    let first = enter(&c).await;
+    c.scene_fm_home_leave("1", &off).unwrap(); // Late leave cannot revoke first.
+    let v = c
+        .scene_fm_command("1", auto(&r, &first))
         .await
-        .unwrap();
-    let v = c.scene_fm_command("1", auto(&r)).await.unwrap().value;
+        .unwrap()
+        .value;
     assert!(v.playing);
     assert_eq!(device.state.lock().unwrap().loads, 1);
     c.player_action("1", PlayerAction::Pause { paused: true })
         .await
         .unwrap();
-    c.scene_fm_command("1", auto(v.revision.as_deref().unwrap()))
+    let second = enter(&c).await;
+    c.scene_fm_command("1", auto(v.revision.as_deref().unwrap(), &second))
         .await
         .unwrap();
     assert_eq!(device.state.lock().unwrap().loads, 1);
     assert!(!c.scene_fm_view("1", false).await.unwrap().value.playing);
+
     let (_dir, _api, _s, c, device) = fixture();
     let v = c.scene_fm_view("1", true).await.unwrap().value;
     let v = c
@@ -269,38 +338,211 @@ async fn autoplay_is_off_by_default_once_per_session_and_manual_play_consumes_it
         .unwrap()
         .value;
     c.player_action("1", PlayerAction::Stop).await.unwrap();
-    c.scene_fm_command("1", SceneFmCommand::Autoplay { enabled: true })
-        .await
-        .unwrap();
-    c.scene_fm_command("1", auto(v.revision.as_deref().unwrap()))
+    c.set_scene_fm_autoplay_preference("1", true).unwrap();
+    let entry = enter(&c).await;
+    c.scene_fm_command("1", auto(v.revision.as_deref().unwrap(), &entry))
         .await
         .unwrap();
     assert_eq!(device.state.lock().unwrap().loads, 1);
 }
+
 #[tokio::test]
-async fn delayed_automatic_preparation_cannot_undo_a_newer_stop() {
-    let (_dir, api, _s, c, device) = fixture();
-    api.hold.store(true, Ordering::SeqCst);
-    let v = c.scene_fm_view("1", true).await.unwrap().value;
-    c.scene_fm_command("1", SceneFmCommand::Autoplay { enabled: true })
+async fn playing_entry_does_not_consume_automatic_for_a_later_paused_entry() {
+    let (_dir, _api, _s, c, device) = fixture();
+    c.set_scene_fm_autoplay_preference("1", true).unwrap();
+    c.play_selection("1", PlaySelection::Voice { id: "1".into() })
         .await
         .unwrap();
-    let task = {
-        let c = c.clone();
-        tokio::spawn(async move {
-            c.scene_fm_command("1", auto(v.revision.as_deref().unwrap()))
+    let playing = enter(&c).await;
+    let revision = c
+        .scene_fm_view("1", true)
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    c.scene_fm_command("1", auto(&revision, &playing))
+        .await
+        .unwrap();
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+    c.player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let paused = enter(&c).await;
+    assert!(
+        c.scene_fm_command("1", auto(&revision, &paused))
+            .await
+            .unwrap()
+            .value
+            .playing
+    );
+    assert_eq!(device.state.lock().unwrap().loads, 2);
+}
+
+#[tokio::test]
+async fn autoplay_preference_reopens_locally_and_is_account_isolated() {
+    let (dir, api, session, c, _device) = fixture();
+    c.set_scene_fm_autoplay_preference("1", true).unwrap();
+    assert!(api.calls.lock().unwrap().is_empty());
+    drop(c);
+    let reopened = MusicClient::with_session(
+        session.clone(),
+        ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap(),
+    );
+    assert!(reopened.scene_fm_autoplay_preference("1").unwrap().value);
+    session
+        .adopt(api.clone(), json!({"userId":10}), &session.token().unwrap())
+        .unwrap();
+    assert!(reopened.scene_fm_autoplay_preference("1").is_err());
+    assert!(!reopened.scene_fm_autoplay_preference("2").unwrap().value);
+    session
+        .adopt(api.clone(), json!({"userId":9}), &session.token().unwrap())
+        .unwrap();
+    assert!(reopened.scene_fm_autoplay_preference("3").unwrap().value);
+    assert!(api.calls.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn delayed_automatic_preparation_cannot_undo_a_newer_stop_or_leave() {
+    for leave in [false, true] {
+        let (_dir, api, _s, c, device) = fixture();
+        api.hold.store(true, Ordering::SeqCst);
+        c.set_scene_fm_autoplay_preference("1", true).unwrap();
+        let visit = enter(&c).await;
+        let v = c.scene_fm_view("1", true).await.unwrap().value;
+        let task = {
+            let (c, visit) = (c.clone(), visit.clone());
+            tokio::spawn(async move {
+                c.scene_fm_command("1", auto(v.revision.as_deref().unwrap(), &visit))
+                    .await
+            })
+        };
+        tokio::time::timeout(Duration::from_secs(3), api.started.notified())
+            .await
+            .unwrap();
+        if leave {
+            c.scene_fm_home_leave("1", &visit).unwrap();
+        } else {
+            c.player_action("1", PlayerAction::Stop).await.unwrap();
+        }
+        api.release.notify_one();
+        assert!(task.await.unwrap().is_err());
+        assert_eq!(device.state.lock().unwrap().loads, 0);
+        assert!(c.player_queue("1").await.unwrap().tracks.is_empty());
+        assert!(!c.scene_fm_view("1", false).await.unwrap().value.pending);
+    }
+}
+
+#[tokio::test]
+async fn verified_classic_home_is_the_only_automatic_authority() {
+    let (_dir, api, _s, c, device) = fixture();
+    let revision = c
+        .scene_fm_view("1", true)
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    c.set_scene_fm_autoplay_preference("1", true).unwrap();
+    assert!(
+        serde_json::from_value::<SceneFmCommand>(json!({"kind":"automatic","revision":revision}))
+            .is_err()
+    );
+    for (mode, layout) in [
+        (1, "updated"),
+        (2, "classic"),
+        (3, "classic"),
+        (4, "classic"),
+    ] {
+        api.top_mode.store(mode, Ordering::SeqCst);
+        assert_eq!(
+            top(&c).await,
+            json!({"kind":"top_config","layout":layout,"sceneFmAllowed":false})
+        );
+        let before = api.calls.lock().unwrap().len();
+        assert!(c.scene_fm_home_enter("1").await.unwrap().value.is_none());
+        assert!(
+            c.scene_fm_command("1", auto(&revision, "forged"))
                 .await
-        })
+                .is_err()
+        );
+        assert_eq!(api.calls.lock().unwrap().len(), before);
+    }
+    api.top_mode.store(0, Ordering::SeqCst);
+    api.credential_revision.store(u64::MAX, Ordering::SeqCst);
+    assert_eq!(top(&c).await["sceneFmAllowed"], false);
+    api.credential_revision.store(1, Ordering::SeqCst);
+    let old = enter(&c).await;
+    api.credential_revision.store(2, Ordering::SeqCst);
+    let before = api.calls.lock().unwrap().len();
+    assert!(
+        c.scene_fm_command("1", auto(&revision, &old))
+            .await
+            .is_err()
+    );
+    assert_eq!(api.calls.lock().unwrap().len(), before);
+    assert_eq!(device.state.lock().unwrap().loads, 0);
+}
+
+#[tokio::test]
+async fn directory_read_does_not_steal_a_later_stop_or_consume_the_next_entry() {
+    let (_dir, api, _s, c, device) = fixture();
+    c.set_scene_fm_autoplay_preference("1", true).unwrap();
+    let first = enter(&c).await;
+    api.hold_directory.store(true, Ordering::SeqCst);
+    let directory = {
+        let c = c.clone();
+        tokio::spawn(async move { c.scene_fm_view("1", true).await.unwrap().value })
     };
     tokio::time::timeout(Duration::from_secs(3), api.started.notified())
         .await
         .unwrap();
     c.player_action("1", PlayerAction::Stop).await.unwrap();
     api.release.notify_one();
-    assert!(task.await.unwrap().is_err());
+    let revision = directory.await.unwrap().revision.unwrap();
+    assert!(
+        !c.scene_fm_command("1", auto(&revision, &first))
+            .await
+            .unwrap()
+            .value
+            .playing
+    );
     assert_eq!(device.state.lock().unwrap().loads, 0);
-    assert!(c.player_queue("1").await.unwrap().tracks.is_empty());
-    assert!(!c.scene_fm_view("1", false).await.unwrap().value.pending);
+    let second = enter(&c).await;
+    assert!(
+        c.scene_fm_command("1", auto(&revision, &second))
+            .await
+            .unwrap()
+            .value
+            .playing
+    );
+    assert_eq!(device.state.lock().unwrap().loads, 1);
+}
+
+#[tokio::test]
+async fn an_explicit_directory_retry_can_use_the_same_unconsumed_home_visit() {
+    let (_dir, api, _s, c, device) = fixture();
+    c.set_scene_fm_autoplay_preference("1", true).unwrap();
+    let visit = enter(&c).await;
+    api.fail_directory.store(true, Ordering::SeqCst);
+    assert!(c.scene_fm_view("1", true).await.is_err());
+    assert_eq!(device.state.lock().unwrap().loads, 0);
+    api.fail_directory.store(false, Ordering::SeqCst);
+    let revision = c
+        .scene_fm_view("1", true)
+        .await
+        .unwrap()
+        .value
+        .revision
+        .unwrap();
+    assert!(
+        c.scene_fm_command("1", auto(&revision, &visit))
+            .await
+            .unwrap()
+            .value
+            .playing
+    );
+    assert_eq!(device.state.lock().unwrap().loads, 1);
 }
 #[tokio::test]
 async fn failed_authorization_retains_explicit_recovery_and_stale_account_has_no_requests() {

@@ -4,12 +4,13 @@ use crate::{
     playback::{
         PlaybackMode, QueueEntry, QueueSnapshot,
         controller::{PlaybackCommand, PlaybackStatus, QueueTransport, QueueUpdate},
+        engine::Cancellation,
     },
     podcast::scene::SceneFmService,
 };
 use rand::seq::SliceRandom;
 use serde_json::json;
-use std::sync::atomic::Ordering;
+use std::sync::{Arc, atomic::Ordering};
 impl MusicClient {
     pub async fn scene_fm_command(
         &self,
@@ -24,7 +25,7 @@ impl MusicClient {
             .operation
             .try_lock()
             .map_err(|_| Error::State("scene FM operation in progress"))?;
-        let service = SceneFmService::new(self.session.clone())?;
+        let service = Arc::new(SceneFmService::new(self.session.clone())?);
         let rev = match &command {
             SceneFmCommand::Autoplay { enabled } => {
                 service.set_autoplay_for(&token, *enabled)?;
@@ -37,7 +38,7 @@ impl MusicClient {
             SceneFmCommand::Select { revision, .. }
             | SceneFmCommand::Play { revision }
             | SceneFmCommand::Toggle { revision }
-            | SceneFmCommand::Automatic { revision } => revision.clone(),
+            | SceneFmCommand::HomeAutomatic { revision, .. } => revision.clone(),
         };
         let rev = revision(&rev)?;
         let mut desired = service
@@ -46,7 +47,15 @@ impl MusicClient {
         if desired.revision != rev {
             return Err(Error::QueueChanged);
         }
-        let automatic = matches!(command, SceneFmCommand::Automatic { .. });
+        let home = match &command {
+            SceneFmCommand::HomeAutomatic { visit, .. } => {
+                let visit = self.scene_fm.home_visit(&token, visit)?;
+                visit.check(&self.session, &token)?;
+                Some(visit)
+            }
+            _ => None,
+        };
+        let automatic = home.is_some();
         if automatic
             && (!service.autoplay_for(&token)? || desired.pending || self.has_together_cleanup()?)
         {
@@ -57,31 +66,26 @@ impl MusicClient {
         }
         let controller = self.player.controller().await?;
         let (before, queue) = controller.queue_with_state(&token).await?;
-        let generation = if automatic {
-            if matches!(
-                before.state,
-                PlaybackStatus::Playing
-                    | PlaybackStatus::Buffering
-                    | PlaybackStatus::Loading
-                    | PlaybackStatus::Preparing
-            ) {
-                return self.scene_fm_view(epoch, false).await;
-            }
-            let Some(g) = self.focus.automatic_audio_generation()? else {
+        let initial = if let Some(visit) = home.as_ref() {
+            visit.check(&self.session, &token)?;
+            let Some(initial) = visit.audio.as_ref() else {
                 return self.scene_fm_view(epoch, false).await;
             };
-            Some(g)
+            if !home::idle_for_automatic(before.state)
+                || before.fence() != initial.fence
+                || self.player.selection.load(Ordering::Acquire) != initial.selection
+                || self.focus.snapshot()? != initial.focus
+            {
+                return self.scene_fm_view(epoch, false).await;
+            }
+            Some(initial)
         } else {
             None
         };
-        if !self.scene_fm.attempt(&token, automatic)? {
-            return self.scene_fm_view(epoch, false).await;
-        }
-        let intent = if automatic {
-            self.player.selection.load(Ordering::Acquire)
-        } else {
-            self.player.selection.fetch_add(1, Ordering::AcqRel) + 1
-        };
+        let intent = initial.map_or_else(
+            || self.player.selection.fetch_add(1, Ordering::AcqRel) + 1,
+            |initial| initial.selection,
+        );
         let manual_lease = if automatic {
             None
         } else {
@@ -121,25 +125,60 @@ impl MusicClient {
                 .await?;
             return self.scene_fm_view(epoch, false).await;
         }
+        // A current item's pause/resume is a transport action, not the
+        // official playSceneFm path which consumes the module latch.
+        if !self.scene_fm.attempt(&token, automatic)? {
+            return self.scene_fm_view(epoch, false).await;
+        }
         if let SceneFmCommand::Select { scene_id, .. } = &command {
             desired = service.select_for(&token, rev, scene_id).await?;
         }
         let (prepared, resources, index) = service.prepare_for(&token, desired.revision).await?;
         let apply = async {
             self.session.check_generation(&token)?;
-            if automatic {
-                self.player
-                    .selection
-                    .compare_exchange(intent, intent + 1, Ordering::AcqRel, Ordering::Acquire)
-                    .map_err(|_| Error::StaleResponse)?;
-            } else if self.player.selection.load(Ordering::Acquire) != intent {
-                return Err(Error::StaleResponse);
-            }
-            let lease = if let Some(lease) = manual_lease {
-                lease
+            let (lease, authority) = if let (Some(visit), Some(initial)) = (home.as_ref(), initial) {
+                visit.check(&self.session, &token)?;
+                if self.login_pending()?
+                    || !service.autoplay_for(&token)?
+                    || self.has_together_cleanup()?
+                    || controller.snapshot().fence() != initial.fence
+                {
+                    return Err(Error::StaleResponse);
+                }
+                let updated = intent
+                    .checked_add(1)
+                    .ok_or(Error::State("playback selection exhausted"))?;
+                let (lease, ()) = self.reserve_prepared_audio(&token, initial.focus, || {
+                    visit.check(&self.session, &token)?;
+                    self.player
+                        .selection
+                        .compare_exchange(intent, updated, Ordering::AcqRel, Ordering::Acquire)
+                        .map(|_| ())
+                        .map_err(|_| Error::StaleResponse)
+                })?;
+                let lease = self.finish_media_claim(&token, Owner::Audio, lease).await?;
+                let (session, scope, selection, preference, owner, focus) = (
+                    self.session.clone(),
+                    visit.clone(),
+                    self.player.selection.clone(),
+                    service.clone(),
+                    token.clone(),
+                    self.focus.clone(),
+                );
+                let together = self.together_detached_guard(&token);
+                let authority = Cancellation::new(move || {
+                    selection.load(Ordering::Acquire) == updated
+                        && focus.check(lease, Owner::Audio).is_ok()
+                        && !together.is_cancelled()
+                        && scope.check(&session, &owner).is_ok()
+                        && preference.autoplay_for(&owner).is_ok_and(|enabled| enabled)
+                });
+                (lease, Some(authority))
             } else {
-                self.claim_media_if(&token, Owner::Audio, generation)
-                    .await?
+                if self.player.selection.load(Ordering::Acquire) != intent {
+                    return Err(Error::StaleResponse);
+                }
+                (manual_lease.expect("manual"), None)
             };
             self.focus.check(lease, Owner::Audio)?;
             let source = json!({"kind":"scene_fm","scene_id":prepared.active_id,"scene_revision":prepared.revision});
@@ -156,27 +195,30 @@ impl MusicClient {
             if before.mode == PlaybackMode::Random {
                 order.shuffle(&mut rand::rng());
             }
-            controller
-                .command(
-                    &token,
-                    PlaybackCommand::UpdateQueue(QueueUpdate {
-                        expected: before.fence(),
-                        queue: QueueSnapshot {
-                            items,
-                            order,
-                            current,
-                            mode: before.mode,
-                            fm_source: None,
-                            intelligence: None,
-                            more: None,
-                        },
-                        transport: Some(QueueTransport {
-                            position: None,
-                            paused: false,
-                        }),
-                    }),
-                )
-                .await?;
+            let fence = before.fence();
+            let command = PlaybackCommand::UpdateQueue(QueueUpdate {
+                expected: fence.clone(),
+                queue: QueueSnapshot {
+                    items,
+                    order,
+                    current,
+                    mode: before.mode,
+                    fm_source: None,
+                    intelligence: None,
+                    more: None,
+                },
+                transport: Some(QueueTransport {
+                    position: None,
+                    paused: false,
+                }),
+            });
+            if let Some(authority) = authority {
+                controller
+                    .command_guarded(&token, command, fence, authority)
+                    .await?;
+            } else {
+                controller.command(&token, command).await?;
+            }
             Ok(())
         }
         .await;

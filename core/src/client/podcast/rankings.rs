@@ -3,7 +3,7 @@ use super::{EpisodeView, MusicClient, PodcastCard, home::podcast_recommendations
 use crate::{
     Error, Result,
     account::login_policy::AB_PATH,
-    client::{dto::AccountData, mapping::artwork},
+    client::{dto::AccountData, mapping::artwork, scene_fm::home::ClassicObservation},
     podcast::{Episode, Radio},
     protocol::api::{Api, identifier},
 };
@@ -116,10 +116,20 @@ pub enum PodcastRankResource {
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PodcastRanks {
-    TopConfig { layout: PodcastTopLayout },
-    BookGroups { groups: Vec<PodcastRankMenu> },
-    Menu { tabs: Vec<PodcastRankTab> },
-    Entries { rows: Vec<PodcastRankRow> },
+    TopConfig {
+        layout: PodcastTopLayout,
+        #[serde(rename = "sceneFmAllowed")]
+        scene_fm_allowed: bool,
+    },
+    BookGroups {
+        groups: Vec<PodcastRankMenu>,
+    },
+    Menu {
+        tabs: Vec<PodcastRankTab>,
+    },
+    Entries {
+        rows: Vec<PodcastRankRow>,
+    },
 }
 
 #[derive(Serialize)]
@@ -258,26 +268,29 @@ fn row(raw: &Value, group: PodcastRankGroup) -> Option<PodcastRankRow> {
     })
 }
 
+async fn top_group(api: &dyn Api) -> Option<String> {
+    let response = tokio::time::timeout(
+        Duration::from_secs(3),
+        api.call(AB_PATH, json!({"expNames":TOP_EXPERIMENT}), false, &[200]),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    let rows = response["data"]
+        .as_array()
+        .filter(|rows| rows.len() <= 4096)?;
+    let mut matching = rows.iter().filter(|row| row["expName"] == TOP_EXPERIMENT);
+    let group = matching.next()?.get("expGroupName")?.as_str()?;
+    matching.next().is_none().then(|| group.to_owned())
+}
+
 async fn request(api: Arc<dyn Api>, query: PodcastRankQuery) -> Result<PodcastRanks> {
     use PodcastRankGroup::*;
     Ok(match query {
         PodcastRankQuery::TopConfig => {
-            let response = tokio::time::timeout(
-                Duration::from_secs(3),
-                api.call(AB_PATH, json!({"expNames":TOP_EXPERIMENT}), false, &[200]),
-            )
-            .await;
-            let layout = response
-                .ok()
-                .and_then(Result::ok)
-                .and_then(|value| {
-                    let rows = value["data"].as_array().filter(|rows| rows.len() <= 4096)?;
-                    let mut matching = rows.iter().filter(|row| row["expName"] == TOP_EXPERIMENT);
-                    let updated = matching.next()?.get("expGroupName")? == "t1";
-                    (updated && matching.next().is_none()).then_some(PodcastTopLayout::Updated)
-                })
-                .unwrap_or(PodcastTopLayout::Classic);
-            PodcastRanks::TopConfig { layout }
+            return Err(Error::State(
+                "podcast top configuration requires scoped observation",
+            ));
         }
         PodcastRankQuery::BookGroups => {
             let value = api
@@ -388,10 +401,42 @@ impl MusicClient {
         query: PodcastRankQuery,
     ) -> Result<AccountData<PodcastRanks>> {
         let token = self.podcast_token(epoch)?;
-        let value = self
-            .session
-            .run_for(&token, |api, _| async move { request(api, query).await })
-            .await?;
+        let value = if matches!(query, PodcastRankQuery::TopConfig) {
+            let sequence = self.scene_fm.begin_top_observation()?;
+            let api = self.session.native_api(&token)?;
+            let revision = api.verified_pc_experiment_revision().ok().flatten();
+            let group = top_group(api.as_ref()).await;
+            let layout = if group.as_deref() == Some("t1") {
+                PodcastTopLayout::Updated
+            } else {
+                PodcastTopLayout::Classic
+            };
+            // The official default renders the classic layout even without an
+            // assignment. Only the explicit known control assignment may arm
+            // native automatic audio; never equate a read failure with it.
+            let classic = revision
+                .filter(|revision| {
+                    group.as_deref() == Some("c")
+                        && api
+                            .verified_pc_experiment_revision()
+                            .ok()
+                            .flatten()
+                            .as_ref()
+                            == Some(revision)
+                })
+                .map(|revision| ClassicObservation::new(&token, &api, revision));
+            let scene_fm_allowed = self.session.with_verified_profile(&token, &api, |_, _| {
+                self.scene_fm.finish_top_observation(sequence, classic)
+            })?;
+            PodcastRanks::TopConfig {
+                layout,
+                scene_fm_allowed,
+            }
+        } else {
+            self.session
+                .run_for(&token, |api, _| async move { request(api, query).await })
+                .await?
+        };
         Ok(AccountData {
             epoch: epoch.into(),
             value,

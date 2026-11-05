@@ -11,26 +11,83 @@ pub async fn audiobook_skip_settings(
         .await
         .map_err(Into::into)
 }
+fn require_scene_main<R: tauri::Runtime>(
+    window: &tauri::WebviewWindow<R>,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput("scene FM requires the main window").into());
+    }
+    Ok(())
+}
+
 #[tauri::command]
-pub async fn scene_fm_view(
+pub async fn scene_fm_view<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     refresh: bool,
 ) -> Result<AccountData<SceneFmView>, ClientError> {
+    require_scene_main(&window)?;
     client
         .scene_fm_view(&epoch, refresh)
         .await
         .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn scene_fm_command(
+pub async fn scene_fm_command<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     command: SceneFmCommand,
 ) -> Result<AccountData<SceneFmView>, ClientError> {
+    require_scene_main(&window)?;
     client
         .scene_fm_command(&epoch, command)
         .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn scene_fm_home_enter<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<Option<SceneFmHomeView>>, ClientError> {
+    require_scene_main(&window)?;
+    client.scene_fm_home_enter(&epoch).await.map_err(Into::into)
+}
+#[tauri::command]
+pub fn scene_fm_home_leave<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    visit: String,
+) -> Result<(), ClientError> {
+    require_scene_main(&window)?;
+    client
+        .scene_fm_home_leave(&epoch, &visit)
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub fn scene_fm_autoplay_preference<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<AccountData<bool>, ClientError> {
+    require_scene_main(&window)?;
+    client
+        .scene_fm_autoplay_preference(&epoch)
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub fn set_scene_fm_autoplay_preference<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    enabled: bool,
+) -> Result<AccountData<bool>, ClientError> {
+    require_scene_main(&window)?;
+    client
+        .set_scene_fm_autoplay_preference(&epoch, enabled)
         .map_err(Into::into)
 }
 #[tauri::command]

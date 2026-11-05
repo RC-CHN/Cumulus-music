@@ -1,5 +1,6 @@
 //! Official audio home Scene FM: a finite voice queue, separate from music FM.
 mod actions;
+pub(super) mod home;
 mod view;
 use super::dto::EpisodeView;
 use crate::{Error, Result, account::SessionToken};
@@ -10,6 +11,7 @@ use std::sync::Mutex;
 pub(super) struct SceneFmHost {
     attempted: Mutex<Option<SessionToken>>,
     operation: tokio::sync::Mutex<()>,
+    home: Mutex<home::HomeState>,
 }
 impl SceneFmHost {
     fn attempt(&self, token: &SessionToken, automatic: bool) -> Result<bool> {
@@ -47,7 +49,7 @@ pub enum SceneFmCommand {
     Select { revision: String, scene_id: String },
     Play { revision: String },
     Toggle { revision: String },
-    Automatic { revision: String },
+    HomeAutomatic { revision: String, visit: String },
     Autoplay { enabled: bool },
     Cancel { revision: String },
 }
