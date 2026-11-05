@@ -12,7 +12,9 @@ import tempfile
 import time
 
 from diagnostics import verify_proof_databases
-from installed_linux_audio import Input, focus_installed_control, start_accessibility, stop, wait_for
+from installed_linux_audio import (
+    Input, focus_installed_control, stale_accessible_lookup, start_accessibility, stop, wait_for,
+)
 
 
 def validate_environment(args):
@@ -88,8 +90,7 @@ def startup(args, root, env, items, watcher, wait, call, menu):
         except GLib.Error as error:
             # WebKit may replace the accessibility subtree during route
             # changes or between app launches; never hide other errors.
-            if (error.domain, error.code, error.message) != (
-                    'atspi_error', 0, 'The application no longer exists'):
+            if not stale_accessible_lookup(error):
                 raise
             assert app.poll() is None, 'ordinary app exited while locating an accessibility control'
             return None

@@ -20,6 +20,19 @@ TITLE = 'Synthetic Playback Check'
 MONITOR_TONES = (60, 440, 10000)
 
 
+def stale_accessible_lookup(error):
+    """Only a disappeared AT-SPI object during a read-only enumeration."""
+    if error.domain != 'atspi_error':
+        return False
+    if error.code == 0:
+        return error.message == 'The application no longer exists'
+    return error.code == 1 and re.fullmatch(
+        r'No such interface (?:“org\.a11y\.atspi\.Accessible”|"org\.a11y\.atspi\.Accessible")'
+        r' on object at path /org/a11y/atspi/accessible(?:/[a-zA-Z0-9_]+)+',
+        error.message,
+    ) is not None
+
+
 def stop(process):
     if process.poll() is None:
         process.terminate()
@@ -272,8 +285,7 @@ def focus_installed_control(atspi, app, name, roles, dialog=None, *, reveal_side
             # A route change can replace the WebKit accessibility subtree
             # while a poll is walking it. Rescan the same live app, without
             # treating a transport error or a failed action as a missed poll.
-            if (error.domain, error.code, error.message) != (
-                    'atspi_error', 0, 'The application no longer exists'):
+            if not stale_accessible_lookup(error):
                 raise
             assert app.poll() is None, f'installed app exited while locating {name!r}'
             return None

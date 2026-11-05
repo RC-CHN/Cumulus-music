@@ -1,11 +1,12 @@
-"""Verify that the installed playback observer tolerates only database contention."""
+"""Verify narrow missed observations in the installed Linux probes."""
 from contextlib import closing
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 
-from installed_linux_audio import read_playback, wait_for
+from installed_linux_audio import read_playback, stale_accessible_lookup, wait_for
 
 
 class PlaybackObservation(unittest.TestCase):
@@ -41,3 +42,23 @@ class PlaybackObservation(unittest.TestCase):
                 with self.assertRaises(sqlite3.OperationalError) as invalid:
                     wait_for('position', lambda: read_playback(path), 3)
                 self.assertEqual(invalid.exception.sqlite_errorcode, sqlite3.SQLITE_ERROR)
+
+class AccessibilityObservation(unittest.TestCase):
+    def test_disappeared_application_and_accessible_are_missed_samples(self):
+        def error(code, message, domain='atspi_error'):
+            return SimpleNamespace(domain=domain, code=code, message=message)
+
+        lost_app = 'The application no longer exists'
+        lost_object = ('No such interface “org.a11y.atspi.Accessible” on object at path '
+                       '/org/a11y/atspi/accessible/23c6da36_025a_4ef2_a444_531e89e24899')
+        self.assertTrue(stale_accessible_lookup(error(0, lost_app)))
+        self.assertTrue(stale_accessible_lookup(error(1, lost_object)))
+        for unexpected in (
+            error(1, lost_app),
+            error(0, lost_object),
+            error(1, lost_object, domain='g-dbus-error-quark'),
+            error(1, lost_object.replace('atspi.Accessible', 'atspi.Component')),
+            error(1, lost_object.replace('/org/a11y/atspi/accessible/', '/unrelated/')),
+            error(1, 'Timeout was reached'),
+        ):
+            self.assertFalse(stale_accessible_lookup(unexpected))
