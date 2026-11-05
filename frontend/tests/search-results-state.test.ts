@@ -536,6 +536,64 @@ test('lyric append follows raw continuation, preserves distinct occurrences, and
   assert.match(result.notice ?? '', /浏览上限/);
 });
 
+test('a terminal lyric page keeps the effective term, expanded anchor and no-more state on Back', async () => {
+  const requests: [string, string, number][] = [];
+  const lyric: SearchResultQuery = {
+    ...query,
+    keyword: '已纠正的词',
+    category: 'lyrics',
+    limit: 10,
+  };
+  const memory = createSearchViewportMemory();
+  const model = useSearchResults(
+    {
+      searchResults: async (epoch, q) => {
+        requests.push([epoch, q.keyword, q.offset]);
+        const result = songPage(
+          q,
+          q.offset ? ['9', '9', '10'] : ['3'],
+          q.offset ? 13 : 10,
+          !q.offset,
+        );
+        result.epoch = epoch;
+        result.value.sections[0]!.category = 'lyrics';
+        return result;
+      },
+    },
+    () => assert.fail('no expiry'),
+    memory,
+  );
+  model.connect(account);
+  await model.open(lyric, false, 7, '原词');
+  const position = {
+    top: 231,
+    tracks: 0,
+    focus: 'lyric:0:3',
+    focusAction: 'expand',
+    expandedLyrics: ['0:3'],
+    lyricAnchor: { index: 0, offset: 123 },
+  };
+  model.savePosition(position);
+  await model.more();
+  assert.equal(model.view.value?.more, false);
+  assert.equal(model.view.value?.nextOffset, 13);
+  await model.open(lyric, true, 7, '原词');
+  await model.more();
+  assert.deepEqual(model.position.value, position);
+  assert.equal(model.view.value?.query.keyword, '已纠正的词');
+  assert.equal(model.view.value?.sections[0]?.items.length, 4);
+  assert.deepEqual(requests, [
+    ['1', '已纠正的词', 0],
+    ['1', '已纠正的词', 10],
+  ]);
+  model.connect({ ...account, epoch: '2' });
+  await model.open(lyric, true, 7, '原词');
+  assert.equal(model.view.value?.more, true);
+  assert.equal(model.position.value.top, 0);
+  assert.deepEqual(requests.at(-1), ['2', '已纠正的词', 0]);
+  model.dispose();
+});
+
 function songPage(q: SearchResultQuery, ids: string[], nextOffset: number, more = true) {
   const response = view(q);
   response.value.more = more;

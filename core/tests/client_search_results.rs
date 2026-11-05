@@ -503,6 +503,77 @@ async fn result_from_replaced_account_is_rejected() {
 }
 
 #[tokio::test]
+async fn lyrics_use_full_raw_batches_not_more_hints_and_do_not_rewrite_the_visit() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let mut request = query(C::Lyrics);
+    request.keyword = "合成已纠正词".into();
+    request.limit = 10;
+    let hit = |id| json!({"song":{"id":id,"name":"合成"},"lyrics":"合成歌词"});
+    let mut first: Vec<_> = (1..=9).map(hit).collect();
+    first.push(json!({"song":{"name":"缺少标识"},"lyrics":"不可展示"}));
+    for (resources, offset, total, has_more, expected) in [
+        (json!(first), 0, 9, false, (10, 9, 1, true)),
+        (
+            json!([hit(9), hit(9), hit(10)]),
+            10,
+            99,
+            true,
+            (13, 3, 0, false),
+        ),
+        (Value::Null, 20, 99, true, (20, 0, 0, false)),
+    ] {
+        request.offset = offset;
+        *api.reply.lock().unwrap() = json!({"code":200,"data":{
+            "resources":resources,"totalCount":total,"hasMore":has_more,
+            "queryRewriteInfo":{"rewriteQuery":"无关二次纠正"},
+            "queryRewrite":{"rewriteQuery":"无关备用词"}
+        },"queryRewriteInfo":{"rewriteQuery":"无关外层词"}});
+        let page = client
+            .search_results(&epoch, request.clone())
+            .await
+            .unwrap()
+            .value;
+        let section = &page.sections[0];
+        assert_eq!(page.total, Some(total));
+        assert_eq!(
+            (
+                page.next_offset,
+                section.items.len(),
+                page.unavailable_count,
+                page.more
+            ),
+            expected
+        );
+        assert_eq!(page.query.keyword, request.keyword);
+        assert!(
+            page.correction.is_none() && page.correction_parts.is_none() && page.notice.is_none()
+        );
+        if offset == 10 {
+            let items = serde_json::to_value(&section.items).unwrap();
+            assert_eq!(items[0]["track"]["id"], "9");
+            assert_eq!(items[1]["track"]["id"], "9");
+        }
+    }
+    for data in [json!({"totalCount":10}), json!({"resources":{}})] {
+        *api.reply.lock().unwrap() = json!({"code":200,"data":data});
+        assert!(matches!(
+            client.search_results(&epoch, request.clone()).await,
+            Err(Error::Response("missing search result list"))
+        ));
+    }
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(calls.len(), 5);
+    for ((path, args), offset) in calls.iter().zip([0, 10, 20, 20, 20]) {
+        assert_eq!(path, "/api/search/resource/lyric");
+        assert_eq!(
+            *args,
+            json!({"keyword":"合成已纠正词","scene":"normal","limit":10,"offset":offset})
+        );
+    }
+}
+
+#[tokio::test]
 async fn lyrics_keep_full_returned_text_and_report_bounded_projection() {
     let (_root, api, _, client) = fixture();
     let epoch = client.account().unwrap().epoch;

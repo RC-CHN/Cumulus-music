@@ -944,23 +944,38 @@ fn project(
         Mvs => (&raw["data"], "resources", "totalCount", "mv"),
         All => unreachable!(),
     };
-    let rows = array(container, list)?;
+    let lyrics = query.category == Lyrics;
+    // M/15.Wn treats an explicitly null resources list as an empty lyric
+    // result. A missing or malformed list is still a retryable response error.
+    let rows = if lyrics && container.get(list).is_some_and(Value::is_null) {
+        &[]
+    } else {
+        array(container, list)?
+    };
     if rows.len() > 100 {
         return Err(Error::Response("oversized search result page"));
     }
     result.total = container[total].as_u64();
     result.next_offset = query.offset + rows.len();
-    let remote_more = container["hasMore"].as_bool().unwrap_or_else(|| {
-        result.total.map_or(rows.len() == query.limit, |n| {
-            (result.next_offset as u64) < n
+    let remote_more = if lyrics {
+        // M/3001 uses the length of the lyric batch, not totalCount or
+        // hasMore. Advance by the raw count even if a row cannot be displayed.
+        rows.len() == query.limit
+    } else {
+        container["hasMore"].as_bool().unwrap_or_else(|| {
+            result.total.map_or(rows.len() == query.limit, |n| {
+                (result.next_offset as u64) < n
+            })
         })
-    });
+    };
     result.more = remote_more && !rows.is_empty() && result.next_offset <= 10000;
     if remote_more && rows.is_empty() {
         result.notice =
             Some("服务返回了结果数量，但本页没有可展示的内容。可重试或更换关键词。".into());
     }
-    if query.correct {
+    if query.correct && !lyrics {
+        // M/15.Wn never supplies a category rewrite. The effective term
+        // selected before entering lyrics remains in the request query.
         result.correction = [
             &container["queryRewriteInfo"],
             &raw["queryRewriteInfo"],
