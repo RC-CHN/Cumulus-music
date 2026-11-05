@@ -528,7 +528,12 @@ fn ended_step(view: &PlayerView, direction: cumulus_core::playback::Step) -> Pla
 
 #[tokio::test]
 async fn signed_loop_control_clears_only_the_finished_identity_after_a_denied_wrap() {
-    for mode in [PlaybackMode::OrderLoop, PlaybackMode::Random] {
+    use cumulus_core::{Error, playback::Step};
+
+    for (mode, switched_mode) in [
+        (PlaybackMode::OrderLoop, PlaybackMode::SingleLoop),
+        (PlaybackMode::Random, PlaybackMode::Sequential),
+    ] {
         let (f, before) = Fixture::start_at(
             vec![song(1, false), song(2, true), song(3, true)],
             mode,
@@ -549,7 +554,7 @@ async fn signed_loop_control_clears_only_the_finished_identity_after_a_denied_wr
         assert_eq!(after.queue_revision, before.queue_revision);
         assert_eq!(after.position, Some(120.0));
         assert_eq!(after.timeline.as_ref().unwrap().total, Some(120.0));
-        let action = ended_step(&after, cumulus_core::playback::Step::Next);
+        let action = ended_step(&after, Step::Next);
         let mut notices = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
         let pauses = f.device.state.lock().unwrap().pauses.len();
         let clicked = f.client.player_action(&f.epoch, action).await.unwrap();
@@ -561,12 +566,51 @@ async fn signed_loop_control_clears_only_the_finished_identity_after_a_denied_wr
         assert_eq!(clicked.position, Some(120.0));
         assert_eq!(f.device.state.lock().unwrap().stops, stops);
         assert_eq!(f.device.state.lock().unwrap().pauses.len(), pauses);
+        let switched = f
+            .client
+            .player_action(
+                &f.epoch,
+                PlayerAction::ModeFor {
+                    mode: switched_mode,
+                    expected_queue_revision: after.queue_revision.clone(),
+                    fm: false,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(switched.mode, switched_mode);
+        assert_eq!(switched.state, PlaybackStatus::Ended);
+        assert_eq!(switched.entry_id, after.entry_id);
+        assert!(switched.play_id.is_none());
+        assert_eq!(switched.ended_minibar_receipt, after.ended_minibar_receipt);
+        assert_ne!(switched.queue_revision, after.queue_revision);
+        assert!(matches!(
+            f.client.player_action(&f.epoch, ended_step(&after, Step::Next)).await,
+            Err(error) if matches!(error.root(), Error::StaleResponse)
+        ));
+        let clicked = f
+            .client
+            .player_action(&f.epoch, ended_step(&switched, Step::Next))
+            .await
+            .unwrap();
+        assert_eq!(clicked.state, PlaybackStatus::Ended);
+        assert_eq!(clicked.entry_id, switched.entry_id);
+        assert_eq!(clicked.play_id, switched.play_id);
+        assert_eq!(clicked.position, Some(120.0));
+        assert_eq!(clicked.queue_revision, switched.queue_revision);
+        assert_eq!(
+            clicked.ended_minibar_receipt,
+            switched.ended_minibar_receipt
+        );
+        assert_eq!(f.device.state.lock().unwrap().stops, stops);
+        assert_eq!(f.device.state.lock().unwrap().pauses.len(), pauses);
+
         // Detaching the actual browser lease removes current signed-read
         // admission for this receipt; there is no legacy step on expiry.
         f.poll.try_browser_lifecycle(None).unwrap();
         assert!(matches!(
-            f.client.player_action(&f.epoch, ended_step(&after, cumulus_core::playback::Step::Next)).await,
-            Err(error) if matches!(error.root(), cumulus_core::Error::StaleResponse)
+            f.client.player_action(&f.epoch, ended_step(&switched, Step::Next)).await,
+            Err(error) if matches!(error.root(), Error::StaleResponse)
         ));
         assert_eq!(f.view().await.state, PlaybackStatus::Ended);
         assert_eq!(f.loads(), 1);
@@ -579,6 +623,63 @@ async fn signed_loop_control_clears_only_the_finished_identity_after_a_denied_wr
         f.assert_durable_end(before.entry_id.as_deref());
         f.poll.shutdown().await;
     }
+}
+
+#[tokio::test]
+async fn single_loop_manual_next_uses_new_display_order_after_retained_random_eof() {
+    use cumulus_core::playback::Step;
+
+    let (f, _) = Fixture::start_at(
+        vec![song(1, false), song(3, true), song(2, true)],
+        PlaybackMode::Random,
+        "c",
+        1,
+        Some(&[1, 0, 2]),
+        [url(1, false).into(), url(2, true).into()],
+    )
+    .await;
+    // Display is [1,3,2], random transport is [3,1,2].
+    // The natural attempt is denied song 1; switching to SingleLoop uses the
+    // new displayed neighbor 2 for the explicit Next, not self-repeat 3.
+    f.wire.wait(4).await;
+    f.eof();
+    let finished = f.wait(|view| view.ended_minibar_receipt.is_some()).await;
+    let switched = f
+        .client
+        .player_action(
+            &f.epoch,
+            PlayerAction::ModeFor {
+                mode: PlaybackMode::SingleLoop,
+                expected_queue_revision: finished.queue_revision.clone(),
+                fm: false,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(switched.mode, PlaybackMode::SingleLoop);
+    assert_eq!(
+        switched.ended_minibar_receipt,
+        finished.ended_minibar_receipt
+    );
+    assert_ne!(switched.queue_revision, finished.queue_revision);
+    let mut notices = f.client.subscribe_ordinary_skip(&f.epoch).unwrap();
+    let played = f
+        .client
+        .player_action(&f.epoch, ended_step(&switched, Step::Next))
+        .await
+        .unwrap();
+    assert_eq!(played.state, PlaybackStatus::Playing);
+    assert_eq!(played.mode, PlaybackMode::SingleLoop);
+    assert_eq!(played.track.unwrap().id, "2");
+    assert!(played.play_id.is_some() && played.ended_minibar_receipt.is_none());
+    assert_eq!(f.loads(), 2);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(60), notices.next())
+            .await
+            .is_err()
+    );
+    f.assert_wire(&["3", "1", "2"]);
+    f.poll.shutdown().await;
 }
 
 #[tokio::test]

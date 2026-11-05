@@ -73,12 +73,11 @@ impl Actor {
     ) -> Option<Uuid> {
         let ended = self.ended_minibar.as_ref()?;
         let loaded = self.loaded.as_ref()?;
+        // The original EOF mode governs issuance, not continued ownership.
+        // A mode-only edit changes the queue revision and manual adjacency,
+        // but the same finished native entry still has no play ID.
         (self.state == PlaybackStatus::Ended
             && self.play_id.is_none()
-            && matches!(
-                self.queue.mode(),
-                PlaybackMode::OrderLoop | PlaybackMode::Random
-            )
             && loaded.media.entry_id == ended.native_entry
             && selected == Some(&loaded.item)
             && self.ordinary_online_song(&loaded.item)
@@ -240,7 +239,7 @@ impl Actor {
                 // M308's PlayOrder branch returns; PlayRandom/playCycle fall
                 // through onPlayEnd and clear the old playId (3833–3838).
                 // Keep the completed row and timeline; no new engine command.
-                if queue.mode != PlaybackMode::Sequential {
+                if matches!(queue.mode, PlaybackMode::OrderLoop | PlaybackMode::Random) {
                     self.play_id = None;
                     self.ended_minibar = Some(EndedMinibar {
                         receipt: Uuid::new_v4(),
