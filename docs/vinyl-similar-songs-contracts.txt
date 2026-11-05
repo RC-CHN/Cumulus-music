@@ -87,11 +87,15 @@ same-play double-click pause/resume, and stale response rejection after a
 newer track, credential revision or account. Current-first title and current
 artwork tests also check that neither path reloads or seeks.
 
-The old control layout combines this card with 百科. Its recovered fold
-expression M/253:66 selects three rows for canExpand && similarSongExpand
-and all rows otherwise, although new-song setup resets the flag false.
-This native treatment implementation does not make a guessed control
-fold available.
+The old control layout combines these cards with 百科. M/69:84–115,
+151–155 restores a false default, and M/253:55–74,115–127 resets the
+similar-song flag to false on the first mounted/new track. The conditional
+shows three only for non-t1 plus a truthy flag; its literal 展开更多 writes
+true again. The reachable default therefore shows all songs with no
+expand button. A preexisting truthy flag would show three and the button
+would not change the count or reread; the header still receives the
+complete list. This treatment implementation does not expose that old
+group or reproduce a stale persisted hidden tab.
 
 Independent “相关歌单” card
 -------------------------
