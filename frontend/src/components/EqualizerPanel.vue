@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import { useControlFocus } from '../composables/useControlFocus';
+import { useEqualizerRangePreview } from '../composables/useEqualizerRangePreview';
 import {
   equalizerCanRetry,
   equalizerGainLabel,
@@ -80,11 +81,34 @@ const saved = computed(() => current.value?.saved_custom);
 const displayedPreset = computed(() =>
   equalizerPresetOption(preset.value, gains.value, saved.value),
 );
+const epoch = view.value?.epoch;
+type EqualizerRange =
+  | number
+  | (typeof toneBands)[number]['key']
+  | (typeof spatialBands)[number]['key'];
+const ranges = useEqualizerRangePreview<EqualizerRange>(
+  () => (!disabled.value && view.value?.epoch === epoch ? epoch : undefined),
+  (key) =>
+    typeof key === 'number'
+      ? gains.value[key]!
+      : key === 'bass_db' || key === 'treble_db'
+        ? tone.value[key]
+        : spatial.value[key],
+  (key, value) => {
+    if (typeof key === 'number') changeBand(key, value);
+    else if (key === 'bass_db' || key === 'treble_db') changeTone(key, value);
+    else changeSpatial(key, value);
+  },
+);
 const canSave = computed(
-  () => !disabled.value && !pending.value && !draft.value && displayedPreset.value === -1,
+  () =>
+    !disabled.value &&
+    !pending.value &&
+    !draft.value &&
+    !ranges.previewing.value &&
+    displayedPreset.value === -1,
 );
 let focused: HTMLElement | null = null;
-const epoch = view.value?.epoch;
 watch(
   () => view.value?.epoch,
   (next) => {
@@ -155,15 +179,17 @@ function choose(event: Event) {
   if (p) change(true, [...p.gains], tone.value, { kind: 'built_in', index: selected });
 }
 function changeBand(index: number, value: number) {
+  if (!Number.isFinite(value) || Math.abs(value) > 12) return;
   const values = [...gains.value];
   values[index] = value;
   change(true, values, tone.value, { kind: 'manual' });
 }
-function slide(index: number, event: Event) {
-  changeBand(index, Number((event.target as HTMLInputElement).value));
+function slider(event: Event) {
+  return event.currentTarget as HTMLInputElement;
 }
 function nudgeBand(index: number, event: KeyboardEvent) {
   if (disabled.value || event.altKey || event.ctrlKey || event.metaKey) return;
+  ranges.begin(slider(event));
   const delta =
     event.key === 'ArrowUp' || event.key === 'ArrowRight'
       ? 1
@@ -176,9 +202,8 @@ function nudgeBand(index: number, event: KeyboardEvent) {
   const gain = Math.max(-12, Math.min(12, Number((currentGain + delta).toFixed(2))));
   if (gain !== currentGain) changeBand(index, gain);
 }
-function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
-  const value = Number((event.target as HTMLInputElement).value);
-  if (!Number.isInteger(value) || Math.abs(value) > 10) return;
+function changeTone(key: (typeof toneBands)[number]['key'], value: number) {
+  if (!Number.isInteger(value) || Math.abs(value) > 10 || value === tone.value[key]) return;
   const next = { ...tone.value, [key]: value };
   change(
     settings.value?.enabled ?? false,
@@ -188,8 +213,7 @@ function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
     next.bass_db !== 0 || next.treble_db !== 0,
   );
 }
-function changeSpatial(key: (typeof spatialBands)[number]['key'], event: Event) {
-  const value = Number((event.target as HTMLInputElement).value);
+function changeSpatial(key: (typeof spatialBands)[number]['key'], value: number) {
   if (
     !Number.isInteger(value) ||
     value < (key === 'presence' ? -10 : 0) ||
@@ -325,7 +349,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           <span>+12 dB</span><span>0</span><span>−12 dB</span>
         </div>
         <label v-for="(label, index) in equalizerLabels" :key="label" class="equalizer-band">
-          <output>{{ Number(gains[index]!.toFixed(2)) }}</output>
+          <output>{{ equalizerGainLabel(ranges.value(index)) }}</output>
           <span class="equalizer-slider"
             ><input
               type="range"
@@ -334,16 +358,20 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
               step="0.01"
               aria-orientation="vertical"
               :aria-label="`${label} Hz 增益`"
-              :aria-valuetext="`${equalizerGainLabel(gains[index]!)} 分贝`"
-              :value="gains[index]"
+              :aria-valuetext="`${equalizerGainLabel(ranges.value(index))} 分贝`"
+              :value="ranges.value(index)"
               :disabled="disabled"
-              @input="slide(index, $event)"
-              @change="slide(index, $event)"
+              @focus="ranges.begin(slider($event))"
+              @pointerdown="ranges.begin(slider($event))"
+              @pointercancel="ranges.cancel(slider($event))"
+              @blur="ranges.cancel(slider($event))"
+              @input="ranges.preview(index, slider($event))"
+              @change="ranges.commit(index, slider($event))"
               @keydown="nudgeBand(index, $event)"
           /></span>
           <span class="equalizer-band-frequency">{{ label }}</span>
           <span class="equalizer-band-value" aria-hidden="true">
-            {{ equalizerGainLabel(gains[index]!) }} dB
+            {{ equalizerGainLabel(ranges.value(index)) }} dB
           </span>
         </label>
       </div>
@@ -358,12 +386,17 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
             max="10"
             step="1"
             :aria-label="label + '增益'"
-            :aria-valuetext="tone[key] + ' 分贝'"
-            :value="tone[key]"
-            @input="slideTone(key, $event)"
-            @change="slideTone(key, $event)"
+            :aria-valuetext="ranges.value(key) + ' 分贝'"
+            :value="ranges.value(key)"
+            @focus="ranges.begin(slider($event))"
+            @pointerdown="ranges.begin(slider($event))"
+            @pointercancel="ranges.cancel(slider($event))"
+            @blur="ranges.cancel(slider($event))"
+            @keydown="ranges.begin(slider($event))"
+            @input="ranges.preview(key, slider($event))"
+            @change="ranges.commit(key, slider($event))"
           />
-          <output>{{ tone[key] }} dB</output>
+          <output>{{ ranges.value(key) }} dB</output>
         </label>
         <label v-for="{ key, label, min } in spatialBands" :key="key">
           <span>{{ label }}</span>
@@ -373,10 +406,16 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
             max="10"
             step="1"
             :aria-label="label"
-            :value="spatial[key]"
-            @change="changeSpatial(key, $event)"
+            :value="ranges.value(key)"
+            @focus="ranges.begin(slider($event))"
+            @pointerdown="ranges.begin(slider($event))"
+            @pointercancel="ranges.cancel(slider($event))"
+            @blur="ranges.cancel(slider($event))"
+            @keydown="ranges.begin(slider($event))"
+            @input="ranges.preview(key, slider($event))"
+            @change="ranges.commit(key, slider($event))"
           />
-          <output>{{ spatial[key] }}</output>
+          <output>{{ ranges.value(key) }}</output>
         </label>
         <small
           v-if="spatialMessage"

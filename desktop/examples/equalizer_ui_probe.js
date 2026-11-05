@@ -7,6 +7,7 @@
  const byText=text=>all('button').find(n=>n.textContent.trim()===text);
  const presetControl=()=>el('[aria-label="均衡器预设"]');
  let retainedAdjustmentFocus=0;
+ let heldRangeChecks=0;
  async function activateFocused(text){
    const button=byText(text);
    await wait(()=>button?.isConnected&&!button.disabled,'available '+text);
@@ -21,8 +22,13 @@
  const ranges=()=>all('.equalizer-band input');
  const gains=()=>ranges().map(n=>Number(n.value));
  const tone=()=>['低音增益','高音增益'].map(label=>Number(el('[aria-label="'+label+'"]')?.value));
+ const rangeEvent=(node,type)=>node.dispatchEvent(new Event(type,{bubbles:true}));
+ function rangeInput(node,value,commit=true){
+  node.value=String(value);rangeEvent(node,'input');
+  if(commit)rangeEvent(node,'change');
+ }
  function toneInput(label,value){
-  const input=el('[aria-label="'+label+'"]');input.value=String(value);input.dispatchEvent(new Event('input',{bubbles:true}));
+  rangeInput(el('[aria-label="'+label+'"]'),value);
  }
  const enabled=()=>el('[aria-label="启用均衡器"]')?.getAttribute('aria-checked')==='true';
  const master=()=>el('[aria-label="启用均衡器和增强音效"]');
@@ -88,7 +94,7 @@
     focusedGain.blur();
     await preset(1);
     step='same_curve_identity';const sameRevision=el('.equalizer-dialog').dataset.revision,sameBand=ranges()[4];
-    for(const gain of [3,pop[4]]){sameBand.value=String(gain);sameBand.dispatchEvent(new Event('input',{bubbles:true}));}
+    rangeInput(sameBand,3,false);rangeInput(sameBand,pop[4]);
     await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==sameRevision&&el('[aria-label="均衡器预设"]').value==='-1'&&!byText('保存自定义预设').disabled,'manual equal to built-in');
     await click(byText('保存自定义预设'));
     await wait(()=>settled()&&el('[aria-label="均衡器预设"]').value==='-2','saved equal to built-in');
@@ -112,8 +118,32 @@
       if(index===0)await gate;
       return result;
     };
-    const input=value=>{n.value=value;n.dispatchEvent(new Event('input',{bubbles:true}));};
+    const input=value=>rangeInput(n,value);
     try{
+      step='held_range_preview';
+      const bass=el('[aria-label="低音增益"]');
+      const beforeHold=(await invoke('player_snapshot',{epoch})).equalizer;
+      const verifyHeld=async(node,preview,before)=>{
+        rangeEvent(node,'pointerdown');rangeInput(node,preview,false);
+        await wait(()=>node.getAttribute('aria-valuetext')===`${preview} 分贝`,'preview value rendered');
+        await sleep(250);
+        if(requests.length||el('.equalizer-dialog').dataset.revision!==revision||!settled())
+          throw Error('drag must not submit an equalizer write before release');
+        rangeEvent(node,'pointercancel');
+        await wait(()=>node.value===String(before),'cancelled range restores acknowledged value');
+        node.value=String(preview);rangeEvent(node,'change');
+        await sleep(200);
+        if(requests.length||node.value!==String(before)||el('.equalizer-dialog').dataset.revision!==revision)
+          throw Error('cancelled range must not submit on a late release');
+        const afterHold=(await invoke('player_snapshot',{epoch})).equalizer;
+        if(afterHold.revision!==beforeHold.revision||JSON.stringify(afterHold.settings)!==JSON.stringify(beforeHold.settings))
+          throw Error('preview/cancel must keep the native configuration');
+        heldRangeChecks++;
+      };
+      await verifyHeld(bass,3,0);
+      await verifyHeld(n,2.5,pop[4]);
+      rangeEvent(n,'pointerdown');
+      step='slider_pending';
       input('-1');
       await wait(()=>acknowledgements[0]?.gain===-1,'first real native gain acknowledged');
       input('-2');input('-3.5');
@@ -143,7 +173,7 @@
       return readPlayer(...args);
     };
     try{
-      const adjust=value=>{const slider=ranges()[4];slider.value=value;slider.dispatchEvent(new Event('input',{bubbles:true}));};
+      const adjust=value=>rangeInput(ranges()[4],value);
       adjust('-2.25');
       await wait(()=>el('.equalizer-dialog').dataset.draftState==='blocked'&&
         el('.equalizer-error')?.textContent.includes('acknowledgment lost'),'unconfirmed native adjustment');
@@ -158,7 +188,7 @@
       if(failedWrites!==1||discardReads!==2)throw Error('discard must only read and never write again');
       await stage('eq_discard_after_loss',{enabled:true,gains:pop.map((gain,index)=>index===4?-2.25:gain)});
     }finally{core.playerAction=playerAction;core.playerSnapshot=readPlayer;}
-    const slider=ranges()[4];slider.value='-3.5';slider.dispatchEvent(new Event('input',{bubbles:true}));
+    rangeInput(ranges()[4],'-3.5');
     await wait(()=>settled()&&el('.equalizer-status').dataset.status==='processing','restore custom after discard');
     await stage('eq_custom',{enabled:true,gains:custom});
     step='save_custom';const beforeSave=el('.equalizer-dialog').dataset.revision;await activateFocused('保存自定义预设');
@@ -196,7 +226,7 @@
     step='save_bypass';await toggleMaster(false);await stage('eq_master_saved',{enabled:true,gains:pop});
    }
   }
-  await report('complete',{ok:true,epoch,reopened:window.__eqProof.reopen,missing:window.__eqProof.missing,networkRequests:0,remoteMutations:0,audioOutput:'null',retainedAdjustmentFocus});
+  await report('complete',{ok:true,epoch,reopened:window.__eqProof.reopen,missing:window.__eqProof.missing,networkRequests:0,remoteMutations:0,audioOutput:'null',retainedAdjustmentFocus,heldRangeChecks});
  }catch(e){
    const dialog=el('.equalizer-dialog');
    await report('failed',{ok:false,step,...(epoch?{epoch}:{}),

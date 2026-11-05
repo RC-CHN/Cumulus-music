@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { shallowRef } from 'vue';
 import { useEqualizerDraft } from '../src/composables/useEqualizerDraft.ts';
+import { useEqualizerRangePreview } from '../src/composables/useEqualizerRangePreview.ts';
 import type { EqualizerSettings, EqualizerView, PlayerAction } from '../src/services/player.ts';
 
 type Write = Extract<PlayerAction, { kind: 'equalizer' }>;
@@ -24,7 +25,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-test('audition sends before release, coalesces a burst, and persists the final position', async () => {
+test('committed adjustments coalesce a burst and persist the latest position', async () => {
   const current = shallowRef(snapshot('A', '10'));
   const first = deferred<typeof current.value>();
   const writes: Write[] = [];
@@ -62,6 +63,85 @@ test('audition sends before release, coalesces a burst, and persists the final p
   assert.equal(draft.draft.value, undefined);
   assert.equal(draft.settings.value?.gains[0], 4);
 });
+
+test('range movement previews across debounce, then commits only the released position', async () => {
+  const current = shallowRef(snapshot('A', '10'));
+  const writes: Write[] = [];
+  const draft = useEqualizerDraft(
+    () => current.value,
+    async (command) => {
+      writes.push(command);
+      return (current.value = snapshot('A', '11', command.settings));
+    },
+    async () => current.value,
+    1,
+  );
+  const range = useEqualizerRangePreview(
+    () => current.value.epoch,
+    (_: number) => draft.settings.value!.gains[0]!,
+    (_, gain) => draft.stage(curve(gain)),
+  );
+  const input = rangeInput();
+  range.begin(input);
+  for (const value of ['1.79', '-2.25']) {
+    input.value = value;
+    range.preview(0, input);
+    await tick();
+    assert.equal(range.value(0), Number(value));
+    assert.equal(draft.draft.value, undefined);
+    assert.equal(current.value.equalizer.revision, '10');
+    assert.equal(writes.length, 0);
+  }
+  input.value = '4.25';
+  range.commit(0, input);
+  assert.equal(range.previewing.value, false);
+  await tick();
+  assert.deepEqual(
+    writes.map((write) => [write.expected_revision, write.settings.gains[0]]),
+    [['10', 4.25]],
+  );
+  assert.equal(current.value.equalizer.settings.gains[0], 4.25);
+});
+
+test('cancel and account change restore the range and fence late change events', () => {
+  const owner = shallowRef('A');
+  const commits: number[] = [];
+  const range = useEqualizerRangePreview(
+    () => (owner.value === 'A' ? 'A' : undefined),
+    (_: string) => 2,
+    (_, value) => commits.push(value),
+  );
+  const input = rangeInput();
+  range.begin(input);
+  input.value = '8';
+  range.preview('bass', input);
+  range.cancel(input);
+  assert.equal(input.value, '2');
+  input.value = '8';
+  range.commit('bass', input);
+  assert.deepEqual(commits, []);
+
+  range.begin(input);
+  input.value = '3';
+  range.commit('bass', input); // A direct click or keyboard change needs no preview.
+  assert.deepEqual(commits, [3]);
+  input.value = '7';
+  range.preview('bass', input);
+  owner.value = 'B';
+  assert.equal(range.previewing.value, false);
+  assert.equal(input.value, '2');
+  range.commit('bass', input);
+  assert.deepEqual(commits, [3]);
+});
+
+function rangeInput() {
+  return {
+    value: '0',
+    get valueAsNumber() {
+      return Number(this.value);
+    },
+  };
+}
 
 test('conflict retains the latest draft and only explicit fresh read can rebase it', async () => {
   const current = shallowRef(snapshot('A', '10'));

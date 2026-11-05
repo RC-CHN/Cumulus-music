@@ -163,6 +163,7 @@ def main():
     assert saved['state'] == 'paused' and saved['position'] >= 11
     complete = read('complete')
     assert complete['ok'] and complete['retainedAdjustmentFocus'] == 3
+    assert complete['heldRangeChecks'] == 2
     record = persisted(root)
     saved_custom_record = {'enabled': True, 'gains': custom_gains}
     saved_bypass = read('eq_master_saved')['native']
