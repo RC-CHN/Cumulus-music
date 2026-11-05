@@ -615,3 +615,63 @@ async fn an_unconfirmed_disable_persists_the_dry_request_and_can_be_retried() {
 
 #[path = "support/equalizer_source_latch.rs"]
 mod source_latch;
+
+#[tokio::test]
+async fn ordinary_stock_eq_does_not_claim_saved_spatial_controls_or_restart_current_audio() {
+    use cumulus_core::effects::equalizer::EqualizerSpatialStatus as Spatial;
+
+    let f = Fixture::new();
+    f.device.equalizer_supported.store(true, Ordering::SeqCst);
+    let spatial = curve(4.0).with_stereo_controls(-4, 7).unwrap();
+    let saved = f
+        .command(Cmd::Equalizer {
+            expected_revision: 0,
+            settings: spatial,
+            preset: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(saved.equalizer.spatial_status, Spatial::Pending);
+    assert_eq!(
+        saved.equalizer.preferences.settings.stereo_controls(),
+        (-4, 7)
+    );
+    assert_eq!(*f.device.equalizer.lock().unwrap(), Some(curve(4.0)));
+
+    let loaded = f.command(replace(&[1])).await.unwrap();
+    assert_eq!(loaded.equalizer.spatial_status, Spatial::Unavailable);
+    let latest = spatial.with_stereo_controls(6, 10).unwrap();
+    let edited = f
+        .command(Cmd::Equalizer {
+            expected_revision: saved.equalizer.preferences.revision,
+            settings: latest,
+            preset: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(edited.state, PlaybackStatus::Playing);
+    assert_eq!(edited.play_id, loaded.play_id);
+    assert_eq!(edited.queue_revision, loaded.queue_revision);
+    assert_eq!(edited.equalizer.spatial_status, Spatial::Unavailable);
+    assert_eq!(*f.device.equalizer.lock().unwrap(), Some(curve(4.0)));
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    assert_eq!(
+        EqualizerPreferences::read(&f.store, "9").unwrap().settings,
+        latest
+    );
+
+    let other = f.another_player();
+    let reopened = other.command(&f.token(), Cmd::Snapshot).await.unwrap();
+    assert_eq!(
+        reopened.equalizer.preferences.settings.stereo_controls(),
+        (6, 10)
+    );
+    assert_eq!(reopened.equalizer.spatial_status, Spatial::Pending);
+    assert_eq!(
+        EqualizerPreferences::read(&f.store, "10")
+            .unwrap()
+            .settings
+            .stereo_controls(),
+        (0, 0)
+    );
+}

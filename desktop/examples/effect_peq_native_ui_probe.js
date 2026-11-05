@@ -323,7 +323,7 @@
     click(button(one('.effect-directory[open]'), '关闭音效目录'));
     await wait(() => !one('.effect-directory[open]'), 'initial directory closes');
     const eq = one('.equalizer-dialog[open]');
-    const master = button(eq, '启用均衡器和低高音增强');
+    const master = button(eq, '启用均衡器和增强音效');
     const separate = await wait(() => eq?.querySelector('.equalizer-independent[data-parametric-state="configured"]'),
       'equalizer explains the independently configured PEQ');
     assert(master?.textContent.includes('均衡器与低高音') && separate.textContent.includes('不受上方开关控制'),

@@ -126,3 +126,44 @@ execution to produce those comparisons. Local evidence is under
 Windows execution, the outer FIFO or player attachment. The separate
 ordinary-native-local-equalizer-proof.txt covers the narrow native file-open
 route, which uses saved GEQ and BT with SE and RVB off.
+
+Ordinary local spatial controls
+-------------------------------
+
+The product controls extend the independently authorized NativeFile route,
+not the NCAE catalogue or registered PEQ. In PC 3.1.42.205594 M3091,
+1278–1305 writes local equalizer settings; 1403–1429 preserves the other
+slider and writes only on value change, and 1630–1676 labels 环绕深度
+(-10…10) and 环绕强度 (0…10), integer step one. The recovered
+pages/audio-effect/views/Equalizer.tsx:288–346 shows the same commit and
+reset path. Reset clears bass, treble and both spatial values without
+changing the GEQ curve. Cumulus keeps the two integers with the existing
+account-local EQ CAS; older records read both as zero. Either nonzero
+value enables the same M3091 SE1 plan (sshaper=true, ambience=1); renderer
+input has no bank, RVB, native library path, material URL or authority.
+
+The ordinary stock filter still receives GEQ/BT only. Spatial-only
+settings can qualify the same already-owned, fingerprint-checked ordinary
+NativeFile on a fresh load, with the existing held descriptor, verified
+packaged libFLAC 1.5.0 and exact 44.1 kHz stereo 16-bit FLAC constraints
+and full independent source timeline. The graph uses 2048-frame blocks;
+it applies the same local full material or native master bypass, never
+a LADSPA approximation. Already-bound graphs can apply the sliders and
+master in place; seeking reclaims and resets the same graph. A setting
+edited on a stock/unsupported source is saved for the next qualifying
+native file load without restarting the current decoder. URLs, ordinary
+library entries without the native-open receipt, CUE/preview/room audio,
+unsupported FLAC, independently owned PEQ or missing/wrong SDK remain
+on their prior route. This adds no downloads, rights checks or mutations.
+
+The separate SE status is pending before a qualifying load, unavailable
+on a currently unsupported source, and configured/processing only for
+the owned graph; processing requires native sink advancement beyond the
+accepted control watermark. Master bypass and failed processing are
+separate; stored sliders are preserved. The variable SE tail is drained
+by the existing held-source path while the displayed source position
+never extends past the original file. The frozen 98 full-graph PCM/frame/
+EOF hashes above support the graph; they do not by themselves validate
+the native UI attachment. The new saved-plan and stock actor tests
+exercise typed settings, CAS, authority-preserving fallback and no
+restart. Native/GUI evidence for this addition is tracked separately.

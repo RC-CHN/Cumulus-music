@@ -32,6 +32,21 @@ export function equalizerPresetOption(
 export function equalizerTone(settings?: EqualizerSettings) {
   return { bass_db: settings?.bass_db ?? 0, treble_db: settings?.treble_db ?? 0 };
 }
+export function equalizerSpatial(settings?: EqualizerSettings) {
+  return { presence: settings?.presence ?? 0, stereoizer: settings?.stereoizer ?? 0 };
+}
+export function equalizerSpatialMessage(view: EqualizerView): string | undefined {
+  const status = view.spatial_status;
+  if (!status || status === 'off') return;
+  return {
+    pending: '环绕设置已保存，播放支持的本地 FLAC 时应用。',
+    unavailable: '当前音源不支持环绕，设置已保留。',
+    configured: '环绕已配置，等待音频处理。',
+    processing: '环绕正在处理音频。',
+    bypassed: '环绕已暂停，设置已保留。',
+    failed: '环绕处理失败，设置已保留。',
+  }[status];
+}
 export function equalizerToneEnabled(settings?: EqualizerSettings) {
   return settings?.tone_enabled ?? settings?.enabled ?? false;
 }
@@ -49,7 +64,13 @@ export function equalizerChange(
   preset?: EqualizerPreset,
 ): Extract<PlayerAction, { kind: 'equalizer' }> {
   const tone = equalizerTone(settings);
+  const spatial = equalizerSpatial(settings);
   if (
+    !Number.isInteger(spatial.presence) ||
+    Math.abs(spatial.presence) > 10 ||
+    !Number.isInteger(spatial.stereoizer) ||
+    spatial.stereoizer < 0 ||
+    spatial.stereoizer > 10 ||
     Object.values(tone).some((gain) => !Number.isInteger(gain) || Math.abs(gain) > 10) ||
     view.damaged ||
     settings.gains.length !== 10 ||
@@ -67,6 +88,8 @@ export function equalizerChange(
       ...(settings.tone_enabled !== undefined ? { tone_enabled: settings.tone_enabled } : {}),
       ...(tone.bass_db !== 0 ? { bass_db: tone.bass_db } : {}),
       ...(tone.treble_db !== 0 ? { treble_db: tone.treble_db } : {}),
+      ...(spatial.presence !== 0 ? { presence: spatial.presence } : {}),
+      ...(spatial.stereoizer !== 0 ? { stereoizer: spatial.stereoizer } : {}),
     },
   };
 }
@@ -107,7 +130,7 @@ export function equalizerMessage(view: EqualizerView): string {
   return toneOnly ? '低音和高音增强已应用' : '均衡器已启用';
 }
 
-export function equalizerLauncher(view?: EqualizerView) {
+function ordinaryEqualizerLauncher(view?: EqualizerView) {
   if (!view) return { state: 'loading', label: '正在读取均衡器设置' };
   if (view.damaged || view.status === 'failed')
     return { state: 'problem', label: equalizerMessage(view) };
@@ -122,6 +145,28 @@ export function equalizerLauncher(view?: EqualizerView) {
   return {
     state: 'processing',
     label: activeGeq(view.settings) ? '均衡器已应用' : equalizerMessage(view),
+  };
+}
+
+export function equalizerLauncher(view?: EqualizerView) {
+  const ordinary = ordinaryEqualizerLauncher(view);
+  if (!view) return ordinary;
+  const spatial = equalizerSpatialMessage(view);
+  if (!spatial) return ordinary;
+  const label = equalizerOff(view.settings) ? spatial : ordinary.label + '；' + spatial;
+  const status = view.spatial_status;
+  return {
+    state:
+      status === 'failed' || ordinary.state === 'problem'
+        ? 'problem'
+        : status === 'processing' || ordinary.state === 'processing'
+          ? 'processing'
+          : status === 'configured' || ordinary.state === 'configured'
+            ? 'configured'
+            : status === 'pending'
+              ? 'pending'
+              : ordinary.state,
+    label,
   };
 }
 

@@ -7,7 +7,9 @@ Product scope
 The ordinary native file-open route can pass the saved GEQ and bass/treble
 controls into the recovered M3091 local material graph. See
 core-effects-local-equalizer.txt for the original reset, enable, bypass and
-B0 processing order. Ordinary settings do not enable SE or RVB. The decoder
+B0 processing order. These original proof cases leave SE and RVB off. The
+additional source-bound SE controls are specified in that contract; the
+original proof cases below are unchanged. The decoder
 must be a verified packaged libFLAC 1.5.0; only the supported 44.1 kHz stereo
 FLAC geometry with a full independent source timeline qualifies. An absent
 or mismatched packaged decoder keeps the ordinary stock decoder.

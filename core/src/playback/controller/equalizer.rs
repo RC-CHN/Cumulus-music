@@ -2,7 +2,8 @@ use super::{PlaybackStatus, state::Actor};
 use crate::{
     Error, Result,
     effects::equalizer::{
-        EqualizerPreferences, EqualizerPreset, EqualizerSettings, EqualizerStatus,
+        EqualizerPreferences, EqualizerPreset, EqualizerSettings, EqualizerSpatialStatus,
+        EqualizerStatus,
     },
     playback::{
         engine::{Cancellation, LoadedMedia},
@@ -11,6 +12,39 @@ use crate::{
 };
 
 impl Actor {
+    pub(super) fn equalizer_spatial_status(&self) -> EqualizerSpatialStatus {
+        use EqualizerSpatialStatus as Spatial;
+        let settings = self.equalizer.preferences.settings;
+        if settings.stereo_controls() == (0, 0) {
+            return Spatial::Off;
+        }
+        let bound = self
+            .loaded
+            .as_ref()
+            .is_some_and(|entry| entry.local_equalizer);
+        if (bound || self.state == PlaybackStatus::Error)
+            && self.equalizer.status == EqualizerStatus::Failed
+        {
+            return Spatial::Failed;
+        }
+        if settings.master_bypassed() {
+            return Spatial::Bypassed;
+        }
+        if !self.state.active() {
+            return Spatial::Pending;
+        }
+        if !bound {
+            return Spatial::Unavailable;
+        }
+        match self.equalizer.status {
+            EqualizerStatus::Pending => Spatial::Pending,
+            EqualizerStatus::Unavailable => Spatial::Unavailable,
+            EqualizerStatus::Configured => Spatial::Configured,
+            EqualizerStatus::Processing => Spatial::Processing,
+            EqualizerStatus::Failed => Spatial::Failed,
+        }
+    }
+
     pub(super) fn equalizer_read(&mut self) -> Result<()> {
         match self.session.with_local_owner(&self.token, |owner| {
             EqualizerPreferences::read(&self.store, owner)

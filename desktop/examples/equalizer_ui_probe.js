@@ -25,7 +25,7 @@
   const input=el('[aria-label="'+label+'"]');input.value=String(value);input.dispatchEvent(new Event('input',{bubbles:true}));
  }
  const enabled=()=>el('[aria-label="启用均衡器"]')?.getAttribute('aria-checked')==='true';
- const master=()=>el('[aria-label="启用均衡器和低高音增强"]');
+ const master=()=>el('[aria-label="启用均衡器和增强音效"]');
  async function toggleMaster(on){
    const revision=el('.equalizer-dialog').dataset.revision;
    await click(master());
@@ -61,7 +61,7 @@
    await preset(-2);await wait(()=>el('.equalizer-status').dataset.status==='processing','recalled custom after reopening reaches DSP');
    await stage('eq_reopened_custom_recalled',{enabled:true,gains:custom});
    step='tone_reset';const toneRevision=el('.equalizer-dialog').dataset.revision;
-   await click(byText('重置低音和高音'));
+   await click(byText('重置增强音效'));
    await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==toneRevision&&tone().every(v=>v===0),'tone reset preserves GEQ');
    await stage('eq_reopened_tone_reset',{enabled:true,gains:custom});
   }else{
@@ -178,7 +178,7 @@
     await wait(()=>settled()&&el('.equalizer-dialog').dataset.revision!==beforeIndependent&&
       el('.equalizer-status').dataset.status==='processing','bass-only processing');
     await stage('eq_independent_tone',{enabled:false,gains:custom});
-    await activateFocused('重置低音和高音');
+    await activateFocused('重置增强音效');
     await wait(()=>settled()&&tone().every(value=>value===0),'reset independent tone');
     await expectPresetFocus('preset retains keyboard focus after resetting bass and treble');
     checkLauncher('off');

@@ -252,3 +252,25 @@ test('matching gains alone cannot acknowledge a manual preset selection', async 
   assert.equal(draft.blocked.value, true);
   assert.deepEqual(draft.preset.value, { kind: 'manual' });
 });
+
+test('a native acknowledgment without the new spatial controls cannot settle a stereo-only draft', async () => {
+  const current = shallowRef(snapshot('A', '10'));
+  const writes: Write[] = [];
+  const draft = useEqualizerDraft(
+    () => current.value,
+    async (command) => {
+      writes.push(command);
+      return (current.value = snapshot('A', '11'));
+    },
+    async () => (current.value = snapshot('A', '11', writes[0]?.settings)),
+    1,
+  );
+  draft.stage({ ...current.value.equalizer.settings, presence: 3, stereoizer: 5 });
+  await tick();
+  assert.equal(draft.blocked.value, true);
+  assert.deepEqual([writes[0]?.settings.presence, writes[0]?.settings.stereoizer], [3, 5]);
+  await draft.applyDraft();
+  assert.equal(draft.blocked.value, false);
+  assert.equal(draft.draft.value, undefined);
+  assert.equal(writes.length, 1);
+});

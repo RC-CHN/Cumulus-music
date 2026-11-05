@@ -536,7 +536,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                 inputs.key(key)
 
             equalizer_key('均衡器预设', (accessibility.Role.COMBO_BOX,), 'Down')
-            master = '启用均衡器和低高音增强'
+            master = '启用均衡器和增强音效'
             # WebKit exposes this ARIA switch as a toggle button. Ubuntu
             # 24.04's AT-SPI bindings do not define the newer SWITCH role.
             master_roles = (accessibility.Role.TOGGLE_BUTTON,)
@@ -578,7 +578,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
                     key = f'amplitude{frequency}Hz'
                     assert baseline[key] > 25 and tone[key] > baseline[key] * 1.5, (
                         f'installed tone controls did not increase {frequency} Hz with GEQ off')
-                equalizer_key('重置低音和高音', button_roles, 'Return')
+                equalizer_key('重置增强音效', button_roles, 'Return')
                 wait_for('installed tone reset committed', lambda: preset_saved(enabled=False))
                 reset = capture_tone('toneReset', committed_progress('installed tone reset'))
                 for frequency in MONITOR_TONES:

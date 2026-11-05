@@ -203,6 +203,8 @@ export interface EqualizerSettings {
   gains: number[];
   bass_db?: number;
   treble_db?: number;
+  presence?: number;
+  stereoizer?: number;
   tone_enabled?: boolean;
   master_bypassed?: boolean;
 }
@@ -210,12 +212,21 @@ export type EqualizerPreset =
   | { kind: 'built_in'; index: number }
   | { kind: 'manual' }
   | { kind: 'saved' };
+export type EqualizerSpatialStatus =
+  | 'off'
+  | 'pending'
+  | 'unavailable'
+  | 'configured'
+  | 'processing'
+  | 'bypassed'
+  | 'failed';
 export interface EqualizerView {
   revision: string;
   settings: EqualizerSettings;
   preset?: EqualizerPreset | null;
   saved_custom?: number[] | null;
   status: 'pending' | 'unavailable' | 'configured' | 'processing' | 'failed';
+  spatial_status?: EqualizerSpatialStatus;
   damaged: boolean;
   source_bypassed?: boolean;
 }

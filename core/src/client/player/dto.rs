@@ -120,6 +120,7 @@ pub struct EqualizerView {
     pub preset: Option<crate::effects::equalizer::EqualizerPreset>,
     pub saved_custom: Option<[f32; 10]>,
     pub status: crate::effects::equalizer::EqualizerStatus,
+    pub spatial_status: crate::effects::equalizer::EqualizerSpatialStatus,
     pub damaged: bool,
     pub source_bypassed: bool,
 }

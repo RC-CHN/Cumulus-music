@@ -141,10 +141,25 @@ pub enum EqualizerStatus {
     Processing,
     Failed,
 }
+/// This separately describes SE1 so a stock GEQ/BT filter cannot claim it.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EqualizerSpatialStatus {
+    #[default]
+    Off,
+    Pending,
+    Unavailable,
+    Configured,
+    Processing,
+    Bypassed,
+    Failed,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct EqualizerSnapshot {
     pub preferences: EqualizerPreferences,
     pub status: EqualizerStatus,
+    pub spatial_status: EqualizerSpatialStatus,
     pub damaged: bool,
     /// Acknowledged native source bypass; never part of persisted preferences.
     pub source_bypassed: bool,

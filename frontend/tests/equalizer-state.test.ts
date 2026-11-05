@@ -224,3 +224,39 @@ test('footer reports bound PEQ even while the ordinary equalizer is off', () => 
   });
   assert.match(effectLauncher({ ...view(), damaged: true }, 'configured').label, /已配置.*损坏/);
 });
+
+test('saved spatial controls are bounded and only native local processing lights the effect indicator', () => {
+  const base = view();
+  const settings = { ...base.settings, presence: -10, stereoizer: 7 };
+  assert.deepEqual(equalizerChange(base, settings).settings, settings);
+  for (const invalid of [
+    { presence: -11 },
+    { presence: 1.5 },
+    { stereoizer: -1 },
+    { stereoizer: 11 },
+  ])
+    assert.throws(() => equalizerChange(base, { ...settings, ...invalid }));
+  assert.deepEqual(
+    equalizerLauncher({ ...base, settings, status: 'processing', spatial_status: 'unavailable' }),
+    {
+      state: 'off',
+      label: '当前音源不支持环绕，设置已保留。',
+    },
+  );
+  assert.equal(
+    equalizerLauncher({ ...base, settings, spatial_status: 'pending' }).state,
+    'pending',
+  );
+  assert.equal(
+    equalizerLauncher({ ...base, settings, spatial_status: 'processing' }).state,
+    'processing',
+  );
+  assert.equal(
+    equalizerLauncher({
+      ...base,
+      settings: { ...settings, master_bypassed: true },
+      spatial_status: 'bypassed',
+    }).state,
+    'off',
+  );
+});

@@ -186,7 +186,7 @@ impl Actor {
             && constraint.is_none()
             && self.parametric.admits_local_equalizer()
             && !self.equalizer.damaged
-            && self.equalizer.preferences.settings.effective().enabled())
+            && self.equalizer.preferences.settings.local_graph_requested())
         .then_some(self.equalizer.preferences.settings);
         if local_equalizer.is_some() {
             // If preparation displaced a stock filter and then failed, the

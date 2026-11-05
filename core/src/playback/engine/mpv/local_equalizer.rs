@@ -60,7 +60,7 @@ impl MpvEngine {
         };
         if request.start != 0.0
             || request.end.is_some()
-            || !settings.effective().enabled()
+            || !settings.local_graph_requested()
             || self.parametric.is_some()
             || (self.loudness.is_some() && !self.loudness_reserved)
         {
@@ -289,7 +289,7 @@ impl MpvEngine {
         if snapshot.failed {
             return Err(Error::Media("native local equalizer processing failed"));
         }
-        Ok(local.settings.effective().enabled()
+        Ok(local.settings.local_graph_requested()
             && !local.pending
             && !snapshot.cancelled
             && !snapshot.paused

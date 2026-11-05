@@ -270,6 +270,7 @@ impl Actor {
                     && self.equalizer.source_bypassed
                     && self.equalizer.status
                         == crate::effects::equalizer::EqualizerStatus::Configured,
+                spatial_status: self.equalizer_spatial_status(),
                 ..self.equalizer
             },
             bound_parametric,

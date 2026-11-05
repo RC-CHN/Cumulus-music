@@ -25,6 +25,8 @@ function same(a: EqualizerSettings, b: EqualizerSettings) {
     equalizerToneEnabled(a) === equalizerToneEnabled(b) &&
     (a.bass_db ?? 0) === (b.bass_db ?? 0) &&
     (a.treble_db ?? 0) === (b.treble_db ?? 0) &&
+    (a.presence ?? 0) === (b.presence ?? 0) &&
+    (a.stereoizer ?? 0) === (b.stereoizer ?? 0) &&
     a.gains.length === b.gains.length &&
     a.gains.every((gain, i) => Math.fround(gain) === Math.fround(b.gains[i]!))
   );

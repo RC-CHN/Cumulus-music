@@ -9,6 +9,8 @@ import {
   equalizerMessage,
   equalizerPresetOption,
   equalizerPresets,
+  equalizerSpatial,
+  equalizerSpatialMessage,
   equalizerTone,
   equalizerToneEnabled,
 } from '../services/equalizer';
@@ -48,6 +50,12 @@ const managementOnly = ref(false);
 const headphoneManagement = ref(false);
 const gains = computed(() => settings.value?.gains ?? Array<number>(10).fill(0));
 const tone = computed(() => equalizerTone(settings.value));
+const spatial = computed(() => equalizerSpatial(settings.value));
+const spatialMessage = computed(() => current.value && equalizerSpatialMessage(current.value));
+const spatialBands = [
+  { key: 'presence', label: '环绕深度', min: -10 },
+  { key: 'stereoizer', label: '环绕强度', min: 0 },
+] as const;
 const storedToneBypassed = computed(
   () =>
     !equalizerToneEnabled(settings.value) &&
@@ -104,6 +112,7 @@ function change(
   selected?: EqualizerPreset,
   toneEnabled = equalizerToneEnabled(settings.value),
   keepBypass = false,
+  spatialControls = spatial.value,
 ) {
   if (disabled.value) return;
   commandError.value = '';
@@ -113,6 +122,7 @@ function change(
       enabled,
       gains: values,
       ...enhancement,
+      ...spatialControls,
       tone_enabled: toneEnabled,
       master_bypassed: keepBypass,
     },
@@ -178,13 +188,34 @@ function slideTone(key: (typeof toneBands)[number]['key'], event: Event) {
     next.bass_db !== 0 || next.treble_db !== 0,
   );
 }
-function resetTone() {
+function changeSpatial(key: (typeof spatialBands)[number]['key'], event: Event) {
+  const value = Number((event.target as HTMLInputElement).value);
+  if (
+    !Number.isInteger(value) ||
+    value < (key === 'presence' ? -10 : 0) ||
+    value > 10 ||
+    value === spatial.value[key]
+  )
+    return;
+  change(
+    settings.value?.enabled ?? false,
+    gains.value,
+    tone.value,
+    undefined,
+    equalizerToneEnabled(settings.value),
+    false,
+    { ...spatial.value, [key]: value },
+  );
+}
+function resetEnhancements() {
   change(
     settings.value?.enabled ?? false,
     gains.value,
     { bass_db: 0, treble_db: 0 },
     undefined,
     false,
+    false,
+    { presence: 0, stereoizer: 0 },
   );
 }
 async function saveCustom() {
@@ -239,12 +270,13 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           class="equalizer-switch"
           type="button"
           role="switch"
-          aria-label="启用均衡器和低高音增强"
+          aria-label="启用均衡器和增强音效"
           :aria-checked="!!settings && !settings.master_bypassed"
           :disabled="disabled"
           @click="toggleMaster"
         >
-          <span></span>{{ settings?.master_bypassed ? '均衡器与低高音已暂停' : '均衡器与低高音' }}
+          <span></span
+          >{{ settings?.master_bypassed ? '均衡器与增强音效已暂停' : '均衡器与增强音效' }}
         </button>
         <small v-if="settings?.master_bypassed">调整预设或增益会重新开启音效。</small>
         <button ref="directoryOpener" type="button" @click="openDirectory()">音效目录</button>
@@ -333,12 +365,32 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
           />
           <output>{{ tone[key] }} dB</output>
         </label>
+        <label v-for="{ key, label, min } in spatialBands" :key="key">
+          <span>{{ label }}</span>
+          <input
+            type="range"
+            :min="min"
+            max="10"
+            step="1"
+            :aria-label="label"
+            :value="spatial[key]"
+            @change="changeSpatial(key, $event)"
+          />
+          <output>{{ spatial[key] }}</output>
+        </label>
+        <small
+          v-if="spatialMessage"
+          role="status"
+          class="equalizer-tone-note"
+          :data-spatial-status="current?.spatial_status"
+          >{{ spatialMessage }}</small
+        >
         <button
           type="button"
-          :disabled="!tone.bass_db && !tone.treble_db"
-          @click="actionFocus.run($event, resetTone)"
+          :disabled="!tone.bass_db && !tone.treble_db && !spatial.presence && !spatial.stereoizer"
+          @click="actionFocus.run($event, resetEnhancements)"
         >
-          重置低音和高音
+          重置增强音效
         </button>
       </fieldset>
       <div class="equalizer-status" role="status" :data-status="current?.status">
@@ -463,7 +515,7 @@ async function maintain(kind: 'retry_equalizer' | 'repair_equalizer') {
 }
 .equalizer-tone {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: center;
   gap: 8px 14px;
   margin: 0 0 14px;

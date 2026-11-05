@@ -283,6 +283,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
             preset: value.equalizer.preferences.preset,
             saved_custom: value.equalizer.preferences.saved_custom.map(|s| *s.gains()),
             status: value.equalizer.status,
+            spatial_status: value.equalizer.spatial_status,
             damaged: value.equalizer.damaged,
             source_bypassed: value.equalizer.source_bypassed,
         },

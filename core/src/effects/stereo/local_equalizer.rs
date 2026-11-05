@@ -13,6 +13,7 @@ pub struct LocalEqualizerMaterialPlan {
 impl LocalEqualizerMaterialPlan {
     pub(crate) fn from_saved(settings: crate::effects::equalizer::EqualizerSettings) -> Self {
         let (bass, treble) = settings.tone();
+        let (presence, stereoizer) = settings.stereo_controls();
         Self {
             geq: settings.geq_active().then(|| *settings.gains()),
             tone: if settings.tone_active() {
@@ -20,7 +21,11 @@ impl LocalEqualizerMaterialPlan {
             } else {
                 [0, 0]
             },
-            stereo: [0, 0],
+            stereo: if settings.stereo_active() {
+                [presence, stereoizer]
+            } else {
+                [0, 0]
+            },
         }
     }
 
@@ -98,4 +103,52 @@ fn bounded_integer(map: &Map<String, Value>, key: &str, min: i32, max: i32) -> O
     (i64::from(min)..=i64::from(max))
         .contains(&value)
         .then_some(value as i32)
+}
+
+#[cfg(test)]
+mod saved_controls_tests {
+    use super::*;
+    use crate::effects::equalizer::EqualizerSettings;
+    use serde_json::json;
+
+    #[test]
+    fn saved_local_spatial_controls_match_the_official_m3091_material_without_stock_enable() {
+        let zeros = [0.0; 10];
+        let old = json!({"enabled":false,"gains":zeros});
+        let legacy: EqualizerSettings = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(serde_json::to_value(legacy).unwrap(), old);
+        assert!(!legacy.local_graph_requested());
+
+        let controls = legacy.with_stereo_controls(-10, 7).unwrap();
+        let original = LocalEqualizerMaterialPlan::from_equalizer_json(&json!({
+            "eq":{"on":false,"eqs":zeros},
+            "bt":{"on":false,"bass":0,"treble":0},
+            "rvb":{"on":false},
+            "se":{"on":true,"presence":-10,"stereoizer":7,"sshaper":true,"ambience":1}
+        }))
+        .unwrap();
+        assert_eq!(LocalEqualizerMaterialPlan::from_saved(controls), original);
+        assert!(controls.local_graph_requested());
+        assert_eq!(controls.effective(), legacy);
+
+        let mut persisted = serde_json::to_value(controls).unwrap();
+        persisted["master_bypassed"] = json!(true);
+        let bypassed: EqualizerSettings = serde_json::from_value(persisted.clone()).unwrap();
+        assert_eq!(bypassed.stereo_controls(), (-10, 7));
+        assert!(!bypassed.local_graph_requested());
+        assert_eq!(
+            LocalEqualizerMaterialPlan::from_saved(bypassed),
+            LocalEqualizerMaterialPlan::from_saved(legacy)
+        );
+        for (name, value) in [
+            ("presence", json!(11)),
+            ("stereoizer", json!(-1)),
+            ("presence", json!(2.5)),
+            ("stereoizer", json!(11)),
+        ] {
+            let mut invalid = persisted.clone();
+            invalid[name] = value;
+            assert!(serde_json::from_value::<EqualizerSettings>(invalid).is_err());
+        }
+    }
 }

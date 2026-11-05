@@ -5,7 +5,10 @@ mod host;
 mod preferences;
 use crate::{Error, Result};
 pub use host::EqualizerHost;
-pub use preferences::{EqualizerPreferences, EqualizerPreset, EqualizerSnapshot, EqualizerStatus};
+pub use preferences::{
+    EqualizerPreferences, EqualizerPreset, EqualizerSnapshot, EqualizerSpatialStatus,
+    EqualizerStatus,
+};
 use serde::{Deserialize, Serialize};
 
 /// Official M/3091 sliders: ten dB values, each in [-12, 12]. Labels are rounded
@@ -19,6 +22,10 @@ pub struct EqualizerSettings {
     bass_db: i8,
     #[serde(skip_serializing_if = "is_zero")]
     treble_db: i8,
+    #[serde(skip_serializing_if = "is_zero")]
+    presence: i8,
+    #[serde(skip_serializing_if = "is_zero")]
+    stereoizer: i8,
     // Missing values are old records whose single switch gated both stages.
     #[serde(skip_serializing_if = "Option::is_none")]
     tone_enabled: Option<bool>,
@@ -38,6 +45,10 @@ struct RawSettings {
     #[serde(default)]
     treble_db: i8,
     #[serde(default)]
+    presence: i8,
+    #[serde(default)]
+    stereoizer: i8,
+    #[serde(default)]
     tone_enabled: Option<bool>,
     #[serde(default)]
     master_bypassed: bool,
@@ -46,7 +57,8 @@ impl TryFrom<RawSettings> for EqualizerSettings {
     type Error = Error;
     fn try_from(raw: RawSettings) -> Result<Self> {
         let mut settings = Self::new(raw.enabled, raw.gains)?
-            .with_tone(raw.bass_db.into(), raw.treble_db.into())?;
+            .with_tone(raw.bass_db.into(), raw.treble_db.into())?
+            .with_stereo_controls(raw.presence.into(), raw.stereoizer.into())?;
         settings.tone_enabled = raw.tone_enabled;
         settings.master_bypassed = raw.master_bypassed;
         Ok(settings)
@@ -67,6 +79,8 @@ impl EqualizerSettings {
             gains,
             bass_db: 0,
             treble_db: 0,
+            presence: 0,
+            stereoizer: 0,
             tone_enabled: None,
             master_bypassed: false,
         })
@@ -89,6 +103,29 @@ impl EqualizerSettings {
     pub fn tone(self) -> (i32, i32) {
         (self.bass_db.into(), self.treble_db.into())
     }
+    /// Original local M3091 enhanced controls. This does not authorize a
+    /// decoder, pick an arbitrary material bank, or enable the stock filter.
+    pub fn with_stereo_controls(mut self, presence: i32, stereoizer: i32) -> Result<Self> {
+        if !(-10..=10).contains(&presence) || !(0..=10).contains(&stereoizer) {
+            return Err(Error::InvalidInput("invalid local stereo effect controls"));
+        }
+        self.presence = presence as i8;
+        self.stereoizer = stereoizer as i8;
+        Ok(self)
+    }
+
+    pub fn stereo_controls(self) -> (i32, i32) {
+        (self.presence.into(), self.stereoizer.into())
+    }
+
+    pub(crate) fn stereo_active(self) -> bool {
+        !self.master_bypassed && self.stereo_controls() != (0, 0)
+    }
+
+    pub(crate) fn local_graph_requested(self) -> bool {
+        self.effective().enabled() || self.stereo_active()
+    }
+
     pub fn geq_active(self) -> bool {
         !self.master_bypassed && self.enabled && self.gains.iter().any(|g| *g != 0.0)
     }
@@ -112,6 +149,7 @@ impl EqualizerSettings {
             && self.enabled == other.enabled
             && self.gains == other.gains
             && self.tone() == other.tone()
+            && self.stereo_controls() == other.stereo_controls()
             && self.tone_enabled() == other.tone_enabled()
     }
     pub fn tone_active(self) -> bool {
@@ -128,6 +166,8 @@ impl EqualizerSettings {
             gains: if geq { self.gains } else { [0.0; 10] },
             bass_db: if tone { self.bass_db } else { 0 },
             treble_db: if tone { self.treble_db } else { 0 },
+            presence: 0,
+            stereoizer: 0,
             tone_enabled: None,
             master_bypassed: false,
         }
