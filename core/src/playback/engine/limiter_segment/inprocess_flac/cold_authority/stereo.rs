@@ -169,15 +169,23 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
         .load_stereo_pcm(revoked.take_reader().unwrap(), &Cancellation::default())
         .unwrap();
     native.pause(false).unwrap();
-    wait_stage("revocation native clock", || {
-        native
-            .poll()
-            .unwrap()
-            .position_for(last.entry_id)
-            .is_some_and(|n| n > 0.05)
-            .then_some(())
+    let queued_ahead = wait_stage("revocation native buffered clock", || {
+        let view = native.poll().unwrap();
+        let state = revoke_control.snapshot().unwrap();
+        // The producer queue may already be empty because real PCM is in
+        // libmpv's demux/decoder/AO buffers. Require a real running clock and
+        // already returned audio ahead of it, not a scheduling-dependent
+        // sample in our source queue.
+        view.position_for(last.entry_id)
+            .filter(|position| *position > 0.05 && *position < 1.0)
+            .and_then(|_| {
+                state
+                    .delivered_frames
+                    .checked_sub(state.native_output_frame)
+            })
+            .filter(|frames| *frames > 2048)
     });
-    assert!(revoke_control.snapshot().unwrap().buffered_frames > 0);
+    eprintln!("stereo native buffered frames before revocation: {queued_ahead}");
     fixture.cold.detach().unwrap();
     assert!(matches!(native.poll(), Err(Error::Cancelled)));
     wait_stage("revoked reader closed", || {
