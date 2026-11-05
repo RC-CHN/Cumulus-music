@@ -22,7 +22,7 @@
 | `$$SubWindow` (15) | `models/__SubWindow.txt` | [宿主](desktop-lyrics-contracts.txt) | 浮动歌词及部分子窗；远程 H5 和桌宠不是同一链路。 |
 | `@@dva` (1) | `models/__dva.txt` | [待逐动作](architecture.txt) | 官方框架内部动作；对照业务副作用，不要求移植 DVA。 |
 | `@bff:modelForNej` (2) | `models/_bff_modelForNej.txt` | [待逐动作](architecture.txt) | 官方框架桥；尚无完整调用方和作用映射。 |
-| `abtest` (18) | `models/abtest.txt` | [部分](official-pc-experiments.txt) | 完整 PC 请求、网页分组和原生签名读取有隔离证据；尚未替换各业务路径。 |
+| `abtest` (18) | `models/abtest.txt` | [部分](pc-presentation-lifecycle-contracts.txt) | 完整 PC 请求、原生生命周期及四个搜索表现键的缓存/联动已迁移；其他实验消费者仍逐项接入，持久表现不替代新鲜操作授权。 |
 | `app` (54) | `models/app.txt` | [部分](window-lifecycle-contracts.txt) | 本机宿主和菜单；未覆盖每个 modal、原生回调或授权交接。 |
 | `assignedAudioEffect` (10) | `models/assignedAudioEffect.txt` | [部分](effects-directory-desktop.txt) | 已接已验证材料的授权和处理反馈；逐歌、设备完整图待核。 |
 | `async:action` (20) | `models/async_action.txt` | [待逐动作](catalog-navigation-ui-contracts.txt) | 部分资源有各自类型化入口；未完成统一派发器逐动作映射。 |
@@ -95,7 +95,7 @@
 | `page:playlist` (29) | `models/page_playlist.txt` | [已接入口](playlist-detail-ui-contracts.txt) | 详情、分页、播放和管理；作者/分享等分支另验。 |
 | `page:playlistsquare` (18) | `models/page_playlistsquare.txt` | [已接入口](playlist-detail-ui-contracts.txt) | 广场、普通分类与精品独立游标。 |
 | `page:ranklist` (4) | `models/page_ranklist.txt` | [已接入口](rankings-ui-contracts.txt) | 榜单首页和各已核对入口。 |
-| `page:searchResults` (20) | `models/page_searchResults.txt` | [已接入口](search-results-ui-contracts.txt) | 分类、综合、分页、热点播放及受版权约束的替代 MV；其他特殊资源和实验另列。 |
+| `page:searchResults` (20) | `models/page_searchResults.txt` | [已接入口](search-results-ui-contracts.txt) | 分类、综合、分页、热点播放、受版权约束的替代 MV 及[全局表现本地更新](search-reactive-presentation-contracts.txt)；其他特殊资源和实验另列。 |
 | `page:setting` (0) | `models/page_setting.txt` | [已接入口](settings-mapping.json) | 独立子项证据；页面存在不等于所有设置已实现。 |
 | `page:settingAbout` (1) | `models/page_settingAbout.txt` | [已接入口](settings-support-contracts.txt) | 本机诊断与 Cumulus 版本；官方客服、反馈及日志上传范围外。 |
 | `page:settingAccount` (1) | `models/page_settingAccount.txt` | [已接入口](account-feature-audit.txt) | 账号资料、登录设备、绑定入口和海外注册手机号的扫码改密交接；各真实写操作分开。 |

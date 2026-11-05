@@ -1,0 +1,57 @@
+综合搜索的全局表现更新与本地重投影
+================================
+
+来源与范围
+- 官方 3.1.42.205594 hybrid_app M147 的首次/账号/30 分钟更新及持久缓存，
+  见 pc-presentation-lifecycle-contracts.txt。M3095:1688–1690 同一 connect
+  读取 PH-PC-search-result、PH-PC-searchMore2、PH-PC-searchPageEfficiency，
+  1991 将独立 footer 开关交给歌曲卡片；M2071:255、480 消费 footer。
+- 已有解析保留的综合候选没有因预览截断而丢弃。More2 控制最佳匹配 2/3 项、
+  普通预览 6/10 项；关闭扩展时网格只渲染一行，实际节点数还受窗口列数限制，
+  四列窗口可只有四个节点而仍保留六个候选。dense 只在扩展布局中选择
+  compact_carousel。歌曲候选仍由原投影限制，不把非歌曲预览数量当作
+  “播放全部”的新范围。
+- 官方恢复材料优先；本实现未参考 YesPlayMusic。不把展示分组当作授权、版权、
+  购买确认或操作许可；其他实验消费者、匿名搜索界面并未由本契约整体迁移。
+
+Rust 本地候选
+- core/src/client/search/presentation.rs 在综合结果已经类型化后、应用 footer
+  开关之前保存候选。只保留区块 ID、行位置、曲目 ID、歌词/别名提示和类型化推荐
+  理由。候选不含原始服务包、Cookie、媒体 URL、完整权限或播放器命令。
+- 每区块最多六首歌曲，页面限 16 条，解析后的候选 JSON 每页最多 2 MiB、
+  总计最多 8 MiB；命中提升 LRU 顺序。预算不是进程 RSS 或临时序列化峰值承诺。
+  超过单页限制不签发 receipt，普通搜索结果仍可使用。
+- receipt 随机且不持久化，绑定 SessionToken、实际 API 对象及私有 credential
+  revision。publish/resolve 前后核对凭据；账号/API/凭据变化后旧 receipt 无效，
+  即便相同账号新分组又为 t1，也不能复活旧凭据下的候选。
+- search_presentation(epoch, receipt, revision) 只重投影已有候选。全局表现版本
+  必须仍然当前，回复只含 receipt/revision/layout 和窄字段补丁。前后检查来源，
+  不发送 HTTP、不初始化音频、不重跑搜索，也不覆盖 VIP、限免、原曲/替代 MV、
+  收藏或 playAllIds 等其他业务字段。
+
+桌面与前端
+- desktop::pc_presentation::start 是 native setup 的显式入口，拥有唯一 core
+  runtime lease 和 watch observer。主窗销毁/退出均幂等清理；主窗本地 snapshot
+  IPC 可建立被动事件转接，但不会启动远端读取/定时器。没有 renderer 强制分组
+  或刷新接口，也没有接收前端授权 URL、Cookie 或分组输入的入口。
+- App 先监听后取快照。前端用原生十进制 u64 revision 比较，不用到达顺序；
+  旧事件、非法版本或同版本冲突被拒绝，账号边界清空缓存和版本水位。
+- 关闭 footer 时立即清除当前页和全部 Back 缓存的提示/理由；开启后凭原生
+  receipt 恢复。Back 等待本地重投影期间不先展示旧 footer。receipt 缺失、淘汰
+  或失效时保留普通结果并隐藏提示/理由，失败不自动重新搜索。
+- 表现补丁合并到最新结果，不能覆盖同时完成的权益刷新。布局使用既有 keyed
+  节点，保留滚动、正常键盘焦点及播放；控件被移除时只尝试同卡片/区块的可用
+  控件，不抢走用户已经移到搜索框等位置的焦点。
+
+验证入口及限度
+- core/tests/pc_experiment_transport/search_presentation.rs 使用真实
+  MusicHttpClient/PC 请求上下文/EAPI，后端封闭；校验 t1→c→t1 仅增加完整
+  实验读取，不重发搜索，旧版本/账号/凭据失效及 ordinary DTO 保留。
+- 私有单元覆盖候选预算、LRU 和来源边界；前端测试覆盖乱序、Back、失效 receipt、
+  权益更新的两种完成顺序、焦点与滚动策略。
+- scripts/ci/pc_presentation_smoke.py 在实际 WebView 通过封闭服务器响应改变
+  分组，触发同一 native fullbatch 路径；该测试不通过 renderer 直接改布尔值。
+  原生 paused-time 测试验证周期，桌面脚本不等待实际 30 分钟。实际执行记录另见
+  rust-core-validation.txt、ui-ux-validation.txt；测试入口存在不等于通过。
+- 合成测试使用 null 音频输出，不代表实体声卡或真实匿名注册服务；真实账号只读
+  搜索的独立证据见 search-signed-live-read-proof.txt。
