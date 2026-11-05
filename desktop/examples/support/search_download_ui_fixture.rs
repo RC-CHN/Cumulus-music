@@ -15,9 +15,11 @@ use cumulus_core::{
     storage::StateStore,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
-    fs,
+    fs::{self, File, OpenOptions},
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     sync::Mutex,
     time::Duration,
@@ -341,6 +343,61 @@ pub fn report() -> Value {
         "corrupted":trace.publication.as_ref().is_some_and(|value| value.corrupted)})
 }
 
+/// Isolated optional namespace change after native dispatch owns the File.
+/// Keep the original descriptor alive and restore the test path before the
+/// separate initial-rejection/online-fallback case.
+struct PathReplacement<'a> {
+    path: &'a Path,
+    moved: PathBuf,
+    active: bool,
+    installed: bool,
+}
+impl<'a> PathReplacement<'a> {
+    fn install(path: &'a Path) -> Result<Self> {
+        let moved = path.with_extension("held-original");
+        if fs::symlink_metadata(&moved).is_ok() || fs::read(path)? != SEED {
+            return Err(Error::State("search proof rename precondition mismatch"));
+        }
+        fs::rename(path, &moved)?;
+        let mut change = Self {
+            path,
+            moved,
+            active: true,
+            installed: false,
+        };
+        let mut replacement = OpenOptions::new().write(true).create_new(true).open(path)?;
+        change.installed = true;
+        replacement.write_all(&vec![0; SEED.len()])?;
+        Ok(change)
+    }
+
+    fn restore(&mut self) -> Result<()> {
+        if self.active {
+            if self.installed {
+                fs::remove_file(self.path)?;
+                self.installed = false;
+            }
+            match fs::symlink_metadata(self.path) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+                Ok(_) => {
+                    return Err(Error::State(
+                        "search proof restore path is already occupied",
+                    ));
+                }
+            }
+            fs::rename(&self.moved, self.path)?;
+            self.active = false;
+        }
+        Ok(())
+    }
+}
+impl Drop for PathReplacement<'_> {
+    fn drop(&mut self) {
+        let _ = self.restore();
+    }
+}
+
 pub struct Audio {
     inner: super::relay_fixture::NativeAudio,
 }
@@ -350,34 +407,89 @@ impl Audio {
     }
 }
 impl AudioEngine for Audio {
-    fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
-        let (kind, index) = {
-            let mut trace = TRACE.lock().unwrap();
-            let kind = match &request.source {
-                MediaInput::File(path)
-                    if trace
-                        .publication
-                        .as_ref()
-                        .is_some_and(|record| !record.corrupted && record.path == *path) =>
-                {
-                    "published_flac"
-                }
-                MediaInput::Url(url) if url.as_str() == ONLINE && trace.online.len() == 1 => {
-                    "authorized_url"
-                }
-                _ => "unexpected",
-            };
-            let index = trace.loads.len();
+    fn supports_pinned_search_download(&self) -> bool {
+        true
+    }
+
+    fn load_pinned_audio(
+        &mut self,
+        mut file: File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        authority.check()?;
+        cancel.check()?;
+        let path = {
+            let trace = TRACE.lock().unwrap();
+            if !trace.online.is_empty() || !trace.loads.is_empty() {
+                return Err(Error::State("unexpected pinned search load"));
+            }
             trace
-                .loads
-                .push(json!({"kind":kind,"start":request.start,"end":request.end}));
-            (kind, index)
+                .publication
+                .as_ref()
+                .filter(|value| !value.corrupted)
+                .ok_or(Error::State(
+                    "search proof publication unavailable at native handoff",
+                ))?
+                .path
+                .clone()
         };
-        if !matches!((kind, index), ("published_flac", 0) | ("authorized_url", 1)) {
-            return Err(Error::InvalidInput(
-                "unexpected search-download proof audio input",
+        let replace = std::env::var_os("CUMULUS_SEARCH_DOWNLOAD_HELD_REPLACEMENT").is_some();
+        let mut replacement = if replace {
+            Some(PathReplacement::install(&path)?)
+        } else {
+            None
+        };
+        let mut bytes = Vec::new();
+        (&mut file)
+            .take(SEED.len() as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        if bytes != SEED {
+            return Err(Error::State(
+                "native search descriptor differs from frozen publication",
             ));
         }
+        let hash = format!("{:x}", Sha256::digest(&bytes));
+        file.seek(SeekFrom::Start(0))?;
+        let result = self
+            .inner
+            .load_verified_search_file(file, authority, cancel);
+        let still_replaced = !replace || fs::read(&path)? == vec![0; SEED.len()];
+        if let Some(change) = &mut replacement {
+            change.restore()?;
+        }
+        let loaded = result?;
+        if !still_replaced || fs::read(&path)? != SEED {
+            return Err(Error::State(
+                "search proof replacement was not isolated to native load",
+            ));
+        }
+        TRACE.lock().unwrap().loads.push(json!({
+            "kind":"published_flac", "start":0, "end":null, "transport":"pinned_file",
+            "handleSha256":hash, "handleBytes":bytes.len(), "heldReplacementVerified":replace,
+            "codec":loaded.codec, "nativeEntry":loaded.entry_id, "duration":loaded.duration,
+        }));
+        Ok(loaded)
+    }
+
+    fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
+        let index = {
+            let mut trace = TRACE.lock().unwrap();
+            let authorized = matches!(&request.source, MediaInput::Url(url) if url.as_str() == ONLINE)
+                && trace.online.len() == 1
+                && trace.loads.len() == 1;
+            let index = trace.loads.len();
+            trace.loads.push(json!({
+                "kind":if authorized {"authorized_url"} else {"unexpected"},
+                "start":request.start, "end":request.end
+            }));
+            if !authorized {
+                return Err(Error::InvalidInput(
+                    "unexpected search proof path or URL load",
+                ));
+            }
+            index
+        };
         let loaded = self.inner.load(request, cancel)?;
         let mut trace = TRACE.lock().unwrap();
         trace.loads[index]["codec"] = json!(loaded.codec);

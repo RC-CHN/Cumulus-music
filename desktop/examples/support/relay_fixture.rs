@@ -230,6 +230,20 @@ impl NativeAudio {
         self.download_directory = Some(directory);
         self
     }
+
+    // The dedicated search fixture independently verifies the exact bytes
+    // and must pass this File through without opening its pathname again.
+    pub(super) fn load_verified_search_file(
+        &mut self,
+        file: std::fs::File,
+        authority: Cancellation,
+        cancel: &Cancellation,
+    ) -> Result<LoadedMedia> {
+        if self.download_directory.is_none() {
+            return Err(Error::State("search proof download scope unavailable"));
+        }
+        self.inner.load_pinned_audio(file, authority, cancel)
+    }
 }
 impl AudioEngine for NativeAudio {
     fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {

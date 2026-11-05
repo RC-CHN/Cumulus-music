@@ -29,10 +29,14 @@ def main():
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--local-marker', action='store_true',
                         help='require the verified local-source footer label and disabled quality changes')
+    parser.add_argument('--held-replacement', action='store_true',
+                        help='Linux: replace the private name after native receives the held File')
     args = parser.parse_args()
     windows = sys.platform == 'win32'
     if sys.platform not in {'linux', 'win32'} or windows != bool(args.runtime) or (windows and args.screenshots):
         parser.error('Windows needs --runtime; screenshots are Linux only')
+    if windows and args.held_replacement:
+        parser.error('the optional name-replacement proof is currently Linux only')
     binary, root = args.binary.resolve(strict=True), args.root.resolve()
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     repo = Path(__file__).resolve().parents[2]
@@ -40,6 +44,8 @@ def main():
            if not key.upper().startswith(('CUMULUS_', 'WEBVIEW2_')) and key.upper() != 'MPV_DLL_DIR_CUMULUS'}
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1', CUMULUS_SEARCH_DOWNLOAD_ROW_PROOF='1',
                CUMULUS_UX_SCRIPT=str(repo / 'desktop/examples/search_download_row_ui_probe.js'))
+    if args.held_replacement:
+        env['CUMULUS_SEARCH_DOWNLOAD_HELD_REPLACEMENT'] = '1'
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
     if windows:
@@ -78,10 +84,14 @@ def main():
         assert len(trace['loads']) == (2 if fallback else 1)
         local = trace['loads'][0]
         assert local['kind'] == 'published_flac' and local['codec'] == 'flac'
+        assert local['transport'] == 'pinned_file'
+        assert local['handleBytes'] == publication['bytes'] and local['handleSha256'] == publication['sha256']
+        assert local['heldReplacementVerified'] is args.held_replacement
         assert local['nativeEntry'] > 0 and 1.9 <= local['duration'] <= 2.1 and local['start'] == 0
         if fallback:
             online = trace['loads'][1]
             assert online['kind'] == 'authorized_url' and online['codec'].startswith('pcm_')
+            assert {'transport', 'handleBytes', 'handleSha256', 'heldReplacementVerified'}.isdisjoint(online)
             assert online['nativeEntry'] > 0 and online['nativeEntry'] != local['nativeEntry']
             assert online['duration'] == 30 and online['start'] == 0
     assert traces[0]['loads'] == traces[1]['loads'] == traces[2]['loads'][:1]
@@ -113,6 +123,7 @@ def main():
     assert fallback['playId'] != local['playId'] and complete['nativePlayer']['state'] == 'idle'
     [target] = (root / 'search-download-media').glob('*.flac')
     assert target.read_bytes() == bytes(len(seed)), 'only the fixture publication was corrupted, with unchanged byte count'
+    assert not list(target.parent.glob('*.held-original')), 'temporary replacement was not restored before fallback'
     locale = None if windows else read(out / 'locale.json')
     if locale:
         assert locale == {'numeric': 'C', 'messages': 'en_US.UTF-8', 'characters': 'en_US.UTF-8'}, locale
@@ -121,6 +132,7 @@ def main():
     report = dict(ok=True, actualWebView=True, nativeNullPlaybackVerified=True, platform='windows' if windows else 'linux',
                   states=STATES, screenshots=screenshots, locale=locale, localMarkerVerified=args.local_marker,
                   localUrlAttempts=0, fallbackUrlAttempts=1, publication=publication, nativeLoads=traces[-1]['loads'],
+                  pinnedFileVerified=True, heldReplacementVerified=args.held_replacement,
                   realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
     (root / 'report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False))
