@@ -33,10 +33,11 @@ x64 cloudmusic.dll RVA 4D1D40 的 cache_index 是 track(tid,fid) 与 segment
 product/09-storage-update.txt。和 HTTP 缓存、下载或 offline_index 是不同库。
 原文件格式、授权有效性、实时回收与旧目录删除范围还没有足够证据复刻。
 
-Cumulus 当前独立 Rust 试验
+Cumulus 独立 Rust 实现
 - Native host 用 MusicClient::configure_streaming_media_cache 显式加载设备
   偏好并启用；失败不改动已有播放器，调用方可继续使用普通 URL。另保留内部
-  自定容量的试验入口。只选普通、线上、完整、明确非试用、免费 MP3 的已授权表示。只认实际 standard/higher/exhigh，严格校验 id、type、fee、
+  自定容量的试验入口。只选普通、线上、完整、明确非试用、免费 MP3 的已授权表示。
+  只认实际 standard/higher/exhigh，严格校验 id、type、fee、
   flag、trial、size、完整 MD5 和短期过期信息。FM、私人雷达、一起听、云盘、
   本地、下载、试听、未知字段及其它格式保留原路径。
 - 先使用原播放源解析。当前播放直接拥有的原请求如果返回新授权且符合规则，
@@ -52,7 +53,7 @@ Cumulus 当前独立 Rust 试验
   错位或越界范围；后续范围带 If-Match。只有本次播放确实覆盖全部窗口并
   与来源完整 MD5 一致、且 libmpv 成功确认 MP3 解码后才可复用。仅本机
   选源前失败可用原 URL；原生已
-  选用此读者后不自动重放第二条路径。未加入生产默认或桌面设置。
+  选用此读者后不自动重放第二条路径。
 - 私有状态目录内固定 streaming-audio-v1，只为新内容创建 tempfile；Unix
   不留可重开的文件名，Windows 按句柄关闭时删除。不遍历或删除目录内容。
   索引在内存，操作系统按实际句柄寿命释放文件；
