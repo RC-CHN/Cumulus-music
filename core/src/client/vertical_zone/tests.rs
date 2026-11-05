@@ -147,6 +147,7 @@ fn a_zone_playlist_receipt_preserves_the_clicked_occurrence_and_cannot_cross_vie
             personalized,
         },
         can_play: true,
+        mgc_special: personalized,
         previews: vec![],
     };
     let mut current_page = page("default", "推荐");
@@ -168,26 +169,27 @@ fn a_zone_playlist_receipt_preserves_the_clicked_occurrence_and_cannot_cross_vie
     let view = &current_page.view_id;
     let binding = Binding::new(&current, &api, "revision");
     let other = Binding::new(&owner(2), &api, "revision");
-    assert!(
-        !host
-            .playlist_trial(&binding, view, "0:0", "17", |_| true)
-            .unwrap()
+    assert_eq!(
+        host.playlist_context(&binding, view, "0:0", "17", |_| true)
+            .unwrap(),
+        (false, false)
+    );
+    assert_eq!(
+        host.playlist_context(&binding, view, "1:0", "17", |_| true)
+            .unwrap(),
+        (true, true)
     );
     assert!(
-        host.playlist_trial(&binding, view, "1:0", "17", |_| true)
-            .unwrap()
-    );
-    assert!(
-        host.playlist_trial(&binding, view, "1:0", "18", |_| true)
+        host.playlist_context(&binding, view, "1:0", "18", |_| true)
             .is_err()
     );
     assert!(
-        host.playlist_trial(&other, view, "1:0", "17", |_| true)
+        host.playlist_context(&other, view, "1:0", "17", |_| true)
             .is_err()
     );
     host.enter(&current, &api, "revision").unwrap();
     assert!(matches!(
-        host.playlist_trial(&binding, view, "1:0", "17", |_| true),
+        host.playlist_context(&binding, view, "1:0", "17", |_| true),
         Err(Error::StaleResponse)
     ));
 }

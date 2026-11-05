@@ -7,6 +7,7 @@ mod extras;
 mod service;
 mod snapshot;
 mod types;
+pub(crate) use api::{MGC_TRIAL, ZonePlaylistMembership};
 pub use api::{PlaylistApi, PlaylistTracks, TrackOperation};
 pub use external_input::{
     ExternalPlaylistInput, ExternalPlaylistSource, MAX_EXTERNAL_PLAYLIST_LINKS,

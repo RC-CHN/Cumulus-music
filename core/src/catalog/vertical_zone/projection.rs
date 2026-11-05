@@ -75,6 +75,7 @@ fn carousel(row: &Value) -> Option<ZoneCard> {
         title: text(&row["title"]),
         cover: original(&row["imgUrl"]),
         can_play: matches!(target, ZoneTarget::Song { .. } | ZoneTarget::Voice { .. }),
+        mgc_special: false,
         target,
         previews: Vec::new(),
     })
@@ -103,6 +104,13 @@ fn recommendation(row: &Value, horizontal: bool, block_personalized: bool) -> Op
         title: text(&row["name"]).or_else(|| text(&row["title"])),
         cover: square(&row["coverImgUrl"]).or_else(|| square(&row["coverUrl"])),
         can_play: true,
+        mgc_special: matches!(
+            target,
+            ZoneTarget::Playlist {
+                personalized: true,
+                ..
+            }
+        ) && row["specialType"].as_i64() == Some(100),
         target,
         previews: Vec::new(),
     })
@@ -139,6 +147,7 @@ fn ranking(row: &Value) -> Option<ZoneCard> {
             personalized: false,
         },
         can_play: marked(&row["canPlay"]),
+        mgc_special: false,
         previews,
     })
 }

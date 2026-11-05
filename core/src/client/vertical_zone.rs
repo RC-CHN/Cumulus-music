@@ -125,14 +125,14 @@ impl ZoneHost {
         Ok(())
     }
 
-    fn playlist_trial(
+    fn playlist_context(
         &self,
         binding: &Binding,
         view: &str,
         card_key: &str,
         id: &str,
         permits: impl FnOnce(&str) -> bool,
-    ) -> Result<bool> {
+    ) -> Result<(bool, bool)> {
         let cache = self.cache.lock().map_err(|_| Error::LockPoisoned)?;
         let authorized = binding.api.upgrade().is_some_and(|api| {
             cache
@@ -153,7 +153,7 @@ impl ZoneHost {
                 ZoneTarget::Playlist {
                     id: candidate,
                     personalized,
-                } if candidate == id => Some(*personalized),
+                } if candidate == id => Some((*personalized, card.mgc_special)),
                 _ => None,
             })
             .ok_or(Error::InvalidInput("playlist is not an active zone card"))
@@ -256,9 +256,10 @@ impl MusicClient {
                 .filter(|entry| authority.matches(&entry.owner))
                 .ok_or(Error::StaleResponse)?;
             self.vertical_zone
-                .playlist_trial(&current.owner, view, card_key, id, |page| {
+                .playlist_context(&current.owner, view, card_key, id, |page| {
                     current.menu.contains(page)
                 })
+                .map(|(personalized, _)| personalized)
         })
     }
 

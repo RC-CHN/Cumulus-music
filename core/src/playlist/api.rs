@@ -28,6 +28,29 @@ pub struct PlaylistTracks {
     pub local_tracks: Vec<Value>,
 }
 
+pub(crate) const MGC_TRIAL: i32 = 121;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum ZonePlaylistMembership {
+    #[default]
+    Unverified,
+    Created,
+    Liked,
+}
+
+impl ZonePlaylistMembership {
+    pub(crate) fn trial_mode(self) -> i32 {
+        match self {
+            Self::Liked => 43,
+            _ => MGC_TRIAL,
+        }
+    }
+
+    fn created(self) -> bool {
+        self != Self::Unverified
+    }
+}
+
 #[derive(Clone)]
 pub struct PlaylistApi {
     pub(super) api: Arc<dyn Api>,
@@ -68,9 +91,20 @@ impl PlaylistApi {
             .ok_or(Error::Response("missing playlist"))
     }
 
-    /// M/2997 -> M/444.b ordinary third-party MGC playlist visit. The
-    /// initial v4/dynamic reads never carry the song trial context.
-    pub(crate) async fn zone_mgc_detail(&self, id: &str, owner: &str) -> Result<Value> {
+    /// M/2997 -> M/444.b uses V6 only for proven created membership or
+    /// a numeric specialType=100 from native route/detail data.
+    pub(crate) async fn zone_mgc_detail(
+        &self,
+        id: &str,
+        uid: &str,
+        membership: ZonePlaylistMembership,
+        special: bool,
+        guard: impl Fn() -> Result<()>,
+    ) -> Result<Value> {
+        if membership.created() || special {
+            return self.zone_mgc_detail_v6(id, uid, membership, &guard).await;
+        }
+        guard()?;
         let initial = self
             .api
             .call(
@@ -80,23 +114,9 @@ impl PlaylistApi {
                 &[200],
             )
             .await?;
-        let mut playlist = initial["playlist"]
-            .as_object()
-            .cloned()
-            .ok_or(Error::Response("missing MGC playlist"))?;
-        if identifier(&initial["playlist"]["id"])? != id {
-            return Err(Error::Response("MGC playlist identity mismatch"));
-        }
-        let creator = identifier(&initial["playlist"]["creator"]["userId"])
-            .map_err(|_| Error::Response("MGC playlist creator unavailable"))?;
-        if identifier(&initial["playlist"]["userId"]).is_ok_and(|owner| owner != creator) {
-            return Err(Error::Response("MGC playlist creator identity mismatch"));
-        }
-        if creator == owner || initial["playlist"]["specialType"].as_i64() == Some(100) {
-            return Err(Error::State(
-                "owned and special MGC playlist details are not supported",
-            ));
-        }
+        let initial = &initial["playlist"];
+        let mut playlist = validate_zone_mgc_playlist(initial, id, uid, membership)?;
+        guard()?;
         match self
             .api
             .call(
@@ -129,6 +149,41 @@ impl PlaylistApi {
             }
             Err(_) => {}
         }
+        // The official route completes dynamic first. After it publishes the
+        // new playlist entity, specialType is an effect dependency and triggers
+        // a second read via V6. There is at most one promotion per visit read.
+        if initial["specialType"].as_i64() == Some(100) {
+            return self.zone_mgc_detail_v6(id, uid, membership, &guard).await;
+        }
+        Ok(Value::Object(playlist))
+    }
+
+    async fn zone_mgc_detail_v6(
+        &self,
+        id: &str,
+        uid: &str,
+        membership: ZonePlaylistMembership,
+        guard: &impl Fn() -> Result<()>,
+    ) -> Result<Value> {
+        guard()?;
+        let reply = self
+            .api
+            .call(
+                "/api/v6/playlist/detail",
+                json!({
+                    "id":id,"n":500,"s":0,"newStyle":true,"trialMode":membership.trial_mode()
+                }),
+                false,
+                &[200],
+            )
+            .await?;
+        let mut playlist = validate_zone_mgc_playlist(&reply["playlist"], id, uid, membership)?;
+        let track_count = playlist
+            .get("trackIds")
+            .and_then(Value::as_array)
+            .ok_or(Error::Response("missing MGC playlist trackIds"))?
+            .len();
+        playlist.insert("trackCount".into(), json!(track_count));
         Ok(Value::Object(playlist))
     }
 
@@ -283,4 +338,29 @@ pub(super) fn validate_metadata(name: &str, tags: &[String], description: &str) 
         ));
     }
     Ok(name)
+}
+
+fn validate_zone_mgc_playlist(
+    playlist: &Value,
+    id: &str,
+    uid: &str,
+    membership: ZonePlaylistMembership,
+) -> Result<serde_json::Map<String, Value>> {
+    let object = playlist
+        .as_object()
+        .ok_or(Error::Response("missing MGC playlist"))?;
+    if identifier(&playlist["id"])? != id {
+        return Err(Error::Response("MGC playlist identity mismatch"));
+    }
+    let creator = identifier(&playlist["creator"]["userId"])
+        .map_err(|_| Error::Response("MGC playlist creator unavailable"))?;
+    if identifier(&playlist["userId"]).is_ok_and(|owner| owner != creator) {
+        return Err(Error::Response("MGC playlist creator identity mismatch"));
+    }
+    // Returned creator is a consistency guard only. It must never promote
+    // an otherwise unverified account into an own-playlist request.
+    if (creator == uid) != membership.created() {
+        return Err(Error::State("MGC playlist ownership is not verified"));
+    }
+    Ok(object.clone())
 }

@@ -97,6 +97,9 @@ pub struct ZoneCard {
     pub target: ZoneTarget,
     pub can_play: bool,
     pub previews: Vec<ZoneRankPreview>,
+    /// Retained only by the native published card and never accepted over IPC.
+    #[serde(skip)]
+    pub(crate) mgc_special: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]

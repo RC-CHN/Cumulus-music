@@ -26,6 +26,7 @@ use std::{
 const V4: &str = "/api/playlist/v4/detail";
 const V6: &str = "/api/v6/playlist/detail";
 const DYNAMIC: &str = "/api/playlist/detail/dynamic";
+const LIST: &str = "/api/user/playlist";
 const SONG: &str = "/api/v3/song/detail";
 const URL: &str = "/api/song/enhance/player/url/v1";
 
@@ -35,6 +36,10 @@ struct Wire {
     revision: AtomicU64,
     removed: AtomicBool,
     own: AtomicBool,
+    membership: AtomicU64,
+    card_special: AtomicU64,
+    returned_special: AtomicBool,
+    change_during_dynamic: AtomicBool,
     dynamic_fails: AtomicBool,
 }
 
@@ -75,8 +80,40 @@ impl Api for Wire {
                         "data":{"extra":{"nowChannelItems":[{"code":page,"title":"专区","url":format!("orpheus://rnpage?page={page}")}]}}}]}})
                 }
                 "/api/user/setting" => json!({"code":200,"setting":{"personalServiceSetting":0}}),
+                LIST => {
+                    assert_eq!(args["uid"], "7");
+                    let mut list = vec![];
+                    let mut row = json!({"id":204,"name":"我的歌单","creator":{"userId":7}});
+                    match self.membership.load(Ordering::Acquire) {
+                        0 => (),
+                        1 | 2 | 4 => {
+                            row["userId"] = json!(7);
+                            if self.membership.load(Ordering::Acquire) == 2 {
+                                row["specialType"] = json!(5);
+                            }
+                            list.push(row);
+                            if self.membership.load(Ordering::Acquire) == 4 {
+                                list.push(json!({"id":204,"userId":8,"creator":{"userId":8}}));
+                            }
+                        }
+                        3 => list.push(row),
+                        other => panic!("unknown membership case {other}"),
+                    }
+                    json!({"code":200,"playlist":list,"more":false})
+                }
                 "/api/zone/tab/get" => {
-                    let rows = (204..210).map(|id| json!({"resourceType":"playlist","id":id,"name":format!("横排 {id}")})).collect::<Vec<_>>();
+                    let rows = (204..210).map(|id| {
+                        let mut row = json!({"resourceType":"playlist","id":id,"name":format!("横排 {id}"),
+                            "userId":7,"creator":{"userId":7}});
+                        if id == 204 {
+                            row["specialType"] = match self.card_special.load(Ordering::Acquire) {
+                                1 => json!(100),
+                                2 => json!("100"),
+                                _ => Value::Null,
+                            };
+                        }
+                        row
+                    }).collect::<Vec<_>>();
                     json!({"code":200,"data":{"tabMetas":[{"tabKey":"default","tabKeyName":"全部"}],
                     "currentTabContent":{"tabKey":"default","tabKeyName":"全部","blocks":[
                         {"componentName":"RecommendGrid","children":[{"resourceType":"playlist","id":204,"name":"普通同一歌单"}]},
@@ -86,12 +123,18 @@ impl Api for Wire {
                 V4 | V6 => json!({"code":200,"playlist":{
                     "id":204,"privacy":0,"name":if path == V4 { "MGC visit" } else { "Normal visit" },
                     "creator":{"userId":if self.own.load(Ordering::Acquire) { 7 } else { 8 },"nickname":"合成歌单作者"},
-                    "trackCount":3,"subscribedCount":6,
+                    "trackCount":if args["newStyle"] == true { 17 } else { 3 },"subscribedCount":6,
+                    "specialType":if self.returned_special.load(Ordering::Acquire) { 100 } else if self.membership.load(Ordering::Acquire) == 2 { 5 } else { 0 },
                     "trackIds":[{"id":101,"v":0},{"id":102,"v":0},{"id":103,"v":-1}]
                 }}),
                 DYNAMIC if self.dynamic_fails.load(Ordering::Acquire) => json!({"code":503}),
-                DYNAMIC => json!({"code":200,"bookedCount":81,"playCount":234,"subscribed":true,
-                    "playlist":{"id":999},"trackIds":[{"id":999}]}),
+                DYNAMIC => {
+                    if self.change_during_dynamic.load(Ordering::Acquire) {
+                        self.revision.fetch_add(1, Ordering::Release);
+                    }
+                    json!({"code":200,"bookedCount":81,"playCount":234,"subscribed":true,
+                        "playlist":{"id":999},"trackIds":[{"id":999}]})
+                }
                 SONG => {
                     let ids: Vec<Value> =
                         serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
@@ -157,6 +200,10 @@ impl Fixture {
             .await
             .unwrap()
             .value;
+        let renderer_card = serde_json::to_value(&view.blocks[1].cards[0]).unwrap();
+        assert!(
+            renderer_card.get("specialType").is_none() && renderer_card.get("mgcSpecial").is_none()
+        );
         assert!(matches!(
             self.client
                 .vertical_zone_playlist_origin(&epoch, &view.view_id, "0:0", "204")
@@ -192,13 +239,17 @@ fn page(offset: usize, limit: usize, revision: Option<String>) -> PageRequest {
 }
 
 fn song_request(ids: &[&str], trial: bool) -> (String, Value) {
+    song_trial(ids, trial.then_some(121))
+}
+
+fn song_trial(ids: &[&str], trial: Option<i32>) -> (String, Value) {
     let rows = ids
         .iter()
         .map(|id| json!({"id":id,"v":0}))
         .collect::<Vec<_>>();
     let mut payload = json!({"c":serde_json::to_string(&rows).unwrap()});
-    if trial {
-        payload["trialMode"] = json!(121);
+    if let Some(trial) = trial {
+        payload["trialMode"] = json!(trial);
     }
     (SONG.into(), payload)
 }
@@ -328,9 +379,7 @@ async fn fallback_and_account_credential_registry_fences_keep_the_visit_local() 
         f.client
             .vertical_zone_playlist_detail(&epoch, &receipt, "204", page(0, 1, None))
             .await,
-        Err(Error::State(
-            "owned and special MGC playlist details are not supported"
-        ))
+        Err(Error::State("MGC playlist ownership is not verified"))
     ));
     assert_eq!(
         f.wire.take_calls(),
@@ -389,6 +438,184 @@ async fn scoped_row_play_authorizes_trial_121_while_normal_same_id_stays_default
     let ordinary = await_url(&f.wire, -1).await;
     assert!(ordinary.contains(&song_request(&["101", "102"], false)));
     assert!(ordinary.iter().any(|(path, _)| path == V6));
+}
+
+fn v6_request(trial: i32) -> (String, Value) {
+    (
+        V6.into(),
+        json!({"id":"204","n":500,"s":0,"newStyle":true,"trialMode":trial}),
+    )
+}
+
+#[tokio::test]
+async fn signed_numeric_card_special_selects_v6_before_detail_without_affecting_normal_visit() {
+    let f = Fixture::new();
+    f.wire.card_special.store(1, Ordering::Release);
+    f.wire.returned_special.store(true, Ordering::Release);
+    let (epoch, receipt) = f.source().await;
+    let value = f
+        .client
+        .vertical_zone_playlist_detail(&epoch, &receipt, "204", page(0, 1, None))
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(value.playlist.unwrap().track_count, 3);
+    assert_eq!(
+        f.wire.take_calls(),
+        vec![v6_request(121), song_request(&["101"], true)]
+    );
+    f.client
+        .playlist_page("204", page(0, 1, None))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.wire.take_calls(),
+        vec![
+            (V6.into(), json!({"id":"204","n":100000,"s":0})),
+            song_request(&["101"], false)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn v4_discovered_special_finishes_dynamic_then_promotes_and_explicit_refresh_keeps_v6() {
+    let f = Fixture::new();
+    f.wire.card_special.store(2, Ordering::Release); // JS strict equality rejects "100".
+    f.wire.returned_special.store(true, Ordering::Release);
+    let (epoch, receipt) = f.source().await;
+    let first = f
+        .client
+        .vertical_zone_playlist_detail(&epoch, &receipt, "204", page(0, 1, None))
+        .await
+        .unwrap()
+        .value;
+    assert_eq!(first.playlist.unwrap().subscribed_count, Some(6));
+    assert_eq!(
+        f.wire.take_calls(),
+        vec![
+            (V4.into(), json!({"id":"204","n":0,"s":0})),
+            (DYNAMIC.into(), json!({"id":"204"})),
+            v6_request(121),
+            song_request(&["101"], true)
+        ]
+    );
+    f.client
+        .vertical_zone_playlist_detail(&epoch, &receipt, "204", page(0, 1, None))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.wire.take_calls(),
+        vec![v6_request(121), song_request(&["101"], true)]
+    );
+
+    let stale = Fixture::new();
+    stale.wire.returned_special.store(true, Ordering::Release);
+    stale
+        .wire
+        .change_during_dynamic
+        .store(true, Ordering::Release);
+    let (epoch, receipt) = stale.source().await;
+    assert!(matches!(
+        stale
+            .client
+            .vertical_zone_playlist_detail(&epoch, &receipt, "204", page(0, 1, None))
+            .await,
+        Err(Error::CredentialChanged)
+    ));
+    assert_eq!(
+        stale.wire.take_calls(),
+        vec![
+            (V4.into(), json!({"id":"204","n":0,"s":0})),
+            (DYNAMIC.into(), json!({"id":"204"}))
+        ]
+    );
+}
+
+#[tokio::test]
+async fn own_v6_requires_verified_list_membership_and_liked_uses_trial_43_through_url() {
+    for (membership, expected_trial) in [(1, 121), (2, 43)] {
+        let f = Fixture::new();
+        f.wire.membership.store(membership, Ordering::Release);
+        f.wire.own.store(true, Ordering::Release);
+        f.client.playlists().await.unwrap();
+        assert_eq!(
+            f.wire
+                .take_calls()
+                .iter()
+                .map(|call| call.0.as_str())
+                .collect::<Vec<_>>(),
+            vec![LIST]
+        );
+        let (epoch, receipt) = f.source().await;
+        let first = f
+            .client
+            .vertical_zone_playlist_detail(&epoch, &receipt, "204", page(0, 1, None))
+            .await
+            .unwrap()
+            .value;
+        let header = first.playlist.unwrap();
+        assert!(header.owned);
+        assert_eq!(header.favorite, expected_trial == 43);
+        assert_eq!(
+            f.wire.take_calls(),
+            vec![
+                v6_request(expected_trial),
+                song_trial(&["101"], Some(expected_trial))
+            ]
+        );
+        if expected_trial == 43 {
+            f.client
+                .play_selection(
+                    &epoch,
+                    PlaySelection::VerticalZonePlaylistDetail {
+                        id: "204".into(),
+                        receipt,
+                        revision: first.revision.unwrap(),
+                        start_id: Some("102".into()),
+                        double_click: true,
+                        quality: Quality::Standard,
+                    },
+                )
+                .await
+                .unwrap();
+            let calls = await_url(&f.wire, 43).await;
+            assert!(calls.contains(&song_trial(&["101", "102"], Some(43))));
+            assert!(
+                calls
+                    .iter()
+                    .all(|(path, _)| !matches!(path.as_str(), V4 | V6 | DYNAMIC | LIST))
+            );
+        }
+    }
+
+    for (membership, credential_change, new_generation) in [
+        (3, false, false), // A creator label, even in the native list, isn't the userId partition.
+        (4, false, false), // Conflicting ID rows are not affirmative membership.
+        (2, true, false),
+        (2, false, true),
+    ] {
+        let f = Fixture::new();
+        f.wire.membership.store(membership, Ordering::Release);
+        f.wire.own.store(true, Ordering::Release);
+        f.client.playlists().await.unwrap();
+        if credential_change {
+            f.wire.revision.store(1, Ordering::Release);
+        }
+        if new_generation {
+            f.adopt(7);
+        }
+        let (epoch, receipt) = f.source().await;
+        assert!(matches!(
+            f.client
+                .vertical_zone_playlist_detail(&epoch, &receipt, "204", page(0, 1, None))
+                .await,
+            Err(Error::State("MGC playlist ownership is not verified"))
+        ));
+        assert_eq!(
+            f.wire.take_calls(),
+            vec![(V4.into(), json!({"id":"204","n":0,"s":0}))]
+        );
+    }
 }
 
 async fn await_url(wire: &Wire, trial: i32) -> Vec<(String, Value)> {

@@ -98,17 +98,21 @@ pub(super) async fn playlist_track_page(
 
 impl MusicClient {
     pub async fn playlists(&self) -> Result<AccountData<Vec<PlaylistView>>> {
-        let (token, (value, rows)) = self
+        let (token, (value, rows, api, revision)) = self
             .session
             .run(|api, uid| async move {
-                let rows = PlaylistApi::new(api).list(&json!(uid)).await?;
+                let revision = api.verified_pc_experiment_revision().ok().flatten();
+                let rows = PlaylistApi::new(api.clone()).list(&json!(uid)).await?;
                 let value = rows
                     .iter()
                     .map(|p| mapping::playlist(p, &uid))
                     .collect::<Result<Vec<_>>>()?;
-                Ok((value, rows))
+                Ok((value, rows, api, revision))
             })
             .await?;
+        if let Some(revision) = revision {
+            self.remember_zone_playlist_membership(&token, &api, &revision, &rows)?;
+        }
         self.remember_queue_more_memberships(&token, &rows)?;
         self.remember_intelligence_likes(
             &token,

@@ -4,14 +4,23 @@ PC 3.1.42.205594｜专区 MGC 歌单详情和播放来源
 - M/3089:3757–3794：仅横排的 MGC 模块或卡片有
   hideAfterClosePersonalized 时设置 zoneMGC；M/91:11 给出 121。播放按钮
   用 from.trialMode；封面/标题链接用 to.state.trialMode。普通网格不带该值。
-- PlaylistCard/index.tsx:902–912 转发链接状态。歌单 views/index.jsx:133–162、
-  292–310、351–363 在详情、子标签及头部/歌曲列表保留状态。自身喜欢的歌单
-  优先使用 43；本批不模拟其 43/AI 分支。
+- M/1211:69–76、96–105 用 M/21:884–925 归一化横排卡片，保留
+  specialType。PlaylistCard/index.tsx:902–912 和 M/3085:1018–1024、1061–1077
+  将完整 resource 及 MGC 状态传入原生歌单路由。views/index.jsx:98–124、
+  133–162、197–201、372–377 优先使用歌单详情实体，随后是路由 resource、
+  自建和订阅列表；specialType 改变会触发详情重新请求。自建资格来自
+  async:hostResource.createPlaylist，不能从卡片或详情的作者推断。
+  M/232.q（M/232:224–268）用当前账号用户列表的 userId 分区；
+  async:hostResource.fetchHostPlaylist 取同一列表首个 specialType=5 的 ID
+  为 starPlaylistId（恢复模型 :619–674）。自身喜欢的歌单优先使用 43（M/91:11）。
 - M/2997:247–280 → M/444:131–174：普通第三方歌单先
   POST /api/playlist/v4/detail {id,n:0,s:0}，再
   POST /api/playlist/detail/dynamic {id} 合并动态展示字段；动态普通失败保留
   首次详情。仅自身或 useV6（雷达场景 37 或 specialType=100）走 v6 并可能
   在详情中带 trialMode。通常的第三方 MGC 121 不改变首次 v4 请求。
+  详情路由不指定 n，因此 V6 为 {id,n:500,s:0,newStyle:true,trialMode}，
+  不请求 dynamic；trackCount 按权威 trackIds 长度投影。无前置信息时，V4
+  及 dynamic 先完成，如果归一化实体变为数字 100，再触发 V6。
 - TrackList.jsx:184–192、202–207、235–240 和 M/2997:415–449 把试用来源
   传给分页歌曲详情和行操作；M/120:12–35 的 /api/v3/song/detail 发送
   {c:JSON.stringify([{id,v:0},…]),trialMode:121}。Common.jsx:299–321
@@ -32,23 +41,36 @@ Cumulus 原生契约
   普通网格、别的卡片、旧专区页面和任意 ID 不能签发。账号代次、原生 API、
   凭据版本及已登记专区不变时，从该卡片打开的详情可跨子标签使用此凭据；
   普通入口打开同一 ID 不会继承。最近 24 个访问凭据只留在本次进程。
-- vertical_zone_playlist_detail(epoch,receipt,id,page) 第一次读取 v4、
-  dynamic 和指定页的歌曲详情；后续分页必须带当前轨道版本，仅读取该页歌曲。
-  动态数据不能改 trackIds 或歌单身份；会话失效、取消、凭据变化不作普通回退。
-  缺权威作者或发现是自身/specialType=100 时停止，不猜测 v6 的前置资格。
-  详情和行投影复用现有 TrackPage、分页边界及本地项占位；首次读取失败由现有
-  整页重试表达。
+- vertical_zone_playlist_detail(epoch,receipt,id,page) 从该次已验证的专区
+  卡片保留原生数字 specialType=100，不经 WebView DTO；或复用已成功读取的
+  当前账号 /api/user/playlist 中自建条目。列表依据绑定账号代次、原生 API
+  和凭据版本，不额外读账号列表或官方 getTop 补充列表。列表只在访问签发时
+  提供依据；晚到的列表可在重新打开时使用。作者名称、同名卡片、旧账号或
+  持久化展示数据不能改变当前访问。V4 返回 100 时
+  完成 dynamic 后升至 V6；每次初读至多提升一次，明确刷新优先使用该访问最新
+  的权威详情。自建身份与详情作者必须一致；详情作者同账号但未验证自建时停止。
+- 后续分页必须带当前轨道版本，仅读取该页歌曲。动态数据不能改 trackIds
+  或歌单身份；会话失效、取消、凭据变化不作普通回退。详情和行投影复用
+  现有 TrackPage、分页边界及本地项占位；首次读取失败由现有整页重试表达。
 - play_selection 的 vertical_zone_playlist_detail 分支接受 receipt、同
   歌单 ID 和当前详情版本、可选 start_id 与 double_click。Rust 从已确认访问
-  导出 121 给歌曲详情与播放器资源，客户端不提交数字 trialMode。队列仍遵循
+  导出 121，或对已核实的红心歌单导出 43，给歌曲详情与播放器资源；
+  WebView 不提交数字 trialMode。队列仍遵循
   普通双击偏好。播放前后检查同一访问、登记和数据快照。普通详情、普通播放、
   卡片直接播放的既有请求不改；不自动写账号、下载、分享或扩张订阅权益。
-- 这里是详情初读、分页、头部播放和歌曲行的契约。详情批量操作、添加下一首、
-  下载、卡片直接播放的旧元数据路径仍分别追踪。
+- 这里是详情初读、分页、头部播放和歌曲行的原生契约。详情批量操作、添加下一首、
+  下载、卡片直接播放的旧元数据路径，以及与 GUI 的路由/返回集成单独验收。
+  官方自建歌单还会在首读后合并本机数据库曲序和云曲（M/2997:282–322，
+  M/239.b/c）；此处仅显示服务端 trackIds，不迁移该旧库或喜欢歌单的
+  AI/筛选。Cumulus 不跨普通访问复用专区实体，继续按当前可见页读取歌曲
+  详情，不用 V6 内嵌曲目预填本地缓存，也不自动预取全部歌曲。不会展示官方
+  先显示 v4、随后替换为 v6 的中间画面。
 
-隔离 Rust 验证覆盖同一 ID 的两类入口、动态失败、分页、旧账号/凭据/菜单，以及
-原生播放选择发出的 121 和普通选择的 -1。
-
+隔离验证：vertical_zone_playlist_detail 覆盖同一 ID 的两类入口、动态失败、
+分页、旧账号/凭据/菜单、卡片首读 V6、V4 后提升和凭据变化取消、本人自建
+与红心试用 43。URL 与歌曲详情调用对照 121、43 和普通选择的 -1；
+HTTP 和音频输出为合成夹具，无真实账号、外部写入或实体音频验证。
+此新增 V6 分支没有单独运行 Windows/GTK UI。
 真实 Linux WebKitGTK、Tauri 和 libmpv 的 10 个桌面状态验证同一 ID 的普通网格
 和 MGC 横排入口。普通详情用 v6 并走默认授权；MGC 详情先读 v4 再合并动态数据，
 播放全部、行播放和双击分别观察到试用场景 121。回到普通入口后 121 不残留。

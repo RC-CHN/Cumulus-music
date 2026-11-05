@@ -1,8 +1,8 @@
 use super::super::recommendations::{
     RecommendationSource, daily_source, daily_subset, style_source,
 };
-use super::super::vertical_zone::detail::MGC_TRIAL;
 use super::{prepared_selection::PreparedSelection, queue_click::RetainedRow, *};
+use crate::playlist::MGC_TRIAL;
 use crate::{catalog::CatalogApi, playlist::PlaylistApi, protocol::api::identifier};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -540,14 +540,16 @@ impl MusicClient {
         };
         let selection_token = token.clone();
         let clears_playlist = retained.is_none();
-        let zone_detail_trial = zone_detail.is_some();
         let zone_snapshot = zone_detail
             .as_ref()
             .map(|(_, _, _, snapshot)| snapshot.clone());
-        let zone_trial = zone_detail_trial
-            || zone_playlist
+        let zone_detail_trial = zone_snapshot.as_ref().map(|snapshot| snapshot.trial_mode);
+        let zone_trial = zone_detail_trial.or_else(|| {
+            zone_playlist
                 .as_ref()
-                .is_some_and(|(_, _, _, trial)| *trial);
+                .is_some_and(|(_, _, _, trial)| *trial)
+                .then_some(MGC_TRIAL)
+        });
         let (ids, index, quality, source) = self
             .session
             .run_for(&token, |api, uid| async move {
@@ -778,8 +780,8 @@ impl MusicClient {
                             "coverImgUrl":detail["coverImgUrl"],"creator":detail["creator"],
                             "description":detail["description"],"trackCount":detail["trackCount"]});
                         let mut source = json!({"kind":"playlist","id":id,"history_resource":history});
-                        if zone_trial {
-                            source["trial_mode"] = json!(MGC_TRIAL);
+                        if let Some(trial) = zone_trial {
+                            source["trial_mode"] = json!(trial);
                         }
                         if clears_playlist {
                             self.attach_queue_more_playlist(
@@ -808,7 +810,7 @@ impl MusicClient {
                 .session
                 .run_for(&token, |api, _| async {
                     CatalogApi::new(api)
-                        .songs_with_trial(chunk, 100, zone_detail_trial.then_some(MGC_TRIAL))
+                        .songs_with_trial(chunk, 100, zone_detail_trial)
                         .await
                 })
                 .await?;

@@ -7,17 +7,16 @@ use crate::{
         dto::{AccountData, PageRequest, TrackPage},
         mapping,
     },
-    playlist::PlaylistApi,
-    protocol::api::identifier,
+    playlist::{PlaylistApi, ZonePlaylistMembership},
+    protocol::api::{Api, identifier},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 
-pub(in crate::client) const MGC_TRIAL: i32 = 121;
 const MAX_VISITS: usize = 24;
 const MAX_TRACKS: usize = 50_000;
 
@@ -27,13 +26,61 @@ pub struct ZonePlaylistOrigin {
 }
 
 #[derive(Default)]
-pub(in crate::client) struct DetailHost(Mutex<VecDeque<Visit>>);
+pub(in crate::client) struct DetailHost {
+    visits: Mutex<VecDeque<Visit>>,
+    membership: Mutex<Option<HostMembership>>,
+}
+
+struct HostMembership {
+    binding: Binding,
+    rows: HashMap<String, ZonePlaylistMembership>,
+}
+
+fn host_membership(uid: &str, rows: &[Value]) -> HashMap<String, ZonePlaylistMembership> {
+    use ZonePlaylistMembership::{Created, Liked, Unverified};
+
+    // M/232.q partitions by the user's native list row's userId, and
+    // async:hostResource picks the first specialType=5 from the same list.
+    let star = rows
+        .iter()
+        .find(|row| row["specialType"].as_i64() == Some(5))
+        .and_then(|row| identifier(&row["id"]).ok());
+    let mut memberships = HashMap::new();
+    for row in rows {
+        let Ok(id) = identifier(&row["id"]) else {
+            continue;
+        };
+        let entry = if identifier(&row["userId"]).ok().as_deref() == Some(uid)
+            && !identifier(&row["creator"]["userId"]).is_ok_and(|creator| creator != uid)
+        {
+            if star.as_deref() == Some(&id) && row["specialType"].as_i64() == Some(5) {
+                Liked
+            } else {
+                Created
+            }
+        } else {
+            Unverified
+        };
+        memberships
+            .entry(id)
+            .and_modify(|known| {
+                if *known != entry {
+                    *known = Unverified;
+                }
+            })
+            .or_insert(entry);
+    }
+    memberships.retain(|_, entry| *entry != Unverified);
+    memberships
+}
 
 struct Visit {
     binding: Binding,
     page_code: String,
     playlist_id: String,
     receipt: String,
+    membership: ZonePlaylistMembership,
+    card_special: bool,
     read_sequence: u64,
     snapshot: Option<Arc<ZonePlaylistSnapshot>>,
 }
@@ -41,9 +88,40 @@ struct Visit {
 pub(in crate::client) struct ZonePlaylistSnapshot {
     pub detail: Value,
     pub revision: String,
+    pub trial_mode: i32,
 }
 
 impl MusicClient {
+    /// Reuse a successful live host playlist read. Neither a caller-supplied
+    /// owner nor an old persisted presentation list can grant the V6 route.
+    pub(in crate::client) fn remember_zone_playlist_membership(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        revision: &str,
+        rows: &[Value],
+    ) -> Result<()> {
+        self.session.with_verified_profile(token, api, |uid, _| {
+            if api
+                .verified_pc_experiment_revision()
+                .ok()
+                .flatten()
+                .as_deref()
+                == Some(revision)
+            {
+                *self
+                    .vertical_zone_detail
+                    .membership
+                    .lock()
+                    .map_err(|_| Error::LockPoisoned)? = Some(HostMembership {
+                    binding: Binding::new(token, api, revision),
+                    rows: host_membership(uid, rows),
+                });
+            }
+            Ok(())
+        })
+    }
+
     /// An opaque visit is minted only from a current, playable horizontal
     /// MGC card. Different cards can expose the same playlist without sharing
     /// an origin, and a later ordinary playlist route needs no receipt.
@@ -69,7 +147,7 @@ impl MusicClient {
                         .filter(|entry| authority.matches(&entry.owner))
                         .ok_or(Error::StaleResponse)?;
                     let mut page_code = None;
-                    let is_mgc = self.vertical_zone.playlist_trial(
+                    let (is_mgc, card_special) = self.vertical_zone.playlist_context(
                         &current.owner,
                         view_id,
                         card_key,
@@ -85,9 +163,19 @@ impl MusicClient {
                         ));
                     }
                     let page_code = page_code.ok_or(Error::StaleResponse)?;
+                    let membership = self
+                        .vertical_zone_detail
+                        .membership
+                        .lock()
+                        .map_err(|_| Error::LockPoisoned)?
+                        .as_ref()
+                        .filter(|known| authority.matches(&known.binding))
+                        .and_then(|known| known.rows.get(&id))
+                        .copied()
+                        .unwrap_or_default();
                     let mut visits = self
                         .vertical_zone_detail
-                        .0
+                        .visits
                         .lock()
                         .map_err(|_| Error::LockPoisoned)?;
                     visits.retain(|visit| authority.matches(&visit.binding));
@@ -101,6 +189,8 @@ impl MusicClient {
                         page_code,
                         playlist_id: id,
                         receipt: receipt.clone(),
+                        membership,
+                        card_special,
                         read_sequence: 0,
                         snapshot: None,
                     });
@@ -135,7 +225,7 @@ impl MusicClient {
                 authority.check_revision()?;
                 let mut visits = self
                     .vertical_zone_detail
-                    .0
+                    .visits
                     .lock()
                     .map_err(|_| Error::LockPoisoned)?;
                 let visit = visits
@@ -169,7 +259,7 @@ impl MusicClient {
             .vertical_zone_authority(epoch)
             .await?
             .ok_or(Error::StaleResponse)?;
-        let (sequence, existing) = self
+        let (sequence, existing, membership, special) = self
             .zone_playlist_visit(&authority, receipt, &id, |visit| {
                 if let Some(expected) = &page.revision {
                     let snapshot = visit
@@ -178,17 +268,23 @@ impl MusicClient {
                         .filter(|known| &known.revision == expected)
                         .cloned()
                         .ok_or(Error::QueueChanged)?;
-                    return Ok((visit.read_sequence, Some(snapshot)));
+                    return Ok((visit.read_sequence, Some(snapshot), visit.membership, false));
                 }
                 visit.read_sequence = visit
                     .read_sequence
                     .checked_add(1)
                     .ok_or(Error::State("MGC playlist read sequence exhausted"))?;
-                Ok((visit.read_sequence, None))
+                let special = visit
+                    .snapshot
+                    .as_ref()
+                    .map(|known| known.detail["specialType"].as_i64() == Some(100))
+                    .unwrap_or(visit.card_special);
+                Ok((visit.read_sequence, None, visit.membership, special))
             })
             .await?;
         let initial = existing.is_none();
         let (token, bound) = (&authority.token, &authority.api);
+        let authorization = &authority;
         let mut changes = self.session.subscribe()?;
         let id_ref = id.as_str();
         let (value, snapshot) = self.session.run_for(token, |api, uid| async move {
@@ -201,7 +297,9 @@ impl MusicClient {
                     let snapshot = if let Some(existing) = existing {
                         existing
                     } else {
-                        let detail = PlaylistApi::new(api.clone()).zone_mgc_detail(id_ref, &uid).await?;
+                        let detail = PlaylistApi::new(api.clone())
+                            .zone_mgc_detail(id_ref, &uid, membership, special, || authorization.check_revision())
+                            .await?;
                         let tracks = detail["trackIds"].as_array()
                             .ok_or(Error::Response("missing MGC playlist trackIds"))?;
                         if tracks.len() > MAX_TRACKS {
@@ -210,9 +308,13 @@ impl MusicClient {
                         Arc::new(ZonePlaylistSnapshot {
                             revision: playlist_track_revision(id_ref, &detail)?,
                             detail,
+                            trial_mode: membership.trial_mode(),
                         })
                     };
-                    let value = playlist_track_page(api, &uid, id_ref, &snapshot.detail, &page, Some(MGC_TRIAL)).await?;
+                    authorization.check_revision()?;
+                    let value = playlist_track_page(
+                        api, &uid, id_ref, &snapshot.detail, &page, Some(snapshot.trial_mode),
+                    ).await?;
                     Ok((value, snapshot))
                 } => result,
             }
