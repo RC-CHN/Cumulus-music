@@ -64,6 +64,46 @@ class WindowsColdFlacTests(unittest.TestCase):
         stdout = f'{proof.RECEIPT}{json.dumps(identity)}\n{success}'
         self.assertEqual(proof.case_result(CompletedProcess([], 0, stdout), name), identity)
 
+    def test_gui_runs_before_temporary_runtime_is_removed_with_explicit_verified_paths(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outer = Path(directory)
+            gui_runs = []
+
+            def staged(package, msys, working):
+                runtime = working / 'runtime'
+                runtime.mkdir()
+                for name in (proof.FLAC, proof.MPV):
+                    (runtime / name).write_bytes(b'synthetic verified runtime')
+                dlls = {name: proof.sha256(runtime / name) for name in (proof.FLAC, proof.MPV)}
+                return runtime, 'synthetic', dlls, []
+
+            def execute(command, **kwargs):
+                if command[0] == proof.sys.executable:
+                    runtime = Path(command[command.index('--runtime') + 1])
+                    flac = Path(command[command.index('--stereo-pcm-flac-library') + 1])
+                    mpv = Path(command[command.index('--mpv-library') + 1])
+                    self.assertTrue(flac.is_file() and mpv.is_file())
+                    self.assertEqual(flac, runtime / proof.FLAC)
+                    self.assertEqual(mpv, runtime / proof.MPV)
+                    self.assertNotIn(str(runtime), kwargs['env']['PATH'])
+                    report = Path(command[command.index('--report') + 1])
+                    report.write_text(json.dumps({'nativeRuntime': {
+                        'kind': 'explicit_windows_runtime', 'libmpvModule': str(mpv)}}))
+                    gui_runs.append(runtime)
+                return CompletedProcess(command, 0, '')
+
+            with patch.object(proof, 'stage_runtime', side_effect=staged), \
+                    patch.object(proof, 'test_executable', return_value=outer / 'tests.exe'), \
+                    patch.object(proof, 'case_result', return_value=None), \
+                    patch.object(proof.subprocess, 'run', side_effect=execute), \
+                    patch.dict(proof.os.environ, {'SystemRoot': str(outer / 'Windows')}):
+                proof.verify(outer / 'proof', outer, outer, outer / 'native_audio_probe.exe')
+            self.assertEqual(len(gui_runs), 1)
+            self.assertFalse(gui_runs[0].exists())
+            report = json.loads((outer / 'proof/report.json').read_text())
+            self.assertTrue(report['ok'] and report['stereoPcmGui']['ok'])
+            self.assertIn(f'{proof.COLD}::stereo::cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocation', report['passed'])
+
     def test_report_rejects_a_loaded_dll_from_outside_the_runtime(self):
         with tempfile.TemporaryDirectory() as directory:
             runtime = Path(directory) / 'runtime'

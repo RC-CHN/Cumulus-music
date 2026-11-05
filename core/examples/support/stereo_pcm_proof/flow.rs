@@ -1,4 +1,4 @@
-use super::{Offline, ensure, observed, seed, state, until};
+use super::{Offline, ensure, observed, runtime, seed, state, until};
 use cumulus_core::{
     Error, Result,
     account::SessionStatus,
@@ -132,10 +132,12 @@ pub fn verify(
     )?;
     let mut initial = pass(*source, 0)?;
     let control = initial.control();
+    let mpv_library = runtime::selected_mpv()?;
     let mut engine = MpvEngine::open(MpvConfig {
+        library: mpv_library.clone(),
         null_output: true,
-        ..Default::default()
     })?;
+    let native_runtime = runtime::loaded_mpv(mpv_library.as_deref())?;
     stage("stereo_pcm_native_load_start");
     let old = engine.load_stereo_pcm(initial.take_reader()?, &Cancellation::default())?;
     ensure(
@@ -308,7 +310,7 @@ pub fn verify(
     Ok(json!({
         "ok":true,"kind":"stereo_pcm_native_v1","subgraph":"SE1->defaultB0",
         "fullSdkGraph":false,"wholeMaterial":false,"officialUiTested":false,"physicalAudioOutputVerified":false,
-        "guiInitialized":false,"actualDecoder":true,"unknownLength":true,"strictNcm":true,
+        "nativeRuntime":native_runtime,"guiInitialized":false,"actualDecoder":true,"unknownLength":true,"strictNcm":true,
         "syntheticDownloadPublished":true,"syntheticMediaTransfers":publication["mediaTransfers"],
         "coldHttpAttempts":offline.0.load(Ordering::Acquire),"realMusicRequests":0,
         "format":{"rate":RATE,"channels":2,"bitsPerSample":16,"maxBlockFrames":1024,"sourceFrames":TOTAL},"nativeDecodedFormat":decoded_format,

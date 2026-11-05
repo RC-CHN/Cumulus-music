@@ -25,11 +25,13 @@ FIXED_PATHS = (
     'package-stage/windows-x64/equalizer-proof',
     # Linux's run_auth_probe takes its proof root positionally, without --root.
     'ci-login', 'ci-login.log',
+    'ci-flac150-linux/report.json', 'ci-flac150-linux/build.log',
     'windows-media/build.log', 'windows-media/plan.json', 'windows-media/installed.json',
     'windows-media/player-probe.log', 'windows-media/player-probe.stdout.log', 'windows-media/player-probe.json', 'windows-media/equalizer-proof',
 )
 NATIVE_REPORTS = (
     'ci-native-audio-linux', 'ci-native-audio-windows',
+    'ci-native-stereo-pcm-linux', 'ci-windows-cold-flac/stereo-pcm-gui',
     'ci-native-audio-loudness-linux', 'ci-native-audio-loudness-windows',
     'ci-native-audio-stereo-linux', 'ci-native-audio-stereo-windows',
 )

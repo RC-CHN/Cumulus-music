@@ -1,0 +1,59 @@
+Paced stereo PCM native CI boundary
+===================================
+
+The sealed --stereo-pcm-flac-library native_audio_probe path is run after actual
+GTK/WebView or WebView2 initialization. Its existing strict proof assertions
+remain unchanged: real synthetic NCM download publication, cold held-file grant,
+libFLAC 1.5.0 decode, unknown-size raw PCM, paced SE1 -> defaultB0 subgraph,
+same-entry controls, stop/join/seek, exact tail frames and buffered revocation.
+This does not enable production attachment, verify the complete material graph,
+claim a physical audio device or replace shipping build artifacts.
+
+Linux
+-----
+Ubuntu 24.04's distribution libFLAC is not accepted as a substitute for the exact
+1.5.0 decoder contract. scripts/ci/linux_flac150.py downloads the official source:
+https://downloads.xiph.org/releases/flac/flac-1.5.0.tar.xz
+SHA256 f2c1c76592a82ffff8413ba3c4a1299b6c7ab06c734dee03fd88630485c2b920
+Official checksum publication: https://www.xiph.org/downloads/
+
+A new task-private directory receives a bounded HTTPS archive, hash verification,
+regular-file-only bounded extraction and CMake shared FLAC target build. Ogg,
+programs, tests, C++ library, examples and docs are disabled. No cmake install,
+sudo, global library replacement or package-stage write occurs. The explicit
+private library is ELF x86_64 and FLAC__VERSION_STRING must equal 1.5.0; the report
+records its exact path/SHA, source SHA, options and CMake version. The existing
+Linux WebView job builds the same native_audio_probe once, then runs the new
+flow in en_US.UTF-8 through Xvfb/dbus. Actual GUI initialization must still set
+only numeric locale to C; the proof retains its existing message-locale check.
+Only report.json and build.log enter the diagnostic closed set, not source,
+archives, binaries or CMake cache. --build-dir deliberately is not --root, so
+the automatic UI-proof root archiver does not collect this build directory.
+
+Windows
+-------
+windows_cold_flac.py retains its pinned MSYS2 libFLAC archive/DLL hashes and
+verified package media imports. The new ignored native stereo case joins the
+explicit test case list. Optional --native-audio-probe runs the same compiled
+GUI example before the temporary runtime is destroyed. It passes explicit
+absolute libFLAC and libmpv paths, while the core test subprocess PATH remains
+restricted to System32/Windows. A proof-only native helper uses MpvConfig.library
+for that exact libmpv and resolves its live mpv_client_api_version symbol back to
+the actual loaded module with GetModuleHandleExW/GetModuleFileNameW. It checks
+canonical file identity and emits a receipt. Python verifies samefile again and
+rechecks every staged DLL hash after the GUI process ends. PATH prepending alone
+is insufficient: the production Windows loader intentionally ignores ambient
+PATH/CWD for SDK/import selection. This helper is not a frontend/product option.
+The temporary runtime is non-shipping and no downloaded library is repackaged.
+
+Validation of this candidate
+----------------------------
+The private Linux CMake build was actually executed on this machine; the copied
+ELF loaded FLAC__VERSION_STRING=1.5.0. Its SHA is build/platform dependent and is
+recorded privately, not treated as a portable upstream binary signature.
+Python boundary tests cover archive links/traversal/duplicates/source bounds,
+wrong runtime version, HTTPS downgrade, and Windows GUI dispatch while the
+verified runtime exists. Existing native_smoke and diagnostics tests also pass.
+No new Cargo build, new Linux source GUI run, Windows execution or hosted CI
+success is claimed by this candidate. The root integration batch owns those
+checks and may merge the CI wiring only after its exact source GUI passes.

@@ -30,6 +30,7 @@ STOP = f'{ENGINE}::mpv::pinned_stop::tests'
 IDENTITY = f'{DECODER}::windows_runtime::limiter_windows_cold_flac_runtime_identity'
 CASES = (
     IDENTITY,
+    f'{COLD}::stereo::cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocation',
     f'{DECODER}::limiter_inprocess_flac_exact_random_seek_and_generation_eof',
     f'{COLD}::limiter_inprocess_flac_cold_grant_retains_open_file_and_rejects_buffered_pcm_after_detach',
     f'{COLD}::sink::limiter_cold_flac_sink_seek_eof_and_buffered_revocation',
@@ -148,7 +149,7 @@ def check_identity(receipt, runtime):
         raise ValueError('Windows native receipt does not identify the verified runtime')
 
 
-def verify(root, package, msys):
+def verify(root, package, msys, native_audio_probe=None):
     root.mkdir(parents=True, exist_ok=False)
     report = {
         'ok': False,
@@ -191,6 +192,22 @@ def verify(root, package, msys):
                     check_identity(receipt, runtime)
                     report['nativeRuntime'] = receipt
                 report['passed'].append(case)
+            if native_audio_probe is not None:
+                gui_report = root / 'stereo-pcm-gui.json'
+                subprocess.run(
+                    [sys.executable, ROOT / 'scripts/ci/native_smoke.py',
+                     '--binary', native_audio_probe, '--report', gui_report,
+                     '--runtime', runtime, '--stereo-pcm-flac-library', runtime / FLAC,
+                     '--mpv-library', runtime / MPV],
+                    cwd=ROOT, env=env, check=True, timeout=120,
+                )
+                gui = json.loads(gui_report.read_text(encoding='utf-8'))
+                observed = gui['nativeRuntime']
+                if (observed['kind'] != 'explicit_windows_runtime'
+                        or not os.path.samefile(observed['libmpvModule'], runtime / MPV)):
+                    raise ValueError('GUI did not use the verified temporary libmpv')
+                report['stereoPcmGui'] = {'report': gui_report.name, 'ok': True,
+                                         'nativeRuntime': observed}
             if any(sha256(runtime / name) != digest for name, digest in dlls.items()):
                 raise ValueError('staged DLL bytes changed during verification')
         report['ok'] = True
@@ -205,6 +222,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--runtime', required=True, type=Path)
     parser.add_argument('--report', required=True, type=Path)
+    parser.add_argument('--native-audio-probe', type=Path, help='same-build GUI probe inside the verified temporary runtime')
     args = parser.parse_args()
     if sys.platform != 'win32':
         parser.error('run native verification on Windows')
@@ -212,7 +230,8 @@ def main():
     # CP1252, which cannot print some successful-case diagnostics.
     sys.stdout.reconfigure(encoding='utf-8')
     verify(args.report.resolve(), args.runtime.resolve(strict=True),
-           Path(os.environ['CUMULUS_MSYS2_ROOT']).resolve(strict=True))
+           Path(os.environ['CUMULUS_MSYS2_ROOT']).resolve(strict=True),
+           args.native_audio_probe.resolve(strict=True) if args.native_audio_probe else None)
 
 
 if __name__ == '__main__':

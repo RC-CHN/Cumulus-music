@@ -152,6 +152,7 @@ def main():
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--report', type=Path, required=True)
     parser.add_argument('--runtime', type=Path)
+    parser.add_argument('--mpv-library', type=Path, help='explicit trusted libmpv for the stereo PCM proof')
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--auto', action='store_true', help='use the system audio output at zero volume')
     mode.add_argument('--filter-library', type=Path, help='verify recovered loudness PCM after GUI initialization')
@@ -162,6 +163,8 @@ def main():
     mode.add_argument('--stereo-pcm-flac-library', type=Path,
                       help='verify sealed cold NCM/FLAC paced SE1/B0 through unknown-size PCM after GUI initialization')
     args = parser.parse_args()
+    if args.mpv_library and not args.stereo_pcm_flac_library:
+        parser.error('--mpv-library requires --stereo-pcm-flac-library')
     report = args.report.resolve()
     assert not report.exists(), 'proof report must be new'
     env = {k: v for k, v in os.environ.items() if not k.startswith('CUMULUS_')}
@@ -185,6 +188,8 @@ def main():
         env['CUMULUS_STEREO_NATIVE_LIBRARY'] = str(args.stereo_native_library.resolve(strict=True))
     if args.stereo_pcm_flac_library:
         env['CUMULUS_STEREO_PCM_FLAC_LIBRARY'] = str(args.stereo_pcm_flac_library.resolve(strict=True))
+    if args.mpv_library:
+        env['CUMULUS_STEREO_PCM_MPV_LIBRARY'] = str(args.mpv_library.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     run_native([str(args.binary.resolve())], env, report,
@@ -199,6 +204,11 @@ def main():
         return
     if args.stereo_pcm_flac_library:
         verify_stereo_pcm(proof)
+        if args.mpv_library and os.name == 'nt':
+            runtime = proof['nativeRuntime']
+            assert runtime['kind'] == 'explicit_windows_runtime'
+            assert runtime['libmpvApi'] > 0
+            assert os.path.samefile(runtime['libmpvModule'], args.mpv_library)
         print(json.dumps({'ok': True, 'desktopPacedStereoPcm': True,
                           'outputFrames': proof['eof']['producedFrames'],
                           'wholeMaterial': False, 'physicalAudioOutputVerified': False}))

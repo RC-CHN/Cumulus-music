@@ -1,6 +1,7 @@
 //! Shared executable prerequisite after real GUI startup or standalone.
 //! Synthetic download publication and public cold grants only; no test bypass.
 mod flow;
+mod runtime;
 #[path = "../cold_offline_seed.rs"]
 mod seed;
 pub use flow::verify;
