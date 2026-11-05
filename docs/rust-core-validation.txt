@@ -8,6 +8,10 @@ Rust core 迁移验证记录
 真实Linux WebView五态建议、九态综合V3以及受控V2原生播放复验均过；资料
 .build/ui-proof/phase64-local-material-search。组合音效仍是独立组件，未接普通播放器；
 无真实账号写入、物理输出、Windows GUI或任意SDK材料承诺。
+同批 CI 夹具修复1790fb83后再次执行完整396程序/2432 passed/0 failed/20 ignored、
+格式和严格Clippy，通过真实Linux普通MV七态与替代MV三态。产品Rust/前端及锁文件
+和5fecaaa8一致；仍用该批验证的907项和22个前端产物。精确旧CI失败与真实MV回归
+见 search-preview-ui-contracts.txt。
 
 2026-11-06 普通均衡器实际音质旁路：e839bd94 通过格式、严格workspace Clippy，
 完整394程序/2427 passed/0 failed/20 ignored。新增8项源状态机及1项EQ/PEQ/响度
