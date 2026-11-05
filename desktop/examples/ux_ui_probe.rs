@@ -113,7 +113,13 @@ use serde_json::{Value, json};
 use std::{fs, path::PathBuf, sync::Arc};
 use tauri::{Listener, Manager, webview::PageLoadEvent};
 
-struct Library;
+#[path = "support/search_signed_fixture.rs"]
+mod search_signed_fixture;
+
+#[derive(Default)]
+struct Library {
+    signed_search: Option<Arc<search_signed_fixture::SignedSearch>>,
+}
 #[cfg(target_os = "linux")]
 fn startup_locale(category: libc::c_int) -> String {
     // SAFETY: read-only startup query after GTK initialization. Copy the
@@ -183,10 +189,16 @@ fn playlist(id: u64) -> Value {
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
-        Ok(vinyl_comments_fixture::group()
+        let existing = vinyl_comments_fixture::group()
             .or_else(vinyl_similar_fixture::revision)
             .or_else(search_artist_top50_fixture::revision)
-            .or_else(|| vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into())))
+            .or_else(|| vertical_zone_fixture::enabled().then(|| "synthetic-vertical-zone".into()));
+        if existing.is_some() {
+            return Ok(existing);
+        }
+        self.signed_search.as_ref().map_or(Ok(None), |signed| {
+            signed.client.verified_pc_experiment_revision()
+        })
     }
 
     fn verified_pc_experiment_groups<'a>(
@@ -194,15 +206,27 @@ impl Api for Library {
         revision: &'a str,
     ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
         Box::pin(async move {
-            if vinyl_comments_fixture::group().is_some() {
-                vinyl_comments_fixture::assignment(revision)
+            let legacy = if vinyl_comments_fixture::group().is_some() {
+                Some(vinyl_comments_fixture::assignment(revision))
             } else if vinyl_similar_fixture::enabled() {
-                vinyl_similar_fixture::groups(revision)
+                Some(vinyl_similar_fixture::groups(revision))
             } else if search_artist_top50_fixture::enabled() {
-                search_artist_top50_fixture::groups(revision)
+                Some(search_artist_top50_fixture::groups(revision))
+            } else if vertical_zone_fixture::enabled() {
+                Some(vertical_zone_fixture::groups(revision))
             } else {
-                vertical_zone_fixture::groups(revision)
+                None
+            };
+            if let Some(groups) = legacy {
+                return search_signed_fixture::legacy_layout(groups?);
             }
+            let signed = self
+                .signed_search
+                .as_ref()
+                .ok_or(cumulus_core::Error::State(
+                    "signed search fixture unavailable",
+                ))?;
+            signed.client.verified_pc_experiment_groups(revision).await
         })
     }
 
@@ -341,6 +365,11 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if path == "/api/w/nuser/account/get"
+                && let Some(signed) = &self.signed_search
+            {
+                return signed.client.request(path, args, cached).await;
+            }
             if let Some(response) = vinyl_similar_fixture::ordinary_request(path, &args) {
                 return response;
             }
@@ -880,8 +909,11 @@ fn main() {
         let registry=ProfileRegistry::open(&root.join("state"),ApiOrigin::Pc)?;
         let proof_store=registry.store();
         search_fixture::initialize(&proof_store)?;
-        let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(Arc::new(Library))));
-        let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||Arc::new(Library));
+        let older_verified=vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || search_artist_top50_fixture::enabled() || vertical_zone_fixture::enabled();
+        let signed_search=(search_fixture::enabled() && !older_verified).then(||search_signed_fixture::SignedSearch::open(proof_store.clone())).transpose()?;
+        let library=Arc::new(Library { signed_search:signed_search.clone() });
+        let recovery = recovery_proof.then(||Arc::new(like_recovery_fixture::Library::new(library.clone())));
+        let api:Arc<dyn Api>=recovery.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or_else(||library.clone());
         let transfer=playlist_cover_transfer_fixture::enabled().then(||Arc::new(playlist_cover_transfer_fixture::Fixture::new(api.clone(),proof_store.clone(),root.clone())));
         let api=transfer.as_ref().map(|f|f.clone() as Arc<dyn Api>).unwrap_or(api);
         let session=Arc::new(AccountSession::new(api,Some(registry.store())));
@@ -1193,7 +1225,7 @@ fn main() {
             if stage=="message-poll-switch" && message_fixture::polling() {
                 use tauri::Emitter;
                 message_fixture::control("poll-hold");
-                fixture_session.adopt(Arc::new(Library), json!({"userId":3,"nickname":"合成第二账号"}), &fixture_session.token().unwrap()).unwrap();
+                fixture_session.adopt(Arc::new(Library::default()), json!({"userId":3,"nickname":"合成第二账号"}), &fixture_session.token().unwrap()).unwrap();
                 handle.emit_to("main","cumulus:account-changed",handle.state::<MusicClient>().account().unwrap()).unwrap();
                 return;
             }
@@ -1356,6 +1388,7 @@ fn main() {
             }
             if !(["complete","failed"].contains(&stage) || stage.starts_with("ux_") && stage.chars().all(|c|c.is_ascii_alphanumeric()||c=='_')){return;}
             let stage=stage.to_owned();
+            if let Some(signed)=signed_search.as_ref() { value["signedSearch"] = signed.report(); }
             if message_fixture::enabled() { value["messageRequests"] = message_fixture::report(); }
             if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }
             if mode_fixture::enabled() { value["syntheticMode"] = mode_fixture::report(); }
