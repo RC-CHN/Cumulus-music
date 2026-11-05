@@ -323,7 +323,8 @@ Scoped tests cover same-descriptor stock fallback after pathname replacement,
 sticky source denial and lost worker ACK, and frozen original PCM through the
 new graph's initial, full-apply, master and seek-reset operations. Two explicit
 ignored `native_flac_` tests exercise real libFLAC 1.5.0 startup, exact sample
-seek, invalid metadata fallback, and buffered revocation with a synthetic
+seek, master-off PCM across both nonzero seek and rewind, invalid metadata
+fallback, and buffered revocation with a synthetic
 sink owner. They are not an mpv, real WebView, actor, packaging, speaker or
 ordinary playback proof. Native setup/engine/actor attachment is a separate
 step. A timeout or ambiguous retirement cannot hand the descriptor to a

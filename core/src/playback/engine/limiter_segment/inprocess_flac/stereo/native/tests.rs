@@ -82,6 +82,19 @@ fn native_flac_cannot_recover_the_file_after_observed_revocation() {
     assert!(matches!(file.into_stock(), Err(Error::Cancelled)));
 }
 
+// The frozen FLAC's independent generator formula. With all wrappers off
+// after Reset and samples far below B0's threshold, native output at the new
+// source position must equal these original samples bit-for-bit.
+fn dry_prefix(first: u64, frames: u64) -> Vec<u8> {
+    (first..first + frames)
+        .flat_map(|frame| {
+            let left = ((frame * 97 + (frame / 128) * 23) % 8192) as i32 - 4096;
+            [left, -(left / 8)]
+        })
+        .flat_map(|sample| ((sample as f32) / 32768.0).to_le_bytes())
+        .collect()
+}
+
 #[test]
 #[ignore = "requires the trusted native libFLAC 1.5.0; synthetic sink acknowledgements, no audio device"]
 fn native_flac_owned_worker_controls_reclaim_seek_and_revoke() {
@@ -108,44 +121,59 @@ fn native_flac_owned_worker_controls_reclaim_seek_and_revoke() {
     first.observe(13, Some(0.0), false, true).unwrap();
     let mut sample = [0; 8192];
     pcm.read_exact(&mut sample).unwrap();
-    assert!(sample.iter().any(|byte| *byte != 0));
+    assert_ne!(sample.as_slice(), dry_prefix(0, 1024).as_slice());
     first.observe(13, Some(0.0), true, false).unwrap();
     let off = pass.disable_master().unwrap();
     let on = pass.apply_material(plan(6)).unwrap();
-    assert!(on > off);
-    first.wait_applied(on, Duration::from_secs(2)).unwrap();
+    let off_again = pass.disable_master().unwrap();
+    assert!(off_again > on && on > off);
+    first
+        .wait_applied(off_again, Duration::from_secs(2))
+        .unwrap();
     assert_eq!(first.snapshot().unwrap().native_entry, Some(13));
     assert_eq!(first.snapshot().unwrap().native_output_frame, 0);
     drop(pcm);
     let closed = first.snapshot().unwrap();
     assert!(closed.reader_closed && !closed.native_sink_retired);
     first.retire_sink(); // Explicit synthetic sink owner; not mpv verification.
-    let source = pass.reclaim().unwrap();
-    let NativeStereoStart::Ready(mut pass) = source.start(22050, &Cancellation::default()).unwrap()
-    else {
-        panic!("frozen indexed fixture must prepare a sample seek")
-    };
-    let mut pcm = pass.take_reader().unwrap();
-    let second = pass.control();
-    assert_eq!(second.snapshot().unwrap().first_source_frame, 22050);
-    second.publish_sink().unwrap();
-    second.bind_entry(14).unwrap();
-    second.observe(14, Some(0.0), false, true).unwrap();
-    let mut post_seek = [0; 4096];
-    pcm.read_exact(&mut post_seek).unwrap();
-    assert_ne!(&sample[..post_seek.len()], &post_seek);
-    assert!(matches!(
-        first.observe(14, Some(0.0), false, false),
-        Err(Error::Cancelled)
-    ));
-    lifetime.cancel();
-    post_seek.fill(0xAA);
-    assert!(pcm.read(&mut post_seek).is_err());
-    assert_eq!(post_seek, [0; 4096]);
-    assert!(pass.disable_master().is_err());
-    drop(pcm);
-    second.retire_sink();
-    assert!(matches!(pass.reclaim(), Err(Error::Cancelled)));
+    let mut source = Some(pass.reclaim().unwrap());
+    for (target, entry) in [(22050, 14), (0, 15)] {
+        let NativeStereoStart::Ready(mut pass) = source
+            .take()
+            .unwrap()
+            .start(target, &Cancellation::default())
+            .unwrap()
+        else {
+            panic!("frozen indexed fixture must prepare a sample seek")
+        };
+        let mut pcm = pass.take_reader().unwrap();
+        let current = pass.control();
+        assert_eq!(current.snapshot().unwrap().first_source_frame, target);
+        current.publish_sink().unwrap();
+        current.bind_entry(entry).unwrap();
+        current.observe(entry, Some(0.0), false, true).unwrap();
+        let mut post_seek = [0; 4096];
+        pcm.read_exact(&mut post_seek).unwrap();
+        assert_eq!(post_seek.as_slice(), dry_prefix(target, 512).as_slice());
+        assert!(matches!(
+            first.observe(entry, Some(0.0), false, false),
+            Err(Error::Cancelled)
+        ));
+        if target == 0 {
+            lifetime.cancel();
+            post_seek.fill(0xAA);
+            assert!(pcm.read(&mut post_seek).is_err());
+            assert_eq!(post_seek, [0; 4096]);
+            assert!(pass.disable_master().is_err());
+            drop(pcm);
+            current.retire_sink();
+            assert!(matches!(pass.reclaim(), Err(Error::Cancelled)));
+        } else {
+            drop(pcm);
+            current.retire_sink();
+            source = Some(pass.reclaim().unwrap());
+        }
+    }
 }
 
 #[test]
