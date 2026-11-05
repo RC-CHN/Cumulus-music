@@ -134,27 +134,32 @@ def wiki_metas(seed):
 def audit_wiki_treatment(rows, complete):
     baseline = rows["before_read"]
     failed, retried = rows["wiki_failed"], rows["wiki_retried"]
+    left, reopened = rows["wiki_left_for_lyrics"], rows["wiki_same_seed_reloaded"]
     assert baseline["tab"] == "lyrics" and baseline["hasSimilarTab"] and baseline["hasWikiTab"]
     assert not wiki_reads(baseline)
-    for stage in (failed, retried):
+    for stage in (failed, retried, left, reopened):
         assert_play(stage, "1")
-        assert stage["playId"] == baseline["playId"] and stage["tab"] == "wiki"
+        assert stage["playId"] == baseline["playId"] and stage["queueRevision"] == baseline["queueRevision"]
         assert not song_reads(stage) and not playlist_reads(stage)
         assert not stage["songIds"] and not stage["playlistIds"]
+    assert failed["tab"] == retried["tab"] == reopened["tab"] == "wiki"
     assert failed["wikiState"] == "error" and wiki_reads(failed) == ["1"]
     assert retried["wikiState"] == "ready" and retried["wikiMetas"] == wiki_metas("1")
-    assert wiki_reads(retried) == ["1", "1"]
-    assert wiki_reads(rows["playlist_route"]) == ["1", "1"], "standalone recommendations must not request Wiki"
+    assert left["tab"] == "lyrics" and left["wikiState"] is None and not left["wikiMetas"]
+    assert wiki_reads(retried) == wiki_reads(left) == ["1", "1"]
+    assert reopened["wikiState"] == "ready" and reopened["wikiMetas"] == wiki_metas("1")
+    assert wiki_reads(reopened) == ["1", "1", "1"]
+    assert wiki_reads(rows["playlist_route"]) == wiki_reads(reopened), "standalone recommendations must not request Wiki"
 
     held, late = rows["wiki_old_pending"], rows["wiki_late_discarded"]
     assert_play(held, "59")
     assert_play(late, "61")
     assert held["tab"] == late["tab"] == "wiki"
     assert held["wikiState"] == "loading" and held["vinylSimilarFixture"]["wikiHolding"]
-    assert not held["vinylSimilarFixture"]["wikiReleased"] and wiki_reads(held) == ["1", "1", "59"]
+    assert not held["vinylSimilarFixture"]["wikiReleased"] and wiki_reads(held) == ["1", "1", "1", "59"]
     assert late["wikiState"] == "ready" and late["wikiMetas"] == wiki_metas("61")
     assert late["vinylSimilarFixture"]["wikiReleased"] and late["vinylSimilarFixture"]["wikiHeldReturned"]
-    assert wiki_reads(complete) == ["1", "1", "59", "61"]
+    assert wiki_reads(complete) == ["1", "1", "1", "59", "61"]
     assert song_reads(complete) == song_reads(rows["playlist_route"])
     assert playlist_reads(complete) == playlist_reads(rows["playlist_route"])
 
@@ -222,7 +227,7 @@ def main():
         expected.extend(("related_expanded", "playlist_route"))
     control = ["control_lyrics"]
     if args.wiki:
-        expected[1:1] = ["wiki_failed", "wiki_retried"]
+        expected[1:1] = ["wiki_failed", "wiki_retried", "wiki_left_for_lyrics", "wiki_same_seed_reloaded"]
         expected.extend(("wiki_old_pending", "wiki_late_discarded"))
         control.extend(("wiki_failed", "wiki_retried", "wiki_playlists_expanded", "wiki_title_queued"))
     counts = {}

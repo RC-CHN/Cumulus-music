@@ -238,6 +238,14 @@
       step = 'treatment Wiki reads independently';
       assert(wikiTab() && one('[data-vinyl-lyrics-tab]', lyrics()), 'treatment has three visible tabs');
       await firstWiki(first, false);
+      step = 'return to lyrics and reopen Wiki on the same play';
+      click(one('[data-vinyl-lyrics-tab]', lyrics()));
+      await wait(() => lyrics()?.dataset.vinylTab === 'lyrics' && !wikiPane() && one('.lyric-line.current'),
+        'lyrics remount and the Wiki pane unmounts');
+      await capture('wiki_left_for_lyrics', first);
+      await showWiki();
+      await readyWiki('1');
+      await capture('wiki_same_seed_reloaded', first);
     }
 
     step = 'read failure and retry';
