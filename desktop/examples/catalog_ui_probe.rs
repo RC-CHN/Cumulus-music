@@ -77,12 +77,14 @@ fn main() {
         "artist proof uses synthetic services only"
     );
     let albums = std::env::var("CUMULUS_ALBUM_PROOF").as_deref() == Ok("1");
+    let album_duration_sort =
+        std::env::var("CUMULUS_ALBUM_DURATION_SORT_PROOF").as_deref() == Ok("1");
     let album_queue_drop = std::env::var("CUMULUS_ALBUM_QUEUE_DROP_PROOF").as_deref() == Ok("1");
     assert!(
         !(albums && is_live),
         "album proof uses synthetic services only"
     );
-    assert!(!album_queue_drop || (albums && !is_live));
+    assert!(!(album_queue_drop || album_duration_sort) || (albums && !is_live));
     let rankings = std::env::var("CUMULUS_RANKINGS_PROOF").as_deref() == Ok("1");
     assert!(
         !(rankings && is_live),
@@ -148,7 +150,7 @@ fn main() {
         || std::env::var("CUMULUS_RELAY_PROOF").as_deref() == Ok("1");
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if ordinary_essential || album_queue_drop {
+        if ordinary_essential || album_queue_drop || album_duration_sort {
             let numeric=current_locale(libc::LC_NUMERIC);
             let messages=current_locale(libc::LC_MESSAGES);
             let characters=current_locale(libc::LC_CTYPE);
@@ -163,6 +165,7 @@ fn main() {
         let ordinary_essential_fixture=Arc::new(ordinary_essential_fixture::Library::new(catalog_fixture.clone()));
         let artist_mv_fixture=Arc::new(artist_mv_fixture::Library::new(catalog_fixture.clone()));
         if album_cards {catalog_fixture.album_cards();}
+        if album_duration_sort {catalog_fixture.album_duration_sort();}
         if artist_cards {catalog_fixture.artist_cards();}
         let collection_fixture=Arc::new(collection_fixture::Library::default());
         let comment_fixture=Arc::new(comment_read_fixture::Library::default());
@@ -300,6 +303,7 @@ fn main() {
             let collection_report=collection_context.then(|| collection_fixture.report());
             let album_card_report=(album_cards || artist_cards).then(||catalog_fixture.report());
             let album_queue_drop_report=album_queue_drop.then(||catalog_fixture.report());
+            let album_duration_sort_report=album_duration_sort.then(||catalog_fixture.report());
             let release_report=follow_new_song.then(||follow_new_song_fixture.report());
             let essential_report=ordinary_essential.then(||ordinary_essential_fixture.report());
             let artist_mv_report=artist_mv.then(||artist_mv_fixture.report());
@@ -319,6 +323,7 @@ fn main() {
                 if let Some(report)=collection_report {value["collectionFixture"]=report;}
                 if let Some(report)=album_card_report {value["albumCardFixture"]=report;}
                 if let Some(report)=album_queue_drop_report {value["albumQueueDropFixture"]=report;}
+                if let Some(report)=album_duration_sort_report {value["albumDurationSortFixture"]=report;}
                 if let Some(report)=release_report {value["followNewSongFixture"]=report;}
                 if let Some(report)=essential_report {value["essentialReads"]=report;}
                 if let Some(report)=artist_mv_report {value["artistMvCalls"]=serde_json::json!(report);value["nativeMvCalls"]=serde_json::json!(search_mv_fixture::calls());}

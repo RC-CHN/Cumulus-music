@@ -20,11 +20,15 @@ pub struct Library {
     pub artist_album_reads: AtomicUsize,
     calls: Mutex<Vec<Value>>,
     album_cards: AtomicBool,
+    album_duration_sort: AtomicBool,
     artist_cards: AtomicBool,
 }
 impl Library {
     pub fn album_cards(&self) {
         self.album_cards.store(true, Ordering::SeqCst);
+    }
+    pub fn album_duration_sort(&self) {
+        self.album_duration_sort.store(true, Ordering::SeqCst);
     }
     pub fn artist_cards(&self) {
         self.artist_cards.store(true, Ordering::SeqCst);
@@ -41,6 +45,23 @@ fn id(v: &Value) -> u64 {
 }
 fn song(n: u64) -> Value {
     json!({"id":n,"name":format!("合成歌曲 {n}"),"ar":[{"id":12,"name":"测试歌手"}],"al":{"id":7,"name":"测试专辑"},"dt":235000,"fee":n%3})
+}
+fn duration_album_songs() -> Vec<Value> {
+    [180_000, 90_000, 180_000, 120_000]
+        .into_iter()
+        .enumerate()
+        .map(|(index, duration)| {
+            let id = 11 + index as u64;
+            let mut item = song(id);
+            item["dt"] = json!(duration);
+            item["name"] = json!(if index == 3 {
+                "另一首歌".into()
+            } else {
+                format!("合成候选 {id}")
+            });
+            item
+        })
+        .collect()
 }
 fn artist(n: u64) -> Value {
     json!({"id":n,"name":if n==12 {"测试歌手".into()}else{format!("相似歌手 {n}")},"musicSize":55,"albumSize":62,"mvSize":2,"alias":["A synthetic artist"],"briefDesc":"用于检查歌手详情的合成简介。"})
@@ -103,6 +124,7 @@ impl Api for Library {
             let mode = self.mode.lock().unwrap().clone();
             let album_cards = self.album_cards.load(Ordering::SeqCst);
             let artist_cards = self.artist_cards.load(Ordering::SeqCst);
+            let album_duration_sort = self.album_duration_sort.load(Ordering::SeqCst);
             self.calls
                 .lock()
                 .unwrap()
@@ -206,6 +228,11 @@ impl Api for Library {
                 }
                 "/api/album/v3/detail" => {
                     let n = id(&args["id"]);
+                    if album_duration_sort && n == 8 {
+                        let mut info = album(n);
+                        info["size"] = json!(4);
+                        return Ok(json!({"code":200,"album":info,"songs":duration_album_songs()}));
+                    }
                     json!({"code":200,"album":if album_cards{action_album(n)}else{album(n)},"songs":if !album_cards{(1..=11).map(song).collect::<Vec<_>>()}else if n==9{vec![]}else{((n-7)*3+1..=(n-7)*3+3).map(song).collect::<Vec<_>>()}})
                 }
                 "/api/album/detail/dynamic" => {
@@ -213,7 +240,9 @@ impl Api for Library {
                 }
                 "/api/album/privilege" => {
                     let n = id(&args["id"]);
-                    let ids = if !album_cards {
+                    let ids = if album_duration_sort && n == 8 {
+                        (11..=14).collect::<Vec<_>>()
+                    } else if !album_cards {
                         (1..=11).collect::<Vec<_>>()
                     } else if n == 9 {
                         vec![]

@@ -71,6 +71,7 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--artist-batch', action='store_true')
     mode.add_argument('--album-batch', action='store_true')
+    mode.add_argument('--album-duration-sort', action='store_true')
     mode.add_argument('--playback-credit', action='store_true', help='open current album and artist while playing')
     mode.add_argument('--navigation', action='store_true', help='cross-resource tab history, comment draft and native play identity')
     mode.add_argument('--artist', action='store_true', help='artist header, tab prefixes, viewport return and native playback')
@@ -109,11 +110,14 @@ def main():
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples/artist_mv_ui_probe.js')
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
-    if args.album or args.album_batch:
+    if args.album or args.album_batch or args.album_duration_sort:
         env['CUMULUS_ALBUM_PROOF'] = '1'
         if args.screenshots:
             env['CUMULUS_PROOF_CAPTURE_ACK'] = '1'
-        source = 'album_batch_ui_probe.js' if args.album_batch else 'album_ui_probe.js'
+        if args.album_duration_sort:
+            env['CUMULUS_ALBUM_DURATION_SORT_PROOF'] = '1'
+        source = ('album_duration_sort_ui_probe.js' if args.album_duration_sort else
+                  'album_batch_ui_probe.js' if args.album_batch else 'album_ui_probe.js')
         env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2] / 'desktop/examples' / source)
     if args.ordinary_essential or args.ordinary_essential_actions or args.ordinary_essential_voice_actions:
         env['CUMULUS_ORDINARY_ESSENTIAL_PROOF'] = '1'
@@ -472,6 +476,70 @@ def main():
                   'realMusicRequests': 0, 'nativeNullPlaybackVerified': True, 'physicalAudioOutputVerified': False}
         (root / 'audit.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(result))
+        return
+    if args.album_duration_sort:
+        assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+        names = ('original', 'ascending', 'descending', 'restored', 'reset',
+                 'filtered_row', 'full_album', 'paused_append')
+        assert complete['states'] == list(names)
+        assert not args.screenshots or captures == len(names)
+        stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
+                  for path in sorted(output.glob('ux_*.json'))}
+        assert set(stages) == set(names)
+        original, ascending, descending = '11,12,13,14', '12,14,11,13', '11,13,14,12'
+        for name, order, ids in zip(names[:5], ('none', 'ascending', 'descending', 'descending', 'none'),
+                                    (original, ascending, descending, descending, original), strict=True):
+            stage = stages[name]
+            assert stage['order'] == order and ','.join(stage['rows']) == ids
+            assert not stage['queue']['tracks'] and stage['player']['track'] is None
+            assert stage['player']['queueRevision'] == stages['original']['player']['queueRevision']
+        for name in ('ascending', 'descending', 'reset'):
+            assert stages[name]['focused']
+
+        def calls(name):
+            return stages[name]['albumDurationSortFixture']['calls']
+
+        def delta(before, after):
+            old, new = calls(before), calls(after)
+            assert new[:len(old)] == old
+            return new[len(old):]
+
+        album_paths = ('/api/album/v3/detail', '/api/album/privilege')
+        playback_paths = (*album_paths, '/api/album/detail/dynamic', '/api/v3/song/detail',
+                          '/api/song/enhance/player/url/v1')
+        assert not any(call['path'] in playback_paths for call in delta('original', 'descending'))
+        assert not any(call['path'] in playback_paths for call in delta('restored', 'reset'))
+        assert not any(call['path'] in album_paths for call in delta('reset', 'filtered_row'))
+        for start, end in (('filtered_row', 'full_album'), ('full_album', 'paused_append')):
+            reads = [(call['path'], call['args']) for call in delta(start, end)
+                     if call['path'] in album_paths]
+            assert reads == [(path, {'id': '8'}) for path in album_paths], reads
+        assert not any(call['path'] in ('/api/album/sub', '/api/album/unsub')
+                       for call in complete['albumDurationSortFixture']['calls'])
+        for name, playing, ids in (('filtered_row', '13', '12,11,13'),
+                                   ('full_album', '12', ascending)):
+            stage = stages[name]
+            native = stage['nativePlayer']
+            assert native['state'] == 'playing' and native['position'] > .2
+            assert native['track']['id'] == playing and native['origin'] == {'kind': 'album', 'id': '8'}
+            assert ','.join(entry['track']['id'] for entry in stage['nativeQueue']['tracks']) == ids
+            assert stage['rows'] == ['12', '11', '13'] and stage['order'] == 'ascending'
+        appended = stages['paused_append']
+        assert appended['player']['state'] == 'paused' and appended['player']['track']['id'] == '900'
+        assert appended['player']['position'] > 4
+        assert [entry['track']['id'] for entry in appended['queue']['tracks']] == ['900','12','14','11','13','901']
+        locale_report = output / 'locale.json'
+        if locale_report.is_file():
+            import locale
+            assert json.loads(locale_report.read_text(encoding='utf-8')) == {
+                'numeric': 'C', 'messages': locale.setlocale(locale.LC_MESSAGES, ''),
+                'characters': locale.setlocale(locale.LC_CTYPE, ''),
+            }
+        report = dict(ok=True, actualWebView=True, states=len(names), screenshots=captures,
+                      stableDurationSort=True, sortedNativePlayback=True, pausedInsertionPreserved=True,
+                      realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
+        (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps(report))
         return
     if args.album:
         assert complete['ok'] and complete['stageCount'] == 31 and complete['playbackVerified']
