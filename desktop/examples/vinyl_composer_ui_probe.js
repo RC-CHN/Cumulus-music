@@ -112,11 +112,15 @@ window.__vinylComposerRun = async function ({
   fill(lost);
   await wait(() => !submit().disabled, 'valid reply to simulate response loss');
   click(submit());
-  await wait(() => recovery() && (!submit() || submit().disabled), 'uncertain result offers recovery instead of resend');
+  // Prepared/Sending can render the recovery entry before the write reply.
+  // Wait for the actual enabled action, after the pending record is refreshed.
+  await wait(() => recovery() && !recovery().disabled && (!submit() || submit().disabled),
+    'settled uncertain result offers recovery instead of resend');
   const pending = (await operations(current.playId)).value.find((item) => item.phase === 'uncertain');
-  assert(pending && !pending.acknowledged && !pending.observed &&
-    currentCount() === 64 && !latest()[0]?.textContent.includes(lost),
-    'lost reply neither fabricates an acknowledgment nor prepends an unconfirmed row');
+  assert(pending && !pending.acknowledged && !pending.observed,
+    'lost reply preserves the pending record without acknowledgment or observation');
+  assert(currentCount() === 64, 'lost reply must not alter the known count (was ' + currentCount() + ')');
+  assert(!latest()[0]?.textContent.includes(lost), 'lost reply must not prepend an unconfirmed row');
   await capture('reply_uncertain', current, { count: currentCount(), pending: pending.id });
   click(recovery());
   await wait(() => !pane() && one('.comments-page .comment-write-pending [data-write-phase="uncertain"]'),
