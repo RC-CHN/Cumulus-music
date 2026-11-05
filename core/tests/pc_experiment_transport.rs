@@ -621,6 +621,95 @@ async fn vinyl_comment_rejects_a_different_pc_cookie_scope_at_the_same_revision(
 }
 
 #[tokio::test]
+async fn vinyl_like_eapi_target_and_writes_share_the_signed_account_cookie() {
+    use cumulus_core::protocol::api::{Api, VinylCommentRead, VinylCommentWrite};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    let root = tempfile::tempdir().unwrap();
+    let (client, http) = vinyl_http(
+        root.path(),
+        &["MUSIC_U=synthetic-vinyl-like; Path=/; Secure"],
+        std::iter::once(vinyl_t1().into()).chain((0..3).map(|_| json!({"code":200}).into())),
+    );
+    let revision = client.verified_pc_experiment_revision().unwrap().unwrap();
+    client
+        .verified_pc_experiment_groups(&revision)
+        .await
+        .unwrap();
+    client
+        .request_vinyl_comment_page(VinylCommentRead::target("71", "21").unwrap(), &revision)
+        .await
+        .unwrap();
+    let permits = AtomicUsize::new(0);
+    for desired in [true, false] {
+        client
+            .request_vinyl_comment_write(
+                VinylCommentWrite::like("71", "21", desired).unwrap(),
+                &revision,
+                &|| {
+                    permits.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                },
+            )
+            .await
+            .unwrap();
+    }
+    assert_eq!(permits.load(Ordering::Relaxed), 2);
+    let calls = http.calls();
+    assert_eq!(calls.len(), 4);
+    let target = json!({"limit":"1","offset":"0","beforeTime":"0","commentId":"21",
+        "compareUserLocation":"false","composeConcert":"false","markReplied":"false",
+        "forceFlatComment":"false","showInner":"false"});
+    let write = json!({"threadId":"R_SO_4_71","commentId":"21"});
+    for (call, (path, fields)) in calls[1..].iter().zip([
+        ("/api/v1/resource/comments/R_SO_4_71", &target),
+        ("/api/v1/comment/like", &write),
+        ("/api/v1/comment/unlike", &write),
+    ]) {
+        assert_eq!(call.path, path);
+        assert!(
+            call.cookie
+                .as_deref()
+                .unwrap()
+                .contains("MUSIC_U=synthetic-vinyl-like")
+        );
+        let mut actual = call.payload.clone();
+        assert!(
+            actual
+                .as_object_mut()
+                .unwrap()
+                .remove("header")
+                .unwrap()
+                .is_string()
+        );
+        assert_eq!(&actual, fields);
+    }
+
+    let root = tempfile::tempdir().unwrap();
+    let (client, http) = vinyl_http(
+        root.path(),
+        &[
+            "MUSIC_U=synthetic-signed; Path=/eapi/rtrs/abt/front/; Secure",
+            "MUSIC_U=synthetic-signed; Path=/eapi/v1/comment/; Secure",
+            "MUSIC_U=synthetic-other-account; Path=/eapi/v1/resource/; Secure",
+        ],
+        [vinyl_t1().into()],
+    );
+    let revision = client.verified_pc_experiment_revision().unwrap().unwrap();
+    client
+        .verified_pc_experiment_groups(&revision)
+        .await
+        .unwrap();
+    assert!(matches!(
+        client
+            .request_vinyl_comment_page(VinylCommentRead::target("71", "21").unwrap(), &revision)
+            .await,
+        Err(Error::CredentialChanged)
+    ));
+    assert_eq!(http.calls().len(), 1);
+}
+
+#[tokio::test]
 async fn queued_vinyl_composer_writes_recheck_revision_and_live_permission_before_eapi() {
     use cumulus_core::protocol::api::{Api, VinylCommentWrite};
     use std::{
