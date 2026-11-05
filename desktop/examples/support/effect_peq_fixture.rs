@@ -40,6 +40,8 @@ struct Trace {
     attaches: u32,
     detaches: u32,
     bypasses: u32,
+    restores: u32,
+    source_calls: Vec<Value>,
     bypass_revision: Option<u64>,
     stats: Option<EqualizerStats>,
     native_attached: bool,
@@ -53,6 +55,39 @@ static FAIL_NEXT_POLL: AtomicBool = AtomicBool::new(false);
 
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_EFFECT_PEQ_NATIVE_PROOF").is_some()
+}
+
+pub fn source_bypass() -> bool {
+    std::env::var_os("CUMULUS_EFFECT_PEQ_SOURCE_BYPASS_PROOF").is_some()
+}
+
+fn source_response(trace: &mut Trace, args: &Value) -> Result<Value> {
+    let ids: Vec<Value> = serde_json::from_str(args["ids"].as_str().unwrap_or_default())?;
+    let id = match ids.as_slice() {
+        [id] => id.as_u64().or_else(|| id.as_str()?.parse().ok()),
+        _ => None,
+    };
+    let (expected, requested, actual, br) = match trace.source_calls.len() {
+        0 => (1, "vivid", "standard", 6_999_000),
+        1 => (2, "standard", "vivid", 128_000),
+        2 => (3, "standard", "dolby", 128_000),
+        3 => (4, "standard", "standard", 128_000),
+        _ => {
+            return Err(Error::Response(
+                "duplicate ordinary PEQ source authorization",
+            ));
+        }
+    };
+    if id != Some(expected) || args["level"] != requested {
+        return Err(Error::Response("unapproved ordinary PEQ source request"));
+    }
+    trace
+        .source_calls
+        .push(json!({"id":expected,"requested":requested,"actual":actual}));
+    Ok(
+        json!({"code":200,"data":[{"id":expected,"code":200,"url":AUDIO_URL,
+        "md5":"fixture","level":actual,"br":br,"expi":120}]}),
+    )
 }
 
 pub fn inject_runtime_fault() -> bool {
@@ -81,6 +116,9 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         return None;
     }
     let mut trace = TRACE.lock().unwrap();
+    if source_bypass() && path == "/api/song/enhance/player/url/v1" {
+        return Some(source_response(&mut trace, args));
+    }
     // The reopened process has no simulated active lease in memory. Allow
     // only the ordinary empty catalogue and one explicit compensating stop.
     if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
@@ -279,7 +317,19 @@ impl AudioEngine for Audio {
         Ok(())
     }
     fn restore_parametric_component(&mut self, plan: ParametricPlan) -> Result<()> {
-        self.engine.restore_parametric_component(plan)
+        let before = self.engine.parametric_equalizer_stats()?;
+        self.engine.restore_parametric_component(plan)?;
+        let after = self.engine.parametric_equalizer_stats()?;
+        if after.revision != before.revision + 1
+            || after.instances_created < before.instances_created
+        {
+            return Err(Error::State("native PEQ restore changed control identity"));
+        }
+        let mut trace = TRACE.lock().unwrap();
+        trace.restores += 1;
+        trace.bypass_revision = None;
+        trace.stats = Some(after);
+        Ok(())
     }
     fn clear_parametric_component(&mut self) -> Result<()> {
         self.engine.clear_parametric_component()?;
@@ -298,7 +348,7 @@ impl AudioEngine for Audio {
 
 pub fn report() -> Value {
     let trace = TRACE.lock().unwrap();
-    json!({
+    let mut report = json!({
         "processId":std::process::id(),
         "calls":trace.calls,
         "materialGets":trace.material_gets,
@@ -315,5 +365,11 @@ pub fn report() -> Value {
         "processedSamples":trace.stats.map(|stats| stats.processed_samples).unwrap_or(0),
         "failedBlocks":trace.stats.map(|stats| stats.failed_blocks).unwrap_or(0),
         "injectedFaults":trace.injected_faults,
-    })
+    });
+    if source_bypass() {
+        report["restores"] = json!(trace.restores);
+        report["sourceCalls"] = json!(trace.source_calls);
+        report["instancesCreated"] = json!(trace.stats.map(|stats| stats.instances_created));
+    }
+    report
 }

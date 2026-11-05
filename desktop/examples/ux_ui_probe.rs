@@ -725,6 +725,8 @@ fn main() {
     assert!(!playback_power_guide_fixture::enabled() || motion_proof);
     assert!(!queue_more_fixture::tip_enabled() || queue_more_fixture::enabled());
     let peq_proof = effect_peq_fixture::enabled();
+    let ordinary_source_bypass_proof = effect_peq_fixture::source_bypass();
+    assert!(!ordinary_source_bypass_proof || peq_proof);
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
     assert!(!device_peq_proof || (!peq_proof && effect_directory_fixture::enabled()));
     let device_source_bypass_proof = effect_directory_fixture::source_bypass_enabled();
@@ -769,7 +771,7 @@ fn main() {
     fs::create_dir_all(&root).unwrap();
     fs::create_dir(&output).expect("new evidence directory");
     let mut context = assets::context();
-    if device_source_bypass_proof {
+    if device_source_bypass_proof || ordinary_source_bypass_proof {
         effect_directory_fixture::restrict_source_bypass_artwork(&mut context);
     }
     if zone_fm_preview_fixture::enabled()
@@ -783,7 +785,7 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         #[cfg(target_os = "linux")]
-        if search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() {
+        if ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
@@ -1034,6 +1036,12 @@ fn main() {
             }
             if voice_download_fixture::enabled() { value["voiceDownloadService"]=voice_download_fixture::report(); }
             let stage=value["stage"].as_str().unwrap_or("");
+            if ordinary_source_bypass_proof && stage=="ordinary-peq-source-native" {
+                let sequence=value["sequence"].as_u64().unwrap();
+                let stats=&value["nativePeq"];
+                handle.get_webview_window("main").unwrap().eval(format!("window.__ordinaryPeqNative={{sequence:{sequence},stats:{stats}}};")).unwrap();
+                return;
+            }
             if device_source_bypass_proof && stage=="effect-source-native-stats" {
                 let sequence=value["sequence"].as_u64().unwrap();
                 let stats=&value["nativePeq"];
@@ -1293,6 +1301,9 @@ fn main() {
                     } else { value["nativePlayerUnavailable"]=json!(true); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    if ordinary_source_bypass_proof && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__ordinaryPeqStageRecorded={};",json!(stage))).unwrap();
+                    }
                     if device_source_bypass_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__headphoneSourceStageRecorded={};",json!(stage))).unwrap();
                     }

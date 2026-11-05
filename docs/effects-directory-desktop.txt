@@ -279,6 +279,18 @@ Windows 同用例由独立打包检查执行。
 前。独立原生探针比较真实 libmpv 上的同一媒体时钟、滤镜链、实例数量与三代采样；
 LADSPA 单元测试比较同一节点旁路及恢复的实际 PCM。没有读取真实账号或验证实体音频输出。
 
+独立桌面用例 `scripts/ci/effect_peq_native_smoke.py --source-bypass` 走实际
+Vue/Tauri 管理界面，按 standard→vivid→dolby→standard 的授权响应驱动四次播放器
+选择；第一次请求为 vivid，回包与请求及 br 刻意相反。四次都核对真实播放时钟、
+管理和播放栏提示；旁路中的暂停和继续保留播放 ID、音源和 LADSPA 回调实例数量。
+整个过程只有一个原生 PEQ 控制，采样确认代次为 1→2→3→3；装载新歌曲可由解码器
+创建新的 LADSPA 回调实例，不把它们误认为重装 PEQ。旧登记凭据仍可用，SQLite
+登记仍为已确认的 registered；除最初一笔封闭合成登记，未发其他音效写入。用例
+使用合成 WAV、libmpv null 输出；Linux 截图模式需私有 Xvfb/D-Bus、非 C 的语言
+环境。隔离 Linux 实测中 LC_NUMERIC=C，LC_MESSAGES/LC_CTYPE 保持 zh_CN.utf8；
+五张合成截图和原生快照见 `.build/ordinary-peq-source-webview-20261105/first/`。
+不代表实体声卡或 Windows 的验证。
+
 暂停本机独立参数均衡
 官方 M/342:1717–1756 区分播放器 isOpen 开关与普通音效授权处理；社区客户端在登记
 管理中另提供「暂停本机音效」。`effect_peq_pause` 只使用当前主窗口、账号代次、选中

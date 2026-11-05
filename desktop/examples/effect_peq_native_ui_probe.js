@@ -28,8 +28,13 @@
   const action = (name) => controls()?.querySelector(`button[data-peq-action="${name}"]`);
   const phase = (name) => controls()?.getAttribute('data-peq-phase') === name;
   async function capture(name) {
-    await emit(`ux_${name}`, {captureHandshake: true});
-    await sleep(650);
+    const stage = `ux_${name}`;
+    await emit(stage, {captureHandshake: true});
+    if (window.__cumulusPeqSourceBypass) {
+      await wait(() => window.__ordinaryPeqStageRecorded === stage, `native snapshot for ${stage}`);
+    } else {
+      await sleep(650);
+    }
   }
 
   let stage = 'startup';
@@ -41,7 +46,8 @@
     const { epoch } = account;
     const player = () => invoke('player_snapshot', { epoch });
     await invoke('play_selection', { epoch, selection: {
-      kind: 'songs', ids: ['1'], index: 0, quality: 'standard',
+      kind: 'songs', ids: ['1'], index: 0,
+      quality: window.__cumulusPeqSourceBypass ? 'vivid' : 'standard',
     } });
     const baseline = await wait(async () => {
       const state = await player();
@@ -73,6 +79,77 @@
       launcher().title.includes('正在处理音频') && controls().textContent.includes('正在处理音频'),
     'the footer and management show PCM processing');
     await capture('02_configured');
+
+    if (window.__cumulusPeqSourceBypass) {
+      const selection = { epoch, id: 300 };
+      const registered = await invoke('effect_peq_status', selection);
+      assert(registered.registration === 'registered' && registered.release && registered.canPause &&
+        registered.canStop && !registered.canResume, 'the native binding is registered and locally controllable');
+      let sequence = 0;
+      const stats = async () => {
+        const sent = ++sequence;
+        await emit('ordinary-peq-source-native', { sequence: sent });
+        return wait(() => window.__ordinaryPeqNative?.sequence === sent &&
+          window.__ordinaryPeqNative.stats, 'native PEQ observation');
+      };
+      assert(baseline.actualQuality === 'standard' && baseline.track?.id === '1',
+        'initial vivid request yielded ordinary authorized playback');
+      const initial = await stats();
+      assert(initial.revision === 1 && initial.observedRevision === 1 && initial.instancesCreated > 0,
+        'ordinary playback observes the original native PEQ control');
+      const cases = [
+        ['03_vivid_bypassed', '2', 'vivid', true, 2],
+        ['04_consecutive_dolby_restored', '3', 'dolby', false, 3],
+        ['05_standard_retained', '4', 'standard', false, 3],
+      ];
+      for (const [name, id, actual, bypassed, revision] of cases) {
+        stage = name;
+        const requested = await invoke('play_selection', { epoch, selection: {
+          kind: 'songs', ids: [id], index: 0, quality: 'standard',
+        } });
+        const status = bypassed ? 'bypassed_for_source' : 'configured';
+        const caption = bypassed ? '当前音源已旁路独立参数均衡' : '独立参数均衡正在处理音频';
+        const checkPlayback = async (minimum) => {
+          const current = await player();
+          return current.state === 'playing' && current.track?.id === id &&
+            current.playId === requested.playId && current.entryId === requested.entryId &&
+            current.actualQuality === actual && current.position > minimum &&
+            current.boundParametric === status && current.parametricProcessing === !bypassed &&
+            launcher()?.dataset.parametricState === status &&
+            launcher()?.dataset.effectState === (bypassed ? 'off' : 'processing') &&
+            launcher()?.title.includes(caption) && current;
+        };
+        let playing = await wait(() => checkPlayback(.35), `${name}: playback and the footer agree`);
+        await wait(() => phase(status) && controls().textContent.includes(caption) &&
+          enabled(action('pause')) && enabled(action('stop')), `${name}: visible registered controls`);
+        const current = await invoke('effect_peq_status', selection);
+        assert(current.phase === status && current.registration === 'registered' &&
+          current.release === registered.release && current.canStop && current.canPause &&
+          !current.canResume, `${name}: same usable native registration`);
+        const native = await wait(async () => {
+          const read = await stats();
+          return read.nativeAttached && read.attaches === 1 && read.detaches === 0 &&
+            read.revision === revision && read.observedRevision === revision &&
+            read.failedBlocks === 0 && read.instancesCreated >= initial.instancesCreated && read;
+        }, `${name}: same native control observed the expected revision`);
+        if (bypassed) {
+          const transport = (paused) => invoke('player_action', { epoch, action: { kind: 'pause', paused } });
+          const paused = await transport(true);
+          assert(paused.state === 'paused' && paused.playId === playing.playId &&
+            paused.entryId === playing.entryId && paused.boundParametric === status &&
+            paused.parametricProcessing === false, 'pausing keeps the current source and bypass');
+          await transport(false);
+          playing = await wait(() => checkPlayback(paused.position + .25), 'same bypassed song clock resumed');
+          const resumed = await stats();
+          assert(resumed.instancesCreated === native.instancesCreated && resumed.revision === revision,
+            'ordinary pause/resume kept the same native callback instances and configuration');
+        }
+        assert(playing.position > .35, 'the native media clock advances on this source');
+        await capture(name);
+      }
+      await emit('complete', { ok: true, stageCount: 5, ordinarySourceBypassVerified: true });
+      return;
+    }
 
     if (window.__cumulusPeqPauseLocal || window.__cumulusPeqRuntimeFault) {
       const fault = !!window.__cumulusPeqRuntimeFault;
