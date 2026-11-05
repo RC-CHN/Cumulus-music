@@ -27,6 +27,9 @@ COMPOSER_STAGES = (
 )
 
 LIKES_STAGES = ("like_initial", "like_confirmed", "unlike_uncertain", "unlike_reconciled")
+REPORT = "/api/report/reportcomment"
+REPORT_STAGES = ("report_cancelled", "report_preset_accepted", "report_other_uncertain", "report_reopened")
+
 
 
 def read(path):
@@ -128,6 +131,31 @@ def check_likes(rows, complete, directory):
     assert receipt["observed"]["liked"] is False
 
 
+def check_reports(rows, complete):
+    def mutations(record):
+        return [call for call in record["vinylCommentsCalls"] if call["path"] in MUTATIONS]
+
+    wanted = [
+        {"path": REPORT, "lane": "bound_write", "args": {
+            "threadId": "R_SO_4_1", "commentId": "1", "reason": "段子或者无意义的评论"}},
+        {"path": REPORT, "lane": "bound_write", "args": {
+            "threadId": "R_SO_4_1", "commentId": "3", "reason": "  合成原因原样发送  "}},
+    ]
+    assert not mutations(rows["report_cancelled"])
+    assert mutations(rows["report_preset_accepted"]) == wanted[:1]
+    assert mutations(rows["report_other_uncertain"]) == mutations(rows["report_reopened"]) == mutations(complete) == wanted
+    bound_targets = [call["args"]["commentId"] for call in complete["vinylCommentsCalls"]
+                     if call["path"] == LATEST and call["args"]["limit"] == 1]
+    assert bound_targets == ["1", "3"], bound_targets
+    for name in REPORT_STAGES:
+        assert rows[name]["tab"] == "comments" and rows[name]["scroll"] == rows[REPORT_STAGES[0]]["scroll"]
+        assert rows[name]["playId"] == rows[REPORT_STAGES[0]]["playId"]
+    assert rows["report_preset_accepted"]["outcome"] == "举报成功"
+    assert rows["report_other_uncertain"]["outcome"] == rows["report_reopened"]["outcome"]
+    assert "请勿重复提交" in rows["report_reopened"]["outcome"]
+    assert complete["realMusicRequests"] == complete["realAccountWrites"] == 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -138,6 +166,7 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--composer", action="store_true", help="run the sealed composer write scenario")
     modes.add_argument("--likes", action="store_true", help="run sealed inline like/unlike and reconciliation")
+    modes.add_argument("--reports", action="store_true", help="run sealed inline report and durable receipt")
     args = parser.parse_args()
     windows = sys.platform == "win32"
     if sys.platform not in {"linux", "win32"} or windows != bool(args.runtime) or (windows and args.screenshots):
@@ -168,6 +197,9 @@ def main():
     elif args.likes:
         source = (examples / "vinyl_likes_ui_probe.js").read_text(encoding="utf-8") + "\n" + source
         expected = {"t1": LIKES_STAGES}
+    elif args.reports:
+        source = (examples / "vinyl_report_ui_probe.js").read_text(encoding="utf-8") + "\n" + source
+        expected = {"t1": REPORT_STAGES}
     summary = {}
     for group, names in expected.items():
         directory = root / group
@@ -181,6 +213,8 @@ def main():
             run["CUMULUS_VINYL_COMPOSER_PROOF"] = "1"
         elif args.likes:
             run["CUMULUS_VINYL_LIKES_PROOF"] = "1"
+        elif args.reports:
+            run["CUMULUS_VINYL_REPORTS_PROOF"] = "1"
         for key in profiles:
             isolated = directory / key
             isolated.mkdir(mode=0o700)
@@ -200,6 +234,8 @@ def main():
             check_composer(rows, complete)
         elif args.likes:
             check_likes(rows, complete, directory)
+        elif args.reports:
+            check_reports(rows, complete)
         elif group == "t1":
             assert [call["path"] for call in rows["standard_before_read"]["vinylCommentsCalls"]] == [COUNT]
             calls = rows["zero_count"]["vinylCommentsCalls"]
@@ -232,6 +268,9 @@ def main():
     if args.likes:
         report.update(syntheticLikeWrites=2, lostUnlikeAcknowledgement=True,
                       readOnlyReconciled=True, preservedPlaybackAndScroll=True)
+    if args.reports:
+        report.update(syntheticReportWrites=2, lostReportAcknowledgement=True,
+                      reusedDurableReceipt=True, preservedPlaybackAndScroll=True)
     (root / "audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report))
 

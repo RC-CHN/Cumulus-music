@@ -12,6 +12,8 @@ const ADD: &str = "/api/resource/comments/add";
 const REPLY: &str = "/api/v1/resource/comments/reply";
 const LIKE: &str = "/api/v1/comment/like";
 const UNLIKE: &str = "/api/v1/comment/unlike";
+const REPORT: &str = "/api/report/reportcomment";
+const REPORT_LOST: &str = "  合成原因原样发送  ";
 const LOST: &str = "合成回复已送达，回包丢失";
 static WRITTEN: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static LIKED: AtomicBool = AtomicBool::new(false);
@@ -26,6 +28,10 @@ pub fn composer() -> bool {
 }
 pub fn likes() -> bool {
     std::env::var_os("CUMULUS_VINYL_LIKES_PROOF").is_some() && group().as_deref() == Some("t1")
+}
+
+pub fn reports() -> bool {
+    std::env::var_os("CUMULUS_VINYL_REPORTS_PROOF").is_some() && group().as_deref() == Some("t1")
 }
 
 pub fn assignment(revision: &str) -> Result<PcExperimentGroups> {
@@ -44,6 +50,11 @@ pub fn report() -> Vec<Value> {
 
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     group()?;
+    if reports()
+        && let Some(response) = report_response(path, args, "unbound")
+    {
+        return Some(response);
+    }
     if composer()
         && let Some(response) = composer_response(path, args)
     {
@@ -235,5 +246,56 @@ fn composer_response(path: &str, args: &Value) -> Option<Result<Value>> {
         _ => return None,
     };
     CALLS.lock().unwrap().push(json!({"path":path,"args":args}));
+    Some(reply)
+}
+
+pub fn bound_report(path: &str, args: &Value, lane: &str) -> Result<Value> {
+    report_response(path, args, lane)
+        .unwrap_or(Err(Error::InvalidInput("unexpected report fixture route")))
+}
+
+fn report_response(path: &str, args: &Value, lane: &str) -> Option<Result<Value>> {
+    let make_row = |id: u32| {
+        row(
+            &id.to_string(),
+            THREAD,
+            &format!("合成举报评论 {id}"),
+            if id == 2 { 2 } else { 9 },
+        )
+    };
+    let reply = match path {
+        REPORT if lane == "bound_write" => {
+            let reason = args["reason"].as_str()?;
+            let id = args["commentId"].as_str()?;
+            assert_eq!(
+                *args,
+                json!({"threadId":THREAD,"commentId":id,"reason":reason})
+            );
+            match (id, reason) {
+                ("1", "段子或者无意义的评论") => Ok(json!({"code":200})),
+                ("3", REPORT_LOST) => Err(Error::Transport(
+                    "synthetic accepted report with no receipt".into(),
+                )),
+                _ => Err(Error::InvalidInput("unexpected synthetic report")),
+            }
+        }
+        "/api/v1/resource/comments/R_SO_4_1" if lane == "bound_read" && args["limit"] == 1 => {
+            let id = args["commentId"].as_str()?.parse::<u32>().ok()?;
+            let target = (1..=3).contains(&id).then(|| make_row(id));
+            Ok(json!({"code":200,"comments":[],"total":63,"more":false,"currentComment":target}))
+        }
+        "/api/v1/resource/comments/R_SO_4_1" if lane == "bound_read" && args["limit"] == 60 => Ok(
+            json!({"code":200,"comments":(1..=60).map(make_row).collect::<Vec<_>>(),
+                "hotComments":[make_row(1),make_row(2),make_row(3)],"total":63,"more":false,"moreHot":false}),
+        ),
+        REPORT | LIKE | UNLIKE | ADD | REPLY | "/api/resource/comments/delete" => Err(
+            Error::InvalidInput("vinyl report proof refused this dispatch"),
+        ),
+        _ => return None,
+    };
+    CALLS
+        .lock()
+        .unwrap()
+        .push(json!({"path":path,"args":args,"lane":lane}));
     Some(reply)
 }
