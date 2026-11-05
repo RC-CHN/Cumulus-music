@@ -1,0 +1,31 @@
+标准播放详情：内嵌点赞和取消点赞
+
+来源为 PC 3.1.42.205594 恢复源码。M182:5236–5246,5276–5286 与
+vinyl-page/views/TrackPage/modes/CommentTab/CommentArea.tsx:387–434
+证明精彩和最新使用相同评论卡。CommentCard.jsx:189–261,522–558
+（M439:352–426）显示赞数后跟描边/实心拇指，零隐藏数字，按当前
+liked 分别调用 async:hostResource/likeComment、unlikeComment。
+M32:99–108 的 >100000、>100000000 严格边界与保留一位向下截断
+决定万/亿显示。M232:776–796 → M15:2422–2423 以 uncached
+/api/v1/comment/like 或 /api/v1/comment/unlike 提交 {threadId,commentId}。
+原客户端在调用返回 truthy 后更新卡片的内存状态。
+
+Cumulus 只在签名验证过 PH-PC-optimizeComment=t1、同账号、当前
+Catalog 播放的标准内嵌评论版面显示控制。渲染端只传 epoch、playId、
+规范数字评论 id 与 set(desired) 或 reconcile，不传歌曲、线程、账号或
+凭据。原生由实际已发布播放器状态推导 R_SO_4_{id}；先读取该线程的
+指定评论（同绑定的 /api/v1/resource/comments/{threadId}，limit=1、
+offset=0、beforeTime=0，指定 commentId；其它标记沿用 false），
+要求存在、可用、无明确冲突线程且 liked 是已知布尔，已满足目标时不发送。
+固定类型的请求与发布/回复共用同一 HTTP 锁、签名凭据版本、Cookie
+作用域匹配和临发送播放状态检查，不回退到通用评论发送接口。
+
+在当前账号的 comment-likes-v1 中，按账号、线程和评论互斥地持久化
+Sending。已证实发送前中止时恢复先前记录或移除这条未发送意图；若
+可能调用过后端且结果不明，则保留不确定记录。变更接口确认后仍使用
+既有的两次一致目标回读；只有已确认的 liked/count 才投影到 Hot 和
+Latest 的同 ID 卡片。旧的追加读不覆盖这次投影，未推进其 offset。
+不确定时禁用点赞/取消点赞并显示「核对点赞状态」；该按钮只读，
+也可在独立评论页核对同一条记录。不自动重发；账号或歌曲切换后丢弃
+旧显示回执。共享评论缓存使用既有写操作版本，独立评论页的请求不变。
+这是故意比官方更谨慎的确认和恢复流程。举报、删除和分享未加入此批。

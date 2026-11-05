@@ -92,6 +92,18 @@ impl Api for Backend {
                 return Err(Error::CredentialChanged);
             }
             let (path, args) = read.into_request();
+            if args["limit"] == 1 {
+                assert_eq!(path, "/api/v1/resource/comments/R_SO_4_1");
+                assert_eq!(
+                    args,
+                    json!({"limit":1,"offset":0,"beforeTime":0,"commentId":args["commentId"],
+                    "compareUserLocation":false,"composeConcert":false,"markReplied":false,
+                    "forceFlatComment":false,"showInner":false})
+                );
+                self.vinyl_composer
+                    .scoped_like_reads
+                    .fetch_add(1, Ordering::SeqCst);
+            }
             self.request(&path, args, false).await
         })
     }

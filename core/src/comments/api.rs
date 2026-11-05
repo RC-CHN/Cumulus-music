@@ -45,6 +45,59 @@ impl CommentApi {
             return Err(Error::InvalidInput("invalid vinyl comment scope"));
         }
         let read = VinylCommentRead::new(&resource.id, query.offset)?;
+        let value = self.vinyl_read(resource, read, revision).await?;
+        Self::project(&value, query)
+    }
+
+    pub(super) async fn vinyl_like_target(
+        &self,
+        resource: &CommentResource,
+        id: &str,
+        revision: &str,
+    ) -> Result<Comment> {
+        if resource.kind != ResourceKind::Track || resource.owner.is_some() {
+            return Err(Error::InvalidInput("invalid vinyl comment scope"));
+        }
+        let read = VinylCommentRead::target(&resource.id, id)?;
+        let value = self.vinyl_read(resource, read, revision).await?;
+        let thread = resource.thread()?;
+        let target_rows = std::iter::once(&value["currentComment"]).chain(
+            ["comments", "hotComments", "topComments"]
+                .into_iter()
+                .filter_map(|key| value[key].as_array())
+                .flatten(),
+        );
+        if target_rows
+            .filter(|row| identifier(&row["commentId"]).as_deref().ok() == Some(id))
+            .any(|row| {
+                row.get("threadId")
+                    .is_some_and(|value| !value.is_null() && value != &thread)
+            })
+        {
+            return Err(Error::Response("comment belongs to another thread"));
+        }
+        let page = Self::project(
+            &value,
+            &CommentQuery {
+                limit: 1,
+                comment_id: Some(id.into()),
+                ..Default::default()
+            },
+        )?;
+        let target =
+            Self::located(page, id).ok_or(Error::State("comment is no longer readable"))?;
+        if target.status.is_some_and(|status| status < 0) {
+            return Err(Error::State("comment target is unavailable"));
+        }
+        Ok(target)
+    }
+
+    async fn vinyl_read(
+        &self,
+        resource: &CommentResource,
+        read: VinylCommentRead,
+        revision: &str,
+    ) -> Result<Value> {
         let response = self.api.request_vinyl_comment_page(read, revision).await;
         // A stale response (including a session rejection) cannot update
         // this account or populate either comment surface's cache.
@@ -53,8 +106,7 @@ impl CommentApi {
             return Err(Error::CredentialChanged);
         }
         let path = format!("/api/v1/resource/comments/{}", resource.thread()?);
-        let value = validate_response(&path, response?, &[200])?;
-        Self::project(&value, query)
+        validate_response(&path, response?, &[200])
     }
     fn project(value: &Value, query: &CommentQuery) -> Result<CommentPage> {
         let hot = query.sort == CommentSort::Hot;
@@ -124,13 +176,16 @@ impl CommentApi {
                 },
             )
             .await?;
-        Ok(page
-            .current_comment
+        Ok(Self::located(page, id))
+    }
+
+    fn located(page: CommentPage, id: &str) -> Option<Comment> {
+        page.current_comment
             .into_iter()
             .chain(page.comments)
             .chain(page.hot_comments)
             .chain(page.top_comments)
-            .find(|c| c.id == id))
+            .find(|c| c.id == id)
     }
     pub async fn like(&self, resource: &CommentResource, id: &str, desired: bool) -> Result<()> {
         let thread = resource.thread()?;

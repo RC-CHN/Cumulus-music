@@ -1406,6 +1406,32 @@ input[type='range'] {
   align-items: baseline;
   gap: 8px;
 }
+.vinyl-comment-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.vinyl-comment-like {
+  width: auto;
+  min-width: 32px;
+  min-height: 32px;
+  gap: 4px;
+  padding-inline: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.vinyl-comment-like .icon {
+  width: 20px;
+  height: 20px;
+}
+.vinyl-comment-like.liked {
+  color: var(--accent);
+}
+.vinyl-comment-like.liked .icon path {
+  fill: currentColor;
+}
 .vinyl-comment-publish {
   position: absolute;
   inset-inline: 0;

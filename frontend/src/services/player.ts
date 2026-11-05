@@ -1,6 +1,6 @@
 import type { TrackView, CoreFailure, AccountData } from './contracts';
 import type { CloudQuery } from './cloud';
-import type { VinylCommentPage } from './comments';
+import type { CommentOperation, VinylCommentLikeAction, VinylCommentPage } from './comments';
 export type Quality =
   | '64aac'
   | 'standard'
@@ -698,6 +698,16 @@ export interface PlayerClient {
     playId: string,
     offset: number,
   ): Promise<AccountData<VinylCommentPage>>;
+  playerVinylCommentLikeOperations(
+    epoch: string,
+    playId: string,
+  ): Promise<AccountData<CommentOperation[]>>;
+  playerVinylCommentLike(
+    epoch: string,
+    playId: string,
+    id: string,
+    action: VinylCommentLikeAction,
+  ): Promise<AccountData<CommentOperation>>;
   playerLyrics(epoch: string, playId: string, cachedOnly?: boolean): Promise<LyricsView>;
   lyricPreferences(
     epoch: string,

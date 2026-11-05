@@ -63,6 +63,15 @@ export interface CommentOperation {
   phase: LikeResult['phase'];
   observed: CommentItem | null;
 }
+export type VinylCommentLikeAction = { kind: 'set'; desired: boolean } | { kind: 'reconcile' };
+
+// M/439 displays the M/32.f label only for a positive count.
+export function vinylLikeCount(count: number): string {
+  if (!Number.isFinite(count) || count <= 0) return '';
+  if (count > 100_000_000) return `${Math.floor(count / 10_000_000) / 10}亿`;
+  if (count > 100_000) return `${Math.floor(count / 1000) / 10}万`;
+  return String(Math.floor(count));
+}
 export interface CommentPage {
   resource: CommentResource;
   comments: CommentItem[];

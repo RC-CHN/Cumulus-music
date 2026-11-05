@@ -4,8 +4,20 @@ import { effectScope, nextTick, ref } from 'vue';
 import { useVinylComments } from '../src/composables/useVinylComments.ts';
 import { usePlaybackCommentInfo } from '../src/composables/usePlaybackCommentCount.ts';
 import type { AccountData } from '../src/services/contracts.ts';
-import type { VinylCommentPage } from '../src/services/comments.ts';
+import {
+  vinylLikeCount,
+  type CommentItem,
+  type CommentOperation,
+  type VinylCommentPage,
+} from '../src/services/comments.ts';
 import type { PlayerView } from '../src/services/player.ts';
+
+const unusedLikes = {
+  playerVinylCommentLikeOperations: async (epoch: string) => ({ epoch, value: [] }),
+  playerVinylCommentLike: async () => {
+    throw new Error('fixture did not enable likes');
+  },
+};
 
 test('a known zero badge increases once for the exact confirmed play', async () => {
   const scope = effectScope();
@@ -56,6 +68,7 @@ test('a confirmed vinyl comment is shown once without advancing the raw server c
     const model = scope.run(() =>
       useVinylComments(
         {
+          ...unusedLikes,
           playerVinylComments: async (epoch, _playId, offset) => {
             cursors.push(offset);
             return {
@@ -106,6 +119,7 @@ test('vinyl comments defer only visible positive counts and ignore the abandoned
     const model = scope.run(() =>
       useVinylComments(
         {
+          ...unusedLikes,
           playerVinylComments: (_epoch, playId) =>
             new Promise((resolve) => reads.push({ playId, resolve })),
         },
@@ -167,6 +181,132 @@ test('vinyl comments defer only visible positive counts and ignore the abandoned
     await nextTick();
     t.mock.timers.tick(600);
     assert.equal(reads.length, 2, 'reopening the same settled thread retains the loaded rows');
+  } finally {
+    scope.stop();
+  }
+});
+
+test('vinyl like counts follow the recovered strict 万 and 亿 thresholds', () => {
+  assert.deepEqual(
+    [0, 1, 100000, 100001, 123499, 100000000, 100000001, 123499999].map(vinylLikeCount),
+    ['', '1', '100000', '10万', '12.3万', '10000万', '1亿', '1.2亿'],
+  );
+});
+
+test('the same verified inline like updates Hot and Latest, fences stale pages and reconciles without replay', async () => {
+  const scope = effectScope();
+  try {
+    const key = ref<string | undefined>(JSON.stringify(['1', 'play-a']));
+    const active = ref(true);
+    const count = ref<number | undefined>(61);
+    const item: CommentItem = {
+      id: '21',
+      content: '合成评论',
+      time: 0,
+      timeText: '',
+      liked: false,
+      likedCount: 3,
+      author: null,
+      replies: [],
+      owned: false,
+    };
+    const page = (epoch: string, offset: number): AccountData<VinylCommentPage> => ({
+      epoch,
+      value: {
+        latest: offset ? [{ ...item, id: '20' }] : [{ ...item }],
+        hot: offset ? [] : [{ ...item }],
+        moreHot: false,
+        nextOffset: offset ? null : 60,
+      },
+    });
+    let finishAppend: (() => void) | undefined;
+    let pending = false;
+    let deferredReconcile: (() => void) | undefined;
+    const actions: string[] = [];
+    const cursors: number[] = [];
+    const model = scope.run(() =>
+      useVinylComments(
+        {
+          playerVinylComments: (epoch, _playId, offset) => {
+            cursors.push(offset);
+            return offset && cursors.length === 2
+              ? new Promise((resolve) => {
+                  finishAppend = () => resolve(page(epoch, offset));
+                })
+              : Promise.resolve(page(epoch, offset));
+          },
+          playerVinylCommentLikeOperations: async (epoch) => ({
+            epoch,
+            value: epoch === '1' && pending
+              ? [{ id: item.id, desired: false, phase: 'uncertain', observed: null }]
+              : [],
+          }),
+          playerVinylCommentLike: (epoch, playId, id, action) => {
+            assert.deepEqual([epoch, playId, id], ['1', 'play-a', item.id]);
+            actions.push(action.kind === 'set' ? String(action.desired) : action.kind);
+            if (action.kind === 'set' && !action.desired) {
+              pending = true;
+              return Promise.reject(new Error('lost synthetic reply'));
+            }
+            const reply: AccountData<CommentOperation> = {
+              epoch,
+              value: {
+                id,
+                desired: action.kind === 'set',
+                phase: 'confirmed',
+                observed: {
+                  ...item,
+                  liked: action.kind === 'set',
+                  likedCount: action.kind === 'set' ? 4 : 3,
+                },
+              },
+            };
+            return action.kind === 'reconcile'
+              ? new Promise((resolve) => {
+                  deferredReconcile = () => {
+                    pending = false;
+                    resolve(reply);
+                  };
+                })
+              : Promise.resolve(reply);
+          },
+        },
+        key,
+        active,
+        count,
+      ),
+    )!;
+    await model.load();
+    await nextTick();
+    assert.equal(model.likes.ready.value, true);
+    const append = model.load();
+    const oldItem = model.hot.value[0]!;
+    await model.likes.toggle(oldItem);
+    finishAppend!();
+    await append;
+    assert.deepEqual(
+      model.latest.value.map(({ id, liked, likedCount }) => [id, liked, likedCount]),
+      [['21', true, 4]],
+    );
+    assert.equal(model.hot.value[0]!.liked, true);
+    await model.likes.toggle(oldItem);
+    assert.deepEqual(actions, ['true']);
+    await model.load();
+    assert.deepEqual(cursors, [0, 60, 60]);
+    await model.likes.toggle(model.latest.value[0]!);
+    assert.equal(model.likes.operations.value.get(item.id)?.phase, 'uncertain');
+    assert.equal(model.latest.value[0]!.liked, true);
+    await model.likes.toggle(model.hot.value[0]!);
+    assert.deepEqual(actions, ['true', 'false']);
+    const verifying = model.likes.reconcile(model.hot.value[0]!);
+    key.value = JSON.stringify(['2', 'play-b']);
+    await model.load();
+    deferredReconcile!();
+    await verifying;
+    assert.deepEqual(actions, ['true', 'false', 'reconcile']);
+    assert.equal(model.likes.operations.value.size, 0);
+    assert.equal(model.latest.value[0]!.liked, false);
+    assert.equal(model.latest.value[0]!.likedCount, 3);
   } finally {
     scope.stop();
   }

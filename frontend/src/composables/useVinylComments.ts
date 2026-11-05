@@ -1,9 +1,10 @@
 import { computed, onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue';
 import type { CommentItem } from '../services/comments';
 import type { PlayerClient } from '../services/player';
+import { useVinylCommentLikes, type VinylCommentLikeClient } from './useVinylCommentLikes.ts';
 
 export function useVinylComments(
-  api: Pick<PlayerClient, 'playerVinylComments'>,
+  api: Pick<PlayerClient, 'playerVinylComments'> & VinylCommentLikeClient,
   target: Readonly<Ref<string | undefined>>,
   visible: Readonly<Ref<boolean>>,
   count: Readonly<Ref<number | undefined>>,
@@ -104,6 +105,34 @@ export function useVinylComments(
     published.value = [item, ...published.value];
     return true;
   }
-  return { latest, hot, moreHot, working, failed, loaded, canAppend, load, prependConfirmed };
+  const likes = useVinylCommentLikes(
+    api,
+    target,
+    visible,
+    loaded,
+    (item) => latest.value.includes(item) || hot.value.includes(item),
+    (item) => {
+      // Do not let a page started before this verified observation undo it.
+      // The next append, if any, still uses the unmodified service cursor.
+      invalidate();
+      const patch = (row: CommentItem) =>
+        row.id === item.id ? { ...row, liked: item.liked, likedCount: item.likedCount } : row;
+      fetched.value = fetched.value.map(patch);
+      published.value = published.value.map(patch);
+      hot.value = hot.value.map(patch);
+    },
+  );
+  return {
+    latest,
+    hot,
+    moreHot,
+    working,
+    failed,
+    loaded,
+    canAppend,
+    load,
+    prependConfirmed,
+    likes,
+  };
 }
 export type VinylCommentsModel = ReturnType<typeof useVinylComments>;

@@ -109,7 +109,7 @@ pub(super) fn comment(value: Comment, uid: &str) -> CommentView {
             .collect(),
     }
 }
-fn operation(record: CommentLike, uid: &str) -> CommentOperationView {
+pub(super) fn operation(record: CommentLike, uid: &str) -> CommentOperationView {
     CommentOperationView {
         id: record.comment_id,
         desired: record.desired,

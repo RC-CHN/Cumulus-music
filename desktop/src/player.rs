@@ -317,6 +317,38 @@ pub async fn player_vinyl_comments<R: tauri::Runtime>(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_vinyl_comment_like_operations<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<AccountData<Vec<CommentOperationView>>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_comment_like_operations(&epoch, &play_id)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_vinyl_comment_like<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    id: String,
+    action: cumulus_core::client::VinylCommentLikeAction,
+) -> Result<AccountData<CommentOperationView>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_comment_like(&epoch, &play_id, &id, action)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_vinyl_prepare_write<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,

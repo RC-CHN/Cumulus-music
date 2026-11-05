@@ -2,11 +2,19 @@ use super::*;
 use crate::{
     Error, Result,
     account::{SessionToken, resources::MutationPhase},
-    protocol::api::identifier,
+    protocol::api::{Api, VinylCommentWrite, identifier, validate_response},
     storage::OperationLock,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::Arc;
+
+#[derive(Clone, Copy)]
+struct VinylLikeRead<'a> {
+    api: &'a Arc<dyn Api>,
+    revision: &'a str,
+}
+
 pub(super) const JOURNAL: &str = "comment-likes-v1";
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CommentLike {
@@ -64,6 +72,30 @@ impl Comments {
         id: &str,
         desired: bool,
     ) -> Result<CommentLike> {
+        self.like_for_inner(token, resource, id, desired, None)
+            .await
+    }
+
+    pub(crate) async fn like_for_vinyl(
+        &self,
+        token: &SessionToken,
+        resource: &CommentResource,
+        id: &str,
+        desired: bool,
+        authority: VinylWriteAuthority<'_>,
+    ) -> Result<CommentLike> {
+        self.like_for_inner(token, resource, id, desired, Some(authority))
+            .await
+    }
+
+    async fn like_for_inner(
+        &self,
+        token: &SessionToken,
+        resource: &CommentResource,
+        id: &str,
+        desired: bool,
+        vinyl: Option<VinylWriteAuthority<'_>>,
+    ) -> Result<CommentLike> {
         let key = key(resource, id)?;
         self.session.with_token(token, |_| Ok(()))?;
         let owner = token
@@ -75,13 +107,25 @@ impl Comments {
             "comment-like",
             &serde_json::to_string(&(owner, &key))?,
         )?;
-        if self
-            .like_record(owner, &key)?
-            .is_some_and(|r| r.phase.pending())
-        {
+        let previous = self.like_record(owner, &key)?;
+        if previous.as_ref().is_some_and(|r| r.phase.pending()) {
             return Err(Error::MutationUncertain);
         }
-        let before = self.target_for(token, resource, id).await?;
+        let vinyl_request = if vinyl.is_some() {
+            if resource.kind != ResourceKind::Track || resource.owner.is_some() {
+                return Err(Error::InvalidInput("invalid vinyl comment like scope"));
+            }
+            Some(VinylCommentWrite::like(&resource.id, id, desired)?)
+        } else {
+            None
+        };
+        let read_scope = vinyl.as_ref().map(|authority| VinylLikeRead {
+            api: authority.api,
+            revision: authority.revision,
+        });
+        let before = self
+            .like_target_for(token, resource, id, read_scope)
+            .await?;
         let before_liked = before
             .liked
             .ok_or(Error::Response("comment liked flag is unavailable"))?;
@@ -98,16 +142,64 @@ impl Comments {
             },
             observed: Some(before),
         };
-        self.save_like_transition(token, &key, &record)?;
+        if vinyl.is_none() || record.phase == MutationPhase::Unchanged {
+            self.save_like_transition(token, &key, &record)?;
+        }
         if record.phase == MutationPhase::Unchanged {
             return Ok(record);
         }
-        let result = self
-            .session
-            .run_for(token, |api, _| async move {
-                CommentApi::new(api).like(resource, id, desired).await
-            })
-            .await;
+        let result = if let Some((authority, write)) = vinyl.zip(vinyl_request) {
+            let mut persisted = false;
+            let mut known_unsent = false;
+            let result = self
+                .session
+                .run_for(token, |api, _| {
+                    let (key, record, persisted, known_unsent) =
+                        (&key, &record, &mut persisted, &mut known_unsent);
+                    async move {
+                        if !Arc::ptr_eq(authority.api, &api) {
+                            return Err(Error::RequestNotSent(Box::new(Error::StaleResponse)));
+                        }
+                        // A stale account may fail run_for before this closure;
+                        // only mark Sending once the original API is selected.
+                        self.save_like_transition(token, key, record)?;
+                        *persisted = true;
+                        let path = write.path();
+                        let response = api
+                            .request_vinyl_comment_write(write, authority.revision, authority.permission)
+                            .await;
+                        // Session rejection may replace this transport error
+                        // with StaleResponse after an account switch.
+                        *known_unsent = matches!(&response, Err(error) if matches!(error.root(), Error::RequestNotSent(_)));
+                        validate_response(path, response?, &[200]).map(|_| ())
+                    }
+                })
+                .await;
+            if result.is_err() {
+                if !persisted {
+                    return result.map(|_| record);
+                }
+                if known_unsent {
+                    // The per-comment lock is still held. Only restore this
+                    // unsent intent's original owner, even after account switch.
+                    self.store.transaction(|tx| {
+                        if let Some(previous) = previous {
+                            tx.put(owner, JOURNAL, &key, &serde_json::to_value(previous)?)
+                        } else {
+                            tx.delete(owner, JOURNAL, &key)
+                        }
+                    })?;
+                    return result.map(|_| record);
+                }
+            }
+            result
+        } else {
+            self.session
+                .run_for(token, |api, _| async move {
+                    CommentApi::new(api).like(resource, id, desired).await
+                })
+                .await
+        };
         match result {
             Ok(()) => {
                 record.phase = MutationPhase::Verifying;
@@ -131,13 +223,35 @@ impl Comments {
         }
         self.store
             .put(owner, JOURNAL, &key, &serde_json::to_value(&record)?)?;
-        self.settle_like(token, &key, record).await
+        self.settle_like(token, &key, record, read_scope).await
     }
     pub async fn reconcile_for(
         &self,
         token: &SessionToken,
         resource: &CommentResource,
         id: &str,
+    ) -> Result<CommentLike> {
+        self.reconcile_like_for(token, resource, id, None).await
+    }
+
+    pub(crate) async fn reconcile_for_vinyl(
+        &self,
+        token: &SessionToken,
+        resource: &CommentResource,
+        id: &str,
+        api: &Arc<dyn Api>,
+        revision: &str,
+    ) -> Result<CommentLike> {
+        self.reconcile_like_for(token, resource, id, Some(VinylLikeRead { api, revision }))
+            .await
+    }
+
+    async fn reconcile_like_for(
+        &self,
+        token: &SessionToken,
+        resource: &CommentResource,
+        id: &str,
+        scope: Option<VinylLikeRead<'_>>,
     ) -> Result<CommentLike> {
         let key = key(resource, id)?;
         self.session.with_token(token, |_| Ok(()))?;
@@ -156,13 +270,37 @@ impl Comments {
         if !record.phase.pending() {
             return Ok(record);
         }
-        self.settle_like(token, &key, record).await
+        self.settle_like(token, &key, record, scope).await
+    }
+
+    async fn like_target_for(
+        &self,
+        token: &SessionToken,
+        resource: &CommentResource,
+        id: &str,
+        scope: Option<VinylLikeRead<'_>>,
+    ) -> Result<Comment> {
+        if let Some(scope) = scope {
+            self.session
+                .run_for(token, |api, _| async move {
+                    if !Arc::ptr_eq(scope.api, &api) {
+                        return Err(Error::StaleResponse);
+                    }
+                    CommentApi::new(api)
+                        .vinyl_like_target(resource, id, scope.revision)
+                        .await
+                })
+                .await
+        } else {
+            self.target_for(token, resource, id).await
+        }
     }
     async fn settle_like(
         &self,
         token: &SessionToken,
         key: &str,
         mut record: CommentLike,
+        scope: Option<VinylLikeRead<'_>>,
     ) -> Result<CommentLike> {
         let mut consecutive = 0;
         for attempt in 0..8 {
@@ -170,7 +308,7 @@ impl Comments {
                 tokio::time::sleep(self.settle).await;
             }
             let observed = self
-                .target_for(token, &record.resource, &record.comment_id)
+                .like_target_for(token, &record.resource, &record.comment_id, scope)
                 .await?;
             consecutive = if observed.liked == Some(record.desired) {
                 consecutive + 1

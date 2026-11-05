@@ -27,6 +27,7 @@ mod source_control;
 mod startup;
 mod vinyl_comments;
 mod vinyl_composer;
+mod vinyl_likes;
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
@@ -56,6 +57,7 @@ pub use reports::LyricReportView;
 use std::sync::{Arc, Mutex, atomic::AtomicU64};
 use tokio::sync::{OnceCell, watch};
 pub use vinyl_comments::VinylCommentPageView;
+pub use vinyl_likes::VinylCommentLikeAction;
 
 fn validate_quality_target(
     current: &PlaybackSnapshot,

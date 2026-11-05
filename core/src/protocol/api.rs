@@ -15,12 +15,13 @@ fn canonical_vinyl_comment_id(id: &str) -> bool {
         && id.bytes().all(|digit| digit.is_ascii_digit())
 }
 
-/// Fixed logical read from M/182 -> M/438 for the standard vinyl panel.
+/// Fixed panel and single-comment verification reads.
 /// Constructed from native current-track identity, never deserialized from IPC.
 #[derive(Clone)]
 pub struct VinylCommentRead {
     song_id: String,
     offset: usize,
+    comment_id: Option<String>,
 }
 
 impl VinylCommentRead {
@@ -33,24 +34,49 @@ impl VinylCommentRead {
         Ok(Self {
             song_id: song_id.into(),
             offset,
+            comment_id: None,
         })
     }
 
+    pub fn target(song_id: &str, comment_id: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(comment_id) {
+            return Err(Error::InvalidInput("invalid vinyl comment target"));
+        }
+        let mut read = Self::new(song_id, 0)?;
+        read.comment_id = Some(comment_id.into());
+        Ok(read)
+    }
+
     pub fn into_request(self) -> (String, Value) {
+        let limit = if self.comment_id.is_some() {
+            1
+        } else {
+            Self::LIMIT
+        };
         (
             format!("/api/v1/resource/comments/R_SO_4_{}", self.song_id),
-            json!({"limit":Self::LIMIT,"offset":self.offset,"beforeTime":0,"commentId":"0",
+            json!({"limit":limit,"offset":self.offset,"beforeTime":0,"commentId":self.comment_id.as_deref().unwrap_or("0"),
                 "compareUserLocation":false,"composeConcert":false,"markReplied":false,
                 "forceFlatComment":false,"showInner":false}),
         )
     }
 }
 
-/// Plain M/438 publish or reply from an already authorized current track.
+/// Fixed mutations from an already authorized current track (M/438, M/232).
 pub struct VinylCommentWrite {
     song_id: String,
-    content: String,
-    reply_to: Option<String>,
+    action: VinylCommentWriteAction,
+}
+
+enum VinylCommentWriteAction {
+    Publish {
+        content: String,
+        reply_to: Option<String>,
+    },
+    Like {
+        comment_id: String,
+        desired: bool,
+    },
 }
 
 impl VinylCommentWrite {
@@ -63,27 +89,55 @@ impl VinylCommentWrite {
         crate::comments::validate_comment_text(content)?;
         Ok(Self {
             song_id: song_id.into(),
-            content: content.into(),
-            reply_to: reply_to.map(str::to_owned),
+            action: VinylCommentWriteAction::Publish {
+                content: content.into(),
+                reply_to: reply_to.map(str::to_owned),
+            },
+        })
+    }
+
+    pub fn like(song_id: &str, comment_id: &str, desired: bool) -> Result<Self> {
+        if !canonical_vinyl_comment_id(song_id) || !canonical_vinyl_comment_id(comment_id) {
+            return Err(Error::InvalidInput("invalid vinyl comment like target"));
+        }
+        Ok(Self {
+            song_id: song_id.into(),
+            action: VinylCommentWriteAction::Like {
+                comment_id: comment_id.into(),
+                desired,
+            },
         })
     }
 
     pub fn path(&self) -> &'static str {
-        if self.reply_to.is_some() {
-            "/api/v1/resource/comments/reply"
-        } else {
-            "/api/resource/comments/add"
+        match &self.action {
+            VinylCommentWriteAction::Publish {
+                reply_to: Some(_), ..
+            } => "/api/v1/resource/comments/reply",
+            VinylCommentWriteAction::Publish { reply_to: None, .. } => "/api/resource/comments/add",
+            VinylCommentWriteAction::Like { desired: true, .. } => "/api/v1/comment/like",
+            VinylCommentWriteAction::Like { desired: false, .. } => "/api/v1/comment/unlike",
         }
     }
 
     pub fn into_request(self) -> (&'static str, Value) {
         let path = self.path();
         let thread_id = format!("R_SO_4_{}", self.song_id);
-        let payload = if let Some(id) = self.reply_to {
-            json!({"threadId":thread_id,"commentId":id,"content":self.content,"resourceType":0,"resourceId":0})
-        } else {
-            json!({"threadId":thread_id,"content":self.content,"resourceType":0,"resourceId":0,
-                "expressionPicId":-1,"bubbleId":-1})
+        let payload = match self.action {
+            VinylCommentWriteAction::Publish {
+                content,
+                reply_to: Some(id),
+            } => {
+                json!({"threadId":thread_id,"commentId":id,"content":content,"resourceType":0,"resourceId":0})
+            }
+            VinylCommentWriteAction::Publish {
+                content,
+                reply_to: None,
+            } => json!({"threadId":thread_id,"content":content,"resourceType":0,"resourceId":0,
+                    "expressionPicId":-1,"bubbleId":-1}),
+            VinylCommentWriteAction::Like { comment_id, .. } => {
+                json!({"threadId":thread_id,"commentId":comment_id})
+            }
         };
         (path, payload)
     }

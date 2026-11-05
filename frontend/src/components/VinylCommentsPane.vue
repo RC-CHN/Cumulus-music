@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import type { TrackView } from '../services/contracts';
-import type { CommentItem } from '../services/comments';
+import { vinylLikeCount, type CommentItem } from '../services/comments';
 import type { VinylComposerTarget } from '../composables/useVinylCommentComposer';
 import type { VinylCommentsModel } from '../composables/useVinylComments';
 import CommentText from './CommentText.vue';
@@ -119,12 +119,17 @@ defineExpose({ focusBack });
         正在加载评论…
       </p>
       <template v-else>
+        <p v-if="writeTarget && model.likes.readFailed.value" class="empty-state" role="status">
+          无法读取点赞状态。
+          <button type="button" class="text-button" @click="model.likes.refresh">重新读取</button>
+        </p>
         <section v-for="group in groups" :key="group.key" :data-vinyl-comment-group="group.key">
           <h3 v-if="group.key === 'latest' && model.hot.value.length">最新评论</h3>
           <article
             v-for="(item, index) in group.comments"
             :key="`${item.id}:${index}`"
             class="vinyl-comment-row"
+            :data-vinyl-comment-id="item.id"
           >
             <img
               v-if="item.author?.avatarUrl"
@@ -144,16 +149,47 @@ defineExpose({ focusBack });
               </blockquote>
               <div class="vinyl-comment-actions">
                 <small>{{ item.timeText }}</small>
-                <button
-                  v-if="writeTarget"
-                  type="button"
-                  class="text-button vinyl-comment-reply"
-                  :aria-label="`回复 ${item.author?.name || '云音乐用户'}`"
-                  @click="compose($event, item)"
-                >
-                  回复
-                </button>
+                <div v-if="writeTarget" class="vinyl-comment-controls">
+                  <button
+                    v-if="model.likes.operations.value.has(item.id)"
+                    type="button"
+                    class="text-button vinyl-comment-like-reconcile"
+                    :disabled="!!model.likes.busy.value || !model.likes.ready.value"
+                    @click="model.likes.reconcile(item)"
+                  >
+                    核对点赞状态
+                  </button>
+                  <button
+                    type="button"
+                    class="icon-button vinyl-comment-like"
+                    :class="{ liked: item.liked === true }"
+                    :aria-label="`${item.liked ? '取消评论点赞' : '点赞评论'} ${item.id}`"
+                    :aria-pressed="item.liked ?? undefined"
+                    :disabled="
+                      item.liked === null ||
+                      model.likes.operations.value.has(item.id) ||
+                      !!model.likes.busy.value ||
+                      model.likes.reading.value ||
+                      !model.likes.ready.value
+                    "
+                    @click="model.likes.toggle(item)"
+                  >
+                    <span v-if="item.likedCount">{{ vinylLikeCount(item.likedCount) }}</span>
+                    <Icon name="thumb" />
+                  </button>
+                  <button
+                    type="button"
+                    class="text-button vinyl-comment-reply"
+                    :aria-label="`回复 ${item.author?.name || '云音乐用户'}`"
+                    @click="compose($event, item)"
+                  >
+                    回复
+                  </button>
+                </div>
               </div>
+              <p v-if="writeTarget && model.likes.issue.value?.id === item.id" role="status">
+                {{ model.likes.issue.value.message }}
+              </p>
             </div>
           </article>
           <button

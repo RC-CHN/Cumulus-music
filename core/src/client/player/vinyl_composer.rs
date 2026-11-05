@@ -26,16 +26,16 @@ pub(super) struct VinylDraft {
     revision: String,
 }
 
-struct Target {
+pub(super) struct Target {
     controller: Arc<PlaybackController>,
-    token: SessionToken,
-    api: Arc<dyn Api>,
-    revision: String,
-    resource: CommentResource,
+    pub(super) token: SessionToken,
+    pub(super) api: Arc<dyn Api>,
+    pub(super) revision: String,
+    pub(super) resource: CommentResource,
 }
 
 impl Target {
-    async fn check(&self, client: &MusicClient, play_id: &str) -> Result<()> {
+    pub(super) async fn check(&self, client: &MusicClient, play_id: &str) -> Result<()> {
         let current = self
             .controller
             .command(&self.token, PlaybackCommand::Snapshot)
@@ -51,7 +51,7 @@ impl Target {
             .with_verified_profile(&self.token, &self.api, |_, _| Ok(()))
     }
 
-    fn check_published_play(&self, play_id: &str) -> Result<()> {
+    pub(super) fn check_published_play(&self, play_id: &str) -> Result<()> {
         let current = self.controller.snapshot();
         if current.account != self.token || song(&current, play_id)? != self.resource {
             return Err(Error::StaleResponse);
@@ -65,6 +65,26 @@ impl Target {
         play_id: &str,
         draft: &VinylDraft,
     ) -> Result<()> {
+        self.permit_live(client, play_id, || {
+            let mut intent = client
+                .player
+                .vinyl_draft
+                .lock()
+                .map_err(|_| Error::LockPoisoned)?;
+            if intent.as_ref() != Some(draft) {
+                return Err(Error::StaleResponse);
+            }
+            *intent = None;
+            Ok(())
+        })
+    }
+
+    pub(super) fn permit_live(
+        &self,
+        client: &MusicClient,
+        play_id: &str,
+        permit: impl FnOnce() -> Result<()>,
+    ) -> Result<()> {
         if client.login_pending()? {
             return Err(Error::StaleResponse);
         }
@@ -74,16 +94,7 @@ impl Target {
                 // The HTTP gate must not await an actor command that could need
                 // this same transport. Inspect the already-published native state.
                 self.check_published_play(play_id)?;
-                let mut intent = client
-                    .player
-                    .vinyl_draft
-                    .lock()
-                    .map_err(|_| Error::LockPoisoned)?;
-                if intent.as_ref() != Some(draft) {
-                    return Err(Error::StaleResponse);
-                }
-                *intent = None;
-                Ok(())
+                permit()
             })
     }
 
@@ -98,7 +109,7 @@ impl Target {
 }
 
 impl MusicClient {
-    async fn vinyl_write_target(&self, epoch: &str, play_id: &str) -> Result<Target> {
+    pub(super) async fn vinyl_write_target(&self, epoch: &str, play_id: &str) -> Result<Target> {
         let token = self.player_token(epoch)?;
         let api = self.session.native_api(&token)?;
         let controller = self.player.controller().await?.clone();
