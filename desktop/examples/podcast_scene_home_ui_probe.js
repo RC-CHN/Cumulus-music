@@ -38,6 +38,17 @@
   const queue = () => invoke('player_queue', { epoch });
   const saved = async () => (await invoke('scene_fm_autoplay_preference', { epoch })).value;
   async function capture(name) {
+    if (window.__CUMULUS_PROOF_INVOKE__) {
+      // The X11 capture reads the compositor, not the freshly updated DOM.
+      const target = name === 'title_resumes_detail' ? '.lyrics-panel' : '.page-view';
+      await wait(() => {
+        const page = one(target);
+        return page?.isConnected && getComputedStyle(page).opacity === '1' &&
+          !page.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
+      }, 'route or detail transition has painted');
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      await sleep(120);
+    }
     const state = await player();
     const rows = await queue();
     const stage = `ux_${String(++stageCount).padStart(2, '0')}_${name}`;
