@@ -6,6 +6,14 @@ Cumulus SNS 登录恢复契约与后续实现边界
 本批没有修改业务代码、运行测试或构建，没有执行第三方登录、授权确认、绑定或注册。
 没有使用 YesPlayMusic。历史 recovered-client 的动作卡仅辅助定位，结论回到官方模块。
 
+当前范围：微信与 QQ 单独评估；下文的微博为历史取证。无需先做网易客服、通用 H5
+或小程序宿主。两条候选都已找到第三方入口、HTTPS 回调地址及后续登录请求；实际成功
+文档和窗口归属仍未验证，因此当前不显示登录按钮，也不接收复制来的 OAuth code。
+下一步取证只需成功回调的实际 HTTPS origin/path、文档层级、消息来源和字段类型；
+不要将原始 code、state、Cookie、刷新令牌或账号信息写入日志或公开夹具。没有这些证据
+时先继续可离线验证的其他业务。成功授权也只建立候选会话；切换、注册和绑定仍沿用
+已有确认和身份核对边界。
+
 1. 已恢复的端到端链路与尚未取得的部分
 
   已恢复：PC 登录入口 → JSK loginWithThirdParty → nm.sns.snsBindDetailInfo
@@ -219,7 +227,7 @@ Cumulus SNS 登录恢复契约与后续实现边界
 
   Apple /api/user/urs/sns/login 要 token+ursToken；legacy UI 调 App.loginFromApple。
   CITD /api/login/citd 要 certPwdData 或 idCardAuthData。只见接口/原生 schema 或
-  code200 占位不能声称 Linux/Windows 已有这些生产者。下一批先限微信/QQ/微博。
+  code200 占位不能声称 Linux/Windows 已有这些生产者。下一批候选只评估微信与 QQ。
 
 7. PC HTTP 桥选项的明确边界
 

@@ -12,6 +12,7 @@
 「已接入口」只表示该模型有实际产品路径和可定位证据，**不**表示模型全部
 动作完成；「部分」表示已有可用分支且仍缺独立分支；「仅原型」表示有隔离
 实现但未生产启用；「仅恢复」只有恢复证据（可能已有其他模型的可复用能力）；
+「范围外」保留官方行为索引，按当前约定不迁移该官方宿主；
 「宿主」和「待逐动作」表示应分别追踪平台适配和内部派发。每项的实服、
 合成、Linux/Windows 和权限边界，以该行专项报告为准。
 
@@ -27,7 +28,7 @@
 | `async:action` (20) | `models/async_action.txt` | [待逐动作](catalog-navigation-ui-contracts.txt) | 部分资源有各自类型化入口；未完成统一派发器逐动作映射。 |
 | `async:cloudList` (44) | `models/async_cloudList.txt` | [已接入口](desktop-cloud-contracts.txt) | 列表、上传、删除和播放；附件与 OSS 的线上边界独立。 |
 | `async:decorationDesktop` (42) | `models/async_decorationDesktop.txt` | [仅恢复](desktop-decoration-contracts.txt) | 无正式动态桌面宿主、使用/停用和恢复。 |
-| `async:h5Page` (2) | `models/async_h5Page.txt` | [仅恢复](settings-support-contracts.txt) | 有个别固定浏览器交接；无通用内嵌远程 H5。 |
+| `async:h5Page` (2) | `models/async_h5Page.txt` | [范围外](settings-support-contracts.txt) | 不做通用官方内嵌远程 H5；已有固定业务链接交接保留。 |
 | `async:hostResource` (55) | `models/async_hostResource.txt` | [已接入口](collection-library-contracts.txt) | 歌单、喜欢和收藏等有独立入口；未覆盖所有资源写回和购买。 |
 | `async:listenTogether` (12) | `models/async_listenTogether.txt` | [已接入口](desktop-listen-together-contracts.txt) | 单账号建房/退出；双账号实测暂排除。 |
 | `async:listenTogetherPlayList` (24) | `models/async_listenTogetherPlayList.txt` | [已接入口](core-listen-together-shared-queue.txt) | 共享队列及权威回读已恢复；不等于多端实际同步。 |
@@ -35,7 +36,7 @@
 | `async:listenTogetherPlayer` (11) | `models/async_listenTogetherPlayer.txt` | [已接入口](core-listen-together-progress-request.txt) | 原生时钟与房间本机控制；双端语音和播放未验。 |
 | `async:localList` (38) | `models/async_localList.txt` | [已接入口](desktop-local-library-contracts.txt) | 扫描、本地队列、匹配；标签编辑和细分事件待核。 |
 | `async:lyric` (11) | `models/async_lyric.txt` | [已接入口](core-lyrics-contracts.txt) | 多源、解析、同步；具体格式、版权与上报另列。 |
-| `async:miniProgram` (8) | `models/async_miniProgram.txt` | [仅恢复](settings-support-contracts.txt) | 通用远程小程序宿主/桥未做；独立迷你播放器不算。 |
+| `async:miniProgram` (8) | `models/async_miniProgram.txt` | [范围外](settings-support-contracts.txt) | 不做官方远程小程序宿主、桥或客服小程序；独立迷你播放器保留。 |
 | `async:petDesktop` (18) | `models/async_petDesktop.txt` | [仅恢复](desktop-pet-contracts.txt) | 窗口/素材和透明探针；无正式桌宠。 |
 | `async:petGenerate` (48) | `models/async_petGenerate.txt` | [仅恢复](desktop-pet-contracts.txt) | 预设、照片生成、抽奖等无生产流程。 |
 | `async:playingListHandoff` (53) | `models/async_playingListHandoff.txt` | [已接入口](relay-contracts.txt) | 接续、回执和恢复；缺真实另一端记录。 |
@@ -96,16 +97,16 @@
 | `page:ranklist` (4) | `models/page_ranklist.txt` | [已接入口](rankings-ui-contracts.txt) | 榜单首页和各已核对入口。 |
 | `page:searchResults` (20) | `models/page_searchResults.txt` | [已接入口](search-results-ui-contracts.txt) | 分类、综合、分页、热点播放及受版权约束的替代 MV；其他特殊资源和实验另列。 |
 | `page:setting` (0) | `models/page_setting.txt` | [已接入口](settings-mapping.json) | 独立子项证据；页面存在不等于所有设置已实现。 |
-| `page:settingAbout` (1) | `models/page_settingAbout.txt` | [部分](settings-support-contracts.txt) | 本机诊断与版本；无官方客服和自动日志上传。 |
+| `page:settingAbout` (1) | `models/page_settingAbout.txt` | [已接入口](settings-support-contracts.txt) | 本机诊断与 Cumulus 版本；官方客服、反馈及日志上传范围外。 |
 | `page:settingAccount` (1) | `models/page_settingAccount.txt` | [已接入口](account-feature-audit.txt) | 账号资料、登录设备、绑定入口和海外注册手机号的扫码改密交接；各真实写操作分开。 |
 | `page:settingNormal` (5) | `models/page_settingNormal.txt` | [部分](desktop-autostart-contracts.txt) | 启动窗口、本机自启动及 Debian 候选已接；未修改系统默认。 |
 | `page:settingPrivacy` (3) | `models/page_settingPrivacy.txt` | [已接入口](account-settings-contracts.txt) | 六项远端设置、联动与回读；系统唤起交接另验。 |
 | `page:singleIndexList` (2) | `models/page_singleIndexList.txt` | [已接入口](rankings-ui-contracts.txt) | 歌曲指数榜独立于普通歌单。 |
-| `page:sns` (2) | `models/page_sns.txt` | [仅恢复](sns-login-recovery.txt) | 微信、QQ、微博授权宿主没有正式实现。 |
+| `page:sns` (2) | `models/page_sns.txt` | [仅恢复](sns-login-recovery.txt) | 微信、QQ 单独评估，待成功回调和来源绑定证据；微博保留历史恢复记录。 |
 | `page:styleRecommend` (5) | `models/page_styleRecommend.txt` | [部分](style-recommendations.txt) | 风格页、种子、分类、明确保存/未决核对及 Back 恢复已接；快照失效按原路线读取。 |
 | `page:switchAccount` (5) | `models/page_switchAccount.txt` | [已接入口](server-account-switch.txt) | 本机多账号与部分服务切换；真实双账号及 SDK 仍有限制。 |
 | `page:trashCan` (3) | `models/page_trashCan.txt` | [已接入口](fm-feedback-ui-contracts.txt) | 音乐黑名单分页、选择、恢复及未知结果核对。 |
-| `page:updateDownload` (1) | `models/page_updateDownload.txt` | [仅恢复](manual-update-contracts.txt) | Cumulus 显式读版本和校验；无官方更新下载页。 |
+| `page:updateDownload` (1) | `models/page_updateDownload.txt` | [范围外](manual-update-contracts.txt) | 不迁移官方更新下载页；Cumulus 自己的显式版本查询与校验保留。 |
 | `page:userDetail` (73) | `models/page_userDetail.txt` | [已接入口](account-profile-navigation-contracts.txt) | 本人/访客的资料和分区；未覆盖全部 73 个变体。 |
 | `page:verticalZone` (3) | `models/page_verticalZone.txt` | [已接入口](vertical-zone-catalogue.txt) | 精选、已注册搜索热点、普通/标签回退、MGC 详情/V6/批量播放和 FM 预取、封面与播放按钮；其他菜单动作、外链和实服另验。 |
 | `page:videoDetail` (16) | `models/page_videoDetail.txt` | [部分](desktop-mv-contracts.txt) | MV 实际播放；普通视频未找到独立授权链。 |
@@ -127,5 +128,6 @@
 - 系统开机启动由系统注册状态决定，和窗口显示方式、关闭时隐藏、程序
   启动时播放歌曲、默认播放器四条链区分。CI 也区分普通可执行文件、便携
   包与已安装包；原生启动成功不等于已经输出音频。
-- 动态壁纸、头像挂件、桌宠、远程小程序、第三方登录和识曲各自有独立宿主
-  或授权条件；不以已实现的主题、桌面歌词、网易云扫码或设备选择冒充。
+- 动态壁纸、头像挂件、桌宠、微信／QQ 登录和识曲各自有独立宿主或授权条件；
+  不以已实现的主题、桌面歌词、网易云扫码或设备选择冒充。通用官方远程 H5、
+  客服小程序和官方升级器按当前约定不迁移。
