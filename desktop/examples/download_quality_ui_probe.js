@@ -37,25 +37,26 @@
         caption: one('small', label)?.textContent.trim() ?? '' };
     });
   }
+  let lastChoiceLayout = [];
   function assertChoices(verified) {
     const rows = choices();
     assert(JSON.stringify(rows.map((row) => row.name)) === JSON.stringify(choiceOrder), 'official settings rows');
     assert(rows.slice(0, 2).every((row) => row.disabled && row.caption === (verified ? '需黑胶 SVIP' : '权益待核对')), 'SVIP rows');
     assert(rows.slice(2, 5).every((row) => row.disabled === !verified && row.caption === (verified ? '' : '权益待核对')), 'verified VIP rows');
     assert(rows.slice(5).every((row) => !row.disabled && !row.caption), 'free rows');
-    const firstRow = new Map();
-    const textBox = (node) => {
-      const range = document.createRange();
-      range.selectNodeContents(node);
-      return range.getBoundingClientRect();
-    };
-    for (const row of rows) {
+    // Glyph ranges have different ascents for Latin and CJK fallback fonts.
+    // Measure the laid-out name and caption boxes, not the individual glyphs.
+    lastChoiceLayout = rows.map((row) => {
       const label = row.radio.closest('label');
-      const name = textBox(one('.download-quality-name', label));
-      const captionNode = one('small', label);
-      const caption = captionNode && textBox(captionNode);
-      const top = Math.round(label.getBoundingClientRect().top);
-      assert(!caption || (caption.top >= name.bottom && Math.abs(caption.left - name.left) < 1),
+      return { quality: row.name, top: Math.round(label.getBoundingClientRect().top),
+        name: one('.download-quality-name', label).getBoundingClientRect().toJSON(),
+        caption: one('small', label)?.getBoundingClientRect().toJSON() ?? null };
+    });
+    const firstRow = new Map();
+    for (const { top, name, caption } of lastChoiceLayout) {
+      assert(name.width > 0 && name.height > 0, 'quality name has a visible layout box');
+      assert(!caption || (caption.width > 0 && caption.height > 0 &&
+        caption.top >= name.bottom && Math.abs(caption.left - name.left) < 1),
         'rights caption stays under the name');
       assert(!firstRow.has(top) || Math.abs(firstRow.get(top) - name.top) < 1,
         'quality names align even when a neighbour has an access caption');
@@ -152,6 +153,7 @@
     await emit('complete', { ok: true, downloadQualityUi: true, stageCount: count,
       realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
-    await emit('failed', { step: stage, stageCount: count, message: String(error), stack: error.stack });
+    await emit('failed', { step: stage, stageCount: count, message: String(error), stack: error.stack,
+      viewport: [innerWidth, innerHeight], lastChoiceLayout });
   }
 })();
