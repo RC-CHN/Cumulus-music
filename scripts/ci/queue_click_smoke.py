@@ -59,6 +59,8 @@ def main():
             path = output / f'ux_{index:02}_{label}.json'
             stage = json.loads(path.read_text(encoding='utf-8'))
             assert stage['preference'] == label.startswith('default_')
+            assert len(stage['paintSamples']) == 2
+            assert [sample['source'] for sample in stage['paintSamples']] == ['.sidebar-caption', '.playerbar']
             if label in EXPECTED:
                 target, count = EXPECTED[label]
                 queue, player = stage['nativeQueue'], stage['nativePlayer']
@@ -78,6 +80,8 @@ def main():
                 assert observed['position'] > .2 and actual['position'] >= observed['position'] - .05, detail
             if args.screenshots:
                 assert path.with_suffix('.png').is_file()
+                paint = json.loads(path.with_name('paint-' + path.name).read_text(encoding='utf-8'))
+                assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples']), paint
     with sqlite3.connect((root / 'state/core.sqlite3').as_uri() + '?mode=ro', uri=True) as db:
         rows = dict(db.execute(
             'SELECT key,value FROM state WHERE owner=? AND kind=?',

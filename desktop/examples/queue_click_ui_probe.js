@@ -43,6 +43,37 @@
     page.getClientRects().length > 0 && getComputedStyle(page).opacity === '1' &&
     getComputedStyle(page).visibility === 'visible' && settled() &&
     !page.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
+  function paddingPaintSample(selector) {
+    const node = one(selector);
+    assert(node?.isConnected && !node.closest('[inert]'), 'connected paint sample ' + selector);
+    const bounds = node.getBoundingClientRect();
+    const padding = Number.parseFloat(getComputedStyle(node).paddingLeft);
+    assert(padding >= 4 && bounds.width > padding && bounds.height > 8,
+      'paint point has real CSS padding ' + selector);
+    const x = bounds.left + Math.min(4, padding / 2), y = bounds.top + bounds.height / 2;
+    assert(x >= 0 && x < innerWidth && y >= 0 && y < innerHeight &&
+      document.elementFromPoint(x, y) === node, 'uncovered padding paint point ' + selector);
+    let color;
+    for (let current = node; current; current = current.parentElement) {
+      const style = getComputedStyle(current);
+      assert(style.opacity === '1' && style.visibility === 'visible' && style.display !== 'none',
+        'paint ancestors are fully visible ' + selector);
+      if (color) continue;
+      assert(style.backgroundImage === 'none', 'paint point has no gradient/image ' + selector);
+      const rgb = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(style.backgroundColor);
+      if (rgb) {
+        const channels = rgb.slice(1).map(Number);
+        assert(channels.every((value) => value >= 0 && value <= 255), 'opaque RGB paint color');
+        color = 'rgb(' + channels.join(', ') + ')';
+      } else {
+        assert(style.backgroundColor === 'transparent' ||
+          /^rgba\(\d+,\s*\d+,\s*\d+,\s*0\)$/.test(style.backgroundColor),
+          'paint padding must resolve to opaque RGB ' + selector);
+      }
+    }
+    assert(color, 'opaque background exists for paint point ' + selector);
+    return { x, y, color, source: selector };
+  }
   async function settingsCapture(expected) {
     const panel = one('.queue-click-preferences');
     const source = panel?.closest('.settings-page');
@@ -97,10 +128,18 @@
     const settingsChoice = label === 'default_setting' ? 'replace' :
       ['add_setting', 'reopened_add'].includes(label) ? 'add' : null;
     const captureReadiness = settingsChoice ? await settingsCapture(settingsChoice) : undefined;
+    await twoFrames();
+    assert(document.visibilityState === 'visible' && Number.isFinite(devicePixelRatio) &&
+      devicePixelRatio > 0 && Number.isFinite(screenX) && Number.isFinite(screenY),
+      'visible window has finite capture coordinates');
+    const paintSamples = ['.sidebar-caption', '.playerbar'].map(paddingPaintSample);
+    assert(paintSamples.some((sample) => sample.color !== 'rgb(0, 0, 0)'),
+      'actual opaque padding distinguishes this window from an all-black frame');
     const name = 'ux_' + String(++count).padStart(2, '0') + '_' + label;
     window.__queueClickRecorded = null;
     await emit(name, {
       preference: (await settings()).value.replaceQueue,
+      screenX, screenY, ratio: devicePixelRatio, paintSamples,
       ...(captureReadiness && { captureReadiness }),
       ...(settled && { observedPlayback: {
         playId: settled.playId, queueRevision: settled.queue.revision,
