@@ -93,6 +93,98 @@ test('pause-only view revisions retain the current source palette without anothe
   model.dispose();
 });
 
+test('settled same-account same-cover colors and fallback survive a voice change without another read', async () => {
+  for (const kind of ['header', 'sample', 'fallback'] as const) {
+    const f = fixture();
+    const expected: SceneFmBackground =
+      kind === 'fallback' ? { kind: 'theme_fallback' } : kind === 'sample' ? other : gradient;
+    f.core.sceneFmPaletteRead = async (...args) => {
+      f.reads.push(args);
+      return {
+        epoch: args[0],
+        value: kind === 'sample' ? sample() : { kind: 'ready', background: expected },
+      };
+    };
+    const model = useSceneFmPalette(f.core, async () => ({
+      width: 1,
+      height: 1,
+      rgba: [11, 13, 17, 255],
+    }));
+    const first = scope();
+    await model.show(first, 1);
+    await model.show({ ...scope('602'), coverKey: first.coverKey, revision: '3' }, 1);
+    assert.deepEqual(model.background.value, expected, kind);
+    assert.equal(model.pending.value, false);
+    assert.equal(f.reads.length, 1, kind);
+    assert.equal(f.samples.length, kind === 'sample' ? 1 : 0, kind);
+    await model.show({ ...scope('602', '2'), coverKey: first.coverKey }, 1);
+    assert.equal(f.reads.length, 2, 'another account never inherits the settled image');
+    model.dispose();
+  }
+});
+
+test('ordinary native/image failures settle the official default for later voices with the same cover', async () => {
+  for (const kind of ['network', 'bounded_media', 'local_decode'] as const) {
+    const f = fixture();
+    f.core.sceneFmPaletteRead = async (...args) => {
+      f.reads.push(args);
+      if (kind === 'local_decode') return { epoch: args[0], value: sample() };
+      throw {
+        code: kind === 'network' ? 'network' : 'operation',
+        message: 'Synthetic image acquisition failure',
+        retryable: kind === 'network',
+      };
+    };
+    const model = useSceneFmPalette(f.core, async () => {
+      throw Error('Synthetic local decode failure');
+    });
+    const first = scope();
+    await model.show(first, 1);
+    await model.show({ ...scope('602'), coverKey: first.coverKey }, 1);
+    assert.equal(model.css.value, SCENE_FM_THEME_FALLBACK, kind);
+    assert.equal(f.reads.length, 1, kind);
+    assert.deepEqual(f.samples, []);
+    assert.deepEqual(f.cancelled, kind === 'local_decode' ? ['1:opaque'] : []);
+    model.dispose();
+  }
+});
+
+test('pending or stale old-voice work cannot count as a settled same-cover palette', async () => {
+  for (const code of ['stale', 'profile_changed', 'session_expired']) {
+    for (const staleBeforeSwitch of [false, true]) {
+      const f = fixture(),
+        late = deferred<AccountData<SceneFmPaletteRead>>();
+      f.core.sceneFmPaletteRead = (...args) => {
+        f.reads.push(args);
+        return args[2] === '601'
+          ? late.promise
+          : Promise.resolve({ epoch: args[0], value: { kind: 'ready', background: other } });
+      };
+      const model = useSceneFmPalette(f.core);
+      const first = scope();
+      const old = model.show(first, 1);
+      const reject = () =>
+        late.reject({ code, message: 'Synthetic native voice changed', retryable: false });
+      if (staleBeforeSwitch) {
+        reject();
+        await old;
+      }
+      await model.show({ ...scope('602'), coverKey: first.coverKey }, 1);
+      if (!staleBeforeSwitch) {
+        reject();
+        await old;
+      }
+      assert.deepEqual(
+        f.reads.map((args) => args[2]),
+        ['601', '602'],
+      );
+      assert.deepEqual(model.background.value, other);
+      assert.equal(model.pending.value, false);
+      model.dispose();
+    }
+  }
+});
+
 test('same-account cover changes keep old color until the replacement finishes, then use native fallback on failure', async () => {
   const f = fixture(),
     model = useSceneFmPalette(f.core);

@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue';
+import { failure } from '../services/contracts.ts';
 import { sampleSceneCover, type SceneCoverPixels } from '../services/sceneFmCanvas.ts';
 import {
   sceneFmBackgroundCss,
@@ -24,6 +25,7 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
   let current: SceneFmPaletteScope | undefined;
   let generation = 0;
   let requested = false;
+  let settled = false;
   let disposed = false;
   let abort: AbortController | undefined;
   let receipt: { epoch: string; id: string } | undefined;
@@ -41,16 +43,18 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
     const previous = current;
     current = { ...next };
     // The official hook depends on image URL, not playback pause or view
-    // revision. Native receipts independently fence the actual source.
+    // revision. Completed colors can survive a voice change; pending work must
+    // still be superseded because native receipts bind its original voice.
     if (
       previous?.epoch === next.epoch &&
-      previous.voiceId === next.voiceId &&
       previous.coverKey === next.coverKey &&
-      requested
+      requested &&
+      (previous.voiceId === next.voiceId || settled)
     )
       return;
     const serial = ++generation;
     requested = false;
+    settled = false;
     abort?.abort();
     cancelReceipt();
     if (previous?.epoch !== next.epoch) background.value = { kind: 'theme_fallback' };
@@ -74,6 +78,7 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
         return;
       }
       if (read.value.kind === 'ready') {
+        settled = true;
         background.value = read.value.background;
         return;
       }
@@ -90,9 +95,17 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
       );
       if (!live() || sampled.epoch !== next.epoch) return;
       receipt = undefined; // A successful native completion consumes the receipt.
+      settled = true;
       background.value = sampled.value.background;
-    } catch {
-      if (live()) background.value = { kind: 'theme_fallback' };
+    } catch (cause) {
+      if (live()) {
+        // M54 catches ordinary metadata/image failures and resolves its default
+        // color. Native account/source cancellation is not a completed color:
+        // a fresh authoritative scope must still be able to request it.
+        settled = !['stale', 'profile_changed', 'session_expired'].includes(failure(cause).code);
+        if (!settled) requested = false;
+        background.value = { kind: 'theme_fallback' };
+      }
     } finally {
       if (live()) {
         cancelReceipt();
@@ -103,6 +116,7 @@ export function useSceneFmPalette(core: SceneFmPaletteClient, decode: Decoder = 
   }
   function dispose() {
     disposed = true;
+    settled = false;
     generation++;
     abort?.abort();
     abort = undefined;
