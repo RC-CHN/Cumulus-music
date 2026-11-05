@@ -64,7 +64,7 @@ def read_report(root, *, graph, peq):
     return report
 
 
-def read_spatial_report(root, capture=False):
+def read_spatial_report(root, capture=False, source_kind='flac'):
     directory = root / 'spatial'
     names = [
         'ux_01_stock_saved', 'ux_02_hot_paused', 'ux_03_master_off',
@@ -75,9 +75,13 @@ def read_spatial_report(root, capture=False):
     complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
     assert complete['ok'] and complete['startedSpatial'] and complete['stageCount'] == len(stages)
     stock, hot, off, on, sought, ended, reset = stages
+    fixture = complete['fixtureSource']
+    assert fixture['kind'] == source_kind and fixture['frames'] == 88_207
+    assert fixture['flacDecoderConfigured'] == (source_kind == 'flac')
     for row in (*stages, complete):
         assert row['webviewFinished'] and row['realMusicRequests'] == row['realAccountWrites'] == 0
         assert row['epoch'] == complete['epoch']
+        assert row['fixtureSource'] == fixture
         if sys.platform.startswith('linux'):
             assert row['numericLocaleIsC'] and row['messagesLocalePreserved']
     for row, expected in zip(stages, [
@@ -93,6 +97,19 @@ def read_spatial_report(root, capture=False):
     assert stock['fixtureOpens'] == 1 and stock['native']['ordinary_loads'] == 1
     assert not stock['native']['loads'] and not stock['native']['local_updates']
     assert stock['dom']['sliders'] == [3, 5] and stock['dom']['status'] == 'unavailable'
+    if source_kind == 'wav':
+        import wave
+        path, = root.glob('*.wav')
+        with path.open('rb') as source:
+            assert hashlib.file_digest(source, 'sha256').hexdigest() == fixture['sha256']
+        with wave.open(str(path), 'rb') as source:
+            assert (source.getnchannels(), source.getsampwidth(), source.getframerate(), source.getnframes()) == (2, 2, 44_100, 88_207)
+            assert hashlib.sha256(source.readframes(88_207)).hexdigest() == (
+                'fd4410b1284111d2f4a39fdbd252230e1f2d25b85f5aae146a980f7417b23f63'
+            )
+        assert stock['native']['stock_codecs'] == ['pcm_s16le']
+        for row in (stock, hot, sought, ended):
+            assert abs(row['player']['timeline']['total'] - 88_207 / 44_100) <= 1 / 44_100
     assert hot['player']['playId'] != stock['player']['playId']
     assert hot['player']['entryId'] != stock['player']['entryId']
     for row in (hot, off, on):
@@ -151,25 +168,36 @@ def read_spatial_report(root, capture=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
-    parser.add_argument('--flac-library', required=True, type=Path)
-    parser.add_argument('--flac-sha256', required=True, help='expected digest from the trusted stage')
+    parser.add_argument('--flac-library', type=Path)
+    parser.add_argument('--flac-sha256', help='expected digest from the trusted stage')
     parser.add_argument('--root', required=True, type=Path)
     parser.add_argument('--mpv-library', type=Path)
     parser.add_argument('--filter-library', type=Path, help='also run the independent paused PEQ handoff')
     parser.add_argument('--frontend-dist', type=Path)
-    parser.add_argument('--spatial-controls-only', action='store_true',
-                        help='run the actual EQ UI with the ordinary held FLAC source')
+    spatial = parser.add_mutually_exclusive_group()
+    spatial.add_argument('--spatial-controls-only', action='store_true',
+                         help='run the actual EQ UI with the ordinary held FLAC source')
+    spatial.add_argument('--spatial-wav-only', action='store_true',
+                         help='run the same actual EQ UI with held signed-16 PCM WAV and no FLAC configuration')
     parser.add_argument('--screenshots', action='store_true',
                         help='capture settled spatial stages on isolated Linux GTK')
     args = parser.parse_args()
-    if args.screenshots and (not sys.platform.startswith('linux') or not args.spatial_controls_only):
-        parser.error('--screenshots requires Linux and --spatial-controls-only')
+    is_spatial = args.spatial_controls_only or args.spatial_wav_only
+    if args.screenshots and (not sys.platform.startswith('linux') or not is_spatial):
+        parser.error('--screenshots requires Linux and a spatial case')
+    if args.spatial_wav_only and (args.flac_library or args.flac_sha256 or args.filter_library):
+        parser.error('the WAV-only proof does not configure a FLAC or independent filter library')
+    if not args.spatial_wav_only and not (args.flac_library and args.flac_sha256):
+        parser.error('FLAC proofs require --flac-library and --flac-sha256')
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     binary = args.binary.resolve(strict=True)
-    library = args.flac_library.resolve(strict=True)
-    with library.open('rb') as source:
-        assert hashlib.file_digest(source, 'sha256').hexdigest() == args.flac_sha256
+    flac = []
+    if args.flac_library:
+        library = args.flac_library.resolve(strict=True)
+        with library.open('rb') as source:
+            assert hashlib.file_digest(source, 'sha256').hexdigest() == args.flac_sha256
+        flac = [library, args.flac_sha256]
     mpv = [args.mpv_library.resolve(strict=True)] if args.mpv_library else []
     env = {key: value for key, value in os.environ.items() if not key.upper().startswith('CUMULUS_')}
     if args.frontend_dist:
@@ -182,6 +210,8 @@ def main():
         cases.append(('paused_peq', True, [args.filter_library.resolve(strict=True)]))
     if args.spatial_controls_only:
         cases = [('spatial_controls', True, [])]
+    elif args.spatial_wav_only:
+        cases = [('spatial_wav', True, [])]
     reports = {}
     for case, graph, filter_args in cases:
         work = root / case
@@ -191,7 +221,7 @@ def main():
             directory.mkdir(parents=True, mode=0o700)
             case_env[key] = str(directory)
         with (root / f'{case}.log').open('xb') as log:
-            arguments = [case, library, args.flac_sha256, work, *filter_args, *mpv]
+            arguments = [case, *flac, work, *filter_args, *mpv]
             if args.screenshots:
                 from window_manager import launch
                 status = launch(binary, case_env, log, work / 'spatial', True, argv=arguments)
@@ -199,12 +229,13 @@ def main():
                 status = subprocess.run([binary, *arguments], env=case_env, stdout=log,
                                         stderr=log, timeout=60).returncode
         failed = work / 'failed.json'
-        if case == 'spatial_controls':
+        if is_spatial:
             failed = work / 'spatial' / 'failed.json'
         assert status == 0 and not failed.exists(), (
             case, status, failed.read_text(encoding='utf-8') if failed.exists() else None,
         )
-        reports[case] = (read_spatial_report(work, capture=args.screenshots) if case == 'spatial_controls'
+        reports[case] = (read_spatial_report(work, capture=args.screenshots,
+                                             source_kind='wav' if args.spatial_wav_only else 'flac') if is_spatial
                          else read_report(work, graph=graph, peq=bool(filter_args)))
     output = {'ok': True, 'actualWebViewAndActor': True, 'flacSha256': args.flac_sha256,
               'realMusicRequests': 0, 'physicalOutputVerified': False, 'cases': reports}

@@ -70,7 +70,36 @@ struct Proof {
     expect_graph: bool,
     exercise_peq: bool,
     exercise_spatial: bool,
+    fixture_source: Value,
     started: AtomicBool,
+}
+
+/// Independent reconstruction of the frozen FLAC fixture's signed PCM.
+/// The original published manifest pins the payload, without a WAV asset.
+fn frozen_wave(manifest: &Value) -> Vec<u8> {
+    const FRAMES: u32 = 88_207;
+    const PAYLOAD: u32 = FRAMES * 4;
+    let mut bytes = Vec::with_capacity(44 + PAYLOAD as usize);
+    bytes.extend_from_slice(b"RIFF");
+    bytes.extend_from_slice(&(36 + PAYLOAD).to_le_bytes());
+    bytes.extend_from_slice(b"WAVEfmt ");
+    bytes.extend_from_slice(&16u32.to_le_bytes());
+    bytes.extend_from_slice(&[1, 0, 2, 0]);
+    bytes.extend_from_slice(&44_100u32.to_le_bytes());
+    bytes.extend_from_slice(&176_400u32.to_le_bytes());
+    bytes.extend_from_slice(&[4, 0, 16, 0]);
+    bytes.extend_from_slice(b"data");
+    bytes.extend_from_slice(&PAYLOAD.to_le_bytes());
+    for i in 0..FRAMES {
+        let left = ((i * 97 + (i / 128) * 23) % 8192) as i16 - 4096;
+        bytes.extend_from_slice(&left.to_le_bytes());
+        bytes.extend_from_slice(&(-(left / 8)).to_le_bytes());
+    }
+    assert_eq!(
+        manifest["pcmSha256"],
+        format!("{:x}", Sha256::digest(&bytes[44..]))
+    );
+    bytes
 }
 
 #[cfg(target_os = "linux")]
@@ -87,45 +116,61 @@ fn locale(category: libc::c_int) -> String {
 
 fn main() {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    let wave = args.first().and_then(|value| value.to_str()) == Some("spatial_wav");
     let (expect_graph, exercise_peq, exercise_spatial) =
         match args.first().and_then(|value| value.to_str()) {
             Some("trusted") => (true, false, false),
             Some("wrong_digest") => (false, false, false),
             Some("paused_peq") => (true, true, false),
-            Some("spatial_controls") => (true, false, true),
+            Some("spatial_controls" | "spatial_wav") => (true, false, true),
             _ => panic!("invalid proof case"),
         };
-    let required = 4 + usize::from(exercise_peq);
+    let required = if wave {
+        2
+    } else {
+        4 + usize::from(exercise_peq)
+    };
     assert!(
         (required..=required + 1).contains(&args.len()),
-        "usage: native_local_equalizer_probe trusted|wrong_digest|spatial_controls ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; or paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]"
+        "usage: native_local_equalizer_probe trusted|wrong_digest|spatial_controls ABS_FLAC SHA256 NEW_ROOT [ABS_MPV]; paused_peq ABS_FLAC SHA256 NEW_ROOT ABS_FILTER [ABS_MPV]; or spatial_wav NEW_ROOT [ABS_MPV]"
     );
-    let sdk = PathBuf::from(&args[1]);
-    assert!(sdk.is_absolute() && sdk.is_file());
-    let digest = args[2].to_str().expect("package decoder SHA256");
-    let actual = format!(
-        "{:x}",
-        Sha256::digest(fs::read(&sdk).expect("staged FLAC library"))
-    );
-    assert_eq!(digest, actual, "wrong requested package library");
-    let digest = if expect_graph {
-        actual
-    } else {
-        // Keep the exact same on-disk ELF; only the expected digest differs.
-        let first = if actual.starts_with('0') { '1' } else { '0' };
-        format!("{first}{}", &actual[1..])
-    };
-    let root = PathBuf::from(&args[3]);
+    let decoder = (!wave).then(|| {
+        let sdk = PathBuf::from(&args[1]);
+        assert!(sdk.is_absolute() && sdk.is_file());
+        let digest = args[2].to_str().expect("package decoder SHA256");
+        let actual = format!(
+            "{:x}",
+            Sha256::digest(fs::read(&sdk).expect("staged FLAC library"))
+        );
+        assert_eq!(digest, actual, "wrong requested package library");
+        let digest = if expect_graph {
+            actual
+        } else {
+            // Keep the exact same on-disk library; only its expected digest differs.
+            let first = if actual.starts_with('0') { '1' } else { '0' };
+            format!("{first}{}", &actual[1..])
+        };
+        (sdk, digest)
+    });
+    let root = PathBuf::from(&args[if wave { 1 } else { 3 }]);
     fs::create_dir(&root).expect("new proof root");
     let root = root.canonicalize().expect("proof root");
-    let file = root.join("合成 原生均衡器.flac");
     let manifest: Value = serde_json::from_str(FLAC_MANIFEST).expect("frozen synthetic manifest");
     assert_eq!(
         manifest["flacSha256"],
         format!("{:x}", Sha256::digest(FLAC))
     );
     assert_eq!(manifest["sourceFrames"], 88_207);
-    fs::write(&file, FLAC).expect("synthetic native file");
+    let (kind, bytes) = if wave {
+        ("wav", frozen_wave(&manifest))
+    } else {
+        ("flac", FLAC.to_vec())
+    };
+    let file = root.join(format!("合成 原生均衡器.{kind}"));
+    let fixture_source = json!({"kind":kind,"frames":manifest["sourceFrames"],
+        "sha256":format!("{:x}", Sha256::digest(&bytes)),
+        "flacDecoderConfigured":decoder.is_some()});
+    fs::write(&file, bytes).expect("synthetic native file");
     let filter = exercise_peq.then(|| {
         let path = PathBuf::from(&args[4]);
         assert!(path.is_absolute() && path.is_file());
@@ -160,12 +205,16 @@ fn main() {
             let native_evidence = evidence.clone();
             let client =
                 MusicClient::with_session(session, registry).with_audio_factory(move || {
-                    let runtime = TrustedFlacRuntime::new(sdk.clone(), &digest)?;
                     let engine = MpvEngine::open(MpvConfig {
                         library: mpv.clone(),
                         null_output: true,
-                    })?
-                    .with_local_equalizer_decoder(runtime);
+                    })?;
+                    let engine = match &decoder {
+                        Some((sdk, digest)) => engine.with_local_equalizer_decoder(
+                            TrustedFlacRuntime::new(sdk.clone(), digest)?,
+                        ),
+                        None => engine.with_local_equalizer_pcm_wave(),
+                    };
                     let engine = match &filter {
                         Some(path) => engine.with_effects_library(path.clone()),
                         None => engine,
@@ -186,6 +235,7 @@ fn main() {
                 expect_graph,
                 exercise_peq,
                 exercise_spatial,
+                fixture_source,
                 started: AtomicBool::new(false),
             });
             if exercise_spatial {

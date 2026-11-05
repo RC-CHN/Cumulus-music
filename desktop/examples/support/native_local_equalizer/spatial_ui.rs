@@ -100,6 +100,7 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
         let actual = EqualizerPreferences::read(&proof.store, "local-guest").unwrap();
         value["durable"] = json!({"revision":actual.revision,"settings":actual.settings});
         value["native"] = json!(*proof.evidence.lock().unwrap());
+        value["fixtureSource"] = proof.fixture_source.clone();
         value["fixtureOpens"] = json!(next_open.load(Ordering::Acquire) - 1);
         value["webviewFinished"] = json!(true);
         value["realMusicRequests"] = json!(0);

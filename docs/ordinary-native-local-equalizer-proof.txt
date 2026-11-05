@@ -191,3 +191,28 @@ used exactly that accepted value, switched the decoder entry 2→3, preserved
 the logical play, paused correctly and ended on entry 3 at the source's
 2.00015873 s. The same test proved hot changes and the main switch preserve the
 paused play; reset clears all four enhancement controls without modifying GEQ.
+
+PCM WAV continuation
+--------------------
+
+The separate --spatial-wav-only option runs the same seven stages, seek
+checks and optional Linux screenshots with a held signed-16 PCM WAV and
+no configured FLAC decoder. It reconstructs the frozen synthetic PCM
+from the FLAC fixture generator and checks the existing manifest's PCM
+hash before writing a minimal RIFF header. The verifier independently
+reads the file and its PCM, checks the native stock pcm_s16le codec and
+active graph pcm_f32le codec, source duration, exact browser-rounded seek,
+processed entry IDs, master transitions, real EOF and SQLite readback.
+The regular FLAC and paused PEQ cases are still separate and unchanged.
+
+Run it in the same isolated desktop harness, using the matching example
+and frontend. Do not pass a FLAC library or SHA for this case:
+
+  python3 scripts/ci/native_local_equalizer_smoke.py --binary ABS_PROBE \
+    --spatial-wav-only --screenshots --root NEW_REPORT_ROOT
+
+The Linux production warm-open probe separately opens a verified WAV into
+the actual running window and checks private PipeWire PCM; a 48 kHz WAV
+must leave the previous queue intact. Neither test installs a file
+association or measures a physical device. These are proof expectations
+until executed against the candidate product tree.

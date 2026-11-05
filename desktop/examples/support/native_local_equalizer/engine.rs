@@ -50,6 +50,7 @@ pub struct Poll {
 #[derive(Default, Serialize)]
 pub struct Observations {
     pub ordinary_loads: usize,
+    pub stock_codecs: Vec<Option<String>>,
     pub loads: Vec<Load>,
     pub seeks: Vec<Seek>,
     pub processed_entries: BTreeSet<i64>,
@@ -85,7 +86,13 @@ impl AudioEngine for Recorded {
     }
     fn load(&mut self, request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
         self.evidence.lock().unwrap().ordinary_loads += 1;
-        self.engine.load(request, cancel)
+        let loaded = self.engine.load(request, cancel)?;
+        self.evidence
+            .lock()
+            .unwrap()
+            .stock_codecs
+            .push(loaded.codec.clone());
+        Ok(loaded)
     }
     fn supports_local_equalizer(&self) -> bool {
         self.engine.supports_local_equalizer()
