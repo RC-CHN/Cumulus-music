@@ -54,7 +54,28 @@
       return state.state === 'playing' && state.position > 0.1 && state;
     }, 'native fixture WAV did not advance');
     click(await wait(() => enabled(one('.equalizer-toggle')), 'EQ launcher'));
-    click(button(await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog'), '音效目录'));
+    const eqDialog = await wait(() => one('.equalizer-dialog[open]'), 'EQ dialog');
+    let storedEqualizer;
+    if (window.__cumulusPeqSourceBypass) {
+      stage = 'configure-eq-curve';
+      const preset = await wait(() => enabled(eqDialog.querySelector('[aria-label="均衡器预设"]')), 'EQ preset');
+      preset.value = '1';
+      preset.dispatchEvent(new Event('change', { bubbles: true }));
+      await wait(async () => {
+        const eq = (await player()).equalizer;
+        return eq.status === 'processing' && eq.settings.enabled && eq.settings.gains[4] === 4;
+      }, 'configured curve reaches real EQ host');
+      stage = 'configure-eq-tone';
+      const bass = await wait(() => enabled(eqDialog.querySelector('[aria-label="低音增益"]')), 'EQ bass');
+      bass.value = '6';
+      bass.dispatchEvent(new Event('change', { bubbles: true }));
+      storedEqualizer = await wait(async () => {
+        const eq = (await player()).equalizer;
+        return eq.status === 'processing' && eq.settings.tone_enabled === true &&
+          eq.settings.bass_db === 6 && eq.source_bypassed === false && eq;
+      }, 'GEQ and bass reach the native host without source bypass');
+    }
+    click(button(eqDialog, '音效目录'));
     click(await wait(() => enabled(one('.effect-directory[open] .effect-directory-card')), 'PEQ card'));
     await wait(() => phase('idle') && enabled(action('prepare')), 'initial PEQ status');
     assert(!enabled(action('activate')), 'activation requires a prepared receipt');
@@ -97,6 +118,15 @@
       const initial = await stats();
       assert(initial.revision === 1 && initial.observedRevision === 1 && initial.instancesCreated > 0,
         'ordinary playback observes the original native PEQ control');
+      const eqPcmObserved = (read) => {
+        const eq = read.equalizerStats;
+        return eq && eq.active_instances > 0 && eq.failed_blocks === 0 &&
+          eq.revision === eq.observed_revision;
+      };
+      const sameSavedEqualizer = (eq) => eq.revision === storedEqualizer.revision &&
+        JSON.stringify(eq.settings) === JSON.stringify(storedEqualizer.settings) &&
+        JSON.stringify(eq.preset) === JSON.stringify(storedEqualizer.preset);
+      const eqBypassCaption = '当前音质暂时旁路均衡器，设置已保留';
       const cases = [
         ['03_vivid_bypassed', '2', 'vivid', true, 2],
         ['04_consecutive_dolby_restored', '3', 'dolby', false, 3],
@@ -117,7 +147,11 @@
             current.boundParametric === status && current.parametricProcessing === !bypassed &&
             launcher()?.dataset.parametricState === status &&
             launcher()?.dataset.effectState === (bypassed ? 'off' : 'processing') &&
-            launcher()?.title.includes(caption) && current;
+            launcher()?.title.includes(caption) &&
+            launcher()?.title.includes(eqBypassCaption) === bypassed &&
+            sameSavedEqualizer(current.equalizer) &&
+            current.equalizer.source_bypassed === bypassed &&
+            current.equalizer.status === (bypassed ? 'configured' : 'processing') && current;
         };
         let playing = await wait(() => checkPlayback(.35), `${name}: playback and the footer agree`);
         await wait(() => phase(status) && controls().textContent.includes(caption) &&
@@ -130,7 +164,8 @@
           const read = await stats();
           return read.nativeAttached && read.attaches === 1 && read.detaches === 0 &&
             read.revision === revision && read.observedRevision === revision &&
-            read.failedBlocks === 0 && read.instancesCreated >= initial.instancesCreated && read;
+            read.failedBlocks === 0 && read.instancesCreated >= initial.instancesCreated &&
+            eqPcmObserved(read) && read;
         }, `${name}: same native control observed the expected revision`);
         if (bypassed) {
           const transport = (paused) => invoke('player_action', { epoch, action: { kind: 'pause', paused } });
@@ -146,8 +181,26 @@
         }
         assert(playing.position > .35, 'the native media clock advances on this source');
         await capture(name);
+        if (bypassed) {
+          stage = 'retry-only-eq';
+          const beforeRetry = await player();
+          assert(beforeRetry.playId === playing.playId && beforeRetry.entryId === playing.entryId,
+            'retry is bound to the captured dry entry');
+          await invoke('player_action', { epoch, action: { kind: 'retry_equalizer' } });
+          await wait(async () => {
+            const state = await player();
+            return state.state === 'playing' && state.playId === playing.playId &&
+              state.entryId === beforeRetry.entryId && state.position > beforeRetry.position &&
+              state.boundParametric === status && !state.parametricProcessing &&
+              sameSavedEqualizer(state.equalizer) && state.equalizer.source_bypassed === false &&
+              state.equalizer.status === 'processing' && launcher()?.dataset.effectState === 'processing' &&
+              launcher()?.title.includes(caption) && !launcher()?.title.includes(eqBypassCaption);
+          }, 'explicit native retry restores only EQ on the same bypassed PEQ entry');
+          await wait(async () => eqPcmObserved(await stats()), 'native EQ observed the retry');
+          await capture('03_retry_only_eq');
+        }
       }
-      await emit('complete', { ok: true, stageCount: 5, ordinarySourceBypassVerified: true });
+      await emit('complete', { ok: true, stageCount: 6, ordinarySourceBypassVerified: true });
       return;
     }
 

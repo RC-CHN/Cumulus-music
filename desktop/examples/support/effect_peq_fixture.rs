@@ -2,7 +2,10 @@
 use cumulus_core::{
     Error, Result,
     download::transfer::{MediaBackend, MediaBody, MediaReply, MediaRequest},
-    effects::{equalizer::abi::EqualizerStats, parametric::ParametricPlan},
+    effects::{
+        equalizer::{EqualizerSettings, abi::EqualizerStats},
+        parametric::ParametricPlan,
+    },
     playback::engine::{
         AudioEngine, Cancellation, EngineSnapshot, LoadRequest, LoadedMedia, MediaInput, MpvConfig,
         MpvEngine,
@@ -47,6 +50,9 @@ struct Trace {
     native_attached: bool,
     injected_faults: u32,
     loads: u32,
+    equalizer_applications: Vec<EqualizerSettings>,
+    equalizer_stats: Option<EqualizerStats>,
+    native_entry: Option<i64>,
 }
 
 static TRACE: std::sync::LazyLock<Mutex<Trace>> =
@@ -251,6 +257,19 @@ impl Audio {
             wave,
         })
     }
+    fn record_equalizer(settings: EqualizerSettings, applied: bool) -> Result<bool> {
+        if source_bypass() && applied {
+            let mut trace = TRACE.lock().unwrap();
+            if trace.equalizer_applications.len() >= 32 {
+                return Err(Error::State(
+                    "unexpected repeated EQ applications in sealed proof",
+                ));
+            }
+            trace.equalizer_applications.push(settings.effective());
+            trace.equalizer_stats = None;
+        }
+        Ok(applied)
+    }
 }
 impl AudioEngine for Audio {
     fn load(&mut self, mut request: LoadRequest, cancel: &Cancellation) -> Result<LoadedMedia> {
@@ -285,10 +304,38 @@ impl AudioEngine for Audio {
             return Err(Error::ParametricProcessorFailed);
         }
         let view = self.engine.poll()?;
-        if let Ok(stats) = self.engine.parametric_equalizer_stats() {
-            TRACE.lock().unwrap().stats = Some(stats);
+        let stats = self.engine.parametric_equalizer_stats().ok();
+        if source_bypass() || stats.is_some() {
+            let mut trace = TRACE.lock().unwrap();
+            if let Some(stats) = stats {
+                trace.stats = Some(stats);
+            }
+            trace.native_entry = view.entry_id;
         }
         Ok(view)
+    }
+    fn apply_equalizer(&mut self, settings: EqualizerSettings) -> Result<bool> {
+        Self::record_equalizer(settings, self.engine.apply_equalizer(settings)?)
+    }
+    fn bypass_equalizer_for_source(&mut self) -> Result<bool> {
+        Self::record_equalizer(
+            EqualizerSettings::default(),
+            self.engine.bypass_equalizer_for_source()?,
+        )
+    }
+    fn observe_equalizer(&mut self) -> Result<Option<EqualizerStats>> {
+        let stats = self.engine.observe_equalizer()?;
+        if source_bypass() {
+            TRACE.lock().unwrap().equalizer_stats = stats;
+        }
+        Ok(stats)
+    }
+    fn clear_equalizer(&mut self) -> Result<()> {
+        self.engine.clear_equalizer()?;
+        if source_bypass() {
+            TRACE.lock().unwrap().equalizer_stats = None;
+        }
+        Ok(())
     }
     fn apply_parametric_component(&mut self, plan: ParametricPlan) -> Result<bool> {
         let attached = self.engine.apply_parametric_component(plan)?;
@@ -370,6 +417,10 @@ pub fn report() -> Value {
         report["restores"] = json!(trace.restores);
         report["sourceCalls"] = json!(trace.source_calls);
         report["instancesCreated"] = json!(trace.stats.map(|stats| stats.instances_created));
+        report["equalizerApplications"] = json!(trace.equalizer_applications);
+        report["equalizerStats"] = json!(trace.equalizer_stats);
+        report["nativeEntry"] = json!(trace.native_entry);
+        report["activeInstances"] = json!(trace.stats.map(|stats| stats.active_instances));
     }
     report
 }

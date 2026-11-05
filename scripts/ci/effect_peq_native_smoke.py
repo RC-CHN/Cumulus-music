@@ -22,7 +22,7 @@ def durable_lease(root):
 
 
 def verify_source_bypass(read, complete, prepared, configured, root, output, screenshots):
-    assert complete['ordinarySourceBypassVerified'] and complete['stageCount'] == 5
+    assert complete['ordinarySourceBypassVerified'] and complete['stageCount'] == 6
     if sys.platform.startswith('linux'):
         locale = read('locale')
         assert locale['numeric'] == 'C'
@@ -42,6 +42,34 @@ def verify_source_bypass(read, complete, prepared, configured, root, output, scr
         '/api/vipauth/app/interests/auth/query', '/api/vipauth/app/interests/recyclequery',
     ]
     assert configured['calls'] == [{'path': path, 'result': 'ack'} for path in expected_calls]
+    initial_eq = read('ux_02_configured')['nativePlayer']['equalizer']
+    stored = initial_eq['settings']
+    assert stored['enabled'] and stored['gains'][4] == 4
+    assert stored['tone_enabled'] is True and stored['bass_db'] == 6
+    initial_eq_applications = configured['equalizerApplications']
+    wet = {'enabled': True, 'gains': stored['gains'], 'bass_db': 6}
+    dry_settings = {'enabled': False, 'gains': [0] * 10}
+    assert initial_eq_applications[-1] == wet
+    expected_eq_applications = (
+        initial_eq_applications,
+        initial_eq_applications + [dry_settings],
+        initial_eq_applications + [dry_settings, wet, wet],
+        initial_eq_applications + [dry_settings, wet, wet],
+    )
+
+    def verify_eq(player, native, *, dry, applications):
+        eq = player['equalizer']
+        assert eq['source_bypassed'] is dry
+        assert eq['status'] == ('configured' if dry else 'processing')
+        for key in ('revision', 'settings', 'preset', 'saved_custom'):
+            assert eq[key] == initial_eq[key]
+        assert native['equalizerApplications'] == applications
+        eq_stats = native['equalizerStats']
+        assert eq_stats['revision'] == eq_stats['observed_revision']
+        assert eq_stats['active_instances'] > 0 and eq_stats['failed_blocks'] == 0
+        if not dry:
+            assert eq_stats['processed_samples'] > 0
+
     expected_sources = []
     previous_instances, previous_samples = 0, 0
     play_ids = set()
@@ -54,6 +82,22 @@ def verify_source_bypass(read, complete, prepared, configured, root, output, scr
         assert player['state'] == 'playing' and player['position'] > .35
         assert player['boundParametric'] == ('bypassed_for_source' if dry else 'configured')
         assert player['parametricProcessing'] is not dry
+        verify_eq(player, native, dry=dry, applications=expected_eq_applications[index - 1])
+        if dry:
+            retried = read('ux_03_retry_only_eq')
+            retry_player, retry_native = retried['nativePlayer'], retried['nativePeq']
+            assert retry_player['state'] == 'playing' and retry_player['position'] > player['position']
+            assert retry_player['playId'] == player['playId'] and retry_player['entryId'] == player['entryId']
+            assert retry_player['boundParametric'] == 'bypassed_for_source'
+            assert retry_player['parametricProcessing'] is False
+            verify_eq(retry_player, retry_native, dry=False,
+                      applications=expected_eq_applications[index - 1] + [wet])
+            assert retry_native['equalizerStats']['instances_created'] == native['equalizerStats']['instances_created']
+            assert retry_native['equalizerStats']['revision'] == native['equalizerStats']['revision'] + 1
+            assert native['nativeEntry'] is not None and native['activeInstances'] > 0
+            for key in ('revision', 'observedRevision', 'instancesCreated', 'activeInstances', 'nativeEntry',
+                        'attaches', 'detaches', 'starts', 'stops', 'calls', 'sourceCalls', 'decoderLoads'):
+                assert retry_native[key] == native[key]
         assert player['playId'] and player['playId'] not in play_ids
         play_ids.add(player['playId'])
         assert native['nativeAttached'] and native['attaches'] == native['starts'] == native['materialGets'] == 1
@@ -75,9 +119,20 @@ def verify_source_bypass(read, complete, prepared, configured, root, output, scr
     assert final['attaches'] == 1 and final['detaches'] == final['stops'] == 0
     lease = durable_lease(root)
     assert lease['phase'] == 'registered' and lease['start_acknowledged'] and not lease['stop_acknowledged']
-    assert len(list(output.glob('ux_*.png'))) == (5 if screenshots else 0)
+    db = (root / 'state' / 'core.sqlite3').resolve(strict=True)
+    with sqlite3.connect(db.as_uri() + '?mode=ro', uri=True) as conn:
+        saved = conn.execute("SELECT owner,value FROM state WHERE kind='equalizer-preferences-v1' "
+                             "AND key='current'").fetchall()
+    assert len(saved) == 1 and saved[0][0] == '2'
+    preferences = json.loads(saved[0][1])
+    assert preferences['revision'] == int(initial_eq['revision'])
+    assert preferences['settings'] == stored and preferences.get('preset') == initial_eq['preset']
+    assert 'source_bypassed' not in preferences
+    assert len(list(output.glob('ux_*.png'))) == (6 if screenshots else 0)
     print(json.dumps(dict(ok=True, actualWebView=True, actualNativePcm=True, nullOutput=True,
                           ordinarySourceBypassVerified=True, observedRevisions=[1, 2, 3, 3],
+                          geqAndToneSourceBypass=True, eqRetryRetainedIndependentPeq=True,
+                          equalizerPreferencesUnchanged=True,
                           nativeAttaches=1, sourceLoads=4, syntheticStarts=1,
                           syntheticStops=0, durableReleased=False, realAccountWrites=0)))
 
@@ -140,7 +195,7 @@ def main():
         return json.loads((output / (name + '.json')).read_text(encoding='utf-8'))
 
     complete = read('complete')
-    stages = 4 if player_stop or local_recovery else 5
+    stages = 6 if args.source_bypass else 4 if player_stop or local_recovery else 5
     assert complete['ok'] and complete['stageCount'] == stages
     prepared = read('ux_01_prepared')['nativePeq']
     configured = read('ux_02_configured')['nativePeq']
