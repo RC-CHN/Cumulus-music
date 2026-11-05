@@ -437,7 +437,8 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             json!({"songs":[{"song":{"id":178}},{"song":{"id":177}}]})
         }
         "/api/search/default/keyword/get" => {
-            json!({"refreshTime":60000,"keywords":[{"realkeyword":"合成默认关键词","showKeyword":"发现合成好声音"}]})
+            json!({"refreshTime":60000,"keywords":[{"realkeyword":"合成默认关键词","showKeyword":"发现合成好声音",
+                "bizQueryInfo":"synthetic-default-context-native-only"}]})
         }
         "/api/search/pc/rcmd/keyword/get" => json!({"operateWords":{},"algWords":words(18)}),
         "/api/search/pc/chart/list" if mode == "audio_ranks" => {
@@ -1201,6 +1202,15 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
         {
             return Some(Err(Error::InvalidInput(
                 "wrong synthetic chart search channel",
+            )));
+        }
+        if keyword == Some("合成默认关键词")
+            && ((category == "all"
+                && args["bizQueryInfo"] != "synthetic-default-context-native-only")
+                || (category != "all" && args.get("bizQueryInfo").is_some()))
+        {
+            return Some(Err(Error::InvalidInput(
+                "wrong synthetic default search context",
             )));
         }
     }

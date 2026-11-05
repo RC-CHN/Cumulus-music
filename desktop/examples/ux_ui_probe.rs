@@ -187,6 +187,24 @@ impl Api for Library {
         Box::pin(async { search_fixture::audio_toplist_assignment() })
     }
 
+    fn search_default_context_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(search_fixture::enabled().then(|| "synthetic-search-default-context".into()))
+    }
+
+    fn request_search_with_default_context<'a>(
+        &'a self,
+        path: &'a str,
+        args: Value,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.search_default_context_revision()?.as_deref() != Some(revision) {
+                return Err(cumulus_core::Error::CredentialChanged);
+            }
+            self.request(path, args, false).await
+        })
+    }
+
     fn observed_server_time_ms(&self) -> Option<u64> {
         member_sign_fixture::observed_server_time_ms()
     }
