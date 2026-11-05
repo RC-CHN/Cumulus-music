@@ -12,7 +12,7 @@ use crate::{
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use tokio::sync::Notify;
 
@@ -25,6 +25,8 @@ struct Wire {
     hold_detail: AtomicBool,
     entered: Notify,
     release: Notify,
+    revision: AtomicU64,
+    rotate_in_reads: AtomicU64,
 }
 
 impl Wire {
@@ -35,7 +37,17 @@ impl Wire {
 
 impl Api for Wire {
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
-        Ok(Some("fixture-preview-pc".into()))
+        if self
+            .rotate_in_reads
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| n.checked_sub(1))
+            == Ok(1)
+        {
+            self.revision.fetch_add(1, Ordering::AcqRel);
+        }
+        Ok(Some(format!(
+            "fixture-preview-pc-{}",
+            self.revision.load(Ordering::Acquire)
+        )))
     }
 
     fn verified_pc_experiment_groups<'a>(
@@ -43,7 +55,10 @@ impl Api for Wire {
         revision: &'a str,
     ) -> ApiFuture<'a, PcExperimentGroups> {
         Box::pin(async move {
-            assert_eq!(revision, "fixture-preview-pc");
+            assert_eq!(
+                revision,
+                self.verified_pc_experiment_revision()?.as_deref().unwrap()
+            );
             PcExperimentGroups::refreshed(&json!({"data":[
                 {"expName":"PH-PC-zhuanqu","expGroupName":"t1"},
                 {"expName":"PH-PC-zhuanquTab","expGroupName":"t1"}
@@ -100,9 +115,17 @@ impl Api for Wire {
                         ]}),
                         r#"[{"id":81,"v":5},{"id":"84","v":0}]"# => json!({"code":200,"songs":[
                             {"id":84,"album":{"picUrl":"https://p1.music.126.net/wrong-order.jpg"}},
-                            {"id":81,"al":{"picUrl":"http://p1.music.126.net/first.jpg?secret=private#fragment"},
+                            {"id":81,"al":{"picUrl":if self.revision.load(Ordering::Acquire) == 0 {
+                                "http://p1.music.126.net/first.jpg?secret=private#fragment"
+                            } else {
+                                "https://p1.music.126.net/rotated-first.jpg"
+                            }},
                                 "alg":"private_algorithm"}
                         ],"privileges":[{"id":81,"pl":320000}]}),
+                        r#"[{"id":"81","v":5},{"id":"84","v":0}]"# if args["trialMode"] == 121 => {
+                            json!({"code":200,"songs":[{"id":81,
+                                "al":{"picUrl":"https://p1.music.126.net/explicit-fresh.jpg"}}]})
+                        }
                         _ => panic!("unexpected detail references: {args}"),
                     }
                 }
@@ -314,4 +337,70 @@ async fn discarded_view_or_account_cannot_publish_a_late_first_batch() {
             .is_some()
     );
     assert_eq!(f.wire.calls().len(), 6);
+}
+
+#[tokio::test]
+async fn a_rotated_credential_cannot_reuse_a_passive_batch_in_the_same_account_epoch() {
+    let f = Fixture::new();
+    let epoch = f.account(51);
+    let view = f.page(&epoch, "default").await;
+    let old = f
+        .client
+        .vertical_zone_fm_preview(&epoch, &view, "0:0")
+        .await
+        .unwrap();
+    assert!(old.value.cover_url.unwrap().contains("/first.jpg"));
+    f.wire.revision.fetch_add(1, Ordering::AcqRel);
+    assert_eq!(f.session.token().unwrap().generation.to_string(), epoch);
+    assert!(matches!(
+        f.client
+            .vertical_zone_fm_preview(&epoch, &view, "0:0")
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    let new_view = f.page(&epoch, "default").await;
+    let new = f
+        .client
+        .vertical_zone_fm_preview(&epoch, &new_view, "0:0")
+        .await
+        .unwrap();
+    assert!(new.value.cover_url.unwrap().contains("/rotated-first.jpg"));
+    assert_eq!(f.wire.calls().len(), 4);
+}
+
+#[tokio::test]
+async fn explicit_preload_rechecks_the_credential_before_persisting_a_passive_batch() {
+    let f = Fixture::new();
+    let epoch = f.account(51);
+    let view = f.page(&epoch, "default").await;
+    f.client
+        .vertical_zone_fm_preview(&epoch, &view, "0:0")
+        .await
+        .unwrap();
+    let token = f.session.token().unwrap();
+    let source = FmSource::Zone {
+        rule_id: "11".into(),
+        trial_mode: Some(121),
+    };
+    let service = f.client.player.fm_service().await.unwrap();
+    // The explicit operation reads revision to select the seed, checks it
+    // within the account fence, then checks again before writing the queue.
+    f.wire.rotate_in_reads.store(3, Ordering::Release);
+    let result = service
+        .preload_for(&token, source.clone(), FmRights::default())
+        .await
+        .unwrap();
+    assert_eq!(f.session.token().unwrap(), token);
+    assert_eq!(f.wire.revision.load(Ordering::Acquire), 1);
+    assert_eq!(result.tracks.len(), 1);
+    assert_eq!(
+        result.current().unwrap().song["al"]["picUrl"],
+        "https://p1.music.126.net/explicit-fresh.jpg"
+    );
+    let cached = service.queue_for(&token, &source).unwrap().unwrap();
+    assert_eq!(cached.current(), result.current());
+    let trace = f.wire.calls();
+    assert_eq!(trace.len(), 4);
+    assert_eq!(trace[1].1["trialMode"], -1);
+    assert_eq!(trace[3].1["trialMode"], 121);
 }

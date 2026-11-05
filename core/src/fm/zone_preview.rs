@@ -1,10 +1,10 @@
 //! A passive first batch never owns the playback actor or a persisted FM slot.
 use super::{FmService, FmSource, FmTrack};
-use crate::{Error, Result, account::SessionToken};
+use crate::{Error, Result, account::SessionToken, protocol::api::Api};
 use std::{
     collections::VecDeque,
     hash::{DefaultHasher, Hash, Hasher},
-    sync::Mutex,
+    sync::{Arc, Mutex, Weak},
 };
 
 const MAX_RULES: usize = 32;
@@ -21,17 +21,25 @@ pub(super) struct ZonePreviewState {
 
 #[derive(Default)]
 struct Slots {
-    owner: Option<SessionToken>,
+    owner: Option<Binding>,
     batches: VecDeque<(String, Vec<FmTrack>)>,
 }
 
-impl Slots {
-    fn bind(&mut self, token: &SessionToken) {
-        if self.owner.as_ref() != Some(token) {
-            self.owner = Some(token.clone());
-            self.batches.clear();
-        }
+struct Binding {
+    token: SessionToken,
+    api: Weak<dyn Api>,
+    revision: String,
+}
+impl Binding {
+    fn matches(&self, token: &SessionToken, api: &Arc<dyn Api>, revision: &str) -> bool {
+        self.token == *token && self.revision == revision && self.api.ptr_eq(&Arc::downgrade(api))
     }
+}
+
+pub(super) struct ZoneSeed {
+    pub(super) api: Arc<dyn Api>,
+    pub(super) revision: String,
+    pub(super) tracks: Vec<FmTrack>,
 }
 
 impl FmService {
@@ -48,18 +56,35 @@ impl FmService {
             .await
     }
 
-    pub(super) fn zone_preview_batch_for(
+    fn zone_preview_batch_for(
         &self,
         token: &SessionToken,
+        api: &Arc<dyn Api>,
+        revision: &str,
         rule: &str,
     ) -> Result<Option<Vec<FmTrack>>> {
-        self.session.with_token(token, |_| {
+        self.session.with_verified_profile(token, api, |_, _| {
+            if api
+                .verified_pc_experiment_revision()
+                .ok()
+                .flatten()
+                .as_deref()
+                != Some(revision)
+            {
+                return Ok(None);
+            }
             let mut slots = self
                 .zone_preview
                 .slots
                 .lock()
                 .map_err(|_| Error::LockPoisoned)?;
-            slots.bind(token);
+            if !slots
+                .owner
+                .as_ref()
+                .is_some_and(|owner| owner.matches(token, api, revision))
+            {
+                return Ok(None);
+            }
             let Some(index) = slots.batches.iter().position(|(id, _)| id == rule) else {
                 return Ok(None);
             };
@@ -70,9 +95,29 @@ impl FmService {
         })
     }
 
+    pub(super) fn usable_zone_seed(
+        &self,
+        token: &SessionToken,
+        rule: &str,
+    ) -> Result<Option<ZoneSeed>> {
+        let api = self.session.native_api(token)?;
+        let Ok(Some(revision)) = api.verified_pc_experiment_revision() else {
+            // Legacy explicit FM does not require an experiment receipt.
+            return Ok(None);
+        };
+        let tracks = self.zone_preview_batch_for(token, &api, &revision, rule)?;
+        Ok(tracks.map(|tracks| ZoneSeed {
+            api,
+            revision,
+            tracks,
+        }))
+    }
+
     pub(crate) fn cached_zone_first(
         &self,
         token: &SessionToken,
+        api: &Arc<dyn Api>,
+        revision: &str,
         rule: &str,
         preferred_trial: Option<i32>,
     ) -> Result<Option<FmTrack>> {
@@ -95,7 +140,7 @@ impl FmService {
             }
         }
         Ok(self
-            .zone_preview_batch_for(token, rule)?
+            .zone_preview_batch_for(token, api, revision, rule)?
             .and_then(|tracks| tracks.into_iter().next()))
     }
 
@@ -104,6 +149,8 @@ impl FmService {
     pub(crate) fn remember_zone_preview(
         &self,
         token: &SessionToken,
+        api: &Arc<dyn Api>,
+        revision: &str,
         rule: String,
         tracks: Vec<FmTrack>,
     ) -> Result<()> {
@@ -118,7 +165,18 @@ impl FmService {
             .slots
             .lock()
             .map_err(|_| Error::LockPoisoned)?;
-        slots.bind(token);
+        if !slots
+            .owner
+            .as_ref()
+            .is_some_and(|owner| owner.matches(token, api, revision))
+        {
+            slots.owner = Some(Binding {
+                token: token.clone(),
+                api: Arc::downgrade(api),
+                revision: revision.into(),
+            });
+            slots.batches.clear();
+        }
         slots.batches.retain(|(id, _)| *id != rule);
         slots.batches.push_back((rule, tracks));
         if slots.batches.len() > MAX_RULES {

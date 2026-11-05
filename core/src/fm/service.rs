@@ -100,21 +100,32 @@ impl FmService {
         queue.validate()?;
         let key = Self::key(&queue.source)?;
         self.session.with_token(token, |uid| {
-            self.store.transaction(|tx| {
-                let revision = tx
-                    .get(uid, QUEUES, &key)?
-                    .map(|v| serde_json::from_value::<FmQueue>(v).map(|v| v.revision))
-                    .transpose()?
-                    .unwrap_or(0);
-                if revision != expected {
-                    return Err(Error::QueueChanged);
-                }
-                tx.put(uid, QUEUES, &key, &serde_json::to_value(queue)?)?;
-                if let Some(skip) = skip {
-                    tx.put(uid, feedback::SKIPS, &skip.id, &serde_json::to_value(skip)?)?;
-                }
-                Ok(())
-            })
+            self.save_for_owner(uid, &key, expected, queue, skip)
+        })
+    }
+
+    fn save_for_owner(
+        &self,
+        uid: &str,
+        key: &str,
+        expected: u64,
+        queue: &FmQueue,
+        skip: Option<&SkipReport>,
+    ) -> Result<()> {
+        self.store.transaction(|tx| {
+            let revision = tx
+                .get(uid, QUEUES, key)?
+                .map(|v| serde_json::from_value::<FmQueue>(v).map(|v| v.revision))
+                .transpose()?
+                .unwrap_or(0);
+            if revision != expected {
+                return Err(Error::QueueChanged);
+            }
+            tx.put(uid, QUEUES, key, &serde_json::to_value(queue)?)?;
+            if let Some(skip) = skip {
+                tx.put(uid, feedback::SKIPS, &skip.id, &serde_json::to_value(skip)?)?;
+            }
+            Ok(())
         })
     }
     pub async fn refresh_blacklist_for(&self, token: &SessionToken) -> Result<FmBlacklist> {
@@ -190,23 +201,49 @@ impl FmService {
         // The explicit source keeps its own cursor, URL trial and rights.
         let seed = match &queue.source {
             FmSource::Zone { rule_id, .. } if queue.tracks.is_empty() => {
-                self.zone_preview_batch_for(token, rule_id)?
+                self.usable_zone_seed(token, rule_id)?
             }
             _ => None,
         };
-        if let Some(tracks) = seed {
-            queue.append(tracks);
-            queue.fetched_at = now;
-        } else {
-            self.fill(token, &mut queue, true).await?;
+        if let Some(seed) = seed {
+            let mut candidate = queue.clone();
+            candidate.append(seed.tracks);
+            candidate.fetched_at = now;
+            self.select_preloaded(token, &mut candidate)?;
+            let key = Self::key(&candidate.source)?;
+            let saved = self
+                .session
+                .with_verified_profile(token, &seed.api, |uid, _| {
+                    if seed
+                        .api
+                        .verified_pc_experiment_revision()
+                        .ok()
+                        .flatten()
+                        .as_deref()
+                        != Some(seed.revision.as_str())
+                    {
+                        return Err(Error::CredentialChanged);
+                    }
+                    self.save_for_owner(uid, &key, revision, &candidate, None)
+                });
+            match saved {
+                Ok(()) => return Ok(candidate),
+                Err(Error::CredentialChanged) => {}
+                Err(error) => return Err(error),
+            }
         }
+        self.fill(token, &mut queue, true).await?;
+        self.select_preloaded(token, &mut queue)?;
+        self.save(token, revision, &queue, None)?;
+        Ok(queue)
+    }
+
+    fn select_preloaded(&self, token: &SessionToken, queue: &mut FmQueue) -> Result<()> {
         let blacklist = self.blacklist_for(token)?;
         queue.index = queue
             .find(queue.index, false, &blacklist)
             .unwrap_or(queue.tracks.len());
-        queue.bump()?;
-        self.save(token, revision, &queue, None)?;
-        Ok(queue)
+        queue.bump()
     }
     pub fn repeat_for(
         &self,

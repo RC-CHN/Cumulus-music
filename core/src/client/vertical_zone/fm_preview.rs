@@ -109,7 +109,13 @@ impl MusicClient {
             gate = service.zone_rule_gate(owner, &rule.id) => gate,
         };
         self.verify_zone_fm_card(&authority, view, card_key).await?;
-        if let Some(first) = service.cached_zone_first(owner, &rule.id, rule.preferred_trial)? {
+        if let Some(first) = service.cached_zone_first(
+            owner,
+            api,
+            &authority.revision,
+            &rule.id,
+            rule.preferred_trial,
+        )? {
             self.verify_zone_fm_card(&authority, view, card_key).await?;
             return Ok(AccountData {
                 epoch: epoch.into(),
@@ -123,6 +129,7 @@ impl MusicClient {
             .run_for(owner, |current, _| async {
                 self.session.require_api(owner, &current)?;
                 self.session.require_api(owner, api)?;
+                authority.check_revision()?;
                 let fm = FmApi::new(current);
                 tokio::select! {
                     biased;
@@ -137,7 +144,7 @@ impl MusicClient {
             authority.check_revision()?;
             self.vertical_zone
                 .fm_preview_rule(&authority, registry.as_ref(), view, card_key)?;
-            service.remember_zone_preview(owner, rule.id, tracks)
+            service.remember_zone_preview(owner, api, &authority.revision, rule.id, tracks)
         })?;
         Ok(AccountData {
             epoch: epoch.into(),
