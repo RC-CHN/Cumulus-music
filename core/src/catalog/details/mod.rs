@@ -3,4 +3,5 @@ mod query;
 mod request;
 mod service;
 pub use query::CatalogQuery;
+pub(crate) use service::album_duration;
 pub use service::{CatalogDetails, SavedCatalogPage};

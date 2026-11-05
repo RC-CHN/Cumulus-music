@@ -6,15 +6,13 @@ use crate::{
     account::SessionToken,
     catalog::{
         CatalogApi,
-        details::{CatalogDetails, CatalogQuery, SavedCatalogPage},
+        details::{CatalogDetails, CatalogQuery, SavedCatalogPage, album_duration},
     },
-    client::mapping,
     playback::engine::Cancellation,
     protocol::api::identifier,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
 
 const ALBUM_LIMIT: usize = 50_000;
 
@@ -45,35 +43,6 @@ pub struct AlbumPlaybackRow {
     pub track_id: String,
 }
 
-pub(super) fn duration(song: &Value) -> u64 {
-    song["dt"]
-        .as_u64()
-        .filter(|n| *n > 0)
-        .or_else(|| song["duration"].as_u64())
-        // Preserve exact numeric ordering on both sides of IPC.
-        .filter(|n| *n <= 9_007_199_254_740_991)
-        .unwrap_or(0)
-}
-
-pub(super) fn playback_revision(saved: &SavedCatalogPage) -> Result<String> {
-    let songs = saved
-        .songs()
-        .ok_or(Error::Response("missing album tracks"))?;
-    let mut stamp = Sha256::new();
-    // Existing catalog revision binds the album and the original ID order.
-    stamp.update(saved.revision.as_bytes());
-    for song in songs {
-        let track = mapping::track(song)?;
-        stamp.update(serde_json::to_vec(&(
-            duration(song),
-            track.name,
-            track.artists,
-            track.album,
-        ))?);
-    }
-    Ok(hex::encode(stamp.finalize()))
-}
-
 fn sorted_ordinals(
     songs: &[Value],
     order: AlbumDurationOrder,
@@ -93,9 +62,9 @@ fn sorted_ordinals(
     }
     match order {
         AlbumDurationOrder::Original => {}
-        AlbumDurationOrder::Ascending => ordinals.sort_by_key(|&i| duration(&songs[i])),
+        AlbumDurationOrder::Ascending => ordinals.sort_by_key(|&i| album_duration(&songs[i])),
         AlbumDurationOrder::Descending => {
-            ordinals.sort_by_key(|&i| std::cmp::Reverse(duration(&songs[i])));
+            ordinals.sort_by_key(|&i| std::cmp::Reverse(album_duration(&songs[i])));
         }
     }
     Ok(ordinals)
@@ -119,7 +88,7 @@ fn cached_album(
     let saved = service
         .cached_for(token, &query)?
         .ok_or(Error::QueueChanged)?;
-    if playback_revision(&saved)? != scope.revision {
+    if saved.album_playback_revision()? != scope.revision {
         return Err(Error::QueueChanged);
     }
     Ok(saved)
@@ -132,12 +101,11 @@ impl MusicClient {
         scope: &AlbumPlaybackScope,
     ) -> Result<Cancellation> {
         let service = CatalogDetails::new(self.session.clone())?;
-        cached_album(&service, token, scope)?;
-        let token = token.clone();
-        let scope = scope.clone();
-        Ok(Cancellation::new(move || {
-            cached_album(&service, &token, &scope).is_ok()
-        }))
+        let query = CatalogQuery::Album {
+            id: scope.id.clone(),
+        };
+        let fence = service.album_playback_fence(token, &query, &scope.revision)?;
+        Ok(Cancellation::new(move || fence.is_current()))
     }
 
     pub(crate) async fn album_playback_selection(

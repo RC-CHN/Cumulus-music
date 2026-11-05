@@ -119,10 +119,10 @@ pub(super) fn page(saved: SavedCatalogPage, cached: bool, viewer: &str) -> Resul
             }
         }
         CatalogQuery::Album { .. } => {
-            let playback_revision = super::album_playback::playback_revision(&saved)?;
+            let playback_revision = saved.album_playback_revision()?;
             let mut tracks = tracks(&value["songs"])?;
             for (track, song) in tracks.iter_mut().zip(rows(&value["songs"])?) {
-                track.duration_ms = super::album_playback::duration(song);
+                track.duration_ms = crate::catalog::details::album_duration(song);
             }
             CatalogPageView::Album {
                 album: cards::album(&value["album"])?,

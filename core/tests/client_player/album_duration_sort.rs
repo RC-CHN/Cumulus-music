@@ -136,8 +136,8 @@ async fn whole_append_preserves_paused_identity_and_stable_order_without_the_fil
 }
 
 #[tokio::test]
-async fn same_ids_new_durations_during_hydration_reject_old_row_and_foreign_ordinals() {
-    let (_dir, api, _session, client, _count) = fixture();
+async fn peer_same_ids_new_durations_during_hydration_reject_old_row_and_foreign_ordinals() {
+    let (dir, api, _session, client, _count) = fixture();
     *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
     let (album, id_revision) = scope(&client, AlbumDurationOrder::Ascending).await;
     let before = client.play_selection("1", songs("1000")).await.unwrap();
@@ -170,8 +170,20 @@ async fn same_ids_new_durations_during_hydration_reject_old_row_and_foreign_ordi
     tokio::time::timeout(std::time::Duration::from_secs(3), api.started.notified())
         .await
         .unwrap();
+    // An independent native instance commits to the same account-owned DB
+    // through another SQLite connection while the first hydration is held.
+    let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let peer_session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
+    peer_session
+        .adopt(
+            api.clone(),
+            json!({"userId":9}),
+            &peer_session.token().unwrap(),
+        )
+        .unwrap();
+    let peer = MusicClient::with_session(peer_session, registry);
     *api.album_tracks.lock().unwrap() = Some(tracks(25_000));
-    let (new, new_ids) = scope(&client, AlbumDurationOrder::Ascending).await;
+    let (new, new_ids) = scope(&peer, AlbumDurationOrder::Ascending).await;
     assert_eq!(
         id_revision, new_ids,
         "drag keeps the original ID-only revision"
@@ -213,4 +225,65 @@ async fn replacing_double_click_clears_to_only_clicked_song() {
         .unwrap();
     assert_eq!(started.track.unwrap().id, "11");
     assert_eq!(ids(&client).await, ["11"]);
+}
+
+#[tokio::test]
+async fn version_one_recovery_snapshot_upgrades_without_fresh_album_request() {
+    let (dir, api, _session, client, _count) = fixture();
+    *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
+    let (album, _) = scope(&client, AlbumDurationOrder::Descending).await;
+
+    let registry = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    let store = registry.store();
+    store
+        .transaction(|tx| {
+            let mut entries = tx.values("9", "catalog-album-pages-v2")?;
+            assert_eq!(entries.len(), 1);
+            let (key, page) = entries.pop_first().unwrap();
+            tx.put("9", "catalog-detail-pages-v1", &key, &page)?;
+            tx.delete("9", "catalog-album-pages-v2", &key)?;
+            tx.delete("9", "catalog-album-playback-marker-v1", &key)
+        })
+        .unwrap();
+
+    api.calls.lock().unwrap().clear();
+    let recovered = client
+        .catalog_page("1", CatalogQuery::Album { id: "7".into() }, false)
+        .await
+        .unwrap()
+        .value
+        .unwrap();
+    assert!(
+        matches!(recovered.page, CatalogPageView::Album { playback_revision, .. } if playback_revision == album.revision)
+    );
+    assert!(
+        store
+            .values("9", "catalog-album-playback-marker-v1")
+            .unwrap()
+            .is_empty()
+    );
+    let result = client
+        .play_selection("1", selection(album, Some(row(vec![0, 1, 2], 2, "13"))))
+        .await
+        .unwrap();
+    assert_eq!(result.track.unwrap().id, "13");
+    assert_eq!(ids(&client).await, ["11", "13", "12"]);
+    assert_eq!(
+        store
+            .values("9", "catalog-album-playback-marker-v1")
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        store.values("9", "catalog-album-pages-v2").unwrap().len(),
+        1
+    );
+    assert!(
+        !api.calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|path| path.starts_with("/api/album/"))
+    );
 }
