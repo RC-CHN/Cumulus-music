@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import { playlistCoverCount, playlistDate } from '../../services/playlistHeader';
 import type { PlaylistView } from '../../services/contracts';
 import type { MenuItem } from '../../services/menu';
@@ -26,7 +27,7 @@ const coverCount = computed(() =>
 );
 const date = computed(() => playlistDate(props.playlist.headerDate?.timestampMs));
 const failedAvatar = ref<string>();
-defineEmits<{
+const emit = defineEmits<{
   edit: [];
   play: [];
   download: [];
@@ -36,10 +37,23 @@ defineEmits<{
   tag: [tag: string];
   creator: [id: string];
 }>();
+const root = ref<HTMLElement>();
+const playlistId = props.playlist.id;
+const playbackFocus = usePlaybackTriggerFocus(
+  () => props.playable && !props.preparing,
+  root,
+  () =>
+    props.playlist.id === playlistId &&
+    !!root.value?.isConnected &&
+    !root.value.closest('[inert], .page-leave-active'),
+);
+function play(event: MouseEvent) {
+  playbackFocus.start(() => emit('play'), event.currentTarget as HTMLButtonElement);
+}
 </script>
 
 <template>
-  <section class="playlist-hero" aria-label="歌单详情">
+  <section ref="root" class="playlist-hero" aria-label="歌单详情">
     <div class="playlist-art">
       <img
         v-if="playlist.coverUrl"
@@ -112,7 +126,7 @@ defineEmits<{
           <span class="playlist-total">{{ total }} 首歌曲</span>
         </div>
         <div class="playlist-actions" :aria-busy="preparing">
-          <button class="primary" :disabled="!playable || preparing" @click="$emit('play')">
+          <button class="primary" :disabled="!playable || preparing" @click="play">
             <Icon name="play" />{{ preparing ? '准备中…' : '播放全部' }}
           </button>
           <button
