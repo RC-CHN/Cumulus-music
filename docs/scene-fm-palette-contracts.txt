@@ -112,3 +112,16 @@ Cumulus 对 voice 以及带正式 voiceId 的下载节目隐藏该行；普通�
 - 最终保留严格门槛，并实跑修复后的无截图队列28阶段、延迟定位分支及本机系统音量
   合成/unsupported共6截图。96项Python CI测试、actionlint、公开源码审计和发行规则检查通过；
   具体旧CI失败的证据与修复见 desktop-ci-race-audit.txt。没有创建版本标签或发布。
+
+2026-11-05 后续集成补充（phase56）
+- 前一批记录的全局封面失败占位已在本批实际核对：场景卡、底栏和播放详情使用本地
+  Icon，不暴露浏览器破图标；实现与官方默认图片的差异见 player-cover-fallback-contracts.txt。
+  .build/ui-proof/phase56-voice-detail/webview/report.json 的5阶段/5张PNG均已逐张查看，
+  同时核对声音主播、发布时间及用户资料返回，不以此宣称真实CDN封面加载成功。
+- 本批另在同根 palette-regression/report.json 重跑 sample 分支：3阶段/3张PNG，
+  76字节PNG实际经过本地Blob/canvas→Rust。此前 phase55 的4场景记录仍单独保留，
+  不能把这次单支回归当成重新跑完 header/only_tb/late。
+- 已完成的同账号、同封面颜色及默认色可跨节目复用；过期/账号身份失败不算完成。
+  这些复用与过期分支有定向Node状态用例，本批GUI没有单独触发同URL切节目。
+  等待中的同封面切节目仍重新发起，保留原生旧节目请求与采样凭据的绑定；这条与官方
+  M2060仅按URL的在途生命周期仍有差异，没有扩大IPC地址权限或放宽原生来源校验。

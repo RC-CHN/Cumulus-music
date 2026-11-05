@@ -1,0 +1,80 @@
+{
+  "schema": "cumulus-stereo-zero-migration-map-v1",
+  "scope": "Standalone stereo SE bank-0/ambience=0 only; evidence and implementation mapping, not a full graph or desktop completion claim.",
+  "officialVersion": "Windows x64 3.1.42.205594",
+  "officialDllSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "historicalEvidence": [
+    {
+      "source": "references/recovered-client/docs/product/38-stereo-multiband-validation.txt",
+      "sha256": "8881fb145a64cd175bb02e8e997599c6b114defc44c16e12ff9a84ed6a6500b7",
+      "role": "Recovered SE graph/parameter evidence and independent multiband component comparisons; the new standalone SE bank-0 PCM proof is recorded separately below."
+    },
+    {
+      "source": "references/recovered-client/scripts/netease_native_stereo_oracle.c",
+      "sha256": "37897d9aaf7c0a25927ed3ea26d5c127cc598a489a6aac69bca57b1bf6e10b5f",
+      "role": "Historical original SE graph research host, including original processing, without an independent complete SE PCM comparison; the new bounded no-ambience oracle/corpus is listed separately."
+    },
+    {
+      "source": "references/recovered-client/scripts/extract_netease_stereo.py",
+      "sha256": "2c2297b496070ada1b98cf2b3a6977e7796e90b134f123a80f53b13a03bfa125",
+      "role": "Historical bank extraction and field description; source hash remains unchanged."
+    }
+  ],
+  "implementation": [
+    {
+      "path": "core/native/effects/netease_stereo_zero.c",
+      "role": "Typed bank-0 constants, owned EQ/dynamics/scratch, ambience=0 PCM, reset/bypass/history."
+    },
+    {
+      "path": "core/native/effects/bridge.c",
+      "role": "Actual C size/alignment queries for kind 7."
+    },
+    {
+      "path": "core/src/effects/dsp/ffi.rs",
+      "role": "Private typed C function declarations; no raw state layout exported."
+    },
+    {
+      "path": "core/src/effects/dsp/stereo_zero.rs",
+      "role": "Exclusive aligned state, validated stereo format/controls, PCM/history finite checks and failed-stage quarantine."
+    },
+    {
+      "path": "core/examples/support/stereo_zero_wire.rs",
+      "role": "Bounded explicit interleaved component request/response handler."
+    },
+    {
+      "path": "core/examples/effect_dsp_render.rs",
+      "role": "Executable stereo-zero mode; no DLL/Python runtime or player attachment."
+    }
+  ],
+  "verification": {
+    "nativeTests": "core/tests/effects_stereo_zero.rs",
+    "frozenCorpus": "core/tests/fixtures/effects-stereo-zero-official.json.gz",
+    "manifest": "core/tests/fixtures/effects-stereo-zero-official.manifest.json",
+    "caseCount": 42,
+    "blockCount": 378,
+    "comparison": "Valid synthetic PCM and 22 native state floats per block; not padded-tail or all-input equivalence.",
+    "manualOriginalOracle": "scripts/research/stereo_zero_native.c",
+    "manualGenerator": "scripts/research/freeze_stereo_zero.py",
+    "sourceOnlyMemoryProbe": "scripts/research/check_stereo_zero_memory.c",
+    "publicCiBoundary": "Only frozen synthetic numeric inputs/outputs are needed. Original DLL, banks/assets and manual regeneration are not public CI inputs.",
+    "phase56Cli": {
+      "artifact": ".build/ui-proof/phase56-voice-detail/stereo-cli-output.json",
+      "blocks": 9,
+      "comparison": "Actual standalone CLI output compared semantically as JSON against the frozen case; local offline component proof only."
+    }
+  },
+  "contract": "docs/core-effects-stereo-zero.txt",
+  "supportedShape": {
+    "channels": 2,
+    "integerSampleRate": "8000..384000 Hz",
+    "capacity": "4..4096, divisible by four",
+    "validFrames": "1..capacity"
+  },
+  "excludes": [
+    "ambience=1 or other environment/reverb PCM",
+    "custom or arbitrary parameter banks",
+    "complete official effect graph",
+    "runtime player attachment, UI activation or expanded entitlement",
+    "Windows actual execution, physical speakers or all-input numerical equivalence"
+  ]
+}

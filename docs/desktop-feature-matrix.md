@@ -122,3 +122,10 @@
 - [在线播放缓存](streaming-media-cache-contracts.txt)为少数已获授权的普通 MP3 保留本进程临时字节；Linux 核对原生播放、再次授权、清理和设置持久化，未将缓存当作离线授权。官方动态策略、原生缓存格式和更改缓存目录不由本实现冒充。
 - [旧版 PC 定期续期](legacy-periodic-renewal.txt)按已验证的官方分组和登录来源安排，和 JSK 续期互斥；Linux 合成冷恢复核对两组请求和持久结果，真实 RT 下发仍需服务回包证据。
 - [黑胶相似推荐](vinyl-similar-songs-contracts.txt)按已核验分组显示在独立页签或旧版百科内。三种播放动作、独立读取、歌单展开和跳转都有桌面探针；当前首曲不重开解码由原生播放器用例验证。[音乐百科](vinyl-wiki-contracts.txt)用签名读取并显示正文，Linux WebView 通过新版和旧版共 23 个场景；二维码目标缺少可验证的服务样本。
+
+以 2026-11-05 的 `cb24b2cc` 桌面示例与 `7299fe9e` 产品源码补充本批专项：
+
+- [声音标题信息](voice-playback-header-contracts.txt)从当前原生节目投影主播与发布时间；主播进入用户资料页，缺少有效用户 ID 时保留纯文字，缺日期不补成今天。Linux 隔离 WebView 已完成卡片、底栏、声音详情、主播主页及回到详情的 5 阶段/5 张截图；下载来源证明、歌曲/CUE/冲突元数据的限制按契约分别验收，不用这组在线界面代替它们。
+- [封面失败占位](player-cover-fallback-contracts.txt)覆盖场景卡、播放栏和播放详情；同账号同 URL 复用已有加载结果，失败后使用本地 Icon，不新增重试或影响播放。上述 5 阶段实际核对占位与持续播放，5 张原图均由主代理逐张查看；本地 Icon 与官方专有默认图片仍是明确差异。
+- [场景 FM 取色](scene-fm-palette-contracts.txt)已完成颜色可在同账号同封面切节目时复用，包含默认底色和普通取色失败；原生过期/账号身份失败不作为完成结果。复用和过期分支由定向 Node 状态用例验证；新 GUI 集成只重跑 PNG 本地 canvas→Rust 的 sample 分支，3 阶段/3 张截图、76 字节 PNG，旧批四场景记录独立保留。等待中的同封面切节目仍因旧节目凭据绑定而重新发起，本次未完成这条 URL 生命周期的一致性。
+- [独立 SE bank-0/ambience=0](core-effects-stereo-zero.txt)提供安全 FFI 与离线 PCM CLI，另见[来源到实现映射](effects-stereo-zero-mapping.json)。冻结官方对照为 42 组流/378 块；本批实际 CLI 执行 9 块并按语义 JSON 核对一致。未接播放器或 UI，不包含 ambience=1、混响、任意参数银行或完整效果图；这些结果也不代表 Windows 运行或真实声卡听感。

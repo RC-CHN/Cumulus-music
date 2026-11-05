@@ -4829,3 +4829,30 @@ CAPTCHA探针也已按新协议门槛显式勾选，但本轮未重新打开在�
 打开合成歌单，通过正式详情与 20 页各 100 首曲目详情累积 2,000 首，再验证
 原来的深滚动、快速跳转与有界 DOM。返回每日推荐后再次核对 500 首。
 这修复旧探针把 2,000 首塞入日推响应造成的空页；不放宽业务响应上限。
+
+2026-11-05 声音标题、封面占位与场景取色专项（phase56）
+- 本轮 GUI 示例按 cb24b2cc 源码重新构建，普通产品程序对应 7299fe9e；下述轨迹来自
+  实际示例运行，不把不同源码的构建或局部验证当成同一提交的完整发行验收。
+- .build/ui-proof/phase56-voice-detail/webview/report.json 记录5阶段、5张PNG：
+  card_placeholder、bar_placeholder、voice_metadata、creator_profile、detail_reopened。
+  使用正式 Vue/IPC/原生声音投影与 libmpv/null；合成账号和服务处于隔离网络环境，
+  没有真实账号写入。LC_NUMERIC=C，LC_MESSAGES/LC_CTYPE 保持 en_US.UTF-8。
+- 截图是1280×900虚拟桌面中960×640应用窗口的记录；主代理已用 view_image 逐张查看
+  5张原图，包括卡片、底栏、主播/发布时间、主播主页与回到详情。它们不证明其它 DPI、
+  实体刷新率或真实声卡听感，也不代表同状态官方窗口的逐像素复刻。
+- 场景卡、底栏和播放详情的远端封面失败后显示本地 Icon；同账号同 URL 的复用另有
+  前端状态用例，不把本轮五阶段截图说成同 URL 切节目实测。声音详情显示原生主播和
+  createTime，隐藏节目来源行，不借用歌曲
+  歌手/专辑；主播跳转固定用户55，并保留同一播放ID、队列及持续前进的原生时钟。
+  主播资料只读链路恰好3条：/api/w/v1/user/detail/55、
+  /api/djradio/get/create/sub/count、/api/user/playlist；没有转入歌手页或写用户资源。
+- 同一根目录的 palette-regression/report.json 单独记录 sample 回归3阶段/3张PNG：
+  palette_idle、playing_palette_stable、voice_detail。实际从合成原生传输取得76字节PNG，
+  经本地 Blob/Image/canvas 采样后交 Rust 量化及 HSV，核对颜色和播放不受影响。
+  本批没有重新运行旧批 header/only_tb/late 三支，不把这次 sample 说成四场景重验。
+- 同根 stereo-cli-output.json 是本批实际 effect_dsp_render stereo-zero 的9块输出，
+  PCM、时序和状态按语义 JSON 与冻结对照一致；ambience=0、completeGraph=false。
+  这属于离线组件验证，不是桌面音效开关、完整专有图或实际扬声器验收。
+- 契约索引：voice-playback-header-contracts.txt、player-cover-fallback-contracts.txt、
+  scene-fm-palette-contracts.txt、core-effects-stereo-zero.txt。完整工作区检查与精确提交
+  CI 按批次另外记录；本条没有新增 Windows 实机/实际 WebView 通过或整体目标完成结论。
