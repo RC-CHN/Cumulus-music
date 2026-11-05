@@ -216,6 +216,7 @@ export interface EqualizerView {
   saved_custom?: number[] | null;
   status: 'pending' | 'unavailable' | 'configured' | 'processing' | 'failed';
   damaged: boolean;
+  source_bypassed?: boolean;
 }
 export interface QueueTrack {
   entryId: string;

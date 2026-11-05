@@ -184,6 +184,22 @@ test('a requested EQ disable is not reported as applied while pending or failed'
   assert.equal(equalizerCanRetry(unavailable), false);
 });
 
+test('a source bypass keeps the saved curve and does not advertise active processing', () => {
+  const settings = { enabled: true, gains: [3, ...Array(9).fill(0)], bass_db: 6 };
+  const dry = { ...view(), settings, source_bypassed: true };
+  assert.deepEqual(equalizerLauncher(dry), {
+    state: 'off',
+    label: '当前音质暂时旁路均衡器，设置已保留',
+  });
+  assert.deepEqual(equalizerChange(dry, settings).settings, settings);
+  assert.deepEqual(effectLauncher(dry, 'bypassed_for_source'), {
+    state: 'off',
+    label: '当前音源已旁路独立参数均衡；当前音质暂时旁路均衡器，设置已保留',
+  });
+  assert.equal(equalizerLauncher({ ...dry, status: 'failed' }).state, 'problem');
+  assert.equal(equalizerLauncher({ ...dry, source_bypassed: false }).state, 'configured');
+});
+
 test('footer reports bound PEQ even while the ordinary equalizer is off', () => {
   assert.equal(effectLauncher(view()).state, 'off');
   assert.deepEqual(effectLauncher(view(), 'configured'), {

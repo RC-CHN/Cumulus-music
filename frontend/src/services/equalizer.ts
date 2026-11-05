@@ -97,6 +97,7 @@ export function equalizerMessage(view: EqualizerView): string {
     return '均衡器组件未就绪，设置已保存。';
   if (view.status === 'pending') return '设置已保存，正在等待播放器应用…';
   if (view.settings.master_bypassed) return '均衡器和低高音增强已暂停，设置已保留';
+  if (view.source_bypassed) return '当前音质暂时旁路均衡器，设置已保留';
   const tone = activeTone(view.settings);
   if (!view.settings.enabled && !tone) return '均衡器已关闭';
   if (!tone && view.settings.gains.every((g) => g === 0)) return '当前为平直曲线';
@@ -111,7 +112,7 @@ export function equalizerLauncher(view?: EqualizerView) {
   if (view.damaged || view.status === 'failed')
     return { state: 'problem', label: equalizerMessage(view) };
   if (view.status === 'pending') return { state: 'pending', label: equalizerMessage(view) };
-  if (view.settings.master_bypassed || equalizerOff(view.settings))
+  if (view.settings.master_bypassed || view.source_bypassed || equalizerOff(view.settings))
     return { state: 'off', label: equalizerMessage(view) };
   const tone = activeTone(view.settings);
   if (!tone && view.settings.gains.every((gain) => gain === 0))
@@ -131,6 +132,10 @@ export function effectLauncher(
 ) {
   const equalizer = equalizerLauncher(view);
   if (!parametric) return equalizer;
+  const reportsSourceBypass =
+    view?.source_bypassed &&
+    !view.settings.master_bypassed &&
+    (activeGeq(view.settings) || activeTone(view.settings));
   const label = {
     configured: processing ? '独立参数均衡正在处理音频' : '独立参数均衡已配置',
     bypassed_for_source: '当前音源已旁路独立参数均衡',
@@ -152,7 +157,7 @@ export function effectLauncher(
               ? equalizer.state
               : 'configured',
     label:
-      equalizer.state === 'off' || equalizer.state === 'loading'
+      (equalizer.state === 'off' && !reportsSourceBypass) || equalizer.state === 'loading'
         ? label
         : label + '；' + equalizer.label,
   };
