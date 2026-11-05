@@ -1283,3 +1283,118 @@ input[type='range'] {
   outline-offset: 4px;
   border-radius: 8px;
 }
+
+.vinyl-tab-viewport {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.vinyl-tab-stack {
+  position: relative;
+  height: 100%;
+  transform: translateY(var(--vinyl-wheel-nudge, 0px));
+  transition: transform 500ms linear;
+}
+.vinyl-tab-stack.dragging {
+  transition: none;
+}
+.lyrics-panel[data-vinyl-tab='comments'] .vinyl-tab-stack {
+  transform: translateY(calc(-100% + var(--vinyl-wheel-nudge, 0px)));
+}
+.vinyl-tab-stack > :is(.lyrics-body, .vinyl-comments-pane) {
+  height: 100%;
+}
+.lyrics-body:has(.vinyl-scroll-comment) {
+  padding-bottom: 44px;
+}
+.vinyl-scroll-comment {
+  position: absolute;
+  z-index: 1;
+  bottom: 9px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.vinyl-comments-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-inline: clamp(20px, 8vw, 82px);
+}
+.vinyl-comments-track {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 16px;
+}
+.vinyl-comments-back {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  gap: 8px;
+}
+.vinyl-comments-back img,
+.vinyl-comments-back > .icon:first-child {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.vinyl-comments-back span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vinyl-comments-scroll {
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 0 4px 22px;
+  overscroll-behavior: contain;
+}
+.vinyl-comments-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.vinyl-comments-heading h2,
+.vinyl-comments-scroll h3 {
+  font-size: 17px;
+}
+.vinyl-comments-heading small,
+.vinyl-comment-row small {
+  color: var(--muted);
+}
+.vinyl-comment-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px 2px;
+  border-bottom: 1px solid var(--line);
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+.vinyl-comment-row img,
+.vinyl-comment-row .icon {
+  width: 34px;
+  height: 34px;
+  object-fit: cover;
+  border-radius: 50%;
+}
+.vinyl-comment-row p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.vinyl-more-hot {
+  margin: 8px 0 14px;
+}
+.vinyl-comments-sentinel {
+  height: 1px;
+}

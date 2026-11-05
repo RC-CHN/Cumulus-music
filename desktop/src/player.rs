@@ -287,6 +287,36 @@ pub async fn player_comment_count(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_vinyl_comments_available<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+) -> Result<bool, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_comments_available(&epoch)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
+pub async fn player_vinyl_comments<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    offset: usize,
+) -> Result<AccountData<cumulus_core::client::VinylCommentPageView>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("main window required").into());
+    }
+    client
+        .player_vinyl_comments(&epoch, &play_id, offset)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_lyrics(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

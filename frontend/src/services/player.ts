@@ -1,5 +1,6 @@
-import type { TrackView, CoreFailure } from './contracts';
+import type { TrackView, CoreFailure, AccountData } from './contracts';
 import type { CloudQuery } from './cloud';
+import type { VinylCommentPage } from './comments';
 export type Quality =
   | '64aac'
   | 'standard'
@@ -671,6 +672,12 @@ export interface PlayerClient {
   playerQueueCollection(epoch: string, revision: string): Promise<QueueCollectionView>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
+  playerVinylCommentsAvailable(epoch: string): Promise<boolean>;
+  playerVinylComments(
+    epoch: string,
+    playId: string,
+    offset: number,
+  ): Promise<AccountData<VinylCommentPage>>;
   playerLyrics(epoch: string, playId: string, cachedOnly?: boolean): Promise<LyricsView>;
   lyricPreferences(
     epoch: string,

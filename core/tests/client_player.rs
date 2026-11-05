@@ -48,12 +48,52 @@ struct Backend {
     quality_trial_source: std::sync::atomic::AtomicBool,
     quality_started: Notify,
     quality_release: Notify,
+    vinyl_comment_group: AtomicU64,
+    vinyl_comment_calls: Mutex<Vec<(String, Value)>>,
+    vinyl_comment_hold: AtomicU64,
+    vinyl_comment_started: Notify,
+    vinyl_comment_release: Notify,
 }
 impl Api for Backend {
+    fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
+        let group = self.vinyl_comment_group.load(Ordering::SeqCst);
+        Ok((group != 0).then(|| group.to_string()))
+    }
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
+        Box::pin(async move {
+            let group = if revision == "1" { "t1" } else { "c" };
+            cumulus_core::protocol::pc_experiments::PcExperimentGroups::refreshed(&json!({
+                "data":[{"expName":"PH-PC-optimizeComment","expGroupName":group}]
+            }))
+        })
+    }
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             self.calls.lock().unwrap().push(path.into());
             Ok(match path {
+                "/api/v1/resource/comments/R_SO_4_1" => {
+                    assert!(!cache);
+                    self.vinyl_comment_calls
+                        .lock()
+                        .unwrap()
+                        .push((path.into(), payload.clone()));
+                    if self.vinyl_comment_hold.swap(0, Ordering::SeqCst) == 1 {
+                        self.vinyl_comment_started.notify_one();
+                        self.vinyl_comment_release.notified().await;
+                    }
+                    let first = payload["offset"] == 0;
+                    let row = |id: u32| json!({"commentId":id,"content":"合成评论","time":1700000000123_u64,"liked":false,"likedCount":2});
+                    let comments = if first {
+                        vec![row(1), row(2)]
+                    } else {
+                        vec![row(3)]
+                    };
+                    json!({"code":200,"comments":comments,"hotComments":(4..10).map(row).collect::<Vec<_>>(),
+                           "topComments":[row(10)],"total":3,"more":first,"moreHot":true})
+                }
                 "/api/w/nuser/account/get" => json!({"code":200,"profile":{"userId":9}}),
                 "/api/rtrs/abt/front/expinfo/list" => {
                     assert_eq!(payload, json!({"expNames":"StandardAudio_VIPLogo_PCV2"}));
@@ -261,6 +301,9 @@ mod prepared_selection;
 
 #[path = "client_player/voice_selection.rs"]
 mod voice_selection;
+
+#[path = "client_player/vinyl_comments.rs"]
+mod vinyl_comments;
 
 #[path = "client_player/queue_click.rs"]
 mod queue_click;

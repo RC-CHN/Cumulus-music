@@ -62,7 +62,13 @@ type Destination =
   | { kind: 'cloud' }
   | { kind: 'mvs' }
   | { kind: 'mv'; id: string; taskId?: string }
-  | { kind: 'comments'; resource: CommentResource; title: string; initialCommentId?: string }
+  | {
+      kind: 'comments';
+      resource: CommentResource;
+      title: string;
+      initialCommentId?: string;
+      initialSort?: 'hot';
+    }
   | {
       kind: 'playlist';
       id: string;

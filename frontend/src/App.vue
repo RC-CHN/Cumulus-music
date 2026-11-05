@@ -164,6 +164,8 @@ import {
 } from './services/player';
 import LyricsPanel from './components/LyricsPanel.vue';
 import { readVinylDisplayMode, storeVinylDisplayMode } from './services/vinylDisplay';
+import { usePlaybackCommentInfo } from './composables/usePlaybackCommentCount';
+import { useVinylComments } from './composables/useVinylComments';
 import PlaylistDialog from './components/PlaylistDialog.vue';
 import PlaylistImportPreview from './components/playlist/PlaylistImportPreview.vue';
 import PlaylistCollectDialog from './components/PlaylistCollectDialog.vue';
@@ -1409,9 +1411,9 @@ provide(commentAuthorNavigation, {
     if (commentAuthorReturn.value?.anchor === anchor) commentAuthorReturn.value = undefined;
   },
 });
-function openComments(resource: CommentResource, title: string) {
+function openComments(resource: CommentResource, title: string, initialSort?: 'hot') {
   playlistDialog.value = undefined;
-  music.navigate({ kind: 'comments', resource, title });
+  music.navigate({ kind: 'comments', resource, title, initialSort });
 }
 function openMessageTarget(epoch: string, target: MessageTarget): Page | undefined {
   if (!signedIn.value || initializing.value || epoch !== account.value.epoch) return;
@@ -1512,6 +1514,76 @@ watch(vinylDisplayMode, (value) => storeVinylDisplayMode(value));
 const player = usePlayer(undefined, () => {
   void music.bootstrap(false);
 });
+const playbackCommentCount = usePlaybackCommentInfo(
+  player.view,
+  player.loaded,
+  () => music.account.value.epoch,
+);
+const vinylCommentsOpen = ref(false);
+const vinylCommentAssignment = shallowRef<{ epoch: string; available: boolean }>();
+const vinylAssignmentQuery = computed(() =>
+  music.signedIn.value &&
+  player.lyricsOpen.value &&
+  vinylDisplayMode.value === 'classic' &&
+  player.view.value?.resourceKind === 'catalog'
+    ? music.account.value.epoch
+    : undefined,
+);
+watch(
+  vinylAssignmentQuery,
+  async (epoch, _, cleanup) => {
+    if (!epoch) return;
+    let current = true;
+    cleanup(() => (current = false));
+    try {
+      const available = await core.playerVinylCommentsAvailable(epoch);
+      if (current && epoch === music.account.value.epoch)
+        vinylCommentAssignment.value = { epoch, available };
+    } catch {
+      if (current) vinylCommentAssignment.value = undefined;
+    }
+  },
+  { immediate: true },
+);
+const vinylCommentTarget = computed(() => {
+  const view = player.view.value;
+  return view?.playId &&
+    view.resourceKind === 'catalog' &&
+    music.signedIn.value &&
+    view.epoch === music.account.value.epoch &&
+    vinylDisplayMode.value === 'classic' &&
+    vinylCommentAssignment.value?.epoch === view.epoch &&
+    vinylCommentAssignment.value.available
+    ? JSON.stringify([view.epoch, view.playId])
+    : undefined;
+});
+const vinylCommentVisible = computed(
+  () => player.lyricsOpen.value && vinylCommentsOpen.value && !!vinylCommentTarget.value,
+);
+const vinylComments = useVinylComments(
+  core,
+  vinylCommentTarget,
+  vinylCommentVisible,
+  playbackCommentCount,
+);
+watch(vinylCommentTarget, (target) => {
+  if (!target) vinylCommentsOpen.value = false;
+});
+function playbackComments(track: TrackView) {
+  if (player.lyricsOpen.value && vinylCommentTarget.value) {
+    vinylCommentsOpen.value = !vinylCommentsOpen.value;
+  } else {
+    player.lyricsOpen.value = false;
+    trackComments(track);
+  }
+}
+function openFullVinylComments(hot = false) {
+  const track = player.view.value?.track;
+  if (!track || !vinylCommentVisible.value) return;
+  player.lyricsOpen.value = false;
+  openComments({ kind: 'track', id: track.id }, track.name, hot ? 'hot' : undefined);
+}
+
 const intelligence = useIntelligence(player, () => together.view.value?.attached ?? false);
 watch(
   [
@@ -3527,7 +3599,10 @@ watch([() => account.value.epoch, () => account.value.status], () => {
   localMatching.connect(account.value);
   if (page.value.kind === 'mv') void loadMv(page.value.id, page.value.taskId);
   if (page.value.kind === 'comments')
-    void comments.open(page.value.resource, commentStartPosition(page.value.initialCommentId));
+    void comments.open(
+      page.value.resource,
+      commentStartPosition(page.value.initialCommentId, page.value.initialSort),
+    );
 });
 watch([() => account.value.epoch, music.accountReady], () => {
   if (music.accountReady.value) void player.connect(account.value);
@@ -3607,7 +3682,10 @@ watch(
     mv.show(value.kind === 'mvs');
     if (value.kind === 'mv') void loadMv(value.id, value.taskId);
     if (value.kind === 'comments' && value !== saved?.origin)
-      void comments.open(value.resource, commentStartPosition(value.initialCommentId));
+      void comments.open(
+        value.resource,
+        commentStartPosition(value.initialCommentId, value.initialSort),
+      );
     if (value.kind === 'rankings') void rankings.enter(value.query, value.rankingState);
     if (value.kind === 'history') void recent.open(value.scope);
     if (value.kind === 'settings' && !value.accountDetail) void settings.open();
@@ -5229,7 +5307,12 @@ onUnmounted(() => {
       <LyricsPanel
         v-if="player.lyricsOpen.value && currentTrackId"
         v-model:mode="vinylDisplayMode"
+        v-model:comments-open="vinylCommentsOpen"
         :player="player"
+        :comments-available="!!vinylCommentTarget"
+        :comment-model="vinylComments"
+        :comment-count="playbackCommentCount"
+        @full-comments="openFullVinylComments"
         @report="reportLyrics"
         @source="openPlaybackSource"
         @catalog="
@@ -5309,7 +5392,10 @@ onUnmounted(() => {
       @like="likePlaying"
       @retry="player.connect(account)"
       @audio-output="openAudioOutput"
-      @comments="trackComments"
+      :comment-count="playbackCommentCount"
+      :vinyl-comments="player.lyricsOpen.value && !!vinylCommentTarget"
+      :vinyl-comments-open="vinylCommentVisible"
+      @comments="playbackComments"
       @download="openCurrentDownload"
       @catalog="openPlaybackSource"
       @member="music.navigate({ kind: 'member' })"

@@ -2,7 +2,7 @@ import { computed, shallowRef, watch, type Ref } from 'vue';
 import { useCore } from '../services/core';
 import type { PlayerView } from '../services/player';
 
-export function usePlaybackCommentCount(
+export function usePlaybackCommentInfo(
   view: Ref<PlayerView | undefined>,
   loaded: Readonly<Ref<boolean>>,
   accountEpoch: () => string,
@@ -37,6 +37,6 @@ export function usePlaybackCommentCount(
   );
   return computed(() => {
     const current = result.value;
-    return current && current.key === target.value ? current.count : 0;
+    return current && current.key === target.value ? current.count : undefined;
   });
 }

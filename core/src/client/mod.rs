@@ -78,7 +78,7 @@ pub mod style_home;
 pub mod style_tags;
 mod together;
 mod window;
-pub use player::PlaybackSubscription;
+pub use player::{PlaybackSubscription, VinylCommentPageView};
 
 use crate::{
     Result,

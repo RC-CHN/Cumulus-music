@@ -8,6 +8,8 @@ import LyricFontSize from './LyricFontSize.vue';
 import ActionMenu from './ActionMenu.vue';
 import ModalTransition from './ModalTransition.vue';
 import VinylModeSheet from './VinylModeSheet.vue';
+import VinylCommentsPane from './VinylCommentsPane.vue';
+import type { VinylCommentsModel } from '../composables/useVinylComments';
 import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
@@ -16,12 +18,19 @@ import {
   playbackSource,
   type PlaybackSourceDestination,
 } from '../services/playbackMetadata';
-const props = defineProps<{ player: PlayerModel }>();
+const props = defineProps<{
+  player: PlayerModel;
+  commentsAvailable: boolean;
+  commentModel: VinylCommentsModel;
+  commentCount?: number;
+}>();
+const commentsOpen = defineModel<boolean>('commentsOpen', { required: true });
 const preferredMode = defineModel<VinylDisplayMode>('mode', { required: true });
 const emit = defineEmits<{
   report: [];
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
+  fullComments: [hot: boolean];
 }>();
 const { view, lyrics, lyricLoading, lyricUpdating, lyricError, loaded, busy } = props.player;
 const container = ref<HTMLElement>(),
@@ -69,6 +78,62 @@ watch(lyricFontGain, (value) => {
   else void scroll();
 });
 const motion = useMotion();
+const commentsVisible = computed(() => props.commentsAvailable && commentsOpen.value);
+const commentPane = ref<InstanceType<typeof VinylCommentsPane>>();
+const commentEntry = ref<HTMLButtonElement>();
+const wheelNudge = ref(0);
+const wheelSliding = ref(false);
+let accumulated = 0;
+let idleWheel: ReturnType<typeof setTimeout> | undefined;
+let unlockWheel: ReturnType<typeof setTimeout> | undefined;
+let returnCommentFocus: HTMLElement | undefined;
+function resetWheel() {
+  clearTimeout(idleWheel);
+  accumulated = 0;
+  wheelNudge.value = 0;
+}
+function vinylWheel(event: WheelEvent) {
+  if (!props.commentsAvailable || wheelSliding.value || !event.deltaY) return;
+  const next = accumulated + event.deltaY;
+  accumulated = commentsVisible.value ? Math.min(0, next) : Math.max(0, next);
+  clearTimeout(idleWheel);
+  idleWheel = setTimeout(resetWheel, 250);
+  if (Math.abs(accumulated) >= 480) {
+    commentsOpen.value = !commentsVisible.value;
+  } else if (!motion.reduced.value) {
+    wheelNudge.value = -accumulated / 2;
+  }
+}
+watch(commentsVisible, async (active) => {
+  resetWheel();
+  clearTimeout(unlockWheel);
+  wheelSliding.value = !motion.reduced.value;
+  if (wheelSliding.value) unlockWheel = setTimeout(() => (wheelSliding.value = false), 500);
+  if (active) {
+    const focused = document.activeElement;
+    returnCommentFocus =
+      focused instanceof HTMLElement && focused !== document.body ? focused : undefined;
+    await nextTick();
+    if (commentsVisible.value) commentPane.value?.focusBack();
+  } else {
+    await nextTick();
+    if (commentsVisible.value || !props.player.lyricsOpen.value) return;
+    const anchor = returnCommentFocus;
+    returnCommentFocus = undefined;
+    (anchor?.isConnected && !anchor.closest('[inert]')
+      ? anchor
+      : (commentEntry.value ?? close.value)
+    )?.focus({ preventScroll: true });
+    void scroll();
+  }
+});
+watch(motion.reduced, (reduced) => {
+  if (reduced) {
+    clearTimeout(unlockWheel);
+    wheelSliding.value = false;
+    resetWheel();
+  }
+});
 const manual = ref(false);
 const resumeButton = ref<HTMLButtonElement>();
 const browseButton = ref<HTMLButtonElement>();
@@ -243,10 +308,22 @@ async function playBrowsedLine() {
 }
 async function scroll() {
   await nextTick();
-  if (manual.value) return;
-  container.value?.querySelector('.lyric-line.current')?.scrollIntoView({
-    block: 'center',
-    behavior: motion.reduced.value ? 'instant' : 'smooth',
+  if (manual.value || commentsVisible.value) return;
+  const scroller = container.value;
+  const current = scroller?.querySelector('.lyric-line.current');
+  if (!scroller || !current) return;
+  const behavior = motion.reduced.value ? 'instant' : 'smooth';
+  if (!props.commentsAvailable) {
+    current.scrollIntoView({ block: 'center', behavior });
+    return;
+  }
+  // The experimental stack clips a neighboring full pane. Keep lyric
+  // centering scoped to its scroller so it cannot move the outer viewport.
+  const box = scroller.getBoundingClientRect();
+  const line = current.getBoundingClientRect();
+  scroller.scrollTo({
+    top: scroller.scrollTop + line.top - box.top + (line.height - box.height) / 2,
+    behavior,
   });
 }
 function cancelLyricFollowTimer() {
@@ -309,9 +386,12 @@ onMounted(() => {
   previous = document.activeElement as HTMLElement;
   previousEpoch = view.value?.epoch;
   close.value?.focus();
+  if (commentsVisible.value) commentPane.value?.focusBack();
   void scroll();
 });
 onUnmounted(() => {
+  resetWheel();
+  clearTimeout(unlockWheel);
   cancelLyricFollowTimer();
   if (view.value?.epoch === previousEpoch && previous?.isConnected)
     previous.focus({ preventScroll: true });
@@ -328,6 +408,7 @@ const displayedAuxiliary = computed(() =>
   <section
     class="lyrics-panel"
     :data-vinyl-mode="displayMode"
+    :data-vinyl-tab="commentsVisible ? 'comments' : 'lyrics'"
     :style="{ '--lyric-font-gain': `${lyricFontGain}px` }"
     aria-label="播放详情与歌词"
     @keydown.esc.stop="escapePanel"
@@ -337,7 +418,7 @@ const displayedAuxiliary = computed(() =>
       <DesktopLyricToggle v-if="view" :epoch="view.epoch" />
       <div class="vinyl-header-actions">
         <button
-          v-if="modeAvailable"
+          v-if="modeAvailable && !commentsVisible"
           ref="modeEntry"
           class="secondary vinyl-mode-entry"
           type="button"
@@ -357,191 +438,226 @@ const displayedAuxiliary = computed(() =>
         </button>
       </div>
     </header>
-    <div class="lyrics-body">
-      <div class="vinyl-info">
-        <div v-if="displayMode !== 'lyric'" class="vinyl-record">
-          <img
-            v-if="view?.track?.coverUrl"
-            :src="view.track.coverUrl"
-            alt="专辑封面"
-            referrerpolicy="no-referrer"
-          /><Icon v-else name="music" />
-        </div>
-        <h1 :title="view?.track?.name">{{ view?.track?.name }}</h1>
-        <p v-if="view?.track" class="vinyl-credits" aria-label="歌手">
-          <template v-for="(artist, index) in metadata.artists" :key="index">
-            <span v-if="index > 0" aria-hidden="true"> / </span>
-            <button
-              v-if="artist.target"
-              type="button"
-              class="text-button vinyl-credit"
-              :aria-label="`查看歌手：${artist.name}`"
-              :title="artist.name"
-              @click="emit('catalog', artist.target)"
-            >
-              {{ artist.name }}
-            </button>
-            <span v-else class="vinyl-credit" :title="artist.name">{{ artist.name }}</span>
-          </template>
-        </p>
-        <small v-if="displayMode === 'classic' && view?.track" class="vinyl-album">
+    <div class="vinyl-tab-viewport" @wheel.passive="vinylWheel">
+      <div
+        class="vinyl-tab-stack"
+        :class="{ dragging: wheelNudge !== 0 }"
+        :style="{ '--vinyl-wheel-nudge': `${wheelNudge}px` }"
+      >
+        <div class="lyrics-body" :inert="commentsVisible">
           <button
-            v-if="metadata.album.target"
+            v-if="commentsAvailable"
+            ref="commentEntry"
             type="button"
-            class="text-button vinyl-credit"
-            :aria-label="`查看专辑：${metadata.album.name}`"
-            :title="metadata.album.name"
-            @click="emit('catalog', metadata.album.target)"
+            class="text-button vinyl-scroll-comment"
+            @click="commentsOpen = true"
           >
-            {{ metadata.album.name }}
+            <Icon name="down" />滚动查看评论<Icon name="down" />
           </button>
-          <span v-else class="vinyl-credit" :title="metadata.album.name">{{
-            metadata.album.name
-          }}</span>
-        </small>
-        <small v-if="displayMode === 'classic' && source" class="vinyl-source">
-          <span>来源：</span>
-          <button
-            v-if="source.target"
-            type="button"
-            class="text-button vinyl-credit"
-            :aria-label="`查看播放来源：${source.name}`"
-            :title="source.name"
-            @click="emit('source', source.target)"
-          >
-            {{ source.name }}
-          </button>
-          <span v-else>{{ source.name }}</span>
-        </small>
-        <span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
-        <p v-if="displayMode === 'cover'" class="vinyl-cover-line">{{ coverLine }}</p>
-      </div>
-      <div v-if="displayMode !== 'cover'" class="lyrics-column">
-        <div v-if="lyricLoading" class="empty-state" role="status">
-          <span class="spinner" />正在加载歌词…
-        </div>
-        <div v-else-if="lyricError" class="empty-state">
-          {{ lyricError }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
-        </div>
-        <template v-else-if="lyrics">
-          <div
-            v-if="lyrics.fromSidecar || lyrics.fromEmbedded || lyrics.networkFailed"
-            class="lyric-cache-note"
-          >
-            {{
-              lyrics.fromSidecar || lyrics.fromEmbedded
-                ? '正在显示本地歌词'
-                : lyrics.fromCache
-                  ? '网络暂不可用，正在显示缓存歌词'
-                  : '暂未获取到歌词'
-            }}<button v-if="lyrics.networkFailed" class="text-button" @click="player.loadLyrics">
-              重试
-            </button>
-          </div>
-          <div v-if="!lines.length" class="empty-state">
-            {{ lyrics.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
-          </div>
-          <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
-            <div
-              ref="container"
-              class="lyric-scroll"
-              tabindex="-1"
-              @wheel.passive="pauseLyricFollow"
-              @touchmove.passive="pauseLyricFollow"
-              @scroll.passive="selectBrowsedLine"
-            >
-              <div class="lyric-padding" />
-              <button
-                v-for="(line, index) in lines"
-                :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
-                class="lyric-line"
-                :class="{ current: index === active, browsed: index === browsedIndex }"
-                :data-line="index"
-                :disabled="!seekable(line)"
-                @click="seekLine(line)"
-              >
-                <span v-if="timedWords && lyrics.wordLines[index]?.words.length" class="word-line"
-                  ><span
-                    v-for="(word, wi) in lyrics.wordLines[index]?.words"
-                    :key="wi"
-                    class="timed-word"
-                    :style="{ '--word-progress': wordProgress(word) }"
-                    >{{ word.text }}</span
-                  ></span
-                >
-                <span v-else>{{ line.lyric || '♪' }}</span>
-                <small v-if="displayedAuxiliary[index]">{{ displayedAuxiliary[index] }}</small>
-              </button>
-              <div class="lyric-padding" />
+          <div class="vinyl-info">
+            <div v-if="displayMode !== 'lyric'" class="vinyl-record">
+              <img
+                v-if="view?.track?.coverUrl"
+                :src="view.track.coverUrl"
+                alt="专辑封面"
+                referrerpolicy="no-referrer"
+              /><Icon v-else name="music" />
             </div>
-            <button
-              v-if="browsingLine && browsingTime"
-              ref="browseButton"
-              type="button"
-              class="lyric-browse-time"
-              :aria-label="`从歌词时间 ${browsingTime} 播放`"
-              :disabled="!seekable(browsingLine)"
-              @click="playBrowsedLine"
-            >
-              <Icon name="play" />{{ browsingTime }}
-            </button>
+            <h1 :title="view?.track?.name">{{ view?.track?.name }}</h1>
+            <p v-if="view?.track" class="vinyl-credits" aria-label="歌手">
+              <template v-for="(artist, index) in metadata.artists" :key="index">
+                <span v-if="index > 0" aria-hidden="true"> / </span>
+                <button
+                  v-if="artist.target"
+                  type="button"
+                  class="text-button vinyl-credit"
+                  :aria-label="`查看歌手：${artist.name}`"
+                  :title="artist.name"
+                  @click="emit('catalog', artist.target)"
+                >
+                  {{ artist.name }}
+                </button>
+                <span v-else class="vinyl-credit" :title="artist.name">{{ artist.name }}</span>
+              </template>
+            </p>
+            <small v-if="displayMode === 'classic' && view?.track" class="vinyl-album">
+              <button
+                v-if="metadata.album.target"
+                type="button"
+                class="text-button vinyl-credit"
+                :aria-label="`查看专辑：${metadata.album.name}`"
+                :title="metadata.album.name"
+                @click="emit('catalog', metadata.album.target)"
+              >
+                {{ metadata.album.name }}
+              </button>
+              <span v-else class="vinyl-credit" :title="metadata.album.name">{{
+                metadata.album.name
+              }}</span>
+            </small>
+            <small v-if="displayMode === 'classic' && source" class="vinyl-source">
+              <span>来源：</span>
+              <button
+                v-if="source.target"
+                type="button"
+                class="text-button vinyl-credit"
+                :aria-label="`查看播放来源：${source.name}`"
+                :title="source.name"
+                @click="emit('source', source.target)"
+              >
+                {{ source.name }}
+              </button>
+              <span v-else>{{ source.name }}</span>
+            </small>
+            <span v-if="view?.timeline?.mode === 'trial'" class="trial-badge">当前为试听片段</span>
+            <p v-if="displayMode === 'cover'" class="vinyl-cover-line">{{ coverLine }}</p>
           </div>
-        </template>
-        <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
-        <div v-if="displayMode === 'classic'" class="lyric-tools">
-          <template v-if="lyrics">
-            <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
-            <template v-if="lyrics.scrollable">
-              <button
-                class="icon-button"
-                aria-label="歌词延后半秒"
-                :aria-disabled="changingLyric"
-                @click="changeLyric(() => player.offset(-1))"
+          <div v-if="displayMode !== 'cover'" class="lyrics-column">
+            <div v-if="lyricLoading" class="empty-state" role="status">
+              <span class="spinner" />正在加载歌词…
+            </div>
+            <div v-else-if="lyricError" class="empty-state">
+              {{ lyricError
+              }}<button class="text-button" @click="player.loadLyrics">重新加载</button>
+            </div>
+            <template v-else-if="lyrics">
+              <div
+                v-if="lyrics.fromSidecar || lyrics.fromEmbedded || lyrics.networkFailed"
+                class="lyric-cache-note"
               >
-                −
-              </button>
-              <small>{{ lyrics.offset.toFixed(1) }}s</small>
-              <button
-                class="icon-button"
-                aria-label="歌词提前半秒"
-                :aria-disabled="changingLyric"
-                @click="changeLyric(() => player.offset(1))"
-              >
-                +
-              </button>
+                {{
+                  lyrics.fromSidecar || lyrics.fromEmbedded
+                    ? '正在显示本地歌词'
+                    : lyrics.fromCache
+                      ? '网络暂不可用，正在显示缓存歌词'
+                      : '暂未获取到歌词'
+                }}<button
+                  v-if="lyrics.networkFailed"
+                  class="text-button"
+                  @click="player.loadLyrics"
+                >
+                  重试
+                </button>
+              </div>
+              <div v-if="!lines.length" class="empty-state">
+                {{ lyrics.displayType === 'pure' ? '纯音乐，请欣赏' : '暂无歌词' }}
+              </div>
+              <div v-else class="lyric-scroll-shell" :class="{ browsing: manual }">
+                <div
+                  ref="container"
+                  class="lyric-scroll"
+                  tabindex="-1"
+                  @wheel.stop.passive="pauseLyricFollow"
+                  @touchmove.passive="pauseLyricFollow"
+                  @scroll.passive="selectBrowsedLine"
+                >
+                  <div class="lyric-padding" />
+                  <button
+                    v-for="(line, index) in lines"
+                    :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
+                    class="lyric-line"
+                    :class="{ current: index === active, browsed: index === browsedIndex }"
+                    :data-line="index"
+                    :disabled="!seekable(line)"
+                    @click="seekLine(line)"
+                  >
+                    <span
+                      v-if="timedWords && lyrics.wordLines[index]?.words.length"
+                      class="word-line"
+                      ><span
+                        v-for="(word, wi) in lyrics.wordLines[index]?.words"
+                        :key="wi"
+                        class="timed-word"
+                        :style="{ '--word-progress': wordProgress(word) }"
+                        >{{ word.text }}</span
+                      ></span
+                    >
+                    <span v-else>{{ line.lyric || '♪' }}</span>
+                    <small v-if="displayedAuxiliary[index]">{{ displayedAuxiliary[index] }}</small>
+                  </button>
+                  <div class="lyric-padding" />
+                </div>
+                <button
+                  v-if="browsingLine && browsingTime"
+                  ref="browseButton"
+                  type="button"
+                  class="lyric-browse-time"
+                  :aria-label="`从歌词时间 ${browsingTime} 播放`"
+                  :disabled="!seekable(browsingLine)"
+                  @click="playBrowsedLine"
+                >
+                  <Icon name="play" />{{ browsingTime }}
+                </button>
+              </div>
             </template>
-            <template v-for="auxiliary in auxiliaries" :key="auxiliary.key">
-              <button
-                v-if="auxiliaryAvailable[auxiliary.key]"
-                class="text-button"
-                :aria-label="auxiliary.name"
-                :title="auxiliary.name"
-                :aria-pressed="activeAuxiliary === auxiliary.key"
-                :aria-disabled="changingLyric"
-                @click="toggleAuxiliary(auxiliary.key)"
-              >
-                {{ auxiliary.label }}
-              </button>
-            </template>
-            <button
-              v-if="lyrics.wordLines.length"
-              class="text-button"
-              :aria-pressed="wordMode"
-              @click="wordMode = !wordMode"
-            >
-              逐字
-            </button>
-            <button v-if="manual" ref="resumeButton" class="text-button" @click="followLyrics">
-              回到当前
-            </button>
-          </template>
-          <ActionMenu
-            v-if="!view?.track?.voiceId"
-            label="歌词操作"
-            :items="[{ key: 'report', label: '歌词报错', icon: 'edit' }]"
-            @select="emit('report')"
-          />
+            <div v-else-if="!view?.playId" class="empty-state">暂无播放中的歌曲</div>
+            <div v-if="displayMode === 'classic'" class="lyric-tools">
+              <template v-if="lyrics">
+                <LyricFontSize v-if="lines.length" v-model="lyricFontGain" />
+                <template v-if="lyrics.scrollable">
+                  <button
+                    class="icon-button"
+                    aria-label="歌词延后半秒"
+                    :aria-disabled="changingLyric"
+                    @click="changeLyric(() => player.offset(-1))"
+                  >
+                    −
+                  </button>
+                  <small>{{ lyrics.offset.toFixed(1) }}s</small>
+                  <button
+                    class="icon-button"
+                    aria-label="歌词提前半秒"
+                    :aria-disabled="changingLyric"
+                    @click="changeLyric(() => player.offset(1))"
+                  >
+                    +
+                  </button>
+                </template>
+                <template v-for="auxiliary in auxiliaries" :key="auxiliary.key">
+                  <button
+                    v-if="auxiliaryAvailable[auxiliary.key]"
+                    class="text-button"
+                    :aria-label="auxiliary.name"
+                    :title="auxiliary.name"
+                    :aria-pressed="activeAuxiliary === auxiliary.key"
+                    :aria-disabled="changingLyric"
+                    @click="toggleAuxiliary(auxiliary.key)"
+                  >
+                    {{ auxiliary.label }}
+                  </button>
+                </template>
+                <button
+                  v-if="lyrics.wordLines.length"
+                  class="text-button"
+                  :aria-pressed="wordMode"
+                  @click="wordMode = !wordMode"
+                >
+                  逐字
+                </button>
+                <button v-if="manual" ref="resumeButton" class="text-button" @click="followLyrics">
+                  回到当前
+                </button>
+              </template>
+              <ActionMenu
+                v-if="!view?.track?.voiceId"
+                label="歌词操作"
+                :items="[{ key: 'report', label: '歌词报错', icon: 'edit' }]"
+                @select="emit('report')"
+              />
+            </div>
+          </div>
         </div>
+        <VinylCommentsPane
+          v-if="commentsAvailable && view?.track"
+          ref="commentPane"
+          :track="view.track"
+          :active="commentsVisible"
+          :count="commentCount"
+          :model="commentModel"
+          @back="commentsOpen = false"
+          @full="emit('fullComments', false)"
+          @hot="emit('fullComments', true)"
+        />
       </div>
     </div>
     <ModalTransition :return-focus="modeEntryFocus" :fallback-focus="panelCloseFocus">

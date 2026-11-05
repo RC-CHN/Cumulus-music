@@ -23,7 +23,6 @@ import { effectLauncher, equalizerLauncher } from '../services/equalizer';
 import { headphoneTuningLabel } from '../services/effectDirectory';
 import { bufferedSeekSpan, insidePlayableTrial, seekRail } from '../services/seekRail';
 import { usePlaybackChorus } from '../composables/usePlaybackChorus';
-import { usePlaybackCommentCount } from '../composables/usePlaybackCommentCount';
 import { usePlaybackDownloadState } from '../composables/usePlaybackDownloadState';
 import { useQueueMoreTip } from '../composables/useQueueMoreTip';
 import { formatPlaybackCommentCount } from '../services/playbackCommentCount';
@@ -44,6 +43,9 @@ const props = withDefaults(
     likedPlaylistId?: string | null;
     downloadsAllowed?: boolean;
     downloadsChanging?: boolean;
+    commentCount?: number;
+    vinylComments?: boolean;
+    vinylCommentsOpen?: boolean;
   }>(),
   { togetherActive: false },
 );
@@ -76,8 +78,7 @@ const showQueueMoreTip = useQueueMoreTip(
   () => props.account.epoch,
   () => props.account.status === 'authenticated' && !props.togetherActive,
 );
-const commentCount = usePlaybackCommentCount(view, loaded, () => props.account.epoch);
-const commentBadge = computed(() => formatPlaybackCommentCount(commentCount.value));
+const commentBadge = computed(() => formatPlaybackCommentCount(props.commentCount ?? 0));
 const commentDescription = useId();
 const equalizerDescription = useId();
 const equalizerEntry = computed(() => equalizerLauncher(view.value?.equalizer));
@@ -718,6 +719,7 @@ async function seek(event: Event) {
         class="icon-button player-comment"
         aria-label="当前歌曲评论"
         :aria-describedby="commentBadge ? commentDescription : undefined"
+        :aria-pressed="vinylComments ? vinylCommentsOpen : undefined"
         @click="emit('comments', view.track)"
       >
         <Icon name="comment" />

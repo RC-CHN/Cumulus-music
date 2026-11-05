@@ -76,6 +76,12 @@ export interface CommentPage {
   cached: boolean;
   operations: CommentOperation[];
 }
+export interface VinylCommentPage {
+  latest: CommentItem[];
+  hot: CommentItem[];
+  moreHot: boolean;
+  nextOffset: number | null;
+}
 export const commentReportChoices = [
   ['meaningless', '段子或者无意义的评论'],
   ...profileReportChoices,
@@ -115,8 +121,10 @@ export function resourceKey(resource: CommentResource): string {
 }
 
 /** Open the exact native comment in the first read without a list preflight. */
-export function commentStartPosition(commentId?: string) {
+export function commentStartPosition(commentId?: string, initialSort?: 'hot') {
   return commentId
     ? { query: { ...commentQuery(), commentId }, history: [] as CommentQuery[], focusTarget: true }
-    : undefined;
+    : initialSort
+      ? { query: commentQuery(initialSort), history: [] as CommentQuery[], focusTarget: false }
+      : undefined;
 }
