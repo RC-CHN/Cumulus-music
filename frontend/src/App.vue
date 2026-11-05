@@ -3954,8 +3954,14 @@ onUnmounted(() => {
             )
         "
         @search="
-          (word, channel, displayKeyword) =>
-            music.navigate({ kind: 'search', keyword: word, channel, displayKeyword })
+          (word, channel, displayKeyword, defaultReceipt) =>
+            music.navigate({
+              kind: 'search',
+              keyword: word,
+              channel,
+              displayKeyword,
+              ...(defaultReceipt ? { defaultReceipt } : {}),
+            })
         "
         @expired="music.bootstrap(false)"
       />
@@ -4301,6 +4307,7 @@ onUnmounted(() => {
                 :keyword="page.keyword"
                 :category="page.category"
                 :channel="page.channel"
+                :default-receipt="page.defaultReceipt"
                 :pagination="page.pagination"
                 :correct="page.correct"
                 :rewritten-keyword="page.rewrittenKeyword"

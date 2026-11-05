@@ -217,8 +217,12 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
   }
   function submitInput() {
     const channel = query.value.trim() ? ('typing' as const) : ('defaultquery' as const);
+    const defaultReceipt =
+      channel === 'defaultquery' ? defaultWord.value?.defaultReceipt : undefined;
     const keyword = submit();
-    return keyword ? { keyword, channel } : undefined;
+    return keyword
+      ? { keyword, channel, ...(defaultReceipt ? { defaultReceipt } : {}) }
+      : undefined;
   }
   return {
     query,

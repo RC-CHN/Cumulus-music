@@ -3,7 +3,7 @@ mod project;
 pub mod results;
 use crate::{Error, Result, protocol::api::Api};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::{future::Future, sync::Arc, time::Duration};
 
 #[derive(Clone, Deserialize)]
@@ -30,6 +30,20 @@ pub struct SearchWord {
     pub channel: Option<results::SearchChannel>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub radio_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_receipt: Option<String>,
+}
+
+pub(crate) struct DefaultWord {
+    pub word: SearchWord,
+    pub context: Option<Value>,
+}
+
+const DEFAULT_PATH: &str = "/api/search/default/keyword/get";
+
+pub(crate) async fn fetch_default_words(api: &dyn Api) -> Result<(Vec<DefaultWord>, u64)> {
+    let response = api.call(DEFAULT_PATH, json!({}), false, &[200]).await?;
+    project::default_words(&response)
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,7 +126,13 @@ pub(crate) async fn discover_for<Fut: Future<Output = Result<bool>>>(
     audio_toplist: impl FnOnce() -> Fut,
 ) -> Result<SearchDiscovery> {
     let (path, args) = match &query {
-        SearchDiscoveryQuery::Defaults => ("/api/search/default/keyword/get", json!({})),
+        SearchDiscoveryQuery::Defaults => {
+            let (words, refresh_ms) = fetch_default_words(api.as_ref()).await?;
+            return Ok(SearchDiscovery::Defaults {
+                words: words.into_iter().map(|row| row.word).collect(),
+                refresh_ms,
+            });
+        }
         SearchDiscoveryQuery::Recommendations { last_query } => {
             let last = if last_query.is_empty() {
                 String::new()

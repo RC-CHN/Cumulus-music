@@ -25,6 +25,7 @@ const REFRESH_SECONDS: u64 = 30 * 60;
 pub(crate) struct SearchHost {
     pub(crate) enabled: bool,
     pub(super) audio_toplist: super::audio_toplist::AudioToplist,
+    pub(super) default_contexts: super::default_context::DefaultContexts,
     pub(super) preview_config: Option<Arc<crate::protocol::mconfig::PcConfig>>,
     gate: tokio::sync::Mutex<()>,
 }

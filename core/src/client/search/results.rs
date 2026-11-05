@@ -214,6 +214,15 @@ impl MusicClient {
         epoch: &str,
         query: SearchResultQuery,
     ) -> Result<AccountData<SearchResultView>> {
+        self.search_results_with_default(epoch, query, None).await
+    }
+
+    pub async fn search_results_with_default(
+        &self,
+        epoch: &str,
+        query: SearchResultQuery,
+        default_receipt: Option<&str>,
+    ) -> Result<AccountData<SearchResultView>> {
         let token = self.player_token(epoch)?;
         let token = &token;
         let value = self
@@ -222,7 +231,19 @@ impl MusicClient {
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
-                    api::validate_query(&query)?;
+                    let keyword = api::validate_query(&query)?;
+                    let default_context = || {
+                        if query.channel != Some(api::SearchChannel::Defaultquery) {
+                            return Ok(None);
+                        }
+                        self.search.default_contexts.resolve(
+                            &self.session,
+                            token,
+                            &api,
+                            &keyword,
+                            default_receipt,
+                        )
+                    };
                     let flags = self
                         .search
                         .assignment_for(&self.session, token, api.as_ref())
@@ -237,7 +258,7 @@ impl MusicClient {
                             .search
                             .tabs_for(&self.session, token, api.as_ref(), &query.keyword)
                             .await?;
-                        let raw = api::v3::fetch(api.as_ref(), &query).await;
+                        let raw = api::v3::fetch(api.as_ref(), &query, default_context()?).await;
                         let projected = match raw {
                             Ok(raw) if raw.has_zone_candidate() => {
                                 let context = match self.vertical_zone_search_registry(epoch).await
@@ -274,7 +295,8 @@ impl MusicClient {
                             api::COMPREHENSIVE_PATH,
                             None,
                             layout,
-                            api::request(api.as_ref(), &query).await,
+                            api::request_with_default(api.as_ref(), &query, default_context()?)
+                                .await,
                         )
                     }
                 } else {

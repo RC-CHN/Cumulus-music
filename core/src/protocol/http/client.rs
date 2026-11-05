@@ -631,6 +631,29 @@ impl Api for MusicHttpClient {
         })
     }
 
+    fn search_default_context_revision(&self) -> Result<Option<String>> {
+        Ok(Some(self.credentials.login_credentials()?.revision))
+    }
+
+    fn request_search_with_default_context<'a>(
+        &'a self,
+        path: &'a str,
+        payload: Value,
+        revision: &'a str,
+    ) -> crate::protocol::api::ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if !matches!(
+                path,
+                "/api/search/pc/complex/page" | "/api/search/pc/complex/page/v3"
+            ) || payload["channel"] != "defaultquery"
+            {
+                return Err(Error::InvalidInput("invalid contextual search request"));
+            }
+            self.execute(path, payload, false, Some(revision), Jsk::None, None)
+                .await
+        })
+    }
+
     fn playback_power_experiment(
         &self,
     ) -> crate::protocol::api::ApiFuture<

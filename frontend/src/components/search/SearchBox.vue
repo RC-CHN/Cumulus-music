@@ -19,7 +19,12 @@ const props = defineProps<{
   playable: boolean;
 }>();
 const emit = defineEmits<{
-  search: [keyword: string, channel?: SearchChannel, displayKeyword?: string];
+  search: [
+    keyword: string,
+    channel?: SearchChannel,
+    displayKeyword?: string,
+    defaultReceipt?: string,
+  ];
   playChart: [keywords: string[]];
   radio: [id: string];
   discover: [target: SearchChartDestination];
@@ -101,6 +106,7 @@ function submit(word?: string, channel?: SearchChannel, display?: string) {
       value,
       fromInput?.channel ?? channel,
       query.value !== value ? query.value : undefined,
+      fromInput?.defaultReceipt,
     );
   }
 }

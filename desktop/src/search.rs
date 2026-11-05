@@ -4,9 +4,10 @@ pub async fn search_results(
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     query: SearchResultQuery,
+    default_receipt: Option<String>,
 ) -> Result<AccountData<SearchResultView>, ClientError> {
     client
-        .search_results(&epoch, query)
+        .search_results_with_default(&epoch, query, default_receipt.as_deref())
         .await
         .map_err(Into::into)
 }

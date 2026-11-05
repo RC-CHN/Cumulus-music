@@ -1,8 +1,10 @@
 use cumulus_core::{
+    Error,
     account::{AccountSession, profiles::ProfileRegistry},
+    catalog::search::results::SearchChannel as Channel,
     client::{
         MusicClient,
-        dto::{SearchCategory as C, SearchResultQuery},
+        dto::{SearchCategory as C, SearchDiscoveryQuery, SearchResultQuery},
     },
     protocol::{
         api::{Api, ApiFuture},
@@ -12,7 +14,7 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use tokio::sync::Notify;
 struct Backend {
@@ -21,6 +23,8 @@ struct Backend {
     hold: AtomicBool,
     started: Notify,
     release: Notify,
+    revision: AtomicUsize,
+    checked: Mutex<Vec<String>>,
 }
 impl Api for Backend {
     fn request<'a>(&'a self, path: &'a str, args: Value, _: bool) -> ApiFuture<'a, Value> {
@@ -31,6 +35,24 @@ impl Api for Backend {
                 self.release.notified().await;
             }
             Ok(self.reply.lock().unwrap().clone())
+        })
+    }
+    fn search_default_context_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(Some(self.revision.load(Ordering::SeqCst).to_string()))
+    }
+
+    fn request_search_with_default_context<'a>(
+        &'a self,
+        path: &'a str,
+        args: Value,
+        revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            if self.search_default_context_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            self.checked.lock().unwrap().push(revision.into());
+            self.request(path, args, false).await
         })
     }
 }
@@ -48,6 +70,8 @@ fn fixture() -> (
         hold: AtomicBool::new(false),
         started: Notify::new(),
         release: Notify::new(),
+        revision: AtomicUsize::new(1),
+        checked: Mutex::default(),
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
     session
@@ -66,6 +90,9 @@ fn query(category: C) -> SearchResultQuery {
         channel: None,
     }
 }
+
+#[path = "support/search_default_context.rs"]
+mod search_default_context;
 #[tokio::test]
 async fn categories_use_official_shapes_and_only_public_card_fields_cross_ipc() {
     let (_root, api, _, client) = fixture();

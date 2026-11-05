@@ -167,6 +167,52 @@ test('the search field distinguishes its rotating default from a typed keyword',
   m.dispose();
 });
 
+test('empty submit uses the receipt of the exact rotating label, never one from a typed query', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout'] });
+  const m = fixture({
+    searchDiscovery: async (epoch) =>
+      data(
+        {
+          kind: 'defaults',
+          words: [
+            {
+              keyword: '同一个词',
+              label: '第一个展示词',
+              tag: null,
+              defaultReceipt: 'first-' + epoch,
+            },
+            {
+              keyword: '同一个词',
+              label: '第二个展示词',
+              tag: null,
+              defaultReceipt: 'second-' + epoch,
+            },
+          ],
+          refreshMs: 2000,
+        },
+        epoch,
+      ),
+  });
+  try {
+    await m.connect(account());
+    assert.equal(m.defaultWord.value?.label, '第一个展示词');
+    t.mock.timers.tick(2000);
+    assert.equal(m.defaultWord.value?.label, '第二个展示词');
+    assert.deepEqual(m.submitInput(), {
+      keyword: '同一个词',
+      channel: 'defaultquery',
+      defaultReceipt: 'second-1',
+    });
+    m.input('同一个词');
+    assert.deepEqual(m.submitInput(), { keyword: '同一个词', channel: 'typing' });
+    await m.connect(account('2'));
+    assert.equal(m.submitInput()?.defaultReceipt, 'first-2');
+  } finally {
+    m.dispose();
+    t.mock.timers.reset();
+  }
+});
+
 test('discovery recommendations wait for latest local history without delaying charts', async () => {
   const initial = deferred<AccountData<string[]>>();
   const saving = deferred<AccountData<string[]>>();

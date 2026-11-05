@@ -133,7 +133,11 @@ export interface SearchResultsClient {
     epoch: string,
     target: SearchReasonTarget,
   ): Promise<AccountData<SearchReasonPage>>;
-  searchResults(epoch: string, query: SearchResultQuery): Promise<AccountData<SearchResultView>>;
+  searchResults(
+    epoch: string,
+    query: SearchResultQuery,
+    defaultReceipt?: string,
+  ): Promise<AccountData<SearchResultView>>;
 }
 export interface SearchWord {
   keyword: string;
@@ -141,6 +145,7 @@ export interface SearchWord {
   tag: string | null;
   channel?: SearchChannel;
   radioId?: string;
+  defaultReceipt?: string;
 }
 export type SearchChartDestination = 'podcasts' | 'audiobooks';
 export interface SearchChart {

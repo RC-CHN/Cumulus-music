@@ -47,10 +47,41 @@ fn word(row: &Value) -> Option<SearchWord> {
         tag: word_tag(row),
         channel: None,
         radio_id: None,
+        default_receipt: None,
     })
 }
 fn words(rows: &[Value], limit: usize) -> Vec<SearchWord> {
     rows.iter().filter_map(word).take(limit).collect()
+}
+
+pub(super) fn default_words(response: &Value) -> Result<(Vec<DefaultWord>, u64)> {
+    let data = &response["data"];
+    if !data.is_object() {
+        return Err(Error::Response("missing search data"));
+    }
+    let refresh_ms = data["refreshTime"]
+        .as_u64()
+        .unwrap_or(2500)
+        .clamp(2000, 60000);
+    let words = array(&data["keywords"])?
+        .iter()
+        .filter_map(|row| {
+            let word = word(row)?;
+            // A context belongs to one actual default response row. A
+            // compatibility name-only row cannot assert official provenance.
+            let context = (text(&row["realkeyword"]).as_deref() == Some(word.keyword.as_str()))
+                .then(|| row.get("bizQueryInfo"))
+                .flatten()
+                .filter(|value| {
+                    crate::protocol::wire::serialization::js_truthy(value)
+                        && value.to_string().len() <= 4096
+                })
+                .cloned();
+            Some(DefaultWord { word, context })
+        })
+        .take(20)
+        .collect();
+    Ok((words, refresh_ms))
 }
 pub(super) fn audio_chart(id: &str) -> bool {
     matches!(id, "HOT_SEARCH_DJ#@#" | "HOT_SEARCH_DJ_VOICE_BOOK#@#")
@@ -93,6 +124,7 @@ fn chart_words(rows: &[Value], audio: bool) -> Vec<SearchWord> {
                 channel: (!audio && row["tabId"] == "HOT_SEARCH_SONG#@#")
                     .then_some(results::SearchChannel::Hotquery),
                 radio_id: audio.then(|| chart_radio_id(&row["url"])).flatten(),
+                default_receipt: None,
             })
         })
         .take(CHART_ITEM_LIMIT)
@@ -115,10 +147,7 @@ pub(super) fn discovery(
         return Err(Error::Response("missing search data"));
     }
     Ok(match query {
-        SearchDiscoveryQuery::Defaults => SearchDiscovery::Defaults {
-            words: words(array(&d["keywords"])?, 20),
-            refresh_ms: d["refreshTime"].as_u64().unwrap_or(2500).clamp(2000, 60000),
-        },
+        SearchDiscoveryQuery::Defaults => unreachable!("defaults have their own native projection"),
         SearchDiscoveryQuery::Recommendations { .. } => {
             let mut rows: Vec<Value> = d["operateWords"]
                 .as_object()

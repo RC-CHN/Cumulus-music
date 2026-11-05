@@ -55,6 +55,7 @@ const props = defineProps<{
   keyword: string;
   category?: SearchCategory;
   channel?: SearchChannel;
+  defaultReceipt?: string;
   pagination?: SearchPageStep;
   correct?: boolean;
   rewrittenKeyword?: string;
@@ -511,6 +512,7 @@ async function load(reuse = false) {
     reuse,
     props.searchId ?? 0,
     props.keyword,
+    props.defaultReceipt,
   );
   if (generation === loadGeneration) void restore();
 }
@@ -566,6 +568,7 @@ watch(
     limit.value,
     props.correct,
     props.channel,
+    props.defaultReceipt,
     props.searchId,
   ],
   () => {

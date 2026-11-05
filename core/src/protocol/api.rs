@@ -31,6 +31,20 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async { Ok(false) })
     }
 
+    /// Internal authority for a default search context from this credential set.
+    fn search_default_context_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_search_with_default_context<'a>(
+        &'a self,
+        _path: &'a str,
+        _payload: Value,
+        _revision: &'a str,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("search default context authority unavailable")) })
+    }
+
     fn playback_power_experiment(
         &self,
     ) -> ApiFuture<'_, Option<super::pc_experiments::PcExperimentGroups>> {

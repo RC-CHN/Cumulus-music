@@ -139,6 +139,29 @@ pub struct SearchResultQuery {
     pub channel: Option<SearchChannel>,
 }
 pub const COMPREHENSIVE_PATH: &str = "/api/search/pc/complex/page";
+
+#[derive(Clone)]
+pub(crate) struct DefaultContext {
+    pub value: Value,
+    pub revision: String,
+}
+
+async fn result_call(
+    api: &dyn Api,
+    path: &str,
+    mut args: Value,
+    context: Option<DefaultContext>,
+) -> Result<Value> {
+    if let Some(context) = context {
+        args["bizQueryInfo"] = context.value;
+        let raw = api
+            .request_search_with_default_context(path, args, &context.revision)
+            .await?;
+        crate::protocol::api::validate_response(path, raw, &[200])
+    } else {
+        api.call(path, args, false, &[200]).await
+    }
+}
 pub const READ_PATHS: &[&str] = &[
     "/api/search/pc/result/tab",
     COMPREHENSIVE_PATH,
@@ -173,6 +196,14 @@ pub(crate) fn validate_query(q: &SearchResultQuery) -> Result<String> {
     Ok(keyword)
 }
 pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
+    request_with_default(api, q, None).await
+}
+
+pub(crate) async fn request_with_default(
+    api: &dyn Api,
+    q: &SearchResultQuery,
+    context: Option<DefaultContext>,
+) -> Result<Value> {
     let keyword = validate_query(q)?;
     use SearchCategory::*;
     let legacy = matches!(q.category, Playlists | Artists | Albums | Users);
@@ -208,5 +239,11 @@ pub async fn request(api: &dyn Api, q: &SearchResultQuery) -> Result<Value> {
             READ_PATHS[10]
         }
     };
-    api.call(path, args, false, &[200]).await
+    result_call(
+        api,
+        path,
+        args,
+        context.filter(|_| path == COMPREHENSIVE_PATH),
+    )
+    .await
 }

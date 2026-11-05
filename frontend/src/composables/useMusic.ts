@@ -87,6 +87,7 @@ type Destination =
       kind: 'search';
       keyword: string;
       displayKeyword?: string;
+      defaultReceipt?: string;
       category?: import('../services/search').SearchCategory;
       channel?: import('../services/search').SearchChannel;
       pagination?: import('../services/searchPagination').SearchPageStep;

@@ -1,4 +1,5 @@
 mod audio_toplist;
+mod default_context;
 pub(crate) mod experiment;
 mod lyrics;
 mod reason;
@@ -34,6 +35,18 @@ impl MusicClient {
         let value = self
             .session
             .run_for(token, |api, _| async move {
+                if matches!(query, SearchDiscoveryQuery::Defaults) {
+                    let revision = api.search_default_context_revision().ok().flatten();
+                    let (rows, refresh_ms) = search::fetch_default_words(api.as_ref()).await?;
+                    let words = self.search.default_contexts.publish(
+                        &self.session,
+                        token,
+                        &api,
+                        revision.as_deref(),
+                        rows,
+                    )?;
+                    return Ok(SearchDiscovery::Defaults { words, refresh_ms });
+                }
                 search::discover_for(&api, query, || {
                     self.search
                         .audio_toplist

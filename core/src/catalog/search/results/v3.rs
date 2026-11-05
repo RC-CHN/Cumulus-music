@@ -1,6 +1,6 @@
 //! The recovered PC v3 comprehensive search returns a single block preview.
 mod hot;
-use super::{SearchCategory, SearchChannel, SearchResultQuery};
+use super::{DefaultContext, SearchCategory, SearchChannel, SearchResultQuery, result_call};
 use crate::{Error, Result, error::code_matches, protocol::api::Api};
 pub(crate) use hot::HotZoneContext;
 pub use hot::{SearchHotZoneSource, SearchHotZoneTarget};
@@ -34,10 +34,14 @@ impl RawComprehensive {
 
 #[cfg(test)]
 async fn request(api: &dyn Api, q: &SearchResultQuery, zones: HotZoneContext<'_>) -> Result<Value> {
-    fetch(api, q).await?.project(zones)
+    fetch(api, q, None).await?.project(zones)
 }
 
-pub(crate) async fn fetch(api: &dyn Api, q: &SearchResultQuery) -> Result<RawComprehensive> {
+pub(crate) async fn fetch(
+    api: &dyn Api,
+    q: &SearchResultQuery,
+    context: Option<DefaultContext>,
+) -> Result<RawComprehensive> {
     if q.category != SearchCategory::All || q.offset != 0 || !(1..=100).contains(&q.limit) {
         return Err(Error::InvalidInput("invalid comprehensive search page"));
     }
@@ -47,7 +51,7 @@ pub(crate) async fn fetch(api: &dyn Api, q: &SearchResultQuery) -> Result<RawCom
         "keyword": keyword, "scene": "normal", "needCorrect": q.correct,
         "channel": channel, "bizQueryInfo": "",
     });
-    match api.call(PATH, payload, false, &[200]).await {
+    match result_call(api, PATH, payload, context).await {
         Ok(mut raw) => Ok(RawComprehensive {
             data: raw["data"].take(),
             partial: false,

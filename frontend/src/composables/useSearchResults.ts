@@ -73,6 +73,7 @@ export function useSearchResults(
     reuse = false,
     session = 0,
     originalKeyword = query.keyword,
+    defaultReceipt?: string,
   ) {
     if (account?.status !== 'authenticated') return;
     const epoch = account.epoch,
@@ -111,7 +112,10 @@ export function useSearchResults(
     loading.value = true;
     error.value = '';
     try {
-      const result = await core.searchResults(epoch, query);
+      const result =
+        query.category === 'all' && query.channel === 'defaultquery' && defaultReceipt
+          ? await core.searchResults(epoch, query, defaultReceipt)
+          : await core.searchResults(epoch, query);
       if (current === generation && account?.epoch === epoch && result.epoch === epoch) {
         view.value = result.value;
         if (query.category === 'all') updateReminder(result.value);
