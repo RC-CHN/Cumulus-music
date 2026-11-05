@@ -17,6 +17,7 @@ use cumulus_core::{
     storage::StateStore,
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     sync::{
@@ -29,6 +30,66 @@ const ACCOUNT: &str = "/api/w/nuser/account/get";
 const MUSIC_U: &str = "synthetic-search-signed-session";
 const SIGN: &str = "synthetic-search-signed-client-sign";
 const VERSION: &str = "3.1.42.205594";
+const PROOF_MARKER: (&str, &str, &str) = ("synthetic-proof", "signed-search-v1", "native-session");
+
+fn record_hash(record: &Value) -> Result<String> {
+    Ok(hex::encode(Sha256::digest(serde_json::to_vec(record)?)))
+}
+
+fn seed_or_restore_credentials(
+    store: Arc<StateStore>,
+    mode: &str,
+    reopen: bool,
+) -> Result<Arc<Credentials>> {
+    let previous = store.get("transport", "credentials", "session")?;
+    let marker = store.get(PROOF_MARKER.0, PROOF_MARKER.1, PROOF_MARKER.2)?;
+    let credentials = Arc::new(Credentials::open(store.clone(), ApiOrigin::Pc)?);
+    let target = ApiOrigin::Pc.url();
+    let original = credentials.request_credentials(&target)?;
+    if reopen {
+        let login = credentials.login_credentials()?;
+        let known = previous
+            .as_ref()
+            .zip(marker.as_ref())
+            .is_some_and(|(record, marker)| {
+                marker["schema"] == 1
+                    && marker["mode"] == mode
+                    && marker["device"] == original.device_id
+                    && record_hash(record).is_ok_and(|hash| marker["recordHash"] == hash)
+            });
+        if !known
+            || original.cookies != [("MUSIC_U".into(), MUSIC_U.into())]
+            || login.token.as_deref() != Some(MUSIC_U)
+            || login.refresh_token.is_some()
+        {
+            return Err(Error::State(
+                "signed search reopen requires its exact synthetic fixture",
+            ));
+        }
+        // The second process reuses this proof's own record unchanged. It does
+        // not rotate the device/revision or copy an external saved account.
+        return Ok(credentials);
+    }
+    if previous.is_some() || marker.is_some() || !original.cookies.is_empty() {
+        return Err(Error::State(
+            "signed search proof requires fresh isolated credentials",
+        ));
+    }
+    credentials.record_response(
+        &target,
+        &[format!("MUSIC_U={MUSIC_U}; Path=/; Secure")],
+        None,
+        &original.revision,
+    )?;
+    let record = store
+        .get("transport", "credentials", "session")?
+        .ok_or(Error::State(
+            "synthetic credential record was not committed",
+        ))?;
+    store.put(PROOF_MARKER.0, PROOF_MARKER.1, PROOF_MARKER.2,
+        &json!({"schema":1,"mode":mode,"device":original.device_id,"recordHash":record_hash(&record)?}))?;
+    Ok(credentials)
+}
 
 struct ClosedConfig;
 impl ConfigBackend for ClosedConfig {
@@ -64,21 +125,10 @@ impl SignedSearch {
         if !matches!(mode.as_str(), "t1" | "c" | "unknown" | "error") {
             return Err(Error::InvalidInput("invalid sealed search footer cohort"));
         }
-        let credentials = Arc::new(Credentials::open(store.clone(), ApiOrigin::Pc)?);
-        let target = ApiOrigin::Pc.url();
-        let original = credentials.request_credentials(&target)?;
-        // The proof root is newly created by the runner. Never import an account,
-        // profile or device from the real host into this signed client.
-        if !original.cookies.is_empty() {
-            return Err(Error::State(
-                "signed search proof requires fresh isolated credentials",
-            ));
-        }
-        credentials.record_response(
-            &target,
-            &[format!("MUSIC_U={MUSIC_U}; Path=/; Secure")],
-            None,
-            &original.revision,
+        let credentials = seed_or_restore_credentials(
+            store.clone(),
+            &mode,
+            std::env::var("CUMULUS_PROOF_REOPEN").as_deref() == Ok("1"),
         )?;
         let config = PcConfig::new(store, Arc::new(ClosedConfig))?;
         let backend = Arc::new(Backend {
@@ -317,4 +367,48 @@ fn cookie_values<'a>(cookie: &'a str, name: &str) -> Vec<&'a str> {
             (key == name).then_some(value)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explicit_reopen_keeps_exact_fixture_credentials_device_and_revision() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(root.path()).unwrap());
+        let first = seed_or_restore_credentials(store.clone(), "t1", false).unwrap();
+        let before = first.request_credentials(&ApiOrigin::Pc.url()).unwrap();
+        drop(first);
+        let restored = seed_or_restore_credentials(store.clone(), "t1", true).unwrap();
+        let after = restored.request_credentials(&ApiOrigin::Pc.url()).unwrap();
+        assert_eq!(after.device_id, before.device_id);
+        assert_eq!(after.revision, before.revision);
+        assert_eq!(after.cookies, before.cookies);
+        assert!(seed_or_restore_credentials(store, "t1", false).is_err());
+    }
+
+    #[test]
+    fn reopen_rejects_foreign_unmarked_or_different_cohort_records() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(root.path()).unwrap());
+        let credentials = seed_or_restore_credentials(store.clone(), "t1", false).unwrap();
+        assert!(seed_or_restore_credentials(store.clone(), "c", true).is_err());
+        let snapshot = credentials
+            .request_credentials(&ApiOrigin::Pc.url())
+            .unwrap();
+        credentials
+            .record_response(
+                &ApiOrigin::Pc.url(),
+                &["MUSIC_U=foreign-synthetic-only; Path=/; Secure".into()],
+                None,
+                &snapshot.revision,
+            )
+            .unwrap();
+        assert!(seed_or_restore_credentials(store.clone(), "t1", true).is_err());
+        store
+            .delete(PROOF_MARKER.0, PROOF_MARKER.1, PROOF_MARKER.2)
+            .unwrap();
+        assert!(seed_or_restore_credentials(store, "t1", true).is_err());
+    }
 }
