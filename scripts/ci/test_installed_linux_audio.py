@@ -94,12 +94,41 @@ class PipeWireObservation(unittest.TestCase):
             self.assertFalse(private_pipewire_stream(321, {}), 'unrelated playback never proves a stream')
             self.assertTrue(private_pipewire_stream(123, {}))
 
+    def test_known_removals_after_or_around_graph_require_a_fresh_sample(self):
+        graph = json.dumps(self.graph()).encode()
+        id_only = b'[{"id":40}]\n'
+        info = b'[{"id":41,"info":null}]\n'
+        props = b'[{"id":42,"props":null}]\n'
+        for raced in (graph + info, graph + props + id_only,
+                      info + graph + props, id_only + info + graph + props):
+            with self.subTest(raced=raced):
+                self.assertIsNone(pipewire_snapshot(raced))
+                with patch('installed_linux_audio.subprocess.check_output',
+                           side_effect=[raced, graph]):
+                    self.assertFalse(private_pipewire_stream(123, {}),
+                                     'even a matching raced graph cannot prove playback')
+                    self.assertTrue(private_pipewire_stream(123, {}),
+                                    'only the next coherent sample proves the stream')
+        self.assertIsNone(pipewire_snapshot(info + props + id_only))
+
+    def test_single_graph_including_an_empty_graph_remains_usable(self):
+        self.assertEqual(pipewire_snapshot(json.dumps(self.graph()).encode()), self.graph())
+        self.assertEqual(pipewire_snapshot(b'[]\n'), [])
+
     def test_unexpected_multiple_graphs_and_malformed_output_remain_failures(self):
         graph = json.dumps(self.graph()).encode()
-        for invalid in (b'', b'{"id":1}', graph + graph, graph + b'[]',
+        removal = b'[{"id":42,"info":null}]\n'
+        for invalid in (b'', b'{"id":1}', graph + graph, graph + b'[]', b'[]' + graph,
+                        graph + removal + graph, removal + b'[]', b'[]' + removal,
                         b'[{"id":42,"info":null}]\nnot JSON',
                         b'[{"id":42,"info":null}]\n[null]',
                         b'[{"id":42,"info":null}]\n[{"id":[]}]',
-                        b'[{"id":true,"info":null}]\n' + graph):
+                        b'[{"id":true,"info":null}]\n' + graph,
+                        b'[{"id":-1,"info":null}]\n' + graph,
+                        b'[{"id":4294967296,"info":null}]\n' + graph,
+                        graph + b'[{"id":42,"info":{}}]',
+                        graph + b'[{"id":42,"info":null,"props":null}]',
+                        graph + b'[{"id":42,"info":null,"extra":null}]',
+                        graph + b'[{"id":41,"info":null},{"id":42,"props":null}]'):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 pipewire_snapshot(invalid)

@@ -337,9 +337,9 @@ def pipewire_snapshot(output):
             and row.get('info') is None and row.get('props') is None
         )
 
-    # PipeWire 1.0.5 pw-dump prints a separate removal array even without
-    # --monitor, before on_core_done prints the graph. Never combine these
-    # frames or use the raced graph as proof. Other malformed output is fatal.
+    # PipeWire 1.0.5 pw-dump prints separate removal arrays even without
+    # --monitor; they can surround the graph from on_core_done. Never combine
+    # these frames or use the raced graph as proof. Other output stays fatal.
     data = output.decode('utf-8')
     decoder = json.JSONDecoder()
     whitespace = re.compile(r'[ \t\r\n]*')
@@ -359,7 +359,8 @@ def pipewire_snapshot(output):
         raise ValueError('pw-dump returned no graph')
     if len(frames) == 1:
         return None if removal(frames[0]) else frames[0]
-    if all(removal(frame) for frame in frames[:-1]):
+    graphs = [frame for frame in frames if not removal(frame)]
+    if not graphs or (len(graphs) == 1 and graphs[0]):
         return None
     raise ValueError('unexpected multiple pw-dump graph snapshots')
 

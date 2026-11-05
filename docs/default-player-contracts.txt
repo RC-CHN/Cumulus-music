@@ -133,4 +133,18 @@ Windows 暖转交/Explorer 或服务登录。
 的已知删除帧，弃用该次采样并等待下一次读回；错误 JSON、两个完整图和未知
 帧仍失败。包内进程 PID、实际音频流到私有输出设备的连线、持久播放时钟和
 后续 PCM 断言未改变。合成测试复现了原错误的位置；不以此替代托管打包验收。
-PipeWire 源：https://github.com/PipeWire/pipewire/blob/1.0.5/src/tools/pw-dump.c#L1316-L1338
+PipeWire 源：https://github.com/PipeWire/pipewire/blob/1.0.5/src/tools/pw-dump.c#L1391-L1415
+
+同日 main c451f9df 的托管 Linux Package（run 42021278007，job
+127224374136）在同一只读观测处报 unexpected multiple pw-dump graph
+snapshots；该次原始 payload 未保存，不能断言其具体顺序。官方 1.0.5 的
+global_remove 不受 monitor 开关限制，独立输出 [{id}]、[{id,info:null}]
+或 [{id,props:null}]；on_core_done 输出完整图后才退出。因此已知删除帧在
+完整图之前、之后或两侧都只代表失效采样，全部弃用后由既有有界只读轮询
+重新查询。仅有删除帧也不能证明播放；两个图、空数组参与多帧、未知删除
+形状及畸形 JSON 仍失败。单独空图保持原有合法空快照行为。
+此变更仅补观测解析和合成回归；没有重放播放/文件操作，没有声称托管包或
+物理声卡重新验收通过。
+官方源码：同上 global_remove:1391–1415，on_core_done:1477–1494；
+Git blob 066685f90201627ff7fc61d6ab01dab132dda053，SHA-256
+53be0fb23add47d15ea969443c6ce21aaa0d17ab8ec732085175ab592f1a0acc。
