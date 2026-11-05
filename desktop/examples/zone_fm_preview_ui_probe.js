@@ -23,6 +23,11 @@
   const button = (title) => one(`.vertical-zone button[aria-label="${title}"]`);
   const picture = (title) => button(title)?.querySelector('img')?.getAttribute('src');
   const cdn = (name) => `https://p1.music.126.net/synthetic-zone-${name}.png?param=320y320`;
+  const detail = () => one('[aria-label="播放详情与歌词"]');
+  const closeDetail = (opener) => {
+    click(one('[aria-label="收起播放详情"]'), 'close playback detail');
+    return wait(() => !detail() && document.activeElement === opener(), 'detail restores card focus');
+  };
   let blockedArtwork = 0;
   document.addEventListener('securitypolicyviolation', (event) => {
     if (event.effectiveDirective === 'img-src' && event.blockedURI.startsWith('https://p1.music.126.net'))
@@ -72,13 +77,35 @@
     await wait(async () => {
       const state = await player();
       return state.fm && state.state === 'playing' && state.track?.id === '81' &&
-        state.position > 0.15 && !one('.vertical-zone');
+        state.position > 0.15 && one('.vertical-zone') && !detail();
     }, 'real libmpv/null FM begins on the retained first song');
     const state = await player();
     const tracks = (await invoke('player_queue', { epoch })).tracks.map(({ track }) => track.id);
     assert(tracks.join() === '81,84', 'explicit play reuses exact first batch order');
     await capture('ux_03_explicit_play', { tracks, playId: state.playId });
-    await emit('complete', { ok: true, stageCount: 3 });
+
+    const differentCover = () => button('保留旧封面');
+    click(differentCover(), 'different rule cover while A plays');
+    await wait(() => detail()?.textContent.includes('合成漫游歌曲 81'), 'cover opens actual A details');
+    const stillA = await player();
+    assert(stillA.playId === state.playId && stillA.zoneFmRuleId === '11' && stillA.state === 'playing',
+      'cover must retain actual playing rule and session');
+    await capture('ux_04_active_cover', { playId: stillA.playId });
+    await closeDetail(differentCover);
+
+    click(button('暂停合成漫游首曲'), 'same-rule overlay pause');
+    await wait(async () => (await player()).state === 'paused' && button('播放合成漫游首曲') && !detail(),
+      'overlay pauses without opening detail');
+    await capture('ux_05_overlay_pause', { playId: (await player()).playId });
+    const aCover = () => button('合成漫游首曲');
+    click(aCover(), 'cover resumes paused actual rule');
+    await wait(async () => detail() && (await player()).state === 'playing', 'paused cover resumes and opens');
+    const resumed = await player();
+    assert(resumed.playId === state.playId && resumed.zoneFmRuleId === '11',
+      'paused cover retains exact native playback');
+    await capture('ux_06_paused_cover', { playId: resumed.playId });
+    await closeDetail(aCover);
+    await emit('complete', { ok: true, stageCount: 6 });
   } catch (error) {
     await emit('failed', {
       message: String(error), stack: error?.stack,

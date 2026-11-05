@@ -13,7 +13,10 @@ RECOMMEND = "/api/tag/tab/fm/recommends"
 DETAIL = "/api/v3/song/detail"
 URL = "/api/song/enhance/player/url/v1"
 EXPLICIT_READS = {"/api/music/dislike/get", "/api/v3/radio/trash/get", "/api/music-vip-membership/client/vip/info"}
-NAMES = ("ux_01_before_mount", "ux_02_passive_art", "ux_03_explicit_play")
+NAMES = (
+    "ux_01_before_mount", "ux_02_passive_art", "ux_03_explicit_play",
+    "ux_04_active_cover", "ux_05_overlay_pause", "ux_06_paused_cover",
+)
 
 
 def read(path):
@@ -23,7 +26,7 @@ def read(path):
 def verify(output, screenshots, windows):
     complete = read(output / "complete.json")
     assert complete["ok"] and complete["stageCount"] == len(NAMES)
-    before, preview, explicit = (read(output / f"{name}.json") for name in NAMES)
+    before, preview, explicit, active_cover, paused, resumed = (read(output / f"{name}.json") for name in NAMES)
     for row in (before, preview):
         assert row["nativePlayer"]["state"] == "idle" and not row["nativePlayer"]["fm"]
         assert row["nativePlayer"]["playId"] is row["playId"] is None
@@ -55,6 +58,12 @@ def verify(output, screenshots, windows):
     assert player["fm"] and player["state"] == "playing" and player["position"] > 0.15
     assert player["track"]["id"] == "81" and explicit["tracks"] == ["81", "84"]
     assert explicit["playId"] and explicit["playId"] == player["playId"]
+    for row, state in ((active_cover, "playing"), (paused, "paused"), (resumed, "playing")):
+        actual = row["nativePlayer"]
+        assert actual["state"] == state and actual["zoneFmRuleId"] == "11"
+        assert actual["playId"] == row["playId"] == player["playId"]
+    assert active_cover["zoneFmPreview"]["calls"] == explicit["zoneFmPreview"]["calls"]
+    assert complete["zoneFmPreview"]["calls"] == active_cover["zoneFmPreview"]["calls"]
     if screenshots:
         assert all((output / f"{name}.png").is_file() for name in NAMES)
     if not windows:
