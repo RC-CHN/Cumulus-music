@@ -76,7 +76,9 @@ test('closed search ignores late suggestions and account switches clear search h
       kind: 'suggestions',
       title: '旧',
       recommended: [],
-      suggestions: [{ keyword: '旧', label: '旧', tag: null }],
+      suggestions: [
+        { keyword: '旧', label: '旧', tag: null, labelParts: [{ text: '旧', match: true }] },
+      ],
     }),
   );
   await read;
@@ -116,7 +118,14 @@ test('new query prevents an earlier success or failure from replacing current su
                 kind: 'suggestions',
                 title: '新',
                 recommended: [],
-                suggestions: [{ keyword: 'new', label: 'new', tag: null }],
+                suggestions: [
+                  {
+                    keyword: 'new',
+                    label: 'new',
+                    tag: null,
+                    labelParts: [{ text: 'new', match: true }],
+                  },
+                ],
               },
               e,
             ),
@@ -130,6 +139,66 @@ test('new query prevents an earlier success or failure from replacing current su
   assert.equal(m.errors.suggestions, '');
   assert.equal(m.suggestions.value[0]?.keyword, 'new');
   m.dispose();
+});
+
+test('late native label parts cannot replace either current suggestion group', async () => {
+  const previous = deferred<AccountData<SearchDiscovery>>();
+  const ordinary = {
+    keyword: '真实搜索词',
+    label: '🎧New <live>',
+    tag: null,
+    labelParts: [
+      { text: '🎧', match: false },
+      { text: 'New', match: true },
+      { text: ' <live>', match: false },
+    ],
+  };
+  const recommended = {
+    keyword: '真实推荐词',
+    label: 'New 城市',
+    tag: '荐',
+    labelParts: [
+      { text: 'New', match: true },
+      { text: ' 城市', match: false },
+    ],
+  };
+  const m = fixture({
+    searchDiscovery: async (epoch, query) => {
+      if (query.kind !== 'suggestions')
+        return data({ kind: 'defaults', words: [], refreshMs: 2500 }, epoch);
+      if (query.keyword === 'old') return previous.promise;
+      return data(
+        {
+          kind: 'suggestions',
+          title: '新推荐',
+          recommended: [recommended],
+          suggestions: [ordinary],
+        },
+        epoch,
+      );
+    },
+  });
+  await m.connect(account());
+  try {
+    const old = m.load({ kind: 'suggestions', keyword: 'old' });
+    await m.load({ kind: 'suggestions', keyword: 'new' });
+    previous.resolve(
+      data({
+        kind: 'suggestions',
+        title: '过期推荐',
+        recommended: [],
+        suggestions: [],
+      }),
+    );
+    await old;
+    assert.equal(m.suggestionTitle.value, '新推荐');
+    assert.deepEqual(m.suggestions.value, [ordinary]);
+    assert.deepEqual(m.recommended.value, [recommended]);
+    assert.equal(m.pending.suggestions, false);
+    assert.equal(m.errors.suggestions, '');
+  } finally {
+    m.dispose();
+  }
 });
 
 test('a chosen label stays visible but history records only the real search term', async () => {

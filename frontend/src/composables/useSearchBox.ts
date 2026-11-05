@@ -3,6 +3,7 @@ import { failure, type AccountView, type CoreClient } from '../services/contract
 import { useCore } from '../services/core.ts';
 import type {
   SearchChart,
+  SearchSuggestionWord,
   SearchWord,
   SearchDiscoveryQuery,
   SearchHistoryCommand,
@@ -16,8 +17,8 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     defaults = shallowRef<SearchWord[]>([]);
   const recommendations = shallowRef<SearchWord[]>([]),
     charts = shallowRef<SearchChart[]>([]);
-  const suggestions = shallowRef<SearchWord[]>([]),
-    recommended = shallowRef<SearchWord[]>([]);
+  const suggestions = shallowRef<SearchSuggestionWord[]>([]),
+    recommended = shallowRef<SearchSuggestionWord[]>([]);
   const suggestionTitle = ref('猜你想搜'),
     defaultIndex = ref(0);
   const errors = reactive<Record<string, string>>({}),

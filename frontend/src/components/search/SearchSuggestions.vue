@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from 'vue';
-import type { SearchWord } from '../../services/search';
+import type { SearchSuggestionWord } from '../../services/search';
 import SearchMatchText from './SearchMatchText.vue';
 const props = defineProps<{
   query: string;
   title: string;
-  recommended: SearchWord[];
-  suggestions: SearchWord[];
+  recommended: SearchSuggestionWord[];
+  suggestions: SearchSuggestionWord[];
   pending: boolean;
   composing: boolean;
   error?: string;
@@ -104,7 +104,7 @@ watch(showExact, (show) => {
             )
           "
         >
-          <span><SearchMatchText :text="word.label" :keyword="query" /></span
+          <span><SearchMatchText :text="word.label" :parts="word.labelParts" /></span
           ><small v-if="word.tag" class="search-word-tag">{{ word.tag }}</small>
         </button>
       </section>

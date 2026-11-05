@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { splitSearchMatch } from '../../services/searchMatch';
-const props = defineProps<{ text: string; keyword: string }>();
-const parts = computed(() => splitSearchMatch(props.text, props.keyword));
+import { splitSearchMatch, type SearchTextPart } from '../../services/searchMatch';
+const props = defineProps<
+  | { text: string; keyword: string; parts?: never }
+  | { text: string; parts: readonly SearchTextPart[]; keyword?: never }
+>();
+const parts = computed(() => props.parts ?? splitSearchMatch(props.text, props.keyword ?? ''));
 </script>
 
 <template>

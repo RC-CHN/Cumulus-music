@@ -3,6 +3,7 @@ import type { TrackView, PlaylistView } from './contracts';
 import type { AlbumCard, ArtistCard, CatalogVideoCard } from './catalog';
 import type { EpisodeView, PodcastCard } from './podcast';
 import type { FollowUser } from './collections';
+import type { SearchTextPart } from './searchMatch';
 export const searchCategories = [
   { key: 'all', title: '综合', unit: '' },
   { key: 'songs', title: '单曲', unit: '首单曲' },
@@ -209,6 +210,9 @@ export interface SearchWord {
   radioId?: string;
   defaultReceipt?: string;
 }
+export interface SearchSuggestionWord extends SearchWord {
+  labelParts: SearchTextPart[];
+}
 export type SearchChartDestination = 'podcasts' | 'audiobooks';
 export interface SearchChart {
   id: string;
@@ -231,7 +235,12 @@ export type SearchDiscovery =
   | { kind: 'charts'; charts: SearchChart[] }
   | { kind: 'chart'; id: string; items: SearchWord[]; playKeywords?: string[] | null }
   | { kind: 'chart_songs'; ids: string[] }
-  | { kind: 'suggestions'; title: string; recommended: SearchWord[]; suggestions: SearchWord[] };
+  | {
+      kind: 'suggestions';
+      title: string;
+      recommended: SearchSuggestionWord[];
+      suggestions: SearchSuggestionWord[];
+    };
 export type SearchHistoryCommand =
   | { kind: 'read' | 'clear' }
   | { kind: 'remember' | 'remove'; keyword: string };
