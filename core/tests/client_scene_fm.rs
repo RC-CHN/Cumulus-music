@@ -596,9 +596,28 @@ fn open_voice(revision: &str, voice_id: &str) -> SceneFmCommand {
 async fn title_uses_native_current_voice_when_card_or_local_completion_is_stale() {
     let (dir, api, _session, c, device) = fixture();
     let v = c.scene_fm_view("1", true).await.unwrap().value;
-    c.scene_fm_command("1", open_voice(v.revision.as_deref().unwrap(), "1"))
+    // Capture the real service-produced pending record while this exact
+    // decoder load is held. The public PlayerView intentionally has no raw
+    // queue source, so do not infer its private revision from that DTO.
+    device.hold_load.store(true, Ordering::SeqCst);
+    let playback = c.clone();
+    let revision = v.revision.unwrap();
+    let load = tokio::spawn(async move {
+        playback
+            .scene_fm_command("1", open_voice(&revision, "1"))
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(3), device.started.notified())
         .await
         .unwrap();
+    let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let pending = store.get("9", "scene-fm-v1", "current").unwrap().unwrap();
+    assert_eq!(pending["pending"], true);
+    let native_revision = pending["revision"].as_u64().unwrap();
+    device.hold_load.store(false, Ordering::SeqCst);
+    load.await.unwrap().unwrap();
     c.player_action("1", PlayerAction::Seek { seconds: 18.0 })
         .await
         .unwrap();
@@ -606,17 +625,8 @@ async fn title_uses_native_current_voice_when_card_or_local_completion_is_stale(
     let before = sub.current().unwrap();
     let queue = serde_json::to_value(c.player_queue("1").await.unwrap()).unwrap();
     let calls = api.calls.lock().unwrap().len();
-    let native_revision = before.selected.as_ref().unwrap().source["scene_revision"]
-        .as_u64()
-        .unwrap();
     // Reproduce the legitimate interval after the exact prepared queue was
     // loaded but before a card view observes and confirms its pending record.
-    let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
-        .unwrap()
-        .store();
-    let mut pending = store.get("9", "scene-fm-v1", "current").unwrap().unwrap();
-    pending["revision"] = json!(native_revision);
-    pending["pending"] = json!(true);
     store.put("9", "scene-fm-v1", "current", &pending).unwrap();
     let v = c
         .scene_fm_command("1", open_voice(&native_revision.to_string(), "1"))
@@ -627,7 +637,9 @@ async fn title_uses_native_current_voice_when_card_or_local_completion_is_stale(
     let after = sub.current().unwrap();
     assert_eq!(after.state, PlaybackStatus::Playing);
     assert_eq!(after.play_id, before.play_id);
-    assert_eq!(after.control_revision, before.control_revision);
+    assert_eq!(after.entry_id, before.entry_id);
+    assert_eq!(after.resource_kind, Some(PlayerResourceKind::Voice));
+    assert_eq!(after.track.as_ref().unwrap().voice_id.as_deref(), Some("1"));
     assert_eq!(after.queue_revision, before.queue_revision);
     assert_eq!(after.position, Some(18.0));
     assert_eq!(
@@ -686,7 +698,11 @@ async fn title_starts_whole_scene_from_a_different_source_even_for_the_same_voic
         .await
         .unwrap();
     let before = c.subscribe_playback("1").await.unwrap().current().unwrap();
-    assert_ne!(before.selected.as_ref().unwrap().source["kind"], "scene_fm");
+    let ordinary = c.player_queue("1").await.unwrap();
+    assert_eq!(before.resource_kind, Some(PlayerResourceKind::Voice));
+    assert_eq!(ordinary.tracks.len(), 1);
+    assert_eq!(ordinary.current, before.entry_id);
+    assert_eq!(ordinary.tracks[0].track.voice_id.as_deref(), Some("1"));
     let v = c
         .scene_fm_command("1", open_voice(v.revision.as_deref().unwrap(), "1"))
         .await
@@ -695,8 +711,18 @@ async fn title_starts_whole_scene_from_a_different_source_even_for_the_same_voic
     let after = c.subscribe_playback("1").await.unwrap().current().unwrap();
     assert!(v.active && v.playing);
     assert_ne!(after.play_id, before.play_id);
-    assert_eq!(after.selected.as_ref().unwrap().source["kind"], "scene_fm");
-    assert_eq!(c.player_queue("1").await.unwrap().tracks.len(), 3);
+    let scene = c.player_queue("1").await.unwrap();
+    assert_eq!(after.resource_kind, Some(PlayerResourceKind::Voice));
+    assert_eq!(scene.current, after.entry_id);
+    assert_ne!(scene.current, ordinary.current);
+    assert_eq!(
+        scene
+            .tracks
+            .iter()
+            .map(|row| row.track.voice_id.as_deref())
+            .collect::<Vec<_>>(),
+        [Some("1"), Some("2"), Some("3")]
+    );
     assert_eq!(device.state.lock().unwrap().loads, 2);
     c.player_action("1", PlayerAction::Stop).await.unwrap();
 }
