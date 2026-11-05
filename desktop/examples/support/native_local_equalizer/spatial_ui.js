@@ -47,7 +47,9 @@
     reveal(node);
     assert(visible(node), 'visible slider ' + label);
     node.value = String(value);
+    const accepted = Number(node.value);
     node.dispatchEvent(new Event(event, { bubbles: true }));
+    return accepted;
   }
   function sliderValues(labels) {
     return labels.map((label) => Number(control(label)?.value));
@@ -122,7 +124,7 @@
     assert(color && color !== 'rgb(0, 0, 0)', 'nonblack opaque background');
     return { x, y, color, source: selector };
   }
-  async function stage(name, view) {
+  async function stage(name, view, extra = {}) {
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (dialog()) {
       const r = dialog().getBoundingClientRect();
@@ -134,7 +136,7 @@
       paintSamples: (dialog() ? ['.equalizer-dialog'] : ['.sidebar-caption', '.playerbar'])
         .map(paintSample),
     } : {};
-    await emit({ stage: name, epoch, player: view, ...capture, dom: {
+    await emit({ stage: name, epoch, player: view, ...capture, ...extra, dom: {
       state: bar()?.dataset.state, status: spatial()?.dataset.spatialStatus ?? null,
       sliders: dialog() ? sliderValues(sliders) : null,
       tone: dialog() ? sliderValues(tone) : null,
@@ -193,10 +195,14 @@
     await stage('ux_04_master_on', on);
     await closeEq();
 
-    set('播放进度', .5);
+    const requested = .5;
+    const step = Number(control('播放进度')?.step);
+    const accepted = set('播放进度', requested);
+    assert(step > 0 && Number.isFinite(step) && Math.abs(accepted - requested) <= step / 2 + 1e-9,
+      'browser range rounds the requested seek within half its actual step');
     const sought = await playback((view) => samePlay(view, on) && view.state === 'paused' &&
-      !view.nativeSeeking && Math.abs(view.position - .5) < .06, 'paused native replacement clock');
-    await stage('ux_05_paused_seek', sought);
+      !view.nativeSeeking && Math.abs(view.position - accepted) < .06, 'paused native replacement clock');
+    await stage('ux_05_paused_seek', sought, { seekTarget: { requested, accepted, step } });
     assert(transport()?.getAttribute('aria-label') === '播放', 'visible Resume');
     click(transport());
     await playback((view) => samePlay(view, sought) && view.state === 'playing' &&

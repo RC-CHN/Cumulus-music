@@ -107,7 +107,11 @@ def read_spatial_report(root, capture=False):
     identity = lambda row: tuple(row['player'][key] for key in ('playId', 'entryId', 'queueRevision'))
     assert all(identity(row) == identity(hot) for row in stages[1:])
     assert sought['player']['state'] == 'paused' and not sought['player']['nativeSeeking']
-    assert abs(sought['player']['position'] - .5) < .06
+    seek_target = sought['seekTarget']
+    assert seek_target['requested'] == .5 and seek_target['step'] > 0
+    assert abs(seek_target['step'] - sought['player']['timeline']['total'] / 1000) < 1e-9
+    assert abs(seek_target['accepted'] - seek_target['requested']) <= seek_target['step'] / 2 + 1e-9
+    assert abs(sought['player']['position'] - seek_target['accepted']) < .06
     assert ended['player']['state'] == reset['player']['state'] == 'ended'
     assert abs(ended['player']['position'] - 88_207 / 44_100) < .02
     assert reset['player']['position'] == ended['player']['position']
@@ -121,12 +125,12 @@ def read_spatial_report(root, capture=False):
     load, = native['loads']
     seek, = native['seeks']
     assert load['native_file'] and load['codec'] == 'pcm_f32le' and load['graph_entry'] == load['entry']
-    assert seek['seconds'] == .5 and seek['old_entry'] == load['entry']
+    assert seek['seconds'] == seek_target['accepted'] and seek['old_entry'] == load['entry']
     assert seek['graph_entry'] == seek['replacement'] != load['entry']
     assert native['processed_entries'] == sorted([load['entry'], seek['replacement']])
     assert native['eof_entries'] == [seek['replacement']]
     assert any(row['entry'] == seek['replacement'] and row['paused'] and not row['seeking']
-               and abs(row['position'] - .5) < .06
+               and abs(row['position'] - seek_target['accepted']) < .06
                for row in sought['native']['last_polls'] if row['position'] is not None)
     updates = [(row.get('presence', 0), row.get('stereoizer', 0), row.get('master_bypassed', False))
                for row in on['native']['local_updates']]
