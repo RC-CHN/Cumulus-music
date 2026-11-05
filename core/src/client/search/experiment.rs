@@ -26,6 +26,7 @@ pub(crate) struct SearchHost {
     pub(crate) enabled: bool,
     pub(super) queue_drops: super::queue_drop::SearchDropPages,
     pub(super) audio_toplist: super::audio_toplist::AudioToplist,
+    pub(super) privilege_pages: super::privilege::SearchPrivilegePages,
     pub(super) default_contexts: super::default_context::DefaultContexts,
     pub(super) preview_config: Option<Arc<crate::protocol::mconfig::PcConfig>>,
     gate: tokio::sync::Mutex<()>,

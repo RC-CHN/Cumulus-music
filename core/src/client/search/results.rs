@@ -165,6 +165,8 @@ pub enum SearchPreviewLayout {
 pub struct SearchResultView {
     pub query: SearchResultQuery,
     pub sections: Vec<SearchSection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub privilege_receipt: Option<String>,
     pub total: Option<u64>,
     pub more: bool,
     pub next_offset: usize,
@@ -230,6 +232,11 @@ impl MusicClient {
         let value = self
             .session
             .run_for(token, |api, uid| async move {
+                let credentials = if query.category == SearchCategory::All {
+                    api.search_privilege_credential_revision().ok()
+                } else {
+                    None
+                };
                 let (endpoint, tabs, preview_layout, raw) = if query.category == SearchCategory::All
                 {
                     // Validate before any optional experiment or tab request.
@@ -315,7 +322,20 @@ impl MusicClient {
                         };
                         let replacement_mv =
                             endpoint == api::v3::PATH && self.search_replacement_mv_enabled();
-                        let mut view = project(raw, query, &uid, replacement_mv)?;
+                        let (mut view, preview) = project(raw, query, &uid, replacement_mv)?;
+                        if let (Some(preview), Some(credentials)) = (preview, credentials) {
+                            self.session.require_api(token, &api)?;
+                            if api.search_privilege_credential_revision().ok()
+                                == Some(credentials.clone())
+                            {
+                                view.privilege_receipt = self.search.privilege_pages.capture(
+                                    token,
+                                    &api,
+                                    credentials,
+                                    preview,
+                                )?;
+                            }
+                        }
                         view.hot_explanation = explanation;
                         view
                     }
@@ -459,6 +479,9 @@ fn song_mv(value: &Value) -> Option<String> {
     {
         return None;
     }
+    original_mv(value)
+}
+fn original_mv(value: &Value) -> Option<String> {
     ["mv", "mvid"]
         .into_iter()
         .filter_map(|key| identifier(&value[key]).ok())
@@ -476,6 +499,9 @@ fn replacement_mv(value: &Value) -> Option<(String, Option<String>)> {
     {
         return None;
     }
+    alternative_mv(value)
+}
+fn alternative_mv(value: &Value) -> Option<(String, Option<String>)> {
     let candidate = &value["noCopyrightRcmd"];
     if candidate["type"].as_f64() != Some(3.0)
         || candidate["expInfo"]["mvPlay"].as_bool() != Some(true)
@@ -653,6 +679,7 @@ impl SearchResultView {
             next_offset: query.offset,
             query,
             sections: vec![],
+            privilege_receipt: None,
             total: None,
             more: false,
             correction: None,
@@ -688,8 +715,9 @@ fn project(
     query: SearchResultQuery,
     uid: &str,
     allow_replacement_mv: bool,
-) -> Result<SearchResultView> {
+) -> Result<(SearchResultView, Option<super::privilege::Preview>)> {
     use SearchCategory::*;
+    let mut privilege_preview = None;
     let mut result = SearchResultView::empty(query.clone());
     if query.category == All {
         for (index, block) in array(&raw["data"], "blocks")?.iter().take(50).enumerate() {
@@ -741,7 +769,15 @@ fn project(
                 category,
                 items: vec![],
             };
+            let mut preview =
+                (code == "search_block_song" && privilege_preview.is_none()).then(|| {
+                    super::privilege::Preview {
+                        section: section.id.clone(),
+                        rows: Vec::new(),
+                    }
+                });
             for resource in resources.iter().take(100) {
+                let base = &resource["baseInfo"];
                 match item(
                     resource["type"].as_str().unwrap_or(""),
                     &resource["baseInfo"],
@@ -750,11 +786,35 @@ fn project(
                     Some(resource),
                     allow_replacement_mv,
                 ) {
-                    Ok(Some(item)) => section.items.push(item),
+                    Ok(Some(item)) => {
+                        if let (Some(preview), SearchItem::Song { track, .. }) =
+                            (&mut preview, &item)
+                            && preview.rows.len() < super::privilege::ROW_LIMIT
+                            && let Ok(original) = mapping::track(base)
+                        {
+                            let blocked =
+                                [&base["st"], &base["status"]].into_iter().any(|status| {
+                                    super::privilege::status(status)
+                                        .is_some_and(|status| status < 0.0)
+                                });
+                            preview.rows.push(super::privilege::PreviewRow {
+                                id: track.id.clone(),
+                                original_cover: original.cover_url,
+                                original_mv: (!blocked).then(|| original_mv(base)).flatten(),
+                                alternative: allow_replacement_mv
+                                    .then(|| alternative_mv(base))
+                                    .flatten(),
+                            });
+                        }
+                        section.items.push(item);
+                    }
                     // A card can be unsupported or malformed independently of
                     // the response envelope. Keep its valid siblings visible.
                     Ok(None) | Err(_) => result.unavailable_count += 1,
                 }
+            }
+            if let Some(preview) = preview.filter(|preview| !preview.rows.is_empty()) {
+                privilege_preview = Some(preview);
             }
             if !section.items.is_empty() {
                 result.sections.push(section);
@@ -764,7 +824,7 @@ fn project(
         if raw["data"]["hasMore"] == true {
             result.notice = Some("综合结果为分类预览，可通过区块标题入口查看完整分类。".into());
         }
-        return Ok(result);
+        return Ok((result, privilege_preview));
     }
     let (container, list, total, kind) = match query.category {
         Playlists => (&raw["result"], "playlists", "playlistCount", "playlist"),
@@ -864,5 +924,5 @@ fn project(
         }
     }
     result.sections.push(section);
-    Ok(result)
+    Ok((result, None))
 }

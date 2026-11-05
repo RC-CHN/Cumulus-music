@@ -2,6 +2,8 @@ mod audio_toplist;
 mod default_context;
 pub(crate) mod experiment;
 mod lyrics;
+mod privilege;
+pub use privilege::SearchPrivilegePatch;
 mod queue_drop;
 pub use queue_drop::SearchDropRow;
 mod reason;

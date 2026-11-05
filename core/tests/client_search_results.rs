@@ -37,6 +37,10 @@ impl Api for Backend {
             Ok(self.reply.lock().unwrap().clone())
         })
     }
+    fn search_privilege_credential_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(Some(self.revision.load(Ordering::SeqCst).to_string()))
+    }
+
     fn search_default_context_revision(&self) -> cumulus_core::Result<Option<String>> {
         Ok(Some(self.revision.load(Ordering::SeqCst).to_string()))
     }
@@ -93,6 +97,8 @@ fn query(category: C) -> SearchResultQuery {
 
 #[path = "support/search_default_context.rs"]
 mod search_default_context;
+#[path = "support/search_privilege_refresh.rs"]
+mod search_privilege_refresh;
 #[tokio::test]
 async fn categories_use_official_shapes_and_only_public_card_fields_cross_ipc() {
     let (_root, api, _, client) = fixture();

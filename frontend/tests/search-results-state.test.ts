@@ -640,3 +640,112 @@ test('song waterfall bounds the loaded playback selection and stops at the cap',
   assert.equal(result.more, false);
   assert.match(result.notice ?? '', /单曲结果已达到本次连续浏览上限/);
 });
+
+test('verified rights refresh patches the first six ordinary cards without changing visit memory', async () => {
+  const song = (id: string) => ({
+    kind: 'song' as const,
+    track: {
+      id,
+      name: id,
+      artists: [],
+      album: '',
+      coverUrl: null,
+      durationMs: 40000,
+      fee: 1,
+      missing: false,
+      local: false,
+    },
+    excerpt: [],
+  });
+  const page = view(query);
+  page.value.privilegeReceipt = 'observed-receipt';
+  page.value.sections = [
+    { id: 'search_block_best_match:0', title: '最佳匹配', category: null, items: [song('1')] },
+    {
+      id: 'search_block_song:1',
+      title: '单曲',
+      category: 'songs',
+      items: ['1', '2', '3', '4', '5', '6', '1'].map(song),
+    },
+  ];
+  type Observation = import('../src/services/search.ts').SearchPrivilegeObservation;
+  type Patch = import('../src/services/search.ts').SearchPrivilegePatch;
+  let push!: (event: Observation) => void;
+  let stop = 0,
+    searchCalls = 0;
+  const calls: (string | undefined)[] = [];
+  let held = deferred<AccountData<Patch>>();
+  const model = useSearchResults(
+    {
+      searchReasonPage: async () => {
+        throw Error('unexpected');
+      },
+      searchResults: async (_e, q) => (++searchCalls, q.category === 'all' ? page : view(q)),
+      onSearchPrivilegeChanged: async (handler) => {
+        push = handler;
+        return () => {
+          stop++;
+        };
+      },
+      searchRefreshPrivileges: (epoch, receipt, observation) => {
+        assert.equal(epoch, '1');
+        assert.equal(receipt, 'observed-receipt');
+        calls.push(observation);
+        return held.promise;
+      },
+    },
+    () => assert.fail('no active auth error'),
+  );
+  const patch: AccountData<Patch> = {
+    epoch: '1',
+    value: {
+      receipt: 'observed-receipt',
+      section: 'search_block_song:1',
+      rows: [
+        {
+          id: '1',
+          coverUrl: null,
+          mvId: '601',
+          replacementMv: false,
+          vipBadge: false,
+          limitedFree: true,
+        },
+      ],
+    },
+  };
+  model.connect(account);
+  await model.open(query, true, 23);
+  assert.deepEqual(calls, [], 'cold route has no second request');
+  model.savePosition({ top: 231, tracks: 0, focus: 'song:1', focusAction: 'more' });
+  push({ epoch: '2', revision: 'wrong account' });
+  push({ epoch: '1', revision: 'confirmed' });
+  push({ epoch: '1', revision: 'confirmed' });
+  assert.deepEqual(calls, ['confirmed']);
+  held.resolve(patch);
+  await held.promise;
+  const [best, section] = model.view.value!.sections;
+  assert.equal(best, page.value.sections[0]);
+  assert.equal(section.items[0].kind === 'song' && section.items[0].mvId, '601');
+  assert.equal(section.items[0].kind === 'song' && section.items[0].limitedFree, true);
+  assert.equal(section.items[6], page.value.sections[1].items[6]);
+  assert.deepEqual(model.position.value, {
+    top: 231,
+    tracks: 0,
+    focus: 'song:1',
+    focusAction: 'more',
+  });
+  assert.equal(searchCalls, 1);
+
+  // Opening a cached comprehensive visit restores position and refreshes once.
+  held = deferred();
+  await model.open(query, true, 23);
+  assert.deepEqual(calls, ['confirmed', undefined]);
+  const other = { ...query, category: 'songs' as const };
+  await model.open(other, true, 23);
+  held.reject({ code: 'session_expired', message: 'stale refresh' });
+  await held.promise.catch(() => {});
+  assert.deepEqual(model.view.value?.query, other);
+  assert.equal(model.error.value, '');
+  model.dispose();
+  assert.equal(stop, 1);
+});

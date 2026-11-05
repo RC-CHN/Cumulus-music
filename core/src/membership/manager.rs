@@ -114,6 +114,7 @@ impl MembershipManager {
     }
     pub(crate) async fn refresh_for(&self, token: SessionToken) -> Result<MembershipSnapshot> {
         let _guard = self.refresh_gate.lock().await;
+        let api = self.session.native_api(&token)?;
         let data = self
             .session
             .run_for(&token, |api, uid| async move {
@@ -136,7 +137,7 @@ impl MembershipManager {
             server_ms: now,
             wall: clock.wall_seconds,
         };
-        self.session.with_token(&token, |uid| {
+        let snapshot = self.session.with_token(&token, |uid| {
             let mut state = self.state.lock().map_err(|_| Error::LockPoisoned)?;
             let candidate = Cached {
                 record,
@@ -152,7 +153,25 @@ impl MembershipManager {
             )?;
             *state = Some(candidate);
             Ok(snapshot)
-        })
+        })?;
+        // Official M/3095 watches these five booleans and vipUserId only.
+        let rights = &snapshot.state;
+        self.session.observe_membership(
+            &token,
+            &api,
+            (
+                [
+                    rights.is_album_vip,
+                    rights.is_plus_vip,
+                    rights.is_vinyl_vip,
+                    rights.is_music_package,
+                    rights.is_voice_book_vip,
+                ],
+                rights.user_id.clone(),
+            ),
+            snapshot.server_now,
+        )?;
+        Ok(snapshot)
     }
     fn view(&self) -> Result<(SessionToken, MembershipSnapshot, [bool; 5])> {
         let token = self.token()?;

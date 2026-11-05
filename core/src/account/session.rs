@@ -39,6 +39,21 @@ pub struct SessionSnapshot {
     pub login_notice: Option<LoginNotice>,
 }
 
+/// Only the current account's verified entitlement changes cross this boundary.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MembershipObservation {
+    pub epoch: String,
+    pub revision: String,
+}
+
+struct ObservedMembership {
+    token: SessionToken,
+    tuple: ([bool; 5], String),
+    server_now: f64,
+    observation: MembershipObservation,
+}
+
 struct SessionState {
     api: Arc<dyn Api>,
     generation: u64,
@@ -50,6 +65,8 @@ struct SessionState {
     artist_login: Option<ArtistLogin>,
     registration_type: Option<u32>,
     changes: tokio::sync::watch::Sender<SessionToken>,
+    membership: Option<ObservedMembership>,
+    membership_changes: tokio::sync::watch::Sender<Option<MembershipObservation>>,
 }
 
 impl SessionState {
@@ -112,6 +129,8 @@ impl AccountSession {
                 artist_login: None,
                 registration_type: None,
                 changes,
+                membership: None,
+                membership_changes: tokio::sync::watch::channel(None).0,
             }),
             store,
             policy: Default::default(),
@@ -128,6 +147,61 @@ impl AccountSession {
 
     pub fn subscribe(&self) -> Result<tokio::sync::watch::Receiver<SessionToken>> {
         Ok(self.lock()?.changes.subscribe())
+    }
+
+    pub(crate) fn subscribe_membership(
+        &self,
+    ) -> Result<tokio::sync::watch::Receiver<Option<MembershipObservation>>> {
+        Ok(self.lock()?.membership_changes.subscribe())
+    }
+
+    pub(crate) fn membership_observation(&self, token: &SessionToken) -> Result<Option<String>> {
+        let state = self.lock()?;
+        state.require(token)?;
+        Ok(state
+            .membership
+            .as_ref()
+            .filter(|entry| entry.token == *token)
+            .map(|entry| entry.observation.revision.clone()))
+    }
+
+    pub(crate) fn observe_membership(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        tuple: ([bool; 5], String),
+        server_now: f64,
+    ) -> Result<()> {
+        let mut state = self.lock()?;
+        state.require(token)?;
+        if !Arc::ptr_eq(&state.api, api) {
+            return Err(Error::StaleResponse);
+        }
+        if let Some(old) = state
+            .membership
+            .as_mut()
+            .filter(|entry| entry.token == *token)
+        {
+            if server_now < old.server_now {
+                return Ok(());
+            }
+            if tuple == old.tuple {
+                old.server_now = server_now;
+                return Ok(());
+            }
+        }
+        let observation = MembershipObservation {
+            epoch: token.generation.to_string(),
+            revision: uuid::Uuid::new_v4().simple().to_string(),
+        };
+        state.membership = Some(ObservedMembership {
+            token: token.clone(),
+            tuple,
+            server_now,
+            observation: observation.clone(),
+        });
+        state.membership_changes.send_replace(Some(observation));
+        Ok(())
     }
 
     /// Native lifecycle adapters can recover the concrete transport bound to

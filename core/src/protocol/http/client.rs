@@ -783,6 +783,10 @@ impl Api for MusicHttpClient {
         })
     }
 
+    fn search_privilege_credential_revision(&self) -> Result<Option<String>> {
+        Ok(Some(self.credentials.login_credentials()?.revision))
+    }
+
     fn search_default_context_revision(&self) -> Result<Option<String>> {
         Ok(Some(self.credentials.login_credentials()?.revision))
     }

@@ -38,8 +38,73 @@ export function useSearchResults(
   let activeKey = '';
   let generation = 0,
     account: AccountView | undefined;
+  let privilegeSerial = 0;
+  let observed: string | undefined;
+  let closed = false;
+  let unlistenPrivileges: (() => void) | undefined;
+  if (core.onSearchPrivilegeChanged) {
+    void core
+      .onSearchPrivilegeChanged(({ epoch, revision }) => {
+        if (account?.epoch !== epoch || observed === revision) return;
+        observed = revision;
+        void refreshPrivileges(revision);
+      })
+      .then((unlisten) => {
+        if (closed) unlisten();
+        else unlistenPrivileges = unlisten;
+      })
+      .catch(() => {});
+  }
+  async function refreshPrivileges(observation?: string) {
+    const current = view.value;
+    const epoch = account?.status === 'authenticated' ? account.epoch : undefined;
+    const receipt = current?.privilegeReceipt;
+    if (!epoch || !receipt || current.query.category !== 'all' || !core.searchRefreshPrivileges)
+      return;
+    const visit = generation;
+    const serial = ++privilegeSerial;
+    const active = () =>
+      account?.epoch === epoch &&
+      visit === generation &&
+      serial === privilegeSerial &&
+      current === view.value &&
+      !closed;
+    try {
+      const reply = await core.searchRefreshPrivileges(epoch, receipt, observation);
+      if (!active() || reply.epoch !== epoch || reply.value.receipt !== receipt) return;
+      const { section, rows } = reply.value;
+      if (!/^search_block_song:[0-9]+$/.test(section) || !rows.length) return;
+      const patches = new Map(rows.map((row) => [row.id, row]));
+      const sections = current.sections.map((block) => {
+        if (block.id !== section || block.category !== 'songs') return block;
+        let songs = 0;
+        return {
+          ...block,
+          items: block.items.map((item) => {
+            if (item.kind !== 'song' || songs++ >= 6) return item;
+            const row = patches.get(item.track.id);
+            if (!row) return item;
+            return {
+              ...item,
+              track: { ...item.track, coverUrl: row.coverUrl },
+              mvId: row.mvId ?? undefined,
+              replacementMv: row.replacementMv,
+              vipBadge: row.vipBadge,
+              limitedFree: row.limitedFree,
+            };
+          }),
+        };
+      });
+      view.value = { ...current, sections };
+      save();
+    } catch (e) {
+      if (active() && ['session_expired', 'profile_changed'].includes(failure(e).code)) expired();
+      // A refresh error does not replace current content or trigger a retry.
+    }
+  }
   function connect(next: AccountView) {
     generation++;
+    if (next.epoch !== account?.epoch || next.status !== account?.status) observed = undefined;
     account = next;
     memory.connect(next);
     view.value = undefined;
@@ -106,6 +171,9 @@ export function useSearchResults(
       if (!tabs.value && query.category === 'all') tabs.value = cached.view.tabs;
       error.value = '';
       loading.value = false;
+      // The official mount effect has something to update only if the
+      // model already holds rows. Never add a second read to a cold search.
+      if (query.category === 'all') void refreshPrivileges();
       return;
     }
     view.value = undefined;
@@ -274,6 +342,9 @@ export function useSearchResults(
   }
   function dispose() {
     generation++;
+    closed = true;
+    unlistenPrivileges?.();
+    unlistenPrivileges = undefined;
     account = undefined;
     view.value = undefined;
     tabs.value = undefined;

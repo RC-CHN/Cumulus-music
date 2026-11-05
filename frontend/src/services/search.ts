@@ -60,6 +60,8 @@ export type SearchItem =
       excerptTruncated?: boolean;
       mvId?: string;
       replacementMv?: boolean;
+      vipBadge?: boolean;
+      limitedFree?: boolean;
       hint?: SearchTrackHint;
       explicit?: boolean;
       originalRecording?: boolean;
@@ -105,6 +107,7 @@ export interface SearchResultView {
   hotExplanation?: SearchHotExplanation;
   previewLayout?: 'carousel' | 'compact_carousel';
   sections: SearchSection[];
+  privilegeReceipt?: string;
   total: number | null;
   more: boolean;
   nextOffset: number;
@@ -129,7 +132,32 @@ export function searchExplanation(
   );
   return { emptyTitle, notice, lines };
 }
+export interface SearchPrivilegeObservation {
+  epoch: string;
+  revision: string;
+}
+export interface SearchPrivilegePatch {
+  receipt: string;
+  section: string;
+  rows: {
+    id: string;
+    coverUrl: string | null;
+    mvId: string | null;
+    replacementMv: boolean;
+    vipBadge: boolean;
+    limitedFree: boolean;
+  }[];
+}
 export interface SearchResultsClient {
+  searchRefreshPrivileges?(
+    epoch: string,
+    receipt: string,
+    observation?: string,
+  ): Promise<AccountData<SearchPrivilegePatch>>;
+  onSearchPrivilegeChanged?(
+    handler: (event: SearchPrivilegeObservation) => void,
+  ): Promise<() => void>;
+
   searchReasonPage(
     epoch: string,
     target: SearchReasonTarget,

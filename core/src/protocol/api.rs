@@ -208,6 +208,11 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async { Ok(false) })
     }
 
+    /// Profile revision used to fence native search privilege receipts.
+    fn search_privilege_credential_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Internal authority for a default search context from this credential set.
     fn search_default_context_revision(&self) -> Result<Option<String>> {
         Ok(None)

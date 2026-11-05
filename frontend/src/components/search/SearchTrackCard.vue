@@ -7,22 +7,27 @@ import { artworkAt } from '../../services/artwork';
 import { usePlaybackTriggerFocus } from '../../composables/usePlaybackTriggerFocus';
 import Icon from '../Icon.vue';
 import SearchMatchText from './SearchMatchText.vue';
-const props = defineProps<{
-  track: TrackView;
-  mvId?: string;
-  replacementMv?: boolean;
-  hint?: SearchTrackHint;
-  explicit?: boolean;
-  originalRecording?: boolean;
-  reasons?: SearchReasonTag[];
-  matchKeyword: string;
-  playable: boolean;
-  current: boolean;
-  playing: boolean;
-  pendingToggle?: TrackPendingToggle;
-  liked: boolean;
-  busyLike: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    track: TrackView;
+    mvId?: string;
+    replacementMv?: boolean;
+    vipBadge?: boolean;
+    limitedFree?: boolean;
+    hint?: SearchTrackHint;
+    explicit?: boolean;
+    originalRecording?: boolean;
+    reasons?: SearchReasonTag[];
+    matchKeyword: string;
+    playable: boolean;
+    current: boolean;
+    playing: boolean;
+    pendingToggle?: TrackPendingToggle;
+    liked: boolean;
+    busyLike: boolean;
+  }>(),
+  { vipBadge: undefined },
+);
 const emit = defineEmits<{
   play: [];
   pendingToggle: [target: TrackPendingToggle];
@@ -109,7 +114,8 @@ watch(
         >
       </p>
       <div class="search-track-credit">
-        <span v-if="track.fee === 1" class="vip-tag">VIP</span>
+        <span v-if="vipBadge ?? track.fee === 1" class="vip-tag">VIP</span>
+        <span v-if="limitedFree" class="search-original-tag">限免</span>
         <button
           v-if="mvId"
           class="search-track-mv"
