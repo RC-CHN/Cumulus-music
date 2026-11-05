@@ -83,11 +83,16 @@ function artists(song: VinylSimilarSong) {
   }));
 }
 async function retryLane(lane: VinylSimilarLane, event: MouseEvent) {
-  const focus = event.currentTarget === document.activeElement;
+  const trigger = event.currentTarget;
+  const focus = trigger === document.activeElement;
   const origin = props.playId;
   emit('retry', lane);
   await nextTick();
-  if (focus && origin === props.playId && document.activeElement === document.body) {
+  if (
+    focus &&
+    origin === props.playId &&
+    (document.activeElement === document.body || document.activeElement === trigger)
+  ) {
     scroll.value?.focus({ preventScroll: true });
   }
 }

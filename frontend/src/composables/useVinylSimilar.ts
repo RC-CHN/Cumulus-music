@@ -2,6 +2,7 @@ import { computed, onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue'
 import type {
   VinylSimilarAction,
   VinylSimilarClient,
+  VinylRecommendationLane,
   VinylSimilarLane,
   VinylSimilarReadState,
   VinylSimilarSeed,
@@ -15,8 +16,14 @@ export function useVinylSimilar(
   seed: Readonly<Ref<VinylSimilarSeed | undefined>>,
   visible: Readonly<Ref<boolean>>,
   play: (seed: VinylSimilarSeed, receipt: string, action: VinylSimilarAction) => Promise<boolean>,
+  placement: Readonly<Ref<VinylRecommendationLane | undefined>>,
+  onPlacementMismatch: () => void = () => {},
 ) {
-  const key = computed(() => keyOf(seed.value));
+  const key = computed(() =>
+    seed.value && placement.value
+      ? JSON.stringify([keyOf(seed.value), placement.value])
+      : undefined,
+  );
   const seedSong = computed(
     () => seed.value && JSON.stringify([seed.value.epoch, seed.value.songId]),
   );
@@ -24,7 +31,7 @@ export function useVinylSimilar(
   const pending = ref(false);
   const notice = ref<string>();
   let activation = 0;
-  function lane<T extends { playId: string; songId: string }>(
+  function lane<T extends { playId: string; songId: string; placement: VinylRecommendationLane }>(
     request: (epoch: string, playId: string) => Promise<T>,
   ) {
     const data = shallowRef<T>();
@@ -37,7 +44,8 @@ export function useVinylSimilar(
     }
     async function load() {
       const target = seed.value;
-      if (!target || !visible.value || state.value === 'loading') return;
+      const expectedPlacement = placement.value;
+      if (!target || !expectedPlacement || !visible.value || state.value === 'loading') return;
       const requestKey = key.value;
       const requestId = ++serial;
       const live = () => serial === requestId && key.value === requestKey && visible.value;
@@ -46,8 +54,13 @@ export function useVinylSimilar(
       try {
         const result = await request(target.epoch, target.playId);
         if (!live()) return;
-        if (result.playId !== target.playId || result.songId !== target.songId) {
+        if (
+          result.playId !== target.playId ||
+          result.songId !== target.songId ||
+          result.placement !== expectedPlacement
+        ) {
           state.value = 'error';
+          if (result.placement !== expectedPlacement) onPlacementMismatch();
           return;
         }
         data.value = result;
@@ -98,7 +111,14 @@ export function useVinylSimilar(
   async function select(action: VinylSimilarAction) {
     const target = seed.value;
     const page = songs.data.value;
-    if (!target || !visible.value || !page?.receipt || pending.value) return;
+    if (
+      !target ||
+      !visible.value ||
+      !page?.receipt ||
+      page.placement !== placement.value ||
+      pending.value
+    )
+      return;
     const index = action.kind === 'header' ? 0 : action.index;
     if (!Number.isInteger(index) || !page.songs[index]?.playable) return;
     const scope = activation;

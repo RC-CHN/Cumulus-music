@@ -167,7 +167,14 @@ import { readVinylDisplayMode, storeVinylDisplayMode } from './services/vinylDis
 import { usePlaybackCommentInfo } from './composables/usePlaybackCommentCount';
 import { useVinylComments } from './composables/useVinylComments';
 import { useVinylSimilar } from './composables/useVinylSimilar';
-import { readVinylDetailTab, storeVinylDetailTab } from './services/vinylSimilar';
+import { useVinylWiki } from './composables/useVinylWiki';
+import {
+  activeVinylDetailTab,
+  readVinylDetailTab,
+  storeVinylDetailTab,
+  type VinylSimilarLane,
+  type VinylRecommendationPlacement,
+} from './services/vinylSimilar';
 import {
   useVinylCommentComposer,
   type VinylComposerTarget,
@@ -1538,33 +1545,54 @@ const vinylSimilarSeed = computed(() => {
     return undefined;
   return { epoch: current.epoch, playId: current.playId, songId: current.track.id };
 });
-const vinylSimilarGroupQuery = computed(() =>
-  player.lyricsOpen.value && vinylDisplayMode.value === 'classic'
-    ? vinylSimilarSeed.value?.epoch
-    : undefined,
-);
-const vinylSimilarAssignment = shallowRef<{ epoch: string; available: boolean }>();
+const vinylPlacementScope = computed(() => {
+  const seed = vinylSimilarSeed.value;
+  if (!seed || !player.lyricsOpen.value || vinylDisplayMode.value !== 'classic') return undefined;
+  return JSON.stringify([seed.epoch, seed.playId]);
+});
+const vinylSimilarAssignment = shallowRef<{
+  epoch: string;
+  scope: string;
+  placement: VinylRecommendationPlacement;
+}>();
+let vinylPlacementRequest = 0;
+async function refreshVinylPlacement() {
+  const scope = vinylPlacementScope.value;
+  const epoch = vinylSimilarSeed.value?.epoch;
+  if (!scope || !epoch) return;
+  const request = ++vinylPlacementRequest;
+  const live = () => request === vinylPlacementRequest && scope === vinylPlacementScope.value;
+  try {
+    const placement = await core.playerVinylRecommendationPlacement(epoch);
+    if (live()) vinylSimilarAssignment.value = { epoch, scope, placement };
+  } catch {
+    if (live()) vinylSimilarAssignment.value = undefined;
+  }
+}
 watch(
-  vinylSimilarGroupQuery,
-  async (epoch, _, cleanup) => {
-    if (!epoch) return;
-    let live = true;
-    cleanup(() => (live = false));
-    try {
-      const available = await core.playerVinylSimilarAvailable(epoch);
-      if (live && epoch === music.account.value.epoch)
-        vinylSimilarAssignment.value = { epoch, available };
-    } catch {
-      if (live) vinylSimilarAssignment.value = undefined;
+  vinylPlacementScope,
+  (scope) => {
+    if (!scope || vinylSimilarAssignment.value?.epoch !== vinylSimilarSeed.value?.epoch) {
+      vinylPlacementRequest++;
+      vinylSimilarAssignment.value = undefined;
     }
   },
-  { immediate: true },
+  { flush: 'sync' },
 );
-const vinylSimilarAvailable = computed(
-  () =>
-    !!vinylSimilarGroupQuery.value &&
-    vinylSimilarAssignment.value?.epoch === vinylSimilarGroupQuery.value &&
-    vinylSimilarAssignment.value.available,
+watch([vinylPlacementScope, vinylDetailTab], () => void refreshVinylPlacement(), {
+  immediate: true,
+});
+const vinylWikiAvailable = computed(() => !!vinylPlacementScope.value);
+const vinylPlacement = computed<VinylRecommendationPlacement>(() => {
+  const assignment = vinylSimilarAssignment.value;
+  // Keep tabs stable during a continuous same-account track transition,
+  // but do not mount data for the new play before its scope is confirmed.
+  return vinylWikiAvailable.value && assignment?.epoch === vinylSimilarSeed.value?.epoch
+    ? (assignment?.placement ?? 'unresolved')
+    : 'unresolved';
+});
+const vinylActiveDetailTab = computed(() =>
+  activeVinylDetailTab(vinylDetailTab.value, vinylWikiAvailable.value, vinylPlacement.value),
 );
 const vinylCommentAssignment = shallowRef<{ epoch: string; available: boolean }>();
 const vinylAssignmentQuery = computed(() =>
@@ -1606,16 +1634,38 @@ const vinylCommentTarget = computed(() => {
 const vinylCommentVisible = computed(
   () => player.lyricsOpen.value && vinylCommentsOpen.value && !!vinylCommentTarget.value,
 );
+const vinylWikiMounted = computed(
+  () => vinylWikiAvailable.value && vinylActiveDetailTab.value === 'wiki',
+);
+const vinylWikiVisible = computed(() => vinylWikiMounted.value && !vinylCommentVisible.value);
+const vinylRecommendationLane = computed(() =>
+  vinylWikiAvailable.value &&
+  vinylSimilarAssignment.value?.scope === vinylPlacementScope.value &&
+  vinylPlacement.value !== 'unresolved'
+    ? vinylPlacement.value
+    : undefined,
+);
 const vinylSimilarVisible = computed(
   () =>
-    vinylSimilarAvailable.value && vinylDetailTab.value === 'similar' && !vinylCommentVisible.value,
+    !vinylCommentVisible.value &&
+    ((vinylRecommendationLane.value === 'standalone' && vinylActiveDetailTab.value === 'similar') ||
+      (vinylRecommendationLane.value === 'wiki' && vinylWikiVisible.value)),
 );
 const vinylSimilar = useVinylSimilar(
   core,
   vinylSimilarSeed,
   vinylSimilarVisible,
   player.playVinylSimilar,
+  vinylRecommendationLane,
+  refreshVinylPlacement,
 );
+const vinylWiki = useVinylWiki(core, vinylSimilarSeed, vinylWikiVisible, vinylWikiMounted);
+async function retryVinylRecommendation(lane: VinylSimilarLane) {
+  const scope = vinylPlacementScope.value;
+  if (!scope || !vinylSimilarVisible.value) return;
+  await refreshVinylPlacement();
+  if (scope === vinylPlacementScope.value) await vinylSimilar.retry(lane);
+}
 function openVinylRelatedPlaylist(id: string) {
   if (!vinylSimilarVisible.value || !vinylSimilar.playlists.value.some((item) => item.id === id))
     return;
@@ -5426,7 +5476,10 @@ onUnmounted(() => {
         v-model:comments-open="vinylCommentsOpen"
         v-model:detail-tab="vinylDetailTab"
         :player="player"
-        :similar-available="vinylSimilarAvailable"
+        :wiki-available="vinylWikiAvailable"
+        :recommendation-placement="vinylPlacement"
+        :active-detail-tab="vinylActiveDetailTab"
+        :wiki-model="vinylWiki"
         :similar-model="vinylSimilar"
         :comments-available="!!vinylCommentTarget"
         :comment-model="vinylComments"
@@ -5434,6 +5487,7 @@ onUnmounted(() => {
         :comment-write-target="vinylCommentWriteTarget"
         :comment-composer="vinylCommentComposer"
         @full-comments="openFullVinylComments"
+        @retry-recommendation="retryVinylRecommendation"
         @related-playlist="openVinylRelatedPlaylist"
         @report="reportLyrics"
         @comment-report-expired="music.bootstrap(false)"

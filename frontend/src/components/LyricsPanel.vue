@@ -10,6 +10,7 @@ import ModalTransition from './ModalTransition.vue';
 import VinylModeSheet from './VinylModeSheet.vue';
 import VinylCommentsPane from './VinylCommentsPane.vue';
 import VinylSimilarPane from './VinylSimilarPane.vue';
+import VinylWikiPane from './VinylWikiPane.vue';
 import VinylCommentDialog from './VinylCommentDialog.vue';
 import type {
   VinylCommentComposer,
@@ -18,7 +19,13 @@ import type {
 } from '../composables/useVinylCommentComposer';
 import type { VinylCommentsModel } from '../composables/useVinylComments';
 import type { VinylSimilarModel } from '../composables/useVinylSimilar';
-import type { VinylDetailTab } from '../services/vinylSimilar';
+import type { VinylWikiModel } from '../composables/useVinylWiki';
+import {
+  vinylDetailTabs,
+  type VinylDetailTab,
+  type VinylRecommendationPlacement,
+  type VinylSimilarLane,
+} from '../services/vinylSimilar';
 import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
@@ -29,8 +36,11 @@ import {
 } from '../services/playbackMetadata';
 const props = defineProps<{
   player: PlayerModel;
-  similarAvailable: boolean;
+  wikiAvailable: boolean;
+  recommendationPlacement: VinylRecommendationPlacement;
+  activeDetailTab: VinylDetailTab;
   similarModel: VinylSimilarModel;
+  wikiModel: VinylWikiModel;
   commentsAvailable: boolean;
   commentModel: VinylCommentsModel;
   commentCount?: number;
@@ -47,6 +57,7 @@ const emit = defineEmits<{
   source: [target: PlaybackSourceDestination];
   fullComments: [hot: boolean];
   relatedPlaylist: [id: string];
+  retryRecommendation: [lane: VinylSimilarLane];
 }>();
 function independentComment(opening: VinylComposerOpening) {
   if (!props.commentComposer.live(opening)) return;
@@ -103,31 +114,83 @@ watch(lyricFontGain, (value) => {
 });
 const motion = useMotion();
 const commentsVisible = computed(() => props.commentsAvailable && commentsOpen.value);
-const similarSelected = computed(() => props.similarAvailable && detailTab.value === 'similar');
-const lyricTab = ref<HTMLButtonElement>();
-const similarTab = ref<HTMLButtonElement>();
-function detailKey(event: KeyboardEvent) {
-  const tab =
-    event.key === 'Home'
-      ? 'lyrics'
-      : event.key === 'End'
-        ? 'similar'
-        : ['ArrowLeft', 'ArrowRight'].includes(event.key)
-          ? similarSelected.value
-            ? 'lyrics'
-            : 'similar'
-          : undefined;
-  if (!tab) return;
-  event.preventDefault();
-  detailTab.value = tab;
-  void nextTick(() => (tab === 'lyrics' ? lyricTab.value : similarTab.value)?.focus());
+const tabs = computed(() => vinylDetailTabs(props.wikiAvailable, props.recommendationPlacement));
+const tabLabel: Record<VinylDetailTab, string> = {
+  lyrics: '歌词',
+  wiki: '百科',
+  similar: '相似推荐',
+};
+const tabList = ref<HTMLElement>();
+const wikiScroll = ref<HTMLElement>();
+const recommendationProps = computed(() => ({
+  playId: view.value?.playId ?? '',
+  songs: props.similarModel.songs.value,
+  playlists: props.similarModel.playlists.value,
+  songsState: props.similarModel.songsState.value,
+  playlistsState: props.similarModel.playlistsState.value,
+  notice: props.similarModel.notice.value,
+  pending: props.similarModel.pending.value,
+  expanded: props.similarModel.expanded.value,
+  canPlay: props.similarModel.canPlay.value && loaded.value && !busy.value,
+}));
+function focusDetailTab(tab: VinylDetailTab) {
+  const target = tabList.value?.querySelector<HTMLElement>('[data-vinyl-detail-tab="' + tab + '"]');
+  (target ?? close.value)?.focus({ preventScroll: true });
 }
-watch(similarSelected, async (active) => {
-  if (!active) {
+function detailKey(event: KeyboardEvent) {
+  const keys = tabs.value;
+  const index = keys.indexOf(props.activeDetailTab);
+  let next = -1;
+  if (event.key === 'Home') next = 0;
+  else if (event.key === 'End') next = keys.length - 1;
+  else if (event.key === 'ArrowLeft') next = (index + keys.length - 1) % keys.length;
+  else if (event.key === 'ArrowRight') next = (index + 1) % keys.length;
+  if (next < 0) return;
+  event.preventDefault();
+  detailTab.value = keys[next];
+  void nextTick(() => focusDetailTab(keys[next]));
+}
+watch(
+  [
+    tabs,
+    () => props.activeDetailTab,
+    () => props.recommendationPlacement,
+    () => view.value?.playId,
+  ],
+  async ([next, tab]) => {
+    const focused = document.activeElement;
+    const panel = close.value?.closest('.lyrics-panel');
+    if (!(focused instanceof HTMLElement) || !panel?.contains(focused)) return;
+    const button = focused.dataset.vinylDetailTab as VinylDetailTab | undefined;
+    const body = focused.closest<HTMLElement>('.vinyl-detail-content');
+    if (!button && !body) return;
     await nextTick();
-    if (!manual.value) void scroll();
-  }
-});
+    if (!props.player.lyricsOpen.value) return;
+    const active = document.activeElement;
+    if (active !== focused && active !== document.body) return;
+    if (
+      !focused.isConnected ||
+      (button && !next.includes(button)) ||
+      (body && body.id !== 'vinyl-' + tab + '-content')
+    )
+      focusDetailTab(tab);
+  },
+);
+watch(
+  () => props.activeDetailTab,
+  async (active) => {
+    if (active === 'lyrics') {
+      await nextTick();
+      if (!manual.value) void scroll();
+    }
+  },
+);
+watch(
+  () => view.value?.playId,
+  () => {
+    wikiScroll.value?.scrollTo({ top: 0, behavior: motion.reduced.value ? 'instant' : 'smooth' });
+  },
+);
 const commentPane = ref<InstanceType<typeof VinylCommentsPane>>();
 const commentEntry = ref<HTMLButtonElement>();
 const wheelNudge = ref(0);
@@ -457,7 +520,7 @@ const displayedAuxiliary = computed(() =>
   <section
     class="lyrics-panel"
     :data-vinyl-mode="displayMode"
-    :data-vinyl-tab="commentsVisible ? 'comments' : similarSelected ? 'similar' : 'lyrics'"
+    :data-vinyl-tab="commentsVisible ? 'comments' : activeDetailTab"
     :style="{ '--lyric-font-gain': `${lyricFontGain}px` }"
     aria-label="播放详情与歌词"
     @keydown.esc.stop="escapePanel"
@@ -563,45 +626,37 @@ const displayedAuxiliary = computed(() =>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
             <div
-              v-if="similarAvailable"
+              v-if="wikiAvailable"
+              ref="tabList"
               class="vinyl-detail-tabs"
               role="tablist"
               aria-label="播放详情"
               @keydown="detailKey"
             >
               <button
-                id="vinyl-lyrics-tab"
-                ref="lyricTab"
+                v-for="tab in tabs"
+                :id="'vinyl-' + tab + '-tab'"
+                :key="tab"
                 type="button"
                 role="tab"
-                data-vinyl-lyrics-tab
-                aria-controls="vinyl-lyrics-content"
-                :aria-selected="!similarSelected"
-                :tabindex="similarSelected ? -1 : 0"
-                @click="detailTab = 'lyrics'"
+                :data-vinyl-detail-tab="tab"
+                :data-vinyl-lyrics-tab="tab === 'lyrics' ? '' : undefined"
+                :data-vinyl-wiki-tab="tab === 'wiki' ? '' : undefined"
+                :data-vinyl-similar-tab="tab === 'similar' ? '' : undefined"
+                :aria-controls="'vinyl-' + tab + '-content'"
+                :aria-selected="activeDetailTab === tab"
+                :tabindex="activeDetailTab === tab ? 0 : -1"
+                @click="detailTab = tab"
               >
-                歌词
-              </button>
-              <button
-                id="vinyl-similar-tab"
-                ref="similarTab"
-                type="button"
-                role="tab"
-                data-vinyl-similar-tab
-                aria-controls="vinyl-similar-content"
-                :aria-selected="similarSelected"
-                :tabindex="similarSelected ? 0 : -1"
-                @click="detailTab = 'similar'"
-              >
-                相似推荐
+                {{ tabLabel[tab] }}
               </button>
             </div>
             <div
-              v-show="!similarSelected"
+              v-show="activeDetailTab === 'lyrics'"
               id="vinyl-lyrics-content"
               class="vinyl-detail-content"
-              :role="similarAvailable ? 'tabpanel' : undefined"
-              :aria-labelledby="similarAvailable ? 'vinyl-lyrics-tab' : undefined"
+              :role="wikiAvailable ? 'tabpanel' : undefined"
+              :aria-labelledby="wikiAvailable ? 'vinyl-lyrics-tab' : undefined"
             >
               <div v-if="lyricLoading" class="empty-state" role="status">
                 <span class="spinner" />正在加载歌词…
@@ -744,8 +799,43 @@ const displayedAuxiliary = computed(() =>
               </div>
             </div>
             <div
-              v-if="similarAvailable && view?.playId"
-              v-show="similarSelected"
+              v-if="wikiAvailable && view?.playId"
+              v-show="activeDetailTab === 'wiki'"
+              id="vinyl-wiki-content"
+              class="vinyl-detail-content vinyl-detail-wiki"
+              role="tabpanel"
+              aria-labelledby="vinyl-wiki-tab"
+            >
+              <div
+                v-if="activeDetailTab === 'wiki'"
+                ref="wikiScroll"
+                class="vinyl-detail-wiki-scroll"
+                tabindex="0"
+                aria-label="百科内容"
+                @wheel.stop.passive
+              >
+                <VinylWikiPane
+                  :play-id="view.playId"
+                  :state="wikiModel.state.value"
+                  :card="wikiModel.card.value"
+                  embedded
+                  @retry="wikiModel.retry"
+                />
+                <VinylSimilarPane
+                  v-if="recommendationPlacement === 'wiki'"
+                  v-bind="recommendationProps"
+                  embedded
+                  @play="similarModel.select"
+                  @retry="emit('retryRecommendation', $event)"
+                  @expand="similarModel.expand"
+                  @open-playlist="emit('relatedPlaylist', $event)"
+                  @open-artist="emit('catalog', { kind: 'artist', id: $event })"
+                />
+              </div>
+            </div>
+            <div
+              v-if="wikiAvailable && recommendationPlacement === 'standalone' && view?.playId"
+              v-show="activeDetailTab === 'similar'"
               id="vinyl-similar-content"
               class="vinyl-detail-content vinyl-detail-similar"
               role="tabpanel"
@@ -753,18 +843,10 @@ const displayedAuxiliary = computed(() =>
               @wheel.stop.passive
             >
               <VinylSimilarPane
-                v-if="similarSelected"
-                :play-id="view.playId"
-                :songs="similarModel.songs.value"
-                :playlists="similarModel.playlists.value"
-                :songs-state="similarModel.songsState.value"
-                :playlists-state="similarModel.playlistsState.value"
-                :notice="similarModel.notice.value"
-                :pending="similarModel.pending.value"
-                :expanded="similarModel.expanded.value"
-                :can-play="similarModel.canPlay.value && loaded && !busy"
+                v-if="activeDetailTab === 'similar'"
+                v-bind="recommendationProps"
                 @play="similarModel.select"
-                @retry="similarModel.retry"
+                @retry="emit('retryRecommendation', $event)"
                 @expand="similarModel.expand"
                 @open-playlist="emit('relatedPlaylist', $event)"
                 @open-artist="emit('catalog', { kind: 'artist', id: $event })"

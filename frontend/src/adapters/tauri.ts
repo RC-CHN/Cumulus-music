@@ -422,6 +422,9 @@ export function createTauriClient(): CoreClient {
     playerChorus: (epoch, playId) => invoke('player_chorus', { epoch, playId }),
     playerCommentCount: (epoch, playId) => invoke('player_comment_count', { epoch, playId }),
     playerVinylSimilarAvailable: (epoch) => invoke('player_vinyl_similar_available', { epoch }),
+    playerVinylRecommendationPlacement: (epoch) =>
+      invoke('player_vinyl_recommendation_placement', { epoch }),
+    playerVinylWiki: (epoch, playId) => invoke('player_vinyl_wiki', { epoch, playId }),
     playerVinylSimilarSongs: (epoch, playId) =>
       invoke('player_vinyl_similar_songs', { epoch, playId }),
     playerVinylRelatedPlaylists: (epoch, playId) =>
