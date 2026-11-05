@@ -23,6 +23,11 @@ use std::sync::{
 };
 use tokio::sync::Mutex;
 
+pub(crate) struct ZoneCardStart {
+    pub expected: crate::playback::controller::PlaybackFence,
+    pub cover: bool,
+}
+
 /// Reserve a coordinated operation before the client changes playback intent.
 /// A busy/refused operation must not cancel the operation holding this gate.
 pub(crate) struct FmOperation<'a> {
@@ -30,6 +35,24 @@ pub(crate) struct FmOperation<'a> {
     _gate: tokio::sync::MutexGuard<'a, ()>,
 }
 impl FmOperation<'_> {
+    pub(crate) async fn enter_zone_card<F, Fut>(
+        &self,
+        token: &SessionToken,
+        source: FmSource,
+        quality: Quality,
+        intent: u64,
+        start: ZoneCardStart,
+        verify: F,
+    ) -> Result<PlaybackSnapshot>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<()>>,
+    {
+        self.inner
+            .enter_locked(token, source, quality, intent, Some(start), verify)
+            .await
+    }
+
     pub async fn trash(
         &self,
         token: &SessionToken,

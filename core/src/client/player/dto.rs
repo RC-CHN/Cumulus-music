@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 pub struct PlayerView {
     pub resource_kind: Option<PlayerResourceKind>,
     pub fm: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zone_fm_rule_id: Option<String>,
     /// Display state only. Never expose the native session, backup or algorithm map.
     pub intelligence: Option<crate::playback::intelligence::IntelligencePhase>,
     /// The host-supplied operation UUID, never the private native session id.

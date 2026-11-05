@@ -128,7 +128,8 @@ impl Actor {
             self.reply(request.reply, Err(Error::QueueChanged));
             return;
         }
-        if let PlaybackCommand::UpdateQueue(value) = &request.command
+        if let PlaybackCommand::UpdateQueue(value)
+        | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
             && value.expected != self.snapshot().fence()
         {
             self.reply(request.reply, Err(Error::QueueChanged));
@@ -226,6 +227,13 @@ impl Actor {
             PlaybackCommand::UpdateQueue(value) => {
                 self.update_queue(value).await.map(|value| options = value)
             }
+            PlaybackCommand::UpdateZoneFm {
+                update,
+                retain_paused,
+            } => self
+                .update_zone_fm(update, retain_paused)
+                .await
+                .map(|value| options = value),
             PlaybackCommand::ReplaceFollowLatest {
                 resources,
                 first_download,

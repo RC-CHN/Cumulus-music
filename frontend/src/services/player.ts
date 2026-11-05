@@ -66,6 +66,7 @@ export interface PlayerView {
   profileRankPlaylistUid?: string;
   recommendationOrigin?: { kind: 'daily' | 'style'; revision: string } | null;
   fm: boolean;
+  zoneFmRuleId?: string;
   intelligence?: 'seeded' | 'active' | 'fallback' | null;
   intelligenceOperation?: string | null;
   equalizer: EqualizerView;

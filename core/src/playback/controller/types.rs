@@ -177,6 +177,12 @@ pub enum PlaybackCommand {
     RepairLoudness,
     RepairQuality,
     UpdateQueue(QueueUpdate),
+    /// Zone FM's explicit same-track case may retain its already authorized
+    /// decoder; an incompatible source takes the normal load path.
+    UpdateZoneFm {
+        update: QueueUpdate,
+        retain_paused: bool,
+    },
     /// Explicit play-all with the recovered /newSongPublish first-track rule.
     ReplaceFollowLatest {
         resources: Vec<Value>,

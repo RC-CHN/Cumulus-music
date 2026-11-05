@@ -134,7 +134,8 @@
   opacity: 0;
   transition: opacity 150ms;
 }
-.vertical-zone-picture:is(:hover, :focus-within) .vertical-zone-play {
+.vertical-zone-picture:is(:hover, :focus-within) .vertical-zone-play,
+.vertical-zone-play.playing {
   opacity: 1;
 }
 .vertical-zone-fm-mask {

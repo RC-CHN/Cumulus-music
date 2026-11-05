@@ -215,6 +215,11 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
     let failure = value.error.map(super::ClientError::from);
     Ok(PlayerView {
         fm: value.fm,
+        zone_fm_rule_id: value.selected.as_ref().and_then(|entry| {
+            (value.fm && entry.source["kind"] == "fm" && entry.source["source"]["kind"] == "zone")
+                .then(|| crate::protocol::api::identifier(&entry.source["source"]["rule_id"]).ok())
+                .flatten()
+        }),
         intelligence: value.intelligence.as_ref().map(|state| state.phase),
         intelligence_operation: value.intelligence_operation.clone(),
         loudness: LoudnessView {

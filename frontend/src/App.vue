@@ -6,6 +6,7 @@ import { useVerticalZone } from './composables/useVerticalZone';
 import type {
   VerticalZoneCard,
   VerticalZoneLocation,
+  ZoneFmCardGesture,
   ZonePlaylistBatchOrigin,
 } from './services/verticalZone';
 import { useOrdinaryEssential } from './composables/useOrdinaryEssential';
@@ -703,6 +704,7 @@ const fm = useFm(undefined, () => {
 });
 const zonePlaylistOpening = ref<string>();
 const zonePlaylistIssue = ref('');
+const zoneFmOpening = shallowRef<{ key: string }>();
 let zonePlaylistNavigation = 0;
 watch(
   [music.page, () => music.account.value.epoch],
@@ -710,6 +712,7 @@ watch(
     zonePlaylistNavigation++;
     zonePlaylistOpening.value = undefined;
     zonePlaylistIssue.value = '';
+    zoneFmOpening.value = undefined;
   },
   { flush: 'sync' },
 );
@@ -756,7 +759,7 @@ async function openZonePlaylist(card: VerticalZoneCard) {
     if (attempt === zonePlaylistNavigation) zonePlaylistOpening.value = undefined;
   }
 }
-function openVerticalZoneCard(card: VerticalZoneCard) {
+function openVerticalZoneCard(card: VerticalZoneCard, anchor?: HTMLButtonElement) {
   if (!verticalZoneRoute() || !music.signedIn.value) return;
   const target = card.target;
   switch (target.kind) {
@@ -774,7 +777,7 @@ function openVerticalZoneCard(card: VerticalZoneCard) {
       openSceneRadio(target.id);
       break;
     case 'fm':
-      void verticalZoneFm(card, false);
+      void verticalZoneFm(card, 'cover', anchor);
       break;
     case 'song':
     case 'voice':
@@ -782,28 +785,67 @@ function openVerticalZoneCard(card: VerticalZoneCard) {
       break;
   }
 }
-async function verticalZoneFm(card: VerticalZoneCard, play: boolean) {
+async function verticalZoneFm(
+  card: VerticalZoneCard,
+  gesture: ZoneFmCardGesture,
+  anchor?: HTMLButtonElement,
+) {
   const route = verticalZoneRoute();
+  const content = verticalZone.data.value;
   const epoch = music.account.value.epoch;
-  if (!route || !music.signedIn.value || card.target.kind !== 'fm' || fm.busy.value) return;
-  const source = {
-    kind: 'zone' as const,
-    rule_id: card.target.id,
-    trial_mode: card.target.personalized ? 121 : null,
-  };
-  const current = () => verticalZoneRoute() === route && music.account.value.epoch === epoch;
-  const selected = await fm.select(source, card.title ?? `${verticalZoneName.value}漫游`);
-  if (!selected || !current()) return;
-  if (play) {
-    const result = await fm.command({
-      kind: 'start',
-      quality: player.view.value?.qualityPreferences.quality ?? 'standard',
-    });
-    if (!result?.ok || !current()) return;
+  if (
+    !route ||
+    !content ||
+    !music.signedIn.value ||
+    card.target.kind !== 'fm' ||
+    !player.ready.value ||
+    player.busy.value ||
+    zoneFmOpening.value
+  )
+    return;
+  const attempt = { key: card.cardKey };
+  zoneFmOpening.value = attempt;
+  zonePlaylistIssue.value = '';
+  const current = () =>
+    zoneFmOpening.value === attempt &&
+    verticalZoneRoute() === route &&
+    verticalZone.data.value === content &&
+    music.account.value.epoch === epoch;
+  try {
+    const { epoch: returnedEpoch, value } = await core.verticalZoneFmCard(
+      epoch,
+      content.viewId,
+      card.cardKey,
+      gesture,
+      player.view.value?.qualityPreferences.quality ?? 'standard',
+    );
+    if (!current() || returnedEpoch !== epoch || gesture !== 'cover' || !value.detailPlayId) return;
+    const live = await player.syncPlayback();
+    if (
+      !current() ||
+      live.epoch !== epoch ||
+      live.playId !== value.detailPlayId ||
+      value.playback.playId !== live.playId ||
+      !live.zoneFmRuleId ||
+      !['playing', 'buffering'].includes(live.state) ||
+      player.lyricsOpen.value
+    )
+      return;
+    if (anchor?.isConnected && document.activeElement === document.body)
+      anchor.focus({ preventScroll: true });
+    player.toggleLyrics();
+  } catch (cause) {
+    if (!current()) return;
+    const issue = failure(cause);
+    zonePlaylistIssue.value = issue.message;
+    if (['session_expired', 'profile_changed'].includes(issue.code)) void music.bootstrap(false);
+  } finally {
+    if (zoneFmOpening.value === attempt) {
+      zoneFmOpening.value = undefined;
+    }
   }
-  music.navigate({ kind: 'fm' });
 }
-function playVerticalZoneCard(card: VerticalZoneCard) {
+function playVerticalZoneCard(card: VerticalZoneCard, anchor?: HTMLButtonElement) {
   if (!verticalZoneRoute() || !music.signedIn.value || !player.ready.value || player.busy.value)
     return;
   const target = card.target;
@@ -848,7 +890,7 @@ function playVerticalZoneCard(card: VerticalZoneCard) {
       else void player.select({ kind: 'voice', id: target.id });
       break;
     case 'fm':
-      void verticalZoneFm(card, true);
+      void verticalZoneFm(card, 'overlay', anchor);
       break;
     default:
       openVerticalZoneCard(card);
@@ -4124,7 +4166,10 @@ onUnmounted(() => {
                 :model="verticalZone"
                 :viewport="verticalZoneViewport"
                 :selected-tab="page.tabKey"
-                :opening-card="zonePlaylistOpening"
+                :opening-card="zonePlaylistOpening ?? zoneFmOpening?.key"
+                :playing-fm-rule="
+                  player.playing.value ? player.view.value?.zoneFmRuleId : undefined
+                "
                 :action-issue="zonePlaylistIssue"
                 :playable="player.ready.value && !player.busy.value"
                 @tab="selectVerticalZoneTab"

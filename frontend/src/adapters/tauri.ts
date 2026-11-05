@@ -195,6 +195,8 @@ export function createTauriClient(): CoreClient {
     verticalZoneMenu: (epoch) => invoke('vertical_zone_menu', { epoch }),
     verticalZoneFmPreview: (epoch, viewId, cardKey) =>
       invoke('vertical_zone_fm_preview', { epoch, viewId, cardKey }),
+    verticalZoneFmCard: (epoch, viewId, cardKey, gesture, quality) =>
+      invoke('vertical_zone_fm_card', { epoch, viewId, cardKey, gesture, quality }),
     verticalZonePlaylistOrigin: (epoch, viewId, cardKey, id) =>
       invoke('vertical_zone_playlist_origin', { epoch, viewId, cardKey, id }),
     verticalZonePlaylistDetail: (epoch, receipt, id, page) =>

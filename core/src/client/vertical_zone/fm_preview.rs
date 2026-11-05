@@ -1,12 +1,14 @@
 //! ZoneFmCard.tsx: passive cover projection from the native first track.
-use super::{AccountData, MusicClient, Registry, ZoneAuthority, ZoneHost, ZoneTarget};
+use super::{AccountData, Binding, MusicClient, Registry, ZoneAuthority, ZoneHost, ZoneTarget};
 use crate::{
     Error, Result,
+    account::SessionToken,
     catalog::vertical_zone::ZoneBlockKind,
     fm::{FmApi, FmTrack},
-    protocol::artwork,
+    protocol::{api::Api, artwork},
 };
 use serde::Serialize;
+use std::sync::Arc;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,29 +18,31 @@ pub struct ZoneFmPreview {
     pub cover_url: Option<String>,
 }
 
-struct ZoneRule {
-    id: String,
-    preferred_trial: Option<i32>,
+pub(super) struct ZoneRule {
+    pub(super) id: String,
+    pub(super) preferred_trial: Option<i32>,
 }
 
 impl ZoneHost {
     fn fm_preview_rule(
         &self,
-        authority: &ZoneAuthority,
-        registry: Option<&Registry>,
+        binding: &Binding,
+        registry: &Registry,
         view: &str,
         card_key: &str,
     ) -> Result<ZoneRule> {
         let cache = self.cache.lock().map_err(|_| Error::LockPoisoned)?;
-        let authorized = cache
-            .owner
-            .as_ref()
-            .is_some_and(|binding| authority.matches(binding));
+        let authorized = binding.api.upgrade().is_some_and(|api| {
+            cache
+                .owner
+                .as_ref()
+                .is_some_and(|owner| owner.matches(&binding.token, &api, &binding.revision))
+        });
         let (_, page) = cache
             .published
             .as_ref()
             .filter(|(page_code, page)| {
-                authorized && page.view_id == view && authority.permits(registry, page_code)
+                authorized && page.view_id == view && registry.menu.contains(page_code)
             })
             .ok_or(Error::StaleResponse)?;
         page.blocks
@@ -69,19 +73,45 @@ fn cover(track: &FmTrack) -> Option<String> {
 }
 
 impl MusicClient {
-    async fn verify_zone_fm_card(
+    pub(super) async fn verify_zone_fm_card(
         &self,
         authority: &ZoneAuthority,
         view: &str,
         card_key: &str,
     ) -> Result<ZoneRule> {
+        self.verify_local_zone_fm_card(
+            &authority.token,
+            &authority.api,
+            &authority.revision,
+            view,
+            card_key,
+        )
+        .await
+    }
+
+    pub(super) async fn verify_local_zone_fm_card(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        revision: &str,
+        view: &str,
+        card_key: &str,
+    ) -> Result<ZoneRule> {
+        if view.len() > 20 || card_key.len() > 20 {
+            return Err(Error::InvalidInput("invalid zone FM card receipt"));
+        }
         let registry = self.vertical_zone.registry.lock().await;
-        self.session
-            .with_verified_profile(&authority.token, &authority.api, |_, _| {
-                authority.check_revision()?;
-                self.vertical_zone
-                    .fm_preview_rule(authority, registry.as_ref(), view, card_key)
-            })
+        self.session.with_verified_profile(token, api, |_, _| {
+            if api.verified_pc_experiment_revision()?.as_deref() != Some(revision) {
+                return Err(Error::CredentialChanged);
+            }
+            let current = registry
+                .as_ref()
+                .filter(|item| item.owner.matches(token, api, revision))
+                .ok_or(Error::StaleResponse)?;
+            self.vertical_zone
+                .fm_preview_rule(&current.owner, current, view, card_key)
+        })
     }
 
     pub async fn vertical_zone_fm_preview(
@@ -142,8 +172,12 @@ impl MusicClient {
         let registry = self.vertical_zone.registry.lock().await;
         self.session.with_verified_profile(owner, api, |_, _| {
             authority.check_revision()?;
+            let current = registry
+                .as_ref()
+                .filter(|item| authority.matches(&item.owner))
+                .ok_or(Error::StaleResponse)?;
             self.vertical_zone
-                .fm_preview_rule(&authority, registry.as_ref(), view, card_key)?;
+                .fm_preview_rule(&current.owner, current, view, card_key)?;
             service.remember_zone_preview(owner, api, &authority.revision, rule.id, tracks)
         })?;
         Ok(AccountData {

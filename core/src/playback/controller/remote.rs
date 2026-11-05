@@ -8,6 +8,60 @@ use crate::{Error, Result};
 use std::sync::Arc;
 
 impl Actor {
+    pub(super) async fn update_zone_fm(
+        &mut self,
+        value: super::QueueUpdate,
+        retain_paused: bool,
+    ) -> Result<Option<LoadOptions>> {
+        use crate::{playback::engine::MediaInput, protocol::api::identifier};
+        let previous = self.queue.selected();
+        let following = value
+            .queue
+            .items
+            .iter()
+            .find(|entry| Some(entry.entry_id.as_str()) == value.queue.current.as_deref());
+        let compatible = previous.as_ref().zip(following).is_some_and(|(old, new)| {
+            let zone = |entry: &crate::playback::QueueEntry| {
+                entry.source["kind"] == "fm"
+                    && entry.source["source"]["kind"] == "zone"
+                    && entry.resource["local_id"].is_null()
+                    && entry.resource["download_task_id"].is_null()
+                    && entry.resource["cloud_song_id"].is_null()
+                    && entry.resource["voice_id"].is_null()
+                    && entry.resource["playback_constraint"].is_null()
+            };
+            zone(old)
+                && zone(new)
+                && old.source["source"]["rule_id"] != new.source["source"]["rule_id"]
+                && identifier(&old.resource["id"])
+                    .is_ok_and(|id| identifier(&new.resource["id"]).is_ok_and(|other| id == other))
+                && old.resource["trial_mode"].as_i64().is_some()
+                && old.resource["trial_mode"] == new.resource["trial_mode"]
+                && old.resource["level"] == new.resource["level"]
+                && self.loaded.as_ref().is_some_and(|loaded| {
+                    loaded.item == *old && matches!(loaded.source.input, MediaInput::Url(_))
+                })
+        });
+        if !compatible
+            || self.pending.is_some()
+            || self.quality_task.is_some()
+            || !self.state.active()
+        {
+            return self.update_queue(value).await;
+        }
+        value.queue.validate()?;
+        self.save_position()?;
+        self.queue.install(value.queue)?;
+        // The selected source, lease and timeline are still the exact
+        // authorized online track. Rebind only its rule/entry metadata.
+        let selected = self.queue.selected().ok_or(Error::QueueChanged)?;
+        self.loaded.as_mut().expect("compatible loaded source").item = selected;
+        if (self.state == PlaybackStatus::Paused) != retain_paused {
+            self.pause(retain_paused).await?;
+        }
+        Ok(None)
+    }
+
     pub(super) async fn replace_follow_latest(
         &mut self,
         resources: Vec<serde_json::Value>,

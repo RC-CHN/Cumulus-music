@@ -14,11 +14,12 @@ const props = defineProps<{
   selectedTab?: string;
   openingCard?: string;
   actionIssue?: string;
+  playingFmRule?: string;
 }>();
 const emit = defineEmits<{
   tab: [key: string];
-  open: [card: VerticalZoneCard];
-  play: [card: VerticalZoneCard];
+  open: [card: VerticalZoneCard, anchor: HTMLButtonElement];
+  play: [card: VerticalZoneCard, anchor: HTMLButtonElement];
   privacy: [];
 }>();
 const root = ref<HTMLElement>();
@@ -60,6 +61,14 @@ function railScroll(event: Event, index: number) {
 }
 function isCoverPlayback(block: VerticalZoneBlock, card: VerticalZoneCard) {
   return block.kind === 'carousel' && ['song', 'voice'].includes(card.target.kind);
+}
+function playingFm(card: VerticalZoneCard) {
+  return card.target.kind === 'fm' && card.target.id === props.playingFmRule;
+}
+function coverClick(block: VerticalZoneBlock, card: VerticalZoneCard, event: MouseEvent) {
+  const anchor = event.currentTarget as HTMLButtonElement;
+  if (isCoverPlayback(block, card)) emit('play', card, anchor);
+  else emit('open', card, anchor);
 }
 function artwork(card: VerticalZoneCard) {
   return (
@@ -223,7 +232,7 @@ defineExpose({ restore });
               :disabled="isCoverPlayback(block, card) && !playable"
               :aria-busy="openingCard === card.cardKey"
               :data-zone-focus="`${index}:${row}:open`"
-              @click="isCoverPlayback(block, card) ? emit('play', card) : emit('open', card)"
+              @click="coverClick(block, card, $event)"
             >
               <img v-if="artwork(card)" :src="artwork(card) ?? undefined" alt="" loading="lazy" />
               <Icon v-else :name="card.target.kind === 'fm' ? 'headphones' : 'music'" />
@@ -234,13 +243,14 @@ defineExpose({ restore });
             <button
               v-if="card.canPlay && !isCoverPlayback(block, card)"
               class="vertical-zone-play"
+              :class="{ playing: playingFm(card) }"
               type="button"
               :disabled="!playable"
-              :aria-label="`播放${title(card)}`"
+              :aria-label="`${playingFm(card) ? '暂停' : '播放'}${title(card)}`"
               :data-zone-focus="`${index}:${row}:play`"
-              @click="emit('play', card)"
+              @click="emit('play', card, $event.currentTarget as HTMLButtonElement)"
             >
-              <Icon name="play" />
+              <Icon :name="playingFm(card) ? 'pause' : 'play'" />
             </button>
           </div>
           <div v-if="block.kind !== 'carousel'" class="vertical-zone-card-copy">
@@ -249,7 +259,7 @@ defineExpose({ restore });
               type="button"
               :aria-busy="openingCard === card.cardKey"
               :data-zone-focus="`${index}:${row}:title`"
-              @click="emit('open', card)"
+              @click="emit('open', card, $event.currentTarget as HTMLButtonElement)"
             >
               {{ title(card) }}
             </button>

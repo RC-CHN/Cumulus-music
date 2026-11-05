@@ -80,18 +80,47 @@ impl Inner {
         intent: u64,
         transport: Option<QueueTransport>,
     ) -> Result<PlaybackSnapshot> {
+        self.apply_inner(token, before, queue, intent, transport, None)
+            .await
+    }
+
+    async fn apply_inner(
+        &self,
+        token: &SessionToken,
+        before: &PlaybackSnapshot,
+        queue: &FmQueue,
+        intent: u64,
+        transport: Option<QueueTransport>,
+        retain_paused: Option<bool>,
+    ) -> Result<PlaybackSnapshot> {
         self.guard(token, intent)?;
-        let result = self
-            .controller
-            .command(
-                token,
-                PlaybackCommand::UpdateQueue(QueueUpdate {
-                    expected: before.fence(),
-                    queue: projection(queue, quality(before))?,
-                    transport,
-                }),
-            )
-            .await;
+        let update = QueueUpdate {
+            expected: before.fence(),
+            queue: projection(queue, quality(before))?,
+            transport,
+        };
+        let command = match retain_paused {
+            Some(retain_paused) => PlaybackCommand::UpdateZoneFm {
+                update,
+                retain_paused,
+            },
+            None => PlaybackCommand::UpdateQueue(update),
+        };
+        let result = if retain_paused.is_some() {
+            let selection = self.intents.clone();
+            self.controller
+                .command_guarded(
+                    token,
+                    command,
+                    before.fence(),
+                    crate::playback::engine::Cancellation::new(move || {
+                        selection.load(Ordering::Acquire) == intent
+                    }),
+                )
+                .await
+        } else {
+            self.controller.command(token, command).await
+        };
         if self.session.check_generation(token).is_ok() {
             self.failure(
                 token,
@@ -132,9 +161,34 @@ impl Inner {
         intent: u64,
     ) -> Result<PlaybackSnapshot> {
         let _gate = self.gate.try_lock().map_err(|_| Error::MutationBusy)?;
+        self.enter_locked(token, source, quality, intent, None, || {
+            std::future::ready(Ok(()))
+        })
+        .await
+    }
+
+    pub(super) async fn enter_locked<F, Fut>(
+        &self,
+        token: &SessionToken,
+        source: FmSource,
+        quality: Quality,
+        intent: u64,
+        start: Option<ZoneCardStart>,
+        verify: F,
+    ) -> Result<PlaybackSnapshot>
+    where
+        F: Fn() -> Fut,
+        Fut: std::future::Future<Output = Result<()>>,
+    {
         self.guard(token, intent)?;
         source.validate()?;
         let (mut before, actual) = self.controller.queue_with_state(token).await?;
+        if start
+            .as_ref()
+            .is_some_and(|card| card.expected != before.fence())
+        {
+            return Err(Error::QueueChanged);
+        }
         if actual
             .intelligence
             .as_ref()
@@ -143,7 +197,37 @@ impl Inner {
             return Err(Error::State("leave intelligence before entering FM"));
         }
         let active = self::source(&actual)?;
-        if active.as_ref() == Some(&source) {
+        let same_zone_rule = start.is_some()
+            && matches!(
+                (&active, &source),
+                (Some(FmSource::Zone { rule_id: current, .. }), FmSource::Zone { rule_id: target, .. })
+                    if current == target
+            );
+        if let Some(card) = &start
+            && same_zone_rule
+            && before.play_id.is_some()
+            && matches!(
+                before.state,
+                PlaybackStatus::Playing | PlaybackStatus::Buffering | PlaybackStatus::Paused
+            )
+        {
+            verify().await?;
+            self.guard(token, intent)?;
+            let pause = !card.cover && before.state != PlaybackStatus::Paused;
+            let selection = self.intents.clone();
+            return self
+                .controller
+                .command_guarded(
+                    token,
+                    PlaybackCommand::Pause(pause),
+                    before.fence(),
+                    crate::playback::engine::Cancellation::new(move || {
+                        selection.load(Ordering::Acquire) == intent
+                    }),
+                )
+                .await;
+        }
+        if active.as_ref() == Some(&source) && start.is_none() {
             let desired = self
                 .service
                 .queue_for(token, &source)?
@@ -154,6 +238,7 @@ impl Inner {
                     PlaybackStatus::Playing | PlaybackStatus::Buffering | PlaybackStatus::Paused
                 )
             {
+                verify().await?;
                 self.guard(token, intent)?;
                 return self
                     .controller
@@ -189,6 +274,7 @@ impl Inner {
             desired.revision,
             FmRepeat::Infinite,
         )?;
+        verify().await?;
         self.guard(token, intent)?;
         let has_backup = self.session.with_token(token, |uid| {
             Ok(self.store.get(uid, "playback", FM_BACKUP_QUEUE)?.is_some())
@@ -205,7 +291,8 @@ impl Inner {
             )
         })?;
         before.requested_quality = Some(quality.as_str().into());
-        self.apply(
+        let retain_paused = start.map(|card| !card.cover && before.state != PlaybackStatus::Paused);
+        self.apply_inner(
             token,
             &before,
             &desired,
@@ -214,6 +301,7 @@ impl Inner {
                 position: Some(0.0),
                 paused: false,
             }),
+            retain_paused,
         )
         .await
     }

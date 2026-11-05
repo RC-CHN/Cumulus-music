@@ -1,4 +1,7 @@
 import type { AccountData, PageRequest, TrackPage } from './contracts';
+import type { PlayerView, Quality } from './player';
+
+export type ZoneFmCardGesture = 'cover' | 'overlay';
 
 export type VerticalZoneLocation = {
   pageCode: string;
@@ -62,6 +65,13 @@ export interface ZonePlaylistBatchOrigin extends ZonePlaylistOrigin {
 }
 
 export interface VerticalZoneClient {
+  verticalZoneFmCard(
+    epoch: string,
+    viewId: string,
+    cardKey: string,
+    gesture: ZoneFmCardGesture,
+    quality: Quality,
+  ): Promise<AccountData<{ playback: PlayerView; detailPlayId: string | null }>>;
   verticalZoneFmPreview(
     epoch: string,
     viewId: string,
