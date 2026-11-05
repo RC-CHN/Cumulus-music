@@ -112,6 +112,16 @@ impl ZonePlaylistSnapshot {
         Ok(())
     }
 
+    pub(in crate::client) fn loaded_queue_tracks(&self) -> Result<HashMap<String, TrackView>> {
+        Ok(self
+            .loaded_detail
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .values()
+            .map(|row| (row.id.clone(), row.clone()))
+            .collect())
+    }
+
     fn batch_loaded_prefix(&self, page: &PageRequest) -> Result<BTreeMap<usize, TrackView>> {
         let loaded = self.loaded_detail.lock().map_err(|_| Error::LockPoisoned)?;
         // M/2997 starts the full hydration at the first unfilled row. Do

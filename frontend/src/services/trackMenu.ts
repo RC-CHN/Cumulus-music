@@ -1,4 +1,5 @@
 import type { TrackView } from './contracts';
+import type { PlayerView } from './player';
 
 export type TrackPlayGesture = 'double_click';
 export interface TrackPendingToggle {
@@ -22,6 +23,7 @@ export interface TrackMenuRequest {
   event: MouseEvent | KeyboardEvent;
   play: () => void;
   nextOrigin?: 'search';
+  queueNext?: () => Promise<PlayerView | undefined>;
   playUnavailable?: boolean;
 }
 export function songLink(track: TrackView) {

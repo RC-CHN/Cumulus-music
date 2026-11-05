@@ -1,12 +1,12 @@
-//! M/3085 and M/1384 keep the existing queue for both batch buttons.
+//! M/3085 and M/1384 retain the queue for zone detail and batch additions.
 use super::{
     MusicClient, PlayerView, project,
-    queue_playlist::{catalog_queue_resource, insert_zone_batch},
+    queue_playlist::{QUEUE_LIMIT, catalog_queue_resource, insert_zone_batch},
 };
 use crate::{
     Error, Result,
     catalog::CatalogApi,
-    client::focus::Owner,
+    client::{focus::Owner, mapping},
     membership::Quality,
     playback::{
         controller::{PlaybackCommand, QueueTransport, QueueUpdate},
@@ -14,22 +14,43 @@ use crate::{
     },
     protocol::api::identifier,
 };
-use serde_json::json;
-use std::sync::atomic::Ordering;
+use serde_json::{Value, json};
+use std::{collections::HashSet, sync::atomic::Ordering};
 
-pub(super) struct ZoneBatchSelection {
+pub(super) struct ZoneQueueSelection {
     pub id: String,
     pub receipt: String,
-    pub ids: Vec<String>,
+    pub rows: ZoneQueueRows,
     pub revision: String,
     pub quality: Quality,
 }
 
+pub(super) enum ZoneQueueRows {
+    Batch(Vec<String>),
+    Whole,
+    Next(String),
+}
+
+fn online_playlist_ids(detail: &Value) -> Result<Vec<Value>> {
+    let tracks = detail["trackIds"]
+        .as_array()
+        .ok_or(Error::Response("missing zone playlist tracks"))?;
+    let mut seen = HashSet::new();
+    let mut ids = Vec::with_capacity(tracks.len());
+    for track in tracks.iter().filter(|item| item["v"].as_i64() != Some(-1)) {
+        let id = identifier(&track["id"])?;
+        if seen.insert(id.clone()) {
+            ids.push(Value::from(id));
+        }
+    }
+    Ok(ids)
+}
+
 impl MusicClient {
-    pub(super) async fn zone_playlist_batch_action(
+    pub(super) async fn zone_playlist_queue_action(
         &self,
         epoch: &str,
-        input: ZoneBatchSelection,
+        input: ZoneQueueSelection,
         expected_queue_revision: Option<String>,
     ) -> Result<PlayerView> {
         let token = self.player_token(epoch)?;
@@ -37,12 +58,21 @@ impl MusicClient {
         let context = self
             .zone_playlist_batch_context(&token, &input.receipt, &id, &input.revision)
             .await?;
-        let ids = super::playlist_batch::selected_ids(
-            &id,
-            &context.snapshot.detail,
-            &input.ids,
-            &input.revision,
-        )?;
+        let detail = &context.snapshot.detail;
+        let is_batch = matches!(input.rows, ZoneQueueRows::Batch(_));
+        let whole = matches!(input.rows, ZoneQueueRows::Whole);
+        let mut ids = match input.rows {
+            ZoneQueueRows::Batch(ids) => {
+                super::playlist_batch::selected_ids(&id, detail, &ids, &input.revision)?
+            }
+            ZoneQueueRows::Next(song) => {
+                super::playlist_batch::selected_ids(&id, detail, &[song], &input.revision)?
+            }
+            ZoneQueueRows::Whole => online_playlist_ids(detail)?,
+        };
+        if ids.is_empty() {
+            return Err(Error::State("zone playlist has no online songs"));
+        }
         if context.guard.is_cancelled() {
             return Err(Error::StaleResponse);
         }
@@ -59,42 +89,78 @@ impl MusicClient {
                 "zone playlist batch requires ordinary playback",
             ));
         }
+        let was_selected = queue.selected();
+        let mut limit = ids.len();
+        if !is_batch {
+            ids.retain(|candidate| {
+                !was_selected.as_ref().is_some_and(|entry| {
+                    candidate
+                        .as_str()
+                        .is_some_and(|id| super::identity::online_song(&entry.resource, id))
+                })
+            });
+            if ids.is_empty() {
+                return project(&before, &token);
+            }
+            if whole {
+                limit = QUEUE_LIMIT - usize::from(queue.current.is_some());
+            }
+        }
         let focus = self.focus.snapshot()?;
         let attempt = self.player.selection.fetch_add(1, Ordering::AcqRel) + 1;
         let trial = context.snapshot.trial_mode;
-        let mut resources = Vec::with_capacity(ids.len());
-        for chunk in ids.chunks(100) {
+        let cached = if is_batch {
+            Default::default()
+        } else {
+            context.snapshot.loaded_queue_tracks()?
+        };
+        let mut resources = Vec::with_capacity(limit.min(ids.len()));
+        let wire_mode = if is_batch { trial } else { -1 };
+        let batch_size = if is_batch { 100 } else { 500 };
+        for chunk in ids.chunks(batch_size) {
             if context.guard.is_cancelled()
                 || self.player.selection.load(Ordering::Acquire) != attempt
             {
                 return Err(Error::StaleResponse);
             }
+            let missing = chunk
+                .iter()
+                .filter(|id| !cached.contains_key(id.as_str().unwrap_or_default()))
+                .cloned()
+                .collect::<Vec<_>>();
             let songs = self
                 .session
                 .run_for(&token, |api, _| async move {
                     CatalogApi::new(api)
-                        .songs_with_trial(chunk, 100, Some(trial))
+                        .songs_with_trial(&missing, batch_size, Some(wire_mode))
                         .await
                 })
                 .await?;
-            // Do not commit only the prefix or filter a missing selected
-            // song into a different playback request. The real source still
-            // needs the native URL authorization when a track is selected.
-            if !songs.missing.is_empty() {
-                return Err(Error::State("selected zone playlist songs are unavailable"));
-            }
-            for song in songs.songs {
-                let mut resource = catalog_queue_resource(
-                    &song.ok_or(Error::State("selected zone playlist songs are unavailable"))?,
-                    input.quality,
-                )?;
+            let mut songs = songs.songs.into_iter();
+            for id in chunk {
+                let mut resource = if let Some(row) = cached.get(id.as_str().unwrap_or_default()) {
+                    json!({"id":row.id,"dt":row.duration_ms,"level":input.quality.as_str(),
+                        "song":mapping::projected_song_metadata(row)})
+                } else if let Some(song) = songs.next().flatten() {
+                    catalog_queue_resource(&song, input.quality)?
+                } else if whole {
+                    // An all-playlist operation, unlike an explicit selection,
+                    // may omit a catalog row the service did not return.
+                    continue;
+                } else {
+                    return Err(Error::State("selected zone playlist songs are unavailable"));
+                };
                 resource["trial_mode"] = json!(trial);
                 resources.push(resource);
+                if resources.len() == limit {
+                    break;
+                }
+            }
+            if resources.len() == limit {
+                break;
             }
         }
-        let was_selected = queue.selected();
         let start = play || was_selected.is_none();
-        let detail = &context.snapshot.detail;
         let source = json!({
             "kind":"playlist","id":id,"trial_mode":trial,
             "history_resource":{"id":id,"name":detail["name"],"coverImgUrl":detail["coverImgUrl"],

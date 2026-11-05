@@ -388,6 +388,17 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
         : { kind: 'queue_playlist', id, quality },
     );
   }
+  function queueZonePlaylistDetail(
+    origin: { id: string; receipt: string; revision: string },
+    song_id?: string,
+  ) {
+    const quality = view.value?.qualityPreferences.quality ?? 'standard';
+    return queueAction(
+      song_id === undefined
+        ? { kind: 'queue_vertical_zone_playlist_all', ...origin, quality }
+        : { kind: 'queue_vertical_zone_playlist_next', ...origin, quality, song_id },
+    );
+  }
   function queueZonePlaylistBatch(
     selection: Omit<Extract<PlaySelection, { kind: 'vertical_zone_playlist_batch' }>, 'kind'>,
   ) {
@@ -484,6 +495,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
             | 'queue_style_recommendations'
             | 'queue_playlist_batch'
             | 'queue_vertical_zone_playlist_batch'
+            | 'queue_vertical_zone_playlist_all'
+            | 'queue_vertical_zone_playlist_next'
             | 'queue_cloud_batch'
             | 'queue_album_batch'
             | 'queue_album'
@@ -1164,6 +1177,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   return {
     queuePlaylist,
     queueZonePlaylistBatch,
+    queueZonePlaylistDetail,
     queueVoice,
     queueLocal,
     dropIntoQueue,

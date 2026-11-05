@@ -403,3 +403,139 @@ async fn an_in_flight_menu_read_does_not_revoke_committed_batch_authority() {
     ));
     assert!(f.wire.take_calls().is_empty());
 }
+
+fn queue_all(batch: &Batch, expected_queue_revision: String) -> PlayerAction {
+    PlayerAction::QueueVerticalZonePlaylistAll {
+        id: "204".into(),
+        receipt: batch.receipt.clone(),
+        revision: batch.revision.clone(),
+        quality: Quality::Standard,
+        expected_queue_revision,
+    }
+}
+
+fn queue_next(batch: &Batch, song_id: &str, expected_queue_revision: String) -> PlayerAction {
+    PlayerAction::QueueVerticalZonePlaylistNext {
+        id: "204".into(),
+        receipt: batch.receipt.clone(),
+        revision: batch.revision.clone(),
+        song_id: song_id.into(),
+        quality: Quality::Standard,
+        expected_queue_revision,
+    }
+}
+
+#[tokio::test]
+async fn detail_menu_all_hydrates_unloaded_online_rows_and_starts_empty_queue_at_121() {
+    let f = Fixture::new();
+    let batch = Batch::open(&f, 1).await;
+    let initial = f.client.player_queue(&batch.epoch).await.unwrap();
+    let playing = f
+        .client
+        .player_action(&batch.epoch, queue_all(&batch, initial.revision))
+        .await
+        .unwrap();
+    assert_eq!(playing.track.unwrap().id, "101");
+    assert_eq!(
+        order(&f.client.player_queue(&batch.epoch).await.unwrap()),
+        ["101", "102"]
+    );
+    let calls = await_url(&f.wire, 121).await;
+    assert_player_url(&calls, "101", 121);
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|(path, _)| path != URL)
+            .collect::<Vec<_>>(),
+        [&song_trial(&["102"], Some(-1))]
+    );
+}
+
+#[tokio::test]
+async fn detail_header_and_single_row_next_keep_paused_queue_and_scope_own_liked_to_43() {
+    let f = Fixture::new();
+    f.wire.membership.store(2, Ordering::Release);
+    f.wire.own.store(true, Ordering::Release);
+    f.client.playlists().await.unwrap();
+    let batch = Batch::open(&f, 2).await;
+    ordinary(&f, &["900", "901"]).await;
+    let paused = f
+        .client
+        .player_action(&batch.epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    f.wire.take_calls();
+    let added = f
+        .client
+        .player_action(
+            &batch.epoch,
+            queue_all(&batch, paused.queue_revision.clone()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        order(&f.client.player_queue(&batch.epoch).await.unwrap()),
+        ["900", "101", "102", "901"]
+    );
+    assert_eq!(
+        (&added.play_id, added.state, added.position),
+        (&paused.play_id, paused.state, paused.position)
+    );
+    let moved = f
+        .client
+        .player_action(
+            &batch.epoch,
+            queue_next(&batch, "102", added.queue_revision),
+        )
+        .await
+        .unwrap();
+    let queue = f.client.player_queue(&batch.epoch).await.unwrap();
+    assert_eq!(order(&queue), ["900", "102", "101", "901"]);
+    assert_eq!(
+        (&moved.play_id, moved.state, moved.position),
+        (&paused.play_id, paused.state, paused.position)
+    );
+    for id in ["103", "900"] {
+        assert!(matches!(
+            f.client
+                .player_action(&batch.epoch, queue_next(&batch, id, queue.revision.clone()))
+                .await,
+            Err(Error::QueueChanged)
+        ));
+    }
+    assert!(f.wire.take_calls().is_empty());
+    f.client
+        .player_action(
+            &batch.epoch,
+            PlayerAction::QueueFor {
+                expected_queue_revision: queue.revision,
+                expected_room_id: None,
+                edit: QueueEdit::Select {
+                    entry_id: queue.tracks[1].entry_id.clone(),
+                },
+            },
+        )
+        .await
+        .unwrap();
+    assert_player_url(&await_url(&f.wire, 43).await, "102", 43);
+}
+
+#[tokio::test]
+async fn detail_row_next_starts_only_clicked_row_if_queue_is_empty() {
+    let f = Fixture::new();
+    let batch = Batch::open(&f, 2).await;
+    let initial = f.client.player_queue(&batch.epoch).await.unwrap();
+    let playing = f
+        .client
+        .player_action(&batch.epoch, queue_next(&batch, "102", initial.revision))
+        .await
+        .unwrap();
+    assert_eq!(playing.track.unwrap().id, "102");
+    assert_eq!(
+        order(&f.client.player_queue(&batch.epoch).await.unwrap()),
+        ["102"]
+    );
+    let calls = await_url(&f.wire, 121).await;
+    assert_player_url(&calls, "102", 121);
+    assert!(calls.iter().all(|(path, _)| path == URL));
+}

@@ -405,6 +405,23 @@ export type PlayerAction =
       quality: Quality;
       expected_queue_revision: string;
     }
+  | {
+      kind: 'queue_vertical_zone_playlist_all';
+      id: string;
+      receipt: string;
+      revision: string;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
+  | {
+      kind: 'queue_vertical_zone_playlist_next';
+      id: string;
+      receipt: string;
+      revision: string;
+      song_id: string;
+      quality: Quality;
+      expected_queue_revision: string;
+    }
   | ({
       kind: 'queue_vertical_zone_playlist_batch';
       expected_queue_revision: string;

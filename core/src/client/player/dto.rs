@@ -426,6 +426,21 @@ pub enum PlayerAction {
         task_ids: Vec<String>,
         expected_queue_revision: String,
     },
+    QueueVerticalZonePlaylistAll {
+        id: String,
+        receipt: String,
+        revision: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
+    QueueVerticalZonePlaylistNext {
+        id: String,
+        receipt: String,
+        revision: String,
+        song_id: String,
+        quality: Quality,
+        expected_queue_revision: String,
+    },
     QueueVerticalZonePlaylistBatch {
         id: String,
         receipt: String,

@@ -55,14 +55,14 @@ impl MusicClient {
                 revision,
                 quality,
             } => {
-                self.zone_playlist_batch_action(
+                self.zone_playlist_queue_action(
                     epoch,
-                    super::zone_playlist_batch::ZoneBatchSelection {
+                    super::zone_playlist_batch::ZoneQueueSelection {
                         id,
                         receipt,
-                        ids,
                         revision,
                         quality,
+                        rows: super::zone_playlist_batch::ZoneQueueRows::Batch(ids),
                     },
                     None,
                 )

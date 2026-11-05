@@ -10,6 +10,7 @@ import {
 import type { PlaylistManager } from '../../composables/usePlaylists';
 import type { DownloadModel } from '../../composables/useDownloads';
 import type { PlayerModel } from '../../composables/usePlayer';
+import type { PlayerView } from '../../services/player';
 import { useCore } from '../../services/core';
 import Icon from '../Icon.vue';
 import ModalTransition from '../ModalTransition.vue';
@@ -35,7 +36,8 @@ const reading = ref(false),
   readError = ref(''),
   progress = ref('');
 const copied = shallowRef<PlaylistActionTarget>();
-const queued = shallowRef<PlaylistActionTarget>();
+type QueuePlaylist = () => Promise<PlayerView | undefined>;
+const queued = shallowRef<{ list: PlaylistActionTarget; scoped?: QueuePlaylist }>();
 const adding = ref(false);
 const copying = ref(false),
   retrying = ref(false),
@@ -72,7 +74,7 @@ function reset() {
   adding.value = false;
   queued.value = undefined;
 }
-function show(list: PlaylistActionTarget, action: string) {
+function show(list: PlaylistActionTarget, action: string, scopedQueue?: QueuePlaylist) {
   reset();
   returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   if (action === 'share' && playlistLink(list)) shared.value = list;
@@ -85,7 +87,7 @@ function show(list: PlaylistActionTarget, action: string) {
     download.value = list;
     void read();
   } else if (action === 'next' || action === 'queue') {
-    queued.value = list;
+    queued.value = { list, scoped: scopedQueue };
     void addToQueue();
   }
 }
@@ -100,13 +102,13 @@ async function addToQueue() {
     return;
   const current = sequence,
     epoch = props.account.epoch,
-    list = queued.value;
+    { list, scoped } = queued.value;
   adding.value = true;
   retrying.value = !!document.activeElement?.closest('.playlist-action-feedback');
   failed.value = false;
   message.value = '正在添加歌单歌曲…';
   try {
-    const result = await props.player.queuePlaylist(list.id);
+    const result = await (scoped ? scoped() : props.player.queuePlaylist(list.id));
     if (!alive || sequence !== current || props.account.epoch !== epoch) return;
     message.value = result
       ? `已添加至播放列表${(list.trackCount ?? 0) > 10000 ? '（播放列表最多保留 10000 首）' : ''}`

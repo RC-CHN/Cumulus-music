@@ -3084,6 +3084,24 @@ function playlistMenu(list: PlaylistView, scene: PlaylistMenuScene = 'collection
     fm: player.view.value?.fm,
   });
 }
+function scopedPlaylistQueue(id: string, songId?: string) {
+  const route = page.value;
+  if (route.kind !== 'playlist' || route.id !== id || !route.zonePlaylistReceipt) return;
+  const epoch = account.value.epoch;
+  const receipt = route.zonePlaylistReceipt;
+  const revision = result.value?.revision;
+  return async () => {
+    if (
+      account.value.epoch !== epoch ||
+      page.value !== route ||
+      !revision ||
+      result.value?.revision !== revision ||
+      result.value.playlist?.id !== id
+    )
+      return;
+    return player.queueZonePlaylistDetail({ id, receipt, revision }, songId);
+  };
+}
 function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScene = 'collection') {
   const item = playlistMenu(list, scene).find((item) => item.key === key);
   if (!item || item.disabled) return;
@@ -3101,7 +3119,12 @@ function playlistAction(list: PlaylistView, key: string, scene: PlaylistMenuScen
   } else if (key === 'edit') editPlaylist(list.id);
   else if (key === 'up' || key === 'down')
     void playlistManager.move(list.id, list.owned, key === 'up' ? -1 : 1, favorite.value?.id);
-  else playlistActions.value?.show(list, key);
+  else
+    playlistActions.value?.show(
+      list,
+      key,
+      scene === 'detail' && key === 'queue' ? scopedPlaylistQueue(list.id) : undefined,
+    );
 }
 async function reorderSidebar(move: SidebarPlaylistMove) {
   const epoch = account.value.epoch;
@@ -3640,6 +3663,7 @@ function showVisibleTrackActions(request: TrackMenuRequest) {
   trackActions.value?.show(
     {
       ...request,
+      queueNext: scopedPlaylistQueue(playlist.id, request.track.id),
       play: () => {
         if (
           account.value.epoch !== epoch ||

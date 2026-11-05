@@ -782,6 +782,61 @@ impl MusicClient {
                 )
                 .await;
         }
+        if let PlayerAction::QueueVerticalZonePlaylistAll {
+            id,
+            receipt,
+            revision,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "zone playlist queue used as native media command",
+                ));
+            }
+            return self
+                .zone_playlist_queue_action(
+                    epoch,
+                    zone_playlist_batch::ZoneQueueSelection {
+                        id,
+                        receipt,
+                        revision,
+                        quality,
+                        rows: zone_playlist_batch::ZoneQueueRows::Whole,
+                    },
+                    Some(expected_queue_revision),
+                )
+                .await;
+        }
+        if let PlayerAction::QueueVerticalZonePlaylistNext {
+            id,
+            receipt,
+            revision,
+            song_id,
+            quality,
+            expected_queue_revision,
+        } = action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "zone playlist queue used as native media command",
+                ));
+            }
+            return self
+                .zone_playlist_queue_action(
+                    epoch,
+                    zone_playlist_batch::ZoneQueueSelection {
+                        id,
+                        receipt,
+                        revision,
+                        quality,
+                        rows: zone_playlist_batch::ZoneQueueRows::Next(song_id),
+                    },
+                    Some(expected_queue_revision),
+                )
+                .await;
+        }
         if let PlayerAction::QueueVerticalZonePlaylistBatch {
             id,
             receipt,
@@ -797,14 +852,14 @@ impl MusicClient {
                 ));
             }
             return self
-                .zone_playlist_batch_action(
+                .zone_playlist_queue_action(
                     epoch,
-                    zone_playlist_batch::ZoneBatchSelection {
+                    zone_playlist_batch::ZoneQueueSelection {
                         id,
                         receipt,
-                        ids,
                         revision,
                         quality,
+                        rows: zone_playlist_batch::ZoneQueueRows::Batch(ids),
                     },
                     Some(expected_queue_revision),
                 )
@@ -1279,6 +1334,8 @@ impl MusicClient {
             | PlayerAction::DropPlaylistSongIntoQueue { .. }
             | PlayerAction::DropPlaylistSongsIntoQueue { .. }
             | PlayerAction::QueuePlaylistBatch { .. }
+            | PlayerAction::QueueVerticalZonePlaylistAll { .. }
+            | PlayerAction::QueueVerticalZonePlaylistNext { .. }
             | PlayerAction::QueueVerticalZonePlaylistBatch { .. }
             | PlayerAction::QueueCloudBatch { .. } => {
                 unreachable!("handled before user transport commands")

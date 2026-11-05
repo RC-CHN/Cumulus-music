@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import MenuTransition from './MenuTransition.vue';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef } from 'vue';
-import type { TrackView, PlaylistView } from '../services/contracts';
+import { failure, type TrackView, type PlaylistView } from '../services/contracts';
 import type { PlayerModel } from '../composables/usePlayer';
 import type { MenuItem } from '../services/menu';
 import { songLink, type TrackMenuRequest } from '../services/trackMenu';
@@ -50,6 +50,7 @@ const items = computed<MenuItem[]>(() => {
         !canPlay ||
         !props.player.ready.value ||
         props.player.busy.value ||
+        (!!request.value?.queueNext && props.player.queueBusy.value) ||
         props.player.view.value?.fm,
       hint: props.player.view.value?.fm ? '私人漫游期间请先切换到普通播放队列' : undefined,
     },
@@ -167,20 +168,26 @@ async function select(key: string) {
     const view = props.player.view.value;
     if (!view) return;
     const attempt = sequence;
-    const next = await props.player.action({
-      kind: input.nextOrigin === 'search' ? 'search_next_play' : 'next_play',
-      id: track.id,
-      quality: view.qualityPreferences.quality,
-      expected_queue_revision: view.queueRevision,
-    });
-    if (attempt === sequence && next)
-      feedback(
-        view.track?.id === track.id
-          ? '这首歌已是当前歌曲'
-          : view.queueLen || view.track
-            ? '已设为下一首播放'
-            : '已开始播放',
-      );
+    try {
+      const next = input.queueNext
+        ? await input.queueNext()
+        : await props.player.action({
+            kind: input.nextOrigin === 'search' ? 'search_next_play' : 'next_play',
+            id: track.id,
+            quality: view.qualityPreferences.quality,
+            expected_queue_revision: view.queueRevision,
+          });
+      if (attempt === sequence && next)
+        feedback(
+          view.track?.id === track.id
+            ? '这首歌已是当前歌曲'
+            : view.queueLen || view.track
+              ? '已设为下一首播放'
+              : '已开始播放',
+        );
+    } catch (issue) {
+      if (attempt === sequence) feedback(failure(issue).message);
+    }
   }
 }
 defineExpose({ show, close });
