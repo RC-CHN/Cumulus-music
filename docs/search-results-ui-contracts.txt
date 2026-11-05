@@ -475,6 +475,8 @@ Windows CI 6c87c80 的原指针停在另一行时，其悬停提示覆盖了当�
 {ids:JSON.stringify(ids)}，无 trialMode；M/21.B 按 ID 合并并保持曲序。M/2245:
 369、522、642 将普通 search_block_song 映射为 track，最佳匹配和推荐歌曲不参与。
 M/2071:104–149、346–372 保留点击播放，按权限选择 VIP、限免及 MV 显示。
+官方 reducer 会用六首替换区块列表；本次只更新展示的六张卡片，保留 Cumulus
+已有“播放全部”的列表范围与正在进行的播放。
 
 Rust 原生只为正常综合歌曲区块保留有界、短期、账号和凭据绑定的读凭据。
 search_refresh_privileges 只接收该凭据和可选的原生观察版本，回复原卡片的显示字段，

@@ -144,3 +144,25 @@ async fn comprehensive_privilege_refresh_rejects_old_account_credentials_and_ent
         );
     }
 }
+
+#[tokio::test]
+async fn an_empty_first_ordinary_block_does_not_borrow_a_later_blocks_songs() {
+    let (_root, api, _session, client) = fixture();
+    let mut response = comprehensive();
+    response["data"]["blocks"]
+        .as_array_mut()
+        .unwrap()
+        .insert(1, json!({"blockCode":"search_block_song","resources":[]}));
+    *api.reply.lock().unwrap() = response;
+    let view = client
+        .search_results("1", query(C::All))
+        .await
+        .unwrap()
+        .value;
+    assert!(
+        view.sections
+            .iter()
+            .any(|section| section.id == "search_block_song:2")
+    );
+    assert!(view.privilege_receipt.is_none());
+}

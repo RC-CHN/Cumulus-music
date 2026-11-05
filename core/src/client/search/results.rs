@@ -813,7 +813,7 @@ fn project(
                     Ok(None) | Err(_) => result.unavailable_count += 1,
                 }
             }
-            if let Some(preview) = preview.filter(|preview| !preview.rows.is_empty()) {
+            if let Some(preview) = preview {
                 privilege_preview = Some(preview);
             }
             if !section.items.is_empty() {
