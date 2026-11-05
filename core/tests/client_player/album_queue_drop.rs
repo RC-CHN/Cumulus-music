@@ -165,7 +165,7 @@ async fn album_drag_resolves_native_order_without_requests_or_replacing_paused_p
 
 #[tokio::test]
 async fn album_drag_rejects_wrong_ordinals_unusable_rows_and_old_account_or_source_atomically() {
-    let (_, api, session, client, _) = fixture();
+    let (_directory, api, session, client, _) = fixture();
     let rows = vec![
         album_song(4, "可用"),
         json!({"id":5,"name":"网盘混入"}),
