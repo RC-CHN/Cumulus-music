@@ -142,9 +142,6 @@ async fn run(
                 }
                 Err(_) => return,
             };
-            let Ok(session) = scope.session.snapshot() else {
-                return;
-            };
             let guest_ready = scope
                 .session
                 .guest_ready_for(&current, &api)
