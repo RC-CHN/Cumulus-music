@@ -1,5 +1,5 @@
 {
-  "date": "2026-10-27",
+  "date": "2026-11-05",
   "full_goal_complete": false,
   "full_podcast_complete": false,
   "official_first": true,
@@ -124,6 +124,28 @@
       "status": "linux_webview_libmpv_null_synthetic_passed"
     },
     {
+      "id": "source_bound_official_palette",
+      "official": "M54/M2060/M258/M279; SceneFm.tsx:234,291–303; M691:517–533",
+      "rust": [
+        "core/src/podcast/scene/palette/",
+        "core/src/client/scene_fm/palette.rs",
+        "core/src/client/scene_fm/palette/artwork.rs",
+        "desktop/src/podcast.rs"
+      ],
+      "frontend": [
+        "frontend/src/composables/useSceneFmPalette.ts",
+        "frontend/src/services/sceneFmCanvas.ts",
+        "frontend/src/components/SceneFmPage.vue"
+      ],
+      "evidence": [
+        "docs/scene-fm-palette-contracts.txt",
+        "core/tests/scene_fm_palette.rs",
+        "scripts/ci/scene_palette_smoke.py",
+        ".build/ui-proof/phase55-scene-palette/webview-r3/report.json"
+      ],
+      "status": "linux_webview_header_canvas_rust_synthetic_passed"
+    },
+    {
       "id": "linked_radio_comments_download_dialog",
       "official": "SceneFm.tsx voice/radio links; M15.Et preserves cross-radio program identities",
       "rust": [
@@ -144,12 +166,22 @@
     }
   ],
   "limits": [
-    "Fixed gradient; official cover color extraction still to migrate",
+    "Native artwork metadata and Rust palette are integrated; browser sampling remains platform-dependent",
     "Classic home and standalone share the Scene FM card; full audio discovery and voice detail parity remain",
     "No remote history upload or cross-device relay proof",
     "Real libmpv/null on Linux only; no Windows/macOS acceptance",
     "Automatic start additionally protects loading/video/together and is scoped per account session"
   ],
+  "palette_validation": {
+    "rust_workspace_passed": 2311,
+    "rust_workspace_failed": 0,
+    "rust_default_ignored": 19,
+    "frontend_passed": 866,
+    "linux_palette_cases": 4,
+    "linux_palette_screenshots": 11,
+    "proof": ".build/ui-proof/phase55-scene-palette/webview-r3/report.json",
+    "windows_runtime": "pending_exact_ci"
+  },
   "validation": {
     "rust_tests": 711,
     "frontend_tests": 102,

@@ -1,0 +1,108 @@
+随心听 FM：封面取色与原生来源边界
+================================
+
+官方 PC 3.1.42.205594 恢复证据优先；本功能没有参考 YesPlayMusic。
+覆盖播客经典首页与独立随心听 FM 卡片，不等于所有页面的封面取色或完整节目详情已对齐。
+
+官方来源
+- SceneFm.tsx:234,291–303 调 useImageColor，并从 dominant RGB 构造渐变。
+- M2060:48–86 初始所有通道为 -1，URL 改变时请求；同组件等待新颜色时保留旧颜色，
+  空 URL 不发请求。卸载后不更新 state。
+- M54:196–260 先尝试 NOS 响应头 X-Nos-Meta-N-M-Cl：M/T/B 分别对应整体、顶部、底部，
+  去掉分号后的附加值；V 和未知键不参与颜色。缺头、空头、实际解析抛错或 fetch 错误才
+  转图片。只有 T/B/V 或未知键也会得到 truthy 对象，不再请求图片；不存在整体色就用底色。
+  这不是“没有 M 就采样”。非标准十六进制的 JS parseInt/NaN 与短值语义有冻结向量。
+- 图片回退为 M54→M279→M258。原浏览器解码后，canvas 宽为 min(naturalWidth,50)，
+  高按原纵横比向上取整，保留默认平滑缩放；从 RGBA 取五位 RGB，再按颜色盒量化。
+  最多 16 色，按人口和盒体积分裂，保留原版黑/白过滤及缓冲索引行为，不改成平均色。
+- 仅 dominant.r>0 才生成渐变。RGB→HSV；饱和度>0.04 时置0.6，明度置0.7。
+  245deg：原色0%、色相-10度的颜色48%、原色100%。纯绿/纯蓝 r=0 也回退底色。
+- M3:609 的底色是 var(--colorBlack8)。官方 M691 music_pc 0.0.14 的 token 表
+  :517–533 明确 light/color_red/color_custom=rgba(40,50,72,0.3)，
+  dark/transparentglass=rgba(255,255,255,0.3)。因此移除旧的固定紫色渐变。
+  M691 SHA256：d88d915163a1920fb24781fa6be31d445fb1d2a95bb5367387eb856b1834f318。
+
+实现与分层
+- core/src/podcast/scene/palette/ 是纯 Rust 响应头、量化、HSV、渐变领域模块。
+  ThemeFallback 和 Gradient{first,middle} 是有界类型；通道 null 保留 JS NaN。
+  冻结的合成向量来自直接运行未改动的恢复工厂，不把另一份手写算法当对照。
+- core/src/client/scene_fm/palette{.rs,/artwork.rs} 从本账号原生场景快照取得当前单集封面，
+  前端不能选择 URL；请求由独立、无业务 Cookie 的 MediaBackend 执行。请求不重定向、
+  不携账号授权/刷新令牌，也不使用授权音源。普通下载默认头保留行为不变，只有取色
+  传输显式启用 content-type 和颜色元数据头；不返回 Set-Cookie。
+- 元数据：GET <原生封面>?xnos=1&imageView=&thumbnail=round(300*DPR)yround(300*DPR)。
+  命中则不在应用层消费图片 body。需要图片时另取
+  ?imageView=&thumbnail=<同尺寸>&type=webp&rotate=0&tostatic=0。
+  不把网络响应整包、任意 HTTP 头或原始地址传给页面。
+- frontend/services/sceneFmCanvas.ts 只接收原生给的本地图片字节，用 Blob/Image/canvas
+  按官方尺寸取样；不调用远端图片 URL。量化与 HSV 仍交 Rust。不能声称 Rust 图片缩放
+  等同浏览器，本实现没有用 image::thumbnail 代替 canvas。Tauri CSP 只为 img-src 增加
+  blob:，没有放宽 connect-src 或脚本来源。
+- 请求等待期间保留同账号的旧背景；切账号和销毁清空。单集/封面键变化会取消旧取样，
+  丢弃迟到结果；暂停等视图版本变化不重复取色。原生已有完成结果只按当前来源缓存一项。
+  图片取色和卡片展示均不构造音频队列、不更改播放、音量、效果或远端账号资源。
+
+类型化 IPC（仅主窗口）
+1. scene_fm_palette_read {epoch,revision,voiceId,pixelRatio}：
+   AccountData<Ready{background}|Sample{receipt,mimeType,bytes,width,height}>。
+   revision 必须规范、不能在未来；可接受同一当前单集的较旧观察版本，避免目录读取到自动
+   播放提交间的版本变化使取色永久失效。实际来源始终从当前原生快照取得，旧单集拒绝。
+2. scene_fm_palette_sample {epoch,receipt,width,height,rgba}：
+   AccountData<{background}>。一次性 receipt 绑定账号代次、当前单集和规范封面，接受的
+   canvas 尺寸必须等于该原生图片的官方采样尺寸。完成后消费凭据并缓存结果。
+3. scene_fm_palette_cancel {epoch,receipt}：
+   只取消相符的本机待取样；迟到取消不能撤销新来源。图片请求会在来源 supersede、
+   账号变更、10 秒总期限到达时结束。没有前端可安装传输或提供媒体地址的命令。
+   RGBA 的有界反序列化最多65536字节；这限制工作数组，不代替 Tauri 的消息解析。
+
+实际限额与边界
+- 公共封面只接受现有原生 artwork 规范化后的 pNN.music.126.net，剔除广告素材和非法地址；
+  不支持的来源回退主题，不扩大到任意域。DPR 接受0.5…4。
+- 编码图片最多3MiB，PNG/JPEG/GIF/BMP/WebP 的 MIME/文件格式和尺寸互相核对，
+  单边4096、总像素1200万、最终取样16384像素。JPEG EXIF 转向纳入原生尺寸；
+  WebP 的 RIFF 尺寸有界检查，不在原生重编码或重新采样。若 WebView 实际自然尺寸不同，
+  回退主题，不收任意几何数据。未验证所有动态图片、WebP EXIF 或各系统色彩管理。
+- 颜色响应头最多4096字节；超限保留“已返回元数据”的分支并回退主题，不继续下载。
+- 同账号同单集封面可能仍有服务权限和网络失败；不把本机合成测试当实服取色成功。
+  Linux WebKitGTK 和 Windows WebView2 的解码、缩放和色彩管理可能有平台差别，不能把
+  供给原 quantizer 的冻结 RGBA 向量称为跨浏览器像素一致证明。
+
+节目播放详情
+官方 VoiceTitle.tsx:102–117 注释掉整行来源和“未知”占位，编译 M182:6592–6630 也没有。
+Cumulus 对 voice 以及带正式 voiceId 的下载节目隐藏该行；普通歌曲的来源和原生队列来源
+保持原有语义。官方专门的主播入口/发布时间等节目详情布局仍需分别对照，不能由此声称
+完整 VoicePage 已复刻。
+
+验证入口
+- core/tests/scene_fm_palette.rs 和合成 scene-fm-palette-official.json：响应头真值、
+  NaN/短值、HSV 阈值、原始量化和 median cut。私有原模块执行器及来源摘要：
+  .build/ui-proof/scene-fm-color-official-oracle/；无账号、网络或解码伪装。
+- client::scene_fm::palette 内部用合成传输验证来源、版本竞争、头命中/图片回退、
+  结果一次性/缓存、取消、账号/来源变更及字节/MIME/尺寸限制。真实环回 HTTP 测试核对
+  只发送独立媒体头，默认下载路径不新增颜色头读取。desktop/tests/ipc.rs 验证旧账号及
+  非主窗口不能发起这些命令。前端测试覆盖本地 canvas 几何、超时/清理/取消和旧结果。
+- scripts/ci/scene_palette_smoke.py 使用正式 UI、IPC、合成 MediaBackend 和真实 WebView。
+  四个新实例核对头部颜色、仅T/B底色、PNG本地canvas→Rust颜色、切歌后旧请求不能覆盖。
+  同时核对取色不启动音频、手动整组播放、原生播放ID/队列稳定及节目详情没有来源行。
+  该程序使用 null libmpv，不证明声卡听感；Windows 现场结果以各次 CI 为准。
+
+2026-11-05 实际集成验证
+- 866 项前端测试、格式检查和 Vite/TypeScript 构建通过。Linux 真实 GTK/WebKitGTK
+  以隔离网络、隐藏本机声卡的 Xvfb 和合成 MediaBackend 运行，4 次新启动，共11张截图。
+  metadata 命中与仅T/B各只1次请求、应用层0图片body读取；缺头时2次请求并实际将76字节PNG
+  经本地Blob/canvas提交Rust，颜色逐项对照原工厂；切歌时旧601不能覆盖602的渐变。
+  播放用合成声音和实际null libmpv，播放ID及队列在取色和详情打开期间保持。
+  .build/ui-proof/phase55-scene-palette/webview-r3/report.json；截图在各case/run/first/。
+- 经典首页原生自动播放、暂停、重访与标题继续通过5个截图检查点；普通无账号可执行文件
+  在同一隔离环境绘制窗口。证据 home-regression/ 和 startup/report.json，位于同一目录。
+- 最终全量 Linux Rust 2,311 passed/0 failed/19默认忽略，含后续 CI 探针修正；
+  格式和 workspace/all-targets 严格Clippy通过，见 rust-test-final.log、rust-clippy-final.log。
+  Windows GNU 的桌面库和受影响示例
+  严格跨平台检查通过，未把它记作 Windows WebView 运行。
+- 首次探针的两处夹具错误（无关对象误按数组访问、混淆原生与投影队列字段）已修正，
+  保留失败日志并实际重跑四种场景，不以旧失败或静态检查宣称通过。
+- 合成源在断网环境不能从外部CDN加载通常展示的封面，所以截图的图片失败占位不证明
+  封面显示成功；本地PNG取样是单独由原生传输提供并实际解码。图片失败占位的全局UI仍需核对。
+- 最终保留严格门槛，并实跑修复后的无截图队列28阶段、延迟定位分支及本机系统音量
+  合成/unsupported共6截图。96项Python CI测试、actionlint、公开源码审计和发行规则检查通过；
+  具体旧CI失败的证据与修复见 desktop-ci-race-audit.txt。没有创建版本标签或发布。

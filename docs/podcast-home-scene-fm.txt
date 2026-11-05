@@ -54,11 +54,11 @@ Rust、窗口及账号边界
   手动新建队列消耗一次性标志，保留当前解码的切换播放状态不消耗。新版不读取场景目录；
   独立 FM 页面保留手动动作，独立页不触发首次自动播放。
 - 未增加任何新服务路径。场景目录、懒加载、续播读取、音源授权及单集身份见
-  desktop-scene-fm-contracts.txt。固定渐变并未还原官方 useImageColor；没有官方同账号截图，
+  desktop-scene-fm-contracts.txt。官方 useImageColor 取色迁移另见 scene-fm-palette-contracts.txt；没有官方同账号截图，
   不宣称像素一致。若签名凭据变化，旧实验观察不再授权自动播；重新获取本账号的布局分组后
   才能再授权；已展示卡仍可手动播。场景播放原生队列已保存 source.kind=scene_fm。
-  Cumulus 详情截图中显示「来源：未知」；官方 VoiceTitle.tsx:102–117 将播客来源整行
-  注释掉，编译 M182:6593 也不渲染。下一批应隐藏节目来源行，同时保留原生来源供播放
+  初批详情截图曾显示「来源：未知」；官方 VoiceTitle.tsx:102–117 将播客来源整行
+  注释掉，编译 M182:6593 也不渲染。后续已隐藏节目来源行，同时保留原生来源供播放
   逻辑使用。卡片取色的下一批对照已冻结：实际 M54/M258 与 SceneFm
   渐变代码在 .build/ui-proof/scene-fm-color-official-oracle/ 离线通过 17 组工作流、
   9 组 HSV、11 组量化；canvas 只供应 1:1 合成像素，未验证浏览器解码或缩放。
