@@ -21,6 +21,15 @@ unsafe extern "C" {
         presence: f32,
         stereoizer: f32,
     ) -> i32;
+    pub fn netease_local_equalizer_material(
+        state: *mut c_void,
+        geq: *const f32,
+        bass: i32,
+        treble: i32,
+        presence: i32,
+        stereoizer: i32,
+    ) -> i32;
+    pub fn netease_local_equalizer_master_off(state: *mut c_void) -> i32;
     pub fn netease_local_fixed_parameters(
         state: *mut c_void,
         presence: f32,

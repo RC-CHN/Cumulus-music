@@ -1,6 +1,6 @@
 //! Executable fixed local-material scope compared with the complete original
 //! SDK graph. This is not support for arbitrary SDK presets or RVB-on.
-use super::LocalStereoMaterialPlan;
+use super::{LocalEqualizerMaterialPlan, LocalStereoMaterialPlan};
 use crate::{
     Error, Result,
     effects::{
@@ -144,6 +144,61 @@ impl LocalFixedStereoMaster {
     pub fn apply_material(&mut self, plan: LocalStereoMaterialPlan) -> Result<()> {
         self.graph.available()?;
         self.graph.stage.apply_master_material(plan.stereo())
+    }
+    pub fn process(
+        &mut self,
+        block: &mut PlanarBlock,
+        frames: usize,
+        end: bool,
+    ) -> Result<AmbienceOneResult> {
+        self.graph.process(block, frames, end)
+    }
+}
+
+/// Original old-schema local equalizer in the verified stereo 44.1 kHz,
+/// capacity-2048 domain. No source selection, device, remote preset, outer
+/// FIFO, desktop effect activation, or arbitrary SDK configuration is owned here.
+pub struct LocalEqualizerStereoMaterial {
+    graph: LocalFixedStereoMaterial,
+}
+impl LocalEqualizerStereoMaterial {
+    /// Reset the initialized nodes and apply the verified local material.
+    pub fn new(format: Format, plan: LocalEqualizerMaterialPlan) -> Result<Self> {
+        let graph =
+            LocalFixedStereoMaterial::with_stage(format, LocalFixedStage::new_master(format)?)?;
+        let mut this = Self { graph };
+        this.reset()?;
+        this.apply_material(plan)?;
+        Ok(this)
+    }
+    pub fn format(&self) -> Format {
+        self.graph.format()
+    }
+    pub fn lookahead_frames(&self) -> u32 {
+        self.graph.lookahead_frames()
+    }
+    /// Original full material begin/defaults and setters on the same object.
+    /// B0 retains the current lookahead and envelope.
+    pub fn apply_material(&mut self, plan: LocalEqualizerMaterialPlan) -> Result<()> {
+        self.graph.available()?;
+        self.graph
+            .stage
+            .apply_equalizer_material(plan.geq.as_ref(), plan.tone, plan.stereo)
+    }
+    /// Original master-off effect on this graph: fade GEQ/BT/SE to bypass
+    /// without clearing their cached settings or re-priming default B0.
+    pub fn disable_master(&mut self) -> Result<()> {
+        self.graph.available()?;
+        self.graph.stage.equalizer_master_off()
+    }
+    /// Original 1B960 node reset, separate from a full apply or master off.
+    /// Discards limiter lookahead and settles the wrapper previous flags.
+    pub fn reset(&mut self) -> Result<()> {
+        let result = self.graph.reset();
+        if result.is_err() {
+            self.graph.failed = true;
+        }
+        result
     }
     pub fn process(
         &mut self,

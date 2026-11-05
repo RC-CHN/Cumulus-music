@@ -67,7 +67,7 @@ impl LocalFixedStage {
         self.available()?;
         // SAFETY: exclusive initialized object/arena; no PCM or output pointers.
         let code = unsafe { ffi::netease_local_fixed_master_off(self.state.pointer()) };
-        self.checked_master_control(code)
+        self.checked_control(code)
     }
     pub fn apply_master_material(&mut self, value: StereoSettings) -> Result<()> {
         self.available()?;
@@ -86,9 +86,38 @@ impl LocalFixedStage {
                 controls.stereoizer,
             )
         };
-        self.checked_master_control(code)
+        self.checked_control(code)
     }
-    fn checked_master_control(&mut self, code: i32) -> Result<()> {
+    pub fn apply_equalizer_material(
+        &mut self,
+        geq: Option<&[f32; 10]>,
+        [bass, treble]: [i32; 2],
+        [presence, stereoizer]: [i32; 2],
+    ) -> Result<()> {
+        self.available()?;
+        let gains = geq.map_or(std::ptr::null(), |gains| gains.as_ptr());
+        // SAFETY: exclusive initialized state/arena. Gains is null or points
+        // to ten live floats for the duration of this synchronous call. C
+        // validates the fixed geometry and every scalar before writing state.
+        let code = unsafe {
+            ffi::netease_local_equalizer_material(
+                self.state.pointer(),
+                gains,
+                bass,
+                treble,
+                presence,
+                stereoizer,
+            )
+        };
+        self.checked_control(code)
+    }
+    pub fn equalizer_master_off(&mut self) -> Result<()> {
+        self.available()?;
+        // SAFETY: exclusive initialized state/arena; no PCM/output pointers.
+        let code = unsafe { ffi::netease_local_equalizer_master_off(self.state.pointer()) };
+        self.checked_control(code)
+    }
+    fn checked_control(&mut self, code: i32) -> Result<()> {
         // A native failure may have left a partially applied material. Never
         // continue through that state, even though validated inputs are bounded.
         self.failed = code != 0;

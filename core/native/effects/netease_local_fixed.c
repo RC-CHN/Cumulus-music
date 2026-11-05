@@ -1,5 +1,5 @@
 /* Explicit fixed local old-schema equalizer scope; no remote material/preset,
- * GEQ/BT-on, RVB-on, normalization, rotation or general optional SDK effect.
+ * RVB-on, normalization, rotation or general optional SDK effect.
  * Includes the real first off-wrapper transitions in original graph order.
  * The caller still supplies the independently recovered final B0 node.
  */
@@ -58,23 +58,63 @@ int netease_local_fixed_master_off(NeteaseLocalFixed *s) {
     return netease_stereo_one_bypass(&s->stereo,1);
 }
 
-/* 68000 -> 1BBA0, then the old local material setters. All non-SE
- * component controls here are already the required immutable defaults.
- * A85B0 resets the SE plugin on each bank change (without syncing the
- * wrapper edge); A8550 can reset once more when enabling that wrapper. */
-int netease_local_fixed_master_material(NeteaseLocalFixed *s,float presence,float stereoizer) {
-    if(!s || !s->off.capacity || !isfinite(presence) || !isfinite(stereoizer) ||
-       presence < -10 || presence > 10 || stereoizer < 0 || stereoizer > 10)return -1;
+/* A85B0 resets the SE plugin on bank change without synchronizing the
+ * wrapper edge. A8550 can reset once more on the separate enable call. */
+static int local_fixed_se_defaults(NeteaseLocalFixed *s) {
     if(netease_stereo_one_parameters(&s->stereo,0,0,1))return -1;
     if(s->bank_one) {
         s->bank_one=0;s->stereo.shared.dynamics[1].config.input=db_gain(1.5f);
         if(netease_stereo_one_reset(&s->stereo))return -1;
     }
-    if(netease_stereo_one_bypass(&s->stereo,1) ||
-       netease_stereo_one_parameters(&s->stereo,presence,stereoizer,1))return -1;
+    return netease_stereo_one_bypass(&s->stereo,1);
+}
+static int local_fixed_se_enable(NeteaseLocalFixed *s,float presence,float stereoizer) {
+    if(netease_stereo_one_parameters(&s->stereo,presence,stereoizer,1))return -1;
     s->bank_one=1;s->stereo.shared.dynamics[1].config.input=db_gain(1.0f);
     if(netease_stereo_one_reset(&s->stereo))return -1;
     return netease_stereo_one_bypass(&s->stereo,0);
+}
+/* Existing SE-only master path: non-SE values are immutable defaults. */
+int netease_local_fixed_master_material(NeteaseLocalFixed *s,float presence,float stereoizer) {
+    if(!s || !s->off.capacity || !isfinite(presence) || !isfinite(stereoizer) ||
+       presence < -10 || presence > 10 || stereoizer < 0 || stereoizer > 10)return -1;
+    if(local_fixed_se_defaults(s))return -1;
+    return local_fixed_se_enable(s,presence,stereoizer);
+}
+
+static int local_equalizer_format(const NeteaseLocalFixed *s) {
+    return s && s->off.capacity==2048 && s->off.geq.core.rate==44100.0f &&
+           s->off.geq.core.channels==2;
+}
+static int local_equalizer_tone(NeteasePeq *bt,float bass,float treble) {
+    /* A2DF0/processor slot 50 uses the shared nine-slot PEQ, not the
+     * standalone BT ctor. The middle band stays disabled. */
+    return netease_peq_band(bt,0,7,bass,120.0f,0.5f,1) ||
+           netease_peq_band(bt,2,8,treble,6000.0f,0.5f,1);
+}
+int netease_local_equalizer_material(NeteaseLocalFixed *s,const float *geq,
+                                    int32_t bass,int32_t treble,int32_t presence,int32_t stereoizer) {
+    if(!local_equalizer_format(s) || bass< -10 || bass>10 || treble< -10 || treble>10 ||
+       presence< -10 || presence>10 || stereoizer<0 || stereoizer>10)return -1;
+    if(geq)for(unsigned i=0;i<10;i++)if(!isfinite(geq[i]) || geq[i]< -12 || geq[i]>12)return -1;
+    /* 1BBA0: restore off/defaults before the old-schema component setters.
+     * Turning a wrapper off does not synchronize its previous flag. */
+    const float flat[10]={0};
+    if(netease_geq_stage_bypass(&s->off.geq,1) || netease_geq_stage_set(&s->off.geq,flat) ||
+       netease_peq_bypass(&s->off.bt,1) || local_equalizer_tone(&s->off.bt,0,0) ||
+       local_fixed_se_defaults(s))return -1;
+    if(geq && (netease_geq_stage_set(&s->off.geq,geq) ||
+               netease_geq_stage_bypass(&s->off.geq,0)))return -1;
+    if((bass || treble) && (local_equalizer_tone(&s->off.bt,(float)bass,(float)treble) ||
+                           netease_peq_bypass(&s->off.bt,0)))return -1;
+    return (presence || stereoizer)?local_fixed_se_enable(s,(float)presence,(float)stereoizer):0;
+}
+int netease_local_equalizer_master_off(NeteaseLocalFixed *s) {
+    if(!local_equalizer_format(s))return -1;
+    /* 1C590 target bypass keeps actual parameters, histories and previous
+     * edges. B0 stays alive with its already-default settings in Rust. */
+    return netease_stereo_one_bypass(&s->stereo,1) || netease_geq_stage_bypass(&s->off.geq,1) ||
+           netease_peq_bypass(&s->off.bt,1)?-1:0;
 }
 
 int netease_local_fixed_reset(NeteaseLocalFixed *s) {

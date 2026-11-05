@@ -1,0 +1,119 @@
+Fixed stereo old-schema local equalizer
+=======================================
+
+LocalEqualizerMaterialPlan and LocalEqualizerStereoMaterial implement the
+local old-schema GEQ, bass/treble and SE controls with RVB off. The only
+accepted decoded format is stereo f32, 44,100 Hz, capacity 2048. The typed
+plan does not establish a user's material rights, actual decoder format,
+source identity or selection. The new API is independent of existing
+LocalStereoMaterialPlan, LocalFixedStereoMaster, ColdStereoSource and the
+ordinary desktop GEQ/BT adapter. No automatic player/UI attachment is added.
+
+Official schema and order
+-------------------------
+Source: Windows PC 3.1.42.205594. cloudmusic.dll x64 SHA256
+557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493;
+neaudioeffects.dll x64 SHA256
+c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be.
+Addresses below are RVAs. The extracted JS module is M3091 in
+hybrid_53.chunk.1482700000000.js. M3091:718–727 defines the 流行 and 舞曲
+curves, including fractional gains. The corresponding sliders are ten
+GEQ bands at −12…12 (1363–1373), bass/treble at −10…10 integer steps
+(1382–1399,1566–1600), and SE presence −10…10 and stereoizer 0…10 integer
+steps (1630–1664). M3091:1278–1305 writes exactly eq, bt, rvb, se. Each
+component's enabled flag follows its controls; SE uses shaper=true and
+ambience=1. The 无 RVB preset at lines19–77 has on=false with dormant
+nested configuration. The parser accepts that off object and ignores the
+inactive fields. EFCCE0:EFCE8E–EFCE94 skips those fields and jumps to
+EFF163; the off path sends only the 6A490 disable call at EFF178.
+
+The parser rejects active RVB, other sections, unknown EQ/BT/SE keys,
+non-finite/out-of-range values, incorrectly typed numbers and conflicting
+component flags. Only the verified UI-origin shape is supported. This does
+not adopt the native generic bridge's defaulting for missing controls or
+arbitrary material JSON. No AEV2, loudness, rotation, remote preset or
+additional format support is implied.
+
+An original device-shaped constructor starts at outer65B60/670E0 and
+performs its 1B960 node reset. Then the old EFB760 material lane invokes:
+
+1. Outer68000: processor1BBA0 sets default controls and bypasses nodes;
+   1C590(false) replays the resulting flags; outer6B0C0 resets its caches
+   and 1D410 sets default B0 controls. It does not clear B0 history.
+2. EF9ED0/outer691D0 transfers ten GEQ f32 gains to 1CE90 → GEQ A3720.
+   Then 692E0 → 1CEB0 → A36C0 enables GEQ. Off sends only 692E0(false).
+3. EF8CA0/outer686B0 transfers bass and treble f32 through 1C570 → A2DF0.
+   Then 68600 → 1C4B0 → A2F70 enables BT. Off sends only 68600(false).
+4. EFF390 sends SE6ABE0 sliders before SE6AB30(on); its off case has no
+   slider call. Then EFCCE0 sends RVB6A490(off) and 65BC0 ends the apply.
+
+1AA50 processes the active GEQ and BT at slots48 and50, before SE28 and
+B0. Slot50 is the same shared nine-slot PEQ implementation used by the
+existing fixed graph. Native defaults and active settings retain type7
+low at120 Hz/Q.5, type6 middle at1000 Hz/Q1 disabled, and type8 high at
+6000 Hz/Q.5. The standalone BassTreble constructor uses different filter
+types and middle-band behavior. Even changing its frequencies and Q to
+these values did not match native active BT's first block. Use the existing
+GEQ and shared PEQ kernels; neither their equations nor the standalone
+BassTreble API changes here.
+
+State transitions
+-----------------
+First active GEQ/BT after constructor reset has wrapper target/previous
+[0,1], so the first block blends dry to wet. Full hot re-apply on the same
+processor temporarily bypasses and restores defaults, writes new controls
+and enables. Actual re-enable clears GEQ or BT plugin histories without
+synchronizing the wrapper's previous flag: a retained active wrapper can
+be [0,0], and an active-to-off wrapper [1,0]. The off edge uses the newly
+restored flat/default parameters; it is not a continuation of the old
+EQ curve. SE re-apply goes through its bank resets as documented in
+core-effects-local-master.txt. End65BC0 does not clear any node history.
+
+Master off is outer68770 → 6B960(true) → 1D410/1C590(true). It retains
+GEQ, BT and SE settings while bypassing their active wrappers. The first
+block after the switch still consumes the proven wrapper edge. Reopening
+is a full material apply, not a boolean toggle. Master off and material
+begin preserve B0's configured 0 dB/5 ms/100 ms default, the pending
+219 frames and the gain envelope. No alternate limiter mode is supported.
+The explicit reset operation is outer67F70 → 6B060 → 1B960: it clears
+histories, synchronizes wrapper previous=target and discards B0 lookahead.
+This can reduce total frames across a logical seek by 219. It does not
+change the current material or select, authorize or seek the input source.
+
+Each typed Rust instance exclusively owns its native allocation, SE arena
+and PCM scratch buffer. Control calls validate all supplied values before
+writing state, take no PCM pointer and quarantine native failures. The
+existing fixed graph validates bounded finite PCM and exposes returned
+frame counts and EOF. It retains the original variable-frame SE and B0
+contract rather than truncating a tail to fill a desktop callback.
+
+Original evidence and checks
+----------------------------
+Twelve synthetic flows exercise GEQ-only and BT-only first/steady/hot/reset;
+GEQ+BT with individual disable edges; GEQ+BT+SE hot and complete tail;
+master off with the separate and combined active masks (and an all-off
+case); and full joint reopen with changed controls and peaks above 0 dB.
+The separate SE-only master corpus remains valid. The native driver executes
+actual outer creation, Init and the observed native setters, plus the actual
+inner 1AA50 PCM graph and B0. It uses a bounded Unicorn x64 Windows/CRT host
+model with original PE text unchanged and no replaced DSP. It does not run
+the cloud CEF JSON bridge, outer PCM FIFO, Windows device, physical speakers
+or any account traffic. Only the source-bound old material subset is claimed.
+
+The synthetic `effects-local-equalizer-full-official` fixture and manifest
+in core/tests/fixtures contain 98 original final PCM SHA256 values, 43
+selected bitwise output prefixes, 14 deduplicated finite input blocks, control data, and
+source hashes. They contain no proprietary binaries, raw internal state,
+account data or runtime dependencies on private evidence. The integration
+test is `effects_local_equalizer_original`.
+
+The strict Linux C candidate was executed against all 98 original pre-B0
+blocks. A side probe independently matched 686 selected native child
+hashes and frame/EOF pairs. The output of the C graph was separately run
+through the existing Rust B0 CLI, starting a fresh limiter only on the
+observed 1B960 boundaries; all 98 final hashes, frame counts and EOF matched.
+The preceding SE-only master C path also still matches its 61 original
+pre-B0 blocks after the shared helper extraction.
+This is a composed offline proof. The new safe Rust API tests are provided
+for the integration batch; the C/CLI proof does not run those tests or
+establish Windows execution, an outer FIFO or ordinary player attachment.

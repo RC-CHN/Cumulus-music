@@ -32,6 +32,11 @@ The separately scoped LocalFixedStereoMaster API reproduces original outer
 Init reset and the fixed old-schema master off/full material re-apply; see
 core-effects-local-master.txt. It does not change this standalone/held graph.
 
+The independent 44.1 kHz/2048 LocalEqualizerStereoMaterial implements the
+old-schema active GEQ/BT/SE scope with RVB off, including complete material
+apply and master controls. See core-effects-local-equalizer.txt. The held
+source and fixed material above retain their original plan and behavior.
+
 Official sources and actual processing order
 -------------------------------------------
 neaudioeffects.dll 3.1.42.205594 x64 SHA256:

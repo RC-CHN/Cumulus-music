@@ -1,0 +1,135 @@
+{
+  "schema": "cumulus-local-equalizer-full-official-v1",
+  "fixtureSha256": "40f21dfa10cc4a3ee12ec4159a9ada04473d8500dcf17f0af35a84f778466593",
+  "uncompressedBytes": 494491,
+  "officialCloudmusicSha256": "557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493",
+  "officialNeaudioeffectsSha256": "c59105e1072d7d7dbd2d2844ac9c170de7e7b41eb463dc56a11c9b37bafac6be",
+  "nativeVmSourceSha256": "793bacf013802f6524a78e68e9a647d5fb2477a308eb4c46a142cda3f8aa171c",
+  "nativePcmTraceSourceSha256": "50385f42c5174dde5d05c4c0561eab33e3d0d6318a98f937ff4bd193ae71049f",
+  "privatePackerSourceSha256": "4df124c3f471aecdf974a7ce7fef85d9f25cbe399a25278c47c9bb26fe7e75ab",
+  "nativeCaptures": [
+    {
+      "privateCaptureSha256": "f802a0df3fba8444980ec2b918568abfe55104e7cffb5a9a812d37c3c40925eb",
+      "privateDriverSha256": "11012786a3c1f655e72671875a4219b9eeca9129dd602b1cd0c611cb4469ee02"
+    },
+    {
+      "privateCaptureSha256": "222e0c65c04a5f61b3c98ede55a26787c83df8e94828487087a96c2595518e18",
+      "privateDriverSha256": "f6e428407ef41620ea3d411de3106987f9f6c1e89fec5ae090cc857878f59024"
+    },
+    {
+      "privateCaptureSha256": "b7f288b6a17daaeaad41b463df4b41feaaed8a05bc9ed9b98f2be52a58f9bfa6",
+      "privateDriverSha256": "1d10b5034efc40a425ab8feb773f6ea124442ec64a1f4e62ede5c5abd14c9456"
+    },
+    {
+      "privateCaptureSha256": "2a804cc42f0aedb944f1307d37bdb8238c11d768e5c9c983c97e3b397a07a88a",
+      "privateDriverSha256": "b26a719d0098d5d6a7acac30791cf4720cd05cdafac17d6258fdeb7133dfa343"
+    }
+  ],
+  "host": "Unicorn x64 original native DSP and setter execution with bounded Windows/CRT memory, allocation and lock adapters; C locale requests, no NLS replies",
+  "effects": {
+    "rateHz": 44100,
+    "channels": 2,
+    "capacityFrames": 2048,
+    "nativeInputFormatEnum": 3,
+    "nativeSeFormat": "0x3102",
+    "rvbEnabled": false
+  },
+  "originalOuterFifoExecuted": false,
+  "cloudCefJsonExecuted": false,
+  "originalTextPatched": false,
+  "network": false,
+  "nativeWindows": false,
+  "physicalAudio": false,
+  "dspReplaced": false,
+  "controlSources": {
+    "jsPreset": "M3091:718–727",
+    "jsMaterial": "M3091:1278–1305",
+    "jsToneSliders": "M3091:1382–1399,1566–1600",
+    "material": "EFB760 old schema -> SDK68000 / GEQ691D0+692E0 / BT686B0+68600 / SE6ABE0+6AB30 / RVB6A490 / end65BC0",
+    "seekReset": "outer +28 67F70 -> 6B060 -> 1B960",
+    "masterOff": "68770 -> 6B960 -> 1D410 and 1C590"
+  },
+  "privatePureCComparisonSha256": "c09256ef1e0156f1aab5aea30194643c3d265f270994f643f287408ef010a956",
+  "selectedNativeChildComparisons": 686,
+  "candidateCPreB0ComparedBlocks": 98,
+  "existingRustB0CliBinarySha256": "c5aaa81fa345de8099fadebd97aae16332c927657ea9de6fc1e0cbad167fc77a",
+  "existingRustB0CliComparedFinalBlocks": 98,
+  "selectedPcmPrefixes": 43,
+  "uniqueSyntheticInputBlocks": 14,
+  "caseCount": 12,
+  "blocks": 98,
+  "cases": [
+    {
+      "name": "geq_only_hot_and_seek_reset",
+      "inputFrames": 8199,
+      "outputFrames": 7980,
+      "blocks": 5
+    },
+    {
+      "name": "bt_only_hot_and_seek_reset",
+      "inputFrames": 8199,
+      "outputFrames": 7980,
+      "blocks": 5
+    },
+    {
+      "name": "geq_bt_joint_component_off_edges",
+      "inputFrames": 10247,
+      "outputFrames": 10247,
+      "blocks": 6
+    },
+    {
+      "name": "geq_bt_se1_joint_hot",
+      "inputFrames": 6151,
+      "outputFrames": 50251,
+      "blocks": 25
+    },
+    {
+      "name": "geq_bt_se1_master_off_through_eof",
+      "inputFrames": 8199,
+      "outputFrames": 8199,
+      "blocks": 5
+    },
+    {
+      "name": "geq_bt_se1_master_off_reopen",
+      "inputFrames": 12295,
+      "outputFrames": 56395,
+      "blocks": 28
+    },
+    {
+      "name": "geq_only_master_off",
+      "inputFrames": 6151,
+      "outputFrames": 6151,
+      "blocks": 4
+    },
+    {
+      "name": "bt_only_master_off",
+      "inputFrames": 6151,
+      "outputFrames": 6151,
+      "blocks": 4
+    },
+    {
+      "name": "geq_bt_master_off",
+      "inputFrames": 6151,
+      "outputFrames": 6151,
+      "blocks": 4
+    },
+    {
+      "name": "geq_se1_master_off",
+      "inputFrames": 6151,
+      "outputFrames": 6151,
+      "blocks": 4
+    },
+    {
+      "name": "bt_se1_master_off",
+      "inputFrames": 6151,
+      "outputFrames": 6151,
+      "blocks": 4
+    },
+    {
+      "name": "all_components_off_master_off",
+      "inputFrames": 6151,
+      "outputFrames": 6151,
+      "blocks": 4
+    }
+  ]
+}

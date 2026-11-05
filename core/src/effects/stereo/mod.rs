@@ -2,12 +2,14 @@
 pub mod abi;
 mod fixed;
 mod host;
+mod local_equalizer;
 mod material;
 mod stream;
 use super::dsp::StereoAmbienceOneControls;
 use crate::Result;
-pub use fixed::{LocalFixedStereoMaster, LocalFixedStereoMaterial};
+pub use fixed::{LocalEqualizerStereoMaterial, LocalFixedStereoMaster, LocalFixedStereoMaterial};
 pub use host::{StereoHost, StereoInstance};
+pub use local_equalizer::LocalEqualizerMaterialPlan;
 pub use material::{LocalStereoMaterialPlan, LocalStereoSubgraph};
 pub use stream::LocalStereoStream;
 
