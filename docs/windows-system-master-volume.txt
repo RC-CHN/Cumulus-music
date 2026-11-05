@@ -69,3 +69,13 @@ Windows CI 与实际端点边界
   上述分类、失败阶段和 HRESULT。若超时，单独记录 backend_unknown/probe_timeout
   和 probeReturned=false；不得推断端点存在与否。无端点、不可读、状态未知
   都是诊断结果，不是发行门槛。合成 WebView2 检查与此 workflow 独立。
+
+Windows 原生 runner 回读（2026-11-05）
+
+精确主线 e1ba9aa8 的手动运行 41938331717 通过。探针执行到原生
+GetDefaultAudioEndpoint(eRender,eMultimedia)，得到 HRESULT 0x80070490，
+报告 default_endpoint_absent：这台托管 Windows x64 runner 没有该默认端点。
+结果验证了真实 COM 缺端点分类，未进入 Activate、GetMasterVolumeLevelScalar
+或 GetMute，不能代替有声卡时的数值或 WebView2 验证。报告只包含提交、角色、
+分类、失败阶段及 HRESULT，不包含设备标识、音量或静音值。
+https://github.com/RC-CHN/Cumulus-music/actions/runs/41938331717
