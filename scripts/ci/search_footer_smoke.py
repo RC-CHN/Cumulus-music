@@ -97,6 +97,55 @@ def verify(directory, case, expected_assignment, screenshots, windows):
     return report
 
 
+
+def verify_vinyl_origin(directory, screenshots):
+    output = directory / "first"
+    labels = ["retained_playlist", "search_plain", "returned_search"]
+    paths = sorted(output.glob("ux_*.json"))
+    assert [path.stem for path in paths] == [f"ux_{n:02}_{label}" for n, label in enumerate(labels, 1)]
+    retained, source, returned = map(read, paths)
+    complete = read(output / "complete.json")
+    assert complete["ok"] and complete["stageCount"] == len(labels)
+    assert complete["realMusicRequests"] == complete["realAccountWrites"] == 0
+    identity = lambda view: tuple(view[key] for key in ("playId", "entryId", "queueRevision"))
+    for row in (retained, source, returned):
+        native = row["nativePlayer"]
+        assert native["state"] == "paused" and native["resourceKind"] == "catalog" and native["error"] is None
+        assert identity(native) == identity(row["observed"]) and row["audioFactoryCount"] == 1
+        assert row["nativeQueue"]["current"] == native["entryId"]
+    playlist = retained["nativePlayer"]
+    search = source["nativePlayer"]
+    assert playlist["track"]["id"] == "1" and playlist["origin"] == {"kind": "playlist", "id": "7"}
+    assert "searchOrigin" not in playlist and retained["sourceButton"] == "查看播放来源：歌单"
+    assert retained["sourceText"] == "来源：歌单"
+    assert search["track"]["id"] == "2" and search["searchOrigin"] is True and search["origin"] is None
+    assert source["sourceText"] == "来源：搜索" and source["sourceButton"] is None
+    assert returned["sameSearch"] and returned["sourceText"] is None and returned["sourceButton"] is None
+    assert identity(search) == identity(returned["nativePlayer"]) == identity(complete["nativePlayer"])
+    assert returned["nativePlayer"]["searchOrigin"] is True
+    assert source["nativeQueue"] == returned["nativeQueue"] == complete["nativeQueue"]
+    assert search["playId"] != playlist["playId"]
+    assert source["syntheticV3Calls"] == returned["syntheticV3Calls"] == complete["syntheticV3Calls"]
+    def selected_urls(row):
+        urls = [call["args"] for call in row["hotPlaybackCalls"] if call["path"] == PLAYER_URL]
+        result = []
+        for call in urls:
+            ids = [str(song) for song in json.loads(call["ids"])]
+            if ids in (["1"], ["2"]):
+                result.append((ids, call["trialMode"]))
+        return result
+
+    # The normal queue may independently prefetch song 3. Opening the lyric
+    # details or clicking their text must not authorize either selected song.
+    requested = selected_urls(complete)
+    assert selected_urls(source) == selected_urls(returned) == requested
+    assert requested.count((["1"], -1)) == 1 and requested.count((["2"], 42)) == 1, requested
+    pictures = len(list(output.glob("ux_*.png")))
+    assert pictures == (len(labels) if screenshots else 0)
+    return dict(ok=True, actualWebView=True, nativeNullOutputOnly=True, states=labels, screenshots=pictures,
+                sourceLabel="搜索", playlistLinkRetained=True, realMusicRequests=0, realAccountWrites=0)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
@@ -104,6 +153,7 @@ def main():
     parser.add_argument("--frontend-dist", type=Path)
     parser.add_argument("--runtime", type=Path, help="exact staged Windows native media directory")
     parser.add_argument("--screenshots", action="store_true", help="optional isolated Linux GTK captures")
+    parser.add_argument("--vinyl-origin", action="store_true", help="verify the original non-link search source")
     args = parser.parse_args()
     windows = os.name == "nt"
     if windows and (not args.runtime or args.screenshots):
@@ -124,12 +174,13 @@ def main():
         profile = [("XDG_DATA_HOME", "data"), ("XDG_CONFIG_HOME", "config"),
                    ("XDG_CACHE_HOME", "cache"), ("XDG_RUNTIME_DIR", "runtime")]
     repository = Path(__file__).resolve().parents[2]
-    source = (repository / "desktop/examples/search_footer_ui_probe.js").read_text(encoding="utf-8")
+    script_name = "search_vinyl_origin_ui_probe.js" if args.vinyl_origin else "search_footer_ui_probe.js"
+    source = (repository / "desktop/examples" / script_name).read_text(encoding="utf-8")
     expected_assignment = assignment_arguments(repository)
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     reports = []
-    for case in CASES:
+    for case in (("t1",) if args.vinyl_origin else CASES):
         directory = root / case
         directory.mkdir()
         script = directory / "probe.js"
@@ -138,6 +189,8 @@ def main():
                "CUMULUS_MOTION_PROOF": "1", "CUMULUS_SEARCH_UI_PROOF": "1",
                "CUMULUS_SEARCH_V3_PROOF": "1", "CUMULUS_SEARCH_HOT_PLAYBACK_PROOF": "1",
                "CUMULUS_SEARCH_FOOTER_PROOF": case, "CUMULUS_SEARCH_FOOTER_UI_PROOF": "1"}
+        if args.vinyl_origin:
+            env["CUMULUS_LIBRARY_UI_PROOF"] = "1"
         for key, name in profile:
             isolated = directory / "os-profile" / name
             isolated.mkdir(parents=True, mode=0o700)
@@ -151,6 +204,12 @@ def main():
         failure = directory / "first/failed.json"
         assert not failure.exists(), failure.read_text(encoding="utf-8") if failure.exists() else ""
         assert code == 0, (case, code, str(directory / "host.log"))
+        if args.vinyl_origin:
+            report = verify_vinyl_origin(directory, args.screenshots)
+            signed_assignment(read(directory / "first/complete.json")["signedSearch"], case, expected_assignment)
+            (root / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(report, ensure_ascii=False))
+            return
         reports.append(verify(directory, case, expected_assignment, args.screenshots, windows))
     report = dict(ok=True, cases=reports, actualWebView=True, windowsMedia=windows_media,
                   nativeNullOutputOnly=True, historicalLayoutBoundary="error seeds only the prior V3 layout; failed live signed assignment cannot grant footers",
