@@ -161,6 +161,7 @@ async fn cold_stereo_unknown_length_native_pause_controls_seek_tail_and_revocati
             .reader_closed
             .then_some(())
     });
+    native.stop().unwrap();
     let source = resumed.reclaim().unwrap();
     let mut revoked = pass(source, 0);
     let revoke_control = revoked.control();

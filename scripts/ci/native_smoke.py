@@ -91,6 +91,62 @@ def verify_stereo_native(proof):
     assert qualification['input_frames'] == qualification['output_frames'] == 0
 
 
+STEREO_PCM_STAGES = [
+    'stereo_pcm_seed_start', 'stereo_pcm_download_published',
+    'stereo_pcm_cold_grant_opened', 'stereo_pcm_native_load_start',
+    'stereo_pcm_paused_controls_verified', 'stereo_pcm_live_controls_verified',
+    'stereo_pcm_stop_close_join_verified', 'stereo_pcm_seek_replacement_verified',
+    'stereo_pcm_native_tail_eof_verified', 'stereo_pcm_buffered_revocation_verified',
+    'stereo_pcm_native_closed',
+]
+
+
+def verify_stereo_pcm(proof):
+    assert proof['kind'] == 'stereo_pcm_native_v1' and proof['subgraph'] == 'SE1->defaultB0'
+    assert all(proof[key] is True for key in [
+        'ok', 'productionDesktopStartup', 'numericLocaleCompatible', 'guiInitialized',
+        'actualDecoder', 'unknownLength', 'strictNcm', 'syntheticDownloadPublished',
+        'workerJoinedBeforeSeek', 'sourcePathReplaced', 'reopenRejected',
+        'actualNativeEof', 'revokedReclaimDenied',
+    ])
+    assert all(proof[key] is False for key in [
+        'fullSdkGraph', 'wholeMaterial', 'officialUiTested', 'physicalAudioOutputVerified',
+    ])
+    assert proof['realMusicRequests'] == proof['coldHttpAttempts'] == 0
+    assert proof['syntheticMediaTransfers'] == 1
+    assert proof['format'] == {'rate': 44100, 'channels': 2, 'bitsPerSample': 16,
+                               'maxBlockFrames': 1024, 'sourceFrames': 88207}
+    assert proof['stages'] == STEREO_PCM_STAGES
+    paused, live = proof['paused'], proof['live']
+    entry = proof['sameControlEntry']
+    assert proof['nativeDecodedFormat'] == {'rate': 44100, 'channels': 2, 'entry': entry}
+    assert paused['nativeEntry'] == live['nativeEntry'] == entry
+    assert paused['paused'] and not paused['graphEnd'] and not paused['failed']
+    assert paused['nativeOutputFrame'] == 0 and paused['decodedSourceFrame'] < 88207
+    assert 0 < paused['producedFrames'] <= (44100 + 7) // 8 + 4096
+    revisions = proof['requestedControls']
+    assert len(revisions) == 2 and 0 < revisions[0] < revisions[1]
+    assert paused['requestedRevision'] == paused['appliedRevision'] == revisions[0]
+    assert live['requestedRevision'] == live['appliedRevision'] == revisions[1]
+    assert not live['failed'] and live['producedFrames'] <= live['nativeOutputFrame'] + 11025 + 2048
+    assert proof['positionAfter'] > proof['positionBefore'] > .15
+    retired = proof['retired']
+    assert retired['nativeEntry'] == entry and retired['readerClosed'] and retired['nativeSinkRetired']
+    seek = proof['seek']
+    assert seek['oldEntry'] == entry and seek['newEntry'] != entry
+    assert seek['firstSourceFrame'] == 22050 and seek['paused'] and seek['sameHeldSource']
+    eof = proof['eof']
+    assert eof['nativeEntry'] == seek['newEntry']
+    assert eof['graphEnd'] and eof['readerClosed'] and eof['nativeSinkRetired']
+    assert eof['producedFrames'] == 88207 - 22050 + 44100
+    assert eof['decodedSourceFrame'] == eof['nativeSourceFrame'] == 88207
+    assert proof['tailFrames'] == 44100
+    revoked = proof['revoked']
+    assert revoked['nativeEntry'] == proof['revokedEntry'] != seek['newEntry']
+    assert revoked['readerClosed'] and revoked['nativeSinkRetired'] and revoked['cancelled']
+    assert proof['bufferedAheadAtRevocation'] > 2048
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -103,6 +159,8 @@ def main():
                       help='verify supervised PEQ and real PCM after GUI initialization')
     mode.add_argument('--stereo-native-library', type=Path,
                       help='verify dynamic stereo ABI and actual decoder format, without attachment')
+    mode.add_argument('--stereo-pcm-flac-library', type=Path,
+                      help='verify sealed cold NCM/FLAC paced SE1/B0 through unknown-size PCM after GUI initialization')
     args = parser.parse_args()
     report = args.report.resolve()
     assert not report.exists(), 'proof report must be new'
@@ -125,9 +183,12 @@ def main():
         env['CUMULUS_BOUND_PEQ_LIBRARY'] = str(args.bound_peq_library.resolve(strict=True))
     if args.stereo_native_library:
         env['CUMULUS_STEREO_NATIVE_LIBRARY'] = str(args.stereo_native_library.resolve(strict=True))
+    if args.stereo_pcm_flac_library:
+        env['CUMULUS_STEREO_PCM_FLAC_LIBRARY'] = str(args.stereo_pcm_flac_library.resolve(strict=True))
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
-    run_native([str(args.binary.resolve())], env, report)
+    run_native([str(args.binary.resolve())], env, report,
+               timeout=90 if args.stereo_pcm_flac_library else 60)
     proof = read_native_report(report)
     assert proof['ok'] and proof['productionDesktopStartup'] and proof['numericLocaleCompatible']
     if args.stereo_native_library:
@@ -135,6 +196,12 @@ def main():
         print(json.dumps({'ok': True, 'desktopStereoNativeBoundary': True,
                           'sourceBlocks': 20, 'completeTailFrames': 48000,
                           'decodedChannels': [1, 2], 'productionAttachment': False}))
+        return
+    if args.stereo_pcm_flac_library:
+        verify_stereo_pcm(proof)
+        print(json.dumps({'ok': True, 'desktopPacedStereoPcm': True,
+                          'outputFrames': proof['eof']['producedFrames'],
+                          'wholeMaterial': False, 'physicalAudioOutputVerified': False}))
         return
     if args.bound_peq_library:
         assert proof['boundParametric'] and proof['actualDecoder']

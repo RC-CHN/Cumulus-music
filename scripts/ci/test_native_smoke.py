@@ -10,7 +10,8 @@ import sys
 import tempfile
 import unittest
 
-from native_smoke import run_native, read_native_report, verify_stereo_native
+from native_smoke import (STEREO_PCM_STAGES, run_native, read_native_report,
+                          verify_stereo_native, verify_stereo_pcm)
 
 
 def stereo_report_fixture():
@@ -136,6 +137,86 @@ class NativeDiagnostics(unittest.TestCase):
         value = json.loads(self.report.with_suffix('.failure.json').read_text(encoding='utf-8'))
         self.assertFalse(value['ok'])
         self.assertEqual(value['kind'], 'spawn')
+
+
+class StereoPcmContract(unittest.TestCase):
+    """Synthetic validator inputs are not native playback evidence."""
+
+    def proof(self):
+        return {
+            'ok': True, 'kind': 'stereo_pcm_native_v1', 'subgraph': 'SE1->defaultB0',
+            'productionDesktopStartup': True, 'numericLocaleCompatible': True, 'guiInitialized': True,
+            'actualDecoder': True, 'unknownLength': True, 'strictNcm': True,
+            'syntheticDownloadPublished': True, 'syntheticMediaTransfers': 1,
+            'workerJoinedBeforeSeek': True, 'sourcePathReplaced': True, 'reopenRejected': True,
+            'actualNativeEof': True, 'revokedReclaimDenied': True,
+            'fullSdkGraph': False, 'wholeMaterial': False, 'officialUiTested': False,
+            'physicalAudioOutputVerified': False, 'realMusicRequests': 0, 'coldHttpAttempts': 0,
+            'format': {'rate': 44100, 'channels': 2, 'bitsPerSample': 16,
+                       'maxBlockFrames': 1024, 'sourceFrames': 88207},
+            'stages': list(STEREO_PCM_STAGES), 'sameControlEntry': 11,
+            'nativeDecodedFormat': {'rate': 44100, 'channels': 2, 'entry': 11},
+            'requestedControls': [1, 2], 'positionBefore': .2, 'positionAfter': .3,
+            'paused': {'nativeEntry': 11, 'paused': True, 'graphEnd': False, 'failed': False,
+                       'nativeOutputFrame': 0, 'decodedSourceFrame': 8192, 'producedFrames': 7973,
+                       'requestedRevision': 1, 'appliedRevision': 1},
+            'live': {'nativeEntry': 11, 'failed': False, 'nativeOutputFrame': 10000,
+                     'producedFrames': 20000, 'requestedRevision': 2, 'appliedRevision': 2},
+            'retired': {'nativeEntry': 11, 'readerClosed': True, 'nativeSinkRetired': True},
+            'seek': {'oldEntry': 11, 'newEntry': 22, 'firstSourceFrame': 22050,
+                     'paused': True, 'sameHeldSource': True},
+            'eof': {'nativeEntry': 22, 'graphEnd': True, 'readerClosed': True,
+                    'nativeSinkRetired': True, 'producedFrames': 110257,
+                    'decodedSourceFrame': 88207, 'nativeSourceFrame': 88207},
+            'tailFrames': 44100,
+            'revoked': {'nativeEntry': 33, 'readerClosed': True,
+                        'nativeSinkRetired': True, 'cancelled': True},
+            'revokedEntry': 33, 'bufferedAheadAtRevocation': 3000,
+        }
+
+    def rejected(self, change):
+        proof = copy.deepcopy(self.proof())
+        change(proof)
+        with self.assertRaises((AssertionError, KeyError)):
+            verify_stereo_pcm(proof)
+
+    def test_complete_synthetic_schema_is_accepted(self):
+        verify_stereo_pcm(self.proof())
+
+    def test_no_gui_no_native_eof_or_no_join_cannot_pass(self):
+        for key in ['guiInitialized', 'productionDesktopStartup', 'actualNativeEof',
+                    'workerJoinedBeforeSeek', 'strictNcm', 'unknownLength']:
+            with self.subTest(key=key):
+                self.rejected(lambda p: p.update({key: False}))
+
+    def test_subgraph_cannot_be_claimed_as_whole_material_ui_or_physical_audio(self):
+        for key in ['fullSdkGraph', 'wholeMaterial', 'officialUiTested', 'physicalAudioOutputVerified']:
+            with self.subTest(key=key):
+                self.rejected(lambda p: p.update({key: True}))
+
+    def test_stale_entry_unapplied_control_and_unbounded_render_lead_fail(self):
+        self.rejected(lambda p: p['live'].update(nativeEntry=12))
+        self.rejected(lambda p: p['live'].update(appliedRevision=1))
+        self.rejected(lambda p: p['live'].update(producedFrames=88207))
+        self.rejected(lambda p: p['paused'].update(decodedSourceFrame=88207))
+        self.rejected(lambda p: p['nativeDecodedFormat'].update(channels=1))
+
+    def test_close_without_native_retirement_or_bad_seek_source_fail(self):
+        self.rejected(lambda p: p['retired'].update(nativeSinkRetired=False))
+        self.rejected(lambda p: p['seek'].update(sameHeldSource=False))
+        self.rejected(lambda p: p['seek'].update(newEntry=11))
+        self.rejected(lambda p: p['seek'].update(firstSourceFrame=0))
+
+    def test_tail_source_clock_and_buffered_revocation_are_required(self):
+        self.rejected(lambda p: p['eof'].update(producedFrames=110256))
+        self.rejected(lambda p: p['eof'].update(nativeSourceFrame=110257))
+        self.rejected(lambda p: p.update(bufferedAheadAtRevocation=0))
+        self.rejected(lambda p: p['revoked'].update(cancelled=False))
+
+    def test_missing_stage_or_actual_remote_attempt_cannot_pass(self):
+        self.rejected(lambda p: p['stages'].pop())
+        self.rejected(lambda p: p.update(coldHttpAttempts=1))
+        self.rejected(lambda p: p.update(realMusicRequests=1))
 
 
 if __name__ == '__main__':

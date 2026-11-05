@@ -145,3 +145,57 @@ readiness and native clock-credit/EOF-close behavior on those binaries, latency
 and recovery under real scheduling, full SDK graph equivalence, and eventual
 current-source/setting actor integration plus exact setting write/apply order.
 No official SE slider UI is added until those callable seams are proven.
+
+Reusable closed native/GUI executable
+--------------------------------------
+core/examples/support/cold_offline_seed.rs is the extracted existing sealed
+desktop fixture, not a new grant/ledger substitute. Both the old cold WebView
+probe and new source proof call the same candidate verification, normal
+downloader, NCM writer, integrity/publish and membership logic. Its new
+NcmStereoPcm lane uses one frozen synthetic44.1kHz/stereo/16-bit FLAC with1024
+blocks,88207 frames and a real seektable. The public libFLAC1.5 encoder manual
+generator/manifest record its formula and SHA; original music is not involved.
+The cold phase opens the real MusicClient Unknown/native profile with a deny-
+all HTTP backend, obtains its public grant and calls open_flac_reader. It does
+not handwrite a task/ledger, construct private authorities or weaken a gate.
+
+stereo_pcm_roundtrip TRUSTED_FLAC_LIBRARY NEW_PROOF_ROOT is a standalone
+executable using that shared helper. Its report has guiInitialized=false and
+must not be treated as a GTK/Windows WebView startup proof. The corresponding
+native_audio_probe mode is selected only by explicit native environment
+CUMULUS_STEREO_PCM_FLAC_LIBRARY. It runs after the real production desktop
+configuration and window creation, retaining numeric-C-only and unchanged
+messages locale assertions on Linux. The wrapper then records actual GUI
+initialization in the final report. No default route or app setting enables it.
+
+ scripts/ci/native_smoke.py --binary ABS_NATIVE_AUDIO_PROBE
+   --stereo-pcm-flac-library ABS_TRUSTED_FLAC_1_5 --report NEW_REPORT.json
+   [--runtime ABS_PINNED_MEDIA_RUNTIME]
+
+This mutually exclusive mode preserves the existing isolated app/config/cache
+and WebView directories, clears inherited CUMULUS_* switches and accepts only
+an explicit existing absolute library. The calling Linux harness must provide
+the real display/DBus/WM and non-C locale as for other native_smoke modes;
+Windows uses the same packaged WebView2/native process and staged runtime.
+No CI workflow is changed here. A90s process bound retains progress/log and
+fails on timeout; individual native waits still use the original8s bound.
+
+The helper reports ordered stages for actual seed/publish/grant, raw load,
+bounded paused controls, same-entry playing controls, Stop+callback close+
+worker join, replacement sample seek, actual native tail EOF and revocation
+with native-prefetched audio. Each native wait logs bounded categorical view
+and control snapshots, and the final failing observation before returning an
+error. It never retries playback or increases a wait to hide a failure.
+The strict Python validator rejects partial reports, missing stages, stale
+entry/control ACK, excessive produced lead, wrong tail/source count, missing
+AO retirement/join, attempted cold HTTP, or a whole-material/UI/speaker claim.
+Its13 synthetic validator/diagnostics tests pass; that is not a native run.
+
+At this source freeze the new Rust helper/example and GUI mode have NOT been
+compiled or executed. Root's separate ignored native prerequisite currently
+stalls at the first real native clock: initial produced/delivered7973 frames,
+time-pos0/seeking=true, then null AO but no native progress. The initial credit
+cannot yet satisfy native startup; a source-backed bounded bootstrap correction
+is being investigated, without changing waits or granting unlimited credit. No
+pass report exists for this new seam yet. Prior dynamic five-port SE component
+and GUI locale proofs do not cover this decoder/credit/raw-sink path.

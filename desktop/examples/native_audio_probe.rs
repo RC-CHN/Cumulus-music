@@ -14,6 +14,8 @@ mod output_devices;
 #[allow(dead_code)]
 #[path = "../../core/examples/stereo_native_roundtrip.rs"]
 mod stereo_native;
+#[path = "../../core/examples/support/stereo_pcm_proof/mod.rs"]
+mod stereo_pcm;
 
 use std::{
     io::Write,
@@ -95,8 +97,15 @@ fn main() {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 let result = if let Some(library) =
-                    std::env::var_os("CUMULUS_STEREO_NATIVE_LIBRARY")
+                    std::env::var_os("CUMULUS_STEREO_PCM_FLAC_LIBRARY")
                 {
+                    setup_trace.record("stereo_pcm_start");
+                    stereo_pcm::verify(
+                        &PathBuf::from(library),
+                        &output.with_extension("fixture"),
+                        |stage| setup_trace.record(stage),
+                    )
+                } else if let Some(library) = std::env::var_os("CUMULUS_STEREO_NATIVE_LIBRARY") {
                     setup_trace.record("stereo_native_start");
                     stereo_native::verify_with_observer(
                         &PathBuf::from(library),
@@ -119,6 +128,7 @@ fn main() {
                     Ok(mut report) => {
                         report["productionDesktopStartup"] = serde_json::json!(true);
                         report["numericLocaleCompatible"] = serde_json::json!(true);
+                        report["guiInitialized"] = serde_json::json!(true);
                         std::fs::write(output, serde_json::to_vec_pretty(&report).unwrap())
                             .unwrap();
                         setup_trace.record("report_written");
