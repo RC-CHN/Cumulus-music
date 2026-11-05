@@ -650,3 +650,131 @@ async fn cookie_rotation_from_ab_response_has_one_restart_instead_of_a_self_resp
     );
     lease.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn history_sync_default_follows_successful_signed_refresh_until_an_explicit_choice() {
+    use cumulus_core::history::HistorySyncAction::{Read, Set};
+    let cohort = |group| {
+        json!({"code":200,"data":[{
+            "expName":"PH-PC-setting-multiterminal-record","expGroupName":group
+        }]})
+    };
+    let f = Fixture::new(
+        true,
+        [
+            json!({"code":200,"data":[]}).into(),
+            cohort("t1").into(),
+            json!({"code":403}).into(),
+            cohort("c").into(),
+            cohort("t1").into(),
+        ],
+    );
+    let epoch = f.epoch();
+    let pref = |action| {
+        f.client
+            .history_sync_preference(&epoch, action)
+            .unwrap()
+            .value
+    };
+    let initial = pref(Read);
+    assert!(initial.enabled && !initial.first_disable_confirmed);
+    assert!(f.paths().is_empty());
+    // A missing setting row in a successful full batch uses M147's empty group.
+    f.client.refresh_pc_presentation().await.unwrap();
+    let control = pref(Read);
+    assert!(!control.enabled && !control.first_disable_confirmed);
+    f.client.refresh_pc_presentation().await.unwrap();
+    assert!(pref(Read).enabled);
+    assert!(f.client.refresh_pc_presentation().await.is_err());
+    assert!(pref(Read).enabled);
+    f.client.refresh_pc_presentation().await.unwrap();
+    assert!(!pref(Read).enabled);
+
+    // Explicitly retaining the current value is still an override, but
+    // does not pretend the first-disable confirmation has happened.
+    let same = pref(Set {
+        enabled: false,
+        confirmed_first_disable: false,
+    });
+    assert!(!same.enabled && !same.first_disable_confirmed);
+    f.client.refresh_pc_presentation().await.unwrap();
+    assert!(!pref(Read).enabled);
+    let restarted = MusicClient::with_session(f.session.clone(), f.registry.clone());
+    assert!(
+        !restarted
+            .history_sync_preference(&epoch, Read)
+            .unwrap()
+            .value
+            .enabled
+    );
+
+    assert!(
+        pref(Set {
+            enabled: true,
+            confirmed_first_disable: false
+        })
+        .enabled
+    );
+    assert!(
+        f.client
+            .history_sync_preference(
+                &epoch,
+                Set {
+                    enabled: false,
+                    confirmed_first_disable: false,
+                }
+            )
+            .is_err()
+    );
+    let confirmed = pref(Set {
+        enabled: false,
+        confirmed_first_disable: true,
+    });
+    assert!(!confirmed.enabled && confirmed.first_disable_confirmed);
+    assert_eq!(f.paths(), [ASSIGNMENT_PATH; 5]);
+}
+
+#[tokio::test]
+async fn history_sync_default_never_overwrites_an_existing_account_setting() {
+    use cumulus_core::history::HistorySyncAction::Read;
+    let f = Fixture::new(true, [json!({"code":200,"data":[]}).into()]);
+    let store = f.registry.store();
+    store
+        .put("71", "play-history-v1", "sync-enabled", &json!(true))
+        .unwrap();
+    store
+        .put(
+            "72",
+            "play-history-v1",
+            "sync-experiment-default",
+            &json!(false),
+        )
+        .unwrap();
+    f.client.refresh_pc_presentation().await.unwrap();
+    assert!(
+        f.client
+            .history_sync_preference(&f.epoch(), Read)
+            .unwrap()
+            .value
+            .enabled
+    );
+    assert!(
+        store
+            .get("71", "play-history-v1", "sync-experiment-default")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        store
+            .get("72", "play-history-v1", "sync-experiment-default")
+            .unwrap(),
+        Some(json!(false))
+    );
+    assert!(
+        store
+            .get("local-guest", "play-history-v1", "sync-experiment-default")
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(f.paths(), [ASSIGNMENT_PATH]);
+}

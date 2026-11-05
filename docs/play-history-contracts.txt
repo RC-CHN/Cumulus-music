@@ -54,7 +54,7 @@ HistoryApi::recent 先要求code=200，再做结构校验：
 - history/service：按账号存play-history-v1，local:<kind>、remote:<kind>及sync-enabled。
   本机记账的去重、时间倒序和裁剪在单个SQLite事务中完成；歌曲300，其余100。
   迟到的旧时间不覆盖更新的记录。guest使用独立local-guest，不授权任何在线读取。
-  多端开关为本机账号偏好，默认开；关后保留远端恢复快照但展示仅本机记录。
+  多端开关为本机账号偏好，首次成功分组前默认开；关后保留远端恢复快照但展示仅本机记录。
   读回包括revision、local、remote、entries；revision绑定身份、排序、播放时间、资源元数据、设备、来源、读取时间和开关；
   声音的秒级play_progress/listened检查点不改变revision，新一次播放或元数据改变仍会失效。
   远端刷新总会请求网络；同账号同分类有OperationLock，切号及关闭多端后的迟到结果丢弃。
@@ -66,8 +66,10 @@ HistoryApi::recent 先要求code=200，再做结构校验：
   这个首次提示。确认后，本机以后直接切换。M116:507–518、1357–1375 仅向
   setting/updateSetting 下发 {allowMultiterminalRecord:boolean}，由本机存储合并，
   没有 HTTP 请求。M147:2969–2971、3027–3047 的 PH-PC-setting-multiterminal-record
-  可为未自行调整的用户下发实验默认；Cumulus
-  延用已上线的默认开，不猜测当前用户的官方实验组，不覆盖手动选择。
+  为未自行调整的用户下发实验默认；M116:309–312 在成功分组前先开。签名全批
+  成功时按 M147:297、2949–2971、3027–3047 严格 t1 开，控制组、缺键和其他
+  值关；30 分钟或账号变化的正常刷新可更新尚未手动设置者。请求失败、仅恢复
+  表现缓存或没有签名传输均不产生新默认。
 
   设置→最近播放记录的 typed IPC `history_sync_preference` 只收当前 epoch 和
   `read` 或 `set {enabled,confirmed_first_disable}`。回复只含 enabled 和
@@ -316,3 +318,19 @@ history-ui-front-{format,tests,build}-final.log（侧栏改动后另有format/te
   书 691 取章节并实际播放媒体 1792，保留两章队列。Back 稳定截图中精选的
   分类、滚动及原触发按钮焦点保持。证据 .build/ui-proof/phase66-books-r3/；
   Windows 和真实账号的该读取未在此批验收。
+
+官方多端历史实验默认增量
+- M147:3036 的 isUpdatedMultiterminalRecord 只由 M3097:1797–1824
+  手动完成写入；首次关闭确认的另一个标记只在确定时消费。M116:507–518、
+  1357–1375 写的是本机设置，不发网络偏好写。
+- Cumulus 把经过当前账号/原生签名 full batch 的布尔默认存为
+  play-history-v1/sync-experiment-default；已有 sync-enabled 和本次手动值
+  优先。同值手动值也持久锁定；实验不能自动消耗首次关闭确认。若确认弹窗打开
+  时实验已切到关，用户实际确认仍可保留意图和首次确认记录。用户取消不发提交。
+  访客不写该账号偏好，匿名实验不能授予多端历史。
+- 有效开关变化在同一 SQLite 事务提升 privacy revision；在途历史读回只在
+  同一连续开启区间提交。它不改历史条目、不触发额外实验/历史 HTTP、不自动
+  重放写。设置页下一次打开或重新读取显示生效值；本增量没有新增对已打开
+  设置页的实时推送。
+- 合成测试源码：真实签名测试 transport 覆盖缺键→t1→失败→控制→手动保护、
+  旧偏好/账号隔离/确认，history 测试覆盖启→停→启期间旧回包失效。

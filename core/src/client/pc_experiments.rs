@@ -258,7 +258,19 @@ impl ScopeContext {
         {
             return Err(Error::StaleResponse);
         }
-        let result = self.session.with_verified_profile(token, api, |_, _| {
+        let result = self.session.with_verified_profile(token, api, |owner, _| {
+            if api.verified_pc_experiment_revision()?.as_deref() != Some(credentials.as_str()) {
+                return Err(Error::StaleResponse);
+            }
+            if let Ok(history_store) = self.session.persistent_store() {
+                // A settings persistence failure does not invalidate a valid
+                // signed assignment or other consumers of its live groups.
+                let _ = crate::history::HistoryService::apply_verified_sync_default(
+                    &history_store,
+                    owner,
+                    groups.group("PH-PC-setting-multiterminal-record") == Some("t1"),
+                );
+            }
             let result = groups.clone();
             *self.host.state.lock().map_err(|_| Error::LockPoisoned)? = Some(Assigned {
                 token: token.clone(),

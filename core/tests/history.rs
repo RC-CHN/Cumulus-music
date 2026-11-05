@@ -1043,3 +1043,31 @@ async fn history_revision_ignores_progress_checkpoints_but_fences_new_plays_and_
     service.record_for(&token, kind, row).unwrap();
     assert_ne!(replay, service.snapshot_for(&token, kind).unwrap().revision);
 }
+
+#[tokio::test]
+async fn turning_history_sync_back_on_does_not_adopt_the_old_enabled_period_response() {
+    let (_root, _store, api, session, service) = fixture();
+    let token = session.token().unwrap();
+    api.hold.store(true, Ordering::SeqCst);
+    let worker = tokio::spawn({
+        let service = service.clone();
+        let token = token.clone();
+        async move { service.refresh_for(&token, HistoryKind::Song).await }
+    });
+    api.started.notified().await;
+    service.set_sync_for(&token, false).unwrap();
+    service.set_sync_for(&token, true).unwrap();
+    api.release.notify_one();
+    assert!(matches!(worker.await.unwrap(), Err(Error::StaleResponse)));
+    let page = service.snapshot_for(&token, HistoryKind::Song).unwrap();
+    assert!(page.sync_enabled && page.remote.is_none());
+    api.hold.store(false, Ordering::SeqCst);
+    assert!(
+        service
+            .refresh_for(&token, HistoryKind::Song)
+            .await
+            .unwrap()
+            .remote
+            .is_some()
+    );
+}

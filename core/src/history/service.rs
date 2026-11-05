@@ -11,6 +11,9 @@ use std::sync::Arc;
 
 pub(super) const NAMESPACE: &str = "play-history-v1";
 const SYNC_PRIVACY_REVISION: &str = "sync-privacy-revision";
+const SYNC_CHOICE: &str = "sync-enabled";
+const SYNC_DEFAULT: &str = "sync-experiment-default";
+const SYNC_FIRST_OFF: &str = "sync-first-off-confirmed";
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RemoteHistory {
     pub kind: HistoryKind,
@@ -71,13 +74,21 @@ pub(super) fn local(
     }
     Ok(rows)
 }
-pub(super) fn enabled(tx: &StateTransaction<'_>, owner: &str) -> Result<bool> {
-    match tx.get(owner, NAMESPACE, "sync-enabled")? {
-        None => Ok(true),
-        Some(Value::Bool(b)) => Ok(b),
+fn stored_sync_bool(tx: &StateTransaction<'_>, owner: &str, key: &str) -> Result<Option<bool>> {
+    match tx.get(owner, NAMESPACE, key)? {
+        None => Ok(None),
+        Some(Value::Bool(value)) => Ok(Some(value)),
         _ => Err(Error::State("invalid recent play preference")),
     }
 }
+
+pub(super) fn enabled(tx: &StateTransaction<'_>, owner: &str) -> Result<bool> {
+    if let Some(explicit) = stored_sync_bool(tx, owner, SYNC_CHOICE)? {
+        return Ok(explicit);
+    }
+    Ok(stored_sync_bool(tx, owner, SYNC_DEFAULT)?.unwrap_or(true))
+}
+
 fn sync_privacy_revision(tx: &StateTransaction<'_>, owner: &str) -> Result<u64> {
     match tx.get(owner, NAMESPACE, SYNC_PRIVACY_REVISION)? {
         // Existing histories keep their saved bool and need no eager migration.
@@ -87,13 +98,31 @@ fn sync_privacy_revision(tx: &StateTransaction<'_>, owner: &str) -> Result<u64> 
             .ok_or(Error::State("invalid recent play privacy revision")),
     }
 }
-fn change_sync(tx: &mut StateTransaction<'_>, owner: &str, desired: bool) -> Result<()> {
+
+fn advance_sync_privacy_revision(tx: &mut StateTransaction<'_>, owner: &str) -> Result<()> {
     let next = sync_privacy_revision(tx, owner)?
         .checked_add(1)
         .ok_or(Error::State("recent play privacy revision overflow"))?;
-    tx.put(owner, NAMESPACE, "sync-enabled", &json!(desired))?;
     tx.put(owner, NAMESPACE, SYNC_PRIVACY_REVISION, &json!(next))
 }
+
+fn write_sync_choice(
+    tx: &mut StateTransaction<'_>,
+    owner: &str,
+    current: bool,
+    desired: bool,
+) -> Result<()> {
+    // An explicit choice matching today's default must still protect it
+    // against tomorrow's cohort; there is no privacy edge if it was a no-op.
+    if stored_sync_bool(tx, owner, SYNC_CHOICE)? != Some(desired) {
+        tx.put(owner, NAMESPACE, SYNC_CHOICE, &json!(desired))?;
+    }
+    if current != desired {
+        advance_sync_privacy_revision(tx, owner)?;
+    }
+    Ok(())
+}
+
 pub(super) fn upsert(
     tx: &mut StateTransaction<'_>,
     owner: &str,
@@ -205,13 +234,35 @@ impl HistoryService {
     pub fn set_sync_for(&self, token: &SessionToken, desired: bool) -> Result<()> {
         self.session.with_local_owner(token, |owner| {
             self.store.transaction(|tx| {
-                if enabled(tx, owner)? != desired {
-                    change_sync(tx, owner, desired)?;
-                }
-                Ok(())
+                let current = enabled(tx, owner)?;
+                write_sync_choice(tx, owner, current, desired)
             })
         })
     }
+    /// M/147: update only the default, after a successful authenticated signed
+    /// assignment. The native caller holds the verified account/API fence;
+    /// explicit user choices and legacy settings share the same key.
+    pub(crate) fn apply_verified_sync_default(
+        store: &StateStore,
+        owner: &str,
+        assigned: bool,
+    ) -> Result<()> {
+        store.transaction(|tx| {
+            if stored_sync_bool(tx, owner, SYNC_CHOICE)?.is_some() {
+                return Ok(());
+            }
+            let previous = stored_sync_bool(tx, owner, SYNC_DEFAULT)?;
+            if previous == Some(assigned) {
+                return Ok(());
+            }
+            tx.put(owner, NAMESPACE, SYNC_DEFAULT, &json!(assigned))?;
+            if previous.unwrap_or(true) != assigned {
+                advance_sync_privacy_revision(tx, owner)?;
+            }
+            Ok(())
+        })
+    }
+
     /// A dispatch authorization is valid only for this continuous enabled period.
     pub(crate) fn enabled_sync_revision_for(&self, token: &SessionToken) -> Result<Option<u64>> {
         self.session.with_token(token, |owner| {
@@ -233,25 +284,24 @@ impl HistoryService {
         self.session.with_token(token, |owner| {
             self.store.transaction(|tx| {
                 let mut current = enabled(tx, owner)?;
-                let mut confirmed = match tx.get(owner, NAMESPACE, "sync-first-off-confirmed")? {
-                    None => false,
-                    Some(Value::Bool(value)) => value,
-                    _ => return Err(Error::State("invalid recent play confirmation state")),
-                };
+                let mut confirmed = stored_sync_bool(tx, owner, SYNC_FIRST_OFF)?.unwrap_or(false);
                 if let HistorySyncAction::Set {
                     enabled: desired,
                     confirmed_first_disable,
                 } = action
-                    && desired != current
                 {
                     if !desired && !confirmed {
-                        if !confirmed_first_disable {
+                        if current && !confirmed_first_disable {
                             return Err(Error::State("confirm local-only recent play first"));
                         }
-                        tx.put(owner, NAMESPACE, "sync-first-off-confirmed", &json!(true))?;
-                        confirmed = true;
+                        // The cohort may already have turned sync off while the
+                        // modal was open. Only the actual confirmation consumes it.
+                        if confirmed_first_disable {
+                            tx.put(owner, NAMESPACE, SYNC_FIRST_OFF, &json!(true))?;
+                            confirmed = true;
+                        }
                     }
-                    change_sync(tx, owner, desired)?;
+                    write_sync_choice(tx, owner, current, desired)?;
                     current = desired;
                 }
                 Ok(HistorySyncState {
@@ -274,12 +324,15 @@ impl HistoryService {
             NAMESPACE,
             &format!("{owner}:{}", kind.key()),
         )?;
-        if !self.snapshot_for(token, kind)?.sync_enabled {
-            return Err(Error::State("multi-device history is disabled"));
-        }
+        let sync_revision = self
+            .enabled_sync_revision_for(token)?
+            .ok_or(Error::State("multi-device history is disabled"))?;
         let records = self
             .session
             .run_for(token, |api, _| async move {
+                if self.enabled_sync_revision_for(token)? != Some(sync_revision) {
+                    return Err(Error::StaleResponse);
+                }
                 HistoryApi::new(api).recent(kind).await
             })
             .await?;
@@ -291,7 +344,7 @@ impl HistoryService {
         };
         self.session.with_token(token, |owner| {
             self.store.transaction(|tx| {
-                if !enabled(tx, owner)? {
+                if !enabled(tx, owner)? || sync_privacy_revision(tx, owner)? != sync_revision {
                     return Err(Error::StaleResponse);
                 }
                 tx.put(
