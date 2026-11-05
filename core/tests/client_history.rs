@@ -23,6 +23,8 @@ struct Backend {
     calls: Mutex<Vec<String>>,
     deny: AtomicBool,
     hold: AtomicBool,
+    resume_books: AtomicBool,
+    around_missing: AtomicBool,
     started: Notify,
     release: Notify,
 }
@@ -81,18 +83,32 @@ impl Api for Backend {
                     if p["radioId"] == "22" {
                         assert_eq!(p, json!({"radioId":"22","limit":250,"offset":0}));
                     }
-                    json!({"code":200,"data":{"programs":[voice(5,&p["radioId"]),voice(6,&p["radioId"])],"count":2,"more":false,"asc":p["asc"]}})
+                    let mut second = voice(6, &p["radioId"]);
+                    if p["radioId"] == "22" {
+                        second["name"] = json!("本机保存的章节名");
+                    }
+                    json!({"code":200,"data":{"programs":[voice(5,&p["radioId"]),second],"count":2,"more":false,"asc":p["asc"]}})
+                }
+                "/api/dj/around/program/v1" => {
+                    assert_eq!(p, json!({"programId":"6","roundNum":250}));
+                    let ids = if self.around_missing.load(Ordering::SeqCst) {
+                        vec![5, 7]
+                    } else {
+                        vec![5, 6, 7]
+                    };
+                    json!({"code":200,"data":{"list":ids.into_iter().map(|id|voice(id,&json!(22))).collect::<Vec<_>>(),"asc":true}})
                 }
                 "/api/dj/program/detail" => {
                     let (id, radio_id) = match p["id"].as_str() {
                         Some("5") => (5, 8),
                         Some("6") => (6, 22),
+                        Some("7") => (7, 22),
                         _ => panic!("unexpected history program detail identity"),
                     };
                     json!({"code":200,"program":voice(id,&json!(radio_id))})
                 }
                 "/api/dj/user/setting/resumeplay/get" => {
-                    json!({"code":200,"data":{"resumePlayValue":0}})
+                    json!({"code":200,"data":{"resumePlayValue":u8::from(p["radioId"] == "22" && self.resume_books.load(Ordering::SeqCst))}})
                 }
                 "/api/dj/play/url/check" => {
                     let id = p["voiceId"]
@@ -117,12 +133,14 @@ struct Fixture {
     session: Arc<AccountSession>,
     client: Arc<MusicClient>,
     history: HistoryService,
+    store: Arc<cumulus_core::storage::StateStore>,
 }
 fn fixture(authenticated: bool) -> Fixture {
     let root = tempfile::tempdir().unwrap();
     let api = Arc::new(Backend::default());
     let registry = ProfileRegistry::open(root.path(), ApiOrigin::Pc).unwrap();
-    let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
+    let store = registry.store();
+    let session = Arc::new(AccountSession::new(api.clone(), Some(store.clone())));
     if authenticated {
         session
             .adopt(api.clone(), json!({"userId":9}), &session.token().unwrap())
@@ -137,6 +155,7 @@ fn fixture(authenticated: bool) -> Fixture {
         session,
         client: Arc::new(client),
         history,
+        store,
     }
 }
 impl Fixture {
@@ -478,4 +497,169 @@ async fn listened_books_owns_local_pages_and_exact_chapter_selection() {
             .await,
         Err(Error::QueueChanged)
     ));
+}
+
+#[tokio::test]
+async fn listened_books_replays_matching_departed_chapter_in_official_around_order() {
+    let f = fixture(true);
+    let epoch = f.epoch();
+    let token = f.session.token().unwrap();
+    f.history.set_sync_for(&token, false).unwrap();
+    f.api.resume_books.store(true, Ordering::SeqCst);
+    let open = |epoch: &str| {
+        let client = f.client.clone();
+        let epoch = epoch.to_owned();
+        async move {
+            let page = client
+                .listened_books(&epoch, ListenedBooksQuery::Open)
+                .await
+                .unwrap();
+            serde_json::to_value(page.value).unwrap()
+        }
+    };
+    let select = |page: &Value| PlaySelection::ListenedBookChapter {
+        revision: page["revision"].as_str().unwrap().to_owned(),
+        key: 0,
+    };
+    let first = open(&epoch).await;
+    assert_eq!(first["rows"][0]["chapter"]["recent"], false);
+    let remote = f
+        .client
+        .play_selection(&epoch, select(&first))
+        .await
+        .unwrap();
+    assert_eq!(remote.position, Some(2.5));
+    assert_eq!(remote.queue_len, 2);
+    let seek = f
+        .client
+        .player_action(&epoch, PlayerAction::Seek { seconds: 18.75 })
+        .await
+        .unwrap();
+    assert_eq!(seek.position, Some(18.75));
+    assert!(
+        f.store
+            .get("9", "podcast-latest-voice-v1", "22")
+            .unwrap()
+            .is_none()
+    );
+    f.client
+        .player_action(&epoch, PlayerAction::Stop)
+        .await
+        .unwrap();
+    let local = f
+        .store
+        .get("9", "podcast-latest-voice-v1", "22")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        local,
+        json!({"id":"6","mainTrackId":"1006","name":"本机保存的章节名","time":18,"duration":120})
+    );
+
+    let latest = open(&epoch).await;
+    let chapter = &latest["rows"][0]["chapter"];
+    assert_eq!(chapter["recent"], true);
+    assert_eq!(chapter["name"], "本机保存的章节名");
+    assert_eq!(chapter["percent"], 15);
+    let around = f
+        .client
+        .play_selection(&epoch, select(&latest))
+        .await
+        .unwrap();
+    assert_eq!(
+        around.position,
+        Some(18.0),
+        "original whole-second checkpoint wins for this gesture"
+    );
+    assert_eq!(
+        around.track.as_ref().unwrap().voice_id.as_deref(),
+        Some("6")
+    );
+    let queue = f.client.player_queue(&epoch).await.unwrap();
+    assert_eq!(
+        queue
+            .tracks
+            .iter()
+            .map(|row| row.track.voice_id.as_deref().unwrap())
+            .collect::<Vec<_>>(),
+        ["7", "6", "5"]
+    );
+
+    f.api.around_missing.store(true, Ordering::SeqCst);
+    assert!(matches!(
+        f.client.play_selection(&epoch, select(&latest)).await,
+        Err(Error::QueueChanged)
+    ));
+    let unchanged = f.client.player_snapshot(&epoch).await.unwrap();
+    assert_eq!(unchanged.play_id, around.play_id);
+    assert_eq!(unchanged.queue_revision, around.queue_revision);
+    {
+        let calls = f.api.calls.lock().unwrap();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|path| *path == "/api/dj/around/program/v1")
+                .count(),
+            2
+        );
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|path| *path == "/api/v6/dj/program/byradio")
+                .count(),
+            1
+        );
+        assert!(!calls.iter().any(|path| path == "/api/dj/playrecord/upload"));
+    }
+
+    // A later local chapter for the same book must not change the old row's
+    // assigned episode, visible name, or route.
+    f.store
+        .put(
+            "9",
+            "podcast-latest-voice-v1",
+            "22",
+            &json!({"id":"7","mainTrackId":"1007","name":"不同章节","time":30,"duration":120}),
+        )
+        .unwrap();
+    let different_chapter = open(&epoch).await;
+    assert_eq!(different_chapter["rows"][0]["chapter"]["recent"], false);
+    let original_row = f
+        .client
+        .play_selection(&epoch, select(&different_chapter))
+        .await
+        .unwrap();
+    assert_eq!(original_row.track.unwrap().voice_id.as_deref(), Some("6"));
+    assert_eq!(original_row.position, Some(2.5));
+    assert_eq!(original_row.queue_len, 2);
+    assert_eq!(
+        f.api
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|path| *path == "/api/dj/around/program/v1")
+            .count(),
+        2
+    );
+
+    f.session
+        .adopt(f.api.clone(), json!({"userId":10}), &token)
+        .unwrap();
+    let next_epoch = f.epoch();
+    let other = open(&next_epoch).await;
+    assert_eq!(other["rows"][0]["chapter"]["recent"], false);
+    let other_playback = f
+        .client
+        .play_selection(&next_epoch, select(&other))
+        .await
+        .unwrap();
+    assert_eq!(other_playback.position, Some(2.5));
+    assert_eq!(other_playback.queue_len, 2);
+    assert!(
+        f.store
+            .get("10", "podcast-latest-voice-v1", "22")
+            .unwrap()
+            .is_none()
+    );
 }

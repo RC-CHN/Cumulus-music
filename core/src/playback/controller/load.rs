@@ -31,6 +31,7 @@ pub(super) struct LoadOptions {
     pub retain_source_retry: bool,
     pub relative: bool,
     pub restart_at_end: bool,
+    pub supplied_voice_checkpoint: bool,
     pub source: LoadSource,
 }
 pub(super) struct Prepared {
@@ -274,7 +275,11 @@ impl Actor {
                 let snapshot = timeline.snapshot();
                 let resumed = if options.position.is_none() {
                     resolver
-                        .voice_resume_position(&item.resource, &token)
+                        .voice_resume_position(
+                            &item.resource,
+                            &token,
+                            options.supplied_voice_checkpoint,
+                        )
                         .await?
                 } else {
                     None

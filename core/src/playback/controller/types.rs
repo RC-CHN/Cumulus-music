@@ -207,6 +207,12 @@ pub enum PlaybackCommand {
         index: usize,
         source: Value,
     },
+    /// Replace from a fenced book row using its supplied checkpoint once.
+    ReplaceListenedBook {
+        resources: Vec<Value>,
+        index: usize,
+        source: Value,
+    },
     Append {
         resources: Vec<Value>,
         source: Value,

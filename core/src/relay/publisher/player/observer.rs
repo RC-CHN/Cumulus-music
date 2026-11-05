@@ -26,6 +26,7 @@ impl Hint {
             replace: matches!(
                 command,
                 PlaybackCommand::Replace { .. }
+                    | PlaybackCommand::ReplaceListenedBook { .. }
                     | PlaybackCommand::ReplaceFollowLatest { .. }
                     | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
             ),

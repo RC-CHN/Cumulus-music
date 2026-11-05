@@ -34,6 +34,7 @@ impl Actor {
         if matches!(
             request.command,
             PlaybackCommand::UseMissingDownloadOnline { .. }
+                | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::MoveDisplayed(_)
@@ -187,6 +188,7 @@ impl Actor {
         if matches!(
             request.command,
             PlaybackCommand::Replace { .. }
+                | PlaybackCommand::ReplaceListenedBook { .. }
                 | PlaybackCommand::ReplaceFollowLatest { .. }
                 | PlaybackCommand::ReplaceProfileRankPlaylist { .. }
                 | PlaybackCommand::Select(_)
@@ -200,6 +202,10 @@ impl Actor {
             self.reply(request.reply, Err(error));
             return;
         }
+        let supplied_voice_checkpoint = matches!(
+            &request.command,
+            PlaybackCommand::ReplaceListenedBook { .. }
+        );
         let relay_hint = crate::relay::publisher::player::Hint::from_command(&request.command);
         let result = match request.command {
             PlaybackCommand::Startup(input) => {
@@ -266,11 +272,19 @@ impl Actor {
                 mut resources,
                 index,
                 source,
+            }
+            | PlaybackCommand::ReplaceListenedBook {
+                mut resources,
+                index,
+                source,
             } => {
                 self.stamp_quality(&mut resources);
                 self.queue.replace(resources, index, source).map(|_| {
                     if !self.queue.is_empty() {
-                        options = Some(LoadOptions::default());
+                        options = Some(LoadOptions {
+                            supplied_voice_checkpoint,
+                            ..LoadOptions::default()
+                        });
                     }
                 })
             }

@@ -1,6 +1,8 @@
 //! M/308 breakpoint selection: a finished/out-of-range episode starts at zero;
 //! otherwise use its listen location when the radio's resume setting permits it.
 //! Local checkpoints are account scoped; remote history writes are a separate flow.
+pub(crate) mod latest;
+
 use crate::{
     Result,
     account::{AccountSession, SessionToken},
@@ -13,7 +15,7 @@ pub(crate) const PLAYRECORD_PATH: &str = "/api/dj/playrecord/upload";
 
 /// Episode identity is distinct from the ID of the playable main song.
 /// Downloaded episodes can carry the same native metadata inside `song`.
-pub(crate) fn program_id(resource: &Value) -> Option<u64> {
+fn program_identity(resource: &Value) -> Option<(&Value, String, String)> {
     let voice = resource
         .get("voice")
         .filter(|voice| voice.is_object())
@@ -31,9 +33,12 @@ pub(crate) fn program_id(resource: &Value) -> Option<u64> {
         .get("mainTrackId")
         .filter(|value| !value.is_null())
         .unwrap_or(&voice["mainSong"]["id"]);
-    if identifier(main_song).ok()? != identifier(&resource["id"]).ok()? {
-        return None;
-    }
+    let media_id = identifier(&resource["id"]).ok()?;
+    (identifier(main_song).ok()? == media_id).then_some((voice, id, media_id))
+}
+
+pub(crate) fn program_id(resource: &Value) -> Option<u64> {
+    let (_, id, _) = program_identity(resource)?;
     let number = id.parse::<u64>().ok()?;
     (number > 0 && number < (1_u64 << 53)).then_some(number)
 }
@@ -110,6 +115,7 @@ pub(crate) async fn position(
     session: &AccountSession,
     token: &SessionToken,
     resource: &Value,
+    supplied_checkpoint: bool,
 ) -> Result<Option<f64>> {
     let Some(id) = resource.get("voice_id").filter(|v| !v.is_null()) else {
         return Ok(None);
@@ -129,8 +135,14 @@ pub(crate) async fn position(
     if !enabled {
         return Ok(None);
     }
-    let store = session.persistent_store()?;
-    let local = session.with_token(token, |owner| store.get(owner, KIND, &id))?;
+    let local = if supplied_checkpoint {
+        // The official listened-book action supplies its displayed checkpoint
+        // for this selection. Do not substitute another generic local clock.
+        None
+    } else {
+        let store = session.persistent_store()?;
+        session.with_token(token, |owner| store.get(owner, KIND, &id))?
+    };
     let record = local
         .as_ref()
         .filter(|r| r["voiceId"] == id && r["mediaId"] == media)

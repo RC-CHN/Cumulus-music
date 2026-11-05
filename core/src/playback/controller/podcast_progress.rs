@@ -6,7 +6,7 @@ use crate::{
     account::{AccountSession, SessionToken},
     history::HistoryService,
     playback::TimelineMode,
-    podcast::progress::{playrecord, program_id},
+    podcast::progress::{latest, playrecord, program_id},
     protocol::api::Api,
 };
 use serde_json::Value;
@@ -16,12 +16,17 @@ use std::sync::{
 };
 use tokio::{sync::mpsc, task::JoinHandle};
 
-pub(super) struct Capture {
+struct Remote {
     api: Arc<dyn Api>,
-    owner: SessionToken,
     revision: String,
     program_id: u64,
+}
+
+pub(super) struct Capture {
+    owner: SessionToken,
     play_id: String,
+    latest: Option<latest::Captured>,
+    remote: Option<Remote>,
 }
 
 impl Capture {
@@ -31,16 +36,23 @@ impl Capture {
         resource: &Value,
         play_id: &str,
     ) -> Option<Self> {
-        let program_id = program_id(resource)?;
         owner.uid.as_ref()?;
-        let api = session.native_api(owner).ok()?;
-        let revision = api.podcast_progress_revision().ok()??;
-        Some(Self {
-            api,
+        let latest = latest::Captured::from_resource(resource);
+        let remote = (|| {
+            let program_id = program_id(resource)?;
+            let api = session.native_api(owner).ok()?;
+            let revision = api.podcast_progress_revision().ok()??;
+            Some(Remote {
+                api,
+                revision,
+                program_id,
+            })
+        })();
+        (latest.is_some() || remote.is_some()).then(|| Self {
             owner: owner.clone(),
-            revision,
-            program_id,
             play_id: play_id.to_owned(),
+            latest,
+            remote,
         })
     }
 
@@ -50,7 +62,8 @@ impl Capture {
 }
 
 struct Write {
-    captured: Capture,
+    owner: SessionToken,
+    remote: Remote,
     payload: Value,
     sync_revision: u64,
 }
@@ -62,19 +75,21 @@ fn sync_revision(session: Arc<AccountSession>, token: &SessionToken) -> Result<O
 impl Write {
     async fn send(self, session: &Arc<AccountSession>, shutdown: &Arc<AtomicBool>) -> Result<()> {
         let Self {
-            captured,
+            owner,
+            remote,
             payload,
             sync_revision: queued_revision,
         } = self;
         let mut changes = session.subscribe()?;
-        let captured = &captured;
-        let request = session.run_for(&captured.owner, |api, _| async move {
-            if !Arc::ptr_eq(&api, &captured.api) {
+        let remote = &remote;
+        let captured_owner = &owner;
+        let request = session.run_for(captured_owner, |api, _| async move {
+            if !Arc::ptr_eq(&api, &remote.api) {
                 return Err(Error::StaleResponse);
             }
             let session = session.clone();
-            let owner = captured.owner.clone();
-            let bound = captured.api.clone();
+            let owner = captured_owner.clone();
+            let bound = remote.api.clone();
             let shutdown = shutdown.clone();
             let allowed = move || {
                 if shutdown.load(Ordering::Acquire) {
@@ -86,12 +101,12 @@ impl Write {
             if !allowed()? {
                 return Ok(());
             }
-            api.upload_podcast_progress(payload, &captured.revision, &allowed)
+            api.upload_podcast_progress(payload, &remote.revision, &allowed)
                 .await
         });
         tokio::select! {
             biased;
-            _ = changes.wait_for(|token| token != &captured.owner) => Ok(()),
+            _ = changes.wait_for(|token| token != captured_owner) => Ok(()),
             result = request => result,
         }
     }
@@ -135,25 +150,35 @@ impl Actor {
         };
         if self.play_id.as_deref() != Some(&captured.play_id)
             || self.token != captured.owner
-            || program_id(&loaded.item.resource) != Some(captured.program_id)
             || loaded.timeline.snapshot().mode != TimelineMode::Full
         {
             return;
         }
-        if let Ok(Some(sync_revision)) = sync_revision(self.session.clone(), &self.token)
-            && let Some(duration) = loaded.timeline.display_end()
-            && let Some(payload) = playrecord(
-                captured.program_id,
-                self.position.unwrap_or(0.0),
-                duration,
-                completed,
-            )
+        let Some(duration) = loaded.timeline.display_end() else {
+            return;
+        };
+        let position = self.position.unwrap_or(0.0);
+        if let Some(latest) = captured.latest
+            && latest.matches(&loaded.item.resource)
+        {
+            // Local continuation is independent of multi-device privacy, the
+            // signed progress write capability, and its network outcome.
+            let _ = self.session.with_token(&self.token, |owner| {
+                self.store
+                    .transaction(|tx| latest.save(tx, owner, position, duration, completed))
+            });
+        }
+        if let Some(remote) = captured.remote
+            && program_id(&loaded.item.resource) == Some(remote.program_id)
+            && let Ok(Some(sync_revision)) = sync_revision(self.session.clone(), &self.token)
+            && let Some(payload) = playrecord(remote.program_id, position, duration, completed)
         {
             let publisher = self
                 .podcast_publisher
                 .get_or_insert_with(|| Publisher::new(self.session.clone(), self.shutdown.clone()));
             let _ = publisher.sender.try_send(Write {
-                captured,
+                owner: captured.owner,
+                remote,
                 payload,
                 sync_revision,
             });

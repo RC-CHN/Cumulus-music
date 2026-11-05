@@ -40,6 +40,10 @@ function play(key: number) {
   if (!page.value || !props.playable || busy.value) return;
   emit('play', page.value.revision, key);
 }
+function chapterTitle(chapter: NonNullable<ListenedBooksPage['rows'][number]['chapter']>): string {
+  return chapter.recent ? `最近播放：${chapter.name}` : chapter.name;
+}
+
 const counts = new Intl.NumberFormat('zh-CN', { notation: 'compact' });
 onMounted(() => void load({ kind: 'open' }));
 onBeforeUnmount(() => ++request);
@@ -87,14 +91,16 @@ onBeforeUnmount(() => ++request);
                     <button
                       v-if="row.chapter.playable"
                       class="text-button"
-                      :title="row.chapter.name"
+                      :title="chapterTitle(row.chapter)"
                       :disabled="!playable || busy"
                       data-listened-chapter
                       @click="play(row.key)"
                     >
-                      {{ row.chapter.name }}
+                      {{ chapterTitle(row.chapter) }}
                     </button>
-                    <span v-else :title="row.chapter.name">{{ row.chapter.name }}</span>
+                    <span v-else :title="chapterTitle(row.chapter)">{{
+                      chapterTitle(row.chapter)
+                    }}</span>
                     <span v-if="row.chapter.completed">已播完</span>
                     <span v-else-if="row.chapter.percent !== null"
                       >已播 {{ row.chapter.percent }}%</span

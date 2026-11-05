@@ -4,8 +4,8 @@ use crate::{
     Error, Result,
     account::SessionToken,
     playback::engine::Cancellation,
-    podcast::{Episode, PodcastApi, Radio},
-    protocol::api::identifier,
+    podcast::{Episode, PodcastApi, Radio, progress::latest},
+    protocol::api::{Api, identifier},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -15,6 +15,8 @@ const PATH: &str = "/api/voice/book/recent";
 const PAGE: usize = 20;
 const MAX_BOOKS: usize = 1000;
 const PROGRAM_PAGE: usize = 250;
+const AROUND: &str = "/api/dj/around/program/v1";
+const AROUND_RADIUS: usize = 250;
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -46,6 +48,7 @@ struct BookRow {
 #[serde(rename_all = "camelCase")]
 struct ChapterView {
     name: String,
+    recent: bool,
     percent: Option<u8>,
     completed: bool,
     playable: bool,
@@ -54,7 +57,9 @@ struct ChapterView {
 #[derive(Clone)]
 struct Chapter {
     id: String,
+    media_id: Option<String>,
     name: String,
+    recent: bool,
     location: u64,
     duration: u64,
     completed: bool,
@@ -92,7 +97,9 @@ fn book(value: &Value) -> Result<Book> {
             record["id"].is_null() || identifier(&record["id"]).is_ok_and(|id| id == episode.id);
         (!name.is_empty()).then(|| Chapter {
             id: episode.id,
+            media_id: episode.song_id,
             name,
+            recent: false,
             location: if record_matches {
                 number_value(&record["listenLocation"]).unwrap_or(0)
             } else {
@@ -125,6 +132,97 @@ fn decode(value: &Value) -> Result<Vec<Book>> {
     Ok(rows)
 }
 
+fn local_chapter(chapter: &mut Chapter, local: latest::LatestVoice) {
+    if local.id != chapter.id
+        || local.name.is_empty()
+        || chapter
+            .media_id
+            .as_ref()
+            .is_some_and(|id| id != &local.main_track_id)
+    {
+        return;
+    }
+    chapter.recent = true;
+    chapter.name = local.name;
+    chapter.media_id = Some(local.main_track_id);
+    chapter.location = local.time * 1000;
+    chapter.duration = local.duration * 1000;
+    chapter.completed = local.time > 0 && local.time >= local.duration;
+}
+
+async fn by_radio(api: &dyn Api, radio: &str, source: &Cancellation) -> Result<Vec<Episode>> {
+    let mut voices = Vec::new();
+    let mut seen = HashSet::new();
+    // M/404 uses 250 per page and leaves asc absent without a saved order.
+    for offset in (0..50_000).step_by(PROGRAM_PAGE) {
+        if source.is_cancelled() {
+            return Err(Error::QueueChanged);
+        }
+        let response = api
+            .call(
+                "/api/v6/dj/program/byradio",
+                json!({"radioId":radio,"offset":offset,"limit":PROGRAM_PAGE}),
+                false,
+                &[200],
+            )
+            .await?;
+        let data = &response["data"];
+        let rows = data["programs"]
+            .as_array()
+            .filter(|rows| rows.len() <= PROGRAM_PAGE)
+            .ok_or(Error::Response("invalid listened book program page"))?;
+        for raw in rows {
+            let voice = Episode::from_official(raw)?;
+            if !seen.insert(voice.id.clone()) {
+                return Err(Error::QueueChanged);
+            }
+            voices.push(voice);
+        }
+        match data["more"].as_bool() {
+            Some(false) => break,
+            None if data["more"].is_null() => break,
+            Some(true) if !rows.is_empty() && offset + PROGRAM_PAGE < 50_000 => (),
+            _ => {
+                return Err(Error::Response(
+                    "listened book program pages do not advance",
+                ));
+            }
+        }
+    }
+    Ok(voices)
+}
+
+async fn around(api: &dyn Api, chapter: &str) -> Result<Vec<Episode>> {
+    let response = api
+        .call(
+            AROUND,
+            json!({"programId":chapter,"roundNum":AROUND_RADIUS}),
+            false,
+            &[200],
+        )
+        .await?;
+    let data = &response["data"];
+    let rows = data["list"]
+        .as_array()
+        .filter(|rows| rows.len() <= 2 * AROUND_RADIUS + 1)
+        .ok_or(Error::Response("invalid around-program list"))?;
+    let mut seen = HashSet::new();
+    let mut voices = Vec::with_capacity(rows.len());
+    for raw in rows {
+        let voice = Episode::from_official(raw)?;
+        if !seen.insert(voice.id.clone()) {
+            return Err(Error::QueueChanged);
+        }
+        voices.push(voice);
+    }
+    // M/71: in the absence of a saved sort or caller asc, desired is false.
+    // Missing asc is not identical to false in the original strict comparison.
+    if data["asc"] != false {
+        voices.reverse();
+    }
+    Ok(voices)
+}
+
 struct Snapshot {
     token: SessionToken,
     revision: String,
@@ -151,6 +249,7 @@ impl Snapshot {
                     subscribers: number_value(&row.radio.raw["subCount"]),
                     chapter: row.chapter.as_ref().map(|chapter| ChapterView {
                         name: chapter.name.clone(),
+                        recent: chapter.recent,
                         percent: if chapter.location > 0
                             && chapter.duration > 0
                             && !chapter.completed
@@ -215,13 +314,24 @@ impl MusicClient {
                     .loading
                     .try_lock()
                     .map_err(|_| Error::MutationBusy)?;
-                let rows = self
+                let mut rows = self
                     .session
                     .run_for(&token, |api, _| async move {
                         decode(&api.call(PATH, json!({}), false, &[200]).await?)
                     })
                     .await?;
-                self.session.with_token(&token, |_| {
+                self.session.with_token(&token, |owner| {
+                    let store = self.session.persistent_store()?;
+                    store.read_snapshot(|tx| {
+                        for row in &mut rows {
+                            if let Some(chapter) = row.chapter.as_mut()
+                                && let Some(local) = latest::read(tx, owner, &row.radio.id)?
+                            {
+                                local_chapter(chapter, local);
+                            }
+                        }
+                        Ok(())
+                    })?;
                     let snapshot = Snapshot {
                         token: token.clone(),
                         revision: uuid::Uuid::new_v4().simple().to_string(),
@@ -295,36 +405,23 @@ impl MusicClient {
             self.with_listened_chapter(token, revision, key, |radio, chapter, source| {
                 (radio.clone(), chapter.clone(), source.clone())
             })?;
+        let locally_latest = self.session.with_token(token, |owner| {
+            let store = self.session.persistent_store()?;
+            store.read_snapshot(|tx| {
+                Ok(latest::read(tx, owner, &radio.id)?.is_some_and(|value| value.id == chapter.id))
+            })
+        })?;
         let (resources, selected) = self.session.run_for(token, |api, _| async {
-            let mut voices = Vec::new();
-            let mut seen = HashSet::new();
-            // M/404 uses 250 per page and leaves asc absent without a saved order.
-            for offset in (0..50_000).step_by(PROGRAM_PAGE) {
-                if source.is_cancelled() {
-                    return Err(Error::QueueChanged);
-                }
-                let response = api.call("/api/v6/dj/program/byradio",
-                    json!({"radioId":radio.id,"offset":offset,"limit":PROGRAM_PAGE}), false, &[200]).await?;
-                let data = &response["data"];
-                let rows = data["programs"].as_array().filter(|rows| rows.len() <= PROGRAM_PAGE)
-                    .ok_or(Error::Response("invalid listened book program page"))?;
-                for raw in rows {
-                    let mut voice = Episode::from_official(raw)?;
-                    if !seen.insert(voice.id.clone()) {
-                        return Err(Error::QueueChanged);
-                    }
-                    if voice.radio.is_none() {
-                        voice.radio = Some(radio.clone());
-                    }
-                    voices.push(voice);
-                }
-                match data["more"].as_bool() {
-                    Some(false) => break,
-                    None if data["more"].is_null() => break,
-                    Some(true) if !rows.is_empty() && offset + PROGRAM_PAGE < 50_000 => (),
-                    _ => return Err(Error::Response("listened book program pages do not advance")),
-                }
+            if source.is_cancelled() {
+                return Err(Error::QueueChanged);
             }
+            // M/404 rechecks the book's latest record when resolving the
+            // clicked chapter. It must never change the chapter selected.
+            let voices = if locally_latest {
+                around(api.as_ref(), &chapter.id).await?
+            } else {
+                by_radio(api.as_ref(), &radio.id, &source).await?
+            };
             let mut resources = Vec::with_capacity(voices.len());
             let mut selected = None;
             let api = PodcastApi::new(api);
@@ -333,6 +430,9 @@ impl MusicClient {
                     return Err(Error::QueueChanged);
                 }
                 let is_selected = voice.id == chapter.id;
+                if voice.radio.is_none() {
+                    voice.radio = Some(radio.clone());
+                }
                 if voice.song_id.is_none() {
                     if !is_selected {
                         continue;
@@ -351,9 +451,15 @@ impl MusicClient {
                         return Err(Error::QueueChanged);
                     }
                     selected = Some(resources.len());
-                    // Progress only for this exact chapter, never an audio authorization.
+                    // This is the clicked row's explicit breakpoint, with no
+                    // retained offset if fresh metadata names a different media.
+                    let media_matches = chapter.media_id.as_deref()
+                        .is_none_or(|media| voice.song_id.as_deref() == Some(media));
+                    let position = if media_matches && !chapter.completed && chapter.location < chapter.duration {
+                        chapter.location
+                    } else { 0 };
                     resource["voice"]["djPlayRecordVo"] = json!({
-                        "id":chapter.id, "listenLocation":chapter.location, "isListened":chapter.completed
+                        "id":chapter.id, "listenLocation":position, "isListened":chapter.completed
                     });
                 }
                 resource["song"] = voice.download_metadata()?;

@@ -404,7 +404,7 @@ impl MusicClient {
                 let state = self
                     .submit_selection_with_source(
                         &token,
-                        PlaybackCommand::Replace {
+                        PlaybackCommand::ReplaceListenedBook {
                             resources,
                             index,
                             source,

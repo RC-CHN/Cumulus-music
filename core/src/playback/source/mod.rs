@@ -88,8 +88,10 @@ impl SourceResolver {
         &self,
         resource: &Value,
         token: &SessionToken,
+        supplied_checkpoint: bool,
     ) -> Result<Option<f64>> {
-        crate::podcast::progress::position(&self.session, token, resource).await
+        crate::podcast::progress::position(&self.session, token, resource, supplied_checkpoint)
+            .await
     }
     pub(crate) async fn missing_catalog_download(
         &self,

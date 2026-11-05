@@ -202,7 +202,13 @@ export interface ListenedBooksPage {
     key: number;
     radio: PodcastCard;
     subscribers: number | null;
-    chapter: { name: string; percent: number | null; completed: boolean; playable: boolean } | null;
+    chapter: {
+      name: string;
+      recent: boolean;
+      percent: number | null;
+      completed: boolean;
+      playable: boolean;
+    } | null;
   }[];
 }
 export type ListenedBooksQuery =
