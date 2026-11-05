@@ -205,12 +205,11 @@ impl AccountSession {
             .membership
             .as_mut()
             .filter(|entry| entry.token == *token)
+            && tuple == old.tuple
         {
-            if tuple == old.tuple {
-                old.server_now = commit.server_now;
-                state.membership_commits.send_replace(Some(commit));
-                return Ok(value);
-            }
+            old.server_now = commit.server_now;
+            state.membership_commits.send_replace(Some(commit));
+            return Ok(value);
         }
         let observation = MembershipObservation {
             epoch: token.generation.to_string(),
