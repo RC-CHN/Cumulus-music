@@ -1272,7 +1272,10 @@ impl MusicClient {
         };
         let source_resume =
             source_guard.is_some() && matches!(action, PlayerAction::Pause { paused: false });
-        let lease = if source_resume {
+        let lease = if source_resume || minibar_step.is_some() {
+            // A verified bottom-bar step can keep the current entry. Reuse
+            // its audio focus instead of transiently pausing it during a
+            // handoff from Audio to itself.
             Some(self.audio_source_resume_lease(&token).await?)
         } else if matches!(
             action,
