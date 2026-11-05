@@ -1,4 +1,4 @@
-"""Prove classic podcast Scene FM and Settings in Linux WebView and null libmpv."""
+"""Prove classic podcast Scene FM and Settings in the real WebView and null libmpv."""
 import argparse
 import json
 import os
@@ -61,17 +61,21 @@ def check_calls(calls, directory_count, playback):
     assert check_at < media_at, calls
 
 
-def run(case, root, binary, dist, screenshots):
+def run(case, root, binary, dist, runtime, screenshots):
     root.mkdir()
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
-    env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_PODCAST_SCENE_HOME_PROOF=case,
-               LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
+    env.update(CUMULUS_PROOF_DIR=str(root / 'run'), CUMULUS_PODCAST_SCENE_HOME_PROOF=case)
+    if sys.platform == 'linux':
+        env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11')
+    if runtime:
+        env['PATH'] = str(runtime) + os.pathsep + env.get('PATH', '')
     env['CUMULUS_UX_SCRIPT'] = str(Path(__file__).resolve().parents[2]
                                    / 'desktop/examples/podcast_scene_home_ui_probe.js')
     if dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(dist)
     for key, name in (('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
-                      ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime')):
+                      ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
+                      ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')):
         directory = root / 'os-profile' / name
         directory.mkdir(parents=True, mode=0o700)
         env[key] = str(directory)
@@ -114,28 +118,33 @@ def run(case, root, binary, dist, screenshots):
         assert opened['state']['playId'] == returned['state']['playId']
         assert opened['queue'] == returned['queue']
         assert opened['state']['position'] > returned['state']['position']
-    locale = read(output / 'locale.json')
-    assert locale['numeric'] == 'C' and all(locale[k].casefold().replace('-', '') == 'en_us.utf8'
-                                            for k in ('messages', 'characters')), locale
+    if sys.platform == 'linux':
+        locale = read(output / 'locale.json')
+        assert locale['numeric'] == 'C' and all(locale[k].casefold().replace('-', '') == 'en_us.utf8'
+                                                for k in ('messages', 'characters')), locale
     captures = len(list(output.glob('ux_*.png')))
     assert not screenshots or captures == len(stages), (captures, stages)
     return {'stages': list(stages), 'screenshots': captures, 'calls': complete['calls']}
 
 
 def main():
-    assert sys.platform == 'linux', 'this proof runs on Linux X11/Xvfb'
+    assert sys.platform in ('linux', 'win32'), 'this proof runs on Linux X11 or Windows'
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--root', required=True, type=Path)
+    parser.add_argument('--runtime', type=Path)
     parser.add_argument('--case', action='append', choices=STAGES)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
+    if args.screenshots and sys.platform != 'linux':
+        parser.error('--screenshots requires Linux X11')
     binary = args.binary.resolve(strict=True)
     dist = args.frontend_dist.resolve(strict=True) if args.frontend_dist else None
+    runtime = args.runtime.resolve(strict=True) if args.runtime else None
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
-    results = {case: run(case, root / case, binary, dist, args.screenshots)
+    results = {case: run(case, root / case, binary, dist, runtime, args.screenshots)
                for case in (args.case or STAGES)}
     result = {'actualWebView': True, 'decoder': 'libmpv', 'audioOutput': 'null',
               'transport': 'synthetic only', 'cases': results}
