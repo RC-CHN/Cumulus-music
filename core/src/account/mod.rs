@@ -1,6 +1,6 @@
 //! Login and identity lifecycle. A QR authorization still requires account/get.
-mod api;
 pub mod anonymous_identity;
+mod api;
 pub mod artist_onboarding;
 pub mod collections;
 pub mod credential_import;
