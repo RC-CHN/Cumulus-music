@@ -101,6 +101,24 @@ impl Native {
 mod tests {
     use super::super::node::{List, Value};
     use super::*;
+
+    fn decode_fixture(
+        keys: &mut [*mut std::ffi::c_char; 2],
+        values: &mut [Node; 2],
+    ) -> Result<Option<(u32, u32)>> {
+        let mut list = List {
+            num: 2,
+            values: values.as_mut_ptr(),
+            keys: keys.as_mut_ptr(),
+        };
+        let node = Node {
+            format: MAP,
+            value: Value { list: &mut list },
+        };
+        // SAFETY: complete live synthetic tagged-node storage for this call.
+        unsafe { decode(&node) }
+    }
+
     #[test]
     fn decoded_map_requires_actual_integer_fields_and_preserves_mono() {
         let mut keys = [
@@ -117,23 +135,19 @@ mod tests {
                 value: Value { int64: 1 },
             },
         ];
-        let mut list = List {
-            num: 2,
-            values: values.as_mut_ptr(),
-            keys: keys.as_mut_ptr(),
-        };
-        let node = Node {
-            format: MAP,
-            value: Value { list: &mut list },
-        };
-        // SAFETY: complete live synthetic tagged-node storage.
-        assert_eq!(unsafe { decode(&node) }.unwrap(), Some((48000, 1)));
+        assert_eq!(
+            decode_fixture(&mut keys, &mut values).unwrap(),
+            Some((48000, 1))
+        );
         values[1].value = Value { int64: 2 };
-        assert_eq!(unsafe { decode(&node) }.unwrap(), Some((48000, 2)));
+        assert_eq!(
+            decode_fixture(&mut keys, &mut values).unwrap(),
+            Some((48000, 2))
+        );
         values[1].format = 1;
-        assert!(unsafe { decode(&node) }.is_err());
+        assert!(decode_fixture(&mut keys, &mut values).is_err());
         values[1].format = INT64;
         keys[1] = keys[0];
-        assert!(unsafe { decode(&node) }.is_err());
+        assert!(decode_fixture(&mut keys, &mut values).is_err());
     }
 }

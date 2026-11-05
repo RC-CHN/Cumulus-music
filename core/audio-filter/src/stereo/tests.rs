@@ -152,7 +152,7 @@ fn five_ports_keep_stereo_linked_and_reactivation_is_original_reset() {
     let mut right = vec![0.0; cap];
     for i in 0..cap {
         left[i] = (i % 17) as f32 * 0.0078125;
-        right[i] = -(i % 7) as f32 * 0.015625;
+        right[i] = -((i % 7) as f32) * 0.015625;
     }
     let format = Format::new(48000.0, 2, abi::CAPACITY).unwrap();
     let mut expected = StereoAmbienceOneStage::new(format).unwrap();
