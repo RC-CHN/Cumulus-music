@@ -31,6 +31,10 @@ CASES = {
                     "promoted_detail", "promoted_play", "liked_detail", "liked_play"),
     "playlist-batch": ("ordinary_play", "zone_detail", "batch_hydrated", "batch_play", "batch_append",
                        "batch_download", "batch_queued_play"),
+    "playlist-queue-menu": (
+        "zone_empty_detail", "zone_empty_next", "ordinary_detail", "ordinary_added",
+        "zone_filtered_detail", "whole_added", "row_moved", "row_playing",
+    ),
 }
 DEFAULT_CASES = ("full", "privacy", "hotspot")
 
@@ -188,6 +192,54 @@ def check_playlist_batch(rows):
     assert auth["92"] == -1 and auth["87"] == auth["84"] == 121, auth
 
 
+def check_playlist_queue_menu(rows):
+    previous = []
+    relevant = {PLAYLIST, PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG, PLAY}
+    paths_by_stage = {
+        "zone_empty_detail": [PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG],
+        "zone_empty_next": [PLAY],
+        "ordinary_detail": [PLAYLIST, SONG],
+        "ordinary_added": [PLAYLIST, SONG, PLAY],
+        "zone_filtered_detail": [PLAYLIST_V4, PLAYLIST_DYNAMIC, SONG],
+        "whole_added": [],
+        "row_moved": [],
+        "row_playing": [PLAY],
+    }
+    moved_authorizations = []
+    for stage, row in rows.items():
+        wire = row["verticalZoneCalls"]
+        assert wire[:len(previous)] == previous, stage
+        delta = [(call["path"], call["args"]) for call in wire[len(previous):] if call["path"] in relevant]
+        previous = wire
+        # Source prefetch can add a second authorized row on the same stage
+        # or later. Treat only distinct operation reads as mandatory below.
+        assert [path for path, _ in delta if path != PLAY] == [
+            path for path in paths_by_stage[stage] if path != PLAY], (stage, delta)
+        if stage in {"zone_empty_detail", "zone_filtered_detail"}:
+            assert delta[-1][1]["trialMode"] == 121
+        if stage == "ordinary_detail":
+            assert "trialMode" not in delta[-1][1]
+        if stage in {"row_moved", "row_playing"}:
+            moved_authorizations.extend(args for path, args in delta if path == PLAY and
+                                        list(map(str, json.loads(args["ids"]))) == ["87"])
+        if stage in {"zone_empty_next", "ordinary_added", "row_playing"}:
+            song, trial = ("92", -1) if stage == "ordinary_added" else ("87", 121)
+            if stage == "row_playing":
+                assert moved_authorizations and all(args["trialMode"] == trial for args in moved_authorizations), moved_authorizations
+            else:
+                assert any(path == PLAY and args["trialMode"] == trial and
+                           list(map(str, json.loads(args["ids"]))) == [song] for path, args in delta), (stage, delta)
+            player = row["nativePlayer"]
+            assert player["state"] == "playing" and player["position"] > .15
+            assert player["track"]["id"] == song and player["playId"] == row["playId"]
+    assert rows["zone_empty_next"]["queue"] == ["87"]
+    assert rows["ordinary_added"]["queue"] == ["92", "93"]
+    assert rows["whole_added"]["queue"] == ["92", "81", "84", "87", "93"]
+    assert rows["row_moved"]["queue"] == ["92", "87", "81", "84", "93"]
+    assert rows["whole_added"]["playId"] == rows["row_moved"]["playId"] == rows["ordinary_added"]["playId"]
+    assert rows["row_playing"]["playId"] != rows["row_moved"]["playId"]
+
+
 def check_case(directory, case, screenshots, windows):
     output = directory / "first"
     complete = read(output / "complete.json")
@@ -255,6 +307,8 @@ def check_case(directory, case, screenshots, windows):
         check_playlist_v6(rows)
     elif case == "playlist-batch":
         check_playlist_batch(rows)
+    elif case == "playlist-queue-menu":
+        check_playlist_queue_menu(rows)
     else:
         check_playlist_detail(rows)
     if not windows:

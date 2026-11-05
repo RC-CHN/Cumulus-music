@@ -704,6 +704,7 @@ fn main() {
     if zone_fm_preview_fixture::enabled()
         || vertical_zone_fixture::playlist_v6()
         || vertical_zone_fixture::playlist_batch()
+        || vertical_zone_fixture::playlist_queue_menu()
     {
         zone_fm_preview_fixture::restrict_artwork(&mut context);
     }

@@ -25,8 +25,12 @@ pub fn playlist_batch() -> bool {
     std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("playlist-batch")
 }
 
+pub fn playlist_queue_menu() -> bool {
+    std::env::var("CUMULUS_VERTICAL_ZONE_PROOF").as_deref() == Ok("playlist-queue-menu")
+}
+
 pub fn playlist_stage_ack() -> bool {
-    playlist_detail() || playlist_v6() || playlist_batch()
+    playlist_detail() || playlist_v6() || playlist_batch() || playlist_queue_menu()
 }
 
 pub fn batch_omit_song(id: u64, args: &Value) -> bool {
@@ -243,6 +247,8 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
         "/api/v6/playlist/detail" if args["id"] == "204" || args["id"] == 204 => {
             if playlist_batch() {
                 playlist("合成批量测试普通歌单", &[92, 93])
+            } else if playlist_queue_menu() {
+                playlist("合成队列测试普通歌单", &[92, 93])
             } else if playlist_detail() {
                 playlist("合成普通歌单详情", &[81, 84, 87])
             } else {
@@ -252,7 +258,7 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             }
         }
         "/api/playlist/v4/detail" if *args == json!({"id":"204","n":0,"s":0}) => {
-            let ids: &[u64] = if playlist_detail() || playlist_batch() {
+            let ids: &[u64] = if playlist_detail() || playlist_batch() || playlist_queue_menu() {
                 &[81, 84, 87]
             } else {
                 &[81, 84]

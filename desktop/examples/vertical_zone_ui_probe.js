@@ -39,7 +39,7 @@
     return page && !page.matches('.page-enter-active,.page-leave-active') &&
       getComputedStyle(page).opacity === '1';
   };
-  const playlistStages = ['playlist-detail', 'playlist-v6', 'playlist-batch'].includes(window.__verticalZoneCase);
+  const playlistStages = ['playlist-detail', 'playlist-v6', 'playlist-batch', 'playlist-queue-menu'].includes(window.__verticalZoneCase);
   let count = 0;
   async function capture(name, values = {}) {
     await wait(settled, `settled page before ${name}`);
@@ -238,6 +238,109 @@
     const queuedPlay = await started('84', selected);
     await capture('batch_queued_play', { playId: queuedPlay });
   }
+  async function playlistQueueMenuCase() {
+    const { epoch } = await invoke('account_snapshot');
+    const player = () => invoke('player_snapshot', { epoch });
+    const queue = () => invoke('player_queue', { epoch });
+    const row = (id) => one(`.track-row[data-track-id="${id}"]`);
+    const marker = () => one('[data-zone-playlist-detail]');
+    const menuPanel = () => one('.action-menu');
+    const named = (label) => all('.action-menu button').find((item) => item.textContent.trim() === label);
+    const header = () => one('button[aria-label="更多歌单操作"]');
+    const rowMenu = (id) => row(id)?.querySelector('button.track-more');
+    let previous;
+    async function open(label, scoped, id) {
+      const card = button(label);
+      card.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      await wait(() => hit(card), label);
+      click(card, label);
+      await wait(() => settled() && !!marker() === scoped && row(id) && header(), 'playlist detail is ready');
+    }
+    async function action(trigger, label, headerMenu = false) {
+      trigger().scrollIntoView({ block: 'nearest' });
+      await wait(() => hit(trigger()), `${label} trigger`);
+      click(trigger(), label);
+      await wait(() => menuPanel()?.style.visibility === 'visible' && named(label), `${label} menu item`);
+      if (headerMenu) assert(!named('下一首播放'), 'playlist detail header does not offer Next');
+      click(named(label), label);
+      await wait(() => document.activeElement === trigger(), `${label} returns focus to its trigger`);
+    }
+    async function checkQueue(expected) {
+      let displayed;
+      await wait(async () => {
+        displayed = await queue();
+        return displayed.tracks.map((item) => item.track.id).join() === expected;
+      }, `native queue ${expected}`);
+      return displayed;
+    }
+    async function started(id) {
+      let current;
+      await wait(async () => {
+        const value = await player();
+        if (value.state !== 'playing' || value.track?.id !== id ||
+            value.playId === previous || !(value.position > 0.15)) return false;
+        current = value;
+        return true;
+      }, `native clock after starting ${id}`);
+      previous = current.playId;
+      return current;
+    }
+    async function leave() {
+      back();
+      await wait(() => button('专区合成歌单 204'), 'return to zone');
+    }
+    async function stop() {
+      await invoke('player_action', { epoch, action: { kind: 'stop' } });
+      await wait(async () => (await player()).state === 'idle', 'stopped previous song');
+    }
+    const scoped = '专区合成歌单 204';
+    await open(scoped, true, '87');
+    await capture('zone_empty_detail');
+    await action(() => rowMenu('87'), '下一首播放');
+    const next = await started('87');
+    await checkQueue('87');
+    await capture('zone_empty_next', { queue: ['87'], playId: next.playId });
+
+    await stop();
+    // Stop preserves the selected queue; clear through its displayed fence.
+    const existing = await queue();
+    await invoke('player_action', { epoch, action: {
+      kind: 'queue_for', expected_queue_revision: existing.revision, expected_room_id: null,
+      edit: { kind: 'clear' },
+    } });
+    await checkQueue('');
+    await leave();
+    await open('专区普通同号歌单', false, '92');
+    await capture('ordinary_detail');
+    await action(header, '添加全部至播放列表', true);
+    const ordinary = await started('92');
+    await checkQueue('92,93');
+    await capture('ordinary_added', { queue: ['92', '93'], playId: ordinary.playId });
+    await leave();
+
+    await open(scoped, true, '87');
+    const search = one('[aria-label="搜索歌单歌曲"]');
+    search.value = '87';
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await wait(() => row('87') && !row('81') && !row('84'), 'text search leaves just 87 visible');
+    await capture('zone_filtered_detail');
+    await action(header, '添加全部至播放列表', true);
+    const whole = await checkQueue('92,81,84,87,93');
+    assert((await player()).playId === ordinary.playId, 'header append does not restart current');
+    await capture('whole_added', { queue: whole.tracks.map((item) => item.track.id), playId: ordinary.playId });
+
+    await action(() => rowMenu('87'), '下一首播放');
+    const moved = await checkQueue('92,87,81,84,93');
+    assert((await player()).playId === ordinary.playId, 'row Next does not restart current');
+    assert(moved.tracks[1].entryId === whole.tracks[3].entryId, 'row Next moves, not duplicates');
+    await capture('row_moved', { queue: moved.tracks.map((item) => item.track.id), playId: ordinary.playId });
+    click(one('button[aria-label="播放队列"]'), 'open playback queue');
+    const nextPlay = () => one(`.queue-row[data-entry-id="${moved.tracks[1].entryId}"] .queue-play`);
+    await wait(() => nextPlay() && !nextPlay().disabled, 'moved row is playable');
+    click(nextPlay(), 'play moved row');
+    const played = await started('87');
+    await capture('row_playing', { playId: played.playId });
+  }
   async function playlistV6Case() {
     const entries = [
       ['ordinary', '专区普通同号歌单', '204', '合成普通同号详情', false, '81'],
@@ -358,6 +461,7 @@
     if (playlistStages) {
       if (window.__verticalZoneCase === 'playlist-v6') await playlistV6Case();
       else if (window.__verticalZoneCase === 'playlist-batch') await playlistBatchCase();
+      else if (window.__verticalZoneCase === 'playlist-queue-menu') await playlistQueueMenuCase();
       else await playlistDetailCase();
       await emit('complete', { ok: true, stageCount: count });
       return;
