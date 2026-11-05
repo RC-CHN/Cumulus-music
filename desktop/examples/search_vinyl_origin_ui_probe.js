@@ -40,7 +40,15 @@
   }
   async function openVinyl() {
     click(await wait(() => ready(lyrics()), 'open vinyl control'));
-    return wait(() => panel()?.dataset.vinylMode === 'classic' && source(), 'classic vinyl source');
+    return wait(() => {
+      const view = panel();
+      const label = source();
+      if (view?.dataset.vinylMode !== 'classic' || !label ||
+        view.classList.contains('lyrics-panel-enter-active') || getComputedStyle(view).opacity !== '1') return false;
+      const box = label.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 &&
+        label.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)) && label;
+    }, 'classic vinyl source visibly settled');
   }
   async function closeVinyl() {
     click(await wait(() => ready(panel()?.querySelector('[aria-label="收起播放详情"]')), 'close vinyl control'));
