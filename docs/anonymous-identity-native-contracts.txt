@@ -26,6 +26,8 @@ Recovered chain
   6b570, XOR helper 6a6c0, URL replacement 6a770, MD5 init/update/final
   4ae8c0/4af330/4ae820, Base64 4ab380. Key/space VAs are 10ac8f94/10ac5ba0.
   This corroborates the sequence; x86 instructions have not been executed here.
+  Exact x86 DLL SHA-256:
+  b080a1c8c90cce1e2eefe93d992f81dc4db02dee7bc8c3b681e69e55a001cace.
 
 The formula, with each URL Base64 retaining padding, is:
   inner = urlBase64(MD5(utf8(deviceId) XOR repeated-key))
@@ -71,5 +73,19 @@ the full experiment refresh. A local unregistered guest is not that state.
 Registration recovery, anonymous Cookie/UID adoption and presentation ownership
 belong to the separate native runtime implementation. This encoder and oracle
 do not send registration or prove server acceptance. No third-party client was
-used. Rust focused tests are recorded after they run; original-machine-code
-vectors do not substitute for executing the Rust implementation.
+used.
+
+2026-11-05 focused validation
+- Original x64 encoder core: 38/38 actual outputs, including Unicode/NUL and
+  4096 bytes. The committed Python/C research runner independently reproduced
+  all 38 frozen outputs; raw output SHA-256:
+  7ea3feded4825acec316bdcb64f3c4e17043103c62552a8a3d3285bf21cc3b46.
+  Its private report is phase58-anonymous-native-public-runner-20261105-a/report.json.
+- Rust: cargo test --locked --offline -p cumulus-core --lib
+  account::anonymous_identity::tests passed 2 tests, zero failures: frozen native
+  vectors plus explicit UTF-8 byte-limit rejection. Strict scoped --lib Clippy
+  (-D warnings) and both module rustfmt checks passed. Code is ddc02c66 with
+  module-order-only formatting fb58cca5. No full-workspace claim is made.
+- No real anonymous account, Cookie/UID adoption, Windows execution or remote
+  registration was tested. Original-machine-code vectors did not substitute
+  for executing the Rust implementation.
