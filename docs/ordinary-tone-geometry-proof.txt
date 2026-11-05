@@ -1,0 +1,64 @@
+The ordinary audio effects callback measurement is an opt-in Linux proof, not
+an effect activation. The default audio filter library, installed package,
+frontend settings, media authorization and existing GEQ/BT/PEQ are unchanged.
+Do not package the instrumented cdylib. No workflow enables it automatically.
+
+Why measure it: the recovered PC 3.1.42.205594 ordinary MAudioPlayer's type-4
+source path can feed AudioDeviceThread 10542F0, native SDK 67C00 → 1AA50 and
+node +50 A2970. 10555B0 uses opened audio-device PCM geometry. SDK write uses
+2048-frame staging; seek Reset (67F70) is separate from full material begin
+(68000). Existing mono Cumulus LADSPA uses `asetnsamples=n=2048:p=0` before the
+actual callback. A configured quantum is not evidence of callback geometry,
+all-channel revision delivery, physical speaker order, or a native seek/reset.
+
+The default-off `tone-geometry-proof` feature adds a private in-memory receipt
+to the actual Equalizer Processor. It records instantiation rate, callback
+frame count, accepted filter revision, opaque instance ID, activation, and
+retirement. A bounded, non-wrapping 2048-row atomic log does not record sample
+values, media IDs, or paths; the render callback never allocates, waits on the
+log, or calls a reader. Overflow is a proof failure. Its optional private ABI
+is only loaded by the sealed desktop example, not registered with Tauri IPC.
+
+The existing `ux_ui_probe` hosts the production account, player selection,
+transport, and Equalizer UI in a fresh temporary WebView/profile. Two exact
+synthetic online source authorizations are consumed. Only their two approved
+URLs map at the injected engine boundary to frozen-layout generated WAVs:
+44.1 kHz mono, and 48 kHz stereo with 144137 frames (70 full 2048 callbacks and
+777 unpadded frames if stock geometry matches). The engine is real libmpv with
+null output; there is no HTTPS decode. The Linux driver requires a different
+loopback-only network namespace. The probe applies bass +4 and then treble -3
+on the same mono play, pauses, seeks to 1.37 s, resumes the same native entry,
+then loads the authorized stereo source and waits for its natural EOF. Each
+stable interval correlates `audio-params` (decoded rate/count) and real callback
+receipts, and separately records before/after boundaries of material updates,
+seek, stop, and load. The unambiguous stable windows intentionally exclude
+transitional callbacks. Only the uninterrupted stereo EOF interval is checked
+for exact complete frame count and short tail in each lane. Neither callback
+ordinal nor lane order labels left/right, a speaker layout, an exact PCM frame
+at a switch, or the official device's negotiated sample representation.
+
+After the ordinary locked frontend build, build the desktop example and the
+instrumented library in separate proof targets:
+
+  cargo build -p cumulus-desktop --features custom-protocol --locked --example ux_ui_probe
+  CARGO_TARGET_DIR=.build/tone-geometry-filter-target cargo build \
+      -p cumulus-audio-filter --features tone-geometry-proof --locked
+  cargo test -p cumulus-audio-filter --features tone-geometry-proof --locked \
+      tone_geometry::tests::snapshot_never_skips_a_partially_published_callback_or_wraps
+
+Run under the established isolated Linux Xvfb/DBus environment with LC_ALL
+=en_US.UTF-8 and GDK_BACKEND=x11. Capture the outer network namespace before
+unsharing and pass it to the driver; bring up only loopback in the new
+namespace. The `--root` must not already exist:
+
+  /usr/bin/python3 scripts/ci/ordinary_tone_geometry_smoke.py \
+      --outer-network "$outer_network" --screenshots \
+      --binary <proof-target>/debug/examples/ux_ui_probe \
+      --library .build/tone-geometry-filter-target/debug/libcumulus_audio_filter.so \
+      --frontend-dist frontend/dist --root .build/ui-proof/ordinary-tone-geometry
+
+Acceptance requires the real GTK numeric locale to be C while messages and
+character classification stay on the non-C launch locale. The report records
+actual measurements only after all checks pass, including one native EOF and
+no duplicated authorizations. No physical sound, official whole-graph parity,
+proprietary audio activation, rights widening, or Windows execution is proved.

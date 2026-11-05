@@ -8,6 +8,9 @@ publish.workspace = true
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+tone-geometry-proof = []
+
 [dependencies]
 cumulus-core.workspace = true
 

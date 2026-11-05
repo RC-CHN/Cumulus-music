@@ -91,6 +91,8 @@ mod style_home_fixture;
 mod style_recommendations_fixture;
 #[path = "support/system_master_volume_fixture.rs"]
 mod system_master_volume_fixture;
+#[path = "support/tone_geometry.rs"]
+mod tone_geometry;
 #[path = "support/vertical_zone_fixture.rs"]
 mod vertical_zone_fixture;
 #[path = "support/vinyl_comments_fixture.rs"]
@@ -469,6 +471,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = style_recommendations_fixture::response(path, &args) {
+                return response;
+            }
+            if let Some(response) = tone_geometry::response(path, &args) {
                 return response;
             }
             if let Some(response) = effect_peq_fixture::response(path, &args) {
@@ -870,6 +875,8 @@ fn main() {
     assert!(!ordinary_source_bypass_proof || peq_proof);
     let device_peq_proof = std::env::var_os("CUMULUS_EFFECT_DEVICE_NATIVE_PROOF").is_some();
     assert!(!device_peq_proof || (!peq_proof && effect_directory_fixture::enabled()));
+    let tone_geometry_proof = tone_geometry::enabled();
+    assert!(!tone_geometry_proof || (motion_proof && !peq_proof && !device_peq_proof));
     let device_source_bypass_proof = effect_directory_fixture::source_bypass_enabled();
     assert!(!device_source_bypass_proof || device_peq_proof);
     assert!(
@@ -1015,7 +1022,12 @@ fn main() {
         let factory_elapsed = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let factory_count = Arc::new(std::sync::atomic::AtomicU64::new(0));
         let card_audio = Arc::new(card_source_fixture::Control::default());
-        if peq_proof || device_peq_proof {
+        if tone_geometry_proof {
+            let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER")
+                .expect("trusted instrumented fixture EQ adapter")).canonicalize()?;
+            let paths = tone_geometry::prepare(&root, &path)?;
+            client = client.with_audio_factory(move || Ok(Box::new(tone_geometry::Audio::open(paths.clone(), path.clone())?)));
+        } else if peq_proof || device_peq_proof {
             let path = PathBuf::from(std::env::var_os("CUMULUS_AUDIO_FILTER")
                 .expect("trusted synthetic PEQ adapter"));
             let wave = relay_fixture::wave(&root)?;
@@ -1526,8 +1538,12 @@ fn main() {
                             }
                         }
                     } else { value["nativePlayerUnavailable"]=json!(true); }
+                    if tone_geometry_proof { value["toneGeometry"]=tone_geometry::report(); }
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                     if !capture_ack::acknowledge(&handle,&output,&stage,value["captureHandshake"]==true).await {return;}
+                    if tone_geometry_proof && stage.starts_with("ux_") {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__toneGeometryRecorded={};",json!(stage))).unwrap();
+                    }
                     if ordinary_source_bypass_proof && stage.starts_with("ux_") {
                         handle.get_webview_window("main").unwrap().eval(format!("window.__ordinaryPeqStageRecorded={};",json!(stage))).unwrap();
                     }

@@ -15,10 +15,19 @@ pub(crate) struct Processor {
     control: Option<Arc<Control>>,
     revision: u64,
     faulted: bool,
+    #[cfg(feature = "tone-geometry-proof")]
+    geometry: Option<crate::tone_geometry::Instance>,
 }
 impl Processor {
     pub fn new(rate: u64) -> Option<Self> {
-        Self::new_for(rate, StageKind::Equalizer)
+        let processor = Self::new_for(rate, StageKind::Equalizer)?;
+        #[cfg(feature = "tone-geometry-proof")]
+        let processor = {
+            let mut processor = processor;
+            processor.geometry = Some(crate::tone_geometry::Instance::new(rate));
+            processor
+        };
+        Some(processor)
     }
     pub fn new_loudness(rate: u64) -> Option<Self> {
         Self::new_for(rate, StageKind::Loudness)
@@ -35,6 +44,8 @@ impl Processor {
             control: None,
             revision: 0,
             faulted: false,
+            #[cfg(feature = "tone-geometry-proof")]
+            geometry: None,
         })
     }
     pub fn reset(&mut self) {
@@ -49,6 +60,10 @@ impl Processor {
             let _ = self.synchronize(true);
         } else {
             self.faulted = true;
+        }
+        #[cfg(feature = "tone-geometry-proof")]
+        if let Some(instance) = &self.geometry {
+            instance.activate(self.revision);
         }
     }
     fn synchronize(&mut self, activating: bool) -> bool {
@@ -122,6 +137,10 @@ impl Processor {
             return;
         }
         if self.faulted || self.ports[0].is_null() || !self.synchronize(false) {
+            #[cfg(feature = "tone-geometry-proof")]
+            if let Some(instance) = &self.geometry {
+                instance.run(frames, 0);
+            }
             // SAFETY: output pointer is connected, with frames writable floats.
             unsafe {
                 std::ptr::write_bytes(self.ports[1], 0, frames);
@@ -130,6 +149,10 @@ impl Processor {
                 c.failed.fetch_add(1, Ordering::Relaxed);
             }
             return;
+        }
+        #[cfg(feature = "tone-geometry-proof")]
+        if let Some(instance) = &self.geometry {
+            instance.run(frames, self.revision);
         }
         for offset in (0..frames).step_by(abi::CAPACITY as usize) {
             let count = (frames - offset).min(abi::CAPACITY as usize);
