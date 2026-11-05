@@ -302,6 +302,10 @@ pub enum PlaySelection {
     MessageVoice {
         id: String,
     },
+    SearchArtistCard {
+        id: String,
+        quality: Quality,
+    },
     SearchResultVoice {
         id: String,
     },

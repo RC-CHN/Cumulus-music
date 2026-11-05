@@ -358,6 +358,7 @@ export type PlaySelection =
     }
   | { kind: 'cloud_batch'; ids: string[]; revision: string; quality: Quality; query?: CloudQuery }
   | { kind: 'search_hot_track'; id: string; quality: Quality }
+  | { kind: 'search_artist_card'; id: string; quality: Quality }
   | { kind: 'search_result_track'; id: string; quality: Quality; toggle_current: boolean }
   | {
       kind: 'search_results';

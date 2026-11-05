@@ -16,6 +16,7 @@ pub use api::{
     SongBatch,
 };
 pub use artist::{ArtistApi, ArtistPageRequest};
+pub(crate) use privileges::merge_song_privileges;
 
 /// Official M/21 R chooses id || albumId before converting to decimal text.
 pub(crate) fn album_identifier(value: &serde_json::Value) -> crate::Result<String> {

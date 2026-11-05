@@ -16,6 +16,7 @@ import {
 import type { CoreClient, TrackView } from '../src/services/contracts.ts';
 import type { SearchItem } from '../src/services/search.ts';
 const artist = { kind: 'artist', artist: { id: '12' } } as Extract<SearchItem, { kind: 'artist' }>;
+const album = { kind: 'album', album: { id: '12' } } as Extract<SearchItem, { kind: 'album' }>;
 const voice = {
   kind: 'voice',
   voice: { id: '21', radioId: '7', unavailable: false },
@@ -24,7 +25,7 @@ const podcast = {
   kind: 'podcast',
   podcast: { id: '7', unavailable: false },
 } as Extract<SearchItem, { kind: 'podcast' }>;
-test('cards select authoritative catalog and radio revisions, not cached search titles', async () => {
+test('artist covers select the native resolver; album and radio keep their own snapshots', async () => {
   const calls: unknown[] = [];
   const core = {
     catalogPage: async (...args: unknown[]) => {
@@ -32,10 +33,10 @@ test('cards select authoritative catalog and radio revisions, not cached search 
       return {
         epoch: '1',
         value: {
-          query: { kind: 'artist', id: '12' },
+          query: { kind: 'album', id: '12' },
           revision: 'fresh',
           page: {
-            kind: 'artist',
+            kind: 'album',
             tracks: [
               { id: '1', missing: true },
               { id: '2', missing: false },
@@ -50,8 +51,14 @@ test('cards select authoritative catalog and radio revisions, not cached search 
     },
   } as unknown as CoreClient;
   assert.deepEqual(await searchCardSelection(core, '1', artist, 'lossless'), {
+    kind: 'search_artist_card',
+    id: '12',
+    quality: 'lossless',
+  });
+  assert.deepEqual(calls, []);
+  assert.deepEqual(await searchCardSelection(core, '1', album, 'lossless'), {
     kind: 'catalog',
-    pages: [{ query: { kind: 'artist', id: '12' }, revision: 'fresh' }],
+    pages: [{ query: { kind: 'album', id: '12' }, revision: 'fresh' }],
     index: 1,
     quality: 'lossless',
   });
@@ -72,7 +79,7 @@ test('missing catalog data and stale radio snapshots cannot become playback sele
     catalogPage: async () => ({ epoch: '1', value: null }),
     podcastPage: async () => ({ epoch: 'old', revision: 'stale' }),
   } as unknown as CoreClient;
-  await assert.rejects(searchCardSelection(core, '1', artist, 'standard'), { code: 'unavailable' });
+  await assert.rejects(searchCardSelection(core, '1', album, 'standard'), { code: 'unavailable' });
   await assert.rejects(searchCardSelection(core, '1', podcast, 'standard'), { code: 'stale' });
 });
 

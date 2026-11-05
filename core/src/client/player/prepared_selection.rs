@@ -105,6 +105,7 @@ impl MusicClient {
                 | PlaySelection::Voice { .. }
                 | PlaySelection::Playlist { .. }
                 | PlaySelection::SearchChart { .. }
+                | PlaySelection::SearchArtistCard { .. }
                 | PlaySelection::Songs { .. }
         ) {
             return Err(Error::InvalidInput(

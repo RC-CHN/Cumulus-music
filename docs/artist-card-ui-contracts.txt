@@ -41,7 +41,8 @@
 ({kind:artist,id},true)，读取/api/artist/v3/detail及/api/song/enhance/privilege；返回
 query/revision交给Rust play_selection Catalog，重读核对后请求song/detail和会员允许
 音源，走现有实际播放器、账号fence和队列持久化。复用核心已恢复的热门50曲分支，
-不声称恢复了所有AB实验组的曲目选择策略。
+此段是非搜索普通卡片；搜索歌手卡片单独恢复官方 AB 选曲，见
+search-results-ui-contracts.txt 的“搜索歌手封面的热门 50 首实验”。
 关注：artistCardMenu.collect -> ArtistActions -> CatalogMembershipDialog ->
 catalog_page({kind:artist_dynamic,id},true)调用/api/artist/detail/dynamic，平行Inspect
 持久化意图；确认后catalog_membership Set复用/api/artist/sublist、/api/artist/sub

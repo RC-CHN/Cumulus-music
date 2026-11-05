@@ -71,6 +71,9 @@ impl MusicClient {
             PlaySelection::FollowLatest { revision, quality } => {
                 self.play_follow_latest(epoch, &revision, quality).await
             }
+            PlaySelection::SearchArtistCard { .. } => Err(Error::InvalidInput(
+                "search artist playback requires a preparation ticket",
+            )),
             input => self.play_selection_inner(epoch, input, None).await,
         }
     }
@@ -270,6 +273,22 @@ impl MusicClient {
         }
         let message_voice = matches!(&input, PlaySelection::MessageVoice { .. });
         let input = match input {
+            PlaySelection::SearchArtistCard { id, quality } => {
+                let (command, source_guard) =
+                    self.search_artist_selection(&token, &id, quality).await?;
+                let state = self
+                    .submit_selection_with_source(
+                        &token,
+                        command,
+                        attempt,
+                        lease,
+                        prepared.as_ref(),
+                        Some(source_guard),
+                    )
+                    .await?;
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
             PlaySelection::Downloads { query, start_id } => {
                 let (resources, index) = self.download_selection(epoch, query, start_id).await?;
                 let state = self
@@ -670,6 +689,7 @@ impl MusicClient {
                     | PlaySelection::Podcast { .. }
                     | PlaySelection::PodcastRecent { .. }
                     | PlaySelection::Voice { .. }
+                    | PlaySelection::SearchArtistCard { .. }
                     | PlaySelection::SearchResultVoice { .. }
                     | PlaySelection::MessageVoice { .. } => {
                         unreachable!("cloud handled before song detail requests")

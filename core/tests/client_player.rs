@@ -49,6 +49,7 @@ struct Backend {
     quality_started: Notify,
     quality_release: Notify,
     vinyl_composer: vinyl_composer::Server,
+    artist_cover: artist_search_cover::CoverFixture,
     vinyl_comment_group: AtomicU64,
     vinyl_comment_calls: Mutex<Vec<(String, Value)>>,
     vinyl_comment_hold: AtomicU64,
@@ -57,6 +58,9 @@ struct Backend {
 }
 impl Api for Backend {
     fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
+        if self.artist_cover.is_enabled() {
+            return Ok(self.artist_cover.revision());
+        }
         let group = self.vinyl_comment_group.load(Ordering::SeqCst);
         Ok((group != 0).then(|| group.to_string()))
     }
@@ -65,6 +69,9 @@ impl Api for Backend {
         revision: &'a str,
     ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
         Box::pin(async move {
+            if self.artist_cover.is_enabled() {
+                return self.artist_cover.groups(revision);
+            }
             let group = if matches!(revision, "1" | "3") {
                 "t1"
             } else {
@@ -112,6 +119,9 @@ impl Api for Backend {
             if let Some(value) = self.vinyl_composer.response(path, &payload).await {
                 assert!(!cache);
                 return value;
+            }
+            if let Some(response) = self.artist_cover.request(path, &payload, cache).await {
+                return response;
             }
             Ok(match path {
                 "/api/v1/resource/comments/R_SO_4_1" => {
@@ -335,6 +345,9 @@ fn songs(id: &str) -> PlaySelection {
         quality: Quality::Lossless,
     }
 }
+
+#[path = "client_player/artist_search_cover.rs"]
+mod artist_search_cover;
 
 #[path = "client_player/prepared_selection.rs"]
 mod prepared_selection;
