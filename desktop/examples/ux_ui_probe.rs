@@ -76,6 +76,8 @@ mod search_artist_top50_fixture;
 mod search_fixture;
 #[path = "support/search_mv_fixture.rs"]
 mod search_mv_fixture;
+#[path = "support/search_privilege_fixture.rs"]
+mod search_privilege_fixture;
 #[allow(dead_code)]
 #[path = "support/settings_fixture.rs"]
 mod settings_fixture;
@@ -336,6 +338,9 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = search_mv_fixture::response(path, &args) {
+                return response;
+            }
+            if let Some(response) = search_privilege_fixture::response(path, &args, cached) {
                 return response;
             }
             if let Some(response) = daily_history_fixture::response(path, &args).await {
@@ -758,6 +763,10 @@ fn main() {
     );
     let search_voice_pending_proof = card_source_fixture::search_voice_pending_enabled();
     assert!(!search_voice_pending_proof || (motion_proof && search_fixture::enabled()));
+    assert!(
+        !search_privilege_fixture::enabled() || (motion_proof && search_fixture::v3_enabled()),
+        "membership refresh proof requires the sealed native V3 search fixture"
+    );
     let audio_status_proof =
         card_source_proof || playback_wait_proof || native_stop_proof || search_voice_pending_proof;
     assert!(
@@ -784,6 +793,7 @@ fn main() {
         || vertical_zone_fixture::playlist_v6()
         || vertical_zone_fixture::playlist_batch()
         || vertical_zone_fixture::playlist_queue_menu()
+        || search_privilege_fixture::enabled()
     {
         zone_fm_preview_fixture::restrict_artwork(&mut context);
     }
@@ -841,7 +851,7 @@ fn main() {
         }
         if daily_history_fixture::enabled() { client=client.with_official_daily_experiment(); }
         if search_fixture::v3_enabled() || search_fixture::carousel_enabled() || vertical_zone_fixture::hotspot() { client=client.with_official_search_experiment(); }
-        if search_mv_fixture::fallback_enabled() {
+        if search_mv_fixture::fallback_enabled() || search_privilege_fixture::enabled() {
             client=client.with_native_search_preview_config(search_fixture::fallback_config(proof_store.clone())?);
         }
         if search_mv_fixture::enabled() {
@@ -1000,6 +1010,7 @@ fn main() {
                 if let Some(calls) = search_fixture::artist_gallery_calls() { value["artistGalleryCalls"] = json!(calls); }
             }
             if search_mv_fixture::enabled() { value["searchMvCalls"]=json!(search_mv_fixture::calls()); }
+            if search_privilege_fixture::enabled() { value["searchPrivilegeFixture"]=search_privilege_fixture::report(); }
             if subscribers_proof() { value["subscriberOffsets"]=json!(*SUBSCRIBER_OFFSETS.lock().unwrap()); }
             if playlist_tag_browse_proof() {
                 value["playlistTagCalls"] = json!(*PLAYLIST_TAG_CALLS.lock().unwrap());
