@@ -1,7 +1,7 @@
 //! Read-only "相关歌单", the independent sibling of the vinyl similar-song card.
 use super::{
-    MusicClient,
-    vinyl_similar::{EXPERIMENT, seed, stale_credentials},
+    MusicClient, VinylRecommendationPlacement,
+    vinyl_similar::{observed_placement, seed, stale_credentials},
 };
 use crate::{
     Error, Result,
@@ -30,6 +30,7 @@ pub struct VinylRelatedPlaylistView {
 pub struct VinylRelatedPlaylistsView {
     pub play_id: String,
     pub song_id: String,
+    pub placement: VinylRecommendationPlacement,
     pub playlists: Vec<VinylRelatedPlaylistView>,
 }
 
@@ -84,11 +85,8 @@ impl MusicClient {
         let controller = self.player.controller.get().ok_or(Error::StaleResponse)?;
         let song_id = seed(&controller.snapshot(), &token, play_id)?;
         let read = VinylRelatedPlaylistsRead::new(&song_id)?;
-        let (revision, groups) = self
-            .verified_pc_experiment_groups_for(&token, &api)
-            .await
-            .map_err(stale_credentials)?;
-        if groups.group(EXPERIMENT) != Some("t1") {
+        let (revision, placement) = self.vinyl_placement_for(&token, &api).await?;
+        if !placement.resolved() {
             return Err(Error::State(
                 "vinyl related playlists experiment is unavailable",
             ));
@@ -101,6 +99,7 @@ impl MusicClient {
                     .map_err(stale_credentials)?
                     .as_deref()
                     != Some(revision.as_str())
+                || observed_placement(&self.pc_experiments, &token, &api, &revision)? != placement
                 || seed(&controller.snapshot(), &token, play_id)? != song_id
             {
                 return Err(Error::StaleResponse);
@@ -119,6 +118,7 @@ impl MusicClient {
         Ok(VinylRelatedPlaylistsView {
             play_id: play_id.into(),
             song_id,
+            placement,
             playlists,
         })
     }

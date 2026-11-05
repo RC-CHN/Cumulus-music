@@ -1,6 +1,7 @@
 use super::*;
 use cumulus_core::{
-    client::VinylSimilarAction, playback::controller::PlaybackStatus,
+    client::{VinylRecommendationPlacement as Placement, VinylSimilarAction},
+    playback::controller::PlaybackStatus,
     protocol::api::VinylSimilarSongsRead,
 };
 
@@ -66,8 +67,14 @@ async fn queue_ids(client: &MusicClient) -> Vec<String> {
 async fn vinyl_similar_treatment_wire_and_separate_header_cover_queue_actions() {
     let (_dir, api, _, client, _) = fixture();
     let play_id = seed_middle(&client).await;
-    api.vinyl_comment_group.store(2, Ordering::SeqCst);
-    assert!(!client.player_vinyl_similar_available("1").await.unwrap());
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Unresolved
+    );
+    assert!(client.player_vinyl_similar_available("1").await.is_err());
     assert!(
         client
             .player_vinyl_similar_songs("1", &play_id)
@@ -84,6 +91,7 @@ async fn vinyl_similar_treatment_wire_and_separate_header_cover_queue_actions() 
         .unwrap();
     assert_eq!(view.play_id, play_id);
     assert_eq!(view.song_id, "2");
+    assert_eq!(view.placement, Placement::Standalone);
     assert_eq!(
         view.songs
             .iter()
@@ -160,6 +168,216 @@ async fn vinyl_similar_treatment_wire_and_separate_header_cover_queue_actions() 
         *api.vinyl_similar.calls.lock().unwrap(),
         [json!({"songid":"2"}), json!({"songid":"2"})]
     );
+}
+
+#[tokio::test]
+async fn vinyl_verified_wiki_uses_both_native_lanes_and_the_full_initial_song_list() {
+    let (_dir, api, _, client, _) = fixture();
+    let play_id = seed_middle(&client).await;
+    api.vinyl_comment_group.store(2, Ordering::SeqCst);
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Wiki
+    );
+    assert!(
+        !client.player_vinyl_similar_available("1").await.unwrap(),
+        "old IPC remains standalone-only"
+    );
+    let playlists = client
+        .player_vinyl_related_playlists("1", &play_id)
+        .await
+        .unwrap();
+    assert_eq!(playlists.placement, Placement::Wiki);
+    assert_eq!(playlists.song_id, "2");
+    assert_eq!(
+        playlists.playlists.len(),
+        8,
+        "expansion is not a different wire read"
+    );
+
+    *api.vinyl_similar.response.lock().unwrap() = Some(json!({
+        "code":200,"songs":(4..=8).map(|id| json!({"id":id,"name":"相似歌曲","dt":120000,"privilege":{"pl":128000}})).collect::<Vec<_>>()
+    }));
+    let page = client
+        .player_vinyl_similar_songs("1", &play_id)
+        .await
+        .unwrap();
+    assert_eq!(page.placement, Placement::Wiki);
+    assert_eq!(
+        page.songs.len(),
+        5,
+        "control must not invent a three-row default"
+    );
+    let player = client
+        .player_vinyl_similar_play(
+            "1",
+            &play_id,
+            &page.receipt.unwrap(),
+            VinylSimilarAction::Header,
+            Quality::Standard,
+        )
+        .await
+        .unwrap();
+    assert_eq!(player.track.unwrap().id, "4");
+    assert_eq!(
+        queue_ids(&client).await,
+        ["1", "2", "4", "5", "6", "7", "8", "3"]
+    );
+    assert_eq!(
+        *api.vinyl_similar.calls.lock().unwrap(),
+        [json!({"songid":"2"})]
+    );
+}
+
+#[tokio::test]
+async fn vinyl_unresolved_or_blank_assignment_cannot_read_either_card() {
+    for group in [4, 5] {
+        let (_dir, api, _, client, _) = fixture();
+        api.vinyl_comment_group.store(1, Ordering::SeqCst);
+        api.vinyl_recommendation_group
+            .store(group, Ordering::SeqCst);
+        let play_id = seed_middle(&client).await;
+        assert_eq!(
+            client
+                .player_vinyl_recommendation_placement("1")
+                .await
+                .unwrap(),
+            Placement::Unresolved
+        );
+        assert!(matches!(
+            client.player_vinyl_similar_songs("1", &play_id).await,
+            Err(Error::State(_))
+        ));
+        assert!(matches!(
+            client.player_vinyl_related_playlists("1", &play_id).await,
+            Err(Error::State(_))
+        ));
+        assert!(api.vinyl_similar.calls.lock().unwrap().is_empty());
+        assert_eq!(queue_ids(&client).await, ["1", "2", "3"]);
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn vinyl_receipt_tracks_observed_placement_even_when_the_credential_revision_does_not_change()
+{
+    use std::time::Duration;
+    let (_dir, api, _, client, _) = fixture();
+    api.vinyl_comment_group.store(2, Ordering::SeqCst);
+    let play = seed_middle(&client).await;
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Wiki
+    );
+    tokio::time::advance(Duration::from_secs(29 * 60)).await;
+    let old = client
+        .player_vinyl_similar_songs("1", &play)
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+
+    api.vinyl_recommendation_group.store(3, Ordering::SeqCst);
+    tokio::time::advance(Duration::from_secs(60)).await;
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Wiki
+    );
+    // A different explicit non-t1 group still has the same Wiki placement.
+    client
+        .player_vinyl_similar_play(
+            "1",
+            &play,
+            &old,
+            VinylSimilarAction::Cover { index: 1 },
+            Quality::Standard,
+        )
+        .await
+        .unwrap();
+
+    let play = seed_middle(&client).await;
+    tokio::time::advance(Duration::from_secs(29 * 60)).await;
+    let old = client
+        .player_vinyl_similar_songs("1", &play)
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    api.vinyl_recommendation_group.store(1, Ordering::SeqCst);
+    tokio::time::advance(Duration::from_secs(60)).await;
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Standalone
+    );
+    assert_eq!(
+        api.verified_pc_experiment_revision().unwrap().as_deref(),
+        Some("2")
+    );
+    assert!(matches!(
+        client
+            .player_vinyl_similar_play(
+                "1",
+                &play,
+                &old,
+                VinylSimilarAction::Header,
+                Quality::Standard
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(queue_ids(&client).await, ["1", "2", "3"]);
+    let fresh = client.player_vinyl_similar_songs("1", &play).await.unwrap();
+    assert_eq!(fresh.placement, Placement::Standalone);
+    assert_ne!(fresh.receipt.as_deref(), Some(old.as_str()));
+}
+
+#[tokio::test(start_paused = true)]
+async fn vinyl_delayed_song_read_cannot_publish_a_receipt_for_the_replaced_placement() {
+    use std::time::Duration;
+    let (_dir, api, _, client, _) = fixture();
+    api.vinyl_comment_group.store(2, Ordering::SeqCst);
+    let play = seed_middle(&client).await;
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Wiki
+    );
+    tokio::time::advance(Duration::from_secs(29 * 60)).await;
+    api.vinyl_similar.held.store(1, Ordering::SeqCst);
+    let read = tokio::spawn({
+        let client = client.clone();
+        let play = play.clone();
+        async move { client.player_vinyl_similar_songs("1", &play).await }
+    });
+    api.vinyl_similar.started.notified().await;
+    api.vinyl_recommendation_group.store(1, Ordering::SeqCst);
+    tokio::time::advance(Duration::from_secs(60)).await;
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Standalone
+    );
+    api.vinyl_similar.release.notify_one();
+    assert!(matches!(read.await.unwrap(), Err(Error::StaleResponse)));
+    assert_eq!(queue_ids(&client).await, ["1", "2", "3"]);
+    let fresh = client.player_vinyl_similar_songs("1", &play).await.unwrap();
+    assert_eq!(fresh.placement, Placement::Standalone);
+    assert!(fresh.receipt.is_some());
 }
 
 #[tokio::test]

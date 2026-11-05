@@ -51,6 +51,7 @@ struct Backend {
     vinyl_composer: vinyl_composer::Server,
     artist_cover: artist_search_cover::CoverFixture,
     vinyl_comment_group: AtomicU64,
+    vinyl_recommendation_group: AtomicU64,
     vinyl_similar: vinyl_similar::Server,
     vinyl_related_playlists: vinyl_related_playlists::Server,
     vinyl_comment_calls: Mutex<Vec<(String, Value)>>,
@@ -79,9 +80,18 @@ impl Api for Backend {
             } else {
                 "c"
             };
+            let recommendation = match self.vinyl_recommendation_group.load(Ordering::SeqCst) {
+                0 => json!(group),
+                1 => json!("t1"),
+                2 => json!("c"),
+                3 => json!("t2"),
+                4 => Value::Null,
+                5 => json!(""),
+                _ => unreachable!(),
+            };
             cumulus_core::protocol::pc_experiments::PcExperimentGroups::refreshed(&json!({
                 "data":[{"expName":"PH-PC-optimizeComment","expGroupName":group},
-                    {"expName":"PH-PC-playPage-recommendMore-new","expGroupName":group}]
+                    {"expName":"PH-PC-playPage-recommendMore-new","expGroupName":recommendation}]
             }))
         })
     }

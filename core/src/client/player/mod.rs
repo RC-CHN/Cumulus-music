@@ -32,7 +32,9 @@ mod vinyl_related_playlists;
 mod vinyl_report;
 pub use vinyl_related_playlists::{VinylRelatedPlaylistView, VinylRelatedPlaylistsView};
 mod vinyl_similar;
-pub use vinyl_similar::{VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView};
+pub use vinyl_similar::{
+    VinylRecommendationPlacement, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
+};
 mod vinyl_wiki;
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};

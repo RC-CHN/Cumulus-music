@@ -79,9 +79,10 @@ pub mod style_tags;
 mod together;
 mod window;
 pub use player::{
-    PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView, VinylRelatedPlaylistView,
-    VinylRelatedPlaylistsView, VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView,
-    VinylWikiCardView, VinylWikiMetaView, VinylWikiView,
+    PlaybackSubscription, VinylCommentLikeAction, VinylCommentPageView,
+    VinylRecommendationPlacement, VinylRelatedPlaylistView, VinylRelatedPlaylistsView,
+    VinylSimilarAction, VinylSimilarSongView, VinylSimilarSongsView, VinylWikiCardView,
+    VinylWikiMetaView, VinylWikiView,
 };
 
 use crate::{
@@ -150,7 +151,7 @@ pub struct MusicClient {
     style_home: style_home::StyleHome,
     seeded_style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
     style_recommendations: Arc<std::sync::Mutex<recommendations::RecommendationSnapshot>>,
-    pc_experiments: pc_experiments::PcExperimentHost,
+    pc_experiments: Arc<pc_experiments::PcExperimentHost>,
     vertical_zone: vertical_zone::ZoneHost,
     vertical_zone_detail: vertical_zone::detail::DetailHost,
     quality_experiment: quality_experiment::QualityExperiment,

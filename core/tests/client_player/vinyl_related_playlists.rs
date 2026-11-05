@@ -58,7 +58,6 @@ async fn vinyl_related_playlists_keep_service_order_exact_seed_and_only_safe_car
     let (_dir, api, _, client, _) = fixture();
     let play_id = current_play(&client, "2").await;
     let server = &api.vinyl_related_playlists;
-    api.vinyl_comment_group.store(2, Ordering::SeqCst);
     assert!(
         client
             .player_vinyl_related_playlists("1", &play_id)
@@ -203,4 +202,50 @@ async fn vinyl_related_playlist_delayed_reads_are_retired_on_track_credential_or
         server.release.notify_one();
         assert!(matches!(read.await.unwrap(), Err(Error::StaleResponse)));
     }
+}
+
+#[tokio::test(start_paused = true)]
+async fn vinyl_delayed_playlist_read_cannot_publish_for_the_replaced_placement() {
+    use cumulus_core::client::VinylRecommendationPlacement as Placement;
+    use std::time::Duration;
+    let (_dir, api, _, client, _) = fixture();
+    api.vinyl_comment_group.store(2, Ordering::SeqCst);
+    let play = current_play(&client, "2").await;
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Wiki
+    );
+    tokio::time::advance(Duration::from_secs(29 * 60)).await;
+    let server = &api.vinyl_related_playlists;
+    server.hold.store(true, Ordering::SeqCst);
+    let read = tokio::spawn({
+        let client = client.clone();
+        let play = play.clone();
+        async move { client.player_vinyl_related_playlists("1", &play).await }
+    });
+    server.started.notified().await;
+    api.vinyl_recommendation_group.store(1, Ordering::SeqCst);
+    tokio::time::advance(Duration::from_secs(60)).await;
+    assert_eq!(
+        client
+            .player_vinyl_recommendation_placement("1")
+            .await
+            .unwrap(),
+        Placement::Standalone
+    );
+    server.release.notify_one();
+    assert!(matches!(read.await.unwrap(), Err(Error::StaleResponse)));
+    let fresh = client
+        .player_vinyl_related_playlists("1", &play)
+        .await
+        .unwrap();
+    assert_eq!(fresh.placement, Placement::Standalone);
+    assert_eq!(fresh.playlists.len(), 8);
+    assert_eq!(
+        *server.calls.lock().unwrap(),
+        [json!({"songid":"2"}), json!({"songid":"2"})]
+    );
 }

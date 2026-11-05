@@ -170,3 +170,38 @@ Reproduce with scripts/ci/vinyl_similar_smoke.py --related --binary
 PATH_TO_UX_UI_PROBE --root NEW_DIR. Linux CI can capture screenshots;
 Windows uses its separate packaged runtime. This is not physical sound
 output, live service or old-control wiki/fold verification.
+
+Verified control placement in Rust
+----------------------------------
+
+The compiled app/subApp M/182:4383–4405,4520–4545 and recovered
+TrackDisplay.tsx:100–103,237–255 use two tabs, 歌词 / 百科, in non-t1
+groups. The opened classic 百科 scroll pane mounts 音乐百科, 相似歌曲,
+then 相关歌单. Treatment uses an independent 相似推荐 pane with related
+playlists before songs; its 百科 contains only the wiki card. The same
+two recommendation card components drive the same endpoints in both.
+
+Compiled M/253:55–74,115–127 and SimilarSongsCard.tsx:98–132,164–184
+agree that only non-t1 with a truthy similarSongExpand slices to three.
+The card starts empty, writes false when first mounted for a different
+song, and then accepts the async result. M/69:84–115,151–155 restores
+the false default and persists exactly the dispatched value. The
+normal control view therefore initially shows all returned songs and
+has no song expand button. A latent truthy value would show three and
+the literal 展开更多 button would write true again, with no count change
+or reread. The title receives the whole response even in that latent
+state. Cumulus does not seed the flag or add a guessed three-to-all
+control. The related playlist card independently expands six to all
+on click (M/182:4251–4259,4351–4362).
+
+Native player_vinyl_recommendation_placement(epoch) projects only
+unresolved, standalone or wiki. The existing signed resolver may use
+the recovered t1 manifest default after a valid response; a verified
+nonempty non-t1 group resolves wiki, and unavailable, blank or malformed
+groups do not authorize either lane. Read results identify their
+placement. The song receipt is bound to that placement, epoch, play,
+API and credential revision. The actor and both read commits reject
+superseded observed placement, including a refresh with the same
+credential revision. The previous bool remains standalone-only for
+the current desktop IPC. This change does not yet mount the control
+wiki or alter the recorded treatment/control WebView run above.

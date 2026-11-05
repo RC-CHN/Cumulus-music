@@ -7,7 +7,7 @@ use crate::{
     protocol::{api::Api, pc_experiments::PcExperimentGroups},
 };
 use std::{
-    sync::{Arc, Weak},
+    sync::{Arc, Mutex as Observed, Weak},
     time::Duration,
 };
 use tokio::{sync::Mutex, time::Instant};
@@ -17,7 +17,8 @@ const TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Default)]
 pub(super) struct PcExperimentHost {
-    state: Mutex<Option<Assigned>>,
+    gate: Mutex<()>,
+    state: Observed<Option<Assigned>>,
 }
 
 struct Assigned {
@@ -26,6 +27,36 @@ struct Assigned {
     credentials: String,
     fetched: Instant,
     groups: PcExperimentGroups,
+}
+
+impl Assigned {
+    fn matches(&self, token: &SessionToken, api: &Arc<dyn Api>, credentials: &str) -> bool {
+        self.token == *token
+            && self.api.upgrade().is_some_and(|old| Arc::ptr_eq(&old, api))
+            && self.credentials == credentials
+            && self.fetched.elapsed() < REFRESH
+    }
+}
+
+impl PcExperimentHost {
+    /// A playback actor can fence an already authorized operation without
+    /// taking the network single-flight gate or issuing another request.
+    pub(super) fn observed_group(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+        credentials: &str,
+        name: &str,
+    ) -> Result<Option<String>> {
+        Ok(self
+            .state
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|current| current.matches(token, api, credentials))
+            .and_then(|current| current.groups.group(name))
+            .map(str::to_owned))
+    }
 }
 
 /// Verified experiment output is intentionally not serializable as an IPC input.
@@ -78,7 +109,7 @@ impl MusicClient {
             ));
         }
         let mut changes = self.session.subscribe()?;
-        let mut cached = self.pc_experiments.state.lock().await;
+        let _gate = self.pc_experiments.gate.lock().await;
         self.session.require_api(token, api)?;
         if self.login_pending()? {
             return Err(Error::StaleResponse);
@@ -86,18 +117,18 @@ impl MusicClient {
         let credentials = api.verified_pc_experiment_revision()?.ok_or(Error::State(
             "PC experiment requires a native signed transport",
         ))?;
-        if let Some(current) = cached.as_ref().filter(|current| {
-            current.token == *token
-                && current
-                    .api
-                    .upgrade()
-                    .is_some_and(|old| Arc::ptr_eq(&old, api))
-                && current.credentials == credentials
-                && current.fetched.elapsed() < REFRESH
-        }) {
-            return self.session.with_verified_profile(token, api, |_, _| {
-                Ok((credentials, current.groups.clone()))
-            });
+        let cached = self
+            .pc_experiments
+            .state
+            .lock()
+            .map_err(|_| Error::LockPoisoned)?
+            .as_ref()
+            .filter(|current| current.matches(token, api, &credentials))
+            .map(|current| current.groups.clone());
+        if let Some(groups) = cached {
+            return self
+                .session
+                .with_verified_profile(token, api, |_, _| Ok((credentials, groups)));
         }
         let refresh =
             tokio::time::timeout(TIMEOUT, api.verified_pc_experiment_groups(&credentials));
@@ -113,7 +144,11 @@ impl MusicClient {
         }
         self.session.with_verified_profile(token, api, |_, _| {
             let result = groups.clone();
-            *cached = Some(Assigned {
+            *self
+                .pc_experiments
+                .state
+                .lock()
+                .map_err(|_| Error::LockPoisoned)? = Some(Assigned {
                 token: token.clone(),
                 api: Arc::downgrade(api),
                 credentials: credentials.clone(),

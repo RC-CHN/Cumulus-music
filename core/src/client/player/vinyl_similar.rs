@@ -1,4 +1,4 @@
-//! Current-song "相似歌曲" in the standard vinyl t1 lane (M/182, M/253).
+//! Current-song "相似歌曲" in both verified standard vinyl placements (M/182, M/253).
 use super::{
     MusicClient, PlaybackCommand, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, PlayerView,
     identity, mapping, project, queue_playlist::insert_collection_bound,
@@ -6,7 +6,7 @@ use super::{
 use crate::{
     Error, Result,
     account::SessionToken,
-    client::{dto::TrackView, focus::Owner},
+    client::{dto::TrackView, focus::Owner, pc_experiments::PcExperimentHost},
     membership::Quality,
     playback::{
         controller::{QueueTransport, QueueUpdate},
@@ -25,10 +25,42 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub(super) const EXPERIMENT: &str = "PH-PC-playPage-recommendMore-new";
+const EXPERIMENT: &str = "PH-PC-playPage-recommendMore-new";
 const PATH: &str = "/api/v1/discovery/simiSong";
 const MAX_ROWS: usize = 100;
 const RECEIPT_LIFETIME: Duration = Duration::from_secs(600);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VinylRecommendationPlacement {
+    Unresolved,
+    Standalone,
+    Wiki,
+}
+
+impl VinylRecommendationPlacement {
+    fn from_group(group: Option<&str>) -> Self {
+        match group {
+            Some("t1") => Self::Standalone,
+            Some(group) if !group.is_empty() && group.trim() == group => Self::Wiki,
+            _ => Self::Unresolved,
+        }
+    }
+
+    pub(super) fn resolved(self) -> bool {
+        self != Self::Unresolved
+    }
+}
+
+pub(super) fn observed_placement(
+    assignments: &PcExperimentHost,
+    token: &SessionToken,
+    api: &Arc<dyn Api>,
+    revision: &str,
+) -> Result<VinylRecommendationPlacement> {
+    let group = assignments.observed_group(token, api, revision, EXPERIMENT)?;
+    Ok(VinylRecommendationPlacement::from_group(group.as_deref()))
+}
 
 #[derive(Clone, Copy, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -51,6 +83,7 @@ pub struct VinylSimilarSongsView {
     pub play_id: String,
     pub song_id: String,
     pub receipt: Option<String>,
+    pub placement: VinylRecommendationPlacement,
     pub songs: Vec<VinylSimilarSongView>,
 }
 
@@ -62,6 +95,7 @@ struct Page {
     song_id: String,
     api: Weak<dyn Api>,
     revision: String,
+    placement: VinylRecommendationPlacement,
     created: Instant,
     songs: Vec<VinylSimilarSongView>,
 }
@@ -178,6 +212,48 @@ impl MusicClient {
             == Some("t1"))
     }
 
+    pub async fn player_vinyl_recommendation_placement(
+        &self,
+        epoch: &str,
+    ) -> Result<VinylRecommendationPlacement> {
+        let token = self.player_token(epoch)?;
+        let api = self.session.native_api(&token)?;
+        match self.vinyl_placement_for(&token, &api).await {
+            Ok((_, placement)) => Ok(placement),
+            Err(error)
+                if matches!(
+                    error.root(),
+                    Error::State(_)
+                        | Error::Transport(_)
+                        | Error::Protocol(_)
+                        | Error::Response(_)
+                        | Error::HttpStatus { .. }
+                        | Error::Service { .. }
+                        | Error::RequestNotSent(_)
+                ) =>
+            {
+                self.session.require_api(&token, &api)?;
+                Ok(VinylRecommendationPlacement::Unresolved)
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    pub(super) async fn vinyl_placement_for(
+        &self,
+        token: &SessionToken,
+        api: &Arc<dyn Api>,
+    ) -> Result<(String, VinylRecommendationPlacement)> {
+        let (revision, groups) = self
+            .verified_pc_experiment_groups_for(token, api)
+            .await
+            .map_err(stale_credentials)?;
+        Ok((
+            revision,
+            VinylRecommendationPlacement::from_group(groups.group(EXPERIMENT)),
+        ))
+    }
+
     pub async fn player_vinyl_similar_songs(
         &self,
         epoch: &str,
@@ -190,11 +266,8 @@ impl MusicClient {
         let song_id = seed(&first, &token, play_id)?;
         let read = VinylSimilarSongsRead::new(&song_id)?;
         let ticket = self.player.vinyl_similar.start()?;
-        let (revision, groups) = self
-            .verified_pc_experiment_groups_for(&token, &api)
-            .await
-            .map_err(stale_credentials)?;
-        if groups.group(EXPERIMENT) != Some("t1") {
+        let (revision, placement) = self.vinyl_placement_for(&token, &api).await?;
+        if !placement.resolved() {
             return Err(Error::State(
                 "vinyl similar songs experiment is unavailable",
             ));
@@ -207,6 +280,7 @@ impl MusicClient {
                     .map_err(stale_credentials)?
                     .as_deref()
                     != Some(revision.as_str())
+                || observed_placement(&self.pc_experiments, &token, &api, &revision)? != placement
                 || seed(&controller.snapshot(), &token, play_id)? != song_id
                 || self.player.vinyl_similar.ticket.load(Ordering::Acquire) != ticket
             {
@@ -229,6 +303,7 @@ impl MusicClient {
             song_id: song_id.clone(),
             api: Arc::downgrade(&api),
             revision: revision.clone(),
+            placement,
             created: Instant::now(),
             songs,
         });
@@ -238,6 +313,7 @@ impl MusicClient {
             play_id: page.play_id.clone(),
             song_id: page.song_id.clone(),
             receipt: (!page.songs.is_empty()).then(|| page.receipt.clone()),
+            placement,
             songs: page.songs.clone(),
         })
     }
@@ -253,11 +329,8 @@ impl MusicClient {
         let token = self.player_token(epoch)?;
         let page = self.player.vinyl_similar.get(&token, play_id, receipt)?;
         let api = page.api.upgrade().ok_or(Error::StaleResponse)?;
-        let (revision, groups) = self
-            .verified_pc_experiment_groups_for(&token, &api)
-            .await
-            .map_err(stale_credentials)?;
-        if revision != page.revision || groups.group(EXPERIMENT) != Some("t1") {
+        let (revision, placement) = self.vinyl_placement_for(&token, &api).await?;
+        if revision != page.revision || placement != page.placement {
             return Err(Error::StaleResponse);
         }
         let check = || {
@@ -269,6 +342,7 @@ impl MusicClient {
                     .map_err(stale_credentials)?
                     .as_deref()
                     != Some(page.revision.as_str())
+                || observed_placement(&self.pc_experiments, &token, &api, &revision)? != placement
             {
                 return Err(Error::StaleResponse);
             }
@@ -398,6 +472,7 @@ impl MusicClient {
         let focus = self.focus.clone();
         let host = self.player.vinyl_similar.clone();
         let session = self.session.clone();
+        let assignments = self.pc_experiments.clone();
         let captured = token.clone();
         let result = controller
             .command_guarded(
@@ -409,6 +484,8 @@ impl MusicClient {
                         && focus.check(lease, Owner::Audio).is_ok()
                         && host.current(&page)
                         && session.require_api(&captured, &api).is_ok()
+                        && observed_placement(&assignments, &captured, &api, &page.revision)
+                            .is_ok_and(|current| current == page.placement)
                         && api.verified_pc_experiment_revision().is_ok_and(|revision| {
                             revision.as_deref() == Some(page.revision.as_str())
                         })
