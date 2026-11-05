@@ -32,6 +32,7 @@ pub(super) struct LoadOptions {
     pub relative: bool,
     pub restart_at_end: bool,
     pub supplied_voice_checkpoint: bool,
+    pub prefer_search_download: bool,
     pub source: LoadSource,
 }
 pub(super) struct Prepared {
@@ -217,6 +218,13 @@ impl Actor {
         let token = self.token.clone();
         let engine = self.engine.clone();
         let sender = self.sender.clone();
+        let prefer_search_download = options.prefer_search_download
+            && matches!(&options.source, LoadSource::CurrentPreference)
+            && self.ordinary_online_song(&item)
+            && item.source["kind"] == "songs"
+            && item.source["scene"] == "search"
+            && item.resource["trial_mode"] == 42
+            && token.uid.is_some();
         let streaming_revision = resolver
             .streaming_cache
             .as_ref()
@@ -237,11 +245,22 @@ impl Actor {
                     })
                     .await?;
                 cancel.check()?;
+                let download = if prefer_search_download {
+                    let download = resolver
+                        .search_catalog_download(&item.resource, &token)
+                        .await?;
+                    cancel.check()?;
+                    download
+                } else {
+                    None
+                };
                 let StreamingSelection {
                     source,
                     fresh_api,
                     stock_fallback,
-                } = if let Some(revision) = streaming_revision {
+                } = if let Some(source) = download {
+                    StreamingSelection::stock(source)
+                } else if let Some(revision) = streaming_revision {
                     resolver
                         .resolve_streaming_source(&item.resource, &token, revision)
                         .await?

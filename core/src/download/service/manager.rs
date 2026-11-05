@@ -93,7 +93,10 @@ impl DownloadService {
         Ok(task)
     }
     pub fn get(&self, id: &str) -> Result<DownloadTask> {
-        self.guard(&self.session.token()?)?;
+        self.get_for(&self.session.token()?, id)
+    }
+    pub(crate) fn get_for(&self, token: &SessionToken, id: &str) -> Result<DownloadTask> {
+        self.guard(token)?;
         self.read(id)
     }
     pub fn list(&self) -> Result<Vec<DownloadTask>> {
@@ -109,6 +112,32 @@ impl DownloadService {
         self.guard(&token)?;
         Ok(out)
     }
+    /// A direct catalog row has no download task ID. Only an unambiguous
+    /// completed task belonging to this exact account and song may supply it.
+    pub(crate) fn published_catalog_song(
+        session: &AccountSession,
+        token: &SessionToken,
+        song: &str,
+    ) -> Result<Option<DownloadTask>> {
+        let store = session.persistent_store()?;
+        let owner = session.with_token(token, |uid| Ok(uid.to_owned()))?;
+        let value = store.completed_song_publication(&owner, song)?;
+        session.check_generation(token)?;
+        value
+            .map(|(id, value)| {
+                let task: DownloadTask = serde_json::from_value(value)?;
+                if task.id != id
+                    || task.song_id != song
+                    || task.origin != DownloadOrigin::Song
+                    || task.status != DownloadStatus::Complete
+                {
+                    return Err(Error::State("download publication identity mismatch"));
+                }
+                Ok(task)
+            })
+            .transpose()
+    }
+
     /// Read only the catalog-song publications relevant to a native playback
     /// preflight; this does not construct a transfer backend or renew a grant.
     pub(crate) fn queue_publications(

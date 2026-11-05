@@ -192,6 +192,7 @@ impl MusicClient {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum RetainedRow {
     Catalog,
+    SearchCatalog,
     SearchSong,
     SearchVoice,
 }
@@ -358,21 +359,24 @@ impl MusicClient {
             entry_id
         };
         let expected = before.fence();
-        let command = if queue.current.as_ref() == Some(&entry)
-            && before.selected.as_ref() == queue.selected().as_ref()
-        {
-            // Resume an already selected song without replacing its decoder.
-            PlaybackCommand::Play
-        } else {
+        let unchanged = queue.current.as_ref() == Some(&entry)
+            && before.selected.as_ref() == queue.selected().as_ref();
+        let update = (!unchanged).then(|| {
             queue.current = Some(entry);
-            PlaybackCommand::UpdateQueue(QueueUpdate {
+            QueueUpdate {
                 expected: expected.clone(),
                 queue,
                 transport: Some(QueueTransport {
                     position: None,
                     paused: false,
                 }),
-            })
+            }
+        });
+        let command = if policy == RetainedRow::SearchCatalog {
+            PlaybackCommand::PlaySearchCatalog(update)
+        } else {
+            // Resume an already selected song without replacing its decoder.
+            update.map_or(PlaybackCommand::Play, PlaybackCommand::UpdateQueue)
         };
         self.submit_retained_row(token, command, expected, attempt, lease, source_guard)
             .await

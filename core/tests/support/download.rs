@@ -15,7 +15,7 @@ use std::{
     path::Path,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -32,6 +32,7 @@ pub struct Server {
     pub play: Mutex<Result<Value>>,
     pub follow_latest: Mutex<Value>,
     pub membership_fails: AtomicBool,
+    pub membership_expiry: AtomicU64,
     pub play_gate: Mutex<Option<Arc<PlaybackGate>>>,
     pub calls: Mutex<Vec<(String, Value)>>,
 }
@@ -53,6 +54,7 @@ impl Server {
             play_gate: Mutex::new(None),
             follow_latest: Mutex::new(json!([])),
             membership_fails: AtomicBool::new(false),
+            membership_expiry: AtomicU64::new(9999999999999),
             calls: Mutex::new(Vec::new()),
         }
     }
@@ -104,7 +106,7 @@ impl Api for Server {
                     if self.membership_fails.load(Ordering::Acquire) {
                         return Err(Error::Transport("synthetic membership failure".into()));
                     }
-                    json!({"code":200,"data":{"now":2000000,"userId":1,"associator":{"expireTime":9999999999999u64,"vipLevel":7}}})
+                    json!({"code":200,"data":{"now":2000000,"userId":1,"associator":{"expireTime":self.membership_expiry.load(Ordering::Acquire),"vipLevel":7}}})
                 }
                 _ => panic!("unexpected endpoint {path}"),
             })

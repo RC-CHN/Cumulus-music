@@ -156,6 +156,30 @@ impl StateStore {
             .map_err(Into::into)
     }
 
+    /// Read the exact completed song publication, if unique. The song
+    /// expression index avoids materializing another user's or track's tasks.
+    pub(crate) fn completed_song_publication(
+        &self,
+        owner: &str,
+        song: &str,
+    ) -> Result<Option<(String, Value)>> {
+        let connection = self.connection.lock().map_err(|_| Error::LockPoisoned)?;
+        let mut query = connection.prepare_cached(&format!(
+            "SELECT key, value FROM state INDEXED BY download_song_v1
+             WHERE owner=? AND {DOWNLOAD_SONG_TASK} AND ({DOWNLOAD_SONG_ID})=?
+               AND json_extract(value,'$.status')='complete' LIMIT 2"
+        ))?;
+        let mut rows = query.query([owner, song])?;
+        let Some(first) = rows.next()? else {
+            return Ok(None);
+        };
+        let (key, value): (String, String) = (first.get(0)?, first.get(1)?);
+        if rows.next()?.is_some() {
+            return Ok(None);
+        }
+        Ok(Some((key, serde_json::from_str(&value)?)))
+    }
+
     /// Includes commits from other connections and mutations made through this
     /// connection. Capture inside a read/write transaction when binding it to
     /// cached content; a post-commit sample could conceal a competing write.

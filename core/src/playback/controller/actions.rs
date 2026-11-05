@@ -131,6 +131,7 @@ impl Actor {
             return;
         }
         if let PlaybackCommand::UpdateQueue(value)
+        | PlaybackCommand::PlaySearchCatalog(Some(value))
         | PlaybackCommand::UpdateZoneFm { update: value, .. } = &request.command
             && value.expected != self.snapshot().fence()
         {
@@ -207,6 +208,8 @@ impl Actor {
             PlaybackCommand::ReplaceListenedBook { .. }
         );
         let relay_hint = crate::relay::publisher::player::Hint::from_command(&request.command);
+        let prefer_search_download =
+            matches!(&request.command, PlaybackCommand::PlaySearchCatalog(_));
         let result = match request.command {
             PlaybackCommand::Startup(input) => {
                 self.startup_restore(input).map(|value| options = value)
@@ -231,7 +234,8 @@ impl Actor {
             PlaybackCommand::RetryLoudness => self.loudness_retry().await,
             PlaybackCommand::RepairLoudness => self.loudness_repair().await,
             PlaybackCommand::RepairQuality => self.quality_repair(),
-            PlaybackCommand::UpdateQueue(value) => self
+            PlaybackCommand::UpdateQueue(value)
+            | PlaybackCommand::PlaySearchCatalog(Some(value)) => self
                 .update_queue(value, Some(&request.reply))
                 .await
                 .map(|value| options = value),
@@ -352,7 +356,9 @@ impl Actor {
                     self.queue.set_mode(mode)
                 }
             }
-            PlaybackCommand::Play | PlaybackCommand::PlayFromStart => {
+            PlaybackCommand::Play
+            | PlaybackCommand::PlayFromStart
+            | PlaybackCommand::PlaySearchCatalog(None) => {
                 if self.state == PlaybackStatus::Paused || self.pending.is_some() {
                     self.pause(false).await
                 } else if self.state.active() {
@@ -526,7 +532,8 @@ impl Actor {
             return;
         }
         self.relay_hint = relay_hint;
-        if let Some(options) = options {
+        if let Some(mut options) = options {
+            options.prefer_search_download = prefer_search_download;
             if let Err(error) = self.begin(options, request.id, Some(request.reply)).await {
                 self.record_failure(&error);
             }

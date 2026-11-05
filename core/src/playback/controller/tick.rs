@@ -8,7 +8,7 @@ use crate::{
     account::SessionToken,
     playback::{
         PlaybackQueue, Step,
-        engine::{Cancellation, EndReason, EngineEvent},
+        engine::{Cancellation, EndReason, EngineEvent, MediaInput},
         failure::PlaybackFailure,
     },
 };
@@ -384,6 +384,12 @@ impl Actor {
             next.resource.get("id").is_some()
                 && next.resource.get("local_id").is_none()
                 && next.resource.get("path").is_none()
+                // In a one-row loop the next item can be the current entry.
+                // Its catalog identity does not make the loaded file a URL.
+                && !self.loaded.as_ref().is_some_and(|loaded| {
+                    loaded.item.entry_id == next.entry_id
+                        && matches!(&loaded.source.input, MediaInput::File(_))
+                })
         }) else {
             self.prefetch_key = None;
             self.refresh_at = None;

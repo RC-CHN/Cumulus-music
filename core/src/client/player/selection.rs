@@ -184,9 +184,12 @@ impl MusicClient {
                 let replace = double_click && self.replace_queue_on_double_click(&token)?;
                 (input, (!replace).then_some(RetainedRow::SearchVoice))
             }
-            input @ (PlaySelection::SearchResultTrack { .. }
-            | PlaySelection::SearchHotTrack { .. }
-            | PlaySelection::MessageTrack { .. }) => (input, Some(RetainedRow::SearchSong)),
+            input @ PlaySelection::SearchResultTrack { .. } => {
+                (input, Some(RetainedRow::SearchCatalog))
+            }
+            input @ (PlaySelection::SearchHotTrack { .. } | PlaySelection::MessageTrack { .. }) => {
+                (input, Some(RetainedRow::SearchSong))
+            }
             input @ (PlaySelection::SearchResultVoice { .. }
             | PlaySelection::MessageVoice { .. }) => (input, Some(RetainedRow::SearchVoice)),
             input => (input, None),

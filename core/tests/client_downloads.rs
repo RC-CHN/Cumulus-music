@@ -10,6 +10,8 @@ use cumulus_core::{
         completed::FileAction,
         service::{DownloadOptions, DownloadStatus, LyricsStatus},
     },
+    membership::Quality,
+    playback::{controller::PlaybackStatus, engine::MediaInput},
     protocol::http::ApiOrigin,
 };
 use serde_json::json;
@@ -21,6 +23,7 @@ struct Fixture {
     client: MusicClient,
     api: Arc<support::download::Server>,
     backend: Arc<support::download::Backend>,
+    device: Arc<playback_support::Device>,
     store: Arc<cumulus_core::storage::StateStore>,
 }
 impl Fixture {
@@ -34,19 +37,18 @@ impl Fixture {
             .adopt(api.clone(), json!({"userId":1}), &session.token().unwrap())
             .unwrap();
         let store = registry.store();
+        let device = Arc::new(playback_support::Device::default());
+        let native = device.clone();
         let client = MusicClient::with_session(session.clone(), registry)
             .with_download_backend(backend.clone())
-            .with_audio_factory(|| {
-                Ok(playback_support::audio_engine(Arc::new(
-                    playback_support::Device::default(),
-                )))
-            });
+            .with_audio_factory(move || Ok(playback_support::audio_engine(native.clone())));
         Self {
             root,
             session,
             client,
             api,
             backend,
+            device,
             store,
         }
     }
@@ -177,29 +179,16 @@ async fn followed_latest_can_use_the_exact_published_song_without_online_rights(
     assert_eq!(f.api.count("/api/song/enhance/player/url/v1"), 1);
 }
 
-#[tokio::test]
-async fn followed_latest_requires_a_current_encrypted_download_entitlement() {
+fn replace_with_protected_flac(f: &Fixture, plain: &str, path: &std::path::Path) -> PathBuf {
     use cumulus_core::{
         download::offline::{OfflineLibrary, PublishedDownload},
         media::{
             integrity::inspect_file,
             ncm::{NcmWriteOptions, write_file},
         },
-        membership::Quality,
     };
-    let f = Fixture::new();
-    f.api.resource.lock().unwrap()["flag"] = json!(0);
-    let (plain, completed) = f.completed().await;
-    let membership = "/api/music-vip-membership/client/vip/info";
-    assert_eq!(
-        f.api.count(membership),
-        0,
-        "fixture starts without a renewal"
-    );
-    assert!(f.store.get("1", "membership", "current").unwrap().is_none());
-    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
     let encrypted = path.with_file_name("published-ncm.ncm");
-    write_file(&path, &encrypted, NcmWriteOptions::default()).unwrap();
+    write_file(path, &encrypted, NcmWriteOptions::default()).unwrap();
     let token = f.session.token().unwrap();
     let offline = OfflineLibrary::new(f.session.clone()).unwrap();
     let integrity = inspect_file(&encrypted).unwrap();
@@ -209,7 +198,7 @@ async fn followed_latest_requires_a_current_encrypted_download_entitlement() {
         .register(
             &token,
             &PublishedDownload {
-                task_id: plain.clone(),
+                task_id: plain.to_owned(),
                 song_id: "123".into(),
                 requested_quality: Quality::Lossless,
                 target: encrypted.clone(),
@@ -222,7 +211,7 @@ async fn followed_latest_requires_a_current_encrypted_download_entitlement() {
         .unwrap();
     let mut task = f
         .store
-        .get("1", "download_tasks_v1", &plain)
+        .get("1", "download_tasks_v1", plain)
         .unwrap()
         .unwrap();
     task["target"] = json!(record.path);
@@ -230,9 +219,27 @@ async fn followed_latest_requires_a_current_encrypted_download_entitlement() {
     task["song"] = song;
     task["resource"] = resource;
     task["output_integrity"] = json!(integrity);
-    f.store
-        .put("1", "download_tasks_v1", &plain, &task)
-        .unwrap();
+    f.store.put("1", "download_tasks_v1", plain, &task).unwrap();
+    encrypted
+}
+
+#[tokio::test]
+async fn followed_latest_requires_a_current_encrypted_download_entitlement() {
+    use cumulus_core::download::offline::OfflineLibrary;
+    let f = Fixture::new();
+    f.api.resource.lock().unwrap()["flag"] = json!(0);
+    let (plain, completed) = f.completed().await;
+    let membership = "/api/music-vip-membership/client/vip/info";
+    assert_eq!(
+        f.api.count(membership),
+        0,
+        "fixture starts without a renewal"
+    );
+    assert!(f.store.get("1", "membership", "current").unwrap().is_none());
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    replace_with_protected_flac(&f, &plain, &path);
+    let token = f.session.token().unwrap();
+    let offline = OfflineLibrary::new(f.session.clone()).unwrap();
     *f.api.follow_latest.lock().unwrap() = json!([
         {"id":123,"name":"合成会员下载","dt":1000,"privilege":{"pl":0,"flag":0}}
     ]);
@@ -256,6 +263,238 @@ async fn followed_latest_requires_a_current_encrypted_download_entitlement() {
     assert_eq!(local.download_task_id.as_deref(), Some(plain.as_str()));
     assert_eq!(f.api.count(membership), 1);
     assert_eq!(f.api.count("/api/song/enhance/player/url/v1"), 0);
+}
+
+const SEARCH_URL: &str = "/api/song/enhance/player/url/v1";
+const MEMBERSHIP_INFO: &str = "/api/music-vip-membership/client/vip/info";
+
+fn search_row(toggle_current: bool) -> PlaySelection {
+    PlaySelection::SearchResultTrack {
+        id: "123".into(),
+        quality: Quality::Standard,
+        toggle_current,
+    }
+}
+
+fn assert_search_online(f: &Fixture, level: &str) {
+    assert!(matches!(
+        &f.device.state.lock().unwrap().last_source,
+        Some(MediaInput::Url(_))
+    ));
+    let calls = f.api.calls.lock().unwrap();
+    let requests = calls
+        .iter()
+        .filter(|(path, _)| path == SEARCH_URL)
+        .map(|(_, payload)| payload)
+        .collect::<Vec<_>>();
+    let [request] = requests.as_slice() else {
+        panic!("expected one authorized search URL request");
+    };
+    assert_eq!(request["trialMode"], 42);
+    assert_eq!(request["level"], level);
+}
+
+#[tokio::test]
+async fn search_row_prefers_verified_download_but_keeps_catalog_and_explicit_quality() {
+    let f = Fixture::new();
+    let (_task, completed) = f.completed().await;
+    let path = fs::canonicalize(completed.tasks[0].path.as_ref().unwrap()).unwrap();
+    let local = f
+        .client
+        .play_selection("1", search_row(false))
+        .await
+        .unwrap();
+    assert_eq!(local.state, PlaybackStatus::Playing);
+    assert_eq!(local.resource_kind, Some(PlayerResourceKind::Catalog));
+    assert!(local.download_task_id.is_none());
+    assert_eq!(local.actual_quality.as_deref(), Some("lossless"));
+    assert_eq!(local.requested_quality.as_deref(), Some("standard"));
+    assert!(local.can_change_quality);
+    let queue = f.client.player_queue("1").await.unwrap();
+    assert_eq!(queue.current, local.entry_id);
+    assert_eq!(queue.tracks.len(), 1);
+    assert_eq!(queue.tracks[0].track.id, "123");
+    assert!(matches!(
+        &f.device.state.lock().unwrap().last_source,
+        Some(MediaInput::File(loaded)) if loaded == &path
+    ));
+    assert_eq!(f.api.count(SEARCH_URL), 0);
+    assert_eq!(f.api.count(MEMBERSHIP_INFO), 0);
+
+    let detail_reads = f.api.count("/api/v3/song/detail");
+    let paused = f
+        .client
+        .play_selection("1", search_row(true))
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.play_id, local.play_id);
+    assert_eq!(f.device.state.lock().unwrap().loads, 1);
+    assert_eq!(f.api.count("/api/v3/song/detail"), detail_reads);
+    assert_eq!(f.api.count(SEARCH_URL), 0);
+
+    let changed = f
+        .client
+        .player_action(
+            "1",
+            PlayerAction::Quality {
+                level: Quality::ExHigh,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(changed.state, PlaybackStatus::Paused);
+    assert_eq!(changed.entry_id, local.entry_id);
+    assert_eq!(changed.requested_quality.as_deref(), Some("exhigh"));
+    assert_eq!(changed.actual_quality.as_deref(), Some("standard"));
+    assert_search_online(&f, "exhigh");
+}
+
+#[tokio::test]
+async fn search_row_missing_or_corrupt_download_uses_only_authorized_online_fallback() {
+    for missing in [true, false] {
+        let f = Fixture::new();
+        let (_, completed) = f.completed().await;
+        let path = completed.tasks[0].path.as_ref().unwrap();
+        if missing {
+            fs::remove_file(path).unwrap();
+        } else {
+            fs::write(path, b"changed since publication").unwrap();
+        }
+        let view = f
+            .client
+            .play_selection("1", search_row(false))
+            .await
+            .unwrap();
+        assert_eq!(view.state, PlaybackStatus::Playing);
+        assert_eq!(view.resource_kind, Some(PlayerResourceKind::Catalog));
+        assert_eq!(view.actual_quality.as_deref(), Some("standard"));
+        assert_eq!(f.device.state.lock().unwrap().loads, 1);
+        assert_eq!(f.api.count(MEMBERSHIP_INFO), 0);
+        assert_search_online(&f, "standard");
+    }
+}
+
+#[tokio::test]
+async fn search_row_never_guesses_between_two_completed_publications() {
+    let f = Fixture::new();
+    let (task, _) = f.completed().await;
+    let mut duplicate = f
+        .store
+        .get("1", "download_tasks_v1", &task)
+        .unwrap()
+        .unwrap();
+    let second = "a4a25a7c7e094fa8855cbf2fed026ec1";
+    duplicate["id"] = json!(second);
+    f.store
+        .put("1", "download_tasks_v1", second, &duplicate)
+        .unwrap();
+
+    let view = f
+        .client
+        .play_selection("1", search_row(false))
+        .await
+        .unwrap();
+    assert_eq!(view.state, PlaybackStatus::Playing);
+    assert_search_online(&f, "standard");
+}
+
+#[tokio::test]
+async fn search_row_encrypted_download_needs_current_offline_rights_without_renewal() {
+    use cumulus_core::download::offline::OfflineLibrary;
+    use std::sync::atomic::Ordering;
+    for (known, active) in [(false, false), (true, false), (true, true)] {
+        let f = Fixture::new();
+        f.api.resource.lock().unwrap()["flag"] = json!(0);
+        let (task, completed) = f.completed().await;
+        let original = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+        let encrypted = replace_with_protected_flac(&f, &task, &original);
+        if known {
+            if !active {
+                f.api.membership_expiry.store(1_999_999, Ordering::Release);
+            }
+            OfflineLibrary::new(f.session.clone())
+                .unwrap()
+                .refresh_membership(&f.session.token().unwrap())
+                .await
+                .unwrap();
+        }
+        let view = f
+            .client
+            .play_selection("1", search_row(false))
+            .await
+            .unwrap();
+        assert_eq!(view.state, PlaybackStatus::Playing);
+        if active {
+            let encrypted = fs::canonicalize(encrypted).unwrap();
+            assert!(matches!(
+                &f.device.state.lock().unwrap().last_source,
+                Some(MediaInput::File(loaded)) if loaded == &encrypted
+            ));
+            assert_eq!(f.api.count(SEARCH_URL), 0);
+        } else {
+            assert_search_online(&f, "standard");
+        }
+        assert_eq!(f.api.count(MEMBERSHIP_INFO), usize::from(known));
+    }
+}
+
+#[tokio::test]
+async fn search_row_does_not_load_a_protected_download_after_online_denial() {
+    let f = Fixture::new();
+    f.api.resource.lock().unwrap()["flag"] = json!(0);
+    let (task, completed) = f.completed().await;
+    let path = PathBuf::from(completed.tasks[0].path.as_ref().unwrap());
+    replace_with_protected_flac(&f, &task, &path);
+    *f.api.play.lock().unwrap() = Ok(json!({"code":200,"data":[{"id":123,"code":403}]}));
+
+    let result = f.client.play_selection("1", search_row(false)).await;
+    assert!(result.err().unwrap().is_service_code(403));
+    assert_eq!(f.device.state.lock().unwrap().loads, 0);
+    assert_eq!(f.api.count(SEARCH_URL), 1);
+    assert_eq!(f.api.count(MEMBERSHIP_INFO), 0);
+}
+
+#[tokio::test]
+async fn search_row_download_preference_is_neither_cross_account_nor_other_search_source() {
+    let f = Fixture::new();
+    f.completed().await;
+    let hot = f
+        .client
+        .play_selection(
+            "1",
+            PlaySelection::SearchHotTrack {
+                id: "123".into(),
+                quality: Quality::Standard,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(hot.state, PlaybackStatus::Playing);
+    assert!(matches!(
+        &f.device.state.lock().unwrap().last_source,
+        Some(MediaInput::Url(_))
+    ));
+    let before = f.session.token().unwrap();
+    f.session
+        .adopt(f.api.clone(), json!({"userId":2}), &before)
+        .unwrap();
+    let next = f.session.token().unwrap();
+    let previous_urls = f.api.count(SEARCH_URL);
+    assert!(matches!(
+        f.client.play_selection("1", search_row(false)).await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(f.api.count(SEARCH_URL), previous_urls);
+    f.api.calls.lock().unwrap().clear();
+    let view = f
+        .client
+        .play_selection(&next.generation.to_string(), search_row(false))
+        .await
+        .unwrap();
+    assert_eq!(view.state, PlaybackStatus::Playing);
+    assert_eq!(view.actual_quality.as_deref(), Some("standard"));
+    assert_search_online(&f, "standard");
 }
 
 #[tokio::test]

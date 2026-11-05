@@ -1,6 +1,7 @@
 //! M/163 playback authorization, account-scoped URL cache and shared pending
 //! reads. Signed URLs live in memory only. Local resolution uses LocalLibrary.
 mod cache;
+mod catalog_download;
 mod fetch;
 #[cfg(test)]
 mod fresh_tests;
@@ -274,7 +275,7 @@ impl SourceResolver {
                 .as_str()
                 .ok_or(Error::InvalidInput("invalid download task reference"))?;
             let service = crate::download::service::DownloadService::new(self.session.clone())?;
-            let task = service.get(id)?;
+            let task = service.get_for(token, id)?;
             if catalog_song.is_some_and(|song| {
                 task.song_id != song
                     || task.origin != crate::download::service::DownloadOrigin::Song
@@ -322,6 +323,7 @@ impl SourceResolver {
                 id.to_owned(),
                 path.to_owned(),
                 task.output_integrity,
+                task.encrypted,
             ));
             downloaded_gain = task
                 .resource
@@ -406,9 +408,16 @@ impl SourceResolver {
         })
         .await
         .map_err(|_| Error::State("local source worker failed"))??;
-        if let Some((service, id, path, integrity)) = download_recheck {
-            let latest = service.get(&id)?;
-            if latest.playback_target()? != path || latest.output_integrity != integrity {
+        if let Some((service, id, path, integrity, encrypted)) = download_recheck {
+            let latest = service.get_for(token, &id)?;
+            if latest.playback_target()? != path
+                || latest.output_integrity != integrity
+                || catalog_song.is_some_and(|song| {
+                    latest.song_id != song
+                        || latest.origin != crate::download::service::DownloadOrigin::Song
+                        || latest.encrypted != encrypted
+                })
+            {
                 return Err(Error::State("download reference changed"));
             }
         }

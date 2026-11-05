@@ -111,6 +111,7 @@ impl Backend {
 pub struct DeviceState {
     pub view: EngineSnapshot,
     pub loads: usize,
+    pub last_source: Option<cumulus_core::playback::engine::MediaInput>,
     pub stops: usize,
     pub polls: usize,
     pub duration: f64,
@@ -202,6 +203,7 @@ impl Default for Device {
                     events: vec![],
                 },
                 loads: 0,
+                last_source: None,
                 stops: 0,
                 polls: 0,
                 duration: 120.0,
@@ -351,6 +353,7 @@ impl AudioEngine for Engine {
                 code: -15,
             });
         }
+        state.last_source = Some(request.source);
         let entry_id = state.loads as i64;
         state.bounds.push((request.start, request.end));
         state.view.entry_id = Some(entry_id);
