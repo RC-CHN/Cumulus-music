@@ -118,6 +118,16 @@
       historicalLayoutOnly: mode === 'error',
     });
   } catch (error) {
-    await emit('failed', { ok: false, footerCase: mode, step, error: String(error), stack: error.stack });
+    let account, accountReadFailure;
+    try {
+      const value = await invoke('account_snapshot');
+      account = { epoch: value.epoch, status: value.status, loginNotice: value.loginNotice ?? null };
+    } catch (cause) {
+      accountReadFailure = { code: cause?.code ?? null };
+    }
+    await emit('failed', {
+      ok: false, footerCase: mode, step, error: String(error), stack: error.stack,
+      account, accountReadFailure, page: one('.main-content')?.innerText.slice(0, 1800) ?? null,
+    });
   }
 })();

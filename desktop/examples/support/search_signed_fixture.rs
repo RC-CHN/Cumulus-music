@@ -169,7 +169,9 @@ impl HttpBackend for Backend {
                 || header["os"] != "pc"
                 || header["osver"] != "Microsoft Windows 10"
                 || header["appver"] != VERSION
-                || header["MConfig-Info"] != expected_config
+                // M/92 runs after M/402 serialization. The genuine transport
+                // adds MConfig-Info only to HTTP, never the encrypted header.
+                || header.get("MConfig-Info").is_some()
                 || plan.headers.get("MConfig-Info") != Some(&expected_config)
             {
                 return Err(Error::State(
