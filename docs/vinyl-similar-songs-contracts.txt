@@ -94,8 +94,8 @@ shows three only for non-t1 plus a truthy flag; its literal 展开更多 writes
 true again. The reachable default therefore shows all songs with no
 expand button. A preexisting truthy flag would show three and the button
 would not change the count or reread; the header still receives the
-complete list. This treatment implementation does not expose that old
-group or reproduce a stale persisted hidden tab.
+complete list. The desktop Wiki placement uses the reachable default
+and does not reproduce a stale persisted hidden tab.
 
 Independent “相关歌单” card
 -------------------------
@@ -145,7 +145,7 @@ native group. player_vinyl_similar_songs(epoch,playId) and
 player_vinyl_related_playlists(epoch,playId) load the two cards.
 player_vinyl_similar_play(epoch,playId,receipt,action,quality) selects the
 header or exact displayed row, with no renderer-selected song ID or queue.
-The frontend renders the confirmed t1 tab next to lyrics in classic vinyl.
+The frontend renders the confirmed t1 tab beside lyrics and Wiki in classic vinyl.
 It persists the selected tab as a local presentation preference and keeps
 the same song's playlist expansion when returning to it; a new song resets
 the expansion. Lyrics, scroll-to-comments and the cover remain separate.
@@ -161,7 +161,9 @@ covers no read before opening, failed song read and isolated retry,
 whole-list title insert, cover insert, both row double-click preferences,
 late result after a new play, six-to-eight expansion without a reread,
 and ordinary playlist 108 navigation preserving the existing paused
-track. Control displays lyrics and sends neither recommendation read.
+track. The initial treatment proof covered control before opening Wiki,
+with no recommendation reads. The independent control layout and its
+additional proof are described in vinyl-wiki-contracts.txt.
 The WebView fixture saves 12 treatment states and 1 control state; no
 real account or music service is used. Current-first decode/seek/paused
 behavior is also tested independently in the Rust player fixture.

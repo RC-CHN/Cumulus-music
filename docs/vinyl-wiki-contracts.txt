@@ -9,7 +9,8 @@
   M/27:118 按大小写无关的 track-/voice-/mv- 前缀去除离线标识。
   PH-PC-playPage-recommendMore-new=t1 时标签依次为歌词、百科、相似推荐，
   「百科」仅音乐百科卡；非 t1 为歌词、百科，卡片依次为音乐百科、
-  相似歌曲、相关歌单。当前实现不补造非 t1 推荐折叠、离线歌或其它资源入口。
+  相似歌曲、相关歌单。旧版相似歌曲默认显示全部；潜伏的折叠状态和不受支持
+  的离线资源另见 vinyl-similar-songs-contracts.txt。
 - M/4:14391–14412：App.getCommonData({type:"secretKey"}) 向原生桥发
   app.getNativeData(sequence,type,{})，接收 app/GetNativeData 同序号回执。
   M/109:161–184 无 data.secretKey 直接返回 null，不发请求；存在时，对
@@ -42,7 +43,7 @@
   没有请求或打开该 URL 的桌面 WebView。响应的正式 URL 格式尚未实测，
   此分支不交出原始 URL，也不创建二维码、链接或扫码页面。
 
-Cumulus 本批原生核心
+Cumulus 原生核心
 - MusicClient::player_vinyl_wiki(epoch, playId) 从原生播放器绑定当前
   普通线上曲目；需验证过的账号及签名 PC 上下文，使用同域、同设备、同
   MUSIC_U 的现有原生修订校验。不查询实验分组；两项实验均不禁止读这张
@@ -53,7 +54,32 @@ Cumulus 本批原生核心
   wikiUrl、响应结构、签名值、Cookie、签名材料或 HTML 解释能力。最多
   64 行、每个聚合列表最多 64 个词、标题 128 UTF-8 字节、正文 4096
   UTF-8 字节；拒绝异常类型、越界与非制表/换行的控制字符。后续桌面用
-  文本插值渲染；不渲染 HTML，不透传 QR。这批没有注册 IPC 或前端入口。
+  文本插值渲染；不渲染 HTML，不透传 QR。
 - 验证命令：cargo test --locked -p cumulus-core --test pc_experiment_transport vinyl_wiki
-  合成媒体与冻结 EAPI 请求，不访问真实服务。还需真正桌面 WebView 的
-  验收和原服务回执，不能据此声称正式客户端读卡或扫码流程已通过。
+  合成媒体与冻结 EAPI 请求，不访问真实服务；原服务回执和二维码未验证。
+
+Cumulus 桌面接线
+- 主窗口 IPC player_vinyl_wiki(epoch,playId) 只返回上述投影；
+  player_vinyl_recommendation_placement(epoch) 返回 unresolved、standalone
+  或 wiki。App 针对当前 playId 确认分组，同账号连续切歌可保留上次页签外观，
+  未确认的当前播放实例不读两张推荐卡。关页、切账号或离开标准黑胶时清除
+  上次分组。Rust 推荐回包和播放回执绑定已验证位置；Vue 还核对位置和 playId。
+- 标准黑胶的百科正文和推荐是独立读、独立错误状态。新版页签依次为歌词、
+  百科、相似推荐。旧版只显示歌词、百科，在百科的同一滚动区依次放音乐百科、
+  相似歌曲、相关歌单；歌单初始六张，展开本地已读结果。未确认分组时允许
+  签名百科读，但不猜测推荐位置。已保存但不存在的页签显示歌词。
+- 百科只在展开并选择该页签后读。切到歌词、关闭再重开时，重新挂载并读取；
+  评论覆盖不移除已经加载的卡片。新播放、关页或换账号时旧响应不能更新
+  新卡片。加载、无卡及失败分别显示；原始非空但过滤后为零行仍显示卡标题。
+  窄窗/深色沿用应用主题，右栏滚动与评论的纵向切换隔离。左右箭头及 Home/End
+  在可用页签间移焦，遵循减少动态效果设置。未复刻官方滚动到底前的渐隐蒙层。
+- 验证入口：scripts/ci/vinyl_similar_smoke.py --related --wiki --binary
+  PATH_TO_UX_UI_PROBE --root NEW_DIR；Linux 可加 --screenshots，Windows 可用
+  --runtime 指向打包的媒体依赖。测试只用隔离合成账号、媒体和固定的签名向量。
+- Linux X11 的真实 WebView 和 libmpv 空输出通过 18 个新版及 5 个旧版场景，
+  保存 23 张截图。记录了精确 Wiki 请求、错误后单独重试、正常 tab 关闭重开、
+  Home/右方向键的焦点和 aria-selected、曲目 59 的迟到响应不覆盖新曲 61。
+  新版 Wiki 没有推荐读；恢复之前打开的推荐页签会按当前曲目重新读取。
+  旧版核对同滚动区顺序、五首歌曲完整呈现、只展开歌单且不额外读取、标题操作
+  实际插入五首并保持无关队列。生产可执行文件也在隔离桌面启动。未访问真实音乐
+  服务、未核对实体声卡；Windows 有交叉检查和独立 CI，不能据 Linux 宣称实机通过。
