@@ -244,3 +244,17 @@ FLAC manifest's PCM hash. The 48 kHz verifier checks actual libmpv
 the sample-based duration, browser seek, no restart on master controls,
 bound native PCM processing and real EOF. The 44.1 kHz cases remain
 independent. Neither result implies live Windows or physical playback.
+
+The Linux examples built from `d8ffe012` passed both seven-stage 48 kHz
+cases, with seven compositor captures each. The original stock stream,
+the processed stream and the post-seek replacement each reported 48,000 Hz
+and two channels. Both sought to the browser-accepted 0.5000364583 s while
+paused and ended naturally at 2.0001458333 s on the replacement entry.
+The 44.1 kHz trusted, wrong-digest and paused PEQ controls passed separately.
+Reports: `.build/ui-proof/phase73-wav-48k-r1/report.json`,
+`phase73-flac-48k-r1/report.json` and `phase73-flac-44k-regression-r1/report.json`
+under the same proof root. The ordinary Linux executable separately passed
+warm-open in the existing process, verified a 48 kHz source record and measured
+440 Hz at a private PipeWire sink. Its 96 kHz rejection preserved the existing
+queue (`.build/ui-proof/phase73-warm-48k-r1/report.json`). These are synthetic
+local files and controlled outputs; no service request or physical sound test.
