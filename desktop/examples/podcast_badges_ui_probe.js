@@ -78,7 +78,7 @@
     await emit(`ux_${String(++index).padStart(2, '0')}_${label}`, {
       actual: document.visibilityState === 'visible', badges,
       detail: one('.podcast-summary h2', pane())?.textContent.trim() ?? null,
-      calls: requests.slice(), readCount: detailReads.length,
+      clearOutcomes: requests.slice(), readCount: detailReads.length,
       screenX, screenY, ratio: devicePixelRatio,
       paintSamples: window.__CUMULUS_PROOF_INVOKE__
         ? ['.sidebar-caption', '.playerbar'].map(solidPadding) : [],
@@ -184,7 +184,7 @@
     assert(badge('82')?.textContent.trim() === '4' && !badge('81'), 'lost badge persists without resend');
     await capture('no_replay', () => badge('82'));
     await emit('complete', { ok: true, stageCount: index, remoteWrites: 0,
-      realMusicRequests: 0, calls: requests, detailReads });
+      realMusicRequests: 0, clearOutcomes: requests, detailReads });
   } catch (error) {
     await emit('failed', { ok: false, last, error: String(error), requests, detailReads });
   } finally {

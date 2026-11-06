@@ -89,12 +89,14 @@ def check_badges(output, stages, complete, screenshots):
     ] * 5
     assert all(row[0] in {route, detail, listing} for row in native_trace)
     assert complete['detailReads'] == ['81', '81', '81', '82', '82']
-    assert complete['calls'] == [['81', 'acknowledged'], ['82', 'network'], ['82', 'stale']]
+    clear_outcomes = [['81', 'acknowledged'], ['82', 'network'], ['82', 'stale']]
+    assert complete['clearOutcomes'] == clear_outcomes
     for stage, (badges, name, reads, clears) in expected.items():
         row = stages[stage]
         assert (row['badges'], row['detail'], row['readCount']) == (badges, name, reads), stage
         assert [body for target, body in row['podcastBadgeTrace'] if target == detail] == known_details[:reads]
         assert [call for call in row['podcastBadgeTrace'] if call[0] == route] == known_clears[:clears]
+        assert row['clearOutcomes'] == clear_outcomes[:3 if stage == 'no_replay' else clears]
     if sys.platform == 'linux':
         locale = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
         assert locale['numeric'] == 'C'

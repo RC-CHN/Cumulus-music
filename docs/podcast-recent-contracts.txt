@@ -95,7 +95,7 @@
   详情可继续。这里未声称新的真实服务/桌面运行已验证。
 - 桌面探针同一 podcast_recent_ui_probe 新增 --badges 模式。8 个阶段实际操作收藏卡、
   编号入口、刷新和返回；密闭原生适配器只有两次合成 byradio 发送（分别回确认及丢应答），
-  原样返回旧计数验证成功后消失、丢应答后仍显示且同观察值不重发。可选 Linux 三方
+  原样返回旧计数验证成功后消失、丢应答后仍显示且同观察值不重发。可选 Linux 桌面
   截图握手并检查封面右上角、99+、可访问计数以及无横向溢出。待运行入口：
   xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 \
     /usr/bin/python3 scripts/ci/podcast_recent_smoke.py --badges --screenshots \
