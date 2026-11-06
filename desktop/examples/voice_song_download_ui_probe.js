@@ -138,13 +138,18 @@
     if (!playCompleted) return;
     await click(() => q('#download-tab-song'), 'open actual 已下载单曲 tab');
     const finished = () => q(`[data-download-task="${done.id}"]`, q('.downloads-page'));
-    const item = await wait(() => q('#download-tab-song[aria-selected="true"]') && visible(finished()) &&
-      finished().textContent.includes('合成包含歌曲 1710') &&
-      !q('button[aria-label="播放下载 合成包含歌曲 1710"]', finished())?.disabled && finished(),
+    const playButton = () => q('button[aria-label="播放下载 合成包含歌曲 1710"]', finished());
+    await wait(() => q('#download-tab-song[aria-selected="true"]') && visible(finished()) &&
+      finished().textContent.includes('合成包含歌曲 1710') && enabled(playButton()),
       'exact finished task painted and can play');
     await capture('completed_visible');
+    // A download polling commit can replace the virtual table's row while the
+    // screenshot is being saved. Resolve the same opaque task ID again.
+    const item = finished();
+    assert(item?.isConnected, 'exact completed row still belongs to the live table');
     item.focus({ preventScroll: true });
-    assert(document.activeElement === item, 'exact finished row owns focus');
+    assert(document.activeElement === item,
+      `exact finished row owns focus; active=${document.activeElement?.outerHTML.slice(0, 160)}`);
     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
     const playing = await wait(async () => {
       const current = await state();
