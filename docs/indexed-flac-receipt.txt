@@ -228,3 +228,9 @@ Stop/Pause were silent. The sampled mpv output, sink and recorder ERR stayed
 zero. Receipts, counter logs and screenshots:
 `.build/ui-proof/phase86-indexed-1024-e/` and
 `.build/ui-proof/phase86-indexed-4608-e/`.
+The 4608-frame run also passed with the Ubuntu 24.04 libmpv 0.37
+runtime supplied via the private loader path, using this machine's GTK and
+PipeWire. Its amplitudes, longest zero runs and zero ERR counters matched
+this result. See `.build/ui-proof/phase86-indexed-4608-f-noble/`. This is
+not a full Ubuntu runner simulation. The Debian package job separately
+requires the wider case on the exact CI build before publication.
