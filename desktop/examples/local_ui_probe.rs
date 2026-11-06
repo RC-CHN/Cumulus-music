@@ -195,6 +195,18 @@ fn main() {
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
+            if folder_reveal && ["ux_01_folder_menu", "ux_02_folder_focus", "ux_03_folder_failure"].contains(&stage) {
+                fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+                let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if tokio::time::timeout(std::time::Duration::from_secs(8),async {
+                        while !marker.is_file() {tokio::time::sleep(std::time::Duration::from_millis(40)).await;}
+                    }).await.is_ok() {
+                        handle.get_webview_window("main").unwrap().eval(format!("window.__folderCaptureAck={};",json!(stage))).unwrap();
+                    }
+                });
+                return;
+            }
             if queue {
                 if ["local_queue_started", "ux_01_local_track_menu", "ux_02_local_track_playing", "ux_03_local_queue_drop", "complete", "failed"].contains(&stage) {
                     fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();

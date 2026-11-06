@@ -40,6 +40,17 @@
   async function close(target) {
     await wait(() => !menu() && document.activeElement === target, 'menu returns focus');
   }
+  async function capture(stage, target) {
+    if (!window.__localProof.capture) return;
+    await wait(() => !one('.menu-enter-active,.menu-leave-active'), 'menu transition settled');
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    const bounds = target.getBoundingClientRect();
+    assert(bounds.width > 0 && bounds.height > 0 && target.contains(
+      document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)),
+    'proof control is not visible');
+    await emit(stage);
+    await wait(() => window.__folderCaptureAck === stage, 'folder screenshot acknowledgement');
+  }
   async function rejected(query, revision) {
     try {
       await invoke('reveal_local_folder', { query, revision });
@@ -88,6 +99,7 @@
     for (const [index, outcome] of ['reveal', 'fallback', 'deny', 'timeout'].entries()) {
       await context(target, index === 0);
       const entry = await wait(() => reveal() && !reveal().disabled && reveal(), 'folder reveal enabled');
+      if (index === 0) await capture('ux_01_folder_menu', entry);
       const sentAt = performance.now();
       click(entry);
       await close(target);
@@ -96,6 +108,8 @@
       if (index === 3)
         assert(performance.now() - sentAt >= 1600, 'timeout must follow this request, not a previous alert');
       assert(target.getAttribute('aria-pressed') === 'false' && before === rows(), 'reveal modified local selection');
+      if (index === 0) await capture('ux_02_folder_focus', target);
+      if (index === 3) await capture('ux_03_folder_failure', one('.local-page [role="alert"]'));
     }
     await emit('complete', { ok: true, outcomes: ['reveal', 'fallback', 'deny', 'timeout'],
       negative, realMusicRequests: 0, focusRestored: true, selectedFolderChanged: false });

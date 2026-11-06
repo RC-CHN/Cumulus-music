@@ -7,6 +7,7 @@ from shutil import which
 import subprocess
 import sys
 import time
+from motion_smoke import launch
 
 SERVICE = 'org.freedesktop.FileManager1'
 OBJECT = '/org/freedesktop/FileManager1'
@@ -57,7 +58,7 @@ def serve(root):
     GLib.MainLoop().run()
 
 
-def verify(binary, root):
+def verify(binary, root, screenshots):
     root.mkdir(parents=True, exist_ok=False)
     run = root / 'run'
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
@@ -89,10 +90,10 @@ def verify(binary, root):
                 assert service.poll() is None and time.monotonic() < limit, 'fake shell did not start'
                 time.sleep(.05)
             with (root / 'host.log').open('x', encoding='utf-8') as log:
-                result = subprocess.run([str(binary)], env=env, stdout=log, stderr=log, timeout=120)
+                code = launch(binary, env, log, run, screenshots)
             failed = run / 'failed.json'
             assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
-            assert result.returncode == 0 and service.poll() is None
+            assert code == 0 and service.poll() is None
         finally:
             service.terminate()
             service.wait(timeout=5)
@@ -106,8 +107,11 @@ def verify(binary, root):
     target = (run / 'media/Bonus').resolve()
     assert lines('show-items.jsonl') == [[[target.as_uri()], '']] * 4
     assert lines('fallback.jsonl') == [[str(target.parent)]], 'fallback must occur once, only for absent method'
+    stages = {path.stem for path in run.glob('ux_*.png')}
+    assert stages == ({'ux_01_folder_menu', 'ux_02_folder_focus', 'ux_03_folder_failure'} if screenshots else set())
     report = {'ok': True, 'actualWebView': True, 'fakeNativeShell': True, 'revealCalls': 4,
-              'parentFallbackCalls': 1, 'realFileManagerOpened': False, 'realMusicRequests': 0}
+              'parentFallbackCalls': 1, 'realFileManagerOpened': False, 'realMusicRequests': 0,
+              'screenshots': len(stages)}
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))
 
@@ -119,18 +123,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
     parser.add_argument('--root', type=Path, required=True)
+    parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--private-child', action='store_true', help=argparse.SUPPRESS)
     args = parser.parse_args()
     assert sys.platform == 'linux'
     if args.private_child:
-        verify(args.binary.resolve(), args.root.resolve())
+        verify(args.binary.resolve(), args.root.resolve(), args.screenshots)
     else:
         # Never acquire FileManager1 or use the fake launcher on a user bus.
         env = {k: v for k, v in os.environ.items()
                if k not in ('DBUS_SESSION_BUS_ADDRESS', 'AT_SPI_BUS_ADDRESS', 'AT_SPI_DISPLAY')}
         subprocess.run(['dbus-run-session', '--', sys.executable, __file__, '--private-child',
-                        '--binary', str(args.binary.resolve()), '--root', str(args.root.resolve())],
-                       env=env, check=True, timeout=135)
+                        '--binary', str(args.binary.resolve()), '--root', str(args.root.resolve()),
+                        *(['--screenshots'] if args.screenshots else [])],
+                       env=env, check=True, timeout=195)
 
 
 if __name__ == '__main__':
