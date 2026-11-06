@@ -10,7 +10,8 @@ use cumulus_core::{
 use serde_json::{Value, json};
 use std::{
     fs,
-    sync::atomic::{AtomicU64, Ordering},
+    sync::atomic::{AtomicBool, AtomicU64, Ordering},
+    time::Duration,
 };
 use tauri::{Listener, Manager};
 
@@ -30,6 +31,7 @@ pub(super) fn script() -> String {
 pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
     app.add_capability(r#"{"identifier":"local-spatial-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
     let next_open = AtomicU64::new(1);
+    let seek_observed = AtomicBool::new(false);
     let handle = app.handle().clone();
     app.listen("local-spatial-proof", move |event| {
         let mut value: Value = serde_json::from_str(event.payload()).expect("sealed spatial event");
@@ -76,6 +78,39 @@ pub(super) fn install(app: &tauri::App) -> tauri::Result<()> {
                     .get_webview_window("main")
                     .unwrap()
                     .eval(format!("window.__spatialOpenAck={reply}"))
+                    .unwrap();
+            });
+            return;
+        }
+        if value["observePausedSeek"] == true {
+            assert!(
+                next_open.load(Ordering::Acquire) == 3
+                    && !seek_observed.swap(true, Ordering::AcqRel),
+                "unexpected synthetic seek observation"
+            );
+            let proof = handle.state::<Proof>();
+            let evidence = proof.evidence.clone();
+            let rate_48k = proof.fixture_source["sampleRate"] == 48_000;
+            let handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                let observed = tokio::time::timeout(Duration::from_secs(8), async {
+                    loop {
+                        let seconds = evidence.lock().unwrap().settled_spatial_seek(rate_48k);
+                        if let Some(seconds) = seconds {
+                            break seconds;
+                        }
+                        tokio::time::sleep(Duration::from_millis(25)).await;
+                    }
+                })
+                .await;
+                let reply = match observed {
+                    Ok(seconds) => json!({"ok":true,"seconds":seconds}),
+                    Err(_) => json!({"ok":false}),
+                };
+                handle
+                    .get_webview_window("main")
+                    .unwrap()
+                    .eval(format!("window.__spatialNativeSeekAck={reply}"))
                     .unwrap();
             });
             return;

@@ -43,7 +43,9 @@
     node.click();
   }
   function set(label, value, event = 'change') {
-    const node = control(label);
+    return setRange(control(label), label, value, event);
+  }
+  function setRange(node, label, value, event = 'change') {
     reveal(node);
     assert(visible(node), 'visible slider ' + label);
     node.value = String(value);
@@ -53,6 +55,12 @@
   }
   function sliderValues(labels) {
     return labels.map((label) => Number(control(label)?.value));
+  }
+  function matchingControl(node, keyField, view, transportState) {
+    if (!visible(node)) return false;
+    const key = JSON.parse(node.dataset[keyField] ?? 'null');
+    return Array.isArray(key) && key[0] === epoch && key[1] === view.playId &&
+      key[2] === view.queueRevision && (transportState === undefined || key[4] === transportState);
   }
   function samePlay(a, b) {
     return a.playId === b.playId && a.entryId === b.entryId && a.queueRevision === b.queueRevision;
@@ -196,15 +204,30 @@
     await closeEq();
 
     const requested = .5;
-    const step = Number(control('播放进度')?.step);
-    const accepted = set('播放进度', requested);
-    assert(step > 0 && Number.isFinite(step) && Math.abs(accepted - requested) <= step / 2 + 1e-9,
+    const { step, accepted } = await wait(() => {
+      const rail = control('播放进度');
+      if (!matchingControl(rail, 'scrubKey', on) || bar()?.dataset.state !== 'paused') return;
+      const step = Number(rail.step);
+      assert(step > 0 && Number.isFinite(step), 'valid live seek geometry');
+      return { step, accepted: setRange(rail, '播放进度', requested) };
+    }, 'enabled seek rail bound to the paused source');
+    assert(Math.abs(accepted - requested) <= step / 2 + 1e-9,
       'browser range rounds the requested seek within half its actual step');
+    // A pre-seek paused clock can already fall within the target tolerance.
+    // Require a receipt for the actual replacement and a fresh native poll.
+    await emit({ observePausedSeek: true });
+    const seek = await wait(() => window.__spatialNativeSeekAck, 'observed native paused seek');
+    assert(seek.ok && seek.seconds === accepted, 'exact native paused seek and replacement');
     const sought = await playback((view) => samePlay(view, on) && view.state === 'paused' &&
       !view.nativeSeeking && Math.abs(view.position - accepted) < .06, 'paused native replacement clock');
     await stage('ux_05_paused_seek', sought, { seekTarget: { requested, accepted, step } });
-    assert(transport()?.getAttribute('aria-label') === '播放', 'visible Resume');
-    click(transport());
+    await wait(() => {
+      const resume = transport();
+      if (resume?.getAttribute('aria-label') !== '播放' ||
+          !matchingControl(resume, 'primaryTransportKey', sought, 'paused')) return;
+      click(resume);
+      return true;
+    }, 'enabled Resume bound to the replaced paused source');
     await playback((view) => samePlay(view, sought) && view.state === 'playing' &&
       view.position > .65 && view.equalizer.spatial_status === 'processing', 'resumed native spatial PCM');
     const ended = await playback((view) => samePlay(view, sought) && view.state === 'ended' &&

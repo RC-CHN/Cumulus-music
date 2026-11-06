@@ -258,3 +258,13 @@ warm-open in the existing process, verified a 48 kHz source record and measured
 440 Hz at a private PipeWire sink. Its 96 kHz rejection preserved the existing
 queue (`.build/ui-proof/phase73-warm-48k-r1/report.json`). These are synthetic
 local files and controlled outputs; no service request or physical sound test.
+
+Windows 空间音效探针：暂停定位阶段的原生回执
+3e91f381 Windows package job 127626307412:1995 的合成 WAV 停在 ux_05_paused_seek。
+原 native entry 2 连续暂停于 0.4414965986394558 秒，和网页请求约 0.500039682539683 秒
+相差不足原有 0.06 秒容差；旧探针提前写了阶段，失败时原生记录没有已完成的 seek，
+接下来恢复播放按钮也未达到可交互条件。该记录不能判定 seek 尚未派发、仍在途中或
+已经被拒，也不是解码器定位结果。新探针先核对可交互进度条所属播放 ID/队列版本，
+只发一次真实 DOM change，再等待独立的原生定位回执和新 entry 的暂停、非定位时钟
+采样，之后才截图/恢复同一逻辑播放。原有 44.1/48 kHz 位置容差、独立 Python 回执/
+尾音/解码检查未放宽。没有修改播放器、没有自动重试，Windows 实际复测仍需 CI。

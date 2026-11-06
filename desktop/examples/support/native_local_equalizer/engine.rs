@@ -65,6 +65,34 @@ pub struct Observations {
     pub last_polls: VecDeque<Poll>,
     poll_sequence: u64,
 }
+impl Observations {
+    /// Require an actual new native entry even if the old paused clock was
+    /// already within the requested slider's numerical tolerance.
+    pub(super) fn settled_spatial_seek(&self, rate_48k: bool) -> Option<f64> {
+        let [load] = self.loads.as_slice() else {
+            return None;
+        };
+        let [seek] = self.seeks.as_slice() else {
+            return None;
+        };
+        let replacement = seek.replacement?;
+        let tolerance = if rate_48k { 0.02 } else { 0.06 };
+        (seek.old_entry == load.entry
+            && replacement != load.entry
+            && seek.graph_entry == Some(replacement)
+            && self.last_polls.iter().any(|poll| {
+                poll.entry == Some(replacement)
+                    && poll.paused
+                    && !poll.seeking
+                    && (!rate_48k || !poll.buffering)
+                    && poll
+                        .position
+                        .is_some_and(|position| (position - seek.seconds).abs() < tolerance)
+            }))
+        .then_some(seek.seconds)
+    }
+}
+
 pub type Evidence = Arc<Mutex<Observations>>;
 
 pub struct Recorded {
@@ -287,5 +315,48 @@ impl AudioEngine for Recorded {
             }
         }
         Ok(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spatial_seek_receipt_waits_for_replacement_even_with_close_old_clock() {
+        let target = 0.500039682539683;
+        let mut observed = Observations::default();
+        observed.loads.push(Load {
+            native_file: true,
+            indexed_file: false,
+            start: 0.0,
+            entry: 2,
+            graph_entry: Some(2),
+            codec: Some("pcm_f32le".into()),
+        });
+        let poll = |entry, position, seeking| Poll {
+            sequence: 1,
+            entry: Some(entry),
+            position: Some(position),
+            paused: true,
+            seeking,
+            buffering: false,
+            ended: Vec::new(),
+        };
+        let old_clock = 0.4414965986394558;
+        assert!(target - old_clock < 0.06, "exact CI false-positive vector");
+        observed.last_polls.push_back(poll(2, old_clock, false));
+        assert_eq!(observed.settled_spatial_seek(false), None);
+        observed.seeks.push(Seek {
+            seconds: target,
+            old_entry: 2,
+            replacement: Some(3),
+            graph_entry: Some(3),
+        });
+        assert_eq!(observed.settled_spatial_seek(false), None);
+        observed.last_polls.push_back(poll(3, target, true));
+        assert_eq!(observed.settled_spatial_seek(false), None);
+        observed.last_polls.push_back(poll(3, target, false));
+        assert_eq!(observed.settled_spatial_seek(false), Some(target));
     }
 }
