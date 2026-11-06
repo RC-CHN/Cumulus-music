@@ -1931,3 +1931,18 @@ RT下发/轮换或真实浏览器网页已打开。细节、失败修正和界�
   实际构建成功。命令日志为rust-fmt-after-barrier.log、rust-clippy-final.log、
   desktop-build-final.log、filter-build-final.log；二进制/前端hash与仅文档脏项见
   build-final-provenance.json。该构建结果不单独证明桌面业务或实体输出听感。
+
+后续队列、播客及本地 FLAC 合并批次（997e0004，2026-11-06）
+
+- 从当时的 RC 测试修复基线合并本地索引 FLAC 的倍速缓冲、队列来源与歌手跳转、
+  空队列发现及收藏播客推荐。这是开发批次，没有并入 RC 发行树。
+- Linux 实际执行 `cargo fmt --all --check`、严格
+  `cargo clippy --workspace --all-targets --features cumulus-desktop/custom-protocol --locked -- -D warnings`
+  和 `cargo test --workspace --all-targets --features cumulus-desktop/custom-protocol --locked`。
+  2,544 项测试通过；401 个运行目标含零测试例程序，不能据此认定真窗口全部通过。
+- 执行锁文件 `npm ci`、`format:check`、前端 936 项测试及生产构建（含类型检查）。
+  记录在本机 `.build/post-rc-997e0004-*.log`。
+- 桌面／音频证据见 [空队列发现](queue-empty-discovery.txt)、
+  [队列歌手](queue-artist-navigation.txt)、[队列来源](queue-source-navigation.txt)、
+  [播放优先项](playback-search-priority.txt)和[播客契约](podcast-recent-contracts.txt)。
+  各运行条件独立读取；不代表 Windows 或所有真实账号、物理音频设备均验证。
