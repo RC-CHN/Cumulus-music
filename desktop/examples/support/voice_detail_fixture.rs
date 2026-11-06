@@ -32,7 +32,13 @@ impl VoiceDetail {
     }
 }
 pub fn enrich(mut response: Value) -> Value {
-    fn voice(value: &mut Value) {
+    let description = std::env::var("CUMULUS_VOICE_DESCRIPTION_PROOF").ok();
+    assert!(
+        description
+            .as_deref()
+            .is_none_or(|case| matches!(case, "short" | "missing"))
+    );
+    fn voice(value: &mut Value, description: Option<&str>) {
         let Some(id) = value.get("id").and_then(Value::as_u64) else {
             return;
         };
@@ -43,6 +49,17 @@ pub fn enrich(mut response: Value) -> Value {
             "email":"synthetic-private-field-never-project",
         });
         value["createTime"] = json!(RELEASE);
+        match (description, id) {
+            (Some(_), 601) => {
+                value["description"] = json!(concat!(
+                    "第一行合成节目简介\n第二行说明不改变播放\n第三行保留换行\n",
+                    "第四行仍然可见\n第五行仅展开后可见\n第六行结尾标记"
+                ));
+            }
+            (Some("short"), 602) => value["description"] = json!("这是合成短简介"),
+            (Some("missing"), 602) => assert!(value.get("description").is_none()),
+            _ => {}
+        }
     }
     if let Some(rows) = response
         .get_mut("data")
@@ -54,13 +71,13 @@ pub fn enrich(mut response: Value) -> Value {
         for row in rows {
             if let Some(voices) = row["creativeExtInfoVO"]["djPrograms"].as_array_mut() {
                 for v in voices {
-                    voice(v);
+                    voice(v, description.as_deref());
                 }
             }
         }
     }
     if let Some(program) = response.get_mut("program") {
-        voice(program);
+        voice(program, description.as_deref());
     }
     response
 }
