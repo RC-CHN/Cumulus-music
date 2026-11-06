@@ -289,7 +289,7 @@ async fn version_one_recovery_snapshot_upgrades_without_fresh_album_request() {
 }
 
 #[tokio::test]
-async fn replacing_double_click_on_active_same_song_toggles_exact_decoder_until_it_is_inactive() {
+async fn double_click_on_active_same_song_toggles_exact_decoder_until_it_is_inactive() {
     let (_dir, api, _session, client, _count) = fixture();
     *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
     let (album, _) = scope(&client, AlbumDurationOrder::Ascending).await;
@@ -325,32 +325,45 @@ async fn replacing_double_click_on_active_same_song_toggles_exact_decoder_until_
             quality: Quality::Standard,
         },
     };
-    api.calls.lock().unwrap().clear();
-    let paused = client
-        .play_selection("1", select(album.clone()))
-        .await
+    for replace_queue in [true, false] {
+        if !replace_queue {
+            client
+                .queue_click_preferences_command(
+                    "1",
+                    QueueClickPreferencesCommand::Change {
+                        expected_revision: "0".into(),
+                        replace_queue,
+                    },
+                )
+                .unwrap();
+        }
+        api.calls.lock().unwrap().clear();
+        for state in [PlaybackStatus::Paused, PlaybackStatus::Playing] {
+            let toggled = client
+                .play_selection("1", select(album.clone()))
+                .await
+                .unwrap();
+            assert_eq!(toggled.state, state);
+            assert_eq!(toggled.entry_id, before.entry_id);
+            assert_eq!(toggled.play_id, before.play_id);
+            assert_eq!(toggled.queue_revision, before.queue_revision);
+            assert_eq!(toggled.position, before.position);
+            assert_eq!(ids(&client).await, ["11", "1000"]);
+        }
+        assert!(!api.calls.lock().unwrap().iter().any(|path| matches!(
+            path.as_str(),
+            "/api/v3/song/detail" | "/api/song/enhance/player/url/v1"
+        )));
+    }
+    client
+        .queue_click_preferences_command(
+            "1",
+            QueueClickPreferencesCommand::Change {
+                expected_revision: "1".into(),
+                replace_queue: true,
+            },
+        )
         .unwrap();
-    assert_eq!(paused.state, PlaybackStatus::Paused);
-    assert_eq!(paused.entry_id, before.entry_id);
-    assert_eq!(paused.play_id, before.play_id);
-    assert_eq!(paused.queue_revision, before.queue_revision);
-    assert_eq!(paused.position, before.position);
-    let resumed = client
-        .play_selection("1", select(album.clone()))
-        .await
-        .unwrap();
-    assert_eq!(resumed.state, PlaybackStatus::Playing);
-    assert_eq!(resumed.entry_id, before.entry_id);
-    assert_eq!(resumed.play_id, before.play_id);
-    assert_eq!(resumed.queue_revision, before.queue_revision);
-    assert_eq!(ids(&client).await, ["11", "1000"]);
-    assert!(
-        !api.calls
-            .lock()
-            .unwrap()
-            .iter()
-            .any(|path| path == "/api/song/enhance/player/url/v1")
-    );
 
     // A valid duplicate ID must not revive a row whose album metadata was
     // omitted. Its new current receipt still carries the unavailable anchor.

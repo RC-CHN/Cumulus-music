@@ -902,6 +902,29 @@ impl MusicClient {
         } else {
             (ids, index)
         };
+        if album_double_click {
+            let id = ids
+                .get(index)
+                .and_then(Value::as_str)
+                .ok_or(Error::QueueChanged)?;
+            let guard = source_guard.as_ref().ok_or(Error::StaleResponse)?;
+            // The album anchor was verified against the cached source above.
+            // Toggling the already-active entry does not resolve another song.
+            if let Some(state) = self
+                .toggle_active_album_row(
+                    &token,
+                    id,
+                    attempt,
+                    lease.ok_or(Error::StaleResponse)?,
+                    guard,
+                    preserve.as_ref(),
+                )
+                .await?
+            {
+                self.session.with_token(&token, |_| Ok(()))?;
+                return project(&state, &token);
+            }
+        }
         let mut resources = Vec::with_capacity(ids.len());
         for chunk in ids.chunks(100) {
             if self.player.selection.load(Ordering::Acquire) != attempt {
@@ -942,23 +965,6 @@ impl MusicClient {
         }
         if resources.get(index).is_none_or(|v| v["missing"] == true) {
             return Err(Error::State("selected song is unavailable"));
-        }
-        if single_album_row {
-            let id = resources[index]["id"].as_str().ok_or(Error::QueueChanged)?;
-            let guard = source_guard.as_ref().ok_or(Error::StaleResponse)?;
-            if let Some(state) = self
-                .toggle_active_album_row(
-                    &token,
-                    id,
-                    attempt,
-                    lease.ok_or(Error::StaleResponse)?,
-                    guard,
-                )
-                .await?
-            {
-                self.session.with_token(&token, |_| Ok(()))?;
-                return project(&state, &token);
-            }
         }
         let state = if let (Some(snapshot), Some(retained)) = (preserve, retained) {
             let lease = lease.ok_or(Error::StaleResponse)?;

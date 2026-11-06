@@ -225,7 +225,7 @@ fn current_album_table_song(before: &PlaybackSnapshot, id: &str) -> bool {
 
 impl MusicClient {
     /// M/3085 toggles the current ID before applying a double-click queue
-    /// replacement. Call only after validating the album row and hydrating it.
+    /// replacement. Call after validating the album anchor, before hydration.
     pub(super) async fn toggle_active_album_row(
         &self,
         token: &SessionToken,
@@ -233,15 +233,24 @@ impl MusicClient {
         attempt: u64,
         lease: u64,
         source_guard: &Cancellation,
+        retained: Option<&QueueClickSnapshot>,
     ) -> Result<Option<PlaybackSnapshot>> {
-        let Some(controller) = self.player.controller.get() else {
-            return Ok(None);
+        let (before, intelligence) = if let Some(snapshot) = retained {
+            (
+                snapshot.before.clone(),
+                snapshot.queue.intelligence.is_some(),
+            )
+        } else {
+            let Some(controller) = self.player.controller.get() else {
+                return Ok(None);
+            };
+            if !current_album_table_song(&controller.snapshot(), id) {
+                return Ok(None);
+            }
+            let (before, queue) = controller.queue_with_state(token).await?;
+            (before, queue.intelligence.is_some())
         };
-        if !current_album_table_song(&controller.snapshot(), id) {
-            return Ok(None);
-        }
-        let (before, queue) = controller.queue_with_state(token).await?;
-        if !current_album_table_song(&before, id) || queue.intelligence.is_some() {
+        if !current_album_table_song(&before, id) || intelligence {
             return Ok(None);
         }
         let _room = self
