@@ -50,7 +50,7 @@
     await capture('settings');
 
     click(opener);
-    await wait(() => dialog()?.textContent.includes('最新公开稳定版'), 'current stable release');
+    await wait(() => dialog()?.textContent.includes('公开稳定版') && action('校验本地安装包'), 'no newer stable release');
     assert(!action('查看发布页') && action('校验本地安装包'), 'current release can be verified without a handoff');
     await capture('current');
     click(action('知道了'));

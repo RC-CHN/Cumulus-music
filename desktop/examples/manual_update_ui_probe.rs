@@ -51,8 +51,10 @@ fn main() {
             let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc)?;
             let session = Arc::new(AccountSession::new(Arc::new(SignedOut), Some(registry.store())));
             app.manage(MusicClient::with_session(session, registry));
+            let current = env!("CARGO_PKG_VERSION");
+            let stable = if current.contains("-rc.") { "0.0.0" } else { current };
             let fixture = update_fixture::Fixture {
-                mode: Default::default(), reads: Default::default(), installed: env!("CARGO_PKG_VERSION"),
+                mode: Default::default(), reads: Default::default(), installed: stable,
             };
             #[cfg(not(target_os = "windows"))]
             let adapters = cumulus_desktop::UpdateAdapters::with_source(fixture.clone());

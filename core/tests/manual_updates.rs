@@ -44,6 +44,47 @@ async fn stable_versions_are_compared_numerically_and_only_newer_offers_have_a_p
 }
 
 #[tokio::test]
+async fn release_candidates_only_offer_newer_stable_versions() {
+    let current = "0.2.0-rc.1";
+    let previous = check_latest(current, &Json(release("0.1.0")))
+        .await
+        .unwrap();
+    assert_eq!(
+        previous.view,
+        UpdateCheck::NoNewer {
+            current_version: current.into(),
+            latest_version: "0.1.0".into(),
+        }
+    );
+    assert!(previous.release.is_none());
+    for version in ["0.2.0", "0.3.0"] {
+        let stable = check_latest(current, &Json(release(version)))
+            .await
+            .unwrap();
+        assert_eq!(
+            stable.view,
+            UpdateCheck::Available {
+                current_version: current.into(),
+                latest_version: version.into(),
+            }
+        );
+        assert!(stable.release.is_some());
+    }
+    for malformed in [
+        "0.2.0-rc.0",
+        "0.2.0-rc.01",
+        "0.2.0-rc.+1",
+        "0.2.0-rc.",
+        "0.2.0-alpha.1",
+    ] {
+        assert!(matches!(
+            check_latest(malformed, &Json(release("0.2.0"))).await,
+            Err(UpdateFailure::InvalidMetadata)
+        ));
+    }
+}
+
+#[tokio::test]
 async fn nonstable_unpublished_wrong_repository_and_incomplete_assets_fail_closed() {
     for (field, value) in [
         ("draft", json!(true)),

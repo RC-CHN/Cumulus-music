@@ -135,8 +135,19 @@ pub async fn check_latest(
     current: &str,
     source: &dyn LatestReleaseSource,
 ) -> Result<UpdateResult, UpdateFailure> {
-    let installed = Version::parse(current).ok_or(UpdateFailure::InvalidMetadata)?;
-    let current_version = installed.to_string();
+    let (base, is_candidate) = match current.split_once("-rc.") {
+        Some((base, rc))
+            if !rc.starts_with('0')
+                && rc.bytes().all(|digit| digit.is_ascii_digit())
+                && rc.parse::<u64>().is_ok() =>
+        {
+            (base, true)
+        }
+        Some(_) => return Err(UpdateFailure::InvalidMetadata),
+        None => (current, false),
+    };
+    let installed = Version::parse(base).ok_or(UpdateFailure::InvalidMetadata)?;
+    let current_version = current.to_owned();
     let LatestReleaseReply::Published(body) = source.latest().await? else {
         return Ok(UpdateResult {
             view: UpdateCheck::NoPublishedRelease { current_version },
@@ -167,7 +178,7 @@ pub async fn check_latest(
     let packages = PublishedPackages::from_assets(&release.assets, version)
         .ok_or(UpdateFailure::InvalidMetadata)?;
     let latest_version = version.to_string();
-    if version > installed {
+    if version > installed || (is_candidate && version == installed) {
         Ok(UpdateResult {
             view: UpdateCheck::Available {
                 current_version,
