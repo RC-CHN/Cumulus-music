@@ -23,6 +23,7 @@ impl Lane {
 
 pub struct Fixture {
     joined_proof: bool,
+    fresh_actions: bool,
     requests: Mutex<Vec<Request>>,
     release: Notify,
 }
@@ -41,9 +42,10 @@ pub struct Ticket {
 }
 
 impl Fixture {
-    pub fn new(joined_proof: bool) -> Self {
+    pub fn new(joined_proof: bool, fresh_actions: bool) -> Self {
         Self {
             joined_proof,
+            fresh_actions,
             requests: Mutex::default(),
             release: Notify::new(),
         }
@@ -100,7 +102,11 @@ impl Fixture {
             response["program"]["listenerCount"] = json!("0");
             response["program"]["coverUrl"] =
                 json!("https://p1.music.126.net/never-replace-selected-art.png");
-            if ticket.ordinal == 2 {
+            if self.fresh_actions && ticket.ordinal >= 2 {
+                use super::voice_fresh_actions_fixture::{CREATOR_NAME, RADIO_NAME};
+                response["program"]["creator"] = json!({"userId":56,"nickname":CREATOR_NAME});
+                response["program"]["radio"] = json!({"id":81,"name":RADIO_NAME,"subCount":9});
+            } else if ticket.ordinal == 2 {
                 response["program"]["creator"] = json!({"userId":56,"nickname":"合成仅展示主播"});
                 response["program"]["radio"] =
                     json!({"id":81,"name":"合成仅展示播单","subCount":9});

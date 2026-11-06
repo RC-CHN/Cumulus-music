@@ -20,6 +20,8 @@ mod scene_palette_fixture;
 mod settings_fixture;
 #[path = "support/voice_detail_fixture.rs"]
 mod voice_detail_fixture;
+#[path = "support/voice_fresh_actions_fixture.rs"]
+mod voice_fresh_actions_fixture;
 #[path = "support/voice_page_fixture.rs"]
 mod voice_page_fixture;
 #[path = "support/voice_podcast_collect_fixture.rs"]
@@ -40,7 +42,8 @@ use cumulus_core::{
             Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
             PlaylistAddPermission, PodcastBadgeClear, PodcastBadgePermission,
             PodcastProgressPermission, SongLikePermission, VinylPlaybackReadPermission,
-            VinylVoiceDetailRead, VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
+            VinylPodcastSubscriptionRead, VinylPodcastSubscriptionWrite, VinylVoiceDetailRead,
+            VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
         },
         http::ApiOrigin,
     },
@@ -75,7 +78,8 @@ struct Library {
     scene_baseline: settings_fixture::Library,
     palette: Option<Arc<scene_palette_fixture::PaletteMedia>>,
     voice_detail: Option<voice_detail_fixture::VoiceDetail>,
-    voice_page: Option<voice_page_fixture::Fixture>,
+    voice_page: Option<Arc<voice_page_fixture::Fixture>>,
+    voice_fresh_actions: Option<voice_fresh_actions_fixture::Fixture>,
     voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
     voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
     voice_songs: Option<voice_songs_fixture::Fixture>,
@@ -98,7 +102,7 @@ impl Library {
     ) -> Result<&voice_page_fixture::Fixture> {
         let fixture = self
             .voice_page
-            .as_ref()
+            .as_deref()
             .ok_or(Error::State("sealed VoicePage proof unavailable"))?;
         assert_eq!(
             self.verified_pc_experiment_revision()?.as_deref(),
@@ -123,6 +127,9 @@ impl Library {
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
+        if let Some(actions) = &self.voice_fresh_actions {
+            return actions.client.verified_pc_experiment_revision();
+        }
         Ok(self.scene_home.as_ref().map(|_| {
             if self.voice_recommendations.is_some() {
                 voice_recommendation_fixture::REVISION.to_owned()
@@ -195,6 +202,11 @@ impl Api for Library {
         revision: &'a str,
         permission: &'a VinylPlaybackReadPermission<'a>,
     ) -> ApiFuture<'a, Value> {
+        if let Some(actions) = &self.voice_fresh_actions {
+            return actions
+                .client
+                .request_vinyl_voice_detail(read, revision, permission);
+        }
         Box::pin(async move {
             let voice_page = self.voice_page_authority(revision, permission)?;
             let (path, body) = read.into_request();
@@ -204,6 +216,42 @@ impl Api for Library {
             let result = voice_page.detail(&ticket, response).await;
             voice_page.finish(ticket, result)
         })
+    }
+
+    fn vinyl_voice_action_revision(&self) -> Result<Option<String>> {
+        self.voice_fresh_actions
+            .as_ref()
+            .map_or(Ok(None), |actions| {
+                actions.client.vinyl_voice_action_revision()
+            })
+    }
+
+    fn request_vinyl_podcast_subscription_state<'a>(
+        &'a self,
+        read: VinylPodcastSubscriptionRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        let Some(actions) = &self.voice_fresh_actions else {
+            return Box::pin(async { panic!("unsigned VoicePage attempted signed radio state") });
+        };
+        actions
+            .client
+            .request_vinyl_podcast_subscription_state(read, revision, permission)
+    }
+
+    fn request_vinyl_podcast_subscription_write<'a>(
+        &'a self,
+        write: VinylPodcastSubscriptionWrite,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        let Some(actions) = &self.voice_fresh_actions else {
+            return Box::pin(async { panic!("unsigned VoicePage attempted signed subscription") });
+        };
+        actions
+            .client
+            .request_vinyl_podcast_subscription_write(write, revision, permission)
     }
 
     fn request_vinyl_voice_recommendations<'a>(
@@ -319,6 +367,14 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            if let Some(actions) = &self.voice_fresh_actions {
+                if path == voice_fresh_actions_fixture::ACCOUNT {
+                    return actions.client.request(path, body, cache).await;
+                }
+                if let Some(reply) = actions.route(path, &body) {
+                    return reply;
+                }
+            }
             if let Some(download) = &self.voice_song_download
                 && let Some(reply) = download.read(path, &body, cache)
             {
@@ -486,6 +542,9 @@ fn main() {
     let voice_detail_enabled = std::env::var_os("CUMULUS_VOICE_DETAIL_PROOF").is_some();
     let voice_page_proof = std::env::var("CUMULUS_VOICE_PAGE_PROOF").as_deref() == Ok("1");
     assert!(!voice_page_proof || voice_detail_enabled);
+    let voice_fresh_actions_enabled =
+        std::env::var("CUMULUS_VOICE_FRESH_ACTIONS_PROOF").as_deref() == Ok("1");
+    assert!(!voice_fresh_actions_enabled || voice_page_proof);
     let voice_podcast_collect_enabled =
         std::env::var("CUMULUS_VOICE_PODCAST_COLLECT_PROOF").as_deref() == Ok("1");
     let voice_recommendations_enabled =
@@ -543,13 +602,30 @@ fn main() {
                 && !badges_enabled
                 && !progress_enabled
     );
+    let voice_page = scene_enabled.then(|| {
+        Arc::new(voice_page_fixture::Fixture::new(
+            voice_page_proof,
+            voice_fresh_actions_enabled,
+        ))
+    });
+    let voice_fresh_actions = voice_fresh_actions_enabled.then(|| {
+        voice_fresh_actions_fixture::Fixture::open(
+            registry.store(),
+            voice_page
+                .as_ref()
+                .expect("isolated VoicePage mode")
+                .clone(),
+        )
+        .unwrap()
+    });
     let api = Arc::new(Library {
         progress_enabled,
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
         scene_home,
         palette: palette.clone(),
         voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
-        voice_page: scene_enabled.then(|| voice_page_fixture::Fixture::new(voice_page_proof)),
+        voice_page,
+        voice_fresh_actions,
         voice_podcast_collect: voice_podcast_collect_enabled
             .then(voice_podcast_collect_fixture::Fixture::default),
         voice_recommendations: voice_recommendations_enabled
@@ -617,6 +693,11 @@ fn main() {
     );
     let source = if recommendations_enabled {
         format!("window.__podcastRecommendationsProof = true;\n{source}")
+    } else {
+        source
+    };
+    let source = if voice_fresh_actions_enabled {
+        format!("window.__voiceFreshActionsProof = true;\n{source}")
     } else {
         source
     };
@@ -729,6 +810,9 @@ fn main() {
                 }
                 if let Some(page) = &api.voice_page {
                     value["voicePageReads"] = page.snapshot();
+                }
+                if let Some(actions) = &api.voice_fresh_actions {
+                    value["voiceFreshActionTrace"] = actions.report();
                 }
                 if let Some(palette) = &api.palette {
                     value["paletteRequests"] = palette.snapshot();

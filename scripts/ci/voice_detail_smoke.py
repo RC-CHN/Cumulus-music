@@ -8,6 +8,8 @@ from window_manager import launch
 
 STAGES = ('card_placeholder', 'bar_placeholder', 'voice_metadata', 'creator_profile', 'detail_reopened')
 TRIAD_STAGES = ('held_no_partial', 'failed_no_partial', 'reopened_fresh', 'mismatch_read_only')
+ACTION_STAGES = (*TRIAD_STAGES[:3], 'fresh_targets', 'creator_target', 'stale_receipt',
+                 'radio_target', 'fresh_subscription')
 LANES = ('detail', 'recommendations', 'songs')
 
 
@@ -15,8 +17,13 @@ def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-def verify_triad(stages, done):
-    assert done['ok'] and done['stageCount'] == len(stages) and tuple(stages) == TRIAD_STAGES, done
+def signed_calls(rows):
+    return [(call['path'], call['args'], call['outcome']) for call in rows]
+
+
+def verify_triad(stages, done, fresh_actions=False):
+    expected_stages = ACTION_STAGES if fresh_actions else TRIAD_STAGES
+    assert done['ok'] and done['stageCount'] == len(stages) and tuple(stages) == expected_stages, done
     assert done['realMusicRequests'] == done['realAccountWrites'] == 0, done
     assert done['physicalAudioVerified'] is False and done['voiceDetailCalls'] == [], done
     baseline = stages[TRIAD_STAGES[0]]['playback']
@@ -24,7 +31,7 @@ def verify_triad(stages, done):
     assert baseline['playId'] and baseline['entryId'] and not baseline['seeking'] and not baseline.get('error'), baseline
     assert baseline['snapshotCount'] == 123456 and baseline['title'] != '合成新读节目标题', baseline
     assert baseline['snapshotCover'] == 'https://p1.music.126.net/obj/cumulus-palette/cover601.png', baseline
-    cover_boxes = [stage['dom']['coverBox'] for stage in stages.values()]
+    cover_boxes = [stage['dom']['coverBox'] for stage in stages.values() if not stage.get('route')]
     anchor = cover_boxes[0]
     assert len(anchor) == 4 and anchor[2] > 0 and abs(anchor[2] - anchor[3]) < 0.5, anchor
     assert all(all(abs(a - b) < 0.5 for a, b in zip(anchor, box, strict=True))
@@ -67,12 +74,15 @@ def verify_triad(stages, done):
     assert reads['detail'][1]['cover'] == baseline['snapshotCover'], reads
     for lane in ('recommendations', 'songs'):
         assert reads[lane][1]['receipt'] and reads[lane][1]['receipt'] != reads[lane][0]['receipt'], reads
-    mismatch = stages['mismatch_read_only']
+    mismatch = stages['fresh_targets' if fresh_actions else 'mismatch_read_only']
     assert mismatch['actual'] and mismatch['playback'] == baseline, mismatch
     dom = mismatch['dom']
-    assert dom['state'] == 'ready' and dom['plainCreator'] == '合成仅展示主播', dom
-    assert dom['radioName'] == '合成仅展示播单' and dom['radio'], dom
-    assert not any(dom[key] for key in ('creatorLink', 'radioOpenEnabled', 'radioSubscribeEnabled')), dom
+    assert dom['state'] == 'ready' and dom['radio'], dom
+    if fresh_actions:
+        assert dom['radioName'] == '合成新播单' and dom['creatorLink'] and dom['radioOpenEnabled'], dom
+    else:
+        assert dom['plainCreator'] == '合成仅展示主播' and dom['radioName'] == '合成仅展示播单', dom
+        assert not any(dom[key] for key in ('creatorLink', 'radioOpenEnabled', 'radioSubscribeEnabled')), dom
     for lane in LANES:
         assert mismatch['reads'][lane][:2] == reads[lane], mismatch
         assert len(mismatch['reads'][lane]) == 3, mismatch
@@ -80,15 +90,68 @@ def verify_triad(stages, done):
         assert mismatch['reads'][lane][2]['outcome'] == 'success', mismatch
     third = mismatch['reads']['detail'][2]
     assert third['creatorId'] == '56' and third['radioId'] == '81', third
-    assert done['voicePageReads'] == mismatch['voicePageReads'], done
+    assert third['actionReceipt'] is fresh_actions, third
+    final = stages[expected_stages[-1]]
+    assert done['voicePageReads'] == final['voicePageReads'], done
+    visits = 5 if fresh_actions else 3
     assert sorted((row['lane'], row['voiceId'], row['state']) for row in done['voicePageReads']) == [
-        ('detail', '601', 'failure'), ('detail', '601', 'success'), ('detail', '601', 'success'),
-        *[('recommendations', '601', 'success')] * 3, *[('songs', '601', 'success')] * 3,
+        ('detail', '601', 'failure'), *[('detail', '601', 'success')] * (visits - 1),
+        *[('recommendations', '601', 'success')] * visits, *[('songs', '601', 'success')] * visits,
     ], done
+    action_evidence = verify_fresh_actions(stages, done, baseline) if fresh_actions else {}
+    if not fresh_actions:
+        assert 'voiceFreshActionTrace' not in done, done
+        assert all(call.get('actionReceipt') is not True for call in final['reads']['detail']), final
     return dict(actualWebView=True, heldSiblingResults=True, failedWithoutPartial=True,
-                reopenedFresh=True, mismatchedTargetsReadOnly=True, unchangedPausedDecoder=True,
+                reopenedFresh=True, mismatchedTargetsReadOnly=not fresh_actions, unchangedPausedDecoder=True,
                 nativeDecoder='libmpv/null', coverAnchored=True, coverBox=anchor,
-                stages=TRIAD_STAGES, voicePageReads=done['voicePageReads'], realAccountWrites=0)
+                stages=expected_stages, voicePageReads=done['voicePageReads'], realAccountWrites=0,
+                **action_evidence)
+
+
+def verify_fresh_actions(stages, done, baseline):
+    account = '/api/w/nuser/account/get'
+    detail = '/api/dj/program/detail'
+    radio = '/api/djradio/v3/get'
+    sub = '/api/djradio/sub'
+    assert (baseline['snapshotCreator'], baseline['snapshotRadio']) == ('55', '80'), baseline
+    assert all(stage['actual'] and stage['playback'] == baseline for stage in stages.values()), stages
+    assert stages['creator_target']['route'] == {'kind': 'creator', 'title': '合成新主播主页'}
+    assert stages['radio_target']['route'] == {'kind': 'radio', 'title': '合成新播单'}
+    actions = done['actions']
+    assert actions['targets'] == [{'kind': 'creator', 'id': '56'}, {'kind': 'radio', 'id': '81'}], actions
+    assert actions['stale'] == [
+        {'command': cmd, 'code': 'stale'} for cmd in ('player_vinyl_voice_detail_target',
+                                                     'change_fresh_vinyl_podcast_subscription',
+                                                     'reconcile_fresh_vinyl_podcast_subscription')
+    ], actions
+    final = stages['fresh_subscription']
+    assert final['actions'] == actions and final['dom']['radioSubscribeEnabled'], final
+    assert actions['changes'] == [{'id': '81', 'epoch': final['reads']['detail'][-1]['args'][0],
+                                   'expected': False, 'observed': True, 'phase': 'confirmed',
+                                   'acknowledged': True}], actions
+    for call in final['reads']['detail'][2:]:
+        assert (call['creatorId'], call['radioId'], call['actionReceipt']) == ('56', '81', True), call
+    trace = done['voiceFreshActionTrace']
+    assert trace['transport'] == 'MusicHttpClient' and trace['syntheticOnly'], trace
+    assert trace['sameProfileAccountRestore'] and trace['subscribed'], trace
+    success = 'success'
+    detail_args = {'id': '601'}
+    exact = [(account, {}, success), (detail, detail_args, 'synthetic_failure'),
+             *[(detail, detail_args, success)] * 4,
+             *[(path, {'id': '81'}, success) for path in (radio, sub, radio, radio)]]
+    assert signed_calls(trace['signedCalls']) == exact, trace
+    stale_trace = stages['stale_receipt']['voiceFreshActionTrace']
+    assert signed_calls(stale_trace['signedCalls']) == exact[:5] and not stale_trace['subscribed'], stale_trace
+    route_reads = trace['routeReads']
+    assert {'path': '/api/w/v1/user/detail/56', 'args': {'all': True, 'userId': '56'}} in route_reads
+    assert {'path': radio, 'args': {'id': '81'}} in route_reads
+    assert any(call['path'] == '/api/v6/dj/program/byradio' and call['args']['radioId'] == '81'
+               for call in route_reads), route_reads
+    assert all(call['args'].get('userId') != '55' and call['args'].get('id') != '80'
+               and call['args'].get('radioId') != '80' for call in route_reads), route_reads
+    return dict(freshCreator='56', freshRadio='81', syntheticSubscriptionPosts=1,
+                staleVisitRejected=True, signedPcTransport=True, signedCalls=trace['signedCalls'])
 
 
 def main():
@@ -99,7 +162,10 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     parser.add_argument('--triad', action='store_true', help='hold and fail the initial fresh detail, then reopen')
+    parser.add_argument('--fresh-actions', action='store_true', help='use signed synthetic action authority with --triad')
     args = parser.parse_args()
+    if args.fresh_actions and not args.triad:
+        parser.error('--fresh-actions requires --triad')
     if sys.platform not in ('linux', 'win32') or args.screenshots and sys.platform != 'linux':
         parser.error('use Linux X11 or Windows; screenshots require X11')
     binary = args.binary.resolve(strict=True)
@@ -111,6 +177,8 @@ def main():
                CUMULUS_UX_SCRIPT=str(Path(__file__).resolve().parents[2] / 'desktop/examples' / script))
     if args.triad:
         env['CUMULUS_VOICE_PAGE_PROOF'] = '1'
+    if args.fresh_actions:
+        env['CUMULUS_VOICE_FRESH_ACTIONS_PROOF'] = '1'
     if sys.platform == 'linux':
         env.update(LC_ALL='en_US.UTF-8', GDK_BACKEND='x11', TZ='Asia/Shanghai')
     if args.frontend_dist:
@@ -132,7 +200,7 @@ def main():
     done = read(output / 'complete.json')
     stages = {p.stem.split('_', 2)[2]: read(p) for p in sorted(output.glob('ux_*.json'))}
     if args.triad:
-        report = verify_triad(stages, done)
+        report = verify_triad(stages, done, args.fresh_actions)
         finish(args, root, output, stages, report)
         return
     assert done['ok'] and done['stageCount'] == len(stages) and tuple(stages) == STAGES, done

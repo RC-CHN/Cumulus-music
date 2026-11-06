@@ -14,7 +14,10 @@
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const signedActions = window.__voiceFreshActionsProof === true;
   const reads = { detail: [], recommendations: [], songs: [] };
+  const actionReceipts = [];
+  const actions = { targets: [], changes: [], stale: [] };
   let epoch, baseline, initialCoverBox, nonce = 0, count = 0, last = 'startup';
   let restore = () => {};
   async function wait(test, label) {
@@ -52,6 +55,7 @@
       state: player.state, position: player.position, seeking: player.nativeSeeking,
       title: player.track?.name, snapshotCount: player.voiceDetail?.playCount,
       snapshotCover: player.voiceDetail?.coverUrl, error: player.error,
+      snapshotCreator: player.voiceDetail?.creator?.id, snapshotRadio: player.voiceDetail?.radio?.id,
       queue: { revision: queue.revision, current: queue.current,
         rows: queue.tracks.map((row) => [row.entryId, row.track.id, row.track.voiceId]) },
     };
@@ -86,23 +90,89 @@
       view.recommendations === null && view.songs === null,
     'pending or failed triad leaves only the basic title and current cover');
   }
-  async function capture(name) {
-    await wait(() => {
-      const root = panel();
-      return visible(root) && getComputedStyle(root).opacity === '1' &&
-        !root.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
-    }, 'voice page compositor settles');
+  async function capture(name, route = null) {
+    if (!route) {
+      await wait(() => {
+        const root = panel();
+        return visible(root) && getComputedStyle(root).opacity === '1' &&
+          !root.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
+      }, 'voice page compositor settles');
+    }
     await frame();
     const current = await playback();
     assert(same(current, baseline), 'joined read must not move the paused native decoder or its queue');
     const view = dom();
-    initialCoverBox ??= view.coverBox;
-    assert(view.coverBox?.length === 4 && initialCoverBox?.every((edge, i) =>
-      Math.abs(edge - view.coverBox[i]) < 0.5), 'cover stays anchored while metadata and count appear');
+    if (!route) {
+      initialCoverBox ??= view.coverBox;
+      assert(view.coverBox?.length === 4 && initialCoverBox?.every((edge, i) =>
+        Math.abs(edge - view.coverBox[i]) < 0.5), 'cover stays anchored while metadata and count appear');
+    }
     const stage = `ux_${String(++count).padStart(2, '0')}_${name}`;
     window.__podcastProgressStage = '';
-    await emit(stage, { actual: document.visibilityState === 'visible', playback: current, dom: view, reads });
+    await emit(stage, { actual: document.visibilityState === 'visible', playback: current, dom: view, reads,
+      ...(signedActions ? { actions, route } : {}) });
     await wait(() => window.__podcastProgressStage === stage, 'native stage acknowledgement');
+  }
+  const back = () => click(() => button('返回上一页', one('.topbar')), 'return using actual topbar Back');
+  const discovery = () => visible(one('.podcast-discovery')) && !panel();
+  async function signedReady(ordinal) {
+    await wait(() => {
+      const current = dom();
+      return current.state === 'ready' && current.creatorLink && current.radioOpenEnabled &&
+        current.radioName === '合成新播单' && reads.detail[ordinal]?.creatorId === '56' &&
+        reads.detail[ordinal]?.radioId === '81' && actionReceipts[ordinal];
+    }, 'changed fresh identity owns the visible actions');
+  }
+  async function exerciseSignedActions() {
+    assert(baseline.snapshotCreator === '55' && baseline.snapshotRadio === '80', 'actual playback still has the old targets');
+    await signedReady(2);
+    const retired = actionReceipts[2];
+    assert(retired && retired !== actionReceipts[1], 'fresh changed receipt replaces the previous visit');
+    await capture('fresh_targets');
+
+    await click(() => one('[data-voice-creator]', panel()), 'open fresh creator from actual card');
+    const profile = await wait(() => {
+      const heading = one('.playlist-creator-page h1');
+      return !panel() && visible(heading) && heading.textContent.trim() === '合成新主播主页' && heading;
+    }, 'fresh creator 56 renders its profile');
+    await capture('creator_target', { kind: 'creator', title: profile.textContent.trim() });
+    await back();
+    await wait(discovery, 'Back restores classic podcast discovery after creator');
+    await click(() => one('.player-cover'), 'reopen same episode after profile');
+    await signedReady(3);
+    assert(actionReceipts[3] !== retired, 'same play and changed IDs have a new visit receipt');
+
+    const oldScope = { epoch, playId: baseline.playId, receipt: retired };
+    const staleCalls = [
+      ['player_vinyl_voice_detail_target', { target: { ...oldScope, kind: 'radio' } }],
+      ['change_fresh_vinyl_podcast_subscription', { scope: oldScope, expected: false }],
+      ['reconcile_fresh_vinyl_podcast_subscription', { scope: oldScope }],
+    ];
+    for (const [command, body] of staleCalls) {
+      const code = await invoke(command, body).then(() => 'accepted', (error) => error?.code);
+      assert(code === 'stale', `previous visit ${command} must be rejected by native IPC`);
+      actions.stale.push({ command, code });
+    }
+    await capture('stale_receipt');
+
+    await click(() => one('[data-voice-podcast-open]', panel()), 'open fresh radio from actual card');
+    const radio = await wait(() => {
+      const heading = one('.podcast-summary h2');
+      return !panel() && visible(heading) && heading.textContent.trim() === '合成新播单' && heading;
+    }, 'fresh radio 81 renders its page');
+    await capture('radio_target', { kind: 'radio', title: radio.textContent.trim() });
+    await back();
+    await wait(discovery, 'Back restores classic podcast discovery after radio');
+    await click(() => one('.player-cover'), 'reopen same episode after radio');
+    await signedReady(4);
+    assert(actionReceipts[4] !== actionReceipts[3], 'radio Back and reopen has a distinct visit receipt');
+    const subscribe = () => one('[data-voice-podcast-subscribe]', panel());
+    await wait(() => subscribe()?.getAttribute('aria-pressed') === 'false' && !subscribe().disabled,
+      'new radio membership is loaded before the explicit action');
+    await click(subscribe, 'subscribe to the changed fresh radio');
+    await wait(() => subscribe()?.getAttribute('aria-pressed') === 'true' && !subscribe().disabled &&
+      actions.changes[0]?.phase === 'confirmed', 'signed exact radio write is verified and reflected by Vue');
+    await capture('fresh_subscription');
   }
   try {
     await wait(async () => {
@@ -132,6 +202,10 @@
           call.cover = result.detail?.coverUrl;
           call.creatorId = result.detail?.creator?.id;
           call.radioId = result.detail?.radio?.id;
+          if (lane === 'detail') {
+            actionReceipts[reads.detail.indexOf(call)] = result.actionReceipt;
+            call.actionReceipt = typeof result.actionReceipt === 'string';
+          }
           call.rows = result.cards?.length ?? result.tracks?.length;
           return result;
         } catch (error) {
@@ -141,6 +215,32 @@
       };
     }
     restore = () => methods.forEach(([, name], index) => { core[name] = originals[index]; });
+    if (signedActions) {
+      const originalTarget = core.playerVinylVoiceDetailTarget;
+      const originalChange = core.changeFreshVinylPodcastSubscription;
+      assert(typeof originalTarget === 'function' && typeof originalChange === 'function', 'registered action adapters');
+      const currentScope = (scope, keys) => scope.epoch === epoch && scope.playId === baseline.playId &&
+        scope.receipt === actionReceipts.at(-1) && same(Object.keys(scope).sort(), keys);
+      core.playerVinylVoiceDetailTarget = async (target) => {
+        assert(currentScope(target, ['epoch', 'kind', 'playId', 'receipt']), 'UI route accepts only the latest receipt');
+        const id = await originalTarget.call(core, target);
+        actions.targets.push({ kind: target.kind, id });
+        return id;
+      };
+      core.changeFreshVinylPodcastSubscription = async (scope, expected) => {
+        assert(currentScope(scope, ['epoch', 'playId', 'receipt']), 'UI write accepts only the latest receipt');
+        const result = await originalChange.call(core, scope, expected);
+        const { id, observed, phase, acknowledged } = result.value;
+        actions.changes.push({ expected, epoch: result.epoch, id, observed, phase, acknowledged });
+        return result;
+      };
+      const restoreReads = restore;
+      restore = () => {
+        restoreReads();
+        core.playerVinylVoiceDetailTarget = originalTarget;
+        core.changeFreshVinylPodcastSubscription = originalChange;
+      };
+    }
     await click(() => one('input[aria-label="搜索音乐"]'), 'open discovery');
     await click(() => button('播客榜：更多'), 'open classic podcast page');
     await click(() => button('播放随心听FM', one('[data-podcast-scene-fm]')), 'play sealed Scene FM program');
@@ -196,25 +296,30 @@
     await click(() => button('收起播放详情', panel()), 'close successful visit before mismatch');
     await wait(() => !panel(), 'successful visit disposed');
     await click(() => one('.player-cover'), 'reopen the current episode with changed detail identities');
-    await wait(() => {
-      const current = dom();
-      return current.state === 'ready' && current.plainCreator === '合成仅展示主播' &&
-        current.radioName === '合成仅展示播单' &&
-        reads.detail[2]?.creatorId === '56' && reads.detail[2]?.radioId === '81';
-    }, 'fresh creator and radio names display independently of navigation authority');
-    const mismatch = dom();
-    assert(!mismatch.creatorLink && !mismatch.radioOpenEnabled && !mismatch.radioSubscribeEnabled,
-      'new read-only identity cannot acquire profile, radio or write authority');
-    one('[data-voice-podcast-open]', panel()).click();
-    one('[data-voice-podcast-subscribe]', panel()).click();
-    await frame();
-    assert(panel() && one('.podcast-discovery') && !one('.playlist-creator-page'),
-      'disabled controls did not navigate away or open a profile');
-    await capture('mismatch_read_only');
+    if (signedActions) {
+      await exerciseSignedActions();
+    } else {
+      await wait(() => {
+        const current = dom();
+        return current.state === 'ready' && current.plainCreator === '合成仅展示主播' &&
+          current.radioName === '合成仅展示播单' &&
+          reads.detail[2]?.creatorId === '56' && reads.detail[2]?.radioId === '81';
+      }, 'fresh creator and radio names display independently of navigation authority');
+      const mismatch = dom();
+      assert(!actionReceipts.some(Boolean) && !mismatch.creatorLink && !mismatch.radioOpenEnabled && !mismatch.radioSubscribeEnabled,
+        'new read-only identity cannot acquire profile, radio or write authority');
+      one('[data-voice-podcast-open]', panel()).click();
+      one('[data-voice-podcast-subscribe]', panel()).click();
+      await frame();
+      assert(panel() && one('.podcast-discovery') && !one('.playlist-creator-page'),
+        'disabled controls did not navigate away or open a profile');
+      await capture('mismatch_read_only');
+    }
     await emit('complete', { ok: true, stageCount: count, realMusicRequests: 0, realAccountWrites: 0,
-      physicalAudioVerified: false });
+      physicalAudioVerified: false, ...(signedActions ? { actions } : {}) });
   } catch (error) {
-    await emit('failed', { ok: false, last, error: String(error), reads, dom: dom(), stageCount: count });
+    await emit('failed', { ok: false, last, error: String(error), reads, dom: dom(), stageCount: count,
+      ...(signedActions ? { actions } : {}) });
   } finally {
     restore();
   }
