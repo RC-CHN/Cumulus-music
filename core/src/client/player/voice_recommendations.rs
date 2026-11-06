@@ -240,7 +240,7 @@ impl MusicClient {
             check_play()
         };
         let host = &self.player.voice_recommendations;
-        let serial = host.begin(&check_revision)?;
+        let serial = host.begin(check_revision)?;
         let permission = || {
             check_revision()?;
             host.check_read(serial)
