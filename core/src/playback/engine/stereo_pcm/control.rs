@@ -80,7 +80,8 @@ pub(crate) struct Shared {
     end: u64,
     capacity: usize,
     startup: u64,
-    lead: u64,
+    sync_lead: u64,
+    live_lead: u64,
 }
 
 #[derive(Clone)]
@@ -120,8 +121,18 @@ fn channel_with_controls(
     // mpv's rawaudio demuxer reads rate/8 frames per packet. Startup must
     // admit that real first packet plus the linked limiter's first quantum.
     let startup = u64::from(rate.div_ceil(8)) + QUANTUM as u64;
-    let lead = u64::from(rate.div_ceil(4));
-    let capacity = (startup.max(lead) + 2 * QUANTUM as u64) as usize;
+    let sync_lead = u64::from(rate.div_ceil(4));
+    // The ordinary local graph feeds an unseekable raw demuxer. Its 125 ms
+    // packet, the nominal 200 ms output queue and 40 ms native-clock sampling
+    // can overlap. Keep three bounded packets ahead after real clock sync;
+    // a quarter-second starved the sink even when the DSP samples were valid.
+    // Before sync and for a protected source, retain the previous bounds.
+    let live_lead = if local_controls {
+        u64::from((rate * 3).div_ceil(8))
+    } else {
+        sync_lead
+    };
+    let capacity = (startup.max(live_lead) + 2 * QUANTUM as u64) as usize;
     let mut pcm = VecDeque::new();
     pcm.try_reserve_exact(capacity * 2)
         .map_err(|_| Error::Media("paced stereo PCM allocation failed"))?;
@@ -159,7 +170,8 @@ fn channel_with_controls(
         end,
         capacity,
         startup,
-        lead,
+        sync_lead,
+        live_lead,
     });
     let control = StereoPcmControl(shared.clone());
     Ok((StereoPcmReader::new(shared.clone()), control, shared))
@@ -197,15 +209,15 @@ impl Shared {
             // FILE_LOADED can precede AO startup even while paused. Only the
             // ordinary native source needs this extra prefill for replacement.
             // A cold source retains its first-packet startup bound.
-            self.lead
+            self.sync_lead
         } else if state.paused || (state.seeking && state.native > 0) {
             state.produced
-        } else {
+        } else if !state.native_clock_observed {
             // mpv remains in initial seeking/sync until its AO queue is full.
-            // Before the first real native clock, unpaused startup may use
-            // this SAME bounded quarter-second lead. After a real clock has
-            // advanced, seeking grants no credit.
-            state.native.saturating_add(self.lead)
+            // Initial sync still admits only the same bounded quarter second.
+            self.sync_lead
+        } else {
+            state.native.saturating_add(self.live_lead)
         }
     }
 

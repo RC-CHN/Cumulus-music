@@ -295,6 +295,40 @@ fn assert_first_native_sync(paused: bool, first: u64) {
 }
 
 #[test]
+fn ordinary_live_pcm_reserve_needs_bound_native_clock_and_freezes_on_pause_or_seek() {
+    let rate = 48_000;
+    let cancel = Cancellation::default();
+    let (_reader, ordinary, native) = native_channel(rate, 0, 200_000, cancel.clone()).unwrap();
+    let (_reader, protected, cold) = channel(rate, 0, 200_000, cancel, None).unwrap();
+    let credit = |shared: &Shared| shared.producer_credit(&shared.state.lock().unwrap());
+    for (control, shared) in [(&ordinary, &native), (&protected, &cold)] {
+        control.bind_entry(77).unwrap();
+        control.observe(77, Some(0.0), false, true).unwrap();
+        assert_eq!(credit(shared), 12_000);
+        {
+            let mut state = shared.state.lock().unwrap();
+            state.produced = 12_000;
+            state.delivered = 7_200;
+        }
+        control.observe(77, Some(0.5), false, false).unwrap();
+        assert_eq!(
+            credit(shared),
+            12_000,
+            "credit must not outrun delivered audio"
+        );
+        control.observe(77, Some(0.125), false, false).unwrap();
+    }
+    assert_eq!(credit(&native), 6_000 + 18_000);
+    assert_eq!(credit(&cold), 6_000 + 12_000);
+    ordinary.observe(77, Some(0.125), true, false).unwrap();
+    assert_eq!(credit(&native), 12_000);
+    ordinary.observe(77, Some(0.125), false, true).unwrap();
+    assert_eq!(credit(&native), 12_000);
+    assert!(ordinary.observe(78, Some(0.125), false, false).is_err());
+    assert_eq!(credit(&native), 12_000);
+}
+
+#[test]
 fn native_control_ack_cannot_escape_revocation_during_worker_apply() {
     let lifetime = Cancellation::default();
     let (_reader, control, shared) = native_channel(44100, 0, 10000, lifetime.clone()).unwrap();
