@@ -2344,6 +2344,8 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
     let episode = Episode::from_official(&json!({
         "id":71,"name":"合成下载声音","mainSong":{"id":123,"duration":1000},
         "description":description,
+        "coverUrl":"https://p1.music.126.net/episode.jpg?key=PRIVATE_ARTWORK#PRIVATE_FRAGMENT",
+        "listenerCount":"0","playCount":700,
         "createTime":1735787045000_u64,
         "dj":{"userId":42,"nickname":"合成主播","avatarUrl":"PRIVATE_AVATAR"},
         "radio":{"id":"9007199254740993","name":"该声音所属播客","programCount":1,
@@ -2501,7 +2503,9 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
     assert_eq!(
         serde_json::to_value(&voice.voice_detail).unwrap(),
         json!({"id":"71","creator":{"id":"42","name":"合成主播"},"releaseTime":1735787045000_u64,
-            "description":description})
+            "description":description,"coverUrl":"https://p1.music.126.net/episode.jpg",
+            "playCount":"0","radio":{"id":"9007199254740993","name":"该声音所属播客",
+                "subscriberCount":0,"ownedByViewer":false}})
     );
     let queue: cumulus_core::playback::QueueSnapshot =
         serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
@@ -2526,6 +2530,15 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
         .player_action("1", PlayerAction::Stop)
         .await
         .unwrap();
+
+    assert!(
+        f.client
+            .player_snapshot("1")
+            .await
+            .unwrap()
+            .voice_detail
+            .is_none()
+    );
 
     // Canonical origin is not permission to rewrite conflicting raw episode
     // identity. Playback keeps the typed episode namespace, but header details

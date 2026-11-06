@@ -38,13 +38,13 @@ pub use super::pc_experiments::PcPresentationView;
 pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
-    PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio,
-    PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction, QualityChoiceView,
-    QualityDetailsView, QualityTrialCommand, QualityTrialOutcome, QualityTrialView,
-    QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,
-    QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack, QueueView,
-    SearchResultPlayback, SongRowSelection, StartupPreferencesCommand, StartupPreferencesView,
-    VoiceSongAction, VoiceSongRowAvailability,
+    PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount,
+    PlayerVoiceRadio, PlayerVoiceSongsView, PlaylistDropRow, PodcastRecommendationAction,
+    QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
+    QualityTrialView, QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand,
+    QueueClickPreferencesView, QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack,
+    QueueView, SearchResultPlayback, SongRowSelection, StartupPreferencesCommand,
+    StartupPreferencesView, VoiceSongAction, VoiceSongRowAvailability,
 };
 pub use super::player::{
     VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,

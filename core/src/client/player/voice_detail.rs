@@ -1,4 +1,4 @@
-//! VoiceTitle.tsx, DescCard.tsx, CollectCard.tsx; M21 E, Z and W.
+//! VoiceTitle.tsx, VoiceCover.tsx, DescCard.tsx, CollectCard.tsx; M21 E, Z and W.
 //! No additional read is performed for a playback header. Online Episode
 //! resources and download-origin evidence must agree with the selected song.
 use super::{MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity};
@@ -9,7 +9,7 @@ use crate::{
     protocol::{api::identifier, artwork, wire::serialization::js_truthy},
 };
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Number, Value};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct PlayerVoiceCreator {
@@ -29,9 +29,22 @@ pub struct PlayerVoiceDetail {
     /// Plain episode text from M21 W:945. No alternate fields or markup processing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Public artwork from this episode or its typed downloaded origin.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_url: Option<String>,
+    /// M21 W count before M229 formats numbers or passes through text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_count: Option<PlayerVoicePlayCount>,
     /// Only a radio bound by the official episode's original and normalized radio.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub radio: Option<PlayerVoiceRadio>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum PlayerVoicePlayCount {
+    Number(Number),
+    Text(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -96,6 +109,52 @@ fn description(voice: &Value) -> Option<String> {
         return None;
     }
     Some(value.into())
+}
+
+const MAX_COVER_URL_BYTES: usize = 2048;
+const MAX_PLAY_COUNT_UTF16: usize = 128;
+const MAX_SAFE_JS_INTEGER: f64 = 9_007_199_254_740_991.0;
+
+fn cover_url(voice: &Value, downloaded: bool) -> Option<String> {
+    // M308:486–502 selects the typed origin's album artwork first. The
+    // selected backing song and the radio are different resources.
+    let album = &voice["album"]["picUrl"];
+    let candidate = if downloaded && js_truthy(album) {
+        album
+    } else {
+        &voice["coverUrl"]
+    };
+    let raw = candidate.as_str()?;
+    if raw.len() > MAX_COVER_URL_BYTES || raw.chars().any(char::is_control) {
+        return None;
+    }
+    artwork::original(candidate).filter(|url| url.len() <= MAX_COVER_URL_BYTES)
+}
+
+fn play_count(voice: &Value) -> Option<PlayerVoicePlayCount> {
+    // Apply M21 W's truthiness before filtering. For example, -1 and 0
+    // have different precedence, and the string "0" is visible in M229.
+    let value = ["listenerCount", "playCount", "adjustedPlayCount"]
+        .into_iter()
+        .map(|key| &voice[key])
+        .find(|value| js_truthy(value))?;
+    match value {
+        Value::Number(number)
+            if number
+                .as_f64()
+                .is_some_and(|n| n > 0.0 && n <= MAX_SAFE_JS_INTEGER) =>
+        {
+            Some(PlayerVoicePlayCount::Number(number.clone()))
+        }
+        Value::String(text)
+            if text.len() <= MAX_PLAY_COUNT_UTF16 * 3
+                && text.encode_utf16().count() <= MAX_PLAY_COUNT_UTF16
+                && !text.chars().any(char::is_control) =>
+        {
+            Some(PlayerVoicePlayCount::Text(text.clone()))
+        }
+        _ => None,
+    }
 }
 
 fn radio_id(voice: &Value) -> Option<String> {
@@ -210,6 +269,11 @@ fn from_resource(
             .as_u64()
             .filter(|value| (1..=8_640_000_000_000_000).contains(value)),
         description: description(voice),
+        cover_url: cover_url(
+            voice,
+            identity::kind(resource) == PlayerResourceKind::Downloaded,
+        ),
+        play_count: play_count(voice),
         radio: radio(voice, owner),
     })
 }
@@ -334,6 +398,83 @@ mod tests {
     }
 
     #[test]
+    fn episode_cover_uses_only_the_correct_voice_origin_artwork() {
+        let play = Some("native-play");
+        let episode_cover = "https://p1.music.126.net/episode.jpg";
+        let album_cover = "https://p2.music.126.net/origin-album.jpg";
+        for (mut resource, expected) in [(online(), episode_cover), (download(), album_cover)] {
+            resource["voice"]["coverUrl"] =
+                json!("http://p1.music.126.net/episode.jpg?token=PRIVATE#fragment");
+            resource["voice"]["album"] =
+                json!({"picUrl":"https://p2.music.126.net/origin-album.jpg?param=200y200"});
+            resource["song"]["al"] = json!({"picUrl":"https://p3.music.126.net/backing-song.jpg"});
+            resource["voice"]["radio"] =
+                json!({"picUrl":"https://p4.music.126.net/unrelated-radio.jpg"});
+            let projected = |resource: &Value| from_resource(play, resource).unwrap().cover_url;
+            assert_eq!(projected(&resource).as_deref(), Some(expected));
+            resource["voice"]["album"]["picUrl"] = json!("");
+            assert_eq!(projected(&resource).as_deref(), Some(episode_cover));
+            resource["voice"]["coverUrl"] = Value::Null;
+            assert_eq!(projected(&resource), None);
+        }
+
+        let mut resource = download();
+        resource["voice"]["coverUrl"] = json!(episode_cover);
+        for blocked in [
+            json!("https://external.invalid/foreign.jpg"),
+            json!("https://somebody:secret@p2.music.126.net/foreign.jpg"),
+            json!("https://p2.music.126.net:8080/foreign.jpg"),
+            json!("https://p2.music.126.net/foreign\n.jpg"),
+            json!(format!("{album_cover}{}", "x".repeat(MAX_COVER_URL_BYTES))),
+            json!({"picUrl":album_cover}),
+        ] {
+            resource["voice"]["album"]["picUrl"] = blocked;
+            // A truthy but invalid preferred origin does not fall through.
+            assert_eq!(from_resource(play, &resource).unwrap().cover_url, None);
+        }
+    }
+
+    #[test]
+    fn count_uses_official_priority_and_keeps_display_text_distinct_from_numbers() {
+        let mut resource = online();
+        resource["song"]["listenerCount"] = json!(999);
+        resource["voice"]["radio"] = json!({"listenerCount":998});
+        for (fields, expected) in [
+            (json!([42, 51, 66]), json!(42)),
+            (json!([0, 51, 66]), json!(51)),
+            (json!(["", false, 66]), json!(66)),
+            (json!([0, "", 0]), Value::Null),
+            (json!(["0", 51, 66]), json!("0")),
+            (json!([false, "00123", 66]), json!("00123")),
+            (json!([null, null, "1.2万"]), json!("1.2万")),
+            (json!([0.5, 51, 66]), json!(0.5)),
+            (json!([-1, 51, 66]), Value::Null),
+            (json!([true, 51, 66]), Value::Null),
+            (json!([{"text":"伪造"}, 51, 66]), Value::Null),
+            (json!(["计数\u{0000}", 51, 66]), Value::Null),
+            (json!([9_007_199_254_740_992_u64, 51, 66]), Value::Null),
+            (
+                json!(["🎧".repeat(MAX_PLAY_COUNT_UTF16 / 2) + " ", 51, 66]),
+                Value::Null,
+            ),
+        ] {
+            for (index, key) in ["listenerCount", "playCount", "adjustedPlayCount"]
+                .into_iter()
+                .enumerate()
+            {
+                resource["voice"][key] = fields[index].clone();
+            }
+            let detail = from_resource(Some("native-play"), &resource).unwrap();
+            let view = serde_json::to_value(detail).unwrap();
+            assert_eq!(
+                view.get("playCount"),
+                (!expected.is_null()).then_some(&expected),
+                "{fields}"
+            );
+        }
+    }
+
+    #[test]
     fn collect_card_projects_only_bound_radio_public_metadata() {
         let raw = json!({
             "id":71,"name":"声音","mainSong":{"id":901,"duration":200000},
@@ -389,8 +530,13 @@ mod tests {
 
     #[test]
     fn mismatched_or_missing_episode_song_play_and_download_authority_is_never_projected() {
-        assert!(from_resource(None, &online()).is_none());
-        assert!(from_resource(Some(""), &online()).is_none());
+        let with_cover_and_count = |mut resource: Value| {
+            resource["voice"]["coverUrl"] = json!("https://p1.music.126.net/foreign.jpg");
+            resource["voice"]["listenerCount"] = json!(123);
+            resource
+        };
+        assert!(from_resource(None, &with_cover_and_count(online())).is_none());
+        assert!(from_resource(Some(""), &with_cover_and_count(online())).is_none());
         for (path, value) in [
             ("/voice/id", json!(72)),
             ("/voice/programId", json!(72)),
@@ -401,7 +547,7 @@ mod tests {
             ("/song/voice_id", json!(72)),
             ("/voice_id", Value::Null),
         ] {
-            let mut resource = online();
+            let mut resource = with_cover_and_count(online());
             *resource.pointer_mut(path).unwrap() = value;
             assert!(from_resource(Some("play"), &resource).is_none(), "{path}");
         }
@@ -411,7 +557,7 @@ mod tests {
             ("/download_task_id", json!("../foreign")),
             ("/song/voice_id", Value::Null),
         ] {
-            let mut resource = download();
+            let mut resource = with_cover_and_count(download());
             *resource.pointer_mut(path).unwrap() = value;
             assert!(from_resource(Some("play"), &resource).is_none(), "{path}");
         }

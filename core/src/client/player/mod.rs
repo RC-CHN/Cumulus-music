@@ -48,7 +48,9 @@ pub use voice_recommendations::{
     VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
 };
 mod voice_songs;
-pub use voice_detail::{PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio};
+pub use voice_detail::{
+    PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount, PlayerVoiceRadio,
+};
 pub use voice_songs::{PlayerVoiceSongsView, VoiceSongAction, VoiceSongRowAvailability};
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
