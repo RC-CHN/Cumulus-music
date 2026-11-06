@@ -9,8 +9,8 @@ use crate::{
         api::{
             Api, ApiFuture, GuardedSongLike, SongLikePermission, VinylCommentRead,
             VinylCommentWrite, VinylCommentWritePermission, VinylPlaybackReadPermission,
-            VinylRelatedPlaylistsRead, VinylSimilarSongsRead, VinylVoiceSongsRead, VinylWikiRead,
-            VinylWikiReadPermission,
+            VinylRelatedPlaylistsRead, VinylSimilarSongsRead, VinylVoiceDetailRead,
+            VinylVoiceSongsRead, VinylWikiRead, VinylWikiReadPermission,
         },
         context::RequestContext,
         wire::eapi,
@@ -1079,6 +1079,15 @@ impl Api for MusicHttpClient {
     ) -> ApiFuture<'a, Value> {
         let (path, payload) = read.into_request();
         Box::pin(self.vinyl_discovery(path, payload, revision))
+    }
+
+    fn request_vinyl_voice_detail<'a>(
+        &'a self,
+        read: VinylVoiceDetailRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
     }
 
     fn request_vinyl_voice_songs<'a>(

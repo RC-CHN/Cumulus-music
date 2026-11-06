@@ -14,6 +14,8 @@ mod search_presentation;
 mod support;
 #[path = "pc_experiment_transport/vinyl_wiki.rs"]
 mod vinyl_wiki;
+#[path = "pc_experiment_transport/voice_detail.rs"]
+mod voice_detail;
 #[path = "pc_experiment_transport/voice_recommendations.rs"]
 mod voice_recommendations;
 #[path = "pc_experiment_transport/voice_songs.rs"]

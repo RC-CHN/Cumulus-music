@@ -145,6 +145,24 @@ impl VinylVoiceSongsRead {
     }
 }
 
+/// Fixed M109.j/M15.yb PC detail read for the native current episode.
+pub struct VinylVoiceDetailRead(String);
+
+impl VinylVoiceDetailRead {
+    pub(crate) const PATH: &'static str = "/api/dj/program/detail";
+
+    pub(crate) fn new(voice_id: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(voice_id) {
+            return Err(Error::InvalidInput("invalid vinyl voice detail seed"));
+        }
+        Ok(Self(voice_id.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (Self::PATH, json!({"id":self.0}))
+    }
+}
+
 /// Fixed PC RcmdCard read for the native current-episode identity.
 pub struct VinylVoiceRecommendationsRead(String);
 
@@ -444,6 +462,20 @@ pub trait Api: Send + Sync + std::any::Any {
         Box::pin(async {
             Err(Error::State(
                 "vinyl related-playlist dispatch authority unavailable",
+            ))
+        })
+    }
+
+    /// Fixed signed PC detail read; neither a seed nor credentials come from the renderer.
+    fn request_vinyl_voice_detail<'a>(
+        &'a self,
+        _read: VinylVoiceDetailRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "vinyl voice detail dispatch authority unavailable",
             ))
         })
     }

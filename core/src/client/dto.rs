@@ -47,7 +47,8 @@ pub use super::player::{
     StartupPreferencesView, VoiceSongAction, VoiceSongRowAvailability,
 };
 pub use super::player::{
-    VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,
+    VinylVoiceDetailView, VinylVoiceRecommendationCard, VinylVoiceRecommendationCount,
+    VinylVoiceRecommendationsView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlist_creator::PlaylistCreatorProfile;

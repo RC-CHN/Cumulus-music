@@ -1,6 +1,7 @@
 //! VoiceTitle.tsx, VoiceCover.tsx, DescCard.tsx, CollectCard.tsx; M21 E, Z and W.
 //! No additional read is performed for a playback header. Online Episode
 //! resources and download-origin evidence must agree with the selected song.
+mod fresh;
 use super::{MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity};
 use crate::{
     Error, Result,
@@ -8,6 +9,7 @@ use crate::{
     podcast::{PodcastMutation, PodcastService},
     protocol::{api::identifier, artwork, wire::serialization::js_truthy},
 };
+pub use fresh::VinylVoiceDetailView;
 use serde::Serialize;
 use serde_json::{Number, Value};
 
@@ -177,7 +179,15 @@ fn owns_episode(voice: &Value, owner: Option<&str>) -> bool {
 
 fn radio(voice: &Value, owner: Option<&str>) -> Option<PlayerVoiceRadio> {
     let id = radio_id(voice)?;
-    let normalized = &voice["audio"];
+    radio_fields(voice, owner, id, &voice["audio"])
+}
+
+fn radio_fields(
+    voice: &Value,
+    owner: Option<&str>,
+    id: String,
+    normalized: &Value,
+) -> Option<PlayerVoiceRadio> {
     let name = normalized["name"].as_str()?;
     if name.encode_utf16().count() > 512 || name.chars().any(char::is_control) {
         return None;
@@ -262,20 +272,34 @@ fn from_resource(
     owner: Option<&str>,
 ) -> Option<PlayerVoiceDetail> {
     let (voice, episode) = bound_voice(play_id, resource)?;
-    Some(PlayerVoiceDetail {
+    Some(detail_fields(
+        voice,
+        episode,
+        cover_url(
+            voice,
+            identity::kind(resource) == PlayerResourceKind::Downloaded,
+        ),
+        radio(voice, owner),
+    ))
+}
+
+fn detail_fields(
+    voice: &Value,
+    episode: String,
+    cover_url: Option<String>,
+    radio: Option<PlayerVoiceRadio>,
+) -> PlayerVoiceDetail {
+    PlayerVoiceDetail {
         id: episode,
         creator: creator(voice),
         release_time: voice["createTime"]
             .as_u64()
             .filter(|value| (1..=8_640_000_000_000_000).contains(value)),
         description: description(voice),
-        cover_url: cover_url(
-            voice,
-            identity::kind(resource) == PlayerResourceKind::Downloaded,
-        ),
+        cover_url,
         play_count: play_count(voice),
-        radio: radio(voice, owner),
-    })
+        radio,
+    }
 }
 
 pub(super) fn project(snapshot: &PlaybackSnapshot) -> Option<PlayerVoiceDetail> {

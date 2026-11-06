@@ -16,33 +16,37 @@ use serde_json::{Value, json};
 use std::{future::poll_fn, sync::Arc, task::Poll};
 
 const CARD: &str = "/api/voice/play/page/rcmd";
-const HOLD: &str = "/api/w/nuser/account/get";
-const COOKIE: &str = "MUSIC_U=synthetic-voice-rcmd; Path=/; Secure";
-const VOICE: &str = "71";
-const SONG: &str = "424242";
-const STARTUP: [&str; 4] = [
+pub(super) const HOLD: &str = "/api/w/nuser/account/get";
+pub(super) const COOKIE: &str = "MUSIC_U=synthetic-voice-rcmd; Path=/; Secure";
+pub(super) const VOICE: &str = "71";
+pub(super) const SONG: &str = "424242";
+pub(super) const STARTUP: [&str; 4] = [
     "/api/dj/program/detail",
     "/api/dj/program/detail",
     "/api/dj/play/url/check",
     "/api/song/enhance/player/url/v1",
 ];
 
-struct Fixture {
+pub(super) struct Fixture {
     _root: tempfile::TempDir,
-    native: Arc<MusicHttpClient>,
-    session: Arc<AccountSession>,
-    credentials: Arc<Credentials>,
-    client: MusicClient,
-    http: Arc<ScriptHttp>,
-    epoch: String,
-    play_id: String,
+    pub(super) native: Arc<MusicHttpClient>,
+    pub(super) session: Arc<AccountSession>,
+    pub(super) credentials: Arc<Credentials>,
+    pub(super) client: MusicClient,
+    pub(super) http: Arc<ScriptHttp>,
+    pub(super) epoch: String,
+    pub(super) play_id: String,
 }
 
 impl Fixture {
-    async fn new(cookies: &[&str], replies: impl IntoIterator<Item = HttpResponse>) -> Self {
+    pub(super) async fn new(
+        cookies: &[&str],
+        replies: impl IntoIterator<Item = HttpResponse>,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let episode = json!({"code":200,"program":{
             "id":VOICE,"name":"合成节目","duration":120000,"mainTrackId":SONG,
+            "coverUrl":"http://p1.music.126.net/current.png?auth=DO_NOT_EXPORT",
             "mainSong":{"id":SONG,"name":"合成音轨","duration":120000}
         }});
         let (native, http, credentials) = vinyl_http_with_credentials(
@@ -113,7 +117,7 @@ impl Fixture {
             .player_vinyl_voice_recommendations_next(&self.epoch, &self.play_id, receipt)
     }
 
-    fn rotate(&self) {
+    pub(super) fn rotate(&self) {
         let target = ApiOrigin::Pc.url();
         let revision = self
             .credentials
