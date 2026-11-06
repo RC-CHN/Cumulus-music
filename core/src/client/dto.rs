@@ -44,6 +44,7 @@ pub use super::player::{
     QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand, QueueClickPreferencesView,
     QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack, QueueView,
     SearchResultPlayback, SongRowSelection, StartupPreferencesCommand, StartupPreferencesView,
+    VoiceSongAction,
 };
 pub use super::player::{
     VinylVoiceRecommendationCard, VinylVoiceRecommendationCount, VinylVoiceRecommendationsView,

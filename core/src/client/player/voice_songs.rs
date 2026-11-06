@@ -1,4 +1,5 @@
 //! Read-only 「包含歌曲」 card from a bound current episode.
+mod actions;
 use super::{
     MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity, mapping,
     vinyl_similar::stale_credentials, voice_detail,
@@ -13,8 +14,12 @@ use crate::{
         wire::serialization::js_truthy,
     },
 };
+pub(super) use actions::Host;
+pub use actions::VoiceSongAction;
+use actions::{Page, Row};
 use serde::Serialize;
 use serde_json::Value;
+use std::{sync::Arc, time::Instant};
 
 const MAX_TRACKS: usize = 100;
 const MAX_ARTISTS: usize = 32;
@@ -27,6 +32,7 @@ const MAX_JS_INTEGER: u64 = 9_007_199_254_740_991;
 pub struct PlayerVoiceSongsView {
     pub play_id: String,
     pub voice_id: String,
+    pub receipt: Option<String>,
     pub tracks: Vec<TrackView>,
 }
 
@@ -152,7 +158,7 @@ fn credits(row: &Value) -> Result<Vec<ArtistReference>> {
         .collect()
 }
 
-fn track(row: &Value) -> Result<Option<TrackView>> {
+fn track(row: &Value) -> Result<Option<Row>> {
     if !row.is_object() {
         return Err(Error::Response("invalid vinyl episode song"));
     }
@@ -170,7 +176,7 @@ fn track(row: &Value) -> Result<Option<TrackView>> {
     }
     let artist_refs = credits(row)?;
     let image = or(&album["cover"], &album["picUrl"]);
-    Ok(Some(TrackView {
+    let track = TrackView {
         id: id(&row["id"]).ok_or(Error::Response("invalid vinyl episode song ID"))?,
         name: text(&row["name"])?,
         title_names: SongTitleNames::from_song(row),
@@ -193,10 +199,18 @@ fn track(row: &Value) -> Result<Option<TrackView>> {
         voice_id: None,
         missing: false,
         local: false,
+    };
+    let privilege_id = &row["privilege"]["id"];
+    let online_eligible = (privilege_id.is_null()
+        || id(privilege_id).as_deref() == Some(track.id.as_str()))
+        && mapping::online_play_all_eligible(row);
+    Ok(Some(Row {
+        track,
+        online_eligible,
     }))
 }
 
-fn tracks(reply: Value) -> Result<Vec<TrackView>> {
+fn tracks(reply: Value) -> Result<Vec<Row>> {
     let reply = if reply.is_object() && !js_truthy(&reply["code"]) {
         reply
     } else {
@@ -232,7 +246,8 @@ impl MusicClient {
         let initial = seed(&controller.snapshot(), &token, play_id)?;
         let read = VinylVoiceSongsRead::new(&initial.voice_id)?;
         let room = self.together_detached_guard(&token);
-        let check_play = || {
+        let host = &self.player.voice_songs;
+        let check_scope = || {
             self.session
                 .with_verified_profile(&token, &api, |_, _| Ok(()))?;
             if self.login_pending()?
@@ -243,7 +258,7 @@ impl MusicClient {
             }
             Ok(())
         };
-        check_play()?;
+        check_scope()?;
         // This is a native credentials snapshot only, not a cohort lookup.
         let revision = api
             .verified_pc_experiment_revision()
@@ -251,6 +266,11 @@ impl MusicClient {
             .ok_or(Error::State(
                 "vinyl episode songs require signed native PC credentials",
             ))?;
+        let ticket = host.start()?;
+        let check_play = || {
+            check_scope()?;
+            host.reading(ticket)
+        };
         let check_revision = || {
             if api
                 .verified_pc_experiment_revision()
@@ -266,12 +286,24 @@ impl MusicClient {
             .request_vinyl_voice_songs(read, &revision, &check_play)
             .await;
         check_revision()?;
-        let tracks = tracks(reply.map_err(stale_credentials)?)?;
+        let rows = tracks(reply.map_err(stale_credentials)?)?;
         check_revision()?;
-        Ok(PlayerVoiceSongsView {
+        let page = Arc::new(Page {
+            token: token.clone(),
             play_id: play_id.into(),
-            voice_id: initial.voice_id,
-            tracks,
+            seed: initial,
+            api: Arc::downgrade(&api),
+            revision,
+            rows,
+            receipt: uuid::Uuid::new_v4().simple().to_string(),
+            created: Instant::now(),
+        });
+        host.install(ticket, page.clone())?;
+        Ok(PlayerVoiceSongsView {
+            play_id: page.play_id.clone(),
+            voice_id: page.seed.voice_id.clone(),
+            receipt: (!page.rows.is_empty()).then(|| page.receipt.clone()),
+            tracks: page.rows.iter().map(|row| row.track.clone()).collect(),
         })
     }
 }

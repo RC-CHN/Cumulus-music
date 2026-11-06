@@ -49,7 +49,7 @@ pub use voice_recommendations::{
 };
 mod voice_songs;
 pub use voice_detail::{PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio};
-pub use voice_songs::PlayerVoiceSongsView;
+pub use voice_songs::{PlayerVoiceSongsView, VoiceSongAction};
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
@@ -134,6 +134,7 @@ pub(super) struct PlayerHost {
     streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
     vinyl_similar: Arc<vinyl_similar::Host>,
     voice_recommendations: voice_recommendations::Host,
+    voice_songs: Arc<voice_songs::Host>,
 }
 impl PlayerHost {
     pub fn new(
@@ -167,6 +168,7 @@ impl PlayerHost {
             streaming_cache: None,
             vinyl_similar: Default::default(),
             voice_recommendations: Default::default(),
+            voice_songs: Default::default(),
             focus,
             output,
             inspector: OnceCell::new(),

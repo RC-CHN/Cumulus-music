@@ -4,9 +4,14 @@ use cumulus_core::{
     account::{AccountSession, credentials::Credentials, profiles::ProfileRegistry},
     client::{
         MusicClient,
-        dto::{PlaySelection, PlayerAction, PlayerResourceKind, SceneFmCommand},
+        dto::{
+            PlaySelection, PlayerAction, PlayerResourceKind, QueueClickPreferencesCommand,
+            SceneFmCommand, VoiceSongAction,
+        },
     },
     history::HistorySyncAction,
+    membership::Quality,
+    playback::PlaybackMode,
     protocol::{
         api::Api,
         http::{ApiOrigin, MusicHttpClient},
@@ -481,4 +486,167 @@ async fn voice_songs_accepts_published_typed_download_and_refuses_conflicting_ep
             .is_err()
     );
     assert_eq!(f.http.calls().len(), 5);
+}
+
+fn playable_card() -> Value {
+    json!({"code":200,"tracks":[
+        {"id":301,"name":"第一首","album":{},"privilege":{"id":301,"pl":0,"flag":0}},
+        {"id":9,"name":"无专辑未展示"},
+        {"id":SONG,"name":"恰好与节目主音轨同ID的普通歌曲","album":{"id":11},
+         "privilege":{"id":SONG,"pl":320000,"flag":0},"duration":120000}
+    ]})
+}
+
+#[tokio::test]
+async fn voice_songs_actions_respect_the_table_preference_and_never_toggle_backing_voice() {
+    for (action, replace, replace_expected) in [
+        (VoiceSongAction::Cover { index: 1 }, true, false),
+        (VoiceSongAction::DoubleClick { index: 1 }, false, false),
+        (VoiceSongAction::DoubleClick { index: 1 }, true, true),
+    ] {
+        let media = json!({"code":200,"data":[{"id":SONG,"code":200,
+            "url":"https://m1.music.126.net/ordinary.mp3?auth=DO_NOT_EXPORT","md5":"def",
+            "level":"standard","expi":120}]});
+        let f = Fixture::new(&[COOKIE], [playable_card().into(), media.into()]).await;
+        f.client
+            .player_action(
+                &f.epoch,
+                PlayerAction::Mode {
+                    mode: PlaybackMode::Sequential,
+                },
+            )
+            .await
+            .unwrap();
+        if !replace {
+            f.client
+                .queue_click_preferences_command(
+                    &f.epoch,
+                    QueueClickPreferencesCommand::Change {
+                        expected_revision: "0".into(),
+                        replace_queue: false,
+                    },
+                )
+                .unwrap();
+        }
+        let card = f
+            .client
+            .player_voice_songs(&f.epoch, &f.play_id)
+            .await
+            .unwrap();
+        let result = f
+            .client
+            .player_voice_song_play(
+                &f.epoch,
+                &f.play_id,
+                card.receipt.as_deref().unwrap(),
+                action,
+                Quality::Standard,
+            )
+            .await
+            .unwrap();
+        assert_ne!(result.play_id.as_deref(), Some(f.play_id.as_str()));
+        assert_eq!(result.resource_kind, Some(PlayerResourceKind::Catalog));
+        assert!(result.voice_detail.is_none());
+        assert_eq!(result.track.unwrap().id, SONG);
+        let queue = f.client.player_queue(&f.epoch).await.unwrap();
+        assert_eq!(queue.tracks.len(), 2);
+        assert_eq!(
+            queue.current.as_deref(),
+            Some(queue.tracks[1].entry_id.as_str())
+        );
+        assert_eq!(queue.tracks[1].track.id, SONG);
+        assert!(queue.tracks[1].track.voice_id.is_none());
+        if replace_expected {
+            assert_eq!(queue.tracks[0].track.id, "301");
+            assert!(queue.tracks[0].track.voice_id.is_none());
+        } else {
+            assert_eq!(queue.tracks[0].track.id, SONG);
+            assert_eq!(queue.tracks[0].track.voice_id.as_deref(), Some(VOICE));
+        }
+        let calls = f.http.calls();
+        assert_eq!(calls.len(), STARTUP.len() + 2);
+        assert_eq!(calls[STARTUP.len()].path, CARD);
+        assert_eq!(
+            calls[STARTUP.len() + 1].path,
+            "/api/song/enhance/player/url/v1"
+        );
+        assert!(
+            f.client
+                .player_voice_song_play(
+                    &f.epoch,
+                    &f.play_id,
+                    card.receipt.as_deref().unwrap(),
+                    action,
+                    Quality::Standard
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(f.http.calls().len(), calls.len());
+    }
+}
+
+#[tokio::test]
+async fn voice_songs_actions_reject_denied_stale_and_renderer_invented_rows_without_transport() {
+    let f = Fixture::new(&[COOKIE], [playable_card().into(), playable_card().into()]).await;
+    let before = serde_json::to_value(f.client.player_queue(&f.epoch).await.unwrap()).unwrap();
+    let old = f
+        .client
+        .player_voice_songs(&f.epoch, &f.play_id)
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    let current = f
+        .client
+        .player_voice_songs(&f.epoch, &f.play_id)
+        .await
+        .unwrap()
+        .receipt
+        .unwrap();
+    assert_ne!(old, current);
+    for (receipt, index) in [
+        (&*old, 1),
+        ("0123456789abcdef0123456789abcdef", 1),
+        (&*current, 0),
+        (&*current, 2),
+    ] {
+        assert!(
+            f.client
+                .player_voice_song_play(
+                    &f.epoch,
+                    &f.play_id,
+                    receipt,
+                    VoiceSongAction::DoubleClick { index },
+                    Quality::Standard
+                )
+                .await
+                .is_err()
+        );
+    }
+    let target = ApiOrigin::Pc.url();
+    let revision = f.credentials.request_credentials(&target).unwrap().revision;
+    f.credentials
+        .record_response(
+            &target,
+            &["MUSIC_U=rotated-episode-songs; Path=/; Secure".into()],
+            None,
+            &revision,
+        )
+        .unwrap();
+    assert!(matches!(
+        f.client
+            .player_voice_song_play(
+                &f.epoch,
+                &f.play_id,
+                &current,
+                VoiceSongAction::Cover { index: 1 },
+                Quality::Standard
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(f.http.calls().len(), STARTUP.len() + 2);
+    let after = serde_json::to_value(f.client.player_queue(&f.epoch).await.unwrap()).unwrap();
+    assert_eq!(before, after);
 }
