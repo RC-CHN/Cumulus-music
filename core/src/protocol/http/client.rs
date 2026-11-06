@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     Error, Result,
-    account::credentials::Credentials,
+    account::credentials::{Credentials, RequestCredentials},
     protocol::{
         api::{
             Api, ApiFuture, GuardedSongLike, SongLikePermission, VinylCommentRead,
@@ -182,6 +182,27 @@ impl MusicHttpClient {
 
     pub(crate) fn pc_experiment_revision(&self) -> Result<String> {
         self.pc_experiment_revision_for(true)
+    }
+
+    fn check_song_like_scope(&self, current: &RequestCredentials, signed_pc: bool) -> Result<()> {
+        let cookie = current.unique_music_u().ok_or(Error::CredentialChanged)?;
+        let origin = self.credentials.origin();
+        // These ordinary paths are EAPI for every supported routing policy.
+        // Equal revisions alone do not establish equality of URL-scoped jars.
+        for path in ["/api/w/nuser/account/get", "/api/song/like/get"]
+            .into_iter()
+            .chain(signed_pc.then_some(crate::protocol::pc_experiments::ASSIGNMENT_PATH))
+        {
+            let target = origin.request_url(WireRoute::Eapi, path)?;
+            let other = self.credentials.request_credentials(&target)?;
+            if other.revision != current.revision
+                || other.device_id != current.device_id
+                || other.unique_music_u() != Some(cookie)
+            {
+                return Err(Error::CredentialChanged);
+            }
+        }
+        Ok(())
     }
 
     fn pc_experiment_revision_for(&self, require_account: bool) -> Result<String> {
@@ -683,12 +704,12 @@ impl MusicHttpClient {
             }) = binding
             {
                 let current = self.credentials.request_credentials(&target)?;
-                if snapshot.unique_music_u().is_none()
-                    || current.revision != snapshot.revision
+                if current.revision != snapshot.revision
                     || current.unique_music_u() != snapshot.unique_music_u()
                 {
                     return Err(Error::CredentialChanged);
                 }
+                self.check_song_like_scope(&current, false)?;
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
             }
@@ -1209,6 +1230,22 @@ impl Api for MusicHttpClient {
 
     fn local_device_id(&self) -> Result<Option<String>> {
         self.credentials.device_id().map(Some)
+    }
+
+    fn song_like_scope_revision(&self, signed_pc: bool) -> Result<Option<String>> {
+        let pc_revision = signed_pc
+            .then(|| self.pc_experiment_revision())
+            .transpose()?;
+        let target = self
+            .credentials
+            .origin()
+            .request_url(WireRoute::Eapi, GuardedSongLike::PATH)?;
+        let current = self.credentials.request_credentials(&target)?;
+        if pc_revision.is_some_and(|revision| revision != current.revision) {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_song_like_scope(&current, signed_pc)?;
+        Ok(Some(current.revision))
     }
 
     fn request_guarded_song_like<'a>(

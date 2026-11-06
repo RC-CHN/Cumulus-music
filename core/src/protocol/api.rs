@@ -307,6 +307,12 @@ pub type PodcastBadgePermission<'a> = dyn Fn() -> Result<()> + Send + Sync + 'a;
 pub trait Api: Send + Sync + std::any::Any {
     fn request<'a>(&'a self, path: &'a str, payload: Value, cache: bool) -> ApiFuture<'a, Value>;
 
+    /// Local proof that account identity, liked membership, and the write use
+    /// the same scoped credentials. A signed PC caller also binds its card.
+    fn song_like_scope_revision(&self, _signed_pc: bool) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Call permission and mark dispatched immediately before the transport
     /// starts the write. No generic request fallback can honor that boundary.
     fn request_guarded_song_like<'a>(

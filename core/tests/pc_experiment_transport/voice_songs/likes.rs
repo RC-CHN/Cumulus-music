@@ -2,7 +2,9 @@ use super::{
     ApiOrigin, CARD, COOKIE, Error, Fixture, PlayerAction, STARTUP, gate, json, playable_card,
     reply,
 };
-use cumulus_core::{account::resources::MutationPhase, client::dto::LikeRecoveryCommand};
+use cumulus_core::{
+    account::resources::MutationPhase, client::dto::LikeRecoveryCommand, protocol::api::Api,
+};
 
 const LIKED: &str = "/api/song/like/get";
 const LIKE: &str = "/api/song/like";
@@ -201,6 +203,40 @@ async fn like_preflight_cookie_rotation_revokes_the_card_without_switching_accou
         Some(f.play_id.as_str())
     );
     calls(&f, &[CARD, LIKED]);
+    assert!(
+        f.store
+            .values("25", "resource-mutations")
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
+async fn like_refuses_a_distinct_unique_cookie_from_the_one_that_authorized_the_card() {
+    let f = Fixture::new(
+        &[
+            "MUSIC_U=card-account; Path=/eapi/dj; Secure",
+            "MUSIC_U=card-account; Path=/eapi/song/enhance; Secure",
+            "MUSIC_U=card-account; Path=/eapi/v1/dj/program; Secure",
+            "MUSIC_U=card-account; Path=/eapi/rtrs/abt/front; Secure",
+            "MUSIC_U=other-account; Path=/eapi/w/nuser/account; Secure",
+            "MUSIC_U=other-account; Path=/eapi/song/like; Secure",
+        ],
+        [playable_card().into()],
+    )
+    .await;
+    let receipt = receipt(&f).await;
+    assert_eq!(
+        f.native.song_like_scope_revision(false).unwrap(),
+        f.native.verified_pc_experiment_revision().unwrap()
+    );
+    assert!(matches!(
+        f.client
+            .player_voice_song_like(&f.epoch, &f.play_id, &receipt, 0, true)
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    calls(&f, &[CARD]);
     assert!(
         f.store
             .values("25", "resource-mutations")

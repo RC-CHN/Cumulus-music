@@ -81,6 +81,13 @@ struct Fixture {
 
 impl Fixture {
     async fn new(replies: impl IntoIterator<Item = HttpResponse>) -> Self {
+        Self::with_cookies(&["MUSIC_U=synthetic-like-fixture; Path=/; Secure"], replies).await
+    }
+
+    async fn with_cookies(
+        cookies: &[&str],
+        replies: impl IntoIterator<Item = HttpResponse>,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let store = Arc::new(StateStore::open(root.path()).unwrap());
         let origin = ApiOrigin::Pc;
@@ -89,7 +96,7 @@ impl Fixture {
         credentials
             .record_response(
                 &target,
-                &["MUSIC_U=synthetic-like-fixture; Path=/; Secure".into()],
+                &cookies.iter().map(ToString::to_string).collect::<Vec<_>>(),
                 None,
                 &credentials.request_credentials(&target).unwrap().revision,
             )
@@ -202,7 +209,7 @@ async fn held_membership_read_rejects_a_stale_action_even_if_it_became_a_noop() 
             .membership_for(&f.token, ResourceKind::Liked, "20")
             .unwrap()
             .0,
-        Some(true)
+        None
     );
 }
 
@@ -306,6 +313,46 @@ async fn stale_scope_after_dispatch_cannot_erase_lost_reply_or_trigger_replay() 
         f.start(Arc::new(AtomicBool::new(true))).await.unwrap(),
         Err(Error::MutationUncertain)
     ));
+    f.calls(&[ACCOUNT, LIKED, LIKE]);
+    assert_eq!(
+        f.resources
+            .reconcile_expected(&f.token, ResourceKind::Liked, "20")
+            .await
+            .unwrap()
+            .phase,
+        MutationPhase::Confirmed
+    );
+    f.calls(&[ACCOUNT, LIKED, LIKE, LIKED]);
+}
+
+#[tokio::test]
+async fn same_revision_different_account_and_song_like_scopes_never_preflight_or_write() {
+    let f = Fixture::with_cookies(
+        &[
+            "MUSIC_U=verified-account; Path=/eapi/w/nuser/account; Secure",
+            "MUSIC_U=different-like-account; Path=/eapi/song/like; Secure",
+        ],
+        [],
+    )
+    .await;
+    assert!(matches!(
+        f.start(Arc::new(AtomicBool::new(true))).await.unwrap(),
+        Err(Error::CredentialChanged)
+    ));
+    f.calls(&[ACCOUNT]);
+    assert!(f.journal().is_none());
+}
+
+#[tokio::test]
+async fn acknowledged_write_that_rotates_credentials_leaves_read_only_recovery() {
+    let mut response = reply(json!({"code":200}));
+    response.set_cookies = vec!["MUSIC_U=after-write; Path=/; Secure".into()];
+    let f = Fixture::new([likes(&[]), HttpResponse::Ready(Ok(response)), likes(&[20])]).await;
+    assert!(matches!(
+        f.start(Arc::new(AtomicBool::new(true))).await.unwrap(),
+        Err(Error::CredentialChanged)
+    ));
+    assert_eq!(f.journal().unwrap()["phase"], "verifying");
     f.calls(&[ACCOUNT, LIKED, LIKE]);
     assert_eq!(
         f.resources

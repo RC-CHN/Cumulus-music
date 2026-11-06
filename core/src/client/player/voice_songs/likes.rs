@@ -24,7 +24,13 @@ impl MusicClient {
         let controller = self.player.controller.get().ok_or(Error::StaleResponse)?;
         let check = || {
             host.check_action_scope(self, &page, &api, &room)?;
-            if seed(&controller.snapshot(), &token, play_id).ok().as_ref() != Some(&page.seed) {
+            if api
+                .song_like_scope_revision(true)
+                .map_err(stale_credentials)?
+                .as_deref()
+                != Some(page.revision.as_str())
+                || seed(&controller.snapshot(), &token, play_id).ok().as_ref() != Some(&page.seed)
+            {
                 return Err(Error::StaleResponse);
             }
             Ok(())

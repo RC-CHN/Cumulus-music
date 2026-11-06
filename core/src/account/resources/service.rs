@@ -115,12 +115,27 @@ impl AccountResources {
                 .await?
                 .values);
         }
+        self.refresh_membership_for(token, kind, None).await
+    }
+
+    async fn refresh_membership_for(
+        &self,
+        token: &SessionToken,
+        kind: ResourceKind,
+        check: Option<&SongLikePermission<'_>>,
+    ) -> Result<Value> {
+        if let Some(check) = check {
+            check()?;
+        }
         let result = self
             .session
             .run_for(token, |api, uid| async move {
                 snapshot::read(api, &uid, kind).await
             })
             .await?;
+        if let Some(check) = check {
+            check()?;
+        }
         self.session
             .save_result(token, "resources", kind.as_str(), &result)?;
         Ok(result)
@@ -271,13 +286,37 @@ impl AccountResources {
         {
             return Err(Error::MutationUncertain);
         }
-        if let Some(permission) = permission {
-            permission()?;
-        }
-        let snapshot = self.refresh_for(token, kind).await?;
-        if let Some(permission) = permission {
-            permission()?;
-        }
+        let authority = permission
+            .map(|permission| {
+                let api = self.session.native_api(token)?;
+                let revision = api
+                    .song_like_scope_revision(false)?
+                    .ok_or(Error::State("guarded song like is unavailable"))?;
+                Ok::<_, Error>((api, revision, permission))
+            })
+            .transpose()?;
+        let check_credentials = || {
+            if let Some((api, revision, _)) = &authority {
+                self.session.require_api(token, api)?;
+                if api.song_like_scope_revision(false)?.as_deref() != Some(revision.as_str()) {
+                    return Err(Error::CredentialChanged);
+                }
+            }
+            Ok(())
+        };
+        let check = || {
+            check_credentials()?;
+            if let Some((_, _, permission)) = &authority {
+                permission()?;
+            }
+            Ok(())
+        };
+        let check_before_send = authority
+            .as_ref()
+            .map(|_| &check as &SongLikePermission<'_>);
+        let snapshot = self
+            .refresh_membership_for(token, kind, check_before_send)
+            .await?;
         let before = snapshot::value(kind, key, &snapshot)?;
         if !snapshot::same_type(&before, &desired) {
             return Err(Error::Response("server returned an unexpected state type"));
@@ -314,13 +353,13 @@ impl AccountResources {
             dispatched: AtomicBool::new(false),
             settled: false,
         });
-        let guarded_dispatch = permission.zip(guarded_journal.as_ref());
+        let guarded_dispatch = guarded_journal.as_ref();
         let desired = record.desired.clone();
         let key = key.to_owned();
         let result = self
             .session
             .run_for(token, |api, uid| async move {
-                if let Some((permission, journal)) = guarded_dispatch {
+                if let Some(journal) = guarded_dispatch {
                     let write = GuardedSongLike::new(
                         uid,
                         key,
@@ -328,10 +367,6 @@ impl AccountResources {
                             .as_bool()
                             .ok_or(Error::State("invalid desired membership"))?,
                     );
-                    let check = || {
-                        self.session.require_api(token, &api)?;
-                        permission()
-                    };
                     let response = api
                         .request_guarded_song_like(write, &check, &journal.dispatched)
                         .await?;
@@ -434,7 +469,11 @@ impl AccountResources {
         }
         self.store
             .put(uid, JOURNAL, &journal_key, &serde_json::to_value(&record)?)?;
-        self.reconcile_for(token, &journal_key, record).await
+        let check_read_back = authority
+            .as_ref()
+            .map(|_| &check_credentials as &SongLikePermission<'_>);
+        self.reconcile_membership_for(token, &journal_key, record, check_read_back)
+            .await
     }
     pub async fn reconcile(&self, kind: ResourceKind, key: &str) -> Result<MutationRecord> {
         self.reconcile_expected(&self.token()?, kind, key).await
@@ -471,9 +510,25 @@ impl AccountResources {
         &self,
         token: &SessionToken,
         key: &str,
-        mut record: MutationRecord,
+        record: MutationRecord,
     ) -> Result<MutationRecord> {
-        let snapshot = self.refresh_for(token, record.kind).await?;
+        self.reconcile_membership_for(token, key, record, None)
+            .await
+    }
+
+    async fn reconcile_membership_for(
+        &self,
+        token: &SessionToken,
+        key: &str,
+        mut record: MutationRecord,
+        check: Option<&SongLikePermission<'_>>,
+    ) -> Result<MutationRecord> {
+        let snapshot = if check.is_some() {
+            self.refresh_membership_for(token, record.kind, check)
+                .await?
+        } else {
+            self.refresh_for(token, record.kind).await?
+        };
         let actual = snapshot::value(record.kind, &record.key, &snapshot)?;
         let matched = snapshot::same_type(&actual, &record.desired) && actual == record.desired;
         record.observed = Some(actual);
