@@ -205,26 +205,83 @@ async fn peer_same_ids_new_durations_during_hydration_reject_old_row_and_foreign
 }
 
 #[tokio::test]
-async fn replacing_double_click_clears_to_only_clicked_song() {
-    let (_dir, api, _session, client, _count) = fixture();
-    *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
-    let (album, _) = scope(&client, AlbumDurationOrder::Ascending).await;
-    client.play_selection("1", songs("1000")).await.unwrap();
-    let started = client
-        .play_selection(
-            "1",
-            PlaySelection::SongRowDoubleClick {
-                selection: SongRowSelection::AlbumDetail {
-                    album,
-                    row: row(vec![0, 1, 2], 0, "11"),
+async fn album_double_click_replaces_with_sorted_visible_rows_or_inserts_only_selected_song() {
+    for replace_queue in [true, false] {
+        let (_dir, api, _session, client, _count) = fixture();
+        *api.album_tracks.lock().unwrap() = Some(tracks(180_000));
+        let (album, _) = scope(&client, AlbumDurationOrder::Ascending).await;
+        if !replace_queue {
+            client
+                .queue_click_preferences_command(
+                    "1",
+                    QueueClickPreferencesCommand::Change {
+                        expected_revision: "0".into(),
+                        replace_queue,
+                    },
+                )
+                .unwrap();
+        }
+        let seed = client
+            .play_selection(
+                "1",
+                PlaySelection::Songs {
+                    ids: vec!["1000".into(), "1001".into()],
+                    index: 0,
                     quality: Quality::Standard,
                 },
-            },
-        )
-        .await
-        .unwrap();
-    assert_eq!(started.track.unwrap().id, "11");
-    assert_eq!(ids(&client).await, ["11"]);
+            )
+            .await
+            .unwrap();
+        let before = client.player_queue("1").await.unwrap();
+        api.calls.lock().unwrap().clear();
+
+        let started = client
+            .play_selection(
+                "1",
+                PlaySelection::SongRowDoubleClick {
+                    selection: SongRowSelection::AlbumDetail {
+                        album,
+                        row: row(vec![0, 1, 2], 2, "13"),
+                        quality: Quality::Standard,
+                    },
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(started.track.unwrap().id, "13");
+        assert_eq!(started.state, PlaybackStatus::Playing);
+        assert_ne!(started.play_id, seed.play_id);
+        assert!(matches!(started.origin, Some(PlayerOrigin::Album { id }) if id == "7"));
+        assert!(
+            !api.calls
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|path| path.starts_with("/api/album/"))
+        );
+
+        let after = client.player_queue("1").await.unwrap();
+        let actual: Vec<_> = after
+            .tracks
+            .iter()
+            .map(|row| row.track.id.as_str())
+            .collect();
+        let (expected, selected) = if replace_queue {
+            // Ascending duration, with a service-order tie and a filtered-out row.
+            (["12", "11", "13"], 2)
+        } else {
+            // Retained entries on both sides of the newly inserted selected song.
+            assert_eq!(after.tracks[0].entry_id, before.tracks[0].entry_id);
+            assert_eq!(after.tracks[2].entry_id, before.tracks[1].entry_id);
+            (["1000", "13", "1001"], 1)
+        };
+        assert_eq!(actual, expected, "replace_queue={replace_queue}");
+        assert_eq!(
+            after.current.as_ref(),
+            Some(&after.tracks[selected].entry_id)
+        );
+        assert_eq!(started.entry_id, after.current);
+    }
 }
 
 #[tokio::test]
@@ -386,5 +443,5 @@ async fn double_click_on_active_same_song_toggles_exact_decoder_until_it_is_inac
     let replaced = client.play_selection("1", select(album)).await.unwrap();
     assert_eq!(replaced.state, PlaybackStatus::Playing);
     assert_ne!(replaced.play_id, before.play_id);
-    assert_eq!(ids(&client).await, ["11"]);
+    assert_eq!(ids(&client).await, ["12", "11", "13"]);
 }

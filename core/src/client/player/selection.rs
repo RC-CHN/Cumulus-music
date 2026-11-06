@@ -165,7 +165,9 @@ impl MusicClient {
                         quality,
                     } => {
                         album_double_click = true;
-                        single_album_row = !keep_queue;
+                        // M3085 uses only the clicked resource when the old queue
+                        // is retained; replacement takes the visible album rows.
+                        single_album_row = keep_queue;
                         PlaySelection::AlbumDetail {
                             album,
                             row: Some(row),
