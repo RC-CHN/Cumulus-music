@@ -1495,11 +1495,23 @@ impl MusicClient {
                 | PlayerAction::Previous
                 | PlayerAction::Select { .. }
         ) {
-            Some(if let Some(target) = native {
-                self.claim_native_media(&token, super::focus::Owner::Audio, target.focus)
-                    .await?
-            } else {
-                self.claim_media(&token, super::focus::Owner::Audio).await?
+            Some(match native {
+                Some(target)
+                    if policy == NativeTransportPolicy::PreserveStep
+                        && target.focus.owner == Some(super::focus::Owner::Audio) =>
+                {
+                    // A system step on the already-owned decoder keeps its
+                    // exact lease. Revoking Audio here would let the native
+                    // poll pause the old entry while a handoff waits.
+                    self.session.check_generation(&token)?;
+                    self.focus.check_snapshot(target.focus)?;
+                    target.focus.generation
+                }
+                Some(target) => {
+                    self.claim_native_media(&token, super::focus::Owner::Audio, target.focus)
+                        .await?
+                }
+                None => self.claim_media(&token, super::focus::Owner::Audio).await?,
             })
         } else {
             None

@@ -6,6 +6,11 @@ use cumulus_core::{
 
 async fn setup() -> Fixture {
     let f = Fixture::new();
+    select_songs(&f).await;
+    f
+}
+
+async fn select_songs(f: &Fixture) {
     f.client
         .play_selection(
             "1",
@@ -17,7 +22,6 @@ async fn setup() -> Fixture {
         )
         .await
         .unwrap();
-    f
 }
 
 #[tokio::test]
@@ -149,4 +153,73 @@ async fn paused_loading_keeps_the_native_play_label_and_first_presentation_pause
         Status::Paused
     );
     assert_eq!(f.audio.state.lock().unwrap().pauses, [true]);
+}
+
+#[tokio::test]
+async fn paused_native_step_never_revokes_its_own_decoder_while_video_stop_is_held() {
+    use std::time::Duration;
+
+    let f = Fixture::new();
+    f.client.video_action("1", open()).await.unwrap();
+    f.until(VideoStatus::Playing).await;
+    select_songs(&f).await;
+    f.client
+        .player_action("1", PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    let target = f.client.native_media_snapshot().unwrap().target.unwrap();
+
+    // The video was already suspended by the audio claim. Hold its unrelated
+    // explicit teardown so a redundant Audio -> Audio claim would wait for
+    // its video Suspend while the audio tick observes no permitted owner.
+    let (hold, started) = {
+        let video = f.video.last();
+        let device = video.lock().unwrap();
+        assert!(device.paused);
+        (device.hold_stop.clone(), device.stop_started.clone())
+    };
+    hold.store(true, Ordering::Release);
+    let client = f.client.clone();
+    let stopping = tokio::spawn(async move { client.video_action("1", VideoAction::Stop).await });
+    let video_held = tokio::time::timeout(Duration::from_secs(2), started.notified()).await;
+    if video_held.is_err() {
+        hold.store(false, Ordering::Release);
+        panic!("synthetic video teardown did not reach the held native stop");
+    }
+    let old_loads = {
+        let mut audio = f.audio.state.lock().unwrap();
+        audio.pauses.clear();
+        audio.loads
+    };
+    let client = f.client.clone();
+    let step = tokio::spawn(async move { client.native_media_step(&target, Step::Next).await });
+    let observation = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let early_pause = {
+                let audio = f.audio.state.lock().unwrap();
+                audio.loads == old_loads && !audio.pauses.is_empty()
+            };
+            if early_pause || step.is_finished() {
+                break early_pause;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await;
+    hold.store(false, Ordering::Release);
+    stopping.await.unwrap().unwrap();
+    step.await.unwrap().unwrap();
+    let audio = f.audio.state.lock().unwrap();
+    assert_eq!(audio.loads, old_loads + 1);
+    assert!(audio.view.paused);
+    assert_eq!(
+        audio.pauses,
+        [true],
+        "only the replacement may be paused; old decoder paused while held: {observation:?}"
+    );
+    assert!(!observation.expect("audio step must complete while unrelated video stop is held"));
+    assert_eq!(
+        f.client.native_media_details().unwrap().state,
+        Status::Paused
+    );
 }

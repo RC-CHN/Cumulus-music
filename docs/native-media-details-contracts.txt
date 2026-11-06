@@ -52,6 +52,8 @@ core/client/native_media/actions.rs：
 MusicClient::native_media_step(&target, Step::Next/Previous) -> Result<()>
   普通音频：PlaybackCommand::StepPreservingState 在 actor 内决定下一选择和
   首次解码的暂停标记；暂停切歌不会先解除暂停再补一个 Pause。
+  音频已经持有系统目标中所见焦点时沿用精确焦点代次，不为同一播放器切歌撤销再申请；
+  否则仍按原有流程交接。账号、选曲与命令权限保持原有校验。
   停止切歌只更换选择，不解析/加载/启动音频，清除旧 decoder 所有权，避免后续
   queue sync 恢复旧播放。已有手动/托盘 Next/Previous 仍使用原有开始播放语义。
   FM：复用 coordinator、250ms 冷却、补充推荐和跳过记录；通过 QueueUpdate
@@ -71,7 +73,9 @@ selection intent 和 actor fence，在实际执行前再次校验；失效操作
 core/tests/client_mv.rs 装载 support/native_media_details.rs 与 native_media_steps.rs：
   懒读取、歌曲/MV白名单、稳定 id、账号/媒体交接过期、原生定位/音量/倍速、
   试听范围、暂停状态、SQLite 保存/故障回滚/恢复、暂停切歌无瞬时播放、
-  停止切歌无 decoder load、加载期暂停意图和 MV 禁止误控旧音频。
+  停止切歌无 decoder load、加载期暂停意图和 MV 禁止误控旧音频。另在已经挂起的
+  MV 原生停止被持有时验证音频系统切歌：修复前轮询对旧解码器增加一次暂停，随后
+  新解码器正常暂停（[true,true]）；保留已验证焦点后只暂停新解码器一次。
 core/tests/client_fm.rs：系统上下首经 FM coordinator 保持暂停/停止、没有拉黑写入。
 core/tests/fm_player.rs、playback_remote.rs：既有 FM、延迟补充、状态恢复和原子
 远端队列逻辑回归。上述用例不能替代真实 libmpv、系统总线/SMTC 或物理声卡测试。
