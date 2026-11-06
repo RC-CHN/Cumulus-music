@@ -49,11 +49,13 @@ def main():
     assert rows['downloadVoicePodcastReads'] == []
     reads = opened['downloadVoicePodcastReads']
     assert reads == returned['downloadVoicePodcastReads'] == complete['downloadVoicePodcastReads']
-    assert sorted(item['path'] for item in reads) == ['/api/djradio/v3/get', '/api/v6/dj/program/byradio']
-    detail, episodes = (next(item['args'] for item in reads if item['path'] == path) for path in
-                        ('/api/djradio/v3/get', '/api/v6/dj/program/byradio'))
-    assert detail == {'id': rows['linked']['id']}
-    assert episodes == {'radioId': rows['linked']['id'], 'limit': 50, 'offset': 0, 'asc': True}
+    radio = rows['linked']['id']
+    assert reads == [
+        {'path': '/api/djradio/v3/get', 'args': {'id': radio}},
+        {'path': '/api/v6/dj/program/byradio', 'args': {'radioId': radio, 'limit': 200, 'offset': 0, 'asc': True}},
+        {'path': '/api/content/my/liked/voice', 'args': {'limit': 100, 'likeTime': 0}},
+        {'path': '/api/dj/user/setting/resumeplay/get', 'args': {'radioId': radio}},
+    ]
     player = rows['nativePlayer']
     keys = ('playId', 'entryId', 'queueRevision', 'position', 'downloadTaskId')
     assert player['track']['id'] == '1' and player['downloadTaskId'] and player['playId']

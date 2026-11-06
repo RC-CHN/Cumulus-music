@@ -62,14 +62,22 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 Some(json!({"code":200,"data":voice_radio()}))
             }
             "/api/v6/dj/program/byradio" => {
-                assert_eq!(args["radioId"], VOICE_RADIO_ID);
+                assert_eq!(
+                    *args,
+                    json!({"radioId":VOICE_RADIO_ID,"limit":200,"offset":0,"asc":true})
+                );
                 Some(
                     json!({"code":200,"data":{"programs":[voice_episode(701,121)],"count":1,
                     "more":false,"asc":args["asc"]}}),
                 )
             }
             "/api/content/my/liked/voice" => {
-                return Some(Ok(json!({"code":200,"data":{"data":[],"hasMore":false}})));
+                assert_eq!(*args, json!({"limit":100,"likeTime":0}));
+                Some(json!({"code":200,"data":{"data":[],"hasMore":false}}))
+            }
+            "/api/dj/user/setting/resumeplay/get" => {
+                assert_eq!(*args, json!({"radioId":VOICE_RADIO_ID}));
+                Some(json!({"code":200,"data":{"resumePlayValue":0}}))
             }
             _ => None,
         };
