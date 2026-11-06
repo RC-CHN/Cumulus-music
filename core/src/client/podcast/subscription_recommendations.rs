@@ -62,7 +62,7 @@ fn project(body: &Value) -> Result<Vec<(PodcastSubscriptionRecommendation, Radio
         .iter()
         .take(MAX_CARDS)
         .filter_map(|row| {
-            let radio = Radio::from_official(row).ok()?;
+            let mut radio = Radio::from_official(row).ok()?;
             if radio.name.trim().is_empty() || !seen.insert(radio.id.clone()) {
                 return None;
             }
@@ -70,11 +70,16 @@ fn project(body: &Value) -> Result<Vec<(PodcastSubscriptionRecommendation, Radio
                 .as_u64()
                 .or_else(|| row["playCount"].as_str()?.parse().ok())
                 .filter(|&count| count <= 9_007_199_254_740_991);
+            let cover_url = artwork(&json!(radio.cover_url));
+            // The receipt stores only data needed by the later playback
+            // action; the original personalized response is not retained.
+            radio.cover_url = cover_url.clone().unwrap_or_default();
+            radio.raw = json!({"categoryId": row["categoryId"].as_i64()});
             Some((
                 PodcastSubscriptionRecommendation {
                     id: radio.id.clone(),
                     name: radio.name.clone(),
-                    cover_url: artwork(&json!(radio.cover_url)),
+                    cover_url,
                     play_count,
                     unavailable: row["grayDisplay"] == true || row["underShelf"] == true,
                 },

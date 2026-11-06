@@ -174,12 +174,14 @@ function move(direction: -1 | 1) {
   background: var(--accent-fill);
   color: var(--on-accent);
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.2s ease-in;
 }
 .recommendation-card:hover .recommendation-play,
 .recommendation-card:focus-within .recommendation-play,
 .recommendation-play.active {
   opacity: 1;
+  pointer-events: auto;
 }
 .recommendation-play .icon {
   width: 21px;
