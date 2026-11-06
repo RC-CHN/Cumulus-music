@@ -117,7 +117,8 @@ def check_recommendations(output, stages, complete, screenshots):
     assert set(stages) == {
         'recommended_first', 'recommended_next', 'recommended_playing', 'recommended_paused',
         'recommended_resumed', 'recommended_detail', 'recommended_back',
-        'recommendation_menu_collectible', 'recommendation_menu_subscribed',
+        'recommendation_menu_collectible', 'recommendation_menu_collect_confirm',
+        'recommendation_menu_subscribed',
         'recommendation_menu_share', 'recommendation_menu_copy', 'recommendation_menu_next',
     }, stages
     assert complete['detailReads'] == ['81']

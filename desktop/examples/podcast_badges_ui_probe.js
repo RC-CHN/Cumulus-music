@@ -154,6 +154,7 @@
     click(button('收藏...', currentMenu()));
     const confirm = () => one('dialog[open][aria-label="收藏播客"]');
     await wait(() => shown(confirm()) && opaque(confirm()), 'explicit recommendation collect confirmation');
+    await capture('recommendation_menu_collect_confirm', confirm, false);
     click(button('取消', confirm()));
     await wait(() => !confirm() && document.activeElement === recOpen('86'), 'cancel restores original card focus');
     const previous = () => button('上一组推荐播客', shelf());
