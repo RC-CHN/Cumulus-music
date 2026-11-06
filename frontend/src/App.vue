@@ -1871,7 +1871,19 @@ const voiceSongDownloadOptions = computed<DownloadDialogTarget | undefined>(() =
     message: voiceSongDownload.message.value,
     live: () => voiceSongDownload.stage.value === stage,
     busy: () => voiceSongDownload.busy.value,
-    start: voiceSongDownload.start,
+    async start(options) {
+      const started = await voiceSongDownload.start(options);
+      // The accepted task closes the child dialog before its await can emit.
+      // Navigate from the owner, provided this is still the originating card.
+      if (
+        started &&
+        page.value === voiceDownloadRoute.value &&
+        player.lyricsOpen.value &&
+        voiceSongs.ownsTarget(stage.opening.target)
+      )
+        openVoiceSongDownloads();
+      return started;
+    },
   };
 });
 function voiceSongDownloadFocus() {
@@ -6237,7 +6249,6 @@ onUnmounted(() => {
         :model="downloads"
         :target="voiceSongDownloadOptions"
         @close="voiceSongDownload.close"
-        @started="openVoiceSongDownloads()"
       />
       <VoiceSongDownloadPicker
         v-else-if="voiceSongDownload.stage.value.kind !== 'idle'"
