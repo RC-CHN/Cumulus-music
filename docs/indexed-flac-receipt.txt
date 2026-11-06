@@ -101,8 +101,10 @@ nominal output buffer (200 ms), and the 40 ms native clock observation.
 The worker still receives credit only from its matching native entry and
 never beyond the existing delivered-frame clock check. The unbound startup,
 initial sync, paused and seeking gates, and the protected source keep their
-previous credit behavior. No delay, replacement source or material change
-is added when master bypass is selected.
+previous credit behavior. Master bypass keeps the source and native entry.
+As before, already buffered PCM drains before the change is audible; the
+reserve adds up to one packet to that bound, plus the existing quantum
+rounding.
 The old pathname never supplies another file after ownership transfers.
 Actor generation and ManagedOutput lease fence preparation. After native
 load and before first unpause, the actor checks the current local index,
