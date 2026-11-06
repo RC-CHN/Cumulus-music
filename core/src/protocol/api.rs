@@ -29,7 +29,7 @@ impl GuardedPlaylistAdd {
         let ids = packed_ids(&[json!(self.song)])?;
         Ok((
             Self::PATH,
-            json!({"pid":self.playlist,"trackIds":ids,"op":"add","imme":true}),
+            json!({"pid":self.playlist,"trackIds":ids,"op":"add"}),
         ))
     }
 }

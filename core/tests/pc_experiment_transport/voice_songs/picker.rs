@@ -21,7 +21,8 @@ const PLAYLIST: &str = "81";
 fn card() -> HttpResponse {
     json!({"code":200,"tracks":[
         {"id":301,"name":"指定普通歌曲","album":{},"privilege":{"id":301,"fee":0,"st":0,"dl":320000}},
-        {"id":302,"name":"旁边的歌曲","album":{},"privilege":{"id":302,"fee":0,"st":0,"dl":320000}}
+        {"id":302,"name":"旁边的歌曲","album":{},"privilege":{"id":302,"fee":0,"st":0,"dl":320000,"subp":0}},
+        {"id":303,"name":"不可收藏","album":{},"privilege":{"id":303,"fee":0,"st":0,"dl":320000,"subp":-1}}
     ]}).into()
 }
 
@@ -202,7 +203,7 @@ async fn exact_destination_completion_true_or_false_can_unlock_only_the_selected
             assert_eq!(write.payload["pid"], PLAYLIST);
             assert_eq!(write.payload["trackIds"], r#"["301"]"#);
             assert_eq!(write.payload["op"], "add");
-            assert_eq!(write.payload["imme"], "true");
+            assert!(write.payload.get("imme").is_none());
         }
         assert_eq!(f.http.calls().last().unwrap().payload["id"], "301");
     }
@@ -265,6 +266,12 @@ async fn lost_ack_cannot_unlock_download_and_explicit_readback_does_not_replay_a
 async fn foreign_playlist_or_old_play_during_detail_cannot_create_an_add_journal() {
     let (held, release) = gate();
     let (f, receipt) = fixture([detail(26, false).into(), held]).await;
+    assert!(matches!(
+        f.client
+            .player_voice_song_download_choose_playlist(&f.epoch, &f.play_id, &receipt, 2, PLAYLIST)
+            .await,
+        Err(Error::InvalidInput(_))
+    ));
     assert!(matches!(
         f.client
             .player_voice_song_download_choose_playlist(&f.epoch, &f.play_id, &receipt, 0, PLAYLIST)

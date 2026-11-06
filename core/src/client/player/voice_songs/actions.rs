@@ -71,6 +71,7 @@ pub(super) struct Row {
     pub(super) online_eligible: bool,
     pub(super) copyright_blocked: bool,
     pub(super) download: super::download::Class,
+    pub(super) playlist_eligible: bool,
 }
 
 impl Row {

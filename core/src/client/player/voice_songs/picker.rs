@@ -212,7 +212,7 @@ impl MusicClient {
         let row = page
             .rows
             .get(index)
-            .filter(|row| row.download == Class::Ordinary)
+            .filter(|row| row.download == Class::Ordinary && row.playlist_eligible)
             .ok_or(Error::InvalidInput("invalid vinyl episode download row"))?;
         let service = PlaylistService::new(self.session.clone())?;
         let (lease, existing) = page.picker.choose(&service, &page, index, &playlist)?;

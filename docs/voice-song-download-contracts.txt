@@ -31,7 +31,9 @@ Cumulus 实现有明确普通下载权限的已喜欢分支，以及未喜欢时
 - choose_playlist 只接受卡片行和用户显式选择的歌单 ID；通过同账户签名凭据
   读 `/api/v6/playlist/detail`，必须是当前账号拥有的普通可编辑歌单。沿用既有
   独占写锁和日志，发一次 `/api/v1/playlist/manipulate/tracks`，仅原生解析的
-  单曲 `trackIds`、选中 `pid`、`op=add`、`imme=true`；准备后在真正传输前复核
+  单曲 `trackIds`、选中 `pid`、`op=add`；M/3160 fav→M/232:662–693→M/15:2099
+  不传普通编辑流程的 `imme`。M/3085:779–783、M/21:362 的收藏 `subp` 门控
+  不放行真值非正的歌曲；已喜欢直接下载不取用该收藏权限。发送前复核
   卡片和 Cookie 范围。已经存在时按现有 Unchanged 处理，不再发 add。
 - picker_status 默认只读原生绑定的操作；显式核对只回读详情，不能重放 add。
   已确认、无变化或已发出且服务明确拒绝并完成回读，才给独立的一次性继续凭据。

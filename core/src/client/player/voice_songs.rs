@@ -228,6 +228,12 @@ fn track(row: &Value) -> Result<Option<Row>> {
         .is_some_and(|status| status < 0.0);
     Ok(Some(Row {
         download: download::classify(row, &track.id),
+        // M/21 A maps subp to subPriv. M/3085 favorite filters out rows
+        // with an explicitly truthy subPriv which is not positive.
+        playlist_eligible: !js_truthy(&row["privilege"]["subp"])
+            || row["privilege"]["subp"]
+                .as_i64()
+                .is_some_and(|value| value > 0),
         track,
         online_eligible,
         copyright_blocked,
