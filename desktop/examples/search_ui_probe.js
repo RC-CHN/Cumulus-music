@@ -194,18 +194,20 @@
       const keyword = "合成游客查询";
       const rows = () => all(".guest-search-result");
       const heading = () => one(".search-results-page h1")?.textContent.trim();
+      const comprehensiveRows = () => one('[data-result-section^="search_block_song:"] .guest-search-result');
       await wait(
         () => input()?.placeholder === "发现合成好声音" && !input().disabled && document.hasFocus(),
         "native registered guest enables topbar search",
       );
       assert(!one(".search-results-page"), "guest registration does not navigate");
+      assert(document.body.textContent.includes("可以直接在顶栏搜索"), "welcome acknowledges guest access");
       await capture("guest_search_ready");
       await suggestions(keyword);
       await capture("guest_search_suggestions");
       key(input(), "Enter");
       await wait(() => heading() === keyword && rows().length, "guest comprehensive results");
       assert(button("登录后播放和收藏"), "sign-in available without blocking the results");
-      assert(!one(".search-section-play, .search-track-card, .search-result-action-menu"), "no guest playback authority");
+      assert(!one(".search-section-play, .search-track-card, .search-result-card, .search-result-action-menu"), "no duplicate signed card or guest playback authority");
       await capture("guest_search_results");
       click(one('[data-category="songs"]'));
       await wait(
@@ -215,10 +217,16 @@
       );
       assert(!button("播放全部") && !button("收藏全部"), "account controls are not emitted by guest rows");
       await capture("guest_search_songs");
+      click(button("返回上一页"));
+      await wait(
+        () => heading() === keyword && one('[data-category="all"][aria-selected="true"]') && comprehensiveRows(),
+        "Back to guest comprehensive results",
+      );
+      await capture("guest_search_back");
       input().focus();
       type("");
       key(input(), "Enter");
-      await wait(() => heading() === "合成默认关键词" && rows().length, "guest default context result");
+      await wait(() => heading() === "合成默认关键词" && comprehensiveRows(), "guest default context result");
       assert(!document.body.textContent.includes("synthetic-default-context-native-only"));
       await capture("guest_search_default");
       await emit("complete", { ok: true, stageCount: count, guestSearchVerified: true,

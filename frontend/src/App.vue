@@ -4707,6 +4707,7 @@ onUnmounted(() => {
                 v-else-if="!signedIn && !(guestSearchReady && page.kind === 'search')"
                 :account="account"
                 :error="error"
+                :guest-search-ready="guestSearchReady"
                 @login="loginOpen = true"
                 @retry="music.bootstrap()"
               />

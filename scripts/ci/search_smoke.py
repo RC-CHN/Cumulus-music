@@ -83,9 +83,10 @@ def main():
 def verify_guest_search(root, capture):
     directory = root / 'first'
     complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
-    assert complete['ok'] and complete['guestSearchVerified'] and complete['stageCount'] == 5
+    assert complete['ok'] and complete['guestSearchVerified'] and complete['stageCount'] == 6
     assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
-    assert len(list(directory.glob('ux_*.png'))) == (5 if capture else 0)
+    assert complete['nativePlayer']['state'] == 'idle', complete['nativePlayer']['state']
+    assert len(list(directory.glob('ux_*.png'))) == (6 if capture else 0)
     calls = complete['guestSearchCalls']
     paths = [call['path'] for call in calls]
     assert paths[:2] == ['/api/w/nuser/account/get', '/api/register/anonimous'], paths
@@ -98,6 +99,7 @@ def verify_guest_search(root, capture):
     complex_searches = [call['args'] for call in calls if call['path'] == '/api/search/pc/complex/page']
     assert [(row['keyword'], row['channel'], row['bizQueryInfo']) for row in complex_searches] == [
         ('合成游客查询', 'typing', ''),
+        ('合成游客查询', 'typing', ''),
         ('合成默认关键词', 'defaultquery', 'synthetic-default-context-native-only'),
     ], complex_searches
     songs = [call['args'] for call in calls if call['path'] == '/api/search/song/list/page']
@@ -105,7 +107,7 @@ def verify_guest_search(root, capture):
     suggestions = [call['args'] for call in calls if call['path'] == '/api/search/pc/suggest/keyword/get']
     assert {'keyword': '合成游客查询'} in suggestions, suggestions
     report = dict(ok=True, actualWebView=True, guestSearchVerified=True,
-                  nativeGuestRequests=len(calls), stages=5, screenshots=5 if capture else 0,
+                  nativeGuestRequests=len(calls), stages=6, screenshots=6 if capture else 0,
                   realMusicRequests=0, realAccountWrites=0)
     (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
     print(json.dumps(report))

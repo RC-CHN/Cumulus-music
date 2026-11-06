@@ -189,7 +189,7 @@ function update(measure = false) {
   const offset = gridOffset(),
     before = Math.max(0, scroller.scrollTop - offset);
   const anchor = Math.floor(before / oldPitch) * oldColumns;
-  const card = grid.value.querySelector<HTMLElement>('.search-result-card');
+  const card = grid.value.querySelector<HTMLElement>('.search-result-card, .guest-search-result');
   if (props.table) pitch.value = TABLE_ROW_HEIGHT;
   else if (card) pitch.value = card.getBoundingClientRect().height + 20;
   if (

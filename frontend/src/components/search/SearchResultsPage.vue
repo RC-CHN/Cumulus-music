@@ -704,7 +704,7 @@ onBeforeUnmount(() => {
           {{ tab.title }}
         </button>
       </div>
-      <div v-if="guestReady" class="search-result-actions">
+      <div v-if="guestReady" class="search-result-actions search-guest-actions">
         <button class="secondary" type="button" @click="emit('login')">登录后播放和收藏</button>
       </div>
       <div v-else-if="category === 'songs'" class="search-result-actions">
@@ -824,6 +824,8 @@ onBeforeUnmount(() => {
             :data-result-section="section.id"
             :class="{
               'search-result-tracks': section.items.some((i) => i.kind === 'song'),
+              'search-guest-section': guestReady,
+              'search-guest-list': guestReady && (category === 'songs' || lyrics),
               'search-best-section': bestMatch(section),
               'search-best-expanded': expandedBestMatch(section),
               'search-best-compact':
@@ -1023,7 +1025,7 @@ onBeforeUnmount(() => {
               @album="emit('album', $event)"
             />
             <SearchCardGrid
-              v-if="section.items.some((i) => i.kind !== 'song')"
+              v-if="!guestReady && section.items.some((i) => i.kind !== 'song')"
               ref="searchCardGrids"
               :items="previewItems(section)"
               :scroller="panel"

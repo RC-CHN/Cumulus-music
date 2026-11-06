@@ -2,8 +2,10 @@
 import { computed, ref } from 'vue';
 import type { AccountView } from '../services/contracts';
 import { usePageEntryFocus } from '../composables/usePageEntryFocus';
-const props = defineProps<{ account: AccountView; error: string }>();
-const unverified = computed(() => props.account.status === 'unknown' && !props.account.loginNotice);
+const props = defineProps<{ account: AccountView; error: string; guestSearchReady?: boolean }>();
+const unverified = computed(
+  () => props.account.status === 'unknown' && !props.account.loginNotice && !props.guestSearchReady,
+);
 defineEmits<{ login: []; retry: [] }>();
 const root = ref<HTMLElement>();
 usePageEntryFocus(
@@ -28,7 +30,7 @@ usePageEntryFocus(
     <p aria-live="polite">
       {{
         account.loginNotice?.message ||
-        error ||
+        (guestSearchReady ? '可以直接在顶栏搜索。登录后可播放、收藏和查看个人推荐。' : error) ||
         (account.status === 'expired'
           ? '请重新登录后继续管理歌单、查看推荐和使用账号资源。'
           : unverified
@@ -43,7 +45,7 @@ usePageEntryFocus(
       {{ account.loginNotice || account.status === 'expired' ? '重新登录' : '登录账号' }}
     </button>
     <button
-      v-if="error && !account.loginNotice && !unverified"
+      v-if="error && !account.loginNotice && !unverified && !guestSearchReady"
       type="button"
       class="text-button"
       @click="$emit('retry')"

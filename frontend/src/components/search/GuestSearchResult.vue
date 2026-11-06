@@ -79,7 +79,7 @@ const cover = computed(() => (display.value[2] ? artworkAt(display.value[2], 120
   height: 48px;
   object-fit: cover;
   border-radius: 7px;
-  background: var(--hover);
+  background: var(--art-bg);
 }
 .guest-search-copy {
   display: grid;

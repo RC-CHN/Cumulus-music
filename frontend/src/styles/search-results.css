@@ -100,6 +100,21 @@
   width: 20px;
   height: 20px;
 }
+.search-guest-actions button {
+  width: auto;
+  padding-inline: 12px;
+}
+.search-guest-section .search-result-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.search-guest-list .search-result-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 800px) {
+  .search-guest-section .search-result-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 .search-result-panel {
   flex: 1;
   min-height: 0;
