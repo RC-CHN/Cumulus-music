@@ -1,4 +1,4 @@
-"""Real native voice header, creator profile navigation and failed-cover UI."""
+"""Real native voice header, square cover/count, creator profile and failed-cover UI."""
 import argparse
 import json
 import os
@@ -57,7 +57,10 @@ def main():
     assert start['queue']['voices'] == [] and start['voiceDetailCalls'] == [], start
     played = stages['bar_placeholder']
     assert played['covers']['bar'] == 'error' and played['voiceDetailCalls'] == [], played
-    expected_detail = {'id': '601', 'creator': {'id': '55', 'name': '合成主播'}, 'releaseTime': 1700049600000}
+    expected_detail = {
+        'id': '601', 'creator': {'id': '55', 'name': '合成主播'}, 'releaseTime': 1700049600000,
+        'coverUrl': 'https://p1.music.126.net/obj/cumulus-palette/cover601.png', 'playCount': 123456,
+    }
     for name in STAGES[1:]:
         stage = stages[name]
         player, queue = stage['state'], stage['queue']
@@ -69,6 +72,12 @@ def main():
         stage = stages[name]
         assert stage['metadata'] == {'creator': '合成主播', 'release': '2023-11-15', 'songCredits': False}, stage
         assert stage['covers']['detail'] == 'error', stage
+        art = stage['artwork']
+        assert art['width'] > 0 and abs(art['width'] - art['height']) <= 1, art
+        assert abs(art['width'] - art['fittedSize']) <= 1, art
+        assert {key: art[key] for key in ('radius', 'count', 'top', 'right', 'fontSize')} == {
+            'radius': '8px', 'count': '12.3万', 'top': '23px', 'right': '20px', 'fontSize': '22px',
+        }, art
     assert stages['creator_profile']['profile'] == '合成主播主页'
     assert stages['voice_metadata']['voiceDetailCalls'] == [], stages
     requests = done['voiceDetailCalls']
@@ -83,6 +92,7 @@ def main():
     pictures = len(list(output.glob('ux_*.png')))
     assert not args.screenshots or pictures == len(stages), pictures
     report = dict(actualWebView=True, nativeVoiceMetadata=True, creatorTarget='user:55',
+                  squareCover=stages['voice_metadata']['artwork'],
                   nativeDecoder='libmpv/null', screenshots=pictures, stages=STAGES,
                   voiceDetailCalls=requests, realAccountWrites=0)
     (root / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

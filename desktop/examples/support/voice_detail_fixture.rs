@@ -49,6 +49,11 @@ pub fn enrich(mut response: Value) -> Value {
             "email":"synthetic-private-field-never-project",
         });
         value["createTime"] = json!(RELEASE);
+        if description.is_none() && id == 601 {
+            value["listenerCount"] = json!(0);
+            value["playCount"] = json!(123456);
+            value["adjustedPlayCount"] = json!("unexpected fallback");
+        }
         match (description, id) {
             (Some(_), 601) => {
                 value["description"] = json!(concat!(

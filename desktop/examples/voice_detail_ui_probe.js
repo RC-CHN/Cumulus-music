@@ -44,6 +44,20 @@
       songCredits: !!one('.vinyl-credits,.vinyl-album,.vinyl-source', root),
     };
   }
+  function artwork() {
+    const node = one('[data-voice-cover]');
+    const badge = one('[data-voice-play-count]', node);
+    if (!node || !badge) return null;
+    const { width, height } = node.getBoundingClientRect();
+    const scale = Math.min((Math.min(innerWidth, 1920) - 140) / 916,
+      (Math.min(innerHeight, 1920) - 160) / 592);
+    const fittedSize = Math.min(400 * scale, node.parentElement.clientWidth);
+    const style = getComputedStyle(one('.voice-playback-count', node));
+    return {
+      width, height, fittedSize, radius: getComputedStyle(node).borderTopLeftRadius,
+      count: badge.textContent, top: style.top, right: style.right, fontSize: style.fontSize,
+    };
+  }
   async function capture(name) {
     last = name;
     const root = one('.lyrics-panel') ? '.lyrics-panel' : '.page-view';
@@ -63,11 +77,11 @@
     window.__podcastProgressStage = '';
     await emit(stage, {
       actual: document.visibilityState === 'visible',
-      metadata: metadata(), profile: one('.playlist-creator-page h1')?.textContent.trim(),
+      metadata: metadata(), artwork: artwork(), profile: one('.playlist-creator-page h1')?.textContent.trim(),
       covers: {
         card: one('.scene-fm-cover')?.dataset.coverState,
         bar: one('.player-cover')?.dataset.coverState,
-        detail: one('.vinyl-record')?.dataset.coverState,
+        detail: one('[data-voice-cover]')?.dataset.coverState,
       },
       state: {
         state: state.state, playId: state.playId, voice: state.track?.voiceId,
@@ -83,13 +97,22 @@
       const m = metadata();
       return m?.creator === '合成主播' && m.release === '2023-11-15' && !m.songCredits;
     }, 'official program header shows user creator/date, not song artist/album/source');
-    await wait(() => fallback('.vinyl-record'), 'detail cover uses local error art');
+    await wait(() => fallback('[data-voice-cover]'), 'detail cover uses local error art');
+    await wait(() => {
+      const a = artwork();
+      return a?.width > 0 && Math.abs(a.width - a.height) <= 1 &&
+        Math.abs(a.width - a.fittedSize) <= 1 && a.radius === '8px' &&
+        a.count === '12.3万' && a.top === '23px' && a.right === '20px' && a.fontSize === '22px' &&
+        !one('.vinyl-record');
+    }, 'episode uses a square cover and count in the Windows layout, with no song disc');
     const state = await player();
     assert(state.playId === playId && state.track.voiceId === '601', 'metadata display preserves current decoder');
     const native = state.voiceDetail;
     assert(native?.id === '601' && native.creator?.id === '55' &&
       native.creator.name === '合成主播' && native.releaseTime === 1700049600000 &&
-      Object.keys(native).sort().join(',') === 'creator,id,releaseTime' &&
+      native.coverUrl === 'https://p1.music.126.net/obj/cumulus-palette/cover601.png' &&
+      native.playCount === 123456 &&
+      Object.keys(native).sort().join(',') === 'coverUrl,creator,id,playCount,releaseTime' &&
       Object.keys(native.creator).sort().join(',') === 'id,name',
       'current native episode metadata is exactly whitelisted');
   }
@@ -130,6 +153,6 @@
       realAccountWrites: 0, physicalAudioVerified: false });
   } catch (error) {
     await emit('failed', { ok: false, last, error: String(error), stageCount: count,
-      page: one('.main-content')?.innerText.slice(0, 1800), metadata: metadata() });
+      page: one('.main-content')?.innerText.slice(0, 1800), metadata: metadata(), artwork: artwork() });
   }
 })();
