@@ -47,3 +47,9 @@ Cumulus 首批实现与已知差异
 - 原生定向覆盖：core/tests/pc_experiment_transport/pc_presentation/guest_search.rs；
   真实 Linux WebView 探针：scripts/ci/search_smoke.py --guest-search，使用全新合成档案、
   封闭 EAPI backend、真实主窗口 IPC。未联系真实服务或使用真实账号。
+- 本批原生 PC presentation / EAPI 20 项、前端定向 50 项通过。Linux 真 WebView 通过
+  游客就绪、联想、手工综合、单曲、返回、默认词综合 6 个阶段；原登录搜索回退 3 个阶段。
+  逐张查看 9 张截图，复核空游客首页、分类与返回、综合卡片不重复、登录入口不截断。
+  原生轨迹确认隔离凭据、默认/手工渠道、无播放启动。证据
+  `.build/ui-proof/phase96-guest-search-actual-r2/` 与
+  `.build/ui-proof/phase96-guest-search-signed-r2/`。未实测 Windows 或实体音频设备。
