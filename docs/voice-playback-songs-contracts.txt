@@ -33,7 +33,10 @@ songs 字段不同。不能拿嵌套的 songs、正在播放的主音轨或下�
   点赞、适用时下载及封面播歌是另有动作资格的交互；没有普通更多菜单。
 
 原生接口及边界
-- MusicClient::player_voice_songs(epoch, play_id) 返回 {playId, voiceId, receipt, tracks}；
+- MusicClient::player_voice_songs(epoch, play_id) 返回
+  {playId, voiceId, receipt, tracks, availability}。availability 与 tracks 按行对齐，
+  分别给出普通在线播放的 onlineEligible 和明确负版权状态 copyrightBlocked；
+  不外发原始权限字段或把这些标记当成下载、会员、付费权益。
   只实现第三路读取，不加到每次播放 snapshot、音源解析或本地文件读取，不重复
   请求详情／推荐。此批没有 Tauri 命令、前端卡、点赞或下载动作。
 - 只接已验证账号的普通在线节目；节目、主音轨、队列条目、playId、账号/API 和

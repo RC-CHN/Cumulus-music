@@ -9,6 +9,7 @@ export interface VoiceSongsView {
   voiceId: string;
   receipt: string | null;
   tracks: TrackView[];
+  availability: { onlineEligible: boolean; copyrightBlocked: boolean }[];
 }
 
 export type VoiceSongAction =

@@ -34,6 +34,14 @@ pub struct PlayerVoiceSongsView {
     pub voice_id: String,
     pub receipt: Option<String>,
     pub tracks: Vec<TrackView>,
+    pub availability: Vec<VoiceSongRowAvailability>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VoiceSongRowAvailability {
+    pub online_eligible: bool,
+    pub copyright_blocked: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -311,6 +319,14 @@ impl MusicClient {
             voice_id: page.seed.voice_id.clone(),
             receipt: (!page.rows.is_empty()).then(|| page.receipt.clone()),
             tracks: page.rows.iter().map(|row| row.track.clone()).collect(),
+            availability: page
+                .rows
+                .iter()
+                .map(|row| VoiceSongRowAvailability {
+                    online_eligible: row.online_eligible,
+                    copyright_blocked: row.copyright_blocked,
+                })
+                .collect(),
         })
     }
 }

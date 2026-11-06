@@ -51,7 +51,8 @@ export function useVoiceSongs(
           ticket === generation.value &&
           sameVoicePlaybackScope(scope.value, current) &&
           reply.playId === current.playId &&
-          reply.voiceId === current.voiceId
+          reply.voiceId === current.voiceId &&
+          reply.tracks.length === reply.availability.length
         )
           view.value = reply;
       } catch {

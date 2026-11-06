@@ -17,6 +17,10 @@ function result(scope: VoiceSongsScope, receipt: string | null): VoiceSongsView 
       { id: '301', name: '第一条' },
       { id: '301', name: '重复条目' },
     ] as TrackView[],
+    availability: [
+      { onlineEligible: true, copyrightBlocked: false },
+      { onlineEligible: false, copyrightBlocked: true },
+    ],
   };
 }
 

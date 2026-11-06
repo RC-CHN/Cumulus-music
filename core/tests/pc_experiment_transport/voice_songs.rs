@@ -798,6 +798,15 @@ async fn voice_songs_next_play_rejects_unavailable_and_stale_rows_before_queue_c
         .await
         .unwrap();
     let receipt = card.receipt.as_deref().unwrap();
+    assert_eq!(
+        serde_json::to_value(&card.availability).unwrap(),
+        json!([
+            {"onlineEligible":false,"copyrightBlocked":false},
+            {"onlineEligible":true,"copyrightBlocked":true},
+            {"onlineEligible":true,"copyrightBlocked":true},
+            {"onlineEligible":true,"copyrightBlocked":false}
+        ])
+    );
     for index in 0..3 {
         assert!(matches!(
             f.client

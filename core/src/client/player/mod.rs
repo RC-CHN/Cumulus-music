@@ -49,7 +49,7 @@ pub use voice_recommendations::{
 };
 mod voice_songs;
 pub use voice_detail::{PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio};
-pub use voice_songs::{PlayerVoiceSongsView, VoiceSongAction};
+pub use voice_songs::{PlayerVoiceSongsView, VoiceSongAction, VoiceSongRowAvailability};
 mod zone_playlist_batch;
 use super::{MusicClient, mapping};
 pub use crate::playback::controller::QueueMoreTipAction;
