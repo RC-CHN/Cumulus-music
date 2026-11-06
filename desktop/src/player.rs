@@ -3,6 +3,7 @@ pub mod power;
 pub mod quality;
 pub mod reports;
 pub mod vinyl_similar;
+pub mod voice_related;
 use cumulus_core::{
     Error,
     client::{ClientError, MusicClient, dto::*},

@@ -182,6 +182,11 @@ import { usePlaybackCommentInfo } from './composables/usePlaybackCommentCount';
 import { useVinylComments } from './composables/useVinylComments';
 import { useVinylSimilar } from './composables/useVinylSimilar';
 import { useVinylWiki } from './composables/useVinylWiki';
+import { useVoiceRecommendations } from './composables/useVoiceRecommendations';
+import {
+  voiceRecommendationsSeed,
+  type VoiceRecommendationTarget,
+} from './services/voiceRecommendations';
 import {
   activeVinylDetailTab,
   readVinylDetailTab,
@@ -1072,6 +1077,29 @@ async function openPlaybackVoicePodcast(target: VoicePodcastTarget) {
     // A stale episode cannot navigate from its old card.
   }
 }
+async function openPlaybackVoiceRecommendation(target: VoiceRecommendationTarget) {
+  const route = page.value;
+  const podcastRoute = () => {
+    if (podcasts.recentSelected.value) return 'recent';
+    const scope = podcasts.query.value.scope;
+    return scope.kind === 'radio' ? `radio:${scope.id}` : scope.kind;
+  };
+  const previousPodcast = route.kind === 'podcasts' ? podcastRoute() : undefined;
+  const ownsView = () =>
+    route === page.value &&
+    (previousPodcast === undefined || previousPodcast === podcastRoute()) &&
+    voiceRecommendations.ownsTarget(target);
+  if (!ownsView()) return;
+  try {
+    const radioId = await core.playerVinylVoiceRecommendationTarget(target);
+    if (!ownsView() || radioId !== target.radioId) return;
+    player.lyricsOpen.value = false;
+    if (route.kind === 'podcasts') podcasts.openVoiceRecommendation(radioId);
+    else openSceneRadio(radioId);
+  } catch {
+    // A stale playback observation cannot open a podcast from a retired shelf.
+  }
+}
 async function openPlaybackLyricContributor(target: LyricContributorTarget) {
   const route = page.value;
   const activeDocument = () => {
@@ -1687,6 +1715,17 @@ watch(vinylDisplayMode, (value) => storeVinylDisplayMode(value));
 const player = usePlayer(undefined, () => {
   void music.bootstrap(false);
 });
+const voiceRecommendations = useVoiceRecommendations(
+  core,
+  computed(() =>
+    music.signedIn.value &&
+    !music.initializing.value &&
+    player.ready.value &&
+    player.lyricsOpen.value
+      ? voiceRecommendationsSeed(player.view.value, music.account.value.epoch)
+      : undefined,
+  ),
+);
 const { count: playbackCommentCount, notePublished: notePlaybackCommentPublished } =
   usePlaybackCommentInfo(player.view, player.loaded, () => music.account.value.epoch);
 const vinylCommentsOpen = ref(false);
@@ -2430,7 +2469,11 @@ function backFromPage() {
   else if (downloadBatch.value) downloadBatchPage.value?.requestLeave();
   else if (cloudBatchTarget.value) cloudBatchPage.value?.requestLeave();
   else if (playlistEditor.value) playlistEditorPage.value?.requestLeave();
-  else if (music.page.value.kind === 'podcasts' && podcasts.recentReturn.value) podcasts.back();
+  else if (
+    music.page.value.kind === 'podcasts' &&
+    (podcasts.recentReturn.value || podcasts.voiceRecommendationReturn.value)
+  )
+    podcasts.back();
   else music.back();
 }
 const downloadDialog = ref<DownloadDialogTarget>();
@@ -4440,7 +4483,10 @@ onUnmounted(() => {
           !batchTarget &&
           !downloadBatch &&
           !cloudBatchTarget &&
-          !(page.kind === 'podcasts' && podcasts.recentReturn.value)
+          !(
+            page.kind === 'podcasts' &&
+            (podcasts.recentReturn.value || podcasts.voiceRecommendationReturn.value)
+          )
         "
         @click="backFromPage"
       >
@@ -5770,6 +5816,7 @@ onUnmounted(() => {
         :active-detail-tab="vinylActiveDetailTab"
         :wiki-model="vinylWiki"
         :similar-model="vinylSimilar"
+        :voice-recommendations="voiceRecommendations"
         :comments-available="!!vinylCommentTarget"
         :comment-model="vinylComments"
         :comment-count="playbackCommentCount"
@@ -5783,6 +5830,7 @@ onUnmounted(() => {
         @source="openPlaybackSource"
         @voice-creator="openPlaybackVoiceCreator"
         @voice-podcast="openPlaybackVoicePodcast"
+        @voice-recommendation="openPlaybackVoiceRecommendation"
         @voice-podcast-login="loginOpen = true"
         @lyric-contributor="openPlaybackLyricContributor"
         @catalog="

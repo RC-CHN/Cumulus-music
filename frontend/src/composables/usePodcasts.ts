@@ -43,6 +43,10 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
   const canBack = ref(false);
   const recentSelected = ref(false);
   const recentReturn = ref(false);
+  const voiceRecommendationHistory = shallowRef<
+    { query: PodcastQuery; recent: boolean; recentBack: boolean; canBack: boolean }[]
+  >([]);
+  const voiceRecommendationReturn = computed(() => voiceRecommendationHistory.value.length > 0);
   const recommendedCards = computed(() => {
     const snapshot = page.value;
     return !recentSelected.value &&
@@ -80,6 +84,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     loading.value = false;
     busy.value = false;
     history = [];
+    voiceRecommendationHistory.value = [];
     canBack.value = false;
     recentSelected.value = false;
     recentReturn.value = false;
@@ -177,6 +182,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     if (!epoch.value) return;
     read++;
     history = [];
+    voiceRecommendationHistory.value = [];
     canBack.value = false;
     loading.value = false;
     notice.value = '';
@@ -186,6 +192,10 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     activateRecommendations();
   }
   function navigate(scope: PodcastScope, libraryBack = true) {
+    if (voiceRecommendationReturn.value) {
+      voiceRecommendationHistory.value = [];
+      canBack.value = recentReturn.value || history.length > 0;
+    }
     if (recentSelected.value) {
       recentReturn.value = libraryBack && scope.kind === 'radio';
       recentSelected.value = false;
@@ -200,13 +210,47 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
       history = [];
       canBack.value = false;
     }
+    changePage({ ...query.value, scope, keyword: '', offset: 0, revision: null });
+  }
+  function changePage(next: PodcastQuery) {
     read++;
     page.value = undefined;
     loading.value = false;
-    query.value = { ...query.value, scope, keyword: '', offset: 0, revision: null };
+    query.value = { ...next, revision: null };
     notice.value = '';
     error.value = '';
     if (visible) void load(true);
+  }
+  function openVoiceRecommendation(id: string) {
+    const previous = query.value;
+    if (
+      !visible ||
+      !epoch.value ||
+      !/^[0-9]{1,32}$/.test(id) ||
+      !/[1-9]/.test(id) ||
+      (!recentSelected.value && previous.scope.kind === 'radio' && previous.scope.id === id)
+    )
+      return;
+    // The app is already on the generic podcasts page. Only this transition
+    // owns the current radio (or Recent view) as a contextual Back destination.
+    voiceRecommendationHistory.value = [
+      ...voiceRecommendationHistory.value,
+      {
+        query: { ...previous, scope: { ...previous.scope } },
+        recent: recentSelected.value,
+        recentBack: recentReturn.value,
+        canBack: canBack.value,
+      },
+    ];
+    recentSelected.value = false;
+    recentReturn.value = false;
+    canBack.value = true;
+    changePage({
+      ...previous,
+      scope: { kind: 'radio', id, ascending: true },
+      keyword: '',
+      offset: 0,
+    });
   }
   function openCard(id: string) {
     const shown = page.value;
@@ -273,6 +317,15 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     navigate({ kind: 'radio', id, ascending: true });
   }
   function back() {
+    const contextual = voiceRecommendationHistory.value.at(-1);
+    if (contextual) {
+      voiceRecommendationHistory.value = voiceRecommendationHistory.value.slice(0, -1);
+      recentSelected.value = contextual.recent;
+      recentReturn.value = contextual.recentBack;
+      canBack.value = contextual.canBack;
+      changePage(contextual.query);
+      return;
+    }
     if (recentReturn.value) {
       showRecent();
       return;
@@ -411,6 +464,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     canBack,
     recentSelected,
     recentReturn,
+    voiceRecommendationReturn,
     showRecent,
     connect,
     dispose,
@@ -425,6 +479,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     canCollectRecommendation,
     collectRecommended,
     openRecommended,
+    openVoiceRecommendation,
     open,
     back,
     search,

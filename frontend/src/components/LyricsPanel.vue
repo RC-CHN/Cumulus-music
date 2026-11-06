@@ -28,6 +28,12 @@ import VinylWikiPane from './VinylWikiPane.vue';
 import VoiceDescriptionCard from './VoiceDescriptionCard.vue';
 import VoicePodcastCard from './VoicePodcastCard.vue';
 import VoicePodcastUncollectDialog from './VoicePodcastUncollectDialog.vue';
+import VoiceRecommendationsCard from './VoiceRecommendationsCard.vue';
+import type { VoiceRecommendationsModel } from '../composables/useVoiceRecommendations';
+import type {
+  VoiceRecommendationsPage,
+  VoiceRecommendationTarget,
+} from '../services/voiceRecommendations';
 import VinylCommentDialog from './VinylCommentDialog.vue';
 import type {
   VinylCommentComposer,
@@ -60,6 +66,7 @@ const props = defineProps<{
   activeDetailTab: VinylDetailTab;
   similarModel: VinylSimilarModel;
   wikiModel: VinylWikiModel;
+  voiceRecommendations: VoiceRecommendationsModel;
   commentsAvailable: boolean;
   commentModel: VinylCommentsModel;
   commentCount?: number;
@@ -76,6 +83,7 @@ const emit = defineEmits<{
   source: [target: PlaybackSourceDestination];
   voiceCreator: [target: VoiceCreatorTarget];
   voicePodcast: [target: VoicePodcastTarget];
+  voiceRecommendation: [target: VoiceRecommendationTarget];
   voicePodcastLogin: [];
   lyricContributor: [target: LyricContributorTarget];
   fullComments: [hot: boolean];
@@ -95,6 +103,7 @@ const panel = ref<HTMLElement>(),
   container = ref<HTMLElement>(),
   close = ref<HTMLButtonElement>(),
   modeEntry = ref<HTMLButtonElement>();
+const voiceCards = ref<HTMLElement>();
 const modeSheetOpen = ref(false);
 const uncollect = shallowRef<{
   target: VoicePodcastTarget;
@@ -130,6 +139,14 @@ function escapePanel() {
 const metadata = computed(() => playbackMetadata(view.value?.track));
 const source = computed(() => playbackSource(view.value));
 const voiceMetadata = computed(() => playbackVoiceDetail(view.value));
+const recommendedPodcasts = computed(() => {
+  const page = props.voiceRecommendations.view.value;
+  return page?.cards.length ? page : undefined;
+});
+function openVoiceRecommendation(page: VoiceRecommendationsPage, radioId: string) {
+  const target = props.voiceRecommendations.target(page, radioId);
+  if (target) emit('voiceRecommendation', target);
+}
 const creatorTarget = computed(() => voiceCreatorTarget(view.value));
 const cover = useCoverImage(() => ({
   owner: view.value?.epoch ?? '',
@@ -415,6 +432,15 @@ type LyricSeekTarget = Pick<PlayerView, 'epoch' | 'playId' | 'queueRevision'>;
 const currentEpoch = computed(() => view.value?.epoch);
 const currentPlayId = computed(() => view.value?.playId);
 const currentQueueRevision = computed(() => view.value?.queueRevision);
+watch(
+  [currentEpoch, currentPlayId],
+  () => {
+    const cards = voiceCards.value;
+    if (cards?.scrollTop)
+      cards.scrollTo({ top: 0, behavior: motion.reduced.value ? 'auto' : 'smooth' });
+  },
+  { flush: 'post' },
+);
 const currentLyric = computed(() => {
   const document = lyrics.value;
   return document?.epoch === currentEpoch.value && document?.playId === currentPlayId.value
@@ -864,7 +890,8 @@ const displayedAuxiliary = computed(() =>
           </div>
           <div v-if="displayMode !== 'cover'" class="lyrics-column">
             <div
-              v-if="voiceMetadata?.description || podcastTarget"
+              v-if="voiceMetadata?.description || podcastTarget || recommendedPodcasts"
+              ref="voiceCards"
               class="voice-playback-cards"
               :class="{ 'voice-playback-cards-only': !lines.length }"
               @wheel.stop.passive
@@ -885,6 +912,15 @@ const displayedAuxiliary = computed(() =>
                 v-if="voiceMetadata?.description"
                 :key="`${currentEpoch}:${currentPlayId}`"
                 :text="voiceMetadata.description"
+              />
+              <VoiceRecommendationsCard
+                v-if="recommendedPodcasts"
+                :key="recommendedPodcasts.receipt"
+                :page="recommendedPodcasts"
+                :epoch="account.epoch"
+                :paging="voiceRecommendations.paging.value"
+                @next="voiceRecommendations.next"
+                @open="openVoiceRecommendation"
               />
             </div>
             <div
@@ -917,7 +953,8 @@ const displayedAuxiliary = computed(() =>
             <div
               v-show="
                 activeDetailTab === 'lyrics' &&
-                (!(voiceMetadata?.description || podcastTarget) || lines.length)
+                (!(voiceMetadata?.description || podcastTarget || recommendedPodcasts) ||
+                  lines.length)
               "
               id="vinyl-lyrics-content"
               class="vinyl-detail-content"

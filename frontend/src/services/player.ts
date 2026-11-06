@@ -3,6 +3,7 @@ import type { CloudQuery } from './cloud';
 import type { CommentOperation, VinylCommentLikeAction, VinylCommentPage } from './comments';
 import type { ProfileReportView, ReportCommand } from './profileReport';
 import type { VinylSimilarClient } from './vinylSimilar';
+import type { VoiceRecommendationsClient } from './voiceRecommendations';
 import type { VoiceDetail } from './voiceDetail';
 export type Quality =
   | '64aac'
@@ -786,7 +787,7 @@ export type QueueMoreTipAction =
   | { kind: 'begin'; play_id: string }
   | { kind: 'seen'; ticket: string };
 
-export interface PlayerClient extends VinylSimilarClient {
+export interface PlayerClient extends VinylSimilarClient, VoiceRecommendationsClient {
   playerSnapshot(epoch: string): Promise<PlayerView>;
   playerIntelligence(epoch: string, command: IntelligenceCommand): Promise<PlayerView>;
   playerIntelligenceCancel(epoch: string, operationId: string): Promise<boolean>;

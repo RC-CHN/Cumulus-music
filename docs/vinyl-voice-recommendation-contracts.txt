@@ -20,8 +20,9 @@
   最后一组只有一至三张则裁掉；有四或五张则保留。初始没有记录就隐藏；
   标题点击显示下一个内存切片，最后一页之后回到第一页。只有一页时保持
   原页。翻页不发任何远端请求，刷新图标旋转约 500ms（M/182:6951–6971）。
-  卡片三列，picUrl 封面、name 标题、playCount ?? 0；没有官方原始 URL
-  导航，也没有把节目推荐等同「我收藏的播客」/api/djradio/my/radio/recommend。
+  卡片三列，picUrl 封面、name 标题、playCount ?? 0。通用链接派发器
+  M/3085:1005 可读 toDetailUrlPath，但没有证据表明此推荐 API 提供该字段，
+  Cumulus 不接受覆盖。这里也不是「我收藏的播客」/api/djradio/my/radio/recommend。
 - M/23:860 的 VoicePage 分类包含 voice、downloadVoice、localVoice。
   M/308:489–501 把下载来源 localTrack.origin 写到 curVoice；
   :538–546 赋给普通在线 voice。hybrid_204…/3004.js:334–346 的 Scene FM
@@ -43,15 +44,37 @@ Cumulus Rust 边界
   这两类用例不代表实服签名响应、桌面渲染或实体声音。
 - 使用已有签名 PC EAPI native 播放详情读取和 Cookie 作用域绑定；不会发
   AB 分组查询。账号、API 对象、原生凭据版本、playId、entry、节目、主音轨、
-  登录切换及一起听房间守卫，在请求出门前和回包交付前重验。访客和无法证明
+  登录切换及一起听房间守卫，在请求出门前和回包交付前重验。场景电台还要
+  匹配解码器确认的场景 ID 和代次；下载要匹配本地任务，音乐 FM 不属于这条
+  流程。访客和无法证明
   对应节目身份的读取不启用；这些是 Cumulus 的安全边界，不冒充官方实验门槛。
 - 每个客户端只保留一张有界的有效内存 shelf；响应至多 120 条，保留原顺序；
   仅公开 radioId（返回行的原 id）、name、经过公开图床白名单的可选
-  coverUrl、数值 playCount。原始 Token、任意 URL、作者与其他推荐数据不跨
-  IPC。畸形目标或响应按错误处理，不造占位路由。
+  coverUrl、数字或原有纯文本 playCount。与 PlayCount 相同，正数按单位
+  格式化，非空字符串保持原样，数字 0 不显示。原始 Token、任意 URL、作者
+  与其他推荐数据不跨 IPC。畸形目标或响应按错误处理，不造占位路由。
 - player_vinyl_voice_recommendations_next(epoch, playId, receipt) 是同步本机
   翻页。它只接受同一有效回执（不接受原始 ID、索引或网络参数），不请求
   网络、不初始化播放器、不改任何播放或账户资源。页码 1 起；空结果页码
   和总页数均为 0。新成功读取生成新回执；过时播放或 Cookie 不能翻旧页。
-- 本批只实现和验证 native core 及签名传输；Tauri 调用、WebView 布局和
-  多源真桌面行为由后续合并批次验证，未使用真实账号或真实声音设备。
+- player_vinyl_voice_recommendation_target(epoch, playId, receipt, page, radioId)
+  使用相同原生权限和播放守卫，本机核对 ID 属于当前页后只返回该 ID。不接收
+  URL、不发请求；切集、凭据更新、过时页和未显示的 ID 都拒绝。
+
+桌面和前端
+
+- desktop/src/player/voice_related.rs 在主窗口提供以上三个同名 IPC。页面
+  不接触 Cookie 或直接请求网易接口。
+  useVoiceRecommendations.ts 把一次面板访问与当前 epoch、playId、voiceId
+  绑定。打开或切到新节目才读；时钟更新不会重读。关闭时立即清空，跨账号、
+  跨节目、关闭后迟到的读或翻页结果不能显示。空结果或可选读取失败时不显示
+  此卡，下次打开重新读取；本地翻页失败保留当前页。
+- VoiceRecommendationsCard.vue 放在简介下方，沿用 12px 圆角、三列方形
+  封面、最多两行名称及有计数时的右上角遮罩；沿用 Cumulus 主题和缺图占位。
+  标题是可键盘操作的按钮，换一批保留焦点并播报页码；刷新图标旋转 500ms，
+  遵循减少动态效果。节目变化时共用列表按 VoiceDisplay.tsx:59–65 回到顶部，
+  同样尊重减少动态效果。卡片不直接起播；原生核对当前页回执与目标后，关闭
+  播放详情并打开对应播单。已在播客区时记录具体播单或最近更新，返回恢复此前
+  的播单、搜索、排序和分页；在其他页面则用原有主路由的返回路径。推荐读与相邻卡独立落地，
+  不使用尚未接入桌面的「包含歌曲」作为失败条件；官方三路一起等待的行为
+  仍是当前差异。未使用真实账号或实体声音设备。
