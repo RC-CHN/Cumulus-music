@@ -15,7 +15,7 @@ from queue_row_collection_smoke import QueueCollectInput
 from window_manager import launch
 
 
-EXPECTED = '合成歌词 4\n合成翻译 4\n合成歌词 5'
+EXPECTED = '合成歌词 4\n合成翻译 4\n合成歌词 5\n'
 SENTINEL = 'cumulus sealed lyric clipboard: untouched'
 LABELS = ('drag_ready', 'copy_ready', 'copied', 'pointer_seek', 'keyboard_seek', 'space_seek',
           'same_row_drag_ready', 'same_row_dragged')
