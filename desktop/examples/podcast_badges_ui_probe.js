@@ -129,10 +129,16 @@
       return result;
     };
 
+    const libraryEntry = () => button('我的播客', one('.sidebar-navigation[aria-label="我的"]'));
+    const readyEntry = await wait(() => {
+      const node = libraryEntry();
+      return node?.isConnected && !node.disabled && node;
+    }, 'personal podcast sidebar entry enabled');
+    readyEntry.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'instant' });
     click(await wait(() => {
-      const node = button('我的播客', one('.sidebar-navigation'));
+      const node = libraryEntry();
       return shown(node) && node;
-    }, 'real sidebar entry'));
+    }, 'real sidebar entry visible'));
     await wait(() => shown(card('81')) && shown(card('82')) && shown(card('83')),
       'signed subscription cards');
     assert(badge('81')?.textContent.trim() === '99+' &&
