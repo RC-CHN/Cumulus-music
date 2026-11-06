@@ -66,7 +66,7 @@ def wait_for(label, check, timeout=15):
 
 
 @contextmanager
-def isolated_audio(root, env):
+def isolated_audio(root, env, *, indexed_flac=False):
     for name in ('openbox', 'ffmpeg', 'pipewire', 'pipewire-pulse', 'wireplumber', 'pactl', 'pw-dump'):
         assert shutil.which(name), f'local playback proof requires {name}'
     assert not Path('/dev/snd').exists(), 'hide host audio devices (bwrap --dev /dev)'
@@ -155,9 +155,14 @@ def isolated_audio(root, env):
         # the bass and treble shelves. All three remain below clipping.
         fixture = '+'.join(f'{gain}*sin(2*PI*{frequency}*t)'
                            for frequency, gain in zip(MONITOR_TONES, (.02, .10, .02)))
+        # The older LADSPA proof does not require a particular FLAC geometry.
+        # The indexed graph admits only independently decoded stereo s16.
+        audio = f'aevalsrc={fixture}|{fixture}:s=48000:d=65:c=stereo' if indexed_flac else (
+            f'aevalsrc={fixture}:s=48000:d=65')
+        encoding = ['-c:a', 'flac', '-sample_fmt', 's16'] if indexed_flac else []
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
-                        f'aevalsrc={fixture}:s=48000:d=65',
-                        '-metadata', f'title={TITLE}', source], check=True, timeout=20)
+                        audio, *encoding, '-metadata', f'title={TITLE}', source],
+                       check=True, timeout=20)
         yield source
 
 
@@ -413,7 +418,21 @@ def sink_tone(env):
     return result
 
 
-def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None, verify_monitor_pcm=False, accessibility=None):
+def mapped_regular_file(maps, path):
+    info = path.stat()
+    for line in maps.splitlines():
+        fields = line.split(maxsplit=5)
+        if len(fields) == 6 and fields[5] == str(path) and 'x' in fields[1]:
+            major, minor = (int(value, 16) for value in fields[3].split(':'))
+            if (major, minor, int(fields[4])) == (
+                os.major(info.st_dev), os.minor(info.st_dev), info.st_ino,
+            ):
+                return True
+    return False
+
+
+def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None,
+                    verify_monitor_pcm=False, accessibility=None, *, indexed_flac_library=None):
     assert (width, height) == (1120, 760), 'local playback coordinates require the ordinary 1120x760 X11 layout'
     database = root/'state/core.sqlite3'
 
@@ -429,20 +448,29 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
     def indexed():
         with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
             rows = db.execute("SELECT value FROM state WHERE owner='local' AND kind='library_files_v1'").fetchall()
-        return next((record['id'] for record in (json.loads(value) for value, in rows)
-                     if record['path'] == str(source) and record['metadata']['title'] == TITLE
-                     and not record['missing'] and not record['unreadable']), None)
+        record = next((record for record in (json.loads(value) for value, in rows)
+                       if record['path'] == str(source) and record['metadata']['title'] == TITLE
+                       and not record['missing'] and not record['unreadable']), None)
+        if record and indexed_flac_library:
+            assert record['metadata']['sample_rate'] == 48000
+            assert record['metadata']['channels'] == 2
+        return record
 
-    def position(state, after):
+    def position(state, after, *, different_entry=None):
         assert app.poll() is None, 'installed app exited during playback'
         rows = read_playback(database)
         queue, position = rows.get('queue'), rows.get('position')
-        if not queue or not position or position['state'] != state or position['seconds'] <= after:
+        if (not queue or not position or position['state'] != state or position['seconds'] <= after
+                or (different_entry is not None and position['entry_id'] == different_entry)):
             return None
         item, = queue['items']
         assert item['source']['kind'] == 'local' and item['resource']['local_id'] == local_id
         assert item['resource']['metadata']['title'] == TITLE
         assert item['resource']['local_revision']['fingerprint']['bytes'] == source.stat().st_size
+        if indexed_flac_library:
+            assert 'native_open_file' not in item['resource']
+            assert item['resource']['local_revision'] == indexed_row['revision']
+            assert item['source']['revision'], 'expected a real local-catalog selection'
         assert queue['current'] == item['entry_id'] == position['entry_id']
         return position
 
@@ -470,10 +498,10 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         # recording the next stage. The position check still proves the same
         # native selection is advancing rather than hiding a stalled output.
         anchor = wait_for(f'{label}: position at commit', lambda: position('playing', 0))
-        assert anchor['entry_id'] == first['entry_id']
+        assert anchor['entry_id'] == selected['entry_id']
         settled = wait_for(f'{label}: post-commit advancement',
                            lambda: position('playing', anchor['seconds'] + 1))
-        assert settled['entry_id'] == first['entry_id']
+        assert settled['entry_id'] == selected['entry_id']
         return {'atCommit': anchor['seconds'], 'beforeCapture': settled['seconds']}
 
     monitor = {}
@@ -489,6 +517,11 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             json.dumps(observations, indent=2) + '\n', encoding='utf-8')
         return result
 
+    def indexed_flac_mapped():
+        assert app.poll() is None, 'installed app exited before its decoder could be checked'
+        maps = Path(f'/proc/{app.pid}/maps').read_text()
+        return mapped_regular_file(maps, indexed_flac_library)
+
     with closing(Input(x, y)) as inputs:
         assert accessibility is not None, 'installed playback proof requires a private AT-SPI session'
 
@@ -497,7 +530,17 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
             inputs.key('Return')
 
+        def equalizer_key(name, roles, key):
+            focus_installed_control(accessibility, app, name, roles, dialog='均衡器')
+            assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
+            inputs.key(key)
+
         button_roles = (accessibility.Role.PUSH_BUTTON,)
+        master = '启用均衡器和增强音效'
+        # Ubuntu 24.04's AT-SPI bindings do not define the newer SWITCH role.
+        master_roles = (accessibility.Role.TOGGLE_BUTTON,)
+        if (switch_role := getattr(accessibility.Role, 'SWITCH', None)) is not None:
+            master_roles += (switch_role,)
         wait_for('installed main window focus', lambda: active_window() == window)
         activate('本地音乐', (*button_roles, accessibility.Role.LINK), reveal_sidebar=True)
         focus_installed_control(accessibility, app, '选择音乐目录', button_roles)
@@ -515,11 +558,14 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         time.sleep(.5)  # GTK resolves the typed location before activation.
         inputs.key('Return')
         wait_for('installed main window focus after selection', lambda: active_window() == window)
-        local_id = wait_for('generated FLAC indexed by the installed app', indexed)
+        indexed_row = wait_for('generated FLAC indexed by the installed app', indexed)
+        local_id = indexed_row['id']
         time.sleep(1.7)  # Allow one WebView local-index refresh after the native commit.
         screenshot('installed-local-imported.png')
-        activate('播放全部', button_roles)
+        row_action = f'播放本地歌曲 {TITLE}' if indexed_flac_library else '播放全部'
+        activate(row_action, button_roles)
         first = wait_for('native playing position', lambda: position('playing', .15))
+        selected = first
         next_position = wait_for('native position advancement', lambda: position('playing', first['seconds']+1))
         assert next_position['entry_id'] == first['entry_id']
         wait_for('installed app linked to private PipeWire sink', lambda: private_pipewire_stream(app.pid, env), 6)
@@ -528,20 +574,60 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             baseline = capture_tone('playing')
             assert baseline['rms'] > 50
             assert baseline['amplitude440Hz'] > baseline['rms'] * 1.3, 'private sink did not receive the 440 Hz fixture'
+        if indexed_flac_library:
+            assert verify_monitor_pcm and not packaged_filter
+            assert not indexed_flac_mapped(), 'unprocessed indexed entry already mapped the packaged decoder'
+
+            def tone_saved(bass, treble, *, bypassed=False):
+                if value := equalizer_preferences():
+                    settings = value['settings']
+                    return (settings['enabled'] is False and settings['gains'] == [0] * 10
+                            and settings.get('tone_enabled') is True
+                            and settings.get('bass_db', 0) == bass
+                            and settings.get('treble_db', 0) == treble
+                            and settings.get('master_bypassed', False) is bypassed)
+                return False
+
+            activate('均衡器', button_roles)
+            sliders = (accessibility.Role.SLIDER,)
+            equalizer_key('低音增益', sliders, 'End')
+            wait_for('installed indexed bass adjustment committed', lambda: tone_saved(10, 0))
+            equalizer_key('高音增益', sliders, 'End')
+            wait_for('installed indexed treble adjustment committed', lambda: tone_saved(10, 10))
+            equalizer_key('关闭均衡器', button_roles, 'Return')
+            activate('停止播放', button_roles)
+            focus_installed_control(accessibility, app, '播放', button_roles)
+            stopped = capture_tone('indexedStopped')
+            assert stopped['rms'] < baseline['rms'] * .01, 'old indexed playback did not stop'
+            assert not indexed_flac_mapped(), 'packaged decoder appeared before indexed row reselection'
+            assert tone_saved(10, 10), 'stopping lost the saved tone controls'
+            screenshot('installed-indexed-stopped.png')
+
+            activate(row_action, button_roles)
+            selected = wait_for('new indexed native queue entry', lambda: position(
+                'playing', .15, different_entry=first['entry_id']))
+            wait_for('exact trusted FLAC module mapped by ordinary indexed playback', indexed_flac_mapped)
+            wait_for('indexed app linked to private PipeWire sink', lambda: private_pipewire_stream(app.pid, env), 6)
+            boosted = capture_tone('indexedBoosted', committed_progress('indexed tone'))
+            for frequency in (60, 10000):
+                key = f'amplitude{frequency}Hz'
+                assert baseline[key] > 25 and boosted[key] > baseline[key] * 1.5, (
+                    f'indexed graph did not increase {frequency} Hz with GEQ off')
+            screenshot('installed-indexed-boosted.png')
+            activate('均衡器', button_roles)
+            equalizer_key(master, master_roles, 'space')
+            wait_for('indexed master bypass committed', lambda: tone_saved(10, 10, bypassed=True))
+            dry = capture_tone('indexedBypassed', committed_progress('indexed master bypass'))
+            for frequency in MONITOR_TONES:
+                key = f'amplitude{frequency}Hz'
+                assert math.isclose(dry[key], baseline[key], rel_tol=.03), (
+                    f'indexed master bypass did not restore the original {frequency} Hz tone')
+            assert indexed_flac_mapped(), 'master bypass retired the trusted indexed decoder'
+            screenshot('installed-indexed-bypassed.png')
+            equalizer_key('关闭均衡器', button_roles, 'Return')
         if packaged_filter:
             inputs.click(1049, 722)  # EQ in the playback footer.
-            def equalizer_key(name, roles, key):
-                focus_installed_control(accessibility, app, name, roles, dialog='均衡器')
-                assert active_window() == window, f'installed app lost keyboard focus for {name!r}'
-                inputs.key(key)
-
             equalizer_key('均衡器预设', (accessibility.Role.COMBO_BOX,), 'Down')
-            master = '启用均衡器和增强音效'
-            # WebKit exposes this ARIA switch as a toggle button. Ubuntu
-            # 24.04's AT-SPI bindings do not define the newer SWITCH role.
-            master_roles = (accessibility.Role.TOGGLE_BUTTON,)
-            if (switch_role := getattr(accessibility.Role, 'SWITCH', None)) is not None:
-                master_roles += (switch_role,)
             wait_for('installed equalizer preset committed', preset_saved)
             wait_for('installed audio filter mapped by the player',
                      lambda: str(packaged_filter) in Path(f'/proc/{app.pid}/maps').read_text())
@@ -629,15 +715,15 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             inputs.key('Escape')
             time.sleep(.35)
         activate('暂停', button_roles)
-        paused = wait_for('native paused position', lambda: position('paused', first['seconds']))
-        assert paused['entry_id'] == first['entry_id'] and paused['paused']
+        paused = wait_for('native paused position', lambda: position('paused', selected['seconds']))
+        assert paused['entry_id'] == selected['entry_id'] and paused['paused']
         # Let the audio backend settle its final buffered clock sample, then
         # compare paused snapshots across another native persistence interval.
         time.sleep(.35)
-        settled = position('paused', first['seconds'])
+        settled = position('paused', selected['seconds'])
         assert settled and settled['entry_id'] == paused['entry_id']
         time.sleep(1.2)
-        held = position('paused', first['seconds'])
+        held = position('paused', selected['seconds'])
         assert held and held['entry_id'] == settled['entry_id']
         assert abs(held['seconds'] - settled['seconds']) < .05, 'clock changed after pause'
         screenshot('installed-local-paused.png')
@@ -659,4 +745,11 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
     if packaged_filter:
         report.update(equalizerPresetCommitted=True, installedFilterMapped=True,
                       sameTrackAdvancedWithEqualizer=True)
+    if indexed_flac_library:
+        report['indexedFlacEqualizer'] = {
+            'ordinaryLibraryRow': True, 'freshEntryAfterStop': True, 'sameIndexedResource': True,
+            'trustedDecoderMappedByDeviceAndInode': True, 'boostedBassAndTreble': True,
+            'masterBypassRestoredUnfilteredPcm': True, 'sameEntryDuringBypass': True,
+            'format': '48kHz/stereo/s16',
+        }
     return report

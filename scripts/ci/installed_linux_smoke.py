@@ -80,7 +80,7 @@ def own_window(pid):
 
 
 def observe(binary, root, verify_local_playback=False, packaged_filter=None,
-            verify_monitor_pcm=False, *, software_rendering=False):
+            verify_monitor_pcm=False, *, software_rendering=False, indexed_flac_library=None):
     import gi
     gi.require_version('Gdk', '3.0')
     gi.require_version('GdkX11', '3.0')
@@ -103,7 +103,7 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None,
     if verify_local_playback:
         from installed_linux_audio import isolated_audio, start_accessibility, verify_playback
         accessibility = start_accessibility()
-        audio = isolated_audio(root, env)
+        audio = isolated_audio(root, env, indexed_flac=indexed_flac_library is not None)
     else:
         audio = nullcontext()
     with audio as source, (root/'host.log').open('xb') as log:
@@ -134,7 +134,8 @@ def observe(binary, root, verify_local_playback=False, packaged_filter=None,
                                             assert capture.savev(str(root/name), 'png', [], [])
                                         playback = verify_playback(
                                             root, app, window, x, y, width, height, source, env, screenshot,
-                                            packaged_filter, verify_monitor_pcm, accessibility)
+                                            packaged_filter, verify_monitor_pcm, accessibility,
+                                            indexed_flac_library=indexed_flac_library)
                                     return width, height, playback
                 time.sleep(.2)
             raise AssertionError('packaged app never painted a normal window')
@@ -169,6 +170,10 @@ def main():
                         help='load the audited FLAC bytes from the exact extracted package in an identity probe')
     parser.add_argument('--verify-monitor-pcm', action='store_true',
                         help='measure the synthetic tone and pause silence at the private sink')
+    parser.add_argument('--verify-indexed-flac-equalizer', action='store_true',
+                        help='reselect an indexed stereo FLAC and measure the trusted native graph')
+    parser.add_argument('--indexed-flac-sha256',
+                        help='compile-time pinned FLAC digest for an ordinary developer binary')
     args = parser.parse_args()
     if args.verify_monitor_pcm and not args.verify_local_playback:
         parser.error('--verify-monitor-pcm needs --verify-local-playback')
@@ -185,6 +190,17 @@ def main():
         parser.error('--filter is required with --packages and must be omitted with --binary')
     if args.verify_installed_equalizer and not (args.packages and args.verify_local_playback):
         parser.error('--verify-installed-equalizer needs --packages and --verify-local-playback')
+    indexed_attestation = args.verify_packaged_flac if args.packages else args.indexed_flac_sha256
+    if args.verify_indexed_flac_equalizer and not (
+        args.verify_local_playback and args.verify_monitor_pcm and not args.verify_installed_equalizer
+        and indexed_attestation
+    ):
+        parser.error('--verify-indexed-flac-equalizer needs --verify-local-playback and '
+                     '--verify-monitor-pcm, plus --verify-packaged-flac with --packages or '
+                     '--indexed-flac-sha256 with --binary; run it separately from installed LADSPA')
+    if args.indexed_flac_sha256 and not (args.binary and args.verify_indexed_flac_equalizer
+                                         and re.fullmatch(r'[0-9a-f]{64}', args.indexed_flac_sha256)):
+        parser.error('--indexed-flac-sha256 needs --binary and --verify-indexed-flac-equalizer')
     require_isolation()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -192,11 +208,20 @@ def main():
         binary = args.binary.resolve(strict=True)
         assert binary.is_file() and os.access(binary, os.X_OK), 'expected a built executable'
         binary_hash = digest(binary)
+        flac = None
+        if args.verify_indexed_flac_equalizer:
+            flac = binary.with_name(LIBRARY)
+            assert (not flac.is_symlink() and flac.is_file()
+                    and digest(flac) == args.indexed_flac_sha256), 'wrong pinned developer FLAC sibling'
         width, height, playback = observe(binary, root, args.verify_local_playback,
                                          verify_monitor_pcm=args.verify_monitor_pcm,
-                                         software_rendering=args.software_rendering)
+                                         software_rendering=args.software_rendering,
+                                         indexed_flac_library=flac)
         assert digest(binary) == binary_hash, 'executable changed during the probe'
         result = dict(ok=True, commit=args.commit, ordinaryBinary=True, binarySha256=binary_hash)
+        if flac is not None:
+            assert digest(flac) == args.indexed_flac_sha256, 'pinned developer FLAC sibling changed'
+            result['developerFlacSha256'] = args.indexed_flac_sha256
     else:
         manifest = json.loads((args.packages/'manifest-linux-x64.json').read_text(encoding='utf-8'))
         assert manifest['commit'] == args.commit and manifest['platform'] == 'linux-x64'
@@ -231,10 +256,14 @@ def main():
             if flac_decoder is not None:
                 flac = verify_extracted(native, flac_decoder,
                                         staged_library=args.filter.with_name(LIBRARY), native_probe=True)
+            indexed_library = native / LIBRARY if args.verify_indexed_flac_equalizer else None
             width, height, playback = observe(executable, root, args.verify_local_playback,
                                               packaged_filter if args.verify_installed_equalizer else None,
                                               args.verify_monitor_pcm,
-                                              software_rendering=args.software_rendering)
+                                              software_rendering=args.software_rendering,
+                                              indexed_flac_library=indexed_library)
+            if indexed_library is not None:
+                assert digest(indexed_library) == flac['sha256'], 'packaged FLAC changed during playback'
         result = dict(ok=True, commit=args.commit, archiveVerified=True, package=name,
                       packageSha256=asset['sha256'], ciRun=manifest['ciRun'],
                       ciAttempt=manifest['ciAttempt'], installedFilterMatchesPortable=True)

@@ -135,3 +135,22 @@ Ubuntu 24.04 libmpv 0.37 runtime; numeric locale was C after GTK startup
 while the system message locale stayed intact. See
 `.build/ui-proof/phase83-indexed-flac-old-r1/`. This is a local run with
 the CI runtime, separate from the hosted gate, with no physical output.
+
+The ordinary installed executable also has an opt-in sink monitor:
+`scripts/ci/installed_linux_smoke.py --verify-indexed-flac-equalizer
+--verify-local-playback --verify-monitor-pcm`. In the script's isolated Xvfb,
+D-Bus and PipeWire environment, supply the usual Debian or portable package
+arguments plus `--verify-packaged-flac`. The mode uses the real directory
+picker and indexed row with a generated 48 kHz stereo s16 FLAC. It observes a
+dry baseline, saves independent tone controls, stops, and explicitly selects
+the same indexed resource in a new queue entry. It requires an executable
+mapping with the attested decoder's path, device and inode in the ordinary
+process, and measures bass and treble gain followed by master bypass on that
+same entry. This is separate from the existing installed LADSPA probe.
+
+For a developer build, use `--binary` instead of the package arguments, and
+`--indexed-flac-sha256` instead of `--verify-packaged-flac`. The binary must
+already have been compiled with that Linux FLAC digest and staged beside the
+matching regular decoder file. The script does not supply a runtime trust
+override. This mode reports a developer binary and does not attest a package
+or physical audio output.

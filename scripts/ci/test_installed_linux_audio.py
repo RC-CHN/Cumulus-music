@@ -1,6 +1,7 @@
 """Verify narrow missed observations in the installed Linux probes."""
 from contextlib import closing
 import json
+import os
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
@@ -9,11 +10,32 @@ import unittest
 from unittest.mock import patch
 
 from installed_linux_audio import (
-    pipewire_snapshot, private_pipewire_stream, read_playback, stale_accessible_lookup, wait_for,
+    mapped_regular_file, pipewire_snapshot, private_pipewire_stream, read_playback,
+    stale_accessible_lookup, wait_for,
 )
 
 
 class PlaybackObservation(unittest.TestCase):
+    def test_package_mapping_needs_exact_executable_device_inode_and_path(self):
+        with TemporaryDirectory() as directory:
+            library = Path(directory) / 'decoder with spaces.so'
+            library.touch()
+            file = library.stat()
+            dev = f'{os.major(file.st_dev):02x}:{os.minor(file.st_dev):02x}'
+
+            def mapping(path=library, inode=file.st_ino, device=dev, mode='r-xp'):
+                return f'00001000-00002000 {mode} 00001000 {device} {inode}  {path}'
+
+            self.assertTrue(mapped_regular_file(mapping(), library))
+            for different in (
+                mapping(path=library.with_name('ambient.so')),
+                mapping(path=str(library) + ' (deleted)'),
+                mapping(inode=file.st_ino + 1),
+                mapping(device=f'{os.major(file.st_dev) + 1:02x}:{os.minor(file.st_dev):02x}'),
+                mapping(mode='r--p'),
+            ):
+                self.assertFalse(mapped_regular_file(different, library))
+
     def test_real_writer_lock_is_a_missed_sample(self):
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'core.sqlite3'
