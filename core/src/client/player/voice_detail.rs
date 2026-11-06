@@ -128,7 +128,7 @@ fn radio(voice: &Value, owner: Option<&str>) -> Option<PlayerVoiceRadio> {
         count
             .as_u64()
             .or_else(|| count.as_str()?.parse().ok())
-            .filter(|count| *count <= (1 << 53) - 1)
+            .filter(|count| *count < (1 << 53))
     } else {
         Some(0)
     };
