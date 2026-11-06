@@ -7,6 +7,8 @@ mod badges;
 mod engine;
 #[path = "client_podcast/recommendations.rs"]
 mod recommendations;
+#[path = "client_podcast/vinyl_subscription.rs"]
+mod vinyl_subscription;
 use cumulus_core::{
     Error,
     account::{AccountSession, profiles::ProfileRegistry},
@@ -46,6 +48,11 @@ struct Backend {
     recommendation_release: tokio::sync::Notify,
     recommendation_collect_fixture: AtomicBool,
     recommendation_collected: AtomicBool,
+    vinyl_fixture: AtomicBool,
+    vinyl_subscribed: AtomicBool,
+    vinyl_hold_detail: AtomicBool,
+    vinyl_detail_started: tokio::sync::Notify,
+    vinyl_detail_release: tokio::sync::Notify,
 }
 fn program(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"djPlayRecordVo":{"listenLocation":15000,"isListened":false},"cookie":"SECRET"})
@@ -158,6 +165,16 @@ impl Api for Backend {
                 }
                 "/api/djradio/v3/get" => {
                     let mut value = radio();
+                    if self.vinyl_fixture.load(Ordering::SeqCst) {
+                        assert_eq!(p, json!({"id":"7"}));
+                        assert!(!cache);
+                        if self.vinyl_hold_detail.swap(false, Ordering::SeqCst) {
+                            self.vinyl_detail_started.notify_one();
+                            self.vinyl_detail_release.notified().await;
+                        }
+                        value["subed"] = json!(self.vinyl_subscribed.load(Ordering::SeqCst));
+                        value["dj"] = json!({"userId":55});
+                    }
                     if self.recommendation_collect_fixture.load(Ordering::SeqCst) {
                         value["subed"] =
                             json!(self.recommendation_collected.load(Ordering::SeqCst));
@@ -211,6 +228,15 @@ impl Api for Backend {
                     }
                     json!({"code":200,"data":{"radioIdList":[7],"myPodcastVOList":[radio()]}})
                 }
+                "/api/djradio/sub" | "/api/djradio/unsub"
+                    if self.vinyl_fixture.load(Ordering::SeqCst) =>
+                {
+                    assert_eq!(p, json!({"id":"7"}));
+                    assert!(!cache);
+                    self.vinyl_subscribed
+                        .store(path.ends_with("/sub"), Ordering::SeqCst);
+                    json!({"code":200})
+                }
                 "/api/djradio/sub"
                     if self.recommendation_collect_fixture.load(Ordering::SeqCst) =>
                 {
@@ -243,6 +269,10 @@ impl Api for Backend {
 impl Backend {
     fn episode(&self, id: u64) -> Value {
         let mut value = program(id);
+        if self.vinyl_fixture.load(Ordering::SeqCst) {
+            value["dj"]["userId"] = json!(if id == 2 { 9 } else { 55 });
+            value["radio"]["subCount"] = json!(331);
+        }
         if self.audiobook.load(Ordering::SeqCst) {
             value["radio"]["categoryId"] = json!(10001);
             value["duration"] = json!(240000);

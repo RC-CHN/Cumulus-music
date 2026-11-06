@@ -1,8 +1,13 @@
-//! VoiceTitle.tsx:77–104, DescCard.tsx:64–68; M21 E:429–478 and W:931–1010.
+//! VoiceTitle.tsx, DescCard.tsx, CollectCard.tsx; M21 E, Z and W.
 //! No additional read is performed for a playback header. Online Episode
 //! resources and download-origin evidence must agree with the selected song.
-use super::{PlaybackSnapshot, PlayerResourceKind, identity};
-use crate::protocol::{api::identifier, wire::serialization::js_truthy};
+use super::{MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity};
+use crate::{
+    Error, Result,
+    account::SessionToken,
+    podcast::{PodcastMutation, PodcastService},
+    protocol::{api::identifier, artwork, wire::serialization::js_truthy},
+};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -24,21 +29,40 @@ pub struct PlayerVoiceDetail {
     /// Plain episode text from M21 W:945. No alternate fields or markup processing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Only a radio bound by the official episode's original and normalized radio.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub radio: Option<PlayerVoiceRadio>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerVoiceRadio {
+    pub id: String,
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subscriber_count: Option<u64>,
+    /// M/182 CollectCard compares the episode's creator to the current account.
+    pub owned_by_viewer: bool,
 }
 
 fn id(value: &Value) -> Option<String> {
     identifier(value).ok().filter(|id| id.len() <= 128)
 }
 
-fn creator(voice: &Value) -> Option<PlayerVoiceCreator> {
-    // M21 W:1003 chooses dj || creator; E:470 preserves this name precedence.
-    // Episode::normalized() preserves userId and adds dj.id, but a raw id alone
-    // cannot prove that a user profile link came from the official normalizer.
-    let value = if js_truthy(&voice["dj"]) {
+fn creator_value(voice: &Value) -> &Value {
+    // M/21 W:1006 chooses dj || creator; E:467 uses the original userId.
+    if js_truthy(&voice["dj"]) {
         &voice["dj"]
     } else {
         &voice["creator"]
-    };
+    }
+}
+
+fn creator(voice: &Value) -> Option<PlayerVoiceCreator> {
+    // A raw id alone does not prove a user profile link.
+    let value = creator_value(voice);
     let name = ["nickname", "nickName", "userName"]
         .into_iter()
         .map(|key| &value[key])
@@ -74,7 +98,50 @@ fn description(voice: &Value) -> Option<String> {
     Some(value.into())
 }
 
-fn from_resource(play_id: Option<&str>, resource: &Value) -> Option<PlayerVoiceDetail> {
+fn radio_id(voice: &Value) -> Option<String> {
+    // M/21 W constructs audio from radio. The name-only belongPodcastName
+    // fallback is not a route or subscription authority.
+    let radio = voice["radio"].as_object()?;
+    let original = ["id", "resourceId", "voiceListId", "productId"]
+        .into_iter()
+        .filter_map(|key| radio.get(key))
+        .find(|value| js_truthy(value))?;
+    let normalized = id(&voice["audio"]["id"])?;
+    (id(original)? == normalized).then_some(normalized)
+}
+
+fn owns_episode(voice: &Value, owner: Option<&str>) -> bool {
+    owner
+        .zip(id(&creator_value(voice)["userId"]))
+        .is_some_and(|(owner, creator)| owner == creator)
+}
+
+fn radio(voice: &Value, owner: Option<&str>) -> Option<PlayerVoiceRadio> {
+    let id = radio_id(voice)?;
+    let normalized = &voice["audio"];
+    let name = normalized["name"].as_str()?;
+    if name.encode_utf16().count() > 512 || name.chars().any(char::is_control) {
+        return None;
+    }
+    let count = &normalized["subCount"];
+    let subscriber_count = if js_truthy(count) {
+        count
+            .as_u64()
+            .or_else(|| count.as_str()?.parse().ok())
+            .filter(|count| *count <= (1 << 53) - 1)
+    } else {
+        Some(0)
+    };
+    Some(PlayerVoiceRadio {
+        id,
+        name: name.into(),
+        cover_url: artwork::square(&normalized["coverImgUrl"]),
+        subscriber_count,
+        owned_by_viewer: owns_episode(voice, owner),
+    })
+}
+
+fn bound_voice<'a>(play_id: Option<&str>, resource: &'a Value) -> Option<(&'a Value, String)> {
     play_id.filter(|id| !id.is_empty())?;
     // A CUE/local/cloud/song with an embedded `voice` object is not an episode.
     let episode = match identity::kind(resource) {
@@ -122,6 +189,15 @@ fn from_resource(play_id: Option<&str>, resource: &Value) -> Option<PlayerVoiceD
     {
         return None;
     }
+    Some((voice, episode))
+}
+
+fn from_resource(
+    play_id: Option<&str>,
+    resource: &Value,
+    owner: Option<&str>,
+) -> Option<PlayerVoiceDetail> {
+    let (voice, episode) = bound_voice(play_id, resource)?;
     Some(PlayerVoiceDetail {
         id: episode,
         creator: creator(voice),
@@ -129,6 +205,7 @@ fn from_resource(play_id: Option<&str>, resource: &Value) -> Option<PlayerVoiceD
             .as_u64()
             .filter(|value| (1..=8_640_000_000_000_000).contains(value)),
         description: description(voice),
+        radio: radio(voice, owner),
     })
 }
 
@@ -136,7 +213,67 @@ pub(super) fn project(snapshot: &PlaybackSnapshot) -> Option<PlayerVoiceDetail> 
     from_resource(
         snapshot.play_id.as_deref(),
         &snapshot.selected.as_ref()?.resource,
+        snapshot.account.uid.as_deref(),
     )
+}
+
+fn subscription_target(
+    snapshot: &PlaybackSnapshot,
+    token: &SessionToken,
+    play_id: &str,
+) -> Result<(String, String)> {
+    if &snapshot.account != token
+        || token.uid.is_none()
+        || snapshot.play_id.as_deref() != Some(play_id)
+        || !matches!(
+            snapshot.state,
+            PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
+        )
+    {
+        return Err(Error::StaleResponse);
+    }
+    let resource = &snapshot
+        .selected
+        .as_ref()
+        .ok_or(Error::StaleResponse)?
+        .resource;
+    let (voice, episode) = bound_voice(Some(play_id), resource).ok_or(Error::StaleResponse)?;
+    let radio = radio(voice, token.uid.as_deref()).ok_or(Error::StaleResponse)?;
+    if radio.owned_by_viewer {
+        return Err(Error::InvalidInput("cannot subscribe to an owned podcast"));
+    }
+    Ok((episode, radio.id))
+}
+
+impl MusicClient {
+    pub(in crate::client) async fn change_vinyl_podcast_subscription(
+        &self,
+        token: &SessionToken,
+        play_id: &str,
+        expected: bool,
+    ) -> Result<PodcastMutation> {
+        if self.login_pending()? {
+            return Err(Error::StaleResponse);
+        }
+        let api = self.session.native_api(token)?;
+        let controller = self.player.controller.get().ok_or(Error::StaleResponse)?;
+        let target = subscription_target(&controller.snapshot(), token, play_id)?;
+        let current = || {
+            if self.login_pending()? {
+                return Err(Error::StaleResponse);
+            }
+            self.session.require_api(token, &api)?;
+            if subscription_target(&controller.snapshot(), token, play_id)? != target {
+                return Err(Error::StaleResponse);
+            }
+            Ok(())
+        };
+        let result = PodcastService::new(self.session.clone())?
+            .change_vinyl_subscription_for(token, &target.1, expected, &current)
+            .await?;
+        current()?;
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
@@ -144,6 +281,10 @@ mod tests {
     use super::*;
     use crate::podcast::Episode;
     use serde_json::json;
+
+    fn from_resource(play_id: Option<&str>, resource: &Value) -> Option<PlayerVoiceDetail> {
+        super::from_resource(play_id, resource, None)
+    }
 
     const DESCRIPTION: &str = "  合成片头 \r\n\r\n\t第二段 🎧 <字面文字>\n";
 
@@ -185,6 +326,60 @@ mod tests {
             assert!(!encoded.contains("download_voice_id"));
             assert!(!encoded.contains("https:"));
         }
+    }
+
+    #[test]
+    fn collect_card_projects_only_bound_radio_public_metadata() {
+        let raw = json!({
+            "id":71,"name":"声音","mainSong":{"id":901,"duration":200000},
+            "creator":{"userId":42},
+            "radio":{"resourceId":"9007199254740993","voiceListName":"合成播单","subCount":"300",
+                "coverImgUrl":"https://p1.music.126.net/cover.jpg?token=PRIVATE","subed":true,
+                "dj":{"userId":67},"private":"PRIVATE"},
+        });
+        let episode = Episode::from_official(&raw).unwrap();
+        let mut resource = episode.playback_resource().unwrap();
+        let result = super::from_resource(Some("play"), &resource, Some("42")).unwrap();
+        assert!(result.creator.is_none()); // Ownership does not depend on a visible nickname.
+        assert_eq!(
+            serde_json::to_value(result.radio.unwrap()).unwrap(),
+            json!({"id":"9007199254740993","name":"合成播单",
+                "coverUrl":"https://p1.music.126.net/cover.jpg?param=320y320",
+                "subscriberCount":300,"ownedByViewer":true}),
+        );
+        let other = super::from_resource(Some("play"), &resource, Some("67")).unwrap();
+        assert!(!other.radio.unwrap().owned_by_viewer); // The episode creator, not the radio creator.
+        resource["voice"]["audio"]["subCount"] = json!(9_007_199_254_740_992_u64);
+        resource["voice"]["audio"]["coverImgUrl"] = json!("https://external.invalid/secret");
+        let limited = from_resource(Some("play"), &resource)
+            .unwrap()
+            .radio
+            .unwrap();
+        assert_eq!((limited.subscriber_count, limited.cover_url), (None, None));
+        resource["voice"]["audio"]["subCount"] = Value::Null;
+        assert_eq!(
+            from_resource(Some("play"), &resource)
+                .unwrap()
+                .radio
+                .unwrap()
+                .subscriber_count,
+            Some(0),
+        );
+        resource["voice"]["audio"]["id"] = json!("17");
+        assert!(
+            from_resource(Some("play"), &resource)
+                .unwrap()
+                .radio
+                .is_none()
+        );
+        resource["voice"]["radio"] = Value::Null;
+        resource["voice"]["belongPodcastName"] = json!("只有名字");
+        assert!(
+            from_resource(Some("play"), &resource)
+                .unwrap()
+                .radio
+                .is_none()
+        );
     }
 
     #[test]

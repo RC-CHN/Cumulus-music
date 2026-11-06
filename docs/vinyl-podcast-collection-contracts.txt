@@ -1,0 +1,73 @@
+节目播放详情：播单收藏卡及邻接推荐卡（官方 Windows 3.1.42.205594）
+==================================================================
+
+播单卡（本批 Rust 契约）
+
+- 恢复文件 packages/pc/src/pages/vinyl-page/views/VoicePage/components/
+  VoiceDisplay.tsx:69–77 依次挂载 CollectCard、DescCard、RcmdCard、SongCard。
+  CollectCard.tsx:61–85 读取 currentVoice.audio、节目作者和当前账户；局部初值是
+  audio.subed，但 effect 以宿主订阅映射 subscribedAudioIdsMap[audio.id] 为准。
+  :104–114 卡片打开 /audioDetail/:id，封面从 audio.coverImgUrl 或当前资源封面取；
+  :129–167 收藏/取消收藏由同一个独立按钮发起，显示「收藏播单」/「已收藏」及
+  「N 人收藏」。自己发布的节目使用节目作者 ID（不是播单作者 ID）禁用该按钮。
+- hybrid_app…/21.js（M21）:809–852 Z 规范化播单 id、name、coverImgUrl、
+  subCount 等；:931–979 W 从原始 radio 构造 currentVoice.audio。只有
+  belongPodcastName 时仅有名字，没有可操作 ID。M21:429–467 与 :1006–1011
+  证明作者标识来自原始 dj/creator.userId，不用 artistId。
+- M19:59–85 的通用 Action 默认阻止按钮点击冒泡；M3085（hybrid_73…）
+  :699–706 和 :1417–1424 在访客操作时打开登录。收藏无确认；取消收藏在
+  :1397–1404、:1505、:1521–1528 先显示「确定不再收藏该播单？」，
+  确认按钮为「不再收藏」，取消不派发写操作。
+- M232:392–445 调用 M15:2072–2073 的 /api/djradio/sub 与 /api/djradio/unsub，
+  在同一 ID 有进行中的动作时不并发；官方先更新本地订阅映射，失败时回滚。
+  M3160（hybrid_105…）:1373–1387 取消收藏后更新我的播单订阅列表；
+  :1688–1713 的 own membership producer 调用 M15:3510–3525 对应的
+  /api/djradio/get/subed，参数 {targetUserId,limit:1000}。
+- M3160:1098–1122 的收藏有两条 wire 分支：普通 {id}；若当前队列有一条
+  voice 的官方 fromInfo.sourceData.id 与目标播单相同，则增加
+  sourceMap:{rqRefer,songRqRefer,alg?}。取消收藏始终 {id}。Cumulus 沿用已恢复
+  的普通分支；没有等价的官方 referInfo/action analytics 生产链，未伪造或发送
+  sourceMap，因此不声称那条可选归因分支已移植。
+
+Rust 核心的公开形状及边界
+
+- PlayerView.voiceDetail.radio 可省略，来自已绑定当前 playId、节目与主音轨
+  的正规 Episode 或类型化 Voice 下载来源；原始 radio ID 和规范化 audio ID 必须
+  一致。DTO 只投影 id、name、可选 coverUrl、可选 subscriberCount、ownedByViewer；
+  不投影 Cookie、订阅原始标志、外部封面 URL、作者 raw 或播放 URL。缺少计数时
+  按 M21 默认 0，超出 JS 安全整数或畸形计数省略。正式外部图片地址经过既有
+  官方图床白名单及参数清除。只有名字、缺 ID、绑定冲突的卡片不开放。
+- 显示订阅状态应复用 podcast_search_membership 的当前账户权威映射；没有完整
+  列表时状态未知，不把缺失当成未订阅。计数是当前节目的播单快照，不因本地
+  猜测自增/减。
+- PodcastCommand::ChangeVinylSubscription 的 JSON 为
+  {kind:"change_vinyl_subscription",play_id,expected}。客户端不接受 renderer
+  提供的播单 ID。先核对当前账户与实际活动播放（playing/paused/buffering）、
+  playId、节目、播单、节目作者；进行中的登录、旧播放、访客、自有节目及
+  无可用播单都不能发写。节目作者未知不默认为本人，但实际发送前必须由
+  /api/djradio/v3/get 验证同播单、有效非本人作者和明确订阅状态。
+- 沿用原有 PodcastService 账户隔离 journal：先确认现态，只有与目标不同时
+  才发送一个 sub/unsub；在初读结束和写前重验当前选择，旧播放在写前到达
+  时不发送。收到确认后由同播单详情两次一致回读确认；不确定操作保留给
+  既有只读核对机制，不能自动重放。成功后不改播放身份、队列或时钟。
+  该 journal、权威回读及禁用未知状态为社区实现保守边界，与官方先乐观
+  更新再回滚的用户状态时序不同。
+
+独立推荐卡（仅恢复证据，未在本批实现）
+
+- M182:7107–7132 的 VoicePage 在当前 curVoice 变化时派发 initVoicePage；
+  vipType 在这里进日志，不是推荐权限。M69:185–224 用一个并行 all 执行
+  三个读取：节目详情、节目推荐、节目相关曲目。没有发现此卡或上述三读
+  的独立 AB/会员门控；不等于服务端没有个性化或账号限制。由于是一个 all，
+  原流程没有每条读取独立错误/重试分支。
+- M109:98–101 -> M15:3811–3822 执行无本地 RPC 缓存的
+  /api/voice/play/page/rcmd，参数 {voiceId:<当前节目 ID>}；返回 data 可为
+  数组或单值，格式化仅把每项 id 转成字符串。这个 ID 随后是
+  /audioDetail/:id 的播单目标；不是可直接播放的节目或主音轨 ID。
+- M69:79、:205–220、:244–273 与 RcmdCard.tsx:114–131、:170–228：
+  取 6 个一页，尾部余 1–3 条时裁掉尾页，余 4–5 则保留。空结果整卡
+  隐藏；标题「听了该声音的人也在听」点击只从本次内存结果翻到下一页，
+  到尾页后回第一页，不再请求。三列展示、图片 picUrl、名称 name、
+  次数 playCount ?? 0；卡片点击进入播单详情，不直接起播。
+- 已有「我收藏的播客」推荐使用不同路径 /api/djradio/my/radio/recommend，
+  已有歌曲黑胶相似内容也走不同路径。两者都不能充当节目推荐卡的证据。

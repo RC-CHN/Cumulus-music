@@ -108,6 +108,10 @@ pub enum PodcastCommand {
         id: String,
         expected: bool,
     },
+    ChangeVinylSubscription {
+        play_id: String,
+        expected: bool,
+    },
     Change {
         action: PodcastAction,
         id: String,

@@ -125,6 +125,23 @@ impl PodcastService {
         self.change_checked(token, PodcastAction::Subscribe, id, !expected, true, None)
             .await
     }
+    pub(crate) async fn change_vinyl_subscription_for(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        expected: bool,
+        current: &(dyn Fn() -> Result<()> + Sync),
+    ) -> Result<PodcastMutation> {
+        self.change_checked(
+            token,
+            PodcastAction::Subscribe,
+            id,
+            !expected,
+            true,
+            Some(current),
+        )
+        .await
+    }
     pub(crate) async fn collect_recommendation_for(
         &self,
         token: &SessionToken,
@@ -137,7 +154,7 @@ impl PodcastService {
             id,
             true,
             true,
-            Some(source),
+            Some(&|| source.check()),
         )
         .await
     }
@@ -148,7 +165,7 @@ impl PodcastService {
         id: &str,
         desired: bool,
         search: bool,
-        source: Option<&Cancellation>,
+        source: Option<&(dyn Fn() -> Result<()> + Sync)>,
     ) -> Result<PodcastMutation> {
         let key = key(action, id)?;
         let owner = self
@@ -156,7 +173,7 @@ impl PodcastService {
             .with_token(token, |owner| Ok(owner.to_owned()))?;
         let _lock = OperationLock::acquire(self.store.directory(), &owner, &key)?;
         if let Some(source) = source {
-            source.check()?;
+            source()?;
         }
         if self
             .operation_for(token, action, id)?
@@ -187,7 +204,7 @@ impl PodcastService {
             self.state_for(token, action, id).await?
         };
         if let Some(source) = source {
-            source.check()?;
+            source()?;
         }
         let mut record = PodcastMutation {
             action,
@@ -211,9 +228,7 @@ impl PodcastService {
             .session
             .run_for(token, |api, _| async move {
                 if let Some(source) = source {
-                    source
-                        .check()
-                        .map_err(|error| Error::RequestNotSent(Box::new(error)))?;
+                    source().map_err(|error| Error::RequestNotSent(Box::new(error)))?;
                 }
                 let api = PodcastApi::new(api);
                 match action {

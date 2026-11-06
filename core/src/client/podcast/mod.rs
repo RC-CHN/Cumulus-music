@@ -241,6 +241,10 @@ impl MusicClient {
                     .change_search_subscription_for(&token, &identifier(&json!(id))?, expected)
                     .await?
             }
+            PodcastCommand::ChangeVinylSubscription { play_id, expected } => {
+                self.change_vinyl_podcast_subscription(&token, &play_id, expected)
+                    .await?
+            }
             PodcastCommand::Change {
                 action,
                 id,
