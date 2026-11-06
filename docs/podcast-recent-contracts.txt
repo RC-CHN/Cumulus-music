@@ -46,7 +46,7 @@
   进入对应声音来源或进入收藏页时分别执行每播客/全局清除。每播客写入使用
   /api/djradio/newcount/clear/byradio {radioId}，会乐观清零同账号已缓存的收藏/有声书/
   已购列表；首次进入收藏用 /api/djradio/newcount/clear {}。不会给最近页标签渲染该数字。
-  当前候选只接入独立的显式收藏卡片→详情清除分支，见下节；未接这个播放观察器、
+  Cumulus 只接入独立的显式收藏卡片→详情清除分支，见下节；未接这个播放观察器、
   其他列表的行红点，或进入收藏即清全局通知的动作。
 - M3008:381–395、M15:3607–3617 的 /api/djradio/my/radio/recommend {} → data[]
   在首次活动的「我的播客」请求。M3108:128–164,304–318,1088–1105 同时在旧版合并
@@ -92,11 +92,14 @@
 - 合成验证入口：cargo test -p cumulus-core --locked --test client_podcast subscribed_badge_clear
   用真实 Rust EAPI 封包＋封闭假 HTTP，核固定请求、分页过期、账号及凭据切换、确认和
   丢应答；前端 tests/podcast-state.test.ts 核实真实模型只从显式正计数卡片提交，
-  详情可继续。这里未声称新的真实服务/桌面运行已验证。
+  详情可继续。
 - 桌面探针同一 podcast_recent_ui_probe 新增 --badges 模式。8 个阶段实际操作收藏卡、
   编号入口、刷新和返回；密闭原生适配器只有两次合成 byradio 发送（分别回确认及丢应答），
   原样返回旧计数验证成功后消失、丢应答后仍显示且同观察值不重发。可选 Linux 桌面
-  截图握手并检查封面右上角、99+、可访问计数以及无横向溢出。待运行入口：
+  截图握手并检查封面右上角、99+、可访问计数以及无横向溢出。运行入口：
   xvfb-run -a -s '-screen 0 1280x900x24' dbus-run-session -- env GDK_BACKEND=x11 \
     /usr/bin/python3 scripts/ci/podcast_recent_smoke.py --badges --screenshots \
     --binary <custom-protocol-podcast_recent_ui_probe> --root <new-proof-root>
+  实测：封闭网络命名空间内的 Linux 真实 GTK WebView 通过 8 个阶段、8 张截图，原生
+  收到 5 次详情读取及 2 次 byradio 提交。ID81 确认后徽标消失；ID82 丢应答，徽标保留，
+  再次点击时原生拒绝重放。无真实请求/账号写入。见 .build/ui-proof/phase85-podcast-badges-r2/。

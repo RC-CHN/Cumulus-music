@@ -208,5 +208,5 @@ macOS不在当前支持范围。Linux验证不能单独推出Windows选择器/�
   --root <new-root> --screenshots。使用合成音频和 libmpv/null；真实 DOM 右键/Escape、
   Shift+F10 只移出父目录与下级曲目（同名前缀目录保留）、焦点回退、实际重新扫描恢复、
   播放实例不变；脚本同时检查三份原文件内容。Linux 已核对 7→5→7、三个源文件哈希和
-  相同的暂停实例；三张截图及回执见 `.build/ui-proof/phase84-group-hide-r2/`。
+  相同的暂停实例；重拍确认分组焦点框完整显示，三张截图及回执见 `.build/ui-proof/phase85-group-hide-r1/`。
   这是隔离合成媒体实测，不代表 Windows GUI 或真实用户目录验收。

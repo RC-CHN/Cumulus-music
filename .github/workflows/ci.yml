@@ -647,6 +647,7 @@ jobs:
           cargo build -p cumulus-desktop --example podcast_recent_ui_probe --features custom-protocol --locked
           python scripts/ci/podcast_recent_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-recent-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-progress-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/podcast_recent_smoke.py --badges --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-badges-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_scene_home_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-scene-home-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/scene_palette_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-scene-palette-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/voice_detail_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-voice-detail-windows --runtime .build/package-stage/windows-x64/native
@@ -961,6 +962,9 @@ jobs:
             --flac-sha256 "$CUMULUS_CI_PACKAGED_FLAC_SHA256" --root .build/ci-native-spatial-flac-48k-linux
       - name: Verify indexed Linux FLAC and held fallback with the packaged decoder
         run: |
+          export CUMULUS_FLAC_PROBE_LIBRARY="$PWD/.build/package-stage/linux-x64/native/libcumulus_flac150.so.14"
+          cargo test -p cumulus-core --locked --lib indexed_large_flac_reframes_and_seek_discards_the_staged_suffix -- --ignored
+          cargo test -p cumulus-core --locked --lib indexed_4608_flac_matches_1024_flac_and_wav_through_seek_and_tail -- --ignored
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
             env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 \
@@ -1141,6 +1145,7 @@ jobs:
           cargo build -p cumulus-desktop --example podcast_recent_ui_probe --features custom-protocol --locked
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-recent-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-progress-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --badges --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-badges-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_scene_home_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-scene-home-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/scene_palette_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-scene-palette-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/voice_detail_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-voice-detail-linux
@@ -1220,6 +1225,7 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_cold_start_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-cold-start-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/local_queue_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-queue-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_folder_reveal_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-folder-reveal-linux --screenshots
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a -s '-screen 0 1440x1000x24 -nolisten tcp' /usr/bin/python3 scripts/ci/local_group_hide_smoke.py --binary .build/target/debug/examples/local_ui_probe --root .build/ci-local-group-hide-linux --screenshots
           CUMULUS_TEST_WINDOW_MANAGER=openbox GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/mini_smoke.py --binary .build/target/debug/examples/mini_ui_probe --root .build/ci-mini-shortcuts-linux --shortcuts
           cargo build -p cumulus-desktop --example desktop_lyrics_ui_probe --features custom-protocol --locked
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/desktop_lyrics_smoke.py --binary .build/target/debug/examples/desktop_lyrics_ui_probe --root .build/ci-desktop-lyrics-linux
