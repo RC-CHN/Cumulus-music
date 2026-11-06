@@ -68,10 +68,13 @@ impl MusicClient {
         let ascending = library.radio_order_for(token, &id)?;
         let mut episodes = self
             .session
-            .run_for(token, |api, _| async {
-                // This overlay has no assigned play ID. M404's around-program
-                // branch requires an assigned ID equal to the latest local voice.
-                by_radio(api.as_ref(), &id, ascending, &guard).await
+            .run_for(token, |api, _| {
+                let (id, guard) = (&id, &guard);
+                async move {
+                    // The M404 around-program branch requires an assigned
+                    // ID equal to the latest voice; this overlay has none.
+                    by_radio(api.as_ref(), id, ascending, guard).await
+                }
             })
             .await?;
         guard.check()?;
@@ -142,10 +145,11 @@ impl MusicClient {
                 if index != selected {
                     continue;
                 }
+                let program_id = json!(voice.id);
                 voice = self
                     .session
-                    .run_for(token, |api, _| async {
-                        PodcastApi::new(api).episode(&json!(voice.id)).await
+                    .run_for(token, |api, _| async move {
+                        PodcastApi::new(api).episode(&program_id).await
                     })
                     .await?;
             }
