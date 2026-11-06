@@ -25,7 +25,7 @@ pub(crate) struct OpenedFile {
     pub fingerprint: FileFingerprint,
 }
 
-fn safe_path(path: &Path) -> bool {
+pub(super) fn safe_path(path: &Path) -> bool {
     if !path.is_absolute()
         || path
             .to_str()

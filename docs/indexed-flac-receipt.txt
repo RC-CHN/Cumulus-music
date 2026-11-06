@@ -1,0 +1,61 @@
+Indexed local FLAC: one-shot native file receipt
+===============================================
+
+Recovered PC 3.1.42.205594 M/163:267–283 distinguishes downloaded resources
+from ordinary local localTrack.filename. M/163:373–381 sends an existing
+ordinary file as type 0; offset/duration are added only for CUE. In legacy
+cloudmusic.dll, 103B83C–103B840 enters the zero-type file selector. This is
+source routing evidence, not authorization for arbitrary paths or proof
+that the file format is eligible for DSP.
+
+Cumulus already uses the recovered fixed local equalizer graph (including
+slot 50) for selected explicitly opened native stereo files. The ordinary
+indexed library still resolves a selected local revision to a pathname
+(library/index/decoded.rs, playback/source/mod.rs). This new core API does
+not change that route. It prepares a possible future native handoff:
+
+1. Check the selected LocalResource against a single durable ordinary file
+   row, including stable local ID, available status and exact File
+   fingerprint. Derive the only path from that native row. A CUE resource
+   never enters it. No NCM resolution, decrypted-cache selection or arbitrary
+   path fallback occurs, including paths inside the app state directory.
+2. On Linux x86_64 require the index's device/inode, size and modification
+   time fingerprint. Check the indexed path is canonical, open read-only
+   without following a symlink leaf or blocking on a replacement FIFO, and
+   verify the actual descriptor before reading. Confirm only the plain FLAC
+   marker, rewind, and check the same descriptor and durable row again.
+   Neither indexed nor container metadata establishes decoded PCM layout.
+3. The receipt owns one File. Consuming it checks the exact still selected
+   row, the actual descriptor and both the original and current
+   cancellation predicates. It cannot clone or reopen. If a pathname is
+   replaced after preparation while the index row stays unchanged, only the
+   previously held object can be returned; a rescan invalidating the row
+   makes it stale. The native file fingerprint is not a content hash and
+   does not guard against all in-place writes.
+
+Windows currently persists creation time, or no identity, in
+library/identity.rs. The pinned file-id 0.2.3 library's public verification
+functions take a path and open another handle; the by-handle functions are
+private. The receipt therefore returns unavailable on Windows without opening
+the path. Before enabling that platform, record a strong volume/file ID
+from the same native handle during an indexed rescan, compare that value
+from the actual opened handle with reparse points rejected, and test
+replacement/reparse behavior under a real Windows runner. Older records
+must not qualify on creation time, file length, or a second path-only probe.
+
+The receipt does not bind an account/download ledger, queue/output lease
+or decoder ownership on its own. A future controller must still fence
+these before native publication, separate eligible ordinary rows from
+protected downloads, and validate the real trusted decoder output format
+before admitting a fixed graph. Stock fallback after choosing a descriptor
+must retain that descriptor; audible seek/replacement must use existing
+retirement and never replay a failed entry. None of these production paths
+or any UI/IPC are changed here.
+
+Focused regression:
+cargo test -p cumulus-core --locked --test indexed_flac_receipt
+
+Synthetic cases exercise the real indexed CUE row, NCM and renamed NCM,
+same-size/same-mtime substitution before a new open, old descriptor
+delivery without reopening, wrong selection, cancellation, stale index
+after rescan, symlink substitution, and unavailable legacy Windows identity.

@@ -1,5 +1,6 @@
 mod cue;
 mod decoded;
+mod held_flac;
 mod mapping;
 mod relocate;
 mod scan;
@@ -13,6 +14,7 @@ use crate::{
     Error, Result,
     storage::{OperationLock, StateStore},
 };
+pub use held_flac::IndexedFlacReceipt;
 pub use mapping::{LocalMapping, MappingSource};
 pub(crate) use relocate::{delete_completed_download, relocate_download};
 use std::{collections::BTreeMap, path::PathBuf, sync::Arc};

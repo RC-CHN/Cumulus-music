@@ -10,7 +10,7 @@ pub(crate) mod native_open;
 pub mod probe;
 mod records;
 mod types;
-pub use index::{LocalLibrary, LocalMapping, MappingSource};
+pub use index::{IndexedFlacReceipt, LocalLibrary, LocalMapping, MappingSource};
 pub(crate) use index::{delete_completed_download, relocate_download};
 pub use records::{
     LibraryItem, ListOptions, LocalResource, LocalRevision, LocalSegment, LocalSource, ScanIssue,
