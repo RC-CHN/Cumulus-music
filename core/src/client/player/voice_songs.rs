@@ -1,5 +1,6 @@
 //! 「包含歌曲」 card and scoped song actions from a bound current episode.
 mod actions;
+mod download;
 mod likes;
 mod selection;
 use super::{
@@ -19,6 +20,7 @@ use crate::{
 pub(super) use actions::Host;
 pub use actions::VoiceSongAction;
 use actions::{Page, Row};
+pub use download::{VoiceSongDownloadDecision, VoiceSongDownloadPlan};
 pub use selection::{VoiceSongSelectionAction, VoiceSongSelectionKind};
 use serde::Serialize;
 use serde_json::Value;
@@ -223,6 +225,7 @@ fn track(row: &Value) -> Result<Option<Row>> {
         .or_else(|| status.as_str()?.trim().parse().ok())
         .is_some_and(|status| status < 0.0);
     Ok(Some(Row {
+        download: download::classify(row, &track.id),
         track,
         online_eligible,
         copyright_blocked,

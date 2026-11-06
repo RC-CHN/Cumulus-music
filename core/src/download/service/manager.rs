@@ -237,15 +237,44 @@ impl DownloadService {
         origin: DownloadOrigin,
         song: Option<Value>,
     ) -> Result<DownloadTask> {
+        self.create_default_from_with(song_id, options, origin, song, None)
+    }
+
+    pub(crate) fn create_guarded_song(
+        &self,
+        song_id: &Value,
+        options: DownloadOptions,
+        permission: &dyn Fn() -> Result<()>,
+    ) -> Result<DownloadTask> {
+        self.create_default_from_with(
+            song_id,
+            options,
+            DownloadOrigin::Song,
+            None,
+            Some(permission),
+        )
+    }
+
+    fn create_default_from_with(
+        &self,
+        song_id: &Value,
+        options: DownloadOptions,
+        origin: DownloadOrigin,
+        song: Option<Value>,
+        permission: Option<&dyn Fn() -> Result<()>>,
+    ) -> Result<DownloadTask> {
         let _directory = directory_gate::lock(&self.store, &self.owner)?;
         self.guard(&self.session.token()?)?;
+        if let Some(permission) = permission {
+            permission()?;
+        }
         directory_gate::require(&self.store, &self.owner, None)?;
         let settings: crate::download::directory::DirectorySettings = serde_json::from_value(
             self.store
                 .get(&self.owner, directory_gate::SETTINGS, "settings")?
                 .ok_or(Error::State("download directory is not configured"))?,
         )?;
-        self.create_inner(
+        self.create_inner_with(
             song_id,
             DownloadDestination::Named {
                 root: settings.root,
@@ -255,6 +284,7 @@ impl DownloadService {
             options,
             origin,
             song,
+            permission,
         )
     }
     pub fn create(
@@ -269,10 +299,22 @@ impl DownloadService {
     pub(super) fn create_inner(
         &self,
         song_id: &Value,
+        destination: DownloadDestination,
+        options: DownloadOptions,
+        origin: DownloadOrigin,
+        song: Option<Value>,
+    ) -> Result<DownloadTask> {
+        self.create_inner_with(song_id, destination, options, origin, song, None)
+    }
+
+    fn create_inner_with(
+        &self,
+        song_id: &Value,
         mut destination: DownloadDestination,
         mut options: DownloadOptions,
         origin: DownloadOrigin,
         song: Option<Value>,
+        permission: Option<&dyn Fn() -> Result<()>>,
     ) -> Result<DownloadTask> {
         let token = self.session.token()?;
         self.guard(&token)?;
@@ -357,7 +399,10 @@ impl DownloadService {
             lyric: None,
         };
         files::sync(&task.root)?;
-        if let Err(e) = self.save_current(&token, &task) {
+        let saved = permission
+            .map_or(Ok(()), |permission| permission())
+            .and_then(|()| self.save_current(&token, &task));
+        if let Err(e) = saved {
             if files::work(&task).is_ok() {
                 let _ = fs::remove_dir(&work);
             }
@@ -463,4 +508,60 @@ fn valid_id(id: &str) -> Result<()> {
         return Err(Error::InvalidInput("invalid download task ID"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod admission_tests {
+    use super::*;
+    use crate::{
+        download::directory::DownloadDirectory,
+        protocol::api::{Api, ApiFuture},
+    };
+    use serde_json::json;
+    use std::cell::Cell;
+
+    struct Closed;
+    impl Api for Closed {
+        fn request<'a>(&'a self, _: &'a str, _: Value, _: bool) -> ApiFuture<'a, Value> {
+            Box::pin(async { panic!("admission must not authorize a download") })
+        }
+    }
+
+    #[test]
+    fn stale_guard_after_work_directory_preparation_leaves_no_task_or_staged_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let store = Arc::new(StateStore::open(temp.path().join("state")).unwrap());
+        let session = Arc::new(AccountSession::new(Arc::new(Closed), Some(store.clone())));
+        session
+            .adopt(
+                Arc::new(Closed),
+                json!({"userId":25}),
+                &session.token().unwrap(),
+            )
+            .unwrap();
+        let out = temp.path().join("out");
+        DownloadDirectory::new(session.clone())
+            .unwrap()
+            .configure(&out, 0, 0)
+            .unwrap();
+        let service = DownloadService::new(session).unwrap();
+        let seen = Cell::new(0);
+        let result = service.create_guarded_song(&json!(301), DownloadOptions::default(), &|| {
+            let step = seen.get() + 1;
+            seen.set(step);
+            if step == 1 {
+                assert_eq!(fs::read_dir(&out).unwrap().count(), 0);
+                Ok(())
+            } else {
+                assert_eq!(step, 2);
+                assert_eq!(fs::read_dir(&out).unwrap().count(), 1);
+                assert!(store.values("25", KIND).unwrap().is_empty());
+                Err(Error::StaleResponse)
+            }
+        });
+        assert!(matches!(result, Err(Error::StaleResponse)));
+        assert_eq!(seen.get(), 2);
+        assert!(store.values("25", KIND).unwrap().is_empty());
+        assert_eq!(fs::read_dir(&out).unwrap().count(), 0);
+    }
 }

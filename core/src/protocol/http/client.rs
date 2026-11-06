@@ -185,14 +185,24 @@ impl MusicHttpClient {
     }
 
     fn check_song_like_scope(&self, current: &RequestCredentials, signed_pc: bool) -> Result<()> {
-        let cookie = current.unique_music_u().ok_or(Error::CredentialChanged)?;
-        let origin = self.credentials.origin();
         // These ordinary paths are EAPI for every supported routing policy.
         // Equal revisions alone do not establish equality of URL-scoped jars.
-        for path in ["/api/w/nuser/account/get", "/api/song/like/get"]
-            .into_iter()
-            .chain(signed_pc.then_some(crate::protocol::pc_experiments::ASSIGNMENT_PATH))
-        {
+        self.check_account_cookie_scope(
+            current,
+            ["/api/w/nuser/account/get", "/api/song/like/get"]
+                .into_iter()
+                .chain(signed_pc.then_some(crate::protocol::pc_experiments::ASSIGNMENT_PATH)),
+        )
+    }
+
+    fn check_account_cookie_scope<'a>(
+        &self,
+        current: &RequestCredentials,
+        paths: impl IntoIterator<Item = &'a str>,
+    ) -> Result<()> {
+        let cookie = current.unique_music_u().ok_or(Error::CredentialChanged)?;
+        let origin = self.credentials.origin();
+        for path in paths {
             let target = origin.request_url(WireRoute::Eapi, path)?;
             let other = self.credentials.request_credentials(&target)?;
             if other.revision != current.revision
@@ -1255,6 +1265,27 @@ impl Api for MusicHttpClient {
         }
         self.check_song_like_scope(&current, signed_pc)?;
         Ok(Some(current.revision))
+    }
+
+    fn song_card_download_scope_revision(&self) -> Result<Option<String>> {
+        let revision = self.pc_experiment_revision()?;
+        let target = self
+            .credentials
+            .origin()
+            .request_url(WireRoute::Eapi, "/api/song/enhance/download/url/v1")?;
+        let current = self.credentials.request_credentials(&target)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_account_cookie_scope(
+            &current,
+            [
+                "/api/w/nuser/account/get",
+                "/api/song/like/get",
+                crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+            ],
+        )?;
+        Ok(Some(revision))
     }
 
     fn request_guarded_song_like<'a>(

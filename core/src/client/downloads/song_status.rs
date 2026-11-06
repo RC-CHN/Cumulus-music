@@ -1,6 +1,10 @@
 //! The player observes local download state in the song or voice namespace.
 use super::MusicClient;
-use crate::{Error, Result, protocol::api::identifier, storage::PlaybackDownloadKind};
+use crate::{
+    Error, Result,
+    protocol::api::identifier,
+    storage::{PlaybackDownloadKind, StateStore},
+};
 use serde::Serialize;
 use serde_json::json;
 
@@ -13,6 +17,36 @@ pub enum SongDownloadState {
     Complete,
     Waiting,
     Working,
+}
+
+pub(super) fn download_state(
+    store: &StateStore,
+    owner: &str,
+    id: &str,
+    kind: PlaybackDownloadKind,
+) -> Result<SongDownloadState> {
+    Ok(store
+        .playback_download_rows(owner, id, kind)?
+        .into_iter()
+        .map(|row| match row.status.as_str() {
+            "queued" => SongDownloadState::Waiting,
+            "authorizing" | "downloading" | "processing" | "cancelling" => {
+                SongDownloadState::Working
+            }
+            "complete" if row.moving => SongDownloadState::Working,
+            "complete"
+                if row.path.is_some_and(|path| {
+                    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file())
+                }) =>
+            {
+                SongDownloadState::Complete
+            }
+            "paused" => SongDownloadState::Paused,
+            "error" => SongDownloadState::Failed,
+            _ => SongDownloadState::None,
+        })
+        .max()
+        .unwrap_or(SongDownloadState::None))
 }
 
 impl MusicClient {
@@ -41,28 +75,7 @@ impl MusicClient {
         let owner = session.with_token(&token, |uid| Ok(uid.to_owned()))?;
         let store = self.downloads.inner.store.clone();
         tokio::task::spawn_blocking(move || {
-            let state = store
-                .playback_download_rows(&owner, &id, kind)?
-                .into_iter()
-                .map(|row| match row.status.as_str() {
-                    "queued" => SongDownloadState::Waiting,
-                    "authorizing" | "downloading" | "processing" | "cancelling" => {
-                        SongDownloadState::Working
-                    }
-                    "complete" if row.moving => SongDownloadState::Working,
-                    "complete"
-                        if row.path.is_some_and(|path| {
-                            std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_file())
-                        }) =>
-                    {
-                        SongDownloadState::Complete
-                    }
-                    "paused" => SongDownloadState::Paused,
-                    "error" => SongDownloadState::Failed,
-                    _ => SongDownloadState::None,
-                })
-                .max()
-                .unwrap_or(SongDownloadState::None);
+            let state = download_state(&store, &owner, &id, kind)?;
             session.with_token(&token, |_| Ok(state))
         })
         .await

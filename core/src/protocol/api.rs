@@ -331,6 +331,12 @@ pub trait Api: Send + Sync + std::any::Any {
         Ok(None)
     }
 
+    /// A native signed SongCard download uses the same account as the card,
+    /// membership read, and ordinary download authorization endpoint.
+    fn song_card_download_scope_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
     /// Call permission and mark dispatched immediately before the transport
     /// starts the write. No generic request fallback can honor that boundary.
     fn request_guarded_song_like<'a>(

@@ -67,7 +67,7 @@ pub(super) struct AuthHost {
     pub(super) profile: ClientProfile,
     pub(super) context: Option<Arc<crate::protocol::context::RequestContext>>,
     pub(super) options: RequestOptions,
-    pending: Mutex<Option<PendingLogin>>,
+    pending: Arc<Mutex<Option<PendingLogin>>>,
     pub(super) backend: Option<Arc<dyn HttpBackend>>,
     guardian: Option<Arc<dyn LoginGuardian>>,
     device_name: Option<String>,
@@ -75,6 +75,16 @@ pub(super) struct AuthHost {
     renewal: renewal::RenewalHost,
 }
 impl AuthHost {
+    pub(super) fn pending_guard(&self) -> impl Fn() -> Result<()> + Send + Sync + 'static + use<> {
+        let pending = self.pending.clone();
+        move || {
+            if login_pending(&pending)? {
+                return Err(Error::StaleResponse);
+            }
+            Ok(())
+        }
+    }
+
     fn replace(&self, pending: PendingLogin) -> Result<()> {
         let mut slot = self.pending.lock().map_err(|_| Error::LockPoisoned)?;
         if let Some(previous) = slot.as_ref() {
@@ -84,6 +94,15 @@ impl AuthHost {
         Ok(())
     }
 }
+
+fn login_pending(pending: &Mutex<Option<PendingLogin>>) -> Result<bool> {
+    pending
+        .lock()
+        .map_err(|_| Error::LockPoisoned)?
+        .as_ref()
+        .map_or(Ok(false), |p| p.authenticated().map(|done| !done))
+}
+
 impl MusicClient {
     /// Native opt-in; no renderer command and no production startup until
     /// the host has verified this lane independently of JSK renewal.
@@ -181,12 +200,7 @@ impl MusicClient {
         Ok(token)
     }
     pub(super) fn login_pending(&self) -> Result<bool> {
-        self.auth
-            .pending
-            .lock()
-            .map_err(|_| Error::LockPoisoned)?
-            .as_ref()
-            .map_or(Ok(false), |p| p.authenticated().map(|done| !done))
+        login_pending(&self.auth.pending)
     }
     pub fn cancel_login(&self, id: &str) -> Result<()> {
         self.cancel_login_parts(id, false).map(|_| ())

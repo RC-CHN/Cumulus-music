@@ -1,4 +1,6 @@
 use super::{HttpResponse, ScriptHttp, gate, playback, reply, vinyl_http_with_credentials};
+#[path = "voice_songs/download.rs"]
+mod download;
 #[path = "voice_songs/likes.rs"]
 mod likes;
 #[path = "voice_songs/selection.rs"]

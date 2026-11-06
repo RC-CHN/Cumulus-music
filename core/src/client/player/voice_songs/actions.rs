@@ -70,6 +70,7 @@ pub(super) struct Row {
     pub(super) track: TrackView,
     pub(super) online_eligible: bool,
     pub(super) copyright_blocked: bool,
+    pub(super) download: super::download::Class,
 }
 
 impl Row {
