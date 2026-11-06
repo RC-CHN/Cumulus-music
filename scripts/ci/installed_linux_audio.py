@@ -563,7 +563,7 @@ def mapped_regular_file(maps, path):
 
 def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None,
                     verify_monitor_pcm=False, accessibility=None, *, indexed_flac_library=None,
-                    indexed_flac_block_size=None):
+                    indexed_flac_block_size=None, verify_indexed_playback_speeds=False):
     assert (width, height) == (1120, 760), 'local playback coordinates require the ordinary 1120x760 X11 layout'
     database = root/'state/core.sqlite3'
 
@@ -637,8 +637,9 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
 
     monitor = {}
     observations = {}
+    speed_observations = {}
 
-    def capture_tone(stage, timing=None):
+    def capture_tone(stage, timing=None, *, require_continuity=True):
         windows = [] if indexed_flac_library else None
         result = sink_tone(env, windows=windows, capture=capture_monitor)
         monitor[stage] = result
@@ -649,7 +650,7 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         # without retaining PCM or recording anything outside the private sink.
         (root/'monitor-pcm-observations.json').write_text(
             json.dumps(observations, indent=2) + '\n', encoding='utf-8')
-        if windows is not None and stage not in {'indexedStopped', 'paused'}:
+        if windows is not None and require_continuity and stage not in {'indexedStopped', 'paused'}:
             assert result['longestZeroRunFrames'] < 48, f'{stage} dropped at least 1 ms of fixture PCM'
         return result
 
@@ -780,6 +781,73 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             assert indexed_flac_mapped(), 'master bypass retired the trusted indexed decoder'
             screenshot('installed-indexed-bypassed.png')
             equalizer_key('关闭均衡器', button_roles, 'Return')
+            if verify_indexed_playback_speeds:
+                def stored_speed():
+                    with closing(sqlite3.connect(database.as_uri()+'?mode=ro', uri=True, timeout=.5)) as db:
+                        row = db.execute("SELECT value FROM state WHERE owner='local-guest' "
+                                         "AND kind='playback' AND key='preferences'").fetchone()
+                    return json.loads(row[0])['speed'] if row else None
+
+                def change_speed(rate):
+                    activate('播放速度', (*button_roles, accessibility.Role.TOGGLE_BUTTON))
+                    activate(f'{rate}×', (accessibility.Role.RADIO_MENU_ITEM, accessibility.Role.MENU_ITEM))
+                    wait_for(f'playback speed {rate}× persisted', lambda: stored_speed() == rate)
+
+                def measure_speed(label, rate):
+                    assert stored_speed() == rate
+                    timing = committed_progress(label)
+                    screenshot(f'installed-{label}.png')
+                    start = time.monotonic()
+                    tone = capture_tone(label, timing, require_continuity=False)
+                    after = wait_for(f'{label}: source progressed during monitor capture',
+                                     lambda: position('playing', timing['beforeCapture'] + .25))
+                    assert after['entry_id'] == selected['entry_id'] and indexed_flac_mapped()
+                    observed = (after['seconds'] - timing['beforeCapture']) / (time.monotonic() - start)
+                    speed_observations[label] = {
+                        'persistedSpeed': rate, 'sameIndexedEntry': True,
+                        'beforeCapture': timing['beforeCapture'], 'afterCapture': after['seconds'],
+                        'observedSourceSecondsPerSecond': round(observed, 3),
+                        'rms': tone['rms'], 'longestZeroRunFrames': tone['longestZeroRunFrames'],
+                    }
+                    (root/'speed-observations.json').write_text(
+                        json.dumps(speed_observations, indent=2) + '\n', encoding='utf-8')
+
+                change_speed(2)
+                measure_speed('indexedSpeed2', 2)
+                change_speed(4)
+                measure_speed('indexedSpeed4', 4)
+
+                activate('暂停', button_roles)
+                held_before_seek = wait_for('4× source paused', lambda: position('paused', 4.0))
+                assert held_before_seek['entry_id'] == selected['entry_id']
+                focus_installed_control(accessibility, app, '播放进度', sliders)
+                inputs.key('Home')
+
+                def at_start_paused():
+                    paused = position('paused', -1.0)
+                    return paused if paused and paused['seconds'] < .1 else None
+
+                sought = wait_for('4× source seek to start while paused', at_start_paused)
+                assert sought['entry_id'] == selected['entry_id'] and stored_speed() == 4
+                activate('播放', button_roles)
+                measure_speed('indexedSpeed4AfterPausedSeek', 4)
+
+                # Keep a real graph after reselecting: the bypassed settings
+                # would otherwise admit the ordinary stock route on a new row.
+                inputs.click(1049, 722)
+                equalizer_key(master, master_roles, 'space')
+                wait_for('tone reactivated before new 4× selection', lambda: tone_saved(10, 10))
+                equalizer_key('关闭均衡器', button_roles, 'Return')
+                activate('停止播放', button_roles)
+                wait_for('4× source detached from the private sink',
+                         lambda: private_pipewire_stream(app.pid, env) is False, 6)
+                old_entry = selected['entry_id']
+                activate(row_action, button_roles)
+                selected = wait_for('new native indexed selection with saved 4×',
+                                    lambda: position('playing', .15, different_entry=old_entry))
+                measure_speed('indexedSpeed4FreshSelection', 4)
+                change_speed(1)
+                measure_speed('indexedSpeed1Restored', 1)
         if packaged_filter:
             inputs.click(1049, 722)  # EQ in the playback footer.
             equalizer_key('均衡器预设', (accessibility.Role.COMBO_BOX,), 'Down')
@@ -885,6 +953,12 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
         if verify_monitor_pcm:
             capture_tone('paused')
             assert monitor['paused']['rms'] < baseline['rms'] * .01, 'private sink was not silent after pause'
+    if verify_indexed_playback_speeds:
+        assert len(speed_observations) == 5 and all(
+            sample['rms'] > 50 and sample['longestZeroRunFrames'] < 48
+            and sample['observedSourceSecondsPerSecond'] > sample['persistedSpeed'] * .55
+            for sample in speed_observations.values()
+        ), f'indexed speed output was not continuous: {speed_observations}'
     report = {'nativePositionAdvanced': True, 'pauseHeld': True, 'syntheticLocalSource': True,
             'privatePipeWireNullSink': True, 'physicalAudioOutputVerified': False,
             'firstSeconds': first['seconds'], 'laterSeconds': next_position['seconds'],
@@ -900,6 +974,8 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
     if packaged_filter:
         report.update(equalizerPresetCommitted=True, installedFilterMapped=True,
                       sameTrackAdvancedWithEqualizer=True)
+    if speed_observations:
+        report['indexedPlaybackSpeeds'] = speed_observations
     if indexed_flac_library:
         report['indexedFlacEqualizer'] = {
             'ordinaryLibraryRow': True, 'freshEntryAfterStop': True, 'sameIndexedResource': True,
