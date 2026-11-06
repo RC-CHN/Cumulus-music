@@ -23,6 +23,7 @@ pub struct QueueMoreSong {
     pub album_id: Option<String>,
     pub album_name: String,
     pub cover_url: Option<String>,
+    pub(crate) title_names: super::metadata::SongTitleNames,
     /// Native correlation from data.algMap. Never submit it with the
     /// privilege read or include it in a renderer projection.
     pub algorithm: Option<String>,
@@ -179,6 +180,7 @@ fn project_songs(data: &Value) -> Result<Vec<QueueMoreSong>> {
                 album_name: bounded_text(&album["name"], 4096).unwrap_or_default(),
                 cover_url: artwork::square(&album["cover"])
                     .or_else(|| artwork::square(&album["picUrl"])),
+                title_names: super::metadata::SongTitleNames::from_song(row),
                 // The first response cannot confer rights.
                 privilege: None,
             })

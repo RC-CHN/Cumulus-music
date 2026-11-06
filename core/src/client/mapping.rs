@@ -1,11 +1,8 @@
 use super::dto::{
     ArtistReference, PlaylistHeaderDate, PlaylistHeaderDateKind, PlaylistView, TrackView,
 };
-use crate::{Error, Result, protocol::api::identifier};
+use crate::{Error, Result, catalog::metadata::SongTitleNames, protocol::api::identifier};
 use serde_json::Value;
-
-mod title_names;
-pub(crate) use title_names::SongTitleNames;
 
 pub(super) use crate::protocol::artwork::square as artwork;
 pub(super) fn string(value: &Value) -> String {
@@ -108,8 +105,8 @@ pub(super) fn online_play_all_eligible(row: &Value) -> bool {
             .is_some_and(|flag| flag & (1 << 10) != 0)
 }
 
-/// Queue metadata uses the same whitelist as public track cards. The raw song
-/// response may contain signed media links, which do not belong in the queue.
+/// Whitelist catalog metadata for native queues. Signed media links stay out;
+/// bounded title arrays stay native until the selected-player projection.
 pub(super) fn song_metadata(value: &Value) -> Result<Value> {
     let view = track(value)?;
     Ok(projected_song_metadata(&view))

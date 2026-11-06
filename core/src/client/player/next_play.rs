@@ -67,9 +67,7 @@ impl MusicClient {
             .ok_or(Error::State("selected song is unavailable"))?;
         let view = mapping::track(&song)?;
         let resource = json!({"id":id,"level":quality.as_str(),"dt":view.duration_ms,
-            "song":{"id":view.id,"name":view.name,"dt":view.duration_ms,"fee":view.fee,
-            "ar":view.artist_refs.iter().map(|a|json!({"id":a.id,"name":a.name})).collect::<Vec<_>>(),
-            "al":{"id":view.album_id,"name":view.album,"picUrl":view.cover_url}}});
+            "song":mapping::projected_song_metadata(&view)});
         let existing = queue
             .items
             .iter()

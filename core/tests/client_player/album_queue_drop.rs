@@ -31,7 +31,12 @@ async fn album_drag_resolves_native_order_without_requests_or_replacing_paused_p
     *api.album_tracks.lock().unwrap() = Some(vec![
         album_song(2, "专辑中的当前歌曲"),
         album_song(4, "专辑先显示"),
-        album_song(5, "专辑后显示"),
+        {
+            let mut row = album_song(5, "专辑后显示");
+            row["tns"] = json!(["专辑行译名", "第二译名"]);
+            row["alia"] = json!(["隐藏的备用别名"]);
+            row
+        },
     ]);
     let album = client
         .catalog_page("1", CatalogQuery::Album { id: "7".into() }, true)
@@ -128,6 +133,14 @@ async fn album_drag_resolves_native_order_without_requests_or_replacing_paused_p
                 .contains("synthetic-private")
         );
     }
+    assert_eq!(
+        persisted.items[1].resource["song"]["tns"],
+        json!(["专辑行译名", "第二译名"])
+    );
+    assert_eq!(
+        persisted.items[1].resource["song"]["alia"],
+        json!(["隐藏的备用别名"])
+    );
     assert_ne!(persisted.items[2].source["kind"], "album");
     assert!(matches!(
         client
@@ -150,6 +163,10 @@ async fn album_drag_resolves_native_order_without_requests_or_replacing_paused_p
         )
         .await
         .unwrap();
+    assert_eq!(
+        selected.title_alias.as_deref(),
+        Some("专辑行译名；第二译名")
+    );
     assert_eq!(
         serde_json::to_value(selected.origin).unwrap(),
         json!({"kind":"album","id":"7"})

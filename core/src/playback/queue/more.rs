@@ -115,6 +115,7 @@ mod tests {
                 album_id: None,
                 album_name: String::new(),
                 cover_url: None,
+                title_names: Default::default(),
                 algorithm: Some("never public".into()),
                 privilege: None,
             },

@@ -160,6 +160,7 @@ pub(crate) fn recommended(song: QueueMoreSong, level: &str) -> QueueEntry {
         "fee":song.fee,"ar":song.artists.iter().map(|artist| json!({
             "id":artist.id,"name":artist.name})).collect::<Vec<_>>(),
         "al":{"id":song.album_id,"name":song.album_name,"picUrl":song.cover_url}});
+    song.title_names.write_queue_fields(&mut track);
     if let Some(privileges) = privileges {
         track["privilege"] = privileges;
     }

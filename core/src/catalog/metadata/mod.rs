@@ -3,10 +3,12 @@
 mod album;
 mod artist;
 mod media;
+mod song_title_names;
 pub use album::AlbumMetadata;
 pub use artist::{ArtistCredit, ArtistMetadata};
 pub use media::{ConcertDate, ConcertMetadata, VideoCardMetadata, VideoKind};
 use serde_json::Value;
+pub(crate) use song_title_names::SongTitleNames;
 
 fn text(value: &Value) -> String {
     value.as_str().unwrap_or_default().to_owned()

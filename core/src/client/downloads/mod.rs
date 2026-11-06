@@ -347,11 +347,12 @@ impl MusicClient {
                     crate::download::service::DownloadOrigin::Voice { voice_id } => Some(voice_id),
                     _ => None,
                 };
+                let mut song = super::mapping::projected_song_metadata(&track);
+                song["voice_id"] = serde_json::json!(track.voice_id);
                 resources.push(serde_json::json!({"id":task.song_id,"cloud_song_id":if task.origin.is_cloud(){Some(task.song_id.clone())}else{None},"download_task_id":task.id,"path":path,"dt":track.duration_ms,
                     "download_voice_id":download_voice_id,
                     "voice":metadata["voice"],
-                    "level":task.options.quality.as_str(),"song":{"id":track.id,"name":track.name,"ar":track.artist_refs.iter().map(|artist|serde_json::json!({"id":artist.id,"name":artist.name})).collect::<Vec<_>>(),
-                    "al":{"id":track.album_id,"name":track.album,"picUrl":track.cover_url},"voice_id":track.voice_id,"dt":track.duration_ms,"fee":track.fee}}));
+                    "level":task.options.quality.as_str(),"song":song}));
             }
             context.guard()?;Ok(resources)
         }).await.map_err(|_|Error::State("local selection worker stopped"))?

@@ -633,9 +633,7 @@ pub(super) fn queue_resource_for_track(
     quality: Quality,
 ) -> Value {
     json!({"id":v.id,"level":quality.as_str(),"dt":v.duration_ms,
-    "song":{"id":v.id,"name":v.name,"dt":v.duration_ms,"fee":v.fee,
-    "ar":v.artist_refs.iter().map(|a|json!({"id":a.id,"name":a.name})).collect::<Vec<_>>(),
-    "al":{"id":v.album_id,"name":v.album,"picUrl":v.cover_url}}})
+        "song":mapping::projected_song_metadata(v)})
 }
 
 fn resource_key(resource: &Value, downloaded: bool) -> Option<(PlayerResourceKind, &str)> {

@@ -5,9 +5,12 @@ use std::collections::BTreeSet;
 
 pub(super) fn resource(row: CloudTrackView, quality: Quality) -> Value {
     let track = row.track;
+    let mut song = json!({"id":track.id,"name":track.name,
+        "ar":track.artists.iter().map(|name|json!({"name":name})).collect::<Vec<_>>(),
+        "al":{"name":track.album,"picUrl":track.cover_url},"dt":track.duration_ms,"fee":track.fee});
+    track.title_names.write_queue_fields(&mut song);
     json!({"id":track.id,"cloud_song_id":track.id,"level":quality.as_str(),"dt":track.duration_ms,
-        "song":{"id":track.id,"name":track.name,"ar":track.artists.iter().map(|name|json!({"name":name})).collect::<Vec<_>>(),
-        "al":{"name":track.album,"picUrl":track.cover_url},"dt":track.duration_ms,"fee":track.fee}})
+        "song":song})
 }
 
 impl MusicClient {

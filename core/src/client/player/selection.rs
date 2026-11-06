@@ -986,11 +986,7 @@ impl MusicClient {
                 })
                 .await?;
             for (id, song) in chunk.iter().zip(songs.songs) {
-                let song= song.map(|song| {
-                    let view=mapping::track(&song)?;
-                    Ok::<_,Error>(json!({"id":view.id,"name":view.name,"ar":view.artist_refs.iter().map(|artist|json!({"id":artist.id,"name":artist.name})).collect::<Vec<_>>(),
-                        "al":{"id":view.album_id,"name":view.album,"picUrl":view.cover_url},"dt":view.duration_ms,"fee":view.fee}))
-                }).transpose()?;
+                let song = song.as_ref().map(mapping::song_metadata).transpose()?;
                 let mut resource = json!({"id":id,"level":quality.as_str(),"dt":song.as_ref().map(|s|&s["dt"]),"missing":song.is_none(),"song":song});
                 if let Some(trial) = source.get("trial_mode") {
                     resource["trial_mode"] = trial.clone();

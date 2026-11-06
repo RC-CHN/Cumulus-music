@@ -243,7 +243,7 @@ pub struct TrackView {
     pub name: String,
     /// Native normalized metadata for typed queue materialization, not card IPC.
     #[serde(skip)]
-    pub(crate) title_names: super::mapping::SongTitleNames,
+    pub(crate) title_names: crate::catalog::metadata::SongTitleNames,
     pub artists: Vec<String>,
     pub artist_refs: Vec<ArtistReference>,
     pub album: String,

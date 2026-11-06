@@ -15,7 +15,7 @@ struct Arrays {
 }
 
 impl SongTitleNames {
-    pub(super) fn from_song(song: &Value) -> Self {
+    pub(crate) fn from_song(song: &Value) -> Self {
         // Official wire keys first, then the already-normalized track shape.
         // Album transName and an artist's textual alias are different fields.
         let translations = array(song, &["tns", "transNames"]);
@@ -38,7 +38,7 @@ impl SongTitleNames {
         (!text.is_empty()).then_some(text)
     }
 
-    pub(super) fn write_queue_fields(&self, song: &mut Value) {
+    pub(crate) fn write_queue_fields(&self, song: &mut Value) {
         let Some(fields) = self.0.as_ref() else {
             return;
         };
