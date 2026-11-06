@@ -816,12 +816,14 @@ jobs:
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-settings-windows --runtime .build/package-stage/windows-x64/native --relay-settings
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-publication-windows --runtime .build/package-stage/windows-x64/native --relay-publication
           python scripts/ci/catalog_smoke.py --binary .build/target/debug/examples/catalog_ui_probe.exe --root .build/ci-relay-recovery-windows --runtime .build/package-stage/windows-x64/native --relay-recovery
-      - name: Preserve Windows queue tip reopen failure receipt
+      - name: Preserve Windows queue tip failure receipts
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: queue-tip-reopen-failure-windows-x64
-          path: .build/ci-queue-more-tip-windows/reopen-failure-receipt.json
+          name: queue-tip-failure-receipts-windows-x64
+          path: |
+            .build/ci-queue-more-tip-windows/first-failure-receipt.json
+            .build/ci-queue-more-tip-windows/reopen-failure-receipt.json
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7

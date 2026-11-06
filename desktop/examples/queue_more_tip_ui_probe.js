@@ -34,6 +34,7 @@
     await wait(() => window.__queueTipFocusAck === request && document.hasFocus() === focus,
       'native focus switched to ' + focus);
     assert(document.visibilityState === 'visible', 'main window remains visible during focus test');
+    if (window.__queueTipPhaseMilestones) await milestone('focus_observed');
   }
   async function setPaused(paused) {
     await client.playerAction(epoch, { kind: 'pause', paused });
@@ -73,11 +74,12 @@
       eligible: view.queueMoreTipEligible === true, calls: calls.slice(), ...facts, captureHandshake: true,
     });
     await wait(() => window.__queueSelectionRecorded === stage, 'native observation: ' + label);
+    if (window.__queueTipPhaseMilestones && window.__queueTipReopen) await milestone('capture_acknowledged');
   }
   try {
-    if (window.__queueTipReopenMilestones) await milestone('renderer_enter');
+    if (window.__queueTipPhaseMilestones) await milestone('renderer_enter');
     await wait(() => button('列表循环') && !button('列表循环').disabled && one('.track-row'), 'Daily startup');
-    if (window.__queueTipReopenMilestones) await milestone('daily_ready');
+    if (window.__queueTipPhaseMilestones) await milestone('daily_ready');
     const provides = one('#app').__vue_app__._context.provides;
     client = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     epoch = (await client.accountSnapshot()).epoch;
@@ -96,34 +98,33 @@
       calls.push({ kind: action.kind, granted: result !== null, at: started });
       return result;
     };
-    if (window.__queueTipReopenMilestones) await milestone('daily_load_begin');
+    if (window.__queueTipPhaseMilestones) await milestone('daily_load_begin');
     one('.track-row').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     await wait(() => track() === '1' && state() === 'playing' && position() > .15, 'actual Daily seed playback');
-    if (window.__queueTipReopenMilestones) await milestone('daily_playing');
+    if (window.__queueTipPhaseMilestones) await milestone('daily_playing');
     await setPaused(true);
     await open();
     await wait(async () => (await client.playerQueue(epoch)).tracks.some((row) => row.moreRecommendation),
       'two-read recommendation fixture');
     await close();
-    if (window.__queueTipReopenMilestones) await milestone('recommendations_loaded');
+    if (window.__queueTipPhaseMilestones) await milestone('recommendations_loaded');
 
     if (window.__queueTipReopen) {
       await setFocus(true);
-      if (window.__queueTipReopenMilestones) await milestone('focus_observed');
       await selectRecommendation('51');
-      if (window.__queueTipReopenMilestones) await milestone('recommendation_playing');
+      if (window.__queueTipPhaseMilestones) await milestone('recommendation_playing');
       await sleep(1350);
       // Native restore can already have rejected a pre-probe offer from the same UID.
       assert(!tip() && calls.length <= 1 && calls.every(({ kind, granted }) => kind === 'begin' && !granted) && !panel(),
         'same UID restart suppresses eligible early-window cue');
-      if (window.__queueTipReopenMilestones) await milestone('cue_check_begin');
+      if (window.__queueTipPhaseMilestones) await milestone('cue_check_begin');
       assert(await direct(epoch, { kind: 'begin', play_id: playId() }) === null, 'native restart guard denies cue');
-      if (window.__queueTipReopenMilestones) await milestone('cue_denied');
+      if (window.__queueTipPhaseMilestones) await milestone('cue_denied');
       await capture('restart_suppressed');
-      if (window.__queueTipReopenMilestones) await milestone('capture_acknowledged');
     } else {
       await setFocus(false);
       await selectRecommendation('51');
+      if (window.__queueTipPhaseMilestones) await milestone('recommendation_playing');
       await sleep(1250);
       assert(!tip() && calls.length === 0, 'unfocused renderer never requests the cue');
       assert(await direct(epoch, { kind: 'begin', play_id: playId() }) === null,
@@ -178,6 +179,7 @@
       assert(!tip(), 'queue control still opens normal drawer');
       await close();
       await selectRecommendation('52');
+      if (window.__queueTipPhaseMilestones) await milestone('second_recommendation_playing');
       await sleep(1300);
       assert(!tip() && calls.filter(({ kind }) => kind === 'begin').length === 1,
         'another recommendation in the same UID does not request or show cue');

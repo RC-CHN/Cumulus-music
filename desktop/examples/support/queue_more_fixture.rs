@@ -34,27 +34,30 @@ pub fn tip_enabled() -> bool {
     std::env::var_os("CUMULUS_QUEUE_MORE_TIP_PROOF").is_some()
 }
 
-/// Bounded stderr breadcrumbs from the isolated Windows reopen process.
-/// Flush immediately so an abrupt native process exit keeps the latest step.
-pub fn reopen_milestone(stage: &'static str) {
+/// Bounded stderr breadcrumbs for the isolated Windows cue processes.
+pub fn phase_milestone(stage: &'static str) {
     static COUNT: AtomicU8 = AtomicU8::new(0);
     if !cfg!(windows)
         || !tip_enabled()
-        || std::env::var_os("CUMULUS_PROOF_REOPEN").is_none()
         || COUNT
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
-                (count < 48).then_some(count + 1)
+                (count < 64).then_some(count + 1)
             })
             .is_err()
     {
         return;
     }
+    let phase = if std::env::var_os("CUMULUS_PROOF_REOPEN").is_some() {
+        "reopen"
+    } else {
+        "first"
+    };
     let mut stderr = std::io::stderr().lock();
-    let _ = writeln!(stderr, "queue-tip-reopen:{stage}");
+    let _ = writeln!(stderr, "queue-tip-{phase}:{stage}");
     let _ = stderr.flush();
 }
 
-pub fn renderer_reopen_milestone(stage: &str) {
+pub fn renderer_milestone(stage: &str) {
     let stage = match stage {
         "renderer_enter" => "renderer_enter",
         "daily_ready" => "daily_ready",
@@ -65,10 +68,25 @@ pub fn renderer_reopen_milestone(stage: &str) {
         "recommendation_playing" => "recommendation_playing",
         "cue_check_begin" => "cue_check_begin",
         "cue_denied" => "cue_denied",
+        "second_recommendation_playing" => "second_recommendation_playing",
         "capture_acknowledged" => "capture_acknowledged",
         _ => return,
     };
-    reopen_milestone(stage);
+    phase_milestone(stage);
+}
+
+pub fn capture_milestone(stage: &str) {
+    let stage = match stage {
+        "ux_01_unfocused" => "capture_written_unfocused",
+        "ux_02_at_zero" => "capture_written_at_zero",
+        "ux_03_past_window" => "capture_written_past_window",
+        "ux_04_shown" => "capture_written_shown",
+        "ux_05_seen" => "capture_written_seen",
+        "ux_06_another_rec" => "capture_written_another_rec",
+        "ux_01_restart_suppressed" => "capture_written_restart_suppressed",
+        _ => return,
+    };
+    phase_milestone(stage);
 }
 
 pub fn groups() -> Result<PcExperimentGroups> {

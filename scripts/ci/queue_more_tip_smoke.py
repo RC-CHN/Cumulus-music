@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 import sys
 
 from motion_smoke import launch
@@ -20,44 +21,61 @@ def read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
-REOPEN_MILESTONES = frozenset((
+MILESTONES = frozenset((
     'graphics_prepared', 'context_loaded', 'setup_enter', 'registry_opened',
+    'client_managed', 'proof_listener_installed',
     'main_window_build_enter', 'main_window_built', 'focus_helper_build_enter', 'focus_helper_built',
     'main_page_loaded', 'script_queued', 'renderer_enter', 'daily_ready', 'daily_load_begin',
     'audio_factory_enter', 'audio_factory_returned', 'daily_playing', 'recommendations_loaded',
     'focus_enter', 'focus_returned', 'focus_observed', 'recommendation_playing',
-    'cue_check_begin', 'cue_denied', 'capture_written', 'capture_acknowledged', 'complete_written',
-    'shutdown_stop_enter', 'shutdown_stop_returned', 'run_returned',
+    'cue_check_begin', 'cue_denied', 'second_recommendation_playing',
+    'capture_acknowledged', 'complete_written', 'shutdown_stop_enter',
+    'shutdown_stop_returned', 'run_returned',
 ))
-REOPEN_LOG_LIMIT = 256 * 1024
-REOPEN_MILESTONE_LIMIT = 48
+LOG_LIMIT = 256 * 1024
+MILESTONE_LIMIT = 64
+FAILURE_REASONS = frozenset((
+    'child_exit', 'renderer_failure', 'missing_complete', 'launch_timeout', 'launch_error',
+))
 
 
-def reopen_failure_receipt(root, code):
-    output = root / 'reopen'
-    with (root / 'reopen.log').open('rb') as log:
-        payload = log.read(REOPEN_LOG_LIMIT + 1)
-    prefix = b'queue-tip-reopen:'
+def phase_failure_receipt(root, phase, code, reason):
+    if phase not in PHASES or reason not in FAILURE_REASONS:
+        raise ValueError('unknown cue diagnostic phase or reason')
+    output = root / phase
+    try:
+        with (root / f'{phase}.log').open('rb') as log:
+            payload = log.read(LOG_LIMIT + 1)
+    except FileNotFoundError:
+        payload = b''
+    prefix = f'queue-tip-{phase}:'.encode('ascii')
+    labels = PHASES[phase]
+    allowed = MILESTONES | {f'capture_written_{label}' for label in labels}
     names = []
-    truncated = len(payload) > REOPEN_LOG_LIMIT
-    # A partial line at the read bound is not a reliable breadcrumb.
-    bounded = payload[:REOPEN_LOG_LIMIT]
-    if truncated:
-        bounded = bounded.rpartition(b'\n')[0]
+    truncated = len(payload) > LOG_LIMIT
+    # A trailing partial line is not proof the full breadcrumb was written.
+    bounded = payload[:LOG_LIMIT].rpartition(b'\n')[0]
     for line in bounded.splitlines():
-        if len(names) == REOPEN_MILESTONE_LIMIT:
+        if len(names) == MILESTONE_LIMIT:
             break
         if line.startswith(prefix):
             name = line[len(prefix):].decode('ascii', errors='replace')
-            if name in REOPEN_MILESTONES:
+            if name in allowed:
                 names.append(name)
-    status = code & 0xFFFFFFFF
-    receipt = dict(schema='cumulus-queue-tip-reopen-failure-v1', phase='reopen',
-                   windowsExitStatus=f'0x{status:08X}', stackOverflow=status == 0xC00000FD,
-                   milestones=names, milestoneLimitReached=len(names) == REOPEN_MILESTONE_LIMIT,
-                   logReadTruncated=truncated, stageWritten=(output / 'ux_01_restart_suppressed.json').is_file(),
-                   completeWritten=(output / 'complete.json').is_file(), failedWritten=(output / 'failed.json').is_file())
-    (root / 'reopen-failure-receipt.json').write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
+    status = None if code is None else code & 0xFFFFFFFF
+    stages = [label for index, label in enumerate(labels, 1)
+              if (output / f'ux_{index:02}_{label}.json').is_file()]
+    receipt = dict(schema='cumulus-queue-tip-failure-v2', phase=phase, reason=reason,
+                   windowsExitStatus=None if status is None else f'0x{status:08X}',
+                   stackOverflow=status == 0xC00000FD, milestones=names,
+                   lastMilestone=names[-1] if names else None,
+                   milestoneLimitReached=len(names) == MILESTONE_LIMIT,
+                   logReadTruncated=truncated, stageFilesPresent=stages,
+                   completeWritten=(output / 'complete.json').is_file(),
+                   failedWritten=(output / 'failed.json').is_file())
+    temporary = root / f'{phase}-failure-receipt.tmp'
+    temporary.write_text(json.dumps(receipt, indent=2) + '\n', encoding='utf-8')
+    temporary.replace(root / f'{phase}-failure-receipt.json')
     return receipt
 
 
@@ -149,20 +167,30 @@ def main():
     for phase, labels in PHASES.items():
         reopen = phase == 'reopen'
         script = root / f'{phase}.js'
-        trace_reopen = reopen and sys.platform == 'win32'
+        trace_windows = sys.platform == 'win32'
         script.write_text(f'window.__queueTipReopen={json.dumps(reopen)};\n'
-                          f'window.__queueTipReopenMilestones={json.dumps(trace_reopen)};\n' + source,
+                          f'window.__queueTipPhaseMilestones={json.dumps(trace_windows)};\n' + source,
                           encoding='utf-8')
         env['CUMULUS_UX_SCRIPT'] = str(script)
         if reopen:
             env['CUMULUS_PROOF_REOPEN'] = '1'
         output = root / phase
-        with (root / f'{phase}.log').open('x', encoding='utf-8') as log:
-            code = launch(args.binary.resolve(), env, log, output, args.screenshots)
+        try:
+            with (root / f'{phase}.log').open('x', encoding='utf-8') as log:
+                code = launch(args.binary.resolve(), env, log, output, args.screenshots)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            if trace_windows:
+                reason = 'launch_timeout' if isinstance(error, subprocess.TimeoutExpired) else 'launch_error'
+                print(json.dumps(phase_failure_receipt(root, phase, None, reason)), flush=True)
+            raise
         failure = output / 'failed.json'
-        if trace_reopen and (code != 0 or failure.is_file()):
-            print(json.dumps(reopen_failure_receipt(root, code)), flush=True)
-        assert not failure.exists(), failure.read_text(encoding='utf-8') if failure.exists() else ''
+        if trace_windows:
+            reason = ('child_exit' if code != 0 else 'renderer_failure' if failure.is_file()
+                      else 'missing_complete' if not (output / 'complete.json').is_file() else None)
+            if reason:
+                print(json.dumps(phase_failure_receipt(root, phase, code, reason)), flush=True)
+        assert not failure.exists(), (f'{phase} cue renderer reported failure' if trace_windows
+                                      else failure.read_text(encoding='utf-8') if failure.exists() else '')
         assert code == 0, f'{phase} cue probe exited {code}'
         complete = read(output / 'complete.json')
         assert complete['ok'] and complete['reopened'] == reopen and complete['count'] == len(labels)
