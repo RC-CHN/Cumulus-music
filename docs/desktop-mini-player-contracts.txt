@@ -159,3 +159,11 @@ mini_smoke.py 通过真实双 WebView、原生播放器、暂停时钟和 libmpv
 悬停/焦点不打开、点击不改音量、第二次点击收起、滑条零音量、再次打开保持零、
 滚轮、Escape、布局边界、普通底栏仍悬停/静音/恢复及过时票据拒绝。--shortcuts 验证显式键盘打开和同一
 播放实例的 5% 音量变化。合成音频不代表实体听感，无真实账号请求或写操作。
+
+隔离 Linux 验收 a52f92f7：Node 24.16.0 锁定依赖、格式、941 项测试与生产
+构建通过。真实 GTK/WebKit 与 libmpv/null 的 mini 主流程 21 阶段、快捷键 6
+阶段均通过，共 27 张原图；两进程 LC_NUMERIC=C、消息与字符为 en_US.UTF-8。
+两个播放音量原图已检查：同一 420×206 窗在暂停 10 秒时完整展示 100% 与
+0%，图标与状态吻合。主窗确认原有悬停、静音和恢复。报告分别在
+.build/ui-proof/phase96-mini-volume/mini-native-r1/report.json 与
+mini-shortcuts-r1/report.json；未验证 Windows 实际窗口或物理输出。
