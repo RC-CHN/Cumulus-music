@@ -168,3 +168,8 @@ macOS不在当前支持范围。Linux验证不能单独推出Windows选择器/�
   工作线程对会话总线的 FileManager1.ShowItems 传一个编码本地 URI；仅在总线或方法明确
   不可用时用 xdg-open 打开父目录，不能选中。超时、拒绝或其他不确定结果只报错，不重复
   启动。无父目录的卷根不作为可定位对象；不声称每个文件管理器行为相同。
+- Linux 在隔离 Tauri/WebKit 实测右键和键盘菜单、焦点回到原文件夹，以及定位失败提示。
+  私有 FileManager1 收到同一个原生解析的目录 URI 共四次；仅明确 UnknownMethod 才调用
+  一次模拟 xdg-open 打开父目录，拒绝和真实超时不重发。无真实文件管理器或音乐服务请求。
+  `scripts/ci/local_folder_reveal_smoke.py --screenshots` 的三张截图与回执保存在
+  `.build/ui-proof/phase82-folder-reveal-r2/`。Windows Explorer 实际选中项目仍待实机验证。
