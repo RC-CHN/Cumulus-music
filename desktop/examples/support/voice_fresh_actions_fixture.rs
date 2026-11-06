@@ -266,6 +266,7 @@ impl HttpBackend for Wire {
                 body_status: BodyStatus::Complete,
                 set_cookies: vec![],
                 refresh_token: None,
+                metadata: Default::default(),
             })
         })
     }
