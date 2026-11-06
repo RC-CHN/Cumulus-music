@@ -118,7 +118,7 @@ async fn album_drag_resolves_native_order_without_requests_or_replacing_paused_p
     for i in [1, 3] {
         assert_eq!(
             persisted.items[i].source,
-            json!({"kind":"album","id":"7","scene":"album"})
+            json!({"kind":"album","id":"7","scene":"album","source_name":"长专辑"})
         );
         assert!(persisted.items[i].resource["trial_mode"].is_null());
         assert!(
