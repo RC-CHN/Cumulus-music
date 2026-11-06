@@ -97,6 +97,10 @@ def check_badges(output, stages, complete, screenshots):
         assert [body for target, body in row['podcastBadgeTrace'] if target == detail] == known_details[:reads]
         assert [call for call in row['podcastBadgeTrace'] if call[0] == route] == known_clears[:clears]
         assert row['clearOutcomes'] == clear_outcomes[:3 if stage == 'no_replay' else clears]
+    check_library_capture(output, screenshots)
+
+
+def check_library_capture(output, screenshots):
     if sys.platform == 'linux':
         locale = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
         assert locale['numeric'] == 'C'
@@ -109,7 +113,7 @@ def check_badges(output, stages, complete, screenshots):
             paint = json.loads((output / f'paint-{stage}.json').read_text(encoding='utf-8'))
             assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples']), stage
 
-def check_recommendations(stages, complete):
+def check_recommendations(output, stages, complete, screenshots):
     assert set(stages) == {
         'recommended_first', 'recommended_next', 'recommended_detail', 'recommended_back',
     }, stages
@@ -123,6 +127,7 @@ def check_recommendations(stages, complete):
         '/api/djradio/my/radio/recommend', '/api/djradio/v3/get',
     ]), trace
     assert [row[1] for row in trace if row[0] == '/api/djradio/my/radio/recommend'] == [{}]
+    check_library_capture(output, screenshots)
 
 
 def main():
@@ -180,7 +185,7 @@ def main():
     if args.progress:
         check_progress(output, stages, complete)
     elif args.recommendations:
-        check_recommendations(stages, complete)
+        check_recommendations(output, stages, complete, args.screenshots)
     elif args.badges:
         check_badges(output, stages, complete, args.screenshots)
     else:
