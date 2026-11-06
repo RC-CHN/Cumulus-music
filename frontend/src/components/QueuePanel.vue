@@ -29,7 +29,7 @@ import { rowTop, rowExtent } from '../services/virtualWindow';
 import { displayedQueueMove } from '../services/queueSelection';
 import { failure } from '../services/contracts';
 import { useCore } from '../services/core';
-import { artistLabel } from '../services/artistLabel';
+import { queueArtistCredits } from '../services/playbackMetadata';
 import Icon from './Icon.vue';
 import ModalTransition from './ModalTransition.vue';
 import QueueClearDialog from './queue/QueueClearDialog.vue';
@@ -44,6 +44,7 @@ const emit = defineEmits<{
   login: [];
   discover: [];
   origin: [target: QueueOrigin];
+  artist: [id: string];
   together: [];
   cleared: [];
   refreshPlaylistSource: [event: MouseEvent];
@@ -90,7 +91,15 @@ const { container, start, end, onScroll, center } = useVirtualRows(
   8,
   () => expansion.value,
 );
-const visible = computed(() => queue.value?.tracks.slice(start.value, end.value) ?? []);
+const visible = computed(() => {
+  const displayed = queue.value;
+  return (
+    displayed?.tracks.slice(start.value, end.value).map((item) => ({
+      item,
+      credits: queueArtistCredits(item.track, displayed.fm),
+    })) ?? []
+  );
+});
 const currentEntry = computed(() => view.value?.entryId);
 const currentIndex = computed(() => {
   if (!queueCurrent.value || !currentEntry.value) return -1;
@@ -121,6 +130,9 @@ const collectionLocked = computed(
     !queue.value?.tracks.length,
 );
 const clearLocked = computed(() => locked.value || !!queue.value?.clearContext.issue);
+const navigationLocked = computed(
+  () => !queueCurrent.value || !!queueError.value || queueEditing.value,
+);
 const moreToggleLocked = computed(
   () => locked.value || queueMoreChanging.value || !moreRecommendations.value?.canToggle,
 );
@@ -470,12 +482,22 @@ async function activateRow(trigger: EventTarget | null, entryId: string, missing
     }
   } else await edit({ kind: 'select', entry_id: entryId });
 }
+function liveNavigationRow(row: QueueTrack) {
+  return (
+    props.player.queueOpen.value &&
+    !navigationLocked.value &&
+    queue.value?.tracks.find((entry) => entry.entryId === row.entryId) === row
+  );
+}
 function openOrigin(row: QueueTrack) {
-  const displayed = queue.value;
-  if (!displayed || !queueCurrent.value || queueError.value || queueEditing.value) return;
-  const current = displayed.tracks.find((entry) => entry.entryId === row.entryId);
-  if (current !== row || !row.origin) return;
-  emit('origin', row.origin);
+  if (liveNavigationRow(row) && row.origin) emit('origin', row.origin);
+}
+function openArtist(row: QueueTrack, id: string) {
+  if (
+    liveNavigationRow(row) &&
+    queueArtistCredits(row.track, !!queue.value?.fm).some(({ target }) => target?.id === id)
+  )
+    emit('artist', id);
 }
 function selectRow(event: MouseEvent, id: string) {
   // Pointer selection runs on down/up to preserve a group while dragging.
@@ -767,7 +789,7 @@ async function confirmClear(event: Event) {
       <div class="queue-items">
         <div :style="{ height: `${offset(start)}px` }" aria-hidden="true" />
         <div
-          v-for="(item, index) in visible"
+          v-for="({ item, credits }, index) in visible"
           :key="item.entryId"
           v-memo="[
             item,
@@ -775,9 +797,7 @@ async function confirmClear(event: Event) {
             currentEntry === item.entryId,
             currentQueueTransport === item.entryId,
             locked,
-            queueCurrent,
-            !!queueError,
-            queueEditing,
+            navigationLocked,
             queue.fm,
             queue.tracks.length,
             selected.has(item.entryId),
@@ -809,22 +829,22 @@ async function confirmClear(event: Event) {
           >
             <Icon :name="queuePlayLabel(item.entryId) === '暂停' ? 'pause' : 'play'" />
           </button>
-          <button
-            class="queue-song"
-            :disabled="locked"
-            :aria-pressed="selected.has(item.entryId)"
-            aria-keyshortcuts="Enter"
-            :title="
-              currentQueueTransport === item.entryId
-                ? '单击选择，双击或按 Enter 暂停或继续；Ctrl 多选，Shift 连选'
-                : '单击选择，双击或按 Enter 播放；Ctrl 多选，Shift 连选'
-            "
-            @pointerdown="drag.start($event, item.entryId)"
-            @dragstart.prevent
-            @click="selectRow($event, item.entryId)"
-            @dblclick="activateRow($event.currentTarget, item.entryId, item.track.missing)"
-          >
-            <span>
+          <div class="queue-song-body">
+            <button
+              class="queue-song"
+              :disabled="locked"
+              :aria-pressed="selected.has(item.entryId)"
+              aria-keyshortcuts="Enter"
+              :title="
+                currentQueueTransport === item.entryId
+                  ? '单击选择，双击或按 Enter 暂停或继续；Ctrl 多选，Shift 连选'
+                  : '单击选择，双击或按 Enter 播放；Ctrl 多选，Shift 连选'
+              "
+              @pointerdown="drag.start($event, item.entryId)"
+              @dragstart.prevent
+              @click="selectRow($event, item.entryId)"
+              @dblclick="activateRow($event.currentTarget, item.entryId, item.track.missing)"
+            >
               <span class="queue-song-title">
                 <strong class="ellipsis" :title="item.track.name">{{ item.track.name }}</strong>
                 <span
@@ -835,16 +855,30 @@ async function confirmClear(event: Event) {
                   ><span aria-hidden="true">荐</span><span class="sr-only">更多推荐</span></span
                 >
               </span>
-              <small class="ellipsis" :title="artistLabel(item.track)">{{
-                artistLabel(item.track)
-              }}</small>
-            </span>
-          </button>
+            </button>
+            <small class="queue-credits">
+              <template v-for="(credit, creditIndex) in credits" :key="creditIndex">
+                <span v-if="creditIndex" class="queue-credit-separator"> / </span>
+                <button
+                  v-if="credit.target"
+                  type="button"
+                  class="queue-artist ellipsis"
+                  :title="credit.name"
+                  :aria-label="`查看歌手：${credit.name}`"
+                  :disabled="navigationLocked"
+                  @click="openArtist(item, credit.target.id)"
+                >
+                  {{ credit.name }}
+                </button>
+                <span v-else class="ellipsis" :title="credit.name">{{ credit.name }}</span>
+              </template>
+            </small>
+          </div>
           <button
             v-if="item.origin"
             type="button"
             class="icon-button queue-origin"
-            :disabled="!queueCurrent || !!queueError || queueEditing"
+            :disabled="navigationLocked"
             title="来源"
             :aria-label="`来源：${item.track.name}`"
             @click="openOrigin(item)"

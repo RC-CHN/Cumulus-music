@@ -1888,7 +1888,7 @@ function discoverFromQueue() {
   }
   if (music.page.value.kind !== 'discovery_home') music.navigate({ kind: 'discovery_home' });
 }
-function openQueueOrigin(target: import('./services/player').QueueOrigin) {
+function navigateFromQueue(target: import('./services/player').QueueOrigin) {
   if (!player.queueOpen.value || !player.queueCurrent.value || music.initializing.value) return;
   const shown = page.value;
   if (target.kind === 'album' || target.kind === 'artist') {
@@ -5713,7 +5713,8 @@ onUnmounted(() => {
         @collect="collectQueue"
         @login="loginOpen = true"
         @discover="discoverFromQueue"
-        @origin="openQueueOrigin"
+        @origin="navigateFromQueue"
+        @artist="(id) => navigateFromQueue({ kind: 'artist', id })"
         @together="openTogetherFromQueue"
         @cleared="together.load(false, true)"
       />

@@ -803,22 +803,18 @@ input[type='range'] {
   font-size: 12px;
   pointer-events: none;
 }
-.queue-song {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+.queue-song-body {
+  position: relative;
   min-width: 0;
   flex: 1;
+}
+.queue-song {
+  display: block;
+  width: 100%;
   text-align: left;
-  padding: 8px;
+  padding: 8px 8px 27px;
   user-select: none;
   touch-action: pan-y;
-}
-.queue-song > span {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
 }
 .queue-song-title {
   display: flex;
@@ -839,9 +835,37 @@ input[type='range'] {
   font-size: 13px;
   font-weight: 400;
 }
-.queue-song small {
+.queue-credits {
+  position: absolute;
+  inset-inline: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
+  line-height: 16px;
+  white-space: pre;
+  pointer-events: none;
+}
+.queue-credits > .ellipsis {
+  min-width: 0;
+}
+.queue-artist {
+  pointer-events: auto;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+.queue-artist:not(:disabled):hover,
+.queue-artist:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.queue-artist:focus-visible {
+  outline-offset: -1px;
 }
 .queue-row time {
   font-size: 10px;

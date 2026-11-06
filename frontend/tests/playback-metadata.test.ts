@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { PlayerView } from '../src/services/player.ts';
-import { playbackMetadata, playbackSource } from '../src/services/playbackMetadata.ts';
+import {
+  playbackMetadata,
+  playbackSource,
+  queueArtistCredits,
+} from '../src/services/playbackMetadata.ts';
 
 test('playback details distinguish catalog-backed credits from plain names', () => {
   const track = {
@@ -28,6 +32,44 @@ test('playback details distinguish catalog-backed credits from plain names', () 
   assert.deepEqual(playbackMetadata({ ...track, artistRefs: [] }).artists, [
     { name: 'First', target: null },
     { name: 'Unlinked', target: null },
+  ]);
+});
+
+test('queue artist credits retain order and large IDs without turning local or voice metadata into links', () => {
+  const track: NonNullable<PlayerView['track']> = {
+    id: '1',
+    name: 'Song',
+    artists: ['First', 'Second', 'Name only'],
+    artistRefs: [
+      { id: '0012', name: 'First' },
+      { id: '900719925474099312345', name: 'Second' },
+      { id: null, name: 'Name only' },
+      { id: '0', name: 'Zero' },
+      { id: '/artist/12', name: 'Route text' },
+      { id: '15', name: '  ' },
+    ],
+    album: 'Album',
+    durationMs: 0,
+    fee: 0,
+    missing: false,
+    local: false,
+  };
+  const names = ['First', 'Second', 'Name only', 'Zero', 'Route text'];
+  const credits = queueArtistCredits(track, false);
+  assert.deepEqual(
+    credits.map(({ name }) => name),
+    names,
+  );
+  assert.deepEqual(
+    credits.map(({ target }) => target?.id ?? null),
+    ['0012', '900719925474099312345', null, null, null],
+  );
+  const textOnly = names.map((name) => ({ name, target: null }));
+  assert.deepEqual(queueArtistCredits(track, true), textOnly);
+  assert.deepEqual(queueArtistCredits({ ...track, local: true }, false), textOnly);
+  assert.deepEqual(queueArtistCredits({ ...track, voiceId: '12' }, false), textOnly);
+  assert.deepEqual(queueArtistCredits({ ...track, artists: [], artistRefs: [] }, false), [
+    { name: '未知歌手', target: null },
   ]);
 });
 
