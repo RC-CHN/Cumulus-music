@@ -1131,7 +1131,7 @@ fn main() {
                 let main=handle.get_webview_window("main").unwrap();
                 if value["stage"]=="queue-more-tip-focus" {
                     queue_more_fixture::phase_milestone("focus_enter");
-                    let helper=handle.get_webview_window("queue-tip-focus-helper").unwrap();
+                    let helper=handle.get_window("queue-tip-focus-helper").unwrap();
                     if value["focus"]==true { helper.hide().unwrap(); main.set_focus().unwrap(); }
                     else {helper.show().unwrap(); helper.set_focus().unwrap();}
                     let sequence=value["sequence"].as_u64().unwrap();
@@ -1630,6 +1630,16 @@ fn main() {
             if ["complete","failed"].contains(&stage.as_str()) {handle.exit(if stage=="complete" {0} else {1});}
         });
         queue_more_fixture::phase_milestone("proof_listener_installed");
+        if queue_more_fixture::tip_enabled() {
+            // Focus tests only need a real OS window. Build it before the only
+            // WebView, so WebView2 cannot pump main-page IPC during a second
+            // controller creation on the UI thread.
+            queue_more_fixture::phase_milestone("focus_helper_build_enter");
+            tauri::WindowBuilder::new(app,"queue-tip-focus-helper")
+                .title("Synthetic native focus control").visible(false).focused(false)
+                .position(1150.0,32.0).inner_size(180.0,100.0).build()?;
+            queue_more_fixture::phase_milestone("focus_helper_built");
+        }
         // Absolute config dataDirectory values are ignored by Tauri's safe-path
         // resolver. The builder API owns this isolated test directory explicitly.
         let mut builder=tauri::WebviewWindowBuilder::from_config(app, &window_config)?.data_directory(root.join("webview"));
@@ -1637,13 +1647,6 @@ fn main() {
         queue_more_fixture::phase_milestone("main_window_build_enter");
         builder.build()?;
         queue_more_fixture::phase_milestone("main_window_built");
-        if queue_more_fixture::tip_enabled() {
-            queue_more_fixture::phase_milestone("focus_helper_build_enter");
-            tauri::WebviewWindowBuilder::new(app,"queue-tip-focus-helper",tauri::WebviewUrl::External("about:blank".parse()?))
-                .title("Synthetic native focus control").visible(false).position(1150.0,32.0)
-                .inner_size(180.0,100.0).data_directory(root.join("focus-helper-webview")).build()?;
-            queue_more_fixture::phase_milestone("focus_helper_built");
-        }
         if media_proof {cumulus_desktop::system_media::install(app.handle());}
         playback_power_guide_fixture::install_media(app.handle());
         if shortcut_proof {cumulus_desktop::shortcuts::install(app.handle());}

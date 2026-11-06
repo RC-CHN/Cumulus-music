@@ -181,3 +181,13 @@ PC 3.1.42.205594 普通播放列表「更多推荐」
   深色弹层与底栏区分并遵循应用及系统的减少动态效果设置。最终样式
   754045ba 重跑同七阶段，截图在 .build/ui-proof/queue-more-tip-754045ba/。
   另在相同产品树重跑 19 个原推荐阶段。Windows 只配置相同驱动，独立验收。
+
+  RC 验证 42147805963 的 Windows 重启进程以 0xC00000FD 退出。日志记录
+  主窗口已创建、辅助窗口开始创建、主窗口开始执行脚本，却未完成辅助窗口创建。
+  焦点切换只需要第二个原生窗口；测试在主 WebView 之前建好隐藏的辅助窗口，
+  不为它创建 WebView2 控制器。WebView2 的 UI 线程约束见
+  https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/threading-model#reentrancy 。
+  栈溢出的完整调用栈未取得；修复针对日志证明的创建时序，不修改提示业务、
+  主窗焦点检查、SQLite 收据校验或独立进程重启断言。
+  Linux 使用该轮 CI 前端产物实跑全部 7 阶段并保留截图和 SQLite 证据：
+  .build/ui-proof/rc02-native-queue-tip-r1/audit.json。Windows 以修复提交的 CI 为准。

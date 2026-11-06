@@ -169,7 +169,7 @@ sha2 = "0.10"
 url = "2"
 libloading = "=0.7.4"
 rusqlite = { version = "0.41", features = ["bundled"] }
-tauri = { version = "2", features = ["test"] }
+tauri = { version = "2", features = ["test", "unstable"] }
 
 [[example]]
 name = "fm_modes_ui_probe"
