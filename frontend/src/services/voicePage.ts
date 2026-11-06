@@ -1,4 +1,6 @@
+import type { AccountData } from './contracts.ts';
 import type { PlayerView } from './player.ts';
+import type { PodcastMutation } from './podcast.ts';
 import {
   sameVoicePlaybackScope,
   voiceCreatorTarget,
@@ -17,10 +19,32 @@ export interface VoicePageScope extends VoicePlaybackScope {
 export interface VinylVoiceDetailView extends VoicePageScope {
   title?: string;
   detail: VoiceDetail;
+  actionReceipt?: string;
 }
 
 export interface VoiceDetailClient {
   playerVinylVoiceDetail(epoch: string, playId: string): Promise<VinylVoiceDetailView>;
+}
+
+export interface VoiceDetailActionScope {
+  epoch: string;
+  playId: string;
+  receipt: string;
+}
+
+export interface VoiceDetailRouteTarget extends VoiceDetailActionScope {
+  kind: 'creator' | 'radio';
+}
+
+export interface VoiceDetailActionsClient {
+  playerVinylVoiceDetailTarget(target: VoiceDetailRouteTarget): Promise<string>;
+  changeFreshVinylPodcastSubscription(
+    scope: VoiceDetailActionScope,
+    expected: boolean,
+  ): Promise<AccountData<PodcastMutation>>;
+  reconcileFreshVinylPodcastSubscription(
+    scope: VoiceDetailActionScope,
+  ): Promise<AccountData<PodcastMutation>>;
 }
 
 export type VoicePageClient = VoiceDetailClient &

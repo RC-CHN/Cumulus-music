@@ -11,6 +11,7 @@ import type { PcPresentationClient } from './pcPresentation';
 import type { NativeLikesClient } from './nativeLikes';
 import type { LikeRecoveryClient } from './likeRecovery';
 import type { PlayerClient } from './player';
+import type { VoiceDetailActionsClient } from './voicePage';
 import type { AudiobookSkipClient } from './audiobookSkip';
 import type { PlaylistClient } from './playlists';
 import type { PlaylistCoverClient } from './playlistCover';
@@ -123,6 +124,7 @@ export interface CoreClient
     LikeRecoveryClient,
     NativeLikesClient,
     PlayerClient,
+    VoiceDetailActionsClient,
     PlaylistClient,
     ExternalPlaylistImportClient,
     MemberWelfareClient,

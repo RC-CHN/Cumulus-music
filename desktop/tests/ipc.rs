@@ -49,6 +49,9 @@ fn foreign_and_unregistered_mini_windows_cannot_invoke_application_commands() {
             "open_login_document",
             "pick_local_directory",
             "player_action",
+            "player_vinyl_voice_detail_target",
+            "change_fresh_vinyl_podcast_subscription",
+            "reconcile_fresh_vinyl_podcast_subscription",
             "solve_login_captcha",
             "catalog_page",
             "collection_page",
@@ -159,6 +162,28 @@ fn account_snapshot_and_stale_mutation_cross_registered_commands() {
         request("set_liked", json!({"epoch":"0","id":"1","liked":true})),
         Err(json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false})),
     );
+    let stale = json!({"code":"stale","message":"操作已取消或账号已切换","retryable":false});
+    for epoch in ["0", "1"] {
+        let scope = json!({"epoch":epoch,"playId":"old-play","receipt":"old-voice-receipt"});
+        for (command, body) in [
+            (
+                "player_vinyl_voice_detail_target",
+                json!({"target":{
+                    "epoch":epoch,"playId":"old-play","receipt":"old-voice-receipt","kind":"creator"
+                }}),
+            ),
+            (
+                "change_fresh_vinyl_podcast_subscription",
+                json!({"scope":scope,"expected":false}),
+            ),
+            (
+                "reconcile_fresh_vinyl_podcast_subscription",
+                json!({"scope":scope}),
+            ),
+        ] {
+            assert_ipc_response(&window, request(command, body), Err(stale.clone()));
+        }
+    }
     for (command, body) in [
         ("relay_view", json!({"epoch":"0","refresh":true})),
         (

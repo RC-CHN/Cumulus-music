@@ -483,6 +483,12 @@ export function createTauriClient(): CoreClient {
       invoke('player_vinyl_similar_play', { epoch, playId, receipt, action, quality }),
     playerVinylVoiceDetail: (epoch, playId) =>
       invoke('player_vinyl_voice_detail', { epoch, playId }),
+    playerVinylVoiceDetailTarget: (target) =>
+      invoke('player_vinyl_voice_detail_target', { target }),
+    changeFreshVinylPodcastSubscription: (scope, expected) =>
+      invoke('change_fresh_vinyl_podcast_subscription', { scope, expected }),
+    reconcileFreshVinylPodcastSubscription: (scope) =>
+      invoke('reconcile_fresh_vinyl_podcast_subscription', { scope }),
     playerVinylVoiceRecommendations: (epoch, playId) =>
       invoke('player_vinyl_voice_recommendations', { epoch, playId }),
     playerVinylVoiceRecommendationsNext: (epoch, playId, receipt) =>
