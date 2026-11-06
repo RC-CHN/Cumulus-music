@@ -609,6 +609,19 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.search-voice-creator {
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  pointer-events: auto;
+}
+.search-voice-creator:is(:hover, :focus-visible) {
+  color: var(--accent);
+}
+.search-voice-creator:focus-visible {
+  outline-offset: -2px;
+}
 .search-voice-title-actions {
   display: flex;
   align-items: center;

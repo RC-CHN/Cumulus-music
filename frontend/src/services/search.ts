@@ -73,7 +73,7 @@ export type SearchItem =
   | { kind: 'playlist'; playlist: PlaylistView; recommendation?: string; knownEmpty?: boolean }
   | { kind: 'artist'; artist: ArtistCard }
   | { kind: 'album'; album: AlbumCard }
-  | { kind: 'voice'; voice: EpisodeView; listenerCount?: number }
+  | { kind: 'voice'; voice: EpisodeView; listenerCount?: number; creatorId?: string }
   | { kind: 'podcast'; podcast: PodcastCard; table?: PodcastSearchTable }
   | { kind: 'mv'; mv: CatalogVideoCard }
   | { kind: 'user'; user: FollowUser }

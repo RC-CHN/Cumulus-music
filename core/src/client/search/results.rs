@@ -59,6 +59,8 @@ pub enum SearchItem {
     },
     Voice {
         voice: EpisodeView,
+        #[serde(rename = "creatorId", skip_serializing_if = "Option::is_none")]
+        creator_id: Option<String>,
         #[serde(rename = "listenerCount", skip_serializing_if = "Option::is_none")]
         listener_count: Option<u64>,
     },
@@ -488,6 +490,39 @@ fn podcast_count(value: &Value) -> Option<u64> {
         .or_else(|| value.as_str()?.parse().ok())
         .filter(|count| *count < (1 << 53))
 }
+/// M/3095 → M/2061 → M/2021 links the dedicated voice table's
+/// nested DJ/creator as a User. A display credit alone is not an identity.
+fn voice_table_item(base: &Value) -> Result<Option<SearchItem>> {
+    let mut voice = view::episode(&Episode::from_official(base)?, &[]);
+    // M/21.W chooses the DJ over creator. Do not combine a nickname or
+    // account status from one object with an ID from the other.
+    let nested = if base["dj"].is_null() || base["dj"] == false {
+        &base["creator"]
+    } else {
+        &base["dj"]
+    };
+    let name = ["nickname", "nickName", "userName"]
+        .into_iter()
+        .filter_map(|key| nested[key].as_str())
+        .map(str::trim)
+        .find(|name| !name.is_empty())
+        .filter(|name| name.chars().count() <= 160 && !name.chars().any(char::is_control));
+    if let Some(name) = name {
+        voice.creator = name.to_owned();
+    }
+    let status = &nested["accountStatus"];
+    let unavailable = status.as_i64().or_else(|| status.as_str()?.parse().ok());
+    let creator_id = name
+        .filter(|_| nested.is_object() && !matches!(unavailable, Some(30 | 40)))
+        .and_then(|_| identifier(&nested["userId"]).ok())
+        .filter(|id| id.len() <= 32);
+    Ok(Some(SearchItem::Voice {
+        voice,
+        creator_id,
+        listener_count: voice_listener_count(base),
+    }))
+}
+
 fn podcast_table_item(resource: &Value, uid: &str) -> Result<Option<SearchItem>> {
     let base = &resource["baseInfo"];
     let radio = Radio::from_official(base)?;
@@ -688,6 +723,7 @@ fn item(
         },
         "voice" => SearchItem::Voice {
             voice: view::episode(&Episode::from_official(v)?, &[]),
+            creator_id: None,
             listener_count: voice_listener_count(v),
         },
         "voicelist" => SearchItem::Podcast {
@@ -1017,10 +1053,10 @@ fn project(
         } else {
             &Value::Null
         };
-        let projected = if query.category == Podcasts {
-            podcast_table_item(resource, uid)
-        } else {
-            item(kind, base, uid, lyric, None, false)
+        let projected = match query.category {
+            Podcasts => podcast_table_item(resource, uid),
+            Voices => voice_table_item(base),
+            _ => item(kind, base, uid, lyric, None, false),
         };
         match projected {
             Ok(Some(mut item)) => {

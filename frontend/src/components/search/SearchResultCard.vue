@@ -590,8 +590,20 @@ watch(
             v-if="item.voice.creator || item.voice.radioId || item.voice.unavailable"
             class="search-voice-attribution"
           >
+            <button
+              v-if="item.creatorId && item.voice.creator"
+              type="button"
+              class="search-voice-author search-voice-creator"
+              data-result-action="voice-creator"
+              :aria-label="`查看主播 ${item.voice.creator} 的主页`"
+              :data-tooltip="item.voice.creator"
+              @click.stop="emit('creator', item.creatorId)"
+              @dblclick.stop
+            >
+              by&nbsp;<SearchMatchText :text="item.voice.creator" :keyword="matchKeyword" />
+            </button>
             <span
-              v-if="item.voice.creator"
+              v-else-if="item.voice.creator"
               class="search-voice-author"
               :data-tooltip="item.voice.creator"
             >

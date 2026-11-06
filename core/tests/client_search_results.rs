@@ -823,3 +823,91 @@ async fn unverified_search_has_no_reason_entry_and_existing_explicit_detail_stay
         )
     );
 }
+
+#[tokio::test]
+async fn voice_category_links_only_the_preferred_nested_author_account() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let rows = [
+        json!({"id":401,"name":"声音甲","mainSong":{"id":1},
+               "dj":{"userId":"90071992547409931230","nickName":" 合成主播 ","signature":"PRIVATE_CREDIT"},
+               "creator":{"userId":777,"nickname":"不应合并的作者"},
+               "radio":{"id":301,"name":"父播单","dj":{"userId":888,"nickname":"播单作者"}}}),
+        json!({"id":402,"name":"声音乙","mainSong":{"id":1},
+               "creator":{"userId":502,"userName":"离线账号","accountStatus":"40"}}),
+        json!({"id":403,"name":"声音丙","userId":503,"creatorName":"只有文本",
+               "radio":{"id":303,"name":"父播单","dj":{"userId":503,"nickname":"父播单作者"}}}),
+        json!({"id":404,"name":"声音丁","dj":{"userId":"not-account","nickname":"仅展示"},
+               "creator":{"userId":504,"nickname":"不替代无效的 DJ"}}),
+        json!({"id":405,"name":"声音戊","creator":{"userId":505,"nickname":"  "}}),
+        json!({"id":406,"name":"声音己","creator":{"userId":506,"userName":"第二种作者对象"}}),
+    ];
+    *api.reply.lock().unwrap() = json!({"code":200,"data":{"resources":rows.iter()
+        .map(|row| json!({"type":"voice","baseInfo":row})).collect::<Vec<_>>(),
+        "totalCount":6,"hasMore":false}});
+    let value = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::Voices))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let items = value["sections"][0]["items"].as_array().unwrap();
+    assert_eq!(items.len(), 6);
+    assert_eq!(items[0]["creatorId"], "90071992547409931230");
+    assert_eq!(items[0]["voice"]["creator"], "合成主播");
+    assert_eq!(items[0]["voice"]["radioId"], "301");
+    assert_eq!(items[1]["voice"]["creator"], "离线账号");
+    assert_eq!(items[2]["voice"]["creator"], "只有文本");
+    assert_eq!(items[3]["voice"]["creator"], "仅展示");
+    assert!(items[1..5].iter().all(|row| row.get("creatorId").is_none()));
+    assert_eq!(items[5]["creatorId"], "506");
+    assert_eq!(items[5]["voice"]["creator"], "第二种作者对象");
+    assert!(!value.to_string().contains("PRIVATE"));
+    let calls = api.calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].0, "/api/search/voice/get");
+}
+
+#[tokio::test]
+async fn comprehensive_voice_card_does_not_get_dedicated_table_author_action() {
+    let (_root, api, _, client) = fixture();
+    let epoch = client.account().unwrap().epoch;
+    let mut fixture: Value =
+        serde_json::from_str(include_str!("fixtures/search-results.json")).unwrap();
+    let sections = fixture["all"]["data"]["blocks"].as_array_mut().unwrap();
+    let voice = sections
+        .iter_mut()
+        .find(|section| {
+            section["resources"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().any(|row| row["type"] == "voice"))
+        })
+        .unwrap();
+    let row = voice["resources"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|row| row["type"] == "voice")
+        .unwrap();
+    row["baseInfo"]["dj"] = json!({"userId":501,"nickname":"作者"});
+    *api.reply.lock().unwrap() = fixture["all"].clone();
+    let value = serde_json::to_value(
+        client
+            .search_results(&epoch, query(C::All))
+            .await
+            .unwrap()
+            .value,
+    )
+    .unwrap();
+    let voice = value["sections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .flat_map(|section| section["items"].as_array().unwrap())
+        .find(|row| row["kind"] == "voice")
+        .unwrap();
+    assert_eq!(voice["voice"]["creator"], "作者");
+    assert!(voice.get("creatorId").is_none());
+}
