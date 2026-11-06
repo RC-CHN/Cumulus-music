@@ -229,7 +229,7 @@ impl PodcastService {
                 record.phase = MutationPhase::Verifying;
             }
             Err(error) => {
-                record.phase = if matches!(&error, Error::RequestNotSent(_))
+                record.phase = if source.is_some() && matches!(&error, Error::RequestNotSent(_))
                     || [301, 403, 405, 505, 506, 511, 512]
                         .iter()
                         .any(|code| error.is_service_code(*code))
