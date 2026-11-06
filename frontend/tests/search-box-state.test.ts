@@ -335,3 +335,117 @@ test('a closed discovery panel does not send a late recommendation after history
   assert.deepEqual(contexts, ['未开启浮层']);
   m.dispose();
 });
+
+test('empty and failed defaults recover on eligible foreground ticks, then rotate without rereading', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const delayed = deferred<AccountData<SearchDiscovery>>();
+  const calls: string[] = [];
+  const flush = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+  const m = fixture({
+    searchDiscovery: async (epoch, q) => {
+      assert.equal(q.kind, 'defaults');
+      calls.push(epoch);
+      if (calls.length === 1) return data({ kind: 'defaults', words: [], refreshMs: 2500 }, epoch);
+      if (calls.length === 2) throw { code: 'network', message: 'synthetic temporary failure' };
+      return delayed.promise;
+    },
+  });
+  try {
+    await m.connect(account());
+    assert.equal(m.defaultWord.value, undefined);
+    assert.deepEqual(calls, ['1']);
+    t.mock.timers.tick(4999);
+    assert.deepEqual(calls, ['1']);
+
+    m.setWindowFocused(false);
+    t.mock.timers.tick(5001);
+    m.setWindowFocused(true);
+    m.setInputFocused(true);
+    // Escape can close suggestions while the input remains focused.
+    m.close();
+    t.mock.timers.tick(5000);
+    assert.deepEqual(calls, ['1']);
+
+    m.setInputFocused(false);
+    t.mock.timers.tick(5000);
+    await flush();
+    assert.deepEqual(calls, ['1', '1']);
+    assert.equal(m.errors.defaults, 'synthetic temporary failure');
+    t.mock.timers.tick(5000);
+    t.mock.timers.tick(10000);
+    assert.deepEqual(calls, ['1', '1', '1'], 'no concurrent retries while a read is held');
+    delayed.resolve(
+      data({
+        kind: 'defaults',
+        words: [
+          { keyword: '实际第一词', label: '显示第一词', tag: null, defaultReceipt: 'first' },
+          { keyword: '实际第二词', label: '显示第二词', tag: null, defaultReceipt: 'second' },
+        ],
+        refreshMs: 2000,
+      }),
+    );
+    await flush();
+    assert.equal(m.defaultWord.value?.label, '显示第一词');
+    assert.equal(m.errors.defaults, '');
+
+    m.setWindowFocused(false);
+    t.mock.timers.tick(2000);
+    m.setWindowFocused(true);
+    m.setInputFocused(true);
+    t.mock.timers.tick(2000);
+    assert.equal(m.defaultWord.value?.label, '显示第一词');
+    m.setInputFocused(false);
+    t.mock.timers.tick(2000);
+    assert.equal(m.defaultWord.value?.label, '显示第二词');
+    assert.deepEqual(calls, ['1', '1', '1']);
+    assert.deepEqual(m.submitInput(), {
+      keyword: '实际第二词',
+      channel: 'defaultquery',
+      defaultReceipt: 'second',
+    });
+    m.input('实际第二词');
+    assert.deepEqual(m.submitInput(), { keyword: '实际第二词', channel: 'typing' });
+  } finally {
+    m.dispose();
+    t.mock.timers.reset();
+  }
+});
+
+test('default recovery cannot adopt a late account or keep running after signout', async (t) => {
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const delayed = deferred<AccountData<SearchDiscovery>>();
+  const calls: string[] = [];
+  const m = fixture({
+    searchDiscovery: async (epoch) => {
+      calls.push(epoch);
+      if (epoch === '1') return delayed.promise;
+      return data({ kind: 'defaults', words: [], refreshMs: 2500 }, epoch);
+    },
+  });
+  try {
+    const previous = m.connect(account('1'));
+    await m.connect(account('2'));
+    delayed.resolve(
+      data({
+        kind: 'defaults',
+        words: [{ keyword: '旧账号词', label: '旧账号', tag: null, defaultReceipt: 'old' }],
+        refreshMs: 2500,
+      }),
+    );
+    await previous;
+    assert.equal(m.defaultWord.value, undefined);
+    t.mock.timers.tick(5000);
+    await Promise.resolve();
+    assert.deepEqual(calls, ['1', '2', '2']);
+    await m.connect({ ...account('3'), status: 'signed_out' });
+    t.mock.timers.tick(15000);
+    assert.deepEqual(calls, ['1', '2', '2']);
+    assert.equal(m.defaultWord.value, undefined);
+  } finally {
+    m.dispose();
+    t.mock.timers.reset();
+  }
+});

@@ -9,6 +9,8 @@ import type {
   SearchHistoryCommand,
 } from '../services/search.ts';
 
+const DEFAULT_RECOVERY_MS = 5000;
+
 export function useSearchBox(core: CoreClient = useCore(), expired: () => void = () => {}) {
   const query = ref(''),
     open = ref(false),
@@ -27,19 +29,36 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
   const searching = computed(() => !!query.value.trim());
   let epoch = '',
     connected = false,
+    windowFocused = true,
+    inputFocused = false,
     generation = 0,
     suggestionRequest = 0,
     homeRequest = 0;
   let debounce: ReturnType<typeof setTimeout> | undefined,
-    rotate: ReturnType<typeof setInterval> | undefined;
+    defaultTimer: ReturnType<typeof setInterval> | undefined;
   let historyQueue: Promise<void> = Promise.resolve();
   const requests = new Map<string, number>();
   const live = (e: string, g: number) => connected && epoch === e && generation === g;
   function timers() {
     clearTimeout(debounce);
-    clearInterval(rotate);
+    clearInterval(defaultTimer);
     debounce = undefined;
-    rotate = undefined;
+    defaultTimer = undefined;
+  }
+  const eligibleDefaultTick = () => connected && windowFocused && !inputFocused && !composing.value;
+  function advanceDefault() {
+    if (!eligibleDefaultTick()) return;
+    if (defaults.value.length) {
+      defaultIndex.value = (defaultIndex.value + 1) % defaults.value.length;
+    } else if (!pending.defaults) {
+      return load({ kind: 'defaults' });
+    }
+  }
+  function setWindowFocused(focused: boolean) {
+    windowFocused = focused;
+  }
+  function setInputFocused(focused: boolean) {
+    inputFocused = focused;
   }
   function issue(value: unknown, slot: string) {
     const p = failure(value);
@@ -72,12 +91,13 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
         case 'defaults':
           defaults.value = v.words;
           defaultIndex.value = 0;
-          clearInterval(rotate);
-          if (v.words.length > 1)
-            rotate = setInterval(() => {
-              if (!open.value && !composing.value && !query.value)
-                defaultIndex.value = (defaultIndex.value + 1) % v.words.length;
-            }, v.refreshMs);
+          // M623 keeps the startup ticker while no default word was found.
+          // Once populated, it only rotates the verified in-memory rows.
+          if (v.words.length) {
+            clearInterval(defaultTimer);
+            defaultTimer =
+              v.words.length > 1 ? setInterval(advanceDefault, v.refreshMs) : undefined;
+          }
           break;
         case 'recommendations':
           recommendations.value = v.words;
@@ -185,7 +205,8 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     epoch = account.epoch;
     connected = account.status === 'authenticated';
     if (!connected) return;
-    await Promise.all([load({ kind: 'defaults' }), historyCommand({ kind: 'read' })]);
+    defaultTimer = setInterval(advanceDefault, DEFAULT_RECOVERY_MS);
+    await Promise.all([advanceDefault(), historyCommand({ kind: 'read' })]);
   }
   function dispose() {
     connected = false;
@@ -239,6 +260,8 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     errors,
     pending,
     searching,
+    setWindowFocused,
+    setInputFocused,
     connect,
     input,
     show,

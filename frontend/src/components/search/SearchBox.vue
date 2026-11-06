@@ -93,7 +93,20 @@ function focusInput() {
   suppressFocus = false;
 }
 function onFocus() {
+  model.setInputFocused(true);
   if (!suppressFocus) void show();
+}
+function onBlur() {
+  model.setInputFocused(false);
+}
+function windowFocused() {
+  model.setWindowFocused(document.visibilityState === 'visible');
+}
+function windowBlurred() {
+  model.setWindowFocused(false);
+}
+function visibilityChanged() {
+  model.setWindowFocused(document.visibilityState === 'visible' && document.hasFocus());
 }
 function submit(word?: string, channel?: SearchChannel, display?: string) {
   if (composing.value) return;
@@ -275,12 +288,19 @@ watch(open, (value) => {
   if (value) place();
 });
 onMounted(() => {
+  visibilityChanged();
+  window.addEventListener('focus', windowFocused);
+  window.addEventListener('blur', windowBlurred);
+  document.addEventListener('visibilitychange', visibilityChanged);
   document.addEventListener('pointerdown', outside, true);
   document.addEventListener('focusin', outside);
   window.addEventListener('resize', resize);
 });
 onUnmounted(() => {
   model.dispose();
+  window.removeEventListener('focus', windowFocused);
+  window.removeEventListener('blur', windowBlurred);
+  document.removeEventListener('visibilitychange', visibilityChanged);
   cancelAnimationFrame(frame);
   document.removeEventListener('pointerdown', outside, true);
   document.removeEventListener('focusin', outside);
@@ -317,6 +337,7 @@ onUnmounted(() => {
         :disabled="account.status !== 'authenticated'"
         @input="model.input(($event.target as HTMLInputElement).value)"
         @focus="onFocus"
+        @blur="onBlur"
         @click="show"
         @compositionstart="model.composition(true)"
         @compositionend="model.composition(false)"
