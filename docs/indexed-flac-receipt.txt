@@ -83,6 +83,17 @@ digest, unsupported FLAC geometry or a recoverable unpublished preparation
 failure can only choose stock with that same descriptor. Trusted libFLAC
 STREAMINFO and actual callback checks select the same preexisting graph:
 44.1/48 kHz, stereo, signed 16-bit, known bounded length and block size.
+The ordinary indexed lane accepts STREAMINFO maximum blocks up to 4608
+frames. A valid 48 kHz stereo FFmpeg FLAC in the native application proof
+declared 4608 by default and previously took stock at this check.
+One bounded callback (at most 36 KiB of interleaved float PCM) is staged;
+the decoder emits contiguous packets of at most 1024 frames to the same
+2048-frame graph worker. It validates the actual callback against the
+selected maximum before copying PCM. The existing compressed read and
+seek budgets, render credit, and graph EOF/tail rules are unchanged.
+Seek discards any staged suffix before the native decoder's seek callback
+and tags new slices with the new generation. The old Native Open and
+protected/cold lanes retain their 1024-frame callback limits.
 The old pathname never supplies another file after ownership transfers.
 Actor generation and ManagedOutput lease fence preparation. After native
 load and before first unpause, the actor checks the current local index,
@@ -96,6 +107,18 @@ unsupported sources stay stock. No UI or IPC protocol changes.
 
 Focused regression:
 cargo test -p cumulus-core --locked --test indexed_flac_receipt
+
+With the trusted libFLAC 1.5.0 absolute path in CUMULUS_FLAC_PROBE_LIBRARY:
+cargo test -p cumulus-core --locked --lib indexed_large_flac_reframes_and_seek_discards_the_staged_suffix -- --ignored
+cargo test -p cumulus-core --locked --lib indexed_4608_flac_matches_1024_flac_and_wav_through_seek_and_tail -- --ignored
+
+The decoder test covers a real 4608-frame callback, a seek with an old
+unconsumed suffix, exact signed-16 PCM after that seek, a seven-frame
+file tail and single EOF; the narrow decoder still rejects the large
+callback. The paced-reader test compares all graph output bytes and EOF
+with real 1024-frame FLAC and WAV at 44.1/48 kHz, at frame zero and after
+a nonaligned seek. These tests do not validate a physical sink or the
+ordinary packaged desktop's output for this wider callback.
 
 Synthetic cases exercise the real indexed CUE row, NCM and renamed NCM,
 same-size/same-mtime substitution before a new open, old descriptor

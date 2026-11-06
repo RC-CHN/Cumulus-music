@@ -126,7 +126,11 @@ impl MpvEngine {
             if format != "flac" {
                 return self.load_open_file(file, format, authority, 0.0, cancel);
             }
-            NativeStereoSource::select(file, authority, library, plan)?
+            if indexed {
+                NativeStereoSource::select_indexed(file, authority, library, plan)?
+            } else {
+                NativeStereoSource::select(file, authority, library, plan)?
+            }
         };
         let source = match selection {
             NativeStereoSelection::Qualified(source) => source,
