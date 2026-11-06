@@ -35,6 +35,12 @@ impl MusicClient {
         }
         let id = identifier(&json!(id))?;
         let (radio, receipt_guard) = self.subscription_recommendation(token, receipt, &id)?;
+        let room = self.together_detached_guard(token);
+        if room.is_cancelled() {
+            return Err(Error::State(
+                "recommended podcast requires ordinary playback",
+            ));
+        }
         let library = PodcastLibrary::new(self.session.clone())?;
         let check_list = || -> Result<()> {
             if library
@@ -52,7 +58,9 @@ impl MusicClient {
             let expected = token.clone();
             let api = api.clone();
             Cancellation::new(move || {
-                !receipt_guard.is_cancelled() && session.require_api(&expected, &api).is_ok()
+                !receipt_guard.is_cancelled()
+                    && !room.is_cancelled()
+                    && session.require_api(&expected, &api).is_ok()
             })
         };
         let current = self.player.controller().await?.snapshot();
