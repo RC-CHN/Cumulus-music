@@ -2,7 +2,7 @@
 use super::{PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity, voice_detail};
 use crate::{Error, Result, account::SessionToken};
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(super) struct VoicePlaybackSeed {
     pub(super) voice_id: String,
     pub(super) song_id: String,
@@ -10,7 +10,7 @@ pub(super) struct VoicePlaybackSeed {
     source: EpisodeSource,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 enum EpisodeSource {
     Voice,
     Scene { id: String, revision: u64 },

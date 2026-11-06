@@ -32,7 +32,10 @@ impl PodcastApi {
             .api
             .call("/api/djradio/v3/get", json!({"id":id}), false, &[200])
             .await?;
-        let radio = Radio::from_official(&result["data"])?;
+        Self::radio_from_reply(&id, &result)
+    }
+    pub(super) fn radio_from_reply(id: &str, reply: &Value) -> Result<Radio> {
+        let radio = Radio::from_official(&reply["data"])?;
         if radio.id != id {
             return Err(Error::Response("podcast detail identity mismatch"));
         }

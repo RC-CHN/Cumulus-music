@@ -9,7 +9,8 @@ use crate::{
     podcast::{PodcastMutation, PodcastService},
     protocol::{api::identifier, artwork, wire::serialization::js_truthy},
 };
-pub use fresh::VinylVoiceDetailView;
+pub(super) use fresh::Host;
+pub use fresh::{VinylVoiceDetailTarget, VinylVoiceDetailView};
 use serde::Serialize;
 use serde_json::{Number, Value};
 

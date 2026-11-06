@@ -12,13 +12,13 @@ use std::{future::poll_fn, task::Poll};
 
 const DETAIL: &str = "/api/dj/program/detail";
 
-async fn read(f: &Fixture) -> Result<VinylVoiceDetailView> {
+pub(super) async fn read(f: &Fixture) -> Result<VinylVoiceDetailView> {
     f.client
         .player_vinyl_voice_detail(&f.epoch, &f.play_id)
         .await
 }
 
-fn fresh() -> Value {
+pub(super) fn fresh() -> Value {
     json!({"code":200,"program":{
         "id":VOICE,"programId":VOICE,"resourceId":VOICE,
         "mainTrackId":SONG,"trackId":SONG,"mainSong":{"id":SONG,"private":"DO_NOT_EXPORT"},
@@ -73,8 +73,18 @@ async fn fresh_voice_detail_projects_signed_display_only_without_changing_playba
         .player_action(&f.epoch, PlayerAction::Pause { paused: true })
         .await
         .unwrap();
+    let mut projected = serde_json::to_value(read(&f).await.unwrap()).unwrap();
+    assert!(
+        projected
+            .as_object_mut()
+            .unwrap()
+            .remove("actionReceipt")
+            .unwrap()
+            .as_str()
+            .is_some_and(|receipt| receipt.len() == 32)
+    );
     assert_eq!(
-        serde_json::to_value(read(&f).await.unwrap()).unwrap(),
+        projected,
         json!({
             "epoch":f.epoch,"playId":f.play_id,"entryId":before.entry_id,"voiceId":VOICE,"title":"新读标题",
             "detail":{"id":VOICE,"creator":{"id":"25","name":"新读主播"},"releaseTime":1700049600000_u64,

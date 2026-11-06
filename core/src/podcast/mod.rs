@@ -15,6 +15,7 @@ pub use api::{PodcastApi, ProgramPage};
 pub use discovery::{DiscoveryPage, HistoryKind};
 pub use library::{LibraryKind, MyLibrary};
 pub use model::{Episode, Radio};
+pub(crate) use mutations::FreshVinylSubscription;
 pub use mutations::{PodcastAction, PodcastMutation, PodcastService};
 pub use rights::{DownloadPermission, PlayPermission};
 pub use skip::{AudiobookIntervals, AudiobookSkip, is_audiobook};

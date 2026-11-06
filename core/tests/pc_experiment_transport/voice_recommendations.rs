@@ -43,18 +43,39 @@ impl Fixture {
         cookies: &[&str],
         replies: impl IntoIterator<Item = HttpResponse>,
     ) -> Self {
+        Self::build(cookies, replies, false).await
+    }
+
+    pub(super) async fn with_existing_voice_targets(
+        cookies: &[&str],
+        replies: impl IntoIterator<Item = HttpResponse>,
+    ) -> Self {
+        Self::build(cookies, replies, true).await
+    }
+
+    async fn build(
+        cookies: &[&str],
+        replies: impl IntoIterator<Item = HttpResponse>,
+        existing_targets: bool,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
-        let episode = json!({"code":200,"program":{
+        let mut episode = json!({"code":200,"program":{
             "id":VOICE,"name":"合成节目","duration":120000,"mainTrackId":SONG,
             "coverUrl":"http://p1.music.126.net/current.png?auth=DO_NOT_EXPORT",
             "mainSong":{"id":SONG,"name":"合成音轨","duration":120000}
         }});
+        let mut extra = Vec::<HttpResponse>::new();
+        if existing_targets {
+            episode["program"]["creator"] = json!({"userId":"54","nickname":"原播放主播"});
+            episode["program"]["radio"] = json!({"id":"800","name":"原播放播单"});
+            extra.push(json!({"code":200,"data":{"resumePlayValue":0}}).into());
+        }
         let (native, http, credentials) = vinyl_http_with_credentials(
             root.path(), cookies, [
                 episode.clone().into(), episode.into(),
                 json!({"code":200,"data":{"voiceId":VOICE,"songId":SONG,"canPlay":true}}).into(),
                 json!({"code":200,"data":[{"id":SONG,"code":200,"url":"https://m1.music.126.net/episode.mp3?auth=DO_NOT_EXPORT","md5":"abc","level":"standard","expi":120}]}).into(),
-            ].into_iter().chain(replies),
+            ].into_iter().chain(extra).chain(replies),
         );
         let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
         let session = Arc::new(AccountSession::new(native.clone(), Some(registry.store())));
@@ -87,12 +108,16 @@ impl Fixture {
             .unwrap()
             .play_id
             .unwrap();
+        let mut startup = STARTUP.to_vec();
+        if existing_targets {
+            startup.push("/api/dj/user/setting/resumeplay/get");
+        }
         assert_eq!(
             http.calls()
                 .iter()
                 .map(|call| call.path.as_str())
                 .collect::<Vec<_>>(),
-            STARTUP
+            startup
         );
         Self {
             _root: root,

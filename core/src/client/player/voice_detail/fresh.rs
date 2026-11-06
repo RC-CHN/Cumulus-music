@@ -1,4 +1,5 @@
 //! M109.j / M15.yb / M21.W: fresh display details, bound to a native voice play.
+mod actions;
 use super::{
     MusicClient, PlayerResourceKind, PlayerVoiceDetail, bound_episode, cover_url, detail_fields,
     id, identity, radio_fields,
@@ -12,6 +13,8 @@ use crate::{
         wire::serialization::js_truthy,
     },
 };
+pub(in crate::client::player) use actions::Host;
+pub use actions::VinylVoiceDetailTarget;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -24,6 +27,8 @@ pub struct VinylVoiceDetailView {
     pub voice_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_receipt: Option<String>,
     pub detail: PlayerVoiceDetail,
 }
 
@@ -128,20 +133,11 @@ impl MusicClient {
             }
             current_scope()
         };
-        let serial = &self.player.voice_detail_read;
-        let ticket = {
-            let mut serial = serial.lock().map_err(|_| Error::LockPoisoned)?;
-            check_authority()?;
-            *serial = serial
-                .checked_add(1)
-                .ok_or(Error::State("vinyl voice detail reads exhausted"))?;
-            *serial
-        };
+        let host = &self.player.voice_detail_read;
+        let ticket = host.begin(|| check_authority().map(|_| ()))?;
         let current = || {
             let snapshot = check_authority()?;
-            if *serial.lock().map_err(|_| Error::LockPoisoned)? != ticket {
-                return Err(Error::StaleResponse);
-            }
+            host.check_read(ticket)?;
             Ok(snapshot)
         };
         let permission = || current().map(|_| ());
@@ -179,13 +175,33 @@ impl MusicClient {
             identity::kind(resource) == PlayerResourceKind::Downloaded,
         );
         let detail = detail_fields(voice, initial.voice_id.clone(), cover, radio);
-        permission()?;
+        let receipt = if api.vinyl_voice_action_revision().ok().flatten().as_deref()
+            == Some(revision.as_str())
+        {
+            actions::Receipt::new(
+                actions::Authority {
+                    token: token.clone(),
+                    api: std::sync::Arc::downgrade(&api),
+                    revision: revision.clone(),
+                    play_id: play_id.to_owned(),
+                    seed: initial.clone(),
+                    source: origin.clone(),
+                    room: room.clone(),
+                },
+                &detail,
+            )
+        } else {
+            None
+        };
+        let action_receipt = receipt.as_ref().map(|receipt| receipt.id().to_owned());
+        host.install(ticket, receipt, || check_authority().map(|_| ()))?;
         Ok(VinylVoiceDetailView {
             epoch: token.generation.to_string(),
             play_id: play_id.to_owned(),
             entry_id: initial.entry_id.clone(),
             voice_id: initial.voice_id.clone(),
             title,
+            action_receipt,
             detail,
         })
     }

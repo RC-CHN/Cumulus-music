@@ -207,6 +207,49 @@ impl VinylVoiceDetailRead {
     }
 }
 
+/// Read-back of the radio selected by a native fresh VoicePage receipt.
+pub struct VinylPodcastSubscriptionRead(String);
+
+impl VinylPodcastSubscriptionRead {
+    pub(crate) const PATH: &'static str = "/api/djradio/v3/get";
+
+    pub(crate) fn new(radio_id: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(radio_id) {
+            return Err(Error::InvalidInput("invalid vinyl podcast target"));
+        }
+        Ok(Self(radio_id.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (Self::PATH, json!({"id":self.0}))
+    }
+}
+
+/// M15 On/Cn, authorized solely by a native fresh VoicePage receipt.
+pub struct VinylPodcastSubscriptionWrite {
+    id: String,
+    desired: bool,
+}
+
+impl VinylPodcastSubscriptionWrite {
+    pub(crate) fn new(id: &str, desired: bool) -> Result<Self> {
+        let VinylPodcastSubscriptionRead(id) = VinylPodcastSubscriptionRead::new(id)?;
+        Ok(Self { id, desired })
+    }
+
+    pub(crate) fn path(&self) -> &'static str {
+        if self.desired {
+            "/api/djradio/sub"
+        } else {
+            "/api/djradio/unsub"
+        }
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (self.path(), json!({"id":self.id}))
+    }
+}
+
 /// Fixed PC RcmdCard read for the native current-episode identity.
 pub struct VinylVoiceRecommendationsRead(String);
 
@@ -554,6 +597,34 @@ pub trait Api: Send + Sync + std::any::Any {
             Err(Error::State(
                 "vinyl voice detail dispatch authority unavailable",
             ))
+        })
+    }
+
+    /// Native local proof that the verified profile and signed fresh detail
+    /// use the same scoped credentials; no request or generic fallback.
+    fn vinyl_voice_action_revision(&self) -> Result<Option<String>> {
+        Ok(None)
+    }
+
+    fn request_vinyl_podcast_subscription_state<'a>(
+        &'a self,
+        _read: VinylPodcastSubscriptionRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async { Err(Error::State("signed vinyl podcast state unavailable")) })
+    }
+
+    fn request_vinyl_podcast_subscription_write<'a>(
+        &'a self,
+        _write: VinylPodcastSubscriptionWrite,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::RequestNotSent(Box::new(Error::State(
+                "signed vinyl podcast write unavailable",
+            ))))
         })
     }
 

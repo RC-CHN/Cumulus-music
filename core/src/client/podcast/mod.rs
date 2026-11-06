@@ -266,6 +266,37 @@ impl MusicClient {
             value: view::operation(operation),
         })
     }
+    pub async fn change_fresh_vinyl_podcast_subscription(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+        expected: bool,
+    ) -> Result<super::dto::AccountData<PodcastMutationView>> {
+        let operation = self
+            .fresh_vinyl_podcast_operation(epoch, play_id, receipt, Some(expected))
+            .await?;
+        Ok(super::dto::AccountData {
+            epoch: epoch.into(),
+            value: view::operation(operation),
+        })
+    }
+
+    pub async fn reconcile_fresh_vinyl_podcast_subscription(
+        &self,
+        epoch: &str,
+        play_id: &str,
+        receipt: &str,
+    ) -> Result<super::dto::AccountData<PodcastMutationView>> {
+        let operation = self
+            .fresh_vinyl_podcast_operation(epoch, play_id, receipt, None)
+            .await?;
+        Ok(super::dto::AccountData {
+            epoch: epoch.into(),
+            value: view::operation(operation),
+        })
+    }
+
     pub(super) async fn podcast_resources(
         &self,
         epoch: &str,

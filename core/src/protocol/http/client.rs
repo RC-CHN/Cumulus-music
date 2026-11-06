@@ -9,7 +9,8 @@ use crate::{
         api::{
             Api, ApiFuture, GuardedPlaylistAdd, GuardedPlaylistCreate, GuardedSongLike,
             PlaylistAddPermission, SongLikePermission, VinylCommentRead, VinylCommentWrite,
-            VinylCommentWritePermission, VinylPlaybackReadPermission, VinylRelatedPlaylistsRead,
+            VinylCommentWritePermission, VinylPlaybackReadPermission, VinylPodcastSubscriptionRead,
+            VinylPodcastSubscriptionWrite, VinylRelatedPlaylistsRead,
             VinylSimilarSongsRead, VinylVoiceDetailRead, VinylVoiceSongsRead, VinylWikiRead,
             VinylWikiReadPermission,
         },
@@ -72,6 +73,10 @@ enum RequestBinding<'a> {
     VinylComment,
     VinylDiscovery,
     VinylPlaybackRead(&'a VinylPlaybackReadPermission<'a>),
+    VinylPodcastSubscriptionWrite {
+        permission: &'a VinylPlaybackReadPermission<'a>,
+        dispatched: &'a AtomicBool,
+    },
     VinylCommentWrite {
         permission: &'a VinylCommentWritePermission<'a>,
         dispatched: &'a AtomicBool,
@@ -187,6 +192,25 @@ impl MusicHttpClient {
 
     pub(crate) fn pc_experiment_revision(&self) -> Result<String> {
         self.pc_experiment_revision_for(true)
+    }
+
+    fn check_vinyl_voice_action_scope(&self, current: &RequestCredentials) -> Result<()> {
+        let cookie = current.unique_music_u().ok_or(Error::CredentialChanged)?;
+        for path in [
+            "/api/w/nuser/account/get",
+            VinylVoiceDetailRead::PATH,
+            crate::protocol::pc_experiments::ASSIGNMENT_PATH,
+        ] {
+            let target = super::ApiOrigin::Pc.request_url(WireRoute::Eapi, path)?;
+            let other = self.credentials.request_credentials(&target)?;
+            if other.revision != current.revision
+                || other.device_id != current.device_id
+                || other.unique_music_u() != Some(cookie)
+            {
+                return Err(Error::CredentialChanged);
+            }
+        }
+        Ok(())
     }
 
     fn check_song_like_scope(&self, current: &RequestCredentials, signed_pc: bool) -> Result<()> {
@@ -538,6 +562,7 @@ impl MusicHttpClient {
                     | RequestBinding::VinylDiscovery
                     | RequestBinding::VinylPlaybackRead(_)
                     | RequestBinding::VinylCommentWrite { .. }
+                    | RequestBinding::VinylPodcastSubscriptionWrite { .. }
             )
         ) {
             // A single revision covers all URL scopes. The same revision
@@ -710,6 +735,22 @@ impl MusicHttpClient {
                     return Err(Error::CredentialChanged);
                 }
                 permission()?;
+            }
+            if let Some(RequestBinding::VinylPodcastSubscriptionWrite {
+                permission,
+                dispatched,
+            }) = binding
+            {
+                let current = self.credentials.request_credentials(&target)?;
+                if current.revision != snapshot.revision
+                    || current.device_id != snapshot.device_id
+                    || current.unique_music_u() != snapshot.unique_music_u()
+                {
+                    return Err(Error::CredentialChanged);
+                }
+                self.check_vinyl_voice_action_scope(&current)?;
+                permission()?;
+                dispatched.store(true, Ordering::Release);
             }
             if let Some(RequestBinding::PodcastBadge {
                 permission,
@@ -1145,6 +1186,68 @@ impl Api for MusicHttpClient {
         permission: &'a VinylPlaybackReadPermission<'a>,
     ) -> ApiFuture<'a, Value> {
         Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
+    }
+
+    fn vinyl_voice_action_revision(&self) -> Result<Option<String>> {
+        let revision = self.pc_experiment_revision()?;
+        let target =
+            super::ApiOrigin::Pc.request_url(WireRoute::Eapi, VinylVoiceDetailRead::PATH)?;
+        let current = self.credentials.request_credentials(&target)?;
+        if current.revision != revision {
+            return Err(Error::CredentialChanged);
+        }
+        self.check_vinyl_voice_action_scope(&current)?;
+        Ok(Some(revision))
+    }
+
+    fn request_vinyl_podcast_subscription_state<'a>(
+        &'a self,
+        read: VinylPodcastSubscriptionRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
+    }
+
+    fn request_vinyl_podcast_subscription_write<'a>(
+        &'a self,
+        write: VinylPodcastSubscriptionWrite,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let dispatched = AtomicBool::new(false);
+            let result = async {
+                if self.vinyl_voice_action_revision()?.as_deref() != Some(revision) {
+                    return Err(Error::CredentialChanged);
+                }
+                let (path, payload) = write.into_request();
+                self.execute(
+                    path,
+                    payload,
+                    false,
+                    Some(revision),
+                    Jsk::None,
+                    Some(RequestBinding::VinylPodcastSubscriptionWrite {
+                        permission,
+                        dispatched: &dispatched,
+                    }),
+                )
+                .await
+            }
+            .await;
+            result.map_err(|error| {
+                if dispatched.load(Ordering::Acquire) {
+                    if matches!(error.root(), Error::RequestNotSent(_)) {
+                        Error::MutationUncertain
+                    } else {
+                        error
+                    }
+                } else {
+                    Error::RequestNotSent(Box::new(error))
+                }
+            })
+        })
     }
 
     fn request_vinyl_wiki<'a>(

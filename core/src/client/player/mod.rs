@@ -51,7 +51,7 @@ pub use voice_recommendations::{
 mod voice_songs;
 pub use voice_detail::{
     PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoicePlayCount, PlayerVoiceRadio,
-    VinylVoiceDetailView,
+    VinylVoiceDetailTarget, VinylVoiceDetailView,
 };
 pub use voice_songs::{
     PlayerVoiceSongsView, VoiceSongAction, VoiceSongDownloadCreation, VoiceSongDownloadDecision,
@@ -141,7 +141,7 @@ pub(super) struct PlayerHost {
     vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
     streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
     vinyl_similar: Arc<vinyl_similar::Host>,
-    voice_detail_read: Mutex<u64>,
+    voice_detail_read: voice_detail::Host,
     voice_recommendations: voice_recommendations::Host,
     voice_songs: Arc<voice_songs::Host>,
 }
@@ -176,7 +176,7 @@ impl PlayerHost {
             vinyl_draft: Mutex::new(None),
             streaming_cache: None,
             vinyl_similar: Default::default(),
-            voice_detail_read: Mutex::new(0),
+            voice_detail_read: Default::default(),
             voice_recommendations: Default::default(),
             voice_songs: Default::default(),
             focus,
