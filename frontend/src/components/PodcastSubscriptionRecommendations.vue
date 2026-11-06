@@ -189,10 +189,10 @@ function move(direction: -1 | 1) {
   cursor: default;
 }
 .recommendation-previous {
-  left: -28px;
+  left: 0;
 }
 .recommendation-next {
-  right: -28px;
+  right: 0;
 }
 .recommendation-next .icon {
   transform: rotate(180deg);

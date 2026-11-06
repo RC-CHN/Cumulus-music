@@ -109,6 +109,22 @@ def check_badges(output, stages, complete, screenshots):
             paint = json.loads((output / f'paint-{stage}.json').read_text(encoding='utf-8'))
             assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples']), stage
 
+def check_recommendations(stages, complete):
+    assert set(stages) == {
+        'recommended_first', 'recommended_next', 'recommended_detail', 'recommended_back',
+    }, stages
+    assert complete['detailReads'] == ['81']
+    assert stages['recommended_detail']['detail'] == '合成确认播客'
+    assert complete['first'][0] == '81' and complete['lastGroup'][-1] == '86'
+    assert len(complete['first']) == len(complete['lastGroup']) < 6
+    trace = complete['podcastBadgeTrace']
+    assert sorted(row[0] for row in trace) == sorted([
+        '/api/my/podcast/page/list', '/api/my/podcast/page/list',
+        '/api/djradio/my/radio/recommend', '/api/djradio/v3/get',
+    ]), trace
+    assert [row[1] for row in trace if row[0] == '/api/djradio/my/radio/recommend'] == [{}]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
@@ -119,20 +135,24 @@ def main():
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument('--progress', action='store_true', help='run the sealed episode progress proof')
     modes.add_argument('--badges', action='store_true', help='run the sealed subscription badge proof')
+    modes.add_argument('--recommendations', action='store_true', help='run the sealed recommendation shelf proof')
     args = parser.parse_args()
+    library_proof = args.badges or args.recommendations
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     run = root / 'run'
     name = ('podcast_progress_ui_probe.js' if args.progress else 'podcast_badges_ui_probe.js'
-            if args.badges else 'podcast_recent_ui_probe.js')
+            if library_proof else 'podcast_recent_ui_probe.js')
     script = Path(__file__).resolve().parents[2] / 'desktop/examples' / name
     env.update(CUMULUS_PROOF_DIR=str(run), CUMULUS_UX_SCRIPT=str(script))
     if args.progress:
         env['CUMULUS_PODCAST_PROGRESS_PROOF'] = '1'
     if args.badges:
         env['CUMULUS_PODCAST_BADGES_PROOF'] = '1'
-    if (args.progress or args.badges) and sys.platform == 'linux':
+    if args.recommendations:
+        env['CUMULUS_PODCAST_RECOMMENDATIONS_PROOF'] = '1'
+    if (args.progress or library_proof) and sys.platform == 'linux':
         env['LC_ALL'] = 'en_US.UTF-8'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
@@ -159,6 +179,8 @@ def main():
     assert len(stages) == complete['stageCount'] and all(s['actual'] for s in stages.values())
     if args.progress:
         check_progress(output, stages, complete)
+    elif args.recommendations:
+        check_recommendations(stages, complete)
     elif args.badges:
         check_badges(output, stages, complete, args.screenshots)
     else:
@@ -195,7 +217,7 @@ def main():
             assert by_voice['506'] == [detail, permission, media][:len(by_voice['506'])], calls
     pictures = len(list(output.glob('ux_*.png')))
     assert not args.screenshots or pictures == len(stages)
-    runtime = {} if args.badges else {'decoder': 'libmpv', 'audioOutput': 'null'}
+    runtime = {} if library_proof else {'decoder': 'libmpv', 'audioOutput': 'null'}
     result = {'actualWebView': True, 'screenshots': pictures, 'states': list(stages), **runtime, **complete}
     (root / 'report.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n',
                                     encoding='utf-8')

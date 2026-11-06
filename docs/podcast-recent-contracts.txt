@@ -123,3 +123,7 @@
   写入，即使推荐和收藏包含同一播客。未触发官方进入详情时的泛化清除。
 - 合成验证：cargo test -p cumulus-core --locked --test client_podcast
   subscription_recommendations，frontend/tests/podcast-state.test.ts。
+  实际桌面专项入口：构建 podcast_recent_ui_probe（custom-protocol），在隔离网络和
+  en_US.UTF-8 下运行 scripts/ci/podcast_recent_smoke.py --recommendations --screenshots。
+  使用真实 WebView/IPC、合成七张卡片；检查只显示原序前六个、轮播前后组、推荐详情、
+  返回后保留同 ID 收藏徽标，并核对一次推荐、两次收藏列表和一次详情请求。

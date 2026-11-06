@@ -69,11 +69,11 @@
   }
   const requests = [], detailReads = [];
   let index = 0, last = 'startup';
-  async function capture(label, target) {
+  async function capture(label, target, captureBadges = true) {
     last = label;
     await wait(() => shown(target()) && opaque(target()), 'settled visible stage: ' + label);
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    const badges = ['81', '82', '83'].map(badgeLayout).filter(Boolean);
+    const badges = captureBadges ? ['81', '82', '83'].map(badgeLayout).filter(Boolean) : [];
     assert(pane().scrollWidth <= pane().clientWidth + 1, 'podcast layout fits viewport');
     await emit(`ux_${String(++index).padStart(2, '0')}_${label}`, {
       actual: document.visibilityState === 'visible', badges,
@@ -100,6 +100,45 @@
   }
   function refresh() {
     return button('刷新', pane());
+  }
+  async function checkRecommendations() {
+    const shelf = () => one('[data-podcast-subscription-recommendations]', pane());
+    const rec = (id) => one(`[data-recommended-radio-id="${id}"]`, shelf());
+    const visibleIds = () => [...shelf().querySelectorAll('[data-recommended-radio-id]:not([inert])')]
+      .map((card) => card.dataset.recommendedRadioId);
+    await wait(shelf, 'recommendation shelf');
+    assert(one('h2', shelf()).textContent.trim() === '为你推荐' &&
+      Boolean(card('83').compareDocumentPosition(shelf()) & Node.DOCUMENT_POSITION_FOLLOWING),
+      'shelf comes after subscribed cards');
+    const all = [...shelf().querySelectorAll('[data-recommended-radio-id]')]
+      .map((node) => node.dataset.recommendedRadioId);
+    assert(JSON.stringify(all) === JSON.stringify(['81', '82', '83', '84', '85', '86']),
+      'exact original order and six-slot limit');
+    shelf().scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    await capture('recommended_first', () => rec('81'), false);
+    const first = visibleIds();
+    assert(first[0] === '81' && first.length < 6, 'first visible group');
+    const next = () => button('下一组推荐播客', shelf());
+    click(await wait(() => shown(next()) && next(), 'accessible next group'));
+    await wait(() => shown(rec('86')) && rec('81').inert &&
+      !one('.recommendation-rail', shelf()).getAnimations().length, 'settled last group');
+    await capture('recommended_next', () => rec('86'), false);
+    const lastGroup = visibleIds();
+    assert(lastGroup.length === first.length && lastGroup.at(-1) === '86', 'last visible group');
+    const previous = () => button('上一组推荐播客', shelf());
+    click(await wait(() => shown(previous()) && previous(), 'accessible previous group'));
+    await wait(() => shown(rec('81')) && !rec('81').inert, 'first group restored');
+    click(rec('81'));
+    await wait(() => detailReady('81') && detailReads.length === 1, 'recommended detail');
+    assert(!shelf() && !requests.length, 'detail is normal and never clears subscription badge');
+    await capture('recommended_detail', () => one('.podcast-summary h2', pane()));
+    await back();
+    assert(badge('81')?.textContent.trim() === '99+', 'original subscription badge survived');
+    await wait(shelf, 'recommendations survive Back');
+    shelf().scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    await capture('recommended_back', () => rec('81'), false);
+    await emit('complete', { ok: true, stageCount: index, remoteWrites: 0,
+      realMusicRequests: 0, detailReads, first, lastGroup });
   }
   let core, clearOriginal, pageOriginal;
   try {
@@ -141,6 +180,10 @@
     }, 'real sidebar entry visible'));
     await wait(() => shown(card('81')) && shown(card('82')) && shown(card('83')),
       'signed subscription cards');
+    if (window.__podcastRecommendationsProof) {
+      await checkRecommendations();
+      return;
+    }
     assert(badge('81')?.textContent.trim() === '99+' &&
       badge('81').getAttribute('aria-label') === '108 集新节目' &&
       badge('82')?.textContent.trim() === '4' && !badge('83') &&

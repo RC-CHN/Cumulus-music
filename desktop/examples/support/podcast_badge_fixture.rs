@@ -16,8 +16,16 @@ const CLEAR: &str = "/api/djradio/newcount/clear/byradio";
 #[derive(Default)]
 pub struct Fixture {
     trace: Mutex<Vec<Value>>,
+    recommendations: bool,
 }
 impl Fixture {
+    pub fn new(recommendations: bool) -> Self {
+        Self {
+            recommendations,
+            ..Default::default()
+        }
+    }
+
     pub fn trace(&self) -> Vec<Value> {
         self.trace.lock().unwrap().clone()
     }
@@ -26,6 +34,23 @@ impl Fixture {
         const LIST: &str = "/api/my/podcast/page/list";
         const DETAIL: &str = "/api/djradio/v3/get";
         let value = match path {
+            "/api/djradio/my/radio/recommend" => {
+                assert!(!cache);
+                assert_eq!(body, &json!({}));
+                if self.recommendations {
+                    self.trace.lock().unwrap().push(json!([path, body]));
+                    let cards = (81..=87)
+                        .map(|id| {
+                            json!({
+                                "id":id, "name":format!("合成推荐 {id}"), "playCount":1870
+                            })
+                        })
+                        .collect::<Vec<_>>();
+                    json!({"code":200,"data":cards})
+                } else {
+                    json!({"code":200,"data":[]})
+                }
+            }
             LIST => {
                 assert!(!cache);
                 assert_eq!(body, &json!({"selectType":1,"sortType":1}));

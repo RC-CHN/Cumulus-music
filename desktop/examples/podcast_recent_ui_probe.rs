@@ -289,7 +289,10 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let progress_enabled = std::env::var_os("CUMULUS_PODCAST_PROGRESS_PROOF").is_some();
-    let badges_enabled = std::env::var("CUMULUS_PODCAST_BADGES_PROOF").as_deref() == Ok("1");
+    let recommendations_enabled =
+        std::env::var("CUMULUS_PODCAST_RECOMMENDATIONS_PROOF").as_deref() == Ok("1");
+    let badges_enabled = recommendations_enabled
+        || std::env::var("CUMULUS_PODCAST_BADGES_PROOF").as_deref() == Ok("1");
     let voice_detail_enabled = std::env::var_os("CUMULUS_VOICE_DETAIL_PROOF").is_some();
     let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
         .ok()
@@ -307,7 +310,7 @@ fn main() {
     assert!(!badges_enabled || (!scene_enabled && !progress_enabled && !voice_detail_enabled));
     let api = Arc::new(Library {
         progress_enabled,
-        badges: badges_enabled.then(badge_fixture::Fixture::default),
+        badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
         scene_home,
         palette: palette.clone(),
         voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
@@ -350,6 +353,11 @@ fn main() {
         },
         |path| fs::read_to_string(path).expect("explicit synthetic script"),
     );
+    let source = if recommendations_enabled {
+        format!("window.__podcastRecommendationsProof = true;\n{source}")
+    } else {
+        source
+    };
     let source = if std::env::var("CUMULUS_PROOF_CAPTURE_ACK").as_deref() == Ok("1") {
         capture_ack::script(&source)
     } else {
