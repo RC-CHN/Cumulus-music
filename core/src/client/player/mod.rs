@@ -1819,9 +1819,11 @@ impl MusicClient {
                     let like_song_id = ordinary_queue
                         .then(|| queue_like::song_id(&i.resource))
                         .flatten();
-                    let (collectible, catalog_menu) = ordinary_queue
-                        .then(|| queue_collection::row_actions(&i.resource))
-                        .unwrap_or_default();
+                    let (collectible, catalog_menu) = if ordinary_queue {
+                        queue_collection::row_actions(&i.resource)
+                    } else {
+                        (false, false)
+                    };
                     Ok(QueueTrack {
                         entry_id: i.entry_id.clone(),
                         track: track(&i.resource)?,
