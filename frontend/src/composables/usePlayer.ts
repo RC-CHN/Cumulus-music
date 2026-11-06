@@ -25,6 +25,7 @@ import type { CloudQuery } from '../services/cloud.ts';
 import type { LocalQuery } from '../services/local.ts';
 import { useEqualizerDraft } from './useEqualizerDraft.ts';
 import type { VinylSimilarAction, VinylSimilarSeed } from '../services/vinylSimilar.ts';
+import type { VoiceSongAction, VoiceSongsScope } from '../services/voiceSongs.ts';
 
 function sameSelection(a: PlayerView | undefined, b: PlayerView | undefined) {
   return (
@@ -752,6 +753,25 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     );
     return !!next && next.state !== 'error';
   }
+  async function playVoiceSong(scope: VoiceSongsScope, receipt: string, action: VoiceSongAction) {
+    const selected = view.value;
+    if (
+      !ready.value ||
+      busy.value ||
+      scope.epoch !== epoch ||
+      selected?.playId !== scope.playId ||
+      selected.voiceDetail?.id !== scope.voiceId
+    )
+      return false;
+    const quality = selected.qualityPreferences.quality;
+    // A later retry would no longer be a click on the same episode card.
+    const next = await run(
+      (e) => core.playerVoiceSongPlay(e, scope.playId, receipt, action, quality),
+      null,
+      true,
+    );
+    return !!next && next.state !== 'error';
+  }
   async function controlPendingSource(current: PlayerView, input: PlayerAction) {
     if (pendingTransportBusy.value || loadingStepBusy.value) return;
     // The original selection still owns busy/retry until decode completes.
@@ -1360,6 +1380,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     syncPlayback,
     select,
     playVinylSimilar,
+    playVoiceSong,
     toggleSource,
     primaryTransportKey,
     primaryTransportPauses,

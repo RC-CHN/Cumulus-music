@@ -1,6 +1,10 @@
 use cumulus_core::{
     Error,
-    client::{ClientError, MusicClient, dto::VinylVoiceRecommendationsView},
+    client::{
+        ClientError, MusicClient,
+        dto::{PlayerView, PlayerVoiceSongsView, VinylVoiceRecommendationsView, VoiceSongAction},
+    },
+    membership::Quality,
 };
 
 fn require_main<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Result<(), ClientError> {
@@ -52,5 +56,36 @@ pub fn player_vinyl_voice_recommendation_target<R: tauri::Runtime>(
     require_main(&window)?;
     client
         .player_vinyl_voice_recommendation_target(&epoch, &play_id, &receipt, page, &radio_id)
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn player_voice_songs<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<PlayerVoiceSongsView, ClientError> {
+    require_main(&window)?;
+    client
+        .player_voice_songs(&epoch, &play_id)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn player_voice_song_play<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+    receipt: String,
+    action: VoiceSongAction,
+    quality: Quality,
+) -> Result<PlayerView, ClientError> {
+    require_main(&window)?;
+    client
+        .player_voice_song_play(&epoch, &play_id, &receipt, action, quality)
+        .await
         .map_err(Into::into)
 }
