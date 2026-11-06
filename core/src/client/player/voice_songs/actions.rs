@@ -1,4 +1,4 @@
-//! Native shelf and guarded SongCard cover/double-click selection (M/3085).
+//! Native shelf and guarded SongCard song actions (M/3085).
 use super::{Seed, seed};
 use crate::{
     Error, Result,
@@ -35,11 +35,13 @@ const RECEIPT_LIFETIME: Duration = Duration::from_secs(600);
 pub enum VoiceSongAction {
     Cover { index: usize },
     DoubleClick { index: usize },
+    NextPlay { index: usize },
 }
 
 pub(super) struct Row {
     pub(super) track: TrackView,
     pub(super) online_eligible: bool,
+    pub(super) copyright_blocked: bool,
 }
 
 impl Row {
@@ -156,10 +158,12 @@ impl MusicClient {
             Ok(())
         };
         check()?;
-        let (is_double, index) = match action {
-            VoiceSongAction::Cover { index } => (false, index),
-            VoiceSongAction::DoubleClick { index } => (true, index),
+        let index = match action {
+            VoiceSongAction::Cover { index }
+            | VoiceSongAction::DoubleClick { index }
+            | VoiceSongAction::NextPlay { index } => index,
         };
+        let is_next = matches!(action, VoiceSongAction::NextPlay { .. });
         let controller = self.player.controller.get().ok_or(Error::StaleResponse)?;
         let selection = self.player.selection.clone();
         let observed = selection.load(Ordering::Acquire);
@@ -182,7 +186,7 @@ impl MusicClient {
             .rows
             .get(index)
             .ok_or(Error::InvalidInput("invalid vinyl episode song row"))?;
-        if !clicked.online_eligible {
+        if !clicked.online_eligible || (is_next && clicked.copyright_blocked) {
             return Err(Error::State("vinyl episode song is unavailable online"));
         }
         let lease = focus.generation;
@@ -193,21 +197,25 @@ impl MusicClient {
         let source = json!({"kind":"vinyl_voice_songs","id":page.seed.voice_id,"text":"包含歌曲","scene":"unknown"});
         // Current playback is always the validated episode, never an
         // ordinary song—even if both point to the same backing song ID.
-        let command = if is_double && self.replace_queue_on_double_click(&token)? {
+        let command = if matches!(action, VoiceSongAction::DoubleClick { .. })
+            && self.replace_queue_on_double_click(&token)?
+        {
             PlaybackCommand::Replace {
                 resources: page.rows.iter().map(|row| row.resource(quality)).collect(),
                 index,
                 source,
             }
         } else {
-            if queue.items.len() >= QUEUE_LIMIT
-                && !queue
-                    .items
-                    .iter()
-                    .any(|entry| identity::online_song(&entry.resource, &clicked.track.id))
+            if (is_next && queue.items.len() > QUEUE_LIMIT)
+                || (queue.items.len() >= QUEUE_LIMIT
+                    && !queue
+                        .items
+                        .iter()
+                        .any(|entry| identity::online_song(&entry.resource, &clicked.track.id)))
             {
                 return Err(Error::State("playback queue is full"));
             }
+            let original = is_next.then(|| queue.clone());
             let mut queue = insert_collection_bound(
                 queue,
                 vec![clicked.resource(quality)],
@@ -216,31 +224,46 @@ impl MusicClient {
                 true,
                 true,
             );
-            queue.current = Some(
-                queue
-                    .items
-                    .iter()
-                    .find(|row| identity::online_song(&row.resource, &clicked.track.id))
-                    .ok_or(Error::State("vinyl episode song was not inserted"))?
-                    .entry_id
-                    .clone(),
-            );
-            PlaybackCommand::UpdateQueue(QueueUpdate {
-                expected: fence.clone(),
-                queue,
-                transport: Some(QueueTransport {
-                    position: None,
-                    paused: false,
-                }),
-            })
+            if !is_next {
+                queue.current = Some(
+                    queue
+                        .items
+                        .iter()
+                        .find(|row| identity::online_song(&row.resource, &clicked.track.id))
+                        .ok_or(Error::State("vinyl episode song was not inserted"))?
+                        .entry_id
+                        .clone(),
+                );
+            }
+            if original.as_ref() == Some(&queue) {
+                // Repeating the same promotion is a guarded observation, not
+                // another write, focus claim, or transport intent.
+                PlaybackCommand::Snapshot
+            } else {
+                PlaybackCommand::UpdateQueue(QueueUpdate {
+                    expected: fence.clone(),
+                    queue,
+                    transport: (!is_next).then_some(QueueTransport {
+                        position: None,
+                        paused: false,
+                    }),
+                })
+            }
         };
         check()?;
-        let attempt = observed
-            .checked_add(1)
-            .ok_or(Error::State("playback selection exhausted"))?;
-        selection
-            .compare_exchange(observed, attempt, Ordering::AcqRel, Ordering::Acquire)
-            .map_err(|_| Error::StaleResponse)?;
+        let attempt = if is_next {
+            // A queue-only edit observes an existing audio intent. The
+            // actor's queue/control fence rejects competing newer changes.
+            observed
+        } else {
+            let attempt = observed
+                .checked_add(1)
+                .ok_or(Error::State("playback selection exhausted"))?;
+            selection
+                .compare_exchange(observed, attempt, Ordering::AcqRel, Ordering::Acquire)
+                .map_err(|_| Error::StaleResponse)?;
+            attempt
+        };
         check()?;
         let focus = self.focus.clone();
         let session = self.session.clone();

@@ -11,7 +11,7 @@ use cumulus_core::{
     },
     history::HistorySyncAction,
     membership::Quality,
-    playback::PlaybackMode,
+    playback::{PlaybackMode, controller::PlaybackStatus},
     protocol::{
         api::Api,
         http::{ApiOrigin, MusicHttpClient},
@@ -649,4 +649,188 @@ async fn voice_songs_actions_reject_denied_stale_and_renderer_invented_rows_with
     assert_eq!(f.http.calls().len(), STARTUP.len() + 2);
     let after = serde_json::to_value(f.client.player_queue(&f.epoch).await.unwrap()).unwrap();
     assert_eq!(before, after);
+}
+
+#[tokio::test]
+async fn voice_songs_next_play_promotes_and_repeats_without_replacing_the_paused_decoder() {
+    let tracks = json!({"code":200,"tracks":[
+        {"id":301,"name":"另一首","album":{},"privilege":{"pl":320000}},
+        {"id":SONG,"name":"与节目主音轨同ID的普通歌","album":{},"privilege":{"pl":320000}}
+    ]});
+    // The controller may perform its usual upcoming-track prefetch. Both
+    // sealed URLs are valid fixture responses; prefetch must never load them.
+    let media = json!({"code":200,"data":[
+        {"id":301,"code":200,"url":"https://m1.music.126.net/other.mp3?auth=DO_NOT_EXPORT","md5":"def","level":"standard","expi":120},
+        {"id":SONG,"code":200,"url":"https://m1.music.126.net/ordinary.mp3?auth=DO_NOT_EXPORT","md5":"ghi","level":"standard","expi":120}
+    ]});
+    let f = Fixture::new(
+        &[COOKIE],
+        [tracks.into()]
+            .into_iter()
+            .chain(std::iter::repeat_with(|| media.clone().into()).take(8)),
+    )
+    .await;
+    let card = f
+        .client
+        .player_voice_songs(&f.epoch, &f.play_id)
+        .await
+        .unwrap();
+    let receipt = card.receipt.as_deref().unwrap();
+    f.client
+        .player_action(
+            &f.epoch,
+            PlayerAction::Mode {
+                mode: PlaybackMode::Random,
+            },
+        )
+        .await
+        .unwrap();
+    f.client
+        .player_action(&f.epoch, PlayerAction::Seek { seconds: 25.0 })
+        .await
+        .unwrap();
+    let paused = f
+        .client
+        .player_action(&f.epoch, PlayerAction::Pause { paused: true })
+        .await
+        .unwrap();
+    assert_eq!(paused.state, PlaybackStatus::Paused);
+    assert_eq!(paused.position, Some(25.0));
+    let counters = || {
+        let native = f.device.state.lock().unwrap();
+        (
+            native.loads,
+            native.stops,
+            native.pauses.clone(),
+            native.view.entry_id,
+        )
+    };
+    let native_before = counters();
+    let mut matched_entry = None;
+    let mut final_revision = None;
+    for (stage, index, expected) in [
+        (0, 1, [SONG, SONG, ""]),
+        (1, 0, [SONG, "301", SONG]),
+        (2, 1, [SONG, SONG, "301"]),
+        (3, 1, [SONG, SONG, "301"]),
+    ] {
+        let state = f
+            .client
+            .player_voice_song_play(
+                &f.epoch,
+                &f.play_id,
+                receipt,
+                VoiceSongAction::NextPlay { index },
+                Quality::Standard,
+            )
+            .await
+            .unwrap();
+        assert_eq!(state.play_id, paused.play_id);
+        assert_eq!(state.entry_id, paused.entry_id);
+        assert_eq!(state.position, paused.position);
+        assert_eq!(state.state, paused.state);
+        assert_eq!(state.mode, PlaybackMode::Random);
+        assert_eq!(counters(), native_before);
+        let queue = f.client.player_queue(&f.epoch).await.unwrap();
+        assert_eq!(queue.current, paused.entry_id);
+        assert_eq!(queue.tracks[0].track.voice_id.as_deref(), Some(VOICE));
+        assert_eq!(
+            queue
+                .tracks
+                .iter()
+                .map(|row| row.track.id.as_str())
+                .collect::<Vec<_>>(),
+            expected
+                .into_iter()
+                .filter(|id| !id.is_empty())
+                .collect::<Vec<_>>()
+        );
+        let entry = queue
+            .tracks
+            .iter()
+            .find(|row| row.track.id == SONG && row.track.voice_id.is_none())
+            .unwrap();
+        assert_eq!(
+            matched_entry.get_or_insert_with(|| entry.entry_id.clone()),
+            &entry.entry_id
+        );
+        let native_queue = cumulus_core::playback::PlaybackQueue::new(Some(f.store.clone()), "25")
+            .unwrap()
+            .snapshot();
+        let current = native_queue
+            .order
+            .iter()
+            .position(|id| Some(id) == native_queue.current.as_ref())
+            .unwrap();
+        assert_eq!(
+            native_queue.order[current + 1],
+            queue.tracks[1].entry_id,
+            "explicit next is pinned in shuffle too"
+        );
+        if stage == 2 {
+            final_revision = Some(state.queue_revision);
+        } else if stage == 3 {
+            assert_eq!(final_revision.as_ref(), Some(&state.queue_revision));
+        }
+    }
+    let calls = f.http.calls();
+    assert_eq!(calls[STARTUP.len()].path, CARD);
+    assert!(
+        calls[STARTUP.len() + 1..]
+            .iter()
+            .all(|call| call.path == "/api/song/enhance/player/url/v1")
+    );
+}
+
+#[tokio::test]
+async fn voice_songs_next_play_rejects_unavailable_and_stale_rows_before_queue_changes() {
+    let card = json!({"code":200,"tracks":[
+        {"id":301,"album":{},"privilege":{"pl":0,"flag":0}},
+        {"id":302,"album":{},"privilege":{"pl":320000,"st":-200}},
+        {"id":303,"album":{},"privilege":{"pl":320000,"st":"-100"}},
+        {"id":304,"album":{},"privilege":{"pl":320000}}
+    ]});
+    let f = Fixture::new(&[COOKIE], [card.into()]).await;
+    let initial = serde_json::to_value(f.client.player_queue(&f.epoch).await.unwrap()).unwrap();
+    let card = f
+        .client
+        .player_voice_songs(&f.epoch, &f.play_id)
+        .await
+        .unwrap();
+    let receipt = card.receipt.as_deref().unwrap();
+    for index in 0..3 {
+        assert!(matches!(
+            f.client
+                .player_voice_song_play(
+                    &f.epoch,
+                    &f.play_id,
+                    receipt,
+                    VoiceSongAction::NextPlay { index },
+                    Quality::Standard
+                )
+                .await,
+            Err(Error::State("vinyl episode song is unavailable online"))
+        ));
+    }
+    assert_eq!(
+        initial,
+        serde_json::to_value(f.client.player_queue(&f.epoch).await.unwrap()).unwrap()
+    );
+    f.client
+        .player_action(&f.epoch, PlayerAction::Stop)
+        .await
+        .unwrap();
+    assert!(matches!(
+        f.client
+            .player_voice_song_play(
+                &f.epoch,
+                &f.play_id,
+                receipt,
+                VoiceSongAction::NextPlay { index: 3 },
+                Quality::Standard
+            )
+            .await,
+        Err(Error::StaleResponse)
+    ));
+    assert_eq!(f.http.calls().len(), STARTUP.len() + 1);
 }

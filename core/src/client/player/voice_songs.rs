@@ -204,9 +204,17 @@ fn track(row: &Value) -> Result<Option<Row>> {
     let online_eligible = (privilege_id.is_null()
         || id(privilege_id).as_deref() == Some(track.id.as_str()))
         && mapping::online_play_all_eligible(row);
+    // M21 maps raw st to privilege.status; M35.j treats negative status
+    // as copyright blocked for the next-play menu, independently of pl.
+    let status = &row["privilege"]["st"];
+    let copyright_blocked = status
+        .as_f64()
+        .or_else(|| status.as_str()?.trim().parse().ok())
+        .is_some_and(|status| status < 0.0);
     Ok(Some(Row {
         track,
         online_eligible,
+        copyright_blocked,
     }))
 }
 
