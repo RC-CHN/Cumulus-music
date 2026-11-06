@@ -329,6 +329,48 @@ fn ordinary_live_pcm_reserve_needs_bound_native_clock_and_freezes_on_pause_or_se
 }
 
 #[test]
+fn accepted_native_speed_scales_only_the_bound_ordinary_refill() {
+    let cancel = Cancellation::default();
+    let (_reader, control, shared) = native_channel(48_000, 0, 200_000, cancel.clone()).unwrap();
+    let capacity = shared.state.lock().unwrap().pcm.capacity();
+    let credit = || shared.producer_credit(&shared.state.lock().unwrap());
+    assert!(matches!(
+        control.set_local_playback_speed(17, 4.0),
+        Err(Error::StaleResponse)
+    ));
+    control.bind_entry(17).unwrap();
+    assert_eq!(control.set_local_playback_speed(17, 4.0).unwrap(), 1.0);
+    control.observe(17, Some(0.0), true, true).unwrap();
+    assert_eq!(credit(), 54_000);
+    assert_eq!(shared.state.lock().unwrap().pcm.capacity(), capacity);
+    {
+        let mut state = shared.state.lock().unwrap();
+        state.produced = 12_000;
+        state.delivered = 7_200;
+    }
+    control.observe(17, Some(0.125), false, false).unwrap();
+    assert_eq!(credit(), 6_000 + 54_000);
+    assert!(control.set_local_playback_speed(18, 1.0).is_err());
+    assert!(control.set_local_playback_speed(17, f64::NAN).is_err());
+    assert_eq!(control.snapshot().unwrap().native_output_frame, 6_000);
+    assert_eq!(control.set_local_playback_speed(17, 1.0).unwrap(), 4.0);
+    assert_eq!(credit(), 6_000 + 18_000);
+    control.observe(17, Some(0.125), true, false).unwrap();
+    control.set_local_playback_speed(17, 2.0).unwrap();
+    assert_eq!(credit(), 12_000);
+    cancel.cancel();
+    assert!(matches!(
+        control.set_local_playback_speed(17, 1.0),
+        Err(Error::Cancelled)
+    ));
+
+    let (_reader, protected, _) =
+        channel(48_000, 0, 200_000, Cancellation::default(), None).unwrap();
+    protected.bind_entry(17).unwrap();
+    assert!(protected.set_local_playback_speed(17, 4.0).is_err());
+}
+
+#[test]
 fn native_control_ack_cannot_escape_revocation_during_worker_apply() {
     let lifetime = Cancellation::default();
     let (_reader, control, shared) = native_channel(44100, 0, 10000, lifetime.clone()).unwrap();

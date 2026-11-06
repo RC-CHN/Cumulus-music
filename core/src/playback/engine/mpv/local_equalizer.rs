@@ -216,6 +216,9 @@ impl MpvEngine {
         // A seek to the displayed end still needs one real source frame for
         // the native decoder to load and emit a genuine EOF.
         let frame = (frame as u64).min(total.saturating_sub(1));
+        let playback_speed = self
+            .number(c"speed")
+            .filter(|rate| (0.25..=4.0).contains(rate));
         let retirement = self.retire_local_equalizer_pinned(entry, cancel);
         let LocalEqualizer {
             pass,
@@ -236,14 +239,23 @@ impl MpvEngine {
             )?;
         }
         match source.start(frame, cancel)? {
-            NativeStereoStart::Ready(pass) => self.load_local_equalizer_pass(
-                pass,
-                original_demuxer,
-                settings,
-                total,
-                false,
-                cancel,
-            ),
+            NativeStereoStart::Ready(pass) => {
+                let media = self.load_local_equalizer_pass(
+                    pass,
+                    original_demuxer,
+                    settings,
+                    total,
+                    false,
+                    cancel,
+                )?;
+                if let Some(speed) = playback_speed
+                    && let Err(error) = self.speed(speed)
+                {
+                    let _ = self.stop();
+                    return Err(error);
+                }
+                Ok(media)
+            }
             NativeStereoStart::Stock(_) => {
                 // No replay or silent graph change after an audible entry.
                 Err(Error::Media("local equalizer seek could not prepare PCM"))

@@ -1096,6 +1096,25 @@ impl AudioEngine for MpvEngine {
         if !value.is_finite() || !(0.25..=4.0).contains(&value) {
             return Err(Error::InvalidInput("speed outside 0.25..4"));
         }
+        if let (Some(entry), Some(control), Some(_)) = (
+            self.entry,
+            self.stereo_pcm.clone(),
+            self.local_equalizer.as_ref(),
+        ) {
+            // Admit the bounded reserve before mpv can start demanding the
+            // higher rate. If the command fails, reconcile against the exact
+            // native property, using the old reserve if it is unavailable.
+            let before = control.set_local_playback_speed(entry, value)?;
+            let result = self.control_authorized(&["set", "speed", &value.to_string()]);
+            if result.is_err() {
+                let observed = self
+                    .number(c"speed")
+                    .filter(|speed| (0.25..=4.0).contains(speed))
+                    .unwrap_or(before);
+                let _ = control.set_local_playback_speed(entry, observed);
+            }
+            return result;
+        }
         self.control(&["set", "speed", &value.to_string()])
     }
     fn stop(&mut self) -> Result<()> {

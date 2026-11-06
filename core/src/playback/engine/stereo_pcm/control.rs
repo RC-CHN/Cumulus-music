@@ -58,6 +58,7 @@ pub(super) struct State {
     pub(super) paused: bool,
     seeking: bool,
     native_clock_observed: bool,
+    local_speed: f64,
     pub(super) end: bool,
     pub(super) failed: bool,
     controls: VecDeque<(u64, StereoGraphControl)>,
@@ -81,7 +82,6 @@ pub(crate) struct Shared {
     capacity: usize,
     startup: u64,
     sync_lead: u64,
-    live_lead: u64,
 }
 
 #[derive(Clone)]
@@ -127,12 +127,14 @@ fn channel_with_controls(
     // can overlap. Keep three bounded packets ahead after real clock sync;
     // a quarter-second starved the sink even when the DSP samples were valid.
     // Before sync and for a protected source, retain the previous bounds.
-    let live_lead = if local_controls {
-        u64::from((rate * 3).div_ceil(8))
+    let initial_live_lead = if local_controls {
+        local_live_lead(rate, 1.0)
     } else {
         sync_lead
     };
-    let capacity = (startup.max(live_lead) + 2 * QUANTUM as u64) as usize;
+    // The native demuxer can consume and refill this queue. A faster clock
+    // changes the time credit, not the number of allocated PCM samples.
+    let capacity = (startup.max(initial_live_lead) + 2 * QUANTUM as u64) as usize;
     let mut pcm = VecDeque::new();
     pcm.try_reserve_exact(capacity * 2)
         .map_err(|_| Error::Media("paced stereo PCM allocation failed"))?;
@@ -151,6 +153,7 @@ fn channel_with_controls(
             paused: true,
             seeking: false,
             native_clock_observed: false,
+            local_speed: 1.0,
             end: false,
             failed: false,
             controls,
@@ -171,10 +174,17 @@ fn channel_with_controls(
         capacity,
         startup,
         sync_lead,
-        live_lead,
     });
     let control = StereoPcmControl(shared.clone());
     Ok((StereoPcmReader::new(shared.clone()), control, shared))
+}
+
+// A raw packet is measured in source frames. The output queue and native
+// clock observation are measured in wall time, so the latter term scales
+// with the speed accepted by the native owner. Even at 4× the queue allocation
+// is unchanged and clock credit is still checked against delivered frames.
+fn local_live_lead(rate: u32, speed: f64) -> u64 {
+    u64::from(rate.div_ceil(8)) + (f64::from(rate) * speed / 4.0).ceil() as u64
 }
 
 impl Shared {
@@ -199,6 +209,17 @@ impl Shared {
     }
 
     pub(super) fn producer_credit(&self, state: &State) -> u64 {
+        let (initial_sync, live) = if self.local_controls {
+            let live = local_live_lead(self.rate, state.local_speed);
+            let initial_sync = if state.local_speed > 1.0 {
+                live
+            } else {
+                self.sync_lead
+            };
+            (initial_sync, live)
+        } else {
+            (self.sync_lead, self.sync_lead)
+        };
         if state.entry.is_none() {
             self.startup
         } else if self.local_controls
@@ -209,15 +230,15 @@ impl Shared {
             // FILE_LOADED can precede AO startup even while paused. Only the
             // ordinary native source needs this extra prefill for replacement.
             // A cold source retains its first-packet startup bound.
-            self.sync_lead
+            initial_sync
         } else if state.paused || (state.seeking && state.native > 0) {
             state.produced
         } else if !state.native_clock_observed {
             // mpv remains in initial seeking/sync until its AO queue is full.
-            // Initial sync still admits only the same bounded quarter second.
-            self.sync_lead
+            // At normal speed this is still the bounded quarter second.
+            initial_sync
         } else {
-            state.native.saturating_add(self.live_lead)
+            state.native.saturating_add(live)
         }
     }
 
@@ -407,6 +428,23 @@ impl StereoPcmControl {
         }
         self.validate_host()?;
         Ok(self.0.authority.clone())
+    }
+
+    /// Native-only playback timing for the exact held local pass. This can
+    /// change the size of a refill, but cannot advance the native clock.
+    pub(crate) fn set_local_playback_speed(&self, entry: i64, speed: f64) -> Result<f64> {
+        if !self.0.local_controls || !(0.25..=4.0).contains(&speed) {
+            return Err(Error::InvalidInput("invalid local PCM playback speed"));
+        }
+        self.validate_host()?;
+        let mut state = self.0.state.lock().map_err(|_| Error::LockPoisoned)?;
+        if state.entry != Some(entry) {
+            return Err(Error::StaleResponse);
+        }
+        self.0.check()?;
+        let previous = std::mem::replace(&mut state.local_speed, speed);
+        self.0.wake.notify_all();
+        Ok(previous)
     }
 
     pub(crate) fn bind_entry(&self, entry: i64) -> Result<()> {
