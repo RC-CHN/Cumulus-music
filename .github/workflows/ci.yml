@@ -215,7 +215,7 @@ jobs:
         run: |
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \
             env -u AT_SPI_BUS_ADDRESS -u AT_SPI_DISPLAY -u NO_AT_BRIDGE dbus-run-session -- \
-            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-indexed-flac-linux --verify-local-playback --verify-monitor-pcm --verify-packaged-flac --verify-indexed-flac-equalizer --indexed-flac-block-size 4608
+            env GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 LIBGL_ALWAYS_SOFTWARE=1 WEBKIT_FORCE_DMABUF_RENDERER=1 WEBKIT_DMABUF_RENDERER_FORCE_SHM=1 /usr/bin/python3 scripts/ci/installed_linux_smoke.py --packages .build/packages/linux-x64 --filter .build/package-stage/linux-x64/native/libcumulus_audio_filter.so --commit "$GITHUB_SHA" --ci-run "$GITHUB_RUN_ID" --ci-attempt "$GITHUB_RUN_ATTEMPT" --root .build/ci-installed-indexed-flac-linux --verify-local-playback --verify-monitor-pcm --verify-packaged-flac --verify-indexed-flac-equalizer --indexed-flac-block-size 4608 --verify-indexed-playback-speeds
       - name: Verify playback and EQ in the Linux portable archive
         run: |
           sudo unshare --net --fork runuser -u "$(id -un)" -- xvfb-run -a -s '-screen 0 1280x900x24 -nolisten tcp' \

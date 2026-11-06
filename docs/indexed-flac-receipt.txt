@@ -94,17 +94,17 @@ seek budgets and graph EOF/tail rules are unchanged.
 Seek discards any staged suffix before the native decoder's seek callback
 and tags new slices with the new generation. The old Native Open and
 protected/cold lanes retain their 1024-frame callback limits.
-During ordinary local effect playback, after the held entry reports an
-accepted native clock, the bounded reserve is three raw packets (375 ms)
-instead of 250 ms. This covers overlapping packet assembly (125 ms), the
-nominal output buffer (200 ms), and the 40 ms native clock observation.
-The worker still receives credit only from its matching native entry and
-never beyond the existing delivered-frame clock check. The unbound startup,
-initial sync, paused and seeking gates, and the protected source keep their
-previous credit behavior. Master bypass keeps the source and native entry.
-As before, already buffered PCM drains before the change is audible; the
-reserve adds up to one packet to that bound, plus the existing quantum
-rounding.
+During ordinary local effect playback the bounded refill covers one
+125 ms raw packet in source time plus 250 ms of output and observation time
+scaled into source time at the native speed. The reserve is 375 ms of source
+at 1×, 625 ms at 2×, and 1125 ms at 4×. The in-process queue allocation does
+not grow with the speed. The worker receives credit only for the matching
+native entry, and accepting a speed does not advance its clock. The unbound
+startup and the protected source retain their previous limits. A newly bound
+fast ordinary pass can prefill for its native rate before the first clock;
+settled pause and seek still freeze further production. A native seek
+reapplies the actual speed to the replacement pass. Master bypass retains
+the source and entry, and already queued PCM drains before it is audible.
 The old pathname never supplies another file after ownership transfers.
 Actor generation and ManagedOutput lease fence preparation. After native
 load and before first unpause, the actor checks the current local index,
@@ -234,6 +234,30 @@ The 4608-frame run also passed with the Ubuntu 24.04 libmpv 0.37
 runtime supplied via the private loader path, using this machine's GTK and
 PipeWire. Its amplitudes, longest zero runs and zero ERR counters matched
 this result. See `.build/ui-proof/phase86-indexed-4608-f-noble/`. These
-trials used 1× playback and a private sink; different speeds and physical
-output devices were not covered. This is not a full Ubuntu runner simulation. The Debian package job separately
-requires the wider case on the exact CI build before publication.
+initial trials used 1× playback and a private sink. Neither is a full
+Ubuntu runner simulation or a physical-output test. The Debian package job
+separately requires the wider case on the exact CI build before publication.
+
+Live speed regression: `--verify-indexed-playback-speeds` adds native
+source-clock advancement and continuous PCM checks at 2× and 4×, after a
+paused seek to the start and a fresh indexed selection at persisted 4×,
+and after returning to 1×. The earlier constant-reserve binary persisted
+4× but its source clock stopped at 13.954 s while the mpv output's ERR rose
+to 345; the recorder and sink remained at zero. See
+`.build/ui-proof/phase86-indexed-4608-g-speed/`.
+
+The rate-adjusted ordinary binary at `2c0d702b` passed all five stages with
+4608-frame FLAC and system libmpv 0.41. The live 4× sample measured 4.005
+source seconds per wall second, the two recovery samples continued at the
+requested speed, and 1× resumed at 1.079. Active samples contained at most
+one consecutive zero frame; the stopped/paused samples were silent and the
+mpv output, sink and recorder ERR counters stayed zero. See
+`.build/ui-proof/phase86-indexed-4608-h-speed/` for the report and screenshots.
+The same five-stage sequence also passed with a 1024-frame FLAC and the
+Ubuntu 24.04 libmpv 0.37 loader path on the local GTK/PipeWire host. Its
+live 4× sample measured 4.269 source seconds per wall second, 1× resumed
+at 1.063, the longest active zero run was one frame, and all monitored
+ERR counters stayed zero. See `.build/ui-proof/phase86-indexed-1024-i-speed-noble/`.
+The next Debian package gate runs the 4608-frame sequence including speed,
+seek and fresh selection against the exact hosted build. These results
+cover synthetic audio on the private output, not physical devices or Windows.
