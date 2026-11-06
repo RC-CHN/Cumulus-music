@@ -14,7 +14,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   control: [action: DownloadControl];
   manage: [event: MouseEvent | KeyboardEvent];
+  podcast: [id: string];
 }>();
+const completedVoice = computed(
+  () => props.task.source === 'voice' && props.task.status === 'complete',
+);
+const voicePodcast = computed(() => (completedVoice.value ? props.task.voicePodcast : undefined));
+function openPodcast() {
+  if (!props.locked && voicePodcast.value?.id) emit('podcast', voicePodcast.value.id);
+}
 const controlLabel = computed(() =>
   props.task.needsTransferRestart ? '从头下载' : resume.value ? '继续下载' : '暂停下载',
 );
@@ -47,7 +55,26 @@ const quality = computed(() =>
       <small class="download-track-subtitle"
         ><span v-if="quality" class="download-quality">{{ quality }}</span
         ><span v-if="task.encrypted" class="download-quality">NCM</span
-        ><span class="ellipsis" :data-tooltip="task.track.artists.join(' / ')">{{
+        ><template v-if="completedVoice">
+          <button
+            v-if="voicePodcast?.id && !selectionOnly"
+            type="button"
+            class="download-podcast-link ellipsis"
+            data-download-action="podcast"
+            :disabled="locked"
+            :aria-label="`查看播客：${voicePodcast.name}`"
+            :data-tooltip="voicePodcast.name"
+            @click.stop="openPodcast"
+            @dblclick.stop
+            @keydown.stop
+          >
+            {{ voicePodcast.name }}
+          </button>
+          <span v-else-if="voicePodcast" class="ellipsis" :data-tooltip="voicePodcast.name">{{
+            voicePodcast.name
+          }}</span>
+        </template>
+        <span v-else class="ellipsis" :data-tooltip="task.track.artists.join(' / ')">{{
           task.track.artists.join(' / ') || '歌手信息待获取'
         }}</span></small
       >

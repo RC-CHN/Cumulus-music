@@ -50,6 +50,39 @@ fn native_metadata(task: &crate::download::service::DownloadTask) -> Option<serd
     Some(metadata)
 }
 
+fn voice_podcast(
+    task: &crate::download::service::DownloadTask,
+) -> Option<DownloadVoicePodcastView> {
+    use crate::{
+        download::service::{DownloadOrigin, DownloadStatus},
+        protocol::api::identifier,
+    };
+    let DownloadOrigin::Voice { voice_id } = &task.origin else {
+        return None;
+    };
+    if task.status != DownloadStatus::Complete {
+        return None;
+    }
+    let metadata = task.song.as_ref()?;
+    let voice = &metadata["voice"];
+    // Bind the source to the downloaded episode and its own media ID;
+    // ordinary song metadata and display artist/album IDs are unrelated.
+    if identifier(&metadata["id"]).ok()? != task.song_id
+        || identifier(&voice["id"]).ok()? != *voice_id
+        || identifier(&voice["mainTrackId"]).ok()? != task.song_id
+    {
+        return None;
+    }
+    let audio = &voice["audio"];
+    let name = audio["name"]
+        .as_str()
+        .filter(|value| !value.trim().is_empty() && value.len() <= 4096)?;
+    Some(DownloadVoicePodcastView {
+        name: name.into(),
+        id: identifier(&audio["id"]).ok(),
+    })
+}
+
 pub(super) struct DownloadHost {
     inner: Arc<Host>,
 }

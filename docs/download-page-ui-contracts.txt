@@ -167,3 +167,19 @@ Repair 工作任务；不发起重新下载音频，也不会在文件移动/删
 底栏原生播放视图只在当前资源持有已验证格式的下载任务 ID 时投影该标识，
 不投影文件路径或授权地址。下载表只高亮当前已载入任务，不按歌曲 ID 猜测；
 同一歌曲的在线播放、其他下载版本或尚未载入的选中项不会误标。
+
+已下载声音的播客副标题
+- 官方 M3104:562–571 将标题列交给 M2068:48–67；后者合并离线项及 origin，
+  启用 audioVisible、关闭重复下载动作。恢复的 VoiceTitleCell.tsx:528–556
+  显示 audio.name；有 audio.id 时点击打开 /audioDetail/{id}，缺 ID 时只显示文字。
+- Rust 从同账号已完成的 DownloadOrigin::Voice 读取既有 Episode::download_metadata。
+  同时核对下载节目 ID、下载媒体 ID、嵌套节目主媒体 ID，之后仅投影 voicePodcast
+  的名称和可选公开 ID。普通歌曲、云盘、身份不符的记录和缺失元数据不补播客字段；
+  没有把歌曲 ID、主播名或专辑当作节目所属播客。下载查询不增加音乐 HTTP。
+- 普通下载表的副标题按钮沿用已接入的播客详情页；点击才发起现有只读
+  /api/djradio/v3/get、/api/v6/dj/program/byradio 请求，不启动、替换或暂停音频。
+  使用既有下载页回退锚点还原同一行的副标题焦点。批量选择页仅展示文字。
+  不把本批称为完整已下载声音菜单、活动传输行或分享恢复。
+- 定向 Rust 核对见 client_downloads::downloaded_voice_header_comes_from_native_task_origin_not_raw_song_metadata；
+  Linux 隔离实窗入口 scripts/ci/download_voice_podcast_smoke.py，核对纯文字、无效归属、
+  公开大整数 ID、真实回退焦点，以及同一暂停下载文件保持原时钟和队列。

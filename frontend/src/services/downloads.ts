@@ -37,6 +37,7 @@ export interface DownloadTask {
   id: string;
   source: 'song' | 'cloud' | 'mv' | 'voice';
   track: TrackView;
+  voicePodcast?: { name: string; id?: string };
   status:
     | 'queued'
     | 'authorizing'

@@ -33,6 +33,7 @@ const emit = defineEmits<{
   select: [selection: PlaySelection];
   playMv: [task: DownloadTask];
   artist: [id: string];
+  podcast: [id: string];
   next: [task: DownloadTask];
   collect: [task: DownloadTask];
   comments: [task: DownloadTask];
@@ -234,6 +235,7 @@ function play(task?: DownloadTask) {
           @next="emit('next', $event)"
           @collect="emit('collect', $event)"
           @comments="emit('comments', $event)"
+          @podcast="emit('podcast', $event)"
           @open="model.open($event.id)"
           @cancel="emit('dialog', { kind: 'cancel', task: $event })"
           @sort="filter(nextDownloadSort(query, $event), `[data-download-sort='${$event}']`)"

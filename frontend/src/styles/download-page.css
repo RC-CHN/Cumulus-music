@@ -272,6 +272,18 @@
   line-height: 1.4;
   color: var(--muted);
 }
+.download-podcast-link {
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.download-podcast-link:not(:disabled):hover,
+.download-podcast-link:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+}
 .download-quality {
   flex-shrink: 0;
   border: 1px solid var(--gold);

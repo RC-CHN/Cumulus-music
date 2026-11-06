@@ -5252,6 +5252,7 @@ onUnmounted(() => {
                 @dialog="downloadDialog = $event"
                 @batch="openDownloadBatch"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
+                @podcast="openSceneRadio"
                 @collect="(task) => (playlistDialog = { kind: 'tracks', tracks: [task.track] })"
                 @comments="(task) => trackComments(task.track)"
                 @next="queueDownload"

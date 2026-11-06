@@ -36,6 +36,7 @@ const emit = defineEmits<{
   next: [task: DownloadTask];
   collect: [task: DownloadTask];
   comments: [task: DownloadTask];
+  podcast: [id: string];
   open: [task: DownloadTask];
   cancel: [task: DownloadTask];
   sort: [column: DownloadSort];
@@ -250,6 +251,7 @@ async function key(event: KeyboardEvent, index: number) {
             :repairing="repairing.has(task.id)"
             @control="$event === 'cancel' ? emit('cancel', task) : emit('control', task, $event)"
             @manage="menu?.show($event, task)"
+            @podcast="emit('podcast', $event)"
           />
         </div>
         <div

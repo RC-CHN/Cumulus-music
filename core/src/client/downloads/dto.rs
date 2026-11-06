@@ -79,6 +79,8 @@ pub struct DownloadTaskView {
     pub id: String,
     pub source: &'static str,
     pub track: TrackView,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub voice_podcast: Option<DownloadVoicePodcastView>,
     pub status: DownloadStatus,
     pub phase: DownloadPhase,
     pub bytes: u64,
@@ -97,6 +99,12 @@ pub struct DownloadTaskView {
     pub file_operation: Option<String>,
     pub lyrics_status: LyricsStatus,
     pub error: Option<&'static str>,
+}
+#[derive(Clone, Serialize)]
+pub struct DownloadVoicePodcastView {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
 }
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]

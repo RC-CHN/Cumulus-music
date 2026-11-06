@@ -2344,6 +2344,8 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
         "id":71,"name":"合成下载声音","mainSong":{"id":123,"duration":1000},
         "createTime":1735787045000_u64,
         "dj":{"userId":42,"nickname":"合成主播","avatarUrl":"PRIVATE_AVATAR"},
+        "radio":{"id":"9007199254740993","name":"该声音所属播客","programCount":1,
+            "picUrl":"PRIVATE_PODCAST_COVER"},
         "authorization":"PRIVATE_TOKEN"
     }))
     .unwrap();
@@ -2393,6 +2395,7 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
                 .unwrap();
             assert_eq!(downloads.tasks.len(), 1);
             assert!(downloads.tasks[0].track.voice_id.is_none());
+            assert!(downloads.tasks[0].voice_podcast.is_none());
             let song = f
                 .client
                 .play_selection("1", select(DownloadCategory::Song))
@@ -2433,6 +2436,52 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
     f.store
         .put("1", "download_tasks_v1", &task_id, &stored)
         .unwrap();
+    let voice_list = DownloadQuery {
+        tab: DownloadTab::Completed,
+        category: DownloadCategory::Voice,
+        ..Default::default()
+    };
+    let downloads = f.client.downloads("1", voice_list.clone()).await.unwrap();
+    let listed = serde_json::to_value(&downloads.tasks[0].voice_podcast).unwrap();
+    assert_eq!(
+        listed,
+        json!({"id":"9007199254740993","name":"该声音所属播客"})
+    );
+    for (path, unexpected, projected) in [
+        (
+            "/song/voice/audio/id",
+            json!(null),
+            json!({"name":"该声音所属播客"}),
+        ),
+        (
+            "/song/voice/audio/id",
+            json!("https://private.invalid/"),
+            json!({"name":"该声音所属播客"}),
+        ),
+        ("/song/voice/mainTrackId", json!("124"), json!(null)),
+        ("/song/voice/id", json!("72"), json!(null)),
+        ("/song/id", json!("124"), json!(null)),
+    ] {
+        let mut damaged = stored.clone();
+        *damaged.pointer_mut(path).unwrap() = unexpected;
+        f.store
+            .put("1", "download_tasks_v1", &task_id, &damaged)
+            .unwrap();
+        let read = f.client.downloads("1", voice_list.clone()).await.unwrap();
+        assert_eq!(
+            serde_json::to_value(&read.tasks[0].voice_podcast).unwrap(),
+            projected,
+            "{path}"
+        );
+        assert_eq!(
+            f.store.get("1", "download_tasks_v1", &task_id).unwrap(),
+            Some(damaged)
+        );
+    }
+    f.store
+        .put("1", "download_tasks_v1", &task_id, &stored)
+        .unwrap();
+    assert_eq!(f.api.calls.lock().unwrap().len(), calls);
     let voice = f
         .client
         .play_selection("1", select(DownloadCategory::Voice))
