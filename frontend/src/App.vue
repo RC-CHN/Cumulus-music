@@ -3583,7 +3583,8 @@ watch(
 );
 // Stable scalar dependencies keep playback clock ticks out of the page tree.
 const currentTrackId = computed(() => player.view.value?.track?.id);
-const currentSearchSongId = computed(() => searchCurrentSongId(player.view.value));
+// Ordinary rows follow catalog identity; a voice can use a song as its audio source.
+const currentCatalogSongId = computed(() => searchCurrentSongId(player.view.value));
 const currentSearchVoiceId = computed(() => searchCurrentVoiceId(player.view.value));
 const searchPendingTransport = computed(() => {
   const pending = player.pendingTransport.value;
@@ -3600,7 +3601,7 @@ const searchPendingTransport = computed(() => {
   };
 });
 const searchPendingTrackToggle = computed<TrackPendingToggle | undefined>((previous) => {
-  const trackId = currentSearchSongId.value;
+  const trackId = currentCatalogSongId.value;
   const target = searchPendingTransport.value;
   if (!trackId || !target) return;
   if (
@@ -4626,7 +4627,7 @@ onUnmounted(() => {
                 v-else-if="page.kind === 'history'"
                 :model="recent"
                 :playable="player.ready.value && !player.busy.value"
-                :current-id="currentTrackId"
+                :current-id="currentCatalogSongId"
                 :current-voice-id="currentVoiceId"
                 @scope="music.replace({ kind: 'history', scope: $event })"
                 @play="playHistory"
@@ -4821,7 +4822,7 @@ onUnmounted(() => {
                 "
                 :known-playlist-ids="searchKnownPlaylistIds"
                 :observed-album-membership="observedAlbumMembership"
-                :current-id="currentSearchSongId"
+                :current-id="currentCatalogSongId"
                 :current-toggle="visibleTrackToggle"
                 :pending-track-toggle="searchPendingTrackToggle"
                 :pending-voice-toggle="searchPendingVoiceToggle"
@@ -4928,7 +4929,7 @@ onUnmounted(() => {
                 :download-busy="downloads.busy.value"
                 :liked="liked"
                 :busy-likes="busyLikes"
-                :current-id="currentTrackId"
+                :current-id="currentCatalogSongId"
                 :current-toggle="visibleTrackToggle"
                 @open="openCatalog"
                 @profile="(id) => music.navigate({ kind: 'playlist_creator', id })"
@@ -4977,7 +4978,7 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :like-notice="music.likeNotice.value"
                 :current-toggle="visibleTrackToggle"
-                :current-id="currentTrackId"
+                :current-id="currentCatalogSongId"
                 @open="openMemberTarget"
                 @play="playMember"
                 @play-playlist="playMemberPlaylist"
@@ -5015,7 +5016,7 @@ onUnmounted(() => {
                 :playable="player.ready.value && !player.busy.value"
                 :liked="liked"
                 :busy-likes="busyLikes"
-                :current-id="currentTrackId"
+                :current-id="currentCatalogSongId"
                 :current-playlist-id="currentPlaylistId"
                 :playback-state="playbackState"
                 @navigate="openRanking"
@@ -5039,7 +5040,7 @@ onUnmounted(() => {
                 :busy-likes="busyLikes"
                 :playable="player.ready.value && !player.busy.value"
                 :queueable="searchCollectionQueueable"
-                :current-id="currentTrackId"
+                :current-id="currentCatalogSongId"
                 :current-toggle="visibleTrackToggle"
                 :current-album-id="currentOrigin?.kind === 'album' ? currentOrigin.id : undefined"
                 :playing="player.playing.value"
@@ -5156,7 +5157,7 @@ onUnmounted(() => {
                 :playable="player.ready.value && !player.busy.value"
                 :liked="liked"
                 :busy-likes="busyLikes"
-                :current-id="currentSearchSongId"
+                :current-id="currentCatalogSongId"
                 :playing="player.playing.value"
                 @period="
                   (period) =>
@@ -5692,7 +5693,7 @@ onUnmounted(() => {
                     :liked="liked"
                     :busy="busyLikes"
                     :playable="player.ready.value"
-                    :current-id="currentTrackId"
+                    :current-id="currentCatalogSongId"
                     :current-toggle="visibleTrackToggle"
                     :toggle-busy="player.busy.value"
                     @play="playVisibleTrack"
