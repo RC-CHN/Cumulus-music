@@ -26,8 +26,11 @@
   const ready = () => one('#search-result-panel')?.getAttribute('aria-busy') === 'false'
     && !one('.page-enter-active,.page-leave-active,.search-results-leave-active');
   const mode = window.__searchFooterCase;
-  let step = 'startup', count = 0, epoch;
+  let step = 'startup', count = 0, epoch, firstOrdinaryFooterCount, initialPresentation;
   const native = () => invoke('player_snapshot', { epoch });
+  const presentation = () => invoke('pc_presentation', { epoch });
+  const ordinaryReady = () => ready() && one('.search-results-page h1')?.textContent === '合成 V3'
+    && one('[data-category="all"]')?.getAttribute('aria-selected') === 'true' && cards().length === 3;
   const bar = () => {
     const node = one('.playerbar');
     return node && { state: node.dataset.state, playId: node.dataset.playId ?? null,
@@ -82,6 +85,7 @@
       noOverflow: document.documentElement.scrollWidth <= innerWidth,
       observedPlayId: observed.playId, observedState: observed.state,
       playerbar: bar(),
+      ...(label === 'results' ? { firstOrdinaryFooterCount, initialPresentation } : {}),
     });
     // An emit reply precedes the spawned host actor snapshot. This receipt is
     // emitted only after native JSON persistence (and optional PNG capture).
@@ -95,9 +99,19 @@
     input.value = '合成 V3';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await wait(() => ready() && one('.search-results-page h1')?.textContent === '合成 V3'
-      && one('[data-category="all"]')?.getAttribute('aria-selected') === 'true' && cards().length === 3, 'ordinary V3 search');
+    await wait(ordinaryReady, 'ordinary V3 search');
+    firstOrdinaryFooterCount = footerCount();
+    if (mode === 't1') {
+      // aria-busy tracks the ordinary result read. The signed presentation
+      // event can still reproject that result after the rows first render.
+      step = 'initial_presentation';
+      await wait(() => ordinaryReady() && footerCount() === 3, 'three signed song footers rendered');
+    }
     verifyFooters();
+    // Observe only after the DOM check so a snapshot cannot drive readiness.
+    initialPresentation = await presentation();
+    assert(initialPresentation.epoch === epoch && initialPresentation.searchFooter === (mode === 't1'),
+      'rendered footer cohort agrees with the current native presentation');
     await capture('results', (view) => view.state === 'idle');
 
     const cover = () => one('[data-result-key="song:1"] .search-track-cover');
@@ -133,16 +147,25 @@
       historicalLayoutOnly: mode === 'error',
     });
   } catch (error) {
-    let account, accountReadFailure;
+    let account, accountReadFailure, currentPresentation, presentationReadFailure;
     try {
       const value = await invoke('account_snapshot');
       account = { epoch: value.epoch, status: value.status, loginNotice: value.loginNotice ?? null };
     } catch (cause) {
       accountReadFailure = { code: cause?.code ?? null };
     }
+    if (epoch) {
+      try {
+        currentPresentation = await presentation();
+      } catch (cause) {
+        presentationReadFailure = { code: cause?.code ?? null };
+      }
+    }
     await emit('failed', {
       ok: false, footerCase: mode, step, error: String(error), stack: error.stack,
       account, accountReadFailure, page: one('.main-content')?.innerText.slice(0, 1800) ?? null,
+      firstOrdinaryFooterCount, footerCount: footerCount(), ordinaryReady: ordinaryReady(),
+      cardKeys: cards().map((card) => card.dataset.resultKey), currentPresentation, presentationReadFailure,
     });
   }
 })();

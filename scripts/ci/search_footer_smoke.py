@@ -53,6 +53,11 @@ def verify(directory, case, expected_assignment, screenshots, windows):
             assert state["footerCount"] == (3 if case == "t1" else 0)
         assert state["audioFactoryCount"] == 1, "all phases must use one actual native player"
     assert states["results"]["nativePlayer"]["state"] == "idle"
+    initial = states["results"]
+    presentation = initial["initialPresentation"]
+    assert presentation["epoch"] == initial["nativePlayer"]["epoch"]
+    assert presentation["revision"].isdigit() and presentation["searchFooter"] is (case == "t1")
+    assert 0 <= initial["firstOrdinaryFooterCount"] <= (3 if case == "t1" else 0)
     playing = states["playing"]["nativePlayer"]
     paused = states["paused"]["nativePlayer"]
     assert playing["state"] == "playing" and playing["position"] > .25
@@ -79,7 +84,8 @@ def verify(directory, case, expected_assignment, screenshots, windows):
     urls = [call["args"] for call in media if call["path"] == PLAYER_URL]
     assert urls and all([str(value) for value in json.loads(call["ids"])] == ["1"]
                         and call["level"] == "standard" for call in urls), urls
-    assert complete["audioFactoryCount"] == 1 and complete["syntheticV3Calls"] >= 2
+    assert complete["audioFactoryCount"] == 1 and complete["syntheticV3Calls"] == 2, (
+        "exactly one V3 tabs/body pair; presentation settlement does not rerun search")
     locale = None
     if not windows:
         locale = read(output / "locale.json")
@@ -92,6 +98,7 @@ def verify(directory, case, expected_assignment, screenshots, windows):
                   sameCredentialAccountRestore=True, nativeNullPlaybackVerified=True,
                   stageCount=len(labels), screenshots=pictures, locale=locale,
                   footerCount=3 if case == "t1" else 0, historicalLayoutOnly=case == "error",
+                  firstOrdinaryFooterCount=initial["firstOrdinaryFooterCount"],
                   realMusicRequests=0, realAccountWrites=0)
     (directory / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return report
