@@ -223,6 +223,19 @@ impl MusicClient {
         let token = self.podcast_token(epoch)?;
         let service = PodcastService::new(self.session.clone())?;
         let operation = match command {
+            PodcastCommand::CollectRecommendation {
+                id,
+                receipt,
+                revision,
+            } => {
+                self.collect_subscription_recommendation(
+                    &token,
+                    &receipt,
+                    &revision,
+                    &identifier(&json!(id))?,
+                )
+                .await?
+            }
             PodcastCommand::ChangeSearchSubscription { id, expected } => {
                 service
                     .change_search_subscription_for(&token, &identifier(&json!(id))?, expected)

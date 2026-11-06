@@ -453,21 +453,29 @@ impl MusicClient {
                 receipt,
                 revision,
                 id,
+                action,
             } => {
                 let prepared = prepared.as_ref().ok_or(Error::StaleResponse)?;
                 let (command, source) = self
-                    .recommended_podcast_command(&token, &receipt, &revision, &id)
+                    .recommended_podcast_command(&token, &receipt, &revision, &id, action)
                     .await?;
-                let state = self
-                    .submit_selection_with_source(
-                        &token,
-                        command,
-                        attempt,
-                        lease,
-                        Some(prepared),
-                        Some(source),
-                    )
-                    .await?;
+                let state = match command {
+                    PlaybackCommand::UpdateQueue(update) => {
+                        self.submit_prepared_queue_only(&token, prepared, update, source)
+                            .await?
+                    }
+                    command => {
+                        self.submit_selection_with_source(
+                            &token,
+                            command,
+                            attempt,
+                            lease,
+                            Some(prepared),
+                            Some(source),
+                        )
+                        .await?
+                    }
+                };
                 self.session.with_token(&token, |_| Ok(()))?;
                 return project(&state, &token);
             }

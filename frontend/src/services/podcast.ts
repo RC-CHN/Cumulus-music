@@ -1,4 +1,9 @@
 import type { AccountData } from './contracts';
+export type PodcastRecommendationAction = 'overlay' | 'play' | 'next';
+
+export function podcastPublicLink(id: string): string | null {
+  return /^[1-9]\d{0,19}$/.test(id) ? `https://music.163.com/djradio?id=${id}` : null;
+}
 /** Extract only an official radio identifier; this never opens the pasted URL. */
 export function podcastReference(input: string): string | null {
   const value = input.trim();
@@ -83,6 +88,7 @@ export interface PodcastPage {
 }
 export type PodcastCommand =
   | { kind: 'change_search_subscription'; id: string; expected: boolean }
+  | { kind: 'collect_recommendation'; id: string; receipt: string; revision: string }
   | { kind: 'change'; action: PodcastAction; id: string; desired: boolean }
   | { kind: 'reconcile'; action: PodcastAction; id: string };
 export interface PodcastState {
@@ -103,6 +109,7 @@ export interface PodcastSubscriptionRecommendation {
   coverUrl: string | null;
   playCount: number | null;
   unavailable: boolean;
+  ownedByOther?: boolean;
 }
 export interface PodcastSubscriptionRecommendations {
   receipt: string;

@@ -4,7 +4,7 @@ use crate::{
     account::SessionToken,
     client::focus::{FocusSnapshot, Owner},
     playback::{
-        controller::{PlaybackCommand, PlaybackFence, PlaybackSnapshot},
+        controller::{PlaybackCommand, PlaybackFence, PlaybackSnapshot, QueueUpdate},
         engine::Cancellation,
     },
 };
@@ -41,6 +41,45 @@ impl PreparedSelection {
 }
 
 impl MusicClient {
+    pub(super) async fn submit_prepared_queue_only(
+        &self,
+        token: &SessionToken,
+        prepared: &PreparedSelection,
+        update: QueueUpdate,
+        source: Cancellation,
+    ) -> Result<PlaybackSnapshot> {
+        if update.transport.is_some() || update.expected != prepared.fence {
+            return Err(Error::StaleResponse);
+        }
+        let controller = self.player.controller().await?;
+        let current = controller.command(token, PlaybackCommand::Snapshot).await?;
+        prepared.check(self, &current)?;
+        source.check()?;
+        let selection = self.player.selection.clone();
+        let focus = self.focus.clone();
+        let preparations = self.player.prepared_generation.clone();
+        let (attempt, generation, issued, owner) = (
+            prepared.observed,
+            prepared.generation,
+            prepared.issued,
+            prepared.focus,
+        );
+        controller
+            .command_guarded(
+                token,
+                PlaybackCommand::UpdateQueue(update),
+                prepared.fence.clone(),
+                Cancellation::new(move || {
+                    !source.is_cancelled()
+                        && selection.load(Ordering::Acquire) == attempt
+                        && preparations.load(Ordering::Acquire) == generation
+                        && issued.elapsed() < TICKET_LIFETIME
+                        && focus.check_snapshot(owner).is_ok()
+                }),
+            )
+            .await
+    }
+
     /// Capture the native playback state before the renderer reads a card.
     /// One outstanding process-local ticket; starting a new one replaces it.
     pub fn prepare_play_selection(

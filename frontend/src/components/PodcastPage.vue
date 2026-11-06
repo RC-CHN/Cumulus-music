@@ -9,7 +9,7 @@ import PodcastRecentList from './PodcastRecentList.vue';
 import PodcastSubscriptionRecommendations from './PodcastSubscriptionRecommendations.vue';
 import AudiobookSkipMenu from './AudiobookSkipMenu.vue';
 import { audiobookSkipSaved, type AudiobookSkipContext } from '../services/audiobookSkip';
-import type { PodcastScope, EpisodeView } from '../services/podcast';
+import type { PodcastScope, EpisodeView, PodcastRecommendationAction } from '../services/podcast';
 const props = defineProps<{
   model: PodcastModel;
   recent: PodcastRecentModel;
@@ -21,7 +21,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   play: [scope: PodcastScope, revision: string, id: string | null];
   recentPlay: [revision: string, id: string, doubleClick: boolean];
-  recommendedPlay: [id: string];
+  recommendedPlay: [id: string, action: PodcastRecommendationAction];
   comments: [id: string, title: string];
   download: [voices: EpisodeView[]];
 }>();
@@ -418,14 +418,17 @@ const pending = props.model.pending;
         </button>
       </footer>
       <PodcastSubscriptionRecommendations
-        v-if="model.recommendedCards.value.length"
+        v-if="page && model.recommendedCards.value.length"
         :cards="model.recommendedCards.value"
+        :revision="page.revision"
+        :can-collect="model.canCollectRecommendation"
         :disabled="busy"
         :can-play="playable"
         :current-radio-id="currentRadioId"
         :playing="playing"
         @open="model.openRecommended"
-        @play="emit('recommendedPlay', $event)"
+        @play="(id, action) => emit('recommendedPlay', id, action)"
+        @collect="model.collectRecommended"
       />
     </template>
   </section>

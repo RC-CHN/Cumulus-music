@@ -1464,7 +1464,10 @@ const currentPodcastRadioId = computed(() => {
     ? view.origin.id
     : undefined;
 });
-function playRecommendedPodcast(id: string) {
+function playRecommendedPodcast(
+  id: string,
+  action: import('./services/podcast').PodcastRecommendationAction = 'overlay',
+) {
   if (page.value.kind !== 'podcasts' || !player.ready.value || player.busy.value) return;
   const source = podcasts.recommendedSelection(id);
   if (!source) return;
@@ -1477,7 +1480,7 @@ function playRecommendedPodcast(id: string) {
       active.revision !== source.revision
     )
       throw { code: 'stale', message: '推荐播客已更新' };
-    return { kind: 'podcast_subscription_recommendation', ...source };
+    return { kind: 'podcast_subscription_recommendation', ...source, action };
   });
 }
 function playRecentPodcast(revision: string, id: string, doubleClick: boolean) {

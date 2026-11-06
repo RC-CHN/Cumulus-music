@@ -39,11 +39,11 @@ pub use super::player::{
     IntelligenceCommand, IntelligenceEligibility, IntelligenceOrigin, LyricsView, OutputCommand,
     OutputEngineView, OutputView, PlaySelection, PlaybackPowerView, PlayerAction, PlayerOrigin,
     PlayerResourceKind, PlayerView, PlayerVoiceCreator, PlayerVoiceDetail, PlaylistDropRow,
-    QualityChoiceView, QualityDetailsView, QualityTrialCommand, QualityTrialOutcome,
-    QualityTrialView, QueueCatalogMenu, QueueClearContext, QueueClickPreferencesCommand,
-    QueueClickPreferencesView, QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack,
-    QueueView, SearchResultPlayback, SongRowSelection, StartupPreferencesCommand,
-    StartupPreferencesView,
+    PodcastRecommendationAction, QualityChoiceView, QualityDetailsView, QualityTrialCommand,
+    QualityTrialOutcome, QualityTrialView, QueueCatalogMenu, QueueClearContext,
+    QueueClickPreferencesCommand, QueueClickPreferencesView, QueueCollectionView, QueueEdit,
+    QueueMoreTipAction, QueueTrack, QueueView, SearchResultPlayback, SongRowSelection,
+    StartupPreferencesCommand, StartupPreferencesView,
 };
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlist_creator::PlaylistCreatorProfile;

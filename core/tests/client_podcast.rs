@@ -44,6 +44,8 @@ struct Backend {
     recommendation_resume_treatment: AtomicBool,
     recommendation_started: tokio::sync::Notify,
     recommendation_release: tokio::sync::Notify,
+    recommendation_collect_fixture: AtomicBool,
+    recommendation_collected: AtomicBool,
 }
 fn program(id: u64) -> Value {
     json!({"id":id,"name":format!("Episode {id}"),"mainSong":{"id":id+1000,"duration":120000},"duration":120000,"radio":{"id":7,"name":"Radio"},"dj":{"nickname":"Host"},"djPlayRecordVo":{"listenLocation":15000,"isListened":false},"cookie":"SECRET"})
@@ -156,6 +158,10 @@ impl Api for Backend {
                 }
                 "/api/djradio/v3/get" => {
                     let mut value = radio();
+                    if self.recommendation_collect_fixture.load(Ordering::SeqCst) {
+                        value["subed"] =
+                            json!(self.recommendation_collected.load(Ordering::SeqCst));
+                    }
                     if self.search_creator.load(Ordering::SeqCst) > 0 {
                         value["dj"] = json!({"userId":self.search_creator.load(Ordering::SeqCst)});
                     }
@@ -196,7 +202,21 @@ impl Api for Backend {
                         "freeTrialInfo":trial.then(|| json!({"start":0,"end":20}))}]})
                 }
                 "/api/my/podcast/page/list" => {
+                    if self.recommendation_collect_fixture.load(Ordering::SeqCst)
+                        && !self.recommendation_collected.load(Ordering::SeqCst)
+                    {
+                        return Ok(
+                            json!({"code":200,"data":{"radioIdList":[],"myPodcastVOList":[]}}),
+                        );
+                    }
                     json!({"code":200,"data":{"radioIdList":[7],"myPodcastVOList":[radio()]}})
+                }
+                "/api/djradio/sub"
+                    if self.recommendation_collect_fixture.load(Ordering::SeqCst) =>
+                {
+                    assert_eq!(p, json!({"id":"7"}));
+                    self.recommendation_collected.store(true, Ordering::SeqCst);
+                    json!({"code":200})
                 }
                 "/api/resource/like" | "/api/resource/unlike" => {
                     let id = p["threadId"]

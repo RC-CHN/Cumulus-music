@@ -1,10 +1,13 @@
 //! Ordinary recommendation AudioCard overlay (M3108 -> RoundPlayButton -> M404).
-use super::{MusicClient, PlaybackCommand, PlaybackStatus, PlayerOrigin, origin};
+use super::{
+    MusicClient, PlaybackCommand, PlaybackStatus, PlayerOrigin, PodcastRecommendationAction,
+    origin, queue_playlist::insert_collection_bound,
+};
 use crate::{
     Error, Result,
     account::SessionToken,
     client::podcast::radio_playback::by_radio,
-    playback::engine::Cancellation,
+    playback::{controller::QueueUpdate, engine::Cancellation},
     podcast::{Episode, PodcastApi, PodcastLibrary, PodcastScope, progress::latest},
     protocol::api::identifier,
 };
@@ -29,6 +32,7 @@ impl MusicClient {
         receipt: &str,
         revision: &str,
         id: &str,
+        action: PodcastRecommendationAction,
     ) -> Result<(PlaybackCommand, Cancellation)> {
         if receipt.len() != 32 || id.len() > 32 {
             return Err(Error::InvalidInput("invalid recommended podcast selection"));
@@ -63,8 +67,30 @@ impl MusicClient {
                     && session.require_api(&expected, &api).is_ok()
             })
         };
-        let current = self.player.controller().await?.snapshot();
-        if current.account == *token && !current.fm && current.play_id.is_some()
+        let controller = self.player.controller().await?;
+        let next_queue = if action == PodcastRecommendationAction::Next {
+            let (current, queue) = controller.queue_with_state(token).await?;
+            if current.fm || queue.intelligence.is_some() {
+                return Err(Error::State(
+                    "recommended podcast requires ordinary playback",
+                ));
+            }
+            if !queue.items.is_empty()
+                && (queue.current.is_none()
+                    || matches!(
+                        current.state,
+                        PlaybackStatus::Preparing | PlaybackStatus::Loading
+                    ))
+            {
+                return Err(Error::State("recommended podcast queue is not settled"));
+            }
+            (!queue.items.is_empty()).then_some((current, queue))
+        } else {
+            None
+        };
+        let current = controller.snapshot();
+        if action == PodcastRecommendationAction::Overlay
+            && current.account == *token && !current.fm && current.play_id.is_some()
             && matches!(current.state, PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering)
             && current.selected.as_ref().is_some_and(|entry| {
                 identity_voice(&entry.resource)
@@ -89,6 +115,9 @@ impl MusicClient {
         if episodes.is_empty() {
             return Err(Error::State("recommended podcast is empty"));
         }
+
+        let source =
+            json!({"kind":"podcast_subscription_recommendation","id":id,"scene":"unknown"});
 
         let cohort = api
             .verified_pc_experiment_revision()?
@@ -130,7 +159,7 @@ impl MusicClient {
         } else {
             true
         };
-        let latest = if allow_resume {
+        let latest = if allow_resume && next_queue.is_none() {
             let store = self.session.persistent_store()?;
             self.session.with_token(token, |owner| {
                 store.read_snapshot(|tx| latest::read(tx, owner, &id))
@@ -203,15 +232,30 @@ impl MusicClient {
         let (index, position) = start.ok_or(Error::QueueChanged)?;
         guard.check()?;
         check_list()?;
+        if let Some((before, queue)) = next_queue {
+            // An existing queue is edited without claiming audio focus or
+            // loading a decoder. Preserve even a paused selected entry.
+            let queue = insert_collection_bound(queue, resources, source, false, true, false);
+            return Ok((
+                PlaybackCommand::UpdateQueue(QueueUpdate {
+                    expected: before.fence(),
+                    queue,
+                    transport: None,
+                }),
+                guard,
+            ));
+        }
         // M7 category IDs for anime, electric and cover retain prior mode.
-        let sequential = !matches!(radio.raw["categoryId"].as_i64(), Some(3001 | 10002 | 2001));
+        // M3085 only switches mode when the original action clears the queue.
+        let sequential = action != PodcastRecommendationAction::Next
+            && !matches!(radio.raw["categoryId"].as_i64(), Some(3001 | 10002 | 2001));
         Ok((
             PlaybackCommand::ReplacePodcastRecommendation {
                 resources,
                 index,
                 position,
                 sequential,
-                source: json!({"kind":"podcast_subscription_recommendation","id":id,"scene":"unknown"}),
+                source,
             },
             guard,
         ))

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { usePodcasts } from '../src/composables/usePodcasts.ts';
+import { podcastPublicLink } from '../src/services/podcast.ts';
 import type {
   PodcastClient,
   PodcastPage,
@@ -490,4 +491,74 @@ test('opening a radio from outside My Podcasts does not read subscription recomm
   model.back();
   await model.load(true);
   assert.deepEqual(reads, ['1']);
+});
+
+test('recommendation collection requires exact complete unsubscribed scope and explicit command', async () => {
+  const writes: Array<Parameters<PodcastClient['podcastCommand']>[1]> = [];
+  let total = 1;
+  const api = client({
+    podcastSubscriptionRecommendations: async (epoch) => ({
+      epoch,
+      value: {
+        receipt: 'shelf-fixture',
+        cards: ['81', '82', '83'].map((id) => ({
+          ...recommended(id),
+          ownedByOther: id !== '83',
+        })),
+      },
+    }),
+    podcastPage: async (epoch, request) => ({
+      ...page(epoch),
+      scope: request.scope,
+      revision: 'shelf-revision',
+      cards: [
+        {
+          ...recommended('81'),
+          creator: '',
+          description: '',
+          programCount: 0,
+          subscribed: true,
+          feeType: 0,
+          newEpisodeCount: 0,
+        },
+      ],
+      remoteTotal: total,
+      total: 1,
+    }),
+    podcastCommand: async (epoch, command) => {
+      writes.push(command);
+      return { epoch, value: operation('confirmed') };
+    },
+  });
+  const model = usePodcasts(api);
+  model.connect(account());
+  model.show(true);
+  await model.load();
+  assert.equal(model.canCollectRecommendation('81'), false);
+  assert.equal(model.canCollectRecommendation('82'), true);
+  assert.equal(model.canCollectRecommendation('83'), false);
+  model.collectRecommended('82', 'stale-revision');
+  assert.deepEqual(writes, []);
+  model.collectRecommended('82', 'shelf-revision');
+  model.collectRecommended('82', 'shelf-revision');
+  assert.deepEqual(writes, [
+    {
+      kind: 'collect_recommendation',
+      id: '82',
+      receipt: 'shelf-fixture',
+      revision: 'shelf-revision',
+    },
+  ]);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  total = 2;
+  await model.load(true);
+  assert.equal(model.canCollectRecommendation('82'), false);
+  model.dispose();
+});
+
+test('public podcast copy links keep exact string identity and omit attribution', () => {
+  const exact = '9007199254740993';
+  assert.equal(podcastPublicLink(exact), 'https://music.163.com/djradio?id=' + exact);
+  assert.equal(podcastPublicLink('7&userid=42'), null);
+  assert.equal(podcastPublicLink('0'), null);
 });

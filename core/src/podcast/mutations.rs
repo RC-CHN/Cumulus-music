@@ -4,6 +4,7 @@ use super::PodcastApi;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken, resources::MutationPhase},
+    playback::engine::Cancellation,
     protocol::api::identifier,
     storage::{OperationLock, StateStore},
 };
@@ -112,7 +113,8 @@ impl PodcastService {
         id: &str,
         desired: bool,
     ) -> Result<PodcastMutation> {
-        self.change_checked(token, action, id, desired, false).await
+        self.change_checked(token, action, id, desired, false, None)
+            .await
     }
     pub async fn change_search_subscription_for(
         &self,
@@ -120,8 +122,24 @@ impl PodcastService {
         id: &str,
         expected: bool,
     ) -> Result<PodcastMutation> {
-        self.change_checked(token, PodcastAction::Subscribe, id, !expected, true)
+        self.change_checked(token, PodcastAction::Subscribe, id, !expected, true, None)
             .await
+    }
+    pub(crate) async fn collect_recommendation_for(
+        &self,
+        token: &SessionToken,
+        id: &str,
+        source: &Cancellation,
+    ) -> Result<PodcastMutation> {
+        self.change_checked(
+            token,
+            PodcastAction::Subscribe,
+            id,
+            true,
+            true,
+            Some(source),
+        )
+        .await
     }
     async fn change_checked(
         &self,
@@ -130,12 +148,16 @@ impl PodcastService {
         id: &str,
         desired: bool,
         search: bool,
+        source: Option<&Cancellation>,
     ) -> Result<PodcastMutation> {
         let key = key(action, id)?;
         let owner = self
             .session
             .with_token(token, |owner| Ok(owner.to_owned()))?;
         let _lock = OperationLock::acquire(self.store.directory(), &owner, &key)?;
+        if let Some(source) = source {
+            source.check()?;
+        }
         if self
             .operation_for(token, action, id)?
             .is_some_and(|v| v.phase.pending())
@@ -164,6 +186,9 @@ impl PodcastService {
         } else {
             self.state_for(token, action, id).await?
         };
+        if let Some(source) = source {
+            source.check()?;
+        }
         let mut record = PodcastMutation {
             action,
             id: id.into(),
@@ -185,6 +210,11 @@ impl PodcastService {
         let result = self
             .session
             .run_for(token, |api, _| async move {
+                if let Some(source) = source {
+                    source
+                        .check()
+                        .map_err(|error| Error::RequestNotSent(Box::new(error)))?;
+                }
                 let api = PodcastApi::new(api);
                 match action {
                     PodcastAction::Subscribe => api.subscribe(&json!(id), desired).await,
@@ -199,9 +229,10 @@ impl PodcastService {
                 record.phase = MutationPhase::Verifying;
             }
             Err(error) => {
-                record.phase = if [301, 403, 405, 505, 506, 511, 512]
-                    .iter()
-                    .any(|code| error.is_service_code(*code))
+                record.phase = if matches!(&error, Error::RequestNotSent(_))
+                    || [301, 403, 405, 505, 506, 511, 512]
+                        .iter()
+                        .any(|code| error.is_service_code(*code))
                 {
                     MutationPhase::Rejected
                 } else {

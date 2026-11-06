@@ -4,7 +4,7 @@ use crate::{
     account::SessionToken,
     client::{dto::AccountData, mapping::artwork},
     playback::engine::Cancellation,
-    podcast::Radio,
+    podcast::{PodcastLibrary, PodcastMutation, PodcastScope, PodcastService, Radio},
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -27,6 +27,7 @@ pub struct PodcastSubscriptionRecommendation {
     pub cover_url: Option<String>,
     pub play_count: Option<u64>,
     pub unavailable: bool,
+    pub owned_by_other: bool,
 }
 
 #[derive(Serialize)]
@@ -47,9 +48,10 @@ struct Snapshot {
     receipt: String,
     sequence: u64,
     radios: Vec<Radio>,
+    collectable_ids: HashSet<String>,
 }
 
-fn project(body: &Value) -> Result<Vec<(PodcastSubscriptionRecommendation, Radio)>> {
+fn project(body: &Value, owner: &str) -> Result<Vec<(PodcastSubscriptionRecommendation, Radio)>> {
     if body["data"].is_null() {
         return Ok(Vec::new());
     }
@@ -71,6 +73,9 @@ fn project(body: &Value) -> Result<Vec<(PodcastSubscriptionRecommendation, Radio
                 .or_else(|| row["playCount"].as_str()?.parse().ok())
                 .filter(|&count| count <= 9_007_199_254_740_991);
             let cover_url = artwork(&json!(radio.cover_url));
+            let owned_by_other = radio
+                .search_creator_id()
+                .is_some_and(|id| id != owner.trim_start_matches('0'));
             // The receipt stores only data needed by the later playback
             // action; the original personalized response is not retained.
             radio.cover_url = cover_url.clone().unwrap_or_default();
@@ -82,6 +87,7 @@ fn project(body: &Value) -> Result<Vec<(PodcastSubscriptionRecommendation, Radio
                     cover_url,
                     play_count,
                     unavailable: row["grayDisplay"] == true || row["underShelf"] == true,
+                    owned_by_other,
                 },
                 radio,
             ))
@@ -99,10 +105,13 @@ impl MusicClient {
         let sequence = host.issued.fetch_add(1, Ordering::AcqRel) + 1;
         let rows = self
             .session
-            .run_for(&token, |api, _| async move {
+            .run_for(&token, |api, owner| async move {
                 // M15:1012 and :3607 use the no-cache strategy. The caller
                 // retains the view in memory during the active visit.
-                project(&api.call(RECOMMENDATIONS, json!({}), false, &[200]).await?)
+                project(
+                    &api.call(RECOMMENDATIONS, json!({}), false, &[200]).await?,
+                    &owner,
+                )
             })
             .await?;
         let (cards, radios): (Vec<_>, Vec<_>) = rows.into_iter().unzip();
@@ -121,6 +130,11 @@ impl MusicClient {
                     .zip(&cards)
                     .filter_map(|(radio, card)| (!card.unavailable).then_some(radio))
                     .collect(),
+                collectable_ids: cards
+                    .iter()
+                    .filter(|card| !card.unavailable && card.owned_by_other)
+                    .map(|card| card.id.clone())
+                    .collect(),
             });
             host.published.store(sequence, Ordering::Release);
             Ok(())
@@ -129,6 +143,42 @@ impl MusicClient {
             epoch: epoch.into(),
             value: PodcastSubscriptionRecommendations { receipt, cards },
         })
+    }
+
+    pub(super) async fn collect_subscription_recommendation(
+        &self,
+        token: &SessionToken,
+        receipt: &str,
+        revision: &str,
+        id: &str,
+    ) -> Result<PodcastMutation> {
+        if receipt.len() != 32 || revision.len() > 128 {
+            return Err(Error::InvalidInput(
+                "invalid recommended podcast subscription",
+            ));
+        }
+        let (_, live) = self.subscription_recommendation(token, receipt, id)?;
+        {
+            let host = &self.podcast_subscription_recommendations;
+            let current = host.current.lock().map_err(|_| Error::LockPoisoned)?;
+            if !current.as_ref().is_some_and(|row| {
+                &row.token == token && row.receipt == receipt && row.collectable_ids.contains(id)
+            }) {
+                return Err(Error::StaleResponse);
+            }
+        }
+        let library = PodcastLibrary::new(self.session.clone())?;
+        let list = library
+            .cached_for(token, &PodcastScope::Podcasts)?
+            .filter(|list| list.revision == revision && list.remote_total < 50)
+            .ok_or(Error::QueueChanged)?;
+        if list.source_ids.iter().any(|member| member == id) {
+            return Err(Error::QueueChanged);
+        }
+        live.check()?;
+        PodcastService::new(self.session.clone())?
+            .collect_recommendation_for(token, id, &live)
+            .await
     }
 
     pub(in crate::client) fn subscription_recommendation(

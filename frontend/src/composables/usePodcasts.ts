@@ -245,6 +245,24 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     // This action came from the recommendation shelf, not from a subscribed card.
     navigate({ kind: 'radio', id, ascending: true });
   }
+  function canCollectRecommendation(id: string) {
+    const displayed = page.value;
+    return !!(
+      recommendedSelection(id) &&
+      displayed &&
+      !query.value.keyword.trim() &&
+      displayed.offset === 0 &&
+      displayed.cards.length === displayed.remoteTotal &&
+      !displayed.cards.some((card) => card.id === id) &&
+      recommendedCards.value.some((card) => card.id === id && card.ownedByOther === true) &&
+      !pending('subscribe', id)
+    );
+  }
+  function collectRecommended(id: string, revision: string) {
+    const source = recommendedSelection(id);
+    if (source?.revision !== revision || !canCollectRecommendation(id)) return;
+    void command({ kind: 'collect_recommendation', ...source });
+  }
   function open(reference: string) {
     if (busy.value) return;
     const id = podcastReference(reference);
@@ -404,6 +422,8 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     openCard,
     recommendedCards,
     recommendedSelection,
+    canCollectRecommendation,
+    collectRecommended,
     openRecommended,
     open,
     back,

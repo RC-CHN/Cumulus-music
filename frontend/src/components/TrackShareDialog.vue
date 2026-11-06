@@ -5,24 +5,32 @@ import type { AlbumCard } from '../services/catalog';
 import { albumLink } from '../services/catalogCards';
 import { songLink } from '../services/trackMenu';
 import { playlistLink, type PlaylistActionTarget } from '../services/playlistMenu';
+import { podcastPublicLink } from '../services/podcast';
 import { useCore } from '../services/core';
 import Icon from './Icon.vue';
 const props = defineProps<{
   track?: TrackView;
   playlist?: PlaylistActionTarget;
   album?: AlbumCard;
+  podcast?: { id: string; name: string };
 }>();
-const kind = computed(() => (props.album ? '专辑' : props.playlist ? '歌单' : '歌曲'));
-const link = computed(() =>
-  props.album
-    ? albumLink(props.album.id)
-    : props.playlist
-      ? playlistLink(props.playlist)
-      : props.track
-        ? songLink(props.track)
-        : '',
+const kind = computed(() =>
+  props.podcast ? '播客' : props.album ? '专辑' : props.playlist ? '歌单' : '歌曲',
 );
-const name = computed(() => props.album?.name ?? props.playlist?.name ?? props.track?.name ?? '');
+const link = computed(() =>
+  props.podcast
+    ? podcastPublicLink(props.podcast.id)
+    : props.album
+      ? albumLink(props.album.id)
+      : props.playlist
+        ? playlistLink(props.playlist)
+        : props.track
+          ? songLink(props.track)
+          : '',
+);
+const name = computed(
+  () => props.podcast?.name ?? props.album?.name ?? props.playlist?.name ?? props.track?.name ?? '',
+);
 const subtitle = computed(
   () =>
     props.album?.artists.map((artist) => artist.name).join(' / ') ??

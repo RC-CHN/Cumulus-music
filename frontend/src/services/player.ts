@@ -382,7 +382,13 @@ export type PlaySelection =
   | { kind: 'message_track'; id: string; quality: Quality }
   | { kind: 'voice' | 'search_result_voice' | 'message_voice'; id: string }
   | { kind: 'listened_book_chapter'; revision: string; key: number }
-  | { kind: 'podcast_subscription_recommendation'; id: string; receipt: string; revision: string }
+  | {
+      kind: 'podcast_subscription_recommendation';
+      id: string;
+      receipt: string;
+      revision: string;
+      action?: import('./podcast').PodcastRecommendationAction;
+    }
   | { kind: 'podcast_recent'; revision: string; id: string; double_click: boolean }
   | { kind: 'downloads'; query: import('./downloads').DownloadQuery; start_id: string | null }
   | { kind: 'playlist_batch'; id: string; ids: string[]; revision: string; quality: Quality }

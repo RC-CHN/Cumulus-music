@@ -280,6 +280,8 @@ pub enum PlaySelection {
         receipt: String,
         revision: String,
         id: String,
+        #[serde(default)]
+        action: PodcastRecommendationAction,
     },
     PodcastRecent {
         revision: String,
@@ -419,6 +421,15 @@ pub enum PlaySelection {
         revision: String,
         quality: Quality,
     },
+}
+
+#[derive(Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PodcastRecommendationAction {
+    #[default]
+    Overlay,
+    Play,
+    Next,
 }
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]

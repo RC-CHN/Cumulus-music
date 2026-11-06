@@ -99,6 +99,11 @@ pub struct PodcastMutationView {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PodcastCommand {
+    CollectRecommendation {
+        id: String,
+        receipt: String,
+        revision: String,
+    },
     ChangeSearchSubscription {
         id: String,
         expected: bool,

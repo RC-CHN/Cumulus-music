@@ -1,17 +1,77 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { PodcastSubscriptionRecommendation } from '../services/podcast';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
+import {
+  podcastPublicLink,
+  type PodcastRecommendationAction,
+  type PodcastSubscriptionRecommendation,
+} from '../services/podcast';
+import type { MenuItem } from '../services/menu';
+import { useCore } from '../services/core';
+import ActionMenu from './ActionMenu.vue';
 import Icon from './Icon.vue';
+import ModalTransition from './ModalTransition.vue';
+import TrackShareDialog from './TrackShareDialog.vue';
 
 const props = defineProps<{
   cards: PodcastSubscriptionRecommendation[];
+  revision: string;
+  canCollect: (id: string) => boolean;
   disabled: boolean;
   canPlay: boolean;
   currentRadioId?: string;
   playing: boolean;
 }>();
-const emit = defineEmits<{ open: [id: string]; play: [id: string] }>();
+const emit = defineEmits<{
+  open: [id: string];
+  play: [id: string, action: PodcastRecommendationAction];
+  collect: [id: string, revision: string];
+}>();
+const core = useCore();
 const viewport = ref<HTMLElement>();
+const menu = ref<InstanceType<typeof ActionMenu>>();
+type CardTarget = {
+  card: PodcastSubscriptionRecommendation;
+  revision: string;
+  anchor: HTMLButtonElement;
+};
+const target = shallowRef<CardTarget>();
+function isCurrent(value: CardTarget) {
+  return (
+    value.revision === props.revision &&
+    props.cards.includes(value.card) &&
+    !value.card.unavailable &&
+    value.anchor.isConnected &&
+    !value.anchor.closest('[inert]')
+  );
+}
+const selected = computed(() =>
+  target.value && isCurrent(target.value) ? target.value.card : undefined,
+);
+const menuItems = computed<MenuItem[]>(() => {
+  const canShare = !!selected.value && !!podcastPublicLink(selected.value.id);
+  return [
+    { key: 'open', label: '查看播客', icon: 'search' },
+    { key: 'play', label: '播放', icon: 'play', disabled: !props.canPlay },
+    { key: 'next', label: '下一首播放', icon: 'next', disabled: !props.canPlay },
+    { key: 'sep', label: '', separator: true },
+    ...(selected.value && props.canCollect(selected.value.id)
+      ? [{ key: 'collect', label: '收藏...', icon: 'favorite' }]
+      : []),
+    { key: 'share', label: '分享...', icon: 'share', disabled: !canShare },
+    { key: 'copy', label: '复制链接', icon: 'copy', disabled: !canShare },
+  ];
+});
+const shared = shallowRef<CardTarget>();
+const collect = shallowRef<CardTarget>();
+const collectDialog = ref<HTMLDialogElement>();
+watch(collectDialog, (dialog) => dialog?.showModal());
+watch([() => props.revision, () => props.cards], () => {
+  collect.value = undefined;
+  shared.value = undefined;
+  menu.value?.close();
+});
+const feedback = ref('');
+let timer: ReturnType<typeof setTimeout> | undefined;
 const width = ref(0),
   start = ref(0);
 const gap = 20;
@@ -29,11 +89,77 @@ onMounted(() => {
   });
   resize.observe(viewport.value);
 });
-onBeforeUnmount(() => resize?.disconnect());
+onBeforeUnmount(() => {
+  resize?.disconnect();
+  clearTimeout(timer);
+  target.value = undefined;
+});
 watch(columns, () => (start.value = 0));
 watch(maxStart, (limit) => (start.value = Math.min(start.value, limit)));
 function move(direction: -1 | 1) {
+  menu.value?.close();
   start.value = Math.max(0, Math.min(maxStart.value, start.value + direction * columns.value));
+}
+async function context(event: MouseEvent | KeyboardEvent, card: PodcastSubscriptionRecommendation) {
+  if (props.disabled || card.unavailable || !(event.currentTarget instanceof HTMLElement)) return;
+  const node = event.currentTarget;
+  if (node.closest('[inert]')) return;
+  const anchor =
+    (event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button') : null) ??
+    node.querySelector<HTMLButtonElement>('.recommendation-open');
+  if (!anchor?.isConnected) return;
+  const box = anchor.getBoundingClientRect();
+  const pointer = event instanceof MouseEvent && event.button === 2;
+  const point = { x: pointer ? event.clientX : box.left, y: pointer ? event.clientY : box.bottom };
+  const selection = { card, revision: props.revision, anchor };
+  target.value = selection;
+  await nextTick();
+  if (target.value === selection && anchor.isConnected && selected.value)
+    void menu.value?.showAt(point.x, point.y, anchor);
+}
+function keyboard(event: KeyboardEvent, card: PodcastSubscriptionRecommendation) {
+  if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void context(event, card);
+}
+async function menuAction(key: string) {
+  const card = selected.value,
+    selection = target.value;
+  if (
+    props.disabled ||
+    !card ||
+    !selection?.anchor.isConnected ||
+    selection.anchor.closest('[inert]')
+  )
+    return;
+  if (key === 'open') emit('open', card.id);
+  if ((key === 'play' || key === 'next') && props.canPlay) emit('play', card.id, key);
+  if (key === 'share') shared.value = selection;
+  if (key === 'collect' && props.canCollect(card.id)) collect.value = selection;
+  if (key === 'copy') {
+    const link = podcastPublicLink(card.id);
+    if (!link) return;
+    let message: string;
+    try {
+      await core.copyText(link);
+      message = '链接已复制';
+    } catch {
+      message = '复制失败，请重试';
+    }
+    if (target.value !== selection) return;
+    clearTimeout(timer);
+    feedback.value = message;
+    timer = setTimeout(() => {
+      feedback.value = '';
+    }, 3500);
+  }
+}
+function confirmCollect() {
+  const selection = collect.value;
+  collect.value = undefined;
+  if (selection && isCurrent(selection) && props.canCollect(selection.card.id))
+    emit('collect', selection.card.id, selection.revision);
 }
 </script>
 
@@ -58,11 +184,15 @@ function move(direction: -1 | 1) {
           class="recommendation-card"
           :data-recommended-radio-id="card.id"
           :inert="index < start || index >= start + columns"
+          @contextmenu.prevent.stop="context($event, card)"
+          @keydown="keyboard($event, card)"
         >
           <button
             type="button"
             class="recommendation-open"
             :disabled="disabled || card.unavailable"
+            :aria-haspopup="card.unavailable ? undefined : 'menu'"
+            aria-expanded="false"
             @click="emit('open', card.id)"
           >
             <span class="recommendation-cover">
@@ -92,7 +222,7 @@ function move(direction: -1 | 1) {
             :aria-label="
               (currentRadioId === card.id ? (playing ? '暂停 ' : '继续播放 ') : '播放 ') + card.name
             "
-            @click="emit('play', card.id)"
+            @click="emit('play', card.id, 'overlay')"
           >
             <Icon :name="currentRadioId === card.id && playing ? 'pause' : 'play'" />
           </button>
@@ -119,6 +249,40 @@ function move(direction: -1 | 1) {
         <Icon name="back" />
       </button>
     </template>
+    <ActionMenu
+      ref="menu"
+      context-only
+      variant="song"
+      :label="`推荐播客菜单：${selected?.name ?? ''}`"
+      :items="menuItems"
+      :disabled="disabled || !selected"
+      @select="menuAction"
+    />
+    <ModalTransition :return-focus="() => shared?.anchor ?? null">
+      <TrackShareDialog v-if="shared" :podcast="shared.card" @close="shared = undefined" />
+    </ModalTransition>
+    <ModalTransition :return-focus="() => collect?.anchor ?? null">
+      <dialog
+        v-if="collect"
+        ref="collectDialog"
+        class="playlist-dialog"
+        aria-label="收藏播客"
+        @cancel.prevent="collect = undefined"
+      >
+        <header>
+          <h2>收藏播客</h2>
+          <button class="icon-button" aria-label="关闭收藏确认" @click="collect = undefined">
+            <Icon name="close" />
+          </button>
+        </header>
+        <p>将「{{ collect.card.name }}」加入我的收藏？</p>
+        <footer>
+          <button class="secondary" autofocus @click="collect = undefined">取消</button>
+          <button class="primary" @click="confirmCollect">确认收藏</button>
+        </footer>
+      </dialog>
+    </ModalTransition>
+    <p v-if="feedback" class="track-action-feedback" role="status">{{ feedback }}</p>
   </section>
 </template>
 
