@@ -225,7 +225,10 @@ def main():
     for stage in (offline, disposal, stages['complete']):
         assert stage['fixture']['offline'] and not stage['fixture']['disposablePresent']
         assert stage['fixture']['offlineMediaAttempts'] == 0
-        assert stage['wire']['offlineBusinessAttempts'] == 0
+        assert stage['wire']['offlineBusinessAttempts'] == 0, (
+            stage['stage'], stage['wire'].get('offlineBusinessPaths'),
+            stage['wire'].get('offlineUnattributedAttempts'),
+        )
         assert stage['fixture']['calls'] == authorization_stage['fixture']['calls']
         assert stage['fixture']['mediaTransfers'] == downloaded['fixture']['mediaTransfers']
         assert stage['fixture']['sourceLoads'] == expected_source_loads and stage['fixture']['localLoads'] == 1

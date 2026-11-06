@@ -11,6 +11,7 @@ use cumulus_core::{
 };
 use serde_json::{Value, json};
 use std::{
+    collections::BTreeMap,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -32,6 +33,8 @@ struct Progress {
     authenticated_identity_reads: u64,
     offline_relay_experiment_attempts: u64,
     offline_business_attempts: u64,
+    offline_business_paths: BTreeMap<String, u64>,
+    offline_unattributed_attempts: u64,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -113,6 +116,8 @@ impl Wire {
             "authenticatedIdentityReads": progress.authenticated_identity_reads,
             "offlineRelayExperimentAttempts": progress.offline_relay_experiment_attempts,
             "offlineBusinessAttempts": progress.offline_business_attempts,
+            "offlineBusinessPaths": progress.offline_business_paths,
+            "offlineUnattributedAttempts": progress.offline_unattributed_attempts,
         })
     }
 
@@ -182,6 +187,21 @@ impl HttpBackend for Wire {
                     progress.offline_relay_experiment_attempts += 1;
                 } else {
                     progress.offline_business_attempts += 1;
+                    // Preserve just the bounded, normalized synthetic API path.
+                    // Never include encrypted data, arguments, headers or URLs.
+                    if path.starts_with("/api/")
+                        && path.len() <= 128
+                        && path.bytes().all(|byte| {
+                            byte.is_ascii_alphanumeric()
+                                || matches!(byte, b'/' | b'_' | b'-' | b'.')
+                        })
+                        && (progress.offline_business_paths.len() < 16
+                            || progress.offline_business_paths.contains_key(&path))
+                    {
+                        *progress.offline_business_paths.entry(path).or_default() += 1;
+                    } else {
+                        progress.offline_unattributed_attempts += 1;
+                    }
                 }
                 return Err(Error::Transport("synthetic EAPI is disconnected".into()));
             }
