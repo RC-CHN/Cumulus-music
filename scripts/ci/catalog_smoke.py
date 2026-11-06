@@ -480,7 +480,8 @@ def main():
     if args.album_duration_sort:
         assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         names = ('original', 'ascending', 'descending', 'restored', 'reset',
-                 'filtered_row', 'same_row_pause', 'same_row_resume', 'full_album', 'paused_append')
+                 'filtered_row', 'same_row_pause', 'same_row_resume', 'full_album', 'paused_append',
+                 'queue_source_ready', 'queue_source_opened', 'queue_source_back')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
@@ -536,6 +537,18 @@ def main():
         assert appended['player']['state'] == 'paused' and appended['player']['track']['id'] == '900'
         assert appended['player']['position'] > 4
         assert [entry['track']['id'] for entry in appended['queue']['tracks']] == ['900','12','14','11','13','901']
+        assert stages['queue_source_ready']['sourceFocused'] is True
+        for name in names[-3:]:
+            stage = stages[name]
+            assert stage['source'] == {'kind': 'album', 'id': '8'}
+            assert stage['queue'] == appended['queue']
+            assert stage['player']['state'] == 'paused'
+            assert all(stage['player'][key] == appended['player'][key]
+                       for key in ('playId', 'entryId', 'position', 'queueRevision'))
+            if name != 'queue_source_ready':
+                assert stage['queueStayedOpen'] is True
+        assert not any(call['path'] in ('/api/v3/song/detail', '/api/song/enhance/player/url/v1')
+                       for call in delta('paused_append', 'queue_source_back'))
         locale_report = output / 'locale.json'
         if locale_report.is_file():
             import locale
@@ -545,7 +558,7 @@ def main():
             }
         report = dict(ok=True, actualWebView=True, states=len(names), screenshots=captures,
                       stableDurationSort=True, sortedNativePlayback=True, sameRowDecoderPreserved=True,
-                      pausedInsertionPreserved=True,
+                      pausedInsertionPreserved=True, sourceNavigationPreserved=True,
                       realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))

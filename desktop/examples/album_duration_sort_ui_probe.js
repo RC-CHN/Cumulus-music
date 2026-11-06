@@ -54,6 +54,16 @@
     });
     await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'native capture acknowledgement');
   }
+  async function captureOrigin(name, detail) {
+    await wait(() => !one('.page-enter-active,.page-leave-active,.queue-panel-enter-active'),
+      'source navigation layout settled');
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    const stage = `ux_${String(states.length + 1).padStart(2, '0')}_${name}`;
+    states.push(name);
+    window.__CUMULUS_ALBUM_CAPTURE_ACK__ = '';
+    await emit(stage, { name, ...detail, player: await player(), queue: await queue() });
+    await wait(() => window.__CUMULUS_ALBUM_CAPTURE_ACK__ === stage, 'source native capture acknowledgement');
+  }
   async function untilPlayed(id, list) {
     await wait(async () => {
       const state = await player(), view = await queue();
@@ -146,6 +156,51 @@
     assert(after.state === 'paused' && after.track.id === '900' && after.entryId === before.entryId &&
       after.playId === before.playId && after.position === before.position, 'append changed paused source/clock');
     await capture('paused_append');
+    const queued = await queue();
+    const unbound = queued.tracks.find((row) => row.track.id === '900');
+    const fromAlbum = queued.tracks.find((row) => row.track.id === '14');
+    assert(unbound.track.albumId === '7' && fromAlbum.track.albumId === '7' && !unbound.origin &&
+      fromAlbum.origin?.kind === 'album' && fromAlbum.origin.id === '8',
+      'row provenance must differ from both current entry and track metadata');
+    const artistPage = () => one('.catalog-heading h1')?.textContent === '测试歌手' &&
+      one('[data-catalog-key="album:8"]');
+    const albumPage = () => one('.catalog-page .album-header:not(.album-header-compact) h1')
+      ?.textContent.trim() === '漫长的午后与未完的旋律 · A quiet afternoon / Extended edition';
+    click(one('.back-button'));
+    await wait(artistPage, 'return to artist before opening row source');
+    click(one('.queue-toggle'));
+    const row = (entry) => one(`.queue-row[data-entry-id="${entry.entryId}"]`);
+    const sourceButton = () => row(fromAlbum)?.querySelector('.queue-origin');
+    const source = await wait(() => {
+      const target = sourceButton();
+      return target && !target.disabled && target;
+    }, 'current queue row source action');
+    assert(row(unbound) && !row(unbound).querySelector('.queue-origin'), 'plain song must not get its album metadata as a source');
+    source.focus({ preventScroll: true });
+    await wait(() => {
+      const box = source.getBoundingClientRect();
+      return document.activeElement === source && getComputedStyle(source).opacity === '1' &&
+        source.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    }, 'keyboard focused origin is visible and reachable');
+    await captureOrigin('queue_source_ready', { sourceFocused: true, source: fromAlbum.origin });
+    click(source);
+    await wait(albumPage, 'queue source opened the originating album');
+    assert(one('.queue-panel') && document.activeElement === sourceButton(),
+      'source navigation dismissed the queue or stole row focus');
+    const unchanged = async () => {
+      const current = await player(), displayed = await queue();
+      return current.state === 'paused' && current.playId === after.playId &&
+        current.entryId === after.entryId && current.position === after.position &&
+        current.queueRevision === after.queueRevision && JSON.stringify(displayed) === JSON.stringify(queued);
+    };
+    assert(await unchanged(), 'source navigation changed paused decoder, clock or queue');
+    await captureOrigin('queue_source_opened', { queueStayedOpen: true, source: fromAlbum.origin });
+    click(sourceButton());
+    assert(albumPage() && await unchanged(), 'same destination changed playback');
+    click(one('.back-button'));
+    await wait(artistPage, 'source back returned to the artist without duplicate history');
+    assert(one('.queue-panel') && await unchanged(), 'source back changed queue or paused playback');
+    await captureOrigin('queue_source_back', { queueStayedOpen: true, source: fromAlbum.origin });
     await emit('complete', { ok: true, states, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, error: String(error), stack: error?.stack, states });
