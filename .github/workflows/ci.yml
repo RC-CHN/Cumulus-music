@@ -654,6 +654,7 @@ jobs:
           python scripts/ci/podcast_recent_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-recent-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-progress-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_recent_smoke.py --badges --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-badges-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/podcast_recent_smoke.py --recommendations --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-recommendations-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/podcast_scene_home_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-podcast-scene-home-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/scene_palette_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-scene-palette-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/voice_detail_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe.exe --root .build/ci-voice-detail-windows --runtime .build/package-stage/windows-x64/native
@@ -1153,6 +1154,7 @@ jobs:
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-recent-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --progress --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-progress-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --badges --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-badges-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_recent_smoke.py --recommendations --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-recommendations-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/podcast_scene_home_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-podcast-scene-home-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/scene_palette_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-scene-palette-linux
           GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/voice_detail_smoke.py --binary .build/target/debug/examples/podcast_recent_ui_probe --root .build/ci-voice-detail-linux
