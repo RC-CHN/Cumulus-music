@@ -165,3 +165,8 @@ Stop and Pause measured zero PCM. Receipt and eight screenshots:
 `.build/ui-proof/phase83-ordinary-trusted-r3/`. A separate 4608-frame fixture
 played through the ordinary fallback because it exceeded the fixed graph's
 current input bound. The developer result is separate from package CI.
+
+4608 回调仍在隔离研究树，未进入此 RC。合成 44.1/48 kHz 大块解码、跳转、尾部
+与窄块/WAV 的 PCM 一致，真实 Linux 应用也加载了精确可信解码器并测得音效提升；
+同一次旁路样本的三个频率均低于基准，尚未区分输出丢帧与切换问题，后续两次
+验证在系统目录对话框阶段退出，没有取得新的 PCM。该记录不改变现有 1024 边界。
