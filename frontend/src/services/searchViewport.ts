@@ -3,7 +3,7 @@ import type { AccountView } from './contracts.ts';
 import type { SearchCategory, SearchResultQuery, SearchResultView } from './search.ts';
 import type { PcPresentationView } from './pcPresentation.ts';
 
-function presentationRevision(value: unknown): bigint | undefined {
+export function presentationRevision(value: unknown): bigint | undefined {
   // Native public revisions are canonical decimal u64 counters, not credentials.
   if (typeof value !== 'string' || !/^(0|[1-9][0-9]{0,19})$/.test(value)) return;
   const revision = BigInt(value);

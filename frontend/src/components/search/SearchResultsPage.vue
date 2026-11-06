@@ -43,6 +43,7 @@ import { waitForViewportFrames } from '../../services/viewportLayout';
 import Icon from '../Icon.vue';
 import SearchResultCard from './SearchResultCard.vue';
 import SearchHotExplanationCard from './SearchHotExplanationCard.vue';
+import GuestSearchResult from './GuestSearchResult.vue';
 import {
   searchCardIsCurrent,
   type SearchPendingVoiceToggle,
@@ -83,6 +84,7 @@ const props = defineProps<{
   currentVoiceId?: string;
   memory: SearchViewportMemory;
   searchId?: number;
+  guestReady?: boolean;
 }>();
 const emit = defineEmits<{
   reason: [label: string, target: SearchReasonTarget];
@@ -94,6 +96,7 @@ const emit = defineEmits<{
   ];
   search: [keyword: string];
   searchOriginal: [keyword: string];
+  login: [];
   open: [item: SearchItem];
   hotTarget: [target: SearchHotTarget, anchor: HTMLButtonElement];
   hotPlay: [target: SearchHotPlaybackTarget];
@@ -416,12 +419,14 @@ function openHotTarget(target: SearchHotTarget, anchor: HTMLButtonElement) {
   emit('hotTarget', target, anchor);
 }
 function maybeMore(songScroll?: HTMLElement) {
-  const element = songWaterfall.value ? songScroll : panel.value;
+  const signedSongScroller = songWaterfall.value && !props.guestReady;
+  const element = signedSongScroller ? songScroll : panel.value;
   if (songWaterfall.value && (!element || element.scrollTop <= 0)) return;
   // An append updates the model before Vue paints the new spacer. Do not
   // treat the previous page's bottom as the end of the newly loaded list.
   if (
     lyrics.value &&
+    !props.guestReady &&
     (!lyricBody.value ||
       lyricWindow.offsets.value.length !== lyricItems.value.length + 1 ||
       Math.abs(lyricBody.value.clientHeight - lyricWindow.height.value) > 1)
@@ -446,12 +451,13 @@ function scroll(event: Event) {
   const target = event.target;
   const songScroll =
     songWaterfall.value &&
+    !props.guestReady &&
     !restoring &&
     target instanceof HTMLElement &&
     target.classList.contains('track-scroll')
       ? target
       : undefined;
-  if (songWaterfall.value && !songScroll) return;
+  if (songWaterfall.value && !props.guestReady && !songScroll) return;
   const generation = loadGeneration;
   if (!frame) {
     const update = () => {
@@ -607,14 +613,15 @@ watch(model.presentationChange, () => {
   });
 });
 watch(
-  () => [props.account.epoch, props.account.status],
-  () => model.connect(props.account),
+  () => [props.account.epoch, props.account.status, props.guestReady],
+  () => model.connect(props.account, props.guestReady),
   { immediate: true },
 );
 watch(
   () => [
     props.account.epoch,
     props.account.status,
+    props.guestReady,
     props.keyword,
     requestKeyword.value,
     category.value,
@@ -697,7 +704,10 @@ onBeforeUnmount(() => {
           {{ tab.title }}
         </button>
       </div>
-      <div v-if="category === 'songs'" class="search-result-actions">
+      <div v-if="guestReady" class="search-result-actions">
+        <button class="secondary" type="button" @click="emit('login')">登录后播放和收藏</button>
+      </div>
+      <div v-else-if="category === 'songs'" class="search-result-actions">
         <span id="search-song-batch-scope" class="sr-only">
           {{ songWaterfall ? '仅限本次已加载的单曲' : '仅限当前页的单曲' }}
         </span>
@@ -754,8 +764,8 @@ onBeforeUnmount(() => {
         :aria-busy="loading"
         class="search-result-panel"
         :class="{
-          'search-song-panel': category === 'songs',
-          'search-lyrics-panel': lyrics,
+          'search-song-panel': category === 'songs' && !guestReady,
+          'search-lyrics-panel': lyrics && !guestReady,
           'search-playlist-panel': category === 'playlists',
           'search-album-panel': category === 'albums',
           'search-voice-panel': category === 'voices',
@@ -837,7 +847,7 @@ onBeforeUnmount(() => {
                 ><template v-else>{{ section.title }}</template>
               </h2>
               <button
-                v-if="section.items.some((i) => i.kind === 'song')"
+                v-if="!guestReady && section.items.some((i) => i.kind === 'song')"
                 class="icon-button search-section-play"
                 aria-label="播放全部搜索单曲"
                 :disabled="
@@ -848,8 +858,21 @@ onBeforeUnmount(() => {
                 <Icon name="play" />
               </button>
             </header>
+            <SearchCardGrid
+              v-if="guestReady"
+              :items="section.items"
+              :scroller="panel"
+              :virtual="waterfall"
+              v-slot="{ item }"
+            >
+              <GuestSearchResult
+                :item="item"
+                :keyword="matchKeyword"
+                @search="emit('search', $event)"
+              />
+            </SearchCardGrid>
             <div
-              v-if="category === 'lyrics'"
+              v-else-if="category === 'lyrics'"
               class="search-lyric-list"
               role="table"
               aria-label="歌词搜索结果"

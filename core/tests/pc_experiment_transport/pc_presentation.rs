@@ -20,6 +20,9 @@ use tokio::sync::watch;
 const ACCOUNT: &str = "/api/w/nuser/account/get";
 const COOKIE: &str = "MUSIC_U=synthetic-presentation; Path=/; Secure";
 
+#[path = "pc_presentation/guest_search.rs"]
+mod guest_search;
+
 struct Fixture {
     root: tempfile::TempDir,
     client: Arc<MusicClient>,

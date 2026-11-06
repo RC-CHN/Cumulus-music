@@ -2,6 +2,13 @@ use cumulus_core::client::{ClientError, MusicClient, dto::*};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
 
+fn search_window<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(cumulus_core::Error::InvalidInput("search is main-window only").into());
+    }
+    Ok(())
+}
+
 #[derive(Default)]
 pub(crate) struct RightsPump(AtomicBool);
 
@@ -29,13 +36,14 @@ fn observe<R: tauri::Runtime>(app: &tauri::AppHandle<R>, client: &MusicClient) {
 
 #[tauri::command]
 pub async fn search_results<R: tauri::Runtime>(
-    app: tauri::AppHandle<R>,
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     query: SearchResultQuery,
     default_receipt: Option<String>,
 ) -> Result<AccountData<SearchResultView>, ClientError> {
-    observe(&app, &client);
+    search_window(&window)?;
+    observe(window.app_handle(), &client);
     client
         .search_results_with_default(&epoch, query, default_receipt.as_deref())
         .await
@@ -66,21 +74,25 @@ pub async fn search_reason_page(
         .map_err(Into::into)
 }
 #[tauri::command]
-pub async fn search_discovery(
+pub async fn search_discovery<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     query: SearchDiscoveryQuery,
 ) -> Result<AccountData<SearchDiscovery>, ClientError> {
+    search_window(&window)?;
     client
         .search_discovery(&epoch, query)
         .await
         .map_err(Into::into)
 }
 #[tauri::command]
-pub fn search_history(
+pub fn search_history<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
     client: tauri::State<'_, MusicClient>,
     epoch: String,
     command: SearchHistoryCommand,
 ) -> Result<AccountData<Vec<String>>, ClientError> {
+    search_window(&window)?;
     client.search_history(&epoch, command).map_err(Into::into)
 }

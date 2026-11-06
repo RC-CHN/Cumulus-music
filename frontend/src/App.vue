@@ -261,6 +261,7 @@ import { modalDepth } from './services/modal';
 const core = useCore();
 const searchMemory = createSearchViewportMemory();
 const pcPresentation = usePcPresentation(core, searchMemory);
+const guestSearchReady = pcPresentation.guestSearchReady;
 const collectionMemory = createCollectionViewportMemory();
 const latestReleaseMemory = createLatestReleaseMemory();
 const collectionRevision = ref(0);
@@ -4424,10 +4425,11 @@ onUnmounted(() => {
       <SearchBox
         ref="searchBox"
         :account="account"
+        :guest-ready="guestSearchReady"
         :page-key="navigationKey"
         :keyword="page.kind === 'search' ? page.keyword : undefined"
         :display-keyword="page.kind === 'search' ? page.displayKeyword : undefined"
-        :playable="player.ready.value && !player.busy.value"
+        :playable="signedIn && player.ready.value && !player.busy.value"
         @play-chart="playSearchChart"
         @radio="openSearchChartRadio"
         @discover="
@@ -4702,7 +4704,7 @@ onUnmounted(() => {
                 @privacy="openSettingsSection(account.epoch, 'settings-privacy')"
               />
               <AccountWelcome
-                v-else-if="!signedIn"
+                v-else-if="!signedIn && !(guestSearchReady && page.kind === 'search')"
                 :account="account"
                 :error="error"
                 @login="loginOpen = true"
@@ -4798,6 +4800,7 @@ onUnmounted(() => {
                 :search-id="page.kind === 'search' ? page.searchId : undefined"
                 v-else-if="page.kind === 'search'"
                 :account="account"
+                :guest-ready="guestSearchReady"
                 :keyword="page.keyword"
                 :category="page.category"
                 :channel="page.channel"
@@ -4807,7 +4810,7 @@ onUnmounted(() => {
                 :rewritten-keyword="page.rewrittenKeyword"
                 :liked="liked"
                 :busy-likes="busyLikes"
-                :playable="player.ready.value && !player.busy.value"
+                :playable="signedIn && player.ready.value && !player.busy.value"
                 :queueable="searchCollectionQueueable"
                 :queue-drop-enabled="canDropSearchSong"
                 :voice-queueable="ordinaryVoiceQueueable"
@@ -4838,6 +4841,7 @@ onUnmounted(() => {
                 "
                 @search="(keyword) => music.navigate({ kind: 'search', keyword })"
                 @search-original="searchOriginal"
+                @login="loginOpen = true"
                 @reason="
                   (label, target) => music.navigate({ kind: 'search_reason', label, target })
                 "

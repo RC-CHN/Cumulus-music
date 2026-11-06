@@ -5,6 +5,7 @@ export interface PcPresentationView {
   searchFooter: boolean;
   searchExpanded: boolean;
   searchDense: boolean;
+  guestSearchReady?: boolean;
 }
 export interface PcPresentationClient {
   pcPresentation(epoch: string): Promise<PcPresentationView>;

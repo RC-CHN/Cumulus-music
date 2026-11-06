@@ -1,6 +1,7 @@
 mod audio_toplist;
 mod default_context;
 pub(crate) mod experiment;
+mod guest;
 mod lyrics;
 mod presentation;
 mod privilege;
@@ -48,6 +49,12 @@ impl MusicClient {
         query: SearchDiscoveryQuery,
     ) -> Result<AccountData<SearchDiscovery>> {
         let token = self.player_token(epoch)?;
+        if token.uid.is_none() {
+            return Ok(AccountData {
+                epoch: epoch.into(),
+                value: self.guest_search_discovery(&token, query).await?,
+            });
+        }
         let token = &token;
         let value = self
             .session
@@ -84,7 +91,7 @@ impl MusicClient {
     ) -> Result<AccountData<Vec<String>>> {
         let token = self.player_token(epoch)?;
         let store = self.session.persistent_store()?;
-        self.session.with_token(&token, |uid| {
+        let history = |uid: &str| {
             let value = store.transaction(|tx| {
                 if matches!(command, SearchHistoryCommand::Clear) {
                     tx.put(uid, "search-history-v1", "keywords", &json!([]))?;
@@ -126,6 +133,11 @@ impl MusicClient {
                 epoch: epoch.into(),
                 value,
             })
-        })
+        };
+        if token.uid.is_none() {
+            self.guest_search(&token)?.with_local_history(history)
+        } else {
+            self.session.with_token(&token, history)
+        }
     }
 }

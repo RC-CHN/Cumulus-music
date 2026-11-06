@@ -210,3 +210,43 @@ test('an accepted intermediate event also cannot discard a newer snapshot by arr
   assert.equal(memory.presentation('1')?.searchDense, true);
   host.dispose();
 });
+
+test('guest readiness is native, ordered within its own epoch, and never enables signed presentation', async () => {
+  const memory = createSearchViewportMemory();
+  const guest: AccountView = { ...account, status: 'unknown' };
+  memory.connect(guest);
+  const held = deferred<PcPresentationView>();
+  let push!: (view: PcPresentationView) => void;
+  const host = usePcPresentation(
+    {
+      onPcPresentationChanged: async (listener) => {
+        push = listener;
+        return () => {};
+      },
+      pcPresentation: (epoch) =>
+        epoch === '1' ? held.promise : Promise.resolve(appearance('5', epoch)),
+    },
+    memory,
+  );
+  host.connect(guest);
+  const starting = host.start();
+  await tick();
+  assert.equal(host.guestSearchReady.value, false);
+  push({ ...appearance('2'), guestSearchReady: true });
+  assert.equal(host.guestSearchReady.value, true);
+  assert.equal(memory.presentation('1'), undefined);
+  push({ ...appearance('3'), guestSearchReady: false });
+  held.resolve({ ...appearance('1'), guestSearchReady: true });
+  await starting;
+  assert.equal(host.guestSearchReady.value, false);
+  push({ ...appearance('4'), guestSearchReady: true });
+  assert.equal(host.guestSearchReady.value, true);
+  const signed = { ...account, epoch: '2' };
+  memory.connect(signed);
+  host.connect(signed);
+  push({ ...appearance('6'), guestSearchReady: true });
+  await tick();
+  assert.equal(host.guestSearchReady.value, false);
+  assert.equal(memory.presentation('2')?.revision, '5');
+  host.dispose();
+});

@@ -104,7 +104,7 @@ pub struct PodcastSearchTable {
     #[serde(skip_serializing_if = "Option::is_none")]
     recommendation: Option<String>,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
-    subscription_eligible: bool,
+    pub(super) subscription_eligible: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -251,6 +251,14 @@ impl MusicClient {
         default_receipt: Option<&str>,
     ) -> Result<AccountData<SearchResultView>> {
         let token = self.player_token(epoch)?;
+        if token.uid.is_none() {
+            return Ok(AccountData {
+                epoch: epoch.into(),
+                value: self
+                    .guest_search_results(&token, query, default_receipt)
+                    .await?,
+            });
+        }
         let token = &token;
         let value = self
             .session
@@ -799,7 +807,7 @@ impl SearchResultView {
         Ok(())
     }
 
-    fn empty(query: SearchResultQuery) -> Self {
+    pub(super) fn empty(query: SearchResultQuery) -> Self {
         Self {
             next_offset: query.offset,
             query,
@@ -821,7 +829,7 @@ impl SearchResultView {
     }
 }
 
-fn empty_title(body: &Value) -> String {
+pub(super) fn empty_title(body: &Value) -> String {
     ["msg", "message"]
         .into_iter()
         .filter_map(|key| body[key].as_str())
@@ -837,7 +845,7 @@ fn empty_title(body: &Value) -> String {
         .unwrap_or_else(|| "暂无可展示的综合搜索结果".into())
 }
 
-fn project(
+pub(super) fn project(
     raw: Value,
     query: SearchResultQuery,
     uid: &str,

@@ -10,6 +10,7 @@ mod origin;
 mod profile;
 mod request;
 pub use backend::{BodyStatus, HttpBackend, HttpReply, ReqwestBackend};
+pub(crate) use client::GuestSearchAuthority;
 pub use client::{MusicHttpClient, ResponseInfo};
 pub use origin::{
     ApiOrigin, RoutingPolicy, WireRoute, select_route, select_route_with_policy, validate_path,

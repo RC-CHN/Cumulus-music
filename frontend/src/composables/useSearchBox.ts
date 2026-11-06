@@ -29,6 +29,7 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
   const searching = computed(() => !!query.value.trim());
   let epoch = '',
     connected = false,
+    guest = false,
     windowFocused = true,
     inputFocused = false,
     generation = 0,
@@ -64,7 +65,7 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     const p = failure(value);
     if (p.code === 'stale') return;
     errors[slot] = p.message;
-    if (p.code === 'session_expired' || p.code === 'profile_changed') {
+    if (!guest && (p.code === 'session_expired' || p.code === 'profile_changed')) {
       dispose();
       expired();
     }
@@ -200,16 +201,18 @@ export function useSearchBox(core: CoreClient = useCore(), expired: () => void =
     if (start) invalidateSuggestions();
     else input(query.value);
   }
-  async function connect(account: AccountView) {
+  async function connect(account: AccountView, guestReady = false) {
     dispose();
     epoch = account.epoch;
-    connected = account.status === 'authenticated';
+    guest = guestReady && (account.status === 'unknown' || account.status === 'signed_out');
+    connected = account.status === 'authenticated' || guest;
     if (!connected) return;
     defaultTimer = setInterval(advanceDefault, DEFAULT_RECOVERY_MS);
     await Promise.all([advanceDefault(), historyCommand({ kind: 'read' })]);
   }
   function dispose() {
     connected = false;
+    guest = false;
     generation++;
     timers();
     requests.clear();

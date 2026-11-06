@@ -17,6 +17,11 @@ impl From<Error> for ClientError {
             ("session_expired", "登录已失效，请重新登录", false)
         } else {
             match error.root() {
+                Error::State("registered guest search is unavailable") => (
+                    "guest_search_unavailable",
+                    "游客搜索暂不可用，请稍后重试或登录",
+                    true,
+                ),
                 Error::State(
                     "stop the registered parametric effect before applying headphone tuning",
                 ) => (

@@ -25,6 +25,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 mod anonymous;
+pub(crate) use anonymous::GuestSearchAuthority;
 
 #[derive(Debug, Clone)]
 pub struct ResponseInfo {
@@ -86,6 +87,7 @@ enum RequestBinding<'a> {
         permission: &'a (dyn Fn() -> Result<()> + Sync),
         dispatched: &'a AtomicBool,
     },
+    GuestSearch(&'a (dyn Fn() -> Result<()> + Send + Sync)),
     Switch {
         source: &'a MusicHttpClient,
         revision: &'a str,
@@ -646,8 +648,15 @@ impl MusicHttpClient {
                 permission()?;
                 dispatched.store(true, Ordering::Relaxed);
             }
+            if let Some(RequestBinding::GuestSearch(permission)) = binding {
+                self.require_guest_search_target(&target, &snapshot)?;
+                permission()?;
+            }
             let response = wire.backend.post(plan).await?;
             if let Some(RequestBinding::LegacyRenewal { permission, .. }) = binding {
+                permission()?;
+            }
+            if let Some(RequestBinding::GuestSearch(permission)) = binding {
                 permission()?;
             }
             check_wire_source()?;

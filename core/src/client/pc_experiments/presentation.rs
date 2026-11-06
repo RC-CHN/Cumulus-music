@@ -3,7 +3,7 @@ use super::{MusicClient, ScopeContext, store};
 use crate::{
     Error, Result,
     account::SessionToken,
-    protocol::{api::Api, pc_experiments::PcExperimentGroups},
+    protocol::{api::Api, http::MusicHttpClient, pc_experiments::PcExperimentGroups},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -40,16 +40,23 @@ pub struct PcPresentationView {
     pub search_footer: bool,
     pub search_expanded: bool,
     pub search_dense: bool,
+    pub guest_search_ready: bool,
 }
 
 impl PcPresentationView {
-    fn from_flags(token: &SessionToken, revision: String, flags: Flags) -> Self {
+    fn from_flags(
+        token: &SessionToken,
+        revision: String,
+        flags: Flags,
+        guest_search_ready: bool,
+    ) -> Self {
         Self {
             epoch: token.generation.to_string(),
             revision,
             search_footer: flags.search_footer,
             search_expanded: flags.search_expanded,
             search_dense: flags.search_dense,
+            guest_search_ready,
         }
     }
 }
@@ -110,6 +117,7 @@ impl Default for PresentationHost {
             search_footer: false,
             search_expanded: false,
             search_dense: false,
+            guest_search_ready: false,
         };
         Self {
             state: Mutex::new(None),
@@ -188,7 +196,7 @@ impl ScopeContext {
         operation: impl FnOnce(&PresentationHost, &mut Current) -> Result<T>,
     ) -> Result<T> {
         self.session
-            .with_pc_presentation_identity(token, api, |uid, no_uid| {
+            .with_pc_presentation_identity(token, api, |uid, no_uid, guest_ready| {
                 let host = &self.host.presentation;
                 let mut state = host.state.lock().map_err(|_| Error::LockPoisoned)?;
                 // Sample inside the publication scope, so an older thread cannot
@@ -220,6 +228,13 @@ impl ScopeContext {
                     uid.map(str::to_owned)
                 };
                 let owner = domain.clone().unwrap_or_else(|| "local-guest".into());
+                let guest_search_ready = guest_ready
+                    && (api.as_ref() as &dyn std::any::Any)
+                        .downcast_ref::<MusicHttpClient>()
+                        .and_then(|transport| transport.guest_search_authority().ok().flatten())
+                        .is_some_and(|authority| {
+                            credentials.as_deref() == Some(&authority.revision)
+                        });
                 if expected_revision.is_some() && domain.is_none() {
                     return Err(Error::StaleResponse);
                 }
@@ -249,7 +264,12 @@ impl ScopeContext {
                         // A blank MUSIC_U is not itself a successful anonymous receipt.
                         Flags::default()
                     };
-                    let view = PcPresentationView::from_flags(token, host.next_revision()?, flags);
+                    let view = PcPresentationView::from_flags(
+                        token,
+                        host.next_revision()?,
+                        flags,
+                        guest_search_ready,
+                    );
                     *state = Some(Current {
                         token: token.clone(),
                         api: Arc::downgrade(api),
@@ -259,6 +279,12 @@ impl ScopeContext {
                         view: view.clone(),
                     });
                     host.changes.send_replace(view);
+                } else if let Some(current) = state.as_mut()
+                    && current.view.guest_search_ready != guest_search_ready
+                {
+                    current.view.guest_search_ready = guest_search_ready;
+                    current.view.revision = host.next_revision()?;
+                    host.changes.send_replace(current.view.clone());
                 }
                 operation(host, state.as_mut().expect("presentation initialized"))
             })
@@ -287,7 +313,12 @@ impl ScopeContext {
                 .store(persisted.is_err(), Ordering::Release);
             if current.flags != flags {
                 current.flags = flags;
-                current.view = PcPresentationView::from_flags(token, host.next_revision()?, flags);
+                current.view = PcPresentationView::from_flags(
+                    token,
+                    host.next_revision()?,
+                    flags,
+                    current.view.guest_search_ready,
+                );
                 host.changes.send_replace(current.view.clone());
             }
             Ok(())

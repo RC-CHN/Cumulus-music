@@ -1,6 +1,7 @@
+import { readonly, ref } from 'vue';
 import type { AccountView } from '../services/contracts.ts';
 import type { PcPresentationClient, PcPresentationView } from '../services/pcPresentation.ts';
-import type { SearchViewportMemory } from '../services/searchViewport.ts';
+import { presentationRevision, type SearchViewportMemory } from '../services/searchViewport.ts';
 
 /** One shell subscription outlives search pages and their Back snapshots. */
 export function usePcPresentation(core: PcPresentationClient, memory: SearchViewportMemory) {
@@ -10,18 +11,28 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     started = false,
     listening = false;
   let unlisten: (() => void) | undefined;
+  let guestOrder: bigint | undefined;
+  const guestSearchReady = ref(false);
+  const eligibleGuest = () => account?.status === 'unknown' || account?.status === 'signed_out';
   function observe(view: PcPresentationView) {
-    if (closed || account?.status !== 'authenticated' || account.epoch !== view.epoch) return;
-    memory.observePresentation(view);
+    if (closed || account?.epoch !== view.epoch) return;
+    if (account.status === 'authenticated') {
+      memory.observePresentation(view);
+    } else if (eligibleGuest()) {
+      const order = presentationRevision(view.revision);
+      if (order === undefined || (guestOrder !== undefined && order <= guestOrder)) return;
+      guestOrder = order;
+      guestSearchReady.value = view.guestSearchReady === true;
+    }
   }
   async function snapshot() {
-    if (!listening || account?.status !== 'authenticated') return;
+    if (!listening || !account || (account.status !== 'authenticated' && !eligibleGuest())) return;
     const epoch = account.epoch,
       visit = generation;
     try {
       const view = await core.pcPresentation(epoch);
       if (!closed && generation === visit && account?.epoch === epoch && view.epoch === epoch)
-        memory.observePresentation(view);
+        observe(view);
     } catch {
       // A local observation failure cannot cause a search, login or polling loop.
     }
@@ -30,6 +41,8 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
     if (next.epoch === account?.epoch && next.status === account.status) return;
     generation++;
     account = next;
+    guestOrder = undefined;
+    guestSearchReady.value = false;
     void snapshot();
   }
   async function start() {
@@ -53,9 +66,10 @@ export function usePcPresentation(core: PcPresentationClient, memory: SearchView
   function dispose() {
     closed = true;
     generation++;
+    guestSearchReady.value = false;
     listening = false;
     unlisten?.();
     unlisten = undefined;
   }
-  return { connect, start, dispose };
+  return { connect, start, dispose, guestSearchReady: readonly(guestSearchReady) };
 }

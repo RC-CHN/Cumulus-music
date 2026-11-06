@@ -318,7 +318,7 @@ impl AccountSession {
         &self,
         expected: &SessionToken,
         api: &Arc<dyn Api>,
-        operation: impl FnOnce(Option<&str>, bool) -> Result<T>,
+        operation: impl FnOnce(Option<&str>, bool, bool) -> Result<T>,
     ) -> Result<T> {
         let state = self.lock()?;
         state.require(expected)?;
@@ -329,7 +329,9 @@ impl AccountSession {
             .uid
             .as_deref()
             .filter(|_| state.status == SessionStatus::Authenticated && state.profile.is_some());
-        operation(verified_uid, state.uid.is_none())
+        let no_uid = state.uid.is_none();
+        let guest_ready = no_uid && (state.guest_ready || state.status == SessionStatus::SignedOut);
+        operation(verified_uid, no_uid, guest_ready)
     }
 
     /// A signed-out guest may move to an isolated native anonymous jar. This
@@ -654,6 +656,15 @@ impl AccountSession {
             (state.token(), state.api.clone())
         };
         let native: Arc<dyn std::any::Any + Send + Sync> = api.clone();
+        if native
+            .downcast_ref::<crate::protocol::http::MusicHttpClient>()
+            .is_some_and(crate::protocol::http::MusicHttpClient::is_isolated_anonymous)
+        {
+            // Anonymous adapter responses are never account-adoption input.
+            // Existing explicit login flows still adopt their own candidate.
+            self.require_api(&token, &api)?;
+            return Err(Error::service("session", json!(301), Value::Null));
+        }
         if let Ok(client) = native.downcast::<crate::protocol::http::MusicHttpClient>()
             && let Some(notice) = client.credentials().invalid_login_notice()?
         {
@@ -692,6 +703,9 @@ impl AccountSession {
         let uid = identifier(&profile["userId"])?;
         let mut state = self.lock()?;
         state.require(&token)?;
+        if !Arc::ptr_eq(&state.api, &api) {
+            return Err(Error::StaleResponse);
+        }
         let generation = if state.uid.as_ref() != Some(&uid) {
             next_generation(state.generation)?
         } else {

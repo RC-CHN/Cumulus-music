@@ -46,6 +46,8 @@ export function useSearchResults(
   let presentationSerial = 0;
   let observed: string | undefined;
   let closed = false;
+  let guest = false;
+  const canRead = () => account?.status === 'authenticated' || guest;
   let unlistenPrivileges: (() => void) | undefined;
   const unlistenPresentation = memory.onPresentation((next) => {
     if (closed || next.epoch !== account?.epoch || account.status !== 'authenticated') return;
@@ -214,10 +216,11 @@ export function useSearchResults(
       // A refresh error does not replace current content or trigger a retry.
     }
   }
-  function connect(next: AccountView) {
+  function connect(next: AccountView, guestReady = false) {
     generation++;
     if (next.epoch !== account?.epoch || next.status !== account?.status) observed = undefined;
     account = next;
+    guest = guestReady && (next.status === 'unknown' || next.status === 'signed_out');
     memory.connect(next);
     view.value = undefined;
     tabs.value = undefined;
@@ -252,7 +255,7 @@ export function useSearchResults(
     originalKeyword = query.keyword,
     defaultReceipt?: string,
   ) {
-    if (account?.status !== 'authenticated') return;
+    if (!account || !canRead()) return;
     const epoch = account.epoch,
       current = ++generation;
     activeKey = memory.key(query, session);
@@ -328,7 +331,7 @@ export function useSearchResults(
       if (current !== generation) return;
       const issue = failure(e);
       error.value = issue.message;
-      if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
+      if (!guest && (issue.code === 'session_expired' || issue.code === 'profile_changed')) {
         memory.clear();
         tabs.value = undefined;
         correctionReminder.value = undefined;
@@ -340,13 +343,7 @@ export function useSearchResults(
   }
   async function more() {
     const previous = view.value;
-    if (
-      !previous?.more ||
-      loading.value ||
-      loadingMore.value ||
-      account?.status !== 'authenticated'
-    )
-      return;
+    if (!previous?.more || loading.value || loadingMore.value || !account || !canRead()) return;
     const current = generation,
       epoch = account.epoch;
     loadingMore.value = true;
@@ -457,7 +454,7 @@ export function useSearchResults(
       const issue = failure(e);
       moreError.value = issue.message;
       save();
-      if (issue.code === 'session_expired' || issue.code === 'profile_changed') {
+      if (!guest && (issue.code === 'session_expired' || issue.code === 'profile_changed')) {
         memory.clear();
         tabs.value = undefined;
         correctionReminder.value = undefined;

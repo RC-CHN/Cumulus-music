@@ -17,7 +17,9 @@ const props = defineProps<{
   keyword?: string;
   displayKeyword?: string;
   playable: boolean;
+  guestReady?: boolean;
 }>();
+const enabled = computed(() => props.account.status === 'authenticated' || props.guestReady);
 const emit = defineEmits<{
   search: [
     keyword: string,
@@ -57,7 +59,14 @@ const confirm = ref(false);
 let suppressFocus = false;
 let historyPanelGeneration = 0;
 watch(
-  [open, query, () => props.account.epoch, () => props.account.status, () => props.pageKey],
+  [
+    open,
+    query,
+    () => props.account.epoch,
+    () => props.account.status,
+    () => props.guestReady,
+    () => props.pageKey,
+  ],
   () => historyPanelGeneration++,
   { flush: 'sync' },
 );
@@ -270,10 +279,10 @@ async function clearHistory() {
   if (!errors.history) confirm.value = false;
 }
 watch(
-  () => [props.account.epoch, props.account.status],
+  () => [props.account.epoch, props.account.status, props.guestReady],
   () => {
     confirm.value = false;
-    void model.connect(props.account);
+    void model.connect(props.account, props.guestReady);
   },
   { immediate: true },
 );
@@ -319,7 +328,7 @@ onUnmounted(() => {
         type="submit"
         class="search-submit"
         aria-label="开始搜索"
-        :disabled="account.status !== 'authenticated' || composing"
+        :disabled="!enabled || composing"
       >
         <Icon name="search" />
       </button>
@@ -334,7 +343,7 @@ onUnmounted(() => {
         aria-controls="search-discovery-panel"
         :placeholder="defaultWord?.label || '搜索音乐、寻找好声音'"
         maxlength="256"
-        :disabled="account.status !== 'authenticated'"
+        :disabled="!enabled"
         @input="model.input(($event.target as HTMLInputElement).value)"
         @focus="onFocus"
         @blur="onBlur"
