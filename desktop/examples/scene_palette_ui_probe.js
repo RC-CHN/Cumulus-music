@@ -9,6 +9,9 @@
   });
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const assert = (v, label) => { if (!v) throw Error(label); };
+  const search = () => one('input[aria-label="搜索音乐"]');
+  const navigationReady = () => visible(one('button[aria-label="打开设置"]'));
+  const classicHome = () => one('.podcast-discovery .podcast-top[data-layout="classic"]');
   const card = () => one('[data-podcast-scene-fm] .scene-fm-card');
   const normalize = (css) => css.replace(/\s+/g, '');
   const expected = (r, g, b, x, y, z) => normalize(
@@ -81,10 +84,14 @@
       const a = await invoke('account_snapshot');
       if (a.status !== 'authenticated') return false;
       epoch = a.epoch;
-      return visible(one('input[aria-label="搜索音乐"]'));
-    }, 'signed-in isolated shell');
-    await click(() => one('input[aria-label="搜索音乐"]'), 'open search chart');
-    await click(() => one('button[aria-label="播客榜：更多"]'), 'open real podcast home');
+      // Authentication alone enables search before the navigation guard clears.
+      return visible(search()) && navigationReady();
+    }, 'signed-in isolated shell can navigate');
+    await click(search, 'open search chart');
+    await click(() => navigationReady() && search()?.getAttribute('aria-expanded') === 'true' &&
+      one('button[aria-label="播客榜：更多"]', one('#search-discovery-panel:not(.menu-leave-active)')),
+    'active podcast chart More');
+    await wait(classicHome, 'More opens the classic podcast home');
     await wait(card, 'classic Scene FM card');
     const title = () => one('[data-scene-fm-title]', card());
     if (mode !== 'late') {
@@ -127,6 +134,8 @@
     await emit('complete', { ok: true, case: mode, stageCount: count });
   } catch (e) {
     await emit('failed', { ok: false, case: mode, error: String(e), stageCount: count,
+      navigationReady: !!navigationReady(), searchExpanded: search()?.getAttribute('aria-expanded'),
+      classicHome: !!classicHome(),
       page: one('.main-content')?.innerText.slice(0, 1300), background: bg() });
   }
 })();

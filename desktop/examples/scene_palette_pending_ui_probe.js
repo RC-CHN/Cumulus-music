@@ -27,6 +27,9 @@
     node.focus({ preventScroll: true });
     node.click();
   }
+  const search = () => one('input[aria-label="搜索音乐"]');
+  const navigationReady = () => visible(one('button[aria-label="打开设置"]'));
+  const classicHome = () => one('.podcast-discovery .podcast-top[data-layout="classic"]');
   const card = () => one('[data-podcast-scene-fm] .scene-fm-card');
   const title = () => one('[data-scene-fm-title]', card());
   const player = () => invoke('player_snapshot', { epoch });
@@ -63,8 +66,10 @@
       const account = await invoke('account_snapshot');
       if (account.status !== 'authenticated') return false;
       epoch = account.epoch;
-      return visible(one('input[aria-label="搜索音乐"]'));
-    }, 'isolated signed-in shell');
+      // The search field is enabled on authentication, before the app allows
+      // non-local navigation. Settings reflects the actual bootstrap guard.
+      return visible(search()) && navigationReady();
+    }, 'isolated signed-in shell can navigate');
     const provides = one('#app').__vue_app__._context.provides;
     core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     assert(core, 'real typed frontend core adapter is available');
@@ -81,8 +86,11 @@
       }
       return original.sample.apply(core, args);
     };
-    await click(() => one('input[aria-label="搜索音乐"]'), 'open search chart');
-    await click(() => one('button[aria-label="播客榜：更多"]'), 'enter classic podcast home');
+    await click(search, 'open search chart');
+    await click(() => navigationReady() && search()?.getAttribute('aria-expanded') === 'true' &&
+      one('button[aria-label="播客榜：更多"]', one('#search-discovery-panel:not(.menu-leave-active)')),
+    'active podcast chart More');
+    await wait(classicHome, 'More opens the classic podcast home');
     await wait(() => card() && bg()?.pending === 'true', 'palette work starts');
     await wait(async () => mode === 'pending_canvas' ? canvasHeld : (await stats()).held,
       'actual selected palette phase is held');
@@ -135,7 +143,9 @@
       sampledSize, oldVoiceRejected, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (cause) {
     await emit('failed', { ok: false, case: mode, error: String(cause), stageCount: count,
-      ipc: calls, background: bg(), page: one('.main-content')?.innerText.slice(0, 1200) });
+      ipc: calls, background: bg(), navigationReady: !!navigationReady(),
+      searchExpanded: search()?.getAttribute('aria-expanded'), classicHome: !!classicHome(),
+      page: one('.main-content')?.innerText.slice(0, 1200) });
   } finally {
     if (original) {
       core.sceneFmPaletteRead = original.read;
