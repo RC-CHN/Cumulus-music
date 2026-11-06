@@ -2340,8 +2340,10 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
             .unwrap(),
     )
     .unwrap();
+    let description = "  已下载节目的简介\n\n\t第二段 🎧\r\n";
     let episode = Episode::from_official(&json!({
         "id":71,"name":"合成下载声音","mainSong":{"id":123,"duration":1000},
+        "description":description,
         "createTime":1735787045000_u64,
         "dj":{"userId":42,"nickname":"合成主播","avatarUrl":"PRIVATE_AVATAR"},
         "radio":{"id":"9007199254740993","name":"该声音所属播客","programCount":1,
@@ -2498,12 +2500,14 @@ async fn downloaded_voice_header_comes_from_native_task_origin_not_raw_song_meta
     );
     assert_eq!(
         serde_json::to_value(&voice.voice_detail).unwrap(),
-        json!({"id":"71","creator":{"id":"42","name":"合成主播"},"releaseTime":1735787045000_u64})
+        json!({"id":"71","creator":{"id":"42","name":"合成主播"},"releaseTime":1735787045000_u64,
+            "description":description})
     );
     let queue: cumulus_core::playback::QueueSnapshot =
         serde_json::from_value(f.store.get("1", "playback", "queue").unwrap().unwrap()).unwrap();
     assert_eq!(queue.items[0].resource["download_voice_id"], "71");
     assert_eq!(queue.items[0].resource["song"]["voice_id"], "71");
+    assert_eq!(queue.items[0].resource["voice"]["description"], description);
     assert_eq!(
         f.store.get("1", "download_tasks_v1", &task_id).unwrap(),
         Some(stored)

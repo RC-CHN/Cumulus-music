@@ -1,4 +1,4 @@
-//! VoiceTitle.tsx:77–104; M21 E:429–478 and W:931–1010.
+//! VoiceTitle.tsx:77–104, DescCard.tsx:64–68; M21 E:429–478 and W:931–1010.
 //! No additional read is performed for a playback header. Online Episode
 //! resources and download-origin evidence must agree with the selected song.
 use super::{PlaybackSnapshot, PlayerResourceKind, identity};
@@ -21,6 +21,9 @@ pub struct PlayerVoiceDetail {
     /// Original episode createTime, positive integer milliseconds in JS Date's
     /// valid range. No file mtime, album date, publishTime or current-day fallback.
     pub release_time: Option<u64>,
+    /// Plain episode text from M21 W:945. No alternate fields or markup processing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 fn id(value: &Value) -> Option<String> {
@@ -51,6 +54,24 @@ fn creator(voice: &Value) -> Option<PlayerVoiceCreator> {
         id: id(&value["userId"]),
         name: name.into(),
     })
+}
+
+const MAX_DESCRIPTION_UTF16: usize = 8192;
+
+fn description(voice: &Value) -> Option<String> {
+    let value = voice["description"].as_str()?;
+    // This is a local IPC bound. Keep valid paragraph whitespace unchanged;
+    // the renderer receives plain text, never a rich-content instruction.
+    if value.len() > MAX_DESCRIPTION_UTF16 * 3
+        || value.trim().is_empty()
+        || value.encode_utf16().count() > MAX_DESCRIPTION_UTF16
+        || value
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\r' | '\n' | '\t'))
+    {
+        return None;
+    }
+    Some(value.into())
 }
 
 fn from_resource(play_id: Option<&str>, resource: &Value) -> Option<PlayerVoiceDetail> {
@@ -107,6 +128,7 @@ fn from_resource(play_id: Option<&str>, resource: &Value) -> Option<PlayerVoiceD
         release_time: voice["createTime"]
             .as_u64()
             .filter(|value| (1..=8_640_000_000_000_000).contains(value)),
+        description: description(voice),
     })
 }
 
@@ -123,11 +145,14 @@ mod tests {
     use crate::podcast::Episode;
     use serde_json::json;
 
+    const DESCRIPTION: &str = "  合成片头 \r\n\r\n\t第二段 🎧 <字面文字>\n";
+
     fn episode() -> Episode {
         Episode::from_official(&json!({
             "id":71,"name":"合成声音","mainTrackId":901,
             "mainSong":{"id":901,"duration":200000},"createTime":1735787045000_u64,
             "dj":{"userId":42,"nickname":"合成主播","avatarUrl":"PRIVATE_AVATAR","cookie":"PRIVATE_COOKIE"},
+            "description":DESCRIPTION,
             "authorization":"PRIVATE_TOKEN","url":"https://private.invalid/token"
         })).unwrap()
     }
@@ -150,7 +175,8 @@ mod tests {
 
     #[test]
     fn official_episode_metadata_is_bound_and_whitelisted_for_online_and_downloads() {
-        let expected = json!({"id":"71","creator":{"id":"42","name":"合成主播"},"releaseTime":1735787045000_u64});
+        let expected = json!({"id":"71","creator":{"id":"42","name":"合成主播"},"releaseTime":1735787045000_u64,
+            "description":DESCRIPTION});
         for resource in [online(), download()] {
             let result = from_resource(Some("native-play"), &resource).unwrap();
             assert_eq!(serde_json::to_value(&result).unwrap(), expected);
@@ -205,6 +231,54 @@ mod tests {
         for resource in [song, cloud, cue, foreign_download] {
             assert!(from_resource(Some("play"), &resource).is_none());
         }
+    }
+
+    #[test]
+    fn description_is_only_the_bounded_plain_text_on_the_bound_episode() {
+        let mut resource = online();
+        resource["description"] = json!("外层描述");
+        resource["voice"]["programDesc"] = json!(["列表简介"]);
+        resource["voice"]["desc"] = json!("另一个字段");
+        resource["voice"]["radio"] = json!({"description":"播客描述"});
+        for invalid in [
+            Value::Null,
+            json!(false),
+            json!(["正文"]),
+            json!({"text":"正文"}),
+            json!(" \r\n\t "),
+            json!("正文\0"),
+            json!("正文\u{007f}"),
+            json!("🎧".repeat(MAX_DESCRIPTION_UTF16 / 2) + " "),
+        ] {
+            resource["voice"]["description"] = invalid;
+            let detail = from_resource(Some("native-play"), &resource).unwrap();
+            assert!(detail.description.is_none());
+            assert!(
+                serde_json::to_value(detail)
+                    .unwrap()
+                    .get("description")
+                    .is_none()
+            );
+        }
+        resource["voice"]
+            .as_object_mut()
+            .unwrap()
+            .remove("description");
+        assert!(
+            from_resource(Some("native-play"), &resource)
+                .unwrap()
+                .description
+                .is_none()
+        );
+
+        let max = "🎧".repeat(MAX_DESCRIPTION_UTF16 / 2);
+        resource["voice"]["description"] = json!(max);
+        assert_eq!(
+            from_resource(Some("native-play"), &resource)
+                .unwrap()
+                .description,
+            Some(max)
+        );
     }
 
     #[test]
