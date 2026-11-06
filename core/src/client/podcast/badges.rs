@@ -1,6 +1,6 @@
 //! M/2120 subscribed-row count and the M/3117 explicit detail-entry clear.
 //! Neither a generic read nor playback is a writer in this lane.
-use super::{MusicClient, PodcastPage, PodcastScope};
+use super::{MusicClient, PodcastPage};
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
