@@ -4,6 +4,7 @@ import type {
   AccountData,
   AccountView,
   CoreClient,
+  LikeResult,
   PlaylistView,
   StyleSeedHandle,
   TrackPage,
@@ -12,6 +13,7 @@ import type {
 import { failure } from '../services/contracts.ts';
 import { useCore } from '../services/core.ts';
 import type { CommentResource } from '../services/comments';
+import type { QueueLikeTarget } from '../services/player';
 export type PlaylistSection = 'songs' | 'comments' | 'subscribers';
 type Destination =
   | { kind: 'decoration' }
@@ -515,20 +517,24 @@ export function useMusic(
       commit();
     });
   }
-  async function like(track: Pick<TrackView, 'id'>) {
-    if (!signedIn.value || busyLikes.value.has(track.id)) return;
+  async function changeLike(
+    id: string,
+    submit: (epoch: string, desired: boolean) => Promise<AccountData<LikeResult>>,
+    announce = false,
+  ) {
+    if (!signedIn.value || busyLikes.value.has(id)) return;
     const owner = account.value.epoch;
     const active = () => signedIn.value && account.value.epoch === owner;
-    busyLikes.value = new Set(busyLikes.value).add(track.id);
+    busyLikes.value = new Set(busyLikes.value).add(id);
     likeNotice.value = '';
     likeRevision++;
     try {
-      const response = await core.setLiked(owner, track.id, !liked.value.has(track.id));
+      const response = await submit(owner, !liked.value.has(id));
       const value = accept(response);
-      if (!value) return;
+      if (!value || value.id !== id) return;
       if (value.observed !== null) {
         const next = new Set(liked.value);
-        value.observed ? next.add(track.id) : next.delete(track.id);
+        value.observed ? next.add(id) : next.delete(id);
         liked.value = next;
       }
       if (value.phase !== 'confirmed' && value.phase !== 'unchanged')
@@ -536,17 +542,30 @@ export function useMusic(
           value.phase === 'rejected'
             ? '服务未确认此次操作，请刷新后核对'
             : '操作结果尚未确认，请刷新核对后再操作';
+      else if (announce && value.observed !== null)
+        likeNotice.value = value.observed ? '已添加到我喜欢的音乐' : '已取消喜欢';
     } catch (e) {
       if (active()) handleLike(e);
     } finally {
       if (active()) {
         likeRevision++;
         const next = new Set(busyLikes.value);
-        next.delete(track.id);
+        next.delete(id);
         busyLikes.value = next;
         likeActivity.value++;
       }
     }
+  }
+  function like(track: Pick<TrackView, 'id'>) {
+    return changeLike(track.id, (owner, desired) => core.setLiked(owner, track.id, desired));
+  }
+  function likeFromQueue(target: QueueLikeTarget) {
+    if (target.epoch !== account.value.epoch) return;
+    return changeLike(
+      target.songId,
+      (owner, desired) => core.playerQueueLike(owner, target.revision, target.entryId, desired),
+      true,
+    );
   }
   return {
     replace,
@@ -580,5 +599,6 @@ export function useMusic(
       navigate({ kind: 'playlist_creator', id }, token),
     back,
     like,
+    likeFromQueue,
   };
 }

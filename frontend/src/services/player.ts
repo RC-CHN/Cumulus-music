@@ -1,4 +1,4 @@
-import type { TrackView, CoreFailure, AccountData } from './contracts';
+import type { TrackView, CoreFailure, AccountData, LikeResult } from './contracts';
 import type { CloudQuery } from './cloud';
 import type { CommentOperation, VinylCommentLikeAction, VinylCommentPage } from './comments';
 import type { ProfileReportView, ReportCommand } from './profileReport';
@@ -240,6 +240,13 @@ export interface QueueTrack {
   track: TrackView;
   moreRecommendation?: boolean;
   origin?: QueueOrigin;
+  likeSongId?: string;
+}
+export interface QueueLikeTarget {
+  epoch: string;
+  revision: string;
+  entryId: string;
+  songId: string;
 }
 export interface QueueMoreRecommendations {
   visible: boolean;
@@ -765,6 +772,12 @@ export interface PlayerClient extends VinylSimilarClient {
   playerQueue(epoch: string): Promise<QueueView>;
   queueMoreTip(epoch: string, action: QueueMoreTipAction): Promise<string | null>;
   playerQueueCollection(epoch: string, revision: string): Promise<QueueCollectionView>;
+  playerQueueLike(
+    epoch: string,
+    revision: string,
+    entryId: string,
+    liked: boolean,
+  ): Promise<AccountData<LikeResult>>;
   playerChorus(epoch: string, playId: string): Promise<number | null>;
   playerCommentCount(epoch: string, playId: string): Promise<number | null>;
   playerVinylCommentsAvailable(epoch: string): Promise<boolean>;

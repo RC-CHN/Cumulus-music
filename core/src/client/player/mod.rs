@@ -21,6 +21,7 @@ mod queue_click;
 mod queue_collection;
 mod queue_drop;
 mod queue_edit;
+mod queue_like;
 mod queue_more_playlist;
 mod queue_playlist;
 mod reports;
@@ -1785,7 +1786,7 @@ impl MusicClient {
             .as_ref()
             .is_some_and(|view| view.enabled);
         let clear_context = self.queue_clear_context(&token)?;
-        let ordinary_sources = !snapshot.fm && clear_context.room_id.is_none();
+        let ordinary_queue = !snapshot.fm && clear_context.room_id.is_none();
         Ok(QueueView {
             fm: snapshot.fm,
             clear_context,
@@ -1812,7 +1813,10 @@ impl MusicClient {
                         track: track(&i.resource)?,
                         more_recommendation: more_visible
                             && crate::playback::queue_more::active(&queue, i),
-                        origin: ordinary_sources.then(|| origin::queue(i)).flatten(),
+                        origin: ordinary_queue.then(|| origin::queue(i)).flatten(),
+                        like_song_id: ordinary_queue
+                            .then(|| queue_like::song_id(&i.resource))
+                            .flatten(),
                     })
                 })
                 .collect::<Result<_>>()?,

@@ -157,6 +157,8 @@ pub struct QueueTrack {
     pub more_recommendation: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<QueueOrigin>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub like_song_id: Option<String>,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]

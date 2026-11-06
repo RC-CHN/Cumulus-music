@@ -880,21 +880,34 @@ input[type='range'] {
   width: 15px;
   height: 15px;
 }
-.queue-origin {
+.queue-origin,
+.queue-like {
   flex: 0 0 auto;
   opacity: 0;
   pointer-events: none;
 }
 .queue-row:hover .queue-origin,
-.queue-row:focus-within .queue-origin {
+.queue-row:focus-within .queue-origin,
+.queue-row:hover .queue-like,
+.queue-row:focus-within .queue-like {
   opacity: 1;
   pointer-events: auto;
 }
 @media (hover: none) {
-  .queue-origin {
+  .queue-origin,
+  .queue-like {
     opacity: 1;
     pointer-events: auto;
   }
+}
+.queue-like.liked {
+  color: var(--accent);
+}
+.queue-like.liked .icon {
+  fill: currentColor;
+}
+.queue-like[aria-disabled='true'] {
+  opacity: 0.5;
 }
 .lyrics-panel {
   position: absolute;

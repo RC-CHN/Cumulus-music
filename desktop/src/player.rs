@@ -308,6 +308,23 @@ pub async fn player_queue_collection(
         .map_err(Into::into)
 }
 #[tauri::command]
+pub async fn player_queue_like(
+    window: tauri::WebviewWindow,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    revision: String,
+    entry_id: String,
+    liked: bool,
+) -> Result<AccountData<LikeResult>, ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("queue song like requires the main window").into());
+    }
+    client
+        .player_queue_like(&epoch, &revision, &entry_id, liked)
+        .await
+        .map_err(Into::into)
+}
+#[tauri::command]
 pub async fn player_chorus(
     client: tauri::State<'_, MusicClient>,
     epoch: String,

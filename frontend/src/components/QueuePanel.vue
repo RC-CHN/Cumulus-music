@@ -23,6 +23,7 @@ import {
   type QueueEdit,
   type QueueTrack,
   type QueueOrigin,
+  type QueueLikeTarget,
   type QueueCollectionView,
 } from '../services/player';
 import { rowTop, rowExtent } from '../services/virtualWindow';
@@ -37,6 +38,10 @@ const props = defineProps<{
   player: PlayerModel;
   authenticated: boolean;
   together: TogetherModel;
+  liked: ReadonlySet<string>;
+  busyLikes: ReadonlySet<string>;
+  likeNotice: string;
+  pendingLikes: number;
   playlistSourceRefresh?: { pending: boolean };
 }>();
 const emit = defineEmits<{
@@ -45,6 +50,8 @@ const emit = defineEmits<{
   discover: [];
   origin: [target: QueueOrigin];
   artist: [id: string];
+  like: [target: QueueLikeTarget];
+  reviewLikes: [];
   together: [];
   cleared: [];
   refreshPlaylistSource: [event: MouseEvent];
@@ -499,6 +506,12 @@ function openArtist(row: QueueTrack, id: string) {
   )
     emit('artist', id);
 }
+function likeRow(row: QueueTrack) {
+  const shown = queue.value;
+  const songId = row.likeSongId;
+  if (!shown || !songId || props.busyLikes.has(songId) || !liveNavigationRow(row)) return;
+  emit('like', { epoch: shown.epoch, revision: shown.revision, entryId: row.entryId, songId });
+}
 function selectRow(event: MouseEvent, id: string) {
   // Pointer selection runs on down/up to preserve a group while dragging.
   // Keyboard activation and accessibility tools produce a zero-detail click.
@@ -798,6 +811,8 @@ async function confirmClear(event: Event) {
             currentQueueTransport === item.entryId,
             locked,
             navigationLocked,
+            item.likeSongId && liked.has(item.likeSongId),
+            item.likeSongId && busyLikes.has(item.likeSongId),
             queue.fm,
             queue.tracks.length,
             selected.has(item.entryId),
@@ -885,6 +900,21 @@ async function confirmClear(event: Event) {
           >
             <Icon name="source" />
           </button>
+          <button
+            v-if="item.likeSongId"
+            type="button"
+            class="icon-button queue-like"
+            :class="{ liked: liked.has(item.likeSongId) }"
+            :disabled="navigationLocked"
+            :aria-disabled="busyLikes.has(item.likeSongId)"
+            :aria-pressed="liked.has(item.likeSongId)"
+            :title="liked.has(item.likeSongId) ? '取消喜欢' : '喜欢'"
+            :aria-label="`${liked.has(item.likeSongId) ? '取消喜欢' : '喜欢'} ${item.track.name}`"
+            @click.stop="likeRow(item)"
+            @dblclick.stop
+          >
+            <Icon name="heart" />
+          </button>
           <time :title="item.track.durationMs > 0 ? undefined : '时长未知'">{{
             item.track.durationMs > 0 ? time(item.track.durationMs / 1000) : '—'
           }}</time>
@@ -933,6 +963,12 @@ async function confirmClear(event: Event) {
         }}
         · Esc 取消
       </div>
+    </div>
+    <div v-if="likeNotice || pendingLikes" class="queue-notice queue-like-notice" role="status">
+      <span>{{ pendingLikes ? `${pendingLikes} 首歌曲的喜欢操作待核对` : likeNotice }}</span>
+      <button v-if="pendingLikes" type="button" class="text-button" @click="emit('reviewLikes')">
+        核对喜欢状态
+      </button>
     </div>
     <ModalTransition
       :restore-focus="clearTicket?.epoch === view?.epoch"
