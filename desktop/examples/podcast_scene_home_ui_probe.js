@@ -173,7 +173,10 @@
         }, 'title resumes the same paused decoder and opens the actual playback detail');
         assert(!one('.vinyl-source', one('.lyrics-panel:not(.lyrics-panel-leave-active)')),
           'official voice detail omits provenance instead of showing unknown');
-        const detail = one('.lyrics-panel:not(.lyrics-panel-leave-active)');
+        const detail = await wait(() => {
+          const node = one('.lyrics-panel:not(.lyrics-panel-leave-active)');
+          return one('[data-voice-detail]', node) && node;
+        }, 'the current voice page has its episode metadata');
         assert(one('[data-voice-detail]', detail) &&
           one('[data-voice-release]', detail)?.textContent.trim().startsWith('发布时间：') &&
           !one('.vinyl-credits[aria-label="歌手"], .vinyl-album', detail),

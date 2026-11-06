@@ -20,6 +20,8 @@ mod scene_palette_fixture;
 mod settings_fixture;
 #[path = "support/voice_detail_fixture.rs"]
 mod voice_detail_fixture;
+#[path = "support/voice_page_fixture.rs"]
+mod voice_page_fixture;
 #[path = "support/voice_podcast_collect_fixture.rs"]
 mod voice_podcast_collect_fixture;
 #[path = "support/voice_recommendation_fixture.rs"]
@@ -35,7 +37,7 @@ use cumulus_core::{
         api::{
             Api, ApiFuture, GuardedSongLike, PodcastBadgeClear, PodcastBadgePermission,
             PodcastProgressPermission, SongLikePermission, VinylPlaybackReadPermission,
-            VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
+            VinylVoiceDetailRead, VinylVoiceRecommendationsRead, VinylVoiceSongsRead,
         },
         http::ApiOrigin,
     },
@@ -70,6 +72,7 @@ struct Library {
     scene_baseline: settings_fixture::Library,
     palette: Option<Arc<scene_palette_fixture::PaletteMedia>>,
     voice_detail: Option<voice_detail_fixture::VoiceDetail>,
+    voice_page: Option<voice_page_fixture::Fixture>,
     voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
     voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
     voice_songs: Option<voice_songs_fixture::Fixture>,
@@ -82,6 +85,37 @@ fn voice(id: u64) -> Value {
     json!({"voiceId":id,"voiceName":format!("合成单集 {id}"),"mainSong":{"id":1000+id,"duration":30000},
         "radio":radio(),"duration":30000,"listenerCount":12000+id,"djPlayRecordVo":{"listenLocation":12000,"isListened":id==502},
         "disPlayStatus":if id==505 {"REMOVED"}else{"NORMAL"}})
+}
+impl Library {
+    fn voice_page_authority(
+        &self,
+        revision: &str,
+        permission: &VinylPlaybackReadPermission<'_>,
+    ) -> Result<&voice_page_fixture::Fixture> {
+        let fixture = self
+            .voice_page
+            .as_ref()
+            .ok_or(Error::State("sealed VoicePage proof unavailable"))?;
+        assert_eq!(
+            self.verified_pc_experiment_revision()?.as_deref(),
+            Some(revision)
+        );
+        permission()?;
+        Ok(fixture)
+    }
+
+    fn decorate_scene_voice(&self, mut response: Value) -> Value {
+        if let Some(palette) = &self.palette {
+            response = scene_palette_fixture::artwork_response(response, palette.shared_cover());
+        }
+        if self.voice_detail.is_some() {
+            response = voice_detail_fixture::enrich(response);
+        }
+        if let Some(collect) = &self.voice_podcast_collect {
+            response = collect.enrich(response);
+        }
+        response
+    }
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
@@ -151,6 +185,23 @@ impl Api for Library {
         })
     }
 
+    fn request_vinyl_voice_detail<'a>(
+        &'a self,
+        read: VinylVoiceDetailRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let voice_page = self.voice_page_authority(revision, permission)?;
+            let (path, body) = read.into_request();
+            let ticket = voice_page.begin(voice_page_fixture::Lane::Detail, path, &body);
+            let response =
+                self.decorate_scene_voice(scene_home_fixture::program_detail(ticket.program));
+            let result = voice_page.detail(&ticket, response).await;
+            voice_page.finish(ticket, result)
+        })
+    }
+
     fn request_vinyl_voice_recommendations<'a>(
         &'a self,
         read: VinylVoiceRecommendationsRead,
@@ -158,14 +209,14 @@ impl Api for Library {
         permission: &'a VinylPlaybackReadPermission<'a>,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            let fixture = self
-                .voice_recommendations
-                .as_ref()
-                .ok_or(Error::State("voice recommendation proof unavailable"))?;
-            assert_eq!(revision, voice_recommendation_fixture::REVISION);
-            permission()?;
+            let voice_page = self.voice_page_authority(revision, permission)?;
             let (path, body) = read.into_request();
-            fixture.read(path, body).await
+            let ticket = voice_page.begin(voice_page_fixture::Lane::Recommendations, path, &body);
+            let result = match &self.voice_recommendations {
+                Some(fixture) => fixture.read(path, body).await,
+                None => Ok(voice_page.recommendations()),
+            };
+            voice_page.finish(ticket, result)
         })
     }
 
@@ -176,14 +227,14 @@ impl Api for Library {
         permission: &'a VinylPlaybackReadPermission<'a>,
     ) -> ApiFuture<'a, Value> {
         Box::pin(async move {
-            let fixture = self
+            let voice_page = self.voice_page_authority(revision, permission)?;
+            let (path, body) = read.into_request();
+            let ticket = voice_page.begin(voice_page_fixture::Lane::Songs, path, &body);
+            let response = self
                 .voice_songs
                 .as_ref()
-                .ok_or(Error::State("included songs proof unavailable"))?;
-            assert_eq!(revision, voice_songs_fixture::REVISION);
-            permission()?;
-            let (path, body) = read.into_request();
-            Ok(fixture.songs(path, body))
+                .map_or_else(|| voice_page.songs(), |fixture| fixture.songs(path, body));
+            voice_page.finish(ticket, Ok(response))
         })
     }
 
@@ -236,27 +287,11 @@ impl Api for Library {
             if let Some(scene) = &self.scene_home {
                 return match scene.response(path, &body) {
                     Some(response) => {
-                        if (self.palette.is_some() || self.voice_podcast_collect.is_some())
-                            && matches!(
-                                path,
-                                "/api/voice/homepage/block/content" | "/api/dj/program/detail"
-                            )
-                        {
-                            response.map(|mut response| {
-                                if let Some(palette) = &self.palette {
-                                    response = scene_palette_fixture::artwork_response(
-                                        response,
-                                        palette.shared_cover(),
-                                    );
-                                }
-                                if self.voice_detail.is_some() {
-                                    response = voice_detail_fixture::enrich(response);
-                                }
-                                if let Some(collect) = &self.voice_podcast_collect {
-                                    response = collect.enrich(response);
-                                }
-                                response
-                            })
+                        if matches!(
+                            path,
+                            "/api/voice/homepage/block/content" | "/api/dj/program/detail"
+                        ) {
+                            response.map(|response| self.decorate_scene_voice(response))
                         } else {
                             response
                         }
@@ -389,6 +424,8 @@ fn main() {
     let badges_enabled = recommendations_enabled
         || std::env::var("CUMULUS_PODCAST_BADGES_PROOF").as_deref() == Ok("1");
     let voice_detail_enabled = std::env::var_os("CUMULUS_VOICE_DETAIL_PROOF").is_some();
+    let voice_page_proof = std::env::var("CUMULUS_VOICE_PAGE_PROOF").as_deref() == Ok("1");
+    assert!(!voice_page_proof || voice_detail_enabled);
     let voice_podcast_collect_enabled =
         std::env::var("CUMULUS_VOICE_PODCAST_COLLECT_PROOF").as_deref() == Ok("1");
     let voice_recommendations_enabled =
@@ -447,6 +484,7 @@ fn main() {
         scene_home,
         palette: palette.clone(),
         voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
+        voice_page: scene_enabled.then(|| voice_page_fixture::Fixture::new(voice_page_proof)),
         voice_podcast_collect: voice_podcast_collect_enabled
             .then(voice_podcast_collect_fixture::Fixture::default),
         voice_recommendations: voice_recommendations_enabled
@@ -478,6 +516,8 @@ fn main() {
                 include_str!("voice_recommendation_ui_probe.js").to_owned()
             } else if voice_podcast_collect_enabled {
                 include_str!("voice_podcast_collect_ui_probe.js").to_owned()
+            } else if voice_page_proof {
+                include_str!("voice_page_ui_probe.js").to_owned()
             } else if voice_detail_enabled {
                 include_str!("voice_detail_ui_probe.js").to_owned()
             } else if palette_enabled {
@@ -537,6 +577,20 @@ fn main() {
                     api.palette.as_ref().expect("isolated palette fixture").release();
                     return;
                 }
+                if let Some(page) = &api.voice_page {
+                    if stage == "voice_page_poll" {
+                        if let Some(nonce) = value["nonce"].as_u64() {
+                            handle.get_webview_window("main").unwrap().eval(format!(
+                                "window.__voicePageNative = [{nonce}, {}];", page.snapshot()
+                            )).unwrap();
+                        }
+                        return;
+                    }
+                    if stage == "voice_page_release_failure" {
+                        page.release_failure();
+                        return;
+                    }
+                }
                 if let Some(shelf) = &api.voice_recommendations {
                     if stage == "voice_recommendation_poll" {
                         if let Some(nonce) = value["nonce"].as_u64() {
@@ -579,6 +633,9 @@ fn main() {
                 }
                 if let Some(voice)=&api.voice_detail {
                     value["voiceDetailCalls"]=json!(voice.calls());
+                }
+                if let Some(page) = &api.voice_page {
+                    value["voicePageReads"] = page.snapshot();
                 }
                 if let Some(palette) = &api.palette {
                     value["paletteRequests"] = palette.snapshot();

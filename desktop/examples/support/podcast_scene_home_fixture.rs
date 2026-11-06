@@ -69,7 +69,7 @@ impl SceneHome {
             }
             "/api/dj/program/detail" => {
                 let id = fixture_id(&body["id"], 601, 602);
-                json!({"code":200,"program":voice(id)})
+                program_detail(id)
             }
             "/api/dj/play/url/check" => {
                 let id = fixture_id(&body["voiceId"], 601, 602);
@@ -131,6 +131,11 @@ pub fn scene_directory() -> Value {
 fn voice(id: u64) -> Value {
     json!({"id":id,"name":format!("合成场景单集 {id}"),"mainSong":{"id":1000+id,"duration":30000},
         "radio":{"id":80,"name":"合成场景播客"},"duration":30000})
+}
+
+pub fn program_detail(id: u64) -> Value {
+    assert!(matches!(id, 601 | 602));
+    json!({"code":200,"program":voice(id)})
 }
 
 fn fixture_id(value: &Value, first: u64, second: u64) -> u64 {
