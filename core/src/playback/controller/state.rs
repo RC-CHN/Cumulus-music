@@ -1,6 +1,7 @@
 use super::{
     Engine, Message, PlaybackSnapshot, PlaybackSpeedScope, PlaybackStatus, PrefetchSnapshot, Reply,
-    Response, types::Preferences,
+    Response,
+    types::{CommittedSceneVoice, Preferences},
 };
 use crate::{
     Error, Result,
@@ -289,6 +290,18 @@ impl Actor {
                 || self.pending.as_ref().is_some_and(|pending| pending.paused),
             play_id: self.play_id.clone(),
             ended_minibar_receipt: self.ended_minibar_receipt(selected.as_ref()),
+            committed_scene_voice: self
+                .loaded
+                .as_ref()
+                .filter(|loaded| {
+                    loaded.item.source["kind"] == "scene_fm"
+                        && self.state.active()
+                        && self.pending.is_none()
+                        && self.error.is_none()
+                        && self.play_id.is_some()
+                        && selected.as_ref() == Some(&loaded.item)
+                })
+                .and_then(|loaded| CommittedSceneVoice::from_entry(&loaded.item)),
             quality_preferences: self.quality_preferences.clone(),
             can_change_quality: !catalog_file_source
                 && selected

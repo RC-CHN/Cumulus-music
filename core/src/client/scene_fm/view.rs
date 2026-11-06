@@ -20,19 +20,8 @@ impl MusicClient {
             .get()
             .map(|c| c.snapshot())
             .filter(|s| s.account == token);
-        if let Some(s) = actual.as_ref().filter(|s| {
-            matches!(
-                s.state,
-                PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
-            )
-        }) && let Some(e) = s
-            .selected
-            .as_ref()
-            .filter(|e| e.source["kind"] == "scene_fm")
-            && let (Some(scene), Some(voice)) = (
-                e.source["scene_id"].as_str(),
-                e.resource["voice_id"].as_str(),
-            )
+        if let Some(actual) = actual.as_ref()
+            && let Some((scene, voice, _)) = actual.committed_scene_voice(&token)
         {
             // Observation may overlap a selection or another observer. Return
             // the committed snapshot while its owner finishes; reads must not
@@ -43,7 +32,7 @@ impl MusicClient {
                     || v.selected().is_none_or(|v| v.id != voice)
             });
             if needs_sync {
-                match service.sync_for(&token, scene, voice, e.source["scene_revision"].as_u64()) {
+                match service.sync_committed_queue(&token, actual) {
                     Ok(value) => state = value,
                     Err(Error::MutationBusy) => (),
                     Err(error) => return Err(error),

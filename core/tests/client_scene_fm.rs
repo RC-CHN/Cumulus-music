@@ -592,6 +592,97 @@ fn open_voice(revision: &str, voice_id: &str) -> SceneFmCommand {
     }
 }
 
+async fn advance_before_first_scene_observation(fail_second_load: bool) {
+    let (dir, _api, _session, c, device) = fixture();
+    let initial = c.scene_fm_view("1", true).await.unwrap().value;
+    let store = ProfileRegistry::open(dir.path(), ApiOrigin::Pc)
+        .unwrap()
+        .store();
+    let pending_record = || store.get("9", "scene-fm-v1", "current").unwrap().unwrap();
+
+    device.hold_load.store(true, Ordering::SeqCst);
+    let start = {
+        let c = c.clone();
+        let command = play(initial.revision.as_deref().unwrap());
+        tokio::spawn(async move { c.scene_fm_command("1", command).await })
+    };
+    tokio::time::timeout(Duration::from_secs(3), device.started.notified())
+        .await
+        .unwrap();
+    // The scene operation released its store lock after prepare, but has not
+    // observed a committed decoder. A concurrent observer owns it now.
+    let lock = cumulus_core::storage::OperationLock::acquire(store.directory(), "scene-fm-v1", "9")
+        .unwrap();
+    let prepared = pending_record();
+    device.hold_load.store(false, Ordering::SeqCst);
+    let first = start.await.unwrap().unwrap().value;
+    assert!(first.pending);
+    assert_eq!(first.episode.unwrap().id, "1");
+    assert_eq!(prepared["pending"], true);
+    let first_player = c.player_snapshot("1").await.unwrap();
+    assert_eq!(first_player.state, PlaybackStatus::Playing);
+    assert_eq!(first_player.track.unwrap().voice_id.as_deref(), Some("1"));
+
+    device.hold_load.store(true, Ordering::SeqCst);
+    let next = {
+        let c = c.clone();
+        tokio::spawn(async move { c.player_action("1", PlayerAction::Next).await })
+    };
+    tokio::time::timeout(Duration::from_secs(3), device.started.notified())
+        .await
+        .unwrap();
+    drop(lock);
+    let loading = c.player_snapshot("1").await.unwrap();
+    let provisional = c.scene_fm_view("1", false).await;
+    let before_commit = pending_record();
+    if fail_second_load {
+        device.load_failure_code.store(-15, Ordering::SeqCst);
+    }
+    device.hold_load.store(false, Ordering::SeqCst);
+    let advanced = next.await.unwrap();
+
+    assert_eq!(loading.state, PlaybackStatus::Loading);
+    assert_eq!(loading.track.unwrap().voice_id.as_deref(), Some("2"));
+    let provisional = provisional.unwrap().value;
+    assert!(provisional.pending);
+    assert_eq!(provisional.episode.unwrap().id, "1");
+    assert_eq!(before_commit, prepared);
+
+    let actual = c.player_snapshot("1").await.unwrap();
+    let observed = c.scene_fm_view("1", false).await.unwrap().value;
+    assert_eq!(actual.track.unwrap().voice_id.as_deref(), Some("2"));
+    if fail_second_load {
+        assert!(advanced.is_err());
+        assert_eq!(actual.state, PlaybackStatus::Error);
+        assert!(observed.pending);
+        assert_eq!(observed.episode.unwrap().id, "1");
+        assert_eq!(pending_record(), prepared);
+    } else {
+        assert!(advanced.is_ok());
+        assert_eq!(actual.state, PlaybackStatus::Playing);
+        assert_ne!(actual.play_id, first_player.play_id);
+        assert!(observed.active && observed.playing && !observed.pending);
+        assert_eq!(observed.episode.unwrap().id, "2");
+        assert_eq!(pending_record()["pending"], false);
+        let after = c.player_snapshot("1").await.unwrap();
+        assert_eq!(after.play_id, actual.play_id);
+        assert_eq!(after.entry_id, actual.entry_id);
+        assert_eq!(after.queue_revision, actual.queue_revision);
+        assert_eq!(after.position, actual.position);
+    }
+    assert_eq!(device.state.lock().unwrap().loads, 2);
+}
+
+#[tokio::test]
+async fn real_next_can_confirm_its_prepared_scene_before_the_initial_voice_is_observed() {
+    advance_before_first_scene_observation(false).await;
+}
+
+#[tokio::test]
+async fn failed_next_cannot_acknowledge_an_unobserved_scene_installation() {
+    advance_before_first_scene_observation(true).await;
+}
+
 #[tokio::test]
 async fn title_uses_native_current_voice_when_card_or_local_completion_is_stale() {
     let (dir, api, _session, c, device) = fixture();

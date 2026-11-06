@@ -2,6 +2,7 @@ use super::*;
 use crate::{
     Error, Result,
     account::{AccountSession, SessionToken},
+    playback::controller::PlaybackSnapshot,
     podcast::PodcastApi,
     storage::{OperationLock, StateStore},
 };
@@ -235,6 +236,30 @@ impl SceneFmService {
         voice_id: &str,
         applied_revision: Option<u64>,
     ) -> Result<Option<SceneFmSnapshot>> {
+        self.sync(t, scene_id, voice_id, applied_revision, false)
+    }
+
+    /// A later loaded entry in the exact prepared queue proves that the
+    /// pending installation occurred, even if no card observed its first voice.
+    pub(crate) fn sync_committed_queue(
+        &self,
+        t: &SessionToken,
+        actual: &PlaybackSnapshot,
+    ) -> Result<Option<SceneFmSnapshot>> {
+        let (scene, voice, revision) = actual
+            .committed_scene_voice(t)
+            .ok_or(Error::StaleResponse)?;
+        self.sync(t, scene, voice, Some(revision), true)
+    }
+
+    fn sync(
+        &self,
+        t: &SessionToken,
+        scene_id: &str,
+        voice_id: &str,
+        applied_revision: Option<u64>,
+        committed_queue: bool,
+    ) -> Result<Option<SceneFmSnapshot>> {
         let _gate = self.gate(t)?;
         let Some(mut state) = self.cached_for(t)? else {
             return Ok(None);
@@ -249,14 +274,22 @@ impl SceneFmService {
         let preferred = state.scenes.iter().position(|s| {
             Some(&s.id) == state.active_id.as_ref() && s.voices.iter().any(|v| v.id == voice_id)
         });
-        let found = preferred.or_else(|| {
-            state
-                .scenes
-                .iter()
-                .position(|s| s.voices.iter().any(|v| v.id == voice_id))
-        });
+        let found = if state.pending && committed_queue {
+            // A queue receipt never confirms a voice outside the prepared scene.
+            preferred
+        } else {
+            preferred.or_else(|| {
+                state
+                    .scenes
+                    .iter()
+                    .position(|s| s.voices.iter().any(|v| v.id == voice_id))
+            })
+        };
         if let Some(i) = found {
-            if state.pending && state.scenes[i].selected.as_deref() != Some(voice_id) {
+            if state.pending
+                && !committed_queue
+                && state.scenes[i].selected.as_deref() != Some(voice_id)
+            {
                 return Ok(Some(state));
             }
             if state.pending
