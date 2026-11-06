@@ -39,8 +39,8 @@
     const x = (rect.left + rect.right) / 2, y = (rect.top + rect.bottom) / 2;
     const hit = document.elementFromPoint(x, y);
     assert(hit === control || control.contains(hit), 'collect target receives pointer input');
-    return { x: Math.floor((window.screenX + x) * devicePixelRatio),
-      y: Math.floor((window.screenY + y) * devicePixelRatio) };
+    return { x, y, width: innerWidth, height: innerHeight, ratio: devicePixelRatio,
+      webKitScreenX: window.screenX, webKitScreenY: window.screenY };
   };
   const order = [];
   const gestures = [];

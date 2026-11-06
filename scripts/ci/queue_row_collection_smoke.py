@@ -4,8 +4,11 @@ import argparse
 from contextlib import ExitStack
 import ctypes
 import json
+import math
 import os
 from pathlib import Path
+import re
+import subprocess
 
 from motion_smoke import launch
 from queue_collection_smoke import isolated_profile
@@ -17,9 +20,38 @@ LABELS = ('pointer_ready', 'pointer_picker', 'pointer_cancelled', 'keyboard_read
 
 
 class QueueCollectInput(TrustedDrag):
-    def at_capture(self, path, payload, _pid):
+    @staticmethod
+    def x11_tool(*argv):
+        return subprocess.check_output(argv, text=True, env={**os.environ, 'LC_ALL': 'C'})
+
+    def pointer_target(self, point, pid):
+        ids = re.findall(r'0x[0-9a-f]+', self.x11_tool('xprop', '-root', '_NET_CLIENT_LIST'))
+        windows = [xid for xid in ids if self.x11_tool('xprop', '-id', xid, '_NET_WM_PID').strip()
+                   == f'_NET_WM_PID(CARDINAL) = {pid}']
+        assert len(windows) == 1, 'one native X11 client belongs to the probe process'
+        info = self.x11_tool('xwininfo', '-id', windows[0])
+
+        def geometry(name):
+            match = re.search(r'^\s*' + re.escape(name) + r':\s*(-?\d+)\s*$', info, re.MULTILINE)
+            assert match, (name, info)
+            return int(match.group(1))
+
+        x, y = geometry('Absolute upper-left X'), geometry('Absolute upper-left Y')
+        width, height = geometry('Width'), geometry('Height')
+        ratio = point['ratio']
+        assert abs(point['width'] * ratio - width) <= 1
+        assert abs(point['height'] * ratio - height) <= 1
+        # WebKitGTK screenX can report the frame origin plus a window-manager
+        # extent even for this undecorated client; use the real client geometry.
+        return {'x': x + math.floor(point['x'] * ratio), 'y': y + math.floor(point['y'] * ratio),
+                'clientX': x, 'clientY': y, 'clientWidth': width, 'clientHeight': height}
+
+    def at_capture(self, path, payload, pid):
         if path.stem == 'ux_01_pointer_ready':
-            self.move(payload['pointer'])
+            point = self.pointer_target(payload['pointer'], pid)
+            path.with_name('trusted-pointer-native.json').write_text(
+                json.dumps(point, indent=2) + '\n', encoding='utf-8')
+            self.move(point)
             self.button(True)
             self.button(False)
         elif path.stem == 'ux_04_keyboard_ready':
