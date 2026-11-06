@@ -164,6 +164,7 @@
 }
 .song-action-menu button[data-menu-key='source'] > span {
   min-width: 0;
+  max-inline-size: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
