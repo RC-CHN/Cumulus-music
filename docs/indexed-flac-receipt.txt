@@ -171,6 +171,13 @@ mapping with the attested decoder's path, device and inode in the ordinary
 process, and measures bass and treble gain followed by master bypass on that
 same entry. This is separate from the existing installed LADSPA probe.
 
+The installed proof defaults to a 1024-frame FLAC fixture. Pass
+`--indexed-flac-block-size 4608` with the indexed proof flags to exercise
+the larger-callback lane. The script checks the exact generated STREAMINFO
+before launch and records both block limits in the successful report. It
+requires the same exact decoder mapping, boosted PCM, same-entry bypass,
+and paused sink silence in either mode.
+
 For a developer build, use `--binary` instead of the package arguments, and
 `--indexed-flac-sha256` instead of `--verify-packaged-flac`. The binary must
 already have been compiled with that Linux FLAC digest and staged beside the
