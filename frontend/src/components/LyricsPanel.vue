@@ -34,6 +34,7 @@ import {
   type VinylSimilarLane,
 } from '../services/vinylSimilar';
 import { vinylCoverLyric, type VinylDisplayMode } from '../services/vinylDisplay';
+import { vinylLyricSelection, vinylLyricText } from '../services/vinylLyricCopy';
 import { useMotion } from '../composables/useMotion';
 import type { CatalogResource } from '../services/catalog';
 import {
@@ -399,6 +400,65 @@ function seekLine(line: (typeof lines.value)[number]) {
   if (line.target && line.time !== undefined && seekable(line))
     void props.player.seekDisplayed(line.target, line.time);
 }
+function clickLyricLine(event: MouseEvent, line: (typeof lines.value)[number]) {
+  if (
+    event.detail &&
+    container.value &&
+    vinylLyricSelection(container.value, window.getSelection())
+  )
+    return;
+  seekLine(line);
+}
+function lyricLineKey(event: KeyboardEvent, line: (typeof lines.value)[number]) {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  event.preventDefault();
+  event.stopPropagation();
+  if (!event.repeat && !event.isComposing) seekLine(line);
+}
+let selectingPointer: number | undefined;
+function beginLyricSelection(event: PointerEvent) {
+  if (
+    event.isPrimary &&
+    event.button === 0 &&
+    event.pointerType === 'mouse' &&
+    event.target instanceof Element &&
+    event.target.closest('[data-lyric-text]')
+  ) {
+    selectingPointer = event.pointerId;
+  }
+}
+function endLyricSelection(event: PointerEvent) {
+  if (event.pointerId === selectingPointer) selectingPointer = undefined;
+}
+function resetLyricSelectionPointer() {
+  selectingPointer = undefined;
+}
+function copyLyricSelection(event: ClipboardEvent) {
+  const scroller = container.value;
+  if (
+    event.defaultPrevented ||
+    !event.clipboardData ||
+    !scroller ||
+    !currentLyric.value ||
+    !props.player.lyricsOpen.value ||
+    props.activeDetailTab !== 'lyrics' ||
+    commentsVisible.value ||
+    modeSheetOpen.value ||
+    (event.target instanceof Element &&
+      event.target.closest('input, textarea, [contenteditable]:not([contenteditable=false])'))
+  )
+    return;
+  const text = vinylLyricText(scroller, window.getSelection());
+  if (!text) return;
+  event.clipboardData.setData('text/plain', text);
+  event.preventDefault();
+}
+function clearOwnedLyricSelection() {
+  resetLyricSelectionPointer();
+  const selection = window.getSelection();
+  if (container.value && vinylLyricSelection(container.value, selection))
+    selection?.removeAllRanges();
+}
 // The manual marker selects the row spanning the center of the lyric viewport.
 function selectBrowsedLine() {
   const scroller = container.value;
@@ -440,7 +500,7 @@ async function playBrowsedLine() {
 }
 async function scroll() {
   await nextTick();
-  if (manual.value || commentsVisible.value) return;
+  if (manual.value || commentsVisible.value || selectingPointer !== undefined) return;
   const scroller = container.value;
   const current = scroller?.querySelector('.lyric-line.current');
   if (!scroller || !current) return;
@@ -499,6 +559,10 @@ watch(active, () => {
   if (!manual.value) void scroll();
 });
 watch([currentEpoch, currentPlayId, displayMode], followLyrics);
+watch(
+  [currentEpoch, currentPlayId, displayMode, () => props.activeDetailTab, commentsVisible],
+  clearOwnedLyricSelection,
+);
 watch(lines, () => void nextTick(selectBrowsedLine));
 watch(container, (scroller, _previous, onCleanup) => {
   if (!scroller) return;
@@ -515,6 +579,10 @@ watch(
 let previous: HTMLElement | null = null;
 let previousEpoch: string | undefined;
 onMounted(() => {
+  document.addEventListener('copy', copyLyricSelection);
+  window.addEventListener('pointerup', endLyricSelection, true);
+  window.addEventListener('pointercancel', endLyricSelection, true);
+  window.addEventListener('blur', resetLyricSelectionPointer);
   previous = document.activeElement as HTMLElement;
   previousEpoch = view.value?.epoch;
   close.value?.focus();
@@ -522,6 +590,10 @@ onMounted(() => {
   void scroll();
 });
 onUnmounted(() => {
+  document.removeEventListener('copy', copyLyricSelection);
+  window.removeEventListener('pointerup', endLyricSelection, true);
+  window.removeEventListener('pointercancel', endLyricSelection, true);
+  window.removeEventListener('blur', resetLyricSelectionPointer);
   resetWheel();
   clearTimeout(unlockWheel);
   cancelLyricFollowTimer();
@@ -755,23 +827,28 @@ const displayedAuxiliary = computed(() =>
                     ref="container"
                     class="lyric-scroll"
                     tabindex="-1"
+                    @pointerdown="beginLyricSelection"
                     @wheel.stop.passive="pauseLyricFollow"
                     @touchmove.passive="pauseLyricFollow"
                     @scroll.passive="selectBrowsedLine"
                   >
                     <div class="lyric-padding" />
-                    <button
+                    <div
                       v-for="(line, index) in lines"
                       :key="`${line.target?.epoch}:${line.target?.playId}:${index}`"
                       class="lyric-line"
                       :class="{ current: index === active, browsed: index === browsedIndex }"
                       :data-line="index"
-                      :disabled="!seekable(line)"
-                      @click="seekLine(line)"
+                      role="button"
+                      :aria-disabled="!seekable(line)"
+                      :tabindex="seekable(line) ? 0 : -1"
+                      @click="clickLyricLine($event, line)"
+                      @keydown="lyricLineKey($event, line)"
                     >
                       <span
                         v-if="timedWords && lyrics.wordLines[index]?.words.length"
                         class="word-line"
+                        data-lyric-text
                         ><span
                           v-for="(word, wi) in lyrics.wordLines[index]?.words"
                           :key="wi"
@@ -780,11 +857,13 @@ const displayedAuxiliary = computed(() =>
                           >{{ word.text }}</span
                         ></span
                       >
-                      <span v-else>{{ line.lyric || '♪' }}</span>
-                      <small v-if="displayedAuxiliary[index]">{{
+                      <span v-else :data-lyric-text="line.lyric ? '' : undefined">{{
+                        line.lyric || '♪'
+                      }}</span>
+                      <small v-if="displayedAuxiliary[index]" data-lyric-text>{{
                         displayedAuxiliary[index]
                       }}</small>
-                    </button>
+                    </div>
                     <p
                       v-for="credit in contributors"
                       :key="`${currentEpoch}:${currentPlayId}:${credit.kind}`"

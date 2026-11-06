@@ -1249,9 +1249,22 @@ input[type='range'] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.lyric-line:disabled {
-  opacity: 1;
-  cursor: default;
+.lyric-line[aria-disabled='false'] {
+  cursor: pointer;
+}
+.lyric-line:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: 4px;
+}
+.lyric-line [data-lyric-text] {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+.lyric-line .timed-word::selection {
+  color: HighlightText;
+  background: Highlight;
 }
 .lyric-line.current {
   color: var(--text);

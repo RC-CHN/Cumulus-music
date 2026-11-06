@@ -57,8 +57,8 @@ window.__runPlayerProof=async({wait,stage,sleep})=>{
   await wait(()=>el('.playerbar').dataset.state==='playing'&&control('暂停')&&!control('暂停').disabled,'lyric_sample_play');
   control('暂停').click();await wait(()=>el('.playerbar').dataset.state==='paused','lyric_sample_pause');
   control('歌词').click();
-  await wait(()=>document.querySelectorAll('.lyric-line:not(:disabled)').length>4,'timed_lyrics_render');
-  const seekable=[...document.querySelectorAll('.lyric-line')].find(node=>!node.disabled&&Number(node.dataset.line)>2);
+  await wait(()=>document.querySelectorAll('.lyric-line[aria-disabled="false"]').length>4,'timed_lyrics_render');
+  const seekable=[...document.querySelectorAll('.lyric-line[aria-disabled="false"]')].find(node=>Number(node.dataset.line)>2);
   const before=Number(el('.playerbar').dataset.position);seekable.click();
   await wait(()=>Math.abs(Number(el('.playerbar').dataset.position)-before)>1&&!control('播放').disabled,'lyric_click_seek');
   const translation=[...document.querySelectorAll('.lyric-tools button')].find(n=>n.textContent.trim()==='译');
