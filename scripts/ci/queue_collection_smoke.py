@@ -6,6 +6,15 @@ from pathlib import Path
 from motion_smoke import launch
 
 
+def isolated_profile(env, root):
+    for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
+                      ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
+                      ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
+        directory = root / 'os-profile' / name
+        directory.mkdir(parents=True, mode=0o700)
+        env[key] = str(directory)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', type=Path, required=True)
@@ -20,12 +29,7 @@ def main():
     env.update(CUMULUS_PROOF_DIR=str(root), CUMULUS_MOTION_PROOF='1',
                CUMULUS_MODE_UI_PROOF='1', CUMULUS_QUEUE_UI_PROOF='1',
                CUMULUS_PLAYLIST_COLLECT_PROOF='1', CUMULUS_QUEUE_COLLECTION_UI_PROOF='1')
-    for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
-                      ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
-                      ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
-        directory = root / 'os-profile' / name
-        directory.mkdir(parents=True, mode=0o700)
-        env[key] = str(directory)
+    isolated_profile(env, root)
     if args.runtime:
         env['PATH'] = str(args.runtime.resolve()) + os.pathsep + env.get('PATH', '')
     if args.frontend_dist:
@@ -70,10 +74,29 @@ def main():
         if row['selection']:
             assert row['selection']['ids'] == [t['track']['id'] for t in queue['tracks']]
             assert row['selection']['total'] == 40 and row['selection']['unsupported'] == row['selection']['duplicates'] == 0
+        if label == 'discovered':
+            assert row['active']['tag'] == 'BUTTON' and row['active']['text'] == '发现音乐', row['active']
         if args.screenshots:
             assert path.with_suffix('.png').is_file()
-    report = dict(ok=True, states=len(labels), actualWebView=True,
-                  screenshots=len(labels) if args.screenshots else 0,
+    guest_root = root / 'guest'
+    guest = dict(env, CUMULUS_PROOF_DIR=str(guest_root),
+                 CUMULUS_UX_SCRIPT=str(source.with_name('queue_guest_discover_ui_probe.js')),
+                 CUMULUS_EXTERNAL_IMPORT_SIDEBAR_PROOF='guest')
+    isolated_profile(guest, guest_root)
+    with (guest_root / 'host.log').open('x', encoding='utf-8') as log:
+        code = launch(args.binary.resolve(), guest, log, guest_root / 'first', args.screenshots)
+    failed = guest_root / 'first/failed.json'
+    assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
+    assert code == 0, f'guest empty-queue UI exited {code}'
+    checked = json.loads((guest_root / 'first/complete.json').read_text(encoding='utf-8'))
+    assert checked['ok'] and checked['guestLoginOpened'] and checked['routePreserved']
+    assert checked['realMusicRequests'] == checked['realAccountWrites'] == 0
+    assert checked['nativePlayer']['state'] == 'idle' and not checked['nativeQueue']['tracks']
+    if args.screenshots:
+        assert (guest_root / 'first/ux_guest_login.png').is_file()
+    report = dict(ok=True, states=len(labels), actualWebView=True, guestLoginVerified=True,
+                  queueDiscoverHomeVerified=True,
+                  screenshots=len(labels) + 1 if args.screenshots else 0,
                   syntheticPlaylistWrites=1, realMusicRequests=0, realAccountWrites=0,
                   physicalDisplayVerified=False, physicalAudioOutputVerified=False)
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
