@@ -287,6 +287,80 @@
       one('.queue-like-notice')?.textContent.trim() === '已取消喜欢', 'unlike readback');
     assert(await unchanged(), 'unlike changed playback or queue');
     await captureOrigin('queue_like_removed', { likePressed: false });
+    const queueMenu = () => one('[role="menu"][aria-label="播放列表歌曲操作"]');
+    const menuKeys = () => [...queueMenu().querySelectorAll('[data-menu-key]')].map((node) => node.dataset.menuKey);
+    const menuItem = (key) => queueMenu()?.querySelector(`[data-menu-key="${key}"]`);
+    const rightClick = (entry) => {
+      const node = row(entry);
+      const box = node.getBoundingClientRect();
+      node.dispatchEvent(new MouseEvent('contextmenu', { button: 2, clientX: box.x + 10,
+        clientY: box.y + 10, bubbles: true, cancelable: true }));
+    };
+    const dismissMenu = async () => {
+      queueMenu().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await wait(() => !queueMenu(), 'queue menu dismissed');
+    };
+    let oldMenu;
+    try {
+      await invoke('player_queue_catalog_menu', {
+        epoch, revision: (BigInt(queued.revision) + 1n).toString(), entryId: fromAlbum.entryId,
+      });
+    } catch (error) { oldMenu = String(error); }
+    assert(oldMenu?.endsWith(': snapshot_changed'), 'stale menu rejected without reading comments');
+    click(row(fromAlbum).querySelector('.queue-row-more'));
+    await wait(() => menuItem('comments')?.textContent.includes('36'), 'other row comments count');
+    assert(menuKeys().join(',') === 'play,comments,collect,download,share,artist,album,source,copy,remove' &&
+      menuItem('album').textContent.includes('测试专辑') && menuItem('source').textContent.includes('来自：专辑') &&
+      !menuItem('source').disabled && await unchanged(), 'ordinary queue actions and independent origin');
+    await captureOrigin('queue_menu_other', { keys: menuKeys(), staleMenuRejected: true });
+    click(menuItem('source'));
+    await wait(albumPage, 'menu follows actual queue origin, not track album');
+    assert(await unchanged(), 'menu source replaced paused track');
+    click(one('.back-button'));
+    await wait(artistPage, 'menu source Back');
+    rightClick(unbound);
+    await wait(() => menuItem('comments')?.textContent.trim() === '查看评论', 'count failure uses bare comments item');
+    assert(menuItem('source').disabled && await unchanged(), 'unknown source is not a link');
+    await captureOrigin('queue_menu_fallback', { keys: menuKeys(), bareComment: true });
+    await dismissMenu();
+    const selectedRows = ['12', '13'].map((id) => queued.tracks.find((entry) => entry.track.id === id));
+    for (const [index, entry] of selectedRows.entries()) {
+      row(entry).querySelector('.queue-song').dispatchEvent(new MouseEvent('click', {
+        bubbles: true, detail: 0, ctrlKey: index === 1,
+      }));
+    }
+    rightClick(selectedRows[0]);
+    await wait(() => menuItem('remove'), 'selected group menu');
+    assert(menuKeys().join(',') === 'play,collect,download,artist,album,source,remove' &&
+      selectedRows.every((entry) => row(entry).classList.contains('selected')) && await unchanged(),
+    'group preserves selected rows and suppresses single-song actions');
+    await captureOrigin('queue_menu_group', { keys: menuKeys() });
+    click(menuItem('remove'));
+    await wait(async () => queueIds(await queue()) === '900,14,11,901', 'group removed from queue only');
+    const remaining = await player();
+    assert(remaining.state === 'paused' && remaining.playId === after.playId &&
+      remaining.entryId === after.entryId && remaining.position === after.position &&
+      remaining.queueRevision !== after.queueRevision, 'removal retains the loaded paused entry');
+    await captureOrigin('queue_menu_removed', { removed: selectedRows.map(({ track }) => track.id) });
+    rightClick(unbound);
+    await wait(() => menuItem('play')?.textContent.trim() === '播放', 'paused current row shows Play');
+    click(menuItem('play'));
+    const resumedFromMenu = await wait(async () => {
+      const snapshot = await player();
+      return snapshot.state === 'playing' && snapshot.position > remaining.position && snapshot;
+    }, 'queue menu resumed the current decoder');
+    const retained = (snapshot) => ['playId', 'entryId', 'queueRevision'].every((key) => snapshot[key] === remaining[key]);
+    assert(retained(resumedFromMenu), 'menu Play must not reopen the current entry');
+    await captureOrigin('queue_menu_resumed', { transport: 'play' });
+    rightClick(unbound);
+    await wait(() => menuItem('play')?.textContent.trim() === '暂停', 'playing current row shows Pause');
+    click(menuItem('play'));
+    const pausedFromMenu = await wait(async () => {
+      const snapshot = await player();
+      return snapshot.state === 'paused' && snapshot;
+    }, 'menu paused the current decoder');
+    assert(retained(pausedFromMenu), 'menu Pause must not reopen the current entry');
+    await captureOrigin('queue_menu_paused', { transport: 'pause' });
     await emit('complete', { ok: true, states, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, error: String(error), stack: error?.stack, states });

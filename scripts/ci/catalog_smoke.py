@@ -483,7 +483,9 @@ def main():
                  'filtered_row', 'same_row_pause', 'same_row_resume', 'full_album', 'paused_append',
                  'queue_source_ready', 'queue_source_opened', 'queue_source_back',
                  'queue_artist_ready', 'queue_artist_opened', 'queue_artist_back',
-                 'queue_like_ready', 'queue_like_uncertain', 'queue_like_confirmed', 'queue_like_removed')
+                 'queue_like_ready', 'queue_like_uncertain', 'queue_like_confirmed', 'queue_like_removed',
+                 'queue_menu_other', 'queue_menu_fallback', 'queue_menu_group', 'queue_menu_removed',
+                 'queue_menu_resumed', 'queue_menu_paused')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
@@ -559,7 +561,9 @@ def main():
         assert back['artist'] == '测试歌手'
         for stage in (opened, back):
             assert stage['queueStayedOpen'] is True
-        for name in ('queue_artist_ready', 'queue_artist_opened', 'queue_artist_back', *names[-4:]):
+        like_names = ('queue_like_ready', 'queue_like_uncertain', 'queue_like_confirmed', 'queue_like_removed')
+        for name in ('queue_artist_ready', 'queue_artist_opened', 'queue_artist_back', *like_names,
+                     'queue_menu_other', 'queue_menu_fallback', 'queue_menu_group'):
             stage = stages[name]
             assert stage['queue'] == appended['queue'] and stage['player']['state'] == 'paused'
             assert all(stage['player'][key] == appended['player'][key]
@@ -572,11 +576,11 @@ def main():
             assert detail == [{'id': artist, 'top': 50, 'e_r': False}], detail
             assert dynamic == [{'id': artist}], dynamic
         assert not any(call['path'] in ('/api/v3/song/detail', '/api/song/enhance/player/url/v1')
-                       for call in delta('paused_append', 'queue_like_removed'))
+                       for call in delta('paused_append', 'queue_menu_group'))
         assert stages['queue_like_ready']['staleRejected'] is True
         assert stages['queue_like_uncertain']['reviewAvailable'] is True
         assert stages['queue_like_confirmed']['otherTrackUnaffected'] is True
-        assert [stages[name]['likePressed'] for name in names[-4:]] == [False, False, True, False]
+        assert [stages[name]['likePressed'] for name in like_names] == [False, False, True, False]
         like_paths = ('/api/song/like/get', '/api/song/like')
         assert not any(call['path'] in like_paths for call in delta('queue_artist_back', 'queue_like_ready'))
         read_like = ('/api/song/like/get', {'uid': '2'})
@@ -589,6 +593,38 @@ def main():
         ):
             calls_to_like = [(call['path'], call['args']) for call in delta(start, end) if call['path'] in like_paths]
             assert calls_to_like == expected, calls_to_like
+        assert stages['queue_menu_other']['staleMenuRejected'] is True
+        assert stages['queue_menu_fallback']['bareComment'] is True
+        assert stages['queue_menu_other']['keys'] == stages['queue_menu_fallback']['keys'] == [
+            'play', 'comments', 'collect', 'download', 'share', 'artist', 'album', 'source', 'copy', 'remove',
+        ]
+        assert stages['queue_menu_group']['keys'] == [
+            'play', 'collect', 'download', 'artist', 'album', 'source', 'remove',
+        ]
+        for start, end, song in (
+            ('queue_like_removed', 'queue_menu_other', '14'),
+            ('queue_menu_other', 'queue_menu_fallback', '900'),
+            ('queue_menu_fallback', 'queue_menu_group', '12'),
+        ):
+            reads = [call['args'] for call in delta(start, end)
+                     if call['path'] == '/api/resource/commentInfo/list']
+            assert reads == [{'resourceType': 4, 'resourceIds': json.dumps([song])}], reads
+        removed = stages['queue_menu_removed']
+        assert removed['removed'] == ['12', '13']
+        assert [entry['track']['id'] for entry in removed['queue']['tracks']] == ['900', '14', '11', '901']
+        assert removed['player']['state'] == 'paused'
+        assert all(removed['player'][key] == appended['player'][key]
+                   for key in ('playId', 'entryId', 'position'))
+        assert removed['player']['queueRevision'] != appended['player']['queueRevision']
+        resumed_menu = stages['queue_menu_resumed']
+        paused_menu = stages['queue_menu_paused']
+        assert resumed_menu['transport'] == 'play' and resumed_menu['player']['state'] == 'playing'
+        assert paused_menu['transport'] == 'pause' and paused_menu['player']['state'] == 'paused'
+        assert resumed_menu['player']['position'] > removed['player']['position']
+        for stage in (resumed_menu, paused_menu):
+            assert stage['queue'] == removed['queue']
+            assert all(stage['player'][key] == removed['player'][key]
+                       for key in ('playId', 'entryId', 'queueRevision'))
         locale_report = output / 'locale.json'
         if locale_report.is_file():
             import locale
@@ -601,6 +637,7 @@ def main():
                       pausedInsertionPreserved=True, sourceNavigationPreserved=True,
                       queueArtistNavigationPreserved=True,
                       queueLikeReadbackPreserved=True,
+                      queueCatalogMenuVerified=True,
                       realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))

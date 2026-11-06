@@ -208,6 +208,22 @@ impl Api for Library {
                     }
                     json!({"code":200})
                 }
+                "/api/resource/commentInfo/list" if album_duration_sort => {
+                    let ids: Vec<String> =
+                        serde_json::from_str(args["resourceIds"].as_str().unwrap_or_default())?;
+                    if args["resourceType"] != 4 || ids.len() != 1 {
+                        return Err(Error::InvalidInput(
+                            "expected a single queue song comment read",
+                        ));
+                    }
+                    let id = &ids[0];
+                    if id == "900" {
+                        return Err(Error::Transport(
+                            "synthetic comment count unavailable".into(),
+                        ));
+                    }
+                    json!({"code":200,"data":[{"threadId":format!("R_SO_4_{id}"),"commentCount":36}]})
+                }
                 "/api/v3/discovery/recommend/songs" => {
                     json!({"code":200,"data":{"dailySongs":(1..=40).map(song).collect::<Vec<_>>()}})
                 }
