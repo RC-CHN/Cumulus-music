@@ -79,7 +79,7 @@ def verify(case, root, stages, complete):
     assert [song['id'] for song in card['tracks']] == ['1710', '1601', '1790', '1791']
     assert complete['voiceSongsTrace']['songReads'] == [[TRACKS, {'id': '601'}]]
     assert complete['voiceSongsTrace']['likes'] == []
-    target = {'epoch': epoch, 'playId': play_id, 'receipt': card['receipt'], 'index': 0}
+    target = {'epoch': epoch, 'playId': play_id, 'voiceId': '601', 'receipt': card['receipt'], 'index': 0}
     decision = 'ready' if case == 'liked' else 'playlist_required'
     assert action(last, 'playerVoiceSongDownloadPrepare', [target]) == {
         'epoch': epoch, 'playId': play_id, 'trackId': '1710', 'decision': decision,

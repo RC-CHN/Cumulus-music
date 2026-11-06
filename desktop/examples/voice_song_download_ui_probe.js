@@ -203,12 +203,12 @@
       button: 2, clientX: box.left + Math.min(40, box.width / 2), clientY: box.top + box.height / 2 }));
     await click(menu, 'actual ordinary row context Download action');
     await wait(() => result('playerVoiceSongDownloadPrepare'), 'typed native preparation settles');
-    const target = { epoch, playId: playing.playId, receipt: card.receipt, index: 0 };
+    const target = { epoch, playId: playing.playId, voiceId: card.voiceId, receipt: card.receipt, index: 0 };
     const plan = result('playerVoiceSongDownloadPrepare');
     assert(plan.epoch === epoch && plan.playId === playing.playId && plan.trackId === '1710' &&
       plan.decision === (mode === 'liked' ? 'ready' : 'playlist_required'), 'exact native plan for intended ordinary song');
     assert(same(trace.find((call) => call.name === 'playerVoiceSongDownloadPrepare')?.args, [target]),
-      'download carries only native page receipt and index');
+      'download carries exact voice scope, native page receipt and index without a renderer song ID');
     if (mode === 'liked') {
       await openOptions();
       await capture('options');
