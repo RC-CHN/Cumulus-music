@@ -154,3 +154,14 @@ already have been compiled with that Linux FLAC digest and staged beside the
 matching regular decoder file. The script does not supply a runtime trust
 override. This mode reports a developer binary and does not attest a package
 or physical audio output.
+
+The ordinary Linux developer executable at `fb0b7f4e` passed that mode with
+the compiled-in packaged decoder digest and a regular sibling library. A
+real GTK picker indexed the synthetic 48 kHz stereo s16 FLAC (1024-frame
+blocks). On the private PipeWire sink, reselecting the row with tone enabled
+raised the 60 Hz and 10 kHz amplitudes by 1.54x and 1.80x. Master bypass kept
+the same native entry and restored both amplitudes within 1.3% of baseline;
+Stop and Pause measured zero PCM. Receipt and eight screenshots:
+`.build/ui-proof/phase83-ordinary-trusted-r3/`. A separate 4608-frame fixture
+played through the ordinary fallback because it exceeded the fixed graph's
+current input bound. The developer result is separate from package CI.
