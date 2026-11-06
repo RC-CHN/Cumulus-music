@@ -46,13 +46,28 @@ fn id(v: &Value) -> u64 {
 fn song(n: u64) -> Value {
     json!({"id":n,"name":format!("合成歌曲 {n}"),"ar":[{"id":12,"name":"测试歌手"}],"al":{"id":7,"name":"测试专辑"},"dt":235000,"fee":n%3})
 }
+fn queue_credit_song(id: u64) -> Value {
+    let mut item = song(id);
+    match id {
+        14 => {
+            item["ar"] = json!([
+                {"id":12,"name":"测试歌手"},
+                {"id":13,"name":"相似歌手 13"},
+                {"name":"仅有署名"}
+            ]);
+        }
+        901 => item["ar"] = json!([{"name":"无编号歌手"}]),
+        _ => {}
+    }
+    item
+}
 fn duration_album_songs() -> Vec<Value> {
     [180_000, 90_000, 180_000, 120_000]
         .into_iter()
         .enumerate()
         .map(|(index, duration)| {
             let id = 11 + index as u64;
-            let mut item = song(id);
+            let mut item = queue_credit_song(id);
             item["dt"] = json!(duration);
             item["name"] = json!(if index == 3 {
                 "另一首歌".into()
@@ -178,7 +193,12 @@ impl Api for Library {
                 "/api/v3/song/detail" => {
                     let rows: Vec<Value> =
                         serde_json::from_str(args["c"].as_str().unwrap()).unwrap();
-                    json!({"code":200,"songs":rows.iter().map(|v|song(id(&v["id"]))).collect::<Vec<_>>()})
+                    let project = if album_duration_sort {
+                        queue_credit_song
+                    } else {
+                        song
+                    };
+                    json!({"code":200,"songs":rows.iter().map(|v|project(id(&v["id"]))).collect::<Vec<_>>()})
                 }
                 "/api/artist/v3/detail" => {
                     let n = id(&args["id"]);

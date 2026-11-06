@@ -481,7 +481,8 @@ def main():
         assert complete['ok'] and complete['realMusicRequests'] == complete['realAccountWrites'] == 0
         names = ('original', 'ascending', 'descending', 'restored', 'reset',
                  'filtered_row', 'same_row_pause', 'same_row_resume', 'full_album', 'paused_append',
-                 'queue_source_ready', 'queue_source_opened', 'queue_source_back')
+                 'queue_source_ready', 'queue_source_opened', 'queue_source_back',
+                 'queue_artist_ready', 'queue_artist_opened', 'queue_artist_back')
         assert complete['states'] == list(names)
         assert not args.screenshots or captures == len(names)
         stages = {path.stem.split('_', 2)[2]: json.loads(path.read_text(encoding='utf-8'))
@@ -538,7 +539,7 @@ def main():
         assert appended['player']['position'] > 4
         assert [entry['track']['id'] for entry in appended['queue']['tracks']] == ['900','12','14','11','13','901']
         assert stages['queue_source_ready']['sourceFocused'] is True
-        for name in names[-3:]:
+        for name in names[-6:-3]:
             stage = stages[name]
             assert stage['source'] == {'kind': 'album', 'id': '8'}
             assert stage['queue'] == appended['queue']
@@ -547,8 +548,26 @@ def main():
                        for key in ('playId', 'entryId', 'position', 'queueRevision'))
             if name != 'queue_source_ready':
                 assert stage['queueStayedOpen'] is True
+        ready = stages['queue_artist_ready']
+        assert ready['creditHit'] is True and ready['credits'] == [
+            {'name': '测试歌手', 'link': True}, {'name': '相似歌手 13', 'link': True},
+            {'name': '仅有署名', 'link': False}]
+        assert ready['namesOnly'] == [{'name': '无编号歌手', 'link': False}]
+        opened, back = (stages[name] for name in ('queue_artist_opened', 'queue_artist_back'))
+        assert opened['artist'] == '相似歌手 13' and opened['focused'] is True
+        assert back['artist'] == '测试歌手'
+        for stage in (opened, back):
+            assert stage['queueStayedOpen'] is True
+        for name in names[-3:]:
+            stage = stages[name]
+            assert stage['queue'] == appended['queue'] and stage['player']['state'] == 'paused'
+            assert all(stage['player'][key] == appended['player'][key]
+                       for key in ('playId', 'entryId', 'position', 'queueRevision'))
+        artist_reads = [call['args']['id'] for call in delta('queue_artist_ready', 'queue_artist_back')
+                        if call['path'] == '/api/artist/v3/detail']
+        assert artist_reads == ['13'], artist_reads
         assert not any(call['path'] in ('/api/v3/song/detail', '/api/song/enhance/player/url/v1')
-                       for call in delta('paused_append', 'queue_source_back'))
+                       for call in delta('paused_append', 'queue_artist_back'))
         locale_report = output / 'locale.json'
         if locale_report.is_file():
             import locale
@@ -559,6 +578,7 @@ def main():
         report = dict(ok=True, actualWebView=True, states=len(names), screenshots=captures,
                       stableDurationSort=True, sortedNativePlayback=True, sameRowDecoderPreserved=True,
                       pausedInsertionPreserved=True, sourceNavigationPreserved=True,
+                      queueArtistNavigationPreserved=True,
                       realMusicRequests=0, realAccountWrites=0, physicalAudioOutputVerified=False)
         (root / 'report.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(report))

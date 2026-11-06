@@ -201,6 +201,47 @@
     await wait(artistPage, 'source back returned to the artist without duplicate history');
     assert(one('.queue-panel') && await unchanged(), 'source back changed queue or paused playback');
     await captureOrigin('queue_source_back', { queueStayedOpen: true, source: fromAlbum.origin });
+
+    const namesOnly = queued.tracks.find((entry) => entry.track.id === '901');
+    const credits = () => row(fromAlbum)?.querySelector('.queue-credits');
+    const secondCredit = () => credits()?.querySelectorAll('.queue-artist')[1];
+    const shownCredits = (entry) => [...row(entry).querySelector('.queue-credits').children]
+      .filter((node) => !node.matches('.queue-credit-separator'))
+      .map((node) => ({ name: node.textContent.trim(), link: node.matches('.queue-artist') }));
+    assert(fromAlbum.track.artistRefs.map(({ id }) => id).join(',') === '12,13,' &&
+      namesOnly.track.artistRefs.length === 1 && !namesOnly.track.artistRefs[0].id,
+      'the native other-row and names-only credits were not projected');
+    const credit = await wait(() => secondCredit() && !secondCredit().disabled && secondCredit(),
+      'second queue credit is independently actionable');
+    const creditState = shownCredits(fromAlbum), namesOnlyState = shownCredits(namesOnly);
+    assert(creditState.map(({ name, link }) => `${name}:${link}`).join('|') ===
+      '测试歌手:true|相似歌手 13:true|仅有署名:false' &&
+      namesOnlyState.map(({ name, link }) => `${name}:${link}`).join('|') === '无编号歌手:false',
+      'ordered queue credit names or independent actions changed');
+    assert(!credit.closest('.queue-song') && credit.getAttribute('aria-label') === '查看歌手：相似歌手 13',
+      'the second credit is nested in the row transport or has the wrong label');
+    credit.focus({ preventScroll: true });
+    const canHit = () => {
+      const box = credit.getBoundingClientRect();
+      return box.width > 0 && box.height > 0 && credit.isConnected && document.activeElement === credit &&
+        credit.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    };
+    await wait(canHit, 'second queue credit is focusable and pointer reachable');
+    assert(await unchanged(), 'credit inspection changed native playback or queue');
+    await captureOrigin('queue_artist_ready', { credits: creditState, namesOnly: namesOnlyState, creditHit: true });
+    click(credit);
+    const artistTitle = () => one('.catalog-page .catalog-heading h1')?.textContent.trim();
+    await wait(() => artistTitle() === '相似歌手 13', 'second queue credit opened artist 13');
+    assert(one('.queue-panel') && document.activeElement === secondCredit() &&
+      !row(fromAlbum).classList.contains('selected') && await unchanged(),
+      'artist navigation disturbed queue focus, selection, decoder or paused clock');
+    await captureOrigin('queue_artist_opened', { artist: artistTitle(), queueStayedOpen: true, focused: true });
+    click(secondCredit());
+    assert(artistTitle() === '相似歌手 13' && await unchanged(), 'same artist navigation changed the native state');
+    click(one('.back-button'));
+    await wait(artistPage, 'one Back restored the original artist, without duplicate history');
+    assert(one('.queue-panel') && await unchanged(), 'artist Back changed the queue or native playback');
+    await captureOrigin('queue_artist_back', { artist: artistTitle(), queueStayedOpen: true });
     await emit('complete', { ok: true, states, realMusicRequests: 0, realAccountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, error: String(error), stack: error?.stack, states });

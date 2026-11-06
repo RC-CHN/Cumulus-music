@@ -1,0 +1,24 @@
+播放队列行：按署名查看歌手
+
+官方基线为 Windows 3.1.42.205594。恢复的 PlayingTrackTitleCell.tsx:519–570
+（SHA256 3a4311f1198c4d90c54034bc851964fd8aa04a592b8f462c8c3f4cce6b26930c）
+保留有名称的各个署名及顺序；有 ID 的歌手各自触发 Action.link，无 ID 的姓名为普通文字，
+没有名称时为「未知歌手」。编译件 hybrid_71.chunk.1482700000000.js/3113.js:248–286
+与此相符。hybrid_73.chunk.1482700000000.js/3085.js:1028–1030,1045–1077
+把该歌手 ID 转为 /userDetail/artist/<id>，按路由/状态去重并导航，未提交播放操作。
+队列行的「来源」按钮读取另一组原始来源字段；它与某首歌的歌手署名不是同一个入口。
+声音行在官方 :915–945 有单独的所属播客链接，本专项不将它映射为歌手。
+
+Cumulus 复用 player_queue 投影的 TrackView.artistRefs。其 ID 来自原生歌曲元数据，
+始终是字符串（保留前导零和大 ID）。本地索引标签只提供名字；FM、声音和没有有效 ID 的
+署名保留为文字，不推测匹配。歌手控件与选曲按钮分开，单击或键盘激活歌手不会触发
+选中、拖动或播放。在账号、队列版本和行仍匹配时，打开既有歌手详情；同一目标不重复
+写入历史。既有艺人详情继续读 /api/artist/v3/detail 和 /api/artist/detail/dynamic；
+无新增 IPC、播放授权、队列写入或外部链接。官方署名别名和声音所属播客链接不在本批。
+
+验证入口：frontend/tests/playback-metadata.test.ts 检查署名顺序、原样字符串 ID、
+非法 ID 和不链接的类型；scripts/ci/catalog_smoke.py --album-duration-sort 在真实
+Tauri WebView 中通过合成目录、SQLite 与 libmpv/null 检查：暂停于歌曲 900，从另一行
+点第二个歌手进入 13，点同一目标后一次后退即可回到原页。核对整条队列、playId、
+entryId、queueRevision、暂停位置，且无新歌曲详情/音源请求；姓名无 ID 的同列与
+独立行均为普通文字。窗口结果须以实际运行记录为准，不代表真实账号或声卡验证。
