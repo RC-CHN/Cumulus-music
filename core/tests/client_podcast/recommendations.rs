@@ -227,3 +227,90 @@ async fn subscription_recommendations_overlay_paginates_and_toggles_current_deco
     assert_eq!(api.calls.lock().unwrap().as_slice(), observed.as_slice());
     assert_eq!(device.state.lock().unwrap().loads, 1);
 }
+
+#[tokio::test]
+async fn subscription_recommendations_overlay_uses_saved_order_and_treatment_resume_off() {
+    use cumulus_core::playback::{PlaybackMode, controller::PlaybackStatus};
+
+    let (dir, api, _session, client) = fixture();
+    api.recommendation_resume_treatment
+        .store(true, Ordering::SeqCst);
+    client.refresh_pc_presentation().await.unwrap();
+    api.count.store(2, Ordering::SeqCst);
+    let mut card = radio();
+    // A music category uses the existing mode rather than forcing sequential.
+    card["categoryId"] = json!(3001);
+    *api.recommendation_response.lock().unwrap() = json!({"code":200,"data":[card]});
+    let library = client
+        .podcast_page("1", query(PodcastScope::Podcasts, 0), true)
+        .await
+        .unwrap();
+    let shelf = client
+        .podcast_subscription_recommendations("1")
+        .await
+        .unwrap()
+        .value;
+    let profile = ProfileRegistry::open(dir.path(), ApiOrigin::Pc).unwrap();
+    profile
+        .store()
+        .put("9", "podcast-radio-order-v1", "7", &json!(false))
+        .unwrap();
+    profile
+        .store()
+        .put(
+            "9",
+            "podcast-latest-voice-v1",
+            "7",
+            &json!({
+                "id":"1","mainTrackId":"1001","name":"Episode 1","time":19,"duration":120
+            }),
+        )
+        .unwrap();
+    let _subscription = client.subscribe_playback("1").await.unwrap();
+    client
+        .player_action(
+            "1",
+            PlayerAction::Mode {
+                mode: PlaybackMode::SingleLoop,
+            },
+        )
+        .await
+        .unwrap();
+    api.calls.lock().unwrap().clear();
+    let result = prepared(
+        &client,
+        PlaySelection::PodcastSubscriptionRecommendation {
+            id: "7".into(),
+            revision: library.revision,
+            receipt: shelf.receipt,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.state, PlaybackStatus::Playing);
+    assert_eq!(result.track.unwrap().voice_id.as_deref(), Some("2"));
+    assert_eq!(result.position, Some(0.0));
+    assert_eq!(result.mode, PlaybackMode::SingleLoop);
+    let requests = api.calls.lock().unwrap();
+    assert_eq!(
+        requests[0],
+        (
+            "/api/v6/dj/program/byradio".into(),
+            json!({"radioId":"7","offset":0,"limit":250,"asc":false})
+        )
+    );
+    assert_eq!(
+        requests[1],
+        (
+            "/api/dj/user/setting/resumeplay/get".into(),
+            json!({"radioId":"7"})
+        )
+    );
+    assert_eq!(
+        requests
+            .iter()
+            .filter(|(path, _)| path == "/api/dj/user/setting/resumeplay/get")
+            .count(),
+        1
+    );
+}

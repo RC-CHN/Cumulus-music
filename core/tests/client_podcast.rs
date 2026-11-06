@@ -41,6 +41,7 @@ struct Backend {
     audiobook: AtomicBool,
     recommendation_response: Mutex<Value>,
     recommendation_hold: AtomicBool,
+    recommendation_resume_treatment: AtomicBool,
     recommendation_started: tokio::sync::Notify,
     recommendation_release: tokio::sync::Notify,
 }
@@ -51,6 +52,25 @@ fn radio() -> Value {
     json!({"id":7,"name":"Radio","programCount":205,"subed":true,"picUrl":"https://p1.music.126.net/art.jpg?token=SECRET","cookie":"SECRET"})
 }
 impl Api for Backend {
+    fn verified_pc_experiment_revision(&self) -> cumulus_core::Result<Option<String>> {
+        Ok(self
+            .recommendation_resume_treatment
+            .load(Ordering::SeqCst)
+            .then(|| "synthetic-podcast-resume".to_owned()))
+    }
+
+    fn verified_pc_experiment_groups<'a>(
+        &'a self,
+        revision: &'a str,
+    ) -> ApiFuture<'a, cumulus_core::protocol::pc_experiments::PcExperimentGroups> {
+        Box::pin(async move {
+            assert_eq!(revision, "synthetic-podcast-resume");
+            cumulus_core::protocol::pc_experiments::PcExperimentGroups::refreshed(
+                &json!({"data":[{"expName":"Podcast_ResumePlaySwitch","expGroupName":"t1"}]}),
+            )
+        })
+    }
+
     fn podcast_progress_revision(&self) -> cumulus_core::Result<Option<String>> {
         let revision = self.progress_revision.load(Ordering::SeqCst);
         Ok((revision > 0).then(|| revision.to_string()))
