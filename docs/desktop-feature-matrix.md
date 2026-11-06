@@ -167,3 +167,4 @@
 - [播放来源名](queue-source-navigation.txt)由入队时已有的专辑、歌手、歌单详情提供。Linux 实窗已核对专辑与歌单名称，歌手由 Rust 定向测试覆盖。没有已验证名称时不从歌曲资料猜测，也不补请求。
 - [播客推荐卡菜单](podcast-recent-contracts.txt)支持详情、播放、插入下一首、确认收藏、分享和复制。Linux 实窗核对了取消和原生队列插入；收藏写入由封闭 Rust 夹具验证，不使用真实账号。
 - 播放详情的[所属播单卡](vinyl-podcast-collection-contracts.txt)使用当前节目的播单绑定，核对收藏、取消确认、旧单集和自有播单；[节目推荐卡](vinyl-voice-recommendation-contracts.txt)按六张本地换页，使用响应 ID 打开播单。[包含歌曲](voice-playback-songs-contracts.txt)在 Linux WebView 核对封面播放、单击选中、双击顺序、下一首、版权禁用、喜欢回读和切集拒绝旧动作；[节目封面](voice-playback-header-contracts.txt)另验方形布局、播放量、占位与主播页返回。上述使用合成服务与 libmpv null 输出，不视为实服权益、实体声卡或 Windows 实测。曲目下载和多选动作另列边界。
+- [节目详情联合读取](voice-playback-header-contracts.txt)按官方并行读节目、推荐和包含歌曲，成功后才共同显示；Linux 实窗验证了挂起、失败、重开、身份不一致和封面位置不跳动。新主播或播单身份与原生播放快照不匹配时资料只读，实际动作授权仍有独立边界。

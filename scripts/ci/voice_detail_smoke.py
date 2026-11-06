@@ -24,11 +24,17 @@ def verify_triad(stages, done):
     assert baseline['playId'] and baseline['entryId'] and not baseline['seeking'] and not baseline.get('error'), baseline
     assert baseline['snapshotCount'] == 123456 and baseline['title'] != '合成新读节目标题', baseline
     assert baseline['snapshotCover'] == 'https://p1.music.126.net/obj/cumulus-palette/cover601.png', baseline
+    cover_boxes = [stage['dom']['coverBox'] for stage in stages.values()]
+    anchor = cover_boxes[0]
+    assert len(anchor) == 4 and anchor[2] > 0 and abs(anchor[2] - anchor[3]) < 0.5, anchor
+    assert all(all(abs(a - b) < 0.5 for a, b in zip(anchor, box, strict=True))
+               for box in cover_boxes), cover_boxes
     for name, state in zip(TRIAD_STAGES[:2], ('loading', 'failed'), strict=True):
         stage = stages[name]
         assert stage['actual'] and stage['playback'] == baseline, stage
         assert stage['dom'] == {
             'state': state, 'notice': True, 'title': baseline['title'], 'cover': True,
+            'coverBox': cover_boxes[TRIAD_STAGES.index(name)],
             'count': None, 'header': False, 'description': None,
             'plainCreator': None, 'creatorLink': False, 'radio': False, 'radioName': None,
             'radioOpenEnabled': False, 'radioSubscribeEnabled': False,
@@ -81,7 +87,7 @@ def verify_triad(stages, done):
     ], done
     return dict(actualWebView=True, heldSiblingResults=True, failedWithoutPartial=True,
                 reopenedFresh=True, mismatchedTargetsReadOnly=True, unchangedPausedDecoder=True,
-                nativeDecoder='libmpv/null',
+                nativeDecoder='libmpv/null', coverAnchored=True, coverBox=anchor,
                 stages=TRIAD_STAGES, voicePageReads=done['voicePageReads'], realAccountWrites=0)
 
 

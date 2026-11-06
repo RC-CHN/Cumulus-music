@@ -15,7 +15,7 @@
   const frame = () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const reads = { detail: [], recommendations: [], songs: [] };
-  let epoch, baseline, nonce = 0, count = 0, last = 'startup';
+  let epoch, baseline, initialCoverBox, nonce = 0, count = 0, last = 'startup';
   let restore = () => {};
   async function wait(test, label) {
     last = label;
@@ -58,12 +58,15 @@
   }
   function dom() {
     const root = panel();
+    const cover = one('[data-voice-cover]', root);
+    const rect = cover?.getBoundingClientRect();
     const podcast = one('[data-voice-podcast-open]', root);
     const subscribe = one('[data-voice-podcast-subscribe]', root);
     return {
       state: root?.dataset.voicePageState ?? null,
       notice: visible(notice()), title: one('h1', root)?.textContent.trim() ?? null,
-      cover: visible(one('[data-voice-cover]', root)),
+      cover: visible(cover),
+      coverBox: rect ? [rect.x, rect.y, rect.width, rect.height] : null,
       count: one('[data-voice-play-count]', root)?.textContent.trim() ?? null,
       header: visible(one('[data-voice-detail]', root)),
       plainCreator: one('[data-voice-creator-name]', root)?.textContent.trim() ?? null,
@@ -84,19 +87,21 @@
     'pending or failed triad leaves only the basic title and current cover');
   }
   async function capture(name) {
-    if (window.__CUMULUS_PROOF_INVOKE__) {
-      await wait(() => {
-        const root = panel();
-        return visible(root) && getComputedStyle(root).opacity === '1' &&
-          !root.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
-      }, 'voice page compositor settles');
-      await frame();
-    }
+    await wait(() => {
+      const root = panel();
+      return visible(root) && getComputedStyle(root).opacity === '1' &&
+        !root.getAnimations().some((animation) => animation.pending || animation.playState === 'running');
+    }, 'voice page compositor settles');
+    await frame();
     const current = await playback();
     assert(same(current, baseline), 'joined read must not move the paused native decoder or its queue');
+    const view = dom();
+    initialCoverBox ??= view.coverBox;
+    assert(view.coverBox?.length === 4 && initialCoverBox?.every((edge, i) =>
+      Math.abs(edge - view.coverBox[i]) < 0.5), 'cover stays anchored while metadata and count appear');
     const stage = `ux_${String(++count).padStart(2, '0')}_${name}`;
     window.__podcastProgressStage = '';
-    await emit(stage, { actual: document.visibilityState === 'visible', playback: current, dom: dom(), reads });
+    await emit(stage, { actual: document.visibilityState === 'visible', playback: current, dom: view, reads });
     await wait(() => window.__podcastProgressStage === stage, 'native stage acknowledgement');
   }
   try {
