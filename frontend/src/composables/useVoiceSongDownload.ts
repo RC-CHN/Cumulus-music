@@ -1,6 +1,6 @@
 import { onScopeDispose, ref, shallowRef, watch } from 'vue';
 import { failure } from '../services/contracts.ts';
-import type { DownloadOptions } from '../services/downloads.ts';
+import type { DownloadOptions, DownloadTab } from '../services/downloads.ts';
 import { playlistLength, playlistPending, playlistSaved } from '../services/playlists.ts';
 import type {
   VoiceSongDownloadClient,
@@ -28,7 +28,7 @@ type Stage =
       canResumeAdd: boolean;
     }
   | { kind: 'options'; opening: VoiceSongDownloadOpening; continuation?: string }
-  | { kind: 'notice'; opening: VoiceSongDownloadOpening; offerDownloads: boolean };
+  | { kind: 'notice'; opening: VoiceSongDownloadOpening; downloadTab?: DownloadTab };
 
 const notices: Record<Exclude<VoiceSongDownloadDecision, 'ready' | 'playlist_required'>, string> = {
   membership_unknown: '暂时无法确认喜欢状态。请先核对喜欢列表，再重新发起下载。',
@@ -82,9 +82,9 @@ export function useVoiceSongDownload(
       opening.trackId === reply.trackId
     );
   }
-  function notice(opening: VoiceSongDownloadOpening, text: string, offerDownloads = false) {
+  function notice(opening: VoiceSongDownloadOpening, text: string, downloadTab?: DownloadTab) {
     message.value = text;
-    stage.value = { kind: 'notice', opening, offerDownloads };
+    stage.value = { kind: 'notice', opening, downloadTab };
   }
   function issue(opening: VoiceSongDownloadOpening, error: unknown) {
     if (!active(opening)) return;
@@ -107,7 +107,11 @@ export function useVoiceSongDownload(
         notice(
           opening,
           notices[plan.decision],
-          ['complete', 'existing_task', 'waiting', 'working'].includes(plan.decision),
+          plan.decision === 'complete'
+            ? 'completed'
+            : ['existing_task', 'waiting', 'working'].includes(plan.decision)
+              ? 'active'
+              : undefined,
         );
     } catch (error) {
       const text = issue(opening, error);
@@ -121,13 +125,6 @@ export function useVoiceSongDownload(
     if (current.kind === 'pick' && !busy.value && active(current.opening)) {
       message.value = '';
       stage.value = { kind: 'create', opening: current.opening };
-    }
-  }
-  function backToPicker() {
-    const current = stage.value;
-    if (current.kind === 'create' && !busy.value && active(current.opening)) {
-      message.value = '';
-      stage.value = { kind: 'pick', opening: current.opening };
     }
   }
   function recover(
@@ -284,11 +281,11 @@ export function useVoiceSongDownload(
         opening,
         (result.epoch === opening.target.epoch && result.failed[0]?.message) ||
           '请到下载管理核对任务状态。',
-        true,
+        'active',
       );
     } catch (error) {
       const text = issue(opening, error);
-      if (text) notice(opening, text, true);
+      if (text) notice(opening, text, 'active');
     } finally {
       if (active(opening)) busy.value = false;
     }
@@ -301,7 +298,6 @@ export function useVoiceSongDownload(
     request,
     close,
     openCreate,
-    backToPicker,
     selectPlaylist,
     submitCreate,
     reconcile,

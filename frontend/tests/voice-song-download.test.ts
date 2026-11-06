@@ -129,12 +129,13 @@ test('existing destination definitive add failure preserves the opaque independe
   try {
     await f.model.request(opening);
     f.model.openCreate();
-    f.model.backToPicker();
+    f.model.close();
+    await f.model.request(opening);
     await f.model.selectPlaylist('51');
     assert.equal(f.model.stage.value.kind, 'options');
     assert.match(f.model.message.value, /加入歌单失败/);
     assert.equal(await f.model.start(defaultDownloadOptions), true);
-    assert.deepEqual(f.calls, ['Prepare', 'ChoosePlaylist', 'StartFromPlaylist']);
+    assert.deepEqual(f.calls, ['Prepare', 'Prepare', 'ChoosePlaylist', 'StartFromPlaylist']);
   } finally {
     f.lifetime.stop();
   }

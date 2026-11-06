@@ -261,7 +261,7 @@ import type { CommentResource } from './services/comments';
 import { useMv } from './composables/useMv';
 import { useCloud } from './composables/useCloud';
 import { useDownloads } from './composables/useDownloads';
-import type { DownloadDialogTarget } from './services/downloads';
+import type { DownloadDialogTarget, DownloadTab } from './services/downloads';
 import type {
   VoiceSongAction,
   VoiceSongRowTarget,
@@ -1879,9 +1879,9 @@ const voiceSongDownloadOptions = computed<DownloadDialogTarget | undefined>(() =
 function voiceSongDownloadFocus() {
   return voiceDownloadOpener.value ?? null;
 }
-function openVoiceSongDownloads() {
+function openVoiceSongDownloads(tab: DownloadTab = 'active') {
   player.lyricsOpen.value = false;
-  music.navigate({ kind: 'downloads', initialTab: 'active' });
+  music.navigate({ kind: 'downloads', initialTab: tab });
 }
 const { count: playbackCommentCount, notePublished: notePlaybackCommentPublished } =
   usePlaybackCommentInfo(player.view, player.loaded, () => music.account.value.epoch);
@@ -6234,7 +6234,7 @@ onUnmounted(() => {
         :model="downloads"
         :target="voiceSongDownloadOptions"
         @close="voiceSongDownload.close"
-        @started="openVoiceSongDownloads"
+        @started="openVoiceSongDownloads()"
       />
       <VoiceSongDownloadPicker
         v-else-if="voiceSongDownload.stage.value.kind !== 'idle'"

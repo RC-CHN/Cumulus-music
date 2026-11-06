@@ -3,13 +3,14 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import type { VoiceSongDownloadModel } from '../composables/useVoiceSongDownload';
 import { failure, type PlaylistView } from '../services/contracts';
 import { useCore } from '../services/core';
+import type { DownloadTab } from '../services/downloads';
 import { playlistLength } from '../services/playlists';
 import Icon from './Icon.vue';
 import PlaylistCollectList from './PlaylistCollectList.vue';
 import '../styles/playlist-collect.css';
 
 const props = defineProps<{ model: VoiceSongDownloadModel; epoch: string }>();
-const emit = defineEmits<{ downloads: []; expired: [] }>();
+const emit = defineEmits<{ downloads: [tab: DownloadTab]; expired: [] }>();
 const { stage, busy, message } = props.model;
 const core = useCore();
 const dialog = ref<HTMLDialogElement>();
@@ -146,8 +147,10 @@ function choose(playlistId: string) {
   void props.model.selectPlaylist(playlistId);
 }
 function openDownloads() {
+  const current = stage.value;
+  if (current.kind !== 'notice' || !current.downloadTab) return;
   props.model.close();
-  emit('downloads');
+  emit('downloads', current.downloadTab);
 }
 </script>
 
@@ -278,7 +281,7 @@ function openDownloads() {
         核对结果
       </button>
     </div>
-    <div v-else-if="stage.kind === 'notice' && stage.offerDownloads" class="collect-feedback">
+    <div v-else-if="stage.kind === 'notice' && stage.downloadTab" class="collect-feedback">
       <button type="button" class="secondary" :disabled="busy" @click="openDownloads">
         打开下载管理
       </button>
