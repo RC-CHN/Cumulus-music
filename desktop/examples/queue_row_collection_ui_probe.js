@@ -46,15 +46,16 @@
   const gestures = [];
   const trusted = window.__queueRowCollectionTrusted === true;
   let count = 0, stage = 'startup', picked, bulkReads = 0, playbackId;
-  async function capture(label, extra = {}) {
+  async function capture(label, extras = () => ({})) {
     stage = label;
+    await wait(() => !one('.queue-panel-enter-active,.modal-enter-active'), 'entry motion settled');
     await stablePaint();
     const receipt = `ux_${String(++count).padStart(2, '0')}_${label}`;
     window.__queueUiStageRecorded = '';
     await emit(receipt, {
       selected: selected(), gestures: [...gestures], picked: picked ?? null, bulkReads,
       focus: document.activeElement?.getAttribute('aria-label'),
-      focusInPicker: !!picker()?.contains(document.activeElement), ...extra,
+      focusInPicker: !!picker()?.contains(document.activeElement), ...extras(),
     });
     await wait(() => window.__queueUiStageRecorded === receipt, 'host captured exact native queue stage');
   }
@@ -125,7 +126,7 @@
     await group();
     const pointerButton = collect(1);
     pointerButton.focus({ preventScroll: true });
-    await capture('pointer_ready', { pointer: target(pointerButton) });
+    await capture('pointer_ready', () => ({ pointer: target(pointerButton) }));
     if (!trusted) pointerButton.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     await showPicker(['2']);
     assert(equals(selected(), [2]) && gestures[0]?.detail > 0, 'pointer collapses selection to clicked row');
@@ -148,7 +149,7 @@
     const readback = (await client.playlistEditor(epoch, '2')).value.trackIds;
     assert(equals(readback, ['3', '1']), 'destination readback has precisely selected songs in order');
     assert(bar().dataset.playId === playbackId && bar().dataset.state === 'paused', 'same loaded song');
-    await capture('saved', { readback });
+    await capture('saved', () => ({ readback }));
 
     click(button('关闭播放队列', panel()));
     await wait(() => !panel(), 'queue closed');
