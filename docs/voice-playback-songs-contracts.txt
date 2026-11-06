@@ -24,19 +24,26 @@ songs 字段不同。不能拿嵌套的 songs、正在播放的主音轨或下�
   album 的行；空则隐藏，非空显示「包含歌曲」、行数及 VinalPageTrackViewer。
   VoiceDisplay.tsx:69–78 的顺序为收藏、简介、推荐、包含歌曲。
   VinalPageTrackViewer.tsx:70–105 是无表头标题列，scene=song-song-recommend，
-  pageType=voicePlaying。TrackTitleCell.tsx:621–634,729–751,816–831 的
+  pageType=voicePlaying。M182:7569,7613 用 M23.w（M23:49–50,860）选择节目页，
+  包含 voice、downloadVoice、localVoice。M308:487–505 从下载 origin 取得 curVoice；
+  M3004:334–347 的随心听动作使用 voice 类型与 sceneFm 来源，可打开同一播放页，
+  M3004:524–541 直接核对当前 curVoice；M308:538–546 是在线 voice 的共同模型。
+  听过的书章节点击（M2120:80–99，M404:202–259）进入普通节目队列，不因书来源禁用。
+  TrackTitleCell.tsx:621–634,729–751,816–831 的
   点赞、适用时下载及封面播歌是另有动作资格的交互；没有普通更多菜单。
 
 原生接口及边界
 - MusicClient::player_voice_songs(epoch, play_id) 返回 {playId, voiceId, tracks}；
-  只实现第三路读取，不加到每次播放 snapshot、音源解析或已下载文件路径，不重复
+  只实现第三路读取，不加到每次播放 snapshot、音源解析或本地文件读取，不重复
   请求详情／推荐。没有 Tauri 命令、前端卡、点赞、下载、播歌或队列动作。
 - 只接已验证账号的普通在线节目；节目、主音轨、队列条目、playId、账号/API 和
   凭据修订来自原生状态。检查发送前及交付前，使用与百科共用的 PC EAPI
   有界读取门；不查实验组，不把原始响应、节目 URL、Cookie 或其他授权字段交出去。
-  同修订但节目接口与 PC 凭据校验范围的 Cookie 不同也不发送。不根据调用方传入的
-  节目 ID、下载任务、Scene FM 或一起听状态构造请求。匿名账号、离线节目和其他
-  原宿主读取能力暂未接入，不能由此推断官方也拒绝它们。
+  同修订但节目接口与 PC 凭据校验范围的 Cookie 不同也不发送。不接收调用方传入的
+  节目 ID 或下载任务。随心听必须具有 actor 当前解码确认，待切换／待加载条目不合格；
+  下载必须来自原生 typed Voice 任务并核对节目与主歌曲。读取仍需可用的同账号 PC
+  会话，不靠本地文件获得联网资格。纯本地文件、无账号、一起听与旧队列无下载节目
+  标记分支未接入，不能据此推断官方也拒绝它们。
 - 按响应保留顺序与重复项。返回现有 TrackView 的普通曲目展示字段，图片限已知
   公共图片域并移除原始查询串和片段；未用原客户端 picId 推算图、版权替代 MV 图、
   数据库副作用、权限详情或专用列。没有曲目播放/下载授权、没有原料回写；任何后续
@@ -51,4 +58,6 @@ songs 字段不同。不能拿嵌套的 songs、正在播放的主音轨或下�
   false album 行被过滤，保留空对象，优先正式 album，ar=[] 不回退。
 - `cargo test --locked -p cumulus-core --test pc_experiment_transport voice_songs`
   使用真实 MusicHttpClient 请求计划和解包 EAPI 的密闭后端；核验 wire、字段过滤、
-  响应形状及发起前／交付前的当前条目和凭据失效。无真实请求或账户资源写入。
+  响应形状及发起前／交付前的当前条目和凭据失效。随心听在合成解码器仍持有加载时
+  不读取，成功提交后读取；真实临时发布的合成下载节目可读，但冲突节目身份拒绝。
+  无真实请求或账户资源写入。

@@ -4,7 +4,7 @@ use cumulus_core::{
     account::{AccountSession, credentials::Credentials, profiles::ProfileRegistry},
     client::{
         MusicClient,
-        dto::{PlaySelection, PlayerAction},
+        dto::{PlaySelection, PlayerAction, PlayerResourceKind, SceneFmCommand},
     },
     history::HistorySyncAction,
     protocol::{
@@ -13,7 +13,12 @@ use cumulus_core::{
     },
 };
 use serde_json::{Value, json};
-use std::{future::poll_fn, sync::Arc, task::Poll};
+use std::{
+    future::poll_fn,
+    sync::{Arc, atomic::Ordering},
+    task::Poll,
+    time::Duration,
+};
 
 const CARD: &str = "/api/v1/dj/program/tracks";
 const HOLD: &str = "/api/w/nuser/account/get";
@@ -28,30 +33,45 @@ const STARTUP: [&str; 4] = [
 ];
 
 struct Fixture {
-    _root: tempfile::TempDir,
+    root: tempfile::TempDir,
     native: Arc<MusicHttpClient>,
     credentials: Arc<Credentials>,
-    client: MusicClient,
+    session: Arc<AccountSession>,
+    store: Arc<cumulus_core::storage::StateStore>,
+    client: Arc<MusicClient>,
+    device: Arc<playback::Device>,
     http: Arc<ScriptHttp>,
     epoch: String,
     play_id: String,
 }
 
+fn episode() -> Value {
+    json!({
+        "id":VOICE,"name":"合成节目","duration":120000,"mainTrackId":SONG,
+        "mainSong":{"id":SONG,"name":"合成节目音轨","duration":120000},
+        "songs":[{"id":9,"name":"DO_NOT_EXPORT_EMBEDDED","al":{"id":9}}]
+    })
+}
+
+fn detail() -> HttpResponse {
+    json!({"code":200,"program":episode()}).into()
+}
+
+fn authorized() -> [HttpResponse; 2] {
+    [
+        json!({"code":200,"data":{"voiceId":VOICE,"songId":SONG,"canPlay":true}}).into(),
+        json!({"code":200,"data":[{"id":SONG,"code":200,"url":"https://m1.music.126.net/episode.mp3?auth=DO_NOT_EXPORT","md5":"abc","level":"standard","expi":120}]}).into(),
+    ]
+}
+
 impl Fixture {
-    async fn new(cookies: &[&str], replies: impl IntoIterator<Item = HttpResponse>) -> Self {
+    fn host(cookies: &[&str], replies: impl IntoIterator<Item = HttpResponse>) -> Self {
         let root = tempfile::tempdir().unwrap();
-        let episode = json!({"code":200,"program":{
-            "id":VOICE,"name":"合成节目","duration":120000,"mainTrackId":SONG,
-            "mainSong":{"id":SONG,"name":"合成节目音轨","duration":120000},
-            "songs":[{"id":9,"name":"DO_NOT_EXPORT_EMBEDDED","al":{"id":9}}]
-        }});
-        let (native, http, credentials) = vinyl_http_with_credentials(root.path(), cookies, [
-            episode.clone().into(), episode.into(),
-            json!({"code":200,"data":{"voiceId":VOICE,"songId":SONG,"canPlay":true}}).into(),
-            json!({"code":200,"data":[{"id":SONG,"code":200,"url":"https://m1.music.126.net/episode.mp3?auth=DO_NOT_EXPORT","md5":"abc","level":"standard","expi":120}]}).into(),
-        ].into_iter().chain(replies));
+        let (native, http, credentials) =
+            vinyl_http_with_credentials(root.path(), cookies, replies);
         let registry = ProfileRegistry::open(&root.path().join("host"), ApiOrigin::Pc).unwrap();
-        let session = Arc::new(AccountSession::new(native.clone(), Some(registry.store())));
+        let store = registry.store();
+        let session = Arc::new(AccountSession::new(native.clone(), Some(store.clone())));
         session
             .adopt(
                 native.clone(),
@@ -60,11 +80,12 @@ impl Fixture {
             )
             .unwrap();
         let epoch = session.token().unwrap().generation.to_string();
-        let client = MusicClient::with_session(session, registry).with_audio_factory(|| {
-            Ok(playback::audio_engine(
-                Arc::new(playback::Device::default()),
-            ))
-        });
+        let device = Arc::new(playback::Device::default());
+        let audio = device.clone();
+        let client = Arc::new(
+            MusicClient::with_session(session.clone(), registry)
+                .with_audio_factory(move || Ok(playback::audio_engine(audio.clone()))),
+        );
         // Stop is used to invalidate a held card read. Keep the independent
         // remote progress writer disabled throughout this sealed fixture.
         client
@@ -76,28 +97,44 @@ impl Fixture {
                 },
             )
             .unwrap();
-        let play_id = client
-            .play_selection(&epoch, PlaySelection::Voice { id: VOICE.into() })
+        Self {
+            root,
+            native,
+            credentials,
+            session,
+            store,
+            client,
+            device,
+            http,
+            epoch,
+            play_id: String::new(),
+        }
+    }
+
+    async fn new(cookies: &[&str], replies: impl IntoIterator<Item = HttpResponse>) -> Self {
+        let mut f = Self::host(
+            cookies,
+            [detail(), detail()]
+                .into_iter()
+                .chain(authorized())
+                .chain(replies),
+        );
+        f.play_id = f
+            .client
+            .play_selection(&f.epoch, PlaySelection::Voice { id: VOICE.into() })
             .await
             .unwrap()
             .play_id
             .unwrap();
         assert_eq!(
-            http.calls()
+            f.http
+                .calls()
                 .iter()
                 .map(|call| call.path.as_str())
                 .collect::<Vec<_>>(),
             STARTUP
         );
-        Self {
-            _root: root,
-            native,
-            credentials,
-            client,
-            http,
-            epoch,
-            play_id,
-        }
+        f
     }
 }
 
@@ -286,4 +323,162 @@ async fn voice_songs_cannot_send_under_a_different_scoped_cookie() {
         Err(Error::StaleResponse)
     ));
     assert_eq!(f.http.calls().len(), STARTUP.len());
+}
+
+#[tokio::test]
+async fn voice_songs_scene_requires_the_current_episode_to_finish_native_load() {
+    let directory = json!({"code":200,"data":[{"creatives":[{
+        "creativeId":"OP_1","creativeExtInfoVO":{"djPrograms":[episode()]},
+        "uiElement":{"mainTitle":{"title":"合成随心听"}}
+    }]}]});
+    let f = Fixture::host(
+        &[COOKIE],
+        [directory.into(), detail()]
+            .into_iter()
+            .chain(authorized())
+            .chain([card().into()]),
+    );
+    let scene = f.client.scene_fm_view(&f.epoch, true).await.unwrap().value;
+    f.device.hold_load.store(true, Ordering::SeqCst);
+    let play = {
+        let client = f.client.clone();
+        let epoch = f.epoch.clone();
+        tokio::spawn(async move {
+            client
+                .scene_fm_command(
+                    &epoch,
+                    SceneFmCommand::Play {
+                        revision: scene.revision.unwrap(),
+                    },
+                )
+                .await
+        })
+    };
+    tokio::time::timeout(Duration::from_secs(3), f.device.started.notified())
+        .await
+        .unwrap();
+    let pending = f.client.player_snapshot(&f.epoch).await.unwrap();
+    let play_id = pending.play_id.unwrap();
+    assert!(
+        f.client
+            .player_voice_songs(&f.epoch, &play_id)
+            .await
+            .is_err()
+    );
+    assert_eq!(f.http.calls().len(), 4);
+    f.device.hold_load.store(false, Ordering::SeqCst);
+    assert!(play.await.unwrap().unwrap().value.playing);
+    let ready = f.client.player_snapshot(&f.epoch).await.unwrap();
+    assert_eq!(ready.play_id.as_deref(), Some(play_id.as_str()));
+    let songs = f
+        .client
+        .player_voice_songs(&f.epoch, &play_id)
+        .await
+        .unwrap();
+    assert_eq!(songs.voice_id, VOICE);
+    assert_eq!(songs.tracks.len(), 3);
+    let calls = f.http.calls();
+    assert_eq!(calls.len(), 5);
+    assert_eq!(calls[4].path, CARD);
+    assert_eq!(calls[4].payload["id"], VOICE);
+}
+
+#[tokio::test]
+async fn voice_songs_accepts_published_typed_download_and_refuses_conflicting_episode() {
+    use cumulus_core::download::service::{
+        DownloadDestination, DownloadOptions, DownloadRunOptions, DownloadService, DownloadStatus,
+    };
+    use md5::{Digest, Md5};
+    const AUDIO: &[u8] = include_bytes!("../fixtures/tag_audio/seed.mp3");
+    let permission = json!({"code":200,"data":{
+        "allowDownloadVoiceIds":[VOICE],"forbidDownloadVoiceIds":[],
+        "downloadCheckResultList":[{"voiceId":VOICE,"canDownload":true}]
+    }});
+    let source = json!({"code":200,"data":{"id":SONG,"code":200,
+        "url":"https://m.test.music.126.net/media?auth=DO_NOT_EXPORT",
+        "md5":hex::encode(Md5::digest(AUDIO)),"size":AUDIO.len(),"type":"mp3",
+        "level":"standard","flag":0,"payed":0}});
+    let f = Fixture::host(
+        &[COOKIE],
+        [
+            detail(),
+            detail(),
+            permission.into(),
+            source.into(),
+            card().into(),
+        ],
+    );
+    let media = Arc::new(super::support::download::Backend::new(AUDIO.into()));
+    let service =
+        DownloadService::with_backend(f.session.clone(), media.clone(), 1024 * 1024).unwrap();
+    let task = service
+        .create_voice(
+            &json!(VOICE),
+            DownloadDestination::Path {
+                path: f.root.path().join("episode.mp3"),
+            },
+            DownloadOptions {
+                tags: false,
+                cover: false,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let mut done = service
+        .run(&task.id, DownloadRunOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(done.status, DownloadStatus::Complete);
+    let loaded = f
+        .client
+        .play_downloads(&f.epoch, vec![task.id.clone()], 0)
+        .await
+        .unwrap();
+    assert_eq!(loaded.resource_kind, Some(PlayerResourceKind::Downloaded));
+    let play_id = loaded.play_id.unwrap();
+    assert_eq!(
+        f.http.calls().len(),
+        4,
+        "download playback must not reauthorize online"
+    );
+    let songs = f
+        .client
+        .player_voice_songs(&f.epoch, &play_id)
+        .await
+        .unwrap();
+    assert_eq!(songs.voice_id, VOICE);
+    assert_eq!(songs.tracks.len(), 3);
+    let calls = f.http.calls();
+    assert_eq!(calls.len(), 5);
+    assert_eq!(calls[4].path, CARD);
+    assert_eq!(calls[4].payload["id"], VOICE);
+    assert_eq!(media.audio.calls().len(), 1);
+
+    f.client
+        .player_action(&f.epoch, PlayerAction::Stop)
+        .await
+        .unwrap();
+    done.song.as_mut().unwrap()["voice"]["id"] = json!(999);
+    f.store
+        .put(
+            "25",
+            "download_tasks_v1",
+            &task.id,
+            &serde_json::to_value(done).unwrap(),
+        )
+        .unwrap();
+    let conflict = f
+        .client
+        .play_downloads(&f.epoch, vec![task.id], 0)
+        .await
+        .unwrap();
+    assert!(conflict.voice_detail.is_none());
+    assert!(
+        f.client
+            .player_voice_songs(&f.epoch, conflict.play_id.as_deref().unwrap())
+            .await
+            .is_err()
+    );
+    assert_eq!(f.http.calls().len(), 5);
 }

@@ -1,4 +1,4 @@
-//! Read-only 「包含歌曲」 card from the current ordinary online episode.
+//! Read-only 「包含歌曲」 card from a bound current episode.
 use super::{
     MusicClient, PlaybackSnapshot, PlaybackStatus, PlayerResourceKind, identity, mapping,
     vinyl_similar::stale_credentials, voice_detail,
@@ -35,6 +35,14 @@ struct Seed {
     voice_id: String,
     entry_id: String,
     song_id: String,
+    source: EpisodeSource,
+}
+
+#[derive(PartialEq, Eq)]
+enum EpisodeSource {
+    Voice,
+    Scene { id: String, revision: u64 },
+    Download { task_id: String },
 }
 
 fn seed(snapshot: &PlaybackSnapshot, token: &SessionToken, play_id: &str) -> Result<Seed> {
@@ -46,25 +54,59 @@ fn seed(snapshot: &PlaybackSnapshot, token: &SessionToken, play_id: &str) -> Res
     }
     let entry = snapshot.selected.as_ref().ok_or(Error::StaleResponse)?;
     if snapshot.fm
-        || entry.source["kind"] == "scene_fm"
-        || identity::kind(&entry.resource) != PlayerResourceKind::Voice
         || !matches!(
             snapshot.state,
             PlaybackStatus::Playing | PlaybackStatus::Paused | PlaybackStatus::Buffering
         )
     {
         return Err(Error::State(
-            "vinyl episode songs require ordinary online playback",
+            "vinyl episode songs require a current episode",
         ));
     }
     // Reuse the validated episode/backing-song correspondence; raw nested
-    // metadata alone and download-origin episode projections grant no read.
+    // metadata alone cannot make a local file or song into an episode.
     let (voice_id, song_id, _) = voice_detail::bound_episode(&entry.resource)
         .ok_or(Error::State("invalid current vinyl episode identity"))?;
+    let source = match identity::kind(&entry.resource) {
+        PlayerResourceKind::Voice if entry.source["kind"] == "scene_fm" => {
+            // A new Scene selection can exist while the old decoder is
+            // retiring. Only the actor’s committed loaded item is eligible.
+            let (scene, voice, revision) = snapshot
+                .committed_scene_voice(token)
+                .ok_or(Error::StaleResponse)?;
+            if voice != voice_id
+                || entry.source["scene_id"].as_str() != Some(scene)
+                || entry.source["scene_revision"].as_u64() != Some(revision)
+            {
+                return Err(Error::StaleResponse);
+            }
+            EpisodeSource::Scene {
+                id: scene.into(),
+                revision,
+            }
+        }
+        PlayerResourceKind::Voice => EpisodeSource::Voice,
+        PlayerResourceKind::Downloaded if entry.source["kind"] != "scene_fm" => {
+            // bound_episode already checked the native DownloadOrigin marker
+            // and its match with both raw episode and backing song identities.
+            let task_id = entry.resource["download_task_id"]
+                .as_str()
+                .ok_or(Error::StaleResponse)?;
+            EpisodeSource::Download {
+                task_id: task_id.into(),
+            }
+        }
+        _ => {
+            return Err(Error::State(
+                "vinyl episode songs require a current episode",
+            ));
+        }
+    };
     Ok(Seed {
         voice_id,
         entry_id: entry.entry_id.clone(),
         song_id,
+        source,
     })
 }
 
