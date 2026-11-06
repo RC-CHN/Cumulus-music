@@ -103,17 +103,31 @@ fn online(id: u64) -> Value {
 }
 
 #[tokio::test]
-async fn inline_collection_freezes_visible_entry_order_without_bulk_or_foreign_fallback() {
+async fn inline_collection_binds_catalog_download_and_local_selection_to_current_authority() {
     let f = Fixture::new();
     let mut voice = online(90);
     voice["voice"] = json!({"radioId":7});
     let mut cloud = online(91);
     cloud["cloud_song_id"] = json!(91);
     let mut download = online(92);
-    download["download_task_id"] = json!("saved");
+    let task = "00000000000000000000000000000092";
+    download["download_task_id"] = json!(task);
+    f.store
+        .put(
+            "9",
+            "download_tasks_v1",
+            task,
+            &json!({
+                "id":task,"song_id":"92","origin":{"kind":"song"},"status":"complete",
+                "target":"PRIVATE"
+            }),
+        )
+        .unwrap();
     let mut mismatch = online(93);
     mismatch["song"]["id"] = json!(94);
-    let local = f.scan(1, false).pop().unwrap();
+    let mut files = f.scan(2, false);
+    let local = files.pop().unwrap();
+    let unlinked = files.pop().unwrap();
     f.library
         .map_online(&f.session, &local.id, &json!(95))
         .unwrap();
@@ -128,6 +142,7 @@ async fn inline_collection_freezes_visible_entry_order_without_bulk_or_foreign_f
             download,
             mismatch,
             f.resource(&local.id),
+            f.resource(&unlinked.id),
         ],
     );
     let before = f.client.player_queue("1").await.unwrap();
@@ -138,24 +153,37 @@ async fn inline_collection_freezes_visible_entry_order_without_bulk_or_foreign_f
             .iter()
             .map(|row| row.collectible)
             .collect::<Vec<_>>(),
-        [true, true, true, false, false, false, false, false]
+        [true, true, true, false, false, true, false, true, true]
+    );
+    assert_eq!(
+        before
+            .tracks
+            .iter()
+            .map(|row| row.catalog_menu)
+            .collect::<Vec<_>>(),
+        [true, true, true, false, false, false, false, false, false]
     );
     let read = f
         .client
-        .player_queue_collect_rows("1", &before.revision, &[entry(1), entry(2), entry(0)])
+        .player_queue_collect_rows(
+            "1",
+            &before.revision,
+            &[entry(5), entry(1), entry(7), entry(2), entry(0)],
+        )
         .await
         .unwrap();
-    assert_eq!((read.total, read.duplicates, read.unsupported), (3, 1, 0));
+    assert_eq!((read.total, read.duplicates, read.unsupported), (5, 1, 0));
     assert_eq!(
         read.tracks
             .iter()
             .map(|track| track.id.as_str())
             .collect::<Vec<_>>(),
-        ["2", "1"]
+        ["92", "2", "95", "1"]
     );
+    assert!(!read.tracks[2].local);
     assert!(!serde_json::to_string(&read).unwrap().contains("PRIVATE"));
 
-    for unsupported in 3..before.tracks.len() {
+    for unsupported in [3, 4, 6, 8] {
         assert!(matches!(
             f.client
                 .player_queue_collect_rows("1", &before.revision, &[entry(1), entry(unsupported)])
@@ -182,6 +210,59 @@ async fn inline_collection_freezes_visible_entry_order_without_bulk_or_foreign_f
         serde_json::to_value(&before).unwrap(),
         serde_json::to_value(&after).unwrap()
     );
+    // A task key reused by another account cannot vouch for the stale row,
+    // even when it points to the same catalog song.
+    let completed = f
+        .store
+        .get("9", "download_tasks_v1", task)
+        .unwrap()
+        .unwrap();
+    f.store
+        .put("10", "download_tasks_v1", task, &completed)
+        .unwrap();
+    for (origin, song, status) in [
+        ("song", "999", "complete"),
+        ("cloud", "92", "complete"),
+        ("song", "92", "paused"),
+    ] {
+        let mut record = completed.clone();
+        record["origin"] = if origin == "cloud" {
+            json!({"kind":"cloud","file_name":"synthetic.wav","file_size":4})
+        } else {
+            json!({"kind":"song"})
+        };
+        record["song_id"] = json!(song);
+        record["status"] = json!(status);
+        f.store
+            .put("9", "download_tasks_v1", task, &record)
+            .unwrap();
+        assert!(matches!(
+            f.client
+                .player_queue_collect_rows("1", &before.revision, &[entry(5)])
+                .await,
+            Err(Error::InvalidInput(
+                "queue download is no longer a catalog publication"
+            ))
+        ));
+    }
+    f.store.delete("9", "download_tasks_v1", task).unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_collect_rows("1", &before.revision, &[entry(0), entry(5)])
+            .await,
+        Err(Error::InvalidInput(
+            "queue download is no longer a catalog publication"
+        ))
+    ));
+    std::fs::write(&local.path, [1, 2, 3, 4, 5]).unwrap();
+    assert!(matches!(
+        f.client
+            .player_queue_collect_rows("1", &before.revision, &[entry(0), entry(7)])
+            .await,
+        Err(Error::InvalidInput(
+            "queue local row requires an online association"
+        ))
+    ));
 
     f.client
         .player_action(

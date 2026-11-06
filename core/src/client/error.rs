@@ -256,7 +256,17 @@ impl From<Error> for ClientError {
                 ),
                 Error::InvalidInput("selection contains a row without a catalog song") => (
                     "queue_collection_ineligible",
-                    "所选队列项包含不能在行内收藏的资源，请重新选择普通歌曲",
+                    "所选队列项包含不能收藏到歌单的资源，请重新选择",
+                    false,
+                ),
+                Error::InvalidInput("queue local row requires an online association") => (
+                    "queue_collection_local_unmatched",
+                    "所选本地音乐尚未关联有效的线上歌曲。请到「本地音乐」关联后重试",
+                    false,
+                ),
+                Error::InvalidInput("queue download is no longer a catalog publication") => (
+                    "queue_collection_download_unavailable",
+                    "所选下载歌曲的记录已变化。请刷新下载管理后重试",
                     false,
                 ),
                 Error::InvalidInput(_) => ("invalid_input", "输入内容不符合要求", false),

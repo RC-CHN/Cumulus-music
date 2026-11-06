@@ -163,6 +163,6 @@
 - [本地文件夹定位](desktop-local-library-contracts.txt)在 Linux 真实窗口和私有文件管理器替身验证定位、有限父目录回退、失败提示和焦点回归。Windows 使用 Explorer 单项选中，尚缺实机证据。
 - [索引 FLAC 音效](indexed-flac-receipt.txt)在 Linux 用可信解码器和故意错误摘要分别验证固定图与同句柄普通解码，以及暂停定位、继续播放和自然结束。系统运行时、CI 打包解码器与真实声卡是独立证据；Windows 索引分支未开启。
 - [声音搜索作者](search-results-ui-contracts.txt)只有有效的官方嵌套作者身份生成公开主页入口。Linux 真实 WebView 验证单一作者路由、退回焦点和滚动位置，未请求媒体或改动队列。
-- [普通队列收藏](playback-queue-collection-contracts.txt)的行内、右键和更多入口共用 Rust 选择检查。Linux 实窗核对真实鼠标单首、Return 保留多选、取消零写入及显式选择后合成写入和回读；[队列菜单](queue-catalog-menu.txt)另核对了目标列表、焦点与暂停位置。
+- [队列收藏](playback-queue-collection-contracts.txt)的行内、右键和更多入口共用 Rust 选择检查。Linux 实窗核对真实鼠标单首、Return 多选、取消零写入和显式选择后的合成写入及回读；下载单曲及已关联本地音乐复用行内操作，未关联文件提示处理，不启动上传。[队列菜单](queue-catalog-menu.txt)另核对了目标列表、焦点与暂停位置。
 - [播放来源名](queue-source-navigation.txt)由入队时已有的专辑、歌手、歌单详情提供。Linux 实窗已核对专辑与歌单名称，歌手由 Rust 定向测试覆盖。没有已验证名称时不从歌曲资料猜测，也不补请求。
 - [播客推荐卡菜单](podcast-recent-contracts.txt)支持详情、播放、插入下一首、确认收藏、分享和复制。Linux 实窗核对了取消和原生队列插入；收藏写入由封闭 Rust 夹具验证，不使用真实账号。

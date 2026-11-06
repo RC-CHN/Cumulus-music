@@ -1,6 +1,7 @@
 //! Official Playlist.tsx collection eligibility, with native local-file mapping.
 use super::*;
 use crate::{
+    download::service::DownloadService,
     library::{LocalMapping, LocalResource},
     protocol::api::identifier,
 };
@@ -9,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 impl MusicClient {
     /// Freeze the inline action's ordered visible entry selection. This lane
-    /// never falls back to collecting the queue or mapping a foreign resource.
+    /// never falls back to collecting the queue, finding new matches, or uploading.
     pub async fn player_queue_collect_rows(
         &self,
         epoch: &str,
@@ -33,35 +34,83 @@ impl MusicClient {
                 "song collection requires the ordinary queue",
             ));
         }
-        let visible: BTreeMap<_, _> = queue
-            .items
-            .iter()
-            .filter(|entry| entry.visible_in_queue())
-            .map(|entry| (entry.entry_id.as_str(), &entry.resource))
-            .collect();
-        let mut entries = BTreeSet::new();
-        let mut songs = BTreeSet::new();
-        let mut tracks = Vec::new();
-        let mut duplicates = 0;
-        for id in entry_ids {
-            if !entries.insert(id.as_str()) {
-                return Err(Error::InvalidInput("duplicate queue entry in collection"));
+        let session = self.session.clone();
+        let captured = token.clone();
+        let store = self.player.store.clone();
+        let entry_ids = entry_ids.to_owned();
+        let value = tokio::task::spawn_blocking(move || {
+            let visible: BTreeMap<_, _> = queue
+                .items
+                .iter()
+                .filter(|entry| entry.visible_in_queue())
+                .map(|entry| (entry.entry_id.as_str(), &entry.resource))
+                .collect();
+            let mut entries = BTreeSet::new();
+            let mut selection = Vec::with_capacity(entry_ids.len());
+            for id in &entry_ids {
+                if !entries.insert(id) {
+                    return Err(Error::InvalidInput("duplicate queue entry in collection"));
+                }
+                let resource = visible.get(id.as_str()).ok_or(Error::QueueChanged)?;
+                let identity = row_identity(resource).ok_or(INELIGIBLE_ROW)?;
+                selection.push((*resource, identity));
             }
-            let resource = visible.get(id.as_str()).ok_or(Error::QueueChanged)?;
-            let song_id = row_namespace(resource)
-                .then(|| queue_like::song_id(resource))
-                .flatten()
-                .ok_or(Error::InvalidInput(
-                    "selection contains a row without a catalog song",
-                ))?;
-            if songs.insert(song_id.clone()) {
-                let mut view = track(resource)?;
-                view.id = song_id;
-                tracks.push(view);
+            let local_ids = selection
+                .iter()
+                .filter_map(|(_, identity)| match identity {
+                    RowIdentity::Local(id) => Some((*id).to_owned()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            let mappings = if local_ids.is_empty() {
+                BTreeMap::new()
             } else {
-                duplicates += 1;
+                LocalLibrary::new(store)?
+                    .online_mappings_for_collection(&session, &captured, &local_ids)?
+            };
+            let tasks = selection
+                .iter()
+                .filter_map(|(_, identity)| match identity {
+                    RowIdentity::Downloaded { task, song } => Some((*task, song.as_str())),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            if !DownloadService::queue_collection_tasks_match(&session, &captured, &tasks)? {
+                return Err(Error::InvalidInput(
+                    "queue download is no longer a catalog publication",
+                ));
             }
-        }
+            let mut songs = BTreeSet::new();
+            let mut tracks = Vec::new();
+            let mut duplicates = 0;
+            for (resource, identity) in selection {
+                let view = match identity {
+                    RowIdentity::Song(id) | RowIdentity::Downloaded { song: id, .. } => {
+                        let mut view = track(resource)?;
+                        view.id = id;
+                        view
+                    }
+                    RowIdentity::Local(_) => collection_track(resource, &mappings)?.ok_or(
+                        Error::InvalidInput("queue local row requires an online association"),
+                    )?,
+                };
+                if songs.insert(view.id.clone()) {
+                    tracks.push(view);
+                } else {
+                    duplicates += 1;
+                }
+            }
+            Ok(QueueCollectionView {
+                epoch: captured.generation.to_string(),
+                revision: revision.to_string(),
+                total: entry_ids.len(),
+                unsupported: 0,
+                duplicates,
+                tracks,
+            })
+        })
+        .await
+        .map_err(|_| Error::State("queue collection worker stopped"))??;
         let after = controller
             .command(&token, PlaybackCommand::Snapshot)
             .await?;
@@ -72,14 +121,7 @@ impl MusicClient {
         {
             return Err(Error::QueueChanged);
         }
-        Ok(QueueCollectionView {
-            epoch: token.generation.to_string(),
-            revision: revision.to_string(),
-            total: entry_ids.len(),
-            unsupported: 0,
-            duplicates,
-            tracks,
-        })
+        Ok(value)
     }
 
     /// Capture the displayed songs without HTTP. The destination selection uses
@@ -158,10 +200,48 @@ impl MusicClient {
     }
 }
 
-pub(super) fn row_namespace(resource: &Value) -> bool {
-    identity::kind(resource) == PlayerResourceKind::Catalog
-        && resource["voice"].is_null()
-        && resource["download_voice_id"].is_null()
+const INELIGIBLE_ROW: Error =
+    Error::InvalidInput("selection contains a row without a catalog song");
+
+enum RowIdentity<'a> {
+    Song(String),
+    Downloaded { task: &'a str, song: String },
+    Local(&'a str),
+}
+
+fn row_identity(resource: &Value) -> Option<RowIdentity<'_>> {
+    if ["voice", "voice_id", "download_voice_id", "cloud_song_id"]
+        .into_iter()
+        .any(|key| !resource[key].is_null())
+        || !resource["song"]["voice_id"].is_null()
+    {
+        return None;
+    }
+    match identity::kind(resource) {
+        PlayerResourceKind::Catalog => queue_like::song_id(resource).map(RowIdentity::Song),
+        PlayerResourceKind::Downloaded => Some(RowIdentity::Downloaded {
+            task: resource["download_task_id"].as_str()?,
+            song: queue_like::song_id(resource)?,
+        }),
+        PlayerResourceKind::Local => {
+            let id = resource["local_id"].as_str()?;
+            (!id.is_empty() && resource["local_revision"].is_object())
+                .then_some(RowIdentity::Local(id))
+        }
+        _ => None,
+    }
+}
+
+pub(super) fn row_actions(resource: &Value) -> (bool, bool) {
+    match row_identity(resource) {
+        Some(RowIdentity::Song(_)) => (true, true),
+        Some(_) => (true, false),
+        None => (false, false),
+    }
+}
+
+pub(super) fn catalog_row(resource: &Value) -> bool {
+    row_actions(resource).1
 }
 
 fn collection_track(

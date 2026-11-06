@@ -138,6 +138,51 @@ impl DownloadService {
             .transpose()
     }
 
+    /// A downloaded queue row already carries a task key. Check that key in
+    /// the current account and bind it to its published catalogue song.
+    /// Collection uses song identity only, so never reopen the local file
+    /// or acquire a playback/download grant here.
+    pub(crate) fn queue_collection_tasks_match(
+        session: &AccountSession,
+        token: &SessionToken,
+        wanted: &[(&str, &str)],
+    ) -> Result<bool> {
+        #[derive(serde::Deserialize)]
+        struct Publication {
+            id: String,
+            song_id: String,
+            #[serde(default)]
+            origin: DownloadOrigin,
+            status: DownloadStatus,
+        }
+        if wanted.is_empty() {
+            return Ok(true);
+        }
+        let store = session.persistent_store()?;
+        let owner = session.with_token(token, |uid| Ok(uid.to_owned()))?;
+        let matches = store.read_snapshot(|tx| {
+            for (id, song) in wanted {
+                if valid_id(id).is_err() {
+                    return Ok(false);
+                }
+                let Some(value) = tx.get(&owner, KIND, id)? else {
+                    return Ok(false);
+                };
+                let record: Publication = serde_json::from_value(value)?;
+                if record.id != *id
+                    || record.song_id != *song
+                    || record.origin != DownloadOrigin::Song
+                    || record.status != DownloadStatus::Complete
+                {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        })?;
+        session.check_generation(token)?;
+        Ok(matches)
+    }
+
     /// Read only the catalog-song publications relevant to a native playback
     /// preflight; this does not construct a transfer backend or renew a grant.
     pub(crate) fn queue_publications(

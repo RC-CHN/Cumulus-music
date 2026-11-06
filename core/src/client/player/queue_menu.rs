@@ -1,5 +1,5 @@
 //! Prepare the ordinary song menu from the live native queue.
-use super::{MusicClient, QueueCatalogMenu, origin, queue_collection, queue_like, track};
+use super::{MusicClient, QueueCatalogMenu, origin, queue_collection, track};
 use crate::{
     Error, Result,
     comments::{CommentApi, ResourceKind},
@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::{path::Path, time::Duration};
 
 fn eligible(resource: &Value) -> bool {
-    queue_collection::row_namespace(resource) && queue_like::song_id(resource).is_some()
+    queue_collection::catalog_row(resource)
 }
 
 fn entry<'a>(queue: &'a QueueSnapshot, entry_id: &str) -> Result<&'a QueueEntry> {

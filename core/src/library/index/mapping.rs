@@ -133,7 +133,7 @@ impl LocalLibrary {
             .map(|i| (i.id, i.revision))
             .collect::<BTreeMap<_, _>>();
         session.with_token(token, |uid| {
-            self.store.transaction(|tx| {
+            self.store.read_snapshot(|tx| {
                 let mut mappings = BTreeMap::new();
                 for (id, revision) in current {
                     let mapping: Option<LocalMapping> = tx

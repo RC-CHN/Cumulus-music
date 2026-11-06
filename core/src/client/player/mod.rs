@@ -1819,8 +1819,9 @@ impl MusicClient {
                     let like_song_id = ordinary_queue
                         .then(|| queue_like::song_id(&i.resource))
                         .flatten();
-                    let collectible =
-                        like_song_id.is_some() && queue_collection::row_namespace(&i.resource);
+                    let (collectible, catalog_menu) = ordinary_queue
+                        .then(|| queue_collection::row_actions(&i.resource))
+                        .unwrap_or_default();
                     Ok(QueueTrack {
                         entry_id: i.entry_id.clone(),
                         track: track(&i.resource)?,
@@ -1828,7 +1829,7 @@ impl MusicClient {
                             && crate::playback::queue_more::active(&queue, i),
                         origin: ordinary_queue.then(|| origin::queue(i)).flatten(),
                         like_song_id,
-                        catalog_menu: collectible,
+                        catalog_menu,
                         collectible,
                     })
                 })
