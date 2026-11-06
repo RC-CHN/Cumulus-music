@@ -190,7 +190,14 @@ All six tests ran successfully in the full workspace run (2418 passed,
 aggregate. The source/GUI runs are recorded separately in
 stereo-pcm-source-validation.txt.
 
-The source proof report is now stereo_pcm_fixed_local_native_v2 with
+The desktop proof closes the first native sink after its exact Stop ack or
+synchronous fail-closed destruction. Only after callback close and worker
+join does it open a fresh native sink for the held source's logical seek.
+Native playlist entry numbers belong to their own sinks and may repeat.
+Revocation still requires that the reader closes and the native sink retires;
+the report distinguishes the exact Stop ack from native destruction.
+
+The source proof report is now stereo_pcm_fixed_local_native_v3 with
 graphScope=complete_fixed_local_equalizer and fixedLocalMaterial=true. It must
 also retain generalSdkGraph=false, fullSdkGraph=false, wholeMaterial=false,
 settingWriteApplyOrderVerified=false, officialUiTested=false and

@@ -38,6 +38,30 @@ fn position(view: &cumulus_core::playback::engine::EngineSnapshot, entry: i64) -
     view.position
         .filter(|_| view.entry_id == Some(entry) && !view.seeking)
 }
+fn stopped_sink(engine: &mut MpvEngine, entry: i64) -> Result<&'static str> {
+    match engine.poll() {
+        Ok(view) => {
+            ensure(
+                view.entry_id.is_none()
+                    && view.events.iter().any(|event| {
+                        matches!(event, EngineEvent::Ended {
+                        entry_id, reason: EndReason::Stop, error: 0,
+                    } if *entry_id == entry)
+                    }),
+                "retained native sink did not report the exact stopped entry",
+            )?;
+            Ok("exact_stop_ack")
+        }
+        // A fail-closed Stop may synchronously destroy the native sink.
+        // No other error is evidence of a retired handle.
+        Err(Error::Playback {
+            operation: "native sink retired",
+            code: -1,
+        }) => Ok("native_destroyed"),
+        Err(error) => Err(error),
+    }
+}
+
 fn check_lead(control: &cumulus_core::playback::engine::StereoPcmControl) -> Result<()> {
     let value = control.snapshot()?;
     ensure(
@@ -219,14 +243,29 @@ pub fn verify(
         retired.native_sink_retired && retired.reader_closed,
         "old sink was not fully retired",
     )?;
+    let old_retirement = stopped_sink(&mut engine, old.entry_id)?;
     let source = initial.reclaim()?;
+    drop(engine);
     stage("stereo_pcm_stop_close_join_verified");
+    // The Stop contract retires ownership. It does not promise the libmpv
+    // handle is reusable. Open a distinct sink only after source reclaim has
+    // observed native retirement, callback close and worker join.
+    let mut engine = MpvEngine::open(MpvConfig {
+        library: mpv_library.clone(),
+        null_output: true,
+    })?;
+    ensure(
+        runtime::loaded_mpv(mpv_library.as_deref())? == native_runtime,
+        "replacement sink changed the proof runtime",
+    )?;
     let mut resumed = pass(source, SEEK)?;
     let resumed_control = resumed.control();
     let new = engine.load_stereo_pcm(resumed.take_reader()?, &Cancellation::default())?;
     ensure(
-        new.entry_id != old.entry_id && engine.poll()?.paused,
-        "logical seek did not use a new paused native entry",
+        new.codec.as_deref() == Some("pcm_f32le")
+            && new.duration.is_none()
+            && engine.poll()?.paused,
+        "logical seek did not open paused raw PCM on the replacement sink",
     )?;
     ensure(
         resumed_control.snapshot()?.first_source_frame == SEEK,
@@ -296,10 +335,7 @@ pub fn verify(
         revoked.reclaim().is_err(),
         "revoked held source was publishable again",
     )?;
-    ensure(
-        engine.poll()?.entry_id.is_none(),
-        "revoked native entry was retained",
-    )?;
+    let revoked_retirement = stopped_sink(&mut engine, revoked_media.entry_id)?;
     stage("stereo_pcm_buffered_revocation_verified");
     ensure(
         offline.0.load(Ordering::Acquire) == 0,
@@ -308,7 +344,7 @@ pub fn verify(
     drop(engine);
     stage("stereo_pcm_native_closed");
     Ok(json!({
-        "ok":true,"kind":"stereo_pcm_fixed_local_native_v2",
+        "ok":true,"kind":"stereo_pcm_fixed_local_native_v3",
         "graphScope":"complete_fixed_local_equalizer","fixedLocalMaterial":true,
         "generalSdkGraph":false,"settingWriteApplyOrderVerified":false,
         "fullSdkGraph":false,"wholeMaterial":false,"officialUiTested":false,"physicalAudioOutputVerified":false,
@@ -319,9 +355,11 @@ pub fn verify(
         "paused":state(paused),"live":state(live),"positionBefore":before,"positionAfter":after,
         "sameControlEntry":old.entry_id,"requestedControls":[revision,live_revision],
         "retired":state(retired),"workerJoinedBeforeSeek":true,"sourcePathReplaced":true,"reopenRejected":true,
-        "seek":{"oldEntry":old.entry_id,"newEntry":new.entry_id,"firstSourceFrame":SEEK,"paused":true,"sameHeldSource":true},
+        "seek":{"oldSink":1,"newSink":2,"oldEntry":old.entry_id,"newEntry":new.entry_id,
+                "firstSourceFrame":SEEK,"paused":true,"sameHeldSource":true,"oldRetirement":old_retirement},
         "eof":state(complete),"actualNativeEof":true,"tailFrames":RATE,
-        "revoked":state(revoked_state),"revokedEntry":revoked_media.entry_id,"bufferedAheadAtRevocation":ahead,"revokedReclaimDenied":true,
+        "revoked":state(revoked_state),"revokedEntry":revoked_media.entry_id,"revokedRetirement":revoked_retirement,
+        "bufferedAheadAtRevocation":ahead,"revokedReclaimDenied":true,
         "stages":stages,
     }))
 }

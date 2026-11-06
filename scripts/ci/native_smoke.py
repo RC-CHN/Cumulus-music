@@ -102,7 +102,7 @@ STEREO_PCM_STAGES = [
 
 
 def verify_stereo_pcm(proof):
-    assert proof['kind'] == 'stereo_pcm_fixed_local_native_v2'
+    assert proof['kind'] == 'stereo_pcm_fixed_local_native_v3'
     assert proof['graphScope'] == 'complete_fixed_local_equalizer' and 'subgraph' not in proof
     assert all(proof[key] is True for key in [
         'ok', 'productionDesktopStartup', 'numericLocaleCompatible', 'guiInitialized',
@@ -135,7 +135,10 @@ def verify_stereo_pcm(proof):
     retired = proof['retired']
     assert retired['nativeEntry'] == entry and retired['readerClosed'] and retired['nativeSinkRetired']
     seek = proof['seek']
-    assert seek['oldEntry'] == entry and seek['newEntry'] != entry
+    assert seek['oldSink'] == 1 and seek['newSink'] == 2
+    # libmpv playlist entry numbers are scoped to one native handle.
+    assert seek['oldEntry'] == entry and seek['newEntry'] > 0
+    assert seek['oldRetirement'] in ('exact_stop_ack', 'native_destroyed')
     assert seek['firstSourceFrame'] == 22050 and seek['paused'] and seek['sameHeldSource']
     eof = proof['eof']
     assert eof['nativeEntry'] == seek['newEntry']
@@ -146,6 +149,7 @@ def verify_stereo_pcm(proof):
     revoked = proof['revoked']
     assert revoked['nativeEntry'] == proof['revokedEntry'] != seek['newEntry']
     assert revoked['readerClosed'] and revoked['nativeSinkRetired'] and revoked['cancelled']
+    assert proof['revokedRetirement'] in ('exact_stop_ack', 'native_destroyed')
     assert proof['bufferedAheadAtRevocation'] > 2048
 
 
