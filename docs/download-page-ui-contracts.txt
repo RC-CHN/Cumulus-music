@@ -178,7 +178,8 @@ Repair 工作任务；不发起重新下载音频，也不会在文件移动/删
   没有把歌曲 ID、主播名或专辑当作节目所属播客。下载查询不增加音乐 HTTP。
 - 普通下载表的副标题按钮沿用已接入的播客详情页；点击才发起现有只读
   /api/djradio/v3/get、/api/v6/dj/program/byradio 请求，不启动、替换或暂停音频。
-  使用既有下载页回退锚点还原同一行的副标题焦点。批量选择页仅展示文字。
+  返回走全局历史，不继承播客最近播放页的内部返回标志；使用既有下载页回退
+  锚点还原同一行的副标题焦点。批量选择页仅展示文字。
   不把本批称为完整已下载声音菜单、活动传输行或分享恢复。
 - 定向 Rust 核对见 client_downloads::downloaded_voice_header_comes_from_native_task_origin_not_raw_song_metadata；
   Linux 隔离实窗入口 scripts/ci/download_voice_podcast_smoke.py，核对纯文字、无效归属、

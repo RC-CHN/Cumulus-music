@@ -707,6 +707,12 @@ function openSceneRadio(id: string) {
   podcasts.navigate({ kind: 'radio', id, ascending: true });
   music.navigate({ kind: 'podcasts' });
 }
+function openDownloadPodcast(id: string) {
+  if (!signedIn.value || page.value.kind !== 'downloads') return;
+  // A source outside the podcast library must return through the main history.
+  podcasts.navigate({ kind: 'radio', id, ascending: true }, false);
+  music.navigate({ kind: 'podcasts' });
+}
 function openSearchChartRadio(id: string) {
   const scope = podcasts.query.value.scope;
   if (page.value.kind !== 'podcasts' || scope.kind !== 'radio' || scope.id !== id) {
@@ -5252,7 +5258,7 @@ onUnmounted(() => {
                 @dialog="downloadDialog = $event"
                 @batch="openDownloadBatch"
                 @artist="(id) => openCatalog({ kind: 'artist', id })"
-                @podcast="openSceneRadio"
+                @podcast="openDownloadPodcast"
                 @collect="(task) => (playlistDialog = { kind: 'tracks', tracks: [task.track] })"
                 @comments="(task) => trackComments(task.track)"
                 @next="queueDownload"
