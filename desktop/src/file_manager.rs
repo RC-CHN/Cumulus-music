@@ -2,6 +2,9 @@
 use cumulus_core::Error;
 use std::path::PathBuf;
 
+mod reveal;
+pub(crate) use reveal::reveal_directory;
+
 pub async fn open_directory(path: PathBuf) -> cumulus_core::Result<()> {
     tauri::async_runtime::spawn_blocking(move || {
         if !path.is_absolute() || !path.is_dir() {
@@ -63,10 +66,10 @@ fn launch(path: PathBuf) -> cumulus_core::Result<()> {
 }
 
 #[cfg(windows)]
-fn windows_open(path: PathBuf) -> cumulus_core::Result<()> {
+fn windows_shell_path(path: PathBuf) -> PathBuf {
     // Shell extensions need not accept canonical verbatim prefixes. Keep UNC
     // paths absolute when removing that prefix.
-    let path = match path.components().next() {
+    match path.components().next() {
         Some(std::path::Component::Prefix(prefix)) => match prefix.kind() {
             std::path::Prefix::VerbatimDisk(drive) => {
                 let rest: PathBuf = path.components().skip(2).collect();
@@ -82,8 +85,12 @@ fn windows_open(path: PathBuf) -> cumulus_core::Result<()> {
             _ => path,
         },
         _ => path,
-    };
-    windows_open_target(path.as_os_str())
+    }
+}
+
+#[cfg(windows)]
+fn windows_open(path: PathBuf) -> cumulus_core::Result<()> {
+    windows_open_target(windows_shell_path(path).as_os_str())
 }
 
 #[cfg(windows)]

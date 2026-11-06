@@ -120,6 +120,45 @@ impl MusicClient {
         .await
         .map_err(|_| Error::State("local library worker stopped"))?
     }
+    /// Reveal the exact folder group selected in the current local index.
+    /// The UI's group key is a selector, never a path passed to the shell.
+    pub async fn local_folder_directory(
+        &self,
+        mut query: LocalQuery,
+        revision: String,
+    ) -> Result<std::path::PathBuf> {
+        if query.group != LocalGroup::Folder
+            || query.group_key.as_deref().is_none_or(str::is_empty)
+            || query.offset != 0
+            || query.revision.is_some()
+            || revision.len() != 64
+            || !revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+        {
+            return Err(Error::InvalidInput("invalid local folder reference"));
+        }
+        query.revision = Some(revision);
+        query.validate()?;
+        let context = self.local.context().await?;
+        tokio::task::spawn_blocking(move || {
+            let snapshot = context.library.catalog(&query)?;
+            let mut members = snapshot.items.iter();
+            let parent = members
+                .next()
+                .and_then(|item| item.path.parent())
+                .ok_or(Error::QueueChanged)?;
+            // Folder keys are projected as text. Refuse a lossy-key collision
+            // rather than opening whichever native parent happened to sort first.
+            if members.any(|item| item.path.parent() != Some(parent)) {
+                return Err(Error::QueueChanged);
+            }
+            if !parent.is_absolute() || !parent.is_dir() || parent.canonicalize()? != parent {
+                return Err(Error::QueueChanged);
+            }
+            Ok(parent.to_path_buf())
+        })
+        .await
+        .map_err(|_| Error::State("local library worker stopped"))?
+    }
     pub async fn local_command(&self, command: LocalCommand) -> Result<()> {
         let context = self.local.context().await?;
         tokio::task::spawn_blocking(move || {

@@ -340,6 +340,7 @@ export function createTauriClient(): CoreClient {
     pickLocalDirectory: () => invoke('pick_local_directory'),
     openLocalTrackDirectory: (id, revision) =>
       invoke('open_local_track_directory', { id, revision }),
+    revealLocalFolder: (query, revision) => invoke('reveal_local_folder', { query, revision }),
     localMatchView: (epoch, ids) => invoke('local_match_view', { epoch, ids }),
     localMatchCommand: (epoch, command) => invoke('local_match_command', { epoch, command }),
     mvPage: (epoch, query, refresh) => invoke('mv_page', { epoch, query, refresh }),

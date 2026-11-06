@@ -32,6 +32,7 @@ function fixture(overrides: Partial<LocalClient> = {}) {
     localCommand: async () => {},
     pickLocalDirectory: async () => null,
     openLocalTrackDirectory: async () => {},
+    revealLocalFolder: async () => {},
     ...overrides,
   } satisfies LocalClient;
 }

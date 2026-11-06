@@ -300,6 +300,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 local::local_command,
                 local::pick_local_directory,
                 local::open_local_track_directory,
+                local::reveal_local_folder,
                 local::local_match_view,
                 local::local_match_command,
                 commands::account_snapshot,

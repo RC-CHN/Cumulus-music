@@ -145,6 +145,26 @@ macOS不在当前支持范围。Linux验证不能单独推出Windows选择器/�
   资源菜单，hybrid_app/622.js:3492–3523 确认「播放」「下一首播放」和其他系统/删除分支。
 - Cumulus 支持右键和 Shift+F10，操作点击的歌手、专辑或精确目录，不改变选中分组。
   两项复用原生索引版本校验和本地队列，按当前关键词、排序及可用性设置执行；不从当前
-  可见页拼队列。打开菜单后查询或索引变化会禁用旧动作。未接打开目录和删除分支。
+  可见页拼队列。打开菜单后查询或索引变化会禁用旧动作。分组删除分支仍未接。
 - 本地队列 WebView 探针核对选择外目录「下一首播放」仅插入其本地曲目、保留当前暂停
   实例，以及键盘菜单、Escape 归还焦点和「播放」按该目录替换队列；没有在线请求。
+
+本地文件夹分组定位
+- 官方 FolderTreeNode.tsx:125–149 把点击的文件夹 node.path 交给 localMusicGroup 菜单；
+  M622:3492–3512 仅在 groupType=file 时把「打开文件所在目录」放在播放/下一首后。
+  M3085:3160–3175,3208–3212 调用 Os.revealInFileExplorer(path)，M4:13798–13808 的
+  默认参数选 os.shellExplor。下载目录传 true 的 os.shellOpen 是另一条分支。
+- x64 3.1.42.205594 cloudmusic.dll SHA-256
+  557d7706dedc8556a8bd279d4dfe2bc05b80ad729a8749caccd9e29916935493：
+  F6BD4D–F6BD62 注册 shellExplor→F6DA90；F6DDD1–F6DE09 绑定任务 32A660；
+  32A7FD–32A80E 解析 SHOpenFolderAndSelectItems，32A864–32AA59 取得 Shell PIDL
+  后用 cidl=1、flags=0 定位一个项目。这是静态取证，不代表运行原 DLL 或实机 Explorer。
+- 菜单只对实际文件夹节点显示，右键和 Shift+F10 共用菜单；当前分组、搜索、队列均不改，
+  菜单关闭后复用现有焦点回归。Renderer 仅发送当前查询、组键和索引修订；Core 从索引
+  成员的 PathBuf 得到唯一物理父目录，不把组键转成 Shell 路径。拒绝其他分组、过期修订、
+  碰撞、缺失/转向的目录。IPC 仅主窗口，系统调用前再次检查绝对规范目录。没有文件读写、
+  远端请求或播放器改动。
+- Windows 在独立 STA 对系统解析的父 PIDL 和相对子 PIDL 调用相同 API。Linux 用私有
+  工作线程对会话总线的 FileManager1.ShowItems 传一个编码本地 URI；仅在总线或方法明确
+  不可用时用 xdg-open 打开父目录，不能选中。超时、拒绝或其他不确定结果只报错，不重复
+  启动。无父目录的卷根不作为可定位对象；不声称每个文件管理器行为相同。

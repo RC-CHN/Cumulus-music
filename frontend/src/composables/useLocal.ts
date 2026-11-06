@@ -166,6 +166,7 @@ export function useLocal(core: LocalClient = useCore()) {
     choose,
     openTrackDirectory: (id: string, revision: string) =>
       core.openLocalTrackDirectory(id, revision),
+    revealFolder: (query: LocalQuery, revision: string) => core.revealLocalFolder(query, revision),
     captureVisit,
     dispose,
   };

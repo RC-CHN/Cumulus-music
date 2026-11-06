@@ -63,6 +63,22 @@ pub async fn open_local_track_directory<R: tauri::Runtime>(
 }
 
 #[tauri::command]
+pub async fn reveal_local_folder<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    query: LocalQuery,
+    revision: String,
+) -> Result<(), ClientError> {
+    if window.label() != "main" {
+        return Err(Error::InvalidInput("local folder reveal requires main window").into());
+    }
+    let path = client.local_folder_directory(query, revision).await?;
+    crate::file_manager::reveal_directory(path)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn pick_local_directory<R: tauri::Runtime>(
     window: tauri::WebviewWindow<R>,
 ) -> Result<Option<String>, ClientError> {

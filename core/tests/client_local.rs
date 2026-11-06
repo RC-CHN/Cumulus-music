@@ -1161,3 +1161,88 @@ async fn remove_from_local_list_survives_monitor_and_keeps_cue_siblings_and_sour
         2
     );
 }
+
+#[tokio::test]
+async fn local_folder_reveal_resolves_only_exact_indexed_parent_of_current_group() {
+    let root = tempfile::tempdir().unwrap();
+    let media = root.path().join("media");
+    let folder = media.join("A & 内层");
+    let neighbor = media.join("A & 内层 extra");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::create_dir_all(&neighbor).unwrap();
+    std::fs::write(folder.join("Anchor.wav"), "fixture").unwrap();
+    std::fs::write(neighbor.join("Other.wav"), "fixture").unwrap();
+    let (_, client, library) = client(&root.path().join("state"), Arc::new(Probe::default()));
+    library.scan(&media).unwrap();
+    let query = LocalQuery {
+        group: LocalGroup::Folder,
+        ..LocalQuery::default()
+    };
+    let page = client.local_page(query.clone()).await.unwrap();
+    let target = folder.canonicalize().unwrap();
+    let target_key = target.to_string_lossy().into_owned();
+    assert!(page.groups.iter().any(|group| group.key == target_key));
+    let scoped = LocalQuery {
+        group_key: Some(target_key),
+        ..query
+    };
+    assert_eq!(
+        client
+            .local_folder_directory(scoped.clone(), page.revision.clone())
+            .await
+            .unwrap(),
+        target
+    );
+    for invalid in [
+        LocalQuery {
+            group: LocalGroup::Artist,
+            ..scoped.clone()
+        },
+        LocalQuery {
+            group: LocalGroup::Album,
+            ..scoped.clone()
+        },
+        LocalQuery {
+            group_key: None,
+            ..scoped.clone()
+        },
+        LocalQuery {
+            group_key: Some(root.path().to_string_lossy().into_owned()),
+            ..scoped.clone()
+        },
+        LocalQuery {
+            keyword: "Other".into(),
+            ..scoped.clone()
+        },
+    ] {
+        assert!(
+            client
+                .local_folder_directory(invalid, page.revision.clone())
+                .await
+                .is_err()
+        );
+    }
+    assert!(matches!(
+        client
+            .local_folder_directory(scoped.clone(), "0".repeat(64))
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    std::fs::rename(&folder, media.join("Moved")).unwrap();
+    assert!(matches!(
+        client
+            .local_folder_directory(scoped.clone(), page.revision.clone())
+            .await,
+        Err(Error::QueueChanged)
+    ));
+    #[cfg(unix)]
+    {
+        // Same visible path and same old index, but it now resolves outside
+        // the selected group. Neither the symlink nor its target may open.
+        std::os::unix::fs::symlink(&neighbor, &folder).unwrap();
+        assert!(matches!(
+            client.local_folder_directory(scoped, page.revision).await,
+            Err(Error::QueueChanged)
+        ));
+    }
+}

@@ -361,6 +361,17 @@ const groupMenuItems = computed(() => [
     icon: 'next' as const,
     disabled: !groupScopeCurrent.value || !props.queueable || adding.value,
   },
+  ...(groupScope.value?.query.group === 'folder'
+    ? [
+        { key: 'folder-reveal-divider', label: '', separator: true as const },
+        {
+          key: 'reveal_folder',
+          label: '打开文件所在目录',
+          icon: 'folder' as const,
+          disabled: !groupScopeCurrent.value || openingDirectory.value,
+        },
+      ]
+    : []),
 ]);
 function openGroupMenu(event: MouseEvent | KeyboardEvent) {
   if (
@@ -398,11 +409,26 @@ function openGroupMenu(event: MouseEvent | KeyboardEvent) {
       : { x: bounds.left + 8, y: bounds.bottom };
   void groupMenu.value?.showAt(point.x, point.y, target);
 }
-function groupAction(action: string) {
+async function groupAction(action: string) {
   const scope = groupScope.value;
-  if (!ownsVisit() || !scope || !groupScopeCurrent.value || adding.value) return;
+  if (!ownsVisit() || !scope || !groupScopeCurrent.value) return;
+  if (action === 'reveal_folder') {
+    if (scope.query.group !== 'folder' || openingDirectory.value) return;
+    openingDirectory.value = true;
+    directoryError.value = '';
+    try {
+      await props.model.revealFolder(scope.query, scope.revision);
+    } catch {
+      if (ownsVisit() && groupScope.value === scope && groupScopeCurrent.value)
+        directoryError.value = '无法定位文件夹，请检查目录或重新扫描后重试。';
+    } finally {
+      openingDirectory.value = false;
+    }
+    return;
+  }
+  if (adding.value) return;
   if (action === 'play' && props.playable) emit('play', scope.query, scope.revision, null);
-  else if (action === 'next' && props.queueable) void queueScope(scope.query, scope.revision);
+  else if (action === 'next' && props.queueable) await queueScope(scope.query, scope.revision);
 }
 function addAll(key: string) {
   if (key === 'queue_all' && canAdd.value && view.value)

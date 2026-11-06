@@ -93,4 +93,5 @@ export interface LocalClient {
   localCommand(command: LocalCommand): Promise<void>;
   pickLocalDirectory(): Promise<string | null>;
   openLocalTrackDirectory(id: string, revision: string): Promise<void>;
+  revealLocalFolder(query: LocalQuery, revision: string): Promise<void>;
 }
