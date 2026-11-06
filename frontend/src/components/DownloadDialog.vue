@@ -72,6 +72,7 @@ const blocked = computed(
   () =>
     busy.value ||
     choosing.value ||
+    (props.target.kind === 'voice_song' && (!props.target.live() || props.target.busy())) ||
     (props.target.kind === 'settings' &&
       (loadingQuality.value || !quality.value || !!qualityError.value)) ||
     !!view.value?.migration ||
@@ -80,28 +81,30 @@ const blocked = computed(
     !!task.value?.fileOperation,
 );
 const title = computed(() =>
-  props.target.kind === 'restart'
-    ? '从头下载'
-    : props.target.kind === 'voice'
-      ? `下载 ${props.target.tracks.length} 个单集`
-      : props.target.kind === 'cloud'
-        ? `下载 ${props.target.tracks.length} 首云盘原文件`
-        : props.target.kind === 'start'
-          ? `下载 ${props.target.tracks.length} 首歌曲`
-          : props.target.kind === 'settings'
-            ? '音质与下载'
-            : props.target.kind === 'cancel'
-              ? '删除下载任务'
-              : props.target.kind === 'clear'
-                ? '清空正在下载'
-                : confirmation.value
-                  ? {
-                      rename: '重命名下载文件',
-                      move: '移动下载文件',
-                      delete: '删除下载文件',
-                      forget: '移出下载列表',
-                    }[confirmation.value]
-                  : '管理下载',
+  props.target.kind === 'voice_song'
+    ? '下载歌曲'
+    : props.target.kind === 'restart'
+      ? '从头下载'
+      : props.target.kind === 'voice'
+        ? `下载 ${props.target.tracks.length} 个单集`
+        : props.target.kind === 'cloud'
+          ? `下载 ${props.target.tracks.length} 首云盘原文件`
+          : props.target.kind === 'start'
+            ? `下载 ${props.target.tracks.length} 首歌曲`
+            : props.target.kind === 'settings'
+              ? '音质与下载'
+              : props.target.kind === 'cancel'
+                ? '删除下载任务'
+                : props.target.kind === 'clear'
+                  ? '清空正在下载'
+                  : confirmation.value
+                    ? {
+                        rename: '重命名下载文件',
+                        move: '移动下载文件',
+                        delete: '删除下载文件',
+                        forget: '移出下载列表',
+                      }[confirmation.value]
+                    : '管理下载',
 );
 let focus: HTMLElement | null = null;
 onMounted(() => {
@@ -130,7 +133,12 @@ async function focusForm() {
 }
 watch(confirmation, () => void focusForm());
 function close() {
-  if (!busy.value && !choosing.value) emit('close');
+  if (
+    !busy.value &&
+    !choosing.value &&
+    (props.target.kind !== 'voice_song' || !props.target.busy())
+  )
+    emit('close');
 }
 async function choose(kind: 'root' | 'file') {
   choosing.value = true;
@@ -196,6 +204,10 @@ async function save() {
     file_type: fileType.value,
   });
   if (!configured || configured.failed.length) return;
+  if (props.target.kind === 'voice_song') {
+    if (props.target.live() && (await props.target.start({ ...options.value }))) emit('started');
+    return;
+  }
   if (props.target.kind === 'cloud') {
     await perform({
       kind: 'start_cloud',
@@ -250,7 +262,9 @@ async function fileAction() {
     ref="dialog"
     class="playlist-dialog download-dialog"
     :class="{
-      'download-settings-dialog': ['start', 'settings', 'cloud', 'voice'].includes(target.kind),
+      'download-settings-dialog': ['start', 'settings', 'cloud', 'voice', 'voice_song'].includes(
+        target.kind,
+      ),
     }"
     aria-labelledby="download-dialog-title"
     @cancel.prevent="close"
@@ -260,7 +274,7 @@ async function fileAction() {
       <button
         class="icon-button"
         aria-label="关闭下载对话框"
-        :disabled="busy || choosing"
+        :disabled="busy || choosing || (target.kind === 'voice_song' && target.busy())"
         @click="close"
       >
         <Icon name="close" />
@@ -278,6 +292,7 @@ async function fileAction() {
       v-if="
         target.kind === 'settings' ||
         target.kind === 'start' ||
+        target.kind === 'voice_song' ||
         target.kind === 'cloud' ||
         target.kind === 'voice'
       "
@@ -299,6 +314,16 @@ async function fileAction() {
           </button>
         </div>
         <fieldset :disabled="blocked">
+          <p
+            v-if="target.kind === 'voice_song'"
+            class="download-selection ellipsis"
+            :title="target.title"
+          >
+            {{ target.title }}
+          </p>
+          <p v-if="target.kind === 'voice_song' && target.message" class="muted" role="status">
+            {{ target.message }}
+          </p>
           <p
             v-if="target.kind === 'start' || target.kind === 'cloud' || target.kind === 'voice'"
             class="download-selection ellipsis"
@@ -398,7 +423,10 @@ async function fileAction() {
           {{
             busy
               ? '正在处理…'
-              : target.kind === 'start' || target.kind === 'cloud' || target.kind === 'voice'
+              : target.kind === 'start' ||
+                  target.kind === 'cloud' ||
+                  target.kind === 'voice' ||
+                  target.kind === 'voice_song'
                 ? '开始下载'
                 : directoryMode === 'migrate' && view?.directory?.root !== root.trim()
                   ? '保存并迁移'

@@ -210,6 +210,8 @@ import DownloadBatchPage from './components/download/DownloadBatchPage.vue';
 import type { BatchCategory } from './services/downloadBatch';
 import type { DownloadQuery } from './services/downloads';
 import DownloadDialog from './components/DownloadDialog.vue';
+import VoiceSongDownloadPicker from './components/VoiceSongDownloadPicker.vue';
+import { useVoiceSongDownload } from './composables/useVoiceSongDownload';
 import CloudPage from './components/CloudPage.vue';
 import CloudBatchPage from './components/cloud/CloudBatchPage.vue';
 import MvCollection from './components/MvCollection.vue';
@@ -1196,6 +1198,7 @@ function showPlaybackVoiceSongMenu(
   const selection = indices && voiceSongGroup(target, indices);
   if (indices && !selection) return;
   const route = page.value;
+  const opener = event.currentTarget instanceof HTMLElement ? event.currentTarget : undefined;
   const live = () => route === page.value && voiceSongs.ownsTarget(target);
   void trackActions.value?.show({
     track: row.track,
@@ -1216,6 +1219,12 @@ function showPlaybackVoiceSongMenu(
       live,
       copyrightBlocked: row.rights.copyrightBlocked,
       selection,
+      download() {
+        if (!live() || selection) return;
+        voiceDownloadRoute.value = route;
+        voiceDownloadOpener.value = opener;
+        void voiceSongDownload.request({ target, trackId: row.track.id, title: row.track.name });
+      },
       comments() {
         if (!live()) return;
         player.lyricsOpen.value = false;
@@ -1846,6 +1855,34 @@ const activeVoicePage = computed(() =>
 );
 const voicePage = useVoicePage(core, activeVoicePage);
 const { recommendations: voiceRecommendations, songs: voiceSongs } = voicePage;
+const voiceDownloadRoute = shallowRef<typeof page.value>();
+const voiceDownloadOpener = shallowRef<HTMLElement>();
+const voiceSongDownload = useVoiceSongDownload(
+  core,
+  (target) => page.value === voiceDownloadRoute.value && voiceSongs.ownsTarget(target),
+  () => {
+    void music.bootstrap(false);
+  },
+);
+const voiceSongDownloadOptions = computed<DownloadDialogTarget | undefined>(() => {
+  const stage = voiceSongDownload.stage.value;
+  if (stage.kind !== 'options') return;
+  return {
+    kind: 'voice_song',
+    title: stage.opening.title,
+    message: voiceSongDownload.message.value,
+    live: () => voiceSongDownload.stage.value === stage,
+    busy: () => voiceSongDownload.busy.value,
+    start: voiceSongDownload.start,
+  };
+});
+function voiceSongDownloadFocus() {
+  return voiceDownloadOpener.value ?? null;
+}
+function openVoiceSongDownloads() {
+  player.lyricsOpen.value = false;
+  music.navigate({ kind: 'downloads', initialTab: 'active' });
+}
 const { count: playbackCommentCount, notePublished: notePlaybackCommentPublished } =
   usePlaybackCommentInfo(player.view, player.loaded, () => music.account.value.epoch);
 const vinylCommentsOpen = ref(false);
@@ -6186,6 +6223,25 @@ onUnmounted(() => {
         :target="downloadDialog"
         @close="downloadDialog = undefined"
         @started="music.navigate({ kind: 'downloads', initialTab: 'active' })"
+      />
+    </ModalTransition>
+    <ModalTransition
+      :return-focus="voiceSongDownloadFocus"
+      :restore-focus="player.lyricsOpen.value && signedIn"
+    >
+      <DownloadDialog
+        v-if="voiceSongDownloadOptions"
+        :model="downloads"
+        :target="voiceSongDownloadOptions"
+        @close="voiceSongDownload.close"
+        @started="openVoiceSongDownloads"
+      />
+      <VoiceSongDownloadPicker
+        v-else-if="voiceSongDownload.stage.value.kind !== 'idle'"
+        :model="voiceSongDownload"
+        :epoch="account.epoch"
+        @downloads="openVoiceSongDownloads"
+        @expired="music.bootstrap(false)"
       />
     </ModalTransition>
   </div>

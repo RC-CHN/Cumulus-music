@@ -166,6 +166,14 @@ export type DownloadDialogTarget =
   | { kind: 'voice'; tracks: Pick<import('./podcast').EpisodeView, 'id' | 'name'>[] }
   | { kind: 'cloud'; tracks: TrackView[]; revision: string }
   | { kind: 'start'; tracks: TrackView[] }
+  | {
+      kind: 'voice_song';
+      title: string;
+      message: string;
+      live: () => boolean;
+      busy: () => boolean;
+      start: (options: DownloadOptions) => Promise<boolean>;
+    }
   | { kind: 'settings' }
   | { kind: 'file'; task: DownloadTask; action?: import('./downloadMenu').DownloadFileAction }
   | { kind: 'cancel'; task: DownloadTask }

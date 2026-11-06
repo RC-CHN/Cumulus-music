@@ -87,8 +87,15 @@ const items = computed<MenuItem[]>(() => {
           { key: 'collect', label: '收藏', icon: 'star', disabled: !available },
         ]
       : []),
-    ...(!input?.episode
-      ? [{ key: 'download', label: '下载', icon: 'download', disabled: !available }]
+    ...(!selection && (!input.episode || input.episode.download)
+      ? [
+          {
+            key: 'download',
+            label: '下载',
+            icon: 'download',
+            disabled: !available || !!input.episode?.copyrightBlocked,
+          },
+        ]
       : []),
     ...(available && link
       ? [
@@ -244,8 +251,10 @@ async function select(key: string) {
   const { track } = input;
   if (key === 'play') input.play();
   else if (key === 'collect') emit('collect', track);
-  else if (key === 'download') emit('download', track);
-  else if (key === 'comments') {
+  else if (key === 'download') {
+    if (input.episode) input.episode.download?.();
+    else emit('download', track);
+  } else if (key === 'comments') {
     if (input.episode) input.episode.comments();
     else emit('comments', track);
   } else if (key === 'remove' && playlist.value) emit('remove', track, playlist.value);

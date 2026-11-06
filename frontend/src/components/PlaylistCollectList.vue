@@ -10,6 +10,7 @@ const props = defineProps<{
   selectedId: string;
   scrollTop: number;
   loading: boolean;
+  purpose?: 'download' | 'collect';
 }>();
 const emit = defineEmits<{
   select: [id: string];
@@ -85,7 +86,7 @@ async function move(event: KeyboardEvent) {
     ref="container"
     class="collect-list"
     tabindex="0"
-    aria-label="选择收藏歌单"
+    :aria-label="purpose === 'download' ? '选择下载歌单' : '选择收藏歌单'"
     @scroll.passive="scroll"
     @keydown="move"
   >
@@ -99,7 +100,11 @@ async function move(event: KeyboardEvent) {
       :data-index="start + offset"
       :tabindex="start + offset === active ? 0 : -1"
       :aria-disabled="disabled"
-      :aria-label="playlist ? `收藏到：${playlist.name}` : '创建新歌单'"
+      :aria-label="
+        playlist
+          ? `${purpose === 'download' ? '下载到' : '收藏到'}：${playlist.name}`
+          : '创建新歌单'
+      "
       @focus="active = start + offset"
       @click="!disabled && (playlist ? emit('select', playlist.id) : emit('create'))"
     >
@@ -122,6 +127,8 @@ async function move(event: KeyboardEvent) {
       <Icon v-if="playlist?.id === selectedId && disabled" class="collect-working" name="refresh" />
     </button>
     <div :style="{ height: `${(entries.length - end) * 64}px` }" aria-hidden="true" />
-    <p v-if="!playlists.length && !loading" class="collect-empty">还没有可收藏歌曲的自建歌单</p>
+    <p v-if="!playlists.length && !loading" class="collect-empty">
+      {{ purpose === 'download' ? '还没有可下载到的自建歌单' : '还没有可收藏歌曲的自建歌单' }}
+    </p>
   </div>
 </template>
