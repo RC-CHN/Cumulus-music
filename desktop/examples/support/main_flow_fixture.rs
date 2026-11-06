@@ -201,7 +201,14 @@ impl Api for Service {
                 "/api/v3/discovery/recommend/songs" => {
                     json!({"code":200,"data":{"dailySongs":[song()]}})
                 }
-                "/api/search/default/keyword/get" => json!({"code":200,"data":{}}),
+                // This flow tests offline playback and disposal, not recovery
+                // of an empty search default. A valid row settles the global
+                // default ticker before the cutoff; search_smoke tests recovery.
+                "/api/search/default/keyword/get" => json!({"code":200,"data":{
+                    "refreshTime":5000,"keywords":[{
+                        "realkeyword":"合成主流程默认关键词","showKeyword":"发现合成主流程音乐"
+                    }]
+                }}),
                 "/api/search/pc/complex/page" => {
                     json!({"code":200,"data":{"blocks":[{"blockCode":"search_block_song","resources":[{"type":"song","baseInfo":song()}]}],"hasMore":false}})
                 }
