@@ -123,6 +123,6 @@ Linux 密闭实窗验证：
 其中一份为线上歌曲 8。两个入口分别读取正确 ID、打开真实弹窗并取消；未关联文件
 只给提示。相比普通歌曲用例，三条新路径没有产生任何额外写入，也不改变原生暂停
 位置或队列。集成 Linux 实窗 12 阶段及截图：
-`.build/ui-proof/post-rc-queue-resource-r2/report.json`。
+`.build/ui-proof/post-rc-queue-resource-r3/report.json`。
 Windows CI 使用程序化输入，仍核对原生队列、时钟、写入和回读。右键／更多入口共用
 同一个原生选择检查，实窗验证与报告见 queue-catalog-menu.txt。
