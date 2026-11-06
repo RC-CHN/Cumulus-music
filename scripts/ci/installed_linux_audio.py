@@ -18,7 +18,6 @@ import time
 
 TITLE = 'Synthetic Playback Check'
 MONITOR_TONES = (60, 440, 10000)
-INDEXED_FLAC_BLOCK_SIZES = (1024, 4608)
 
 
 def stale_accessible_lookup(error):
@@ -66,22 +65,8 @@ def wait_for(label, check, timeout=15):
     raise AssertionError(f'timed out waiting for {label}{contention}')
 
 
-def indexed_flac_streaminfo(source, block_size):
-    assert block_size in INDEXED_FLAC_BLOCK_SIZES, 'unsupported indexed proof block size'
-    with source.open('rb') as fixture_file:
-        header = fixture_file.read(42)
-    assert len(header) == 42 and header[:4] == b'fLaC' and header[4] & 0x7f == 0
-    assert int.from_bytes(header[5:8], 'big') == 34
-    low, high = struct.unpack_from('>HH', header, 8)
-    assert low == high == block_size, f'wrong fixture STREAMINFO block size: {low}/{high}'
-    packed = int.from_bytes(header[18:26], 'big')
-    assert packed >> 44 == 48000 and ((packed >> 41) & 7) + 1 == 2
-    assert ((packed >> 36) & 31) + 1 == 16 and packed & ((1 << 36) - 1) == 65 * 48000
-    return {'minBlockFrames': low, 'maxBlockFrames': high}
-
-
 @contextmanager
-def isolated_audio(root, env, *, indexed_flac_block_size=None):
+def isolated_audio(root, env, *, indexed_flac=False):
     for name in ('openbox', 'ffmpeg', 'pipewire', 'pipewire-pulse', 'wireplumber', 'pactl', 'pw-dump'):
         assert shutil.which(name), f'local playback proof requires {name}'
     assert not Path('/dev/snd').exists(), 'hide host audio devices (bwrap --dev /dev)'
@@ -172,18 +157,21 @@ def isolated_audio(root, env, *, indexed_flac_block_size=None):
                            for frequency, gain in zip(MONITOR_TONES, (.02, .10, .02)))
         # The older LADSPA proof does not require a particular FLAC geometry.
         # The indexed graph admits only independently decoded stereo s16.
-        if indexed_flac_block_size is not None:
-            audio = f'aevalsrc={fixture}|{fixture}:s=48000:d=65:c=stereo'
-            encoding = ['-c:a', 'flac', '-sample_fmt', 's16',
-                        '-frame_size', str(indexed_flac_block_size)]
-        else:
-            audio = f'aevalsrc={fixture}:s=48000:d=65'
-            encoding = []
+        audio = f'aevalsrc={fixture}|{fixture}:s=48000:d=65:c=stereo' if indexed_flac else (
+            f'aevalsrc={fixture}:s=48000:d=65')
+        encoding = ['-c:a', 'flac', '-sample_fmt', 's16', '-frame_size', '1024'] if indexed_flac else []
         subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i',
                         audio, *encoding, '-metadata', f'title={TITLE}', source],
                        check=True, timeout=20)
-        if indexed_flac_block_size is not None:
-            indexed_flac_streaminfo(source, indexed_flac_block_size)
+        if indexed_flac:
+            with source.open('rb') as fixture_file:
+                header = fixture_file.read(42)
+            assert len(header) == 42 and header[:4] == b'fLaC' and header[4] & 0x7f == 0
+            assert int.from_bytes(header[5:8], 'big') == 34
+            assert int.from_bytes(header[8:10], 'big') == int.from_bytes(header[10:12], 'big') == 1024
+            packed = int.from_bytes(header[18:26], 'big')
+            assert packed >> 44 == 48000 and ((packed >> 41) & 7) + 1 == 2
+            assert ((packed >> 36) & 31) + 1 == 16 and packed & ((1 << 36) - 1) == 65 * 48000
         yield source
 
 
@@ -465,8 +453,7 @@ def mapped_regular_file(maps, path):
 
 
 def verify_playback(root, app, window, x, y, width, height, source, env, screenshot, packaged_filter=None,
-                    verify_monitor_pcm=False, accessibility=None, *, indexed_flac_library=None,
-                    indexed_flac_block_size=None):
+                    verify_monitor_pcm=False, accessibility=None, *, indexed_flac_library=None):
     assert (width, height) == (1120, 760), 'local playback coordinates require the ordinary 1120x760 X11 layout'
     database = root/'state/core.sqlite3'
 
@@ -791,6 +778,5 @@ def verify_playback(root, app, window, x, y, width, height, source, env, screens
             'trustedDecoderMappedByDeviceAndInode': True, 'boostedBassAndTreble': True,
             'masterBypassRestoredUnfilteredPcm': True, 'sameEntryDuringBypass': True,
             'format': '48kHz/stereo/s16',
-            'streamInfo': indexed_flac_streaminfo(source, indexed_flac_block_size),
         }
     return report
