@@ -1,11 +1,5 @@
 <script setup lang="ts">
 import {
-  voiceCreatorTargetIsCurrent,
-  voicePodcastTargetIsCurrent,
-  type VoiceCreatorTarget,
-  type VoicePodcastTarget,
-} from './services/voiceDetail';
-import {
   confirmLyricContributorTarget,
   type LyricContributorTarget,
 } from './services/lyricContributors';
@@ -184,9 +178,13 @@ import { useVinylSimilar } from './composables/useVinylSimilar';
 import { useVinylWiki } from './composables/useVinylWiki';
 import { useVoicePage } from './composables/useVoicePage';
 import {
+  sameVoicePageTarget,
   voicePageCreatorTarget,
   voicePagePodcastTarget,
   voicePageScope,
+  type VinylVoiceDetailView,
+  type VoicePageCreatorTarget,
+  type VoicePagePodcastTarget,
 } from './services/voicePage';
 import type { VoiceRecommendationTarget } from './services/voiceRecommendations';
 import {
@@ -1043,9 +1041,24 @@ function openDiscoveryHomeCard(card: DiscoveryHomeCard, section: DiscoveryHomeSe
 function openCatalog(resource: CatalogResource) {
   music.navigate({ kind: 'catalog', resource });
 }
-async function openPlaybackVoiceCreator(target: VoiceCreatorTarget) {
+const voiceRouteFailure = shallowRef<{ detail: VinylVoiceDetailView; text: string }>();
+async function openPlaybackVoiceRoute(
+  intent:
+    | { kind: 'creator'; target: VoicePageCreatorTarget }
+    | { kind: 'radio'; target: VoicePagePodcastTarget },
+) {
   const route = page.value;
   const detail = voicePage.detail.value;
+  const { kind, target } = intent;
+  const shownId = intent.kind === 'creator' ? intent.target.userId : intent.target.radioId;
+  const ownsTarget = (view = player.view.value) => {
+    if (kind === 'creator') {
+      const current = voicePageCreatorTarget(detail, view, account.value.epoch);
+      return sameVoicePageTarget(current, target) && current?.userId === shownId;
+    }
+    const current = voicePagePodcastTarget(detail, view, account.value.epoch);
+    return sameVoicePageTarget(current, target) && current?.radioId === shownId;
+  };
   const ownsView = () =>
     detail !== undefined &&
     detail === voicePage.detail.value &&
@@ -1053,47 +1066,32 @@ async function openPlaybackVoiceCreator(target: VoiceCreatorTarget) {
     target.epoch === account.value.epoch &&
     signedIn.value &&
     !music.initializing.value &&
-    player.lyricsOpen.value;
-  if (
-    !ownsView() ||
-    !voiceCreatorTargetIsCurrent(target, player.view.value) ||
-    voicePageCreatorTarget(detail, player.view.value, account.value.epoch)?.userId !== target.userId
-  )
-    return;
+    player.lyricsOpen.value &&
+    ownsTarget();
+  if (!detail || !ownsView()) return;
+  voiceRouteFailure.value = undefined;
   try {
-    const current = await player.syncPlayback();
-    if (!ownsView() || !voiceCreatorTargetIsCurrent(target, current)) return;
+    if (target.receipt) {
+      const id = await core.playerVinylVoiceDetailTarget({
+        kind,
+        epoch: target.epoch,
+        playId: target.playId,
+        receipt: target.receipt,
+      });
+      if (!ownsView() || id !== shownId) return;
+    } else {
+      const current = await player.syncPlayback();
+      if (!current || !ownsView() || !ownsTarget(current)) return;
+    }
     player.lyricsOpen.value = false;
-    music.navigate({ kind: 'playlist_creator', id: target.userId });
-  } catch {
-    // A stale voice or failed native observation must not open another profile.
-  }
-}
-async function openPlaybackVoicePodcast(target: VoicePodcastTarget) {
-  const route = page.value;
-  const detail = voicePage.detail.value;
-  const ownsView = () =>
-    detail !== undefined &&
-    detail === voicePage.detail.value &&
-    route === page.value &&
-    target.epoch === account.value.epoch &&
-    signedIn.value &&
-    !music.initializing.value &&
-    player.lyricsOpen.value;
-  if (
-    !ownsView() ||
-    !voicePodcastTargetIsCurrent(target, player.view.value) ||
-    voicePagePodcastTarget(detail, player.view.value, account.value.epoch)?.radioId !==
-      target.radioId
-  )
-    return;
-  try {
-    const current = await player.syncPlayback();
-    if (!ownsView() || !voicePodcastTargetIsCurrent(target, current)) return;
-    player.lyricsOpen.value = false;
-    openSceneRadio(target.radioId);
-  } catch {
-    // A stale episode cannot navigate from its old card.
+    if (kind === 'creator') music.navigate({ kind: 'playlist_creator', id: shownId });
+    else openSceneRadio(shownId);
+  } catch (error) {
+    if (!ownsView()) return;
+    const issue = failure(error);
+    if (issue.code === 'session_expired' || issue.code === 'profile_changed')
+      void music.bootstrap(false);
+    else if (issue.code !== 'stale') voiceRouteFailure.value = { detail, text: issue.message };
   }
 }
 async function openPlaybackVoiceRecommendation(target: VoiceRecommendationTarget) {
@@ -5976,6 +5974,9 @@ onUnmounted(() => {
         :wiki-model="vinylWiki"
         :similar-model="vinylSimilar"
         :voice-page="voicePage"
+        :voice-route-error="
+          voiceRouteFailure?.detail === voicePage.detail.value ? voiceRouteFailure?.text : undefined
+        "
         :liked-songs="liked"
         :busy-likes="busyLikes"
         :comments-available="!!vinylCommentTarget"
@@ -5989,8 +5990,8 @@ onUnmounted(() => {
         @report="reportLyrics"
         @comment-report-expired="music.bootstrap(false)"
         @source="openPlaybackSource"
-        @voice-creator="openPlaybackVoiceCreator"
-        @voice-podcast="openPlaybackVoicePodcast"
+        @voice-creator="(target) => openPlaybackVoiceRoute({ kind: 'creator', target })"
+        @voice-podcast="(target) => openPlaybackVoiceRoute({ kind: 'radio', target })"
         @voice-recommendation="openPlaybackVoiceRecommendation"
         @voice-song-play="actOnVoiceSong"
         @voice-song-like="likePlaybackVoiceSong"

@@ -6,9 +6,11 @@ import type { TrackView } from '../src/services/contracts.ts';
 import type { PlayerView } from '../src/services/player.ts';
 import {
   currentVoicePageDetail,
+  sameVoicePageTarget,
   voicePageCreatorTarget,
   voicePagePodcastTarget,
   voicePageScope,
+  voicePageSubscriptionAction,
   type VinylVoiceDetailView,
   type VoicePageScope,
 } from '../src/services/voicePage.ts';
@@ -269,7 +271,7 @@ test('a page visit requires an active native voice and exact entry and epoch', (
   assert.equal(voicePageScope({ ...view, fm: true }, '1'), undefined);
 });
 
-test('fresh program labels do not grant a navigation or subscription target for different native IDs', () => {
+test('changed program destinations require the current native detail receipt', () => {
   const fresh = detail(a);
   fresh.detail.creator = { id: '41', name: '新主播名' };
   fresh.detail.radio = { id: '51', name: '新播单名', ownedByViewer: false };
@@ -299,9 +301,75 @@ test('fresh program labels do not grant a navigation or subscription target for 
   assert.equal(currentVoicePageDetail(changed, current, a.epoch), changed);
   assert.equal(voicePageCreatorTarget(changed, current, a.epoch), undefined);
   assert.equal(voicePagePodcastTarget(changed, current, a.epoch), undefined);
+  const signed = { ...changed, actionReceipt: 'new-receipt' };
+  const creator = voicePageCreatorTarget(signed, current, a.epoch)!;
+  const podcast = voicePagePodcastTarget(signed, current, a.epoch)!;
+  assert.deepEqual(creator, {
+    epoch: a.epoch,
+    playId: a.playId,
+    voiceId: a.voiceId,
+    receipt: 'new-receipt',
+    userId: '42',
+  });
+  assert.equal(podcast.radioId, '52');
+  assert.equal(podcast.receipt, 'new-receipt');
+  assert.equal(
+    sameVoicePageTarget(
+      voicePagePodcastTarget({ ...signed, actionReceipt: 'newer' }, current, a.epoch),
+      podcast,
+    ),
+    false,
+  );
+  assert.equal(
+    voicePagePodcastTarget(signed, { ...current, entryId: 'different' }, a.epoch),
+    undefined,
+  );
   assert.equal(voicePageCreatorTarget(undefined, current, a.epoch), undefined);
   assert.equal(
     currentVoicePageDetail(fresh, { ...current, entryId: 'different' }, a.epoch),
     undefined,
   );
+});
+
+test('signed program subscription and readback send only the native receipt', async () => {
+  const calls: unknown[] = [];
+  const response = {
+    epoch: a.epoch,
+    value: {
+      id: '52',
+      action: 'subscribe',
+      desired: true,
+      observed: true,
+      phase: 'confirmed',
+      acknowledged: true,
+    } as const,
+  };
+  const core: Parameters<typeof voicePageSubscriptionAction>[0] = {
+    async playerVinylVoiceDetailTarget() {
+      throw new Error('unexpected route request');
+    },
+    async podcastCommand() {
+      throw new Error('signed actions must never use raw-ID podcast commands');
+    },
+    async changeFreshVinylPodcastSubscription(scope, expected) {
+      calls.push(['change', scope, expected]);
+      return response;
+    },
+    async reconcileFreshVinylPodcastSubscription(scope) {
+      calls.push(['reconcile', scope]);
+      return response;
+    },
+  };
+  const target = { ...a, radioId: '52', receipt: 'signed' };
+  await voicePageSubscriptionAction(core, target, {
+    kind: 'toggle',
+    subscribed: false,
+    busy: false,
+  })();
+  await voicePageSubscriptionAction(core, target, { kind: 'reconcile', busy: false })();
+  const scope = { epoch: a.epoch, playId: a.playId, receipt: 'signed' };
+  assert.deepEqual(calls, [
+    ['change', scope, false],
+    ['reconcile', scope],
+  ]);
 });

@@ -3,11 +3,12 @@ import { computed } from 'vue';
 import Icon from './Icon.vue';
 import { useCoverImage } from '../composables/useCoverImage';
 import type { PodcastSearchFollow } from '../services/podcast';
-import type { VoicePlaybackPodcast, VoicePodcastTarget } from '../services/voiceDetail';
+import type { VoicePlaybackPodcast } from '../services/voiceDetail';
+import type { VoicePagePodcastTarget } from '../services/voicePage';
 
 const props = defineProps<{
   radio: VoicePlaybackPodcast;
-  target?: VoicePodcastTarget;
+  target?: VoicePagePodcastTarget;
   epoch: string;
   episodeCover?: string | null;
   signedIn: boolean;
@@ -17,9 +18,9 @@ const props = defineProps<{
   status: string;
 }>();
 const emit = defineEmits<{
-  open: [target: VoicePodcastTarget];
+  open: [target: VoicePagePodcastTarget];
   activate: [
-    target: VoicePodcastTarget,
+    target: VoicePagePodcastTarget,
     expected: PodcastSearchFollow | undefined,
     opener: HTMLElement,
   ];

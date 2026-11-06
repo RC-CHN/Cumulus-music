@@ -51,10 +51,19 @@ test('vinyl collection binds the write to the played episode and hides old compl
       () => {},
       {
         scope: () => target.value.playId,
-        command: (id, expected) =>
-          target.value.radioId === id
-            ? { kind: 'change_vinyl_subscription', play_id: target.value.playId, expected }
-            : undefined,
+        action(owner, id, current) {
+          const captured = target.value;
+          if (captured.radioId !== id || current.kind !== 'toggle') return;
+          return () => {
+            assert.equal(owner, '2');
+            writes.push({
+              kind: 'change_vinyl_subscription',
+              play_id: captured.playId,
+              expected: current.subscribed,
+            });
+            return write.promise;
+          };
+        },
       },
     ),
   )!;
@@ -85,6 +94,55 @@ test('vinyl collection binds the write to the played episode and hides old compl
   active.value = false;
   await model.retry();
   assert.equal(reads, 2, 'inactive details cannot reread membership');
+});
+
+test('a completion from a replaced native detail receipt cannot overlay fresh membership', async (t) => {
+  const receipt = ref('first');
+  const membership = deferred<AccountData<PodcastSearchMembership>>();
+  let reads = 0;
+  const scope = effectScope();
+  t.after(() => scope.stop());
+  const model = scope.run(() =>
+    usePodcastFollow(
+      {
+        async podcastSearchMembership(epoch) {
+          if (++reads === 2) return membership.promise;
+          return { epoch, value: { subscribedIds: [], pendingIds: [] } };
+        },
+        async podcastCommand() {
+          throw new Error('unexpected legacy action');
+        },
+      },
+      () => account('2'),
+      () => true,
+      () => {},
+      {
+        scope: () => receipt.value,
+        receipt: () => receipt.value,
+        action: () => async () => ({
+          epoch: '2',
+          value: {
+            action: 'subscribe',
+            id: '301',
+            desired: true,
+            observed: true,
+            phase: 'confirmed',
+            acknowledged: true,
+          },
+        }),
+      },
+    ),
+  )!;
+  await flush();
+  const writing = model.activate('301', model.control('301')!);
+  await flush();
+  assert.equal(reads, 2);
+  assert.equal(model.status.value, '已收藏播客');
+  receipt.value = 'second';
+  membership.resolve({ epoch: '2', value: { subscribedIds: [], pendingIds: ['301'] } });
+  await writing;
+  assert.equal(model.status.value, '');
+  assert.deepEqual(model.control('301'), { kind: 'reconcile', busy: false });
 });
 
 test('search podcast membership discards a different account and refreshes only after explicit intent', async (t) => {

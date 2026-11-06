@@ -9,16 +9,15 @@ import { usePodcastFollow } from '../composables/usePodcastFollow';
 import { useCore } from '../services/core';
 import type { AccountView } from '../services/contracts';
 import type { PodcastSearchFollow } from '../services/podcast';
-import {
-  playbackVoiceDetail,
-  voiceDetailPresentation,
-  type VoiceCreatorTarget,
-  type VoicePodcastTarget,
-} from '../services/voiceDetail';
+import { playbackVoiceDetail, voiceDetailPresentation } from '../services/voiceDetail';
 import {
   currentVoicePageDetail,
+  sameVoicePageTarget,
   voicePageCreatorTarget,
   voicePagePodcastTarget,
+  voicePageSubscriptionAction,
+  type VoicePageCreatorTarget,
+  type VoicePagePodcastTarget,
 } from '../services/voicePage';
 import DesktopLyricToggle from './DesktopLyricToggle.vue';
 import LyricFontSize from './LyricFontSize.vue';
@@ -73,6 +72,7 @@ const props = defineProps<{
   similarModel: VinylSimilarModel;
   wikiModel: VinylWikiModel;
   voicePage: VoicePageModel;
+  voiceRouteError?: string;
   likedSongs: ReadonlySet<string>;
   busyLikes: ReadonlySet<string>;
   commentsAvailable: boolean;
@@ -89,8 +89,8 @@ const emit = defineEmits<{
   commentReportExpired: [];
   catalog: [target: CatalogResource];
   source: [target: PlaybackSourceDestination];
-  voiceCreator: [target: VoiceCreatorTarget];
-  voicePodcast: [target: VoicePodcastTarget];
+  voiceCreator: [target: VoicePageCreatorTarget];
+  voicePodcast: [target: VoicePagePodcastTarget];
   voiceRecommendation: [target: VoiceRecommendationTarget];
   voiceSongPlay: [
     target: VoiceSongRowTarget,
@@ -127,7 +127,7 @@ const panel = ref<HTMLElement>(),
 const voiceCards = ref<HTMLElement>();
 const modeSheetOpen = ref(false);
 const uncollect = shallowRef<{
-  target: VoicePodcastTarget;
+  target: VoicePagePodcastTarget;
   expected: PodcastSearchFollow;
 }>();
 let uncollectOpener: HTMLElement | null = null;
@@ -197,6 +197,7 @@ const includedSongs = computed(() => {
 const showVoiceCards = computed(
   () =>
     !!(
+      props.voiceRouteError ||
       voicePageNotice.value ||
       voiceMetadata.value?.description ||
       voiceMetadata.value?.radio ||
@@ -272,10 +273,13 @@ const podcastTarget = computed(() =>
 const podcastOwned = computed(
   () =>
     voiceMetadata.value?.radio?.ownedByViewer === true ||
-    (!!podcastTarget.value && playbackVoice.value?.radio?.ownedByViewer === true),
+    (!!podcastTarget.value &&
+      !podcastTarget.value.receipt &&
+      playbackVoice.value?.radio?.ownedByViewer === true),
 );
+const podcastCore = useCore();
 const podcastFollow = usePodcastFollow(
-  useCore(),
+  podcastCore,
   () => props.account,
   () =>
     props.player.lyricsOpen.value &&
@@ -284,29 +288,28 @@ const podcastFollow = usePodcastFollow(
     !podcastOwned.value,
   () => emit('commentReportExpired'),
   {
-    scope: () => podcastTarget.value?.playId ?? '',
-    command: (id, expected) => {
+    scope: () => podcastTarget.value?.receipt ?? podcastTarget.value?.playId ?? '',
+    receipt: () => podcastTarget.value?.receipt,
+    action: (owner, id, current) => {
       const target = podcastTarget.value;
-      if (target?.radioId === id)
-        return { kind: 'change_vinyl_subscription', play_id: target.playId, expected };
+      if (target?.radioId === id && target.epoch === owner && ownsPodcastCard(target))
+        return voicePageSubscriptionAction(podcastCore, target, current);
     },
   },
 );
-function ownsPodcastCard(target: VoicePodcastTarget) {
+function ownsPodcastCard(target: VoicePagePodcastTarget) {
   const current = podcastTarget.value;
   return (
     props.player.lyricsOpen.value &&
     !commentsVisible.value &&
     target.epoch === props.account.epoch &&
     !podcastOwned.value &&
-    current?.epoch === target.epoch &&
-    current.playId === target.playId &&
-    current.voiceId === target.voiceId &&
-    current.radioId === target.radioId
+    sameVoicePageTarget(current, target) &&
+    current?.radioId === target.radioId
   );
 }
 function activateVoicePodcast(
-  target: VoicePodcastTarget,
+  target: VoicePagePodcastTarget,
   expected: PodcastSearchFollow | undefined,
   opener: HTMLElement,
 ) {
@@ -1009,6 +1012,9 @@ const displayedAuxiliary = computed(() =>
               :class="{ 'voice-playback-cards-only': !lines.length }"
               @wheel.stop.passive
             >
+              <p v-if="voiceRouteError" class="voice-page-notice" role="status">
+                {{ voiceRouteError }}
+              </p>
               <p
                 v-if="voicePageNotice"
                 class="voice-page-notice"

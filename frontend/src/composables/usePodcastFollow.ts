@@ -1,8 +1,8 @@
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
-import { failure, type AccountView } from '../services/contracts.ts';
+import { failure, type AccountData, type AccountView } from '../services/contracts.ts';
 import type {
   PodcastClient,
-  PodcastCommand,
+  PodcastMutation,
   PodcastSearchClient,
   PodcastSearchFollow,
 } from '../services/podcast.ts';
@@ -14,7 +14,12 @@ export function usePodcastFollow(
   expired: () => void,
   playback?: {
     scope: () => string;
-    command: (id: string, expected: boolean) => PodcastCommand | undefined;
+    receipt?: () => string | undefined;
+    action: (
+      owner: string,
+      id: string,
+      current: PodcastSearchFollow,
+    ) => (() => Promise<AccountData<PodcastMutation>>) | undefined;
   },
 ) {
   const subscribed = shallowRef<Set<string>>();
@@ -44,10 +49,15 @@ export function usePodcastFollow(
     else if (announce)
       notice.value = {
         scope: scope(),
-        text: problem.code === 'mutation_uncertain' ? '收藏操作待核对' : problem.message,
+        text: ['mutation_uncertain', 'write_uncertain'].includes(problem.code)
+          ? '收藏操作待核对'
+          : problem.message,
       };
   }
-  async function refresh(confirmed?: { id: string; subscribed: boolean }) {
+  async function refresh(
+    confirmed?: { id: string; subscribed: boolean },
+    ownsConfirmation = () => true,
+  ) {
     const owner = epoch,
       visit = generation,
       sequence = ++read;
@@ -60,7 +70,7 @@ export function usePodcastFollow(
         response.value.subscribedIds === null ? undefined : new Set(response.value.subscribedIds);
       // The mutation's verified detail can be fresher than the account list.
       // Never use it to manufacture a complete list from an unknown reply.
-      if (ids && confirmed) {
+      if (ids && confirmed && ownsConfirmation()) {
         if (confirmed.subscribed) ids.add(confirmed.id);
         else ids.delete(confirmed.id);
       }
@@ -107,14 +117,21 @@ export function usePodcastFollow(
       (expected.kind !== 'toggle' || expected.subscribed !== current.subscribed)
     )
       return;
-    const command =
-      current.kind === 'toggle'
-        ? playback
-          ? playback.command(id, current.subscribed)
-          : { kind: 'change_search_subscription' as const, id, expected: current.subscribed }
-        : { kind: 'reconcile' as const, action: 'subscribe' as const, id };
-    if (!command) return;
     const origin = scope();
+    const receipt = playback?.receipt?.();
+    const ownsAction = () =>
+      valid(owner, visit) &&
+      (!receipt || (playback?.receipt?.() === receipt && scope() === origin));
+    const request = playback
+      ? playback.action(owner, id, current)
+      : () =>
+          core.podcastCommand(
+            owner,
+            current.kind === 'toggle'
+              ? { kind: 'change_search_subscription', id, expected: current.subscribed }
+              : { kind: 'reconcile', action: 'subscribe', id },
+          );
+    if (!request || !ownsAction()) return;
     const announce = (text: string) => {
       if (scope() === origin) notice.value = { scope: origin, text };
     };
@@ -125,9 +142,10 @@ export function usePodcastFollow(
     read++;
     let confirmed: { id: string; subscribed: boolean } | undefined;
     try {
-      const response = await core.podcastCommand(owner, command);
-      if (!valid(owner, visit) || response.epoch !== owner) return;
+      const response = await request();
+      if (!ownsAction() || response.epoch !== owner) return;
       const action = response.value;
+      if (action.id !== id || action.action !== 'subscribe') return;
       if (['confirmed', 'unchanged'].includes(action.phase) && action.observed !== null)
         confirmed = { id, subscribed: action.observed };
       announce(
@@ -135,14 +153,16 @@ export function usePodcastFollow(
           ? action.observed
             ? '已收藏播客'
             : '已取消收藏播客'
-          : '收藏操作待核对',
+          : action.phase === 'rejected'
+            ? '收藏操作未成功'
+            : '收藏操作待核对',
       );
     } catch (error) {
-      if (valid(owner, visit)) issue(error, scope() === origin);
+      if (ownsAction()) issue(error, scope() === origin);
     } finally {
       if (writing.value === write) {
-        if (epoch === owner && displayedOwner() === owner) await refresh(confirmed);
-        if (valid(owner, visit) && pending.value.has(id)) announce('收藏操作待核对');
+        if (epoch === owner && displayedOwner() === owner) await refresh(confirmed, ownsAction);
+        if (ownsAction() && pending.value.has(id)) announce('收藏操作待核对');
         if (writing.value === write) writing.value = undefined;
       }
     }
