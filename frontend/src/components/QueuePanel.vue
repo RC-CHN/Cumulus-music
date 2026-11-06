@@ -232,6 +232,7 @@ defineExpose({
   beginDrop: externalDrop.begin,
   canDrop,
   focusAfterSourceRefresh: () => closeButton.value?.focus({ preventScroll: true }),
+  likeRecoveryFocus,
 });
 const clearChanged = computed(
   () =>
@@ -506,11 +507,22 @@ function openArtist(row: QueueTrack, id: string) {
   )
     emit('artist', id);
 }
+let lastLike: { epoch: string; entryId: string } | undefined;
 function likeRow(row: QueueTrack) {
   const shown = queue.value;
   const songId = row.likeSongId;
   if (!shown || !songId || props.busyLikes.has(songId) || !liveNavigationRow(row)) return;
+  lastLike = { epoch: shown.epoch, entryId: row.entryId };
   emit('like', { epoch: shown.epoch, revision: shown.revision, entryId: row.entryId, songId });
+}
+function likeRecoveryFocus() {
+  if (lastLike && queueCurrent.value && lastLike.epoch === queue.value?.epoch) {
+    const control = panel.value?.querySelector<HTMLButtonElement>(
+      `.queue-row[data-entry-id="${CSS.escape(lastLike.entryId)}"] .queue-like:not(:disabled)`,
+    );
+    if (control) return control;
+  }
+  return closeButton.value ?? null;
 }
 function selectRow(event: MouseEvent, id: string) {
   // Pointer selection runs on down/up to preserve a group while dragging.

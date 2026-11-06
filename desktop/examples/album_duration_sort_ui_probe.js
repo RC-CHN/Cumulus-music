@@ -277,7 +277,8 @@
       return likeButton(fromAlbum)?.getAttribute('aria-pressed') === 'true' && close && !close.disabled && close;
     }, 'explicit readonly reconciliation');
     click(closeReview);
-    await wait(() => !one('.like-recovery-dialog'), 'review closed');
+    await wait(() => !one('.like-recovery-dialog') && document.activeElement === likeButton(fromAlbum),
+      'review returned focus to the original song action');
     assert(likeButton(unbound).getAttribute('aria-pressed') === 'false' &&
       await unchanged(), 'liking other row preserves loaded decoder and queue');
     await captureOrigin('queue_like_confirmed', { likePressed: true, otherTrackUnaffected: true });

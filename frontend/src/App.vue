@@ -3744,7 +3744,22 @@ const likeRecovery = useLikeRecovery(
     void music.refreshLikes();
   },
 );
-const likeRecoveryFocus = () => document.querySelector<HTMLButtonElement>('.settings-button');
+let queueLikeRecoveryOwner: string | undefined;
+function reviewQueueLikes() {
+  if (!signedIn.value || !player.queueOpen.value || !likeRecovery.view.value.total) return;
+  queueLikeRecoveryOwner = account.value.epoch;
+  likeRecovery.open.value = true;
+}
+function queueLikeRecoveryFocus() {
+  return queueLikeRecoveryOwner === account.value.epoch && player.queueOpen.value
+    ? (queuePanel.value?.likeRecoveryFocus() ?? null)
+    : null;
+}
+const likeRecoveryFocus = () =>
+  queueLikeRecoveryFocus() ?? document.querySelector<HTMLButtonElement>('.settings-button');
+function likeRecoveryLeft() {
+  queueLikeRecoveryOwner = undefined;
+}
 watch(music.likeActivity, () => {
   void likeRecovery.refresh();
 });
@@ -5720,7 +5735,7 @@ onUnmounted(() => {
         @origin="navigateFromQueue"
         @artist="(id) => navigateFromQueue({ kind: 'artist', id })"
         @like="(target) => (signedIn ? music.likeFromQueue(target) : (loginOpen = true))"
-        @review-likes="likeRecovery.open.value = true"
+        @review-likes="reviewQueueLikes"
         @together="openTogetherFromQueue"
         @cleared="together.load(false, true)"
       />
@@ -5746,7 +5761,12 @@ onUnmounted(() => {
     <WindowClosePrompt />
     <CommunityDeleteDialog v-if="communityDelete.target.value" :model="communityDelete" />
     <CommunityReportDialog :model="communityReport" @expired="music.bootstrap(false)" />
-    <ModalTransition :fallback-focus="likeRecoveryFocus">
+    <ModalTransition
+      :return-focus="queueLikeRecoveryFocus"
+      :fallback-focus="likeRecoveryFocus"
+      :restore-focus="!queueLikeRecoveryOwner || queueLikeRecoveryOwner === account.epoch"
+      @left="likeRecoveryLeft"
+    >
       <LikeRecoveryDialog
         v-if="likeRecovery.open.value"
         :key="account.epoch"
