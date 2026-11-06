@@ -156,7 +156,9 @@ fn main() {
     let reopen = std::env::var_os("CUMULUS_PROOF_REOPEN").is_some();
     let small = std::env::var_os("CUMULUS_PROOF_SMALL").is_some();
     let cold = std::env::var_os("CUMULUS_LOCAL_COLD_START_PROOF").is_some();
-    let queue = std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
+    let folder_reveal = std::env::var("CUMULUS_LOCAL_FOLDER_REVEAL_PROOF").as_deref() == Ok("1");
+    assert!(!folder_reveal || cfg!(target_os = "linux"));
+    let queue = folder_reveal || std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
     assert!(
         !queue || (!cold && !reopen),
         "queue proof needs a fresh profile"
@@ -253,7 +255,9 @@ fn main() {
         if payload.event()==PageLoadEvent::Finished {
             let capture=std::env::var_os("CUMULUS_PROOF_CAPTURE_ACK").is_some();
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture}))).unwrap();
-            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if queue {
+            webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if folder_reveal {
+                include_str!("local_folder_reveal_ui_probe.js")
+            } else if queue {
                 include_str!("local_queue_ui_probe.js")
             } else {include_str!("local_ui_probe.js")}).unwrap();
         }
