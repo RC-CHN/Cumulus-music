@@ -1843,7 +1843,6 @@ function openExternalPlaylistImport(anchor: HTMLElement, origin: 'sidebar' | 'li
 }
 const queueCollectionReturn = shallowRef<HTMLElement>();
 const queueCollectionOwner = ref('');
-let queueDiscoverOwner: string | undefined;
 let queueRoomOwner: string | undefined;
 function collectQueue(value: QueueCollectionView, trigger: HTMLElement | undefined) {
   if (!signedIn.value || value.epoch !== account.value.epoch) return;
@@ -1873,13 +1872,21 @@ function collectionLeft() {
   }
 }
 function discoverFromQueue() {
+  if (
+    initializing.value ||
+    !player.queueOpen.value ||
+    !player.queueCurrent.value ||
+    player.queueLoading.value ||
+    player.queueEditing.value ||
+    player.queueError.value ||
+    player.queue.value?.tracks.length !== 0
+  )
+    return;
   if (!signedIn.value) {
     loginOpen.value = true;
     return;
   }
-  queueDiscoverOwner = account.value.epoch;
-  music.navigate({ kind: 'daily' });
-  player.queueOpen.value = false;
+  if (music.page.value.kind !== 'discovery_home') music.navigate({ kind: 'discovery_home' });
 }
 function openQueueOrigin(target: import('./services/player').QueueOrigin) {
   if (!player.queueOpen.value || !player.queueCurrent.value || music.initializing.value) return;
@@ -1907,9 +1914,7 @@ function openTogetherFromQueue() {
   player.queueOpen.value = false;
 }
 async function queueLeft() {
-  const owner = queueDiscoverOwner;
   const roomOwner = queueRoomOwner;
-  queueDiscoverOwner = undefined;
   queueRoomOwner = undefined;
   await nextTick();
   if (
@@ -1948,20 +1953,6 @@ async function queueLeft() {
       target.focus({ preventScroll: true });
       target.scrollIntoView({ block: 'center' });
     }
-    return;
-  }
-  if (
-    owner !== account.value.epoch ||
-    music.page.value.kind !== 'daily' ||
-    document.querySelector('dialog[open]')
-  )
-    return;
-  const active = document.activeElement;
-  if (active !== document.body && active?.getAttribute('aria-label') !== '播放队列') return;
-  const heading = document.querySelector<HTMLElement>('.page-view .daily-heading h1');
-  if (heading) {
-    heading.tabIndex = -1;
-    heading.focus({ preventScroll: true });
   }
 }
 const playlistEditor = ref<{ id: string; cover?: boolean }>();
