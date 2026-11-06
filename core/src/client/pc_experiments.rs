@@ -30,6 +30,14 @@ pub(super) struct PcExperimentHost {
     presentation: presentation::PresentationHost,
 }
 
+impl PcExperimentHost {
+    pub(super) fn song_speed(
+        &self,
+    ) -> tokio::sync::watch::Receiver<crate::playback::controller::SongSpeedObservation> {
+        self.presentation.song_speed.subscribe()
+    }
+}
+
 #[derive(Clone)]
 struct ScopeContext {
     session: Arc<AccountSession>,

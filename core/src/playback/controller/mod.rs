@@ -25,6 +25,7 @@ mod remote;
 mod skip;
 mod skip_notice;
 pub use skip_notice::{OrdinarySkipNotice, OrdinarySkipNotices};
+mod song_speed;
 mod startup;
 mod state;
 mod tick;
@@ -40,6 +41,8 @@ use crate::{
     storage::StateStore,
 };
 pub use queue_more_tip::QueueMoreTipAction;
+pub(crate) use song_speed::SongSpeedObservation;
+pub use song_speed::{SongSpeedSelection, SongSpeedView};
 use state::Actor;
 use std::sync::{
     Arc, Mutex,
@@ -99,6 +102,7 @@ pub(crate) struct PlaybackHostOptions {
     pub queue_more_enabled: bool,
     pub power: Option<Arc<super::keep_awake::PowerControl>>,
     pub ordinary_eof: Option<OrdinaryEofAuthority>,
+    pub song_speed: Option<watch::Receiver<SongSpeedObservation>>,
 }
 
 pub struct PlaybackController {
@@ -182,6 +186,7 @@ impl PlaybackController {
         actor.queue_more.supported = options.queue_more_enabled;
         actor.power = options.power.map(super::keep_awake::PowerEffect::new);
         actor.ordinary_eof = options.ordinary_eof;
+        actor.song_speed_observations = options.song_speed;
         let relay = if options.relay_enabled {
             let runtime = crate::relay::publisher::player::Runtime::start(session.clone())?;
             actor.relay = Some(crate::relay::publisher::player::Observer::new(

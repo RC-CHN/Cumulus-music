@@ -31,6 +31,14 @@ export const qualities: { value: Quality; label: string }[] = [
 ];
 export type PlaybackMode = 'order_loop' | 'single_loop' | 'random' | 'sequential';
 export type PlaybackSpeedScope = 'song' | 'voice';
+export type SongSpeedSelection = { kind: 'preset' | 'custom'; tenths: number };
+export interface SongSpeedView {
+  enabled: boolean;
+  revision: string;
+  customTenths: number;
+  customSelected: boolean;
+  syncFailed: boolean;
+}
 export type PlaybackStatus =
   | 'idle'
   | 'preparing'
@@ -114,6 +122,7 @@ export interface PlayerView {
   unmuteVolume: number;
   speed: number;
   speedScope?: PlaybackSpeedScope;
+  songSpeed?: SongSpeedView;
   mode: PlaybackMode;
   queueLen: number;
   error: string | null;
@@ -649,6 +658,12 @@ export type PlayerAction =
   | { kind: 'seek_for'; play_id: string; expected_queue_revision: string; seconds: number }
   | { kind: 'volume' | 'speed'; value: number }
   | { kind: 'speed_for'; scope: PlaybackSpeedScope; value: number }
+  | {
+      kind: 'song_speed';
+      expected_revision: string;
+      expected_entry: string;
+      selection: SongSpeedSelection;
+    }
   | { kind: 'quality'; level: Quality }
   | { kind: 'quality_for'; level: Quality; play_id: string; expected_revision: string }
   | { kind: 'mode'; mode: PlaybackMode }

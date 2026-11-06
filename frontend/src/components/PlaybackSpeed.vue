@@ -2,8 +2,11 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { PlayerModel } from '../composables/usePlayer';
 import ActionMenu from './ActionMenu.vue';
+import SongPlaybackSpeed from './SongPlaybackSpeed.vue';
 import { failure } from '../services/contracts';
-const props = defineProps<{ player: PlayerModel }>();
+const props = defineProps<{ player: PlayerModel; togetherActive?: boolean }>();
+const song = computed(() => props.player.view.value?.speedScope !== 'voice');
+const official = computed(() => (song.value ? props.player.view.value?.songSpeed : undefined));
 const menu = ref<InstanceType<typeof ActionMenu>>();
 const pending = ref(false);
 const issue = ref('');
@@ -28,6 +31,8 @@ watch(
     () => props.player.view.value?.epoch,
     () => props.player.view.value?.speedScope,
     props.player.ready,
+    () => official.value?.enabled,
+    () => props.togetherActive,
   ],
   () => {
     generation++;
@@ -55,7 +60,17 @@ async function choose(key: string) {
 }
 </script>
 <template>
+  <SongPlaybackSpeed
+    v-if="official?.enabled && !togetherActive && player.view.value?.entryId"
+    :player="player"
+    :observation="official"
+    :entry-id="player.view.value.entryId"
+  />
+  <span v-else-if="official?.syncFailed" class="speed-sync-notice" role="status"
+    >未能恢复正常播放速度</span
+  >
   <span
+    v-else-if="!official && !(song && togetherActive)"
     class="speed-control"
     :data-speed-save-state="pending ? 'pending' : issue ? 'failed' : 'idle'"
   >
@@ -89,6 +104,10 @@ async function choose(key: string) {
   color: var(--accent);
   font-weight: 700;
   pointer-events: none;
+}
+.speed-sync-notice {
+  max-width: 80px;
+  color: var(--accent);
 }
 .speed-save-error {
   margin: 4px 10px;

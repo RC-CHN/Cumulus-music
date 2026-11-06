@@ -631,7 +631,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
   // Absolute playback preferences have their own feedback. Saving one must
   // not supersede an in-flight transport or become the audio-error retry.
   async function configurePreference(
-    input: Extract<PlayerAction, { kind: 'volume' | 'speed' | 'speed_for' }>,
+    input: Extract<PlayerAction, { kind: 'volume' | 'speed' | 'speed_for' | 'song_speed' }>,
   ) {
     const captured = epoch,
       session = connection;
@@ -659,6 +659,8 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       scope: view.value?.speedScope ?? (view.value?.track?.voiceId ? 'voice' : 'song'),
       value,
     });
+  const configureSongSpeed = (input: Extract<PlayerAction, { kind: 'song_speed' }>) =>
+    configurePreference(input);
   async function configureMode(
     mode: import('../services/player').PlaybackMode,
     queueRevision: string,
@@ -1352,6 +1354,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     equalizerDraft,
     configureVolume,
     configureSpeed,
+    configureSongSpeed,
     configureMode,
     intelligence,
     syncPlayback,

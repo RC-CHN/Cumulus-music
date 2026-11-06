@@ -233,10 +233,12 @@ pub async fn player_action<R: tauri::Runtime>(
 ) -> Result<PlayerView, ClientError> {
     if matches!(
         &action,
-        PlayerAction::StepMiniBar { .. } | PlayerAction::StepEndedMiniBar { .. }
+        PlayerAction::StepMiniBar { .. }
+            | PlayerAction::StepEndedMiniBar { .. }
+            | PlayerAction::SongSpeed { .. }
     ) && window.label() != "main"
     {
-        return Err(Error::InvalidInput("bottom bar step requires the main window").into());
+        return Err(Error::InvalidInput("bottom bar action requires the main window").into());
     }
     client
         .player_action(&epoch, action)

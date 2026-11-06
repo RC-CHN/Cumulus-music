@@ -596,7 +596,8 @@ impl Actor {
                 }
                 let target = prepared.timeline.to_media(prepared.position);
                 let prefs = self.prefs;
-                let speed = prefs.speed(PlaybackSpeedScope::for_entry(Some(&prepared.item)));
+                let speed =
+                    self.effective_speed(PlaybackSpeedScope::for_entry(Some(&prepared.item)));
                 let paused = pending.paused;
                 match target {
                     Ok(target) => {
@@ -731,7 +732,7 @@ impl Actor {
                                     self.equalizer_source_latch = bypass;
                                 }
                             }
-                            Ok(prepared)
+                            Ok((prepared, speed))
                         }
                         .await
                     }
@@ -741,7 +742,9 @@ impl Actor {
             Err(error) => Err(error),
         };
         match result {
-            Ok(prepared) => {
+            Ok((prepared, speed)) => {
+                self.applied_speed = Some(speed);
+                self.song_speed_sync_failed = false;
                 self.source_retry = None;
                 self.position = Some(prepared.position);
                 self.paused_seek = applied_seek.is_some() && pending.paused;
@@ -781,6 +784,7 @@ impl Actor {
                 if let Some(radio) = refresh_radio {
                     self.refresh_audiobook_skip(self.token.clone(), radio);
                 }
+                self.song_speed_apply_observation().await;
                 let saved = self.save_position();
                 if let Err(error) = &saved {
                     let _ = self.stop(false).await;

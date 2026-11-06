@@ -684,7 +684,7 @@ async function seek(event: Event) {
     </div>
     <div class="player-tools">
       <PlaybackQuality :player="player" @member="emit('member')" />
-      <PlaybackSpeed :player="player" />
+      <PlaybackSpeed :player="player" :together-active="togetherActive" />
       <PlaybackVolume :player="player" />
       <button
         class="icon-button"

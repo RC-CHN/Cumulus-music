@@ -85,6 +85,9 @@ pub(super) struct Actor {
     pub queue_more_tip: super::queue_more_tip::Cue,
     pub power: Option<crate::playback::keep_awake::PowerEffect>,
     pub prefs: Preferences,
+    pub song_speed_observations: Option<watch::Receiver<super::SongSpeedObservation>>,
+    pub applied_speed: Option<f64>,
+    pub song_speed_sync_failed: bool,
     pub quality_preferences: crate::playback::quality_preferences::QualityPreferencesSnapshot,
     pub state: PlaybackStatus,
     pub play_id: Option<String>,
@@ -178,6 +181,9 @@ impl Actor {
             seek_revision: 0,
             queue,
             prefs,
+            song_speed_observations: None,
+            applied_speed: None,
+            song_speed_sync_failed: false,
             quality_preferences,
             state: PlaybackStatus::Idle,
             play_id: None,
@@ -214,7 +220,7 @@ impl Actor {
         })
     }
     pub fn preferences(store: &StateStore, owner: &str) -> Result<Preferences> {
-        let value: Preferences = store
+        let mut value: Preferences = store
             .get(owner, "playback", "preferences")?
             .map(serde_json::from_value)
             .transpose()?
@@ -231,6 +237,12 @@ impl Actor {
                 .is_some_and(|rate| !rate.is_finite() || !(0.25..=4.0).contains(&rate))
         {
             return Err(Error::State("invalid persisted player preferences"));
+        }
+        if value
+            .song_speed
+            .is_some_and(|saved| !(5..=20).contains(&saved.custom_tenths))
+        {
+            value.song_speed = None;
         }
         Ok(value)
     }
@@ -322,9 +334,15 @@ impl Actor {
                 .map(|timeline| timeline.snapshot()),
             volume: self.prefs.volume,
             unmute_volume: self.prefs.unmute_volume,
-            speed: self.prefs.speed(speed_scope),
+            speed: self
+                .applied_speed
+                .filter(|_| self.state.active())
+                .unwrap_or_else(|| self.effective_speed(speed_scope)),
             speed_scope,
             song_speed: self.prefs.speed,
+            song_speed_view: (speed_scope == PlaybackSpeedScope::Song)
+                .then(|| self.song_speed_view())
+                .flatten(),
             mode: self.queue.mode(),
             queue_len: self.queue.len(),
             visible_queue_len: self.queue.visible_len(),
@@ -406,6 +424,8 @@ impl Actor {
         self.position = None;
         self.buffered_through = None;
         self.state = PlaybackStatus::Idle;
+        self.applied_speed = None;
+        self.song_speed_sync_failed = false;
         self.reset = false;
         result.and(parametric).and(saved)
     }
@@ -511,6 +531,9 @@ impl Actor {
                     Some(Message::QueueMoreTip(request)) => self.queue_more_tip_request(request).await,
                     Some(Message::PowerPreferenceChanged) => {},
                     Some(Message::Shutdown) | None => break,
+                },
+                _ = super::song_speed::changed(&mut self.song_speed_observations) => {
+                    self.song_speed_apply_observation().await;
                 },
                 _ = interval.tick() => {
                     if let Err(error) = self.tick().await {

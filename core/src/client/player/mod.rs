@@ -108,6 +108,7 @@ pub(super) struct PlayerHost {
     queue_more_enabled: bool,
     power: Option<Arc<crate::playback::keep_awake::PowerControl>>,
     ordinary_skip: OrdinarySkipHost,
+    song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
     power_assignment: tokio::sync::Mutex<Option<power::Assignment>>,
     queue_more_memberships: queue_more_playlist::MembershipCache,
     session: Arc<AccountSession>,
@@ -134,6 +135,7 @@ impl PlayerHost {
         focus: Arc<super::focus::MediaFocus>,
         output: Arc<crate::playback::output::OutputRuntime>,
         ordinary_skip: OrdinarySkipHost,
+        song_speed: watch::Receiver<crate::playback::controller::SongSpeedObservation>,
     ) -> Self {
         Self {
             intelligence: Arc::new(intelligence::IntelligenceHost::default()),
@@ -141,6 +143,7 @@ impl PlayerHost {
             queue_more_enabled: false,
             power: None,
             ordinary_skip,
+            song_speed,
             power_assignment: Default::default(),
             queue_more_memberships: Default::default(),
             session,
@@ -188,6 +191,7 @@ impl PlayerHost {
                         relay_enabled: self.relay_enabled,
                         queue_more_enabled: self.queue_more_enabled,
                         power: self.power.clone(),
+                        song_speed: Some(self.song_speed.clone()),
                         ordinary_eof: Some(
                             self.ordinary_skip
                                 .eof(self.focus.clone(), self.selection.clone()),
@@ -365,6 +369,7 @@ pub(super) fn project(value: &PlaybackSnapshot, token: &SessionToken) -> Result<
         unmute_volume: value.unmute_volume,
         speed: value.speed,
         speed_scope: value.speed_scope,
+        song_speed: value.song_speed_view.clone(),
         mode: value.mode,
         queue_len: value.visible_queue_len,
         error: failure.as_ref().map(|error| error.message),
@@ -573,6 +578,45 @@ impl MusicClient {
     ) -> Result<PlayerView> {
         if let Some(target) = native {
             target.check(self)?;
+        }
+        if let PlayerAction::SongSpeed {
+            expected_revision,
+            expected_entry,
+            selection,
+        } = &action
+        {
+            if native.is_some() {
+                return Err(Error::InvalidInput(
+                    "song speed requires the playback panel",
+                ));
+            }
+            let token = self.player_token(epoch)?;
+            let _room = self.together.gate.lock().await;
+            if self.together_attached(&token, None)? {
+                return Err(Error::State("together requires normal playback speed"));
+            }
+            // Validate the current native account/credential presentation; an
+            // old renderer event must not activate a cached previous owner.
+            self.pc_presentation()?;
+            self.session.check_generation(&token)?;
+            let expected_revision = expected_revision
+                .parse()
+                .map_err(|_| Error::InvalidInput("invalid song speed revision"))?;
+            let value = self
+                .player
+                .controller()
+                .await?
+                .command(
+                    &token,
+                    PlaybackCommand::SongSpeed {
+                        expected_revision,
+                        expected_entry: expected_entry.clone(),
+                        selection: *selection,
+                    },
+                )
+                .await?;
+            self.session.check_generation(&token)?;
+            return project(&value, &token);
         }
         if matches!(action, PlayerAction::Startup) {
             return self.startup_player(epoch).await;
@@ -1695,6 +1739,7 @@ impl MusicClient {
             PlayerAction::Volume { value } => PlaybackCommand::Volume(value),
             PlayerAction::Speed { value } => PlaybackCommand::Speed(value),
             PlayerAction::SpeedFor { scope, value } => PlaybackCommand::SpeedFor { scope, value },
+            PlayerAction::SongSpeed { .. } => unreachable!("song speed panel handled above"),
             PlayerAction::Next if policy == NativeTransportPolicy::PreserveStep => {
                 PlaybackCommand::StepPreservingState(crate::playback::Step::Next)
             }

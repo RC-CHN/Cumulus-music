@@ -80,6 +80,7 @@ pub struct PlaybackSnapshot {
     pub speed: f64,
     pub speed_scope: PlaybackSpeedScope,
     pub(crate) song_speed: f64,
+    pub(crate) song_speed_view: Option<super::SongSpeedView>,
     pub mode: PlaybackMode,
     pub queue_len: usize,
     /// Public list count excludes a retained current decoder outside the list.
@@ -258,6 +259,11 @@ pub enum PlaybackCommand {
         scope: PlaybackSpeedScope,
         value: f64,
     },
+    SongSpeed {
+        expected_revision: u64,
+        expected_entry: String,
+        selection: super::SongSpeedSelection,
+    },
     Next,
     Previous,
     /// System transports keep a paused or stopped player from starting sound.
@@ -298,6 +304,8 @@ pub(super) struct Preferences {
     pub speed: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voice_speed: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub song_speed: Option<super::song_speed::Saved>,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -347,6 +355,7 @@ impl Default for Preferences {
             unmute_volume: default_unmute_volume(),
             speed: 1.0,
             voice_speed: None,
+            song_speed: None,
         }
     }
 }

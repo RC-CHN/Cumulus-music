@@ -3,6 +3,7 @@ use super::{MusicClient, ScopeContext, store};
 use crate::{
     Error, Result,
     account::SessionToken,
+    playback::controller::SongSpeedObservation,
     protocol::{api::Api, http::MusicHttpClient, pc_experiments::PcExperimentGroups},
 };
 use serde::{Deserialize, Serialize};
@@ -19,6 +20,8 @@ pub(super) struct Flags {
     pub(super) search_footer: bool,
     pub(super) search_expanded: bool,
     pub(super) search_dense: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) song_speed: Option<bool>,
 }
 
 impl Flags {
@@ -28,7 +31,27 @@ impl Flags {
             search_footer: groups.group("PH-PC-search-result") == Some("t1"),
             search_expanded: groups.group("PH-PC-searchMore2") == Some("t1"),
             search_dense: groups.group("PH-PC-searchPageEfficiency") == Some("t1"),
+            song_speed: song_speed_cohort(groups),
         }
+    }
+}
+
+fn song_speed_cohort(groups: &PcExperimentGroups) -> Option<bool> {
+    let speed = groups
+        .group("PH-PC-playSpeed")
+        .filter(|group| !group.is_empty());
+    let minibar = groups
+        .group("PH-PC-minibarNew")
+        .filter(|group| !group.is_empty());
+    let legacy = groups
+        .group("PH-PC-minibarNewLike")
+        .filter(|group| !group.is_empty());
+    match (speed, minibar, legacy) {
+        (Some("t1"), Some("t1"), _) | (Some("t1"), Some("c"), Some("t1")) => Some(true),
+        (Some(group), _, _) if group != "t1" => Some(false),
+        (_, Some("c"), Some(group)) if group != "t1" => Some(false),
+        (_, Some(group), _) if group != "t1" && group != "c" => Some(false),
+        _ => None,
     }
 }
 
@@ -104,6 +127,7 @@ impl Current {
 pub(super) struct PresentationHost {
     state: Mutex<Option<Current>>,
     changes: watch::Sender<PcPresentationView>,
+    pub(super) song_speed: watch::Sender<SongSpeedObservation>,
     pub(super) running: Arc<AtomicBool>,
     pub(super) cache_write_failed: AtomicBool,
     revision: AtomicU64,
@@ -122,6 +146,7 @@ impl Default for PresentationHost {
         Self {
             state: Mutex::new(None),
             changes: watch::channel(view).0,
+            song_speed: watch::channel(SongSpeedObservation::default()).0,
             running: Arc::new(AtomicBool::new(false)),
             cache_write_failed: AtomicBool::new(false),
             revision: AtomicU64::new(0),
@@ -130,6 +155,33 @@ impl Default for PresentationHost {
 }
 
 impl PresentationHost {
+    fn publish(
+        &self,
+        token: &SessionToken,
+        view: PcPresentationView,
+        song_speed: Option<bool>,
+        scope_changed: bool,
+    ) {
+        // Anonymous presentation can choose a catalog layout, but it does not
+        // grant the signed-in song speed control to the player.
+        let song_speed = token.uid.as_ref().and(song_speed);
+        self.song_speed.send_if_modified(|previous| {
+            if !scope_changed
+                && previous.epoch == token.generation
+                && previous.enabled == song_speed
+            {
+                return false;
+            }
+            *previous = SongSpeedObservation {
+                epoch: token.generation,
+                revision: view.revision.parse().expect("native decimal revision"),
+                enabled: song_speed,
+            };
+            true
+        });
+        self.changes.send_replace(view);
+    }
+
     fn next_revision(&self) -> Result<String> {
         self.revision
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
@@ -278,12 +330,13 @@ impl ScopeContext {
                         flags,
                         view: view.clone(),
                     });
-                    host.changes.send_replace(view);
+                    host.publish(token, view, flags.song_speed, true);
                 } else if let Some(current) = state.as_mut()
                     && current.view.guest_search_ready != guest_search_ready
                 {
-                    current.view.guest_search_ready = guest_search_ready;
                     current.view.revision = host.next_revision()?;
+                    current.view.guest_search_ready = guest_search_ready;
+                    // Readiness-only revisions do not invalidate a player observation.
                     host.changes.send_replace(current.view.clone());
                 }
                 operation(host, state.as_mut().expect("presentation initialized"))
@@ -319,7 +372,7 @@ impl ScopeContext {
                     flags,
                     current.view.guest_search_ready,
                 );
-                host.changes.send_replace(current.view.clone());
+                host.publish(token, current.view.clone(), flags.song_speed, false);
             }
             Ok(())
         })
@@ -481,6 +534,34 @@ mod tests {
                     revision: self.revision(),
                 },
             )
+        }
+    }
+
+    #[test]
+    fn song_speed_requires_the_official_signed_minibar_and_speed_groups() {
+        use serde_json::json;
+        let lanes = [
+            "PH-PC-playSpeed",
+            "PH-PC-minibarNew",
+            "PH-PC-minibarNewLike",
+        ];
+        for (reply, expected) in [
+            ([None, None, None], None),
+            ([Some("t1"), Some("t1"), None], Some(true)),
+            ([Some("t1"), Some("c"), Some("t1")], Some(true)),
+            ([Some("c"), Some("t1"), None], Some(false)),
+            ([Some("t1"), Some("c"), Some("c")], Some(false)),
+            ([Some("t1"), Some("c"), None], None),
+            ([None, Some("t1"), Some("t1")], None),
+            ([Some("t1"), Some("future"), Some("t1")], Some(false)),
+        ] {
+            let rows: Vec<_> = lanes
+                .iter()
+                .zip(reply)
+                .filter_map(|(name, group)| Some(json!({"expName":name,"expGroupName":group?})))
+                .collect();
+            let groups = PcExperimentGroups::refreshed(&json!({"data":rows})).unwrap();
+            assert_eq!(Flags::project(&groups).song_speed, expected, "{reply:?}");
         }
     }
 

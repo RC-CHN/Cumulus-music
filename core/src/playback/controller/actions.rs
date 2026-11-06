@@ -91,6 +91,7 @@ impl Actor {
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Speed(_)
                 | PlaybackCommand::SpeedFor { .. }
+                | PlaybackCommand::SongSpeed { .. }
                 | PlaybackCommand::Equalizer { .. }
                 | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
@@ -159,6 +160,7 @@ impl Actor {
                 | PlaybackCommand::Volume(_)
                 | PlaybackCommand::Speed(_)
                 | PlaybackCommand::SpeedFor { .. }
+                | PlaybackCommand::SongSpeed { .. }
                 | PlaybackCommand::Equalizer { .. }
                 | PlaybackCommand::SaveCustomEqualizer { .. }
                 | PlaybackCommand::RetryEqualizer
@@ -436,6 +438,14 @@ impl Actor {
             PlaybackCommand::Speed(value) => self.preference(value, false, None).await,
             PlaybackCommand::SpeedFor { scope, value } => {
                 self.preference(value, false, Some(scope)).await
+            }
+            PlaybackCommand::SongSpeed {
+                expected_revision,
+                expected_entry,
+                selection,
+            } => {
+                self.song_speed_select(expected_revision, &expected_entry, selection)
+                    .await
             }
             PlaybackCommand::Next
             | PlaybackCommand::Previous
@@ -843,37 +853,67 @@ impl Actor {
         } else {
             next.set_speed(scope, value);
         }
+        self.save_preferences(next, volume, scope, apply_engine, None)
+            .await
+    }
+
+    pub(super) async fn save_preferences(
+        &mut self,
+        next: super::types::Preferences,
+        volume: bool,
+        scope: PlaybackSpeedScope,
+        apply_engine: bool,
+        observation: Option<super::SongSpeedObservation>,
+    ) -> Result<()> {
+        let previous = if volume {
+            self.prefs.volume
+        } else {
+            self.applied_speed
+                .unwrap_or_else(|| self.effective_speed(scope))
+        };
+        let value = if volume {
+            next.volume
+        } else {
+            self.effective_speed_with(scope, next)
+        };
+        let native = move |engine: &mut dyn crate::playback::engine::AudioEngine, value| {
+            if volume {
+                engine.volume(value)
+            } else {
+                engine.speed(value)
+            }
+        };
         if apply_engine {
             super::engine(self.engine.clone(), self.guard(), move |engine| {
-                if volume {
-                    engine.volume(value)
-                } else {
-                    engine.speed(value)
-                }
+                native(engine, value)
             })
             .await?;
         }
-        if let Err(error) = self.store.put(
-            self.queue.owner(),
-            "playback",
-            "preferences",
-            &serde_json::to_value(next)?,
-        ) {
+        let value_json = serde_json::to_value(next)?;
+        let persisted = self.session.with_local_owner(&self.token, |owner| {
+            if observation.is_some_and(|expected| expected != self.song_speed_observation()) {
+                return Err(Error::StaleResponse);
+            }
+            self.store
+                .put(owner, "playback", "preferences", &value_json)
+        });
+        if let Err(error) = persisted {
             if apply_engine {
                 super::engine(self.engine.clone(), self.guard(), move |engine| {
-                    if volume {
-                        engine.volume(before.volume)
-                    } else {
-                        engine.speed(before.speed(scope))
-                    }
+                    native(engine, previous)
                 })
                 .await?;
             }
             return Err(error);
         }
+        if apply_engine && !volume {
+            self.applied_speed = Some(value);
+            self.song_speed_sync_failed = false;
+        }
         self.prefs = next;
         Ok(())
     }
+
     fn restore_options(&self) -> Result<Option<LoadOptions>> {
         let Some(selected) = self.queue.selected() else {
             return Ok(None);

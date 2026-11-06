@@ -79,6 +79,8 @@ pub struct PlayerView {
     pub unmute_volume: f64,
     pub speed: f64,
     pub speed_scope: PlaybackSpeedScope,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub song_speed: Option<crate::playback::controller::SongSpeedView>,
     pub mode: PlaybackMode,
     pub queue_len: usize,
     pub error: Option<&'static str>,
@@ -680,6 +682,11 @@ pub enum PlayerAction {
     SpeedFor {
         scope: PlaybackSpeedScope,
         value: f64,
+    },
+    SongSpeed {
+        expected_revision: String,
+        expected_entry: String,
+        selection: crate::playback::controller::SongSpeedSelection,
     },
     Next,
     Previous,

@@ -58,6 +58,8 @@ impl Actor {
         // corrupt. An unbound actor retries loading; it cannot write a fallback.
         self.queue = PlaybackQueue::new(None, owner)?;
         self.prefs = Default::default();
+        self.applied_speed = None;
+        self.song_speed_sync_failed = false;
         self.quality_preferences = Default::default();
         self.token = token;
         self.bound = false;
