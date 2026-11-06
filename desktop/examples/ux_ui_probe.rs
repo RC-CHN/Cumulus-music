@@ -392,6 +392,11 @@ impl Api for Library {
 
     fn request<'a>(&'a self, path: &'a str, args: Value, cached: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
+            // Record account/get before it is delegated to the signed search
+            // fixture. The lifecycle fixture deliberately lets that read pass through.
+            if let Some(response) = member_lifecycle_fixture::response(path, &args, cached).await {
+                return response;
+            }
             if path == "/api/w/nuser/account/get"
                 && let Some(signed) = &self.signed_search
             {
@@ -456,9 +461,6 @@ impl Api for Library {
                 return response;
             }
             if let Some(response) = search_fixture::mv_preview_privileges(path, &args, cached) {
-                return response;
-            }
-            if let Some(response) = member_lifecycle_fixture::response(path, &args, cached).await {
                 return response;
             }
             if let Some(response) = search_privilege_fixture::response(path, &args, cached) {
