@@ -22,6 +22,8 @@ mod settings_fixture;
 mod voice_detail_fixture;
 #[path = "support/voice_podcast_collect_fixture.rs"]
 mod voice_podcast_collect_fixture;
+#[path = "support/voice_recommendation_fixture.rs"]
+mod voice_recommendation_fixture;
 
 use cumulus_core::{
     Error, Result,
@@ -30,6 +32,7 @@ use cumulus_core::{
     protocol::{
         api::{
             Api, ApiFuture, PodcastBadgeClear, PodcastBadgePermission, PodcastProgressPermission,
+            VinylPlaybackReadPermission, VinylVoiceRecommendationsRead,
         },
         http::ApiOrigin,
     },
@@ -65,6 +68,7 @@ struct Library {
     palette: Option<Arc<scene_palette_fixture::PaletteMedia>>,
     voice_detail: Option<voice_detail_fixture::VoiceDetail>,
     voice_podcast_collect: Option<voice_podcast_collect_fixture::Fixture>,
+    voice_recommendations: Option<voice_recommendation_fixture::Fixture>,
 }
 
 fn radio() -> Value {
@@ -77,10 +81,13 @@ fn voice(id: u64) -> Value {
 }
 impl Api for Library {
     fn verified_pc_experiment_revision(&self) -> Result<Option<String>> {
-        Ok(self
-            .scene_home
-            .as_ref()
-            .map(|_| "scene-home-fixture-revision".to_owned()))
+        Ok(self.scene_home.as_ref().map(|_| {
+            if self.voice_recommendations.is_some() {
+                voice_recommendation_fixture::REVISION.to_owned()
+            } else {
+                "scene-home-fixture-revision".to_owned()
+            }
+        }))
     }
 
     fn search_audio_toplist_assignment(&self) -> ApiFuture<'_, bool> {
@@ -138,6 +145,24 @@ impl Api for Library {
         })
     }
 
+    fn request_vinyl_voice_recommendations<'a>(
+        &'a self,
+        read: VinylVoiceRecommendationsRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async move {
+            let fixture = self
+                .voice_recommendations
+                .as_ref()
+                .ok_or(Error::State("voice recommendation proof unavailable"))?;
+            assert_eq!(revision, voice_recommendation_fixture::REVISION);
+            permission()?;
+            let (path, body) = read.into_request();
+            fixture.read(path, body).await
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if let Some(voice) = &self.voice_detail
@@ -147,6 +172,11 @@ impl Api for Library {
             }
             if let Some(collect) = &self.voice_podcast_collect
                 && let Some(response) = collect.response(path, &body, cache)
+            {
+                return Ok(response);
+            }
+            if let Some(shelf) = &self.voice_recommendations
+                && let Some(response) = shelf.route(path, &body, cache)
             {
                 return Ok(response);
             }
@@ -308,6 +338,8 @@ fn main() {
     let voice_detail_enabled = std::env::var_os("CUMULUS_VOICE_DETAIL_PROOF").is_some();
     let voice_podcast_collect_enabled =
         std::env::var("CUMULUS_VOICE_PODCAST_COLLECT_PROOF").as_deref() == Ok("1");
+    let voice_recommendations_enabled =
+        std::env::var("CUMULUS_VOICE_RECOMMENDATIONS_PROOF").as_deref() == Ok("1");
     let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
         .ok()
         .or_else(|| voice_detail_enabled.then(|| "header".to_owned()));
@@ -330,6 +362,15 @@ fn main() {
                 && !progress_enabled
     );
     assert!(!badges_enabled || (!scene_enabled && !progress_enabled && !voice_detail_enabled));
+    assert!(
+        !voice_recommendations_enabled
+            || scene_enabled
+                && !palette_enabled
+                && !voice_detail_enabled
+                && !voice_podcast_collect_enabled
+                && !badges_enabled
+                && !progress_enabled
+    );
     let api = Arc::new(Library {
         progress_enabled,
         badges: badges_enabled.then(|| badge_fixture::Fixture::new(recommendations_enabled)),
@@ -338,6 +379,8 @@ fn main() {
         voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
         voice_podcast_collect: voice_podcast_collect_enabled
             .then(voice_podcast_collect_fixture::Fixture::default),
+        voice_recommendations: voice_recommendations_enabled
+            .then(voice_recommendation_fixture::Fixture::default),
         ..Default::default()
     });
     let session = Arc::new(AccountSession::new(api.clone(), Some(registry.store())));
@@ -356,6 +399,8 @@ fn main() {
         || {
             if badges_enabled {
                 include_str!("podcast_badges_ui_probe.js").to_owned()
+            } else if voice_recommendations_enabled {
+                include_str!("voice_recommendation_ui_probe.js").to_owned()
             } else if voice_podcast_collect_enabled {
                 include_str!("voice_podcast_collect_ui_probe.js").to_owned()
             } else if voice_detail_enabled {
@@ -417,6 +462,20 @@ fn main() {
                     api.palette.as_ref().expect("isolated palette fixture").release();
                     return;
                 }
+                if let Some(shelf) = &api.voice_recommendations {
+                    if stage == "voice_recommendation_poll" {
+                        if let Some(nonce) = value["nonce"].as_u64() {
+                            handle.get_webview_window("main").unwrap().eval(format!(
+                                "window.__voiceRecommendationNative = [{nonce}, {}];", shelf.snapshot()
+                            )).unwrap();
+                        }
+                        return;
+                    }
+                    if stage == "voice_recommendation_release" {
+                        shelf.release();
+                        return;
+                    }
+                }
                 if progress_enabled && stage == "progress_poll" {
                     if let Some(nonce) = value["nonce"].as_u64() {
                         let count = api.progress_uploads.lock().unwrap().len();
@@ -441,6 +500,9 @@ fn main() {
                 }
                 if let Some(collect) = &api.voice_podcast_collect {
                     value["voicePodcastCollectTrace"] = json!(collect.trace());
+                }
+                if let Some(shelf) = &api.voice_recommendations {
+                    value["voiceRecommendationsTrace"] = shelf.snapshot();
                 }
                 if let Some(scene) = &api.scene_home {
                     value["calls"] = json!(scene.calls());

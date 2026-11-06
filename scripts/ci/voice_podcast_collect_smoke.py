@@ -27,7 +27,7 @@ def exact_writes(trace):
     return [row for row in trace if row['path'] in WRITES]
 
 
-def verify_playback_wire(calls):
+def verify_playback_wire(calls, resume_radios=('80', '81')):
     assert [path for path, _ in calls[:2]] == [EXPERIMENT, DIRECTORY], calls
     assert requests(calls, EXPERIMENT) == [{'expNames': 'podcast_tab_better'}], calls
     assert requests(calls, DIRECTORY) == [{'blockCode': 'VOICE_HOMEPAGE_BLOCK_SCENE_FM'}], calls
@@ -41,7 +41,7 @@ def verify_playback_wire(calls):
         media = next(i for i, (path, row) in enumerate(calls)
                      if path == MEDIA and str(json.loads(row['ids'])[0]) == str(1000 + int(voice)))
         assert permission < media, calls
-    assert all(row['radioId'] in ('80', '81') for row in requests(calls, RESUME)), calls
+    assert all(row['radioId'] in resume_radios for row in requests(calls, RESUME)), calls
 
 
 def verify_trace(trace):
