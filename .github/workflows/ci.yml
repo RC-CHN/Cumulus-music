@@ -570,6 +570,7 @@ jobs:
           python scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-table-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-batch-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --navigation --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-navigation-windows --runtime .build/package-stage/windows-x64/native
+          python scripts/ci/download_voice_podcast_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-voice-podcast-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --mv-replay --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-mv-replay-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/download_page_smoke.py --menu --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-download-menu-windows --runtime .build/package-stage/windows-x64/native
           python scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe.exe --root .build/ci-player-layout-windows --runtime .build/package-stage/windows-x64/native
@@ -1069,6 +1070,7 @@ jobs:
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --table --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-table-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --batch --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-batch-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --navigation --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-navigation-linux
+          GDK_BACKEND=x11 LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_voice_podcast_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-voice-podcast-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --mv-replay --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-mv-replay-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/download_page_smoke.py --menu --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-download-menu-linux
           LC_ALL=en_US.UTF-8 xvfb-run -a dbus-run-session -- python3 scripts/ci/player_layout_smoke.py --binary .build/target/debug/examples/ux_ui_probe --root .build/ci-player-layout-linux
