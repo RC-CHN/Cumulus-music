@@ -213,7 +213,7 @@ pub async fn queue_more_tip<R: tauri::Runtime>(
         );
     }
     if matches!(&action, QueueMoreTipAction::Begin { .. })
-        && (!matches!(window.is_focused(), Ok(true))
+        && (!matches!(crate::queue_tip_window_foreground(&window), Ok(true))
             || !matches!(window.is_visible(), Ok(true))
             || !matches!(window.is_minimized(), Ok(false)))
     {

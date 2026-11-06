@@ -89,7 +89,7 @@ pub fn request_tip_focus(app: &tauri::AppHandle, focus: bool, sequence: u64) {
 
             let observed = tokio::time::timeout(Duration::from_secs(1), async {
                 loop {
-                    if main.is_focused().ok() == Some(focus)
+                    if cumulus_desktop::queue_tip_window_foreground(&main).ok() == Some(focus)
                         && main.is_visible().ok() == Some(true)
                         && main.is_minimized().ok() == Some(false)
                         && (focus || helper.is_focused().ok() == Some(true))
@@ -110,7 +110,7 @@ pub fn request_tip_focus(app: &tauri::AppHandle, focus: bool, sequence: u64) {
             "sequence": sequence,
             "desired": focus,
             "outcome": category,
-            "nativeFocused": main.is_focused().ok(),
+            "nativeFocused": cumulus_desktop::queue_tip_window_foreground(&main).ok(),
             "nativeVisible": main.is_visible().ok(),
             "helperFocused": helper.is_focused().ok(),
         });
@@ -124,20 +124,18 @@ pub fn request_tip_focus(app: &tauri::AppHandle, focus: bool, sequence: u64) {
 async fn focus_windows_webview(
     main: &tauri::WebviewWindow,
 ) -> std::result::Result<(), &'static str> {
-    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
-    let window = main.hwnd().map_err(|_| "focus_window_request_failed")?.0 as usize;
     tokio::time::timeout(Duration::from_secs(1), async {
         loop {
-            // SAFETY: this read-only Win32 query has no inputs or ownership
-            // transfer. Compare its opaque handle with this test's own HWND.
-            if unsafe { GetForegroundWindow() } as usize == window {
-                break;
+            if cumulus_desktop::queue_tip_window_foreground(main)
+                .map_err(|_| "focus_window_request_failed")?
+            {
+                return Ok::<(), &'static str>(());
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     })
     .await
-    .map_err(|_| "focus_foreground_mismatch")?;
+    .map_err(|_| "focus_foreground_mismatch")??;
     phase_milestone("focus_foreground_observed");
     // WebviewWindow::set_focus only activates the top-level Tao window.
     // The separate Webview dispatcher invokes the existing WebView2
