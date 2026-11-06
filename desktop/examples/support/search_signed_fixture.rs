@@ -111,6 +111,9 @@ pub struct SignedSearch {
     pub client: Arc<MusicHttpClient>,
     backend: Arc<Backend>,
 }
+pub fn song_speed_enabled() -> bool {
+    std::env::var("CUMULUS_SONG_SPEED_PROOF").as_deref() == Ok("1")
+}
 pub fn presentation_enabled() -> bool {
     std::env::var("CUMULUS_PC_PRESENTATION_PROOF").as_deref() == Ok("1")
 }
@@ -298,6 +301,13 @@ impl HttpBackend for Backend {
                 }
                 groups.push(json!({"expName":"PH-PC-search-result",
                     "expGroupName":if mode == "unknown" {"future"} else {mode.as_str()}}));
+                if song_speed_enabled() {
+                    groups.extend([
+                        json!({"expName":"PH-PC-minibarNew","expGroupName":"c"}),
+                        json!({"expName":"PH-PC-minibarNewLike","expGroupName":"t1"}),
+                        json!({"expName":"PH-PC-playSpeed","expGroupName":mode}),
+                    ]);
+                }
                 if presentation_enabled()
                     && std::env::var("CUMULUS_HISTORY_SETTINGS_COHORT_PROOF").as_deref() == Ok("1")
                 {
