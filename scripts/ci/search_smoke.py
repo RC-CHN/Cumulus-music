@@ -16,6 +16,7 @@ def main():
     mode.add_argument('--suggestion-matches', action='store_true')
     mode.add_argument('--history-last', action='store_true')
     mode.add_argument('--podcast-top-classic', action='store_true')
+    mode.add_argument('--default-recovery', action='store_true')
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--screenshots', action='store_true')
     args = parser.parse_args()
@@ -41,6 +42,9 @@ def main():
         prefix = 'window.__cumulusSearchHistoryLastProof = true;\n'
     if args.podcast_top_classic:
         prefix = 'window.__cumulusPodcastTopClassicProof = true;\n'
+    if args.default_recovery:
+        prefix = 'window.__cumulusSearchDefaultRecoveryProof = true;\n'
+        env['CUMULUS_SEARCH_DEFAULT_RECOVERY_PROOF'] = '1'
     script.write_text(prefix + source.read_text(encoding='utf-8'), encoding='utf-8')
     if args.frontend_dist:
         env['CUMULUS_PROOF_FRONTEND_DIST'] = str(args.frontend_dist.resolve(strict=True))
@@ -50,6 +54,9 @@ def main():
     failed = root / 'first/failed.json'
     assert not failed.exists(), failed.read_text(encoding='utf-8') if failed.exists() else ''
     assert code == 0, f'probe exited {code}'
+    if args.default_recovery:
+        verify_default_recovery(root, args.screenshots)
+        return
     if args.exact_fallback or args.suggestion_matches or args.history_last or args.podcast_top_classic:
         complete = json.loads((root / 'first/complete.json').read_text(encoding='utf-8'))
         flag = ('podcastTopClassicVerified' if args.podcast_top_classic else
@@ -64,6 +71,35 @@ def main():
         print(json.dumps(dict(ok=True, actualWebView=True, **{flag: True})))
         return
     verify(root, args.screenshots)
+
+
+def verify_default_recovery(root, capture):
+    directory = root / 'first'
+    complete = json.loads((directory / 'complete.json').read_text(encoding='utf-8'))
+    labels = ('initial', 'input_focused', 'window_blurred', 'populated', 'submitted', 'typed')
+    assert complete['ok'] and complete['defaultRecoveryVerified']
+    assert complete['stageCount'] == len(labels) and complete['windowFocusNotificationSynthetic']
+    assert complete['realMusicRequests'] == complete['realAccountWrites'] == 0
+    calls = complete['defaultRecoveryCalls']
+    defaults = {'path': '/api/search/default/keyword/get', 'args': {}}
+    assert calls[:2] == [defaults, defaults] and len(calls) == 4, calls
+    for call, (channel, context) in zip(calls[2:], [
+        ('defaultquery', 'synthetic-recovered-second'), ('typing', ''),
+    ]):
+        assert call['path'] == '/api/search/pc/complex/page'
+        args = call['args']
+        assert (args['keyword'], args['channel'], args['bizQueryInfo']) == (
+            '合成恢复第二词', channel, context), call
+    for index, (label, count) in enumerate(zip(labels, [1, 1, 1, 2, 3, 4]), 1):
+        file = directory / f'ux_{index:02d}_default_recovery_{label}.json'
+        stage = json.loads(file.read_text(encoding='utf-8'))
+        assert stage['defaultRecoveryCalls'] == calls[:count], stage['defaultRecoveryCalls']
+        assert file.with_suffix('.png').is_file() == capture
+    result = dict(ok=True, actualWebView=True, stages=len(labels), screenshots=len(labels) if capture else 0,
+                  nativeDefaultReads=2, windowFocusNotificationSynthetic=True,
+                  realMusicRequests=0, realAccountWrites=0)
+    (root / 'report.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+    print(json.dumps(result))
 
 
 def verify_suggestion_matches(root, complete, capture):

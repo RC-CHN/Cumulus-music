@@ -190,6 +190,53 @@
     );
   }
   try {
+    if (window.__cumulusSearchDefaultRecoveryProof) {
+      const missing = "搜索音乐、寻找好声音";
+      await wait(
+        () => one(".track-row") && input()?.placeholder === missing && document.hasFocus(),
+        "signed-in search with an empty initial default response",
+      );
+      await capture("default_recovery_initial");
+      input().focus({ preventScroll: true });
+      await wait(() => panel() && document.activeElement === input(), "focused search input");
+      key(input(), "Escape");
+      await wait(() => !panel() && document.activeElement === input(), "Escape keeps input focus");
+      await sleep(5200);
+      assert(input().placeholder === missing, "focused input did not retry after the popover closed");
+      await capture("default_recovery_input_focused");
+
+      button("开始搜索").focus({ preventScroll: true });
+      assert(document.activeElement !== input(), "search input is blurred");
+      // Inject only the notification; the DOM focus, IPC and service fixture
+      // still exercise the production WebView. This is not a physical WM event.
+      window.dispatchEvent(new Event("blur"));
+      await sleep(5200);
+      assert(input().placeholder === missing, "unfocused window did not retry");
+      await capture("default_recovery_window_blurred");
+      window.dispatchEvent(new Event("focus"));
+      await wait(() => input().placeholder === "合成默认第一词", "default tick recovered");
+      await capture("default_recovery_populated");
+      await wait(() => input().placeholder === "合成默认第二词", "rotates without another default read");
+      input().focus({ preventScroll: true });
+      key(input(), "Enter");
+      const heading = () => one(".search-results-page h1")?.textContent.trim();
+      await wait(
+        () => heading() === "合成恢复第二词" && one(".search-result-section"),
+        "blank Enter submits the real recovered second word",
+      );
+      assert(!document.body.textContent.includes("synthetic-recovered-second"), "raw context remains native");
+      await capture("default_recovery_submitted");
+      type("合成恢复第二词");
+      key(input(), "Enter");
+      await wait(
+        () => heading() === "合成恢复第二词" && one(".search-result-section"),
+        "typed search for the same keyword",
+      );
+      await capture("default_recovery_typed");
+      await emit("complete", { ok: true, stageCount: count, defaultRecoveryVerified: true,
+        windowFocusNotificationSynthetic: true, realMusicRequests: 0, realAccountWrites: 0 });
+      return;
+    }
     await wait(
       () => one(".track-row") && input()?.placeholder === "发现合成好声音",
       "startup",

@@ -1182,6 +1182,7 @@ fn main() {
             if search_fixture::enabled() {
                 value["syntheticSearchCalls"] = json!(search_fixture::calls());
                 if let Some(calls) = search_fixture::suggestion_match_calls() { value["suggestionMatchCalls"] = json!(calls); }
+                if let Some(calls) = search_fixture::default_recovery_calls() { value["defaultRecoveryCalls"] = json!(calls); }
                 if search_artist_top50_fixture::enabled() { value["artistTop50Calls"] = json!(search_artist_top50_fixture::report()); }
                 if let Some(calls) = search_fixture::audio_toplist_calls() { value["audioToplistCalls"] = json!(calls); }
                 if search_fixture::v3_enabled() { value["syntheticV3Calls"] = json!(search_fixture::v3_calls()); }

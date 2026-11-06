@@ -10,6 +10,7 @@ static CALLS: AtomicUsize = AtomicUsize::new(0);
 static V3_CALLS: AtomicUsize = AtomicUsize::new(0);
 static PRESENTATION_QUERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static SUGGESTION_MATCH_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+static DEFAULT_RECOVERY_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 const SEARCH_EXPERIMENTS: &str = "PH-PC-searchHot,PH-PC-searchMore2,PH-PC-searchPageEfficiency";
 static AUDIO_TOPLIST_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
 static HOT_PLAYBACK_CALLS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -29,6 +30,12 @@ static ARTIST_GALLERY_FAILED: AtomicBool = AtomicBool::new(false);
 static ARTIST_GALLERY_BATCH_FAILED: AtomicBool = AtomicBool::new(false);
 pub fn enabled() -> bool {
     std::env::var_os("CUMULUS_SEARCH_UI_PROOF").is_some()
+}
+fn default_recovery_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_SEARCH_DEFAULT_RECOVERY_PROOF").is_some()
+}
+pub fn default_recovery_calls() -> Option<Vec<Value>> {
+    default_recovery_enabled().then(|| DEFAULT_RECOVERY_CALLS.lock().unwrap().clone())
 }
 fn audio_toplist_case() -> Option<String> {
     std::env::var("CUMULUS_SEARCH_AUDIO_TOPLIST_PROOF").ok()
@@ -513,6 +520,22 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
                 )));
             }
             json!({"songs":[{"song":{"id":178}},{"song":{"id":177}}]})
+        }
+        "/api/search/default/keyword/get" if default_recovery_enabled() => {
+            assert_eq!(args, &json!({}));
+            let mut calls = DEFAULT_RECOVERY_CALLS.lock().unwrap();
+            let first = calls.is_empty();
+            calls.push(json!({"path":path,"args":args}));
+            if first {
+                json!({"refreshTime":2000,"keywords":[]})
+            } else {
+                json!({"refreshTime":2000,"keywords":[
+                    {"realkeyword":"合成恢复第一词","showKeyword":"合成默认第一词",
+                     "bizQueryInfo":"synthetic-recovered-first"},
+                    {"realkeyword":"合成恢复第二词","showKeyword":"合成默认第二词",
+                     "bizQueryInfo":"synthetic-recovered-second"}
+                ]})
+            }
         }
         "/api/search/default/keyword/get" => {
             json!({"refreshTime":60000,"keywords":[{"realkeyword":"合成默认关键词","showKeyword":"发现合成好声音",
@@ -1173,6 +1196,19 @@ fn result_response(path: &str, args: &Value) -> Option<Result<Value>> {
     };
     CALLS.fetch_add(1, Ordering::SeqCst);
     let mode = MODE.lock().unwrap().clone();
+    if category == "all" && default_recovery_enabled() {
+        assert_eq!(args["keyword"], "合成恢复第二词");
+        let context = match args["channel"].as_str() {
+            Some("defaultquery") => "synthetic-recovered-second",
+            Some("typing") => "",
+            _ => panic!("unexpected default recovery search channel"),
+        };
+        assert_eq!(args["bizQueryInfo"], context);
+        DEFAULT_RECOVERY_CALLS
+            .lock()
+            .unwrap()
+            .push(json!({"path":path,"args":args}));
+    }
     if std::env::var("CUMULUS_SEARCH_VOICE_AUTHOR_PROOF").as_deref() == Ok("1")
         && category == "voices"
         && args["keyword"] == "合成主播"
