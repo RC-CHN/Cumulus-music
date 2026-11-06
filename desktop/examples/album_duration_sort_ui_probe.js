@@ -230,12 +230,13 @@
     assert(await unchanged(), 'credit inspection changed native playback or queue');
     await captureOrigin('queue_artist_ready', { credits: creditState, namesOnly: namesOnlyState, creditHit: true });
     click(credit);
-    const artistTitle = () => one('.catalog-page .catalog-heading h1')?.textContent.trim();
+    const artistHeading = () => one('.catalog-page .catalog-heading h1');
+    const artistTitle = () => artistHeading()?.textContent.trim();
     await wait(() => artistTitle() === '相似歌手 13', 'second queue credit opened artist 13');
-    assert(one('.queue-panel') && document.activeElement === secondCredit() &&
-      !row(fromAlbum).classList.contains('selected') && await unchanged(),
-      'artist navigation disturbed queue focus, selection, decoder or paused clock');
-    await captureOrigin('queue_artist_opened', { artist: artistTitle(), queueStayedOpen: true, focused: true });
+    await wait(() => document.activeElement === artistHeading(), 'artist page entry focused its heading');
+    assert(one('.queue-panel') && !row(fromAlbum).classList.contains('selected') && await unchanged(),
+      'artist navigation disturbed queue selection, decoder or paused clock');
+    await captureOrigin('queue_artist_opened', { artist: artistTitle(), queueStayedOpen: true, headingFocused: true });
     click(secondCredit());
     assert(artistTitle() === '相似歌手 13' && await unchanged(), 'same artist navigation changed the native state');
     click(one('.back-button'));

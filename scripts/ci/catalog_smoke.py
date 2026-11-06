@@ -554,7 +554,7 @@ def main():
             {'name': '仅有署名', 'link': False}]
         assert ready['namesOnly'] == [{'name': '无编号歌手', 'link': False}]
         opened, back = (stages[name] for name in ('queue_artist_opened', 'queue_artist_back'))
-        assert opened['artist'] == '相似歌手 13' and opened['focused'] is True
+        assert opened['artist'] == '相似歌手 13' and opened['headingFocused'] is True
         assert back['artist'] == '测试歌手'
         for stage in (opened, back):
             assert stage['queueStayedOpen'] is True
@@ -563,9 +563,13 @@ def main():
             assert stage['queue'] == appended['queue'] and stage['player']['state'] == 'paused'
             assert all(stage['player'][key] == appended['player'][key]
                        for key in ('playId', 'entryId', 'position', 'queueRevision'))
-        artist_reads = [call['args']['id'] for call in delta('queue_artist_ready', 'queue_artist_back')
-                        if call['path'] == '/api/artist/v3/detail']
-        assert artist_reads == ['13'], artist_reads
+        for start, end, artist in (('queue_artist_ready', 'queue_artist_opened', '13'),
+                                   ('queue_artist_opened', 'queue_artist_back', '12')):
+            reads = delta(start, end)
+            detail = [call['args'] for call in reads if call['path'] == '/api/artist/v3/detail']
+            dynamic = [call['args'] for call in reads if call['path'] == '/api/artist/detail/dynamic']
+            assert detail == [{'id': artist, 'top': 50, 'e_r': False}], detail
+            assert dynamic == [{'id': artist}], dynamic
         assert not any(call['path'] in ('/api/v3/song/detail', '/api/song/enhance/player/url/v1')
                        for call in delta('paused_append', 'queue_artist_back'))
         locale_report = output / 'locale.json'

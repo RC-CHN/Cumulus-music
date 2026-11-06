@@ -12,8 +12,9 @@
 Cumulus 复用 player_queue 投影的 TrackView.artistRefs。其 ID 来自原生歌曲元数据，
 始终是字符串（保留前导零和大 ID）。本地索引标签只提供名字；FM、声音和没有有效 ID 的
 署名保留为文字，不推测匹配。歌手控件与选曲按钮分开，单击或键盘激活歌手不会触发
-选中、拖动或播放。在账号、队列版本和行仍匹配时，打开既有歌手详情；同一目标不重复
-写入历史。既有艺人详情继续读 /api/artist/v3/detail 和 /api/artist/detail/dynamic；
+选中、拖动或播放。在账号、队列版本和行仍匹配时，打开既有歌手详情并沿用页面标题
+焦点；队列仍打开，同一目标不重复写入历史。既有艺人详情继续读
+/api/artist/v3/detail 和 /api/artist/detail/dynamic，后退时正常重新读取原歌手；
 无新增 IPC、播放授权、队列写入或外部链接。官方署名别名和声音所属播客链接不在本批。
 
 验证入口：frontend/tests/playback-metadata.test.ts 检查署名顺序、原样字符串 ID、
