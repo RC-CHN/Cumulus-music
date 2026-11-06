@@ -1,4 +1,4 @@
-"""Run the recently updated podcast page in a real WebView and null-output libmpv."""
+"""Run a sealed My Podcasts flow in the actual desktop WebView."""
 import argparse
 import json
 import math
@@ -58,6 +58,55 @@ def check_progress(output, stages, complete):
                    for key in ('messages', 'characters')), locale
 
 
+
+def check_badges(output, stages, complete, screenshots):
+    route = '/api/djradio/newcount/clear/byradio'
+    detail = '/api/djradio/v3/get'
+    listing = '/api/my/podcast/page/list'
+    initial = [
+        {'id': '81', 'text': '99+', 'label': '108 集新节目'},
+        {'id': '82', 'text': '4', 'label': '4 集新节目'},
+    ]
+    expected = {
+        # stage: (badge layout, visible detail, native reads, native clears)
+        'initial_badges': (initial, None, 0, 0),
+        'ordinary_detail': ([], '合成确认播客', 1, 0),
+        'ordinary_refresh': ([], '合成确认播客', 2, 0),
+        'confirmed_detail': ([], '合成确认播客', 3, 1),
+        'confirmed_back': (initial[1:], None, 3, 1),
+        'lost_detail': ([], '合成待核对播客', 4, 2),
+        'lost_back': (initial[1:], None, 4, 2),
+        'no_replay': (initial[1:], None, 5, 2),
+    }
+    assert set(stages) == set(expected)
+    known_clears = [[route, {'radioId': '81'}], [route, {'radioId': '82'}]]
+    known_details = [{'id': id_} for id_ in ['81', '81', '81', '82', '82']]
+    native_trace = complete['podcastBadgeTrace']
+    assert [row for row in native_trace if row[0] == route] == known_clears
+    assert [body for target, body in native_trace if target == detail] == known_details
+    assert [body for target, body in native_trace if target == listing] == [
+        {'selectType': 1, 'sortType': 1},
+    ] * 5
+    assert all(row[0] in {route, detail, listing} for row in native_trace)
+    assert complete['detailReads'] == ['81', '81', '81', '82', '82']
+    assert complete['calls'] == [['81', 'acknowledged'], ['82', 'network'], ['82', 'stale']]
+    for stage, (badges, name, reads, clears) in expected.items():
+        row = stages[stage]
+        assert (row['badges'], row['detail'], row['readCount']) == (badges, name, reads), stage
+        assert [body for target, body in row['podcastBadgeTrace'] if target == detail] == known_details[:reads]
+        assert [call for call in row['podcastBadgeTrace'] if call[0] == route] == known_clears[:clears]
+    if sys.platform == 'linux':
+        locale = json.loads((output / 'locale.json').read_text(encoding='utf-8'))
+        assert locale['numeric'] == 'C'
+        assert all(locale[key].casefold().replace('-', '') == 'en_us.utf8'
+                   for key in ('messages', 'characters')), locale
+    if screenshots:
+        names = {path.stem for path in output.glob('ux_*.json')}
+        assert {path.stem for path in output.glob('ux_*.png')} == names
+        for stage in names:
+            paint = json.loads((output / f'paint-{stage}.json').read_text(encoding='utf-8'))
+            assert len(paint['samples']) == 2 and all(sample['ok'] for sample in paint['samples']), stage
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--binary', required=True, type=Path)
@@ -65,19 +114,24 @@ def main():
     parser.add_argument('--frontend-dist', type=Path)
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--screenshots', action='store_true')
-    parser.add_argument('--progress', action='store_true', help='run the sealed episode progress proof')
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument('--progress', action='store_true', help='run the sealed episode progress proof')
+    modes.add_argument('--badges', action='store_true', help='run the sealed subscription badge proof')
     args = parser.parse_args()
     root = args.root.resolve()
     root.mkdir(parents=True, exist_ok=False)
     env = {key: value for key, value in os.environ.items() if not key.startswith('CUMULUS_')}
     run = root / 'run'
-    name = 'podcast_progress_ui_probe.js' if args.progress else 'podcast_recent_ui_probe.js'
+    name = ('podcast_progress_ui_probe.js' if args.progress else 'podcast_badges_ui_probe.js'
+            if args.badges else 'podcast_recent_ui_probe.js')
     script = Path(__file__).resolve().parents[2] / 'desktop/examples' / name
     env.update(CUMULUS_PROOF_DIR=str(run), CUMULUS_UX_SCRIPT=str(script))
     if args.progress:
         env['CUMULUS_PODCAST_PROGRESS_PROOF'] = '1'
-        if sys.platform == 'linux':
-            env['LC_ALL'] = 'en_US.UTF-8'
+    if args.badges:
+        env['CUMULUS_PODCAST_BADGES_PROOF'] = '1'
+    if (args.progress or args.badges) and sys.platform == 'linux':
+        env['LC_ALL'] = 'en_US.UTF-8'
     for key, name in [('XDG_DATA_HOME', 'data'), ('XDG_CONFIG_HOME', 'config'),
                       ('XDG_CACHE_HOME', 'cache'), ('XDG_RUNTIME_DIR', 'runtime'),
                       ('APPDATA', 'roaming'), ('LOCALAPPDATA', 'local')]:
@@ -103,6 +157,8 @@ def main():
     assert len(stages) == complete['stageCount'] and all(s['actual'] for s in stages.values())
     if args.progress:
         check_progress(output, stages, complete)
+    elif args.badges:
+        check_badges(output, stages, complete, args.screenshots)
     else:
         assert list(stages['first_page']['ids']) == list(stages['back']['ids'])
         assert stages['next_error']['size'] == 18 and stages['next_page']['size'] == 20
@@ -137,8 +193,8 @@ def main():
             assert by_voice['506'] == [detail, permission, media][:len(by_voice['506'])], calls
     pictures = len(list(output.glob('ux_*.png')))
     assert not args.screenshots or pictures == len(stages)
-    result = {'actualWebView': True, 'decoder': 'libmpv', 'audioOutput': 'null', 'screenshots': pictures,
-              'states': list(stages), **complete}
+    runtime = {} if args.badges else {'decoder': 'libmpv', 'audioOutput': 'null'}
+    result = {'actualWebView': True, 'screenshots': pictures, 'states': list(stages), **runtime, **complete}
     (root / 'report.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n',
                                     encoding='utf-8')
     print(json.dumps(result, ensure_ascii=False))

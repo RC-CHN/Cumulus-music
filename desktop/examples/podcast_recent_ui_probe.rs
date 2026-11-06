@@ -1,6 +1,8 @@
 //! Production desktop WebView and libmpv with a closed synthetic podcast transport.
 #[path = "support/assets.rs"]
 mod assets;
+#[path = "support/podcast_badge_fixture.rs"]
+mod badge_fixture;
 #[path = "support/capture_ack.rs"]
 mod capture_ack;
 #[allow(dead_code)]
@@ -24,7 +26,9 @@ use cumulus_core::{
     account::{AccountSession, profiles::ProfileRegistry},
     client::MusicClient,
     protocol::{
-        api::{Api, ApiFuture, PodcastProgressPermission},
+        api::{
+            Api, ApiFuture, PodcastBadgeClear, PodcastBadgePermission, PodcastProgressPermission,
+        },
         http::ApiOrigin,
     },
 };
@@ -34,7 +38,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 use tauri::{Listener, Manager, webview::PageLoadEvent};
@@ -53,6 +57,7 @@ struct Library {
     calls: Mutex<Vec<Value>>,
     progress_enabled: bool,
     progress_uploads: Mutex<Vec<Value>>,
+    badges: Option<badge_fixture::Fixture>,
     scene_home: Option<scene_home_fixture::SceneHome>,
     scene_baseline: settings_fixture::Library,
     palette: Option<Arc<scene_palette_fixture::PaletteMedia>>,
@@ -111,6 +116,25 @@ impl Api for Library {
         })
     }
 
+    fn podcast_badge_revision(&self) -> Result<Option<String>> {
+        Ok(self.badges.as_ref().map(|_| badge_fixture::REVISION.into()))
+    }
+
+    fn clear_podcast_badge<'a>(
+        &'a self,
+        write: PodcastBadgeClear,
+        revision: &'a str,
+        permission: &'a PodcastBadgePermission<'a>,
+        dispatched: &'a AtomicBool,
+    ) -> ApiFuture<'a, ()> {
+        Box::pin(async move {
+            self.badges
+                .as_ref()
+                .expect("badge proof disabled")
+                .clear(write, revision, permission, dispatched)
+        })
+    }
+
     fn request<'a>(&'a self, path: &'a str, body: Value, cache: bool) -> ApiFuture<'a, Value> {
         Box::pin(async move {
             if let Some(voice) = &self.voice_detail
@@ -146,6 +170,11 @@ impl Api for Library {
                         scene_home_fixture::baseline(&self.scene_baseline, path, body, cache).await
                     }
                 };
+            }
+            if let Some(fixture) = &self.badges
+                && let Some(response) = fixture.read(path, &body, cache)
+            {
+                return response;
             }
             if path.contains("clear")
                 || path.contains("submit")
@@ -258,6 +287,7 @@ fn main() {
     fs::create_dir(&output).unwrap();
     let registry = ProfileRegistry::open(&root.join("state"), ApiOrigin::Pc).unwrap();
     let progress_enabled = std::env::var_os("CUMULUS_PODCAST_PROGRESS_PROOF").is_some();
+    let badges_enabled = std::env::var("CUMULUS_PODCAST_BADGES_PROOF").as_deref() == Ok("1");
     let voice_detail_enabled = std::env::var_os("CUMULUS_VOICE_DETAIL_PROOF").is_some();
     let palette_case = std::env::var("CUMULUS_SCENE_FM_PALETTE_PROOF")
         .ok()
@@ -272,8 +302,10 @@ fn main() {
         .map(scene_home_fixture::SceneHome::new);
     let scene_enabled = scene_home.is_some();
     assert!(!(scene_enabled && progress_enabled));
+    assert!(!badges_enabled || (!scene_enabled && !progress_enabled && !voice_detail_enabled));
     let api = Arc::new(Library {
         progress_enabled,
+        badges: badges_enabled.then(badge_fixture::Fixture::default),
         scene_home,
         palette: palette.clone(),
         voice_detail: voice_detail_enabled.then(voice_detail_fixture::VoiceDetail::default),
@@ -293,7 +325,9 @@ fn main() {
     context.config_mut().app.windows[0].create = false;
     let source = std::env::var_os("CUMULUS_UX_SCRIPT").map_or_else(
         || {
-            if voice_detail_enabled {
+            if badges_enabled {
+                include_str!("podcast_badges_ui_probe.js").to_owned()
+            } else if voice_detail_enabled {
                 include_str!("voice_detail_ui_probe.js").to_owned()
             } else if palette_enabled {
                 if palette_case
@@ -322,7 +356,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default())
         .setup(move |app| {
             #[cfg(target_os = "linux")]
-            if progress_enabled || scene_enabled {
+            if progress_enabled || scene_enabled || badges_enabled {
                 fs::write(output.join("locale.json"), serde_json::to_vec(&json!({
                     "numeric":locale(libc::LC_NUMERIC),
                     "messages":locale(libc::LC_MESSAGES),
@@ -360,6 +394,9 @@ fn main() {
                     || stage.starts_with("ux_") && stage.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')) {
                     return;
                 }
+                if let Some(badges) = &api.badges {
+                    value["podcastBadgeTrace"] = json!(badges.trace());
+                }
                 if let Some(voice)=&api.voice_detail {
                     value["voiceDetailCalls"]=json!(voice.calls());
                 }
@@ -381,7 +418,7 @@ fn main() {
                     if stage == "complete" || stage == "failed" {
                         handle.exit(if stage == "complete" {0} else {1});
                     } else if capture_ack::acknowledge(&handle, &output, &stage, true).await
-                        && (progress_enabled || scene_enabled)
+                        && (progress_enabled || scene_enabled || badges_enabled)
                     {
                         handle.get_webview_window("main").unwrap().eval(format!(
                             "window.__podcastProgressStage = {};",
