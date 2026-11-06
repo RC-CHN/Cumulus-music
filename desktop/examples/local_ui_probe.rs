@@ -158,7 +158,10 @@ fn main() {
     let cold = std::env::var_os("CUMULUS_LOCAL_COLD_START_PROOF").is_some();
     let folder_reveal = std::env::var("CUMULUS_LOCAL_FOLDER_REVEAL_PROOF").as_deref() == Ok("1");
     assert!(!folder_reveal || cfg!(target_os = "linux"));
-    let queue = folder_reveal || std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
+    let group_hide = std::env::var("CUMULUS_LOCAL_GROUP_HIDE_PROOF").as_deref() == Ok("1");
+    assert!(!group_hide || !folder_reveal);
+    let queue =
+        folder_reveal || group_hide || std::env::var_os("CUMULUS_LOCAL_QUEUE_PROOF").is_some();
     assert!(
         !queue || (!cold && !reopen),
         "queue proof needs a fresh profile"
@@ -179,6 +182,17 @@ fn main() {
                 media.join("Bonus").join("Bonus Track.wav"),
             )
             .expect("synthetic nested audio file");
+            if group_hide {
+                for (folder, file) in [
+                    ("Bonus/Deep", "Nested audible.wav"),
+                    ("Bonus plus", "Neighbor audible.wav"),
+                ] {
+                    let directory = media.join(folder);
+                    fs::create_dir(&directory).expect("synthetic group directory");
+                    fs::copy(media.join("雨声.wav"), directory.join(file))
+                        .expect("synthetic group media");
+                }
+            }
         }
     }
     let setup = root.clone();
@@ -195,7 +209,9 @@ fn main() {
         app.add_capability(r#"{"identifier":"local-proof","windows":["main"],"permissions":["core:event:allow-emit"]}"#)?;
         let output=setup.clone();let handle=app.handle().clone();app.listen("local-proof",move|event|{
             let value:Value=serde_json::from_str(event.payload()).expect("proof JSON");let stage=value["stage"].as_str().unwrap_or("");
-            if folder_reveal && ["ux_01_folder_menu", "ux_02_folder_focus", "ux_03_folder_failure"].contains(&stage) {
+            let folder_capture = folder_reveal && ["ux_01_folder_menu", "ux_02_folder_focus", "ux_03_folder_failure"].contains(&stage);
+            let hide_capture = group_hide && ["ux_01_group_hide_menu", "ux_02_group_hidden", "ux_03_group_restored"].contains(&stage);
+            if folder_capture || hide_capture {
                 fs::write(output.join(format!("{stage}.json")),serde_json::to_vec_pretty(&value).unwrap()).unwrap();
                 let marker=output.join(format!("{stage}.captured"));let stage=stage.to_owned();let handle=handle.clone();
                 tauri::async_runtime::spawn(async move {
@@ -269,6 +285,8 @@ fn main() {
             webview.eval(format!("window.__localProof={};",json!({"root":root,"reopen":reopen,"capture":capture}))).unwrap();
             webview.eval(if cold {include_str!("local_cold_start_probe.js")} else if folder_reveal {
                 include_str!("local_folder_reveal_ui_probe.js")
+            } else if group_hide {
+                include_str!("local_group_hide_ui_probe.js")
             } else if queue {
                 include_str!("local_queue_ui_probe.js")
             } else {include_str!("local_ui_probe.js")}).unwrap();
