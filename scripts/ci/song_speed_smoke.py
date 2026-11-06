@@ -56,6 +56,10 @@ def main():
             assert complete['restored']['customTenths'] == 13 and complete['restored']['customSelected']
         else:
             assert complete['staleRejected'] and complete['voiceRate'] == 1.5
+            assert complete['catalogIdentity'] == {
+                'matchedSong': '2', 'playedVoice': '402', 'backingSong': '2',
+                'rowStillVisible': True, 'rowHighlighted': False,
+            }
             assert [ratio['rate'] for ratio in complete['ratios']] == [1.3, 1, 1.3]
             assert all(abs(ratio['delta'] - ratio['elapsed'] * ratio['rate']) < .45
                        for ratio in complete['ratios'])
@@ -68,6 +72,7 @@ def main():
             assert len(list(output.glob('ux_*.png'))) == len(rows)
         captures.extend(str(path.relative_to(root)) for path in rows)
     report = {'actualWebView': True, 'actualNullAudio': True, 'signedSyntheticTransport': True,
+              'catalogVoiceIdentityVerified': True,
               'coldProcessRestart': True, 'physicalAudioOutputVerified': False,
               'realMusicRequests': 0, 'realAccountWrites': 0, 'captures': captures}
     (root / 'audit.json').write_text(json.dumps(report, indent=2) + '\n', encoding='utf-8')

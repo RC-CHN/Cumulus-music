@@ -1,6 +1,7 @@
 // Closed signed experiment changes and real libmpv clock; no service contact.
 (async () => {
   const one = (query) => document.querySelector(query);
+  const catalogRow = () => one('.track-row[data-track-id="2"]');
   const bar = () => one('.playerbar');
   const trigger = () => one('.song-speed-trigger');
   const popup = () => one('.song-speed-panel');
@@ -77,13 +78,13 @@
     ratios.push({ rate, elapsed, delta });
   }
   try {
-    await wait(() => one('.track-row .track-play:not(:disabled)'), 'native fixture ready');
+    await wait(() => catalogRow()?.querySelector('.track-play:not(:disabled)'), 'native fixture ready');
     ({ epoch } = await invoke('account_snapshot'));
     native = () => invoke('player_snapshot', { epoch });
     await cohort('t1');
-    click(one('.track-row .track-play:not(:disabled)'));
+    click(catalogRow().querySelector('.track-play'));
     await wait(() => bar()?.dataset.state === 'playing' && pauseButton() && !pauseButton().disabled &&
-      Number(bar().dataset.position) > .2, 'real playing state');
+      Number(bar().dataset.position) > .2 && catalogRow()?.classList.contains('current'), 'real catalog row playing state');
     const playId = bar().dataset.playId;
     click(pauseButton());
     await wait(() => bar().dataset.state === 'paused' && trigger() && !trigger().disabled, 'real paused state');
@@ -139,7 +140,10 @@
     const provides = one('#app').__vue_app__._context.provides;
     const core = provides[Reflect.ownKeys(provides).find((key) => typeof key === 'symbol' && key.description === 'core-client')];
     const voice = await core.playSelection(epoch, { kind: 'voice', id: '402' });
-    assert(voice.speedScope === 'voice' && voice.speed === 1 && !voice.songSpeed, 'voice starts separately');
+    assert(voice.resourceKind === 'voice' && voice.track?.voiceId === '402' && voice.track?.id === '2' &&
+      voice.speedScope === 'voice' && voice.speed === 1 && !voice.songSpeed, 'voice uses the same backing song ID');
+    await wait(() => catalogRow() && !catalogRow().classList.contains('current'),
+      'playing a voice with the same backing ID clears the catalog row highlight');
     await core.playerAction(epoch, { kind: 'speed_for', scope: 'voice', value: 1.5 });
     await cohort('c');
     await observe('voice rate unaffected by c', 1.5, (view) => view.playId === voice.playId && !view.songSpeed);
@@ -147,7 +151,9 @@
     await observe('voice rate unaffected by t1', 1.5, (view) => view.playId === voice.playId && !view.songSpeed);
     await wait(() => !trigger() && one('.speed-control [aria-label="播放速度"]'), 'voice menu remains separate');
     await capture('voice_separate');
-    await emit('complete', { ok: true, stageCount: count, ratios, staleRejected: true, voiceRate: 1.5 });
+    await emit('complete', { ok: true, stageCount: count, ratios, staleRejected: true, voiceRate: 1.5,
+      catalogIdentity: { matchedSong: '2', playedVoice: voice.track.voiceId, backingSong: voice.track.id,
+        rowStillVisible: !!catalogRow(), rowHighlighted: catalogRow()?.classList.contains('current') } });
   } catch (error) {
     await emit('failed', { ok: false, error: String(error), stageCount: count, observed: current, ratios });
   }
