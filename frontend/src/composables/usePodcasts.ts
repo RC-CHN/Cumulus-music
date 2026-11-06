@@ -37,6 +37,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     write = 0,
     stateRead = 0,
     recommendationVisit = 0,
+    recommendationsRequested = false,
     visible = false;
   let history: PodcastQuery[] = [];
   const canBack = ref(false);
@@ -69,6 +70,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     write++;
     stateRead++;
     recommendationVisit++;
+    recommendationsRequested = false;
     recommendations.value = [];
     epoch.value = '';
     page.value = undefined;
@@ -96,10 +98,18 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     if (account.status !== 'authenticated') return;
     epoch.value = account.epoch;
     void state(false);
-    if (visible) {
-      void load(true);
-      void loadRecommendations();
-    }
+    if (visible) void load(true);
+  }
+  function activateRecommendations() {
+    if (
+      !visible ||
+      !epoch.value ||
+      recommendationsRequested ||
+      (!recentSelected.value && query.value.scope.kind === 'radio')
+    )
+      return;
+    recommendationsRequested = true;
+    void loadRecommendations();
   }
   async function loadRecommendations() {
     const g = generation,
@@ -130,6 +140,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     }
   }
   async function load(refresh = false) {
+    activateRecommendations();
     if (!epoch.value || busy.value || recentSelected.value) return;
     const g = generation,
       e = epoch.value,
@@ -172,6 +183,7 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     error.value = '';
     recentReturn.value = false;
     recentSelected.value = true;
+    activateRecommendations();
   }
   function navigate(scope: PodcastScope, libraryBack = true) {
     if (recentSelected.value) {
@@ -248,12 +260,12 @@ export function usePodcasts(core: PodcastClient = useCore(), expired: () => void
     if (visible) void load(true);
   }
   function show(value: boolean) {
-    const entering = value && !visible;
     visible = value;
-    if (!value) recommendationVisit++;
-    if (value && epoch.value) {
+    if (!value) {
+      recommendationVisit++;
+      recommendationsRequested = false;
+    } else if (epoch.value) {
       void load(!page.value);
-      if (entering) void loadRecommendations();
     }
   }
   function search(keyword: string) {

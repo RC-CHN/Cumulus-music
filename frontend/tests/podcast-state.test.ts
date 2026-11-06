@@ -466,3 +466,24 @@ test('late recommendation from inactive visit or old account cannot populate the
     ['93'],
   );
 });
+
+test('opening a radio from outside My Podcasts does not read subscription recommendations', async () => {
+  const reads: string[] = [];
+  const model = usePodcasts(
+    client({
+      podcastSubscriptionRecommendations: async (e) => {
+        reads.push(e);
+        return { epoch: e, value: [recommended('81')] };
+      },
+      podcastPage: async (e, request) => ({ ...page(e), scope: request.scope, remoteTotal: 0 }),
+    }),
+  );
+  model.connect(account());
+  model.navigate({ kind: 'radio', id: '81', ascending: true });
+  model.show(true);
+  await model.load(true);
+  assert.deepEqual(reads, []);
+  model.back();
+  await model.load(true);
+  assert.deepEqual(reads, ['1']);
+});
