@@ -37,6 +37,7 @@
     includeMissing: true, offset: 0, limit: 200, revision: null,
   }});
   async function context(target, mouse = false) {
+    assert(target?.isConnected, 'current group anchor is detached');
     target.focus({ preventScroll: true });
     if (mouse) target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     else key(target, 'F10', true);
@@ -89,10 +90,16 @@
     input.value = 'Bonus Track';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.form.requestSubmit();
-    await wait(() => ready() && bonus()?.getAttribute('aria-pressed') === 'true' &&
-      !all('[data-local-folder-key]').some((node) => /[/\\]Deep$/.test(node.title)) &&
-      rows().length === 1, 'search limits visible groups');
-    const first = await context(bonus(), true);
+    const filteredBonus = await wait(() => {
+      const target = bonus();
+      // Search replaces the tree with a flat list. A collapsed pre-search
+      // tree also has no visible Deep row, so absence alone is not readiness.
+      return ready() && !one('.local-folder-rows') && target?.isConnected &&
+        target.getAttribute('aria-pressed') === 'true' &&
+        !all('[data-local-folder-key]').some((node) => /[/\\]Deep$/.test(node.title)) &&
+        rows().length === 1 && rows()[0].dataset.localId === ids[0] && target;
+    }, 'search commits the filtered group');
+    const first = await context(filteredBonus, true);
     assert(first.textContent.trim() === '从列表中删除' &&
       !button('从本地磁盘删除', menu()), 'physical deletion is not offered');
     await capture('ux_01_group_hide_menu', first);
