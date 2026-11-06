@@ -62,7 +62,14 @@
   async function openAlbum() {
     const card = await wait(() => one('[data-catalog-key="album:8"]'), 'album 8 card');
     click(card);
-    await wait(() => header() && one('.album-header h1')?.textContent === '合成专辑 8', 'album 8 opened');
+    await wait(() => {
+      const album = one('.catalog-page .album-header:not(.album-header-compact)');
+      const songs = one('[data-album-panel="songs"]');
+      return album?.querySelector('h1')?.textContent.trim() ===
+          '漫长的午后与未完的旋律 · A quiet afternoon / Extended edition' &&
+        !album.querySelector('[data-album-play]').disabled && songs && !songs.inert &&
+        header() && rows().length === 4 && rows().every((id) => original.split(',').includes(id));
+    }, 'album 8 loaded the four scoped song rows');
   }
   try {
     ({ epoch } = await invoke('account_snapshot'));
