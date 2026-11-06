@@ -118,6 +118,26 @@ impl VinylVoiceSongsRead {
     }
 }
 
+/// Fixed PC RcmdCard read for the native current-episode identity.
+pub struct VinylVoiceRecommendationsRead(String);
+
+impl VinylVoiceRecommendationsRead {
+    pub(crate) const PATH: &'static str = "/api/voice/play/page/rcmd";
+
+    pub(crate) fn new(voice_id: &str) -> Result<Self> {
+        if !canonical_vinyl_comment_id(voice_id) {
+            return Err(Error::InvalidInput(
+                "invalid vinyl voice recommendation seed",
+            ));
+        }
+        Ok(Self(voice_id.into()))
+    }
+
+    pub fn into_request(self) -> (&'static str, Value) {
+        (Self::PATH, json!({"voiceId":self.0}))
+    }
+}
+
 /// Fixed signed encyclopedia query for the native current-track identity.
 pub struct VinylWikiRead(String);
 
@@ -410,6 +430,19 @@ pub trait Api: Send + Sync + std::any::Any {
 
     /// Only call permission at the dispatch boundary. It consumes the user's
     /// live authorization once. RequestNotSent is reserved for pre-backend failures.
+    fn request_vinyl_voice_recommendations<'a>(
+        &'a self,
+        _read: VinylVoiceRecommendationsRead,
+        _revision: &'a str,
+        _permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(async {
+            Err(Error::State(
+                "vinyl voice recommendations require a native signed transport",
+            ))
+        })
+    }
+
     fn request_vinyl_comment_write<'a>(
         &'a self,
         _write: VinylCommentWrite,

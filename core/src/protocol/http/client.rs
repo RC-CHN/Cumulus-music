@@ -1058,6 +1058,15 @@ impl Api for MusicHttpClient {
         Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
     }
 
+    fn request_vinyl_voice_recommendations<'a>(
+        &'a self,
+        read: crate::protocol::api::VinylVoiceRecommendationsRead,
+        revision: &'a str,
+        permission: &'a VinylPlaybackReadPermission<'a>,
+    ) -> ApiFuture<'a, Value> {
+        Box::pin(self.vinyl_playback_read(read.into_request(), revision, permission))
+    }
+
     fn request_vinyl_comment_write<'a>(
         &'a self,
         write: VinylCommentWrite,

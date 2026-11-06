@@ -43,6 +43,8 @@ pub use vinyl_similar::{
 };
 mod vinyl_wiki;
 mod voice_detail;
+mod voice_recommendations;
+pub use voice_recommendations::{VinylVoiceRecommendationCard, VinylVoiceRecommendationsView};
 mod voice_songs;
 pub use voice_detail::{PlayerVoiceCreator, PlayerVoiceDetail, PlayerVoiceRadio};
 pub use voice_songs::PlayerVoiceSongsView;
@@ -129,6 +131,7 @@ pub(super) struct PlayerHost {
     vinyl_draft: Mutex<Option<vinyl_composer::VinylDraft>>,
     streaming_cache: Option<Arc<crate::playback::stream_cache::StreamingCache>>,
     vinyl_similar: Arc<vinyl_similar::Host>,
+    voice_recommendations: voice_recommendations::Host,
 }
 impl PlayerHost {
     pub fn new(
@@ -161,6 +164,7 @@ impl PlayerHost {
             vinyl_draft: Mutex::new(None),
             streaming_cache: None,
             vinyl_similar: Default::default(),
+            voice_recommendations: Default::default(),
             focus,
             output,
             inspector: OnceCell::new(),

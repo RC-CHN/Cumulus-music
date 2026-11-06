@@ -46,6 +46,7 @@ pub use super::player::{
     QueueCollectionView, QueueEdit, QueueMoreTipAction, QueueTrack, QueueView,
     SearchResultPlayback, SongRowSelection, StartupPreferencesCommand, StartupPreferencesView,
 };
+pub use super::player::{VinylVoiceRecommendationCard, VinylVoiceRecommendationsView};
 pub use super::playlist_cover::{CoverCommand, CoverOutcome};
 pub use super::playlist_creator::PlaylistCreatorProfile;
 pub use super::playlist_essential::{PlaylistEssentialCategory, PlaylistEssentialPage};

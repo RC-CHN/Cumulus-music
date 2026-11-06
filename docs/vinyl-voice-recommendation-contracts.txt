@@ -1,0 +1,54 @@
+节目播放详情：「听了该声音的人也在听」
+========================================
+
+官方 Windows 3.1.42.205594（恢复的 hybrid_app.chunk.1482700000000.js）
+
+- M/182:7107–7132、:7569、:7611–7616：选择 VoicePage 后，挂载时或
+  playing.curVoice 变化触发 initVoicePage。M/69:185–224 在同一个并行 all
+  中发节目详情、节目推荐、节目相关歌曲三条独立请求，然后保存状态。
+  vipType 仅用于该页面日志，推荐卡本身没有已恢复的 AB 或会员门控。
+- M/109:98–101 调用 M/15:3811–3822，固定读
+  /api/voice/play/page/rcmd，参数 {voiceId:<当前节目 ID 字符串>}，
+  不走官方本地 RPC 缓存。响应 data 允许数组或一个对象，官方格式器仅
+  转换各行 id 为字符串。M/182:6929–6948 和恢复的 RcmdCard.tsx:160–179
+  用这一行的 id 直接组成 /audioDetail/:id。Action 的 resourceType=voice
+  不改目的地类型；audio-detail/views/index.jsx:81–100 把相同路由参数交给
+  page:audioDetail/getDetail，再由 hybrid_156…/3018.js:226–247 请求播单
+  /api/djradio/v3/get。既不打开节目单曲页，也不从 radioId/programId/
+  trackId 字段换目标，更没有播放/加队列动作。
+- M/69:79、:205–220、:244–273 与 M/283:201–229：原始顺序每页六张，
+  最后一组只有一至三张则裁掉；有四或五张则保留。初始没有记录就隐藏；
+  标题点击显示下一个内存切片，最后一页之后回到第一页。只有一页时保持
+  原页。翻页不发任何远端请求，刷新图标旋转约 500ms（M/182:6951–6971）。
+  卡片三列，picUrl 封面、name 标题、playCount ?? 0；没有官方原始 URL
+  导航，也没有把节目推荐等同「我收藏的播客」/api/djradio/my/radio/recommend。
+- M/23:860 的 VoicePage 分类包含 voice、downloadVoice、localVoice。
+  M/308:489–501 把下载来源 localTrack.origin 写到 curVoice；
+  :538–546 赋给普通在线 voice。hybrid_204…/3004.js:334–346 的 Scene FM
+  播放动作明确使用 ResourceType.voice，from.scene=sceneFm，不是音乐 FM
+  resource type。播单的有声书分类属于 radio，不是这里的排除条件；有合法
+  curVoice.id 就按同一 voice 请求。M/308:513–524 的普通本地文件分支会
+  清除 curVoice，不能从任意标签推成节目。
+
+Cumulus Rust 边界
+
+- player_vinyl_voice_recommendations(epoch, playId) 只接受当前活动、原生
+  播放选择和已验证账号。Episode、背后主音轨与队列 entry 必须相符；沿用
+  同一绑定支持普通在线（含 Scene FM 和有声书节目）及已标明 Voice 下载来源。
+  未匹配的本机扫描、云盘和普通歌曲不形成节目 ID。本批实际签名请求验证使用
+  普通在线合成 Episode；Scene FM/下载来源分类是静态/既有绑定证据，不宣称
+  在本批对这两类做了推荐卡桌面或实服测试。
+- 使用已有签名 PC EAPI native 播放详情读取和 Cookie 作用域绑定；不会发
+  AB 分组查询。账号、API 对象、原生凭据版本、playId、entry、节目、主音轨、
+  登录切换及一起听房间守卫，在请求出门前和回包交付前重验。访客和无法证明
+  对应节目身份的读取不启用；这些是 Cumulus 的安全边界，不冒充官方实验门槛。
+- 每个客户端只保留一张有界的有效内存 shelf；响应至多 120 条，保留原顺序；
+  仅公开 radioId（返回行的原 id）、name、经过公开图床白名单的可选
+  coverUrl、数值 playCount。原始 Token、任意 URL、作者与其他推荐数据不跨
+  IPC。畸形目标或响应按错误处理，不造占位路由。
+- player_vinyl_voice_recommendations_next(epoch, playId, receipt) 是同步本机
+  翻页。它只接受同一有效回执（不接受原始 ID、索引或网络参数），不请求
+  网络、不初始化播放器、不改任何播放或账户资源。页码 1 起；空结果页码
+  和总页数均为 0。新成功读取生成新回执；过时播放或 Cookie 不能翻旧页。
+- 本批只实现和验证 native core 及签名传输；Tauri 调用、WebView 布局和
+  多源真桌面行为由后续合并批次验证，未使用真实账号或真实声音设备。
