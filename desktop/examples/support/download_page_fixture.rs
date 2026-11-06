@@ -29,6 +29,22 @@ pub fn enabled() -> bool {
 pub fn quality_enabled() -> bool {
     enabled() && std::env::var_os("CUMULUS_DOWNLOAD_QUALITY_UI_PROOF").is_some()
 }
+pub fn voice_podcast_enabled() -> bool {
+    enabled() && std::env::var_os("CUMULUS_DOWNLOAD_VOICE_PODCAST_PROOF").is_some()
+}
+static VOICE_PODCAST_READS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+const VOICE_RADIO_ID: &str = "9007199254740993";
+fn voice_radio() -> Value {
+    json!({"id":VOICE_RADIO_ID,"name":"合成下载节目所属播客","programCount":1})
+}
+fn voice_episode(episode_id: u64, media_id: u64) -> Value {
+    json!({"id":episode_id,"name":format!("合成声音 {media_id:03}"),
+        "mainSong":{"id":media_id},"duration":30000,"radio":voice_radio(),
+        "dj":{"userId":88,"nickname":"合成主播（不是播客名）"}})
+}
+pub fn voice_podcast_report() -> Value {
+    json!(*VOICE_PODCAST_READS.lock().unwrap())
+}
 static QUALITY_MEMBERSHIP_READS: AtomicUsize = AtomicUsize::new(0);
 static QUALITY_STARTUP_READ: tokio::sync::Notify = tokio::sync::Notify::const_new();
 static QUALITY_DOWNLOAD_READS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
@@ -39,6 +55,32 @@ static MV_DETAIL: AtomicUsize = AtomicUsize::new(0);
 static MV_STREAM: AtomicUsize = AtomicUsize::new(0);
 const MEDIA: &str = "https://m1.music.126.net/cumulus-download-fixture.wav";
 pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
+    if voice_podcast_enabled() {
+        let response = match path {
+            "/api/djradio/v3/get" => {
+                assert_eq!(*args, json!({"id":VOICE_RADIO_ID}));
+                Some(json!({"code":200,"data":voice_radio()}))
+            }
+            "/api/v6/dj/program/byradio" => {
+                assert_eq!(args["radioId"], VOICE_RADIO_ID);
+                Some(
+                    json!({"code":200,"data":{"programs":[voice_episode(701,121)],"count":1,
+                    "more":false,"asc":args["asc"]}}),
+                )
+            }
+            "/api/content/my/liked/voice" => {
+                return Some(Ok(json!({"code":200,"data":{"data":[],"hasMore":false}})));
+            }
+            _ => None,
+        };
+        if let Some(response) = response {
+            VOICE_PODCAST_READS
+                .lock()
+                .unwrap()
+                .push(json!({"path":path,"args":args}));
+            return Some(Ok(response));
+        }
+    }
     if quality_enabled() && path == "/api/music-vip-membership/client/vip/info" {
         assert_eq!(*args, json!({"userId":"2"}));
         let attempt = QUALITY_MEMBERSHIP_READS.fetch_add(1, Ordering::SeqCst);
@@ -367,6 +409,23 @@ impl Fixture {
                     );
                     if (121..=132).contains(&i) {
                         task.song.as_mut().unwrap()["voice_id"] = json!(i.to_string());
+                    }
+                    if voice_podcast_enabled() && (121..=123).contains(&i) {
+                        let id = i + 580;
+                        task.origin = DownloadOrigin::Voice {
+                            voice_id: id.to_string(),
+                        };
+                        let raw = voice_episode(if i == 123 { id + 1 } else { id }, i);
+                        let mut metadata = cumulus_core::podcast::Episode::from_official(&raw)?
+                            .download_metadata()?;
+                        if i == 122 {
+                            metadata["voice"]["audio"]["id"] = Value::Null;
+                            metadata["voice"]["audio"]["name"] = json!("没有编号的播客");
+                        }
+                        if i == 123 {
+                            metadata["voice"]["audio"]["name"] = json!("错误的归属不能展示");
+                        }
+                        task.song = Some(metadata);
                     }
                     if i == 133 {
                         task.song.as_mut().unwrap()["dt"] = json!(6000);

@@ -1497,6 +1497,9 @@ fn main() {
             if download_page_fixture::quality_enabled() {
                 value["downloadQualityFixture"] = download_page_fixture::quality_report(&proof_store).unwrap();
             }
+            if download_page_fixture::voice_podcast_enabled() {
+                value["downloadVoicePodcastReads"] = download_page_fixture::voice_podcast_report();
+            }
             if let Some(signed)=signed_search.as_ref() { value["signedSearch"] = signed.report(); }
             if message_fixture::enabled() { value["messageRequests"] = message_fixture::report(); }
             if playback_quality_fixture::enabled() { value["syntheticQuality"] = playback_quality_fixture::report(); }
