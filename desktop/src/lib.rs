@@ -474,6 +474,7 @@ pub fn configure<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builde
                 player::vinyl_similar::player_vinyl_similar_songs,
                 player::vinyl_similar::player_vinyl_related_playlists,
                 player::vinyl_similar::player_vinyl_similar_play,
+                player::voice_related::player_vinyl_voice_detail,
                 player::voice_related::player_vinyl_voice_recommendations,
                 player::voice_related::player_vinyl_voice_recommendations_next,
                 player::voice_related::player_vinyl_voice_recommendation_target,

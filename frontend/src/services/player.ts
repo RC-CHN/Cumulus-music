@@ -4,6 +4,7 @@ import type { CommentOperation, VinylCommentLikeAction, VinylCommentPage } from 
 import type { ProfileReportView, ReportCommand } from './profileReport';
 import type { VinylSimilarClient } from './vinylSimilar';
 import type { VoiceRecommendationsClient } from './voiceRecommendations';
+import type { VoiceDetailClient } from './voicePage';
 import type { VoiceSongsClient } from './voiceSongs';
 import type { VoiceDetail } from './voiceDetail';
 export type Quality =
@@ -790,6 +791,7 @@ export type QueueMoreTipAction =
 
 export interface PlayerClient
   extends VinylSimilarClient,
+    VoiceDetailClient,
     VoiceRecommendationsClient,
     VoiceSongsClient {
   playerSnapshot(epoch: string): Promise<PlayerView>;

@@ -3,7 +3,7 @@ use cumulus_core::{
     client::{
         ClientError, MusicClient,
         dto::{
-            AccountData, LikeResult, PlayerView, PlayerVoiceSongsView,
+            AccountData, LikeResult, PlayerView, PlayerVoiceSongsView, VinylVoiceDetailView,
             VinylVoiceRecommendationsView, VoiceSongAction,
         },
     },
@@ -16,6 +16,20 @@ fn require_main<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) -> Result<(
     } else {
         Err(Error::InvalidInput("main window required").into())
     }
+}
+
+#[tauri::command]
+pub async fn player_vinyl_voice_detail<R: tauri::Runtime>(
+    window: tauri::WebviewWindow<R>,
+    client: tauri::State<'_, MusicClient>,
+    epoch: String,
+    play_id: String,
+) -> Result<VinylVoiceDetailView, ClientError> {
+    require_main(&window)?;
+    client
+        .player_vinyl_voice_detail(&epoch, &play_id)
+        .await
+        .map_err(Into::into)
 }
 
 #[tauri::command]

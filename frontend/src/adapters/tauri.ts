@@ -473,6 +473,8 @@ export function createTauriClient(): CoreClient {
       invoke('player_vinyl_related_playlists', { epoch, playId }),
     playerVinylSimilarPlay: (epoch, playId, receipt, action, quality) =>
       invoke('player_vinyl_similar_play', { epoch, playId, receipt, action, quality }),
+    playerVinylVoiceDetail: (epoch, playId) =>
+      invoke('player_vinyl_voice_detail', { epoch, playId }),
     playerVinylVoiceRecommendations: (epoch, playId) =>
       invoke('player_vinyl_voice_recommendations', { epoch, playId }),
     playerVinylVoiceRecommendationsNext: (epoch, playId, receipt) =>
