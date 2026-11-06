@@ -3,8 +3,13 @@
   const one = (selector) => document.querySelector(selector);
   const button = (label) => one(`button[aria-label="${label}"]`);
   const panel = () => one('.lyrics-panel');
-  const body = () => one('[data-vinyl-comment-group="hot"] [data-vinyl-comment-id="101"] p[data-vinyl-copy-text]');
-  const expected = '合成评论 101';
+  const row = '[data-vinyl-comment-group="hot"] [data-vinyl-comment-id="101"]';
+  const fixtures = {
+    comment: { selector: `${row} p[data-vinyl-copy-text]`, text: '合成评论 101' },
+    quote: { selector: `${row} blockquote[data-vinyl-copy-text]`, text: '@被引用作者: 合成引用正文' },
+  };
+  let current = 'comment';
+  const target = () => one(fixtures[current].selector);
   const invoke = (...args) => window.__TAURI_INTERNALS__.invoke(...args);
   const emit = (stage, data = {}) => invoke('plugin:event|emit', {
     event: 'ux-proof', payload: { stage, ...data },
@@ -26,15 +31,15 @@
     node.click();
   }
   function selection() {
-    const selected = getSelection(), container = body();
+    const selected = getSelection(), container = target();
     return { text: selected?.toString() ?? '', collapsed: selected?.isCollapsed ?? true,
-      bodyOnly: !!container && container.contains(selected?.anchorNode) && container.contains(selected?.focusNode) };
+      targetOnly: !!container && container.contains(selected?.anchorNode) && container.contains(selected?.focusNode) };
   }
   const input = [], geometry = {};
   let copied, phase = 'startup', epoch, baseline, count = 0;
   for (const type of ['pointerdown', 'pointerup', 'keydown']) {
     document.addEventListener(type, (event) => {
-      if (event.isTrusted) input.push({ type, body: !!body()?.contains(event.target),
+      if (event.isTrusted) input.push({ type, target: !!target()?.contains(event.target),
         key: event.key ?? null, ctrl: event.ctrlKey, trusted: true });
     }, { capture: true });
   }
@@ -44,9 +49,9 @@
     setTimeout(() => { copied = { trusted: event.isTrusted, handled: event.defaultPrevented, hasClipboardData }; }, 0);
   });
   function point(edge) {
-    const target = body();
-    if (!target) return;
-    const walker = document.createTreeWalker(target, NodeFilter.SHOW_TEXT);
+    const element = target();
+    if (!element) return;
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
     const nodes = [];
     for (let node = walker.nextNode(); node; node = walker.nextNode()) if (node.textContent.trim()) nodes.push(node);
     const glyph = edge === 'end' ? nodes.at(-1) : nodes[0];
@@ -60,7 +65,7 @@
     const x = r.left + r.width * (edge === 'end' ? .93 : .15), y = r.top + r.height / 2;
     const hit = document.elementFromPoint(x, y);
     geometry[edge] = { x, y, width: r.width, height: r.height, hit: hit?.outerHTML.slice(0, 130) };
-    return r.width > 2 && r.height > 3 && target.contains(hit) ?
+    return r.width > 2 && r.height > 3 && element.contains(hit) ?
       { x, y, ratio: devicePixelRatio, width: innerWidth, height: innerHeight } : undefined;
   }
   const actor = () => invoke('player_snapshot', { epoch });
@@ -75,6 +80,30 @@
     await emit(stage, { ...fields, selection: selection(), copy: copied ?? null, input: [...input],
       pane: panel()?.dataset.vinylTab, visible: document.visibilityState === 'visible' });
     await wait(() => window.__queueUiStageRecorded === stage, 'native stage acknowledged');
+  }
+
+  async function exerciseCopy(kind) {
+    current = kind;
+    const { text } = fixtures[kind];
+    phase = `${kind}_prepare`;
+    copied = undefined;
+    await wait(() => panel()?.dataset.vinylTab === 'comments' && target()?.textContent.trim() === text &&
+      document.hasFocus(), `expected ${kind} rendered in the native WebView`);
+    const targets = await wait(() => {
+      const from = point('start'), to = point('end');
+      return from && to && !one('.vinyl-tab-stack')?.getAnimations().some((a) => a.pending || a.playState === 'running') &&
+        { from, to };
+    }, `settled ${kind} is an unobstructed pointer target`);
+    const first = input.length;
+    await capture(`${kind}_drag_ready`, { targets });
+    await wait(() => input.slice(first).some((e) => e.type === 'pointerup' && e.target) &&
+      selection().targetOnly && selection().text === text, `trusted pointer selected only the ${kind} text`);
+    assert(input.slice(first).some((e) => e.type === 'pointerdown' && e.target), `native pointer started on ${kind}`);
+    await capture(`${kind}_copy_ready`);
+    await wait(() => copied?.trusted && copied.handled && copied.hasClipboardData &&
+      input.slice(first).some((e) => e.type === 'keydown' && e.key === 'c' && e.ctrl),
+    `trusted Ctrl+C was filtered (${kind})`);
+    await capture(`${kind}_copied`);
   }
 
   try {
@@ -110,21 +139,8 @@
       !one('.lyrics-panel-enter-active') && button('当前歌曲评论')?.getAttribute('aria-pressed') === 'false',
     'authoritative t1 embedded comments available');
     click(button('当前歌曲评论'));
-    await wait(() => panel()?.dataset.vinylTab === 'comments' && body()?.textContent.trim() === expected &&
-      document.hasFocus(), 'fixture comment rendered in the native WebView');
-    const targets = await wait(() => {
-      const from = point('start'), to = point('end');
-      return from && to && !one('.vinyl-tab-stack')?.getAnimations().some((a) => a.pending || a.playState === 'running') &&
-        { from, to };
-    }, 'settled comment body is an unobstructed pointer target');
-    await capture('comment_drag_ready', { targets });
-    await wait(() => input.some((e) => e.type === 'pointerup' && e.body) && selection().bodyOnly &&
-      selection().text === expected, 'trusted pointer selected only the comment body');
-    assert(input.some((e) => e.type === 'pointerdown' && e.body), 'native pointer started on comment');
-    await capture('comment_copy_ready');
-    await wait(() => copied?.trusted && copied.handled && copied.hasClipboardData &&
-      input.some((e) => e.type === 'keydown' && e.key === 'c' && e.ctrl), 'trusted Ctrl+C was filtered');
-    await capture('comment_copied');
+    await exerciseCopy('comment');
+    await exerciseCopy('quote');
     await emit('complete', { ok: true, stageCount: count, realMusicRequests: 0, accountWrites: 0 });
   } catch (error) {
     await emit('failed', { ok: false, phase, error: String(error), input, geometry, selection: selection(),

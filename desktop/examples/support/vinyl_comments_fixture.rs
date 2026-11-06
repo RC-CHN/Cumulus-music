@@ -75,8 +75,13 @@ pub fn response(path: &str, args: &Value) -> Option<Result<Value>> {
     }
     CALLS.lock().unwrap().push(json!({"path":path,"args":args}));
     let comment = |id: u32| {
-        json!({"commentId":id,"content":format!("合成评论 {id}"),"time":1700000000123_u64,
-            "timeStr":"合成时间","liked":false,"likedCount":2,"user":{"userId":9,"nickname":"合成作者"}})
+        let mut row = json!({"commentId":id,"content":format!("合成评论 {id}"),"time":1700000000123_u64,
+            "timeStr":"合成时间","liked":false,"likedCount":2,"user":{"userId":9,"nickname":"合成作者"}});
+        if id == 101 && std::env::var_os("CUMULUS_VINYL_COMMENT_COPY_PROOF").is_some() {
+            row["beReplied"] = json!([{"beRepliedCommentId":901,
+                "content":"合成引用正文","user":{"userId":12,"nickname":"被引用作者"}}]);
+        }
+        row
     };
     Some(Ok(match path {
         "/api/resource/commentInfo/list" => match args["resourceIds"].as_str() {
