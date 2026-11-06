@@ -698,6 +698,33 @@ function fixture(overrides: Partial<PlayerClient> = {}) {
     stopped: () => stopped,
   };
 }
+test('episode selection keeps exact scope, row order and no generic retry', async () => {
+  const calls: unknown[][] = [];
+  const f = fixture({
+    playerVoiceSongsSelection: async (...args) => {
+      calls.push(args);
+      throw { code: 'network', message: 'held synthetic failure', retryable: true };
+    },
+  });
+  await f.player.connect(account());
+  const scope = { epoch: '1', playId: 'episode-a', voiceId: '71' };
+  const action = { kind: 'next_play', index: 2, indices: [8, 2] } as const;
+  f.emit({
+    ...state('2', '1', scope.playId),
+    voiceDetail: { id: '72', creator: null, releaseTime: null },
+  });
+  assert.equal(await f.player.playVoiceSongSelection(scope, 'receipt-a', action), false);
+  f.emit({
+    ...state('3', '1', scope.playId),
+    voiceDetail: { id: '71', creator: null, releaseTime: null },
+  });
+  assert.equal(await f.player.playVoiceSongSelection(scope, 'receipt-a', action), false);
+  await f.player.retry();
+  await f.player.connect(account('2'));
+  assert.equal(await f.player.playVoiceSongSelection(scope, 'receipt-a', action), false);
+  assert.deepEqual(calls, [['1', 'episode-a', 'receipt-a', action, 'standard']]);
+  f.player.dispose();
+});
 test('stream revisions win over late command responses and old account events', async () => {
   const old = deferred<PlayerView>();
   const f = fixture({ playerAction: () => old.promise });

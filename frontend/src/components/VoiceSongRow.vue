@@ -16,7 +16,8 @@ const props = defineProps<{
   likeBusy: boolean;
 }>();
 const emit = defineEmits<{
-  select: [];
+  select: [gesture: 'down' | 'up' | 'activate', event: MouseEvent | KeyboardEvent];
+  focus: [];
   play: [gesture: 'cover' | 'double_click'];
   more: [event: MouseEvent | KeyboardEvent];
   like: [];
@@ -32,20 +33,42 @@ const cover = useCoverImage(() => ({
   owner: String(props.index),
   source: props.track.coverUrl ? artworkAt(props.track.coverUrl, 120) : undefined,
 }));
+function rowSurface(event: Event) {
+  return event.target instanceof Element && !event.target.closest('button, a');
+}
+function down(event: MouseEvent) {
+  if (!rowSurface(event)) return;
+  emit('select', 'down', event);
+  if (event.button === 0) (event.currentTarget as HTMLElement).focus({ preventScroll: true });
+}
+function up(event: MouseEvent) {
+  if (rowSurface(event)) emit('select', 'up', event);
+}
 function clickRow(event: MouseEvent) {
-  if (!(event.target instanceof Element) || event.target.closest('button, a')) return;
-  emit('select');
+  // Programmatic/assistive click may have no pointer down/up. Real pointer
+  // clicks already selected above; reprocessing click would undo modifiers.
+  if (event.detail !== 0 || !rowSurface(event)) return;
+  emit('select', 'activate', event);
   (event.currentTarget as HTMLElement).focus({ preventScroll: true });
+}
+function doubleClick(event: MouseEvent) {
+  if (props.playable && rowSurface(event)) emit('play', 'double_click');
+}
+function more(event: MouseEvent | KeyboardEvent) {
+  const row = event.currentTarget;
+  if (row instanceof HTMLElement && !row.contains(document.activeElement))
+    row.focus({ preventScroll: true });
+  emit('more', event);
 }
 function key(event: KeyboardEvent) {
   if (event.currentTarget !== event.target) return;
   if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
     event.preventDefault();
-    emit('more', event);
+    more(event);
   } else if (event.key === ' ' || event.key === 'Enter') {
     event.preventDefault();
     if (event.key === 'Enter' && props.playable) emit('play', 'double_click');
-    else emit('select');
+    else emit('select', 'activate', event);
   }
 }
 </script>
@@ -63,9 +86,12 @@ function key(event: KeyboardEvent) {
     :aria-selected="selected"
     aria-haspopup="menu"
     :tabindex="focused ? 0 : -1"
+    @focus.self="emit('focus')"
+    @mousedown="down"
+    @mouseup="up"
     @click="clickRow"
-    @dblclick="playable && emit('play', 'double_click')"
-    @contextmenu.prevent.stop="emit('more', $event)"
+    @dblclick="doubleClick"
+    @contextmenu.prevent.stop="more"
     @keydown="key"
   >
     <div class="voice-song-cell" role="gridcell">

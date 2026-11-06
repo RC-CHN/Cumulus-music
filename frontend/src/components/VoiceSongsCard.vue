@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, useId, watch } from 'vue';
 import type { VoiceSongsView } from '../services/voiceSongs';
+import {
+  allVoiceSongs,
+  singleVoiceSong,
+  voiceSongContext,
+  voiceSongDown,
+  voiceSongNeighbor,
+  voiceSongSelectionSnapshot,
+  voiceSongUp,
+  type VoiceSongSelection,
+} from '../services/voiceSongSelection';
 import { rowWindow } from '../services/virtualWindow';
 import VoiceSongRow from './VoiceSongRow.vue';
 
@@ -12,18 +22,26 @@ const props = defineProps<{
   transportBusy: boolean;
 }>();
 const emit = defineEmits<{
-  play: [index: number, gesture: 'cover' | 'double_click'];
+  play: [index: number, gesture: 'cover' | 'double_click', indices?: readonly number[]];
   like: [index: number];
-  more: [index: number, event: MouseEvent | KeyboardEvent];
+  more: [index: number, event: MouseEvent | KeyboardEvent, indices?: readonly number[]];
   artist: [index: number, id: string];
 }>();
 const title = useId();
 const grid = ref<HTMLElement>();
-const selected = ref<number>();
+const selection = shallowRef<VoiceSongSelection>({ indices: new Set() });
 const focused = ref(0);
 const rowHeight = 60;
 const total = computed(() => props.page.tracks.length);
 const window = shallowRef(rowWindow(total.value, rowHeight, 400, 0));
+watch(
+  [() => props.page.playId, () => props.page.voiceId, () => props.page.receipt],
+  () => {
+    selection.value = { indices: new Set() };
+    focused.value = 0;
+  },
+  { flush: 'sync' },
+);
 
 // The card shares the voice shelf's scrolling surface with the other cards.
 // Keep spacer geometry on that surface instead of introducing another scrollbar.
@@ -71,31 +89,69 @@ const visibleRows = computed(() => {
     rights: props.page.availability[start + offset]!,
   }));
 });
-function select(index: number) {
-  focused.value = selected.value = index;
+function select(
+  index: number,
+  gesture: 'down' | 'up' | 'activate',
+  event: MouseEvent | KeyboardEvent,
+) {
+  if (gesture === 'activate') {
+    focused.value = index;
+    selection.value = singleVoiceSong(index);
+    return;
+  }
+  if (!(event instanceof MouseEvent)) return;
+  const modifiers = { button: event.button, toggle: event.ctrlKey, range: event.shiftKey };
+  if (gesture === 'down') {
+    if (event.button === 0) focused.value = index;
+    selection.value = voiceSongDown(selection.value, index, total.value, modifiers);
+  } else {
+    selection.value = voiceSongUp(selection.value, index, modifiers);
+  }
+}
+function play(index: number, gesture: 'cover' | 'double_click') {
+  const indices =
+    gesture === 'double_click' ? voiceSongSelectionSnapshot(selection.value, index) : undefined;
+  emit('play', index, gesture, indices);
 }
 function context(index: number, event: MouseEvent | KeyboardEvent) {
-  select(index);
-  emit('more', index, event);
+  focused.value = index;
+  selection.value = voiceSongContext(
+    selection.value,
+    index,
+    event instanceof MouseEvent && (event.ctrlKey || event.shiftKey),
+  );
+  emit('more', index, event, voiceSongSelectionSnapshot(selection.value, index));
 }
 async function moveFocus(event: KeyboardEvent) {
-  if (
-    !(event.target instanceof HTMLElement) ||
-    !event.target.hasAttribute('data-voice-song-row') ||
-    !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)
-  )
+  if (!(event.target instanceof HTMLElement) || !event.target.hasAttribute('data-voice-song-row'))
     return;
+  if (event.ctrlKey && !event.altKey && event.key.toLowerCase() === 'a') {
+    event.preventDefault();
+    event.stopPropagation();
+    selection.value = allVoiceSongs(selection.value, total.value);
+    return;
+  }
+  if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
+  event.stopPropagation();
   const index =
     event.key === 'Home'
       ? 0
       : event.key === 'End'
         ? total.value - 1
-        : Math.max(
-            0,
-            Math.min(total.value - 1, focused.value + (event.key === 'ArrowDown' ? 1 : -1)),
+        : voiceSongNeighbor(
+            selection.value,
+            focused.value,
+            total.value,
+            event.key === 'ArrowDown' ? 1 : -1,
           );
-  select(index);
+  focused.value = index;
+  selection.value =
+    event.key === 'Home' || event.key === 'End'
+      ? singleVoiceSong(index)
+      : { indices: new Set([index]), anchor: selection.value.anchor };
+  const page = props.page;
   if (!grid.value?.querySelector(`[data-row-index="${index}"]`) && grid.value && props.scroller) {
     const scroller = props.scroller;
     const gridTop = grid.value.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
@@ -108,6 +164,7 @@ async function moveFocus(event: KeyboardEvent) {
     );
     await nextTick();
   }
+  if (props.page !== page || focused.value !== index) return;
   const row = grid.value?.querySelector<HTMLElement>(`[data-row-index="${index}"]`);
   row?.focus({ preventScroll: true });
   row?.scrollIntoView({ block: 'nearest' });
@@ -130,6 +187,7 @@ async function moveFocus(event: KeyboardEvent) {
       :aria-labelledby="title"
       :aria-rowcount="total"
       aria-colcount="1"
+      aria-multiselectable="true"
       @keydown="moveFocus"
     >
       <div aria-hidden="true" :style="{ height: `${window.start * rowHeight}px` }" />
@@ -138,7 +196,7 @@ async function moveFocus(event: KeyboardEvent) {
         :key="index"
         :track="track"
         :index="index"
-        :selected="selected === index"
+        :selected="selection.indices.has(index)"
         :focused="
           focused === index ||
           (focused < window.start && index === window.start) ||
@@ -148,8 +206,9 @@ async function moveFocus(event: KeyboardEvent) {
         :copyright-blocked="rights.copyrightBlocked"
         :liked="liked.has(track.id)"
         :like-busy="busyLikes.has(track.id)"
-        @select="select(index)"
-        @play="emit('play', index, $event)"
+        @select="(gesture, event) => select(index, gesture, event)"
+        @focus="focused = index"
+        @play="play(index, $event)"
         @like="emit('like', index)"
         @more="context(index, $event)"
         @artist="emit('artist', index, $event)"

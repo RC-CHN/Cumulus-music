@@ -17,6 +17,12 @@ export type VoiceSongAction =
   | { kind: 'double_click'; index: number }
   | { kind: 'next_play'; index: number };
 
+export interface VoiceSongSelectionAction {
+  kind: 'menu_play' | 'next_play' | 'double_click';
+  index: number;
+  indices: readonly number[];
+}
+
 export interface VoiceSongRowTarget extends VoiceSongsScope {
   receipt: string;
   index: number;
@@ -29,6 +35,13 @@ export interface VoiceSongsClient {
     playId: string,
     receipt: string,
     action: VoiceSongAction,
+    quality: Quality,
+  ): Promise<PlayerView>;
+  playerVoiceSongsSelection(
+    epoch: string,
+    playId: string,
+    receipt: string,
+    action: VoiceSongSelectionAction,
     quality: Quality,
   ): Promise<PlayerView>;
   playerVoiceSongLike(

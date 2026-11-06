@@ -15,6 +15,7 @@ import type {
   QueueDropSource,
   LyricsView,
   LyricPreferences,
+  Quality,
   QualityTrialCommand,
   IntelligenceCommand,
 } from '../services/player.ts';
@@ -25,7 +26,11 @@ import type { CloudQuery } from '../services/cloud.ts';
 import type { LocalQuery } from '../services/local.ts';
 import { useEqualizerDraft } from './useEqualizerDraft.ts';
 import type { VinylSimilarAction, VinylSimilarSeed } from '../services/vinylSimilar.ts';
-import type { VoiceSongAction, VoiceSongsScope } from '../services/voiceSongs.ts';
+import type {
+  VoiceSongAction,
+  VoiceSongSelectionAction,
+  VoiceSongsScope,
+} from '../services/voiceSongs.ts';
 
 function sameSelection(a: PlayerView | undefined, b: PlayerView | undefined) {
   return (
@@ -753,7 +758,10 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     );
     return !!next && next.state !== 'error';
   }
-  async function playVoiceSong(scope: VoiceSongsScope, receipt: string, action: VoiceSongAction) {
+  async function runVoiceSongAction(
+    scope: VoiceSongsScope,
+    action: (epoch: string, quality: Quality) => Promise<PlayerView>,
+  ) {
     const selected = view.value;
     if (
       !ready.value ||
@@ -765,12 +773,22 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
       return false;
     const quality = selected.qualityPreferences.quality;
     // A later retry would no longer be a click on the same episode card.
-    const next = await run(
-      (e) => core.playerVoiceSongPlay(e, scope.playId, receipt, action, quality),
-      null,
-      true,
-    );
+    const next = await run((e) => action(e, quality), null, true);
     return !!next && next.state !== 'error';
+  }
+  function playVoiceSong(scope: VoiceSongsScope, receipt: string, action: VoiceSongAction) {
+    return runVoiceSongAction(scope, (e, quality) =>
+      core.playerVoiceSongPlay(e, scope.playId, receipt, action, quality),
+    );
+  }
+  function playVoiceSongSelection(
+    scope: VoiceSongsScope,
+    receipt: string,
+    action: VoiceSongSelectionAction,
+  ) {
+    return runVoiceSongAction(scope, (e, quality) =>
+      core.playerVoiceSongsSelection(e, scope.playId, receipt, action, quality),
+    );
   }
   async function controlPendingSource(current: PlayerView, input: PlayerAction) {
     if (pendingTransportBusy.value || loadingStepBusy.value) return;
@@ -1381,6 +1399,7 @@ export function usePlayer(core: CoreClient = useCore(), onSessionChanged: () => 
     select,
     playVinylSimilar,
     playVoiceSong,
+    playVoiceSongSelection,
     toggleSource,
     primaryTransportKey,
     primaryTransportPauses,
