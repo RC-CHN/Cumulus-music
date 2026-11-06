@@ -205,8 +205,7 @@ function key(event: KeyboardEvent) {
   opacity: 0;
   justify-self: center;
 }
-.voice-song-row:is(:hover, :focus-within) .voice-song-heart,
-.voice-song-heart[aria-pressed='true'] {
+.voice-song-row:is(:hover, :focus-within) .voice-song-heart {
   opacity: 1;
 }
 .voice-song-heart[aria-pressed='true'] {

@@ -61,7 +61,11 @@ const items = computed<MenuItem[]>(() => {
       key: 'play',
       label: '播放',
       icon: 'play',
-      disabled: !canPlay || !props.player.ready.value || props.player.busy.value,
+      disabled:
+        !canPlay ||
+        !!input?.episode?.copyrightBlocked ||
+        !props.player.ready.value ||
+        props.player.busy.value,
     },
     {
       key: 'next',
