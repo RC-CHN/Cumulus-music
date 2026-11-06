@@ -142,7 +142,31 @@ fn startup_locale(category: libc::c_int) -> String {
 fn trial_seek_proof() -> bool {
     std::env::var_os("CUMULUS_TRIAL_SEEK_PROOF").is_some()
 }
+fn vinyl_title_alias_proof() -> bool {
+    std::env::var_os("CUMULUS_VINYL_TITLE_ALIAS_PROOF").is_some()
+}
 fn song(id: u64) -> Value {
+    if vinyl_title_alias_proof() && (2..=4).contains(&id) {
+        let mut song = json!({
+            "id": id,
+            "name": format!("合成歌曲 {id} · {}", "沿着海岸走到日落之后的长歌名 ".repeat(8).trim_end()),
+            "ar": [{"id":12,"name":"测试歌手"}],
+            "al": {"id":7,"name":"测试专辑"},
+            "dt":235000,"fee":0,
+        });
+        song["alia"] = match id {
+            2 => json!(["不会显示的别名"]),
+            3 => json!(["备用曲名", "录音室版"]),
+            4 => json!(["空翻译必须抑制此别名"]),
+            _ => unreachable!(),
+        };
+        if id == 2 {
+            song["tns"] = json!(["合成翻译", "另一译名"]);
+        } else if id == 4 {
+            song["tns"] = json!([]);
+        }
+        return song;
+    }
     if id == 1 && trial_seek_proof() {
         return json!({"id":1,"name":"合成试听歌曲","ar":[{"name":"Cumulus"}],"al":{"name":"界面体验验证"},"dt":100000,"fee":1});
     }
@@ -957,7 +981,7 @@ fn main() {
     cumulus_desktop::configure(tauri::Builder::default()).setup(move |app| {
         queue_more_fixture::phase_milestone("setup_enter");
         #[cfg(target_os = "linux")]
-        if song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() {
+        if vinyl_title_alias_proof() || song_speed_proof || tone_geometry_proof || search_download_row_proof || ordinary_source_bypass_proof || search_fixture::hot_playback_enabled() || search_artist_top50_fixture::enabled() || style_home_fixture::enabled() || queue_more_fixture::enabled() || system_master_volume_fixture::running() || vertical_zone_fixture::enabled() || vinyl_comments_fixture::group().is_some() || vinyl_similar_fixture::enabled() || std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some() {
             let numeric=startup_locale(libc::LC_NUMERIC);
             assert_eq!(numeric,"C");
             fs::write(output.join("locale.json"),serde_json::to_vec(&json!({
