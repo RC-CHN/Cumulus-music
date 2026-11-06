@@ -15,6 +15,7 @@ struct State {
     creates: u64,
     hidden: Option<u64>,
     sorted_pages: Vec<(String, usize)>,
+    inline_add_payloads: Vec<Value>,
 }
 fn state() -> &'static Mutex<State> {
     static STATE: OnceLock<Mutex<State>> = OnceLock::new();
@@ -32,7 +33,14 @@ pub fn control(value: &Value) {
 }
 pub fn report() -> Value {
     let s = state().lock().unwrap();
-    json!({"writes":s.writes,"creates":s.creates,"created":s.created.keys().collect::<Vec<_>>(),"sortedPages":s.sorted_pages})
+    let mut value = json!({"writes":s.writes,"creates":s.creates,"created":s.created.keys().collect::<Vec<_>>(),"sortedPages":s.sorted_pages});
+    if inline_probe() {
+        value["inlineAddPayloads"] = json!(s.inline_add_payloads);
+    }
+    value
+}
+fn inline_probe() -> bool {
+    std::env::var_os("CUMULUS_QUEUE_ROW_COLLECTION_PROOF").is_some()
 }
 fn list(s: &State, id: u64) -> Value {
     let mut value = s
@@ -150,6 +158,9 @@ pub async fn response(path: &str, args: &Value) -> Option<Result<Value>> {
             assert!(id == 2 || s.created.contains_key(&id));
             assert_eq!(args["op"], "add");
             s.writes += 1;
+            if inline_probe() {
+                s.inline_add_payloads.push(args.clone());
+            }
             if s.mode == "reject_add" {
                 return Some(Ok(json!({"code":403})));
             }
